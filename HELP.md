@@ -10,8 +10,11 @@
 
 ## COMMANDS
 
-`add-meeting`
-:   Interactively select a company and add a new, timestamped meeting file. Opens the new file in your default editor.
+`add -c "Name;domain.com;Type" -p "FullName;email@domain.com;Phone"`
+:   Adds a new company and/or person. All fields inside the quotes are required, separated by semicolons.
+    - Creates the company if it doesn't exist.
+    - Creates the person if they don't exist.
+    - Associates the person with the company.
 
 `find`
 :   Fuzzy-search for any file (contact, meeting note, etc.) across all companies and open the selection in your default editor.

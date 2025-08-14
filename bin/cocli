@@ -1,32 +1,37 @@
 #!/bin/bash
 
-# Determine the companies directory. Use the environment variable if set, otherwise default to ~/companies.
-# Then, export it so that sub-scripts called by this dispatcher can use it.
-export COMPANIES_DIR="${COCLI_COMPANIES_DIR:-$HOME/companies}"
+# Adhere to the XDG Base Directory Specification for data files.
+# Use $XDG_DATA_HOME if set, otherwise default to ~/.local/share.
+DATA_HOME="${XDG_DATA_HOME:-$HOME/.local/share}"
+COCLI_DIR="$DATA_HOME/cocli"
+
+# Export the final paths for all sub-scripts to use.
+export COMPANIES_DIR="$COCLI_DIR/companies"
+export PEOPLE_DIR="$COCLI_DIR/people"
+
+# Create the base directories if they don't exist.
+mkdir -p "$COMPANIES_DIR"
+mkdir -p "$PEOPLE_DIR"
 
 # Get the absolute path of the script's directory, then go up one level to the project root.
 # This makes the script runnable from anywhere.
 BASE_DIR=$(cd "$(dirname "$0")/.." && pwd)
 
-# The first argument is the command (e.g., 'add-meeting', 'find', 'help')
+# --- Main Command Dispatcher ---
+
+# The first argument is the command (e.g., 'add', 'find', 'help')
 COMMAND=$1
+shift # Remove the command from the argument list, so getopts can process the rest
 
-# If no command is given, show help and exit.
-if [[ -z "$COMMAND" ]]; then
-    COMMAND="help"
-fi
-
-# This is the main dispatcher. It looks at the command and runs the correct script.
 case "$COMMAND" in
-    add-meeting)
-        # Execute the script that contains the logic for this command
-        "$BASE_DIR/lib/add-meeting"
+    add)
+        # Pass all remaining arguments to the 'add' script
+        "$BASE_DIR/lib/add" "$@"
         ;;
     find)
         "$BASE_DIR/lib/find"
         ;;
     help)
-        # Show the contents of HELP.md using 'less' for easy reading
         less "$BASE_DIR/HELP.md"
         ;;
     *)

@@ -1,0 +1,81 @@
+#!/bin/bash
+
+# lib/add - Handles adding new companies and people using robust, delimited input.
+
+# --- Helper Functions ---
+slugify() {
+    # Converts a string to a URL-friendly "slug"
+    echo "$1" | iconv -t ascii//TRANSLIT | sed -r 's/[^a-zA-Z0-9]+/-/g' | tr '[:upper:]' '[:lower:]' | sed 's/^-+\|-+$//g'
+}
+
+# --- Argument Parsing ---
+PERSON_ARGS=""
+COMPANY_ARGS=""
+
+while getopts ":p:c:" opt; do
+  case $opt in
+    p) PERSON_ARGS="$OPTARG" ;;
+    c) COMPANY_ARGS="$OPTARG" ;;
+    \?) echo "Error: Invalid option: -$OPTARG" >&2; exit 1 ;;
+    :) echo "Option -$OPTARG requires an argument." >&2; exit 1 ;;
+  esac
+done
+
+# --- Main Logic ---
+
+# Handle Company Creation
+if [[ -n "$COMPANY_ARGS" ]]; then
+    # Use IFS to safely parse the semicolon-delimited string
+    IFS=';' read -r COMPANY_NAME COMPANY_DOMAIN COMPANY_TYPE <<< "$COMPANY_ARGS"
+
+    # Trim leading/trailing whitespace from parsed fields
+    COMPANY_NAME=$(echo "$COMPANY_NAME" | xargs)
+    COMPANY_DOMAIN=$(echo "$COMPANY_DOMAIN" | xargs)
+    COMPANY_TYPE=${COMPANY_TYPE:-"N/A"} # Default to N/A if not provided
+    COMPANY_TYPE=$(echo "$COMPANY_TYPE" | xargs)
+
+    COMPANY_SLUG=$(slugify "$COMPANY_NAME")
+    COMPANY_DIR="$COMPANIES_DIR/$COMPANY_SLUG"
+
+    if [ ! -d "$COMPANY_DIR" ]; then
+        echo "Creating new company: $COMPANY_NAME"
+        mkdir -p "$COMPANY_DIR"/{contacts,meetings}
+        # Create the _index.md file with the structured info
+        echo -e "# $COMPANY_NAME\n\n- **Domain:** $COMPANY_DOMAIN\n- **Type:** $COMPANY_TYPE" > "$COMPANY_DIR/_index.md"
+    else
+        echo "Company '$COMPANY_NAME' already exists."
+    fi
+fi
+
+# Handle Person Creation
+if [[ -n "$PERSON_ARGS" ]]; then
+    # Use IFS to safely parse the semicolon-delimited string
+    IFS=';' read -r PERSON_NAME PERSON_EMAIL PERSON_PHONE <<< "$PERSON_ARGS"
+
+    # Trim leading/trailing whitespace
+    PERSON_NAME=$(echo "$PERSON_NAME" | xargs)
+    PERSON_EMAIL=$(echo "$PERSON_EMAIL" | xargs)
+    PERSON_PHONE=$(echo "$PERSON_PHONE" | xargs)
+
+    PERSON_SLUG=$(slugify "$PERSON_NAME")
+    PERSON_FILE="$PEOPLE_DIR/$PERSON_SLUG.md"
+
+    if [ ! -f "$PERSON_FILE" ]; then
+        echo "Creating new person: $PERSON_NAME"
+        # Create the person file with their structured info
+        echo -e "# $PERSON_NAME\n\n- **Email:** $PERSON_EMAIL\n- **Phone:** $PERSON_PHONE" > "$PERSON_FILE"
+    else
+        echo "Person '$PERSON_NAME' already exists."
+    fi
+
+    # Handle Association via Symlink
+    if [[ -n "$COMPANY_SLUG" ]]; then
+        CONTACT_LINK_PATH="$COMPANY_DIR/contacts/$PERSON_SLUG.md"
+        if [ ! -L "$CONTACT_LINK_PATH" ]; then
+            echo "Associating $PERSON_NAME with $COMPANY_NAME..."
+            ln -s "$PERSON_FILE" "$CONTACT_LINK_PATH"
+        fi
+    fi
+fi
+
+echo "Done."
