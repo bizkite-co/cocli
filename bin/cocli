@@ -1,5 +1,9 @@
 #!/bin/bash
 
+# Determine the companies directory. Use the environment variable if set, otherwise default to ~/companies.
+# Then, export it so that sub-scripts called by this dispatcher can use it.
+export COMPANIES_DIR="${COCLI_COMPANIES_DIR:-$HOME/companies}"
+
 # Get the absolute path of the script's directory, then go up one level to the project root.
 # This makes the script runnable from anywhere.
 BASE_DIR=$(cd "$(dirname "$0")/.." && pwd)

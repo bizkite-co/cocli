@@ -1,6 +1,6 @@
 #!/bin/bash
 
-COMPANIES_DIR="$HOME/companies"
+# This script inherits the COMPANIES_DIR variable from the main 'cocli' dispatcher.
 
 # Use find to get all files, pipe to fzf for selection
 # The preview window in fzf is incredibly useful here

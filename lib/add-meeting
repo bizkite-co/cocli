@@ -1,7 +1,6 @@
 #!/bin/bash
 
-# Define the root directory for your companies
-COMPANIES_DIR="$HOME/companies"
+# This script inherits the COMPANIES_DIR variable from the main 'cocli' dispatcher.
 
 # Use fzf to select a company directory.
 # We list directories under the main folder, then pipe to fzf.
