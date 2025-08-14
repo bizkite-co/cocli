@@ -1,0 +1,31 @@
+#!/bin/bash
+
+# Define the root directory for your companies
+COMPANIES_DIR="$HOME/companies"
+
+# Use fzf to select a company directory.
+# We list directories under the main folder, then pipe to fzf.
+# `basename` strips the full path, leaving just the company name.
+SELECTED_COMPANY_DIR=$(find "$COMPANIES_DIR" -mindepth 1 -maxdepth 1 -type d | fzf)
+
+# Exit if the user pressed Esc or Ctrl+C in fzf
+if [[ -z "$SELECTED_COMPANY_DIR" ]]; then
+    echo "No company selected. Aborting."
+    exit 1
+fi
+
+# Ask the user for the meeting title
+read -p "Enter meeting title: " MEETING_TITLE
+
+# Create a URL-friendly "slug" from the title (e.g., "Project Kickoff" -> "project-kickoff")
+SLUG=$(echo "$MEETING_TITLE" | iconv -t ascii//TRANSLIT | sed -r s/[^a-zA-Z0-9]+/-/g | tr '[:upper:]' '[:lower:]')
+
+# Generate the timestamped filename
+FILENAME="$(date +%F)-${SLUG}.md"
+FILEPATH="${SELECTED_COMPANY_DIR}/meetings/${FILENAME}"
+
+# Create the file and open it in the default editor for notes
+touch "$FILEPATH"
+echo "Created meeting file: $FILENAME"
+echo "Opening in editor..."
+${EDITOR:-vim} "$FILEPATH" # Uses your $EDITOR, defaults to vim

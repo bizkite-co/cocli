@@ -1,0 +1,16 @@
+#!/bin/bash
+
+COMPANIES_DIR="$HOME/companies"
+
+# Use find to get all files, pipe to fzf for selection
+# The preview window in fzf is incredibly useful here
+SELECTED_FILE=$(find "$COMPANIES_DIR" -type f | fzf --preview 'bat --color=always {}')
+
+# Exit if nothing was selected
+if [[ -z "$SELECTED_FILE" ]]; then
+    echo "No file selected."
+    exit 1
+fi
+
+# Open the selected file
+${EDITOR:-vim} "$SELECTED_FILE"

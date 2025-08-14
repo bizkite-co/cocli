@@ -1,0 +1,33 @@
+#!/bin/bash
+
+# Get the absolute path of the script's directory, then go up one level to the project root.
+# This makes the script runnable from anywhere.
+BASE_DIR=$(cd "$(dirname "$0")/.." && pwd)
+
+# The first argument is the command (e.g., 'add-meeting', 'find', 'help')
+COMMAND=$1
+
+# If no command is given, show help and exit.
+if [[ -z "$COMMAND" ]]; then
+    COMMAND="help"
+fi
+
+# This is the main dispatcher. It looks at the command and runs the correct script.
+case "$COMMAND" in
+    add-meeting)
+        # Execute the script that contains the logic for this command
+        "$BASE_DIR/lib/add-meeting"
+        ;;
+    find)
+        "$BASE_DIR/lib/find"
+        ;;
+    help)
+        # Show the contents of HELP.md using 'less' for easy reading
+        less "$BASE_DIR/HELP.md"
+        ;;
+    *)
+        echo "Error: Unknown command '$COMMAND'"
+        echo "Run 'cocli help' for a list of available commands."
+        exit 1
+        ;;
+esac
