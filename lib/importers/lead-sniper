@@ -1,0 +1,48 @@
+#!/bin/bash
+
+# lib/import - Imports companies from a CSV file.
+
+# --- Input Validation ---
+CSV_FILE=$1
+
+if [[ -z "$CSV_FILE" ]]; then
+    echo "Error: No input file specified."
+    echo "Usage: cocli import <path/to/file.csv>"
+    exit 1
+fi
+
+if [ ! -f "$CSV_FILE" ]; then
+    echo "Error: File not found at '$CSV_FILE'"
+    exit 1
+fi
+
+# --- Main Import Logic ---
+echo "Starting import from '$CSV_FILE'..."
+
+# Read the CSV file line by line, skipping the header row (tail -n +2)
+tail -n +2 "$CSV_FILE" | while IFS=, read -r col1 col2 col3 col4 col5 # Adjust columns as needed
+do
+    # --- PARSING LOGIC WILL GO HERE ---
+    # This is a placeholder. We need the CSV structure to do this correctly.
+    # For example, if the company name is the first column and domain is the third:
+    COMPANY_NAME="$col1"
+    COMPANY_DOMAIN="$col3"
+
+    echo "---"
+    echo "Processing Company: $COMPANY_NAME"
+
+    # Use our existing 'add' command to create the company.
+    # This is modular design in action!
+    cocli add -c "$COMPANY_NAME;$COMPANY_DOMAIN;Lead"
+
+    # Now, add the tags to the new company's tags.lst file
+    COMPANY_SLUG=$(echo "$COMPANY_NAME" | iconv -t ascii//TRANSLIT | sed -r 's/[^a-zA-Z0-9]+/-/g' | tr '[:upper:]' '[:lower:]' | sed 's/^-+\|-+$//g')
+    TAGS_FILE="$COMPANIES_DIR/$COMPANY_SLUG/tags.lst"
+
+    echo "lead-sniper-import" >> "$TAGS_FILE"
+    echo "photography-studio" >> "$TAGS_FILE"
+
+done
+
+echo "---"
+echo "Import complete."

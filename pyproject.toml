@@ -1,0 +1,13 @@
+[project]
+name = "cocli"
+version = "0.1.0"
+description = "A CLI for managing a plain-text CRM."
+authors = [{ name = "Your Name", email = "you@example.com" }]
+dependencies = [
+    "typer",
+    "pyyaml",
+    "pydantic",
+]
+
+[project.scripts]
+cocli = "cocli.main:app"

@@ -19,5 +19,9 @@
 `find`
 :   Fuzzy-search for any file (contact, meeting note, etc.) across all companies and open the selection in your default editor.
 
+`import <format> <filepath>`
+:   Imports companies from a specified file using the given format.
+    Example: `cocli import lead-sniper ./leads.csv`
+
 `help`
 :   Displays this help message.

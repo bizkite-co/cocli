@@ -28,6 +28,28 @@ case "$COMMAND" in
         # Pass all remaining arguments to the 'add' script
         "$BASE_DIR/lib/add" "$@"
         ;;
+    import)
+        # The second argument is the format name (e.g., 'lead-sniper')
+        format="$1"
+        # The third argument is the filepath
+        filepath="$2"
+
+        if [[ -z "$format" ]]; then
+            echo "Error: Import format not specified."
+            echo "Usage: cocli import <format> <filepath>"
+            exit 1
+        fi
+
+        importer_script="$BASE_DIR/lib/importers/$format"
+
+        if [ ! -f "$importer_script" ]; then
+            echo "Error: Importer '$format' not found."
+            exit 1
+        fi
+
+        # Execute the specific importer script with the filepath
+        "$importer_script" "$filepath"
+        ;;
     find)
         "$BASE_DIR/lib/find"
         ;;
