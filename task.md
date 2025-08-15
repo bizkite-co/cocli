@@ -1,15 +1,9 @@
-# Current Task: Get the `import` command to work
+# Current Task: Final Review and Completion
 
-This task focuses on getting the `cocli import` command fully functional within the Python application.
+This task focuses on a final review of the implemented features and preparing for completion.
 
 ## Sub-tasks:
 
-1.  **Verify `uv` virtual environment setup**: Ensure a virtual environment is created and active.
-    *   Command: `uv venv`
-2.  **Install `cocli` in editable mode**: Install the current Python project in editable mode to allow direct execution from source.
-    *   Command: `uv pip install -e .`
-3.  **Identify Python `import` command implementation**: Locate the Python code responsible for handling the `import` command as defined in `cocli/main.py` (based on `pyproject.toml`).
-4.  **Examine existing bash `import` logic**: Review the `bin/cocli` script and the `lib/importers/` directory to understand how the bash version of the `import` command works and what importers it supports (e.g., `lead-sniper`).
-5.  **Compare bash and Python `import` functionality**: Determine what functionality from the bash `import` command needs to be migrated or verified in the Python implementation.
-6.  **Test Python `import` command**: Attempt to run the Python `import` command with a sample file (if available or easily creatable) and observe its behavior.
-7.  **Debug and Refine**: Address any errors or unexpected behavior encountered during testing.
+1.  **Final Review of `find` command output**: Verify that the `find` command now correctly displays structured YAML frontmatter data, concatenated tags, and recent meetings.
+2.  **Final Review of `importer` command**: Confirm that the importer correctly updates existing records and handles tags as specified.
+3.  **Confirm overall functionality**: Ensure all commands (`importer`, `add`, `add-meeting`, `find`, `view-meetings`, `open-company-folder`) are working as expected.

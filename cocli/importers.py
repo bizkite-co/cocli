@@ -1,8 +1,20 @@
 import csv
 from pathlib import Path
-from typing import Dict
+from typing import Dict, Any, Optional
 
 from .core import Company, create_company_files
+
+def _safe_int(value: str) -> Optional[int]:
+    try:
+        return int(value) if value else None
+    except ValueError:
+        return None
+
+def _safe_float(value: str) -> Optional[float]:
+    try:
+        return float(value) if value else None
+    except ValueError:
+        return None
 
 def lead_sniper(filepath: Path):
     """
@@ -21,19 +33,55 @@ def lead_sniper(filepath: Path):
                 # --- Data Mapping ---
                 # Map CSV columns to our Pydantic Company model.
                 # This is where you can handle different column names or clean data.
-                company_data: Dict[str, any] = {
+
+                categories = []
+                if row.get("First_category"):
+                    categories.append(row["First_category"].strip())
+                if row.get("Second_category"):
+                    categories.append(row["Second_category"].strip())
+
+                company_data: Dict[str, Any] = {
                     "name": row.get("Name"),
                     "domain": row.get("Domain"),
                     "type": "Lead",  # Set the type for this import
-                    "tags": ["lead-sniper-import", "photography-studio"]
+                    "tags": ["lead-sniper-import", "photography-studio"],
+
+                    "id": row.get("id"), # Added
+                    "keyword": row.get("Keyword"), # Added
+                    "full_address": row.get("Full_Address"),
+                    "street_address": row.get("Street_Address"),
+                    "city": row.get("City"),
+                    "zip_code": row.get("Zip"), # Mapped via alias in model
+                    "state": row.get("State"),
+                    "country": row.get("Country"),
+                    "timezone": row.get("Timezone"), # Added
+
+                    "phone_1": row.get("Phone_1"), # Added
+                    "phone_number": row.get("Phone_Standard_format"), # Mapped via alias
+                    "phone_from_website": row.get("Phone_From_WEBSITE"), # Added
+                    "email": row.get("Email_From_WEBSITE"), # Mapped via alias
+                    "website_url": row.get("Website"), # Mapped via alias
+
+                    "categories": categories, # Handled by BeforeValidator in model
+
+                    "reviews_count": _safe_int(row.get("Reviews_count", "")),
+                    "average_rating": _safe_float(row.get("Average_rating", "")),
+                    "business_status": row.get("Business_Status"), # Mapped via alias
+                    "hours": row.get("Hours"),
+
+                    "facebook_url": row.get("Facebook_URL"), # Mapped via alias
+                    "linkedin_url": row.get("Linkedin_URL"), # Mapped via alias
+                    "instagram_url": row.get("Instagram_URL"), # Mapped via alias
+
+                    "meta_description": row.get("Meta_Description"), # Mapped via alias
+                    "meta_keywords": row.get("Meta_Keywords"), # Mapped via alias
                 }
 
                 # --- Validation and Creation ---
                 try:
                     # Pydantic automatically validates the data.
-                    # If 'name' is missing, it will raise an error.
                     company = Company(**company_data)
-                    
+
                     # Pass the validated object to our core function
                     create_company_files(company)
 

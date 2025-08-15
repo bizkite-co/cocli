@@ -1,30 +1,134 @@
 # Company CLI (cocli)
 
-`cocli` is a simple, shell-based command-line interface for managing a plain-text CRM system located in `~/companies`.
+`cocli` is a powerful and user-friendly command-line interface for managing a plain-text CRM system. It allows you to import, add, find, and manage company and person data, as well as track meetings, all through a simple CLI.
+
+## Table of Contents
+- [Company CLI (cocli)](#company-cli-cocli)
+  - [Table of Contents](#table-of-contents)
+  - [Overview](#overview)
+  - [Installation](#installation)
+  - [Usage](#usage)
+    - [Importing Data](#importing-data)
+    - [Adding Companies and People](#adding-companies-and-people)
+    - [Adding Meetings](#adding-meetings)
+    - [Finding and Viewing Data](#finding-and-viewing-data)
+    - [Viewing All Meetings](#viewing-all-meetings)
+    - [Opening Company Folders in nvim](#opening-company-folders-in-nvim)
+  - [Configuration](#configuration)
+  - [Documentation](#documentation)
+
+## Overview
+`cocli` is designed to be a flexible and extensible CRM solution that stores your data in a human-readable, plain-text format (Markdown files with YAML frontmatter). This approach ensures data longevity and compatibility with various tools, including static site generators like Astro or Hugo.
 
 ## Installation
 
-1.  Clone this repository.
-2.  Add `~/repos/company-cli/bin` to your shell's `PATH`.
+`cocli` is a Python application managed with `uv`.
 
+1.  **Clone this repository**:
     ```bash
-    export PATH="$HOME/repos/company-cli/bin:$PATH"
+    git clone https://github.com/bizkite-co/cocli.git
+    cd cocli
     ```
+2.  **Create a `uv` virtual environment and install `cocli`**:
+    ```bash
+    uv venv
+    uv pip install -e .
+    ```
+3.  **Activate the virtual environment (optional, but recommended for development)**:
+    ```bash
+    source .venv/bin/activate
+    ```
+    You can then run `cocli` commands directly. If you don't activate, you'll need to prefix commands with `uv run`, e.g., `uv run cocli <command>`.
 
 ## Usage
 
-To see the full list of commands and what they do, run:
+All `cocli` commands are designed to be intuitive. To see a list of available commands and their basic usage, run:
 
 ```bash
-cocli help
+uv run cocli --help
+```
+
+### Importing Data
+Import company data from CSV files using the `importer` command. The `lead-sniper` format is currently supported.
+
+```bash
+uv run cocli importer lead-sniper /path/to/your/file.csv
+```
+This command will create new company directories and files, or update existing ones with richer data from the CSV.
+
+### Adding Companies and People
+Use the `add` command to create new companies or people, and to associate people with companies.
+
+*   **Add a new company**:
+    ```bash
+    uv run cocli add --company "My New Company;newcompany.com;Client"
+    ```
+*   **Add a new person**:
+    ```bash
+    uv run cocli add --person "Jane Doe;jane.doe@example.com;123-456-7890"
+    ```
+*   **Add a person and associate with a company**:
+    ```bash
+    uv run cocli add --company "Existing Company;existing.com;Lead" --person "John Smith;john.smith@example.com;987-654-3210"
+    ```
+
+### Adding Meetings
+Add new meeting notes to a company using the `add-meeting` command. You can select a company interactively or provide its name directly.
+
+*   **Interactive mode**:
+    ```bash
+    uv run cocli add-meeting
+    ```
+*   **Direct mode**:
+    ```bash
+    uv run cocli add-meeting "My New Company"
+    ```
+    This will prompt you for a meeting title and open your default editor (e.g., `vim`) to write notes.
+
+### Finding and Viewing Data
+The `find` command allows you to search for companies and view their detailed information. It supports fuzzy searching and provides a comprehensive overview.
+
+*   **Interactive search (list all companies)**:
+    ```bash
+    uv run cocli find
+    ```
+*   **Direct fuzzy search**:
+    ```bash
+    uv run cocli find "Rowland Photo"
+    ```
+    This will display company details, tags, and recent meetings.
+
+### Viewing All Meetings
+From the `find` command's output, you'll see an option to view all meetings for a selected company. You can also call it directly:
+
+```bash
+uv run cocli view-meetings "Rowland Heights Photography"
+```
+You can also filter meetings:
+*   **Limit results**:
+    ```bash
+    uv run cocli view-meetings "My Company" --limit 3
+    ```
+*   **Filter by date**:
+    ```bash
+    uv run cocli view-meetings "My Company" --since 2024-01-01
+    ```
+
+### Opening Company Folders in nvim
+For advanced users and debugging, you can open a company's data directory directly in `nvim` (or your configured `$EDITOR`).
+
+```bash
+uv run cocli open-company-folder "My New Company"
 ```
 
 ## Configuration
 
-By default, `cocli` looks for your company files in `~/companies`.
+By default, `cocli` stores your company and person data in `~/.local/share/cocli/` (adhering to the XDG Base Directory Specification). This directory contains `companies/` and `people/` subdirectories.
 
-To use a different directory, set the `COCLI_COMPANIES_DIR` environment variable in your `.bashrc` or `.zshrc` file. For example:
+You do not need to set any environment variables for the data directory unless you wish to override the XDG standard.
 
-```bash
-export COCLI_COMPANIES_DIR="$HOME/work/my-clients"
-```
+## Documentation
+*   [Detailed Plan](plan.md)
+*   [Current Task Breakdown](task.md)
+*   [Session Summary: Initial Setup & CRM Development](docs/chats/20250813-150830-session-summary.md)
+*   [Full Command Help](HELP.md) (Run `uv run cocli help` for the most up-to-date command list)
