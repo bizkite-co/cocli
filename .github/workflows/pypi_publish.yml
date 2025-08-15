@@ -1,0 +1,34 @@
+name: Publish Python Package to PyPI
+
+on:
+  release:
+    types: [published]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Python and uv
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.x' # Use the latest Python 3 version
+        cache: 'uv'
+
+    - name: Install uv
+      run: pip install uv
+
+    - name: Build package
+      run: uv build
+
+    - name: Publish package to PyPI
+      env:
+        # This is the PyPI API token, stored as a GitHub Secret
+        # You need to create a PYPI_API_TOKEN secret in your GitHub repository settings
+        # with a PyPI API token (starts with pypi-).
+        # See: https://pypi.org/help/#apitoken
+        UV_PUBLISH_TOKEN: ${{ secrets.PYPI_API_TOKEN }}
+      run: uv publish

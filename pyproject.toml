@@ -11,3 +11,6 @@ dependencies = [
 
 [project.scripts]
 cocli = "cocli.main:app"
+
+[tool.setuptools.packages]
+find = { include = ["cocli*"] }

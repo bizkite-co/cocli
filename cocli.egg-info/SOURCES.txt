@@ -1,5 +1,9 @@
 README.md
 pyproject.toml
+cocli/__init__.py
+cocli/core.py
+cocli/importers.py
+cocli/main.py
 cocli.egg-info/PKG-INFO
 cocli.egg-info/SOURCES.txt
 cocli.egg-info/dependency_links.txt
