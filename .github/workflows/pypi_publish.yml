@@ -16,7 +16,7 @@ jobs:
       uses: actions/setup-python@v5
       with:
         python-version: '3.x' # Use the latest Python 3 version
-        cache: 'uv'
+        # Removed: cache: 'uv' - Caching for 'uv' is not directly supported by setup-python
 
     - name: Install uv
       run: pip install uv
