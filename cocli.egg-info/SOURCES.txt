@@ -10,3 +10,4 @@ cocli.egg-info/dependency_links.txt
 cocli.egg-info/entry_points.txt
 cocli.egg-info/requires.txt
 cocli.egg-info/top_level.txt
+tests/test_cli.py

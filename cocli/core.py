@@ -2,17 +2,37 @@ import os
 import re
 from pathlib import Path
 from typing import Optional, List, Any
+import platform
 
 import yaml
 from pydantic import BaseModel, Field, BeforeValidator
 from typing_extensions import Annotated
 
 # --- Configuration ---
-# Adhere to the XDG Base Directory Specification.
-DATA_HOME = Path(os.environ.get("XDG_DATA_HOME", "~/.local/share")).expanduser()
-COCLI_DIR = DATA_HOME / "cocli"
-COMPANIES_DIR = COCLI_DIR / "companies"
-PEOPLE_DIR = COCLI_DIR / "people"
+
+def get_cocli_base_dir() -> Path:
+    """
+    Determines the root data directory for cocli, respecting environment variables.
+    Order of precedence: COCLI_DATA_HOME > XDG_DATA_HOME > default.
+    """
+    if "COCLI_DATA_HOME" in os.environ:
+        return Path(os.environ["COCLI_DATA_HOME"]).expanduser()
+    elif "XDG_DATA_HOME" in os.environ:
+        return Path(os.environ["XDG_DATA_HOME"]).expanduser() / "cocli"
+    else:
+        # Default location based on OS
+        if platform.system() == "Windows":
+            return Path(os.environ.get("LOCALAPPDATA", Path.home() / "AppData" / "Local")) / "cocli"
+        elif platform.system() == "Darwin": # macOS
+            return Path.home() / "Library" / "Application Support" / "cocli"
+        else: # Linux and other Unix-like
+            return Path.home() / ".local" / "share" / "cocli"
+
+def get_companies_dir() -> Path:
+    return get_cocli_base_dir() / "companies"
+
+def get_people_dir() -> Path:
+    return get_cocli_base_dir() / "people"
 
 # --- Data Models ---
 
@@ -57,6 +77,7 @@ class Company(BaseModel):
     linkedin_url: Optional[str] = Field(None, alias="Linkedin_URL")
     instagram_url: Optional[str] = Field(None, alias="Instagram_URL")
 
+
     meta_description: Optional[str] = Field(None, alias="Meta_Description")
     meta_keywords: Optional[str] = Field(None, alias="Meta_Keywords")
 
@@ -80,8 +101,10 @@ def create_company_files(company: Company) -> Path:
     Writes YAML frontmatter to the _index.md file.
     Returns the path to the new company directory.
     """
+    # Use the getter function to ensure dynamic path resolution
+    current_companies_dir = get_companies_dir()
     company_slug = slugify(company.name)
-    company_dir = COMPANIES_DIR / company_slug
+    company_dir = current_companies_dir / company_slug
     index_path = company_dir / "_index.md"
     tags_path = company_dir / "tags.lst"
 
@@ -134,8 +157,10 @@ def create_person_files(person: Person) -> Path:
     Creates the markdown file for a new person.
     Returns the path to the new person file.
     """
+    # Use the getter function to ensure dynamic path resolution
+    current_people_dir = get_people_dir()
     person_slug = slugify(person.name)
-    person_file = PEOPLE_DIR / f"{person_slug}.md"
+    person_file = current_people_dir / f"{person_slug}.md"
 
     if not person_file.exists():
         print(f"Creating new person: {person.name}")
@@ -149,7 +174,3 @@ def create_person_files(person: Person) -> Path:
         print(f"Person '{person.name}' already exists.")
 
     return person_file
-
-# Ensure base directories exist when this module is loaded
-COMPANIES_DIR.mkdir(parents=True, exist_ok=True)
-PEOPLE_DIR.mkdir(parents=True, exist_ok=True)

@@ -3,3 +3,8 @@ pyyaml
 pydantic
 fuzzywuzzy
 python-Levenshtein
+
+[dev]
+pytest
+pytest-bdd
+pytest-mock

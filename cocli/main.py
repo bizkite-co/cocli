@@ -4,7 +4,7 @@ import typer
 from typing_extensions import Annotated
 from typing import Optional, List
 from . import importers
-from .core import Company, Person, create_company_files, create_person_files, slugify, PEOPLE_DIR, COMPANIES_DIR, COCLI_DIR
+from .core import Company, Person, create_company_files, create_person_files, slugify, get_people_dir, get_companies_dir, get_cocli_base_dir
 import os
 import datetime
 import subprocess
@@ -63,7 +63,7 @@ def add(
 
         # Handle Association via Symlink
         if company_slug and person_file:
-            company_dir = COMPANIES_DIR / company_slug
+            company_dir = get_companies_dir() / company_slug
             contacts_dir = company_dir / "contacts"
             contacts_dir.mkdir(parents=True, exist_ok=True) # Ensure contacts dir exists
 
@@ -89,7 +89,7 @@ def add_meeting(
     """
     Adds a new meeting to a selected company.
     """
-    companies = [d.name for d in COMPANIES_DIR.iterdir() if d.is_dir()]
+    companies = [d.name for d in get_companies_dir().iterdir() if d.is_dir()]
     if not companies:
         print("No companies found. Please add a company first.")
         raise typer.Exit(code=1)
@@ -117,7 +117,7 @@ def add_meeting(
                 continue
 
     company_slug = slugify(selected_company_name)
-    company_dir = COMPANIES_DIR / company_slug
+    company_dir = get_companies_dir() / company_slug
     meetings_dir = company_dir / "meetings"
     meetings_dir.mkdir(parents=True, exist_ok=True)
 
@@ -153,7 +153,7 @@ def find(
     """
     Finds and displays information about a company or person.
     """
-    company_dirs = [d for d in COMPANIES_DIR.iterdir() if d.is_dir()]
+    company_dirs = [d for d in get_companies_dir().iterdir() if d.is_dir()]
 
     if not company_dirs:
         print("No companies found.")
@@ -190,7 +190,7 @@ def find(
         if not list_already_printed: # Only print if not already printed
             print("Available companies:")
             for i, company_dir in enumerate(company_dirs):
-                print(f"{i+1}. {company_dir.name}")
+                print(f"{i+1}. {company_dir.name}") # Corrected from c_name
 
         while True:
             try:
@@ -292,7 +292,7 @@ def view_meetings(
     Views all meetings for a given company, with optional filtering.
     """
     company_slug = slugify(company_name)
-    company_dir = COMPANIES_DIR / company_slug
+    company_dir = get_companies_dir() / company_slug
     meetings_dir = company_dir / "meetings"
 
     if not meetings_dir.exists():
@@ -340,7 +340,7 @@ def open_company_folder(
     Opens the company's data folder in nvim.
     """
     company_slug = slugify(company_name)
-    company_dir = COMPANIES_DIR / company_slug
+    company_dir = get_companies_dir() / company_slug
 
     if not company_dir.exists():
         print(f"Error: Company folder for '{company_name}' not found at {company_dir}.")
@@ -361,8 +361,96 @@ def open_company_folder(
 
     print("Done.")
 
+@app.command(name="data-path")
+def data_path():
+    """
+    Prints the root data directory for cocli.
+    """
+    print(get_cocli_base_dir())
+    # Removed typer.Exit(code=0)
 
+@app.command(name="git-sync")
+def git_sync():
+    """
+    Synchronizes the cocli data directory with its Git remote (pull and push).
+    """
+    data_dir = get_cocli_base_dir()
+    if not (data_dir / ".git").is_dir():
+        print(f"Error: Data directory '{data_dir}' is not a Git repository.")
+        raise typer.Exit(code=1)
 
+    print(f"Synchronizing Git repository at {data_dir}...")
+
+    try:
+        # Pull changes
+        pull_result = subprocess.run(
+            ["git", "pull"], cwd=data_dir, capture_output=True, text=True, check=True
+        )
+        print(pull_result.stdout.strip())
+        if pull_result.stderr:
+            print(pull_result.stderr.strip())
+
+        # Push changes
+        push_result = subprocess.run(
+            ["git", "push"], cwd=data_dir, capture_output=True, text=True, check=True
+        )
+        print(push_result.stdout.strip())
+        if push_result.stderr:
+            print(push_result.stderr.strip())
+
+        print("Git synchronization complete.")
+    except subprocess.CalledProcessError as e:
+        print(f"Error during Git sync: {e}")
+        print(e.stdout)
+        print(e.stderr)
+        raise typer.Exit(code=1)
+    except FileNotFoundError:
+        print("Error: 'git' command not found. Please ensure Git is installed and in your PATH.")
+        raise typer.Exit(code=1)
+    # Removed typer.Exit(code=0)
+
+@app.command(name="git-commit")
+def git_commit(
+    message: Annotated[str, typer.Option("-m", "--message", help="Commit message.")]
+):
+    """
+    Commits changes in the cocli data directory to Git.
+    """
+    data_dir = get_cocli_base_dir()
+    if not (data_dir / ".git").is_dir():
+        print(f"Error: Data directory '{data_dir}' is not a Git repository.")
+        raise typer.Exit(code=1)
+
+    print(f"Committing changes in Git repository at {data_dir} with message: '{message}'...")
+
+    try:
+        # Add all changes
+        add_result = subprocess.run(
+            ["git", "add", "."], cwd=data_dir, capture_output=True, text=True, check=True
+        )
+        if add_result.stdout:
+            print(add_result.stdout.strip())
+        if add_result.stderr:
+            print(add_result.stderr.strip())
+
+        # Commit changes
+        commit_result = subprocess.run(
+            ["git", "commit", "-m", message], cwd=data_dir, capture_output=True, text=True, check=True
+        )
+        print(commit_result.stdout.strip())
+        if commit_result.stderr:
+            print(commit_result.stderr.strip())
+
+        print("Git commit complete.")
+    except subprocess.CalledProcessError as e:
+        print(f"Error during Git commit: {e}")
+        print(e.stdout)
+        print(e.stderr)
+        raise typer.Exit(code=1)
+    except FileNotFoundError:
+        print("Error: 'git' command not found. Please ensure Git is installed and in your PATH.")
+        raise typer.Exit(code=1)
+    # Removed typer.Exit(code=0)
 
 if __name__ == "__main__":
     try:

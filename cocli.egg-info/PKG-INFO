@@ -2,10 +2,14 @@ Metadata-Version: 2.4
 Name: cocli
 Version: 0.2.0
 Summary: A CLI for managing a plain-text CRM.
-Author-email: Your Name <you@example.com>
+Author-email: Mark Stouffer <mark@getbizkite.com>
 Requires-Python: >=3.8
 Requires-Dist: typer
 Requires-Dist: pyyaml
 Requires-Dist: pydantic
 Requires-Dist: fuzzywuzzy
 Requires-Dist: python-Levenshtein
+Provides-Extra: dev
+Requires-Dist: pytest; extra == "dev"
+Requires-Dist: pytest-bdd; extra == "dev"
+Requires-Dist: pytest-mock; extra == "dev"
