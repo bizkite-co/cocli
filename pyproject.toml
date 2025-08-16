@@ -3,6 +3,7 @@ name = "cocli"
 version = "0.2.0"
 description = "A CLI for managing a plain-text CRM."
 authors = [{ name = "Your Name", email = "you@example.com" }]
+requires-python = ">=3.8"
 dependencies = [
     "typer",
     "pyyaml",
@@ -16,3 +17,6 @@ cocli = "cocli.main:app"
 
 [tool.setuptools.packages]
 find = { include = ["cocli*"] }
+
+[tool.uv]
+package = true

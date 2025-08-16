@@ -160,29 +160,37 @@ def find(
         raise typer.Exit(code=1)
 
     selected_company_dir: Optional[Path] = None
+    list_already_printed = False
 
     if query:
         # Fuzzy search for company name
-        best_match_score = -1
-        best_match_company = None
-
+        strong_matches = []
         for company_dir in company_dirs:
             score = fuzz.partial_ratio(query.lower(), company_dir.name.lower())
-            if score > best_match_score:
-                best_match_score = score
-                best_match_company = company_dir
+            if score >= 70: # Threshold for a good fuzzy match
+                strong_matches.append((company_dir, score))
 
-        if best_match_score >= 70: # Threshold for a good fuzzy match
-            selected_company_dir = best_match_company
+        strong_matches.sort(key=lambda x: x[1], reverse=True) # Sort by score, descending
+
+        if len(strong_matches) == 1:
+            selected_company_dir = strong_matches[0][0]
             print(f"Found best match: {selected_company_dir.name}")
+        elif len(strong_matches) > 1:
+            print(f"Multiple strong matches found for '{query}':")
+            for i, (company_dir, score) in enumerate(strong_matches):
+                print(f"{i+1}. {company_dir.name} (Score: {score})")
+            # Set company_dirs to strong_matches for interactive selection
+            company_dirs = [match[0] for match in strong_matches]
+            query = None # Proceed to interactive selection
         else:
             print(f"No strong match found for '{query}'. Listing all companies.")
             query = None # Fallback to interactive mode
 
     if not selected_company_dir:
-        print("Available companies:")
-        for i, company_dir in enumerate(company_dirs):
-            print(f"{i+1}. {company_dir.name}")
+        if not list_already_printed: # Only print if not already printed
+            print("Available companies:")
+            for i, company_dir in enumerate(company_dirs):
+                print(f"{i+1}. {company_dir.name}")
 
         while True:
             try:
