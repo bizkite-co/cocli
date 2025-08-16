@@ -1,4 +1,5 @@
 from pathlib import Path
+
 import typer
 from typing_extensions import Annotated
 from typing import Optional, List
@@ -11,7 +12,7 @@ import yaml
 from fuzzywuzzy import fuzz # Import fuzzywuzzy
 
 # Create the main Typer application
-app = typer.Typer()
+app = typer.Typer(no_args_is_help=True)
 
 @app.command(name="importer")
 def import_data(
@@ -353,5 +354,11 @@ def open_company_folder(
     print("Done.")
 
 
+
+
 if __name__ == "__main__":
-    app()
+    try:
+        app()
+    except typer.Exit as e:
+        if e.code != 0:
+            raise

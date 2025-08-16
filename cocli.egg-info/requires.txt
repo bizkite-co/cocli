@@ -1,3 +1,5 @@
 typer
 pyyaml
 pydantic
+fuzzywuzzy
+python-Levenshtein
