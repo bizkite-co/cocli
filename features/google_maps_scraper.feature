@@ -5,9 +5,9 @@ Feature: Google Maps Business Scraper
   So that I can import it into my company database
 
   Scenario: Successfully scrape business data and generate Lead Sniper CSV
-    Given a Google Maps search URL for "photography studio"
+    Given a zip code "90210" and a search string "photography studio"
     And a temporary output directory for the CSV
-    When I run the Google Maps scraper with the URL and keyword "photography studio"
+    When I run the Google Maps scraper with the zip code and search string
     Then a CSV file named "lead-sniper-photography-studio-*.csv" should be created in the temporary directory
     And the CSV file should contain at least one business entry
     And the CSV file should have the Lead Sniper header

@@ -8,22 +8,20 @@ from behave import *
 
 from cocli.scrapers.google_maps import scrape_google_maps, LEAD_SNIPER_HEADERS
 
-@given('a Google Maps search URL for "{search_query}"')
-def step_given_google_maps_url(context, search_query):
-    # This URL is an example and might need to be updated if Google Maps URL structure changes
-    context.google_maps_url = f"https://www.google.com/maps/search/{search_query.replace(' ', '+')}"
-    context.search_query = search_query
+@given('a zip code "{zip_code}" and a search string "{search_string}"')
+def step_given_zip_code_and_search_string(context, zip_code, search_string):
+    context.zip_code = zip_code
+    context.search_string = search_string
 
 @given('a temporary output directory for the CSV')
 def step_given_temp_output_directory(context):
     context.temp_dir = Path(tempfile.mkdtemp())
     print(f"Created temporary directory: {context.temp_dir}")
 
-@when('I run the Google Maps scraper with the URL and keyword "{keyword}"')
-def step_when_run_scraper(context, keyword):
-    context.keyword = keyword
+@when('I run the Google Maps scraper with the zip code and search string')
+def step_when_run_scraper_with_zip_and_string(context):
     # Pass the temporary directory to the scraper
-    scrape_google_maps(context.google_maps_url, context.keyword, output_dir=context.temp_dir, max_results=5) # Limit results for testing
+    scrape_google_maps(zip_code=context.zip_code, search_string=context.search_string, output_dir=context.temp_dir, max_results=5) # Limit results for testing
 
 @then('a CSV file named "{filename_pattern}" should be created in the temporary directory')
 def step_then_csv_file_created(context, filename_pattern):

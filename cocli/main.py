@@ -34,8 +34,8 @@ def import_data(
 @app.command(name="scrape")
 def scrape_data(
     tool: str = typer.Argument(..., help="The name of the scraper tool to use (e.g., 'google-maps')."),
-    url: str = typer.Argument(..., help="The URL to scrape."),
-    keyword: Optional[str] = typer.Option(None, "--keyword", "-k", help="Optional keyword to associate with the scraped data."),
+    zip_code: str = typer.Option(..., "--zip", "-z", help="The zip code for the search."),
+    search_string: str = typer.Option(..., "--search", "-s", help="The string to search for (e.g., 'photography studio')."),
     output_dir: Path = typer.Option(Path("temp"), "--output-dir", "-o", help="Directory to save the scraped CSV file."), # Changed default to Path("temp")
     max_results: int = typer.Option(50, "--max-results", "-m", help="Maximum number of results to scrape.")
 ):
@@ -43,7 +43,7 @@ def scrape_data(
     Scrapes data using a specified tool and outputs it to a CSV file.
     """
     if tool == "google-maps":
-        google_maps.scrape_google_maps(url, keyword, output_dir, max_results)
+        google_maps.scrape_google_maps(zip_code=zip_code, search_string=search_string, output_dir=output_dir, max_results=max_results)
     else:
         print(f"Error: Scraper tool '{tool}' not found.")
         raise typer.Exit(code=1)

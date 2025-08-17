@@ -68,29 +68,60 @@ LEAD_SNIPER_HEADERS = [
     "Planning",
 ]
 
+# Simple placeholder for zip code to coordinates mapping
+# In a real application, this would involve a geocoding API or a more comprehensive lookup
+ZIP_TO_COORDS = {
+    "90210": {"latitude": 34.0736, "longitude": -118.4004}, # Beverly Hills, CA
+    # Add more zip codes as needed for testing or expansion
+}
+
+def _get_coordinates_from_zip(zip_code: str) -> Optional[Dict[str, float]]:
+    """
+    Retrieves latitude and longitude for a given zip code.
+    This is a placeholder and should be replaced with a proper geocoding service.
+    """
+    return ZIP_TO_COORDS.get(zip_code)
 
 def scrape_google_maps(
-    url: str,
-    keyword: Optional[str] = None,
+    zip_code: str,
+    search_string: str,
     output_dir: Path = Path("."), # Default to current directory, will be overridden by CLI
     max_results: int = 50, # This will be overridden by settings.google_maps_max_pages
 ):
     """
-    Scrapes business information from Google Maps search results and outputs it to a CSV file
-    in the Lead Sniper format.
+    Scrapes business information from Google Maps search results based on zip code and search string
+    and outputs it to a CSV file in the Lead Sniper format.
     """
     settings = load_scraper_settings() # Load scraper settings
     delay_seconds = settings.google_maps_delay_seconds
     max_pages_to_scrape = settings.google_maps_max_pages
 
-    print(f"Starting Google Maps scraping for URL: {url}")
-    print(f"Keyword: {keyword if keyword else 'N/A'}")
+    coordinates = _get_coordinates_from_zip(zip_code)
+    if not coordinates:
+        print(f"Error: Could not find coordinates for zip code {zip_code}. Please provide a valid zip code.")
+        return
+
+    latitude = coordinates["latitude"]
+    longitude = coordinates["longitude"]
+
+    # Construct the Google Maps URL
+    # Example URL: https://www.google.com/maps/search/photography+studio/@33.9351822,-117.8542484,99708m/data=!3m2!1e3!4b1?entry=ttu
+    # The '99708m' is a zoom level, 'data=!3m2!1e3!4b1?entry=ttu' are additional parameters.
+    # For simplicity, we'll use a fixed zoom and data parameters for now.
+    # A more robust solution might dynamically determine zoom or allow it as a parameter.
+    base_url = "https://www.google.com/maps/search/"
+    formatted_search_string = search_string.replace(" ", "+")
+    url = f"{base_url}{formatted_search_string}/@{latitude},{longitude},15z/data=!3m2!1e3!4b1?entry=ttu"
+
+
+    print(f"Starting Google Maps scraping for search: '{search_string}' in zip code: {zip_code}")
+    print(f"Generated URL: {url}")
     print(f"Using delay: {delay_seconds} seconds, Max pages: {max_pages_to_scrape}")
 
     # Ensure output directory exists
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    output_filename = f"lead-sniper-{re.sub(r'[^a-zA-Z0-9_]', '-', keyword.lower() if keyword else 'google-maps')}-{datetime.now().strftime('%Y%m%d%H%M%S')}.csv"
+    output_filename = f"lead-sniper-{re.sub(r'[^a-zA-Z0-9_]', '-', search_string.lower())}-{datetime.now().strftime('%Y%m%d%H%M%S')}.csv"
     output_filepath = output_dir / output_filename
 
     with sync_playwright() as p:
@@ -155,7 +186,7 @@ def scrape_google_maps(
                             if listing_container:
                                 html_content = listing_container.inner_html()
                                 business_data = _extract_business_data(
-                                    html_content, keyword
+                                    html_content, search_string # Pass search_string as keyword
                                 )
 
                                 if business_data.get(
