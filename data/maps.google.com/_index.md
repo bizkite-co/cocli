@@ -1,0 +1,1 @@
+example_url: 'https://www.google.com/maps/search/photography+studio/@26.8263399,-142.1213974,13727201m/data=!3m2!1e3!4b1?entry=ttu&g_ep=EgoyMDI1MDgxMy4wIKXMDSoASAFQAw%3D%3D'

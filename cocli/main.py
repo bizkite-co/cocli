@@ -4,6 +4,7 @@ import typer
 from typing_extensions import Annotated
 from typing import Optional, List
 from . import importers
+from .scrapers import google_maps
 from .core import Company, Person, create_company_files, create_person_files, slugify, get_people_dir, get_companies_dir, get_cocli_base_dir
 import os
 import datetime
@@ -28,6 +29,23 @@ def import_data(
         importer_func(filepath)
     else:
         print(f"Error: Importer '{format}' not found.")
+        raise typer.Exit(code=1)
+
+@app.command(name="scrape")
+def scrape_data(
+    tool: str = typer.Argument(..., help="The name of the scraper tool to use (e.g., 'google-maps')."),
+    url: str = typer.Argument(..., help="The URL to scrape."),
+    keyword: Optional[str] = typer.Option(None, "--keyword", "-k", help="Optional keyword to associate with the scraped data."),
+    output_dir: Path = typer.Option(Path("temp"), "--output-dir", "-o", help="Directory to save the scraped CSV file."), # Changed default to Path("temp")
+    max_results: int = typer.Option(50, "--max-results", "-m", help="Maximum number of results to scrape.")
+):
+    """
+    Scrapes data using a specified tool and outputs it to a CSV file.
+    """
+    if tool == "google-maps":
+        google_maps.scrape_google_maps(url, keyword, output_dir, max_results)
+    else:
+        print(f"Error: Scraper tool '{tool}' not found.")
         raise typer.Exit(code=1)
 
 @app.command()
