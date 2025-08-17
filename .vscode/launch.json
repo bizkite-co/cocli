@@ -1,0 +1,23 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Python: cocli (with arguments)",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/cocli/main.py",
+            "console": "integratedTerminal",
+            "args": [],
+            "justMyCode": true
+        },
+        {
+            "name": "Python: Behave Test",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "behave",
+            "args": ["features/cli_help.feature"],
+            "console": "integratedTerminal",
+            "justMyCode": true
+        }
+    ]
+}
