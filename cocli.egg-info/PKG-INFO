@@ -9,6 +9,7 @@ Requires-Dist: pyyaml
 Requires-Dist: pydantic
 Requires-Dist: fuzzywuzzy
 Requires-Dist: python-Levenshtein
+Requires-Dist: rich
 Provides-Extra: dev
 Requires-Dist: pytest; extra == "dev"
 Requires-Dist: pytest-bdd; extra == "dev"

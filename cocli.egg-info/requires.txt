@@ -3,6 +3,7 @@ pyyaml
 pydantic
 fuzzywuzzy
 python-Levenshtein
+rich
 
 [dev]
 pytest

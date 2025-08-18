@@ -61,6 +61,7 @@ dependencies = [
     { name = "python-levenshtein", version = "0.25.1", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.9'" },
     { name = "python-levenshtein", version = "0.27.1", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.9'" },
     { name = "pyyaml" },
+    { name = "rich" },
     { name = "typer" },
 ]
 
@@ -82,6 +83,7 @@ requires-dist = [
     { name = "pytest-mock", marker = "extra == 'dev'" },
     { name = "python-levenshtein" },
     { name = "pyyaml" },
+    { name = "rich" },
     { name = "typer" },
 ]
 provides-extras = ["dev"]

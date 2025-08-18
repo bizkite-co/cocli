@@ -16,17 +16,20 @@ def get_cocli_base_dir() -> Path:
     Order of precedence: COCLI_DATA_HOME > XDG_DATA_HOME > default.
     """
     if "COCLI_DATA_HOME" in os.environ:
-        return Path(os.environ["COCLI_DATA_HOME"]).expanduser()
+        cocli_base_dir = Path(os.environ["COCLI_DATA_HOME"]).expanduser()
     elif "XDG_DATA_HOME" in os.environ:
-        return Path(os.environ["XDG_DATA_HOME"]).expanduser() / "cocli"
+        cocli_base_dir = Path(os.environ["XDG_DATA_HOME"]).expanduser() / "cocli"
     else:
         # Default location based on OS
         if platform.system() == "Windows":
-            return Path(os.environ.get("LOCALAPPDATA", Path.home() / "AppData" / "Local")) / "cocli"
+            cocli_base_dir = Path(os.environ.get("LOCALAPPDATA", Path.home() / "AppData" / "Local")) / "cocli"
         elif platform.system() == "Darwin": # macOS
-            return Path.home() / "Library" / "Application Support" / "cocli"
+            cocli_base_dir = Path.home() / "Library" / "Application Support" / "cocli"
         else: # Linux and other Unix-like
-            return Path.home() / ".local" / "share" / "cocli"
+            cocli_base_dir = Path.home() / ".local" / "share" / "cocli"
+
+    cocli_base_dir.mkdir(parents=True, exist_ok=True)
+    return cocli_base_dir
 
 def get_config_dir() -> Path:
     """
@@ -46,10 +49,14 @@ def get_config_dir() -> Path:
             return Path.home() / ".config" / "cocli"
 
 def get_companies_dir() -> Path:
-    return get_cocli_base_dir() / "companies"
+    companies_dir = get_cocli_base_dir() / "companies"
+    companies_dir.mkdir(parents=True, exist_ok=True)
+    return companies_dir
 
 def get_people_dir() -> Path:
-    return get_cocli_base_dir() / "people"
+    people_dir = get_cocli_base_dir() / "people"
+    people_dir.mkdir(parents=True, exist_ok=True)
+    return people_dir
 
 class ScraperSettings(BaseModel):
     google_maps_delay_seconds: int = Field(20, description="Delay in seconds between page scrolls/requests for Google Maps scraper.")
@@ -125,11 +132,65 @@ class Company(BaseModel):
     meta_description: Optional[str] = Field(None, alias="Meta_Description")
     meta_keywords: Optional[str] = Field(None, alias="Meta_Keywords")
 
+    @classmethod
+    def from_directory(cls, company_dir: Path) -> Optional["Company"]:
+        index_path = company_dir / "_index.md"
+        tags_path = company_dir / "tags.lst"
+
+        if not index_path.exists():
+            return None
+
+        content = index_path.read_text()
+        frontmatter_data = {}
+        markdown_content = ""
+
+        if content.startswith("---") and "---" in content[3:]:
+            frontmatter_str, markdown_content = content.split("---", 2)[1:]
+            try:
+                frontmatter_data = yaml.safe_load(frontmatter_str) or {}
+            except yaml.YAMLError:
+                pass # Ignore YAML errors for now, return what we have
+
+        # Add name from directory if not in frontmatter
+        if "name" not in frontmatter_data:
+            frontmatter_data["name"] = company_dir.name.replace("-", " ").title()
+
+        # Add tags
+        tags = []
+        if tags_path.exists():
+            tags = tags_path.read_text().strip().splitlines()
+        frontmatter_data["tags"] = tags
+
+        try:
+            return cls(**frontmatter_data)
+        except Exception:
+            return None
+
 
 class Person(BaseModel):
     name: str
     email: Optional[str] = None
     phone: Optional[str] = None
+    company_name: Optional[str] = None # Added to link person to company
+
+    @classmethod
+    def from_directory(cls, person_file: Path) -> Optional["Person"]:
+        if not person_file.exists() or not person_file.suffix == ".md":
+            return None
+
+        content = person_file.read_text()
+        name_match = re.search(r"^#\s*(.+)", content, re.MULTILINE)
+        email_match = re.search(r"- \*\*Email:\*\* (.+)", content)
+        phone_match = re.search(r"- \*\*Phone:\*\* (.+)", content)
+        company_match = re.search(r"- \*\*Company:\*\* (.+)", content) # Assuming this format
+
+        name = name_match.group(1).strip() if name_match else person_file.stem.replace("-", " ").title()
+        email = email_match.group(1).strip() if email_match else None
+        phone = phone_match.group(1).strip() if phone_match else None
+        company_name = company_match.group(1).strip() if company_match else None
+
+        return cls(name=name, email=email, phone=phone, company_name=company_name)
+
 
 # --- Core Logic (Shared Component) ---
 
@@ -139,82 +200,26 @@ def slugify(text: str) -> str:
     text = re.sub(r'[\s\W]+', '-', text)
     return text.strip('-')
 
-def create_company_files(company: Company) -> Path:
+def create_company_files(company_name: str, company_dir: Path) -> Path:
     """
-    Creates the directory and files for a new company, or updates an existing one.
-    Writes YAML frontmatter to the _index.md file.
-    Returns the path to the new company directory.
+    Creates the directory and files for a new company.
     """
-    # Use the getter function to ensure dynamic path resolution
-    current_companies_dir = get_companies_dir()
-    company_slug = slugify(company.name)
-    company_dir = current_companies_dir / company_slug
+    company_dir.mkdir(parents=True, exist_ok=True)
+    (company_dir / "contacts").mkdir(exist_ok=True)
+    (company_dir / "meetings").mkdir(exist_ok=True)
+
     index_path = company_dir / "_index.md"
-    tags_path = company_dir / "tags.lst"
-
-    existing_data = {}
-    existing_tags = set()
-
-    if company_dir.exists():
-        print(f"Company '{company.name}' already exists. Updating data...")
-        if index_path.exists():
-            content = index_path.read_text()
-            # Extract YAML frontmatter
-            if content.startswith("---") and "---" in content[3:]:
-                _, frontmatter_str, _ = content.split("---", 2)
-                existing_data = yaml.safe_load(frontmatter_str) or {}
-
-        if tags_path.exists():
-            existing_tags.update(tags_path.read_text().splitlines())
-    else:
-        print(f"Creating new company: {company.name}")
-        (company_dir / "contacts").mkdir(parents=True, exist_ok=True)
-        (company_dir / "meetings").mkdir(parents=True, exist_ok=True)
-
-    # Merge new company data with existing data
-    # Prioritize new data, but keep existing if new is None
-    merged_data = company.model_dump(exclude_none=True)
-    for key, value in existing_data.items():
-        if key not in merged_data or merged_data[key] is None:
-            merged_data[key] = value
-
-    # Handle tags separately: add new tags to existing set
-    new_tags = set(merged_data.pop("tags", [])) # Remove tags from merged_data for _index.md
-    all_tags = sorted(list(existing_tags.union(new_tags)))
-
-    # Create YAML frontmatter from merged data (excluding tags)
-    frontmatter = yaml.dump(merged_data, sort_keys=False)
-
-    # Write the _index.md file with frontmatter and a title
-    index_path.write_text(f"---\n{frontmatter}---\n\n# {company.name}\n")
-
-    # Write the tags file (only if there are tags)
-    if all_tags:
-        tags_path.write_text("\n".join(all_tags) + "\n")
-    elif tags_path.exists():
-        tags_path.unlink() # Remove tags.lst if no tags
-
+    if not index_path.exists():
+        index_path.write_text(f"---\nname: {company_name}\n---\n\n# {company_name}\n")
     return company_dir
 
-def create_person_files(person: Person) -> Path:
+def create_person_files(person_name: str, person_dir: Path, company_name: str) -> Path:
     """
     Creates the markdown file for a new person.
-    Returns the path to the new person file.
     """
-    # Use the getter function to ensure dynamic path resolution
-    current_people_dir = get_people_dir()
-    person_slug = slugify(person.name)
-    person_file = current_people_dir / f"{person_slug}.md"
-
+    person_dir.mkdir(parents=True, exist_ok=True)
+    person_file = person_dir / f"{slugify(person_name)}.md"
     if not person_file.exists():
-        print(f"Creating new person: {person.name}")
-        content = f"# {person.name}\n\n"
-        if person.email:
-            content += f"- **Email:** {person.email}\n"
-        if person.phone:
-            content += f"- **Phone:** {person.phone}\n"
+        content = f"# {person_name}\n\n- **Company:** {company_name}\n"
         person_file.write_text(content)
-    else:
-        print(f"Person '{person.name}' already exists.")
-
     return person_file

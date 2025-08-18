@@ -3,6 +3,8 @@ from pathlib import Path
 import typer
 from typing_extensions import Annotated
 from typing import Optional, List
+from rich.console import Console
+from rich.markdown import Markdown
 from . import importers
 from .scrapers import google_maps
 from .core import (
@@ -19,294 +21,177 @@ import os
 import datetime
 import subprocess
 import yaml
-from fuzzywuzzy import fuzz  # Import fuzzywuzzy
+from fuzzywuzzy import process # Added for fuzzy search
 
-# Create the main Typer application
-app = typer.Typer(no_args_is_help=True)
+console = Console()
 
-
-@app.command(name="importer")
-def import_data(
-    format: str = typer.Argument(
-        ..., help="The name of the importer to use (e.g., 'lead-sniper')."
-    ),
-    filepath: Path = typer.Argument(
-        ...,
-        help="The path to the file to import.",
-        file_okay=True,
-        dir_okay=False,
-        readable=True,
-    ),
-):
-    """
-    Imports companies from a specified file using a given format.
-    """
-    importer_func = getattr(importers, format.replace("-", "_"), None)
-
-    if importer_func:
-        importer_func(filepath)
-    else:
-        print(f"Error: Importer '{format}' not found.")
-        raise typer.Exit(code=1)
-
-
-@app.command(name="scrape")
-def scrape_data(
-    tool: str = typer.Argument(
-        ..., help="The name of the scraper tool to use (e.g., 'google-maps')."
-    ),
-    zip_code: str = typer.Option(
-        ..., "--zip", "-z", help="The zip code for the search."
-    ),
-    search_string: str = typer.Option(
-        ...,
-        "--search",
-        "-s",
-        help="The string to search for (e.g., 'photography studio').",
-    ),
-    output_dir: Path = typer.Option(
-        Path("temp"),
-        "--output-dir",
-        "-o",
-        help="Directory to save the scraped CSV file.",
-    ),  # Changed default to Path("temp")
-    max_results: int = typer.Option(
-        50, "--max-results", "-m", help="Maximum number of results to scrape."
-    ),
-):
-    """
-    Scrapes data using a specified tool and outputs it to a CSV file.
-    """
-    if tool == "google-maps":
-        google_maps.scrape_google_maps(
-            zip_code=zip_code,
-            search_string=search_string,
-            output_dir=output_dir,
-            max_results=max_results,
-        )
-    else:
-        print(f"Error: Scraper tool '{tool}' not found.")
-        raise typer.Exit(code=1)
+app = typer.Typer()
 
 
 @app.command()
 def add(
-    company_name: Annotated[
-        str,
-        typer.Option(
-            "-c",
-            "--company",
-            help="Company name (e.g., 'My Company;example.com;Type').",
-        ),
-    ] = "",
-    person_name: Annotated[
-        str,
-        typer.Option(
-            "-p",
-            "--person",
-            help="Person name (e.g., 'John Doe;john@example.com;123-456-7890').",
-        ),
-    ] = "",
+    company_name: str = typer.Option(
+        ..., "--company", "-c", help="Name of the company"
+    ),
+    person_name: Optional[str] = typer.Option(
+        None, "--person", "-p", help="Name of the person"
+    ),
 ):
     """
-    Adds a new company or person, and can associate a person with a company.
+    Add a new company or a person to an existing company.
     """
-    company_slug = ""
+    companies_dir = get_companies_dir()
+    company_dir = companies_dir / slugify(company_name)
 
-    # Handle Company Creation
-    if company_name:
-        parts = company_name.split(";")
-        name = parts[0].strip()
-        domain = parts[1].strip() if len(parts) > 1 else None
-        company_type = parts[2].strip() if len(parts) > 2 else "N/A"
+    if not company_dir.exists():
+        create_company_files(company_name, company_dir)
+        print(f"Company '{company_name}' created at {company_dir}")
+    else:
+        print(f"Company '{company_name}' already exists at {company_dir}")
 
-        company = Company(name=name, domain=domain, type=company_type)
-        company_dir = create_company_files(company)
-        company_slug = slugify(name)  # Get slug for potential person association
-
-    # Handle Person Creation
     if person_name:
-        parts = person_name.split(";")
-        name = parts[0].strip()
-        email = parts[1].strip() if len(parts) > 1 else None
-        phone = parts[2].strip() if len(parts) > 2 else None
-
-        person = Person(name=name, email=email, phone=phone)
-        person_file = create_person_files(person)
-
-        # Handle Association via Symlink
-        if company_slug and person_file:
-            company_dir = get_companies_dir() / company_slug
-            contacts_dir = company_dir / "contacts"
-            contacts_dir.mkdir(
-                parents=True, exist_ok=True
-            )  # Ensure contacts dir exists
-
-            person_slug = slugify(person.name)
-            contact_link_path = contacts_dir / f"{person_slug}.md"
-
-            if not contact_link_path.exists():
-                print(f"Associating {person.name} with {company.name}...")
-                os.symlink(person_file, contact_link_path)
-            else:
-                print(
-                    f"Association for {person.name} with {company.name} already exists."
-                )
-
-    if not company_name and not person_name:
-        print("Error: No company or person details provided. Use -c or -p.")
-        raise typer.Exit(code=1)
-
-    print("Done.")
+        people_dir = get_people_dir()
+        person_dir = people_dir / slugify(person_name)
+        if not person_dir.exists():
+            create_person_files(person_name, person_dir, company_name)
+            print(f"Person '{person_name}' created at {person_dir}")
+        else:
+            print(f"Person '{person_name}' already exists at {person_dir}")
 
 
-@app.command(name="add-meeting")
+@app.command()
 def add_meeting(
-    company_name: Optional[str] = typer.Argument(
-        None, help="Optional company name to add meeting to."
-    )
+    company_name: str = typer.Option(
+        ..., "--company", "-c", help="Name of the company"
+    ),
+    date: Optional[str] = typer.Option(
+        None,
+        "--date",
+        "-d",
+        help="Date of the meeting (YYYY-MM-DD). Defaults to today.",
+    ),
+    time: Optional[str] = typer.Option(
+        None, "--time", "-t", help="Time of the meeting (HH:MM)."
+    ),
+    title: Optional[str] = typer.Option(
+        None, "--title", "-T", help="Title of the meeting."
+    ),
 ):
     """
-    Adds a new meeting to a selected company.
+    Add a new meeting for a company.
     """
-    companies = [d.name for d in get_companies_dir().iterdir() if d.is_dir()]
-    if not companies:
-        print("No companies found. Please add a company first.")
-        raise typer.Exit(code=1)
-
-    selected_company_name = company_name
-    if not selected_company_name:
-        print("Available companies:")
-        for i, c_name in enumerate(companies):
-            print(f"{i+1}. {c_name}")
-
-        while True:
-            try:
-                selection = typer.prompt("Select a company by number or name")
-                if selection.isdigit():
-                    selected_company_name = companies[int(selection) - 1]
-                else:
-                    selected_company_name = selection
-
-                if selected_company_name not in companies:
-                    print("Invalid selection. Please try again.")
-                    continue
-                break
-            except (ValueError, IndexError):
-                print("Invalid selection. Please try again.")
-                continue
-
-    company_slug = slugify(selected_company_name)
-    company_dir = get_companies_dir() / company_slug
+    companies_dir = get_companies_dir()
+    company_slug = slugify(company_name)
+    company_dir = companies_dir / company_slug
     meetings_dir = company_dir / "meetings"
     meetings_dir.mkdir(parents=True, exist_ok=True)
 
-    meeting_title = typer.prompt("Enter meeting title")
-    meeting_slug = slugify(meeting_title)
+    meeting_date = datetime.date.today()
+    if date:
+        try:
+            meeting_date = datetime.datetime.strptime(date, "%Y-%m-%d").date()
+        except ValueError:
+            print("Invalid date format. Please use YYYY-MM-DD.")
+            raise typer.Exit(code=1)
 
-    timestamp = datetime.datetime.now().strftime("%Y-%m-%d")
-    filename = f"{timestamp}-{meeting_slug}.md"
-    filepath = meetings_dir / filename
+    meeting_filename = f"{meeting_date.isoformat()}"
+    if title:
+        meeting_filename += f"-{slugify(title)}"
+    meeting_filename += ".md"
+    meeting_path = meetings_dir / meeting_filename
 
-    if filepath.exists():
-        print(f"Meeting file '{filename}' already exists. Opening existing file.")
-    else:
-        filepath.touch()
-        print(f"Created meeting file: {filename}")
+    meeting_content = f"""---
+date: {meeting_date.isoformat()}
+company: {company_name}
+"""
+    if time:
+        meeting_content += f"time: {time}\n"
+    if title:
+        meeting_content += f"title: {title}\n"
+    meeting_content += "---\n\n"
 
-    editor = os.environ.get("EDITOR", "vim")
     try:
-        subprocess.run([editor, str(filepath)], check=True)
-    except FileNotFoundError:
-        print(
-            f"Error: Editor '{editor}' not found. Please ensure it's installed and in your PATH."
-        )
+        meeting_path.write_text(meeting_content)
+        print(f"Meeting added for '{company_name}' on {meeting_date.isoformat()}")
+        subprocess.run(["nvim", meeting_path], check=True)
+    except Exception as e:
+        print(f"Error adding meeting: {e}")
         raise typer.Exit(code=1)
-    except subprocess.CalledProcessError:
-        print("Editor exited with an error.")
-        raise typer.Exit(code=1)
-
-    print("Done.")
 
 
 @app.command()
 def find(
-    query: Optional[str] = typer.Argument(
-        None, help="Optional search query to filter companies."
-    )
+    query: str = typer.Argument(..., help="Search query for companies or people."),
+    company_only: bool = typer.Option(
+        False, "--company-only", "-c", help="Search only companies."
+    ),
+    person_only: bool = typer.Option(
+        False, "--person-only", "-p", help="Search only people."
+    ),
 ):
     """
-    Finds and displays information about a company or person.
+    Find companies or people by name.
     """
-    company_dirs = [d for d in get_companies_dir().iterdir() if d.is_dir()]
-
-    if not company_dirs:
-        print("No companies found.")
+    if company_only and person_only:
+        print("Cannot use both --company-only and --person-only.")
         raise typer.Exit(code=1)
 
-    selected_company_dir: Optional[Path] = None
-    list_already_printed = False
+    companies_dir = get_companies_dir()
+    people_dir = get_people_dir()
 
-    if query:
-        # Fuzzy search for company name
-        strong_matches = []
-        for company_dir in company_dirs:
-            score = fuzz.partial_ratio(query.lower(), company_dir.name.lower())
-            if score >= 70:  # Threshold for a good fuzzy match
-                strong_matches.append((company_dir, score))
+    results = []
 
-        strong_matches.sort(
-            key=lambda x: x[1], reverse=True
-        )  # Sort by score, descending
+    if not person_only:
+        for company_dir in companies_dir.iterdir():
+            if company_dir.is_dir():
+                company = Company.from_directory(company_dir)
+                if company and query.lower() in company.name.lower():
+                    results.append(("company", company))
 
-        if len(strong_matches) == 1:
-            selected_company_dir = strong_matches[0][0]
-            print(f"Found best match: {selected_company_dir.name}")
-        elif len(strong_matches) > 1:
-            print(f"Multiple strong matches found for '{query}':")
-            for i, (company_dir, score) in enumerate(strong_matches):
-                print(f"{i+1}. {company_dir.name} (Score: {score})")
-            # Set company_dirs to strong_matches for interactive selection
-            company_dirs = [match[0] for match in strong_matches]
-            query = None  # Proceed to interactive selection
+    if not company_only:
+        for person_file in people_dir.iterdir(): # Changed from person_dir to person_file
+            if person_file.is_file() and person_file.suffix == ".md": # Ensure it's a markdown file
+                person = Person.from_directory(person_file) # Pass file path
+                if person and query.lower() in person.name.lower():
+                    results.append(("person", person))
+
+    if not results:
+        print(f"No companies or people found matching '{query}'.")
+        return
+
+    print("Found the following matches:")
+    for item_type, item in results:
+        if item_type == "company":
+            print(f"- Company: {item.name}")
         else:
-            print(f"No strong match found for '{query}'. Listing all companies.")
-            query = None  # Fallback to interactive mode
+            print(f"- Person: {item.name} (Company: {item.company_name})")
 
-    if not selected_company_dir:
-        if not list_already_printed:  # Only print if not already printed
-            print("Available companies:")
-            for i, company_dir in enumerate(company_dirs):
-                print(f"{i+1}. {company_dir.name}")  # Corrected from c_name
 
-        while True:
-            try:
-                selection = typer.prompt("Select a company by number or name")
-                if selection.isdigit():
-                    selected_company_dir = company_dirs[int(selection) - 1]
-                else:
-                    # Try to find an exact match by name
-                    exact_match = next(
-                        (
-                            d
-                            for d in company_dirs
-                            if d.name.lower() == slugify(selection).lower()
-                        ),
-                        None,
-                    )
-                    if exact_match:
-                        selected_company_dir = exact_match
-                    else:
-                        print("Invalid selection. Please try again.")
-                        continue
+@app.command()
+def view_company(
+    company_name: str = typer.Argument(..., help="Name of the company to view.")
+):
+    """
+    View details of a specific company.
+    """
+    companies_dir = get_companies_dir()
+    company_slug = slugify(company_name)
+    selected_company_dir = companies_dir / company_slug
 
-                if not selected_company_dir.exists():
-                    print("Selected company does not exist. Please try again.")
-                    continue
-                break
-            except (ValueError, IndexError):
-                print("Invalid selection. Please try again.")
-                continue
+    if not selected_company_dir.exists():
+        # Fuzzy search for company if exact match not found
+        company_names = [d.name for d in companies_dir.iterdir() if d.is_dir()]
+        matches = process.extractOne(company_name, company_names)
+        if matches and matches[1] >= 80:  # 80% similarity threshold
+            print(f"Company '{company_name}' not found. Did you mean '{matches[0]}'?")
+            if typer.confirm("Do you want to view this company instead?"):
+                selected_company_dir = companies_dir / slugify(matches[0])
+            else:
+                print("Operation cancelled.")
+                raise typer.Exit()
+        else:
+            print(f"Company '{company_name}' not found.")
+            raise typer.Exit(code=1)
 
     # Display company details
     company_name = selected_company_dir.name
@@ -314,7 +199,10 @@ def find(
     tags_path = selected_company_dir / "tags.lst"
     meetings_dir = selected_company_dir / "meetings"
 
-    print("\n--- Company Details ---")
+    markdown_output = ""
+
+    # Company Details
+    markdown_output += "\n# Company Details\n\n"
     if index_path.exists():
         content = index_path.read_text()
         # Extract YAML frontmatter
@@ -324,94 +212,96 @@ def find(
                 frontmatter_data = yaml.safe_load(frontmatter_str)
                 if frontmatter_data:
                     for key, value in frontmatter_data.items():
-                        if key != "name":  # Name is already displayed as title
-                            print(
-                                f"- {key.replace('_', ' ').title()}: {value}"
-                            )  # Removed bolding
+                        if key != "name":
+                            # Special handling for 'Domain' to make it a clickable link
+                            if key == "domain" and isinstance(value, str):
+                                markdown_output += f"- {key.replace('_', ' ').title()}: [{value}](http://{value})\n"
+                            else:
+                                markdown_output += f"- {key.replace('_', ' ').title()}: {value}\n"
             except yaml.YAMLError as e:
-                print(f"Error parsing YAML frontmatter: {e}")
-            print(markdown_content.strip())
+                markdown_output += f"Error parsing YAML frontmatter: {e}\n"
+            markdown_output += f"\n{markdown_content.strip()}\n"
         else:
-            print(content.strip())
+            markdown_output += f"\n{content.strip()}\n"
     else:
-        print(f"No _index.md found for {company_name}.")
+        markdown_output += f"No _index.md found for {company_name}.\n"
 
-    print("\n--- Tags ---")
+    # Tags
+    markdown_output += "\n---\n\n## Tags\n\n"
     if tags_path.exists():
         tags = tags_path.read_text().strip().splitlines()
-        print(", ".join(tags))
+        markdown_output += ", ".join(tags) + "\n"
     else:
-        print("No tags found.")
+        markdown_output += "No tags found.\n"
 
-    print("\n--- Recent Meetings ---")
+    # Recent Meetings
+    markdown_output += "\n---\n\n## Recent Meetings\n\n"
     recent_meetings = []
     if meetings_dir.exists():
         for meeting_file in sorted(meetings_dir.iterdir()):
             if meeting_file.is_file() and meeting_file.suffix == ".md":
                 try:
-                    # Extract date from filename (YYYY-MM-DD-slug.md)
                     date_str = meeting_file.name.split("-")[0:3]
                     meeting_date = datetime.datetime.strptime(
                         "-".join(date_str), "%Y-%m-%d"
                     ).date()
 
-                    # Filter by last 6 months
                     six_months_ago = datetime.date.today() - datetime.timedelta(
                         days=180
                     )
                     if meeting_date >= six_months_ago:
-                        recent_meetings.append((meeting_date, meeting_file))
+                        # Extract title from filename if available
+                        title_parts = meeting_file.name.split("-")[3:]
+                        meeting_title = (
+                            " ".join(title_parts).replace(".md", "").replace("-", " ")
+                            if title_parts
+                            else "Untitled Meeting"
+                        )
+                        recent_meetings.append(
+                            (meeting_date, meeting_file, meeting_title)
+                        )
                 except ValueError:
-                    # Ignore files with malformed dates
                     pass
 
-    # Sort meetings by date ascending and limit to most recent 5
-    recent_meetings.sort(key=lambda x: x[0])
-    recent_meetings = recent_meetings[-5:]
-
     if recent_meetings:
-        for date, meeting_file in recent_meetings:
-            print(f"- {date.strftime('%Y-%m-%d')}: {meeting_file.stem}")
+        for meeting_date, meeting_file, meeting_title in sorted(
+            recent_meetings, key=lambda x: x[0], reverse=True
+        ):
+            markdown_output += (
+                f"- {meeting_date.isoformat()}: [{meeting_title}]({meeting_file.name})\n"
+            )
     else:
-        print("No recent meetings found.")
+        markdown_output += "No recent meetings found.\n"
 
-    print("\n--- Options ---")
-    print(f"To view all meetings: cocli view-meetings {company_name}")
-    print(f"To add a new meeting: cocli add-meeting {company_name}")
-    print(
-        f"To open company folder in nvim: cocli open-company-folder {company_name}"
-    )  # New option
+    # Options
+    markdown_output += "\n---\n\n## Options\n\n"
+    markdown_output += f"- To view all meetings: `cocli view-meetings {company_name}`\n"
+    markdown_output += f"- To add a new meeting: `cocli add-meeting {company_name}`\n"
+    markdown_output += f"- To open company folder in nvim: `cocli open-company_folder {company_name}`\n"
 
-    print("\nDone.")
+    console.print(Markdown(markdown_output))
 
-
-@app.command(name="view-meetings")
+@app.command()
 def view_meetings(
-    company_name: str = typer.Argument(
-        ..., help="The name of the company to view meetings for."
-    ),
-    limit: Optional[int] = typer.Option(
-        None, "--limit", "-l", help="Limit the number of meetings displayed."
-    ),
-    since: Optional[str] = typer.Option(
-        None,
-        "--since",
-        "-s",
-        help="Display meetings since a specific date (YYYY-MM-DD).",
-    ),
+    company_name: str = typer.Argument(..., help="Name of the company to view meetings for.")
 ):
     """
-    Views all meetings for a given company, with optional filtering.
+    View all meetings for a specific company.
     """
+    companies_dir = get_companies_dir()
     company_slug = slugify(company_name)
-    company_dir = get_companies_dir() / company_slug
+    company_dir = companies_dir / company_slug
     meetings_dir = company_dir / "meetings"
 
-    if not meetings_dir.exists():
-        print(f"No meetings found for '{company_name}'.")
+    if not company_dir.exists():
+        print(f"Company '{company_name}' not found.")
         raise typer.Exit(code=1)
 
-    all_meetings = []
+    if not meetings_dir.exists() or not any(meetings_dir.iterdir()):
+        print(f"No meetings found for '{company_name}'.")
+        return
+
+    print(f"\n--- All Meetings for {company_name} ---")
     for meeting_file in sorted(meetings_dir.iterdir()):
         if meeting_file.is_file() and meeting_file.suffix == ".md":
             try:
@@ -419,183 +309,79 @@ def view_meetings(
                 meeting_date = datetime.datetime.strptime(
                     "-".join(date_str), "%Y-%m-%d"
                 ).date()
-                all_meetings.append((meeting_date, meeting_file))
+                print(f"- {meeting_date.isoformat()}: {meeting_file.name}")
             except ValueError:
-                pass  # Ignore malformed dates
-
-    filtered_meetings = all_meetings
-    if since:
-        try:
-            since_date = datetime.datetime.strptime(since, "%Y-%m-%d").date()
-            filtered_meetings = [m for m in filtered_meetings if m[0] >= since_date]
-        except ValueError:
-            print("Invalid --since date format. Please use YYYY-MM-DD.")
-            raise typer.Exit(code=1)
-
-    filtered_meetings.sort(key=lambda x: x[0])  # Sort by date ascending
-
-    if limit:
-        filtered_meetings = filtered_meetings[
-            -limit:
-        ]  # Get the most recent 'limit' meetings
-
-    print(f"\n--- All Meetings for {company_name} ---")
-    if filtered_meetings:
-        for date, meeting_file in filtered_meetings:
-            print(f"- {date.strftime('%Y-%m-%d')}: {meeting_file.stem}")
-    else:
-        print(f"No meetings found for '{company_name}' with the given filters.")
-
-    print("\nDone.")
+                print(f"- Malformed meeting file: {meeting_file.name}")
 
 
-@app.command(name="open-company-folder")
+@app.command()
 def open_company_folder(
-    company_name: str = typer.Argument(
-        ..., help="The name of the company to open the folder for."
-    )
+    company_name: str = typer.Argument(..., help="Name of the company to open folder for.")
 ):
     """
-    Opens the company's data folder in nvim.
+    Open the company's folder in nvim.
     """
+    companies_dir = get_companies_dir()
     company_slug = slugify(company_name)
-    company_dir = get_companies_dir() / company_slug
+    company_dir = companies_dir / company_slug
 
     if not company_dir.exists():
-        print(f"Error: Company folder for '{company_name}' not found at {company_dir}.")
+        print(f"Company '{company_name}' not found.")
         raise typer.Exit(code=1)
 
-    editor = os.environ.get("EDITOR", "nvim")  # Default to nvim for this command
     try:
-        # Use subprocess.Popen to allow nvim to run in the background
-        # and not block the CLI.
-        subprocess.Popen([editor, str(company_dir)])
-        print(f"Opened '{company_name}' folder in {editor}.")
-    except FileNotFoundError:
-        print(
-            f"Error: Editor '{editor}' not found. Please ensure it's installed and in your PATH."
-        )
-        raise typer.Exit(code=1)
+        subprocess.run(["nvim", str(company_dir)], check=True)
     except Exception as e:
-        print(f"An unexpected error occurred while opening nvim: {e}")
+        print(f"Error opening folder in nvim: {e}")
         raise typer.Exit(code=1)
 
-    print("Done.")
 
-
-@app.command(name="data-path")
-def data_path():
-    """
-    Prints the root data directory for cocli.
-    """
-    print(get_cocli_base_dir())
-    # Removed typer.Exit(code=0)
-
-
-@app.command(name="git-sync")
-def git_sync():
-    """
-    Synchronizes the cocli data directory with its Git remote (pull and push).
-    """
-    data_dir = get_cocli_base_dir()
-    if not (data_dir / ".git").is_dir():
-        print(f"Error: Data directory '{data_dir}' is not a Git repository.")
-        raise typer.Exit(code=1)
-
-    print(f"Synchronizing Git repository at {data_dir}...")
-
-    try:
-        # Pull changes
-        pull_result = subprocess.run(
-            ["git", "pull"], cwd=data_dir, capture_output=True, text=True, check=True
-        )
-        print(pull_result.stdout.strip())
-        if pull_result.stderr:
-            print(pull_result.stderr.strip())
-
-        # Push changes
-        push_result = subprocess.run(
-            ["git", "push"], cwd=data_dir, capture_output=True, text=True, check=True
-        )
-        print(push_result.stdout.strip())
-        if push_result.stderr:
-            print(push_result.stderr.strip())
-
-        print("Git synchronization complete.")
-    except subprocess.CalledProcessError as e:
-        print(f"Error during Git sync: {e}")
-        print(e.stdout)
-        print(e.stderr)
-        raise typer.Exit(code=1)
-    except FileNotFoundError:
-        print(
-            "Error: 'git' command not found. Please ensure Git is installed and in your PATH."
-        )
-        raise typer.Exit(code=1)
-    # Removed typer.Exit(code=0)
-
-
-@app.command(name="git-commit")
-def git_commit(
-    message: Annotated[str, typer.Option("-m", "--message", help="Commit message.")],
+@app.command()
+def import_data(
+    importer_name: str = typer.Argument(..., help="Name of the importer to use."),
+    file_path: Path = typer.Argument(..., help="Path to the data file to import."),
 ):
     """
-    Commits changes in the cocli data directory to Git.
+    Import data using a specified importer.
     """
-    data_dir = get_cocli_base_dir()
-    if not (data_dir / ".git").is_dir():
-        print(f"Error: Data directory '{data_dir}' is not a Git repository.")
+    if not file_path.is_file():
+        print(f"Error: File not found at {file_path}")
         raise typer.Exit(code=1)
-
-    print(
-        f"Committing changes in Git repository at {data_dir} with message: '{message}'..."
-    )
 
     try:
-        # Add all changes
-        add_result = subprocess.run(
-            ["git", "add", "."],
-            cwd=data_dir,
-            capture_output=True,
-            text=True,
-            check=True,
-        )
-        if add_result.stdout:
-            print(add_result.stdout.strip())
-        if add_result.stderr:
-            print(add_result.stderr.strip())
-
-        # Commit changes
-        commit_result = subprocess.run(
-            ["git", "commit", "-m", message],
-            cwd=data_dir,
-            capture_output=True,
-            text=True,
-            check=True,
-        )
-        print(commit_result.stdout.strip())
-        if commit_result.stderr:
-            print(commit_result.stderr.strip())
-
-        print("Git commit complete.")
-    except subprocess.CalledProcessError as e:
-        print(f"Error during Git commit: {e}")
-        print(e.stdout)
-        print(e.stderr)
+        importer_func = getattr(importers, importer_name)
+    except AttributeError:
+        print(f"Error: Importer '{importer_name}' not found.")
         raise typer.Exit(code=1)
-    except FileNotFoundError:
-        print(
-            "Error: 'git' command not found. Please ensure Git is installed and in your PATH."
-        )
+
+    try:
+        importer_func(file_path)
+        print(f"Data imported successfully using '{importer_name}'.")
+    except Exception as e:
+        print(f"Error during import: {e}")
         raise typer.Exit(code=1)
-    # Removed typer.Exit(code=0)
 
 
+@app.command()
+def scrape_google_maps(
+    query: str = typer.Argument(..., help="Search query for Google Maps."),
+    output_file: Path = typer.Option(
+        "google_maps_results.json",
+        "--output",
+        "-o",
+        help="Output JSON file for scraped data.",
+    ),
+):
+    """
+    Scrape data from Google Maps.
+    """
+    try:
+        google_maps.scrape(query, output_file)
+        print(f"Scraping completed. Results saved to {output_file}")
+    except Exception as e:
+        print(f"Error during scraping: {e}")
+        raise typer.Exit(code=1)
 
 
 if __name__ == "__main__":
-    try:
-        app()
-    except typer.Exit as e:
-        if e.code != 0:
-            raise
+    app()
