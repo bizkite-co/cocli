@@ -25,7 +25,7 @@ from fuzzywuzzy import process # Added for fuzzy search
 
 console = Console()
 
-app = typer.Typer()
+app = typer.Typer(no_args_is_help=True)
 
 
 @app.command()

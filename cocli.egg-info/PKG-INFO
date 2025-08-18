@@ -14,3 +14,4 @@ Provides-Extra: dev
 Requires-Dist: pytest; extra == "dev"
 Requires-Dist: pytest-bdd; extra == "dev"
 Requires-Dist: pytest-mock; extra == "dev"
+Requires-Dist: behave; extra == "dev"
