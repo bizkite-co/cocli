@@ -4,6 +4,7 @@ import typer
 from typing_extensions import Annotated
 from typing import Optional, List
 from rich.console import Console
+from rich.prompt import Prompt
 from rich.markdown import Markdown
 from . import importers
 from .scrapers import google_maps
@@ -121,7 +122,7 @@ company: {company_name}
 
 @app.command()
 def find(
-    query: str = typer.Argument(..., help="Search query for companies or people."),
+    query: Optional[str] = typer.Argument(None, help="Search query for companies or people."),
     company_only: bool = typer.Option(
         False, "--company-only", "-c", help="Search only companies."
     ),
@@ -141,30 +142,102 @@ def find(
 
     results = []
 
+    all_items = []
+
     if not person_only:
         for company_dir in companies_dir.iterdir():
             if company_dir.is_dir():
+                console.print(f"DEBUG: Attempting to load company from: {company_dir}")
                 company = Company.from_directory(company_dir)
-                if company and query.lower() in company.name.lower():
-                    results.append(("company", company))
+                if company:
+                    console.print(f"DEBUG: Successfully loaded company: {company.name}")
+                    all_items.append(("company", company))
+                else:
+                    console.print(f"DEBUG: Failed to load company from: {company_dir}")
 
     if not company_only:
-        for person_file in people_dir.iterdir(): # Changed from person_dir to person_file
-            if person_file.is_file() and person_file.suffix == ".md": # Ensure it's a markdown file
-                person = Person.from_directory(person_file) # Pass file path
-                if person and query.lower() in person.name.lower():
-                    results.append(("person", person))
+        for person_file in people_dir.iterdir():
+            if person_file.is_file() and person_file.suffix == ".md":
+                person = Person.from_directory(person_file)
+                if person:
+                    all_items.append(("person", person))
+
+    if query:
+        # Apply fuzzy search if a query is provided
+        names_to_match = [item.name for item_type, item in all_items]
+        fuzzy_matches = process.extract(query, names_to_match, limit=None) # Get all matches
+
+        # Filter matches based on a threshold and reconstruct results
+        for match_name, score in fuzzy_matches:
+            if score >= 70: # Adjust threshold as needed
+                # Find the original item(s) corresponding to the matched name
+                for item_type, item in all_items:
+                    if item.name == match_name:
+                        results.append((item_type, item))
+
+        if not results:
+            print(f"No companies or people found matching '{query}'.")
+            return
+    else:
+        # If no query, all items are potential results
+        results = all_items
 
     if not results:
-        print(f"No companies or people found matching '{query}'.")
+        print("No companies or people found.")
         return
 
-    print("Found the following matches:")
-    for item_type, item in results:
+    if len(results) == 1:
+        item_type, item = results[0]
         if item_type == "company":
-            print(f"- Company: {item.name}")
+            print(f"Found best match: {item.name}")
+            # Call view_company directly for single company match
+            view_company(item.name)
         else:
-            print(f"- Person: {item.name} (Company: {item.company_name})")
+            print(f"Found best match: {item.name} (Company: {item.company_name})")
+            # For a single person match, we might want to view the person's details or their company's.
+            # For now, just print details.
+            print(f"--- Person Details ---")
+            print(f"Name: {item.name}")
+            print(f"Email: {item.email}")
+            print(f"Phone: {item.phone}")
+            print(f"Company: {item.company_name}")
+    elif len(results) > 1:
+        choices = []
+        for item_type, item in results:
+            if item_type == "company":
+                choices.append(f"Company: {item.name}")
+            else:
+                choices.append(f"Person: {item.name} (Company: {item.company_name})")
+
+        console.print("Found multiple matches. Please select one:")
+        selected_choice = Prompt.ask("Select an item", choices=choices, show_choices=False)
+
+        # Extract the actual name from the selected choice
+        if selected_choice.startswith("Company: "):
+            selected_name = selected_choice.replace("Company: ", "")
+            view_company(selected_name)
+        elif selected_choice.startswith("Person: "):
+            # For person selection, we need to parse out the name and company
+            # This is a simplified approach; a more robust solution might pass the object directly
+            parts = selected_choice.replace("Person: ", "").split(" (Company: ")
+            person_name = parts[0]
+            company_name_for_person = parts[1].replace(")", "")
+
+            # For now, just display person details.
+            # If we want to view full person details, we'd need a view_person command.
+            # For the scope of this task, we'll just print the details.
+            # Find the actual person object from results
+            selected_person = next((p for t, p in results if t == "person" and p.name == person_name and p.company_name == company_name_for_person), None)
+            if selected_person:
+                print(f"--- Person Details ---")
+                print(f"Name: {selected_person.name}")
+                print(f"Email: {selected_person.email}")
+                print(f"Phone: {selected_person.phone}")
+                print(f"Company: {selected_person.company_name}")
+            else:
+                print(f"Could not retrieve details for {person_name}.")
+    else:
+        print(f"No companies or people found matching '{query}'.")
 
 
 @app.command()
