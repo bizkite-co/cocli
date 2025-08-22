@@ -7,8 +7,15 @@ Feature: Company and Person Finding
   Scenario: User invokes find with no query
     Given a cocli data directory with no companies
     When the user runs "cocli find"
-    Then the command should exit
+    Then the command should exit successfully
     And the output should display find help
+
+  Scenario: User invokes find with no query but has companies
+    Given a cocli data directory with companies "Acme Corp", "Beta Inc"
+    When the user runs "cocli find" and interactively selects "Acme Corp" using arrow keys
+    Then the command should exit successfully
+    And the output should display a selectable list containing "Acme Corp", "Beta Inc"
+    And the output should display details for "Acme Corp"
 
   Scenario: User invokes find with a query that has a single strong match
     Given a cocli data directory with a company named "Acme Corp"
@@ -18,8 +25,8 @@ Feature: Company and Person Finding
     And the output should display details for "Acme Corp"
 
   Scenario: User invokes find with a query that has multiple strong matches and selects one
-    Given a cocli data directory with companies "Acme Corp" and "Acme Solutions"
-    When the user runs "cocli find Acme"
+    Given a cocli data directory with companies "Acme Corp", "Acme Solutions"
+    When the user runs "cocli find Acme" and interactively selects "Acme Corp" using arrow keys
 
     Then the output should display a selectable list containing "Acme Corp", "Acme Solutions"
 
@@ -48,15 +55,15 @@ Feature: Company and Person Finding
 
   Scenario: User invokes find with multiple matches and interactively selects one with arrow keys
     Given a cocli data directory with companies "Alpha Corp", "Beta Inc", "Gamma Ltd"
-    When the user runs "cocli find" and interactively selects "Beta Inc" using arrow keys
-
-    Then the output should display a selectable list containing "Alpha Corp", "Beta Inc", "Gamma Ltd"
-    And the output should display details for "Beta Inc"
+    When the user runs "cocli find A" and interactively selects "Alpha Corp" using arrow keys
+    Then the command should exit successfully
+    And the output should display a selectable list containing "Alpha Corp", "Beta Inc", "Gamma Ltd"
+    And the output should display details for "Alpha Corp"
 
   Scenario: User invokes find with multiple matches and interactively selects one with VIM keys
     Given a cocli data directory with companies "Alpha Corp", "Beta Inc", "Gamma Ltd"
-    When the user runs "cocli find" and interactively selects "Gamma Ltd" using 'j' key
+    When the user runs "cocli find B" and interactively selects "Beta Inc" using 'j' key
     Then the command should exit successfully
     And the output should display a selectable list containing "Alpha Corp", "Beta Inc", "Gamma Ltd"
-    And the output should display details for "Gamma Ltd"
+    And the output should display details for "Beta Inc"
 
