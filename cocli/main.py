@@ -1,3 +1,5 @@
+import subprocess
+import re
 from pathlib import Path
 
 import typer
@@ -271,7 +273,6 @@ def view_company(
 
 
 
-
     # Display company details
     company_name = selected_company_dir.name
     index_path = selected_company_dir / "_index.md"
@@ -461,6 +462,15 @@ def scrape_google_maps(
     except Exception as e:
         print(f"Error during scraping: {e}")
         raise typer.Exit(code=1)
+def _format_entity_for_fzf(entity_type: str, entity: Any) -> str:
+    """
+    Formats a company or person object into a string for fzf display.
+    """
+    if entity_type == "company":
+        return f"COMPANY:{entity.name}"
+    elif entity_type == "person":
+        return f"PERSON:{entity.name}:{entity.company_name if entity.company_name else ''}"
+    return ""
 
 
 
@@ -490,55 +500,68 @@ def _get_all_searchable_items() -> List[tuple[str, Any]]:
 
 
 @app.command()
-def fzf():
+def fz():
     """
-    Fuzzy search companies and people using fzf.
+    Fuzzy search for companies and people using fzf and open the selection.
     """
     if not shutil.which("fzf"):
         console.print("[bold red]Error:[/bold red] 'fzf' command not found.")
         console.print("Please install fzf to use this feature. (e.g., `brew install fzf` or `sudo apt install fzf`)")
         raise typer.Exit(code=1)
 
-    all_items = _get_all_searchable_items()
+    all_searchable_items = _get_all_searchable_items()
 
-    if not all_items:
+    if not all_searchable_items:
         console.print("No companies or people found to search.")
         raise typer.Exit()
 
     fzf_input_lines = []
-    for item_type, item in all_items:
-        if item_type == "company":
-            fzf_input_lines.append(f"COMPANY:{item.name}")
-        else: # person
-            fzf_input_lines.append(f"PERSON:{item.name}:{item.company_name}")
+    for item_type, item_obj in all_searchable_items:
+        formatted_string = _format_entity_for_fzf(item_type, item_obj)
+        if formatted_string:
+            fzf_input_lines.append(formatted_string)
+
+    fzf_input = "\n".join(fzf_input_lines)
 
     try:
-        # Execute fzf and pipe the items to its stdin
-        # Use Popen to allow fzf to be interactive
-        fzf_process = subprocess.Popen(
+        process = subprocess.run(
             ["fzf"],
-            stdin=subprocess.PIPE,
-            stdout=sys.stdout, # Let fzf use the terminal's stdout
-            stderr=sys.stderr, # Let fzf use the terminal's stderr
-            text=True # Ensure input is treated as text
+            input=fzf_input,
+            capture_output=True,
+            text=True,
+            check=True
         )
-        fzf_process.communicate(input="\n".join(fzf_input_lines))
-        # fzf will print the selected line to stdout when it exits.
-        # The Python script cannot capture this output directly if fzf is truly interactive.
-        # The user will see the selected item in their terminal.
-        console.print("\n[bold green]Fuzzy search completed.[/bold green]")
-        console.print("The selected item (if any) was printed to your terminal by fzf.")
-        console.print("You can now use that output to run other `cocli` commands, e.g.:")
-        console.print("  `cocli view-company \"$(fzf_output_here)\"`")
-        console.print("  `cocli find \"$(fzf_output_here)\"`")
+        selected_item = process.stdout.strip()
 
+        if selected_item:
+            # Parse the selection to get the entity type and ID
+            # Regex adjusted for "COMPANY:name" or "PERSON:name:company_name"
+            match = re.match(r"^(COMPANY|PERSON):([^:]+)(?::(.*))?$", selected_item)
+            if match:
+                entity_type_str = match.group(1)
+                entity_name_or_id = match.group(2) # This will be the name/slug
+                # group(3) would be company_name for PERSON, but we use entity_name_or_id as the ID
+
+                console.print(f"Opening {entity_type_str}: {entity_name_or_id}")
+                if entity_type_str == "COMPANY":
+                    view_company(entity_name_or_id)
+                elif entity_type_str == "PERSON":
+                    # For persons, 'find' command is used to view by name/slug
+                    find(entity_name_or_id)
+            else:
+                console.print(f"Could not parse selection: '{selected_item}'")
+        else:
+            console.print("No selection made.")
 
     except subprocess.CalledProcessError:
-        console.print("fzf command cancelled or failed.")
+        console.print("Fuzzy search cancelled or failed.")
         raise typer.Exit()
+    except FileNotFoundError:
+        console.print("Error: 'fzf' command not found. Please ensure fzf is installed and in your PATH.")
+        raise typer.Exit(code=1)
     except Exception as e:
         console.print(f"[bold red]An unexpected error occurred:[/bold red] {e}")
         raise typer.Exit(code=1)
+
 if __name__ == "__main__":
     app()
-
