@@ -527,7 +527,8 @@ def fz():
         process = subprocess.run(
             ["fzf"],
             input=fzf_input,
-            capture_output=True,
+            stdout=subprocess.PIPE, # Capture stdout for selection
+            stderr=sys.stderr, # Allow fzf to display its interactive UI
             text=True,
             check=True
         )
