@@ -29,7 +29,7 @@ def get_cocli_base_dir() -> Path:
             cocli_base_dir = Path.home() / ".local" / "share" / "cocli"
 
     cocli_base_dir.mkdir(parents=True, exist_ok=True)
-    print(f"DEBUG: Resolved cocli_base_dir: {cocli_base_dir}") # Added debug print
+
     return cocli_base_dir
 
 def get_config_dir() -> Path:
@@ -139,7 +139,7 @@ class Company(BaseModel):
         tags_path = company_dir / "tags.lst"
 
         if not index_path.exists():
-            print(f"DEBUG: _index.md not found at {index_path}")
+            
             return None
 
         content = index_path.read_text()

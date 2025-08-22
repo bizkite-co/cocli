@@ -2,7 +2,9 @@ from pathlib import Path
 
 import typer
 from typing_extensions import Annotated
-from typing import Optional, List
+from typing import Optional, List, Any
+import sys
+
 from rich.console import Console
 from rich.prompt import Prompt
 from rich.markdown import Markdown
@@ -23,6 +25,7 @@ import datetime
 import subprocess
 import yaml
 from fuzzywuzzy import process # Added for fuzzy search
+import shutil
 
 console = Console()
 
@@ -147,13 +150,13 @@ def find(
     if not person_only:
         for company_dir in companies_dir.iterdir():
             if company_dir.is_dir():
-                console.print(f"DEBUG: Attempting to load company from: {company_dir}")
+
                 company = Company.from_directory(company_dir)
                 if company:
-                    console.print(f"DEBUG: Successfully loaded company: {company.name}")
+
                     all_items.append(("company", company))
-                else:
-                    console.print(f"DEBUG: Failed to load company from: {company_dir}")
+
+
 
     if not company_only:
         for person_file in people_dir.iterdir():
@@ -256,7 +259,6 @@ def view_company(
         company_names = [d.name for d in companies_dir.iterdir() if d.is_dir()]
         matches = process.extractOne(company_name, company_names)
         if matches and matches[1] >= 80:  # 80% similarity threshold
-            print(f"Company '{company_name}' not found. Did you mean '{matches[0]}'?")
             if typer.confirm("Do you want to view this company instead?"):
                 selected_company_dir = companies_dir / slugify(matches[0])
             else:
@@ -265,6 +267,10 @@ def view_company(
         else:
             print(f"Company '{company_name}' not found.")
             raise typer.Exit(code=1)
+
+
+
+
 
     # Display company details
     company_name = selected_company_dir.name
@@ -440,6 +446,7 @@ def scrape_google_maps(
     query: str = typer.Argument(..., help="Search query for Google Maps."),
     output_file: Path = typer.Option(
         "google_maps_results.json",
+
         "--output",
         "-o",
         help="Output JSON file for scraped data.",
@@ -456,5 +463,82 @@ def scrape_google_maps(
         raise typer.Exit(code=1)
 
 
+
+def _get_all_searchable_items() -> List[tuple[str, Any]]:
+    """
+    Gathers all companies and people for fuzzy searching.
+    Returns a list of tuples: [("company", Company_obj), ("person", Person_obj)].
+    """
+    all_items = []
+    companies_dir = get_companies_dir()
+    people_dir = get_people_dir()
+
+    if companies_dir.exists():
+        for company_dir in companies_dir.iterdir():
+            if company_dir.is_dir():
+                company = Company.from_directory(company_dir)
+                if company:
+                    all_items.append(("company", company))
+
+    if people_dir.exists():
+        for person_file in people_dir.iterdir():
+            if person_file.is_file() and person_file.suffix == ".md":
+                person = Person.from_directory(person_file)
+                if person:
+                    all_items.append(("person", person))
+    return all_items
+
+
+@app.command()
+def fzf():
+    """
+    Fuzzy search companies and people using fzf.
+    """
+    if not shutil.which("fzf"):
+        console.print("[bold red]Error:[/bold red] 'fzf' command not found.")
+        console.print("Please install fzf to use this feature. (e.g., `brew install fzf` or `sudo apt install fzf`)")
+        raise typer.Exit(code=1)
+
+    all_items = _get_all_searchable_items()
+
+    if not all_items:
+        console.print("No companies or people found to search.")
+        raise typer.Exit()
+
+    fzf_input_lines = []
+    for item_type, item in all_items:
+        if item_type == "company":
+            fzf_input_lines.append(f"COMPANY:{item.name}")
+        else: # person
+            fzf_input_lines.append(f"PERSON:{item.name}:{item.company_name}")
+
+    try:
+        # Execute fzf and pipe the items to its stdin
+        # Use Popen to allow fzf to be interactive
+        fzf_process = subprocess.Popen(
+            ["fzf"],
+            stdin=subprocess.PIPE,
+            stdout=sys.stdout, # Let fzf use the terminal's stdout
+            stderr=sys.stderr, # Let fzf use the terminal's stderr
+            text=True # Ensure input is treated as text
+        )
+        fzf_process.communicate(input="\n".join(fzf_input_lines))
+        # fzf will print the selected line to stdout when it exits.
+        # The Python script cannot capture this output directly if fzf is truly interactive.
+        # The user will see the selected item in their terminal.
+        console.print("\n[bold green]Fuzzy search completed.[/bold green]")
+        console.print("The selected item (if any) was printed to your terminal by fzf.")
+        console.print("You can now use that output to run other `cocli` commands, e.g.:")
+        console.print("  `cocli view-company \"$(fzf_output_here)\"`")
+        console.print("  `cocli find \"$(fzf_output_here)\"`")
+
+
+    except subprocess.CalledProcessError:
+        console.print("fzf command cancelled or failed.")
+        raise typer.Exit()
+    except Exception as e:
+        console.print(f"[bold red]An unexpected error occurred:[/bold red] {e}")
+        raise typer.Exit(code=1)
 if __name__ == "__main__":
     app()
+
