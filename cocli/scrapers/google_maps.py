@@ -6,7 +6,7 @@ from playwright.sync_api import sync_playwright, Page, Locator
 from bs4 import BeautifulSoup
 import uuid
 from datetime import datetime
-from cocli.core import load_scraper_settings # Import the settings loader
+from ..core.config import load_scraper_settings # Import the settings loader
 
 # Define the Lead Sniper CSV headers
 LEAD_SNIPER_HEADERS = [

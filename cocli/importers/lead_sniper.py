@@ -2,7 +2,8 @@ import csv
 from pathlib import Path
 from typing import Dict, Any, Optional
 
-from .core import Company, create_company_files
+from ..core.models import Company
+from ..core.utils import create_company_files
 
 def _safe_int(value: str) -> Optional[int]:
     try:

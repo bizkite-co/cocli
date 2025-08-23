@@ -11,7 +11,6 @@
     - [Importing Data](#importing-data)
     - [Adding Companies and People](#adding-companies-and-people)
     - [Adding Meetings](#adding-meetings)
-    - [Finding and Viewing Data](#finding-and-viewing-data)
     - [Viewing All Meetings](#viewing-all-meetings)
     - [Getting Data Directory Path](#getting-data-directory-path)
     - [Synchronizing Data with Git](#synchronizing-data-with-git)
@@ -89,18 +88,7 @@ Add new meeting notes to a company using the `add-meeting` command. You can sele
     ```
     This will prompt you for a meeting title and open your default editor (e.g., `vim`) to write notes.
 
-### Finding and Viewing Data
-The `find` command allows you to search for companies and view their detailed information. It supports fuzzy searching and provides a comprehensive overview.
 
-*   **Interactive search (list all companies)**:
-    ```bash
-    uv run cocli find
-    ```
-*   **Direct fuzzy search**:
-    ```bash
-    uv run cocli find "Rowland Photo"
-    ```
-    This will display company details, tags, and recent meetings.
 
 ### Viewing All Meetings
 From the `find` command's output, you'll see an option to view all meetings for a selected company. You can also call it directly:
@@ -185,6 +173,7 @@ export COCLI_DATA_HOME="/path/to/your/custom/cocli_data"
 
 ## Documentation
 *   [Detailed Plan](docs/TEST_PLAN.md)
+*   [Proposed Application Structure](docs/structure.md)
 *   [Current Task Breakdown](task.md)
 *   [Session Summary: Initial Setup & CRM Development](docs/chats/20250813-150830-session-summary.md)
 *   [Full Command Help](HELP.md) (Run `uv run cocli help` for the most up-to-date command list)
