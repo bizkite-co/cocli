@@ -2,26 +2,52 @@ import typer
 from pathlib import Path
 
 from ..scrapers import google_maps # Import specific scraper
+from ..core.config import get_scraped_data_dir # Import the new function
+
+app = typer.Typer()
+
+@app.command()
+import typer
+from pathlib import Path
+from typing import Optional # Added for Optional type hint
+
+from ..scrapers import google_maps # Import specific scraper
+from ..core.config import get_scraped_data_dir # Import the new function
 
 app = typer.Typer()
 
 @app.command()
 def scrape_google_maps(
     query: str = typer.Argument(..., help="Search query for Google Maps."),
-    output_file: Path = typer.Option(
-        "google_maps_results.json",
-
-        "--output",
+    zip_code: Optional[str] = typer.Option(
+        None, "--zip", "-z", help="Zip code for location-based search."
+    ),
+    city: Optional[str] = typer.Option(
+        None, "--city", "-c", help="City and State (e.g., 'Brea,CA') for location-based search."
+    ),
+    output_dir: Path = typer.Option(
+        get_scraped_data_dir(),
+        "--output-dir",
         "-o",
-        help="Output JSON file for scraped data.",
+        help="Output directory for scraped data. Defaults to the 'scraped_data' directory.",
     ),
 ):
     """
     Scrape data from Google Maps.
     """
+    if not zip_code and not city:
+        print("Error: Either --zip or --city must be provided.")
+        raise typer.Exit(code=1)
+
+    if zip_code and city:
+        print("Error: Cannot provide both --zip and --city. Please choose one.")
+        raise typer.Exit(code=1)
+
+    location_param = {"zip_code": zip_code} if zip_code else {"city": city}
+
     try:
-        google_maps.scrape(query, output_file)
-        print(f"Scraping completed. Results saved to {output_file}")
+        google_maps.scrape_google_maps(location_param, query, output_dir)
+        print(f"Scraping completed. Results saved to {output_dir}")
     except Exception as e:
         print(f"Error during scraping: {e}")
         raise typer.Exit(code=1)

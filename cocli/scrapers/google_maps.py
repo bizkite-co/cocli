@@ -6,7 +6,8 @@ from playwright.sync_api import sync_playwright, Page, Locator
 from bs4 import BeautifulSoup
 import uuid
 from datetime import datetime
-from ..core.config import load_scraper_settings # Import the settings loader
+from ..core.config import load_scraper_settings  # Import the settings loader
+from ..core.geocoding import get_coordinates_from_zip # Import the geocoding function
 
 # Define the Lead Sniper CSV headers
 LEAD_SNIPER_HEADERS = [
@@ -68,37 +69,28 @@ LEAD_SNIPER_HEADERS = [
     "Planning",
 ]
 
-# Simple placeholder for zip code to coordinates mapping
-# In a real application, this would involve a geocoding API or a more comprehensive lookup
-ZIP_TO_COORDS = {
-    "90210": {"latitude": 34.0736, "longitude": -118.4004}, # Beverly Hills, CA
-    # Add more zip codes as needed for testing or expansion
-}
-
-def _get_coordinates_from_zip(zip_code: str) -> Optional[Dict[str, float]]:
-    """
-    Retrieves latitude and longitude for a given zip code.
-    This is a placeholder and should be replaced with a proper geocoding service.
-    """
-    return ZIP_TO_COORDS.get(zip_code)
 
 def scrape_google_maps(
     zip_code: str,
     search_string: str,
-    output_dir: Path = Path("."), # Default to current directory, will be overridden by CLI
-    max_results: int = 50, # This will be overridden by settings.google_maps_max_pages
+    output_dir: Path = Path(
+        "."
+    ),  # Default to current directory, will be overridden by CLI
+    max_results: int = 50,  # This will be overridden by settings.google_maps_max_pages
 ):
     """
     Scrapes business information from Google Maps search results based on zip code and search string
     and outputs it to a CSV file in the Lead Sniper format.
     """
-    settings = load_scraper_settings() # Load scraper settings
+    settings = load_scraper_settings()  # Load scraper settings
     delay_seconds = settings.google_maps_delay_seconds
     max_pages_to_scrape = settings.google_maps_max_pages
 
     coordinates = _get_coordinates_from_zip(zip_code)
     if not coordinates:
-        print(f"Error: Could not find coordinates for zip code {zip_code}. Please provide a valid zip code.")
+        print(
+            f"Error: Could not find coordinates for zip code {zip_code}. Please provide a valid zip code."
+        )
         return
 
     latitude = coordinates["latitude"]
@@ -113,8 +105,9 @@ def scrape_google_maps(
     formatted_search_string = search_string.replace(" ", "+")
     url = f"{base_url}{formatted_search_string}/@{latitude},{longitude},15z/data=!3m2!1e3!4b1?entry=ttu"
 
-
-    print(f"Starting Google Maps scraping for search: '{search_string}' in zip code: {zip_code}")
+    print(
+        f"Starting Google Maps scraping for search: '{search_string}' in zip code: {zip_code}"
+    )
     print(f"Generated URL: {url}")
     print(f"Using delay: {delay_seconds} seconds, Max pages: {max_pages_to_scrape}")
 
@@ -150,7 +143,9 @@ def scrape_google_maps(
 
                 # Use a loop to scroll and extract until max_results or no new content
                 last_scroll_height = -1
-                while scraped_count < max_results and pages_scraped < max_pages_to_scrape:
+                while (
+                    scraped_count < max_results and pages_scraped < max_pages_to_scrape
+                ):
                     # Scroll to the bottom of the scrollable div
                     current_scroll_height = scrollable_div.evaluate(
                         "element => element.scrollHeight"
@@ -164,7 +159,9 @@ def scrape_google_maps(
                     scrollable_div.evaluate(
                         "element => element.scrollTop = element.scrollHeight"
                     )
-                    page.wait_for_timeout(delay_seconds * 1000)  # Wait for content to load after scroll
+                    page.wait_for_timeout(
+                        delay_seconds * 1000
+                    )  # Wait for content to load after scroll
                     pages_scraped += 1
 
                     last_scroll_height = current_scroll_height
@@ -186,7 +183,8 @@ def scrape_google_maps(
                             if listing_container:
                                 html_content = listing_container.inner_html()
                                 business_data = _extract_business_data(
-                                    html_content, search_string # Pass search_string as keyword
+                                    html_content,
+                                    search_string,  # Pass search_string as keyword
                                 )
 
                                 if business_data.get(
@@ -350,7 +348,7 @@ def _extract_business_data(
     if website_element and website_element.has_attr("href"):
         data["Website"] = website_element["href"]
 
-    if not data["Website"]: # If not found by data-value, try other methods
+    if not data["Website"]:  # If not found by data-value, try other methods
         # Fallback 1: look for any link with "Website" in text or aria-label
         for link in soup.find_all("a", href=True):
             href = link["href"]
@@ -366,14 +364,18 @@ def _extract_business_data(
                     data["Website"] = href
                     break
 
-    if not data["Website"]: # Fallback 2: look for any general http/https link not related to maps, but contains a domain pattern
+    if not data[
+        "Website"
+    ]:  # Fallback 2: look for any general http/https link not related to maps, but contains a domain pattern
         for link in soup.find_all("a", href=True):
             href = link["href"]
             if (
                 href.startswith("http")
                 and "google.com/maps" not in href
                 and "maps.google.com" not in href
-                and re.search(r'\.(com|org|net|io|co|us|gov|edu)', href) # Look for common TLDs
+                and re.search(
+                    r"\.(com|org|net|io|co|us|gov|edu)", href
+                )  # Look for common TLDs
             ):
                 data["Website"] = href
                 break

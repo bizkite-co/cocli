@@ -11,6 +11,10 @@ dependencies = [
     "fuzzywuzzy",
     "python-Levenshtein",
     "rich",
+    "requests",
+    "dateparser",
+    "playwright",
+    "beautifulsoup4",
 ]
 
 [project.scripts]

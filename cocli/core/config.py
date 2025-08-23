@@ -52,6 +52,11 @@ def get_people_dir() -> Path:
     people_dir = get_cocli_base_dir() / "people"
     people_dir.mkdir(parents=True, exist_ok=True)
     return people_dir
+def get_scraped_data_dir() -> Path:
+    scraped_data_dir = get_cocli_base_dir() / "scraped_data"
+    scraped_data_dir.mkdir(parents=True, exist_ok=True)
+    return scraped_data_dir
+
 
 class ScraperSettings(BaseModel):
     google_maps_delay_seconds: int = Field(20, description="Delay in seconds between page scrolls/requests for Google Maps scraper.")

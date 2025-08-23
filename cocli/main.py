@@ -27,17 +27,5 @@ app = typer.Typer(no_args_is_help=True)
 register_commands(app)
 
 
-
-
-
-
-
-
-
-
-
-
-
-
 if __name__ == "__main__":
     app()
