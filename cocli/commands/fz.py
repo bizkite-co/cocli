@@ -62,7 +62,7 @@ def fz():
 
                 console.print(f"Opening {entity_type_str}: {entity_name_or_id}")
                 if entity_type_str == "COMPANY":
-                    view_company(entity_name_or_id)
+                    view_company(company_name=entity_name_or_id)
                 elif entity_type_str == "PERSON":
                     # For persons, 'find' command is used to view by name/slug
                     # For persons, display details directly

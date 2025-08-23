@@ -1,6 +1,9 @@
 import re
 from pathlib import Path
 from typing import Any, List, Optional
+import tty
+import termios
+import sys
 
 import yaml # This import might not be needed here if models handle YAML loading
 
@@ -70,3 +73,18 @@ def _get_all_searchable_items() -> List[tuple[str, Any]]:
                 if person:
                     all_items.append(("person", person))
     return all_items
+
+def _getch():
+    """
+    Reads a single character from stdin without echoing it to the console
+    and without requiring the user to press Enter.
+    Works for Unix-like systems.
+    """
+    fd = sys.stdin.fileno()
+    old_settings = termios.tcgetattr(fd)
+    try:
+        tty.setraw(fd)
+        ch = sys.stdin.read(1)
+    finally:
+        termios.tcsetattr(fd, termios.TCSADRAIN, old_settings)
+    return ch
