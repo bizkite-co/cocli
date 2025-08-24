@@ -4,20 +4,38 @@
         {
             "name": "Python: cocli (with arguments)",
             "type": "debugpy",
-
             "request": "launch",
             "python": "${workspaceFolder}/.venv/bin/python",
             "module": "cocli.main",
             "console": "integratedTerminal",
-            "args": ["fz"],
+            "args": [
+                "fz"
+            ],
             "justMyCode": true
+        },
+        {
+            "name": "Python: cocli import-data Debug",
+            "type": "debugpy",
+            "request": "launch",
+            "python": "${workspaceFolder}/.venv/bin/python",
+            "module": "cocli.main",
+            "args": [
+                "import-data",
+                "lead-sniper",
+                "/home/mstouffer/.local/share/cocli_data/scraped_data/lead-sniper-photographer-20250823225603.csv",
+                "--debug"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false // Set to false to debug into installed packages if needed
         },
         {
             "name": "Python: Behave Test",
             "type": "debugpy",
             "request": "launch",
             "module": "behave",
-            "args": ["features/cli_help.feature"],
+            "args": [
+                "features/cli_help.feature"
+            ],
             "console": "integratedTerminal",
             "justMyCode": true
         }

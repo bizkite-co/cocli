@@ -3,7 +3,8 @@ from pathlib import Path
 from typing import Dict, Any, Optional
 
 from ..core.models import Company
-from ..core.utils import create_company_files
+from ..core.utils import create_company_files, slugify
+from ..core.config import get_companies_dir
 
 def _safe_int(value: str) -> Optional[int]:
     try:
@@ -17,7 +18,7 @@ def _safe_float(value: str) -> Optional[float]:
     except ValueError:
         return None
 
-def lead_sniper(filepath: Path):
+def lead_sniper(filepath: Path, debug: bool = False): # Added debug parameter
     """
     Importer for Lead Sniper CSV files.
 
@@ -35,6 +36,9 @@ def lead_sniper(filepath: Path):
                 # Map CSV columns to our Pydantic Company model.
                 # This is where you can handle different column names or clean data.
 
+                if debug: # Debug print raw row
+                    print(f"DEBUG: Raw CSV row: {row}")
+
                 categories = []
                 if row.get("First_category"):
                     categories.append(row["First_category"].strip())
@@ -45,7 +49,7 @@ def lead_sniper(filepath: Path):
                     "name": row.get("Name"),
                     "domain": row.get("Domain"),
                     "type": "Lead",  # Set the type for this import
-                    "tags": ["lead-sniper-import", "photography-studio"],
+                    "tags": ["lead-sniper-import", row.get("Keyword")] if row.get("Keyword") else ["lead-sniper-import"],
 
                     "id": row.get("id"), # Added
                     "keyword": row.get("Keyword"), # Added
@@ -74,17 +78,26 @@ def lead_sniper(filepath: Path):
                     "linkedin_url": row.get("Linkedin_URL"), # Mapped via alias
                     "instagram_url": row.get("Instagram_URL"), # Mapped via alias
 
+
                     "meta_description": row.get("Meta_Description"), # Mapped via alias
                     "meta_keywords": row.get("Meta_Keywords"), # Mapped via alias
                 }
 
+                if debug: # Debug print company data
+                    print(f"DEBUG: Company data for {company_data.get('name')}: {company_data}")
+
                 # --- Validation and Creation ---
                 try:
                     # Pydantic automatically validates the data.
-                    company = Company(**company_data)
+                    company = Company(**company_data, by_alias=False)
+
+                    # Construct company_dir
+                    companies_base_dir = get_companies_dir()
+                    company_slug = slugify(company.name)
+                    company_dir = companies_base_dir / company_slug
 
                     # Pass the validated object to our core function
-                    create_company_files(company)
+                    create_company_files(company, company_dir) # Pass company object directly
 
                 except Exception as e:
                     print(f"Skipping row due to validation error: {e} -> {row}")

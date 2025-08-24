@@ -21,35 +21,35 @@ class Company(BaseModel):
 
     # New fields for enrichment
     # id: Optional[str] = None # Removed as per feedback
-    keyword: Optional[str] = Field(None, alias="Keyword")
+    keyword: Optional[str] = Field(None)
     full_address: Optional[str] = None
     street_address: Optional[str] = None
     city: Optional[str] = None
-    zip_code: Optional[str] = Field(None, alias="Zip") # Use alias for CSV column name
+    zip_code: Optional[str] = Field(None) # Use alias for CSV column name
     state: Optional[str] = None
     country: Optional[str] = None
     timezone: Optional[str] = None
 
-    phone_1: Optional[str] = Field(None, alias="Phone_1")
-    phone_number: Optional[str] = Field(None, alias="Phone_Standard_format")
-    phone_from_website: Optional[str] = Field(None, alias="Phone_From_WEBSITE")
-    email: Optional[str] = Field(None, alias="Email_From_WEBSITE")
-    website_url: Optional[str] = Field(None, alias="Website")
+    phone_1: Optional[str] = Field(None)
+    phone_number: Optional[str] = Field(None)
+    phone_from_website: Optional[str] = Field(None)
+    email: Optional[str] = Field(None)
+    website_url: Optional[str] = Field(None)
 
     categories: Annotated[List[str], BeforeValidator(split_categories)] = Field(default_factory=list)
 
     reviews_count: Optional[int] = None
     average_rating: Optional[float] = None
-    business_status: Optional[str] = Field(None, alias="Business_Status")
+    business_status: Optional[str] = Field(None)
     hours: Optional[str] = None
 
-    facebook_url: Optional[str] = Field(None, alias="Facebook_URL")
-    linkedin_url: Optional[str] = Field(None, alias="Linkedin_URL")
-    instagram_url: Optional[str] = Field(None, alias="Instagram_URL")
+    facebook_url: Optional[str] = Field(None)
+    linkedin_url: Optional[str] = Field(None)
+    instagram_url: Optional[str] = Field(None)
 
 
-    meta_description: Optional[str] = Field(None, alias="Meta_Description")
-    meta_keywords: Optional[str] = Field(None, alias="Meta_Keywords")
+    meta_description: Optional[str] = Field(None)
+    meta_keywords: Optional[str] = Field(None)
 
     @classmethod
     def from_directory(cls, company_dir: Path) -> Optional["Company"]:

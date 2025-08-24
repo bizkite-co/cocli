@@ -10,23 +10,83 @@ import yaml # This import might not be needed here if models handle YAML loading
 from .models import Company, Person # Import Company and Person models
 from .config import get_companies_dir, get_people_dir # Import directory getters
 
+# Custom representer for None to ensure it's explicitly written as 'null'
+def represent_none(self, data):
+    return self.represent_scalar('tag:yaml.org,2002:null', 'null')
+
+yaml.add_representer(type(None), represent_none)
+
 def slugify(text: str) -> str:
     """Converts text to a filesystem-friendly slug."""
     text = text.lower()
     text = re.sub(r'[\s\W]+', '-', text)
     return text.strip('-')
 
-def create_company_files(company_name: str, company_dir: Path) -> Path:
+def create_company_files(company: Company, company_dir: Path) -> Path:
     """
-    Creates the directory and files for a new company.
+    Creates the directory and files for a new company, including its _index.md and tags.lst.
+    If the company already exists, it updates the _index.md and tags.lst files, merging data.
     """
     company_dir.mkdir(parents=True, exist_ok=True)
     (company_dir / "contacts").mkdir(exist_ok=True)
     (company_dir / "meetings").mkdir(exist_ok=True)
 
     index_path = company_dir / "_index.md"
-    if not index_path.exists():
-        index_path.write_text(f"---\nname: {company_name}\n---\n\n# {company_name}\n")
+    tags_path = company_dir / "tags.lst"
+
+    existing_company = None
+    if index_path.exists():
+        existing_company = Company.from_directory(company_dir)
+
+    if existing_company:
+        # Merge new company data into existing company
+        updated_company_data = existing_company.model_dump() # Get existing data as dict (field names)
+        new_company_data = company.model_dump() # Get new data as dict (field names)
+
+        # Merge simple fields (new data takes precedence)
+        for key, value in new_company_data.items():
+            if key not in ["tags", "categories"] and value is not None:
+                updated_company_data[key] = value
+
+        # Merge tags (unique values)
+        existing_tags = set(updated_company_data.get("tags", []))
+        new_tags = set(new_company_data.get("tags", []))
+        updated_company_data["tags"] = sorted(list(existing_tags.union(new_tags)))
+
+        # Merge categories (unique values)
+        existing_categories = set(updated_company_data.get("categories", []))
+        new_categories = set(new_company_data.get("categories", []))
+        updated_company_data["categories"] = sorted(list(existing_categories.union(new_categories)))
+
+        # Recreate Company object from merged data
+        company_to_write = Company(**updated_company_data)
+    else:
+        company_to_write = company
+
+    # Prepare data for YAML front matter (using Pydantic field names)
+    company_data_for_yaml = company_to_write.model_dump(exclude={"tags", "categories"}) # Removed by_alias=True
+
+    # Generate YAML front matter
+    frontmatter = yaml.dump(company_data_for_yaml, sort_keys=False, default_flow_style=False, allow_unicode=True)
+
+    # Construct _index.md content
+    # Preserve existing markdown content if any
+    markdown_content = f"\n# {company_to_write.name}\n"
+    if index_path.exists():
+        content = index_path.read_text()
+        if content.startswith("---") and "---" in content[3:]:
+            _, md_content_part = content.split("---", 2)[1:]
+            markdown_content = md_content_part # Preserve existing markdown content
+
+    index_content = f"---\n{frontmatter}---\n{markdown_content}"
+    index_path.write_text(index_content)
+
+    # Write merged tags to tags.lst
+    if company_to_write.tags:
+        tags_path.write_text("\n".join(company_to_write.tags) + "\n")
+    elif tags_path.exists():
+        tags_path.unlink() # Remove tags.lst if no tags
+
     return company_dir
 
 def create_person_files(person_name: str, person_dir: Path, company_name: str) -> Path:

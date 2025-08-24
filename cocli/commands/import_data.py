@@ -10,6 +10,7 @@ app = typer.Typer()
 def import_data(
     importer_name: str = typer.Argument(..., help="Name of the importer to use."),
     file_path: Path = typer.Argument(..., help="Path to the data file to import."),
+    debug: bool = typer.Option(False, "--debug", help="Enable debug output."),
 ):
     """
     Import data using a specified importer.
@@ -34,7 +35,7 @@ def import_data(
         raise typer.Exit(code=1)
 
     try:
-        importer_func(file_path)
+        importer_func(file_path, debug)
         print(f"Data imported successfully using '{importer_name}'.")
     except Exception as e:
         print(f"Error during import: {e}")
