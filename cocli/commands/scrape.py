@@ -1,14 +1,5 @@
 import typer
 from pathlib import Path
-
-from ..scrapers import google_maps # Import specific scraper
-from ..core.config import get_scraped_data_dir # Import the new function
-
-app = typer.Typer()
-
-@app.command()
-import typer
-from pathlib import Path
 from typing import Optional # Added for Optional type hint
 
 from ..scrapers import google_maps # Import specific scraper

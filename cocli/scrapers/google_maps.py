@@ -7,7 +7,9 @@ from bs4 import BeautifulSoup
 import uuid
 from datetime import datetime
 from ..core.config import load_scraper_settings  # Import the settings loader
-from ..core.geocoding import get_coordinates_from_zip # Import the geocoding function
+from ..core.config import get_scraped_data_dir # Import the new function
+from ..core.geocoding import get_coordinates_from_zip
+from ..core.geocoding import get_coordinates_from_city_state # Import the geocoding function
 
 # Define the Lead Sniper CSV headers
 LEAD_SNIPER_HEADERS = [
@@ -71,26 +73,32 @@ LEAD_SNIPER_HEADERS = [
 
 
 def scrape_google_maps(
-    zip_code: str,
+    location_param: Dict[str, str], # Accepts either {"zip_code": "..."} or {"city": "..."}
     search_string: str,
-    output_dir: Path = Path(
-        "."
-    ),  # Default to current directory, will be overridden by CLI
+    output_dir: Path = get_scraped_data_dir(),  # Default to scraped data directory
     max_results: int = 50,  # This will be overridden by settings.google_maps_max_pages
 ):
     """
-    Scrapes business information from Google Maps search results based on zip code and search string
+    Scrapes business information from Google Maps search results based on location (zip code or city/state) and search string
     and outputs it to a CSV file in the Lead Sniper format.
     """
     settings = load_scraper_settings()  # Load scraper settings
     delay_seconds = settings.google_maps_delay_seconds
     max_pages_to_scrape = settings.google_maps_max_pages
 
-    coordinates = _get_coordinates_from_zip(zip_code)
-    if not coordinates:
-        print(
-            f"Error: Could not find coordinates for zip code {zip_code}. Please provide a valid zip code."
-        )
+    coordinates = None
+    if "zip_code" in location_param:
+        coordinates = get_coordinates_from_zip(location_param["zip_code"])
+        if not coordinates:
+            print(f"Error: Could not find coordinates for zip code {location_param['zip_code']}. Please provide a valid zip code.")
+            return
+    elif "city" in location_param:
+        coordinates = get_coordinates_from_city_state(location_param["city"])
+        if not coordinates:
+            print(f"Error: Could not find coordinates for city/state {location_param['city']}. Please provide a valid city/state.")
+            return
+    else:
+        print("Error: Invalid location parameter provided. Must be either 'zip_code' or 'city'.")
         return
 
     latitude = coordinates["latitude"]
@@ -105,8 +113,9 @@ def scrape_google_maps(
     formatted_search_string = search_string.replace(" ", "+")
     url = f"{base_url}{formatted_search_string}/@{latitude},{longitude},15z/data=!3m2!1e3!4b1?entry=ttu"
 
+    location_display = location_param.get("zip_code") or location_param.get("city")
     print(
-        f"Starting Google Maps scraping for search: '{search_string}' in zip code: {zip_code}"
+        f"Starting Google Maps scraping for search: '{search_string}' in location: {location_display}"
     )
     print(f"Generated URL: {url}")
     print(f"Using delay: {delay_seconds} seconds, Max pages: {max_pages_to_scrape}")

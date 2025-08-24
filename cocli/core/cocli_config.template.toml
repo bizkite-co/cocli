@@ -1,0 +1,11 @@
+# cocli Configuration File
+
+# Scraper settings for Google Maps
+[scraper]
+# Delay in seconds between page scrolls/requests for Google Maps scraper.
+# Recommended to avoid being blocked.
+google_maps_delay_seconds = 20
+
+# Maximum number of pages/scrolls to fetch for Google Maps scraper.
+# Each "page" corresponds to a scroll action that loads more results.
+google_maps_max_pages = 3

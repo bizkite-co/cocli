@@ -18,7 +18,7 @@ if ! command -v fzf &> /dev/null; then
     echo
     echo "Error: fzf is not installed."
     echo "Please install fzf to continue. (e.g., 'sudo apt install fzf')"
-    exit 1
+    return 1
 fi
 echo "OK"
 
@@ -40,7 +40,7 @@ if [ $? -eq 0 ]; then
 else
     echo "Failed."
     echo "Could not create symbolic link at $DEST_LINK"
-    exit 1
+    return 1
 fi
 
 # --- Directory Setup ---
@@ -55,6 +55,21 @@ if [ ! -d "$DEFAULT_COMPANIES_DIR" ]; then
         echo "Created '$DEFAULT_COMPANIES_DIR'."
     fi
 fi
+# --- Configuration File Setup ---
+echo -n "Creating default configuration file... "
+# Assuming cocli is installed and its modules are accessible
+# Copy the template config file
+CONFIG_DIR="$HOME/.config/cocli"
+mkdir -p "$CONFIG_DIR"
+cp "$SOURCE_DIR/cocli/core/cocli_config.template.toml" "$CONFIG_DIR/cocli_config.toml"
+if [ $? -eq 0 ]; then
+    echo "OK"
+else
+    echo "Failed."
+    echo "Could not create default config file."
+    return 1
+fi
+
 
 # --- Final Instructions ---
 echo
