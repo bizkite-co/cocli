@@ -34,56 +34,65 @@ def create_company_files(company: Company, company_dir: Path) -> Path:
     index_path = company_dir / "_index.md"
     tags_path = company_dir / "tags.lst"
 
-    existing_company = None
-    if index_path.exists():
-        existing_company = Company.from_directory(company_dir)
+    existing_frontmatter_data = {}
+    markdown_content = f"\n# {company.name}\n" # Default markdown content
 
-    if existing_company:
-        # Merge new company data into existing company
-        updated_company_data = existing_company.model_dump() # Get existing data as dict (field names)
-        new_company_data = company.model_dump() # Get new data as dict (field names)
+    existing_tags = set()
+    if tags_path.exists():
+        existing_tags.update(tags_path.read_text().strip().splitlines())
 
-        # Merge simple fields (new data takes precedence)
-        for key, value in new_company_data.items():
-            if key not in ["tags", "categories"] and value is not None:
-                updated_company_data[key] = value
-
-        # Merge tags (unique values)
-        existing_tags = set(updated_company_data.get("tags", []))
-        new_tags = set(new_company_data.get("tags", []))
-        updated_company_data["tags"] = sorted(list(existing_tags.union(new_tags)))
-
-        # Merge categories (unique values)
-        existing_categories = set(updated_company_data.get("categories", []))
-        new_categories = set(new_company_data.get("categories", []))
-        updated_company_data["categories"] = sorted(list(existing_categories.union(new_categories)))
-
-        # Recreate Company object from merged data
-        company_to_write = Company(**updated_company_data)
-    else:
-        company_to_write = company
-
-    # Prepare data for YAML front matter (using Pydantic field names)
-    company_data_for_yaml = company_to_write.model_dump(exclude={"tags", "categories"}) # Removed by_alias=True
-
-    # Generate YAML front matter
-    frontmatter = yaml.dump(company_data_for_yaml, sort_keys=False, default_flow_style=False, allow_unicode=True)
-
-    # Construct _index.md content
-    # Preserve existing markdown content if any
-    markdown_content = f"\n# {company_to_write.name}\n"
     if index_path.exists():
         content = index_path.read_text()
         if content.startswith("---") and "---" in content[3:]:
-            _, md_content_part = content.split("---", 2)[1:]
-            markdown_content = md_content_part # Preserve existing markdown content
+            frontmatter_str, md_content_part = content.split("---", 2)[1:]
+            try:
+                existing_frontmatter_data = yaml.safe_load(frontmatter_str) or {}
+                markdown_content = md_content_part # Preserve existing markdown content
+            except yaml.YAMLError:
+                print(f"Warning: Could not parse YAML front matter in {index_path}. Overwriting with new data.")
+        else:
+            print(f"Warning: No valid YAML front matter found in {index_path}. Overwriting with new data.")
 
+    # Prepare new data for YAML front matter (using Pydantic field names)
+    new_company_data_for_yaml = company.model_dump(exclude={"tags", "categories"})
+    # Ensure 'name' is not duplicated if it was already in the model_dump
+    new_company_data_for_yaml.pop("name", None)
+
+    # Merge existing data with new data (new data takes precedence only if not None/empty)
+    merged_data = existing_frontmatter_data.copy()
+    for key, new_value in new_company_data_for_yaml.items():
+        if new_value is not None and new_value != '':
+            merged_data[key] = new_value
+        # If new_value is None/empty, and key exists in merged_data, preserve existing value.
+        # If new_value is None/empty, and key does not exist in merged_data, add it as None/empty.
+        elif key not in merged_data:
+            merged_data[key] = new_value
+
+    merged_data["name"] = company.name # Ensure name is always from the new company object
+
+    # Merge tags
+    merged_tags = sorted(list(existing_tags.union(set(company.tags))))
+
+    # Merge categories
+    existing_categories = set(existing_frontmatter_data.get("categories", []))
+    new_categories = set(company.categories)
+    merged_categories = sorted(list(existing_categories.union(new_categories)))
+    if merged_categories:
+        merged_data["categories"] = merged_categories
+    elif "categories" in merged_data:
+        del merged_data["categories"] # Remove if empty
+
+    # Generate YAML front matter
+    frontmatter = yaml.dump(merged_data, sort_keys=False, default_flow_style=False, allow_unicode=True)
+
+    # Construct _index.md content
     index_content = f"---\n{frontmatter}---\n{markdown_content}"
+
     index_path.write_text(index_content)
 
     # Write merged tags to tags.lst
-    if company_to_write.tags:
-        tags_path.write_text("\n".join(company_to_write.tags) + "\n")
+    if merged_tags:
+        tags_path.write_text("\n".join(merged_tags) + "\n")
     elif tags_path.exists():
         tags_path.unlink() # Remove tags.lst if no tags
 

@@ -8,6 +8,7 @@
   - [Overview](#overview)
   - [Installation](#installation)
   - [Usage](#usage)
+    - [Running Commands](#running-commands)
     - [Importing Data](#importing-data)
     - [Adding Companies and People](#adding-companies-and-people)
     - [Adding Meetings](#adding-meetings)
@@ -45,11 +46,17 @@
 
 ## Usage
 
-All `cocli` commands are designed to be intuitive. To see a list of available commands and their basic usage, run:
+All `cocli` commands are designed to be intuitive.
 
+### Running Commands
+To run `cocli` commands, ensure your `uv` virtual environment is activated (`source .venv/bin/activate`). If not, prefix commands with `uv run`, e.g., `uv run cocli <command>`.
+
+To see a list of available commands and their basic usage, run:
 ```bash
 uv run cocli --help
 ```
+
+For debugging with VS Code, use the provided `launch.json` configurations. For example, to debug the import command, you can use the "Python: cocli import-data Debug" configuration.
 
 ### Importing Data
 Import company data from CSV files using the `importer` command. The `lead-sniper` format is currently supported.

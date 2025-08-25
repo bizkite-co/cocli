@@ -13,6 +13,10 @@ install:
 test: install
 	source $(VENV_DIR)/bin/activate && pytest tests/
 
+# Run tests using pytest
+activate: install
+	source $(VENV_DIR)/bin/activate
+
 # List installed packages
 list-packages: install
 	source $(VENV_DIR)/bin/activate && pip list

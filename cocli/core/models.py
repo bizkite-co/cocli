@@ -3,7 +3,7 @@ from pathlib import Path
 from typing import Optional, List, Any
 
 import yaml
-from pydantic import BaseModel, Field, BeforeValidator
+from pydantic import BaseModel, Field, BeforeValidator, ValidationError # Import ValidationError
 from typing_extensions import Annotated
 
 def split_categories(v: Any) -> List[str]:
@@ -21,35 +21,35 @@ class Company(BaseModel):
 
     # New fields for enrichment
     # id: Optional[str] = None # Removed as per feedback
-    keyword: Optional[str] = Field(None)
+    keyword: Optional[str] = None
     full_address: Optional[str] = None
     street_address: Optional[str] = None
     city: Optional[str] = None
-    zip_code: Optional[str] = Field(None) # Use alias for CSV column name
+    zip_code: Optional[str] = None
     state: Optional[str] = None
     country: Optional[str] = None
     timezone: Optional[str] = None
 
-    phone_1: Optional[str] = Field(None)
-    phone_number: Optional[str] = Field(None)
-    phone_from_website: Optional[str] = Field(None)
-    email: Optional[str] = Field(None)
-    website_url: Optional[str] = Field(None)
+    phone_1: Optional[str] = None
+    phone_number: Optional[str] = None
+    phone_from_website: Optional[str] = None
+    email: Optional[str] = None
+    website_url: Optional[str] = None
 
     categories: Annotated[List[str], BeforeValidator(split_categories)] = Field(default_factory=list)
 
     reviews_count: Optional[int] = None
     average_rating: Optional[float] = None
-    business_status: Optional[str] = Field(None)
+    business_status: Optional[str] = None
     hours: Optional[str] = None
 
-    facebook_url: Optional[str] = Field(None)
-    linkedin_url: Optional[str] = Field(None)
-    instagram_url: Optional[str] = Field(None)
+    facebook_url: Optional[str] = None
+    linkedin_url: Optional[str] = None
+    instagram_url: Optional[str] = None
 
 
-    meta_description: Optional[str] = Field(None)
-    meta_keywords: Optional[str] = Field(None)
+    meta_description: Optional[str] = None
+    meta_keywords: Optional[str] = None
 
     @classmethod
     def from_directory(cls, company_dir: Path) -> Optional["Company"]:
@@ -83,7 +83,11 @@ class Company(BaseModel):
 
         try:
             return cls(**frontmatter_data)
-        except Exception:
+        except ValidationError as e:
+            print(f"Warning: Validation error loading company from {company_dir}: {e}")
+            return None
+        except Exception as e:
+            print(f"Warning: Unexpected error loading company from {company_dir}: {e}")
             return None
 
 
@@ -97,16 +101,3 @@ class Person(BaseModel):
     def from_directory(cls, person_file: Path) -> Optional["Person"]:
         if not person_file.exists() or not person_file.suffix == ".md":
             return None
-
-        content = person_file.read_text()
-        name_match = re.search(r"^#\s*(.+)", content, re.MULTILINE)
-        email_match = re.search(r"- \*\*Email:\*\* (.+)", content)
-        phone_match = re.search(r"- \*\*Phone:\*\* (.+)", content)
-        company_match = re.search(r"- \*\*Company:\*\* (.+)", content) # Assuming this format
-
-        name = name_match.group(1).strip() if name_match else person_file.stem.replace("-", " ").title()
-        email = email_match.group(1).strip() if email_match else None
-        phone = phone_match.group(1).strip() if phone_match else None
-        company_name = company_match.group(1).strip() if company_match else None
-
-        return cls(name=name, email=email, phone=phone, company_name=company_name)
