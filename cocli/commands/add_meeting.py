@@ -25,7 +25,10 @@ def _add_meeting_logic(company_name: str, date_str: Optional[str] = None, time_s
     local_tz = get_localzone()
 
     if date_str:
-        parsed_datetime = dateparser.parse(date_str, settings={'TIMEZONE': str(local_tz), 'PREFER_DATES_FROM': 'future', 'PREFER_TIME_OF_DAY': 'day'})
+        if date_str.lower() == "now" or date_str.lower() == "today":
+            parsed_datetime = datetime.datetime.now(local_tz)
+        else:
+            parsed_datetime = dateparser.parse(date_str, settings={'TIMEZONE': str(local_tz)})
         if parsed_datetime:
             # If naive datetime, assume local timezone
             if parsed_datetime.tzinfo is None or parsed_datetime.tzinfo.utcoffset(parsed_datetime) is None:
