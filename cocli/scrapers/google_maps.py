@@ -77,7 +77,8 @@ def scrape_google_maps(
     search_string: str,
     output_dir: Path = get_scraped_data_dir(),  # Default to scraped data directory
     max_results: int = 50,  # This will be overridden by settings.google_maps_max_pages
-):
+    debug: bool = False, # Added debug parameter
+) -> Path:
     """
     Scrapes business information from Google Maps search results based on location (zip code or city/state) and search string
     and outputs it to a CSV file in the Lead Sniper format.
@@ -222,6 +223,7 @@ def scrape_google_maps(
                 print(f"CSV file created at: {output_filepath}")
 
             print("Scraping complete (initial setup).")
+            return output_filepath
 
         except Exception as e:
             print(f"An error occurred during scraping: {e}")

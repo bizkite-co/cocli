@@ -66,6 +66,23 @@ uv run cocli importer lead-sniper /path/to/your/file.csv
 ```
 This command will create new company directories and files, or update existing ones with richer data from the CSV.
 
+### Scraping and Importing Leads
+The `lead-scrape` command combines the scraping of Google Maps with the importing of the scraped data.
+
+```bash
+uv run cocli lead-scrape "photography studio" --city "Brea,CA"
+```
+This command will:
+1. Scrape Google Maps for "photography studio" in "Brea,CA".
+2. Save the results to a CSV file in the `scraped_data` directory.
+3. Import the data from the CSV file into your company database using the `lead-sniper` importer.
+4. Create new company directories and files, or update existing ones with richer data.
+
+You can also use the `--zip` option instead of `--city`, and add `--cleanup` to delete the scraped CSV file after a successful import.
+
+```bash
+uv run cocli lead-scrape "restaurants" --zip "90210" --cleanup
+```
 ### Adding Companies and People
 Use the `add` command to create new companies or people, and to associate people with companies.
 

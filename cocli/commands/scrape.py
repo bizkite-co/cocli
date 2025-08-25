@@ -22,7 +22,8 @@ def scrape_google_maps(
         "-o",
         help="Output directory for scraped data. Defaults to the 'scraped_data' directory.",
     ),
-):
+    debug: bool = typer.Option(False, "--debug", help="Enable debug output for scraping."),
+) -> Path:
     """
     Scrape data from Google Maps.
     """
@@ -37,8 +38,9 @@ def scrape_google_maps(
     location_param = {"zip_code": zip_code} if zip_code else {"city": city}
 
     try:
-        google_maps.scrape_google_maps(location_param, query, output_dir)
-        print(f"Scraping completed. Results saved to {output_dir}")
+        csv_file_path = google_maps.scrape_google_maps(location_param, query, output_dir, debug)
+        print(f"Scraping completed. Results saved to {csv_file_path}")
+        return csv_file_path
     except Exception as e:
         print(f"Error during scraping: {e}")
         raise typer.Exit(code=1)
