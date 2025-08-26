@@ -1,3 +1,8 @@
+import pytest
+from unittest.mock import patch
+from pathlib import Path
+import subprocess
+
 def test_help_command(runner, cli_app):
     result = runner.invoke(cli_app, ["--help"])
     assert result.exit_code == 0
@@ -42,7 +47,7 @@ def test_sync_command_git_add_failure(mock_is_dir, mock_subprocess_run, runner, 
     result = runner.invoke(cli_app, ["sync", "--message", "Test sync message"])
 
     assert result.exit_code == 1
-    assert "Error staging changes: Command '['git', 'add', 'data']' returned non-zero exit status 1." in result.stdout
+    assert "Error staging changes: Command 'git add' returned non-zero exit status 1." in result.stdout
     mock_subprocess_run.assert_any_call(["git", "add", "data"], check=True)
     mock_subprocess_run.call_count == 1
 
@@ -59,7 +64,7 @@ def test_sync_command_git_commit_failure(mock_is_dir, mock_subprocess_run, runne
     result = runner.invoke(cli_app, ["sync", "--message", "Test sync message"])
 
     assert result.exit_code == 1
-    assert "Error committing changes: Command '['git', 'commit', '-m', 'Test sync message']' returned non-zero exit status 1." in result.stdout
+    assert "Error committing changes: Command 'git commit' returned non-zero exit status 1." in result.stdout
     mock_subprocess_run.assert_any_call(["git", "add", "data"], check=True)
     mock_subprocess_run.assert_any_call(["git", "commit", "-m", "Test sync message"], check=True)
     mock_subprocess_run.call_count == 2
@@ -77,7 +82,7 @@ def test_sync_command_git_pull_failure(mock_is_dir, mock_subprocess_run, runner,
     result = runner.invoke(cli_app, ["sync", "--message", "Test sync message"])
 
     assert result.exit_code == 1
-    assert "Error pulling changes: Command '['git', 'pull', '--rebase']' returned non-zero exit status 1." in result.stdout
+    assert "Error pulling changes: Command 'git pull' returned non-zero exit status 1." in result.stdout
     mock_subprocess_run.assert_any_call(["git", "add", "data"], check=True)
     mock_subprocess_run.assert_any_call(["git", "commit", "-m", "Test sync message"], check=True)
     mock_subprocess_run.assert_any_call(["git", "pull", "--rebase"], check=True)
@@ -95,12 +100,9 @@ def test_sync_command_git_push_failure(mock_is_dir, mock_subprocess_run, runner,
     result = runner.invoke(cli_app, ["sync", "--message", "Test sync message"])
 
     assert result.exit_code == 1
-    assert "Error pushing changes: Command '['git', 'push']' returned non-zero exit status 1." in result.stdout
+    assert "Error pushing changes: Command 'git push' returned non-zero exit status 1." in result.stdout
     mock_subprocess_run.assert_any_call(["git", "add", "data"], check=True)
     mock_subprocess_run.assert_any_call(["git", "commit", "-m", "Test sync message"], check=True)
     mock_subprocess_run.assert_any_call(["git", "pull", "--rebase"], check=True)
     mock_subprocess_run.assert_any_call(["git", "push"], check=True)
     mock_subprocess_run.call_count == 4
-import pytest
-from unittest.mock import patch
-from pathlib import Path
