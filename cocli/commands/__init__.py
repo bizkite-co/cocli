@@ -8,6 +8,7 @@ def register_commands(app: typer.Typer):
     from . import scrape
     from . import fz
     from . import meetings
+    from . import sync
 
     app.command(name="add")(add.add)
     app.command(name="add-meeting")(add_meeting.add_meeting)
@@ -19,4 +20,5 @@ def register_commands(app: typer.Typer):
     app.command(name="open-company-folder")(view.open_company_folder)
     app.command(name="import-data")(import_data.import_data)
     app.command(name="scrape-google-maps")(scrape.scrape_google_maps)
+    app.command(name="sync")(sync.sync)
     app.command(name="fz")(fz.fz)

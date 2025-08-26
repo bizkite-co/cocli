@@ -1,7 +1,7 @@
 import pytest
 from pathlib import Path
 from unittest.mock import patch, MagicMock
-from cocli.scrapers.google_maps import _extract_business_data, scrape_google_maps, LEAD_SNIPER_HEADERS, ZIP_TO_COORDS
+from cocli.scrapers.google_maps import _extract_business_data, scrape_google_maps, LEAD_SNIPER_HEADERS
 
 # Sample HTML content from data/maps.google.com/item.html
 SAMPLE_ITEM_HTML = """
@@ -34,7 +34,8 @@ def temp_output_dir(tmp_path):
     """Provides a temporary directory for test output."""
     return tmp_path / "temp_output"
 
-def test_scrape_google_maps_functionality(mock_playwright, temp_output_dir):
+@patch('cocli.scrapers.google_maps.get_coordinates_from_zip')
+def test_scrape_google_maps_functionality(mock_get_coordinates, mock_playwright, temp_output_dir):
     """
     Tests the scrape_google_maps function with mocked Playwright and a temporary directory.
     Verifies URL construction and CSV file creation.
@@ -43,35 +44,28 @@ def test_scrape_google_maps_functionality(mock_playwright, temp_output_dir):
     zip_code = "90210"
     search_string = "photography studio"
 
-    # Add the zip code to the mock mapping for this test
-    original_zip_coords = ZIP_TO_COORDS.copy()
-    ZIP_TO_COORDS["90210"] = {"latitude": 34.0736, "longitude": -118.4004}
+    # Mock the return value of get_coordinates_from_zip
+    mock_get_coordinates.return_value = {"latitude": 34.0736, "longitude": -118.4004}
 
-    try:
-        scrape_google_maps(zip_code, search_string, output_dir=temp_output_dir, max_results=1)
+    scrape_google_maps({"zip_code": zip_code}, search_string, output_dir=temp_output_dir, max_results=1)
 
-        # Verify page.goto was called with the correct URL
-        expected_url_part = f"https://www.google.com/maps/search/photography+studio/@34.0736,-118.4004,15z/data=!3m2!1e3!4b1?entry=ttu"
-        mock_page.goto.assert_called_once()
-        assert expected_url_part in mock_page.goto.call_args[0][0]
+    # Verify page.goto was called with the correct URL
+    expected_url_part = f"https://www.google.com/maps/search/photography+studio/@34.0736,-118.4004,15z/data=!3m2!1e3!4b1?entry=ttu"
+    mock_page.goto.assert_called_once()
+    assert expected_url_part in mock_page.goto.call_args[0][0]
 
-        # Verify CSV file was created
-        csv_files = list(temp_output_dir.glob("lead-sniper-photography-studio-*.csv"))
-        assert len(csv_files) == 1
-        output_csv_path = csv_files[0]
-        assert output_csv_path.exists()
+    # Verify CSV file was created
+    csv_files = list(temp_output_dir.glob("lead-sniper-photography-studio-*.csv"))
+    assert len(csv_files) == 1
+    output_csv_path = csv_files[0]
+    assert output_csv_path.exists()
 
-        # Verify CSV content (basic check)
-        with open(output_csv_path, 'r', encoding='utf-8') as f:
-            content = f.read()
-            assert "Touch Photography" in content
-            assert "photography studio" in content
-            assert LEAD_SNIPER_HEADERS[0] in content # Check for header
-
-    finally:
-        # Restore original ZIP_TO_COORDS
-        ZIP_TO_COORDS.clear()
-        ZIP_TO_COORDS.update(original_zip_coords)
+    # Verify CSV content (basic check)
+    with open(output_csv_path, 'r', encoding='utf-8') as f:
+        content = f.read()
+        assert "Touch Photography" in content
+        assert "photography studio" in content
+        assert LEAD_SNIPER_HEADERS[0] in content # Check for header
 
 
 def test_extract_business_data_basic():
