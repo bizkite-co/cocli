@@ -7,6 +7,7 @@ from typing_extensions import Annotated
 from typing import Optional, List, Any
 import sys
 
+from .commands import enrich
 from rich.console import Console
 from rich.prompt import Prompt
 from rich.markdown import Markdown
@@ -16,6 +17,7 @@ import subprocess
 from fuzzywuzzy import process # Added for fuzzy search
 import shutil
 from .core.config import get_companies_dir, get_people_dir
+
 from .core.utils import slugify, _format_entity_for_fzf, _get_all_searchable_items
 from .core.models import Company, Person
 from .commands import register_commands
@@ -24,6 +26,7 @@ from .commands import lead_scrape
 console = Console()
 
 app = typer.Typer(no_args_is_help=True)
+app.add_typer(enrich.app, name="enrich", help="Commands for enriching company data.")
 
 app.command(name="lead-scrape", help="Scrape leads and import them.")(lead_scrape.lead_scrape)
 

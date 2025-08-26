@@ -8,6 +8,7 @@ VENV_DIR := ./.venv
 # Install development dependencies using uv
 install:
 	uv sync --extra dev
+	source $(VENV_DIR)/bin/activate && uv pip install -e .
 
 # Run tests using pytest
 test: install
@@ -19,7 +20,7 @@ activate: install
 
 # List installed packages
 list-packages: install
-	source $(VENV_DIR)/bin/activate && pip list
+	source $(VENV_DIR)/bin/activate && uv pip list
 
 # Clean up virtual environment and uv.lock
 clean:
