@@ -86,53 +86,75 @@ def _interactive_view_company(company_name: str):
         else:
             markdown_output += "No tags found.\n"
 
-        # Recent Meetings
-        markdown_output += "\n---\n\n## Recent Meetings\n\n"
+        next_meetings = []
         recent_meetings = []
+        past_meetings = [] # Not displayed, but good for categorization
+
         if meetings_dir.exists():
+            now_local = datetime.datetime.now(get_localzone())
+            six_months_ago_local = now_local - datetime.timedelta(days=180)
+
             for meeting_file in sorted(meetings_dir.iterdir()):
                 if meeting_file.is_file() and meeting_file.suffix == ".md":
                     try:
-                        # Parse filename: YYYY-MM-DDTHHMMZ-slugified-title.md
-                        filename_parts = meeting_file.name.split('-')
-                        datetime_str = filename_parts[0] # YYYY-MM-DDTHHMMZ
+                        match = re.match(r"^(\d{4}-\d{2}-\d{2}(?:T\d{4}Z)?)-?(.*)\.md$", meeting_file.name)
+                        if not match:
+                            raise ValueError("Filename does not match expected pattern.")
 
-                        # Handle both YYYY-MM-DDTHHMMZ and YYYY-MM-DD formats
+                        datetime_str = match.group(1)
+                        title_slug = match.group(2)
+
                         if 'T' in datetime_str and datetime_str.endswith('Z'):
                             meeting_datetime_utc = datetime.datetime.strptime(datetime_str, '%Y-%m-%dT%H%MZ').replace(tzinfo=timezone('UTC'))
                         else:
-                            # Fallback for older format or if only date is present
                             meeting_datetime_utc = datetime.datetime.strptime(datetime_str, '%Y-%m-%d').replace(tzinfo=timezone('UTC'))
 
                         local_tz = get_localzone()
                         meeting_datetime_local = meeting_datetime_utc.astimezone(local_tz)
+                        meeting_title = title_slug.replace("-", " ") if title_slug else "Untitled Meeting"
 
-                        six_months_ago_local = datetime.datetime.now(local_tz) - datetime.timedelta(days=180)
-                        if meeting_datetime_local >= six_months_ago_local:
-                            title_parts = filename_parts[1:] # Skip datetime part
-                            meeting_title = (
-                                " ".join(title_parts).replace(".md", "").replace("-", " ")
-                                if title_parts
-                                else "Untitled Meeting"
-                            )
-                            recent_meetings.append(
-                                (meeting_datetime_local, meeting_file, meeting_title)
-                            )
+                        if meeting_datetime_local > now_local:
+                            next_meetings.append((meeting_datetime_local, meeting_file, meeting_title))
+                        elif meeting_datetime_local >= six_months_ago_local:
+                            recent_meetings.append((meeting_datetime_local, meeting_file, meeting_title))
+                        else:
+                            past_meetings.append((meeting_datetime_local, meeting_file, meeting_title))
                     except (ValueError, IndexError):
                         pass
 
-        if recent_meetings:
-            for meeting_datetime_local, meeting_file, meeting_title in sorted(
-                recent_meetings, key=lambda x: x[0], reverse=True
-            ):
+        # Sort meetings
+        next_meetings.sort(key=lambda x: x[0]) # Ascending for next meetings
+        recent_meetings.sort(key=lambda x: x[0], reverse=True) # Descending for recent meetings
+
+        all_displayable_meetings = []
+        meeting_counter = 1
+
+        # Next Meetings
+        markdown_output += "\n---\n\n## Next Meetings\n\n"
+        if next_meetings:
+            for meeting_datetime_local, meeting_file, meeting_title in next_meetings:
                 markdown_output += (
-                    f"- {meeting_datetime_local.strftime('%Y-%m-%d %H:%M %Z')}: [{meeting_title}]({meeting_file.name})\n"
+                    f"- {meeting_counter}. {meeting_datetime_local.strftime('%Y-%m-%d %H:%M %Z')}: [{meeting_title}]({meeting_file.name})\n"
                 )
+                all_displayable_meetings.append((meeting_counter, meeting_file))
+                meeting_counter += 1
+        else:
+            markdown_output += "No upcoming meetings found.\n"
+
+        # Recent Meetings
+        markdown_output += "\n---\n\n## Recent Meetings\n\n"
+        if recent_meetings:
+            for meeting_datetime_local, meeting_file, meeting_title in recent_meetings:
+                markdown_output += (
+                    f"- {meeting_counter}. {meeting_datetime_local.strftime('%Y-%m-%d %H:%M %Z')}: [{meeting_title}]({meeting_file.name})\n"
+                )
+                all_displayable_meetings.append((meeting_counter, meeting_file))
+                meeting_counter += 1
         else:
             markdown_output += "No recent meetings found.\n"
 
-        console.print(Markdown(markdown_output))
-        console.print("\n[bold yellow]Press 'a' to add meeting, 'e' to edit _index.md, 'w' to open website, 'p' to call, 'q' to quit.[/bold yellow]")
+        # Return the mapping of displayed number to file path
+        return markdown_output, {num: file for num, file in all_displayable_meetings}
 
     index_path = selected_company_dir / "_index.md"
     frontmatter_data = {}
@@ -146,7 +168,9 @@ def _interactive_view_company(company_name: str):
                 console.print(f"Error parsing YAML frontmatter: {e}")
 
     while True:
-        _display_company_details(company_name, selected_company_dir, frontmatter_data)
+        markdown_content, meeting_map = _display_company_details(company_name, selected_company_dir, frontmatter_data)
+        console.print(Markdown(markdown_content))
+        console.print("\n[bold yellow]Press 'a' to add meeting, 'e' to edit _index.md, 'w' to open website, 'p' to call, 'm' to select meeting, 'q' to quit.[/bold yellow]")
         char = _getch()
 
         if char == 'a':
@@ -197,11 +221,30 @@ def _interactive_view_company(company_name: str):
             else:
                 console.print("[bold red]No phone number found for this company. Press any key to continue.[/bold red]")
             _getch() # Wait for a key press to clear the message
+        elif char == 'm':
+            console.print("\n[bold green]Select a meeting by number:[/bold green]")
+            try:
+                meeting_num_str = typer.prompt("Enter meeting number")
+                meeting_num = int(meeting_num_str)
+                selected_meeting_file = meeting_map.get(meeting_num)
+                if selected_meeting_file:
+                    console.print(f"\n[bold green]Opening meeting: {selected_meeting_file.name} in Vim...[/bold green]")
+                    subprocess.run(["vim", str(selected_meeting_file)], check=True)
+                    console.print("[bold green]Meeting closed. Press any key to continue.[/bold green]")
+                else:
+                    console.print(f"[bold red]Invalid meeting number: {meeting_num}. Press any key to continue.[/bold red]")
+                _getch()
+            except ValueError:
+                console.print("[bold red]Invalid input. Please enter a number. Press any key to continue.[/bold red]")
+                _getch()
+            except Exception as e:
+                console.print(f"[bold red]Error opening Vim: {e}. Press any key to continue.[/bold red]")
+                _getch()
         elif char == 'q':
             console.print("[bold green]Exiting company context.[/bold green]")
             break
         else:
-            console.print(f"[bold red]Invalid option: '{char}'. Press 'a', 'e', 'w', 'p', or 'q'.[/bold red]")
+            console.print(f"[bold red]Invalid option: '{char}'. Press 'a', 'e', 'w', 'p', 'm', or 'q'.[/bold red]")
             _getch() # Wait for a key press to clear the message
 
 @app.command()
