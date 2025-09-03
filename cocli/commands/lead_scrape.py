@@ -4,7 +4,7 @@ from typing import Optional
 import typer
 
 from cocli.commands.import_data import import_data
-from cocli.commands.scrape import scrape_google_maps
+from cocli.scrapers.google_maps import scrape_google_maps # Import the actual scraper function
 from cocli.core.config import get_scraped_data_dir
 
 app = typer.Typer()
@@ -26,13 +26,25 @@ def lead_scrape(
     try:
         # Step 1: Scrape Google Maps
         typer.echo("Scraping Google Maps...")
+        location_param = {}
+        if zip_code:
+            location_param["zip_code"] = zip_code
+        elif city:
+            location_param["city"] = city
+        else:
+            typer.echo("Error: Either --zip or --city must be provided.", err=True)
+            raise typer.Exit(code=1)
+
         scraped_csv_path = scrape_google_maps(
-            query=query,
-            zip_code=zip_code,
-            city=city,
+            location_param=location_param,
+            search_string=query,
             output_dir=get_scraped_data_dir(),
             debug=debug,
         )
+        if scraped_csv_path is None:
+            typer.echo("Scraping failed, no CSV file was generated.", err=True)
+            raise typer.Exit(code=1)
+
         typer.echo(f"Scraping completed. Results saved to {scraped_csv_path}")
 
         # Step 2: Import data
@@ -44,8 +56,11 @@ def lead_scrape(
         )
         typer.echo("Data import completed successfully.")
 
+    except typer.Exit as e:
+        # Re-raise TyperExit exceptions to propagate specific error codes and messages
+        raise e
     except Exception as e:
-        typer.echo(f"An error occurred during lead scrape: {e}", err=True)
+        typer.echo(f"An unexpected error occurred during lead scrape: {e}", err=True)
         raise typer.Exit(code=1)
     finally:
         # Step 3: Cleanup

@@ -28,19 +28,19 @@ def scrape_google_maps(
     Scrape data from Google Maps.
     """
     if not zip_code and not city:
-        print("Error: Either --zip or --city must be provided.")
+        typer.echo("Error: Either --zip or --city must be provided.", err=True)
         raise typer.Exit(code=1)
 
     if zip_code and city:
-        print("Error: Cannot provide both --zip and --city. Please choose one.")
+        typer.echo("Error: Cannot provide both --zip and --city. Please choose one.", err=True)
         raise typer.Exit(code=1)
 
     location_param = {"zip_code": zip_code} if zip_code else {"city": city}
 
     try:
         csv_file_path = google_maps.scrape_google_maps(location_param, query, output_dir, debug)
-        print(f"Scraping completed. Results saved to {csv_file_path}")
+        typer.echo(f"Scraping completed. Results saved to {csv_file_path}")
         return csv_file_path
     except Exception as e:
-        print(f"Error during scraping: {e}")
+        typer.echo(f"Error during scraping: {e}", err=True)
         raise typer.Exit(code=1)

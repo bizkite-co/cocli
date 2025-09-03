@@ -1,59 +1,47 @@
-# Detailed Plan for Interactive Company Selection in `cocli find`
+# Task: Fix `cocli lead-scrape` for Zero-Row CSVs and Improve Scraper Robustness
 
-**Goal:** Enhance the `cocli find` command to provide an interactive, selectable list of matching companies/people, supporting arrow key and VIM-style navigation, and ensure all related tests pass.
+## Goal
+The primary goal is to fix the `cocli lead-scrape` command, which is currently producing CSV files with zero rows of actual business data. This involves improving the robustness of the Google Maps scraper by moving away from reliance on obfuscated HTML class names and adopting a more resilient parsing strategy, primarily using `innerText` and generic HTML attributes. The scraping logic will also be refactored into a more modular structure.
 
-**Current State Analysis:**
-*   The `cocli find` command currently lists matches but does not offer an interactive selection mechanism. Users have to re-type the full company name.
-*   The `features/find.feature` file already contains scenarios (e.g., "User invokes find with a query that has multiple strong matches and selects one") that imply a numbered selection, but this functionality appears to be regressed or not fully implemented.
-*   There is no dedicated step definition file for `find` features in `features/steps/`.
+## Achievements So Far
 
-**Proposed Steps:**
+1.  **Corrected `scrape_google_maps` call stack**: Identified and fixed the issue where `cocli/commands/lead_scrape.py` was incorrectly calling the `scrape_google_maps` Typer command instead of the underlying function in `cocli/scrapers/google_maps.py`.
+2.  **Improved Error Handling**:
+    *   Modified `cocli/scrapers/google_maps.py` to return `None` on scraping errors.
+    *   Adjusted `cocli/commands/lead_scrape.py` to handle this `None` return gracefully.
+    *   Updated error message redirection to `stderr` in both `cocli/commands/scrape.py` and `cocli/commands/lead_scrape.py` for better testability and user feedback.
+3.  **Enhanced Test Coverage**:
+    *   Created a new test file `tests/test_lead_scrape.py` to specifically test the `lead-scrape` command.
+    *   Implemented tests for successful execution, cleanup functionality, and various error scenarios.
+    *   Updated test mocks and assertions to align with the corrected function call signatures.
+4.  **Refactored Scraping Logic**:
+    *   Created a new module `cocli/scrapers/google_maps_parser.py`.
+    *   Moved the data extraction logic (`_extract_business_data`) into this new module and renamed it to `parse_business_listing_html`.
+    *   Updated `cocli/scrapers/google_maps.py` to import and utilize this new parser function.
+5.  **Initial Selector Updates & Debugging**:
+    *   Added extensive debug logging to `parse_business_listing_html` to show the raw HTML, `innerText`, and extracted data for each field.
+    *   Made initial attempts to update selectors in `parse_business_listing_html` to be more generic and prioritize `innerText` parsing.
+    *   Confirmed `Name`, `GMB_URL`, `Coordinates`, `Place_ID`, `Average_rating`, `Reviews_count`, `Phone_1`, `Website`, and `Domain` are now being extracted correctly.
 
-1.  **Update `features/find.feature` (Architect Mode)**
-    *   **Action:** Add new scenarios to `features/find.feature` that explicitly describe the interactive selection behavior using arrow keys and VIM-style navigation (j/k).
-    *   **Details:** These scenarios will cover cases where multiple matches are found, and the user navigates and selects an item from the interactive list.
-    *   **Example Scenario (to be added):**
-        ```gherkin
-        Scenario: User invokes find with multiple matches and interactively selects one with arrow keys
-          Given a cocli data directory with companies "Alpha Corp", "Beta Inc", "Gamma Ltd"
-          When the user runs "cocli find" and interactively selects "Beta Inc" using arrow keys
-          Then the command should exit successfully
-          And the output should display a selectable list containing "Alpha Corp", "Beta Inc", "Gamma Ltd"
-          And the output should display details for "Beta Inc"
+## Issues Faced
 
-        Scenario: User invokes find with multiple matches and interactively selects one with VIM keys
-          Given a cocli data directory with companies "Alpha Corp", "Beta Inc", "Gamma Ltd"
-          When the user runs "cocli find" and interactively selects "Gamma Ltd" using 'j' key
-          Then the command should exit successfully
-          And the output should display a selectable list containing "Alpha Corp", "Beta Inc", "Gamma Ltd"
-          And the output should display details for "Gamma Ltd"
-        ```
-    *   **Rationale:** This updates the feature specification to reflect the desired interactive behavior.
+1.  **Tool Application Failures**: Persistent issues with `apply_diff` and `write_to_file` tools, often due to subtle content mismatches, requiring careful manual verification and re-attempts.
+2.  **Environment Setup**: Encountered `pytest: not found` and `source: not found` errors, resolved by explicitly activating the virtual environment and using `bash -c` for command execution.
+3.  **Outdated Selectors**: The primary and recurring issue is that Google Maps' HTML structure frequently changes, rendering hardcoded class-based selectors obsolete. This led to all data fields being empty initially.
+4.  **Fragile `innerText` Parsing**: Even with the `innerText`-first approach, initial regex patterns for `Full_Address`, `Categories`, and `Hours` were not robust enough, leading to incorrect or empty extractions (e.g., `Full_Address` picking up `Average_rating`).
+5.  **Obfuscated Class Names**: The user explicitly highlighted the problem of relying on "random obfuscation strings" as class selectors, emphasizing the need for a more resilient strategy.
 
-2.  **Create `features/steps/find_steps.py` (Code Mode)**
-    *   **Action:** Create a new Python file `features/steps/find_steps.py` to define the step implementations for the `find.feature` scenarios.
-    *   **Details:** This file will contain step definitions for `Given`, `When`, and `Then` clauses related to `cocli find` command, including the new interactive selection steps. This will likely involve using `subprocess` to run `cocli` and `pexpect` or similar for interactive input simulation.
-    *   **Rationale:** Separates concerns and provides a dedicated place for `find` command test logic.
+## Next Steps
 
-3.  **Implement Interactive Selection in `cocli/main.py` (Code Mode)**
-    *   **Action:** Modify the `find` function in `cocli/main.py` to use an interactive selection library (e.g., `rich.prompt.Prompt.ask` with choices, or `questionary`, `inquirer`) when multiple matches are found.
-    *   **Details:**
-        *   If `query` is provided and results in a single strong match, display details directly (current behavior for single match).
-        *   If `query` is provided and results in multiple matches, or if no `query` is provided and there are multiple companies/people, present an interactive list.
-        *   The interactive list should allow navigation with arrow keys and 'j'/'k' (VIM-style).
-        *   Upon selection, display the details for the chosen company/person.
-    *   **Rationale:** This implements the core interactive functionality requested by the user.
+1.  **Refine `parse_business_listing_html` in `cocli/scrapers/google_maps_parser.py`**:
+    *   **Critical**: Completely remove reliance on obfuscated class names for *all* fields.
+    *   **Prioritize `innerText`**: Focus solely on `innerText` parsing using highly robust regex patterns for `Name`, `Rating`, `Reviews`, `Address`, `Phone`, `Categories`, `Business Status`, and `Hours`.
+    *   **Generic HTML Fallbacks**: For fields that *must* come from HTML attributes (like `GMB_URL` and `Website` hrefs), use more generic attribute selectors (e.g., `a[href*='google.com/maps/place']` for GMB URL, and `a[data-value='Website']` or `a[href*='http']` for website) or structural relationships that are less likely to change.
+2.  **Update `tests/test_lead_scrape.py`**: Adjust mocks and assertions to reflect the new, more generic parsing strategy, ensuring tests accurately validate the extraction logic.
+3.  **Run Tests**: Execute the updated test suite to confirm that the new parsing logic works as expected and does not introduce regressions.
+4.  **Request Re-run with Debug**: After all changes and successful tests, ask the user to re-run the `cocli lead-scrape` command with the `--debug` flag to verify the new selectors and inspect the `item_html` and `innerText` processing for accurate data extraction.
 
-4.  **Run and Debug Tests (Code Mode)**
-    *   **Action:** Execute the `behave` tests for `features/find.feature`.
-    *   **Details:** Analyze test failures, debug the `cocli/main.py` implementation and `find_steps.py` step definitions until all scenarios in `features/find.feature` pass.
-    *   **Rationale:** Ensures the new feature is correctly implemented and does not introduce regressions.
-
-5.  **Overwrite `task.md` with the Detailed Plan (Architect Mode)**
-    *   **Action:** Replace the content of `task.md` with this detailed plan.
-    *   **Rationale:** Provides a clear record of the task and its execution strategy.
-
-**Mermaid Diagram for `cocli find` Flow:**
+## Current `cocli find` Flow (Mermaid Diagram)
 
 ```mermaid
 graph TD
