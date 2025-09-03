@@ -1,6 +1,7 @@
 import typer
 import datetime
 import subprocess
+import re
 import webbrowser
 import yaml
 from pathlib import Path
@@ -63,6 +64,8 @@ def _interactive_view_company(company_name: str):
                 if key != "name":
                     if key == "domain" and isinstance(value, str):
                         markdown_output += f"- {key.replace('_', ' ').title()}: [{value}](http://{value})\n"
+                    elif key == "phone_number" and isinstance(value, str):
+                        markdown_output += f"- {key.replace('_', ' ').title()}: {value} (Press 'p' to call)\n"
                     else:
                         markdown_output += f"- {key.replace('_', ' ').title()}: {value}\n"
             # Append markdown content after frontmatter
@@ -129,7 +132,7 @@ def _interactive_view_company(company_name: str):
             markdown_output += "No recent meetings found.\n"
 
         console.print(Markdown(markdown_output))
-        console.print("\n[bold yellow]Press 'a' to add meeting, 'e' to edit _index.md, 'w' to open website, 'q' to quit.[/bold yellow]")
+        console.print("\n[bold yellow]Press 'a' to add meeting, 'e' to edit _index.md, 'w' to open website, 'p' to call, 'q' to quit.[/bold yellow]")
 
     index_path = selected_company_dir / "_index.md"
     frontmatter_data = {}
@@ -174,11 +177,31 @@ def _interactive_view_company(company_name: str):
             else:
                 console.print("[bold red]No domain found for this company. Press any key to continue.[/bold red]")
             _getch() # Wait for a key press to clear the message
+        elif char == 'p':
+            console.print("\n[bold green]Initiating phone call...[/bold green]")
+            phone_number = frontmatter_data.get('phone_number')
+            if phone_number:
+                # Clean the phone number for the tel: URI
+                cleaned_phone_number = re.sub(r'\D', '', phone_number)
+                if not cleaned_phone_number.startswith('+1'):
+                    cleaned_phone_number = '+1' + cleaned_phone_number # Assuming US numbers, adjust if needed
+
+                google_voice_url = f"https://voice.google.com/u/0/calls?a=nc,%2B{cleaned_phone_number}"
+                try:
+                    webbrowser.open(google_voice_url)
+                    console.print(f"[bold green]Initiated call to {phone_number}. Auto-creating meeting...[/bold green]")
+                    _add_meeting_logic(company_name=company_name, date_str="today", title_str="Google Voice Call", phone_number_str=phone_number)
+                    console.print("[bold green]Meeting for call added. Press any key to continue.[/bold green]")
+                except Exception as e:
+                    console.print(f"[bold red]Error initiating call: {e}. Press any key to continue.[/bold red]")
+            else:
+                console.print("[bold red]No phone number found for this company. Press any key to continue.[/bold red]")
+            _getch() # Wait for a key press to clear the message
         elif char == 'q':
             console.print("[bold green]Exiting company context.[/bold green]")
             break
         else:
-            console.print(f"[bold red]Invalid option: '{char}'. Press 'a', 'e', 'w', or 'q'.[/bold red]")
+            console.print(f"[bold red]Invalid option: '{char}'. Press 'a', 'e', 'w', 'p', or 'q'.[/bold red]")
             _getch() # Wait for a key press to clear the message
 
 @app.command()

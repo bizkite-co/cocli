@@ -12,7 +12,7 @@ from ..core.utils import slugify
 
 app = typer.Typer()
 
-def _add_meeting_logic(company_name: str, date_str: Optional[str] = None, time_str: Optional[str] = None, title_str: Optional[str] = None):
+def _add_meeting_logic(company_name: str, date_str: Optional[str] = None, time_str: Optional[str] = None, title_str: Optional[str] = None, phone_number_str: Optional[str] = None):
     """
     Core logic for adding a new meeting.
     """
@@ -61,6 +61,8 @@ company: {company_name}
     # The time is now part of the date field, so no separate time field needed in frontmatter
     if title_str:
         meeting_content += f"title: {title_str}\n"
+    if phone_number_str:
+        meeting_content += f"phone_number: {phone_number_str}\n"
     meeting_content += "---\n\n"
 
     try:

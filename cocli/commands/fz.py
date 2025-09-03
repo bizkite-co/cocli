@@ -54,10 +54,11 @@ def fz():
         if selected_item:
             # Parse the selection to get the entity type and ID
             # Regex adjusted for "COMPANY:name" or "PERSON:name:company_name"
-            match = re.match(r"^(COMPANY|PERSON):([^:]+)(?::(.*))?$", selected_item)
+            match = re.match(r"^(COMPANY|PERSON):([^:(]+)(?:\s*\(.*)?(?::(.*))?$", selected_item)
             if match:
                 entity_type_str = match.group(1)
-                entity_name_or_id = match.group(2) # This will be the name/slug
+                # Extract the company name, stripping any trailing whitespace
+                entity_name_or_id = match.group(2).strip()
                 # group(3) would be company_name for PERSON, but we use entity_name_or_id as the ID
 
                 console.print(f"Opening {entity_type_str}: {entity_name_or_id}")

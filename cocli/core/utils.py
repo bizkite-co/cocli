@@ -114,7 +114,10 @@ def _format_entity_for_fzf(entity_type: str, entity: Any) -> str:
     Formats a company or person object into a string for fzf display.
     """
     if entity_type == "company":
-        return f"COMPANY:{entity.name}"
+        display_name = entity.name
+        if entity.average_rating is not None and entity.reviews_count is not None:
+            display_name += f" ({entity.average_rating:.1f} ★, {entity.reviews_count} reviews)"
+        return f"COMPANY:{display_name}"
     elif entity_type == "person":
         return f"PERSON:{entity.name}:{entity.company_name if entity.company_name else ''}"
     return ""
