@@ -1,3 +1,14 @@
+.PHONY: help
+help: ## Display this help screen
+	@echo "Available commands:"
+	@awk 'BEGIN {FS = ":.*?## "}; /^[a-zA-Z_-]+:.*?## / {printf "  \033[32m%-20s\033[0m %s\n", $$1, $$2}' $(MAKEFILE_LIST)
+
+# ==============================================================================
+# Application Tasks
+# ==============================================================================
+.PHONY: build
+build: ## Build the application WAR file
+
 SHELL := /bin/bash
 
 .PHONY: test install clean list-packages
@@ -5,23 +16,21 @@ SHELL := /bin/bash
 # Define the virtual environment directory
 VENV_DIR := ./.venv
 
-# Install development dependencies using uv
-install:
+open: activate ##Activate the venv and open
+	@cocli
+
+install: ## Install development dependencies using uv
 	uv sync --extra dev
 	source $(VENV_DIR)/bin/activate && uv pip install -e .
 
-# Run tests using pytest
-test: install
+test: install ## Run tests using pytest
 	source $(VENV_DIR)/bin/activate && pytest tests/
 
-# Run tests using pytest
-activate: install
+activate: install ## Run tests using pytest
 	source $(VENV_DIR)/bin/activate
 
-# List installed packages
-list-packages: install
+list-packages: install ## List installed packages
 	source $(VENV_DIR)/bin/activate && uv pip list
 
-# Clean up virtual environment and uv.lock
-clean:
+clean: ## Clean up virtual environment and uv.lock
 	rm -rf $(VENV_DIR) uv.lock
