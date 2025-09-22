@@ -38,6 +38,20 @@
             ],
             "console": "integratedTerminal",
             "justMyCode": true
+        },
+        {
+            "name": "Python: cocli scrape-shopify-myip Debug",
+            "type": "debugpy",
+            "request": "launch",
+            "python": "${workspaceFolder}/.venv/bin/python",
+            "module": "cocli.main",
+            "args": [
+                "scrape-shopify-myip",
+                "23.227.38.32",
+                "--debug"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false
         }
     ]
 }

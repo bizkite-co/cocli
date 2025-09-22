@@ -9,6 +9,7 @@ def register_commands(app: typer.Typer):
     from . import fz
     from . import meetings
     from . import sync
+    from . import scrape_shopify
 
     app.command(name="add")(add.add)
     app.command(name="add-meeting")(add_meeting.add_meeting)
@@ -22,3 +23,4 @@ def register_commands(app: typer.Typer):
     app.command(name="scrape-google-maps")(scrape.scrape_google_maps)
     app.command(name="sync")(sync.sync)
     app.command(name="fz")(fz.fz)
+    app.command(name="scrape-shopify-myip")(scrape_shopify.scrape_shopify_myip)
