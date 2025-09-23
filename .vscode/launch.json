@@ -52,6 +52,21 @@
             ],
             "console": "integratedTerminal",
             "justMyCode": false
+        },
+        {
+            "name": "Python: cocli enrich-shopify-data Debug",
+            "type": "debugpy",
+            "request": "launch",
+            "python": "${workspaceFolder}/.venv/bin/python",
+            "module": "cocli.main",
+            "args": [
+                "enrich-shopify-data",
+                "--debug",
+                "--headed",
+                "--devtools"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false
         }
     ]
 }

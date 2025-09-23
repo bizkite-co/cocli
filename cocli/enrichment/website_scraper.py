@@ -4,9 +4,11 @@ from typing import Optional, List
 from playwright.sync_api import sync_playwright, Page
 from bs4 import BeautifulSoup
 import logging
+from urllib.parse import urljoin
 
 from .base import EnrichmentScript
 from ..core.models import Company
+from ..models.website import Website
 
 logger = logging.getLogger(__name__)
 
@@ -14,42 +16,42 @@ class WebsiteScraper(EnrichmentScript):
     def get_script_name(self) -> str:
         return "web-scraper"
 
-    def run(self, company: Company) -> Company:
-        if not company.website_url:
+    def run(self, company: Company, headed: bool = False, devtools: bool = False, debug: bool = False) -> Website:
+        if not company.domain:
             logger.info(f"Company {company.name} has no website URL. Skipping website scraping.")
-            return company
+            return Website(url=company.domain or "")
 
-        logger.info(f"Starting website scraping for {company.name} at {company.website_url}")
+        logger.info(f"Starting website scraping for {company.name} at {company.domain}")
+
+        website_data = Website(url=company.domain)
 
         try:
             with sync_playwright() as p:
-                browser = p.chromium.launch(headless=True)
+                browser = p.chromium.launch(headless=not headed, devtools=devtools)
                 page = browser.new_page()
-                page.goto(company.website_url, wait_until="domcontentloaded", timeout=30000)
+                page.goto(f"http://{company.domain}", wait_until="domcontentloaded", timeout=30000)
+
+                if debug:
+                    breakpoint()
 
                 # Scrape main page
-                company = self._scrape_page(page, company)
+                website_data = self._scrape_page(page, website_data)
 
                 # Look for "About Us" page
                 about_us_link = page.locator('a:has-text("About Us"), a:has-text("About")').first
                 if about_us_link.is_visible():
                     about_us_url = about_us_link.get_attribute("href")
                     if about_us_url:
-                        # Ensure the URL is absolute
-                        if not about_us_url.startswith("http"):
-                            base_url_match = re.match(r"(https?://[^/]+)", company.website_url)
-                            if base_url_match:
-                                base_url = base_url_match.group(0)
-                                about_us_url = f"{base_url}{about_us_url}"
-                            else:
-                                logger.warning(f"Could not determine base URL for {company.website_url}")
-                                about_us_url = None # Invalidate if base URL cannot be determined
+                        about_us_url = urljoin(page.url, about_us_url)
 
                         if about_us_url and about_us_url != page.url: # Avoid re-scraping the same page
                             logger.info(f"Navigating to About Us page: {about_us_url}")
+                            website_data.about_us_url = about_us_url
                             try:
                                 page.goto(about_us_url, wait_until="domcontentloaded", timeout=30000)
-                                company = self._scrape_page(page, company)
+                                if debug:
+                                    breakpoint()
+                                website_data = self._scrape_page(page, website_data)
                             except Exception as e:
                                 logger.warning(f"Failed to navigate or scrape About Us page for {company.name}: {e}")
 
@@ -57,43 +59,72 @@ class WebsiteScraper(EnrichmentScript):
         except Exception as e:
             logger.error(f"Error during website scraping for {company.name}: {e}")
 
-        return company
+        return website_data
 
-    def _scrape_page(self, page: Page, company: Company) -> Company:
+    def _scrape_page(self, page: Page, website_data: Website) -> Website:
         html_content = page.content()
         soup = BeautifulSoup(html_content, "html.parser")
 
         # Extract Phone Number
-        if not company.phone_from_website:
+        if not website_data.phone:
             phone_match = re.search(r"(\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4})", soup.get_text())
             if phone_match:
-                company.phone_from_website = phone_match.group(0)
-                logger.info(f"Found phone number: {company.phone_from_website}")
+                website_data.phone = phone_match.group(0)
+                logger.info(f"Found phone number: {website_data.phone}")
 
         # Extract Email
-        if not company.email:
+        if not website_data.email:
             email_match = re.search(r"[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}", soup.get_text())
             if email_match:
-                company.email = email_match.group(0)
-                logger.info(f"Found email: {company.email}")
+                website_data.email = email_match.group(0)
+                logger.info(f"Found email: {website_data.email}")
 
         # Extract Social Media URLs
-        if not company.facebook_url:
+        if not website_data.facebook_url:
             facebook_link = soup.find("a", href=re.compile(r"facebook\.com", re.IGNORECASE))
             if facebook_link:
-                company.facebook_url = facebook_link["href"]
-                logger.info(f"Found Facebook URL: {company.facebook_url}")
+                website_data.facebook_url = facebook_link["href"]
+                logger.info(f"Found Facebook URL: {website_data.facebook_url}")
 
-        if not company.linkedin_url:
+        if not website_data.linkedin_url:
             linkedin_link = soup.find("a", href=re.compile(r"linkedin\.com", re.IGNORECASE))
             if linkedin_link:
-                company.linkedin_url = linkedin_link["href"]
-                logger.info(f"Found LinkedIn URL: {company.linkedin_url}")
+                website_data.linkedin_url = linkedin_link["href"]
+                logger.info(f"Found LinkedIn URL: {website_data.linkedin_url}")
 
-        if not company.instagram_url:
+        if not website_data.instagram_url:
             instagram_link = soup.find("a", href=re.compile(r"instagram\.com", re.IGNORECASE))
             if instagram_link:
-                company.instagram_url = instagram_link["href"]
-                logger.info(f"Found Instagram URL: {company.instagram_url}")
+                website_data.instagram_url = instagram_link["href"]
+                logger.info(f"Found Instagram URL: {website_data.instagram_url}")
 
-        return company
+        if not website_data.twitter_url:
+            twitter_link = soup.find("a", href=re.compile(r"twitter\.com", re.IGNORECASE))
+            if twitter_link:
+                website_data.twitter_url = twitter_link["href"]
+                logger.info(f"Found Twitter URL: {website_data.twitter_url}")
+
+        if not website_data.youtube_url:
+            youtube_link = soup.find("a", href=re.compile(r"youtube\.com", re.IGNORECASE))
+            if youtube_link:
+                website_data.youtube_url = youtube_link["href"]
+                logger.info(f"Found Youtube URL: {website_data.youtube_url}")
+
+        # Extract Address
+        if not website_data.address:
+            # A simple regex for US addresses
+            address_match = re.search(r"\d+\s+([a-zA-Z]+\s+)+[a-zA-Z]+,?\s+[A-Z]{2}\s+\d{5}", soup.get_text())
+            if address_match:
+                website_data.address = address_match.group(0)
+                logger.info(f"Found address: {website_data.address}")
+
+        # Extract Description
+        if not website_data.description:
+            # If we are on the About Us page, look for an H1 and the following div or similar content. Then, get the text content of the parent element.
+            about_section = soup.find(id=re.compile("about", re.IGNORECASE)) or soup.find(class_=re.compile("about", re.IGNORECASE))
+
+            if about_section:
+                website_data.description = about_section.get_text(separator='\n', strip=True)
+                logger.info(f"Found description for {website_data.url}")
+
+        return website_data

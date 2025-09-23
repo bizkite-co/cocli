@@ -2,104 +2,66 @@
 
 This document outlines the detailed plan for creating a new scraper, parser, and enricher for Shopify stores within the `cocli` application.
 
-## 1. XLSX to CSV Conversion
+## 1. Pydantic Models
+
+**Goal:** Create Pydantic models for data consistency.
+
+**Approach:**
+*   **Website Model:** Create a `Website` model in `cocli/models/website.py` to store data scraped from company websites. This will include fields like `url`, `phone`, `email`, social media URLs, `address`, and `personnel`.
+
+## 2. XLSX to CSV Conversion
 
 **Goal:** Convert existing XLSX files in `docs/issues/shopify-cidr-blocks/lists` to CSV format for easier processing.
 
 **Approach:**
 *   **Tool:** Use a Python library like `pandas` to read XLSX files and write them to CSV.
 *   **Implementation:**
-    *   Create a new utility script, e.g., `cocli/utils/excel_converter.py`, with a function `convert_xlsx_to_csv(xlsx_filepath: Path, output_dir: Path) -> Path`.
-    *   This function will take an XLSX file path, read it, and save it as a CSV in a specified output directory (e.g., `scraped_data/shopify_csv/`).
-    *   Consider adding a new `cocli` command, e.g., `cocli convert-excel`, to expose this functionality to the user, allowing them to convert files manually.
+    *   A utility script, `cocli/utils/excel_converter.py`, with a function `convert_xlsx_to_csv(xlsx_filepath: Path, output_dir: Path) -> Path` already exists.
 
-## 2. Shopify Scraper (myip.ms)
+## 3. Shopify Scraper (myip.ms)
 
 **Goal:** Scrape Shopify store data from `myip.ms` using a cooperative, "lazy-scraping" approach with user intervention for human verification.
 
 **Approach:**
-*   **Scraping Mechanism:** Leverage `playwright` in headed mode as suggested by the user.
-*   **URL Construction:**
-    *   The base URL is `https://myip.ms/ajax_table/sites/{segment}/ipID/{ip_address}/ipIDii/{ip_address}`.
-    *   The `ip_address` will be one of the Shopify CIDR block IPs (e.g., `23.227.38.74`).
-    *   The `{segment}` will be an incrementing number (starting from 4, as per user's example) to paginate through results.
-*   **Data Extraction:**
-    *   Extract URL, IP, and Popularity (visitors per day) from the table.
-    *   Identify the `a.collapsed` element in the first `td` of each `tr` to expand and get popularity.
-*   **Filtering:** Filter results to US and Canadian companies. This will likely require extracting country information from the scraped data.
+*   **Scraping Mechanism:** Leverage `playwright` in headed mode.
 *   **Implementation:**
-    *   Create a new scraper module: `cocli/scrapers/myip_ms.py`.
-    *   Define a function `scrape_myip_ms(ip_address: str, start_segment: int = 4, max_pages: int = 10, debug: bool = False) -> Path`.
-    *   This function will:
-        *   Launch `playwright` in headed mode.
-        *   Navigate to the `myip.ms` URL.
-        *   **Pause for User Intervention:** Implement a mechanism (e.g., `input("Press Enter after solving CAPTCHA...")`) to allow the user to solve the human verification.
-        *   Loop through `segment` values to paginate.
-        *   Extract data from each row, including expanding the popularity section.
-        *   Filter by country (US/Canada).
-        *   Save the scraped data to a CSV file in `scraped_data/shopify_csv/` in a format similar to `LEAD_SNIPER_HEADERS` or a new `SHOPIFY_HEADERS`.
-    *   Add a new `cocli` command, e.g., `cocli scrape-shopify-myip`, to trigger this scraper.
+    *   A scraper module, `cocli/scrapers/myip_ms.py`, and a command `scrape-shopify-myip` already exist.
 
-## 3. Shopify Parser
+## 4. Data Compilation
 
-**Goal:** Parse the raw data (from CSV, either converted from XLSX or scraped from `myip.ms`) into a structured format suitable for the `Company` model.
+**Goal:** Compile and deduplicate scraped Shopify data from multiple CSV files into a single index file.
 
 **Approach:**
-*   **Modular Parsing:** Similar to `google_maps_parser.py`, create a dedicated parser.
+*   **New Command:** Create a new command `process-shopify-scrapes` in `cocli/commands/process_shopify_scrapes.py`.
 *   **Implementation:**
-    *   Create `cocli/scrapers/myip_ms_parser.py`.
-    *   Define `SHOPIFY_HEADERS` (or adapt `LEAD_SNIPER_HEADERS` if sufficient overlap).
-    *   Implement `parse_myip_ms_listing(row_data: Dict[str, str]) -> Dict[str, Any]` which takes a row from the CSV and maps it to the `Company` model's expected fields. This will involve:
-        *   Mapping URL to `website_url`.
-        *   Mapping IP to a new field in the `Company` model (if needed, or as a tag).
-        *   Mapping Popularity to a new field or tag.
-        *   Handling country filtering if not already done in the scraper.
-
-## 4. Shopify Importer
-
-**Goal:** Integrate the parsed Shopify data into the `cocli` CRM system.
-
-**Approach:**
-*   **New Importer:** Create a new importer specifically for Shopify data.
-*   **Implementation:**
-    *   Create `cocli/importers/shopify.py`.
-    *   Define a function `shopify_importer(filepath: Path, debug: bool = False)`.
-    *   This function will:
-        *   Read the CSV file generated by the scraper or the XLSX converter.
-        *   Iterate through rows, using the `parse_myip_ms_listing` (or similar) to get structured data.
-        *   Create `Company` objects, setting `type` to "Shopify Store" and adding relevant tags (e.g., "shopify-import").
-        *   Utilize `create_company_files` from `cocli.core.utils` to persist the data.
-    *   Integrate this new importer into `cocli/commands/import_data.py` so it can be called via `cocli import shopify /path/to/shopify.csv`.
+    *   The command will scan the `scraped_data/shopify_csv` directory for all `*.csv` files (except `index.csv`).
+    *   It will read each CSV, clean up the `Website` column to extract the domain, and select the `domain`, `visits_per_day`, and `scraped_date` columns.
+    *   The data from all files will be concatenated and deduplicated based on the `domain`, keeping the most recent entry.
+    *   The final result will be saved to `index.csv` in the same directory.
 
 ## 5. Website Enricher
 
 **Goal:** Follow the URLs of Shopify stores to extract additional location and contact data, storing it in `enrichments/website.md`.
 
 **Approach:**
-*   **New Enrichment Script:** Create a new enrichment script that adheres to the `EnrichmentScript` interface.
+*   **Updated Enrichment Script:** The existing `cocli/enrichment/website_scraper.py` will be updated to use the new `Website` Pydantic model.
+*   **New Enrichment Command:** Create a new command `enrich-shopify-data` in `cocli/commands/enrich_shopify_data.py`.
 *   **Implementation:**
-    *   Create `cocli/enrichment/shopify_website_enricher.py`.
-    *   Implement `class ShopifyWebsiteEnricher(EnrichmentScript):`.
-    *   `get_script_name()` will return "shopify-website-enricher".
-    *   `run(self, company: Company) -> Company`:
-        *   Check if `company.website_url` exists.
-        *   Use `playwright` (headless) to visit the website.
-        *   Scrape for contact information (email, phone numbers) and location details (address).
-        *   Store the extracted data in a new Markdown file: `~/.local/share/cocli/companies/{company_slug}/enrichments/website.md`. This file will contain YAML frontmatter for structured data and Markdown content for any free-form notes.
-        *   Update the `Company` object with any new information found (e.g., `company.email`, `company.phone_number`, `company.full_address`).
-        *   Return the updated `Company` object.
-    *   Integrate this enricher into `cocli/commands/enrich.py` (if it exists, otherwise create it) and `cocli/enrichment/manager.py`.
+    *   The `enrich-shopify-data` command will read the `index.csv` file.
+    *   For each domain, it will:
+        *   Create a `Company` object.
+        *   Use `slugify()` and `create_company_files()` to create the company folder structure.
+        *   Run the `WebsiteScraper` to get a `Website` object with the scraped data.
+        *   Save the `Website` object's data as YAML frontmatter in `enrichments/website.md` within the company's folder.
+        *   Update the company's `_index.md` with the newly scraped information.
 
 ## 6. Documentation
 
 **Goal:** Document the new features and updated data structure.
 
 **Approach:**
-*   **Update `README.md`:** Add a new section for "Scraping Shopify Stores" and "Enriching Company Data."
-*   **New Documentation in `docs/issues/shopify-cidr-blocks/`:**
-    *   Update `docs/issues/shopify-cidr-blocks/_index.md` with the detailed plan.
-    *   Create a new file, e.g., `docs/company_data_structure.md`, to document the company folder structure, including the new `enrichments/` folder and the `website.md` file.
-    *   Document the process for adding employees via symlinks in an `Employees` subfolder to a person folder in the `People` directory. This will be a new section in `docs/SPECIFICATION.md` or a new dedicated document.
+*   **Update `plan.md`:** This document will be updated to reflect the new plan.
+*   **Update `_index.md`:** The main issue document will be updated to include the new steps.
 
 ### Proposed Architecture Diagram
 
@@ -110,10 +72,9 @@ graph TD
     end
 
     subgraph Commands
-        B[commands/convert_excel.py]
         C[commands/scrape_shopify_myip.py]
-        D[commands/import_data.py]
-        E[commands/enrich.py]
+        D[commands/process_shopify_scrapes.py]
+        E[commands/enrich_shopify_data.py]
     end
 
     subgraph Utilities
@@ -125,39 +86,37 @@ graph TD
 
     subgraph Scrapers
         J[scrapers/myip_ms.py]
-        K[scrapers/myip_ms_parser.py]
-    end
-
-    subgraph Importers
-        L[importers/shopify.py]
     end
 
     subgraph Enrichment
-        M[enrichment/shopify_website_enricher.py]
+        M[enrichment/website_scraper.py]
         N[enrichment/base.py]
         O[enrichment/manager.py]
     end
-
-    subgraph Data Storage
-        P[~/.local/share/cocli/companies/]
-        Q[~/.local/share/cocli/people/]
+    
+    subgraph Models
+        P[models/company.py]
+        Q[models/website.py]
     end
 
-    A -- calls --> B, C, D, E
+    subgraph Data Storage
+        R[~/.local/share/cocli/companies/]
+        S[~/.local/share/cocli/scraped_data/shopify_csv/]
+    end
 
-    B -- uses --> F
-    C -- uses --> J, G, K
-    D -- calls --> L
-    E -- calls --> O -- manages --> M
+    A -- calls --> C, D, E
 
-    J -- outputs CSV --> L
-    F -- outputs CSV --> L
+    C -- uses --> J, G
+    D -- uses --> G
+    E -- uses --> M, G, I, H, Q
 
-    L -- creates/updates --> P (Company _index.md)
-    M -- creates/updates --> P (enrichments/website.md)
+    J -- outputs CSV --> S
+    D -- reads from --> S -- outputs index.csv --> S
+    E -- reads from --> S
 
+    E -- creates/updates --> R
+
+    M -- uses --> Q
     H -- defines --> Company Model
     I -- provides --> create_company_files, slugify
-
-    P -- contains --> enrichments/
-    P -- contains --> contacts/ (symlinks to Q)
+```
