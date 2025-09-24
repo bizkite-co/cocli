@@ -46,6 +46,8 @@ class Company(BaseModel):
     facebook_url: Optional[str] = None
     linkedin_url: Optional[str] = None
     instagram_url: Optional[str] = None
+    twitter_url: Optional[str] = None
+    youtube_url: Optional[str] = None
 
 
     meta_description: Optional[str] = None

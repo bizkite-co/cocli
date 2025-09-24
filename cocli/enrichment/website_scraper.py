@@ -16,7 +16,13 @@ class WebsiteScraper(EnrichmentScript):
     def get_script_name(self) -> str:
         return "web-scraper"
 
-    def run(self, company: Company, headed: bool = False, devtools: bool = False, debug: bool = False) -> Website:
+    def run(
+        self,
+        company: Company,
+        headed: bool = False,
+        devtools: bool = False,
+        debug: bool = False
+    ) -> Website:
         if not company.domain:
             logger.info(f"Company {company.name} has no website URL. Skipping website scraping.")
             return Website(url=company.domain or "")
@@ -28,7 +34,7 @@ class WebsiteScraper(EnrichmentScript):
         try:
             with sync_playwright() as p:
                 browser = p.chromium.launch(headless=not headed, devtools=devtools)
-                page = browser.new_page()
+                page = browser.new_page(viewport={'width': 1536, 'height': 1700})
                 page.goto(f"http://{company.domain}", wait_until="domcontentloaded", timeout=30000)
 
                 if debug:
@@ -53,7 +59,9 @@ class WebsiteScraper(EnrichmentScript):
                                     breakpoint()
                                 website_data = self._scrape_page(page, website_data)
                             except Exception as e:
-                                logger.warning(f"Failed to navigate or scrape About Us page for {company.name}: {e}")
+                                logger.warning(
+                                    f"Failed to navigate or scrape About Us page for {company.name}: {e}"
+                                )
 
                 browser.close()
         except Exception as e:
@@ -120,8 +128,12 @@ class WebsiteScraper(EnrichmentScript):
 
         # Extract Description
         if not website_data.description:
-            # If we are on the About Us page, look for an H1 and the following div or similar content. Then, get the text content of the parent element.
-            about_section = soup.find(id=re.compile("about", re.IGNORECASE)) or soup.find(class_=re.compile("about", re.IGNORECASE))
+            # If we are on the About Us page, look for an H1 and the following div or similar content.
+            # Then, get the text content of the parent element.
+            about_section = soup.find(id=re.compile("about", re.IGNORECASE)) \
+                or soup.find(class_=re.compile("about", re.IGNORECASE))
+            if "about" in page.url and soup.find(string=re.compile("^About (U|u)s")):
+                about_section = soup.find(string=re.compile("^About (U|u)s")).parent
 
             if about_section:
                 website_data.description = about_section.get_text(separator='\n', strip=True)

@@ -12,6 +12,7 @@ def register_commands(app: typer.Typer):
     from . import scrape_shopify
     from . import process_shopify_scrapes
     from . import enrich_shopify_data
+    from . import compile_enrichment
 
     app.command(name="add")(add.add)
     app.command(name="add-meeting")(add_meeting.add_meeting)
@@ -28,3 +29,4 @@ def register_commands(app: typer.Typer):
     app.command(name="scrape-shopify-myip")(scrape_shopify.scrape_shopify_myip)
     app.command(name="process-shopify-scrapes")(process_shopify_scrapes.process_shopify_scrapes)
     app.command(name="enrich-shopify-data")(enrich_shopify_data.enrich_shopify_data)
+    app.command(name="compile-enrichment")(compile_enrichment.compile_enrichment)
