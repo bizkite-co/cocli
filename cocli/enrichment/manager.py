@@ -8,7 +8,7 @@ from ..core.utils import slugify
 from datetime import datetime
 
 from .base import EnrichmentScript
-from ..core.models import Company
+from ..models.company import Company
 
 logger = logging.getLogger(__name__)
 

@@ -7,7 +7,8 @@ import sys
 
 import yaml # This import might not be needed here if models handle YAML loading
 
-from .models import Company, Person # Import Company and Person models
+from ..models.company import Company
+from ..models.person import Person # Import Company and Person models
 from .config import get_companies_dir, get_people_dir # Import directory getters
 
 # Custom representer for None to ensure it's explicitly written as 'null'
@@ -117,6 +118,8 @@ def _format_entity_for_fzf(entity_type: str, entity: Any) -> str:
         display_name = entity.name
         if entity.average_rating is not None and entity.reviews_count is not None:
             display_name += f" ({entity.average_rating:.1f} ★, {entity.reviews_count} reviews)"
+        if entity.visits_per_day is not None:
+            display_name += f" ({entity.visits_per_day} visits)"
         return f"COMPANY:{display_name}"
     elif entity_type == "person":
         return f"PERSON:{entity.name}:{entity.company_name if entity.company_name else ''}"

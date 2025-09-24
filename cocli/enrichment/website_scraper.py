@@ -7,7 +7,7 @@ import logging
 from urllib.parse import urljoin
 
 from .base import EnrichmentScript
-from ..core.models import Company
+from ..models.company import Company
 from ..models.website import Website
 
 logger = logging.getLogger(__name__)

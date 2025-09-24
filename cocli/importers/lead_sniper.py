@@ -2,7 +2,7 @@ import csv
 from pathlib import Path
 from typing import Dict, Any, Optional
 
-from ..core.models import Company
+from ..models.company import Company
 from ..core.utils import create_company_files, slugify
 from ..core.config import get_companies_dir
 
