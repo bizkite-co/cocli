@@ -3,3 +3,4 @@ __pycache__
 .pytest_cache
 cocli.egg-info/
 .gemini/
+cocli_data

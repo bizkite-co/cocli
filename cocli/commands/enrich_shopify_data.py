@@ -35,10 +35,18 @@ def enrich_shopify_data(
 
     for index, row in df.iterrows():
         domain = row["domain"]
+        visits_str = row.get("visits_per_day")
+        visits = None
+        if pd.notna(visits_str):
+            try:
+                visits = int(str(visits_str).replace(',', ''))
+            except (ValueError, TypeError):
+                visits = None
+
         company_name = domain.split('.')[0].replace('-', ' ').title()
         company_slug = slugify(company_name)
         
-        company = Company(name=company_name, slug=company_slug, domain=domain)
+        company = Company(name=company_name, slug=company_slug, domain=domain, visits_per_day=visits)
         
         company_dir = companies_dir / company_slug
         create_company_files(company, company_dir)

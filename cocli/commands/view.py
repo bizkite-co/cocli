@@ -4,6 +4,7 @@ import subprocess
 import re
 import webbrowser
 import yaml
+import os
 from pathlib import Path
 from typing import Optional, List, Any
 from pytz import timezone
@@ -15,7 +16,7 @@ from ..core.utils import _getch # Import _getch for interactive input
 from .add_meeting import _add_meeting_logic # Import add_meeting command
 from fuzzywuzzy import process # Added for fuzzy search
 
-from ..core.config import get_companies_dir
+from ..core.config import get_companies_dir, get_people_dir
 from ..core.utils import slugify
 
 console = Console()
@@ -170,7 +171,7 @@ def _interactive_view_company(company_name: str):
     while True:
         markdown_content, meeting_map = _display_company_details(company_name, selected_company_dir, frontmatter_data)
         console.print(Markdown(markdown_content))
-        console.print("\n[bold yellow]Press 'a' to add meeting, 'e' to edit _index.md, 'w' to open website, 'p' to call, 'm' to select meeting, 'f' to go back to fuzzy finder, 'q' to quit.[/bold yellow]")
+        console.print("\n[bold yellow]Press 'a' to add meeting, 'c' to add contact, 't' to add tag, 'e' to edit _index.md, 'w' to open website, 'p' to call, 'm' to select meeting, 'f' to go back to fuzzy finder, 'q' to quit.[/bold yellow]")
         char = _getch()
 
         if char == 'f':
@@ -245,6 +246,69 @@ def _interactive_view_company(company_name: str):
             except Exception as e:
                 console.print(f"[bold red]Error opening Vim: {e}. Press any key to continue.[/bold red]")
                 _getch()
+        elif char == 'c':
+            console.print("\n[bold green]Add a new contact...[/bold green]")
+            people_dir = get_people_dir()
+            if not people_dir.exists():
+                console.print("[bold red]People directory not found. Press any key to continue.[/bold red]")
+                _getch()
+                continue
+
+            people_files = [f.name for f in people_dir.iterdir() if f.is_file() and f.suffix == '.md']
+            if not people_files:
+                console.print("[bold red]No people found in the people directory. Press any key to continue.[/bold red]")
+                _getch()
+                continue
+
+            fzf_input = "\n".join(people_files)
+            try:
+                process = subprocess.run(
+                    ["fzf"],
+                    input=fzf_input,
+                    stdout=subprocess.PIPE,
+                    text=True,
+                    check=True
+                )
+                selected_person_file = process.stdout.strip()
+
+                if selected_person_file:
+                    contacts_dir = selected_company_dir / "contacts"
+                    contacts_dir.mkdir(exist_ok=True)
+                    person_path = people_dir / selected_person_file
+                    contact_symlink = contacts_dir / selected_person_file
+
+                    if contact_symlink.exists():
+                        console.print(f"[bold yellow]Contact ''{selected_person_file}'' already exists. Press any key to continue.[/bold yellow]")
+                    else:
+                        os.symlink(person_path, contact_symlink)
+                        console.print(f"[bold green]Contact ''{selected_person_file}'' added. Press any key to continue.[/bold green]")
+                else:
+                    console.print("[bold yellow]No person selected. Press any key to continue.[/bold yellow]")
+
+            except subprocess.CalledProcessError:
+                console.print("[bold yellow]Contact selection cancelled. Press any key to continue.[/bold yellow]")
+            except Exception as e:
+                console.print(f"[bold red]Error adding contact: {e}. Press any key to continue.[/bold red]")
+            _getch()
+        elif char == 't':
+            console.print("\n[bold green]Add a new tag...[/bold green]")
+            new_tag = typer.prompt("Enter tag to add")
+            if new_tag:
+                tags_path = selected_company_dir / "tags.lst"
+                try:
+                    with tags_path.open('a+') as f:
+                        f.seek(0)
+                        tags = f.read().splitlines()
+                        if new_tag not in tags:
+                            f.write(f"{new_tag}\n")
+                            console.print(f"[bold green]Tag ''{new_tag}'' added. Press any key to continue.[/bold green]")
+                        else:
+                            console.print(f"[bold yellow]Tag ''{new_tag}'' already exists. Press any key to continue.[/bold yellow]")
+                except Exception as e:
+                    console.print(f"[bold red]Error adding tag: {e}. Press any key to continue.[/bold red]")
+            else:
+                console.print("[bold yellow]No tag entered. Press any key to continue.[/bold yellow]")
+            _getch()
         elif char == 'q':
             console.print("[bold green]Exiting company context.[/bold green]")
             break

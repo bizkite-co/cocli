@@ -12,7 +12,9 @@ app = typer.Typer()
 console = Console()
 
 @app.command()
-def process_shopify_scrapes():
+def process_shopify_scrapes(
+    output_filename: str = typer.Option("index.csv", "--output", "-o", help="Output filename for the compiled data."),
+):
     """
     Compiles and deduplicates scraped Shopify data from multiple CSV files into a single index file.
     """
@@ -21,7 +23,7 @@ def process_shopify_scrapes():
         console.print(f"[bold red]Error:[/bold red] Directory not found: {shopify_csv_dir}")
         raise typer.Exit(code=1)
 
-    csv_files = [f for f in shopify_csv_dir.glob("*.csv") if f.name != 'index.csv']
+    csv_files = [f for f in shopify_csv_dir.glob("*.csv") if f.name != output_filename]
     if not csv_files:
         console.print("[bold yellow]Warning:[/bold yellow] No CSV files found to process.")
         raise typer.Exit()
@@ -43,35 +45,7 @@ def process_shopify_scrapes():
 
     compiled_df = pd.concat(all_data, ignore_index=True)
     compiled_df = compiled_df.drop_duplicates(subset=["domain"], keep="last")
-
-    companies_dir = get_companies_dir()
-    if not companies_dir.exists():
-        console.print(f"[bold red]Error:[/bold red] Companies directory not found: {companies_dir}")
-        raise typer.Exit(code=1)
-
-    # NOTE: This loads all companies into memory. For a very large number of
-    # companies, this could be memory-intensive. A future optimization could be
-    # to partition the data (e.g., by first letter of the domain) or use a
-    # lightweight database for lookups.
-    companies_by_domain = {}
-    for company_dir in companies_dir.iterdir():
-        if company_dir.is_dir():
-            company = Company.from_directory(company_dir)
-            if company and company.domain:
-                companies_by_domain[company.domain] = (company, company_dir)
-
-    updated_companies = 0
-    for index, row in compiled_df.iterrows():
-        domain = row["domain"]
-        visits = row["visits_per_day"]
-
-        if domain in companies_by_domain:
-            company, company_dir = companies_by_domain[domain]
-            console.print(f"Updating {company.name} with {visits} visits per day.")
-            company.visits_per_day = int(str(visits).replace(',', ''))
-            create_company_files(company, company_dir)
-            updated_companies += 1
-        else:
-            console.print(f"[yellow]Warning:[/yellow] No company found with domain: {domain}")
-
-    console.print(f"Successfully updated {updated_companies} companies.")
+    
+    output_path = shopify_csv_dir / output_filename
+    compiled_df.to_csv(output_path, index=False)
+    console.print(f"Successfully compiled {len(compiled_df)} unique domains into {output_path}")
