@@ -34,3 +34,8 @@ list-packages: install ## List installed packages
 
 clean: ## Clean up virtual environment and uv.lock
 	rm -rf $(VENV_DIR) uv.lock
+
+.PHONY: install-global
+install-global: ## Install the latest version of the app using pipx
+	git pull
+	pipx install .
