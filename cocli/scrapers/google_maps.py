@@ -62,11 +62,16 @@ def scrape_google_maps(
     formatted_search_string = search_string.replace(" ", "+")
     url = f"{base_url}{formatted_search_string}/@{latitude},{longitude},15z/data=!3m2!1e3!4b1?entry=ttu"
 
-    location_display = location_param.get("zip_code") or location_param.get("city")
-    search_slug = re.sub(r'[^a-zA-Z0-9_]', '-', search_string.lower())
-    timestamp = datetime.now().strftime('%Y%m%d%H%M%S')
-    output_filename = f"{timestamp}-{location_display.replace(', ', '-')}-{search_slug}.csv"
+    output_filename = "prospects.csv"
     output_filepath = output_dir / output_filename
+
+    processed_urls = set()
+    if output_filepath.exists():
+        with open(output_filepath, "r", newline="", encoding="utf-8") as csvfile:
+            reader = csv.DictReader(csvfile)
+            for row in reader:
+                if row.get("GMB_URL"):
+                    processed_urls.add(row["GMB_URL"])
 
     with sync_playwright() as p:
         browser = p.chromium.launch(headless=True)
@@ -77,9 +82,10 @@ def scrape_google_maps(
             page.wait_for_timeout(5000) # Wait for dynamic content to load
             print("Navigated to Google Maps URL.")
 
-            with open(output_filepath, "w", newline="", encoding="utf-8") as csvfile:
+            with open(output_filepath, "a", newline="", encoding="utf-8") as csvfile:
                 writer = csv.DictWriter(csvfile, fieldnames=LEAD_SNIPER_HEADERS)
-                writer.writeheader()
+                if not output_filepath.exists() or output_filepath.stat().st_size == 0:
+                    writer.writeheader()
 
                 # Find the scrollable element (usually the results pane)
                 # The main scrollable results pane often has role="feed" or a specific data-attribute
@@ -87,6 +93,8 @@ def scrape_google_maps(
                 page.wait_for_selector(scrollable_div_selector)
                 scrollable_div = page.locator(scrollable_div_selector)
 
+                scraped_count = 0
+                last_scroll_height = -1
                 while scraped_count < max_results:
                     listing_divs = scrollable_div.locator("> div").all()
                     print(f"Found {len(listing_divs)} listing divs.")
@@ -116,19 +124,20 @@ def scrape_google_maps(
 
                         gmb_url = business_data.get("GMB_URL")
 
-                        if gmb_url:
-                            gmb_page = browser.new_page()
-                            gmb_page.goto(gmb_url)
-                            gmb_html = gmb_page.content()
-                            gmb_data = parse_gmb_page(gmb_html)
-                            business_data.update(gmb_data)
-                            gmb_page.close()
+                        if gmb_url and gmb_url not in processed_urls:
+                            if not business_data.get("Website") or not business_data.get("Full_Address"):
+                                gmb_page = browser.new_page()
+                                gmb_page.goto(gmb_url)
+                                gmb_html = gmb_page.content()
+                                gmb_data = parse_gmb_page(gmb_html)
+                                business_data.update(gmb_data)
+                                gmb_page.close()
 
-                        if gmb_url and gmb_url not in processed_urls and business_data.get("Name"):
-                            writer.writerow(business_data)
-                            processed_urls.add(gmb_url)
-                            scraped_count += 1
-                            print(f"Scraped: {business_data.get('Name')} ({scraped_count}/{max_results})")
+                            if business_data.get("Name"):
+                                writer.writerow(business_data)
+                                processed_urls.add(gmb_url)
+                                scraped_count += 1
+                                print(f"Scraped: {business_data.get('Name')} ({scraped_count}/{max_results})")
 
                         if scraped_count >= max_results:
                             break
@@ -143,7 +152,6 @@ def scrape_google_maps(
 
                     scrollable_div.evaluate("element => element.scrollTop = element.scrollHeight")
                     page.wait_for_timeout(delay_seconds * 1000)
-                    pages_scraped += 1
                     last_scroll_height = current_scroll_height
 
                 print(f"CSV file created at: {output_filepath}")
