@@ -21,7 +21,7 @@
 
 `import <format> <filepath>`
 :   Imports companies from a specified file using the given format.
-    Example: `cocli import lead-sniper ./leads.csv`
+    Example: `cocli import google-maps ./leads.csv`
 
 `help`
 :   Displays this help message.

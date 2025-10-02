@@ -35,7 +35,6 @@ LEAD_SNIPER_HEADERS = [
     "Claimed_google_my_business",
     "Reviews_count",
     "Average_rating",
-    "Business_Status",
     "Hours",
     "Saturday",
     "Sunday",
@@ -60,6 +59,9 @@ LEAD_SNIPER_HEADERS = [
     "Facebook_URL",
     "Linkedin_URL",
     "Instagram_URL",
+    "Thumbnail_URL",
+    "Reviews",
+    "Quotes",
     "Meta_Description",
     "Meta_Keywords",
     "Uuid",
@@ -105,11 +107,12 @@ def parse_business_listing_html(
     category_data = extract_categories(soup, inner_text, debug)
     data.update(category_data)
 
-    status_hours_data = extract_business_status_hours(soup, inner_text, debug)
-    data.update(status_hours_data)
-
     gmb_data = extract_gmb_url_coordinates_place_id(soup, debug)
     data.update(gmb_data)
+
+    # Extract quotes
+    quotes = re.findall(r'"(.*?)"', inner_text)
+    data["Quotes"] = "\n".join(quotes)
 
     if debug: print(f"Debug: Final extracted data: {data}")
     return data

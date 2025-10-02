@@ -15,3 +15,4 @@ class Website(BaseModel):
     description: Optional[str] = None
     about_us_url: Optional[str] = None
     contact_url: Optional[str] = None
+    services: List[str] = []

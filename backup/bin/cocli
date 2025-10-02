@@ -29,7 +29,7 @@ case "$COMMAND" in
         "$BASE_DIR/lib/add" "$@"
         ;;
     import)
-        # The second argument is the format name (e.g., 'lead-sniper')
+        # The second argument is the format name (e.g., 'google-maps')
         format="$1"
         # The third argument is the filepath
         filepath="$2"

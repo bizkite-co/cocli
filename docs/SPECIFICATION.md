@@ -49,7 +49,7 @@ name: Premiere Auto Credit
 domain: premierautocredit.com
 type: Client
 tags:
-- lead-sniper-import
+- google-maps-import
 - finance
 ---
 
@@ -101,7 +101,7 @@ Performs a bulk import of companies from a structured file.
 **Syntax:**
 `cocli import <format> <filepath>`
 
--   **`<format>`**: The name of the importer script to use (e.g., `lead-sniper`).
+-   **`<format>`**: The name of the importer script to use (e.g., `google-maps`).
 -   **`<filepath>`**: The path to the source file.
 
 ### `cocli find`
@@ -127,7 +127,7 @@ Displays the command help screen.
 1.  You receive a new CSV from Lead Sniper named `new-leads.csv`.
 2.  Run the importer:
     ```bash
-    cocli import lead-sniper ./new-leads.csv
+    cocli import google-maps ./new-leads.csv
     ```
 3.  `cocli` will parse the file, create a new directory for each company, populate their `_index.md` with YAML frontmatter, and add a `tags.lst` file.
 

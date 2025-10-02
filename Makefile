@@ -39,3 +39,19 @@ clean: ## Clean up virtual environment and uv.lock
 install-global: ## Install the latest version of the app using pipx
 	git pull
 	pipx install .
+
+.PHONY: import-turboship
+import-turboship: install ## Import turboship customers
+	$(VENV_DIR)/bin/cocli import-turboship /home/mstouffer/.local/share/cocli_data/scraped_data/turboship/customers/customers.csv /home/mstouffer/.local/share/cocli_data/scraped_data/turboship/customers/customer_addresses.csv
+
+.PHONY: render-kml
+render-kml: install ## Render KML for turboship campaign
+	$(VENV_DIR)/bin/cocli render kml turboship
+
+.PHONY: scrape-prospects
+scrape-prospects: install ## Scrape prospects for turboship campaign
+	$(VENV_DIR)/bin/cocli campaign scrape-prospects turboship
+
+.PHONY: deduplicate-prospects
+deduplicate-prospects: install ## Deduplicate prospects for turboship campaign
+	$(VENV_DIR)/bin/cocli deduplicate prospects turboship

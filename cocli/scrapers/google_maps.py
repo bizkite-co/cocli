@@ -11,13 +11,14 @@ from ..core.config import get_scraped_data_dir # Import the new function
 from ..core.geocoding import get_coordinates_from_zip
 from ..core.geocoding import get_coordinates_from_city_state # Import the geocoding function
 from .google_maps_parser import parse_business_listing_html, LEAD_SNIPER_HEADERS # Import the new parser and headers
+from .google_maps_gmb_parser import parse_gmb_page
 
 
 def scrape_google_maps(
     location_param: Dict[str, str], # Accepts either {"zip_code": "..."} or {"city": "..."}
     search_string: str,
     output_dir: Path = get_scraped_data_dir(),  # Default to scraped data directory
-    max_results: int = 200,  # Increased max_results to allow more scraping
+    max_results: int = 30,  # Increased max_results to allow more scraping
     debug: bool = False, # Added debug parameter
 ) -> Path:
     """
@@ -62,16 +63,9 @@ def scrape_google_maps(
     url = f"{base_url}{formatted_search_string}/@{latitude},{longitude},15z/data=!3m2!1e3!4b1?entry=ttu"
 
     location_display = location_param.get("zip_code") or location_param.get("city")
-    print(
-        f"Starting Google Maps scraping for search: '{search_string}' in location: {location_display}"
-    )
-    print(f"Generated URL: {url}")
-    print(f"Using delay: {delay_seconds} seconds, Max pages: {max_pages_to_scrape}")
-
-    # Ensure output directory exists
-    output_dir.mkdir(parents=True, exist_ok=True)
-
-    output_filename = f"lead-sniper-{re.sub(r'[^a-zA-Z0-9_]', '-', search_string.lower())}-{datetime.now().strftime('%Y%m%d%H%M%S')}.csv"
+    search_slug = re.sub(r'[^a-zA-Z0-9_]', '-', search_string.lower())
+    timestamp = datetime.now().strftime('%Y%m%d%H%M%S')
+    output_filename = f"{timestamp}-{location_display.replace(', ', '-')}-{search_slug}.csv"
     output_filepath = output_dir / output_filename
 
     with sync_playwright() as p:
@@ -80,6 +74,7 @@ def scrape_google_maps(
 
         try:
             page.goto(url, wait_until="domcontentloaded")
+            page.wait_for_timeout(5000) # Wait for dynamic content to load
             print("Navigated to Google Maps URL.")
 
             with open(output_filepath, "w", newline="", encoding="utf-8") as csvfile:
@@ -92,77 +87,64 @@ def scrape_google_maps(
                 page.wait_for_selector(scrollable_div_selector)
                 scrollable_div = page.locator(scrollable_div_selector)
 
-                scraped_count = 0
-                pages_scraped = 0
-                processed_urls = (
-                    set()
-                )  # To keep track of unique businesses by their GMB URL
+                while scraped_count < max_results:
+                    listing_divs = scrollable_div.locator("> div").all()
+                    print(f"Found {len(listing_divs)} listing divs.")
 
-                # Use a loop to scroll and extract until max_results or no new content
-                last_scroll_height = -1
-                while (
-                    scraped_count < max_results and pages_scraped < max_pages_to_scrape
-                ):
-                    # Scroll to the bottom of the scrollable div
-                    current_scroll_height = scrollable_div.evaluate(
-                        "element => element.scrollHeight"
-                    )
-                    if current_scroll_height == last_scroll_height:
-                        print(
-                            "Reached end of scrollable content or no new results loaded."
-                        )
-                        break  # No new content loaded, stop scrolling
+                    if not listing_divs:
+                        print("No listing divs found. Exiting.")
+                        return
 
-                    scrollable_div.evaluate(
-                        "element => element.scrollTop = element.scrollHeight"
-                    )
-                    page.wait_for_timeout(
-                        delay_seconds * 1000
-                    )  # Wait for content to load after scroll
-                    pages_scraped += 1
-
-                    last_scroll_height = current_scroll_height
-
-                    # Get all top-level div elements within the scrollable feed
-                    # These are the potential business listings
-                    listing_divs = scrollable_div.locator("div > div").all() # Adjust selector if needed
-
-                    new_data_found_in_iteration = False
-                    for listing_div in listing_divs:
-                        # Check if the div contains content indicative of a business listing
-                        # This is a heuristic and might need refinement
+                    for i, listing_div in enumerate(listing_divs):
                         inner_text = listing_div.inner_text()
-                        if any(keyword in inner_text for keyword in [search_string, "reviews", "stars", "address", "phone", "website"]):
-                            html_content = listing_div.inner_html()
-                            business_data = parse_business_listing_html( # Use the new parser function
-                                html_content,
-                                search_string,  # Pass search_string as keyword
-                                debug=debug # Pass the debug flag
-                            )
+                        print(f"-- Listing {i} --\n{inner_text[:200]}\n-----------------")
+                        if not inner_text.strip():
+                            continue
 
-                            # Extract GMB URL from the business_data, as it's now extracted within _extract_business_data
-                            gmb_url = business_data.get("GMB_URL")
+                        html_content = listing_div.inner_html()
+                        business_data = parse_business_listing_html(
+                            html_content,
+                            search_string,
+                            debug=debug
+                        )
 
-                            if gmb_url and gmb_url not in processed_urls and business_data.get("Name"):  # Only write if a name was extracted and URL is unique
-                                writer.writerow(business_data)
-                                processed_urls.add(gmb_url)
-                                scraped_count += 1
-                                new_data_found_in_iteration = True
-                                print(
-                                    f"Scraped: {business_data.get('Name')} ({scraped_count}/{max_results})"
-                                )
+                        # Filter out stores
+                        if "store" in business_data.get("Name", "").lower() or \
+                           "store" in business_data.get("First_category", "").lower():
+                            print(f"Skipping store: {business_data.get('Name')}")
+                            continue
 
-                            if scraped_count >= max_results:
-                                break  # Break from inner loop if max results reached
+                        gmb_url = business_data.get("GMB_URL")
+
+                        if gmb_url:
+                            gmb_page = browser.new_page()
+                            gmb_page.goto(gmb_url)
+                            gmb_html = gmb_page.content()
+                            gmb_data = parse_gmb_page(gmb_html)
+                            business_data.update(gmb_data)
+                            gmb_page.close()
+
+                        if gmb_url and gmb_url not in processed_urls and business_data.get("Name"):
+                            writer.writerow(business_data)
+                            processed_urls.add(gmb_url)
+                            scraped_count += 1
+                            print(f"Scraped: {business_data.get('Name')} ({scraped_count}/{max_results})")
+
+                        if scraped_count >= max_results:
+                            break
 
                     if scraped_count >= max_results:
-                        break  # Break from outer loop if max results reached
-
-                    if not new_data_found_in_iteration and scraped_count > 0:
-                        print(
-                            "No new unique data found in this scroll iteration. Stopping."
-                        )
                         break
+
+                    current_scroll_height = scrollable_div.evaluate("element => element.scrollHeight")
+                    if current_scroll_height == last_scroll_height:
+                        print("Reached end of scrollable content or no new results loaded.")
+                        break
+
+                    scrollable_div.evaluate("element => element.scrollTop = element.scrollHeight")
+                    page.wait_for_timeout(delay_seconds * 1000)
+                    pages_scraped += 1
+                    last_scroll_height = current_scroll_height
 
                 print(f"CSV file created at: {output_filepath}")
 

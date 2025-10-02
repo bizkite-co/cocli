@@ -16,6 +16,7 @@ console = Console()
 @app.command()
 def enrich_shopify_data(
     input_filename: str = typer.Option("index.csv", "--input", "-i", help="Input CSV file with domains to enrich."),
+    force: bool = typer.Option(False, "--force", "-f", help="Force enrichment of all companies, even if they already exist."),
     headed: bool = typer.Option(False, "--headed", help="Run the browser in headed mode."),
     devtools: bool = typer.Option(False, "--devtools", help="Open browser with devtools open."),
     debug: bool = typer.Option(False, "--debug", help="Enable debug mode with breakpoints."),
@@ -45,6 +46,11 @@ def enrich_shopify_data(
 
         company_name = domain.split('.')[0].replace('-', ' ').title()
         company_slug = slugify(company_name)
+
+        company_dir = companies_dir / company_slug
+        if company_dir.exists() and not force:
+            console.print(f"Skipping existing company: {company_name}")
+            continue
         
         company = Company(name=company_name, slug=company_slug, domain=domain, visits_per_day=visits)
         

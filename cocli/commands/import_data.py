@@ -2,7 +2,7 @@ import typer
 from pathlib import Path
 from typing import Any, Optional # Import Optional
 
-from ..importers import lead_sniper # Import specific importer
+from ..importers import google_maps # Import specific importer
 from ..core.config import get_scraped_data_dir # Import get_scraped_data_dir
 
 app = typer.Typer()
@@ -57,8 +57,8 @@ def import_data(
     try:
         # Using getattr to fetch the function from the imported module
         # For now, we only have lead_sniper, but this makes it extensible
-        if importer_name == "lead-sniper":
-            importer_func = lead_sniper.lead_sniper
+        if importer_name == "google-maps":
+            importer_func = google_maps.google_maps
         else:
             print(f"Error: Importer '{importer_name}' not found.")
             raise typer.Exit(code=1)

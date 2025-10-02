@@ -99,15 +99,22 @@ def create_company_files(company: Company, company_dir: Path) -> Path:
 
     return company_dir
 
-def create_person_files(person_name: str, person_dir: Path, company_name: str) -> Path:
+def create_person_files(person: Person, person_dir: Path) -> Path:
     """
     Creates the markdown file for a new person.
     """
     person_dir.mkdir(parents=True, exist_ok=True)
-    person_file = person_dir / f"{slugify(person_name)}.md"
-    if not person_file.exists():
-        content = f"# {person_name}\n\n- **Company:** {company_name}\n"
-        person_file.write_text(content)
+    person_file = person_dir / f"{slugify(person.name)}.md"
+
+    person_data = person.model_dump(exclude_none=True)
+    frontmatter = yaml.dump(person_data, sort_keys=False, default_flow_style=False, allow_unicode=True)
+
+    content = f"""---
+{frontmatter}---
+
+# {person.name}
+"""
+    person_file.write_text(content)
     return person_file
 
 def _format_entity_for_fzf(entity_type: str, entity: Any) -> str:

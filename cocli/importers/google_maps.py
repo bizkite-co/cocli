@@ -18,14 +18,14 @@ def _safe_float(value: str) -> Optional[float]:
     except ValueError:
         return None
 
-def lead_sniper(filepath: Path, debug: bool = False): # Added debug parameter
+def google_maps(filepath: Path, debug: bool = False): # Added debug parameter
     """
-    Importer for Lead Sniper CSV files.
+    Importer for Google Maps CSV files.
 
     Parses the CSV, creates Company objects, and uses the core logic
     to create the company files and directories.
     """
-    print(f"Starting Lead Sniper import from '{filepath}'...")
+    print(f"Starting Google Maps import from '{filepath}'...")
 
     try:
         with filepath.open(mode='r', encoding='utf-8') as f:
@@ -49,7 +49,7 @@ def lead_sniper(filepath: Path, debug: bool = False): # Added debug parameter
                     "name": row.get("Name"),
                     "domain": row.get("Domain"),
                     "type": "Lead",  # Set the type for this import
-                    "tags": ["lead-sniper-import", row.get("Keyword")] if row.get("Keyword") else ["lead-sniper-import"],
+                    "tags": ["google-maps-import", row.get("Keyword")] if row.get("Keyword") else ["google-maps-import"],
 
                     "id": row.get("id"), # Added
                     "keyword": row.get("Keyword"), # Added

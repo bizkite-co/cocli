@@ -6,7 +6,7 @@ This document outlines the detailed plan to enhance the `cocli` Python applicati
 
 The primary goal is to ensure the `importer` command extracts *all* comprehensive and useful information from CSV files and correctly updates existing records, with proper YAML frontmatter and tag handling.
 
-1.  **Deep Dive into Data Mapping**: Re-verified `cocli/importers.py` and `cocli/core.py` against `temp/lead-sniper-photography-studio-20250811.csv` to ensure *all* useful columns are mapped and correctly stored in the `Company` model. Removed the `id` field. (Completed)
+1.  **Deep Dive into Data Mapping**: Re-verified `cocli/importers.py` and `cocli/core.py` against a sample CSV to ensure *all* useful columns are mapped and correctly stored in the `Company` model. Removed the `id` field. (Completed)
 2.  **Test Data Completeness**: Ran the importer and manually inspected a company's `_index.md` to confirm all expected data is present and correctly formatted. (Completed)
 
 ## Phase 2: Enhance `find` Command (Continued)

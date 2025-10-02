@@ -55,7 +55,7 @@ def test_scrape_google_maps_functionality(mock_get_coordinates, mock_playwright,
     assert expected_url_part in mock_page.goto.call_args[0][0]
 
     # Verify CSV file was created
-    csv_files = list(temp_output_dir.glob("lead-sniper-photography-studio-*.csv"))
+    csv_files = list(temp_output_dir.glob("*-photography-studio-*.csv"))
     assert len(csv_files) == 1
     output_csv_path = csv_files[0]
     assert output_csv_path.exists()

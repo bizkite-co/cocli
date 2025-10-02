@@ -5,7 +5,7 @@ The `lead-scrape` command will:
 1.  Take a search query and location parameters (city/zip).
 2.  Call the `scrape-google-maps` function to generate a CSV file in the `scraped_data` directory.
 3.  Automatically take the newly generated CSV file.
-4.  Call the `import-data` function with the `lead-sniper` importer and the path to the scraped CSV file.
+4.  Call the `import-data` function with the `google-maps` importer and the path to the scraped CSV file.
 5.  Optionally, clean up the scraped CSV file after successful import.
 
 **Detailed Steps:**
@@ -28,7 +28,7 @@ The `lead-scrape` command will:
 
 4.  **Integrate `import-data` logic**:
     *   Import `import_data` from `cocli/commands/import_data.py`.
-    *   Call `import_data` from within `lead_scrape`, passing `importer_name="lead-sniper"`, the `file_path` returned by `scrape_google_maps`, and the `debug` flag.
+    *   Call `import_data` from within `lead_scrape`, passing `importer_name="google-maps"`, the `file_path` returned by `scrape_google_maps`, and the `debug` flag.
 
 5.  **Implement cleanup logic**:
     *   If `cleanup` is `True` and the import is successful, delete the scraped CSV file.
@@ -52,7 +52,7 @@ graph TD
     C -- Valid --> D[Call scrape_google_maps]
     D --> E[Generate CSV in scraped_data/]
     E -- Returns CSV Path --> F[Call import_data]
-    F --> G[Import data using lead-sniper]
+    F --> G[Import data using google-maps]
     G -- Successful --> H{Cleanup CSV?}
     H -- Yes --> I[Delete CSV]
     H -- No --> J[Finish]

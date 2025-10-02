@@ -38,7 +38,7 @@ def test_lead_scrape_success(mock_scrape_and_import):
         debug=False,
     )
     mock_import.assert_called_once_with(
-        importer_name="lead-sniper",
+        importer_name="google-maps",
         file_path=Path("/tmp/test_scraped_data.csv"),
         debug=False,
     )

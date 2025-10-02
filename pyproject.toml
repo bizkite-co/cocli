@@ -19,6 +19,8 @@ dependencies = [
     "openpyxl", # Backend for pandas to read XLSX
     "tomli", # For parsing TOML files
     "tomli_w", # For writing TOML files
+    "simplekml",
+    "toml",
 ]
 
 [project.scripts]

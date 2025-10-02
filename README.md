@@ -59,10 +59,10 @@ uv run cocli --help
 For debugging with VS Code, use the provided `launch.json` configurations. For example, to debug the import command, you can use the "Python: cocli import-data Debug" configuration.
 
 ### Importing Data
-Import company data from CSV files using the `importer` command. The `lead-sniper` format is currently supported.
+Import company data from CSV files using the `importer` command. The `google-maps` format is currently supported.
 
 ```bash
-uv run cocli importer lead-sniper /path/to/your/file.csv
+uv run cocli importer google-maps /path/to/your/file.csv
 ```
 This command will create new company directories and files, or update existing ones with richer data from the CSV.
 
@@ -75,7 +75,7 @@ uv run cocli lead-scrape "photography studio" --city "Brea,CA"
 This command will:
 1. Scrape Google Maps for "photography studio" in "Brea,CA".
 2. Save the results to a CSV file in the `scraped_data` directory.
-3. Import the data from the CSV file into your company database using the `lead-sniper` importer.
+3. Import the data from the CSV file into your company database using the `google-maps` importer.
 4. Create new company directories and files, or update existing ones with richer data.
 
 You can also use the `--zip` option instead of `--city`, and add `--cleanup` to delete the scraped CSV file after a successful import.
