@@ -113,6 +113,22 @@ cocli/
 *   **Type Hinting and Docstrings**: Continue the excellent practice of using type hints and ensure all new functions, classes, and modules have clear docstrings.
 *   **Configuration Management**: Centralize configuration loading in `cocli/core/config.py` to ensure consistent access to settings across the application.
 
+## Symlinking Policy for Data Relationships
+
+To enhance navigability and maintain clear relationships between `Company` and `Person` entities, `cocli` employs a symlinking policy:
+
+1.  **Company-to-Person Symlinks**: When a `Person` is associated with a `Company`, a symbolic link to the person's data directory is created within the company's `contacts/` subdirectory.
+    *   **Path**: `<cocli_data_home>/companies/<company-slug>/contacts/<person-slug>`
+    *   **Target**: `<cocli_data_home>/people/<person-slug>`
+    *   **Purpose**: Provides a direct way to view all individuals associated with a specific company.
+
+2.  **Person-to-Company Symlinks**: Conversely, a symbolic link to the associated `Company`'s data directory is created within the person's `companies/` subdirectory.
+    *   **Path**: `<cocli_data_home>/people/<person-slug>/companies/<company-slug>`
+    *   **Target**: `<cocli_data_home>/companies/<company-slug>`
+    *   **Purpose**: Allows quick navigation from a person's record to their employer's details.
+
+These symlinks are automatically created and managed by the `create_person_files` utility function during the import or creation of person records.
+
 ## Mermaid Diagram for Proposed Structure:
 
 ```mermaid

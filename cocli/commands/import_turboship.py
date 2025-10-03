@@ -2,11 +2,13 @@ import typer
 import pandas as pd
 from pathlib import Path
 import re
+import yaml
 
 from ..core.config import get_companies_dir, get_people_dir
 from ..core.utils import slugify, create_company_files, create_person_files
 from ..models.person import Person
 from ..models.company import Company
+from ..models.shopify import ShopifyData
 
 app = typer.Typer()
 
@@ -67,7 +69,12 @@ def import_turboship(
             name=name,
             email=email,
             phone=row['phone'] if not pd.isna(row['phone']) else None,
-            tags=["turboship"]
+            tags=["turboship", "customer"],
+            full_address=row['address'] if not pd.isna(row['address']) else None,
+            city=row['city'] if not pd.isna(row['city']) else None,
+            state=row['state'] if not pd.isna(row['state']) else None,
+            zip_code=row['zip'] if not pd.isna(row['zip']) else None,
+            country=row['country'] if not pd.isna(row['country']) else None,
         )
 
         company_name_from_address = row['company_name'] if not pd.isna(row['company_name']) else None
@@ -87,12 +94,7 @@ def import_turboship(
             company = Company(
                 name=company_name.replace("-", " ").title(),
                 domain=website,
-                tags=["turboship"],
-                full_address=row['address'] if not pd.isna(row['address']) else None,
-                city=row['city'] if not pd.isna(row['city']) else None,
-                state=row['state'] if not pd.isna(row['state']) else None,
-                zip_code=row['zip'] if not pd.isna(row['zip']) else None,
-                country=row['country'] if not pd.isna(row['country']) else None,
+                tags=["turboship", "customer"],
                 phone_1=row['phone'] if not pd.isna(row['phone']) else None,
             )
             company_dir = get_companies_dir() / slugify(company.name)
@@ -102,5 +104,30 @@ def import_turboship(
         people_dir = get_people_dir()
         person_dir = people_dir / slugify(person.name)
         create_person_files(person, person_dir)
+
+        # Create ShopifyData object and save to enrichments
+        shopify_data = ShopifyData(
+            id=str(row['id']),
+            first_name=first_name,
+            last_name=last_name,
+            email=email,
+            phone=row['phone'] if not pd.isna(row['phone']) else None,
+            tags=person.tags, # Use the merged tags from the person object
+            company_name=company_name,
+            address=row['address'] if not pd.isna(row['address']) else None,
+            city=row['city'] if not pd.isna(row['city']) else None,
+            state=row['state'] if not pd.isna(row['state']) else None,
+            zip=row['zip'] if not pd.isna(row['zip']) else None,
+            country=row['country'] if not pd.isna(row['country']) else None,
+            address_phone=row['address_phone'] if not pd.isna(row['address_phone']) else None,
+        )
+
+        person_enrichment_dir = person_dir / "enrichments"
+        person_enrichment_dir.mkdir(exist_ok=True)
+        shopify_md_path = person_enrichment_dir / "shopify.md"
+        with open(shopify_md_path, "w") as f_md:
+            f_md.write("---")
+            yaml.dump(shopify_data.model_dump(exclude_none=True), f_md, sort_keys=False, default_flow_style=False, allow_unicode=True)
+            f_md.write("---")
 
         print(f"Imported {person.name}")

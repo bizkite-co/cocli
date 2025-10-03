@@ -55,3 +55,17 @@ scrape-prospects: install ## Scrape prospects for turboship campaign
 .PHONY: deduplicate-prospects
 deduplicate-prospects: install ## Deduplicate prospects for turboship campaign
 	$(VENV_DIR)/bin/cocli deduplicate prospects turboship
+
+.PHONY: enrich-prospects
+enrich-prospects: install ## Enrich prospects for turboship campaign
+	$(VENV_DIR)/bin/cocli enrich-websites cocli_data/scraped_data/turboship/prospects/prospects.csv
+
+.PHONY: enrich-customers
+enrich-customers: install ## Enrich customers for turboship campaign with Google Maps data
+	$(VENV_DIR)/bin/cocli enrich-customers turboship
+
+.PHONY: prospects-with-emails
+prospects-with-emails:
+	rg '[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}' \
+		cocli_data/scraped_data/turboship/prospects/prospects.csv >> \
+		cocli_data/scraped_data/turboship/prospects/prospects_with_emails.csv

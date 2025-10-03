@@ -1,4 +1,3 @@
-
 import requests
 import time
 from typing import Optional, Dict, Any
@@ -82,4 +81,44 @@ def get_coordinates_from_city_state(city_state: str) -> Optional[Dict[str, float
                 return None
         except ValueError:
             print(f"Could not parse coordinates for city/state {city_state}.")
+            return None
+
+def get_coordinates_from_address(address: str) -> Optional[Dict[str, float]]:
+    """
+    Retrieves latitude and longitude for a given address using Nominatim (OpenStreetMap).
+    """
+    NOMINATIM_URL = "https://nominatim.openstreetmap.org/search"
+    params = {
+        "q": address,
+        "format": "json",
+        "addressdetails": 1,
+        "limit": 1,
+    }
+    headers = {
+        "User-Agent": "CompanyCLI/1.0 (https://github.com/yourusername/company-cli)"
+    }
+
+    for i in range(3):
+        try:
+            response = requests.get(NOMINATIM_URL, params=params, headers=headers)
+            response.raise_for_status() # Raise an exception for HTTP errors
+            data = response.json()
+
+            if data:
+                result = data[0]
+                latitude = float(result["lat"])
+                longitude = float(result["lon"])
+                return {"latitude": latitude, "longitude": longitude}
+            else:
+                print(f"No coordinates found for address {address} using Nominatim.")
+                return None
+        except requests.exceptions.RequestException as e:
+            print(f"Error during Nominatim API request for address {address}: {e}")
+            if i < 2:
+                print("Retrying in 5 seconds...")
+                time.sleep(5)
+            else:
+                return None
+        except ValueError:
+            print(f"Could not parse coordinates for address {address}.")
             return None

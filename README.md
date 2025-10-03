@@ -201,3 +201,4 @@ export COCLI_DATA_HOME="/path/to/your/custom/cocli_data"
 *   [Current Task Breakdown](task.md)
 *   [Session Summary: Initial Setup & CRM Development](docs/chats/20250813-150830-session-summary.md)
 *   [Full Command Help](HELP.md) (Run `uv run cocli help` for the most up-to-date command list)
+*   [Enrichment Policy: Source Monitoring](docs/enrichment_policy.md)

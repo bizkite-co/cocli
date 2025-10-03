@@ -105,7 +105,7 @@ def scrape_google_maps(
 
                     for i, listing_div in enumerate(listing_divs):
                         inner_text = listing_div.inner_text()
-                        print(f"-- Listing {i} --\n{inner_text[:200]}\n-----------------")
+                        # print(f"-- Listing {i} --\n{inner_text[:200]}\n-----------------")
                         if not inner_text.strip():
                             continue
 

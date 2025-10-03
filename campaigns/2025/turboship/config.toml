@@ -7,5 +7,12 @@ email = "admin@turboheatweldingtools.com"
 one_password_path = "op://TurboHeatWelding/GMail_TurboHeatWeldingTools/password"
 
 [prospecting]
-locations = ["Albuquerque, NM", "Las Vegas, NV", "Reno, NV", "Oxnard, CA", "Bakersfield, CA", "Santa Barbara, CA", "San Luis Obispo, CA", "Santa Cruz, CA"]
+locations = [
+    "Reno, NV",
+    "Oxnard, CA",
+    "Bakersfield, CA",
+    "Santa Barbara, CA",
+    "San Luis Obispo, CA",
+    "Santa Cruz, CA"
+    ]
 queries = ["commercial vinyl flooring contractor", "rubber flooring contractor", "sports flooring contractor"]

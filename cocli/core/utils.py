@@ -101,21 +101,77 @@ def create_company_files(company: Company, company_dir: Path) -> Path:
 
 def create_person_files(person: Person, person_dir: Path) -> Path:
     """
-    Creates the markdown file for a new person.
+    Creates or updates the markdown file for a person, merging tags, and creates symlinks.
     """
     person_dir.mkdir(parents=True, exist_ok=True)
+    # Correctly slugify the name for the filename
     person_file = person_dir / f"{slugify(person.name)}.md"
 
-    person_data = person.model_dump(exclude_none=True)
-    frontmatter = yaml.dump(person_data, sort_keys=False, default_flow_style=False, allow_unicode=True)
+    existing_frontmatter_data = {}
+    markdown_content = f"\n# {person.name}\n"  # Default markdown content
 
-    content = f"""---
-{frontmatter}---
+    if person_file.exists():
+        content = person_file.read_text()
+        if content.startswith("---") and "---" in content[3:]:
+            frontmatter_str, md_content_part = content.split("---", 2)[1:]
+            try:
+                existing_frontmatter_data = yaml.safe_load(frontmatter_str) or {}
+                markdown_content = md_content_part  # Preserve existing markdown content
+            except yaml.YAMLError:
+                print(f"Warning: Could not parse YAML front matter in {person_file}. Overwriting with new data.")
+        else:
+            print(f"Warning: No valid YAML front matter found in {person_file}. Overwriting with new data.")
 
-# {person.name}
-"""
-    person_file.write_text(content)
+    # Prepare new data for YAML front matter
+    new_person_data_for_yaml = person.model_dump(exclude={'tags'})
+    new_person_data_for_yaml.pop("name", None)
+
+    # Merge existing data with new data
+    merged_data = existing_frontmatter_data.copy()
+    for key, new_value in new_person_data_for_yaml.items():
+        if new_value is not None and new_value != '':
+            merged_data[key] = new_value
+        elif key not in merged_data:
+            merged_data[key] = new_value
+
+    merged_data["name"] = person.name
+
+    # Merge tags
+    existing_tags = set(existing_frontmatter_data.get('tags', []))
+    merged_tags = sorted(list(existing_tags.union(set(person.tags))))
+    if merged_tags:
+        merged_data['tags'] = merged_tags
+
+    # Generate YAML front matter
+    frontmatter = yaml.dump(merged_data, sort_keys=False, default_flow_style=False, allow_unicode=True)
+
+    # Construct file content
+    index_content = f"---\n{frontmatter}---\n{markdown_content}"
+
+    person_file.write_text(index_content)
+
+    # --- Create Symlinks ---
+    if person.company_name:
+        company_slug = slugify(person.company_name)
+        company_dir = get_companies_dir() / company_slug
+
+        if company_dir.exists():
+            # Create Company-to-Person Symlink
+            company_contacts_dir = company_dir / "contacts"
+            company_contacts_dir.mkdir(exist_ok=True)
+            symlink_path_in_company = company_contacts_dir / person_dir.name
+            if not symlink_path_in_company.exists():
+                symlink_path_in_company.symlink_to(person_dir, target_is_directory=True)
+
+            # Create Person-to-Company Symlink
+            person_companies_dir = person_dir / "companies"
+            person_companies_dir.mkdir(exist_ok=True)
+            symlink_path_in_person = person_companies_dir / company_dir.name
+            if not symlink_path_in_person.exists():
+                symlink_path_in_person.symlink_to(company_dir, target_is_directory=True)
+
     return person_file
+
 
 def _format_entity_for_fzf(entity_type: str, entity: Any) -> str:
     """
@@ -151,7 +207,7 @@ def _get_all_searchable_items() -> List[tuple[str, Any]]:
     if people_dir.exists():
         for person_file in people_dir.iterdir():
             if person_file.is_file() and person_file.suffix == ".md":
-                person = Person.from_directory(person_file)
+                person = Person.from_file(person_file)
                 if person:
                     all_items.append(("person", person))
     return all_items

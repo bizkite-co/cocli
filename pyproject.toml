@@ -34,8 +34,8 @@ dev = [
     "behave",
 ]
 
-[tool.setuptools.packages]
-find = { include = ["cocli*"] }
+[tool.setuptools]
+packages = ["cocli"]
 
 [tool.uv]
 package = true

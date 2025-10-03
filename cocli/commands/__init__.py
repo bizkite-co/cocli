@@ -17,6 +17,8 @@ def register_commands(app: typer.Typer):
     from . import render
     from . import campaign
     from . import deduplicate
+    from . import enrich_websites
+    from . import enrich_customers
 
     app.command(name="add")(add.add)
     app.command(name="add-meeting")(add_meeting.add_meeting)
@@ -34,6 +36,8 @@ def register_commands(app: typer.Typer):
     app.command(name="scrape-shopify-myip")(scrape_shopify.scrape_shopify_myip)
     app.command(name="process-shopify-scrapes")(process_shopify_scrapes.process_shopify_scrapes)
     app.command(name="enrich-shopify-data")(enrich_shopify_data.enrich_shopify_data)
+    app.command(name="enrich-websites")(enrich_websites.enrich_websites)
+    app.command(name="enrich-customers")(enrich_customers.enrich_customers)
     app.command(name="compile-enrichment")(compile_enrichment.compile_enrichment)
     app.add_typer(render.app, name="render")
     app.add_typer(campaign.app, name="campaign")
