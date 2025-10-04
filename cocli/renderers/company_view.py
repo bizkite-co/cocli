@@ -36,19 +36,16 @@ def _render_company_details(frontmatter_data: dict, tags: List[str], content: st
     return Panel(Markdown(output), title="Company Details", border_style="green")
 
 def _render_contacts(contacts_dir: Path) -> Panel:
-    """Renders a list of contacts in two columns."""
+    """Renders a list of contacts."""
     if not contacts_dir.exists():
         return Panel("No contacts found.", title="Contacts", border_style="blue")
 
-    contacts = [f.name for f in contacts_dir.iterdir() if f.is_file()]
+    contacts = [f.name for f in contacts_dir.iterdir() if f.is_symlink()]
     if not contacts:
         return Panel("No contacts found.", title="Contacts", border_style="blue")
 
-    contact_renderables = [Text(contact) for contact in sorted(contacts)]
-    
-    # Use rich.Columns for a multi-column layout
-    columns = Columns(contact_renderables, equal=True, expand=True)
-    return Panel(columns, title="Contacts", border_style="blue")
+    contacts_text = "\n".join(sorted(contacts))
+    return Panel(contacts_text, title="Contacts", border_style="blue")
 
 
 def _render_meetings(meetings_dir: Path) -> Tuple[Panel, Dict[int, Path]]:
@@ -116,7 +113,7 @@ def _render_meetings(meetings_dir: Path) -> Tuple[Panel, Dict[int, Path]]:
 
 
 def display_company_view(console: Console, company_name: str, selected_company_dir: Path, frontmatter_data: dict):
-    console.clear() 
+    console.clear()
     
     index_path = selected_company_dir / "_index.md"
     tags_path = selected_company_dir / "tags.lst"
@@ -143,8 +140,8 @@ def display_company_view(console: Console, company_name: str, selected_company_d
     meetings_panel, meeting_map = _render_meetings(meetings_dir)
 
     # Display layout
-    console.print(details_panel)
-    console.print(contacts_panel)
+    top_columns = Columns([details_panel, contacts_panel], expand=True, equal=True)
+    console.print(top_columns)
     console.print(meetings_panel)
 
     return meeting_map

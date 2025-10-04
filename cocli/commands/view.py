@@ -149,13 +149,13 @@ def _interactive_view_company(company_name: str):
                 _getch()
                 continue
 
-            people_files = [f.name for f in people_dir.iterdir() if f.is_file() and f.suffix == '.md']
-            if not people_files:
+            people_names = [d.name for d in people_dir.iterdir() if d.is_dir()]
+            if not people_names:
                 console.print("[bold red]No people found in the people directory. Press any key to continue.[/bold red]")
                 _getch()
                 continue
 
-            fzf_input = "\n".join(people_files)
+            fzf_input = "\n".join(people_names)
             try:
                 process = subprocess.run(
                     ["fzf"],
@@ -164,19 +164,19 @@ def _interactive_view_company(company_name: str):
                     text=True,
                     check=True
                 )
-                selected_person_file = process.stdout.strip()
+                selected_person_name = process.stdout.strip()
 
-                if selected_person_file:
+                if selected_person_name:
                     contacts_dir = selected_company_dir / "contacts"
                     contacts_dir.mkdir(exist_ok=True)
-                    person_path = people_dir / selected_person_file
-                    contact_symlink = contacts_dir / selected_person_file
+                    person_path = people_dir / selected_person_name
+                    contact_symlink = contacts_dir / selected_person_name
 
                     if contact_symlink.exists():
-                        console.print(f"[bold yellow]Contact ''{selected_person_file}'' already exists. Press any key to continue.[/bold yellow]")
+                        console.print(f"[bold yellow]Contact ''{selected_person_name}'' already exists. Press any key to continue.[/bold yellow]")
                     else:
                         os.symlink(person_path, contact_symlink)
-                        console.print(f"[bold green]Contact ''{selected_person_file}'' added. Press any key to continue.[/bold green]")
+                        console.print(f"[bold green]Contact ''{selected_person_name}'' added. Press any key to continue.[/bold green]")
                 else:
                     console.print("[bold yellow]No person selected. Press any key to continue.[/bold yellow]")
 
