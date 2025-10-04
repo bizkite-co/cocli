@@ -66,6 +66,14 @@ enrich-prospects: install ## Enrich prospects for turboship campaign
 enrich-customers: install ## Enrich customers for turboship campaign with Google Maps data
 	$(VENV_DIR)/bin/cocli enrich-customers turboship
 
+.PHONY: import-prospects
+import-prospects: install ## Import prospects from the turboship campaign
+	$(VENV_DIR)/bin/cocli import-prospects /home/mstouffer/.local/share/cocli_data/scraped_data/turboship/prospects/prospects.csv --tag prospect --tag turboship
+
+.PHONY: render-prospects-kml
+render-prospects-kml: install ## Render KML for turboship prospects
+	$(VENV_DIR)/bin/cocli render-prospects-kml turboship
+
 .PHONY: prospects-with-emails
 prospects-with-emails:
 	rg '[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}' \

@@ -8,11 +8,7 @@ one_password_path = "op://TurboHeatWelding/GMail_TurboHeatWeldingTools/password"
 
 [prospecting]
 locations = [
-    "Reno, NV",
-    "Oxnard, CA",
-    "Bakersfield, CA",
-    "Santa Barbara, CA",
-    "San Luis Obispo, CA",
-    "Santa Cruz, CA"
+  "Memphis, Tn",
+  "Jackson, MS"
     ]
 queries = ["commercial vinyl flooring contractor", "rubber flooring contractor", "sports flooring contractor"]

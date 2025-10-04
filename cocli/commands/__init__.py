@@ -44,3 +44,9 @@ def register_commands(app: typer.Typer):
     app.add_typer(campaign.app, name="campaign")
     app.add_typer(deduplicate.app, name="deduplicate")
     app.add_typer(context.app, name="context")
+
+    from . import import_prospects
+    app.command(name="import-prospects")(import_prospects.import_prospects)
+
+    from . import render_prospects_kml
+    app.command(name="render-prospects-kml")(render_prospects_kml.render_prospects_kml)
