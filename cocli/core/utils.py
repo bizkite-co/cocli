@@ -188,29 +188,7 @@ def _format_entity_for_fzf(entity_type: str, entity: Any) -> str:
         return f"PERSON:{entity.name}:{entity.company_name if entity.company_name else ''}"
     return ""
 
-def _get_all_searchable_items() -> List[tuple[str, Any]]:
-    """
-    Gathers all companies and people for fuzzy searching.
-    Returns a list of tuples: [("company", Company_obj), ("person", Person_obj)].
-    """
-    all_items = []
-    companies_dir = get_companies_dir()
-    people_dir = get_people_dir()
 
-    if companies_dir.exists():
-        for company_dir in companies_dir.iterdir():
-            if company_dir.is_dir():
-                company = Company.from_directory(company_dir)
-                if company:
-                    all_items.append(("company", company))
-
-    if people_dir.exists():
-        for person_file in people_dir.iterdir():
-            if person_file.is_file() and person_file.suffix == ".md":
-                person = Person.from_file(person_file)
-                if person:
-                    all_items.append(("person", person))
-    return all_items
 
 def _getch():
     """

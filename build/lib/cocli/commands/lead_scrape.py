@@ -50,7 +50,7 @@ def lead_scrape(
         # Step 2: Import data
         typer.echo(f"Importing data from {scraped_csv_path}...")
         import_data(
-            importer_name="lead-sniper",
+            importer_name="google-maps",
             file_path=scraped_csv_path,
             debug=debug,
         )

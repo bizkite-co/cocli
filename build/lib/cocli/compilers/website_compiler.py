@@ -3,7 +3,7 @@ import yaml
 from rich.console import Console
 
 from .base import BaseCompiler
-from ..core.models import Company
+from ..models.company import Company
 from ..models.website import Website
 from ..core.utils import create_company_files
 

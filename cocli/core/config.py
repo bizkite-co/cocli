@@ -5,6 +5,7 @@ import platform
 import tomli
 import tomli_w
 from pydantic import BaseModel, Field
+from typing import Optional
 
 def get_cocli_base_dir() -> Path:
     """
@@ -91,6 +92,40 @@ def load_scraper_settings() -> ScraperSettings:
         print(f"Error loading config file {config_file}: {e}. Using default scraper settings.")
         return ScraperSettings()
 
+
+def get_config_path() -> Path:
+    config_dir = get_config_dir()
+    return config_dir / "cocli_config.toml"
+
+def load_config() -> dict:
+    config_file = get_config_path()
+    if not config_file.exists():
+        return {}
+    with config_file.open("rb") as f:
+        return tomli.load(f)
+
+def save_config(config_data: dict):
+    config_file = get_config_path()
+    config_file.parent.mkdir(parents=True, exist_ok=True)
+    with config_file.open("wb") as f:
+        tomli_w.dump(config_data, f)
+
+def get_context() -> Optional[str]:
+    config = load_config()
+    return config.get("context", {}).get("tag")
+
+def set_context(tag: Optional[str]):
+    config = load_config()
+    if "context" not in config:
+        config["context"] = {}
+    if tag:
+        config["context"]["tag"] = tag
+    else:
+        if "context" in config and "tag" in config["context"]:
+            del config["context"]["tag"]
+        if "context" in config and not config["context"]:
+            del config["context"]
+    save_config(config)
 
 def create_default_config_file():
     """

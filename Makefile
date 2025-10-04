@@ -7,7 +7,9 @@ help: ## Display this help screen
 # Application Tasks
 # ==============================================================================
 .PHONY: build
-build: ## Build the application WAR file
+build: install ## Build the application distributables (wheel and sdist)
+	@echo "Building the application..."
+	uv run python -m build
 
 SHELL := /bin/bash
 

@@ -19,7 +19,8 @@ import shutil
 from .core.config import get_companies_dir, get_people_dir
 
 from .core.utils import slugify, _format_entity_for_fzf, _get_all_searchable_items
-from .core.models import Company, Person
+from .models.company import Company
+from .models.person import Person
 from .commands import register_commands
 from .commands import lead_scrape
 

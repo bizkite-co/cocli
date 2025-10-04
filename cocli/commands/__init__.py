@@ -19,6 +19,7 @@ def register_commands(app: typer.Typer):
     from . import deduplicate
     from . import enrich_websites
     from . import enrich_customers
+    from . import context
 
     app.command(name="add")(add.add)
     app.command(name="add-meeting")(add_meeting.add_meeting)
@@ -42,3 +43,4 @@ def register_commands(app: typer.Typer):
     app.add_typer(render.app, name="render")
     app.add_typer(campaign.app, name="campaign")
     app.add_typer(deduplicate.app, name="deduplicate")
+    app.add_typer(context.app, name="context")

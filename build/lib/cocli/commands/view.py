@@ -4,22 +4,34 @@ import subprocess
 import re
 import webbrowser
 import yaml
+import os
 from pathlib import Path
 from typing import Optional, List, Any
-from pytz import timezone
-from tzlocal import get_localzone
 
 from rich.console import Console
-from rich.markdown import Markdown
-from ..core.utils import _getch # Import _getch for interactive input
-from .add_meeting import _add_meeting_logic # Import add_meeting command
-from fuzzywuzzy import process # Added for fuzzy search
+from ..core.utils import _getch
+from .add_meeting import _add_meeting_logic
+from fuzzywuzzy import process
 
-from ..core.config import get_companies_dir
+from ..core.config import get_companies_dir, get_people_dir
 from ..core.utils import slugify
+from ..renderers.company_view import display_company_view
 
 console = Console()
 app = typer.Typer()
+
+def _load_frontmatter(index_path: Path) -> dict:
+    frontmatter_data = {}
+    if index_path.exists():
+        content = index_path.read_text()
+        if content.startswith("---") and "---" in content[3:]:
+            parts = content.split("---", 2)
+            frontmatter_str = parts[1]
+            try:
+                frontmatter_data = yaml.safe_load(frontmatter_str) or {}
+            except yaml.YAMLError as e:
+                console.print(f"Error parsing YAML frontmatter: {e}")
+    return frontmatter_data
 
 @app.command()
 def view_company(
@@ -49,128 +61,12 @@ def _interactive_view_company(company_name: str):
             print(f"Company '{company_name}' not found.")
             raise typer.Exit(code=1)
 
-    def _display_company_details(company_name: str, selected_company_dir: Path, frontmatter_data: dict):
-        console.clear() # Clear console for fresh display
-        index_path = selected_company_dir / "_index.md"
-        tags_path = selected_company_dir / "tags.lst"
-        meetings_dir = selected_company_dir / "meetings"
-
-        markdown_output = ""
-
-        # Company Details
-        markdown_output += "\n# Company Details\n\n"
-        if frontmatter_data:
-            for key, value in frontmatter_data.items():
-                if key != "name":
-                    if key == "domain" and isinstance(value, str):
-                        markdown_output += f"- {key.replace('_', ' ').title()}: [{value}](http://{value})\n"
-                    elif key == "phone_number" and isinstance(value, str):
-                        markdown_output += f"- {key.replace('_', ' ').title()}: {value} (Press 'p' to call)\n"
-                    else:
-                        markdown_output += f"- {key.replace('_', ' ').title()}: {value}\n"
-            # Append markdown content after frontmatter
-            content = index_path.read_text()
-            if content.startswith("---") and "---" in content[3:]:
-                _, markdown_content = content.split("---", 2)[1:]
-                markdown_output += f"\n{markdown_content.strip()}\n"
-            else:
-                markdown_output += f"\n{content.strip()}\n"
-        else:
-            markdown_output += f"No _index.md found for {company_name} or no frontmatter.\n"
-
-        # Tags
-        markdown_output += "\n---\n\n## Tags\n\n"
-        if tags_path.exists():
-            tags = tags_path.read_text().strip().splitlines()
-            markdown_output += ", ".join(tags) + "\n"
-        else:
-            markdown_output += "No tags found.\n"
-
-        next_meetings = []
-        recent_meetings = []
-        past_meetings = [] # Not displayed, but good for categorization
-
-        if meetings_dir.exists():
-            now_local = datetime.datetime.now(get_localzone())
-            six_months_ago_local = now_local - datetime.timedelta(days=180)
-
-            for meeting_file in sorted(meetings_dir.iterdir()):
-                if meeting_file.is_file() and meeting_file.suffix == ".md":
-                    try:
-                        match = re.match(r"^(\d{4}-\d{2}-\d{2}(?:T\d{4}Z)?)-?(.*)\.md$", meeting_file.name)
-                        if not match:
-                            raise ValueError("Filename does not match expected pattern.")
-
-                        datetime_str = match.group(1)
-                        title_slug = match.group(2)
-
-                        if 'T' in datetime_str and datetime_str.endswith('Z'):
-                            meeting_datetime_utc = datetime.datetime.strptime(datetime_str, '%Y-%m-%dT%H%MZ').replace(tzinfo=timezone('UTC'))
-                        else:
-                            meeting_datetime_utc = datetime.datetime.strptime(datetime_str, '%Y-%m-%d').replace(tzinfo=timezone('UTC'))
-
-                        local_tz = get_localzone()
-                        meeting_datetime_local = meeting_datetime_utc.astimezone(local_tz)
-                        meeting_title = title_slug.replace("-", " ") if title_slug else "Untitled Meeting"
-
-                        if meeting_datetime_local > now_local:
-                            next_meetings.append((meeting_datetime_local, meeting_file, meeting_title))
-                        elif meeting_datetime_local >= six_months_ago_local:
-                            recent_meetings.append((meeting_datetime_local, meeting_file, meeting_title))
-                        else:
-                            past_meetings.append((meeting_datetime_local, meeting_file, meeting_title))
-                    except (ValueError, IndexError):
-                        pass
-
-        # Sort meetings
-        next_meetings.sort(key=lambda x: x[0]) # Ascending for next meetings
-        recent_meetings.sort(key=lambda x: x[0], reverse=True) # Descending for recent meetings
-
-        all_displayable_meetings = []
-        meeting_counter = 1
-
-        # Next Meetings
-        markdown_output += "\n---\n\n## Next Meetings\n\n"
-        if next_meetings:
-            for meeting_datetime_local, meeting_file, meeting_title in next_meetings:
-                markdown_output += (
-                    f"- {meeting_counter}. {meeting_datetime_local.strftime('%Y-%m-%d %H:%M %Z')}: [{meeting_title}]({meeting_file.name})\n"
-                )
-                all_displayable_meetings.append((meeting_counter, meeting_file))
-                meeting_counter += 1
-        else:
-            markdown_output += "No upcoming meetings found.\n"
-
-        # Recent Meetings
-        markdown_output += "\n---\n\n## Recent Meetings\n\n"
-        if recent_meetings:
-            for meeting_datetime_local, meeting_file, meeting_title in recent_meetings:
-                markdown_output += (
-                    f"- {meeting_counter}. {meeting_datetime_local.strftime('%Y-%m-%d %H:%M %Z')}: [{meeting_title}]({meeting_file.name})\n"
-                )
-                all_displayable_meetings.append((meeting_counter, meeting_file))
-                meeting_counter += 1
-        else:
-            markdown_output += "No recent meetings found.\n"
-
-        # Return the mapping of displayed number to file path
-        return markdown_output, {num: file for num, file in all_displayable_meetings}
-
     index_path = selected_company_dir / "_index.md"
-    frontmatter_data = {}
-    if index_path.exists():
-        content = index_path.read_text()
-        if content.startswith("---") and "---" in content[3:]:
-            frontmatter_str, _ = content.split("---", 2)[1:]
-            try:
-                frontmatter_data = yaml.safe_load(frontmatter_str) or {}
-            except yaml.YAMLError as e:
-                console.print(f"Error parsing YAML frontmatter: {e}")
+    frontmatter_data = _load_frontmatter(index_path)
 
     while True:
-        markdown_content, meeting_map = _display_company_details(company_name, selected_company_dir, frontmatter_data)
-        console.print(Markdown(markdown_content))
-        console.print("\n[bold yellow]Press 'a' to add meeting, 'e' to edit _index.md, 'w' to open website, 'p' to call, 'm' to select meeting, 'f' to go back to fuzzy finder, 'q' to quit.[/bold yellow]")
+        meeting_map = display_company_view(console, company_name, selected_company_dir, frontmatter_data)
+        console.print("\n[bold yellow]Press 'a' to add meeting, 'c' to add contact, 't' to add tag, 'e' to edit _index.md, 'w' to open website, 'p' to call, 'm' to select meeting, 'f' to go back to fuzzy finder, 'q' to quit.[/bold yellow]")
         char = _getch()
 
         if char == 'f':
@@ -186,9 +82,9 @@ def _interactive_view_company(company_name: str):
             _getch() # Wait for a key press to clear the message
         elif char == 'e':
             console.print("\n[bold green]Opening _index.md in Vim...[/bold green]")
-            index_path = selected_company_dir / "_index.md"
             try:
                 subprocess.run(["vim", str(index_path)], check=True)
+                frontmatter_data = _load_frontmatter(index_path)
             except Exception as e:
                 console.print(f"[bold red]Error opening Vim: {e}[/bold red]")
             console.print("[bold green]_index.md closed. Press any key to continue.[/bold green]")
@@ -245,6 +141,69 @@ def _interactive_view_company(company_name: str):
             except Exception as e:
                 console.print(f"[bold red]Error opening Vim: {e}. Press any key to continue.[/bold red]")
                 _getch()
+        elif char == 'c':
+            console.print("\n[bold green]Add a new contact...[/bold green]")
+            people_dir = get_people_dir()
+            if not people_dir.exists():
+                console.print("[bold red]People directory not found. Press any key to continue.[/bold red]")
+                _getch()
+                continue
+
+            people_files = [f.name for f in people_dir.iterdir() if f.is_file() and f.suffix == '.md']
+            if not people_files:
+                console.print("[bold red]No people found in the people directory. Press any key to continue.[/bold red]")
+                _getch()
+                continue
+
+            fzf_input = "\n".join(people_files)
+            try:
+                process = subprocess.run(
+                    ["fzf"],
+                    input=fzf_input,
+                    stdout=subprocess.PIPE,
+                    text=True,
+                    check=True
+                )
+                selected_person_file = process.stdout.strip()
+
+                if selected_person_file:
+                    contacts_dir = selected_company_dir / "contacts"
+                    contacts_dir.mkdir(exist_ok=True)
+                    person_path = people_dir / selected_person_file
+                    contact_symlink = contacts_dir / selected_person_file
+
+                    if contact_symlink.exists():
+                        console.print(f"[bold yellow]Contact ''{selected_person_file}'' already exists. Press any key to continue.[/bold yellow]")
+                    else:
+                        os.symlink(person_path, contact_symlink)
+                        console.print(f"[bold green]Contact ''{selected_person_file}'' added. Press any key to continue.[/bold green]")
+                else:
+                    console.print("[bold yellow]No person selected. Press any key to continue.[/bold yellow]")
+
+            except subprocess.CalledProcessError:
+                console.print("[bold yellow]Contact selection cancelled. Press any key to continue.[/bold yellow]")
+            except Exception as e:
+                console.print(f"[bold red]Error adding contact: {e}. Press any key to continue.[/bold red]")
+            _getch()
+        elif char == 't':
+            console.print("\n[bold green]Add a new tag...[/bold green]")
+            new_tag = typer.prompt("Enter tag to add")
+            if new_tag:
+                tags_path = selected_company_dir / "tags.lst"
+                try:
+                    with tags_path.open('a+') as f:
+                        f.seek(0)
+                        tags = f.read().splitlines()
+                        if new_tag not in tags:
+                            f.write(f"{new_tag}\n")
+                            console.print(f"[bold green]Tag ''{new_tag}'' added. Press any key to continue.[/bold green]")
+                        else:
+                            console.print(f"[bold yellow]Tag ''{new_tag}'' already exists. Press any key to continue.[/bold yellow]")
+                except Exception as e:
+                    console.print(f"[bold red]Error adding tag: {e}. Press any key to continue.[/bold red]")
+            else:
+                console.print("[bold yellow]No tag entered. Press any key to continue.[/bold yellow]")
+            _getch()
         elif char == 'q':
             console.print("[bold green]Exiting company context.[/bold green]")
             break

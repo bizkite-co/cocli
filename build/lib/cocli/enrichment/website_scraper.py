@@ -7,7 +7,7 @@ import logging
 from urllib.parse import urljoin
 
 from .base import EnrichmentScript
-from ..core.models import Company
+from ..models.company import Company
 from ..models.website import Website
 
 logger = logging.getLogger(__name__)
@@ -46,10 +46,30 @@ class WebsiteScraper(EnrichmentScript):
                 # Scrape About Us and Contact Us pages
                 website_data = self._navigate_and_scrape(page, website_data, ["About Us", "About"], "About Us", self._scrape_page, debug)
                 website_data = self._navigate_and_scrape(page, website_data, ["Contact Us", "Contact"], "Contact Us", self._scrape_contact_page, debug)
+                website_data = self._navigate_and_scrape(page, website_data, ["Services", "Products"], "Services", self._scrape_services_page, debug)
 
                 browser.close()
         except Exception as e:
             logger.error(f"Error during website scraping for {company.name}: {e}")
+
+        return website_data
+
+    def _scrape_services_page(self, page: Page, website_data: Website) -> Website:
+        html_content = page.content()
+        soup = BeautifulSoup(html_content, "html.parser")
+
+        # Look for list items or headings that might contain service names
+        service_elements = soup.select('li, h2, h3')
+        
+        services = []
+        for element in service_elements:
+            text = element.get_text(strip=True)
+            # Filter out short or irrelevant text
+            if len(text) > 3 and len(text) < 100:
+                services.append(text)
+
+        website_data.services = list(set(services))
+        logger.info(f"Found {len(website_data.services)} potential services on {page.url}")
 
         return website_data
 

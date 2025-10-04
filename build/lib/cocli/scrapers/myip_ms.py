@@ -11,6 +11,9 @@ import random
 
 from cocli.core.config import get_scraped_data_dir
 
+class LimitExceededError(Exception):
+    pass
+
 SHOPIFY_HEADERS = [
     "id",
     "Website",
@@ -37,21 +40,27 @@ def _get_current_segment_from_url(url: str) -> str:
     return match.group(1) if match else "Unknown"
 
 def _initialize_browser(p: Playwright) -> Page:
-    """Launches the browser and returns a new page with a specified viewport."""
+    """Launches the browser and returns a new page in an incognito context."""
     browser = p.chromium.launch(headless=False)
-    page = browser.new_page(viewport={'width': 1280, 'height': 1950})
+    context = browser.new_context(viewport={'width': 1280, 'height': 1950})
+    page = context.new_page()
     return page
 
 def _navigate_and_handle_captcha(page: Page, url: str, prompt_message: str, debug: bool) -> None:
     """Navigates to a URL, handles CAPTCHA if present, and introduces delays."""
     if debug: print(f"Debug: Navigating to {url}")
     page.goto(url, wait_until="domcontentloaded")
+
+    if "myip.ms/info/limitexcess" in page.url:
+        raise LimitExceededError("Page visit limit exceeded.")
+
     _random_delay(4, 10)
 
     if _is_captcha_present(page):
         print(f"\n--- IMPORTANT: CAPTCHA detected on {page.url}. {prompt_message} ---")
         input("Press Enter after solving the CAPTCHA and the page has loaded...")
         print("Resuming...")
+        page.wait_for_load_state('domcontentloaded')
         _random_delay(4, 10)
     else:
         if debug: print(f"Debug: No CAPTCHA detected on {page.url}")
@@ -158,7 +167,8 @@ def _extract_data_from_page(
 
 def scrape_myip_ms(
     ip_address: str,
-    max_pages: int = 10,
+    start_page: int = 1,
+    end_page: int = 10,
     output_dir: Path = get_scraped_data_dir() / "shopify_csv",
     debug: bool = False,
 ) -> Optional[Path]:
@@ -177,47 +187,59 @@ def scrape_myip_ms(
         browser = page.context.browser # Keep browser reference for closing if needed
 
         try:
-            _navigate_and_handle_captcha(
-                page,
-                f"https://myip.ms/info/whois/{ip_address}",
-                "Please solve any CAPTCHA on the browser window.",
-                debug
-            )
+            # The file is now opened in append mode inside the loop.
+            output_filepath.parent.mkdir(parents=True, exist_ok=True)
 
-            _click_full_list_link(page, debug)
+            if start_page == 1:
+                _navigate_and_handle_captcha(
+                    page,
+                    f"https://myip.ms/info/whois/{ip_address}",
+                    "Please solve any CAPTCHA on the browser window.",
+                    debug
+                )
+                _click_full_list_link(page, debug)
+            else:
+                _navigate_and_handle_captcha(
+                    page,
+                    f"https://myip.ms/browse/sites/{start_page}/ipID/{ip_address}/ipIDii/{ip_address}",
+                    f"CAPTCHA detected on page segment {start_page}. Please solve it.",
+                    debug
+                )
 
-            with open(output_filepath, "w", newline="", encoding="utf-8") as csvfile:
-                writer = csv.DictWriter(csvfile, fieldnames=SHOPIFY_HEADERS)
-                writer.writeheader()
+            processed_urls = set() # This might need to be persisted across runs if we are appending.
+            total_scraped_count = 0
 
-                processed_urls = set()
-                total_scraped_count = 0
+            for page_num in range(start_page, end_page + 1):
+                if page_num > start_page:
+                    _navigate_and_handle_captcha(
+                        page,
+                        f"https://myip.ms/browse/sites/{page_num}/ipID/{ip_address}/ipIDii/{ip_address}",
+                        f"CAPTCHA detected on page segment {page_num}. Please solve it.",
+                        debug
+                    )
 
-                for page_num in range(1, max_pages + 1):
-                    if page_num > 1:
-                        _navigate_and_handle_captcha(
-                            page,
-                            f"https://myip.ms/browse/sites/{page_num}/ipID/{ip_address}/ipIDii/{ip_address}",
-                            f"CAPTCHA detected on page segment {page_num}. Please solve it.",
-                            debug
-                        )
+                with open(output_filepath, "a", newline="", encoding="utf-8") as csvfile:
+                    writer = csv.DictWriter(csvfile, fieldnames=SHOPIFY_HEADERS)
+                    if csvfile.tell() == 0:
+                        writer.writeheader()
 
                     scraped_on_page = _extract_data_from_page(page, ip_address, processed_urls, writer, debug)
                     total_scraped_count += scraped_on_page
-                    print(f"Scraped {scraped_on_page} new records from page segment {_get_current_segment_from_url(page.url)}. Total scraped: {total_scraped_count}")
+                
+                print(f"Scraped {scraped_on_page} new records from page segment {_get_current_segment_from_url(page.url)}. Total scraped: {total_scraped_count}")
 
-                    # Check if there are more pages to navigate to, or if we hit max_pages
-                    # This logic might need refinement based on actual pagination elements
-                    if page_num < max_pages:
-                        print(f"Proceeding to next page after random delay...")
-                        _random_delay(4, 10) # Delay before navigating to the next page
-                    else:
-                        print(f"Reached max_pages ({max_pages}). Stopping pagination.")
-
+                if page_num < end_page:
+                    print(f"Proceeding to next page after random delay...")
+                    _random_delay(4, 10)
+                else:
+                    print(f"Reached end_page ({end_page}). Stopping pagination.")
 
             print(f"Scraping complete. Total {total_scraped_count} Shopify stores scraped. Results saved to {output_filepath}")
             return output_filepath
 
+        except LimitExceededError as e:
+            print(f"[bold yellow]Scraping paused:[/bold yellow] {e}")
+            return output_filepath # Return the path to the partially saved file
         except Exception as e:
             print(f"An error occurred during myip.ms scraping: {e}")
             return None

@@ -18,7 +18,7 @@ from fuzzywuzzy import process # Added for fuzzy search
 import shutil
 from .core.config import get_companies_dir, get_people_dir
 
-from .core.utils import slugify, _format_entity_for_fzf, _get_all_searchable_items
+from .core.utils import slugify, _format_entity_for_fzf
 from .models.company import Company
 from .models.person import Person
 from .commands import register_commands
