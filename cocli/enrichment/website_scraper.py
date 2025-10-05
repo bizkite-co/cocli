@@ -1,41 +1,59 @@
 import re
+import requests
+import xml.etree.ElementTree as ET
 from pathlib import Path
 from typing import Optional, List, Callable
 from playwright.sync_api import sync_playwright, Page
 from bs4 import BeautifulSoup
 import logging
 from urllib.parse import urljoin
+from datetime import datetime, timedelta
 
-from .base import EnrichmentScript
-from ..models.company import Company
 from ..models.website import Website
+from ..core.website_cache import WebsiteCache
 
 logger = logging.getLogger(__name__)
 
-class WebsiteScraper(EnrichmentScript):
-    def get_script_name(self) -> str:
-        return "web-scraper"
+CURRENT_SCRAPER_VERSION = 4
+
+class WebsiteScraper:
 
     def run(
         self,
-        company: Company,
+        domain: str,
+        force_refresh: bool = False,
+        ttl_days: int = 30,
         headed: bool = False,
         devtools: bool = False,
         debug: bool = False
-    ) -> Website:
-        if not company.domain:
-            logger.info(f"Company {company.name} has no website URL. Skipping website scraping.")
-            return Website(url=company.domain or "")
+    ) -> Optional[Website]:
+        if not domain:
+            logger.info("No domain provided. Skipping website scraping.")
+            return None
 
-        logger.info(f"Starting website scraping for {company.name} at {company.domain}")
+        cache = WebsiteCache()
+        fresh_delta = timedelta(days=ttl_days)
 
-        website_data = Website(url=company.domain)
+        # Check cache first
+        cached_item = cache.get_by_url(domain)
+        if cached_item:
+            is_stale = (datetime.utcnow() - cached_item.updated_at) >= fresh_delta
+            is_old_version = (cached_item.scraper_version or 1) < CURRENT_SCRAPER_VERSION
+            if not force_refresh and not is_stale and not is_old_version:
+                logger.info(f"Using cached data for {domain}")
+                return cached_item
+            if is_old_version:
+                logger.info(f"Re-scraping {domain} due to new scraper version.")
+
+        logger.info(f"Starting website scraping for {domain}")
+
+        website_data = Website(url=domain, scraper_version=CURRENT_SCRAPER_VERSION)
 
         try:
             with sync_playwright() as p:
                 browser = p.chromium.launch(headless=not headed, devtools=devtools)
                 page = browser.new_page(viewport={'width': 1536, 'height': 1700})
-                page.goto(f"http://{company.domain}", wait_until="domcontentloaded", timeout=30000)
+                page.goto(f"http://{domain}", wait_until="domcontentloaded", timeout=30000)
 
                 if debug:
                     breakpoint()
@@ -43,41 +61,165 @@ class WebsiteScraper(EnrichmentScript):
                 # Scrape main page
                 website_data = self._scrape_page(page, website_data)
 
-                # Scrape About Us and Contact Us pages
-                website_data = self._navigate_and_scrape(page, website_data, ["About Us", "About"], "About Us", self._scrape_page, debug)
-                website_data = self._navigate_and_scrape(page, website_data, ["Contact Us", "Contact"], "Contact Us", self._scrape_contact_page, debug)
-                website_data = self._navigate_and_scrape(page, website_data, ["Services", "Products"], "Services", self._scrape_services_page, debug)
+                # Try to find and scrape pages from sitemap
+                sitemap_pages = self._get_sitemap_urls(f"http://{domain}")
+                if sitemap_pages:
+                    page_map = {
+                        "About Us": ["about"],
+                        "Contact Us": ["contact"],
+                        "Services": ["service"],
+                        "Products": ["product"],
+                    }
+                    for page_type, keywords in page_map.items():
+                        for keyword in keywords:
+                            for url in sitemap_pages:
+                                if keyword in url:
+                                    scrape_function = None
+                                    if page_type == "About Us":
+                                        scrape_function = self._scrape_page
+                                    elif page_type == "Contact Us":
+                                        scrape_function = self._scrape_contact_page
+                                    elif page_type == "Services":
+                                        scrape_function = self._scrape_services_page
+                                    elif page_type == "Products":
+                                        scrape_function = self._scrape_products_page
+                                    
+                                    if scrape_function:
+                                        try:
+                                            page.goto(url, wait_until="domcontentloaded", timeout=30000)
+                                            website_data = scrape_function(page, website_data)
+                                            break # Move to next page type
+                                        except Exception as e:
+                                            logger.warning(f"Failed to scrape {page_type} page from sitemap: {e}")
+                            else:
+                                continue
+                            break
+
+                # Fallback to navigating and scraping
+                if not website_data.about_us_url:
+                    website_data = self._navigate_and_scrape(page, website_data, ["About Us", "About"], "About Us", self._scrape_page, debug)
+                if not website_data.contact_url:
+                    website_data = self._navigate_and_scrape(page, website_data, ["Contact Us", "Contact"], "Contact Us", self._scrape_contact_page, debug)
+                if not website_data.services:
+                    website_data = self._navigate_and_scrape(page, website_data, ["Services"], "Services", self._scrape_services_page, debug)
+                if not website_data.products:
+                    website_data = self._navigate_and_scrape(page, website_data, ["Products"], "Products", self._scrape_products_page, debug)
 
                 browser.close()
         except Exception as e:
-            logger.error(f"Error during website scraping for {company.name}: {e}")
+            logger.error(f"Error during website scraping for {domain}: {e}")
+            # Still save what we have, even if there was an error
+            cache.add_or_update(website_data)
+            cache.save()
+            return None # Return None on error
+
+        # Add to cache and save
+        cache.add_or_update(website_data)
+        cache.save()
 
         return website_data
+
+    def _get_sitemap_urls(self, domain: str) -> List[str]:
+        sitemap_url = urljoin(domain, "/sitemap.xml")
+        try:
+            response = requests.get(sitemap_url, timeout=5)
+            if response.status_code == 200:
+                root = ET.fromstring(response.content)
+                urls = []
+                for elem in root.iter():
+                    if 'url' in elem.tag:
+                        for loc in elem.iter():
+                            if 'loc' in loc.tag:
+                                urls.append(loc.text)
+                logger.info(f"Found {len(urls)} URLs in sitemap for {domain}")
+                return urls
+        except Exception as e:
+            logger.info(f"Could not fetch or parse sitemap for {domain}: {e}")
+        return []
 
     def _scrape_services_page(self, page: Page, website_data: Website) -> Website:
         html_content = page.content()
         soup = BeautifulSoup(html_content, "html.parser")
 
-        # Look for list items or headings that might contain service names
-        service_elements = soup.select('li, h2, h3')
-        
         services = []
-        for element in service_elements:
-            text = element.get_text(strip=True)
-            # Filter out short or irrelevant text
-            if len(text) > 3 and len(text) < 100:
-                services.append(text)
+        # More specific selectors for service sections
+        service_selectors = [
+            "[id*=service]", "[class*=service]",
+            "[id*=offering]", "[class*=offering]",
+            "[id*=feature]", "[class*=feature]",
+        ]
 
-        website_data.services = list(set(services))
+        service_sections = soup.select(", ".join(service_selectors))
+
+        if not service_sections:
+            # If no specific sections are found, fall back to the old method
+            service_sections = [soup]
+
+        for section in service_sections:
+            # Look for list items or headings that might contain service names
+            service_elements = section.select('li, h2, h3, h4, p')
+            
+            for element in service_elements:
+                text = element.get_text(strip=True)
+                # Filter out short or irrelevant text and duplicates
+                if 3 < len(text) < 100 and text not in services:
+                    services.append(text)
+
+        website_data.services = services
         logger.info(f"Found {len(website_data.services)} potential services on {page.url}")
 
         return website_data
 
+    def _scrape_products_page(self, page: Page, website_data: Website) -> Website:
+        html_content = page.content()
+        soup = BeautifulSoup(html_content, "html.parser")
+
+        products = []
+        # More specific selectors for product sections
+        product_selectors = [
+            "[id*=product]", "[class*=product]",
+            "[id*=portfolio]", "[class*=portfolio]",
+            "[id*=gallery]", "[class*=gallery]",
+        ]
+
+        product_sections = soup.select(", ".join(product_selectors))
+
+        if not product_sections:
+            # If no specific sections are found, fall back to the old method
+            product_sections = [soup]
+
+        for section in product_sections:
+            # Look for list items or headings that might contain product names
+            product_elements = section.select('li, h2, h3, h4, p')
+            
+            for element in product_elements:
+                text = element.get_text(strip=True)
+                # Filter out short or irrelevant text and duplicates
+                if 3 < len(text) < 100 and text not in products:
+                    products.append(text)
+
+        website_data.products = products
+        logger.info(f"Found {len(website_data.products)} potential products on {page.url}")
+
+        return website_data
+
     def _navigate_and_scrape(self, page: Page, website_data: Website, link_texts: List[str], page_type: str, scrape_function: Callable, debug: bool):
-        link_selector = ", ".join([f'a:has-text("{text}")' for text in link_texts])
+        # Use a case-insensitive regex for link text
+        link_selector = ", ".join([f'a:text-matches("^{text}$", "i")' for text in link_texts])
         link = page.locator(link_selector).first
-        if link.is_visible():
-            url = link.get_attribute("href")
+
+        try:
+            if not link.is_visible(timeout=1000):
+                logger.info(f"Link for {page_type} not immediately visible, trying to find a hoverable parent.")
+                # A common pattern is that the `li` containing the `a` is the hover target
+                hover_target = link.locator('xpath=..')
+                if hover_target:
+                    hover_target.hover(timeout=1000)
+        except Exception:
+            logger.info(f"Could not hover to find link for {page_type}. Will try to proceed anyway.")
+
+        try:
+            url = link.get_attribute("href", timeout=1000)
             if url:
                 url = urljoin(page.url, url)
                 if url and url != page.url:
@@ -86,18 +228,43 @@ class WebsiteScraper(EnrichmentScript):
                         website_data.about_us_url = url
                     elif page_type == "Contact Us":
                         website_data.contact_url = url
-                    try:
-                        page.goto(url, wait_until="domcontentloaded", timeout=30000)
-                        if debug:
-                            breakpoint()
-                        website_data = scrape_function(page, website_data)
-                    except Exception as e:
-                        logger.warning(f"Failed to navigate or scrape {page_type} page for {website_data.url}: {e}")
+                    elif page_type == "Services":
+                        website_data.services_url = url
+                    elif page_type == "Products":
+                        website_data.products_url = url
+
+                    page.goto(url, wait_until="domcontentloaded", timeout=30000)
+                    if debug:
+                        breakpoint()
+                    website_data = scrape_function(page, website_data)
+        except Exception as e:
+            logger.warning(f"Failed to navigate or scrape {page_type} page for {website_data.url}: {e}")
+
         return website_data
 
     def _scrape_page(self, page: Page, website_data: Website) -> Website:
         html_content = page.content()
         soup = BeautifulSoup(html_content, "html.parser")
+
+        # Extract Company Name
+        if not website_data.company_name:
+            company_name = None
+            if soup.title and soup.title.string:
+                company_name = soup.title.string.split('|')[0].split('-')[0].strip()
+            
+            if not company_name or len(company_name) < 3:
+                h1 = soup.find('h1')
+                if h1 and h1.string:
+                    company_name = h1.string.strip()
+
+            if not company_name or len(company_name) < 3:
+                logo = soup.select_one('[class*=logo], [id*=logo]')
+                if logo and logo.text:
+                    company_name = logo.text.strip()
+            
+            if company_name and len(company_name) > 2:
+                website_data.company_name = company_name
+                logger.info(f"Found company name: {company_name}")
 
         # Extract Phone Number
         if not website_data.phone:
@@ -153,11 +320,22 @@ class WebsiteScraper(EnrichmentScript):
                 logger.info(f"Found address: {website_data.address}")
 
         # Extract Description
-        if not website_data.description:
+        if page.url == website_data.about_us_url:
+            main_content = soup.select_one('main, article, #main, #content, .main, .content')
+            if main_content:
+                # Remove nav and footer from main content if they exist
+                for tag in main_content.select('nav, footer'):
+                    tag.decompose()
+                website_data.description = main_content.get_text(separator='\n', strip=True)
+            else:
+                # Fallback to body if no main content found
+                for tag in soup.body.select('nav, footer, header'):
+                    tag.decompose()
+                website_data.description = soup.body.get_text(separator='\n', strip=True)
+            logger.info(f"Found description for {website_data.url} from About Us page")
+        elif not website_data.description:
+            # Fallback for other pages if description not already found
             about_section = soup.find(id=re.compile("about", re.IGNORECASE)) or soup.find(class_=re.compile("about", re.IGNORECASE))
-            if "about" in page.url and soup.find(string=re.compile("^About (U|u)s")):
-                about_section = soup.find(string=re.compile("^About (U|u)s")).parent
-
             if about_section:
                 website_data.description = about_section.get_text(separator='\n', strip=True)
                 logger.info(f"Found description for {website_data.url}")

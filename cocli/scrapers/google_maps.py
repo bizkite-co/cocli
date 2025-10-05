@@ -1,77 +1,56 @@
+
 import csv
 import re
 from pathlib import Path
 from typing import Optional, Dict, Any, List
+from datetime import datetime, timedelta
 from playwright.sync_api import sync_playwright, Page, Locator
 from bs4 import BeautifulSoup
 import uuid
-from datetime import datetime
-from ..core.config import load_scraper_settings  # Import the settings loader
-from ..core.config import get_scraped_data_dir # Import the new function
-from ..core.geocoding import get_coordinates_from_zip
-from ..core.geocoding import get_coordinates_from_city_state # Import the geocoding function
-from .google_maps_parser import parse_business_listing_html, LEAD_SNIPER_HEADERS # Import the new parser and headers
-from .google_maps_gmb_parser import parse_gmb_page
 
+from ..core.config import load_scraper_settings
+from ..core.geocoding import get_coordinates_from_zip, get_coordinates_from_city_state
+from .google_maps_parser import parse_business_listing_html
+from .google_maps_gmb_parser import parse_gmb_page
+from ..models.google_maps import GoogleMapsData
+from ..core.google_maps_cache import GoogleMapsCache
 
 def scrape_google_maps(
-    location_param: Dict[str, str], # Accepts either {"zip_code": "..."} or {"city": "..."}
+    location_param: Dict[str, str],
     search_string: str,
-    output_dir: Path = get_scraped_data_dir(),  # Default to scraped data directory
-    max_results: int = 30,  # Increased max_results to allow more scraping
-    debug: bool = False, # Added debug parameter
-) -> Path:
+    max_results: int = 30,
+    debug: bool = False,
+    force_refresh: bool = False,
+    ttl_days: int = 30
+) -> List[GoogleMapsData]:
     """
-    Scrapes business information from Google Maps search results based on location (zip code or city/state) and search string
-    and outputs it to a CSV file in the Lead Sniper format.
+    Scrapes business information from Google Maps, using a cache-first strategy.
     """
     if debug: print(f"Debug: scrape_google_maps called with debug={debug}")
-    settings = load_scraper_settings()  # Load scraper settings
-    delay_seconds = settings.google_maps_delay_seconds # Use configured delay
-    max_pages_to_scrape = settings.google_maps_max_pages # Use configured max pages
+    settings = load_scraper_settings()
+    delay_seconds = settings.google_maps_delay_seconds
 
-    # Override settings for more aggressive scraping during debug/testing
-    if debug:
-        delay_seconds = 5 # Reduced delay for faster debugging
-        max_pages_to_scrape = 5 # Increased max pages for more results
+    cache = GoogleMapsCache()
+    fresh_delta = timedelta(days=ttl_days)
 
     coordinates = None
     if "zip_code" in location_param:
         coordinates = get_coordinates_from_zip(location_param["zip_code"])
-        if not coordinates:
-            print(f"Error: Could not find coordinates for zip code {location_param['zip_code']}. Please provide a valid zip code.")
-            return
     elif "city" in location_param:
         coordinates = get_coordinates_from_city_state(location_param["city"])
-        if not coordinates:
-            print(f"Error: Could not find coordinates for city/state {location_param['city']}. Please provide a valid city/state.")
-            return
-    else:
-        print("Error: Invalid location parameter provided. Must be either 'zip_code' or 'city'.")
-        return
+    
+    if not coordinates:
+        print(f"Error: Could not find coordinates for {location_param}")
+        return []
 
     latitude = coordinates["latitude"]
     longitude = coordinates["longitude"]
 
-    # Construct the Google Maps URL
-    # Example URL: https://www.google.com/maps/search/photography+studio/@33.9351822,-117.8542484,99708m/data=!3m2!1e3!4b1?entry=ttu
-    # The '99708m' is a zoom level, 'data=!3m2!1e3!4b1?entry=ttu' are additional parameters.
-    # For simplicity, we'll use a fixed zoom and data parameters for now.
-    # A more robust solution might dynamically determine zoom or allow it as a parameter.
     base_url = "https://www.google.com/maps/search/"
     formatted_search_string = search_string.replace(" ", "+")
     url = f"{base_url}{formatted_search_string}/@{latitude},{longitude},15z/data=!3m2!1e3!4b1?entry=ttu"
 
-    output_filename = "prospects.csv"
-    output_filepath = output_dir / output_filename
-
-    processed_urls = set()
-    if output_filepath.exists():
-        with open(output_filepath, "r", newline="", encoding="utf-8") as csvfile:
-            reader = csv.DictReader(csvfile)
-            for row in reader:
-                if row.get("GMB_URL"):
-                    processed_urls.add(row["GMB_URL"])
+    scraped_data: List[GoogleMapsData] = []
 
     with sync_playwright() as p:
         browser = p.chromium.launch(headless=True)
@@ -79,88 +58,89 @@ def scrape_google_maps(
 
         try:
             page.goto(url, wait_until="domcontentloaded")
-            page.wait_for_timeout(5000) # Wait for dynamic content to load
+            page.wait_for_timeout(5000)
             print("Navigated to Google Maps URL.")
 
-            with open(output_filepath, "a", newline="", encoding="utf-8") as csvfile:
-                writer = csv.DictWriter(csvfile, fieldnames=LEAD_SNIPER_HEADERS)
-                if not output_filepath.exists() or output_filepath.stat().st_size == 0:
-                    writer.writeheader()
+            scrollable_div_selector = 'div[role="feed"]'
+            page.wait_for_selector(scrollable_div_selector)
+            scrollable_div = page.locator(scrollable_div_selector)
 
-                # Find the scrollable element (usually the results pane)
-                # The main scrollable results pane often has role="feed" or a specific data-attribute
-                scrollable_div_selector = 'div[role="feed"]'
-                page.wait_for_selector(scrollable_div_selector)
-                scrollable_div = page.locator(scrollable_div_selector)
+            scraped_count = 0
+            last_scroll_height = -1
+            while scraped_count < max_results:
+                listing_divs = scrollable_div.locator("> div").all()
+                print(f"Found {len(listing_divs)} listing divs.")
 
-                scraped_count = 0
-                last_scroll_height = -1
-                while scraped_count < max_results:
-                    listing_divs = scrollable_div.locator("> div").all()
-                    print(f"Found {len(listing_divs)} listing divs.")
+                if not listing_divs:
+                    print("No listing divs found. Exiting.")
+                    break
 
-                    if not listing_divs:
-                        print("No listing divs found. Exiting.")
-                        return
+                for listing_div in listing_divs:
+                    html_content = listing_div.inner_html()
+                    business_data_dict = parse_business_listing_html(html_content, search_string, debug=debug)
+                    place_id = business_data_dict.get("Place_ID")
 
-                    for i, listing_div in enumerate(listing_divs):
-                        inner_text = listing_div.inner_text()
-                        # print(f"-- Listing {i} --\n{inner_text[:200]}\n-----------------")
-                        if not inner_text.strip():
-                            continue
+                    if not place_id:
+                        continue
 
-                        html_content = listing_div.inner_html()
-                        business_data = parse_business_listing_html(
-                            html_content,
-                            search_string,
-                            debug=debug
-                        )
+                    # Check cache
+                    cached_item = cache.get_by_place_id(place_id)
+                    if cached_item and not force_refresh and (datetime.utcnow() - cached_item.updated_at < fresh_delta):
+                        scraped_data.append(cached_item)
+                        print(f"Used cached data for: {cached_item.Name}")
+                        scraped_count += 1
+                        continue
 
-                        # Filter out stores
-                        if "store" in business_data.get("Name", "").lower() or \
-                           "store" in business_data.get("First_category", "").lower():
-                            print(f"Skipping store: {business_data.get('Name')}")
-                            continue
+                    # If not in cache or stale, proceed with full scrape
+                    # (parse_business_listing_html already did the initial parse)
+                    gmb_url = business_data_dict.get("GMB_URL")
+                    if gmb_url and (not business_data_dict.get("Website") or not business_data_dict.get("Full_Address")):
+                        gmb_page = browser.new_page()
+                        gmb_page.goto(gmb_url)
+                        gmb_html = gmb_page.content()
+                        gmb_data = parse_gmb_page(gmb_html)
+                        business_data_dict.update(gmb_data)
+                        gmb_page.close()
 
-                        gmb_url = business_data.get("GMB_URL")
+                    # Type conversions
+                    for field in ['Reviews_count']:
+                        if business_data_dict.get(field) and business_data_dict.get(field) != '':
+                            try:
+                                business_data_dict[field] = int(business_data_dict[field])
+                            except (ValueError, TypeError):
+                                business_data_dict[field] = None
+                    for field in ['Average_rating', 'Latitude', 'Longitude']:
+                        if business_data_dict.get(field) and business_data_dict.get(field) != '':
+                            try:
+                                business_data_dict[field] = float(business_data_dict[field])
+                            except (ValueError, TypeError):
+                                business_data_dict[field] = None
 
-                        if gmb_url and gmb_url not in processed_urls:
-                            if not business_data.get("Website") or not business_data.get("Full_Address"):
-                                gmb_page = browser.new_page()
-                                gmb_page.goto(gmb_url)
-                                gmb_html = gmb_page.content()
-                                gmb_data = parse_gmb_page(gmb_html)
-                                business_data.update(gmb_data)
-                                gmb_page.close()
-
-                            if business_data.get("Name"):
-                                writer.writerow(business_data)
-                                processed_urls.add(gmb_url)
-                                scraped_count += 1
-                                print(f"Scraped: {business_data.get('Name')} ({scraped_count}/{max_results})")
-
-                        if scraped_count >= max_results:
-                            break
+                    business_data = GoogleMapsData(**business_data_dict)
+                    cache.add_or_update(business_data)
+                    scraped_data.append(business_data)
+                    scraped_count += 1
+                    print(f"Scraped and cached: {business_data.Name} ({scraped_count}/{max_results})")
 
                     if scraped_count >= max_results:
                         break
 
-                    current_scroll_height = scrollable_div.evaluate("element => element.scrollHeight")
-                    if current_scroll_height == last_scroll_height:
-                        print("Reached end of scrollable content or no new results loaded.")
-                        break
+                if scraped_count >= max_results:
+                    break
 
-                    scrollable_div.evaluate("element => element.scrollTop = element.scrollHeight")
-                    page.wait_for_timeout(delay_seconds * 1000)
-                    last_scroll_height = current_scroll_height
+                current_scroll_height = scrollable_div.evaluate("element => element.scrollHeight")
+                if current_scroll_height == last_scroll_height:
+                    print("Reached end of scrollable content.")
+                    break
 
-                print(f"CSV file created at: {output_filepath}")
-
-            print("Scraping complete (initial setup).")
-            return output_filepath
+                scrollable_div.evaluate("element => element.scrollTop = element.scrollHeight")
+                page.wait_for_timeout(delay_seconds * 1000)
+                last_scroll_height = current_scroll_height
 
         except Exception as e:
             print(f"An error occurred during scraping: {e}")
-            return None # Return None on error
         finally:
+            cache.save()
             browser.close()
+    
+    return scraped_data

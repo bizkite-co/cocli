@@ -5,9 +5,11 @@ import yaml
 from typing import List
 from cocli.core.utils import slugify, create_company_files
 from cocli.models.company import Company
+from cocli.models.website import Website
+from cocli.core.website_cache import WebsiteCache
 from fuzzywuzzy import process
 
-def import_prospects(
+def import_companies(
     prospects_csv_path: Path = typer.Argument(..., help="Path to the prospects CSV file.", exists=True, file_okay=True, dir_okay=False, readable=True),
     tags: List[str] = typer.Option(..., "--tag", help="Tags to add to the companies."),
     companies_dir: Path = typer.Option(
@@ -22,6 +24,8 @@ def import_prospects(
     """
     Imports prospects from a CSV file, creating or updating companies and their enrichments.
     """
+    website_cache = WebsiteCache()
+
     if not companies_dir.exists():
         print(f"Error: Companies directory not found at {companies_dir}")
         raise typer.Exit(code=1)
@@ -118,6 +122,16 @@ def import_prospects(
                 company = Company(**company_data_from_csv)
                 create_company_files(company, company_dir)
 
+            # Add to website cache
+            if company.domain:
+                website = website_cache.get_by_url(company.domain)
+                if not website:
+                    website = Website(url=company.domain)
+                for tag in tags:
+                    if tag not in website.tags:
+                        website.tags.append(tag)
+                website_cache.add_or_update(website)
+
             # Create or update enrichment file
             enrichment_dir = company_dir / "enrichments"
             enrichment_dir.mkdir(parents=True, exist_ok=True)
@@ -131,6 +145,8 @@ def import_prospects(
                 yaml.dump(enrichment_data, f_md, sort_keys=False, default_flow_style=False, allow_unicode=True)
                 f_md.write("---\\n")
             print(f"Created/Updated google-maps.md for {company_name}")
+
+    website_cache.save()
 
 if __name__ == "__main__":
     import_prospects()

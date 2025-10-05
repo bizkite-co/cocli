@@ -28,7 +28,7 @@ def extract_gmb_url_coordinates_place_id(soup: BeautifulSoup, debug: bool = Fals
         else:
             if debug: print("Debug: Coordinates not found in GMB_URL.")
 
-        place_id_match = re.search(r"!1s([^!]+)", gmb_url)
+        place_id_match = re.search(r'(ChI[a-zA-Z0-9_-]+)', gmb_url)
         if place_id_match:
             place_id = place_id_match.group(1)
             if debug: print(f"Debug: Extracted Place_ID (HTML): {place_id}")

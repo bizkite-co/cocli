@@ -45,8 +45,20 @@ def register_commands(app: typer.Typer):
     app.add_typer(deduplicate.app, name="deduplicate")
     app.add_typer(context.app, name="context")
 
-    from . import import_prospects
-    app.command(name="import-prospects")(import_prospects.import_prospects)
+    from . import import_companies
+    app.command(name="import-companies")(import_companies.import_companies)
 
     from . import render_prospects_kml
     app.command(name="render-prospects-kml")(render_prospects_kml.render_prospects_kml)
+
+    from . import flag_email_providers
+    app.command(name="flag-email-providers")(flag_email_providers.flag_email_providers)
+
+    from . import init
+    app.command(name="init")(init.init)
+
+    from . import ingest_google_maps_csv
+    app.command(name="ingest-google-maps-csv")(ingest_google_maps_csv.ingest_google_maps_csv)
+
+    from . import import_customers
+    app.command(name="import-customers")(import_customers.import_customers)
