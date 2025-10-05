@@ -12,8 +12,8 @@ def extract_categories(soup: BeautifulSoup, inner_text: str, debug: bool = False
     }
 
     # The category is usually after the rating, e.g., "4.8(21)\nFlooring store"
-    match = re.search(r"\d+\.\d+\(\d+\)\n(.*?)\n", inner_text)
-    if match:
-        categories["First_category"] = match.group(1).strip()
+    category_element = soup.find("span", text=re.compile(r".*"))
+    if category_element:
+        categories["First_category"] = category_element.text.strip()
 
     return categories

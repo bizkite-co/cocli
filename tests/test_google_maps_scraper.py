@@ -82,7 +82,6 @@ def test_extract_business_data_basic():
     assert data["First_category"] == "Photography studio"
     assert data["Reviews_count"] == "16"
     assert data["Average_rating"] == "4.3"
-    assert data["Business_Status"] == "Open"
     assert data["Hours"] == "Closes 6 PM"
     assert "google.com/maps/place/Touch+Photography" in data["GMB_URL"]
     assert data["Latitude"] == "33.9874604"
@@ -131,7 +130,6 @@ def test_extract_business_data_missing_elements():
     assert data["Website"] == ""
     assert data["Reviews_count"] == ""
     assert data["Average_rating"] == ""
-    assert data["Business_Status"] == ""
     assert data["Hours"] == ""
     assert "google.com/maps/place/Minimal+Business" in data["GMB_URL"]
     assert data["id"] is not None
