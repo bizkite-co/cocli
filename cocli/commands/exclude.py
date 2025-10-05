@@ -1,0 +1,27 @@
+import typer
+from typing import Optional
+
+from ..core.config import get_companies_dir
+from ..models.company import Company
+from ..core.exclusions import ExclusionManager
+
+app = typer.Typer()
+
+@app.command()
+def exclude(
+    company_name: str = typer.Argument(..., help="The name of the company to exclude."),
+    campaign: str = typer.Option(..., "--campaign", "-c", help="The campaign to exclude the company from."),
+    reason: Optional[str] = typer.Option(None, "--reason", "-r", help="The reason for excluding the company."),
+):
+    """
+    Excludes a company from a campaign.
+    """
+    companies_dir = get_companies_dir()
+    company = Company.from_directory(companies_dir / company_name)
+    if not company or not company.domain:
+        print(f"Could not find company or domain for {company_name}")
+        raise typer.Exit(code=1)
+
+    exclusion_manager = ExclusionManager(campaign=campaign)
+    exclusion_manager.add_exclusion(domain=company.domain, reason=reason)
+    print(f"Excluded {company.name} ({company.domain}) from campaign '{campaign}'.")

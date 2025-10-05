@@ -13,9 +13,11 @@ from ..core.utils import _getch
 from .add_meeting import _add_meeting_logic
 from fuzzywuzzy import process
 
-from ..core.config import get_companies_dir, get_people_dir
+from ..core.config import get_companies_dir, get_people_dir, get_campaign
 from ..core.utils import slugify
 from ..renderers.company_view import display_company_view
+from ..models.company import Company
+from ..core.exclusions import ExclusionManager
 
 console = Console()
 app = typer.Typer()
@@ -66,7 +68,7 @@ def _interactive_view_company(company_name: str):
 
     while True:
         meeting_map = display_company_view(console, company_name, selected_company_dir, frontmatter_data)
-        console.print("\n[bold yellow]Press 'a' to add meeting, 'c' to add contact, 't' to add tag, 'e' to edit _index.md, 'w' to open website, 'p' to call, 'm' to select meeting, 'f' to go back to fuzzy finder, 'q' to quit.[/bold yellow]")
+        console.print("\n[bold yellow]Press 'a' to add meeting, 'c' to add contact, 't' to add tag, 'e' to edit _index.md, 'E' to add email, 'w' to open website, 'p' to call, 'm' to select meeting, 'X' to exclude, 'f' to go back to fuzzy finder, 'q' to quit.[/bold yellow]")
         char = _getch()
 
         if char == 'f':
@@ -74,6 +76,37 @@ def _interactive_view_company(company_name: str):
             console.clear()
             fz()
             break
+        elif char == 'E':
+            console.print("\n[bold green]Adding a new email...[/bold green]")
+            email = typer.prompt("Enter email address")
+            if email:
+                from .add_email import add_email
+                try:
+                    add_email(company_name=company_name, email=email)
+                    frontmatter_data = _load_frontmatter(index_path) # Reload data
+                    console.print(f"[bold green]Email '{email}' added. Press any key to continue.[/bold green]")
+                except Exception as e:
+                    console.print(f"[bold red]Error adding email: {e}. Press any key to continue.[/bold red]")
+            else:
+                console.print("[bold yellow]No email entered. Press any key to continue.[/bold yellow]")
+            _getch()
+        elif char == 'X':
+            console.print("\n[bold red]Excluding company...[/bold red]")
+            campaign = get_campaign()
+            if not campaign:
+                console.print("[bold red]No active campaign set. Use 'cocli campaign set <campaign_name>' to set one. Press any key to continue.[/bold red]")
+                _getch()
+                continue
+            
+            reason = typer.prompt("Reason for exclusion")
+            company = Company.from_directory(selected_company_dir)
+            if company and company.domain:
+                exclusion_manager = ExclusionManager(campaign=campaign)
+                exclusion_manager.add_exclusion(domain=company.domain, reason=reason)
+                console.print(f"[bold red]Company {company.name} excluded from campaign '{campaign}'. Press any key to continue.[/bold red]")
+            else:
+                console.print("[bold red]Could not exclude company. No domain found. Press any key to continue.[/bold red]")
+            _getch()
         elif char == 'a':
             console.print("\n[bold green]Adding a new meeting...[/bold green]")
             meeting_date_str = typer.prompt("Enter meeting date (e.g., 'today', 'next Monday', '2025-12-25')")

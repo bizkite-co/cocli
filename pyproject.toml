@@ -21,6 +21,7 @@ dependencies = [
     "tomli_w", # For writing TOML files
     "simplekml",
     "toml",
+    "httpx",
 ]
 
 [project.scripts]

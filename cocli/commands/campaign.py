@@ -8,8 +8,38 @@ from typing import List
 from ..scrapers.google_maps import scrape_google_maps
 from ..core.config import get_scraped_data_dir
 from ..models.google_maps import GoogleMapsData
+from ..core.config import get_campaign, set_campaign
+from rich.console import Console
 
 app = typer.Typer()
+console = Console()
+
+@app.command()
+def set(campaign_name: str = typer.Argument(..., help="The name of the campaign to set as the current context.")):
+    """
+    Sets the current campaign context.
+    """
+    set_campaign(campaign_name)
+    console.print(f"[green]Campaign context set to:[/] [bold]{campaign_name}[/]")
+
+@app.command()
+def unset():
+    """
+    Clears the current campaign context.
+    """
+    set_campaign(None)
+    console.print("[green]Campaign context cleared.[/]")
+
+@app.command()
+def show():
+    """
+    Displays the current campaign context.
+    """
+    campaign_name = get_campaign()
+    if campaign_name:
+        console.print(f"Current campaign context is: [bold]{campaign_name}[/]")
+    else:
+        console.print("No campaign context is set.")
 
 @app.command()
 def scrape_prospects(

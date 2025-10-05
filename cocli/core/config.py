@@ -112,19 +112,36 @@ def save_config(config_data: dict):
 
 def get_context() -> Optional[str]:
     config = load_config()
-    return config.get("context", {}).get("tag")
+    return config.get("context", {}).get("filter")
 
-def set_context(tag: Optional[str]):
+def set_context(filter_str: Optional[str]):
     config = load_config()
     if "context" not in config:
         config["context"] = {}
-    if tag:
-        config["context"]["tag"] = tag
+    if filter_str:
+        config["context"]["filter"] = filter_str
     else:
-        if "context" in config and "tag" in config["context"]:
-            del config["context"]["tag"]
+        if "context" in config and "filter" in config["context"]:
+            del config["context"]["filter"]
         if "context" in config and not config["context"]:
             del config["context"]
+    save_config(config)
+
+def get_campaign() -> Optional[str]:
+    config = load_config()
+    return config.get("campaign", {}).get("name")
+
+def set_campaign(name: Optional[str]):
+    config = load_config()
+    if "campaign" not in config:
+        config["campaign"] = {}
+    if name:
+        config["campaign"]["name"] = name
+    else:
+        if "campaign" in config and "name" in config["campaign"]:
+            del config["campaign"]["name"]
+        if "campaign" in config and not config["campaign"]:
+            del config["campaign"]
     save_config(config)
 
 def create_default_config_file():

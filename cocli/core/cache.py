@@ -86,6 +86,8 @@ def build_cache() -> List[Dict[str, Any]]:
                         "type": "company",
                         "name": company.name,
                         "tags": company.tags,
+                        "email": company.email,
+                        "domain": company.domain,
                         "display": _format_entity_for_fzf("company", company)
                     })
 
@@ -105,17 +107,21 @@ def build_cache() -> List[Dict[str, Any]]:
     write_cache(all_items)
     return all_items
 
-def get_cached_items(tag_filter: Optional[str] = None) -> List[Dict[str, Any]]:
+def get_cached_items(filter_str: Optional[str] = None) -> List[Dict[str, Any]]:
     """
     Gets items from cache. Rebuilds cache if invalid.
-    Filters by tag if a filter is provided.
+    Filters by tag or other conditions if a filter is provided.
     """
     if not is_cache_valid():
         items = build_cache()
     else:
         items = read_cache()
 
-    if tag_filter:
-        items = [item for item in items if tag_filter in item.get("tags", [])]
+    if filter_str:
+        if filter_str.startswith("tag:"):
+            tag = filter_str.split(":", 1)[1]
+            items = [item for item in items if tag in item.get("tags", [])]
+        elif filter_str == "missing:email":
+            items = [item for item in items if item.get("type") == "company" and not item.get("email")]
 
     return items

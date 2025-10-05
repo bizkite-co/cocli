@@ -9,14 +9,15 @@ from rich.console import Console
 from typer.models import OptionInfo
 
 from ..core.cache import get_cached_items
-from ..core.config import get_context
+from ..core.config import get_context, get_campaign
+from ..core.exclusions import ExclusionManager
 from .view import view_company
 
 console = Console()
 app = typer.Typer()
 
 @app.command()
-def fz(tag: Optional[str] = typer.Option(None, "--tag", "-t", help="Filter items by tag (overrides current context).")):
+def fz(filter_override: Optional[str] = typer.Option(None, "--filter", "-f", help="Filter items by a specific filter (e.g., 'tag:prospect', 'missing:email'). Overrides current context.")):
     """
     Fuzzy search for companies and people using fzf and open the selection.
     """
@@ -26,18 +27,20 @@ def fz(tag: Optional[str] = typer.Option(None, "--tag", "-t", help="Filter items
         console.print("Please install fzf to use this feature. (e.g., `brew install fzf` or `sudo apt install fzf`)")
         raise typer.Exit(code=1)
 
-    actual_tag = tag
-    if isinstance(tag, OptionInfo):
-        actual_tag = tag.default
+    context_filter = get_context()
+    filter_str = filter_override or context_filter
 
-    context_tag = get_context()
-    filter_tag = actual_tag or context_tag
+    all_searchable_items = get_cached_items(filter_str=filter_str)
 
-    all_searchable_items = get_cached_items(tag_filter=filter_tag)
+    # Filter out excluded companies
+    campaign = get_campaign()
+    if campaign:
+        exclusion_manager = ExclusionManager(campaign=campaign)
+        all_searchable_items = [item for item in all_searchable_items if not (item.get("type") == "company" and exclusion_manager.is_excluded(item.get("domain")))]
 
     if not all_searchable_items:
-        if filter_tag:
-            console.print(f"No companies or people found with tag '{filter_tag}'.")
+        if filter_str:
+            console.print(f"No companies or people found with filter '{filter_str}'.")
         else:
             console.print("No companies or people found to search.")
         raise typer.Exit()

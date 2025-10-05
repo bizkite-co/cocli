@@ -1,15 +1,14 @@
 import typer
 from pathlib import Path
 import yaml
-from datetime import datetime, timedelta
-import concurrent.futures
+import asyncio
 
 from cocli.core.config import get_companies_dir
 from cocli.enrichment.website_scraper import WebsiteScraper
 from cocli.models.company import Company
 from cocli.compilers.website_compiler import WebsiteCompiler
 
-def _enrich_company(
+async def _enrich_company(
     company_dir: Path,
     force: bool,
     ttl_days: int,
@@ -23,7 +22,7 @@ def _enrich_company(
 
     print(f"Enriching website for {company.name}")
     scraper = WebsiteScraper()
-    website_data = scraper.run(
+    website_data = await scraper.run(
         domain=company.domain,
         force_refresh=force,
         ttl_days=ttl_days,
@@ -57,24 +56,24 @@ def enrich_websites(
     """
     Enriches all companies with website data, using a cache-first strategy.
     """
-    companies_dir = get_companies_dir()
-    company_dirs = [d for d in companies_dir.iterdir() if d.is_dir()]
+    async def main():
+        companies_dir = get_companies_dir()
+        company_dirs = [d for d in companies_dir.iterdir() if d.is_dir()]
+        
+        semaphore = asyncio.Semaphore(workers)
 
-    with concurrent.futures.ThreadPoolExecutor(max_workers=workers) as executor:
-        futures = [
-            executor.submit(
-                _enrich_company,
-                company_dir,
-                force,
-                ttl_days,
-                headed,
-                devtools,
-                debug
-            )
-            for company_dir in company_dirs
-        ]
-        for future in concurrent.futures.as_completed(futures):
-            try:
-                future.result()
-            except Exception as e:
-                print(f"Error enriching company: {e}")
+        async def run_with_semaphore(company_dir):
+            async with semaphore:
+                await _enrich_company(
+                    company_dir,
+                    force,
+                    ttl_days,
+                    headed,
+                    devtools,
+                    debug
+                )
+
+        tasks = [run_with_semaphore(company_dir) for company_dir in company_dirs]
+        await asyncio.gather(*tasks)
+
+    asyncio.run(main())
