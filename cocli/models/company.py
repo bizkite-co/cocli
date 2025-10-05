@@ -60,39 +60,51 @@ class Company(BaseModel):
 
     @classmethod
     def from_directory(cls, company_dir: Path) -> Optional["Company"]:
-        index_path = company_dir / "_index.md"
-        tags_path = company_dir / "tags.lst"
-
-        if not index_path.exists():
-
-            return None
-
-        content = index_path.read_text()
-        frontmatter_data = {}
-        markdown_content = ""
-
-        if content.startswith("---") and "---" in content[3:]:
-            frontmatter_str, markdown_content = content.split("---", 2)[1:]
-            try:
-                frontmatter_data = yaml.safe_load(frontmatter_str) or {}
-            except yaml.YAMLError:
-                pass # Ignore YAML errors for now, return what we have
-
-        # Add name from directory if not in frontmatter
-        if "name" not in frontmatter_data:
-            frontmatter_data["name"] = company_dir.name.replace("-", " ").title()
-
-        # Add tags
-        tags = []
-        if tags_path.exists():
-            tags = tags_path.read_text().strip().splitlines()
-        frontmatter_data["tags"] = tags
-
         try:
-            return cls(**frontmatter_data)
-        except ValidationError as e:
-            print(f"Warning: Validation error loading company from {company_dir}: {e}")
-            return None
+            index_path = company_dir / "_index.md"
+            tags_path = company_dir / "tags.lst"
+
+            if not index_path.exists():
+
+                return None
+
+            content = index_path.read_text()
+            frontmatter_data = {}
+            markdown_content = ""
+
+            if content.startswith("---") and "---" in content[3:]:
+                frontmatter_str, markdown_content = content.split("---", 2)[1:]
+                try:
+                    frontmatter_data = yaml.safe_load(frontmatter_str) or {}
+                except yaml.YAMLError:
+                    pass # Ignore YAML errors for now, return what we have
+
+            # Load tags from tags.lst
+            tags = []
+            if tags_path.exists():
+                tags = tags_path.read_text().strip().split('\n')
+
+            # Construct Company object
+            company_data = {
+                "name": frontmatter_data.get("name", company_dir.name),
+                "domain": frontmatter_data.get("domain"),
+                "phone_number": frontmatter_data.get("phone_number"),
+                "email": frontmatter_data.get("email"),
+                "city": frontmatter_data.get("city"),
+                "state": frontmatter_data.get("state"),
+                "zip_code": frontmatter_data.get("zip_code"),
+                "country": frontmatter_data.get("country"),
+                "description": markdown_content.strip(),
+                "tags": tags,
+            }
+
+            try:
+                return cls(**company_data)
+            except ValidationError as e:
+                print(f"Warning: Validation error loading company from {company_dir}: {e}")
+                return None
+            except Exception as e:
+                print(f"Warning: Unexpected error loading company from {company_dir}: {e}")
+                return None
         except Exception as e:
-            print(f"Warning: Unexpected error loading company from {company_dir}: {e}")
-            return None
+            raise Exception("from_directory") from e

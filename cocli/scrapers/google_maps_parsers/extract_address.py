@@ -15,7 +15,7 @@ def extract_address(soup: BeautifulSoup, inner_text: str, debug: bool = False) -
 
     # Look for a pattern like "NUMBER StreetName, City, State ZIP"
     # This regex is more specific to avoid matching ratings
-    address_match = re.search(r"(\d+[\w\s\.]+(?:Ave|Street|Road|Rd|Blvd|Place|Pl|Hwy|Ct|Circle|Dr|Lane|Ln|Parkway|Pkwy|Square|Sq|Terrace|Trl|Way|Wy)\.?,?\s*[\w\s]+,?\s*[A-Z]{2}\s*\d{5})", inner_text)
+    address_match = re.search(r"(\d+.*)", inner_text)
     if address_match:
         full_address = address_match.group(1).strip()
         if debug: print(f"Debug: Extracted Full_Address (innerText): {full_address}")

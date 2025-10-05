@@ -8,7 +8,7 @@ def extract_name(soup: BeautifulSoup, inner_text: str, debug: bool = False) -> s
     """
     name = ""
     # Name is usually the first line before a rating or other details
-    name_match = re.search(r"^(.*?)(?:\n\d+\.\d+|\n[A-Z][a-z]+ \d+)", inner_text)
+    name_match = re.search(r"^(.*?)\n", inner_text)
     if name_match:
         name = name_match.group(1).strip()
         if debug: print(f"Debug: Extracted Name (innerText): {name}")

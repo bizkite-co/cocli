@@ -1,7 +1,8 @@
 import pytest
 from pathlib import Path
 from unittest.mock import patch, MagicMock
-from cocli.scrapers.google_maps import _extract_business_data, scrape_google_maps, LEAD_SNIPER_HEADERS
+from cocli.scrapers.google_maps import scrape_google_maps
+from cocli.scrapers.google_maps_parser import GOOGLE_MAPS_HEADERS, parse_business_listing_html
 
 # Sample HTML content from data/maps.google.com/item.html
 SAMPLE_ITEM_HTML = """
@@ -24,18 +25,16 @@ def mock_playwright():
 
         # Mock the scrollable div behavior
         mock_locator.evaluate.side_effect = [100, 100] # Simulate no new content after first scroll
-        mock_locator.all.return_value = [MagicMock(get_attribute=lambda x: "https://www.google.com/maps/place/MockBusiness/data=!4m",
-                                                    locator=lambda x: MagicMock(first=MagicMock(inner_html=lambda: SAMPLE_ITEM_HTML)))]
+        mock_scrollable_div = MagicMock()
+        mock_page.locator.return_value = mock_scrollable_div
+        mock_scrollable_div.locator.return_value.all.return_value = [MagicMock(inner_html=lambda: SAMPLE_ITEM_HTML)]
 
         yield mock_page, mock_locator
 
-@pytest.fixture
-def temp_output_dir(tmp_path):
-    """Provides a temporary directory for test output."""
-    return tmp_path / "temp_output"
+
 
 @patch('cocli.scrapers.google_maps.get_coordinates_from_zip')
-def test_scrape_google_maps_functionality(mock_get_coordinates, mock_playwright, temp_output_dir):
+def test_scrape_google_maps_returns_data(mock_get_coordinates, mock_playwright):
     """
     Tests the scrape_google_maps function with mocked Playwright and a temporary directory.
     Verifies URL construction and CSV file creation.
@@ -47,25 +46,18 @@ def test_scrape_google_maps_functionality(mock_get_coordinates, mock_playwright,
     # Mock the return value of get_coordinates_from_zip
     mock_get_coordinates.return_value = {"latitude": 34.0736, "longitude": -118.4004}
 
-    scrape_google_maps({"zip_code": zip_code}, search_string, output_dir=temp_output_dir, max_results=1)
+    results = scrape_google_maps({"zip_code": zip_code}, search_string, max_results=1)
 
     # Verify page.goto was called with the correct URL
     expected_url_part = f"https://www.google.com/maps/search/photography+studio/@34.0736,-118.4004,15z/data=!3m2!1e3!4b1?entry=ttu"
     mock_page.goto.assert_called_once()
     assert expected_url_part in mock_page.goto.call_args[0][0]
 
-    # Verify CSV file was created
-    csv_files = list(temp_output_dir.glob("*-photography-studio-*.csv"))
-    assert len(csv_files) == 1
-    output_csv_path = csv_files[0]
-    assert output_csv_path.exists()
-
-    # Verify CSV content (basic check)
-    with open(output_csv_path, 'r', encoding='utf-8') as f:
-        content = f.read()
-        assert "Touch Photography" in content
-        assert "photography studio" in content
-        assert LEAD_SNIPER_HEADERS[0] in content # Check for header
+    # Verify that the function returns a list of GoogleMapsData objects
+    assert isinstance(results, list)
+    assert len(results) > 0
+    assert hasattr(results[0], 'Name')
+    assert results[0].Name == "Touch Photography"
 
 
 def test_extract_business_data_basic():
@@ -73,7 +65,7 @@ def test_extract_business_data_basic():
     Tests the _extract_business_data function with a sample HTML snippet.
     """
     keyword = "photography studio"
-    data = _extract_business_data(SAMPLE_ITEM_HTML, keyword)
+    data = parse_business_listing_html(SAMPLE_ITEM_HTML, keyword)
 
     assert data["Name"] == "Touch Photography"
     assert data["Keyword"] == keyword
@@ -101,7 +93,7 @@ def test_extract_business_data_basic():
     assert data["Uuid"] is not None
 
     # Ensure all headers are present, even if empty
-    for header in LEAD_SNIPER_HEADERS:
+    for header in GOOGLE_MAPS_HEADERS:
         assert header in data
 
 def test_extract_business_data_missing_elements():
@@ -131,7 +123,7 @@ def test_extract_business_data_missing_elements():
     </div>
     """
     keyword = "minimal test"
-    data = _extract_business_data(minimal_html, keyword)
+    data = parse_business_listing_html(minimal_html, keyword)
 
     assert data["Name"] == "Minimal Business"
     assert data["Keyword"] == keyword
@@ -145,5 +137,5 @@ def test_extract_business_data_missing_elements():
     assert data["id"] is not None
     assert data["Uuid"] is not None
 
-    for header in LEAD_SNIPER_HEADERS:
+    for header in GOOGLE_MAPS_HEADERS:
         assert header in data

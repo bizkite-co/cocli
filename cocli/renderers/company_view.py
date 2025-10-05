@@ -1,7 +1,7 @@
 import datetime
 import re
 from pathlib import Path
-from typing import Dict, Any, List, Tuple
+from typing import Dict, Any, List, Tuple, Optional
 
 from rich.console import Console
 from rich.markdown import Markdown
@@ -11,9 +11,11 @@ from rich.columns import Columns
 
 from pytz import timezone
 from tzlocal import get_localzone
+from ..models.website import Website
+from ..models.person import Person
 
-def _render_company_details(frontmatter_data: dict, tags: List[str], content: str) -> Panel:
-    """Renders company details, including tags, and markdown content."""
+def _render_company_details(frontmatter_data: dict, tags: List[str], content: str, website_data: Optional[Website]) -> Panel:
+    """Renders company details, including tags, services, and markdown content."""
     output = ""
     for key, value in frontmatter_data.items():
         if value is None or key == "name":
@@ -30,22 +32,36 @@ def _render_company_details(frontmatter_data: dict, tags: List[str], content: st
     if tags:
         output += f"- Tags: {', '.join(tags)}\n"
 
+    if website_data and website_data.services:
+        output += f"- Services: {', '.join(website_data.services)}\n"
+
     if content.strip():
         output += f"\n{content.strip()}\n"
 
     return Panel(Markdown(output), title="Company Details", border_style="green")
 
 def _render_contacts(contacts_dir: Path) -> Panel:
-    """Renders a list of contacts."""
+    """Renders a list of contacts with more details."""
     if not contacts_dir.exists():
         return Panel("No contacts found.", title="Contacts", border_style="blue")
 
-    contacts = [f.name for f in contacts_dir.iterdir() if f.is_symlink()]
-    if not contacts:
+    contact_panels = []
+    for contact_symlink in contacts_dir.iterdir():
+        if contact_symlink.is_symlink():
+            person_dir = contact_symlink.resolve()
+            person = Person.from_directory(person_dir)
+            if person:
+                contact_details = f"[bold]{person.first_name} {person.last_name}[/bold]\n"
+                if person.email:
+                    contact_details += f"Email: {person.email}\n"
+                if person.phone_number:
+                    contact_details += f"Phone: {person.phone_number}\n"
+                contact_panels.append(Panel(contact_details, title=person.name, border_style="blue"))
+
+    if not contact_panels:
         return Panel("No contacts found.", title="Contacts", border_style="blue")
 
-    contacts_text = "\n".join(sorted(contacts))
-    return Panel(contacts_text, title="Contacts", border_style="blue")
+    return Panel(Columns(contact_panels, expand=True, equal=True), title="Contacts", border_style="blue")
 
 
 def _render_meetings(meetings_dir: Path) -> Tuple[Panel, Dict[int, Path]]:
@@ -112,7 +128,7 @@ def _render_meetings(meetings_dir: Path) -> Tuple[Panel, Dict[int, Path]]:
     return Panel(Markdown(output), title="Meetings", border_style="magenta"), meeting_map
 
 
-def display_company_view(console: Console, company_name: str, selected_company_dir: Path, frontmatter_data: dict):
+def display_company_view(console: Console, company_name: str, selected_company_dir: Path, frontmatter_data: dict, website_data: Optional[Website]):
     console.clear()
     
     index_path = selected_company_dir / "_index.md"
@@ -135,7 +151,7 @@ def display_company_view(console: Console, company_name: str, selected_company_d
             content = file_content
 
     # Render components
-    details_panel = _render_company_details(frontmatter_data, tags, content)
+    details_panel = _render_company_details(frontmatter_data, tags, content, website_data)
     contacts_panel = _render_contacts(contacts_dir)
     meetings_panel, meeting_map = _render_meetings(meetings_dir)
 

@@ -12,7 +12,7 @@ from .google_maps_parsers.extract_categories import extract_categories
 from .google_maps_parsers.extract_business_status_hours import extract_business_status_hours
 from .google_maps_parsers.extract_gmb_url_coordinates_place_id import extract_gmb_url_coordinates_place_id
 
-LEAD_SNIPER_HEADERS = [
+GOOGLE_MAPS_HEADERS = [
     "id",
     "Keyword",
     "Name",
@@ -80,7 +80,7 @@ def parse_business_listing_html(
     Extracts business data from a single Google Maps listing HTML snippet, prioritizing innerText parsing.
     """
     soup = BeautifulSoup(item_html, "html.parser")
-    data: Dict[str, Any] = {header: "" for header in LEAD_SNIPER_HEADERS}
+    data: Dict[str, Any] = {header: "" for header in GOOGLE_MAPS_HEADERS}
     data["Keyword"] = keyword if keyword else ""
     data["id"] = str(uuid.uuid4())  # Generate a unique ID
     data["Uuid"] = str(uuid.uuid4())  # Generate a unique UUID

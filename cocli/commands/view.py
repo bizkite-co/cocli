@@ -18,6 +18,8 @@ from ..core.utils import slugify
 from ..renderers.company_view import display_company_view
 from ..models.company import Company
 from ..core.exclusions import ExclusionManager
+from ..core.website_cache import WebsiteCache
+from ..models.website import Website
 
 console = Console()
 app = typer.Typer()
@@ -66,15 +68,21 @@ def _interactive_view_company(company_name: str):
     index_path = selected_company_dir / "_index.md"
     frontmatter_data = _load_frontmatter(index_path)
 
+    website_cache = WebsiteCache()
+    website_data: Optional[Website] = None
+    if frontmatter_data.get("domain"):
+        website_data = website_cache.get_by_url(frontmatter_data["domain"])
+
     while True:
-        meeting_map = display_company_view(console, company_name, selected_company_dir, frontmatter_data)
+        meeting_map = display_company_view(console, company_name, selected_company_dir, frontmatter_data, website_data)
         console.print("\n[bold yellow]Press 'a' to add meeting, 'c' to add contact, 't' to add tag, 'e' to edit _index.md, 'E' to add email, 'w' to open website, 'p' to call, 'm' to select meeting, 'X' to exclude, 'f' to go back to fuzzy finder, 'q' to quit.[/bold yellow]")
         char = _getch()
 
         if char == 'f':
             from .fz import fz
+            from ..core.config import get_context
             console.clear()
-            fz()
+            fz(filter_override=get_context())
             break
         elif char == 'E':
             console.print("\n[bold green]Adding a new email...[/bold green]")

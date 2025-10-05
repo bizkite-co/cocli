@@ -6,7 +6,8 @@ import shutil # Import shutil for rmtree
 from pathlib import Path
 from behave import *
 
-from cocli.scrapers.google_maps import scrape_google_maps, LEAD_SNIPER_HEADERS
+from cocli.scrapers.google_maps import scrape_google_maps
+from cocli.scrapers.google_maps_parser import GOOGLE_MAPS_HEADERS
 
 @given('a zip code "{zip_code}" and a search string "{search_string}"')
 def step_given_zip_code_and_search_string(context, zip_code, search_string):
@@ -46,7 +47,7 @@ def step_then_csv_contains_entries(context):
 
 @then('the CSV file should have the Lead Sniper header')
 def step_then_csv_has_header(context):
-    expected_header = LEAD_SNIPER_HEADERS
+    expected_header = GOOGLE_MAPS_HEADERS
     with open(context.output_csv_path, 'r', encoding='utf-8') as f:
         reader = csv.reader(f)
         actual_header = next(reader)
