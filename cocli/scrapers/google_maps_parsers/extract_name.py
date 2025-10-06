@@ -15,7 +15,9 @@ def extract_name(soup: BeautifulSoup, inner_text: str, debug: bool = False) -> s
     else:
         # Fallback to HTML selector if innerText parsing fails
         # Using a more generic selector for name
-        name_element = soup.find("div", {"role": "heading", "aria-level": "2"})
+        # Fallback to HTML selector if innerText parsing fails
+        # Using a more robust selector for name
+        name_element = soup.find(class_=re.compile(r"fontHeadlineSmall"))
         if name_element:
             name = name_element.text.strip()
             if debug: print(f"Debug: Extracted Name (HTML fallback): {name}")

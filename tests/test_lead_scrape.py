@@ -1,9 +1,11 @@
 import pytest
 from unittest.mock import patch, MagicMock
 from pathlib import Path
+from datetime import datetime
 from typer.testing import CliRunner
 
 from cocli.main import app
+from cocli.models.google_maps import GoogleMapsData
 
 runner = CliRunner()
 
@@ -12,7 +14,22 @@ def mock_scrape_and_import():
     """Mocks scrape_google_maps and import_data functions."""
     with patch('cocli.commands.lead_scrape.scrape_google_maps') as mock_scrape, \
          patch('cocli.commands.lead_scrape.import_data') as mock_import:
-        mock_scrape.return_value = Path("/tmp/test_scraped_data.csv")
+        # Mock GoogleMapsData object
+        mock_google_maps_data = GoogleMapsData(
+            Place_ID="test_place_id",
+            Name="Test Business",
+            Full_Address="123 Test St",
+            Website="http://test.com",
+            Phone="+1234567890",
+            Category="Test Category",
+            Latitude=0.0,
+            Longitude=0.0,
+            Google_Maps_URL="http://maps.google.com/test",
+            GMB_URL="http://gmb.google.com/test",
+            created_at=datetime.now(),
+            updated_at=datetime.now(),
+        )
+        mock_scrape.return_value = [mock_google_maps_data]
         mock_import.return_value = None
         yield mock_scrape, mock_import
 
@@ -26,20 +43,28 @@ def test_lead_scrape_success(mock_scrape_and_import):
     assert result.exit_code == 0
     assert "Starting lead scrape for query: 'photographer'" in result.stdout
     assert "Scraping Google Maps..." in result.stdout
-    assert "Scraping completed. Results saved to /tmp/test_scraped_data.csv" in result.stdout
-    assert "Importing data from /tmp/test_scraped_data.csv..." in result.stdout
+    assert "Scraping completed. Results saved to" in result.stdout
+    assert "google_maps_scrape_photographer_" in result.stdout # Check for dynamic filename
+    assert ".csv" in result.stdout # Check for dynamic filename
+    assert "Importing data from" in result.stdout
     assert "Data import completed successfully." in result.stdout
     assert "Scraped CSV file deleted." not in result.stdout
 
     mock_scrape.assert_called_once_with(
         location_param={"city": "Whittier,CA"},
         search_string="photographer",
-        output_dir=Path("/home/mstouffer/.local/share/cocli_data/scraped_data"),
         debug=False,
     )
+    
+    # Extract the dynamically generated CSV path from the stdout
+    output_lines = result.stdout.split('\n')
+    csv_path_line = [line for line in output_lines if "Scraping completed. Results saved to" in line][0]
+    scraped_csv_path_str = csv_path_line.split("Results saved to ")[1].strip()
+    scraped_csv_path = Path(scraped_csv_path_str)
+
     mock_import.assert_called_once_with(
         importer_name="google-maps",
-        file_path=Path("/tmp/test_scraped_data.csv"),
+        file_path=scraped_csv_path,
         debug=False,
     )
 
@@ -49,25 +74,28 @@ def test_lead_scrape_with_cleanup(mock_scrape_and_import):
     """
     mock_scrape, mock_import = mock_scrape_and_import
 
-    # Create a dummy file to be "cleaned up"
-    dummy_csv_path = Path("/tmp/test_scraped_data.csv")
-    dummy_csv_path.touch()
-    mock_scrape.return_value = dummy_csv_path
-
     result = runner.invoke(app, ["lead-scrape", "photographer", "--city", "Whittier,CA", "--cleanup"])
     mock_scrape.assert_called_once_with(
         location_param={"city": "Whittier,CA"},
         search_string="photographer",
-        output_dir=Path("/home/mstouffer/.local/share/cocli_data/scraped_data"),
         debug=False,
     )
 
     assert result.exit_code == 0
-    assert "Scraping completed. Results saved to /tmp/test_scraped_data.csv" in result.stdout
+    assert "Scraping completed. Results saved to" in result.stdout
+    assert "google_maps_scrape_photographer_" in result.stdout # Check for dynamic filename
+    assert ".csv" in result.stdout # Check for dynamic filename
     assert "Data import completed successfully." in result.stdout
-    assert "Cleaning up scraped CSV file: /tmp/test_scraped_data.csv" in result.stdout
+    assert "Cleaning up scraped CSV file:" in result.stdout
     assert "Scraped CSV file deleted." in result.stdout
-    assert not dummy_csv_path.exists() # Verify file was deleted
+    
+    # Extract the dynamically generated CSV path from the stdout
+    output_lines = result.stdout.split('\n')
+    csv_path_line = [line for line in output_lines if "Scraping completed. Results saved to" in line][0]
+    scraped_csv_path_str = csv_path_line.split("Results saved to ")[1].strip()
+    scraped_csv_path = Path(scraped_csv_path_str)
+
+    assert not scraped_csv_path.exists() # Verify file was deleted
 
 def test_lead_scrape_no_location_param():
     """
@@ -91,13 +119,17 @@ def test_lead_scrape_scraping_failure(mock_scrape_and_import):
     """
     mock_scrape, mock_import = mock_scrape_and_import
     mock_scrape.side_effect = Exception("Scraping error")
-    mock_scrape.return_value = None # Ensure no path is returned on error
+    mock_scrape.return_value = [] # Ensure an empty list is returned on error
 
     result = runner.invoke(app, ["lead-scrape", "photographer", "--city", "Whittier,CA"])
 
     assert result.exit_code == 1
     assert "An unexpected error occurred during lead scrape: Scraping error\n" in result.stderr
-    mock_scrape.assert_called_once()
+    mock_scrape.assert_called_once_with(
+        location_param={"city": "Whittier,CA"},
+        search_string="photographer",
+        debug=False,
+    )
     mock_import.assert_not_called() # Import should not be called if scraping fails
 
 def test_lead_scrape_import_failure(mock_scrape_and_import):
@@ -111,7 +143,11 @@ def test_lead_scrape_import_failure(mock_scrape_and_import):
 
     assert result.exit_code == 1
     assert "An unexpected error occurred during lead scrape: Import error\n" in result.stderr
-    mock_scrape.assert_called_once()
+    mock_scrape.assert_called_once_with(
+        location_param={"city": "Whittier,CA"},
+        search_string="photographer",
+        debug=False,
+    )
     mock_import.assert_called_once()
 
 def test_lead_scrape_no_csv_on_scrape_failure(mock_scrape_and_import):
@@ -119,10 +155,10 @@ def test_lead_scrape_no_csv_on_scrape_failure(mock_scrape_and_import):
     Tests that no CSV cleanup is attempted if scraping fails and returns None.
     """
     mock_scrape, mock_import = mock_scrape_and_import
-    mock_scrape.return_value = None # Simulate scrape_google_maps returning None on failure
+    mock_scrape.return_value = [] # Simulate scrape_google_maps returning an empty list on failure
 
     result = runner.invoke(app, ["lead-scrape", "photographer", "--city", "Whittier,CA", "--cleanup"])
 
     assert result.exit_code == 1
-    assert "Scraping failed, no CSV file was generated.\n" in result.stderr
+    assert "Scraping failed, no data was returned.\n" in result.stderr
     assert "Cleaning up scraped CSV file" not in result.stdout
