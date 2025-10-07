@@ -21,7 +21,11 @@ def scrape_google_maps(
     max_results: int = 30,
     debug: bool = False,
     force_refresh: bool = False,
-    ttl_days: int = 30
+    ttl_days: int = 30,
+    headless: Optional[bool] = None,
+    browser_width: Optional[int] = None,
+    browser_height: Optional[int] = None,
+    devtools: Optional[bool] = None,
 ) -> List[GoogleMapsData]:
     """
     Scrapes business information from Google Maps, using a cache-first strategy.
@@ -29,6 +33,12 @@ def scrape_google_maps(
     if debug: print(f"Debug: scrape_google_maps called with debug={debug}")
     settings = load_scraper_settings()
     delay_seconds = settings.google_maps_delay_seconds
+
+    # Override global settings with function arguments if provided
+    launch_headless = headless if headless is not None else settings.browser_headless
+    launch_width = browser_width if browser_width is not None else settings.browser_width
+    launch_height = browser_height if browser_height is not None else settings.browser_height
+    launch_devtools = devtools if devtools is not None else settings.browser_devtools
 
     cache = GoogleMapsCache()
     fresh_delta = timedelta(days=ttl_days)
@@ -53,8 +63,12 @@ def scrape_google_maps(
     scraped_data: List[GoogleMapsData] = []
 
     with sync_playwright() as p:
-        browser = p.chromium.launch(headless=True)
-        page = browser.new_page()
+        browser = p.chromium.launch(
+            headless=launch_headless,
+            devtools=launch_devtools,
+            args=[f'--window-size={launch_width},{launch_height}']
+        )
+        page = browser.new_page(viewport={'width': launch_width, 'height': launch_height})
 
         try:
             page.goto(url, wait_until="domcontentloaded")
@@ -78,6 +92,11 @@ def scrape_google_maps(
                 for listing_div in listing_divs:
                     html_content = listing_div.inner_html()
                     business_data_dict = parse_business_listing_html(html_content, search_string, debug=debug)
+                    
+                    if debug:
+                        print("Debug: Pausing after parsing business listing HTML. Press F8 in Playwright Inspector to resume.")
+                        page.pause() # Pause for debugging
+
                     place_id = business_data_dict.get("Place_ID")
 
                     if not place_id:

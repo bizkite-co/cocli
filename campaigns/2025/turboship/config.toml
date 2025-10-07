@@ -2,6 +2,10 @@
 name = "Turboship Q3 2025"
 tag = "turboship"
 
+[browser]
+width=2400
+height=2000
+
 [google_maps]
 email = "admin@turboheatweldingtools.com"
 one_password_path = "op://TurboHeatWelding/GMail_TurboHeatWeldingTools/password"

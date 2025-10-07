@@ -67,6 +67,34 @@
             ],
             "console": "integratedTerminal",
             "justMyCode": false
+        },
+        {
+            "name": "Python: Pytest Debug Scraper",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "pytest",
+            "args": [
+                "tests/test_google_maps_scraper.py::test_scrape_google_maps_returns_data"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": true,
+            "python": "${workspaceFolder}/.venv/bin/python"
+        },
+        {
+            "name": "Debug: Google Maps Scraper",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/tests/debug_google_maps_scraper.py",
+            "args": [
+                "--search", "photographer",
+                "--zip-code", "90210",
+                "--max-results", "1",
+                "--headed",
+                "--devtools"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": true,
+            "python": "${workspaceFolder}/.venv/bin/python"
         }
     ]
 }

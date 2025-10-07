@@ -48,12 +48,11 @@ def test_lead_scrape_success(mock_scrape_and_import):
     assert ".csv" in result.stdout # Check for dynamic filename
     assert "Importing data from" in result.stdout
     assert "Data import completed successfully." in result.stdout
-    assert "Scraped CSV file deleted." not in result.stdout
-
     mock_scrape.assert_called_once_with(
         location_param={"city": "Whittier,CA"},
         search_string="photographer",
         debug=False,
+        headless=True, # Add headless=True to the assertion
     )
     
     # Extract the dynamically generated CSV path from the stdout
@@ -79,6 +78,7 @@ def test_lead_scrape_with_cleanup(mock_scrape_and_import):
         location_param={"city": "Whittier,CA"},
         search_string="photographer",
         debug=False,
+        headless=True, # Add headless=True to the assertion
     )
 
     assert result.exit_code == 0

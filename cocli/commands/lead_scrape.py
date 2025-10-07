@@ -19,6 +19,7 @@ def lead_scrape(
     city: Optional[str] = typer.Option(None, "--city", "-c", help="City and State (e.g., 'Brea,CA') for location-based search."),
     cleanup: bool = typer.Option(False, "--cleanup", "-x", help="Delete the scraped CSV file after successful import."),
     debug: bool = typer.Option(False, "--debug", help="Enable debug output for scraping and import."),
+    headed: bool = typer.Option(False, "--headed", help="Launch browser in headed mode for debugging."),
 ):
     """
     Scrapes leads from Google Maps and imports them into the company database.
@@ -46,6 +47,7 @@ def lead_scrape(
             location_param=location_param,
             search_string=query,
             debug=debug,
+            headless=not headed, # Use 'not headed' to launch in headed mode when --headed is true
         )
 
         if not scraped_data:

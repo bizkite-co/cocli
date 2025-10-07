@@ -33,6 +33,9 @@ install: ## Install development dependencies using uv
 test: install ## Run tests using pytest
 	source $(VENV_DIR)/bin/activate && pytest tests/
 
+test-file: install ## Run a specific test file, e.g., make test-file FILE=tests/test_google_maps_scraper.py
+	source $(VENV_DIR)/bin/activate && pytest $(FILE)
+
 activate: install ## Run tests using pytest
 	source $(VENV_DIR)/bin/activate
 
@@ -106,3 +109,7 @@ prospects-with-emails:
 	rg '[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}' \
 		cocli_data/scraped_data/turboship/prospects/prospects.csv >> \
 		cocli_data/scraped_data/turboship/prospects/prospects_with_emails.csv
+
+.PHONY: debug-google-maps-scraper
+debug-google-maps-scraper: install ## Run the Google Maps scraper in headed mode with debug tools for debugging
+	source $(VENV_DIR)/bin/activate && pytest tests/debug_google_maps_scraper.py

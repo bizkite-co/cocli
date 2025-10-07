@@ -4,8 +4,10 @@ import shutil
 import platform
 import tomli
 import tomli_w
-from pydantic import BaseModel, Field
 from typing import Optional
+
+from pydantic import Field
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 def get_cocli_base_dir() -> Path:
     """
@@ -62,9 +64,15 @@ def get_scraped_data_dir() -> Path:
     return scraped_data_dir
 
 
-class ScraperSettings(BaseModel):
-    google_maps_delay_seconds: int = Field(20, description="Delay in seconds between page scrolls/requests for Google Maps scraper.")
-    google_maps_max_pages: int = Field(3, description="Maximum number of pages/scrolls to fetch for Google Maps scraper.")
+class ScraperSettings(BaseSettings):
+    google_maps_delay_seconds: float = 1.0
+    google_maps_max_retries: int = 3
+    google_maps_retry_delay_seconds: float = 5.0
+    google_maps_cache_ttl_days: int = 30
+    browser_headless: bool = True
+    browser_width: int = 2500
+    browser_height: int = 2000
+    browser_devtools: bool = False
 
 def load_scraper_settings() -> ScraperSettings:
     """

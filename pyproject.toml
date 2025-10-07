@@ -22,6 +22,7 @@ dependencies = [
     "simplekml",
     "toml",
     "httpx",
+    "pydantic-settings", # Added for BaseSettings
 ]
 
 [project.scripts]
