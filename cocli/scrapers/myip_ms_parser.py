@@ -54,7 +54,6 @@ SHOPIFY_HEADERS = [
     "Instagram_URL",
     "Meta_Description",
     "Meta_Keywords",
-    "Uuid",
     "Accessibility",
     "Service_options",
     "Amenities",
@@ -79,8 +78,6 @@ def parse_myip_ms_listing(row_data: Dict[str, str], debug: bool = False) -> Dict
     compatible with the Company model.
     """
     data: Dict[str, Any] = {header: "" for header in SHOPIFY_HEADERS}
-    data["id"] = str(uuid.uuid4())
-    data["Uuid"] = str(uuid.uuid4())
     data["Keyword"] = "shopify-myip-ms" # Default keyword for this source
 
     if debug: print(f"Debug: Raw row data for parser: {row_data}")
@@ -95,12 +92,15 @@ def parse_myip_ms_listing(row_data: Dict[str, str], debug: bool = False) -> Dict
     # Derive Name and Domain from Website
     if data["Website"]:
         data["Domain"] = extract_domain_from_url(data["Website"])
+        data["id"] = str(uuid.uuid5(uuid.NAMESPACE_DNS, data["Website"]))
         # Attempt to derive a name from the domain, e.g., "example.com" -> "Example Com"
         if data["Domain"]:
             name_parts = data["Domain"].replace(".com", "").replace(".net", "").replace(".org", "").split('.')
             data["Name"] = " ".join([part.capitalize() for part in name_parts if part]).strip()
             if not data["Name"]: # Fallback if domain parsing is too aggressive
                 data["Name"] = data["Domain"]
+    else:
+        data["id"] = str(uuid.uuid4()) # Should not happen
 
     if debug: print(f"Debug: Parsed data: {data}")
     return data

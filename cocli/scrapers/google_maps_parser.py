@@ -64,7 +64,6 @@ GOOGLE_MAPS_HEADERS = [
     "Quotes",
     "Meta_Description",
     "Meta_Keywords",
-    "Uuid",
     "Accessibility",
     "Service_options",
     "Amenities",
@@ -84,8 +83,6 @@ def parse_business_listing_html(
     soup = BeautifulSoup(item_html, "html.parser")
     data: Dict[str, Any] = {header: "" for header in GOOGLE_MAPS_HEADERS}
     data["Keyword"] = keyword if keyword else ""
-    data["id"] = str(uuid.uuid4())  # Generate a unique ID
-    data["Uuid"] = str(uuid.uuid4())  # Generate a unique UUID NOTE: We don't need two of these.
 
     if debug: print(f"Debug: Processing HTML: {item_html[:500]}...") # Print first 500 chars of HTML
     inner_text = soup.get_text(separator="\n", strip=True)
@@ -114,6 +111,18 @@ def parse_business_listing_html(
 
     business_status_hours = extract_business_status_hours(soup, inner_text, debug)
     data.update(business_status_hours)
+
+    # Set the id to the Place_ID if it exists, otherwise generate a hash.
+    if data.get("Place_ID"):
+        data["id"] = data["Place_ID"]
+    else:
+        # Fallback to a hash of name and address if Place_ID is not available
+        name = data.get("Name", "")
+        address = data.get("Full_Address", "")
+        if name and address:
+            data["id"] = str(uuid.uuid5(uuid.NAMESPACE_DNS, name + address))
+        else:
+            data["id"] = str(uuid.uuid4()) # Should not happen
 
     # Extract quotes
     quotes = QUOTES_RE.findall(inner_text)

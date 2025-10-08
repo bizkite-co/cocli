@@ -89,8 +89,7 @@ def test_extract_business_data_basic():
     assert data["Longitude"] == "-117.8961057"
     assert data["Coordinates"] == "33.9874604,-117.8961057"
     assert data["Place_ID"] == "ChIJV4Sz2vUqw4ARuj3SaSMIsX4"
-    assert data["id"] is not None
-    assert data["Uuid"] is not None
+    assert data["id"] == "ChIJV4Sz2vUqw4ARuj3SaSMIsX4"
 
     # Ensure all headers are present, even if empty
     for header in GOOGLE_MAPS_HEADERS:
@@ -134,7 +133,6 @@ def test_extract_business_data_missing_elements():
     assert data["Hours"] == ""
     assert "google.com/maps/place/Minimal+Business" in data["GMB_URL"]
     assert data["id"] is not None
-    assert data["Uuid"] is not None
 
     for header in GOOGLE_MAPS_HEADERS:
         assert header in data
