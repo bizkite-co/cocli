@@ -73,6 +73,8 @@ GOOGLE_MAPS_HEADERS = [
     "Planning",
 ]
 
+QUOTES_RE = re.compile(r'"(.*?)"')
+
 def parse_business_listing_html(
     item_html: str, keyword: Optional[str] = None, debug: bool = False
 ) -> Dict[str, Any]:
@@ -83,7 +85,7 @@ def parse_business_listing_html(
     data: Dict[str, Any] = {header: "" for header in GOOGLE_MAPS_HEADERS}
     data["Keyword"] = keyword if keyword else ""
     data["id"] = str(uuid.uuid4())  # Generate a unique ID
-    data["Uuid"] = str(uuid.uuid4())  # Generate a unique UUID
+    data["Uuid"] = str(uuid.uuid4())  # Generate a unique UUID NOTE: We don't need two of these.
 
     if debug: print(f"Debug: Processing HTML: {item_html[:500]}...") # Print first 500 chars of HTML
     inner_text = soup.get_text(separator="\n", strip=True)
@@ -110,8 +112,11 @@ def parse_business_listing_html(
     gmb_data = extract_gmb_url_coordinates_place_id(soup, debug)
     data.update(gmb_data)
 
+    business_status_hours = extract_business_status_hours(soup, inner_text, debug)
+    data.update(business_status_hours)
+
     # Extract quotes
-    quotes = re.findall(r'"(.*?)"', inner_text)
+    quotes = QUOTES_RE.findall(inner_text)
     data["Quotes"] = "\n".join(quotes)
 
     if debug: print(f"Debug: Final extracted data: {data}")

@@ -93,6 +93,9 @@
                 "--devtools"
             ],
             "console": "integratedTerminal",
+            "env": {
+                "PWDEBUG": "0"
+            },
             "justMyCode": true,
             "python": "${workspaceFolder}/.venv/bin/python"
         }

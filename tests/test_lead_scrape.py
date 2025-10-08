@@ -129,6 +129,7 @@ def test_lead_scrape_scraping_failure(mock_scrape_and_import):
         location_param={"city": "Whittier,CA"},
         search_string="photographer",
         debug=False,
+        headless=True,
     )
     mock_import.assert_not_called() # Import should not be called if scraping fails
 
@@ -147,6 +148,7 @@ def test_lead_scrape_import_failure(mock_scrape_and_import):
         location_param={"city": "Whittier,CA"},
         search_string="photographer",
         debug=False,
+        headless=True,
     )
     mock_import.assert_called_once()
 

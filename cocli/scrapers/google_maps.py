@@ -48,7 +48,7 @@ def scrape_google_maps(
         coordinates = get_coordinates_from_zip(location_param["zip_code"])
     elif "city" in location_param:
         coordinates = get_coordinates_from_city_state(location_param["city"])
-    
+
     if not coordinates:
         print(f"Error: Could not find coordinates for {location_param}")
         return []
@@ -91,8 +91,18 @@ def scrape_google_maps(
 
                 for listing_div in listing_divs:
                     html_content = listing_div.inner_html()
+                    if html_content == '':
+                        # If the div is empty
+                        continue
+                    if "All filters" in html_content:
+                        # Filter header
+                        continue
+                    if "Prices come from Google" in html_content:
+                        # Legal header
+                        continue
+
                     business_data_dict = parse_business_listing_html(html_content, search_string, debug=debug)
-                    
+
                     if debug:
                         print("Debug: Pausing after parsing business listing HTML. Press F8 in Playwright Inspector to resume.")
                         page.pause() # Pause for debugging
@@ -128,6 +138,7 @@ def scrape_google_maps(
                                 business_data_dict[field] = int(business_data_dict[field])
                             except (ValueError, TypeError):
                                 business_data_dict[field] = None
+
                     for field in ['Average_rating', 'Latitude', 'Longitude']:
                         if business_data_dict.get(field) and business_data_dict.get(field) != '':
                             try:
@@ -161,5 +172,5 @@ def scrape_google_maps(
         finally:
             cache.save()
             browser.close()
-    
+
     return scraped_data
