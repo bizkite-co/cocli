@@ -35,6 +35,7 @@ dev = [
     "pytest-mock",
     "behave",
     "build",
+    "mypy",
 ]
 
 [tool.setuptools]
@@ -42,3 +43,19 @@ packages = ["cocli"]
 
 [tool.uv]
 package = true
+
+[tool.mypy]
+exclude = [
+    ".venv",
+    "build",
+    "dist",
+    "docs",
+    "features",
+    "test_data",
+    "tests",
+    "backup",
+    "cocli_data",
+    "cocli.egg-info",
+    "data",
+]
+follow_imports = "skip"
