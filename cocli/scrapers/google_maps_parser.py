@@ -72,6 +72,8 @@ GOOGLE_MAPS_HEADERS = [
     "Planning",
 ]
 
+from ..core.utils import generate_company_hash
+
 QUOTES_RE = re.compile(r'"(.*?)"')
 
 def parse_business_listing_html(
@@ -116,13 +118,7 @@ def parse_business_listing_html(
     if data.get("Place_ID"):
         data["id"] = data["Place_ID"]
     else:
-        # Fallback to a hash of name and address if Place_ID is not available
-        name = data.get("Name", "")
-        address = data.get("Full_Address", "")
-        if name and address:
-            data["id"] = str(uuid.uuid5(uuid.NAMESPACE_DNS, name + address))
-        else:
-            data["id"] = str(uuid.uuid4()) # Should not happen
+        data["id"] = generate_company_hash(data)
 
     # Extract quotes
     quotes = QUOTES_RE.findall(inner_text)

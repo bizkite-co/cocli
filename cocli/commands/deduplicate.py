@@ -1,32 +1,62 @@
-
 import typer
+from typing_extensions import Annotated
 import pandas as pd
 from pathlib import Path
+import yaml
+
+from cocli.core.utils import generate_company_hash
+from cocli.core.config import get_companies_dir
 
 app = typer.Typer()
 
 @app.command()
-def prospects(
-    campaign_name: str = typer.Argument(..., help="Name of the campaign to deduplicate prospects for.")
+def deduplicate(
+    dry_run: Annotated[bool, typer.Option(help="Print what would be changed without actually changing anything.")] = True,
 ):
     """
-    Deduplicate scraped prospects for a campaign.
+    Deduplicates company data by generating a stable hash for each company and removing duplicates.
     """
+    companies_dir = get_companies_dir()
+    if not companies_dir.exists():
+        print("Companies directory does not exist.")
+        raise typer.Exit()
+
+    all_companies = []
+    for company_file in companies_dir.glob("**/_index.md"):
+        with open(company_file, 'r') as f:
+            try:
+                # Split the file into frontmatter and content
+                parts = f.read().split('---')
+                if len(parts) >= 3:
+                    frontmatter = yaml.safe_load(parts[1])
+                    if frontmatter:
+                        frontmatter['file_path'] = str(company_file)
+                        all_companies.append(frontmatter)
+            except yaml.YAMLError as e:
+                print(f"Error parsing YAML in {company_file}: {e}")
+
+    if not all_companies:
+        print("No companies found to deduplicate.")
+        raise typer.Exit()
+
+    df = pd.DataFrame(all_companies)
     
-    prospects_dir = Path(f"cocli_data/scraped_data/{campaign_name}/prospects")
-    if not prospects_dir.exists():
-        print(f"Prospects directory not found for campaign '{campaign_name}'.")
-        raise typer.Exit(code=1)
-        
-    prospects_file = prospects_dir / "prospects.csv"
-    if not prospects_file.exists():
-        print(f"Prospects file not found for campaign '{campaign_name}'.")
-        raise typer.Exit(code=1)
-        
-    df = pd.read_csv(prospects_file)
-    deduplicated_df = df.drop_duplicates(subset=["Place_ID"])
+    df['hash_id'] = df.apply(generate_company_hash, axis=1)
     
-    deduplicated_df.to_csv(prospects_file, index=False)
+    # Identify duplicates
+    duplicates = df[df.duplicated('hash_id', keep=False)]
     
-    print(f"Deduplicated {len(df)} records into {len(deduplicated_df)} records.")
-    print(f"Prospects file updated at: {prospects_file}")
+    if duplicates.empty:
+        print("No duplicates found.")
+        raise typer.Exit()
+
+    print(f"Found {len(duplicates)} duplicate records.")
+
+    if dry_run:
+        print("Dry run enabled. The following duplicates were found:")
+        print(duplicates.sort_values('hash_id'))
+    else:
+        print("Writing changes is not yet implemented.")
+
+if __name__ == "__main__":
+    app()

@@ -190,6 +190,24 @@ def _format_entity_for_fzf(entity_type: str, entity: Any) -> str:
 
 
 
+import hashlib
+import uuid
+
+def generate_company_hash(data: dict) -> str:
+    """Generates a stable hash from company data."""
+    # Normalize and combine the fields
+    name = data.get("Name", "").lower().strip()
+    street = data.get("Street_Address", "").lower().strip()
+    city = data.get("City", "").lower().strip()
+    state = data.get("State", "").lower().strip()
+    zip_code = data.get("Zip", "").lower().strip()
+
+    # Create a consistent string to hash
+    hash_string = f"{name}-{street}-{city}-{state}-{zip_code}"
+
+    # Generate the hash
+    return str(uuid.uuid5(uuid.NAMESPACE_DNS, hash_string))
+
 def _getch():
     """
     Reads a single character from stdin without echoing it to the console

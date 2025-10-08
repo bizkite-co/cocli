@@ -65,6 +65,8 @@ SHOPIFY_HEADERS = [
     "Scrape_Date", # New field for myip.ms data
 ]
 
+from ..core.utils import generate_company_hash
+
 def extract_domain_from_url(url: str) -> str:
     """Extracts the domain from a given URL."""
     if not url:
@@ -92,15 +94,14 @@ def parse_myip_ms_listing(row_data: Dict[str, str], debug: bool = False) -> Dict
     # Derive Name and Domain from Website
     if data["Website"]:
         data["Domain"] = extract_domain_from_url(data["Website"])
-        data["id"] = str(uuid.uuid5(uuid.NAMESPACE_DNS, data["Website"]))
         # Attempt to derive a name from the domain, e.g., "example.com" -> "Example Com"
         if data["Domain"]:
             name_parts = data["Domain"].replace(".com", "").replace(".net", "").replace(".org", "").split('.')
             data["Name"] = " ".join([part.capitalize() for part in name_parts if part]).strip()
             if not data["Name"]: # Fallback if domain parsing is too aggressive
                 data["Name"] = data["Domain"]
-    else:
-        data["id"] = str(uuid.uuid4()) # Should not happen
+
+    data["id"] = generate_company_hash(data)
 
     if debug: print(f"Debug: Parsed data: {data}")
     return data
