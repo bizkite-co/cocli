@@ -50,11 +50,8 @@ def test_scrape_google_maps_returns_data(mock_get_coordinates): # Removed mock_p
         {"zip_code": zip_code},
         search_string,
         max_results=1,
-        debug=True, # Enable debug mode
-        headless=False, # Launch in headed mode
-        browser_width=2400,
-        browser_height=1900,
-        devtools=True, # Open devtools
+        debug=False, # Enable debug mode
+        headless=True, # Launch in headed mode
     )
 
     # Verify that the function returns a list of GoogleMapsData objects
