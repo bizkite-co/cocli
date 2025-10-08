@@ -59,20 +59,26 @@ def fz(filter_override: Optional[str] = typer.Option(None, "--filter", "-f", hel
         )
         selected_item = process.stdout.strip()
 
+        print(f"selected_item: {selected_item}")
+
         if selected_item:
             match = re.match(r"^(COMPANY|PERSON):([^:(]+)(?:\s*\(.*)?(?:[:](.*))?$", selected_item)
             if match:
+                print(f"fz matched {match}")
                 entity_type_str = match.group(1)
                 entity_name_or_id = match.group(2).strip()
 
+                print(f"Opening {entity_type_str}: {entity_name_or_id}")
                 console.print(f"Opening {entity_type_str}: {entity_name_or_id}")
                 if entity_type_str == "COMPANY":
                     view_company(company_name=entity_name_or_id)
                 elif entity_type_str == "PERSON":
+                    print(f"--- Person Details ---")
                     console.print(f"--- Person Details ---")
                     selected_person_data = next((p for p in all_searchable_items if p["type"] == "person" and p["name"] == entity_name_or_id), None)
                     if selected_person_data:
                         console.print(f"Name: {selected_person_data['name']}")
+                        print(f"Company: {selected_person_data.get('company_name', 'N/A')}")
                         console.print(f"Company: {selected_person_data.get('company_name', 'N/A')}")
                     else:
                         console.print(f"Could not retrieve details for {entity_name_or_id}.")

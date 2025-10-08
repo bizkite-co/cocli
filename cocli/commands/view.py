@@ -1,3 +1,4 @@
+import logging
 import typer
 import datetime
 import subprocess
@@ -47,9 +48,14 @@ def view_company(
     _interactive_view_company(company_name)
 
 def _interactive_view_company(company_name: str):
+    logging.basicConfig(filename='temp/view_company.log', level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %(message)s')
+    logging.debug(f"Starting _interactive_view_company for {company_name}")
     companies_dir = get_companies_dir()
+    logging.info(f"companies_dir: {companies_dir}")
     company_slug = slugify(company_name)
+    logging.info(f"company_slug: {company_slug}")
     selected_company_dir = companies_dir / company_slug
+    logging.info(f"selected_company_dir: {selected_company_dir}")
 
     if not selected_company_dir.exists():
         company_names = [d.name for d in companies_dir.iterdir() if d.is_dir()]
@@ -65,16 +71,19 @@ def _interactive_view_company(company_name: str):
             print(f"Company '{company_name}' not found.")
             raise typer.Exit(code=1)
 
-    index_path = selected_company_dir / "_index.md"
-    frontmatter_data = _load_frontmatter(index_path)
+    logging.debug("Calling Company.from_directory")
+    company = Company.from_directory(selected_company_dir)
+    if not company.slug:
+        company.slug = slugify(company.name)
+
 
     website_cache = WebsiteCache()
     website_data: Optional[Website] = None
-    if frontmatter_data.get("domain"):
-        website_data = website_cache.get_by_url(frontmatter_data["domain"])
+    if company.domain:
+        website_data = website_cache.get_by_url(company.domain)
 
     while True:
-        meeting_map = display_company_view(console, company_name, selected_company_dir, frontmatter_data, website_data)
+        meeting_map = display_company_view(console, company, website_data)
         console.print("\n[bold yellow]Press 'a' to add meeting, 'c' to add contact, 't' to add tag, 'e' to edit _index.md, 'E' to add email, 'w' to open website, 'p' to call, 'm' to select meeting, 'X' to exclude, 'f' to go back to fuzzy finder, 'q' to quit.[/bold yellow]")
         char = _getch()
 
@@ -105,8 +114,9 @@ def _interactive_view_company(company_name: str):
                 console.print("[bold red]No active campaign set. Use 'cocli campaign set <campaign_name>' to set one. Press any key to continue.[/bold red]")
                 _getch()
                 continue
-            
+
             reason = typer.prompt("Reason for exclusion")
+            print(f"Calling from_directory with: {selected_company_dir}")
             company = Company.from_directory(selected_company_dir)
             if company and company.domain:
                 exclusion_manager = ExclusionManager(campaign=campaign)

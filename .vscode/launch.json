@@ -2,16 +2,14 @@
     "version": "0.2.0",
     "configurations": [
         {
-            "name": "Python: cocli (with arguments)",
-            "type": "debugpy",
+            "name": "cocli fz",
+            "type": "python",
             "request": "launch",
-            "python": "${workspaceFolder}/.venv/bin/python",
             "module": "cocli.main",
-            "console": "integratedTerminal",
             "args": [
                 "fz"
             ],
-            "justMyCode": true
+            "console": "integratedTerminal"
         },
         {
             "name": "Python: cocli import-data Debug",

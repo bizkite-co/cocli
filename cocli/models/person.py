@@ -22,6 +22,12 @@ class Person(BaseModel):
     country: Optional[str] = None
 
     @classmethod
+    def from_directory(cls, person_dir: Path) -> Optional["Person"]:
+        for person_file in person_dir.glob('*.md'):
+            return cls.from_file(person_file)
+        return None
+
+    @classmethod
     def from_file(cls, person_file: Path) -> Optional["Person"]:
         if not person_file.exists():
             return None

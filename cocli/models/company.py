@@ -60,6 +60,9 @@ class Company(BaseModel):
 
     @classmethod
     def from_directory(cls, company_dir: Path) -> Optional["Company"]:
+        import logging
+        logging.basicConfig(filename='temp/from_directory.log', level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %(message)s')
+        logging.debug(f"Starting from_directory for {company_dir}")
         try:
             index_path = company_dir / "_index.md"
             tags_path = company_dir / "tags.lst"
@@ -101,10 +104,11 @@ class Company(BaseModel):
             try:
                 return cls(**company_data)
             except ValidationError as e:
-                print(f"Warning: Validation error loading company from {company_dir}: {e}")
+                logging.error(f"Validation error loading company from {company_dir}: {e}")
                 return None
             except Exception as e:
-                print(f"Warning: Unexpected error loading company from {company_dir}: {e}")
+                logging.error(f"Unexpected error loading company from {company_dir}: {e}")
                 return None
         except Exception as e:
+            logging.error(f"Error in from_directory for {company_dir}: {e}")
             raise Exception("from_directory") from e

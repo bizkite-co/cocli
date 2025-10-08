@@ -11,13 +11,15 @@ from rich.columns import Columns
 
 from pytz import timezone
 from tzlocal import get_localzone
+from ..core.config import get_companies_dir
+from ..models.company import Company
 from ..models.website import Website
 from ..models.person import Person
 
-def _render_company_details(frontmatter_data: dict, tags: List[str], content: str, website_data: Optional[Website]) -> Panel:
+def _render_company_details(company: Company, tags: List[str], content: str, website_data: Optional[Website]) -> Panel:
     """Renders company details, including tags, services, and markdown content."""
     output = ""
-    for key, value in frontmatter_data.items():
+    for key, value in company.model_dump().items():
         if value is None or key == "name":
             continue
         
@@ -51,11 +53,11 @@ def _render_contacts(contacts_dir: Path) -> Panel:
             person_dir = contact_symlink.resolve()
             person = Person.from_directory(person_dir)
             if person:
-                contact_details = f"[bold]{person.first_name} {person.last_name}[/bold]\n"
+                contact_details = f"[bold]{person.name}[/bold]\n"
                 if person.email:
                     contact_details += f"Email: {person.email}\n"
-                if person.phone_number:
-                    contact_details += f"Phone: {person.phone_number}\n"
+                if person.phone:
+                    contact_details += f"Phone: {person.phone}\n"
                 contact_panels.append(Panel(contact_details, title=person.name, border_style="blue"))
 
     if not contact_panels:
@@ -128,8 +130,10 @@ def _render_meetings(meetings_dir: Path) -> Tuple[Panel, Dict[int, Path]]:
     return Panel(Markdown(output), title="Meetings", border_style="magenta"), meeting_map
 
 
-def display_company_view(console: Console, company_name: str, selected_company_dir: Path, frontmatter_data: dict, website_data: Optional[Website]):
+def display_company_view(console: Console, company: Company, website_data: Optional[Website]):
     console.clear()
+
+    selected_company_dir = get_companies_dir() / company.slug
     
     index_path = selected_company_dir / "_index.md"
     tags_path = selected_company_dir / "tags.lst"
@@ -151,7 +155,7 @@ def display_company_view(console: Console, company_name: str, selected_company_d
             content = file_content
 
     # Render components
-    details_panel = _render_company_details(frontmatter_data, tags, content, website_data)
+    details_panel = _render_company_details(company, tags, content, website_data)
     contacts_panel = _render_contacts(contacts_dir)
     meetings_panel, meeting_map = _render_meetings(meetings_dir)
 
