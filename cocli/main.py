@@ -14,7 +14,7 @@ from rich.markdown import Markdown
 from .scrapers import google_maps
 import datetime
 import subprocess
-from fuzzywuzzy import process # Added for fuzzy search
+from fuzzywuzzy import process # type: ignore # Added for fuzzy search
 import shutil
 from .core.config import get_companies_dir, get_people_dir
 

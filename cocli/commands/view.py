@@ -76,6 +76,7 @@ def _interactive_view_company(company_name: str):
     if not company:
         print(f"Could not load company data from {selected_company_dir}")
         raise typer.Exit(code=1)
+    assert company is not None # Assert that company is not None
 
     if not company.slug:
         company.slug = slugify(company.name)
@@ -87,6 +88,7 @@ def _interactive_view_company(company_name: str):
         website_data = website_cache.get_by_url(company.domain)
 
     while True:
+        assert company is not None # Ensure company is not None for mypy
         meeting_map = display_company_view(console, company, website_data)
         console.print("\n[bold yellow]Press 'a' to add meeting, 'c' to add contact, 't' to add tag, 'e' to edit _index.md, 'E' to add email, 'w' to open website, 'p' to call, 'm' to select meeting, 'X' to exclude, 'f' to go back to fuzzy finder, 'q' to quit.[/bold yellow]")
         char = _getch()
@@ -125,7 +127,13 @@ def _interactive_view_company(company_name: str):
             reason = typer.prompt("Reason for exclusion")
             print(f"Calling from_directory with: {selected_company_dir}")
             company = Company.from_directory(selected_company_dir)
-            if company and company.domain:
+            if company is None: # Handle the case where company is None after re-loading
+                console.print("[bold red]Error: Could not reload company data after exclusion. Press any key to continue.[/bold red]")
+                _getch()
+                continue
+            assert company is not None # Assert that company is not None after re-loading
+
+            if company.domain: # Now company is guaranteed not to be None
                 exclusion_manager = ExclusionManager(campaign=campaign)
                 exclusion_manager.add_exclusion(domain=company.domain, reason=reason)
                 console.print(f"[bold red]Company {company.name} excluded from campaign '{campaign}'. Press any key to continue.[/bold red]")

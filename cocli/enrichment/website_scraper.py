@@ -141,7 +141,7 @@ class WebsiteScraper:
                     for elem in root.iter():
                         if 'url' in elem.tag:
                             for loc in elem.iter():
-                                if 'loc' in loc.tag:
+                                if 'loc' in loc.tag and loc.text is not None:
                                     urls.append(loc.text)
                     logger.info(f"Found {len(urls)} URLs in sitemap for {domain}")
                     return urls
