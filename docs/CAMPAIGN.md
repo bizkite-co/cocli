@@ -13,21 +13,63 @@ Each campaign directory will contain:
 *   `config.toml`: A configuration file for the campaign, specifying details like the campaign name, the source of the data, and the enrichment steps to be applied.
 *   `initiatives/`: A directory containing scripts or definitions for the various initiatives within the campaign.
 
-## Campaign Lifecycle
+## Campaign Lifecycle (State Machine Driven)
 
-1.  **Creation**: A new campaign is created with a `cocli campaign new` command. This will create the directory structure and a default `config.toml` and `README.md`.
-2.  **Ingestion**: Data is ingested into the campaign from a specified source. This could be a CSV file, a database query, or another data source. The ingested data is stored in the `data/raw` directory.
-3.  **Enrichment**: The ingested data is enriched with additional information. This can involve running various enrichment scripts, such as Google Maps searches, website scraping, and data cleaning. The enriched data is stored in the `data/processed` directory.
-4.  **Analysis**: The enriched data is analyzed to generate insights and achieve the campaign's goals. This could involve generating reports, creating visualizations, or building models.
-5.  **Action**: The insights from the analysis are used to take action, such as generating new leads, targeting specific customer segments, or identifying new market opportunities.
+Campaigns now follow a state machine-driven lifecycle, ensuring a structured and consistent progression through various phases. The current state of a campaign is persisted in its `config.toml` file.
 
-## Campaign Initiatives
+### Main Phases:
 
-An initiative is a specific action or set of actions taken as part of a campaign. Examples of initiatives include:
+1.  **`idle`**: The initial state of a newly created campaign.
 
-*   **Data Ingestion**: Importing data from a specific source.
-*   **Enrichment**: Applying a specific enrichment process to the data.
-*   **Analysis**: Generating a specific report or visualization.
-*   **Lead Generation**: Creating new leads based on the campaign's findings.
+2.  **`import_customers`**: (Corresponds to your 'import' phase)
+    *   **Goal:** ETL of existing customer data into the `cocli` data store.
+    *   **Input:** External customer data (e.g., CSV, Shopify).
+    *   **Output:** `Company` and `Person` models persisted in `cocli_data/companies` and `cocli_data/people`.
+    *   **Commands:** Triggered by `cocli campaign start-workflow` (if in `idle` state).
 
-Each initiative will be defined in a file within the `initiatives/` directory. This will allow for a modular and extensible approach to defining campaign workflows.
+3.  **`prospecting`**: (Corresponds to your 'prospecting' phase)
+    *   **Goal:** Discover untapped markets, scrape prospects, and enrich their data.
+    *   **Input:** Campaign configuration (locations, queries, tools).
+    *   **Output:** `Company` models (for prospects) in `cocli_data/companies`, with associated enrichment.
+    *   **Sub-phases (Nested States):
+        *   **`prospecting_scraping`**: Scrapes raw prospect data (e.g., from Google Maps).
+            *   **Transformation:** `CampaignConfig -> GoogleMapsScrapeData` (CSV).
+            *   **Command:** `cocli campaign scrape-prospects` (or triggered by workflow).
+        *   **`prospecting_ingesting`**: Ingests scraped data into the Google Maps cache.
+            *   **Transformation:** `GoogleMapsScrapeData (CSV) -> GoogleMapsCache`.
+            *   **Command:** `cocli google-maps-csv to-google-maps-cache` (or triggered by workflow).
+        *   **`prospecting_importing`**: Imports data from the cache into company files.
+            *   **Transformation:** `GoogleMapsCache -> CompanyModel (File System)`.
+            *   **Command:** `cocli google-maps-cache to-company-files` (or triggered by workflow).
+        *   **`prospecting_enriching`**: Enriches the imported prospect data (e.g., website scraping).
+            *   **Transformation:** `CompanyModel -> EnrichedCompanyModel`.
+            *   **Command:** `cocli enrich-websites` (or triggered by workflow).
+
+4.  **`outreach`**: (Corresponds to your 'outreach' phase)
+    *   **Goal:** Plan marketing campaigns, create copy, schedule interactions, follow-up.
+    *   **Input:** `Company` (prospects), ICP scenarios.
+    *   **Output:** Scheduled `Meeting` models, updated `Company`/`Person` models.
+    *   **Commands:** Specific outreach commands (e.g., `cocli add-meeting`).
+
+5.  **`completed`**: The campaign has successfully finished all its defined phases.
+
+6.  **`failed`**: The campaign encountered an unrecoverable error in any phase.
+
+### Workflow Commands:
+
+*   `cocli campaign set <campaign_name>`: Sets the current campaign context and loads its workflow state.
+*   `cocli campaign status`: Displays the current state of the active campaign workflow.
+*   `cocli campaign start-workflow`: Initiates the workflow from the `idle` state.
+*   `cocli campaign next-step`: Advances the workflow to the next logical state based on the current state.
+
+## Campaign Initiatives (Actions/Transformations)
+
+An initiative is a specific action or set of actions taken as part of a campaign, often representing a data transformation from one model to another. These are now driven by the campaign workflow.
+
+*   **Data Ingestion**: Importing data from a specific source (e.g., `cocli import-customers`).
+*   **Prospect Scraping**: Gathering raw prospect data (e.g., `cocli campaign scrape-prospects`).
+*   **Cache Ingestion**: Moving scraped data into a cache (e.g., `cocli google-maps-csv to-google-maps-cache`).
+*   **Company Import**: Creating/updating company records from cached data (e.g., `cocli google-maps-cache to-company-files`).
+*   **Enrichment**: Applying specific enrichment processes (e.g., `cocli enrich-websites`).
+*   **Analysis**: Generating reports or visualizations.
+*   **Outreach Actions**: Scheduling meetings, adding contacts, etc.
