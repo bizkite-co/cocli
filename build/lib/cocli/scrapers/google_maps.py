@@ -25,15 +25,11 @@ def scrape_google_maps(
     Scrapes business information from Google Maps search results based on location (zip code or city/state) and search string
     and outputs it to a CSV file in the Lead Sniper format.
     """
-    if debug: print(f"Debug: scrape_google_maps called with debug={debug}")
     settings = load_scraper_settings()  # Load scraper settings
     delay_seconds = settings.google_maps_delay_seconds # Use configured delay
     max_pages_to_scrape = settings.google_maps_max_pages # Use configured max pages
 
     # Override settings for more aggressive scraping during debug/testing
-    if debug:
-        delay_seconds = 5 # Reduced delay for faster debugging
-        max_pages_to_scrape = 5 # Increased max pages for more results
 
     coordinates = None
     if "zip_code" in location_param:

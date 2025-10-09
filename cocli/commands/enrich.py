@@ -1,9 +1,14 @@
 import typer
 from pathlib import Path
 from typing import Optional, List
+import asyncio
 
 from ..enrichment.manager import EnrichmentManager
-from ..core.config import get_companies_dir
+from ..core.config import get_companies_dir, get_people_dir
+from ..models.company import Company
+from ..models.person import Person
+from ..core.utils import slugify, create_person_files
+from ..scrapers.generic_contact_scraper import GenericContactScraper
 
 app = typer.Typer(no_args_is_help=True)
 
@@ -105,3 +110,119 @@ def list_scripts(
             print(f"- {script}")
     else:
         print("No enrichment scripts found.")
+
+@app.command(name="contacts")
+def scrape_contacts(
+    company_name: str = typer.Argument(..., help="Name of the company to scrape contacts for."),
+):
+    """
+    Scrape contact information from a company's website and add/update them in the CRM.
+    """
+    companies_dir = get_companies_dir()
+    company_slug = slugify(company_name)
+    selected_company_dir = companies_dir / company_slug
+
+    if not selected_company_dir.exists():
+        print(f"Company '{company_name}' not found.")
+        raise typer.Exit(code=1)
+
+    company = Company.from_directory(selected_company_dir)
+    if not company or not company.domain:
+        print(f"Could not load company data or company domain for '{company_name}'.")
+        raise typer.Exit(code=1)
+
+    print(f"Scraping contacts for {company.name} ({company.domain})...")
+    
+    scraper = GenericContactScraper()
+    
+    async def run_scraper():
+        contact_pages = await scraper.find_contact_pages(company.domain)
+        all_extracted_contacts = []
+        for page_url in contact_pages:
+            extracted_contacts = await scraper.scrape_page_for_contacts(page_url)
+            all_extracted_contacts.extend(extracted_contacts)
+        return all_extracted_contacts
+
+    extracted_contacts_data = asyncio.run(run_scraper())
+
+    if not extracted_contacts_data:
+        print(f"No contacts found for {company.name} on {company.domain}.")
+        return
+
+    people_dir = get_people_dir()
+    company_contacts_dir = selected_company_dir / "contacts"
+    company_contacts_dir.mkdir(exist_ok=True)
+
+    for contact_data in extracted_contacts_data:
+        name = contact_data['name']
+        email = contact_data['email']
+        role = contact_data['role']
+
+        if not name and not email:
+            continue # Skip if no name and no email
+
+        # Check if person already exists for this company
+        person_exists = False
+        existing_person_dir: Optional[Path] = None
+        for contact_symlink in company_contacts_dir.iterdir():
+            if contact_symlink.is_symlink():
+                resolved_person_dir = contact_symlink.resolve()
+                existing_person = Person.from_directory(resolved_person_dir)
+                if existing_person:
+                    # Match by name and email (if both exist)
+                    if existing_person.name == name and existing_person.email == email:
+                        person_exists = True
+                        existing_person_dir = resolved_person_dir
+                        break
+                    # Match by name if email is missing in existing, and new email is present
+                    elif existing_person.name == name and not existing_person.email and email:
+                        person_exists = True
+                        existing_person_dir = resolved_person_dir
+                        break
+                    # Match by email if name is missing in existing, and new name is present
+                    elif existing_person.email == email and not existing_person.name and name:
+                        person_exists = True
+                        existing_person_dir = resolved_person_dir
+                        break
+
+        if person_exists and existing_person_dir:
+            # Update existing person
+            existing_person = Person.from_directory(existing_person_dir)
+            if existing_person:
+                updated = False
+                if not existing_person.email and email:
+                    existing_person.email = email
+                    updated = True
+                if not existing_person.role and role:
+                    existing_person.role = role
+                    updated = True
+                
+                if updated:
+                    create_person_files(existing_person, existing_person_dir)
+                    print(f"  Updated existing contact: {existing_person.name} ({existing_person.email})")
+                else:
+                    print(f"  Contact already exists and is up-to-date: {existing_person.name} ({existing_person.email})")
+        else:
+            # Create new person
+            person_name_to_use = name if name else email.split('@')[0] # Use email prefix if name is empty
+            new_person = Person(
+                name=person_name_to_use,
+                email=email if email else None,
+                phone=None, # Scraper doesn't get phone
+                role=role if role else None,
+                company_name=company.name # Link to current company
+            )
+            person_slug = slugify(new_person.name)
+            new_person_dir = people_dir / person_slug
+            
+            # Ensure unique directory name if slug already exists
+            counter = 1
+            original_new_person_dir = new_person_dir
+            while new_person_dir.exists():
+                new_person_dir = original_new_person_dir.parent / f"{original_new_person_dir.name}-{counter}"
+                counter += 1
+
+            create_person_files(new_person, new_person_dir)
+            print(f"  Added new contact: {new_person.name} ({new_person.email})")
+
+    print(f"Finished scraping and updating contacts for {company.name}.")

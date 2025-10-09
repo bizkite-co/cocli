@@ -36,9 +36,6 @@ def lead_sniper(filepath: Path, debug: bool = False): # Added debug parameter
                 # Map CSV columns to our Pydantic Company model.
                 # This is where you can handle different column names or clean data.
 
-                if debug: # Debug print raw row
-                    print(f"DEBUG: Raw CSV row: {row}")
-
                 categories = []
                 if row.get("First_category"):
                     categories.append(row["First_category"].strip())
@@ -82,9 +79,6 @@ def lead_sniper(filepath: Path, debug: bool = False): # Added debug parameter
                     "meta_description": row.get("Meta_Description"), # Mapped via alias
                     "meta_keywords": row.get("Meta_Keywords"), # Mapped via alias
                 }
-
-                if debug: # Debug print company data
-                    print(f"DEBUG: Company data for {company_data.get('name')}: {company_data}")
 
                 # --- Validation and Creation ---
                 try:

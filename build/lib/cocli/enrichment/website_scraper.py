@@ -37,9 +37,6 @@ class WebsiteScraper(EnrichmentScript):
                 page = browser.new_page(viewport={'width': 1536, 'height': 1700})
                 page.goto(f"http://{company.domain}", wait_until="domcontentloaded", timeout=30000)
 
-                if debug:
-                    breakpoint()
-
                 # Scrape main page
                 website_data = self._scrape_page(page, website_data)
 
@@ -60,7 +57,7 @@ class WebsiteScraper(EnrichmentScript):
 
         # Look for list items or headings that might contain service names
         service_elements = soup.select('li, h2, h3')
-        
+
         services = []
         for element in service_elements:
             text = element.get_text(strip=True)
@@ -88,11 +85,12 @@ class WebsiteScraper(EnrichmentScript):
                         website_data.contact_url = url
                     try:
                         page.goto(url, wait_until="domcontentloaded", timeout=30000)
-                        if debug:
-                            breakpoint()
                         website_data = scrape_function(page, website_data)
                     except Exception as e:
-                        logger.warning(f"Failed to navigate or scrape {page_type} page for {website_data.url}: {e}")
+                        logger.warning(
+                            f"Failed to navigate or scrape {page_type} page for {website_data.url}: {e}"
+                        )
+
         return website_data
 
     def _scrape_page(self, page: Page, website_data: Website) -> Website:

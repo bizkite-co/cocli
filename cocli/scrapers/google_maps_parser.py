@@ -86,9 +86,11 @@ def parse_business_listing_html(
     data: Dict[str, Any] = {header: "" for header in GOOGLE_MAPS_HEADERS}
     data["Keyword"] = keyword if keyword else ""
 
-    if debug: print(f"Debug: Processing HTML: {item_html[:500]}...") # Print first 500 chars of HTML
+    ## Print first 500 chars of HTML
+    # if debug: print(f"Debug: Processing HTML: {item_html[:500]}...")
     inner_text = soup.get_text(separator="\n", strip=True)
-    if debug: print(f"Debug: Processing innerText: {inner_text[:500]}...") # Print first 500 chars of innerText
+    ## Print first 500 chars of innerText
+    # if debug: print(f"Debug: Processing innerText: {inner_text[:500]}...")
 
     # Extract data using modular functions
     data["Name"] = extract_name(soup, inner_text, debug)
@@ -124,5 +126,5 @@ def parse_business_listing_html(
     quotes = QUOTES_RE.findall(inner_text)
     data["Quotes"] = "\n".join(quotes)
 
-    if debug: print(f"Debug: Final extracted data: {data}")
+    # if debug: print(f"Debug: Final extracted data: {data}")
     return data

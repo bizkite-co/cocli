@@ -83,8 +83,6 @@ def parse_myip_ms_listing(row_data: Dict[str, str], debug: bool = False) -> Dict
     data["Uuid"] = str(uuid.uuid4())
     data["Keyword"] = "shopify-myip-ms" # Default keyword for this source
 
-    if debug: print(f"Debug: Raw row data for parser: {row_data}")
-
     # Map fields from myip.ms CSV to SHOPIFY_HEADERS
     data["Website"] = row_data.get("Website", "")
     data["IP_Address"] = row_data.get("IP_Address", "")
@@ -102,5 +100,4 @@ def parse_myip_ms_listing(row_data: Dict[str, str], debug: bool = False) -> Dict
             if not data["Name"]: # Fallback if domain parsing is too aggressive
                 data["Name"] = data["Domain"]
 
-    if debug: print(f"Debug: Parsed data: {data}")
     return data

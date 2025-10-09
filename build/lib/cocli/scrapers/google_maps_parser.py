@@ -85,9 +85,7 @@ def parse_business_listing_html(
     data["id"] = str(uuid.uuid4())  # Generate a unique ID
     data["Uuid"] = str(uuid.uuid4())  # Generate a unique UUID
 
-    if debug: print(f"Debug: Processing HTML: {item_html[:500]}...") # Print first 500 chars of HTML
     inner_text = soup.get_text(separator="\n", strip=True)
-    if debug: print(f"Debug: Processing innerText: {inner_text[:500]}...") # Print first 500 chars of innerText
 
     # Extract data using modular functions
     data["Name"] = extract_name(soup, inner_text, debug)
@@ -114,5 +112,4 @@ def parse_business_listing_html(
     quotes = re.findall(r'"(.*?)"', inner_text)
     data["Quotes"] = "\n".join(quotes)
 
-    if debug: print(f"Debug: Final extracted data: {data}")
     return data
