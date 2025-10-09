@@ -2,7 +2,7 @@
 import csv
 from pathlib import Path
 from typing import Optional, List, Dict
-from datetime import datetime
+from datetime import datetime, UTC
 
 from ..models.google_maps import GoogleMapsData
 from .config import get_cocli_base_dir
@@ -39,7 +39,11 @@ class GoogleMapsCache:
                 for field in ['created_at', 'updated_at']:
                     if row.get(field):
                         try:
-                            row[field] = datetime.fromisoformat(row[field])
+                            dt_obj = datetime.fromisoformat(row[field])
+                            if dt_obj.tzinfo is None: # If naive, assume UTC
+                                row[field] = dt_obj.replace(tzinfo=UTC)
+                            else:
+                                row[field] = dt_obj
                         except (ValueError, TypeError):
                             row[field] = None
 
@@ -52,7 +56,7 @@ class GoogleMapsCache:
 
     def add_or_update(self, item: GoogleMapsData):
         if item.Place_ID:
-            item.updated_at = datetime.utcnow()
+            item.updated_at = datetime.now(UTC)
             self.data[item.Place_ID] = item
 
     def save(self):

@@ -3,7 +3,7 @@ import csv
 import re
 from pathlib import Path
 from typing import Optional, Dict, Any, List
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, UTC
 from playwright.sync_api import sync_playwright, Page, Locator
 from bs4 import BeautifulSoup
 import uuid
@@ -114,7 +114,7 @@ def scrape_google_maps(
 
                     # Check cache
                     cached_item = cache.get_by_place_id(place_id)
-                    if cached_item and not force_refresh and (datetime.utcnow() - cached_item.updated_at < fresh_delta):
+                    if cached_item and not force_refresh and (datetime.now(UTC) - cached_item.updated_at < fresh_delta):
                         scraped_data.append(cached_item)
                         print(f"Used cached data for: {cached_item.Name}")
                         scraped_count += 1
