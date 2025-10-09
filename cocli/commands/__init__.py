@@ -30,6 +30,7 @@ def register_commands(app: typer.Typer):
     from . import status
     from . import sync
     from . import view
+    from . import google_maps
 
     app.command(name="add")(add.add)
     app.command(name="add-email")(add_email.add_email)
@@ -37,11 +38,11 @@ def register_commands(app: typer.Typer):
     app.command(name="context")(context.context)
     app.command(name="exclude")(exclude.exclude)
     app.command(name="fz")(fz.fz)
-    app.command(name="import-companies")(import_companies.import_companies)
+    app.command(name="google-maps-cache-to-company-files")(import_companies.google_maps_cache_to_company_files)
     app.command(name="import-customers")(import_customers.import_customers)
     app.command(name="import-data")(import_data.import_data)
     app.command(name="import-turboship")(import_turboship.import_turboship)
-    app.command(name="ingest-google-maps-csv")(ingest_google_maps_csv.ingest_google_maps_csv)
+    app.command(name="google-maps-csv-to-google-maps-cache")(ingest_google_maps_csv.google_maps_csv_to_google_maps_cache)
     app.command(name="init")(init.init)
     app.command(name="lead-scrape")(lead_scrape.lead_scrape)
     app.command(name="next")(meetings.next_meetings)
@@ -64,3 +65,4 @@ def register_commands(app: typer.Typer):
     app.add_typer(campaign.app, name="campaign")
     app.add_typer(deduplicate.app, name="deduplicate")
     app.add_typer(render.app, name="render")
+    app.add_typer(google_maps.app, name="google-maps", help="Commands for processing Google Maps data.")

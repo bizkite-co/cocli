@@ -107,7 +107,7 @@ def build_cache() -> List[Dict[str, Any]]:
     write_cache(all_items)
     return all_items
 
-def get_cached_items(filter_str: Optional[str] = None) -> List[Dict[str, Any]]:
+def get_cached_items(filter_str: Optional[str] = None, campaign: Optional[str] = None) -> List[Dict[str, Any]]:
     """
     Gets items from cache. Rebuilds cache if invalid.
     Filters by tag or other conditions if a filter is provided.
@@ -116,6 +116,9 @@ def get_cached_items(filter_str: Optional[str] = None) -> List[Dict[str, Any]]:
         items = build_cache()
     else:
         items = read_cache()
+
+    if campaign:
+        items = [item for item in items if campaign in item.get("tags", [])]
 
     if filter_str:
         if filter_str.startswith("tag:"):

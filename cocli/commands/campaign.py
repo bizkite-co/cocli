@@ -10,6 +10,7 @@ from ..core.config import get_scraped_data_dir
 from ..models.google_maps import GoogleMapsData
 from ..core.config import get_campaign, set_campaign
 from rich.console import Console
+from ..core.campaign_workflow import CampaignWorkflow
 
 app = typer.Typer(no_args_is_help=True)
 console = Console()
@@ -20,7 +21,9 @@ def set(campaign_name: str = typer.Argument(..., help="The name of the campaign 
     Sets the current campaign context.
     """
     set_campaign(campaign_name)
+    workflow = CampaignWorkflow(campaign_name)
     console.print(f"[green]Campaign context set to:[/] [bold]{campaign_name}[/]")
+    console.print(f"[green]Current workflow state for '{campaign_name}':[/] [bold]{workflow.state}[/]")
 
 @app.command()
 def unset():
@@ -40,6 +43,82 @@ def show():
         console.print(f"Current campaign context is: [bold]{campaign_name}[/]")
     else:
         console.print("No campaign context is set.")
+
+@app.command()
+def status(
+    campaign_name: Optional[str] = typer.Argument(None, help="Name of the campaign to show status for. If not provided, uses the current campaign context.")
+):
+    """
+    Displays the current state of the campaign workflow.
+    """
+    effective_campaign_name = campaign_name
+    if effective_campaign_name is None:
+        effective_campaign_name = get_campaign()
+    
+    if effective_campaign_name is None:
+        console.print("[bold red]Error: No campaign name provided and no campaign context is set. Please provide a campaign name or set a campaign context using 'cocli campaign set <campaign_name>'.[/bold red]")
+        raise typer.Exit(code=1)
+
+    workflow = CampaignWorkflow(effective_campaign_name)
+    console.print(f"[green]Current workflow state for '{effective_campaign_name}':[/] [bold]{workflow.state}[/]")
+
+@app.command(name="start-workflow")
+def start_workflow(
+    campaign_name: Optional[str] = typer.Argument(None, help="Name of the campaign to start the workflow for. If not provided, uses the current campaign context.")
+):
+    """
+    Starts the campaign workflow.
+    """
+    effective_campaign_name = campaign_name
+    if effective_campaign_name is None:
+        effective_campaign_name = get_campaign()
+    
+    if effective_campaign_name is None:
+        console.print("[bold red]Error: No campaign name provided and no campaign context is set. Please provide a campaign name or set a campaign context using 'cocli campaign set <campaign_name>'.[/bold red]")
+        raise typer.Exit(code=1)
+
+    workflow = CampaignWorkflow(effective_campaign_name)
+    if workflow.state == 'idle':
+        workflow.start_import()
+    else:
+        console.print(f"[bold yellow]Workflow for '{effective_campaign_name}' is already in state '{workflow.state}'. Cannot start from idle.[/bold yellow]")
+
+@app.command(name="next-step")
+def next_step(
+    campaign_name: Optional[str] = typer.Argument(None, help="Name of the campaign to advance the workflow for. If not provided, uses the current campaign context.")
+):
+    """
+    Advances the campaign workflow to the next logical step.
+    """
+    effective_campaign_name = campaign_name
+    if effective_campaign_name is None:
+        effective_campaign_name = get_campaign()
+    
+    if effective_campaign_name is None:
+        console.print("[bold red]Error: No campaign name provided and no campaign context is set. Please provide a campaign name or set a campaign context using 'cocli campaign set <campaign_name>'.[/bold red]")
+        raise typer.Exit(code=1)
+
+    workflow = CampaignWorkflow(effective_campaign_name)
+    current_state = workflow.state
+
+    if current_state == 'idle':
+        workflow.start_import()
+    elif current_state == 'import_customers':
+        workflow.start_prospecting()
+    elif current_state == 'prospecting_scraping':
+        workflow.finish_scraping()
+    elif current_state == 'prospecting_ingesting':
+        workflow.finish_ingesting()
+    elif current_state == 'prospecting_importing':
+        workflow.finish_prospecting_import()
+    elif current_state == 'outreach':
+        console.print("[bold yellow]Campaign is in outreach phase. Use specific outreach commands.[/bold yellow]")
+    elif current_state == 'completed':
+        console.print("[bold green]Campaign is already completed.[/bold green]")
+    elif current_state == 'failed':
+        console.print("[bold red]Campaign is in a failed state. Please review logs.[/bold red]")
+    else:
+        console.print(f"[bold yellow]No automatic next step defined for current state: {current_state}.[/bold yellow]")
 
 @app.command()
 def scrape_prospects(

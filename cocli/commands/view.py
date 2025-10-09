@@ -221,14 +221,14 @@ def _interactive_view_company(company_name: str):
 
             fzf_input = "\n".join(people_names)
             try:
-                process = subprocess.run(
+                fzf_result = subprocess.run(
                     ["fzf"],
                     input=fzf_input,
                     stdout=subprocess.PIPE,
                     text=True,
                     check=True
                 )
-                selected_person_name = process.stdout.strip()
+                selected_person_name = fzf_result.stdout.strip()
 
                 if selected_person_name:
                     contacts_dir = selected_company_dir / "contacts"
@@ -274,14 +274,14 @@ def _interactive_view_company(company_name: str):
 
             fzf_input = "\n".join(contact_names)
             try:
-                process = subprocess.run(
+                fzf_result = subprocess.run(
                     ["fzf"],
                     input=fzf_input,
                     stdout=subprocess.PIPE,
                     text=True,
                     check=True
                 )
-                selected_person_name = process.stdout.strip()
+                selected_person_name = fzf_result.stdout.strip()
 
                 if selected_person_name:
                     person_dir_to_edit = contact_paths[selected_person_name]

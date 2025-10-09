@@ -2,17 +2,36 @@
 import typer
 import csv
 from pathlib import Path
-from typing import List
+from typing import List, Optional
 
 from ..core.google_maps_cache import GoogleMapsCache
 from ..models.google_maps import GoogleMapsData
+from ..core.config import get_campaign, get_scraped_data_dir
 
-def ingest_google_maps_csv(
-    csv_path: Path = typer.Argument(..., help="Path to the CSV file to ingest.", exists=True, file_okay=True, dir_okay=False, readable=True)
+app = typer.Typer()
+
+@app.command(name="google-maps-csv-to-google-maps-cache")
+def google_maps_csv_to_google_maps_cache(
+    csv_path: Optional[Path] = typer.Argument(None, help="Path to the CSV file to ingest. If not provided, infers from current campaign context.", exists=False, file_okay=True, dir_okay=False, readable=True),
+    campaign_name: Optional[str] = typer.Option(None, "--campaign", "-c", help="Specify a campaign name to infer the CSV path from. Overrides current campaign context if set.")
 ):
     """
     Ingests a CSV file with Google Maps data into the Google Maps cache.
     """
+    if csv_path is None:
+        if campaign_name is None:
+            campaign_name = get_campaign()
+        
+        if campaign_name is None:
+            print("Error: No CSV path provided and no campaign context is set. Please provide a CSV path, a campaign name with --campaign, or set a campaign context using 'cocli campaign set <campaign_name>'.")
+            raise typer.Exit(code=1)
+        
+        inferred_csv_path = get_scraped_data_dir() / campaign_name / "prospects" / "prospects.csv"
+        if not inferred_csv_path.exists():
+            print(f"Error: Inferred CSV path does not exist: {inferred_csv_path}")
+            raise typer.Exit(code=1)
+        csv_path = inferred_csv_path
+
     cache = GoogleMapsCache()
 
     with open(csv_path, "r", newline="", encoding="utf-8") as csvfile:

@@ -23,6 +23,7 @@ dependencies = [
     "toml",
     "httpx",
     "pydantic-settings", # Added for BaseSettings
+    "transitions",
 ]
 
 [project.scripts]

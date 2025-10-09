@@ -84,8 +84,8 @@ enrich-customers: install ## Enrich customers for turboship campaign with Google
 	$(VENV_DIR)/bin/cocli enrich-customers turboship
 
 .PHONY: import-prospects
-import-prospects: install ## Import prospects from the turboship campaign
-	$(VENV_DIR)/bin/cocli import-companies /home/mstouffer/.local/share/cocli_data/scraped_data/turboship/prospects/prospects.csv --tag prospect --tag turboship
+import-prospects: install ## Import prospects from the current campaign
+	$(VENV_DIR)/bin/cocli google-maps-cache to-company-files
 
 .PHONY: import-customers
 import-customers: install ## Import customers from the turboship campaign
@@ -99,9 +99,9 @@ render-prospects-kml: install ## Render KML for turboship prospects
 populate-email-providers: install ## Populate the cache with common email providers
 	$(VENV_DIR)/bin/cocli flag-email-providers gmail.com yahoo.com hotmail.com outlook.com aol.com icloud.com live.com msn.com yandex.ru mail.ru
 
-.PHONY: ingest-existing-prospects
-ingest-existing-prospects: install ## Ingest the existing prospects.csv file into the cache
-	$(VENV_DIR)/bin/cocli ingest-google-maps-csv /home/mstouffer/.local/share/cocli_data/scraped_data/turboship/prospects/prospects.csv
+.PHONY: ingest-prospects
+ingest-prospects: install ## Ingest the existing prospects.csv file for the current campaign into the cache
+	$(VENV_DIR)/bin/cocli google-maps-csv to-google-maps-cache
 
 .PHONY: ingest-existing-customers
 ingest-existing-customers: install ## Ingest the existing customers.csv file into the cache

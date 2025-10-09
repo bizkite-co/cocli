@@ -1,0 +1,26 @@
+[campaign]
+name = "roadmap"
+tag = "roadmap"
+
+workflows=[ "import", "prospecting", "outreach" ]
+
+[import]
+format="shopify"
+
+[google_maps]
+email = "treeluvburdpu@gmail.com"
+one_password_path = "op://Private/gmail.com_treeluvburdpu/password"
+
+[prospecting]
+locations = [
+  "Memphis, Tn",
+  "Jackson, MS",
+  "Atlanta, GA",
+  "San Francisco, CA"
+]
+tools=[
+  "google-maps",
+  "yelp",
+  "linkedin"
+]
+queries = ["wealth manager", "financial analyst", "pacific life"]
