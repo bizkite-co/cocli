@@ -3,7 +3,7 @@ import typer
 import toml
 import csv
 from pathlib import Path
-from typing import List
+from typing import List, Dict
 
 from ..scrapers.google_maps import scrape_google_maps
 from ..core.config import get_scraped_data_dir

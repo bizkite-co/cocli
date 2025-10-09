@@ -25,8 +25,8 @@ from ..models.website import Website
 console = Console()
 app = typer.Typer()
 
-def _load_frontmatter(index_path: Path) -> dict:
-    frontmatter_data = {}
+def _load_frontmatter(index_path: Path) -> Dict[str, Any]:
+    frontmatter_data: Dict[str, Any] = {}
     if index_path.exists():
         content = index_path.read_text()
         if content.startswith("---") and "---" in content[3:]:
@@ -73,6 +73,10 @@ def _interactive_view_company(company_name: str):
 
     logging.debug("Calling Company.from_directory")
     company = Company.from_directory(selected_company_dir)
+    if not company:
+        print(f"Could not load company data from {selected_company_dir}")
+        raise typer.Exit(code=1)
+
     if not company.slug:
         company.slug = slugify(company.name)
 
@@ -87,6 +91,9 @@ def _interactive_view_company(company_name: str):
         console.print("\n[bold yellow]Press 'a' to add meeting, 'c' to add contact, 't' to add tag, 'e' to edit _index.md, 'E' to add email, 'w' to open website, 'p' to call, 'm' to select meeting, 'X' to exclude, 'f' to go back to fuzzy finder, 'q' to quit.[/bold yellow]")
         char = _getch()
 
+        index_path = selected_company_dir / "_index.md"
+        frontmatter_data = _load_frontmatter(index_path)
+
         if char == 'f':
             from .fz import fz
             from ..core.config import get_context
@@ -99,7 +106,7 @@ def _interactive_view_company(company_name: str):
             if email:
                 from .add_email import add_email
                 try:
-                    add_email(company_name=company_name, email=email)
+                    add_email(company_name=company.name, email=email)
                     frontmatter_data = _load_frontmatter(index_path) # Reload data
                     console.print(f"[bold green]Email '{email}' added. Press any key to continue.[/bold green]")
                 except Exception as e:
@@ -122,13 +129,11 @@ def _interactive_view_company(company_name: str):
                 exclusion_manager = ExclusionManager(campaign=campaign)
                 exclusion_manager.add_exclusion(domain=company.domain, reason=reason)
                 console.print(f"[bold red]Company {company.name} excluded from campaign '{campaign}'. Press any key to continue.[/bold red]")
-            else:
-                console.print("[bold red]Could not exclude company. No domain found. Press any key to continue.[/bold red]")
             _getch()
         elif char == 'a':
             console.print("\n[bold green]Adding a new meeting...[/bold green]")
             meeting_date_str = typer.prompt("Enter meeting date (e.g., 'today', 'next Monday', '2025-12-25')")
-            _add_meeting_logic(company_name=company_name, date_str=meeting_date_str)
+            _add_meeting_logic(company_name=company.name, date_str=meeting_date_str)
             console.print("[bold green]Meeting added. Press any key to continue.[/bold green]")
             _getch() # Wait for a key press to clear the message
         elif char == 'e':
@@ -166,7 +171,7 @@ def _interactive_view_company(company_name: str):
                 try:
                     webbrowser.open(google_voice_url)
                     console.print(f"[bold green]Initiated call to {phone_number}. Auto-creating meeting...[/bold green]")
-                    _add_meeting_logic(company_name=company_name, date_str="today", title_str="Google Voice Call", phone_number_str=phone_number)
+                    _add_meeting_logic(company_name=company.name, date_str="today", title_str="Google Voice Call", phone_number_str=phone_number)
                     console.print("[bold green]Meeting for call added. Press any key to continue.[/bold green]")
                 except Exception as e:
                     console.print(f"[bold red]Error initiating call: {e}. Press any key to continue.[/bold red]")

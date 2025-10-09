@@ -72,7 +72,7 @@ def _get_all_meetings() -> List[Meeting]:
 
                             # Read frontmatter for more accurate title if available
                             content = meeting_file.read_text()
-                            frontmatter_data = {}
+                            frontmatter_data: Dict[str, Any] = {}
                             if content.startswith("---") and "---" in content[3:]:
                                 frontmatter_str, _ = content.split("---", 2)[1:]
                                 try:

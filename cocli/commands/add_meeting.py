@@ -29,15 +29,15 @@ def _add_meeting_logic(company_name: str, date_str: Optional[str] = None, time_s
             parsed_datetime = datetime.datetime.now(local_tz)
         else:
             parsed_datetime = dateparser.parse(date_str, settings={'TIMEZONE': str(local_tz)})
-        if parsed_datetime:
-            # If naive datetime, assume local timezone
-            if parsed_datetime.tzinfo is None or parsed_datetime.tzinfo.utcoffset(parsed_datetime) is None:
-                meeting_datetime_local = parsed_datetime.replace(tzinfo=local_tz)
-            else:
-                meeting_datetime_local = parsed_datetime.astimezone(local_tz)
-        else:
+        if not parsed_datetime:
             print("Invalid date/time format. Please provide a recognizable date/time string (e.g., 'today', 'tomorrow at 9am', 'next Monday', '2025-12-25 14:30').")
             raise typer.Exit(code=1)
+
+        # If naive datetime, assume local timezone
+        if parsed_datetime.tzinfo is None or parsed_datetime.tzinfo.utcoffset(parsed_datetime) is None:
+            meeting_datetime_local = parsed_datetime.replace(tzinfo=local_tz)
+        else:
+            meeting_datetime_local = parsed_datetime.astimezone(local_tz)
     else:
         meeting_datetime_local = datetime.datetime.now(local_tz)
 

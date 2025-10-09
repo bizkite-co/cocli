@@ -3,6 +3,8 @@ from typing import Optional
 
 from ..core.config import get_companies_dir, get_people_dir
 from ..core.utils import slugify, create_company_files, create_person_files
+from ..models.company import Company
+from ..models.person import Person
 
 app = typer.Typer()
 
@@ -19,19 +21,23 @@ def add(
     Add a new company or a person to an existing company.
     """
     companies_dir = get_companies_dir()
-    company_dir = companies_dir / slugify(company_name)
+    company_slug = slugify(company_name)
+    company_dir = companies_dir / company_slug
 
     if not company_dir.exists():
-        create_company_files(company_name, company_dir)
+        company = Company(name=company_name)
+        create_company_files(company, company_dir)
         print(f"Company '{company_name}' created at {company_dir}")
     else:
         print(f"Company '{company_name}' already exists at {company_dir}")
 
     if person_name:
         people_dir = get_people_dir()
-        person_dir = people_dir / slugify(person_name)
+        person_slug = slugify(person_name)
+        person_dir = people_dir / person_slug
         if not person_dir.exists():
-            create_person_files(person_name, person_dir, company_name)
+            person = Person(name=person_name, company=company_name)
+            create_person_files(person, person_dir)
             print(f"Person '{person_name}' created at {person_dir}")
         else:
             print(f"Person '{person_name}' already exists at {person_dir}")

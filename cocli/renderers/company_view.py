@@ -133,6 +133,10 @@ def _render_meetings(meetings_dir: Path) -> Tuple[Panel, Dict[int, Path]]:
 def display_company_view(console: Console, company: Company, website_data: Optional[Website]):
     console.clear()
 
+    if not company.slug:
+        console.print("[bold red]Error: Company slug is missing.[/]")
+        return
+
     selected_company_dir = get_companies_dir() / company.slug
     
     index_path = selected_company_dir / "_index.md"

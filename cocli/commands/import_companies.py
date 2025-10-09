@@ -123,7 +123,7 @@ def import_companies(
                 create_company_files(company, company_dir)
 
             # Add to website cache
-            if company.domain:
+            if company and company.domain:
                 website = website_cache.get_by_url(company.domain)
                 if not website:
                     website = Website(url=company.domain)
@@ -149,4 +149,4 @@ def import_companies(
     website_cache.save()
 
 if __name__ == "__main__":
-    import_prospects()
+    typer.run(import_companies)

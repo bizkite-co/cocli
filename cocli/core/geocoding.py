@@ -7,7 +7,7 @@ def get_coordinates_from_zip(zip_code: str) -> Optional[Dict[str, float]]:
     Retrieves latitude and longitude for a given zip code using Nominatim (OpenStreetMap).
     """
     NOMINATIM_URL = "https://nominatim.openstreetmap.org/search"
-    params = {
+    params: Dict[str, Any] = {
         "postalcode": zip_code,
         "format": "json",
         "addressdetails": 1,
@@ -49,7 +49,7 @@ def get_coordinates_from_city_state(city_state: str) -> Optional[Dict[str, float
     Expected format: "City,State" (e.g., "Brea,CA").
     """
     NOMINATIM_URL = "https://nominatim.openstreetmap.org/search"
-    params = {
+    params: Dict[str, Any] = {
         "q": city_state,
         "format": "json",
         "addressdetails": 1,
@@ -90,7 +90,7 @@ def get_coordinates_from_address(address: str) -> Optional[Dict[str, float]]:
     Retrieves latitude and longitude for a given address using Nominatim (OpenStreetMap).
     """
     NOMINATIM_URL = "https://nominatim.openstreetmap.org/search"
-    params = {
+    params: Dict[str, Any] = {
         "q": address,
         "format": "json",
         "addressdetails": 1,

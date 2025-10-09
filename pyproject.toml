@@ -36,6 +36,12 @@ dev = [
     "behave",
     "build",
     "mypy",
+    "types-toml",
+    "types-PyYAML",
+    "types-requests",
+    "pandas-stubs",
+    "types-dateparser",
+    "types-pytz",
 ]
 
 [tool.setuptools]
