@@ -60,6 +60,7 @@ def run_enrichment(
     elif all_companies:
         companies_to_enrich = [d.name for d in data_dir.iterdir() if d.is_dir() and not d.name.startswith('.')]
     elif unenriched_only:
+        assert script_name is not None
         companies_to_enrich = manager.get_unenriched_companies(script_name) # script_name is guaranteed not None here
 
     if not companies_to_enrich:
@@ -71,6 +72,7 @@ def run_enrichment(
     all_success = True
     for current_company_name in companies_to_enrich:
         print(f"  Processing company: '{current_company_name}'...")
+        assert script_name is not None
         success = manager.run_enrichment_script(current_company_name, script_name) # script_name is guaranteed not None here
         if not success:
             all_success = False

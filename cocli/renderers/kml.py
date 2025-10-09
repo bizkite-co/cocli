@@ -1,6 +1,6 @@
 import os
 import yaml
-import simplekml
+import simplekml # type: ignore
 import toml
 from pathlib import Path
 from typing import Optional

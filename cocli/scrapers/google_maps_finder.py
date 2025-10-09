@@ -67,7 +67,7 @@ def find_business_on_google_maps(
                 )
 
                 # Use fuzzy matching to find the best match
-                from fuzzywuzzy import fuzz
+                from fuzzywuzzy import fuzz # type: ignore
                 score = fuzz.ratio(company_name.lower(), business_data.get("Name", "").lower())
 
                 if score > best_match_score:

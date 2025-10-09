@@ -34,7 +34,7 @@ test: install ## Run tests using pytest
 	source $(VENV_DIR)/bin/activate && pytest -s tests/
 
 lint: install ## Run mypy to perform static type checking
-	source $(VENV_DIR)/bin/activate && mypy --config-file pyproject.toml --verbose .
+	source $(VENV_DIR)/bin/activate && mypy --config-file pyproject.toml .
 
 test-file: install ## Run a specific test file, e.g., make test-file FILE=tests/test_google_maps_scraper.py
 	source $(VENV_DIR)/bin/activate && pytest $(FILE)

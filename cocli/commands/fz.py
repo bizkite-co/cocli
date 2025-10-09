@@ -49,7 +49,7 @@ def fz(filter_override: Optional[str] = typer.Option(None, "--filter", "-f", hel
     campaign = get_campaign()
     if campaign:
         exclusion_manager = ExclusionManager(campaign=campaign)
-        all_searchable_items = [item for item in all_searchable_items if not (item.get("type") == "company" and exclusion_manager.is_excluded(item.get("domain")))]
+        all_searchable_items = [item for item in all_searchable_items if not (item.get("type") == "company" and item.get("domain") is not None and exclusion_manager.is_excluded(item.get("domain")))]
 
     if not all_searchable_items:
         if filter_str:

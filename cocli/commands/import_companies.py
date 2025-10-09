@@ -7,7 +7,7 @@ from cocli.core.utils import slugify, create_company_files
 from cocli.models.company import Company
 from cocli.models.website import Website
 from cocli.core.website_cache import WebsiteCache
-from fuzzywuzzy import process
+from fuzzywuzzy import process # type: ignore
 
 def import_companies(
     prospects_csv_path: Path = typer.Argument(..., help="Path to the prospects CSV file.", exists=True, file_okay=True, dir_okay=False, readable=True),

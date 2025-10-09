@@ -1,5 +1,5 @@
 import csv
-import simplekml
+import simplekml # type: ignore
 from pathlib import Path
 import typer
 

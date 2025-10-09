@@ -1,6 +1,6 @@
 import os
 import yaml
-import simplekml
+import simplekml # type: ignore
 
 def main():
     """

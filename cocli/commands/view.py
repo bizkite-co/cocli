@@ -7,12 +7,12 @@ import webbrowser
 import yaml
 import os
 from pathlib import Path
-from typing import Optional, List, Any
+from typing import Optional, List, Any, Dict
 
 from rich.console import Console
 from ..core.utils import _getch
 from .add_meeting import _add_meeting_logic
-from fuzzywuzzy import process
+from fuzzywuzzy import process # type: ignore
 
 from ..core.config import get_companies_dir, get_people_dir, get_campaign
 from ..core.utils import slugify
@@ -129,7 +129,6 @@ def _interactive_view_company(company_name: str):
                 exclusion_manager = ExclusionManager(campaign=campaign)
                 exclusion_manager.add_exclusion(domain=company.domain, reason=reason)
                 console.print(f"[bold red]Company {company.name} excluded from campaign '{campaign}'. Press any key to continue.[/bold red]")
-            _getch()
         elif char == 'a':
             console.print("\n[bold green]Adding a new meeting...[/bold green]")
             meeting_date_str = typer.prompt("Enter meeting date (e.g., 'today', 'next Monday', '2025-12-25')")
