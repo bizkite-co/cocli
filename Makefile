@@ -28,7 +28,7 @@ open: activate ##Activate the venv and open
 
 install: ## Install development dependencies using uv
 	uv sync --extra dev
-	source $(VENV_DIR)/bin/activate && uv pip install -e .
+	source $(VENV_DIR)/bin/activate && uv pip install -e . && playwright install
 
 test: install ## Run tests using pytest
 	source $(VENV_DIR)/bin/activate && pytest -s tests/

@@ -22,7 +22,7 @@ def _render_company_details(company: Company, tags: List[str], content: str, web
     for key, value in company.model_dump().items():
         if value is None or key == "name":
             continue
-        
+
         key_str = key.replace('_', ' ').title()
         if key == "domain" and isinstance(value, str):
             output += f"- {key_str}: [{value}](http://{value})\n"
@@ -54,10 +54,12 @@ def _render_contacts(contacts_dir: Path) -> Panel:
             person = Person.from_directory(person_dir)
             if person:
                 contact_details = f"[bold]{person.name}[/bold]\n"
+                if person.role:
+                    contact_details += f"Role: {person.role}\n"
                 if person.email:
                     contact_details += f"Email: {person.email}\n"
                 if person.phone:
-                    contact_details += f"Phone: {person.phone}\n"
+                    contact_details += f"Phone: {person.phone}"
                 contact_panels.append(Panel(contact_details, title=person.name, border_style="blue"))
 
     if not contact_panels:
@@ -70,7 +72,7 @@ def _render_meetings(meetings_dir: Path) -> Tuple[Panel, Dict[int, Path]]:
     """Renders upcoming and recent meetings."""
     next_meetings = []
     recent_meetings = []
-    
+
     if meetings_dir.exists():
         now_local = datetime.datetime.now(get_localzone())
         six_months_ago_local = now_local - datetime.timedelta(days=180)
@@ -125,7 +127,7 @@ def _render_meetings(meetings_dir: Path) -> Tuple[Panel, Dict[int, Path]]:
             meeting_counter += 1
     else:
         output += "No recent meetings found.\n"
-        
+
     meeting_map = {num: file for num, file in all_displayable_meetings}
     return Panel(Markdown(output), title="Meetings", border_style="magenta"), meeting_map
 
@@ -138,7 +140,7 @@ def display_company_view(console: Console, company: Company, website_data: Optio
         return
 
     selected_company_dir = get_companies_dir() / company.slug
-    
+
     index_path = selected_company_dir / "_index.md"
     tags_path = selected_company_dir / "tags.lst"
     meetings_dir = selected_company_dir / "meetings"

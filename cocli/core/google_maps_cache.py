@@ -40,7 +40,8 @@ class GoogleMapsCache:
                     if row.get(field):
                         try:
                             dt_obj = datetime.fromisoformat(row[field])
-                            if dt_obj.tzinfo is None: # If naive, assume UTC
+                            # If naive, assume UTC
+                            if dt_obj.tzinfo is None:
                                 row[field] = dt_obj.replace(tzinfo=UTC)
                             else:
                                 row[field] = dt_obj

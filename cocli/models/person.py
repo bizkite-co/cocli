@@ -10,6 +10,7 @@ class Person(BaseModel):
     email: Optional[str] = None
     phone: Optional[str] = None
     company_name: Optional[str] = None  # Added to link person to company
+    role: Optional[str] = None
     tags: list[str] = Field(default_factory=list)
 
     full_address: Optional[str] = None

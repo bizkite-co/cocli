@@ -10,8 +10,9 @@ from pathlib import Path
 from typing import Optional, List, Any, Dict
 
 from rich.console import Console
-from ..core.utils import _getch
+from ..core.utils import _getch, create_person_files
 from .add_meeting import _add_meeting_logic
+from ..models.person import Person
 from fuzzywuzzy import process # type: ignore
 
 from ..core.config import get_companies_dir, get_people_dir, get_campaign
@@ -90,7 +91,7 @@ def _interactive_view_company(company_name: str):
     while True:
         assert company is not None # Ensure company is not None for mypy
         meeting_map = display_company_view(console, company, website_data)
-        console.print("\n[bold yellow]Press 'a' to add meeting, 'c' to add contact, 't' to add tag, 'e' to edit _index.md, 'E' to add email, 'w' to open website, 'p' to call, 'm' to select meeting, 'X' to exclude, 'f' to go back to fuzzy finder, 'q' to quit.[/bold yellow]")
+        console.print("\n[bold yellow]Press 'a' to add meeting, 'c' to add contact, 't' to add tag, 'e' to edit _index.md, 'E' to add email, 'w' to open website, 'p' to call, 'm' to select meeting, 'X' to exclude, 'f' to go back to fuzzy finder, 'C' to edit contact, 'q' to quit.[/bold yellow]")
         char = _getch()
 
         index_path = selected_company_dir / "_index.md"
@@ -248,6 +249,69 @@ def _interactive_view_company(company_name: str):
             except Exception as e:
                 console.print(f"[bold red]Error adding contact: {e}. Press any key to continue.[/bold red]")
             _getch()
+        elif char == 'C':
+            console.print("\n[bold green]Editing a contact...[/bold green]")
+            contacts_dir = selected_company_dir / "contacts"
+            if not contacts_dir.exists() or not any(contacts_dir.iterdir()):
+                console.print("[bold red]No contacts found for this company. Press any key to continue.[/bold red]")
+                _getch()
+                continue
+
+            contact_names = []
+            contact_paths = {}
+            for contact_symlink in contacts_dir.iterdir():
+                if contact_symlink.is_symlink():
+                    person_dir = contact_symlink.resolve()
+                    person = Person.from_directory(person_dir)
+                    if person:
+                        contact_names.append(person.name)
+                        contact_paths[person.name] = person_dir
+
+            if not contact_names:
+                console.print("[bold red]No valid contacts found for this company. Press any key to continue.[/bold red]")
+                _getch()
+                continue
+
+            fzf_input = "\n".join(contact_names)
+            try:
+                process = subprocess.run(
+                    ["fzf"],
+                    input=fzf_input,
+                    stdout=subprocess.PIPE,
+                    text=True,
+                    check=True
+                )
+                selected_person_name = process.stdout.strip()
+
+                if selected_person_name:
+                    person_dir_to_edit = contact_paths[selected_person_name]
+                    person_to_edit = Person.from_directory(person_dir_to_edit)
+
+                    if person_to_edit:
+                        console.print(f"\n[bold green]Editing contact: {person_to_edit.name}[/bold green]")
+                        new_name = typer.prompt(f"Enter new name (current: {person_to_edit.name})", default=person_to_edit.name)
+                        new_email = typer.prompt(f"Enter new email (current: {person_to_edit.email or 'None'})", default=person_to_edit.email or "")
+                        new_phone = typer.prompt(f"Enter new phone (current: {person_to_edit.phone or 'None'})", default=person_to_edit.phone or "")
+                        new_role = typer.prompt(f"Enter new role (current: {person_to_edit.role or 'None'})", default=person_to_edit.role or "")
+
+                        person_to_edit.name = new_name
+                        person_to_edit.email = new_email if new_email else None
+                        person_to_edit.phone = new_phone if new_phone else None
+                        person_to_edit.role = new_role if new_role else None
+
+                        # Save the updated person
+                        create_person_files(person_to_edit, person_dir_to_edit)
+                        console.print(f"[bold green]Contact '{person_to_edit.name}' updated. Press any key to continue.[/bold green]")
+                    else:
+                        console.print("[bold red]Error: Could not load selected contact for editing. Press any key to continue.[/bold red]")
+                else:
+                    console.print("[bold yellow]No contact selected for editing. Press any key to continue.[/bold yellow]")
+
+            except subprocess.CalledProcessError:
+                console.print("[bold yellow]Contact editing cancelled. Press any key to continue.[/bold yellow]")
+            except Exception as e:
+                console.print(f"[bold red]Error editing contact: {e}. Press any key to continue.[/bold red]")
+            _getch()
         elif char == 't':
             console.print("\n[bold green]Add a new tag...[/bold green]")
             new_tag = typer.prompt("Enter tag to add")
@@ -271,7 +335,7 @@ def _interactive_view_company(company_name: str):
             console.print("[bold green]Exiting company context.[/bold green]")
             break
         else:
-            console.print(f"[bold red]Invalid option: '{char}'. Press 'a', 'e', 'w', 'p', 'm', or 'q'.[/bold red]")
+            console.print(f"[bold red]Invalid option: '{char}'. Press 'a', 'e', 'w', 'p', 'm', 'C', or 'q'.[/bold red]")
             _getch() # Wait for a key press to clear the message
 
 @app.command()
