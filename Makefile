@@ -58,12 +58,12 @@ import-turboship: install ## Import turboship customers
 	$(VENV_DIR)/bin/cocli import-turboship /home/mstouffer/.local/share/cocli_data/scraped_data/turboship/customers/customers.csv /home/mstouffer/.local/share/cocli_data/scraped_data/turboship/customers/customer_addresses.csv
 
 .PHONY: render-kml
-render-kml: install ## Render KML for turboship campaign
-	$(VENV_DIR)/bin/cocli render kml turboship
+render-kml: install ## Render KML for the current campaign context
+	$(VENV_DIR)/bin/cocli render kml
 
 .PHONY: scrape-prospects
-scrape-prospects: install ## Scrape prospects for turboship campaign
-	$(VENV_DIR)/bin/cocli campaign scrape-prospects turboship
+scrape-prospects: install ## Scrape prospects for the current campaign context
+	$(VENV_DIR)/bin/cocli campaign scrape-prospects
 
 .PHONY: deduplicate-prospects
 deduplicate-prospects: install ## Deduplicate prospects for turboship campaign

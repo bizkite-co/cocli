@@ -3,7 +3,7 @@ import typer
 import toml
 import csv
 from pathlib import Path
-from typing import List, Dict
+from typing import List, Dict, Optional
 
 from ..scrapers.google_maps import scrape_google_maps
 from ..core.config import get_scraped_data_dir
@@ -11,7 +11,7 @@ from ..models.google_maps import GoogleMapsData
 from ..core.config import get_campaign, set_campaign
 from rich.console import Console
 
-app = typer.Typer()
+app = typer.Typer(no_args_is_help=True)
 console = Console()
 
 @app.command()
@@ -43,13 +43,18 @@ def show():
 
 @app.command()
 def scrape_prospects(
-    campaign_name: str = typer.Argument(..., help="Name of the campaign to scrape prospects for."),
+    campaign_name: Optional[str] = typer.Argument(None, help="Name of the campaign to scrape prospects for. If not provided, uses the current campaign context."),
     force_refresh: bool = typer.Option(False, "--force-refresh", help="Force re-scraping even if fresh data is in the cache."),
     ttl_days: int = typer.Option(30, "--ttl-days", help="Time-to-live for cached data in days.")
 ):
     """
     Scrape prospects for a campaign from Google Maps, using a cache-first strategy.
     """
+    if campaign_name is None:
+        campaign_name = get_campaign()
+        if campaign_name is None:
+            print("Error: No campaign name provided and no campaign context is set. Please provide a campaign name or set a campaign context using 'cocli campaign set <campaign_name>'.")
+            raise typer.Exit(code=1)
     
     campaign_dirs = list(Path("campaigns").glob(f"**/{campaign_name}"))
     if not campaign_dirs:
