@@ -34,11 +34,11 @@ def test_fz_select_company_and_view(setup_test_company):
     company_name, _ = setup_test_company
 
     with patch('cocli.commands.fz.get_cached_items', return_value=[{'display': f'COMPANY: {company_name}', 'type': 'company', 'name': company_name, 'domain': 'testcompany.com'}]):
-        import pty
-        import os
-        master, slave = pty.openpty()
-        process = subprocess.Popen(["cocli", "fz"], stdin=slave, stdout=slave, stderr=slave)
-        os.write(master, b'\n')
-        output = os.read(master, 1024)
-        print(f"output: {output.decode()}")
-        assert f"Opening COMPANY: {company_name}" in output.decode()
+        with patch('cocli.commands.fz.run_fzf') as mock_run_fzf:
+            mock_run_fzf.return_value = f'COMPANY: {company_name}'
+
+            with patch('cocli.commands.fz.view_company') as mock_view_company:
+                result = runner.invoke(app, ["fz"])
+
+                assert result.exit_code == 0
+                mock_view_company.assert_called_once_with(company_name=company_name)

@@ -16,17 +16,30 @@ from .view import view_company
 console = Console()
 app = typer.Typer()
 
-@app.command()
-def fz(filter_override: Optional[str] = typer.Option(None, "--filter", "-f", help="Filter items by a specific filter (e.g., 'tag:prospect', 'missing:email'). Overrides current context.")):
-    """
-    Fuzzy search for companies and people using fzf and open the selection.
-    """
+
+def run_fzf(fzf_input: str) -> str:
     fzf_path = shutil.which("fzf")
     if not fzf_path:
         console.print("[bold red]Error:[/bold red] 'fzf' command not found.")
         console.print("Please install fzf to use this feature. (e.g., `brew install fzf` or `sudo apt install fzf`)")
         raise typer.Exit(code=1)
 
+    process = subprocess.run(
+        [fzf_path],
+        input=fzf_input,
+        stdout=subprocess.PIPE,
+        stderr=sys.stderr,
+        text=True,
+        check=True
+    )
+    return process.stdout.strip()
+
+
+@app.command()
+def fz(filter_override: Optional[str] = typer.Option(None, "--filter", "-f", help="Filter items by a specific filter (e.g., 'tag:prospect', 'missing:email'). Overrides current context.")):
+    """
+    Fuzzy search for companies and people using fzf and open the selection.
+    """
     context_filter = get_context()
     filter_str = filter_override or context_filter
 
@@ -49,36 +62,22 @@ def fz(filter_override: Optional[str] = typer.Option(None, "--filter", "-f", hel
     fzf_input = "\n".join(fzf_input_lines)
 
     try:
-        process = subprocess.run(
-            [fzf_path],
-            input=fzf_input,
-            stdout=subprocess.PIPE,
-            stderr=sys.stderr,
-            text=True,
-            check=True
-        )
-        selected_item = process.stdout.strip()
-
-        print(f"selected_item: {selected_item}")
+        selected_item = run_fzf(fzf_input)
 
         if selected_item:
             match = re.match(r"^(COMPANY|PERSON):([^:(]+)(?:\s*\(.*)?(?:[:](.*))?$", selected_item)
             if match:
-                print(f"fz matched {match}")
                 entity_type_str = match.group(1)
                 entity_name_or_id = match.group(2).strip()
 
-                print(f"Opening {entity_type_str}: {entity_name_or_id}")
                 console.print(f"Opening {entity_type_str}: {entity_name_or_id}")
                 if entity_type_str == "COMPANY":
                     view_company(company_name=entity_name_or_id)
                 elif entity_type_str == "PERSON":
-                    print(f"--- Person Details ---")
                     console.print(f"--- Person Details ---")
                     selected_person_data = next((p for p in all_searchable_items if p["type"] == "person" and p["name"] == entity_name_or_id), None)
                     if selected_person_data:
                         console.print(f"Name: {selected_person_data['name']}")
-                        print(f"Company: {selected_person_data.get('company_name', 'N/A')}")
                         console.print(f"Company: {selected_person_data.get('company_name', 'N/A')}")
                     else:
                         console.print(f"Could not retrieve details for {entity_name_or_id}.")

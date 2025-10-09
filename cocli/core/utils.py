@@ -35,7 +35,7 @@ def create_company_files(company: Company, company_dir: Path) -> Path:
     index_path = company_dir / "_index.md"
     tags_path = company_dir / "tags.lst"
 
-    existing_frontmatter_data = {}
+    existing_frontmatter_data: dict[str, Any] = {}
     markdown_content = f"\n# {company.name}\n" # Default markdown content
 
     existing_tags = set()
@@ -107,7 +107,7 @@ def create_person_files(person: Person, person_dir: Path) -> Path:
     # Correctly slugify the name for the filename
     person_file = person_dir / f"{slugify(person.name)}.md"
 
-    existing_frontmatter_data = {}
+    existing_frontmatter_data: dict[str, Any] = {}
     markdown_content = f"\n# {person.name}\n"  # Default markdown content
 
     if person_file.exists():

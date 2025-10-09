@@ -41,6 +41,7 @@ def get_coordinates_from_zip(zip_code: str) -> Optional[Dict[str, float]]:
         except ValueError:
             print(f"Could not parse coordinates for zip code {zip_code}.")
             return None
+    return None
 
 def get_coordinates_from_city_state(city_state: str) -> Optional[Dict[str, float]]:
     """
@@ -82,6 +83,7 @@ def get_coordinates_from_city_state(city_state: str) -> Optional[Dict[str, float
         except ValueError:
             print(f"Could not parse coordinates for city/state {city_state}.")
             return None
+    return None
 
 def get_coordinates_from_address(address: str) -> Optional[Dict[str, float]]:
     """
@@ -122,3 +124,4 @@ def get_coordinates_from_address(address: str) -> Optional[Dict[str, float]]:
         except ValueError:
             print(f"Could not parse coordinates for address {address}.")
             return None
+    return None

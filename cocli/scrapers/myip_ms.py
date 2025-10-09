@@ -206,7 +206,7 @@ def scrape_myip_ms(
                     debug
                 )
 
-            processed_urls = set() # This might need to be persisted across runs if we are appending.
+            processed_urls: set[str] = set() # This might need to be persisted across runs if we are appending.
             total_scraped_count = 0
 
             for page_num in range(start_page, end_page + 1):

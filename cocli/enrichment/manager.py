@@ -132,6 +132,7 @@ class EnrichmentManager:
         run_file_path = company_dir / ".enrichment-job-runs" / script_name
         if run_file_path.exists():
             return datetime.fromtimestamp(run_file_path.stat().st_mtime)
+        return None
 
     def get_unenriched_companies(self, script_name: str) -> List[str]:
         """
@@ -144,4 +145,3 @@ class EnrichmentManager:
                 if not self.get_last_run_time(company_name, script_name):
                     unenriched_companies.append(company_name)
         return unenriched_companies
-        return None

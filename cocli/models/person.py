@@ -1,17 +1,15 @@
 from pathlib import Path
-from typing import Optional
-
-from pydantic import BaseModel
-
+from typing import Any, Optional
 
 import yaml
 from pydantic import BaseModel, Field, ValidationError
+
 
 class Person(BaseModel):
     name: str
     email: Optional[str] = None
     phone: Optional[str] = None
-    company_name: Optional[str] = None # Added to link person to company
+    company_name: Optional[str] = None  # Added to link person to company
     tags: list[str] = Field(default_factory=list)
 
     full_address: Optional[str] = None
@@ -23,7 +21,7 @@ class Person(BaseModel):
 
     @classmethod
     def from_directory(cls, person_dir: Path) -> Optional["Person"]:
-        for person_file in person_dir.glob('*.md'):
+        for person_file in person_dir.glob("*.md"):
             return cls.from_file(person_file)
         return None
 
@@ -33,14 +31,14 @@ class Person(BaseModel):
             return None
 
         content = person_file.read_text()
-        frontmatter_data = {}
+        frontmatter_data: dict[str, Any] = {}
 
         if content.startswith("---") and "---" in content[3:]:
             frontmatter_str, _ = content.split("---", 2)[1:]
             try:
                 frontmatter_data = yaml.safe_load(frontmatter_str) or {}
             except yaml.YAMLError:
-                pass # Ignore YAML errors for now, return what we have
+                pass  # Ignore YAML errors for now, return what we have
 
         try:
             return cls(**frontmatter_data)

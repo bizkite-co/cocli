@@ -72,7 +72,7 @@ class Company(BaseModel):
                 return None
 
             content = index_path.read_text()
-            frontmatter_data = {}
+            frontmatter_data: dict[str, Any] = {}
             markdown_content = ""
 
             if content.startswith("---") and "---" in content[3:]:
