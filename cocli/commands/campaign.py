@@ -111,6 +111,8 @@ def next_step(
         workflow.finish_ingesting()
     elif current_state == 'prospecting_importing':
         workflow.finish_prospecting_import()
+    elif current_state == 'prospecting_enriching':
+        workflow.finish_enriching()
     elif current_state == 'outreach':
         console.print("[bold yellow]Campaign is in outreach phase. Use specific outreach commands.[/bold yellow]")
     elif current_state == 'completed':

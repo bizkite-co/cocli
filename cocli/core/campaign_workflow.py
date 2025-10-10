@@ -16,6 +16,7 @@ class CampaignWorkflow:
         'prospecting_scraping',
         'prospecting_ingesting',
         'prospecting_importing',
+        'prospecting_enriching',
         'outreach',
         'completed',
         'failed'
@@ -61,13 +62,14 @@ class CampaignWorkflow:
             { 'trigger': 'start_prospecting', 'source': ['idle', 'import_customers'], 'dest': 'prospecting_scraping', 'before': 'set_campaign_context', 'after': 'run_prospecting_scrape' },
             { 'trigger': 'finish_scraping', 'source': 'prospecting_scraping', 'dest': 'prospecting_ingesting', 'after': 'run_prospecting_ingest' },
             { 'trigger': 'finish_ingesting', 'source': 'prospecting_ingesting', 'dest': 'prospecting_importing', 'after': 'run_prospecting_import' },
-            { 'trigger': 'finish_prospecting_import', 'source': 'prospecting_importing', 'dest': 'outreach' },
+            { 'trigger': 'finish_prospecting_import', 'source': 'prospecting_importing', 'dest': 'prospecting_enriching' }, # New sub-state
+            { 'trigger': 'finish_enriching', 'source': 'prospecting_enriching', 'dest': 'outreach' }, # Exit prospecting phase
             { 'trigger': 'start_outreach', 'source': ['prospecting_importing', 'outreach'], 'dest': 'outreach' }, # Allow re-entering outreach
             { 'trigger': 'complete_campaign', 'source': '*', 'dest': 'completed' },
             { 'trigger': 'fail_campaign', 'source': '*', 'dest': 'failed', 'after': 'log_failure' }
         ]
 
-        self.machine = Machine(model=self, states=CampaignWorkflow.states, transitions=transitions, initial=self.state, on_enter=self.on_enter_state)
+        self.machine = Machine(model=self, states=CampaignWorkflow.states, transitions=transitions, initial=self.state)
 
     def set_campaign_context(self):
         set_campaign(self.name)
@@ -123,12 +125,3 @@ class CampaignWorkflow:
     def log_failure(self):
         console.print(f"[bold red]Campaign '{self.name}' failed in state: {self.state}[/bold red]")
         # Here you might add more detailed logging or notification logic
-
-    # Dummy methods for mypy to recognize dynamically added transitions triggers
-    def start_import(self): pass
-    def start_prospecting(self): pass
-    def finish_scraping(self): pass
-    def finish_ingesting(self): pass
-    def finish_prospecting_import(self): pass
-    def complete_campaign(self): pass
-    def fail_campaign(self): pass
