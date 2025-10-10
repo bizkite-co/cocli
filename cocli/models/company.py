@@ -1,3 +1,4 @@
+import logging
 import re
 from pathlib import Path
 from typing import Optional, List, Any
@@ -5,6 +6,8 @@ from typing import Optional, List, Any
 import yaml
 from pydantic import BaseModel, Field, BeforeValidator, ValidationError
 from typing_extensions import Annotated
+
+logger = logging.getLogger(__name__)
 
 def split_categories(v: Any) -> List[str]:
     if isinstance(v, str):
@@ -60,9 +63,8 @@ class Company(BaseModel):
 
     @classmethod
     def from_directory(cls, company_dir: Path) -> Optional["Company"]:
-        import logging
-        logging.basicConfig(filename='temp/from_directory.log', level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %(message)s')
-        logging.debug(f"Starting from_directory for {company_dir}")
+        logger = logging.getLogger(__name__)
+        logger.debug(f"Starting from_directory for {company_dir}")
         try:
             index_path = company_dir / "_index.md"
             tags_path = company_dir / "tags.lst"

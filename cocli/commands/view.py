@@ -49,8 +49,8 @@ def view_company(
     _interactive_view_company(company_name)
 
 def _interactive_view_company(company_name: str):
-    logging.basicConfig(filename='temp/view_company.log', level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %(message)s')
-    logging.debug(f"Starting _interactive_view_company for {company_name}")
+    logger = logging.getLogger(__name__)
+    logger.debug(f"Starting _interactive_view_company for {company_name}")
     companies_dir = get_companies_dir()
     logging.info(f"companies_dir: {companies_dir}")
     company_slug = slugify(company_name)

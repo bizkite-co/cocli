@@ -1,6 +1,9 @@
 import argparse
 import asyncio
+import logging
 from cocli.enrichment.website_scraper import WebsiteScraper
+
+logger = logging.getLogger(__name__)
 
 async def main():
     parser = argparse.ArgumentParser(description="Debug Website Scraper")
@@ -10,8 +13,8 @@ async def main():
     
     args = parser.parse_args()
 
-    print(f"--- Starting Website Scraper Debug Session ---")
-    print(f"Domain: {args.domain}")
+    logger.info(f"--- Starting Website Scraper Debug Session ---")
+    logger.info(f"Domain: {args.domain}")
 
     scraper = WebsiteScraper()
     website_data = await scraper.run(
@@ -22,11 +25,11 @@ async def main():
     )
 
     if website_data:
-        print(f"\n--- Scraped Data ---")
-        print(website_data.model_dump_json(indent=2))
-        print(f"--- End of Scraped Data ---")
+        logger.info(f"\n--- Scraped Data ---")
+        logger.info(website_data.model_dump_json(indent=2))
+        logger.info(f"--- End of Scraped Data ---")
     else:
-        print("--- No data scraped ---")
+        logger.warning("--- No data scraped ---")
 
 if __name__ == "__main__":
     asyncio.run(main())

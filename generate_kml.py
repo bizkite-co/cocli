@@ -1,6 +1,9 @@
 import os
 import yaml
 import simplekml # type: ignore
+import logging
+
+logger = logging.getLogger(__name__)
 
 def main():
     """
@@ -37,7 +40,7 @@ def main():
                         
                         name = frontmatter.get("name")
                         if name == "Prefloor Tools":
-                            print("Found Prefloor Tools!")
+                            logger.debug("Found Prefloor Tools!")
                             
                         full_address = frontmatter.get("full_address")
                         city = frontmatter.get("city")
@@ -45,17 +48,14 @@ def main():
                         zip_code = frontmatter.get("zip_code")
                         
                         if full_address and city and state and zip_code:
-                            print(f"Adding {name} to KML file.")
+                            logger.info(f"Adding {name} to KML file.")
                             placemark = kml.newpoint(name=name)
                             placemark.address = f"{full_address}, {city}, {state} {zip_code}"
                             company_count += 1
                             
                     except yaml.YAMLError as e:
-                        print(f"Error parsing YAML in {index_file}: {e}")
+                        logger.error(f"Error parsing YAML in {index_file}: {e}")
 
     kml.save(kml_file_path)
-    print(f"KML file '{kml_file_path}' created successfully.")
-    print(f"Added {company_count} companies to the KML file.")
-
-if __name__ == "__main__":
-    main()
+    logger.info(f"KML file '{kml_file_path}' created successfully.")
+    logger.info(f"Added {company_count} companies to the KML file.")

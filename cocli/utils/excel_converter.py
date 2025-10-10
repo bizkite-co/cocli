@@ -1,6 +1,9 @@
 from pathlib import Path
 import pandas as pd
 import os
+import logging
+
+logger = logging.getLogger(__name__)
 
 def convert_xlsx_to_csv(xlsx_filepath: Path, output_dir: Path) -> Path:
     """
@@ -32,20 +35,20 @@ def convert_all_xlsx_in_directory(source_dir: Path, output_dir: Path):
         output_dir: The directory where the CSV files will be saved.
     """
     output_dir.mkdir(parents=True, exist_ok=True)
-    print(f"Checking for XLSX files in: {source_dir}")
+    logger.info(f"Checking for XLSX files in: {source_dir}")
     for xlsx_file in source_dir.glob("*.xlsx"):
         csv_filename = xlsx_file.stem + ".csv"
         csv_filepath = output_dir / csv_filename
 
         if csv_filepath.exists():
-            print(f"Skipping '{xlsx_file.name}': '{csv_filename}' already exists.")
+            logger.info(f"Skipping '{xlsx_file.name}': '{csv_filename}' already exists.")
         else:
-            print(f"Converting '{xlsx_file.name}' to '{csv_filename}'...")
+            logger.info(f"Converting '{xlsx_file.name}' to '{csv_filename}'...")
             try:
                 convert_xlsx_to_csv(xlsx_file, output_dir)
-                print(f"Successfully converted '{xlsx_file.name}'.")
+                logger.info(f"Successfully converted '{xlsx_file.name}'.")
             except Exception as e:
-                print(f"Error converting '{xlsx_file.name}': {e}")
+                logger.error(f"Error converting '{xlsx_file.name}': {e}")
 
 if __name__ == "__main__":
     # Example usage for converting real XLSX files
@@ -58,8 +61,8 @@ if __name__ == "__main__":
     dummy_csv_path = Path("./scraped_data/shopify_csv/dummy.csv")
     if dummy_csv_path.exists():
         os.remove(dummy_csv_path)
-        print(f"Cleaned up dummy CSV: {dummy_csv_path}")
+        logger.info(f"Cleaned up dummy CSV: {dummy_csv_path}")
     dummy_xlsx_path = Path("./test_data/dummy.xlsx")
     if dummy_xlsx_path.exists():
         os.remove(dummy_xlsx_path)
-        print(f"Cleaned up dummy XLSX: {dummy_xlsx_path}")
+        logger.info(f"Cleaned up dummy XLSX: {dummy_xlsx_path}")

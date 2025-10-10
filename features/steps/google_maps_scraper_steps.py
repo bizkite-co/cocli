@@ -5,9 +5,12 @@ import tempfile
 import shutil # Import shutil for rmtree
 from pathlib import Path
 from behave import *
+import logging
 
 from cocli.scrapers.google_maps import scrape_google_maps
 from cocli.scrapers.google_maps_parser import GOOGLE_MAPS_HEADERS
+
+logger = logging.getLogger(__name__)
 
 @given('a zip code "{zip_code}" and a search string "{search_string}"')
 def step_given_zip_code_and_search_string(context, zip_code, search_string):
@@ -17,7 +20,7 @@ def step_given_zip_code_and_search_string(context, zip_code, search_string):
 @given('a temporary output directory for the CSV')
 def step_given_temp_output_directory(context):
     context.temp_dir = Path(tempfile.mkdtemp())
-    print(f"Created temporary directory: {context.temp_dir}")
+    logger.info(f"Created temporary directory: {context.temp_dir}")
 
 @when('I run the Google Maps scraper with the zip code and search string')
 def step_when_run_scraper_with_zip_and_string(context):
@@ -70,4 +73,4 @@ def step_then_first_entry_has_name_and_website(context):
 def after_scenario(context, scenario):
     if hasattr(context, 'temp_dir') and context.temp_dir.exists():
         shutil.rmtree(context.temp_dir)
-        print(f"Cleaned up temporary directory: {context.temp_dir}")
+        logger.info(f"Cleaned up temporary directory: {context.temp_dir}")

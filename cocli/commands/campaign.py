@@ -79,7 +79,7 @@ def start_workflow(
 
     workflow = CampaignWorkflow(effective_campaign_name)
     if workflow.state == 'idle':
-        workflow.start_import()
+        workflow.start_import()  # type: ignore
     else:
         console.print(f"[bold yellow]Workflow for '{effective_campaign_name}' is already in state '{workflow.state}'. Cannot start from idle.[/bold yellow]")
 
@@ -102,17 +102,17 @@ def next_step(
     current_state = workflow.state
 
     if current_state == 'idle':
-        workflow.start_import()
+        workflow.start_import()  # type: ignore
     elif current_state == 'import_customers':
-        workflow.start_prospecting()
+        workflow.start_prospecting()  # type: ignore
     elif current_state == 'prospecting_scraping':
-        workflow.finish_scraping()
+        workflow.finish_scraping()  # type: ignore
     elif current_state == 'prospecting_ingesting':
-        workflow.finish_ingesting()
+        workflow.finish_ingesting()  # type: ignore
     elif current_state == 'prospecting_importing':
-        workflow.finish_prospecting_import()
+        workflow.finish_prospecting_import()  # type: ignore
     elif current_state == 'prospecting_enriching':
-        workflow.finish_enriching()
+        workflow.finish_enriching()  # type: ignore
     elif current_state == 'outreach':
         console.print("[bold yellow]Campaign is in outreach phase. Use specific outreach commands.[/bold yellow]")
     elif current_state == 'completed':

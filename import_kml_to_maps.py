@@ -3,6 +3,9 @@ import os
 import subprocess
 import toml
 from playwright.sync_api import sync_playwright
+import logging
+
+logger = logging.getLogger(__name__)
 
 def main():
     """
@@ -19,19 +22,19 @@ def main():
     kml_file_path = "/home/mstouffer/repos/company-cli/campaigns/2025/turboship/turboship_customers.kml"
     
     if not email or not one_password_path:
-        print("Email or 1Password path not found in config.toml")
+        logger.error("Email or 1Password path not found in config.toml")
         return
         
     # Get password from 1Password
     try:
         password = subprocess.check_output(["op", "read", one_password_path]).strip().decode("utf-8")
     except FileNotFoundError:
-        print("The 'op' command-line tool is not installed or not in your PATH.")
-        print("Please install the 1Password CLI and ensure you are logged in.")
+        logger.error("The 'op' command-line tool is not installed or not in your PATH.")
+        logger.error("Please install the 1Password CLI and ensure you are logged in.")
         return
     except subprocess.CalledProcessError:
-        print("Could not retrieve the password from 1Password.")
-        print("Please ensure you are logged in to the 'op' CLI.")
+        logger.error("Could not retrieve the password from 1Password.")
+        logger.error("Please ensure you are logged in to the 'op' CLI.")
         return
 
     with sync_playwright() as p:
@@ -60,7 +63,7 @@ def main():
         
         page.wait_for_timeout(5000) # Wait for the file to upload and process
         
-        print("KML file imported successfully.")
+        logger.info("KML file imported successfully.")
         
         browser.close()
 

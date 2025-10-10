@@ -1,3 +1,4 @@
+import logging
 import typer
 from typing_extensions import Annotated
 import pandas as pd
@@ -7,6 +8,7 @@ import yaml
 from cocli.core.utils import generate_company_hash
 from cocli.core.config import get_companies_dir
 
+logger = logging.getLogger(__name__)
 app = typer.Typer()
 
 @app.command()
@@ -18,7 +20,7 @@ def deduplicate(
     """
     companies_dir = get_companies_dir()
     if not companies_dir.exists():
-        print("Companies directory does not exist.")
+        logger.error("Companies directory does not exist.")
         raise typer.Exit()
 
     all_companies = []
@@ -33,10 +35,10 @@ def deduplicate(
                         frontmatter['file_path'] = str(company_file)
                         all_companies.append(frontmatter)
             except yaml.YAMLError as e:
-                print(f"Error parsing YAML in {company_file}: {e}")
+                logger.error(f"Error parsing YAML in {company_file}: {e}")
 
     if not all_companies:
-        print("No companies found to deduplicate.")
+        logger.info("No companies found to deduplicate.")
         raise typer.Exit()
 
     df = pd.DataFrame(all_companies)
@@ -47,16 +49,16 @@ def deduplicate(
     duplicates = df[df.duplicated('hash_id', keep=False)]
     
     if duplicates.empty:
-        print("No duplicates found.")
+        logger.info("No duplicates found.")
         raise typer.Exit()
 
-    print(f"Found {len(duplicates)} duplicate records.")
+    logger.info(f"Found {len(duplicates)} duplicate records.")
 
     if dry_run:
-        print("Dry run enabled. The following duplicates were found:")
-        print(duplicates.sort_values('hash_id'))
+        logger.info("Dry run enabled. The following duplicates were found:")
+        logger.info(f"Duplicates:\n{duplicates.sort_values('hash_id')}")
     else:
-        print("Writing changes is not yet implemented.")
+        logger.warning("Writing changes is not yet implemented.")
 
 if __name__ == "__main__":
     app()

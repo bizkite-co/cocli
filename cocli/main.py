@@ -24,7 +24,11 @@ from .models.person import Person
 from .commands import register_commands
 from .commands import lead_scrape
 
+from .core import logging_config
+
 console = Console()
+
+logging_config.setup_logging()
 
 app = typer.Typer(no_args_is_help=True)
 app.add_typer(enrich.app, name="enrich", help="Commands for enriching company data.")
