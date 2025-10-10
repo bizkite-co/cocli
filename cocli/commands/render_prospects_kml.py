@@ -2,6 +2,9 @@ import csv
 import simplekml # type: ignore
 from pathlib import Path
 import typer
+import logging
+
+logger = logging.getLogger(__name__)
 
 def render_prospects_kml(
     campaign_name: str = typer.Argument(..., help="The name of the campaign to render the KML for.")
@@ -12,7 +15,7 @@ def render_prospects_kml(
     # Find campaign directory
     campaign_dirs = list(Path("campaigns").glob(f"**/{campaign_name}"))
     if not campaign_dirs:
-        print(f"Campaign '{campaign_name}' not found.")
+        logger.error(f"Campaign '{campaign_name}' not found.")
         raise typer.Exit(code=1)
     campaign_dir = campaign_dirs[0]
 
@@ -20,7 +23,7 @@ def render_prospects_kml(
     output_kml_path = campaign_dir / f"{campaign_name}_prospects.kml"
 
     if not prospects_csv_path.exists():
-        print(f"Error: Prospects CSV file not found at {prospects_csv_path}")
+        logger.error(f"Error: Prospects CSV file not found at {prospects_csv_path}")
         raise typer.Exit(code=1)
 
     kml = simplekml.Kml()
@@ -50,7 +53,7 @@ def render_prospects_kml(
             placemark.description = "<br>".join(description_parts)
 
     kml.save(output_kml_path)
-    print(f"KML file generated at: {output_kml_path}")
+    logger.info(f"KML file generated at: {output_kml_path}")
 
 if __name__ == "__main__":
     render_prospects_kml()

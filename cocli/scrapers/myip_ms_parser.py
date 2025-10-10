@@ -2,6 +2,9 @@ from typing import Dict, Any, Optional
 from bs4 import BeautifulSoup
 import uuid
 import re
+import logging
+
+logger = logging.getLogger(__name__)
 
 # Define headers for the Shopify data, aligning with Lead Sniper where possible
 SHOPIFY_HEADERS = [
@@ -82,7 +85,7 @@ def parse_myip_ms_listing(row_data: Dict[str, str], debug: bool = False) -> Dict
     data: Dict[str, Any] = {header: "" for header in SHOPIFY_HEADERS}
     data["Keyword"] = "shopify-myip-ms" # Default keyword for this source
 
-    if debug: print(f"Debug: Raw row data for parser: {row_data}")
+    if debug: logger.debug(f"Raw row data for parser: {row_data}")
 
     # Map fields from myip.ms CSV to SHOPIFY_HEADERS
     data["Website"] = row_data.get("Website", "")
@@ -98,10 +101,10 @@ def parse_myip_ms_listing(row_data: Dict[str, str], debug: bool = False) -> Dict
         if data["Domain"]:
             name_parts = data["Domain"].replace(".com", "").replace(".net", "").replace(".org", "").split('.')
             data["Name"] = " ".join([part.capitalize() for part in name_parts if part]).strip()
-            if not data["Name"]: # Fallback if domain parsing is too aggressive
+            if not data["Name"]:
                 data["Name"] = data["Domain"]
 
     data["id"] = generate_company_hash(data)
 
-    if debug: print(f"Debug: Parsed data: {data}")
+    if debug: logger.debug(f"Parsed data: {data}")
     return data

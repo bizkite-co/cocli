@@ -3,6 +3,9 @@ import pandas as pd
 from pathlib import Path
 import re
 import yaml
+import logging
+
+logger = logging.getLogger(__name__)
 
 from ..core.config import get_companies_dir, get_people_dir
 from ..core.utils import slugify, create_company_files, create_person_files
@@ -28,10 +31,10 @@ def import_turboship(
     Import customers from a Turboship CSV file.
     """
     if not customers_csv_path.exists():
-        print(f"Error: File not found at {customers_csv_path}")
+        logger.error(f"Error: File not found at {customers_csv_path}")
         raise typer.Exit(1)
     if not addresses_csv_path.exists():
-        print(f"Error: File not found at {addresses_csv_path}")
+        logger.error(f"Error: File not found at {addresses_csv_path}")
         raise typer.Exit(1)
 
     customers_df = pd.read_csv(customers_csv_path, header=None)
@@ -130,4 +133,4 @@ def import_turboship(
             yaml.dump(shopify_data.model_dump(exclude_none=True), f_md, sort_keys=False, default_flow_style=False, allow_unicode=True)
             f_md.write("---")
 
-        print(f"Imported {person.name}")
+        logger.info(f"Imported {person.name}")

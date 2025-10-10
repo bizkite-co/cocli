@@ -4,6 +4,7 @@ import simplekml # type: ignore
 import toml
 from pathlib import Path
 from typing import Optional
+import logging
 
 from ..core.config import get_companies_dir, get_people_dir
 from ..core.geocoding import get_coordinates_from_zip, get_coordinates_from_city_state, get_coordinates_from_address
@@ -12,6 +13,8 @@ from ..models.person import Person
 from ..models.geocode import GeocodeData
 from ..core.utils import slugify
 
+logger = logging.getLogger(__name__)
+
 def render_kml_for_campaign(campaign_name: str):
     """
     Generates a KML file for a specific campaign.
@@ -19,13 +22,13 @@ def render_kml_for_campaign(campaign_name: str):
     
     campaign_dirs = list(Path("campaigns").glob(f"**/{campaign_name}"))
     if not campaign_dirs:
-        print(f"Campaign '{campaign_name}' not found.")
+        logger.error(f"Campaign '{campaign_name}' not found.")
         return
     campaign_dir = campaign_dirs[0]
     config_path = campaign_dir / "config.toml"
     
     if not config_path.exists():
-        print(f"Configuration file not found for campaign '{campaign_name}'.")
+        logger.error(f"Configuration file not found for campaign '{campaign_name}'.")
         return
         
     with open(config_path, "r") as f:
@@ -33,7 +36,7 @@ def render_kml_for_campaign(campaign_name: str):
         
     tag = config.get("campaign", {}).get("tag")
     if not tag:
-        print(f"Tag not found in configuration for campaign '{campaign_name}'.")
+        logger.error(f"Tag not found in configuration for campaign '{campaign_name}'.")
         return
         
     people_dir = get_people_dir()
@@ -52,7 +55,7 @@ def render_kml_for_campaign(campaign_name: str):
 
         processed_count += 1
         if processed_count % 10 == 0:
-            print(f"Processing {processed_count}/{total_companies} companies for KML...")
+            logger.info(f"Processing {processed_count}/{total_companies} companies for KML...")
 
         company = Company.from_directory(company_dir)
         if not company:
@@ -83,9 +86,9 @@ def render_kml_for_campaign(campaign_name: str):
                         frontmatter = yaml.safe_load(parts[1])
                         geocode_data = GeocodeData(**frontmatter)
                     except yaml.YAMLError as e:
-                        print(f"Error parsing YAML in {geocode_md_path}: {e}")
+                        logger.error(f"Error parsing YAML in {geocode_md_path}: {e}")
                     except Exception as e:
-                        print(f"Error loading GeocodeData from {geocode_md_path}: {e}")
+                        logger.error(f"Error loading GeocodeData from {geocode_md_path}: {e}")
         
         if not geocode_data:
             # Determine the best address to use for geocoding
@@ -131,10 +134,10 @@ def render_kml_for_campaign(campaign_name: str):
                         yaml.dump(geocode_data.model_dump(exclude_none=True), f_md, sort_keys=False, default_flow_style=False, allow_unicode=True)
                         f_md.write("---\n")
                 else:
-                    print(f"Could not geocode address for {company.name} (address: {address_to_geocode}). Skipping KML entry.")
+                    logger.warning(f"Could not geocode address for {company.name} (address: {address_to_geocode}). Skipping KML entry.")
                     continue
             else:
-                print(f"No address information available for {company.name}. Skipping KML entry.")
+                logger.warning(f"No address information available for {company.name}. Skipping KML entry.")
                 continue
 
         # --- Website Data Access ---
@@ -192,5 +195,5 @@ def render_kml_for_campaign(campaign_name: str):
 
     kml_file_path = campaign_dir / f"{campaign_name}_customers.kml"
     kml.save(kml_file_path)
-    print(f"KML file '{kml_file_path}' created successfully.")
-    print(f"Added {company_count} companies to the KML file.")
+    logger.info(f"KML file '{kml_file_path}' created successfully.")
+    logger.info(f"Added {company_count} companies to the KML file.")

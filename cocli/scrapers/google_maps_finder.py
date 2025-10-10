@@ -4,6 +4,9 @@ from playwright.sync_api import sync_playwright, Page
 from .google_maps_parser import parse_business_listing_html
 from ..core.geocoding import get_coordinates_from_city_state, get_coordinates_from_zip, get_coordinates_from_address
 import re
+import logging
+
+logger = logging.getLogger(__name__)
 
 def find_business_on_google_maps(
     company_name: str,
@@ -23,7 +26,7 @@ def find_business_on_google_maps(
         coordinates = get_coordinates_from_city_state(location_param["city"])
         
     if not coordinates:
-        print(f"Could not find coordinates for {location_param}")
+        logger.error(f"Could not find coordinates for {location_param}")
         return None
 
     latitude = coordinates["latitude"]
@@ -77,7 +80,7 @@ def find_business_on_google_maps(
             return best_match_data
 
         except Exception as e:
-            print(f"An error occurred during scraping: {e}")
+            logger.error(f"An error occurred during scraping: {e}")
             return None
         finally:
             browser.close()

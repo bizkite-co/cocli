@@ -1,10 +1,13 @@
 import csv
 from pathlib import Path
 from typing import Dict, Any, Optional
+import logging
 
 from ..models.company import Company
 from ..core.utils import create_company_files, slugify
 from ..core.config import get_companies_dir
+
+logger = logging.getLogger(__name__)
 
 def _safe_int(value: str) -> Optional[int]:
     try:
@@ -25,7 +28,7 @@ def google_maps(filepath: Path, debug: bool = False): # Added debug parameter
     Parses the CSV, creates Company objects, and uses the core logic
     to create the company files and directories.
     """
-    print(f"Starting Google Maps import from '{filepath}'...")
+    logger.info(f"Starting Google Maps import from '{filepath}'...")
 
     try:
         with filepath.open(mode='r', encoding='utf-8') as f:
@@ -94,13 +97,13 @@ def google_maps(filepath: Path, debug: bool = False): # Added debug parameter
                     create_company_files(company, company_dir) # Pass company object directly
 
                 except Exception as e:
-                    print(f"Skipping row due to validation error: {e} -> {row}")
+                    logger.error(f"Skipping row due to validation error: {e} -> {row}")
 
     except FileNotFoundError:
-        print(f"Error: File not found at '{filepath}'")
+        logger.error(f"Error: File not found at '{filepath}'")
         return
     except Exception as e:
-        print(f"An unexpected error occurred: {e}")
+        logger.error(f"An unexpected error occurred: {e}")
         return
 
-    print("\nImport complete.")
+    logger.info("\nImport complete.")

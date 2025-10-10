@@ -1,6 +1,9 @@
 import typer
 from pathlib import Path
 from typing import Any, Optional # Import Optional
+import logging
+
+logger = logging.getLogger(__name__)
 
 from ..importers import google_maps # Import specific importer
 from ..core.config import get_scraped_data_dir # Import get_scraped_data_dir
@@ -21,12 +24,12 @@ def import_data(
         available_files = [f for f in scraped_data_dir.iterdir() if f.is_file()]
 
         if not available_files:
-            print(f"Error: No scraped data files found in {scraped_data_dir}")
+            logger.error(f"Error: No scraped data files found in {scraped_data_dir}")
             raise typer.Exit(code=1)
 
-        print("Available scraped data files:")
+        logger.info("Available scraped data files:")
         for i, f in enumerate(available_files):
-            print(f"{i+1}. {f.name}")
+            logger.info(f"{i+1}. {f.name}")
 
         while True:
             try:
@@ -37,19 +40,19 @@ def import_data(
                         file_path = available_files[index]
                         break
                     else:
-                        print("Invalid number. Please try again.")
+                        logger.warning("Invalid number. Please try again.")
                 else:
                     file_path = Path(selection)
                     if file_path.is_file():
                         break
                     else:
-                        print(f"Error: File not found at {file_path}. Please try again.")
+                        logger.error(f"Error: File not found at {file_path}. Please try again.")
             except Exception as e:
-                print(f"An error occurred during selection: {e}")
-                print("Please try again.")
+                logger.error(f"An error occurred during selection: {e}")
+                logger.info("Please try again.")
 
     if not file_path.is_file():
-        print(f"Error: File not found at {file_path}")
+        logger.error(f"Error: File not found at {file_path}")
         raise typer.Exit(code=1)
 
     # Dynamically get the importer function from the importers module
@@ -60,16 +63,16 @@ def import_data(
         if importer_name == "google-maps":
             importer_func = google_maps.google_maps
         else:
-            print(f"Error: Importer '{importer_name}' not found.")
+            logger.error(f"Error: Importer '{importer_name}' not found.")
             raise typer.Exit(code=1)
 
     except AttributeError:
-        print(f"Error: Importer '{importer_name}' not found.")
+        logger.error(f"Error: Importer '{importer_name}' not found.")
         raise typer.Exit(code=1)
 
     try:
         importer_func(file_path, debug)
-        print(f"Data imported successfully using '{importer_name}'.")
+        logger.info(f"Data imported successfully using '{importer_name}'.")
     except Exception as e:
-        print(f"Error during import: {e}")
+        logger.error(f"Error during import: {e}")
         raise typer.Exit(code=1)

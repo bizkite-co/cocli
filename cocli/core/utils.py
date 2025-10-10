@@ -4,12 +4,15 @@ from typing import Any, List, Optional
 import tty
 import termios
 import sys
+import logging
 
 import yaml # This import might not be needed here if models handle YAML loading
 
 from ..models.company import Company
 from ..models.person import Person # Import Company and Person models
 from .config import get_companies_dir, get_people_dir # Import directory getters
+
+logger = logging.getLogger(__name__)
 
 # Custom representer for None to ensure it's explicitly written as 'null'
 def represent_none(self, data):
@@ -50,9 +53,9 @@ def create_company_files(company: Company, company_dir: Path) -> Path:
                 existing_frontmatter_data = yaml.safe_load(frontmatter_str) or {}
                 markdown_content = md_content_part # Preserve existing markdown content
             except yaml.YAMLError:
-                print(f"Warning: Could not parse YAML front matter in {index_path}. Overwriting with new data.")
+                logger.warning(f"Warning: Could not parse YAML front matter in {index_path}. Overwriting with new data.")
         else:
-            print(f"Warning: No valid YAML front matter found in {index_path}. Overwriting with new data.")
+            logger.warning(f"Warning: No valid YAML front matter found in {index_path}. Overwriting with new data.")
 
     # Prepare new data for YAML front matter (using Pydantic field names)
     new_company_data_for_yaml = company.model_dump(exclude={"tags", "categories"})
@@ -118,9 +121,9 @@ def create_person_files(person: Person, person_dir: Path) -> Path:
                 existing_frontmatter_data = yaml.safe_load(frontmatter_str) or {}
                 markdown_content = md_content_part  # Preserve existing markdown content
             except yaml.YAMLError:
-                print(f"Warning: Could not parse YAML front matter in {person_file}. Overwriting with new data.")
+                logger.warning(f"Warning: Could not parse YAML front matter in {person_file}. Overwriting with new data.")
         else:
-            print(f"Warning: No valid YAML front matter found in {person_file}. Overwriting with new data.")
+            logger.warning(f"Warning: No valid YAML front matter found in {person_file}. Overwriting with new data.")
 
     # Prepare new data for YAML front matter
     new_person_data_for_yaml = person.model_dump(exclude={'tags'})

@@ -1,13 +1,14 @@
-
 import typer
 import csv
 from pathlib import Path
 from typing import List, Optional
+import logging
 
 from ..core.google_maps_cache import GoogleMapsCache
 from ..models.google_maps import GoogleMapsData
 from ..core.config import get_campaign, get_scraped_data_dir
 
+logger = logging.getLogger(__name__)
 app = typer.Typer()
 
 @app.command(name="google-maps-csv-to-google-maps-cache")
@@ -23,12 +24,12 @@ def google_maps_csv_to_google_maps_cache(
             campaign_name = get_campaign()
         
         if campaign_name is None:
-            print("Error: No CSV path provided and no campaign context is set. Please provide a CSV path, a campaign name with --campaign, or set a campaign context using 'cocli campaign set <campaign_name>'.")
+            logger.error("Error: No CSV path provided and no campaign context is set. Please provide a CSV path, a campaign name with --campaign, or set a campaign context using 'cocli campaign set <campaign_name>'.")
             raise typer.Exit(code=1)
         
         inferred_csv_path = get_scraped_data_dir() / campaign_name / "prospects" / "prospects.csv"
         if not inferred_csv_path.exists():
-            print(f"Error: Inferred CSV path does not exist: {inferred_csv_path}")
+            logger.error(f"Error: Inferred CSV path does not exist: {inferred_csv_path}")
             raise typer.Exit(code=1)
         csv_path = inferred_csv_path
 
@@ -57,7 +58,7 @@ def google_maps_csv_to_google_maps_cache(
             if model_data.get("Place_ID"):
                 item = GoogleMapsData(**model_data)
                 cache.add_or_update(item)
-                print(f"Added/Updated {item.Name} in cache.")
+                logger.info(f"Added/Updated {item.Name} in cache.")
 
     cache.save()
-    print("Cache saved.")
+    logger.info("Cache saved.")

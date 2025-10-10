@@ -5,9 +5,12 @@ import platform
 import tomli
 import tomli_w
 from typing import Optional
+import logging
 
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+logger = logging.getLogger(__name__)
 
 def get_cocli_base_dir() -> Path:
     """
@@ -82,7 +85,7 @@ def load_scraper_settings() -> ScraperSettings:
     config_file = config_dir / "cocli_config.toml"
 
     if not config_file.exists():
-        print(f"Warning: Config file not found at {config_file}. Using default scraper settings.")
+        logger.warning(f"Config file not found at {config_file}. Using default scraper settings.")
         return ScraperSettings()
 
     try:
@@ -91,13 +94,13 @@ def load_scraper_settings() -> ScraperSettings:
             if config_data and "scraper" in config_data:
                 return ScraperSettings(**config_data["scraper"])
             else:
-                print(f"Warning: 'scraper' section not found in {config_file}. Using default scraper settings.")
+                logger.warning(f"'scraper' section not found in {config_file}. Using default scraper settings.")
                 return ScraperSettings()
     except tomli.TomlDecodeError as e:
-        print(f"Error decoding TOML config file {config_file}: {e}. Using default scraper settings.")
+        logger.error(f"Error decoding TOML config file {config_file}: {e}. Using default scraper settings.")
         return ScraperSettings()
     except Exception as e:
-        print(f"Error loading config file {config_file}: {e}. Using default scraper settings.")
+        logger.error(f"Error loading config file {config_file}: {e}. Using default scraper settings.")
         return ScraperSettings()
 
 
@@ -177,6 +180,6 @@ google_maps_max_pages = 3
             config_dir.mkdir(parents=True, exist_ok=True)
             with config_file.open('w', encoding='utf-8') as f: # Open in text mode for writing template string
                 f.write(default_settings_template)
-            print(f"Created default config file at {config_file}")
+            logger.info(f"Created default config file at {config_file}")
         except Exception as e:
-            print(f"Error creating default config file {config_file}: {e}")
+            logger.error(f"Error creating default config file {config_file}: {e}")

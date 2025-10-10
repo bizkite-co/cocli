@@ -3,6 +3,10 @@ from pathlib import Path
 import typer
 import yaml
 from typing import List, Optional
+import logging
+
+logger = logging.getLogger(__name__)
+
 from cocli.core.utils import slugify, create_company_files
 from cocli.models.company import Company
 from cocli.models.website import Website
@@ -35,12 +39,12 @@ def google_maps_cache_to_company_files(
 
     if prospects_csv_path is None:
         if effective_campaign_name is None:
-            print("Error: No prospects CSV path provided and no campaign context is set. Please provide a CSV path, a campaign name with --campaign, or set a campaign context using 'cocli campaign set <campaign_name>'.")
+            logger.error("Error: No prospects CSV path provided and no campaign context is set. Please provide a CSV path, a campaign name with --campaign, or set a campaign context using 'cocli campaign set <campaign_name>'.")
             raise typer.Exit(code=1)
         
         inferred_csv_path = get_scraped_data_dir() / effective_campaign_name / "prospects" / "prospects.csv"
         if not inferred_csv_path.exists():
-            print(f"Error: Inferred prospects CSV path does not exist: {inferred_csv_path}")
+            logger.error(f"Error: Inferred prospects CSV path does not exist: {inferred_csv_path}")
             raise typer.Exit(code=1)
         prospects_csv_path = inferred_csv_path
 
@@ -124,7 +128,7 @@ def google_maps_cache_to_company_files(
 
             if company_dir:
                 # Update existing company
-                print(f"Updating existing company: {company_dir.name}")
+                logger.info(f"Updating existing company: {company_dir.name}")
                 company = Company.from_directory(company_dir)
                 if company:
                     # Update fields
@@ -137,7 +141,7 @@ def google_maps_cache_to_company_files(
                     create_company_files(company, company_dir)
             else:
                 # Create new company
-                print(f"Creating new company: {company_name}")
+                logger.info(f"Creating new company: {company_name}")
                 company_slug = slugify(company_name)
                 company_dir = companies_dir / company_slug
                 company_data_from_csv["tags"] = tags
@@ -166,7 +170,7 @@ def google_maps_cache_to_company_files(
                 f_md.write("---\\n")
                 yaml.dump(enrichment_data, f_md, sort_keys=False, default_flow_style=False, allow_unicode=True)
                 f_md.write("---\\n")
-            print(f"Created/Updated google-maps.md for {company_name}")
+            logger.info(f"Created/Updated google-maps.md for {company_name}")
 
     website_cache.save()
 

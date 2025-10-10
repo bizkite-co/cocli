@@ -1,28 +1,33 @@
+import yaml
 import logging
 import typer
-import datetime
-import subprocess
-import re
-import webbrowser
-import yaml
-import os
-from pathlib import Path
 from typing import Optional, List, Any, Dict
+from pathlib import Path
+import subprocess
+import webbrowser
+import re
+import os
+import datetime
 
 from rich.console import Console
-from ..core.utils import _getch, create_person_files
-from .add_meeting import _add_meeting_logic
-from ..models.person import Person
+from rich.markdown import Markdown
+from rich.prompt import Prompt
+
 from fuzzywuzzy import process # type: ignore
 
 from ..core.config import get_companies_dir, get_people_dir, get_campaign
-from ..core.utils import slugify
-from ..renderers.company_view import display_company_view
+from ..core.utils import slugify, _format_entity_for_fzf, create_person_files, _getch
 from ..models.company import Company
-from ..core.exclusions import ExclusionManager
+from ..models.person import Person
+from ..models.meeting import Meeting
+
 from ..core.website_cache import WebsiteCache
 from ..models.website import Website
+from ..renderers.company_view import display_company_view
+from ..core.exclusions import ExclusionManager
+from ..commands.add_meeting import _add_meeting_logic
 
+logger = logging.getLogger(__name__)
 console = Console()
 app = typer.Typer()
 

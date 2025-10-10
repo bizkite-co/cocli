@@ -3,6 +3,7 @@ import typer
 import csv
 from pathlib import Path
 from typing import List, Dict
+import logging
 
 from ..core.config import get_companies_dir, get_people_dir
 from ..core.utils import slugify, create_company_files, create_person_files
@@ -10,6 +11,8 @@ from ..models.person import Person
 from ..models.company import Company
 from ..models.website import Website
 from ..core.website_cache import WebsiteCache
+
+logger = logging.getLogger(__name__)
 
 def import_customers(
     customers_csv_path: Path = typer.Argument(..., help="Path to the customers.csv file", exists=True, file_okay=True, dir_okay=False, readable=True),
@@ -106,6 +109,6 @@ def import_customers(
             person_dir = people_dir / slugify(person.name)
             create_person_files(person, person_dir)
 
-            print(f"Imported customer: {person.name}")
+            logger.info(f"Imported customer: {person.name}")
     
     website_cache.save()

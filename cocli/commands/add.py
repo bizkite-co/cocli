@@ -1,5 +1,8 @@
 import typer
 from typing import Optional
+import logging
+
+logger = logging.getLogger(__name__)
 
 from ..core.config import get_companies_dir, get_people_dir
 from ..core.utils import slugify, create_company_files, create_person_files
@@ -27,9 +30,9 @@ def add(
     if not company_dir.exists():
         company = Company(name=company_name)
         create_company_files(company, company_dir)
-        print(f"Company '{company_name}' created at {company_dir}")
+        logger.info(f"Company '{company_name}' created at {company_dir}")
     else:
-        print(f"Company '{company_name}' already exists at {company_dir}")
+        logger.info(f"Company '{company_name}' already exists at {company_dir}")
 
     if person_name:
         people_dir = get_people_dir()
@@ -38,6 +41,6 @@ def add(
         if not person_dir.exists():
             person = Person(name=person_name, company=company_name)
             create_person_files(person, person_dir)
-            print(f"Person '{person_name}' created at {person_dir}")
+            logger.info(f"Person '{person_name}' created at {person_dir}")
         else:
-            print(f"Person '{person_name}' already exists at {person_dir}")
+            logger.info(f"Person '{person_name}' already exists at {person_dir}")

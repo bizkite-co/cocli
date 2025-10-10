@@ -7,6 +7,7 @@ from datetime import datetime, timedelta, UTC
 from playwright.sync_api import sync_playwright, Page, Locator
 from bs4 import BeautifulSoup
 import uuid
+import logging
 
 from ..core.config import load_scraper_settings
 from ..core.geocoding import get_coordinates_from_zip, get_coordinates_from_city_state
@@ -14,6 +15,8 @@ from .google_maps_parser import parse_business_listing_html
 from .google_maps_gmb_parser import parse_gmb_page
 from ..models.google_maps import GoogleMapsData
 from ..core.google_maps_cache import GoogleMapsCache
+
+logger = logging.getLogger(__name__)
 
 def scrape_google_maps(
     location_param: Dict[str, str],
@@ -30,7 +33,7 @@ def scrape_google_maps(
     """
     Scrapes business information from Google Maps, using a cache-first strategy.
     """
-    if debug: print(f"Debug: scrape_google_maps called with debug={debug}")
+    if debug: logger.debug(f"scrape_google_maps called with debug={debug}")
     settings = load_scraper_settings()
     delay_seconds = settings.google_maps_delay_seconds
 
@@ -50,7 +53,7 @@ def scrape_google_maps(
         coordinates = get_coordinates_from_city_state(location_param["city"])
 
     if not coordinates:
-        print(f"Error: Could not find coordinates for {location_param}")
+        logger.error(f"Error: Could not find coordinates for {location_param}")
         return []
 
     latitude = coordinates["latitude"]
@@ -73,7 +76,7 @@ def scrape_google_maps(
         try:
             page.goto(url, wait_until="domcontentloaded")
             page.wait_for_timeout(5000)
-            print("Navigated to Google Maps URL.")
+            logger.info("Navigated to Google Maps URL.")
 
             scrollable_div_selector = 'div[role="feed"]'
             page.wait_for_selector(scrollable_div_selector)
@@ -83,10 +86,10 @@ def scrape_google_maps(
             last_scroll_height = -1
             while scraped_count < max_results:
                 listing_divs = scrollable_div.locator("> div").all()
-                print(f"Found {len(listing_divs)} listing divs.")
+                logger.info(f"Found {len(listing_divs)} listing divs.")
 
                 if not listing_divs:
-                    print("No listing divs found. Exiting.")
+                    logger.info("No listing divs found. Exiting.")
                     break
 
                 for listing_div in listing_divs:
@@ -104,7 +107,7 @@ def scrape_google_maps(
                     business_data_dict = parse_business_listing_html(html_content, search_string, debug=debug)
 
                     if debug:
-                        print("Debug: Pausing after parsing business listing HTML. Press F8 in Playwright Inspector to resume.")
+                        logger.debug("Pausing after parsing business listing HTML. Press F8 in Playwright Inspector to resume.")
                         page.pause() # Pause for debugging
 
                     place_id = business_data_dict.get("Place_ID")
@@ -116,7 +119,7 @@ def scrape_google_maps(
                     cached_item = cache.get_by_place_id(place_id)
                     if cached_item and not force_refresh and (datetime.now(UTC) - cached_item.updated_at < fresh_delta):
                         scraped_data.append(cached_item)
-                        print(f"Used cached data for: {cached_item.Name}")
+                        logger.info(f"Used cached data for: {cached_item.Name}")
                         scraped_count += 1
                         continue
 
@@ -150,7 +153,7 @@ def scrape_google_maps(
                     cache.add_or_update(business_data)
                     scraped_data.append(business_data)
                     scraped_count += 1
-                    print(f"Scraped and cached: {business_data.Name} ({scraped_count}/{max_results})")
+                    logger.info(f"Scraped and cached: {business_data.Name} ({scraped_count}/{max_results})")
 
                     if scraped_count >= max_results:
                         break
@@ -160,7 +163,7 @@ def scrape_google_maps(
 
                 current_scroll_height = scrollable_div.evaluate("element => element.scrollHeight")
                 if current_scroll_height == last_scroll_height:
-                    print("Reached end of scrollable content.")
+                    logger.info("Reached end of scrollable content.")
                     break
 
                 scrollable_div.evaluate("element => element.scrollTop = element.scrollHeight")
@@ -168,7 +171,7 @@ def scrape_google_maps(
                 last_scroll_height = current_scroll_height
 
         except Exception as e:
-            print(f"An error occurred during scraping: {e}")
+            logger.error(f"An error occurred during scraping: {e}")
         finally:
             cache.save()
             browser.close()

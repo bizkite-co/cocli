@@ -4,6 +4,7 @@ import toml
 import csv
 from pathlib import Path
 from typing import List, Dict, Optional
+import logging
 
 from ..scrapers.google_maps import scrape_google_maps
 from ..core.config import get_scraped_data_dir
@@ -12,6 +13,7 @@ from ..core.config import get_campaign, set_campaign
 from rich.console import Console
 from ..core.campaign_workflow import CampaignWorkflow
 
+logger = logging.getLogger(__name__)
 app = typer.Typer(no_args_is_help=True)
 console = Console()
 
@@ -134,18 +136,18 @@ def scrape_prospects(
     if campaign_name is None:
         campaign_name = get_campaign()
         if campaign_name is None:
-            print("Error: No campaign name provided and no campaign context is set. Please provide a campaign name or set a campaign context using 'cocli campaign set <campaign_name>'.")
+            logger.error("Error: No campaign name provided and no campaign context is set. Please provide a campaign name or set a campaign context using 'cocli campaign set <campaign_name>'.")
             raise typer.Exit(code=1)
     
     campaign_dirs = list(Path("campaigns").glob(f"**/{campaign_name}"))
     if not campaign_dirs:
-        print(f"Campaign '{campaign_name}' not found.")
+        logger.error(f"Campaign '{campaign_name}' not found.")
         raise typer.Exit(code=1)
     campaign_dir = campaign_dirs[0]
     config_path = campaign_dir / "config.toml"
     
     if not config_path.exists():
-        print(f"Configuration file not found for campaign '{campaign_name}'.")
+        logger.error(f"Configuration file not found for campaign '{campaign_name}'.")
         raise typer.Exit(code=1)
         
     with open(config_path, "r") as f:
@@ -156,7 +158,7 @@ def scrape_prospects(
     queries = prospecting_config.get("queries", [])
     
     if not locations or not queries:
-        print("No locations or queries found in the prospecting configuration.")
+        logger.error("No locations or queries found in the prospecting configuration.")
         raise typer.Exit(code=1)
         
     output_dir = get_scraped_data_dir() / campaign_name / "prospects"
@@ -177,7 +179,7 @@ def scrape_prospects(
 
     for location in locations:
         for query in queries:
-            print(f"Scraping '{query}' in '{location}'...")
+            logger.info(f"Scraping '{query}' in '{location}'...")
             scraped_data: List[GoogleMapsData] = scrape_google_maps(
                 location_param={"city": location},
                 search_string=query,
@@ -197,4 +199,4 @@ def scrape_prospects(
         for item in all_prospects.values():
             writer.writerow(item.model_dump())
     
-    print(f"Prospecting complete. Results saved to {output_filepath}")
+    logger.info(f"Prospecting complete. Results saved to {output_filepath}")

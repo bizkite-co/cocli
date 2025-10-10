@@ -1,6 +1,9 @@
 import requests
 import time
 from typing import Optional, Dict, Any
+import logging
+
+logger = logging.getLogger(__name__)
 
 def get_coordinates_from_zip(zip_code: str) -> Optional[Dict[str, float]]:
     """
@@ -29,17 +32,17 @@ def get_coordinates_from_zip(zip_code: str) -> Optional[Dict[str, float]]:
                 longitude = float(result["lon"])
                 return {"latitude": latitude, "longitude": longitude}
             else:
-                print(f"No coordinates found for zip code {zip_code} using Nominatim.")
+                logger.warning(f"No coordinates found for zip code {zip_code} using Nominatim.")
                 return None
         except requests.exceptions.RequestException as e:
-            print(f"Error during Nominatim API request for zip code {zip_code}: {e}")
+            logger.error(f"Error during Nominatim API request for zip code {zip_code}: {e}")
             if i < 2:
-                print("Retrying in 5 seconds...")
+                logger.info("Retrying in 5 seconds...")
                 time.sleep(5)
             else:
                 return None
         except ValueError:
-            print(f"Could not parse coordinates for zip code {zip_code}.")
+            logger.error(f"Could not parse coordinates for zip code {zip_code}.")
             return None
     return None
 
@@ -71,17 +74,17 @@ def get_coordinates_from_city_state(city_state: str) -> Optional[Dict[str, float
                 longitude = float(result["lon"])
                 return {"latitude": latitude, "longitude": longitude}
             else:
-                print(f"No coordinates found for city/state {city_state} using Nominatim.")
+                logger.warning(f"No coordinates found for city/state {city_state} using Nominatim.")
                 return None
         except requests.exceptions.RequestException as e:
-            print(f"Error during Nominatim API request for city/state {city_state}: {e}")
+            logger.error(f"Error during Nominatim API request for city/state {city_state}: {e}")
             if i < 2:
-                print("Retrying in 5 seconds...")
+                logger.info("Retrying in 5 seconds...")
                 time.sleep(5)
             else:
                 return None
         except ValueError:
-            print(f"Could not parse coordinates for city/state {city_state}.")
+            logger.error(f"Could not parse coordinates for city/state {city_state}.")
             return None
     return None
 
@@ -112,16 +115,16 @@ def get_coordinates_from_address(address: str) -> Optional[Dict[str, float]]:
                 longitude = float(result["lon"])
                 return {"latitude": latitude, "longitude": longitude}
             else:
-                print(f"No coordinates found for address {address} using Nominatim.")
+                logger.warning(f"No coordinates found for address {address} using Nominatim.")
                 return None
         except requests.exceptions.RequestException as e:
-            print(f"Error during Nominatim API request for address {address}: {e}")
+            logger.error(f"Error during Nominatim API request for address {address}: {e}")
             if i < 2:
-                print("Retrying in 5 seconds...")
+                logger.info("Retrying in 5 seconds...")
                 time.sleep(5)
             else:
                 return None
         except ValueError:
-            print(f"Could not parse coordinates for address {address}.")
+            logger.error(f"Could not parse coordinates for address {address}.")
             return None
     return None

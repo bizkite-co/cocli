@@ -8,8 +8,11 @@ import uuid
 from datetime import datetime
 import time
 import random
+import logging
 
 from cocli.core.config import get_scraped_data_dir
+
+logger = logging.getLogger(__name__)
 
 class LimitExceededError(Exception):
     pass
@@ -47,8 +50,10 @@ def _initialize_browser(p: Playwright) -> Page:
     return page
 
 def _navigate_and_handle_captcha(page: Page, url: str, prompt_message: str, debug: bool) -> None:
-    """Navigates to a URL, handles CAPTCHA if present, and introduces delays."""
-    if debug: print(f"Debug: Navigating to {url}")
+    """
+    Navigates to a URL, handles CAPTCHA if present, and introduces delays.
+    """
+    if debug: logger.debug(f"Debug: Navigating to {url}")
     page.goto(url, wait_until="domcontentloaded")
 
     if "myip.ms/info/limitexcess" in page.url:
@@ -57,13 +62,13 @@ def _navigate_and_handle_captcha(page: Page, url: str, prompt_message: str, debu
     _random_delay(4, 10)
 
     if _is_captcha_present(page):
-        print(f"\n--- IMPORTANT: CAPTCHA detected on {page.url}. {prompt_message} ---")
+        logger.warning(f"\n--- IMPORTANT: CAPTCHA detected on {page.url}. {prompt_message} ---")
         input("Press Enter after solving the CAPTCHA and the page has loaded...")
-        print("Resuming...")
+        logger.info("Resuming...")
         page.wait_for_load_state('domcontentloaded')
         _random_delay(4, 10)
     else:
-        if debug: print(f"Debug: No CAPTCHA detected on {page.url}")
+        if debug: logger.debug(f"Debug: No CAPTCHA detected on {page.url}")
 
 def _click_full_list_link(page: Page, debug: bool) -> None:
     """Finds and clicks the 'full list of sites' link."""
@@ -71,15 +76,15 @@ def _click_full_list_link(page: Page, debug: bool) -> None:
     try:
         full_list_link = page.locator(full_list_link_selector)
         if full_list_link.is_visible():
-            print(f"Clicking link to full list of sites from {page.url}...")
+            logger.info(f"Clicking link to full list of sites from {page.url}...")
             full_list_link.click()
             page.wait_for_load_state("domcontentloaded")
             _random_delay(8, 20)
-            if debug: print(f"Debug: After clicking full list link. Current URL: {page.url}")
+            if debug: logger.debug(f"Debug: After clicking full list link. Current URL: {page.url}")
         else:
-            print(f"Warning: Full list link not found or not visible on {page.url}.")
+            logger.warning(f"Warning: Full list link not found or not visible on {page.url}.")
     except Exception as e:
-        print(f"Error finding or clicking full list link on {page.url}: {e}.")
+        logger.error(f"Error finding or clicking full list link on {page.url}: {e}.")
 
 def _extract_data_from_page(
     page: Page,
@@ -95,26 +100,26 @@ def _extract_data_from_page(
     scraped_on_page_count = 0
     current_url = page.url
     actual_segment = _get_current_segment_from_url(current_url)
-    print(f"Scraping content from actual URL: {current_url} (Segment: {actual_segment})...")
+    logger.info(f"Scraping content from actual URL: {current_url} (Segment: {actual_segment})...")
 
     soup = BeautifulSoup(page.content(), "html.parser")
     data_table = soup.select_one('#sites_tbl')
 
     if not data_table:
-        print(f"Error: No data table found with ID '#sites_tbl' on segment {actual_segment}.")
+        logger.error(f"Error: No data table found with ID '#sites_tbl' on segment {actual_segment}.")
         return 0
 
     rows = data_table.select("tr")
     if not rows:
-        print(f"Error: No rows found within '#sites_tbl' on segment {actual_segment}.")
+        logger.error(f"Error: No rows found within '#sites_tbl' on segment {actual_segment}.")
         return 0
 
     data_rows = [row for row in rows if row.select_one('td')]
-    print(f"Found {len(data_rows)} potential data rows on segment {actual_segment}.")
+    logger.info(f"Found {len(data_rows)} potential data rows on segment {actual_segment}.")
 
     current_site_data = {}
     for row_index, row in enumerate(data_rows):
-        if debug: print(f"Debug: Processing row {row_index}...")
+        if debug: logger.debug(f"Debug: Processing row {row_index}...")
         if "expand-child" not in row.attrs.get("class", []):
             # This is a main site listing row
             cols = row.select("td")
@@ -129,7 +134,7 @@ def _extract_data_from_page(
                 current_site_data["Country"] = country_element.getText()
 
                 current_site_data["Popularity_Visitors_Per_Day"] = "" # Reset for new main row
-            if debug: print(f"Debug: Main row data extracted: {current_site_data}")
+            if debug: logger.debug(f"Debug: Main row data extracted: {current_site_data}")
         else:
             # This is an expand-child row, extract popularity
             popularity_div = row.select_one("div.stitle:-soup-contains('Website Popularity:') + div.sval")
@@ -139,7 +144,7 @@ def _extract_data_from_page(
                 if match:
                     current_site_data["Popularity_Visitors_Per_Day"] = match.group(1)
 
-            if debug: print(f"Debug: Expand-child row popularity extracted: {current_site_data.get('Popularity_Visitors_Per_Day')}")
+            if debug: logger.debug(f"Debug: Expand-child row popularity extracted: {current_site_data.get('Popularity_Visitors_Per_Day')}")
 
             if current_site_data.get("Website") and current_site_data["Website"] not in processed_urls:
                 if current_site_data.get("Country") in ["United States", "Canada"]:
@@ -155,11 +160,11 @@ def _extract_data_from_page(
                     writer.writerow(data)
                     processed_urls.add(current_site_data["Website"])
                     scraped_on_page_count += 1
-                    print(f"Scraped: {current_site_data['Website']} (Country: {current_site_data['Country']}, Popularity: {current_site_data['Popularity_Visitors_Per_Day']})")
+                    logger.info(f"Scraped: {current_site_data['Website']} (Country: {current_site_data['Country']}, Popularity: {current_site_data['Popularity_Visitors_Per_Day']})")
                 else:
-                    if debug: print(f"Debug: Skipping {current_site_data['Website']} due to country: {current_site_data.get('Country')}")
+                    if debug: logger.debug(f"Debug: Skipping {current_site_data['Website']} due to country: {current_site_data.get('Country')}")
             else:
-                if debug: print(f"Debug: Skipping duplicate or invalid URL: {current_site_data.get('Website')}")
+                if debug: logger.debug(f"Debug: Skipping duplicate or invalid URL: {current_site_data.get('Website')}")
 
             current_site_data = {} # Clear for the next pair of rows
 
@@ -176,7 +181,7 @@ def scrape_myip_ms(
     Orchestrates scraping Shopify store information from myip.ms
     Requires user intervention for CAPTCHA.
     """
-    if debug: print(f"Debug: scrape_myip_ms called with debug={debug}")
+    if debug: logger.debug(f"Debug: scrape_myip_ms called with debug={debug}")
 
     output_dir.mkdir(parents=True, exist_ok=True)
     output_filename = f"shopify-myip-ms-{ip_address.replace('.', '-')}-{datetime.now().strftime('%Y%m%d%H%M%S')}.csv"
@@ -226,24 +231,24 @@ def scrape_myip_ms(
                     scraped_on_page = _extract_data_from_page(page, ip_address, processed_urls, writer, debug)
                     total_scraped_count += scraped_on_page
                 
-                print(f"Scraped {scraped_on_page} new records from page segment {_get_current_segment_from_url(page.url)}. Total scraped: {total_scraped_count}")
+                logger.info(f"Scraped {scraped_on_page} new records from page segment {_get_current_segment_from_url(page.url)}. Total scraped: {total_scraped_count}")
 
                 if page_num < end_page:
-                    print(f"Proceeding to next page after random delay...")
+                    logger.info(f"Proceeding to next page after random delay...")
                     _random_delay(4, 10)
                 else:
-                    print(f"Reached end_page ({end_page}). Stopping pagination.")
+                    logger.info(f"Reached end_page ({end_page}). Stopping pagination.")
 
-            print(f"Scraping complete. Total {total_scraped_count} Shopify stores scraped. Results saved to {output_filepath}")
+            logger.info(f"Scraping complete. Total {total_scraped_count} Shopify stores scraped. Results saved to {output_filepath}")
             return output_filepath
 
         except LimitExceededError as e:
-            print(f"[bold yellow]Scraping paused:[/bold yellow] {e}")
+            logger.warning(f"[bold yellow]Scraping paused:[/bold yellow] {e}")
             return output_filepath # Return the path to the partially saved file
         except Exception as e:
-            print(f"An error occurred during myip.ms scraping: {e}")
+            logger.error(f"An error occurred during myip.ms scraping: {e}")
             return None
         finally:
             # Do NOT close the browser during debugging
             # browser.close()
-            print("\nBrowser left open for inspection. Please close it manually when done.")
+            logger.info("\nBrowser left open for inspection. Please close it manually when done.")

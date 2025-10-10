@@ -2,6 +2,9 @@ import typer
 import toml
 import yaml
 from pathlib import Path
+import logging
+
+logger = logging.getLogger(__name__)
 
 from ..core.config import get_companies_dir, get_people_dir
 from ..scrapers.google_maps_finder import find_business_on_google_maps
@@ -20,13 +23,13 @@ def enrich_customers(
     
     campaign_dirs = list(Path("campaigns").glob(f"**/{campaign_name}"))
     if not campaign_dirs:
-        print(f"Campaign '{campaign_name}' not found.")
+        logger.error(f"Campaign '{campaign_name}' not found.")
         raise typer.Exit(code=1)
     campaign_dir = campaign_dirs[0]
     config_path = campaign_dir / "config.toml"
     
     if not config_path.exists():
-        print(f"Configuration file not found for campaign '{campaign_name}'.")
+        logger.error(f"Configuration file not found for campaign '{campaign_name}'.")
         raise typer.Exit(code=1)
         
     with open(config_path, "r") as f:
@@ -34,7 +37,7 @@ def enrich_customers(
         
     tag = config.get("campaign", {}).get("tag")
     if not tag:
-        print(f"Tag not found in configuration for campaign '{campaign_name}'.")
+        logger.error(f"Tag not found in configuration for campaign '{campaign_name}'.")
         raise typer.Exit(code=1)
         
     people_dir = get_people_dir()
@@ -46,7 +49,7 @@ def enrich_customers(
 
             if tag in person.tags and "customer" in person.tags:
                 if not person.company_name:
-                    print(f"Skipping {person.name} as they are not associated with a company.")
+                    logger.info(f"Skipping {person.name} as they are not associated with a company.")
                     continue
 
                 company_dir = get_companies_dir() / slugify(person.company_name)
@@ -54,10 +57,10 @@ def enrich_customers(
                 google_maps_md_path = enrichment_dir / "google-maps.md"
                 
                 if google_maps_md_path.exists():
-                    print(f"Skipping {person.company_name} as it is already enriched.")
+                    logger.info(f"Skipping {person.company_name} as it is already enriched.")
                     continue
                     
-                print(f"Enriching {person.company_name} (from person {person.name})...")
+                logger.info(f"Enriching {person.company_name} (from person {person.name})...")
                 
                 location_param = {}
                 if person.full_address:
@@ -67,7 +70,7 @@ def enrich_customers(
                 elif person.city and person.state:
                     location_param["city"] = f"{person.city},{person.state}"
                 else:
-                    print(f"Skipping {person.name} as it has no address information.")
+                    logger.info(f"Skipping {person.name} as it has no address information.")
                     continue
 
                 business_data = find_business_on_google_maps(person.company_name, location_param)
@@ -78,6 +81,6 @@ def enrich_customers(
                         f_md.write("---\n")
                         yaml.dump(business_data, f_md, sort_keys=False, default_flow_style=False, allow_unicode=True)
                         f_md.write("---\n")
-                    print(f"Enriched data for {person.company_name} and saved to {google_maps_md_path}")
+                    logger.info(f"Enriched data for {person.company_name} and saved to {google_maps_md_path}")
                 else:
-                    print(f"Could not find {person.company_name} on Google Maps.")
+                    logger.warning(f"Could not find {person.company_name} on Google Maps.")

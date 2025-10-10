@@ -1,5 +1,8 @@
 import typer
 from typing import Optional
+import logging
+
+logger = logging.getLogger(__name__)
 
 from ..core.config import get_companies_dir
 from ..models.company import Company
@@ -19,9 +22,9 @@ def exclude(
     companies_dir = get_companies_dir()
     company = Company.from_directory(companies_dir / company_name)
     if not company or not company.domain:
-        print(f"Could not find company or domain for {company_name}")
+        logger.error(f"Could not find company or domain for {company_name}")
         raise typer.Exit(code=1)
 
     exclusion_manager = ExclusionManager(campaign=campaign)
     exclusion_manager.add_exclusion(domain=company.domain, reason=reason)
-    print(f"Excluded {company.name} ({company.domain}) from campaign '{campaign}'.")
+    logger.info(f"Excluded {company.name} ({company.domain}) from campaign '{campaign}'.")
