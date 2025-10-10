@@ -1,6 +1,9 @@
 import re
 from bs4 import BeautifulSoup
 from typing import Dict, Any, Optional
+import logging
+
+logger = logging.getLogger(__name__)
 
 def extract_address(soup: BeautifulSoup, inner_text: str, debug: bool = False) -> Dict[str, str]:
     """
@@ -18,7 +21,7 @@ def extract_address(soup: BeautifulSoup, inner_text: str, debug: bool = False) -
     address_match = re.search(r"(\d+\s+[\w\s.,#-]+?(?=\\n|Open|Closes|$))", inner_text)
     if address_match:
         full_address = address_match.group(1).strip()
-        if debug: print(f"Debug: Extracted Full_Address (innerText): {full_address}")
+        if debug: logger.debug(f"Extracted Full_Address (innerText): {full_address}")
         address_components = [p.strip() for p in full_address.split(",")]
         if len(address_components) >= 1:
             street_address = address_components[0]
@@ -33,13 +36,13 @@ def extract_address(soup: BeautifulSoup, inner_text: str, debug: bool = False) -
                 state = address_components[2]
         if len(address_components) >= 4:
             country = address_components[3]
-        if debug: print(f"Debug: Parsed Address (innerText): Street={street_address}, City={city}, State={state}, Zip={zip_code}, Country={country}")
+        if debug: logger.debug(f"Parsed Address (innerText): Street={street_address}, City={city}, State={state}, Zip={zip_code}, Country={country}")
     else:
         # Fallback to HTML selectors
         address_element = soup.find("button", attrs={"data-tooltip": "Copy address"})
         if address_element:
             full_address = address_element.get("aria-label", "").replace("Address: ", "").strip()
-            if debug: print(f"Debug: Extracted Full_Address (HTML fallback): {full_address}")
+            if debug: logger.debug(f"Extracted Full_Address (HTML fallback): {full_address}")
             address_components = [p.strip() for p in full_address.split(",")]
             if len(address_components) >= 1:
                 street_address = address_components[0]
@@ -54,9 +57,9 @@ def extract_address(soup: BeautifulSoup, inner_text: str, debug: bool = False) -
                     state = address_components[2]
             if len(address_components) >= 4:
                 country = address_components[3]
-            if debug: print(f"Debug: Parsed Address (HTML fallback): Street={street_address}, City={city}, State={state}, Zip={zip_code}, Country={country}")
+            if debug: logger.debug(f"Parsed Address (HTML fallback): Street={street_address}, City={city}, State={state}, Zip={zip_code}, Country={country}")
         else:
-            if debug: print("Debug: Address element not found (HTML fallback).")
+            if debug: logger.debug("Address element not found (HTML fallback).")
 
     return {
         "Full_Address": full_address,

@@ -66,16 +66,16 @@ def _interactive_view_company(company_name: str):
                 selected_company_dir = companies_dir / slugify(matches[0])
                 company_name = matches[0] # Update company_name to the matched one
             else:
-                print("Operation cancelled.")
+                logger.info("Operation cancelled.")
                 raise typer.Exit()
         else:
-            print(f"Company '{company_name}' not found.")
+            logger.error(f"Company '{company_name}' not found.")
             raise typer.Exit(code=1)
 
-    logging.debug("Calling Company.from_directory")
+    logger.debug("Calling Company.from_directory")
     company = Company.from_directory(selected_company_dir)
     if not company:
-        print(f"Could not load company data from {selected_company_dir}")
+        logger.error(f"Could not load company data from {selected_company_dir}")
         raise typer.Exit(code=1)
     assert company is not None # Assert that company is not None
 
@@ -126,7 +126,7 @@ def _interactive_view_company(company_name: str):
                 continue
 
             reason = typer.prompt("Reason for exclusion")
-            print(f"Calling from_directory with: {selected_company_dir}")
+            logger.debug(f"Calling from_directory with: {selected_company_dir}")
             company = Company.from_directory(selected_company_dir)
             if company is None: # Handle the case where company is None after re-loading
                 console.print("[bold red]Error: Could not reload company data after exclusion. Press any key to continue.[/bold red]")
@@ -351,14 +351,14 @@ def view_meetings(
     meetings_dir = company_dir / "meetings"
 
     if not company_dir.exists():
-        print(f"Company '{company_name}' not found.")
+        logger.error(f"Company '{company_name}' not found.")
         raise typer.Exit(code=1)
 
     if not meetings_dir.exists() or not any(meetings_dir.iterdir()):
-        print(f"No meetings found for '{company_name}'.")
+        logger.info(f"No meetings found for '{company_name}'.")
         return
 
-    print(f"\n--- All Meetings for {company_name} ---")
+    logger.info(f"\n--- All Meetings for {company_name} ---")
     for meeting_file in sorted(meetings_dir.iterdir()):
         if meeting_file.is_file() and meeting_file.suffix == ".md":
             try:
@@ -366,9 +366,9 @@ def view_meetings(
                 meeting_date = datetime.datetime.strptime(
                     "-".join(date_str), "%Y-%m-%d"
                 ).date()
-                print(f"- {meeting_date.isoformat()}: {meeting_file.name}")
+                logger.info(f"- {meeting_date.isoformat()}: {meeting_file.name}")
             except ValueError:
-                print(f"- Malformed meeting file: {meeting_file.name}")
+                logger.warning(f"- Malformed meeting file: {meeting_file.name}")
 
 
 @app.command()
@@ -383,11 +383,11 @@ def open_company_folder(
     company_dir = companies_dir / company_slug
 
     if not company_dir.exists():
-        print(f"Company '{company_name}' not found.")
+        logger.error(f"Company '{company_name}' not found.")
         raise typer.Exit(code=1)
 
     try:
         subprocess.run(["nvim", str(company_dir)], check=True)
     except Exception as e:
-        print(f"Error opening folder in nvim: {e}")
+        logger.error(f"Error opening folder in nvim: {e}")
         raise typer.Exit(code=1)

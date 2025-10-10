@@ -1,5 +1,8 @@
 import argparse
+import logging
 from cocli.scrapers.google_maps import scrape_google_maps
+
+logger = logging.getLogger(__name__)
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Debug Google Maps Scraper")
@@ -19,12 +22,12 @@ if __name__ == "__main__":
         location["city"] = args.city
     else:
         location["zip_code"] = "90210"
-        print("No location provided, defaulting to zip code 90210.")
+        logger.info("No location provided, defaulting to zip code 90210.")
 
 
-    print(f"--- Starting Google Maps Scraper Debug Session ---")
-    print(f"Search Query: {args.search}")
-    print(f"Location: {location}")
+    logger.info(f"--- Starting Google Maps Scraper Debug Session ---")
+    logger.info(f"Search Query: {args.search}")
+    logger.info(f"Location: {location}")
 
     scraped_data = scrape_google_maps(
         location_param=location,
@@ -35,10 +38,10 @@ if __name__ == "__main__":
         devtools=args.devtools,
     )
 
-    print(f"\n--- Scraped Data ---")
+    logger.info(f"\n--- Scraped Data ---")
     for item in scraped_data:
-        print(item.model_dump_json(indent=2))
-    print(f"--- End of Scraped Data ---")
+        logger.info(item.model_dump_json(indent=2))
+    logger.info(f"--- End of Scraped Data ---")
 
     if scraped_data:
         assert len(scraped_data) > 0

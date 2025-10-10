@@ -1,9 +1,12 @@
 import asyncio
 import re
 from typing import List, Dict, Any, Optional
+import logging
 
 from bs4 import BeautifulSoup
 from playwright.async_api import async_playwright
+
+logger = logging.getLogger(__name__)
 
 class GenericContactScraper:
     def __init__(self):
@@ -27,7 +30,7 @@ class GenericContactScraper:
                 try:
                     response = await page.goto(full_url, wait_until="domcontentloaded", timeout=5000)
                     if response and response.status == 200:
-                        print(f"Found potential contact page: {full_url}")
+                        logger.info(f"Found potential contact page: {full_url}")
                         contact_urls.append(full_url)
                 except Exception:
                     pass # Page not found or other error
@@ -50,10 +53,10 @@ class GenericContactScraper:
                             continue # Skip external links for now
 
                         if full_url not in contact_urls:
-                            print(f"Found potential contact link on homepage: {full_url}")
+                            logger.info(f"Found potential contact link on homepage: {full_url}")
                             contact_urls.append(full_url)
             except Exception as e:
-                print(f"Error checking homepage for contact links: {e}")
+                logger.error(f"Error checking homepage for contact links: {e}")
 
             await browser.close()
         return list(set(contact_urls)) # Return unique URLs
@@ -105,7 +108,7 @@ class GenericContactScraper:
 
                     contacts.append({'name': name, 'email': email, 'role': role})
         except Exception as e:
-            print(f"Error scraping {url}: {e}")
+            logger.error(f"Error scraping {url}: {e}")
         return contacts
 
 # Example usage (for testing)
@@ -113,14 +116,14 @@ async def main():
     scraper = GenericContactScraper()
     domain = "dsb-plus.com"
     contact_pages = await scraper.find_contact_pages(domain)
-    print(f"Discovered contact pages for {domain}: {contact_pages}")
+    logger.info(f"Discovered contact pages for {domain}: {contact_pages}")
 
     all_contacts = []
     for page_url in contact_pages:
         contacts = await scraper.scrape_page_for_contacts(page_url)
         all_contacts.extend(contacts)
     
-    print(f"All contacts found: {all_contacts}")
+    logger.info(f"All contacts found: {all_contacts}")
 
 if __name__ == "__main__":
     asyncio.run(main())

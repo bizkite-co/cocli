@@ -2,6 +2,7 @@ import typer
 from pathlib import Path
 from typing import Optional, List
 import asyncio
+import logging
 
 from ..enrichment.manager import EnrichmentManager
 from ..core.config import get_companies_dir, get_people_dir
@@ -10,6 +11,7 @@ from ..models.person import Person
 from ..core.utils import slugify, create_person_files
 from ..scrapers.generic_contact_scraper import GenericContactScraper
 
+logger = logging.getLogger(__name__)
 app = typer.Typer(no_args_is_help=True)
 
 
@@ -37,7 +39,7 @@ def run_enrichment(
     """
     # Validate arguments
     if not script_name and (company_name or all_companies or unenriched_only):
-        print("Error: A script name must be provided when specifying companies to enrich.")
+        logger.error("Error: A script name must be provided when specifying companies to enrich.")
         raise typer.Exit(code=1)
 
     if not company_name and not all_companies and not unenriched_only:
@@ -48,15 +50,15 @@ def run_enrichment(
     if (company_name and all_companies) or \
        (company_name and unenriched_only) or \
        (all_companies and unenriched_only):
-        print("Error: Cannot provide more than one of --company, --all, or --unenriched-only.")
+        logger.error("Error: Cannot provide more than one of --company, --all, or --unenriched-only.")
         raise typer.Exit(code=1)
 
     manager = EnrichmentManager(data_dir)
     available_scripts = manager.get_available_script_names()
 
     if script_name and script_name not in available_scripts:
-        print(f"Error: Enrichment script '{script_name}' not found.")
-        print(f"Available scripts: {', '.join(available_scripts)}")
+        logger.error(f"Error: Enrichment script '{script_name}' not found.")
+        logger.info(f"Available scripts: {', '.join(available_scripts)}")
         raise typer.Exit(code=1)
 
     companies_to_enrich: List[str] = []
@@ -69,24 +71,24 @@ def run_enrichment(
         companies_to_enrich = manager.get_unenriched_companies(script_name) # script_name is guaranteed not None here
 
     if not companies_to_enrich:
-        print("No companies found to enrich.")
+        logger.info("No companies found to enrich.")
         return
 
-    print(f"Running enrichment script '{script_name}' on {len(companies_to_enrich)} companies...")
+    logger.info(f"Running enrichment script '{script_name}' on {len(companies_to_enrich)} companies...")
 
     all_success = True
     for current_company_name in companies_to_enrich:
-        print(f"  Processing company: '{current_company_name}'...")
+        logger.info(f"  Processing company: '{current_company_name}'...")
         assert script_name is not None
         success = manager.run_enrichment_script(current_company_name, script_name) # script_name is guaranteed not None here
         if not success:
             all_success = False
-            print(f"  Enrichment for '{current_company_name}' failed. Continuing with others.")
+            logger.error(f"  Enrichment for '{current_company_name}' failed. Continuing with others.")
 
     if all_success:
-        print(f"Enrichment script '{script_name}' completed successfully for all selected companies.")
+        logger.info(f"Enrichment script '{script_name}' completed successfully for all selected companies.")
     else:
-        print(f"Enrichment script '{script_name}' completed with some failures.")
+        logger.warning(f"Enrichment script '{script_name}' completed with some failures.")
         raise typer.Exit(code=1)
 
 
@@ -105,11 +107,11 @@ def list_scripts(
     manager = EnrichmentManager(data_dir)
     available_scripts = manager.get_available_script_names()
     if available_scripts:
-        print("Available Enrichment Scripts:")
+        logger.info("Available Enrichment Scripts:")
         for script in available_scripts:
-            print(f"- {script}")
+            logger.info(f"- {script}")
     else:
-        print("No enrichment scripts found.")
+        logger.info("No enrichment scripts found.")
 
 @app.command(name="contacts")
 def scrape_contacts(
@@ -123,15 +125,15 @@ def scrape_contacts(
     selected_company_dir = companies_dir / company_slug
 
     if not selected_company_dir.exists():
-        print(f"Company '{company_name}' not found.")
+        logger.error(f"Company '{company_name}' not found.")
         raise typer.Exit(code=1)
 
     company = Company.from_directory(selected_company_dir)
     if not company or not company.domain:
-        print(f"Could not load company data or company domain for '{company_name}'.")
+        logger.error(f"Could not load company data or company domain for '{company_name}'.")
         raise typer.Exit(code=1)
 
-    print(f"Scraping contacts for {company.name} ({company.domain})...")
+    logger.info(f"Scraping contacts for {company.name} ({company.domain})...")
     
     scraper = GenericContactScraper()
     
@@ -146,7 +148,7 @@ def scrape_contacts(
     extracted_contacts_data = asyncio.run(run_scraper())
 
     if not extracted_contacts_data:
-        print(f"No contacts found for {company.name} on {company.domain}.")
+        logger.info(f"No contacts found for {company.name} on {company.domain}.")
         return
 
     people_dir = get_people_dir()
@@ -199,9 +201,9 @@ def scrape_contacts(
                 
                 if updated:
                     create_person_files(existing_person, existing_person_dir)
-                    print(f"  Updated existing contact: {existing_person.name} ({existing_person.email})")
+                    logger.info(f"  Updated existing contact: {existing_person.name} ({existing_person.email})")
                 else:
-                    print(f"  Contact already exists and is up-to-date: {existing_person.name} ({existing_person.email})")
+                    logger.info(f"  Contact already exists and is up-to-date: {existing_person.name} ({existing_person.email})")
         else:
             # Create new person
             person_name_to_use = name if name else email.split('@')[0] # Use email prefix if name is empty
@@ -223,6 +225,6 @@ def scrape_contacts(
                 counter += 1
 
             create_person_files(new_person, new_person_dir)
-            print(f"  Added new contact: {new_person.name} ({new_person.email})")
+            logger.info(f"  Added new contact: {new_person.name} ({new_person.email})")
 
-    print(f"Finished scraping and updating contacts for {company.name}.")
+    logger.info(f"Finished scraping and updating contacts for {company.name}.")

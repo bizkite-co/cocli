@@ -1,6 +1,9 @@
 import re
 from bs4 import BeautifulSoup
 from typing import Dict, Any, Optional
+import logging
+
+logger = logging.getLogger(__name__)
 
 def extract_website(soup: BeautifulSoup, inner_text: str, debug: bool = False) -> Dict[str, str]:
     """
@@ -13,7 +16,7 @@ def extract_website(soup: BeautifulSoup, inner_text: str, debug: bool = False) -
     website_element = soup.find("a", attrs={"data-value": "Website"})
     if website_element and website_element.has_attr("href"):
         website = website_element["href"]
-        if debug: print(f"Debug: Extracted Website (HTML data-value): {website}")
+        if debug: logger.debug(f"Extracted Website (HTML data-value): {website}")
     else:
         for link in soup.find_all("a", href=True):
             href = link["href"]
@@ -24,17 +27,17 @@ def extract_website(soup: BeautifulSoup, inner_text: str, debug: bool = False) -
                 and re.search(r"\.(com|org|net|io|co|us|gov|edu)", href)
             ):
                 website = href
-                if debug: print(f"Debug: Extracted Website (HTML generic link): {website}")
+                if debug: logger.debug(f"Extracted Website (HTML generic link): {website}")
                 break
         if not website:
-            if debug: print("Debug: Website element not found from HTML.")
+            if debug: logger.debug("Website element not found from HTML.")
 
     if website:
         domain_match = re.search(r"https?://(?:www\.)?([^/]+)", website)
         if domain_match:
             domain = domain_match.group(1)
-            if debug: print(f"Debug: Extracted Domain: {domain}")
+            if debug: logger.debug(f"Extracted Domain: {domain}")
         else:
-            if debug: print("Debug: Domain not found in Website URL.")
+            if debug: logger.debug("Debug: Domain not found in Website URL.")
 
     return {"Website": website, "Domain": domain}

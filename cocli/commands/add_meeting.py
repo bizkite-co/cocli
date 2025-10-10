@@ -6,10 +6,12 @@ from typing import Optional
 from pathlib import Path
 from pytz import timezone
 from tzlocal import get_localzone
+import logging
 
 from ..core.config import get_companies_dir
 from ..core.utils import slugify
 
+logger = logging.getLogger(__name__)
 app = typer.Typer()
 
 def _add_meeting_logic(company_name: str, date_str: Optional[str] = None, time_str: Optional[str] = None, title_str: Optional[str] = None, phone_number_str: Optional[str] = None):
@@ -32,7 +34,7 @@ def _add_meeting_logic(company_name: str, date_str: Optional[str] = None, time_s
         else:
             parsed_datetime = dateparser.parse(date_str, settings={'TIMEZONE': str(local_tz)})
         if not parsed_datetime:
-            print("Invalid date/time format. Please provide a recognizable date/time string (e.g., 'today', 'tomorrow at 9am', 'next Monday', '2025-12-25 14:30').")
+            logger.error("Invalid date/time format. Please provide a recognizable date/time string (e.g., 'today', 'tomorrow at 9am', 'next Monday', '2025-12-25 14:30').")
             raise typer.Exit(code=1)
     else:
         parsed_datetime = datetime.datetime.now(local_tz)
@@ -71,10 +73,10 @@ company: {company_name}
 
     try:
         meeting_path.write_text(meeting_content)
-        print(f"Meeting added for '{company_name}' on {meeting_datetime_local.strftime('%Y-%m-%d %H:%M %Z')}")
+        logger.info(f"Meeting added for '{company_name}' on {meeting_datetime_local.strftime('%Y-%m-%d %H:%M %Z')}")
         subprocess.run(["nvim", meeting_path], check=True)
     except Exception as e:
-        print(f"Error adding meeting: {e}")
+        logger.error(f"Error adding meeting: {e}")
         raise typer.Exit(code=1)
 
 @app.command()
@@ -100,4 +102,4 @@ def add_meeting(
     """
     _add_meeting_logic(company_name=company_name, date_str=date, title_str=title)
     if time:
-        print("[bold yellow]Warning:[/bold yellow] The --time option is deprecated. Please include time directly in the --date option (e.g., `--date 'tomorrow at 9am'`).")
+        logger.warning("The --time option is deprecated. Please include time directly in the --date option (e.g., `--date 'tomorrow at 9am'`).")

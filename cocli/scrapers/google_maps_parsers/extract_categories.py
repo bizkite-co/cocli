@@ -1,6 +1,9 @@
 import re
 from typing import Dict, Any
 from bs4 import BeautifulSoup
+import logging
+
+logger = logging.getLogger(__name__)
 
 def extract_categories(soup: BeautifulSoup, inner_text: str, debug: bool = False) -> Dict[str, Any]:
     """
@@ -23,5 +26,5 @@ def extract_categories(soup: BeautifulSoup, inner_text: str, debug: bool = False
         if re.match(r"^\(\d*\)$", line):
             use_next_line = True
 
-    if debug: print(f"Debug: Extracted categories: {categories}")
+    if debug: logger.debug(f"Extracted categories: {categories}")
     return categories

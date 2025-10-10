@@ -1,9 +1,11 @@
 from pathlib import Path
 from typing import Any, Optional
+import logging
 
 import yaml
 from pydantic import BaseModel, Field, ValidationError
 
+logger = logging.getLogger(__name__)
 
 class Person(BaseModel):
     name: str
@@ -44,8 +46,8 @@ class Person(BaseModel):
         try:
             return cls(**frontmatter_data)
         except ValidationError as e:
-            print(f"Warning: Validation error loading person from {person_file}: {e}")
+            logger.warning(f"Validation error loading person from {person_file}: {e}")
             return None
         except Exception as e:
-            print(f"Warning: Unexpected error loading person from {person_file}: {e}")
+            logger.error(f"Unexpected error loading person from {person_file}: {e}")
             return None

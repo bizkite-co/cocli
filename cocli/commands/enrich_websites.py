@@ -2,11 +2,14 @@ import typer
 from pathlib import Path
 import yaml
 import asyncio
+import logging
 
 from cocli.core.config import get_companies_dir
 from cocli.enrichment.website_scraper import WebsiteScraper
 from cocli.models.company import Company
 from cocli.compilers.website_compiler import WebsiteCompiler
+
+logger = logging.getLogger(__name__)
 
 async def _enrich_company(
     company_dir: Path,
@@ -20,7 +23,7 @@ async def _enrich_company(
     if not company or not company.domain:
         return
 
-    print(f"Enriching website for {company.name}")
+    logger.info(f"Enriching website for {company.name}")
     scraper = WebsiteScraper()
     website_data = await scraper.run(
         domain=company.domain,
@@ -40,7 +43,7 @@ async def _enrich_company(
             f.write("---")
             yaml.dump(website_data.model_dump(exclude_none=True), f, sort_keys=False, default_flow_style=False, allow_unicode=True)
             f.write("---")
-        print(f"Saved website enrichment for {company.name}")
+        logger.info(f"Saved website enrichment for {company.name}")
 
         compiler = WebsiteCompiler()
         compiler.compile(company_dir)
