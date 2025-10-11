@@ -32,12 +32,12 @@ class WebsiteCompiler(BaseCompiler):
                     return
             else:
                 return
-        
+
         updated = False
         if website_data.phone and not company.phone_number:
             company.phone_number = website_data.phone
             updated = True
-        
+
         if website_data.facebook_url and not company.facebook_url:
             company.facebook_url = website_data.facebook_url
             updated = True
@@ -68,4 +68,4 @@ class WebsiteCompiler(BaseCompiler):
 
         if updated:
             create_company_files(company, company_dir)
-            console.print(f"Updated company data for {company.name}")
+            console.print(f"Updated -> {company.name}")

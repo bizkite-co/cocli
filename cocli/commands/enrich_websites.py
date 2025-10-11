@@ -1,3 +1,4 @@
+
 import typer
 from pathlib import Path
 import yaml
@@ -8,6 +9,8 @@ from cocli.core.config import get_companies_dir
 from cocli.enrichment.website_scraper import WebsiteScraper
 from cocli.models.company import Company
 from cocli.compilers.website_compiler import WebsiteCompiler
+from cocli.core.logging_config import setup_file_logging
+from rich.progress import Progress, BarColumn, TextColumn, TimeRemainingColumn
 
 logger = logging.getLogger(__name__)
 
@@ -59,24 +62,44 @@ def enrich_websites(
     """
     Enriches all companies with website data, using a cache-first strategy.
     """
+    setup_file_logging("enrich-websites", disable_console=True)
+
     async def main():
         companies_dir = get_companies_dir()
         company_dirs = [d for d in companies_dir.iterdir() if d.is_dir()]
         
         semaphore = asyncio.Semaphore(workers)
 
-        async def run_with_semaphore(company_dir):
-            async with semaphore:
-                await _enrich_company(
-                    company_dir,
-                    force,
-                    ttl_days,
-                    headed,
-                    devtools,
-                    debug
-                )
+        progress_columns = [
+            TextColumn("[cyan]Enriching...[/cyan]"),
+            BarColumn(),
+            TextColumn("[progress.percentage]{task.percentage:>3.0f}%"),
+            TimeRemainingColumn(),
+            TextColumn("([progress.completed] of [progress.total])"),
+            TextColumn("{task.description}"),
+        ]
 
-        tasks = [run_with_semaphore(company_dir) for company_dir in company_dirs]
-        await asyncio.gather(*tasks)
+        with Progress(*progress_columns) as progress:
+            task_id = progress.add_task(description="Starting...", total=len(company_dirs))
+
+            async def run_with_semaphore(company_dir):
+                async with semaphore:
+                    # Truncate and pad company name for consistent width
+                    display_name = (company_dir.name[:28] + '..') if len(company_dir.name) > 30 else company_dir.name
+                    progress.update(task_id, description=f"{display_name:<30}")
+                    await _enrich_company(
+                        company_dir,
+                        force,
+                        ttl_days,
+                        headed,
+                        devtools,
+                        debug
+                    )
+                    progress.advance(task_id)
+
+            tasks = [run_with_semaphore(company_dir) for company_dir in company_dirs]
+            await asyncio.gather(*tasks)
+            progress.update(task_id, description="[bold green]Done![/bold green]")
 
     asyncio.run(main())
+
