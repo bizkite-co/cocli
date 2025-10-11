@@ -2,10 +2,10 @@ import typer
 from pathlib import Path
 from typing import Optional, List
 
-from ..core.config import get_campaign, get_scraped_data_dir
+from ..core.config import get_campaign, get_scraped_data_dir, get_companies_dir
 from ..commands.campaign import scrape_prospects
 from ..commands.ingest_google_maps_csv import google_maps_csv_to_google_maps_cache
-from ..commands.import_companies import google_maps_cache_to_company_files
+from ..commands.import_companies import core_import_logic
 from rich.console import Console
 
 app = typer.Typer()
@@ -79,9 +79,10 @@ def process(
     if not skip_import:
         console.print("[bold blue]Step 3: Importing companies...[/bold blue]")
         try:
-            google_maps_cache_to_company_files(
+            core_import_logic(
                 prospects_csv_path=scraped_csv_path,
-                tags=["prospect", effective_campaign_name]
+                tags=["prospect", effective_campaign_name],
+                companies_dir=get_companies_dir() # Pass the companies_dir directly
             )
             console.print("[bold green]Import complete.[/bold green]")
         except Exception as e:

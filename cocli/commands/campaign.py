@@ -128,7 +128,8 @@ def next_step(
 def scrape_prospects(
     campaign_name: Optional[str] = typer.Argument(None, help="Name of the campaign to scrape prospects for. If not provided, uses the current campaign context."),
     force_refresh: bool = typer.Option(False, "--force-refresh", help="Force re-scraping even if fresh data is in the cache."),
-    ttl_days: int = typer.Option(30, "--ttl-days", help="Time-to-live for cached data in days.")
+    ttl_days: int = typer.Option(30, "--ttl-days", help="Time-to-live for cached data in days."),
+    max_results: int = typer.Option(30, "--max-results", help="Maximum number of results to scrape per query.")
 ):
     """
     Scrape prospects for a campaign from Google Maps, using a cache-first strategy.
@@ -184,7 +185,8 @@ def scrape_prospects(
                 location_param={"city": location},
                 search_string=query,
                 force_refresh=force_refresh,
-                ttl_days=ttl_days
+                ttl_days=ttl_days,
+                max_results=max_results
             )
 
             for item in scraped_data:

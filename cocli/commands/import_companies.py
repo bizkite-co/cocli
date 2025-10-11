@@ -12,48 +12,17 @@ from cocli.models.company import Company
 from cocli.models.website import Website
 from cocli.core.website_cache import WebsiteCache
 from fuzzywuzzy import process # type: ignore
-from cocli.core.config import get_campaign, get_scraped_data_dir
+from cocli.core.config import get_campaign, get_scraped_data_dir, get_companies_dir
 
 app = typer.Typer()
 
-@app.command(name="google-maps-cache-to-company-files")
-def google_maps_cache_to_company_files(
-    prospects_csv_path: Optional[Path] = typer.Argument(None, help="Path to the prospects CSV file. If not provided, infers from current campaign context.", exists=False, file_okay=True, dir_okay=False, readable=True),
-    tags: Optional[List[str]] = typer.Option(None, "--tag", help="Tags to add to the companies. If not provided, infers from current campaign context."),
-    campaign_name: Optional[str] = typer.Option(None, "--campaign", "-c", help="Specify a campaign name to infer the CSV path and tags from. Overrides current campaign context if set."),
-    companies_dir: Path = typer.Option(
-        "/home/mstouffer/.local/share/cocli_data/companies",
-        help="Path to the companies directory."
-    ),
-    match_threshold: int = typer.Option(
-        80,
-        help="Threshold for fuzzy matching company names."
-    )
+def core_import_logic(
+    prospects_csv_path: Path,
+    tags: List[str],
+    companies_dir: Path,
+    match_threshold: int = 80,
 ):
-    """
-    Imports prospects from a CSV file, creating or updating companies and their enrichments.
-    """
-    effective_campaign_name = campaign_name
-    if effective_campaign_name is None:
-        effective_campaign_name = get_campaign()
-
-    if prospects_csv_path is None:
-        if effective_campaign_name is None:
-            logger.error("Error: No prospects CSV path provided and no campaign context is set. Please provide a CSV path, a campaign name with --campaign, or set a campaign context using 'cocli campaign set <campaign_name>'.")
-            raise typer.Exit(code=1)
-        
-        inferred_csv_path = get_scraped_data_dir() / effective_campaign_name / "prospects" / "prospects.csv"
-        if not inferred_csv_path.exists():
-            logger.error(f"Error: Inferred prospects CSV path does not exist: {inferred_csv_path}")
-            raise typer.Exit(code=1)
-        prospects_csv_path = inferred_csv_path
-
-    if tags is None:
-        if effective_campaign_name:
-            tags = ["prospect", effective_campaign_name]
-        else:
-            tags = ["prospect"] # Default tag if no campaign context
-
+    """Core logic for importing prospects from a CSV file."""
     website_cache = WebsiteCache()
 
     company_dirs = {d.name: d for d in companies_dir.iterdir() if d.is_dir()}
@@ -173,6 +142,55 @@ def google_maps_cache_to_company_files(
             logger.info(f"Created/Updated google-maps.md for {company_name}")
 
     website_cache.save()
+
+@app.command(name="google-maps-cache-to-company-files")
+def google_maps_cache_to_company_files(
+    prospects_csv_path: Optional[Path] = typer.Argument(None, help="Path to the prospects CSV file. If not provided, infers from current campaign context.", exists=False, file_okay=True, dir_okay=False, readable=True),
+    tags: Optional[List[str]] = typer.Option(None, "--tag", help="Tags to add to the companies. If not provided, infers from current campaign context."),
+    campaign_name: Optional[str] = typer.Option(None, "--campaign", "-c", help="Specify a campaign name to infer the CSV path and tags from. Overrides current campaign context if set."),
+    companies_dir_cli: Optional[Path] = typer.Option(
+        None, '--companies-dir', # Use a different name for the CLI option
+        help="Path to the companies directory. If not provided, uses the default from config."
+    ),
+    match_threshold: int = typer.Option(
+        80,
+        help="Threshold for fuzzy matching company names."
+    )
+):
+    """
+    Imports prospects from a CSV file, creating or updating companies and their enrichments.
+    """
+    effective_campaign_name = campaign_name
+    if effective_campaign_name is None:
+        effective_campaign_name = get_campaign()
+
+    if prospects_csv_path is None:
+        if effective_campaign_name is None:
+            logger.error("Error: No prospects CSV path provided and no campaign context is set. Please provide a CSV path, a campaign name with --campaign, or set a campaign context using 'cocli campaign set <campaign_name>'.")
+            raise typer.Exit(code=1)
+        
+        inferred_csv_path = get_scraped_data_dir() / effective_campaign_name / "prospects" / "prospects.csv"
+        if not inferred_csv_path.exists():
+            logger.error(f"Error: Inferred prospects CSV path does not exist: {inferred_csv_path}")
+            raise typer.Exit(code=1)
+        prospects_csv_path = inferred_csv_path
+
+    final_tags: List[str]
+    if tags:
+        final_tags = tags
+    elif effective_campaign_name:
+        final_tags = ["prospect", effective_campaign_name]
+    else:
+        final_tags = ["prospect"]
+
+    final_companies_dir = companies_dir_cli if companies_dir_cli else get_companies_dir()
+    
+    core_import_logic(
+        prospects_csv_path=prospects_csv_path,
+        tags=final_tags,
+        companies_dir=final_companies_dir,
+        match_threshold=match_threshold
+    )
 
 if __name__ == "__main__":
     typer.run(google_maps_cache_to_company_files)

@@ -112,6 +112,9 @@ def build_domain_to_tags_map() -> dict:
     return domain_map
 
 
+
+
+
 @app.command()
 def prospects(
     city: str = typer.Option(..., "--city", help="City to search in."),
@@ -137,7 +140,7 @@ def prospects(
     domain_to_tags = build_domain_to_tags_map()
     domain_to_slug = build_domain_to_slug_map()
 
-    # 3. Iterate through the fast prospects.csv
+    # 3. Iterate through the fast prospects.csv to get location-based matches
     prospects_csv_path = get_prospects_csv_path()
     if not prospects_csv_path.exists():
         console.print(f"[bold red]Prospects CSV not found at: {prospects_csv_path}[/bold red]")
@@ -145,8 +148,7 @@ def prospects(
 
     console.print(f"[dim]Reading prospects from {prospects_csv_path}...[/dim]")
     
-    matching_prospects = []
-    
+    location_matches = []
     with open(prospects_csv_path, 'r', encoding='utf-8') as f:
         reader = csv.DictReader(f)
         for row in reader:
@@ -171,43 +173,42 @@ def prospects(
             distance = geodesic(target_lat_lon, (lat, lon)).miles
             if distance > radius:
                 continue
-
-            # C. (Optional) Filter by email
-            if has_email is not None:
-                # This is the only slow part, as it requires reading the company file.
-                # For now, we'll check the CSV, which is an approximation.
-                # A full solution would look up the company file by domain.
-                email_in_csv = row.get("Email")
-                email_found = bool(email_in_csv)
-
-                if has_email and not email_found:
-                    continue
-                if not has_email and email_found:
-                    continue
             
-            matching_prospects.append(row)
+            location_matches.append(row)
 
-    # 4. Save results to CSV
+    # 4. Process matches for enrichment and final filtering
+    final_prospects = []
+    for prospect in location_matches:
+        domain = prospect.get("Domain")
+        enriched_emails = get_enriched_emails(domain_to_slug, domain) if domain else []
+        
+        # Apply email filter now that we have the correct data
+        if has_email is not None:
+            email_found = bool(enriched_emails)
+            if has_email and not email_found:
+                continue
+            if not has_email and email_found:
+                continue
+        
+        final_prospects.append({
+            "Name": prospect.get("Name", ""),
+            "Full_Address": prospect.get("Full_Address", ""),
+            "Phone": prospect.get("Phone_1", ""),
+            "Emails": ", ".join(enriched_emails),
+        })
+
+    # 5. Save results to CSV
     output_dir = get_cocli_base_dir() / "campaigns" / "turboship" / "prospects" / "results"
     output_dir.mkdir(parents=True, exist_ok=True)
     filename = slugify(f"{city}-{state}-{radius}mi-radius-prospects") + ".csv"
     output_path = output_dir / filename
 
-    if matching_prospects:
+    if final_prospects:
         with open(output_path, 'w', newline='', encoding='utf-8') as f:
             fieldnames = ["Name", "Full_Address", "Phone", "Emails"]
             writer = csv.DictWriter(f, fieldnames=fieldnames)
             writer.writeheader()
+            writer.writerows(final_prospects)
 
-            for prospect in matching_prospects:
-                domain = prospect.get("Domain")
-                enriched_emails = get_enriched_emails(domain_to_slug, domain) if domain else []
-                
-                writer.writerow({
-                    "Name": prospect.get("Name", "N/A"),
-                    "Full_Address": prospect.get("Full_Address", "N/A"),
-                    "Phone": prospect.get("Phone_1", "N/A"),
-                    "Emails": ", ".join(enriched_emails) if enriched_emails else "N/A",
-                })
+    console.print(f"Found {len(final_prospects)} prospects. Results saved to: {output_path}")
 
-    console.print(f"Found {len(matching_prospects)} prospects. Results saved to: {output_path}")
