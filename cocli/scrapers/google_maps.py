@@ -29,6 +29,7 @@ def scrape_google_maps(
     browser_width: Optional[int] = None,
     browser_height: Optional[int] = None,
     devtools: Optional[bool] = None,
+    zoom_out_level: int = 0,
 ) -> List[GoogleMapsData]:
     """
     Scrapes business information from Google Maps, using a cache-first strategy.
@@ -78,12 +79,25 @@ def scrape_google_maps(
             page.wait_for_timeout(5000)
             logger.info("Navigated to Google Maps URL.")
 
+            # Zoom out based on the provided level
+            if zoom_out_level > 0:
+                zoom_out_button_selector = "button#widget-zoom-out"
+                page.wait_for_selector(zoom_out_button_selector)
+                for i in range(zoom_out_level):
+                    page.click(zoom_out_button_selector)
+                    page.wait_for_timeout(500) # Wait for map to re-render
+                logger.info(f"Zoomed out {zoom_out_level} times.")
+                # Wait for search results to reload after zooming
+                page.wait_for_timeout(5000)
+
+
             scrollable_div_selector = 'div[role="feed"]'
             page.wait_for_selector(scrollable_div_selector)
             scrollable_div = page.locator(scrollable_div_selector)
 
             scraped_count = 0
             last_scroll_height = -1
+            processed_place_ids = set()
             while scraped_count < max_results:
                 listing_divs = scrollable_div.locator("> div").all()
                 logger.info(f"Found {len(listing_divs)} listing divs.")
@@ -112,8 +126,10 @@ def scrape_google_maps(
 
                     place_id = business_data_dict.get("Place_ID")
 
-                    if not place_id:
+                    if not place_id or place_id in processed_place_ids:
                         continue
+                    
+                    processed_place_ids.add(place_id)
 
                     # Check cache
                     cached_item = cache.get_by_place_id(place_id)

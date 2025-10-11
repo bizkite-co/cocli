@@ -66,6 +66,12 @@ class WebsiteCompiler(BaseCompiler):
             company.contact_url = website_data.contact_url
             updated = True
 
+        if website_data.email and not company.email:
+            # Clean the email by removing all spaces
+            cleaned_email = website_data.email.replace(' ', '')
+            company.email = cleaned_email
+            updated = True
+
         if updated:
             create_company_files(company, company_dir)
             console.print(f"Updated -> {company.name}")
