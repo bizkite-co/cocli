@@ -20,8 +20,8 @@ logger = logging.getLogger(__name__)
 
 def scrape_google_maps(
     location_param: Dict[str, str],
-    search_string: str,
-    max_results: int = 30,
+    search_strings: List[str],
+    max_new_results: Optional[int] = None,
     debug: bool = False,
     force_refresh: bool = False,
     ttl_days: int = 30,
@@ -32,13 +32,13 @@ def scrape_google_maps(
     zoom_out_level: int = 0,
 ) -> List[GoogleMapsData]:
     """
-    Scrapes business information from Google Maps, using a cache-first strategy.
+    Scrapes business information from Google Maps for a list of search queries,
+    continuing until a target number of new results is met.
     """
     if debug: logger.debug(f"scrape_google_maps called with debug={debug}")
     settings = load_scraper_settings()
     delay_seconds = settings.google_maps_delay_seconds
 
-    # Override global settings with function arguments if provided
     launch_headless = headless if headless is not None else settings.browser_headless
     launch_width = browser_width if browser_width is not None else settings.browser_width
     launch_height = browser_height if browser_height is not None else settings.browser_height
@@ -47,11 +47,7 @@ def scrape_google_maps(
     cache = GoogleMapsCache()
     fresh_delta = timedelta(days=ttl_days)
 
-    coordinates = None
-    if "zip_code" in location_param:
-        coordinates = get_coordinates_from_zip(location_param["zip_code"])
-    elif "city" in location_param:
-        coordinates = get_coordinates_from_city_state(location_param["city"])
+    coordinates = get_coordinates_from_city_state(location_param["city"]) if "city" in location_param else get_coordinates_from_zip(location_param["zip_code"])
 
     if not coordinates:
         logger.error(f"Error: Could not find coordinates for {location_param}")
@@ -59,12 +55,10 @@ def scrape_google_maps(
 
     latitude = coordinates["latitude"]
     longitude = coordinates["longitude"]
-
-    base_url = "https://www.google.com/maps/search/"
-    formatted_search_string = search_string.replace(" ", "+")
-    url = f"{base_url}{formatted_search_string}/@{latitude},{longitude},15z/data=!3m2!1e3!4b1?entry=ttu"
-
+    
     scraped_data: List[GoogleMapsData] = []
+    processed_place_ids = set()
+    newly_scraped_count = 0
 
     with sync_playwright() as p:
         browser = p.chromium.launch(
@@ -75,116 +69,96 @@ def scrape_google_maps(
         page = browser.new_page(viewport={'width': launch_width, 'height': launch_height})
 
         try:
-            page.goto(url, wait_until="domcontentloaded")
-            page.wait_for_timeout(5000)
-            logger.info("Navigated to Google Maps URL.")
+            initial_url = f"https://www.google.com/maps/@{latitude},{longitude},15z?entry=ttu"
+            page.goto(initial_url, wait_until="domcontentloaded")
+            page.wait_for_timeout(3000)
+            logger.info(f"Navigated to initial map URL for {location_param}.")
 
-            # Zoom out based on the provided level
             if zoom_out_level > 0:
                 zoom_out_button_selector = "button#widget-zoom-out"
-                page.wait_for_selector(zoom_out_button_selector)
+                page.wait_for_selector(zoom_out_button_selector, timeout=10000)
                 for i in range(zoom_out_level):
                     page.click(zoom_out_button_selector)
-                    page.wait_for_timeout(500) # Wait for map to re-render
+                    page.wait_for_timeout(500)
                 logger.info(f"Zoomed out {zoom_out_level} times.")
-                # Wait for search results to reload after zooming
                 page.wait_for_timeout(5000)
 
-
-            scrollable_div_selector = 'div[role="feed"]'
-            page.wait_for_selector(scrollable_div_selector)
-            scrollable_div = page.locator(scrollable_div_selector)
-
-            scraped_count = 0
-            last_scroll_height = -1
-            processed_place_ids = set()
-            while scraped_count < max_results:
-                listing_divs = scrollable_div.locator("> div").all()
-                logger.info(f"Found {len(listing_divs)} listing divs.")
-
-                if not listing_divs:
-                    logger.info("No listing divs found. Exiting.")
+            for search_string in search_strings:
+                if max_new_results is not None and newly_scraped_count >= max_new_results:
                     break
 
-                for listing_div in listing_divs:
-                    html_content = listing_div.inner_html()
-                    if html_content == '':
-                        # If the div is empty
-                        continue
-                    if "All filters" in html_content:
-                        # Filter header
-                        continue
-                    if "Prices come from Google" in html_content:
-                        # Legal header
-                        continue
+                logger.info(f"--- Starting search for query: '{search_string}' ---")
+                search_box_selector = 'input[name="q"]'
+                page.wait_for_selector(search_box_selector)
+                page.fill(search_box_selector, search_string)
+                page.press(search_box_selector, 'Enter')
+                page.wait_for_timeout(5000)
 
-                    business_data_dict = parse_business_listing_html(html_content, search_string, debug=debug)
+                scrollable_div_selector = 'div[role="feed"]'
+                page.wait_for_selector(scrollable_div_selector, timeout=10000)
+                scrollable_div = page.locator(scrollable_div_selector)
 
-                    if debug:
-                        logger.debug("Pausing after parsing business listing HTML. Press F8 in Playwright Inspector to resume.")
-                        page.pause() # Pause for debugging
-
-                    place_id = business_data_dict.get("Place_ID")
-
-                    if not place_id or place_id in processed_place_ids:
-                        continue
-                    
-                    processed_place_ids.add(place_id)
-
-                    # Check cache
-                    cached_item = cache.get_by_place_id(place_id)
-                    if cached_item and not force_refresh and (datetime.now(UTC) - cached_item.updated_at < fresh_delta):
-                        scraped_data.append(cached_item)
-                        logger.info(f"Used cached data for: {cached_item.Name}")
-                        scraped_count += 1
-                        continue
-
-                    # If not in cache or stale, proceed with full scrape
-                    # (parse_business_listing_html already did the initial parse)
-                    gmb_url = business_data_dict.get("GMB_URL")
-                    if gmb_url and (not business_data_dict.get("Website") or not business_data_dict.get("Full_Address")):
-                        gmb_page = browser.new_page()
-                        gmb_page.goto(gmb_url)
-                        gmb_html = gmb_page.content()
-                        gmb_data = parse_gmb_page(gmb_html)
-                        business_data_dict.update(gmb_data)
-                        gmb_page.close()
-
-                    # Type conversions
-                    for field in ['Reviews_count']:
-                        if business_data_dict.get(field) and business_data_dict.get(field) != '':
-                            try:
-                                business_data_dict[field] = int(business_data_dict[field])
-                            except (ValueError, TypeError):
-                                business_data_dict[field] = None
-
-                    for field in ['Average_rating', 'Latitude', 'Longitude']:
-                        if business_data_dict.get(field) and business_data_dict.get(field) != '':
-                            try:
-                                business_data_dict[field] = float(business_data_dict[field])
-                            except (ValueError, TypeError):
-                                business_data_dict[field] = None
-
-                    business_data = GoogleMapsData(**business_data_dict)
-                    cache.add_or_update(business_data)
-                    scraped_data.append(business_data)
-                    scraped_count += 1
-                    logger.info(f"Scraped and cached: {business_data.Name} ({scraped_count}/{max_results})")
-
-                    if scraped_count >= max_results:
+                last_scroll_height = -1
+                while True: # Continue scrolling until break condition is met
+                    if max_new_results is not None and newly_scraped_count >= max_new_results:
                         break
 
-                if scraped_count >= max_results:
-                    break
+                    listing_divs = scrollable_div.locator("> div").all()
+                    logger.info(f"Found {len(listing_divs)} listing divs for query '{search_string}'.")
 
-                current_scroll_height = scrollable_div.evaluate("element => element.scrollHeight")
-                if current_scroll_height == last_scroll_height:
-                    logger.info("Reached end of scrollable content.")
-                    break
+                    if not listing_divs:
+                        logger.info("No listing divs found. Moving to next query.")
+                        break
 
-                scrollable_div.evaluate("element => element.scrollTop = element.scrollHeight")
-                page.wait_for_timeout(delay_seconds * 1000)
-                last_scroll_height = current_scroll_height
+                    for listing_div in listing_divs:
+                        html_content = listing_div.inner_html()
+                        if not html_content or "All filters" in html_content or "Prices come from Google" in html_content:
+                            continue
+
+                        business_data_dict = parse_business_listing_html(html_content, search_string, debug=debug)
+                        place_id = business_data_dict.get("Place_ID")
+
+                        if not place_id or place_id in processed_place_ids:
+                            continue
+                        
+                        processed_place_ids.add(place_id)
+
+                        cached_item = cache.get_by_place_id(place_id)
+                        if cached_item and not force_refresh and (datetime.now(UTC) - cached_item.updated_at < fresh_delta):
+                            scraped_data.append(cached_item)
+                            logger.info(f"Used cached data for: {cached_item.Name}")
+                            continue
+
+                        # Item is new or stale, requires full processing
+                        gmb_url = business_data_dict.get("GMB_URL")
+                        if gmb_url and (not business_data_dict.get("Website") or not business_data_dict.get("Full_Address")):
+                            try:
+                                gmb_page = browser.new_page()
+                                gmb_page.goto(gmb_url)
+                                gmb_html = gmb_page.content()
+                                gmb_data = parse_gmb_page(gmb_html)
+                                business_data_dict.update(gmb_data)
+                                gmb_page.close()
+                            except Exception as gmb_e:
+                                logger.warning(f"Failed to scrape GMB page {gmb_url}: {gmb_e}")
+
+                        business_data = GoogleMapsData(**business_data_dict)
+                        cache.add_or_update(business_data)
+                        scraped_data.append(business_data)
+                        newly_scraped_count += 1
+                        logger.info(f"Scraped new record: {business_data.Name} (New: {newly_scraped_count}/{max_new_results or 'N/A'})")
+
+                        if max_new_results is not None and newly_scraped_count >= max_new_results:
+                            break
+
+                    current_scroll_height = scrollable_div.evaluate("element => element.scrollHeight")
+                    if current_scroll_height == last_scroll_height:
+                        logger.info(f"Reached end of scrollable content for '{search_string}'.")
+                        break
+
+                    scrollable_div.evaluate("element => element.scrollTop = element.scrollHeight")
+                    page.wait_for_timeout(delay_seconds * 1000)
+                    last_scroll_height = current_scroll_height
 
         except Exception as e:
             logger.error(f"An error occurred during scraping: {e}")

@@ -129,7 +129,8 @@ def scrape_prospects(
     campaign_name: Optional[str] = typer.Argument(None, help="Name of the campaign to scrape prospects for. If not provided, uses the current campaign context."),
     force_refresh: bool = typer.Option(False, "--force-refresh", help="Force re-scraping even if fresh data is in the cache."),
     ttl_days: int = typer.Option(30, "--ttl-days", help="Time-to-live for cached data in days."),
-    max_results: int = typer.Option(30, "--max-results", help="Maximum number of results to scrape per query."),
+    min_total_records: Optional[int] = typer.Option(None, "--min-total-records", help="Ensure the total number of prospects in the master list is at least this high."),
+    max_new_records: Optional[int] = typer.Option(None, "--max-new-records", help="Scrape until this many *new* records are added in this session."),
     zoom_out_level: int = typer.Option(0, "--zoom-out-level", help="Number of times to zoom out on the map before scraping.")
 ):
     """
@@ -138,9 +139,13 @@ def scrape_prospects(
     if campaign_name is None:
         campaign_name = get_campaign()
         if campaign_name is None:
-            logger.error("Error: No campaign name provided and no campaign context is set. Please provide a campaign name or set a campaign context using 'cocli campaign set <campaign_name>'.")
+            logger.error("Error: No campaign name provided and no campaign context is set.")
             raise typer.Exit(code=1)
     
+    if max_new_records is not None and min_total_records is not None:
+        console.print("[bold red]Error: --min-total-records and --max-new-records cannot be used together.[/bold red]")
+        raise typer.Exit(code=1)
+
     campaign_dirs = list(Path("campaigns").glob(f"**/{campaign_name}"))
     if not campaign_dirs:
         logger.error(f"Campaign '{campaign_name}' not found.")
@@ -169,31 +174,49 @@ def scrape_prospects(
 
     all_prospects: Dict[str, GoogleMapsData] = {}
 
-    # Load existing prospects to avoid duplicates in the final list
     if output_filepath.exists():
         with open(output_filepath, "r", newline="", encoding="utf-8") as csvfile:
             reader = csv.DictReader(csvfile)
             for row in reader:
                 if row.get("Place_ID"):
-                    # Re-create the model to ensure data consistency
                     model_data = {k: v for k, v in row.items() if k in GoogleMapsData.model_fields}
                     all_prospects[row["Place_ID"]] = GoogleMapsData(**model_data)
+    
+    initial_prospect_count = len(all_prospects)
+
+    if min_total_records is not None:
+        if initial_prospect_count >= min_total_records:
+            logger.info(f"Master prospect list already has {initial_prospect_count} records, which meets the target of {min_total_records}. Nothing to do.")
+            return
+        # Calculate how many new records we need to meet the minimum total.
+        max_new_records = min_total_records - initial_prospect_count
+        logger.info(f"Need to find {max_new_records} new records to meet the minimum total of {min_total_records}.")
 
     for location in locations:
-        for query in queries:
-            logger.info(f"Scraping '{query}' in '{location}'...")
-            scraped_data: List[GoogleMapsData] = scrape_google_maps(
-                location_param={"city": location},
-                search_string=query,
-                force_refresh=force_refresh,
-                ttl_days=ttl_days,
-                max_results=max_results,
-                zoom_out_level=zoom_out_level
-            )
+        logger.info(f"--- Scraping all queries for location: '{location}' ---")
+        scraped_data: List[GoogleMapsData] = scrape_google_maps(
+            location_param={"city": location},
+            search_strings=queries,
+            force_refresh=force_refresh,
+            ttl_days=ttl_days,
+            max_new_results=max_new_records,
+            zoom_out_level=zoom_out_level
+        )
 
-            for item in scraped_data:
-                if item.Place_ID:
-                    all_prospects[item.Place_ID] = item
+        new_in_this_batch = 0
+        for item in scraped_data:
+            if item.Place_ID and item.Place_ID not in all_prospects:
+                all_prospects[item.Place_ID] = item
+                new_in_this_batch += 1
+        
+        if new_in_this_batch > 0:
+            logger.info(f"Added {new_in_this_batch} new prospects from location '{location}'.")
+
+        if max_new_records is not None:
+            newly_found = len(all_prospects) - initial_prospect_count
+            if newly_found >= max_new_records:
+                logger.info(f"Target of {max_new_records} new records met. Stopping scrape.")
+                break
 
     # Write all prospects (including old and new) to the CSV file
     with open(output_filepath, "w", newline="", encoding="utf-8") as csvfile:
@@ -203,4 +226,6 @@ def scrape_prospects(
         for item in all_prospects.values():
             writer.writerow(item.model_dump())
     
-    logger.info(f"Prospecting complete. Results saved to {output_filepath}")
+    final_prospect_count = len(all_prospects)
+    newly_added = final_prospect_count - initial_prospect_count
+    logger.info(f"Prospecting complete. Added {newly_added} new records. Total prospects: {final_prospect_count}. Results saved to {output_filepath}")
