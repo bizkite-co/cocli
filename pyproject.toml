@@ -24,6 +24,7 @@ dependencies = [
     "httpx",
     "pydantic-settings", # Added for BaseSettings
     "transitions",
+    "geopy",
 ]
 
 [project.scripts]
