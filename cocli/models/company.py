@@ -4,7 +4,7 @@ from pathlib import Path
 from typing import Optional, List, Any
 
 import yaml
-from pydantic import BaseModel, Field, BeforeValidator, ValidationError
+from pydantic import BaseModel, Field, BeforeValidator, ValidationError, model_validator
 from typing_extensions import Annotated
 
 logger = logging.getLogger(__name__)
@@ -61,6 +61,21 @@ class Company(BaseModel):
     meta_description: Optional[str] = None
     meta_keywords: Optional[str] = None
 
+    @model_validator(mode='after')
+    def parse_full_address(self) -> 'Company':
+        if self.full_address and (not self.city or not self.state or not self.zip_code):
+            # Regex to capture city, state, and zip from a standard US address
+            match = re.search(r"([^,]+),\s*([A-Z]{2})\s*(\d{5}(?:-\d{4})?)", self.full_address)
+            if match:
+                city, state, zip_code = match.groups()
+                if not self.city:
+                    self.city = city.strip()
+                if not self.state:
+                    self.state = state.strip()
+                if not self.zip_code:
+                    self.zip_code = zip_code.strip()
+        return self
+
     @classmethod
     def from_directory(cls, company_dir: Path) -> Optional["Company"]:
         logger = logging.getLogger(__name__)
@@ -89,22 +104,19 @@ class Company(BaseModel):
             if tags_path.exists():
                 tags = tags_path.read_text().strip().split('\n')
 
-            # Construct Company object
-            company_data = {
-                "name": frontmatter_data.get("name", company_dir.name),
-                "domain": frontmatter_data.get("domain"),
-                "phone_number": frontmatter_data.get("phone_number"),
-                "email": frontmatter_data.get("email"),
-                "city": frontmatter_data.get("city"),
-                "state": frontmatter_data.get("state"),
-                "zip_code": frontmatter_data.get("zip_code"),
-                "country": frontmatter_data.get("country"),
-                "description": markdown_content.strip(),
-                "tags": tags,
-            }
+            # Prepare data for model instantiation
+            model_data = frontmatter_data
+            model_data["tags"] = tags
+            model_data["slug"] = company_dir.name
+            if "description" not in model_data or model_data["description"] is None:
+                 model_data["description"] = markdown_content.strip()
+
+            # Ensure name is present
+            if "name" not in model_data:
+                model_data["name"] = company_dir.name
 
             try:
-                return cls(**company_data)
+                return cls(**model_data)
             except ValidationError as e:
                 logging.error(f"Validation error loading company from {company_dir}: {e}")
                 return None

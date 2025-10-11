@@ -8,6 +8,7 @@ from typing import Optional, List, Any
 import sys
 
 from .commands import enrich
+from .commands import query
 from rich.console import Console
 from rich.prompt import Prompt
 from rich.markdown import Markdown
@@ -32,6 +33,7 @@ logging_config.setup_logging()
 
 app = typer.Typer(no_args_is_help=True)
 app.add_typer(enrich.app, name="enrich", help="Commands for enriching company data.")
+app.add_typer(query.app, name="query", help="Commands for querying company data.")
 
 app.command(name="lead-scrape", help="Scrape leads and import them.")(lead_scrape.lead_scrape)
 

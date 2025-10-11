@@ -1,5 +1,5 @@
 [campaign]
-name = "Turboship Q3 2025"
+name = "turboship"
 tag = "turboship"
 
 [google_maps]
@@ -8,7 +8,6 @@ one_password_path = "op://TurboHeatWelding/GMail_TurboHeatWeldingTools/password"
 
 [prospecting]
 locations = [
-  "Memphis, Tn",
-  "Jackson, MS"
+  "Albuquerque, NM"
     ]
 queries = ["commercial vinyl flooring contractor", "rubber flooring contractor", "sports flooring contractor"]
