@@ -43,12 +43,12 @@ def lead_scrape(
             typer.echo("Error: Either --zip or --city must be provided.", err=True)
             raise typer.Exit(code=1)
 
-        scraped_data = scrape_google_maps(
+        scraped_data = list(scrape_google_maps(
             location_param=location_param,
-            search_string=query,
+            search_strings=[query],
             debug=debug,
             headless=not headed, # Use 'not headed' to launch in headed mode when --headed is true
-        )
+        ))
 
         if not scraped_data:
             typer.echo("Scraping failed, no data was returned.", err=True)

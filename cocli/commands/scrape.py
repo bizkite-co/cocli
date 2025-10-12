@@ -49,9 +49,17 @@ def scrape_google_maps(
         location_param["city"] = city
 
     try:
-        scraped_data: List[GoogleMapsData] = google_maps.scrape_google_maps(
-            location_param, query, max_results=max_results, debug=debug
+        scraper = google_maps.scrape_google_maps(
+            location_param=location_param, 
+            search_strings=[query], 
+            debug=debug
         )
+
+        scraped_data: List[GoogleMapsData] = []
+        for i, item in enumerate(scraper):
+            if i >= max_results:
+                break
+            scraped_data.append(item)
 
         if not scraped_data:
             typer.echo("No data scraped.", err=True)

@@ -1,81 +1,71 @@
 
-# ETL Scenario: Acquiring and Enriching Prospects
+# ETL Workflow: An Iterative Prospecting and Enrichment Loop
 
 ## 1. Background & Strategy
 
-The primary goal of this workflow is to systematically add new, targeted prospects to the CRM and enrich them with high-quality data, specifically email addresses. The process is designed as a multi-stage pipeline that is idempotent (re-runnable) and transparent.
+The primary goal of this workflow is to systematically achieve a specific business objective, such as acquiring 100 new prospects with valid email addresses in a target market. The process is designed as a multi-stage pipeline that can be run iteratively until the goal is met.
 
-The overall strategy is broken into three phases:
+The overall strategy is broken into three main phases:
 
-1.  **Prospecting:** Scrape raw business data (name, address, website, etc.) from Google Maps based on a set of search queries and locations defined in a campaign configuration file.
+1.  **Prospecting:** Scrape raw business data from Google Maps using a dynamic, expanding "spiral search" pattern.
+2.  **Import:** Formally import the raw prospects into the CRM, creating canonical company records and applying necessary tags.
+3.  **Enrichment:** Scrape the websites of the newly imported companies to find additional details, most importantly, email addresses.
 
-2.  **Ingestion & Import:** Process the raw scraped data, deduplicate it against the existing cache of known businesses, and create the formal, structured company data directories within the `cocli_data/companies/` directory.
+## 2. Current Workflow Analysis
 
-3.  **Enrichment:** Scrape the websites of the newly imported companies to find additional details that are not available on Google Maps, such as contact page URLs and, most importantly, email addresses for the company and its key personnel.
+As the system is currently designed, achieving a goal like "100 emails in Albuquerque" requires an iterative, multi-step, batch-oriented process.
 
-This entire workflow can be repeated as needed. The system will automatically handle deduplication, so you can re-run the process to find new prospects without creating duplicates of companies already in the system.
+### The Current Loop
 
-## 2. Step-by-Step Workflow
+The user must manually execute a sequence of commands:
 
-Here are the precise steps to execute the workflow, from initial scraping to final verification.
+1.  **`cocli campaign scrape-prospects --max-new-records <N>`**
+    *   This command runs the scraper, which performs the "spiral out" search to find `N` new, raw prospects that are not yet in the master `prospects.csv` file.
 
-### Preparation: Configure Your Campaign
+2.  **`cocli campaign import-prospects`**
+    *   This command reads the newly-updated `prospects.csv` and formally imports the new prospects, creating their company directories and `tags.lst` files.
 
-Before starting, ensure your campaign configuration file is set up for the current goal. For this scenario, we are targeting Albuquerque.
+3.  **`cocli enrich-websites`**
+    *   This command scans *all* companies and enriches those that haven't been enriched yet. This is a slow, batch-oriented process.
 
-**File:** `campaigns/2025/turboship/config.toml`
+4.  **`cocli query prospects --has-email ...`**
+    *   The user runs a final query to see if the goal has been met.
 
-```toml
-[campaign]
-name = "turboship"
-tag = "turboship"
+### Inefficiencies in the Current Loop
 
-[google_maps]
-email = "admin@turboheatweldingtools.com"
-one_password_path = "op://TurboHeatWelding/GMail_TurboHeatWeldingTools/password"
+If the goal is not met, the entire process must be repeated. This reveals two major inefficiencies:
 
-[prospecting]
-locations = [
-  "Albuquerque, NM"
-    ]
-queries = ["commercial vinyl flooring contractor", "rubber flooring contractor", "sports flooring contractor"]
-```
+*   **Stateless Scraping:** Each time `scrape-prospects` is run, it must start the spiral search from the very beginning. It wastes time re-scanning areas that have already been exhausted, skipping over the thousands of results it has already processed to find the new frontier.
+*   **Batch Enrichment:** The `enrich-websites` command is not targeted. It scans every company, which is inefficient when the user only wants to enrich the `N` new companies that were just added.
 
-### Step 1: Scrape New Prospects from Google Maps
+## 3. Proposed Architectural Improvements
 
-This command reads your campaign config, searches Google Maps for each query/location pair, and saves the raw results. We use `--max-results` to control how many companies to aim for per query.
+To address these inefficiencies, two major architectural improvements have been proposed.
 
-**Command:**
-```bash
-source .venv/bin/activate && cocli campaign scrape-prospects --max-results 100
-```
+### Improvement 1: Stateful, Resumable Scraping
 
-### Step 2: Process and Import Scraped Companies
+To solve the stateless scraping problem, we can create an intermediate index that tracks the scraped areas.
 
-This command takes the raw CSV from Step 1, ingests it into the system's cache, and then creates the company directory structures in the CRM. We use `--skip-scrape` because we just completed that part.
+*   **Concept:** Create a new index file (e.g., `cocli_data/indexes/scraped_areas.csv`) that records the geographic boundaries of each completed scrape for each search phrase.
+*   **Data Structure:** The index would contain rows with the following data:
+    *   `phrase` (the slugified search query, e.g., "sports-flooring-contractor")
+    *   `scrape_date` (the timestamp of the scrape)
+    *   `lat_min`, `lat_max`, `lon_min`, `lon_max` (the bounding box of the results)
+    *   `ttl` (a Time-to-Live for the scrape, after which it could be considered stale)
+*   **Implementation:**
+    1.  After a scraper exhausts a search area for a given phrase, it would calculate the minimum and maximum latitude and longitude from the results it found.
+    2.  It would write this bounding box and the phrase to the `scraped_areas.csv` index.
+    3.  On the next run, the scraper would first consult this index. It would use the stored bounding boxes to determine where it left off and immediately jump to the next un-scraped area in the spiral, avoiding redundant searching.
 
-**Command:**
-```bash
-source .venv/bin/activate && cocli google-maps process --skip-scrape
-```
+### Improvement 2: Goal-Oriented "Pipeline Mode"
 
-### Step 3: Enrich Websites for Emails
+To solve the batch enrichment problem, we can shift from a batch-oriented workflow to a goal-oriented, streaming pipeline.
 
-Now that the new companies exist in the CRM, this command will visit each company's website and look for email addresses. It automatically skips any company that has already been enriched, so it is safe to run multiple times.
-
-**Command:**
-```bash
-source .venv/bin/activate && cocli enrich-websites
-```
-
-### Step 4: Verify Results and Generate Output
-
-Finally, use the `query` command we built to check the results. This command will find all prospects in the Albuquerque area that now have one or more email addresses and save the list to a CSV file.
-
-**Command:**
-```bash
-source .venv/bin/activate && cocli query prospects --city "Albuquerque" --state "NM" --radius 30 --has-email
-```
-This will produce the final CSV of prospects with emails and output the path and count to the console.
-
-To get more emails, simply repeat this entire four-step process.
+*   **Concept:** Create a new, high-level command (e.g., `cocli campaign achieve-goal --emails <N>`) that orchestrates the entire scrape -> import -> enrich pipeline for one company at a time.
+*   **Process:**
+    1.  The scraper finds **one** new prospect.
+    2.  Instead of just saving to a CSV, it immediately passes this single prospect to the import logic, creating the company directory and tags.
+    3.  The import logic then immediately passes the new company to the enrichment logic, which scrapes the website for an email.
+    4.  If an email is found, a master counter for the goal is incremented.
+    5.  The loop continues until the goal (e.g., 100 emails) is met, at which point the entire process stops automatically.
+*   **Benefits:** This "pipeline mode" is far more efficient for goal-oriented tasks. It avoids the slow, full-system `enrich-websites` scan and stops immediately once the objective is achieved, saving significant time and resources.

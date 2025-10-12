@@ -1,11 +1,13 @@
 import logging
 import re
 from pathlib import Path
-from typing import Optional, List, Any
+from typing import Optional, List, Any, Iterator
 
 import yaml
 from pydantic import BaseModel, Field, BeforeValidator, ValidationError, model_validator
 from typing_extensions import Annotated
+
+from ..core.config import get_companies_dir
 
 logger = logging.getLogger(__name__)
 
@@ -60,6 +62,7 @@ class Company(BaseModel):
 
     meta_description: Optional[str] = None
     meta_keywords: Optional[str] = None
+    place_id: Optional[str] = None
 
     @model_validator(mode='after')
     def parse_full_address(self) -> 'Company':
@@ -75,6 +78,16 @@ class Company(BaseModel):
                 if not self.zip_code:
                     self.zip_code = zip_code.strip()
         return self
+
+    @classmethod
+    def get_all(cls) -> Iterator["Company"]:
+        """Iterates through all company directories and yields Company objects."""
+        companies_dir = get_companies_dir()
+        for company_dir in sorted(companies_dir.iterdir()):
+            if company_dir.is_dir():
+                company = cls.from_directory(company_dir)
+                if company:
+                    yield company
 
     @classmethod
     def from_directory(cls, company_dir: Path) -> Optional["Company"]:

@@ -1,4 +1,3 @@
-
 import csv
 import re
 from pathlib import Path
@@ -9,6 +8,14 @@ from bs4 import BeautifulSoup
 import uuid
 import logging
 from rich.console import Console
+from geopy.distance import geodesic # type: ignore
+
+def calculate_new_coords(lat, lon, distance_miles, bearing):
+    """Calculate new lat/lon from a starting point, distance, and bearing."""
+    start_point = (lat, lon)
+    distance_km = distance_miles * 1.60934
+    destination = geodesic(kilometers=distance_km).destination(start_point, bearing)
+    return destination.latitude, destination.longitude
 
 from ..core.config import load_scraper_settings
 from ..core.geocoding import get_coordinates_from_zip, get_coordinates_from_city_state
@@ -19,6 +26,105 @@ from ..core.google_maps_cache import GoogleMapsCache
 
 logger = logging.getLogger(__name__)
 console = Console()
+
+def _scrape_area(
+    page: Page,
+    search_strings: List[str],
+    processed_place_ids: set,
+    force_refresh: bool,
+    ttl_days: int,
+    debug: bool,
+) -> Iterator[GoogleMapsData]:
+    """
+    Helper function to scrape a specific map area for a list of search queries.
+    This function contains the core logic for scrolling, parsing, and yielding results.
+    """
+    settings = load_scraper_settings()
+    delay_seconds = settings.google_maps_delay_seconds
+    cache = GoogleMapsCache()
+    fresh_delta = timedelta(days=ttl_days)
+
+    for search_string in search_strings:
+        logger.info(f"--- Starting search for query: '{search_string}' ---")
+        search_box_selector = 'input[name="q"]'
+        page.wait_for_selector(search_box_selector)
+        page.fill(search_box_selector, search_string)
+        page.press(search_box_selector, 'Enter')
+        page.wait_for_timeout(5000)
+
+        scrollable_div_selector = 'div[role="feed"]'
+        page.wait_for_selector(scrollable_div_selector, timeout=10000)
+        scrollable_div = page.locator(scrollable_div_selector)
+
+        last_scroll_height = -1
+        while True:
+            # Pre-scroll logging
+            page.wait_for_timeout(1500)
+            listing_divs = scrollable_div.locator("> div").all()
+            logger.info(f"[SCROLL_DEBUG] Found {len(listing_divs)} listing divs before scroll.")
+            try:
+                if listing_divs:
+                    first_item_text = ' '.join(listing_divs[0].inner_text().splitlines())[:70]
+                    last_item_text = ' '.join(listing_divs[-1].inner_text().splitlines())[:70]
+                    logger.info(f"[SCROLL_DEBUG]   Pre-scroll First: {first_item_text}...")
+                    logger.info(f"[SCROLL_DEBUG]   Pre-scroll Last:  {last_item_text}...")
+            except Exception as e:
+                logger.warning(f"[SCROLL_DEBUG] Could not read pre-scroll item text: {e}")
+
+            if not listing_divs:
+                logger.info("No listing divs found. Moving to next query.")
+                break
+
+            for listing_div in listing_divs:
+                html_content = listing_div.inner_html()
+                if not html_content or "All filters" in html_content or "Prices come from Google" in html_content:
+                    continue
+
+                business_data_dict = parse_business_listing_html(html_content, search_string, debug=debug)
+                place_id = business_data_dict.get("Place_ID")
+
+                if not place_id or place_id in processed_place_ids:
+                    continue
+                
+                processed_place_ids.add(place_id)
+
+                cached_item = cache.get_by_place_id(place_id)
+                if cached_item and not force_refresh and (datetime.now(UTC) - cached_item.updated_at < fresh_delta):
+                    logger.info(f"Yielding cached data for: {cached_item.Name}")
+                    yield cached_item
+                    continue
+
+                gmb_url = business_data_dict.get("GMB_URL")
+                if gmb_url and (not business_data_dict.get("Website") or not business_data_dict.get("Full_Address")):
+                    try:
+                        gmb_page = page.context.new_page()
+                        gmb_page.goto(gmb_url)
+                        gmb_html = gmb_page.content()
+                        gmb_data = parse_gmb_page(gmb_html)
+                        business_data_dict.update(gmb_data)
+                        gmb_page.close()
+                    except Exception as gmb_e:
+                        logger.warning(f"Failed to scrape GMB page {gmb_url}: {gmb_e}")
+
+                business_data = GoogleMapsData(**business_data_dict)
+                cache.add_or_update(business_data)
+                logger.info(f"Yielding new record: {business_data.Name}")
+                yield business_data
+
+            # Scroll logic and post-scroll logging
+            logger.info("[SCROLL_DEBUG] Attempting to scroll...")
+            current_scroll_height = scrollable_div.evaluate("element => element.scrollHeight")
+            logger.info(f"[SCROLL_DEBUG]   Scroll height before scroll action: {current_scroll_height}")
+
+            if current_scroll_height == last_scroll_height:
+                logger.info(f"[SCROLL_DEBUG] Scroll height hasn't changed. Reached end of content for '{search_string}'.")
+                console.print(f"[yellow] scraper: Reached end of results for query: '{search_string}'[/yellow]")
+                break
+
+            scrollable_div.evaluate("element => element.scrollTop = element.scrollHeight")
+            last_scroll_height = current_scroll_height
+            logger.info("[SCROLL_DEBUG]   ...scrolled. Waiting for content to load.")
+            page.wait_for_timeout(delay_seconds * 1000)
 
 def scrape_google_maps(
     location_param: Dict[str, str],
@@ -38,15 +144,11 @@ def scrape_google_maps(
     """
     if debug: logger.debug(f"scrape_google_maps called with debug={debug}")
     settings = load_scraper_settings()
-    delay_seconds = settings.google_maps_delay_seconds
 
     launch_headless = headless if headless is not None else settings.browser_headless
     launch_width = browser_width if browser_width is not None else settings.browser_width
     launch_height = browser_height if browser_height is not None else settings.browser_height
     launch_devtools = devtools if devtools is not None else settings.browser_devtools
-
-    cache = GoogleMapsCache()
-    fresh_delta = timedelta(days=ttl_days)
 
     coordinates = get_coordinates_from_city_state(location_param["city"]) if "city" in location_param else get_coordinates_from_zip(location_param["zip_code"])
 
@@ -57,7 +159,7 @@ def scrape_google_maps(
     latitude = coordinates["latitude"]
     longitude = coordinates["longitude"]
     
-    processed_place_ids = set()
+    processed_place_ids: set[str] = set()
 
     with sync_playwright() as p:
         browser = p.chromium.launch(
@@ -92,90 +194,71 @@ def scrape_google_maps(
                 logger.info(f"Zoomed out {zoom_out_level} times.")
                 page.wait_for_timeout(5000)
 
-            for search_string in search_strings:
-                logger.info(f"--- Starting search for query: '{search_string}' ---")
-                search_box_selector = 'input[name="q"]'
-                page.wait_for_selector(search_box_selector)
-                page.fill(search_box_selector, search_string)
-                page.press(search_box_selector, 'Enter')
-                page.wait_for_timeout(5000)
+            # Initial scrape of the main area
+            yield from _scrape_area(
+                page=page,
+                search_strings=search_strings,
+                processed_place_ids=processed_place_ids,
+                force_refresh=force_refresh,
+                ttl_days=ttl_days,
+                debug=debug,
+            )
 
-                scrollable_div_selector = 'div[role="feed"]'
-                page.wait_for_selector(scrollable_div_selector, timeout=10000)
-                scrollable_div = page.locator(scrollable_div_selector)
+            # Start of spiral out logic
+            console.print("[bold blue] scraper: Starting spiral out search...[/bold blue]")
+            current_lat, current_lon = latitude, longitude
+            distance_miles = 8
+            
+            bearings = [0, 90, 180, 270] # N, E, S, W
+            steps_in_direction = 1
+            leg_count = 0
+            direction_index = 0
 
-                last_scroll_height = -1
-                while True:
-                    # Pre-scroll logging
-                    page.wait_for_timeout(1500)
-                    listing_divs = scrollable_div.locator("> div").all()
-                    logger.info(f"[SCROLL_DEBUG] Found {len(listing_divs)} listing divs before scroll.")
+            while True: # This loop will run until the consumer (scrape_prospects) stops it
+                for _ in range(steps_in_direction):
+                    # Calculate new coordinates
+                    bearing = bearings[direction_index]
+                    current_lat, current_lon = calculate_new_coords(current_lat, current_lon, distance_miles, bearing)
+                    console.print(f"[blue] scraper: Moving {distance_miles} miles {['North', 'East', 'South', 'West'][direction_index]} to {current_lat:.4f}, {current_lon:.4f}...[/blue]")
+                    
+                    # Navigate to new coordinates
+                    new_url = f"https://www.google.com/maps/@{current_lat},{current_lon},15z?entry=ttu"
+                    page.goto(new_url, wait_until="domcontentloaded")
+                    page.wait_for_timeout(5000) # Wait for map to settle
+
+                    # Click "Search this area"
                     try:
-                        if listing_divs:
-                            first_item_text = ' '.join(listing_divs[0].inner_text().splitlines())[:70]
-                            last_item_text = ' '.join(listing_divs[-1].inner_text().splitlines())[:70]
-                            logger.info(f"[SCROLL_DEBUG]   Pre-scroll First: {first_item_text}...")
-                            logger.info(f"[SCROLL_DEBUG]   Pre-scroll Last:  {last_item_text}...")
-                    except Exception as e:
-                        logger.warning(f"[SCROLL_DEBUG] Could not read pre-scroll item text: {e}")
+                        search_this_area_button = page.get_by_role("button", name=re.compile("Search this area", re.IGNORECASE))
+                        if search_this_area_button.is_visible():
+                            console.print("[green] scraper: 'Search this area' button found. Clicking...[/green]")
+                            search_this_area_button.click()
+                            page.wait_for_timeout(5000) # Wait for results to load
+                        else:
+                            console.print("[yellow] scraper: 'Search this area' button not visible.[/yellow]")
+                    except Exception:
+                        console.print("[yellow] scraper: 'Search this area' button not found.[/yellow]")
 
-                    if not listing_divs:
-                        logger.info("No listing divs found. Moving to next query.")
-                        break
+                    # Scrape the new area
+                    yield from _scrape_area(
+                        page=page,
+                        search_strings=search_strings,
+                        processed_place_ids=processed_place_ids,
+                        force_refresh=force_refresh,
+                        ttl_days=ttl_days,
+                        debug=debug,
+                    )
 
-                    for listing_div in listing_divs:
-                        html_content = listing_div.inner_html()
-                        if not html_content or "All filters" in html_content or "Prices come from Google" in html_content:
-                            continue
+                # Update spiral direction and steps
+                leg_count += 1
+                if leg_count % 2 == 0:
+                    steps_in_direction += 1
+                direction_index = (direction_index + 1) % 4
 
-                        business_data_dict = parse_business_listing_html(html_content, search_string, debug=debug)
-                        place_id = business_data_dict.get("Place_ID")
 
-                        if not place_id or place_id in processed_place_ids:
-                            continue
-                        
-                        processed_place_ids.add(place_id)
-
-                        cached_item = cache.get_by_place_id(place_id)
-                        if cached_item and not force_refresh and (datetime.now(UTC) - cached_item.updated_at < fresh_delta):
-                            logger.info(f"Yielding cached data for: {cached_item.Name}")
-                            yield cached_item
-                            continue
-
-                        gmb_url = business_data_dict.get("GMB_URL")
-                        if gmb_url and (not business_data_dict.get("Website") or not business_data_dict.get("Full_Address")):
-                            try:
-                                gmb_page = browser.new_page()
-                                gmb_page.goto(gmb_url)
-                                gmb_html = gmb_page.content()
-                                gmb_data = parse_gmb_page(gmb_html)
-                                business_data_dict.update(gmb_data)
-                                gmb_page.close()
-                            except Exception as gmb_e:
-                                logger.warning(f"Failed to scrape GMB page {gmb_url}: {gmb_e}")
-
-                        business_data = GoogleMapsData(**business_data_dict)
-                        cache.add_or_update(business_data)
-                        logger.info(f"Yielding new record: {business_data.Name}")
-                        yield business_data
-
-                    # Scroll logic and post-scroll logging
-                    logger.info("[SCROLL_DEBUG] Attempting to scroll...")
-                    current_scroll_height = scrollable_div.evaluate("element => element.scrollHeight")
-                    logger.info(f"[SCROLL_DEBUG]   Scroll height before scroll action: {current_scroll_height}")
-
-                    if current_scroll_height == last_scroll_height:
-                        logger.info(f"[SCROLL_DEBUG] Scroll height hasn't changed. Reached end of content for '{search_string}'.")
-                        console.print(f"[yellow] scraper: Reached end of results for query: '{search_string}'[/yellow]")
-                        break
-
-                    scrollable_div.evaluate("element => element.scrollTop = element.scrollHeight")
-                    last_scroll_height = current_scroll_height
-                    logger.info("[SCROLL_DEBUG]   ...scrolled. Waiting for content to load.")
-                    page.wait_for_timeout(delay_seconds * 1000)
 
         except Exception as e:
             logger.error(f"An error occurred during scraping: {e}")
         finally:
-            cache.save()
+            # This is not ideal as it will be called after each yield, but it's the safest place for now
+            GoogleMapsCache().save()
             browser.close()
