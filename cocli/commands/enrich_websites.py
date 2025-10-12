@@ -12,6 +12,8 @@ from cocli.compilers.website_compiler import WebsiteCompiler
 from cocli.core.logging_config import setup_file_logging
 from rich.progress import Progress, BarColumn, TextColumn, TimeRemainingColumn
 
+from cocli.core.enrichment import enrich_company_website
+
 logger = logging.getLogger(__name__)
 
 async def _enrich_company(
@@ -23,14 +25,13 @@ async def _enrich_company(
     debug: bool
 ):
     company = Company.from_directory(company_dir)
-    if not company or not company.domain:
+    if not company:
         return
 
-    logger.info(f"Enriching website for {company.name}")
-    scraper = WebsiteScraper()
-    website_data = await scraper.run(
-        domain=company.domain,
-        force_refresh=force,
+    # Call the core enrichment function
+    website_data = await enrich_company_website(
+        company=company,
+        force=force,
         ttl_days=ttl_days,
         headed=headed,
         devtools=devtools,

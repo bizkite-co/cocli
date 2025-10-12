@@ -23,7 +23,6 @@ from .core.utils import slugify, _format_entity_for_fzf
 from .models.company import Company
 from .models.person import Person
 from .commands import register_commands
-from .commands import lead_scrape
 
 from .core import logging_config
 
@@ -34,8 +33,6 @@ logging_config.setup_logging()
 app = typer.Typer(no_args_is_help=True)
 app.add_typer(enrich.app, name="enrich", help="Commands for enriching company data.")
 app.add_typer(query.app, name="query", help="Commands for querying company data.")
-
-app.command(name="lead-scrape", help="Scrape leads and import them.")(lead_scrape.lead_scrape)
 
 register_commands(app)
 

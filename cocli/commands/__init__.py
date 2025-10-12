@@ -20,12 +20,10 @@ def register_commands(app: typer.Typer):
     from . import import_turboship
     from . import ingest_google_maps_csv
     from . import init
-    from . import lead_scrape
     from . import meetings
     from . import process_shopify_scrapes
     from . import render
     from . import render_prospects_kml
-    from . import scrape
     from . import scrape_shopify
     from . import status
     from . import sync
@@ -44,13 +42,11 @@ def register_commands(app: typer.Typer):
     app.command(name="import-turboship")(import_turboship.import_turboship)
     app.command(name="google-maps-csv-to-google-maps-cache")(ingest_google_maps_csv.google_maps_csv_to_google_maps_cache)
     app.command(name="init")(init.init)
-    app.command(name="lead-scrape")(lead_scrape.lead_scrape)
     app.command(name="next")(meetings.next_meetings)
     app.command(name="open-company-folder")(view.open_company_folder)
     app.command(name="process-shopify-scrapes")(process_shopify_scrapes.process_shopify_scrapes)
     app.command(name="recent")(meetings.recent_meetings)
     app.command(name="render-prospects-kml")(render_prospects_kml.render_prospects_kml)
-    app.command(name="scrape-google-maps")(scrape.scrape_google_maps)
     app.command(name="scrape-shopify-myip")(scrape_shopify.scrape_shopify_myip)
     app.command(name="status")(status.status)
     app.command(name="sync")(sync.sync)
@@ -65,4 +61,3 @@ def register_commands(app: typer.Typer):
     app.add_typer(campaign.app, name="campaign")
     app.add_typer(deduplicate.app, name="deduplicate")
     app.add_typer(render.app, name="render")
-    app.add_typer(google_maps.app, name="google-maps", help="Commands for processing Google Maps data.")

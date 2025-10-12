@@ -48,7 +48,7 @@ def setup_file_logging(command_name: str, console_level=logging.INFO, file_level
         # Create console handler for less verbose output
         console_handler = logging.StreamHandler(sys.stdout)
         console_handler.setLevel(console_level)
-        console_formatter = logging.Formatter('%(message)s') # Keep console output clean
+        console_formatter = logging.Formatter('[%(asctime)s] %(message)s', datefmt='%H:%M:%S') # Keep console output clean
         console_handler.setFormatter(console_formatter)
         root_logger.addHandler(console_handler)
 

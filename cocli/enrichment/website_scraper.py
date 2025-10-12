@@ -259,16 +259,16 @@ class WebsiteScraper:
 
         # Extract Phone Number
         if not website_data.phone:
-            phone_match = re.search(r"(\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4})", soup.get_text())
+            phone_match = re.search(r"\b(\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4})\b", soup.get_text())
             if phone_match:
                 website_data.phone = phone_match.group(0)
                 logger.info(f"Found phone number: {website_data.phone}")
 
         # Extract Email
         if not website_data.email:
-            email_match = re.search(r"[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}", soup.get_text())
+            email_match = re.search(r"\b[a-zA-Z0-9._%+-]+ ?@ ?[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}\b", soup.get_text())
             if email_match:
-                website_data.email = email_match.group(0)
+                website_data.email = email_match.group(0).replace(" ", "")
                 logger.info(f"Found email: {website_data.email}")
 
         # Extract Social Media URLs
