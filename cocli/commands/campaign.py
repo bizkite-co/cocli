@@ -210,7 +210,9 @@ def scrape_prospects(
     ttl_days: int = typer.Option(30, "--ttl-days", help="Time-to-live for cached data in days."),
     min_total_records: Optional[int] = typer.Option(None, "--min-total-records", help="Ensure the total number of prospects in the master list is at least this high."),
     max_new_records: Optional[int] = typer.Option(None, "--max-new-records", help="Scrape until this many *new* records are added in this session."),
-    zoom_out_level: int = typer.Option(0, "--zoom-out-level", help="Number of times to zoom out on the map before scraping.")
+    zoom_out_level: int = typer.Option(0, "--zoom-out-level", help="Number of times to zoom out on the map before scraping."),
+    headless: bool = typer.Option(True, "--headless/--no-headless", help="Run the browser in headless mode."),
+    debug: bool = typer.Option(False, "--debug", help="Enable debug mode for the scraper."),
 ):
     """
     Scrape prospects for a campaign from Google Maps, using a cache-first strategy.
@@ -278,13 +280,15 @@ def scrape_prospects(
 
         logger.info(f"--- Scraping all queries for location: '{location}' ---")
         
-        # The scraper is now a generator. This command is responsible for counting.
         scraper = scrape_google_maps(
             location_param={"city": location},
             search_strings=queries,
+            campaign_name=campaign_name,
+            debug=debug,
             force_refresh=force_refresh,
             ttl_days=ttl_days,
-            zoom_out_level=zoom_out_level
+            headless=headless,
+            zoom_out_level=zoom_out_level,
         )
 
         for item in scraper:
@@ -299,7 +303,6 @@ def scrape_prospects(
 
     # Write all prospects (including old and new) to the CSV file
     with open(output_filepath, "w", newline="", encoding="utf-8") as csvfile:
-        # It's important to get the headers from the Pydantic model to ensure consistency
         headers = list(GoogleMapsData.model_fields.keys())
         writer = csv.DictWriter(csvfile, fieldnames=headers)
         writer.writeheader()

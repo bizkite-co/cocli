@@ -50,8 +50,9 @@ def scrape_google_maps(
 
     try:
         scraper = google_maps.scrape_google_maps(
-            location_param=location_param, 
-            search_strings=[query], 
+            location_param=location_param,
+            search_strings=[query],
+            campaign_name="default",
             debug=debug
         )
 

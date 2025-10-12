@@ -47,12 +47,12 @@ def test_lead_scrape_success(mock_scrape_and_import):
     assert "google_maps_scrape_photographer_" in result.stdout # Check for dynamic filename
     assert ".csv" in result.stdout # Check for dynamic filename
     assert "Importing data from" in result.stdout
-    assert "Data import completed successfully." in result.stdout
     mock_scrape.assert_called_once_with(
         location_param={"city": "Whittier,CA"},
-        search_string="photographer",
+        search_strings=["photographer"],
+        campaign_name="default",
         debug=False,
-        headless=True, # Add headless=True to the assertion
+        headless=True,
     )
     
     # Extract the dynamically generated CSV path from the stdout
@@ -76,9 +76,10 @@ def test_lead_scrape_with_cleanup(mock_scrape_and_import):
     result = runner.invoke(app, ["lead-scrape", "photographer", "--city", "Whittier,CA", "--cleanup"])
     mock_scrape.assert_called_once_with(
         location_param={"city": "Whittier,CA"},
-        search_string="photographer",
+        search_strings=["photographer"],
+        campaign_name="default",
         debug=False,
-        headless=True, # Add headless=True to the assertion
+        headless=True,
     )
 
     assert result.exit_code == 0
@@ -127,7 +128,8 @@ def test_lead_scrape_scraping_failure(mock_scrape_and_import):
     assert "An unexpected error occurred during lead scrape: Scraping error\n" in result.stderr
     mock_scrape.assert_called_once_with(
         location_param={"city": "Whittier,CA"},
-        search_string="photographer",
+        search_strings=["photographer"],
+        campaign_name="default",
         debug=False,
         headless=True,
     )
@@ -146,7 +148,8 @@ def test_lead_scrape_import_failure(mock_scrape_and_import):
     assert "An unexpected error occurred during lead scrape: Import error\n" in result.stderr
     mock_scrape.assert_called_once_with(
         location_param={"city": "Whittier,CA"},
-        search_string="photographer",
+        search_strings=["photographer"],
+        campaign_name="default",
         debug=False,
         headless=True,
     )

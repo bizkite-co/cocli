@@ -61,20 +61,9 @@ class GoogleMapsData(BaseModel):
 
     @model_validator(mode='before')
     @classmethod
-    def check_for_empty_ratings(cls, values: Dict[str, Any]) -> Dict[str, Any]:
-        reviews_count = values.get('Reviews_count')
-        average_rating = values.get('Average_rating')
-
-        if reviews_count == '' or average_rating == '':
-            company_name = values.get('Name', 'Unknown Company')
-            logger.warning(
-                f"Company '{company_name}' has an empty rating or review count. "
-                f"This may indicate an incomplete scrape. "
-                f"Raw values: [reviews: '{reviews_count}', rating: '{average_rating}']"
-            )
-            if reviews_count == '':
-                values['Reviews_count'] = None
-            if average_rating == '':
-                values['Average_rating'] = None
-        
+    def clean_empty_ratings(cls, values: Dict[str, Any]) -> Dict[str, Any]:
+        if values.get('Reviews_count') == '':
+            values['Reviews_count'] = None
+        if values.get('Average_rating') == '':
+            values['Average_rating'] = None
         return values

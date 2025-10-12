@@ -16,21 +16,25 @@ def mock_playwright():
         mock_playwright_instance = MagicMock()
         mock_browser = MagicMock()
         mock_page = MagicMock()
-        mock_locator = MagicMock()
+
+        # Mock the scrollable div that contains the listings
+        mock_scrollable_div = MagicMock()
+        # When the test calls page.locator for the scrollable div, return our mock
+        mock_page.locator.return_value = mock_scrollable_div
+
+        # Configure the scrollable div's evaluate method to simulate the end of scrolling
+        mock_scrollable_div.evaluate.side_effect = [100, 100]
+
+        # Configure the locator call on the scrollable div to return a mocked listing
+        mock_listing_div = MagicMock()
+        mock_listing_div.inner_html.return_value = SAMPLE_ITEM_HTML
+        mock_scrollable_div.locator.return_value.all.return_value = [mock_listing_div]
 
         mock_sync_playwright.return_value.__enter__.return_value = mock_playwright_instance
         mock_playwright_instance.chromium.launch.return_value = mock_browser
         mock_browser.new_page.return_value = mock_page
-        mock_page.locator.return_value = mock_locator
 
-        # Mock the scrollable div behavior
-        mock_locator.evaluate.side_effect = [100, 100] # Simulate no new content after first scroll
-        mock_scrollable_div = MagicMock()
-        mock_page.locator.return_value = mock_scrollable_div
-        mock_scrollable_div.locator.return_value.all.return_value = [MagicMock(inner_html=lambda: SAMPLE_ITEM_HTML)]
-
-        yield mock_page, mock_locator
-
+        yield mock_page
 
 
 @patch('cocli.scrapers.google_maps.get_coordinates_from_zip')
@@ -39,20 +43,24 @@ def test_scrape_google_maps_returns_data(mock_get_coordinates, mock_playwright):
     Tests the scrape_google_maps function with mocked Playwright and a temporary directory.
     Verifies URL construction and CSV file creation.
     """
-    mock_page, mock_locator = mock_playwright
+    # The mock_playwright fixture now yields the configured mock_page directly
+    mock_page = mock_playwright
     zip_code = "90210"
     search_string = "photography studio"
 
     # Mock the return value of get_coordinates_from_zip
     mock_get_coordinates.return_value = {"latitude": 34.0736, "longitude": -118.4004}
 
-    results = scrape_google_maps(
+    results_generator = scrape_google_maps(
         {"zip_code": zip_code},
-        search_string,
-        max_results=1,
+        [search_string],
+        campaign_name="default",
         debug=False, # Enable debug mode
         headless=True, # Launch in headed mode
     )
+
+    # Consume the generator to get the list of results
+    results = list(results_generator)
 
     # Verify that the function returns a list of GoogleMapsData objects
     assert isinstance(results, list)

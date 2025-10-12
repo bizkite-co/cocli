@@ -94,7 +94,7 @@ def load_scraper_settings() -> ScraperSettings:
             if config_data and "scraper" in config_data:
                 return ScraperSettings(**config_data["scraper"])
             else:
-                logger.warning(f"'scraper' section not found in {config_file}. Using default scraper settings.")
+                logger.info(f"'scraper' section not found in {config_file}. Using default scraper settings.")
                 return ScraperSettings()
     except tomli.TomlDecodeError as e:
         logger.error(f"Error decoding TOML config file {config_file}: {e}. Using default scraper settings.")
