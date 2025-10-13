@@ -116,3 +116,11 @@ prospects-with-emails:
 .PHONY: debug-google-maps-scraper
 debug-google-maps-scraper: install ## Run the Google Maps scraper in headed mode with debug tools for debugging
 	source $(VENV_DIR)/bin/activate && pytest tests/debug_google_maps_scraper.py
+
+.PHONY: docker-build
+docker-build: ## Build the docker image
+	@docker build -t enrichment-service .
+
+.PHONY: docker-run-enrichment
+docker-run-enrichment: ## Start docker enrichment service
+	@docker run -d -p 8000:8000 --name cocli-enrichment enrichment-service

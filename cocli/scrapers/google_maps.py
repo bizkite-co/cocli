@@ -74,7 +74,13 @@ async def _scrape_area(
         # Only process the new divs that have appeared since the last scroll
         for i in range(last_processed_div_count, len(listing_divs)):
             listing_div = listing_divs[i]
-            html_content = await listing_div.inner_html()
+            html_content = ""
+            try:
+                # Set a shorter timeout for getting the HTML of a single element
+                html_content = await listing_div.inner_html(timeout=5000)
+            except Exception as e:
+                logger.warning(f"Could not get HTML for a listing div, it might have been unloaded. Skipping. Error: {e}")
+                continue
             if not html_content or "All filters" in html_content or "Prices come from Google" in html_content:
                 continue
 
@@ -95,12 +101,20 @@ async def _scrape_area(
             gmb_url = business_data_dict.get("GMB_URL")
             if gmb_url and (not business_data_dict.get("Website") or not business_data_dict.get("Full_Address")):
                 try:
-                    gmb_page = await page.context.new_page()
-                    await gmb_page.goto(gmb_url)
-                    gmb_html = await gmb_page.content()
-                    gmb_data = parse_gmb_page(gmb_html)
-                    business_data_dict.update(gmb_data)
-                    await gmb_page.close()
+                    browser = page.context.browser
+                    if browser:
+                        context = await browser.new_context()
+                        gmb_page = await context.new_page()
+                        try:
+                            await gmb_page.goto(gmb_url)
+                            gmb_html = await gmb_page.content()
+                            gmb_data = parse_gmb_page(gmb_html)
+                            business_data_dict.update(gmb_data)
+                        finally:
+                            await context.close() # Closes the context and all its pages
+                    else:
+                        # This should not happen in a normal run
+                        raise Exception("Browser object not available from page context.")
                 except Exception as gmb_e:
                     logger.warning(f"Failed to scrape GMB page {gmb_url}: {gmb_e}")
 
@@ -237,7 +251,7 @@ async def scrape_google_maps(
                 bearing = bearings[direction_index]
                 current_lat, current_lon = calculate_new_coords(current_lat, current_lon, distance_miles, bearing)
                 direction_name = ['North', 'East', 'South', 'West'][direction_index]
-                logger.info(f"Moving {distance_miles} miles {direction_name} to {current_lat:.4f}, {current_lon:.4f}...")
+                console.print(f"[grey50][{datetime.now().strftime('%H:%M:%S')}][/] [bold yellow]Moving {distance_miles} miles {direction_name} to {current_lat:.4f}, {current_lon:.4f}...[/bold yellow]")
                 
                 # Navigate to new coordinates
                 new_url = f"https://www.google.com/maps/@{current_lat},{current_lon},15z?entry=ttu"
@@ -252,9 +266,9 @@ async def scrape_google_maps(
                         await search_this_area_button.click()
                         await page.wait_for_timeout(5000) # Wait for results to load
                     else:
-                        logger.warning("'Search this area' button not visible.")
+                        logger.info("'Search this area' button not visible.")
                 except Exception:
-                    logger.warning("'Search this area' button not found.")
+                    logger.info("'Search this area' button not found.")
 
                 # Scrape the new area for each search string
                 for search_string in search_strings:

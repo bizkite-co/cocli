@@ -2,7 +2,7 @@ import asyncio
 import logging
 from typing import Optional
 
-from playwright.async_api import Browser
+from playwright.async_api import Browser, BrowserContext
 
 from ..models.company import Company
 from ..enrichment.website_scraper import WebsiteScraper
@@ -11,7 +11,7 @@ from ..models.website import Website
 logger = logging.getLogger(__name__)
 
 async def enrich_company_website(
-    browser: Browser,
+    browser: Browser | BrowserContext,
     company: Company,
     force: bool = False,
     ttl_days: int = 30,

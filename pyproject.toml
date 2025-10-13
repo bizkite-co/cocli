@@ -25,6 +25,8 @@ dependencies = [
     "pydantic-settings", # Added for BaseSettings
     "transitions",
     "geopy",
+    "fastapi",
+    "uvicorn[standard]",
 ]
 
 [project.scripts]
