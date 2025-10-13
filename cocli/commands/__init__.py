@@ -10,7 +10,6 @@ def register_commands(app: typer.Typer):
     from . import deduplicate
     from . import enrich_customers
     from . import enrich_shopify_data
-    from . import enrich_websites
     from . import exclude
     from . import flag_email_providers
     from . import fz
@@ -54,7 +53,6 @@ def register_commands(app: typer.Typer):
     app.command(name="view-meetings")(view.view_meetings)
     app.command(name="enrich-customers")(enrich_customers.enrich_customers)
     app.command(name="enrich-shopify-data")(enrich_shopify_data.enrich_shopify_data)
-    app.command(name="enrich-websites")(enrich_websites.enrich_websites)
     app.command(name="compile-enrichment")(compile_enrichment.compile_enrichment)
     app.command(name="flag-email-providers")(flag_email_providers.flag_email_providers)
 

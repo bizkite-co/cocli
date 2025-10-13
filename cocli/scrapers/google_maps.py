@@ -139,31 +139,32 @@ async def _scrape_area(
         scrape_index.add_area(search_string, bounds)
         logger.info(f"Added bounding box to scrape index for phrase '{search_string}'.")
 
+from playwright.async_api import async_playwright, Page, Locator, Browser
+
 async def scrape_google_maps(
+    browser: Browser,
     location_param: Dict[str, str],
     search_strings: List[str],
     campaign_name: str,
     debug: bool = False,
     force_refresh: bool = False,
     ttl_days: int = 30,
-    headless: Optional[bool] = None,
     browser_width: Optional[int] = None,
     browser_height: Optional[int] = None,
-    devtools: Optional[bool] = None,
     zoom_out_level: int = 0,
 ) -> AsyncIterator[GoogleMapsData]:
     """
     Scrapes business information from Google Maps for a list of search queries,
     yielding each result as it is found.
+    
+    Uses a pre-existing browser instance.
     """
     if debug: logger.debug(f"scrape_google_maps called with debug={debug}")
     settings = load_scraper_settings()
     scrape_index = ScrapeIndex(campaign_name)
 
-    launch_headless = headless if headless is not None else settings.browser_headless
     launch_width = browser_width if browser_width is not None else settings.browser_width
     launch_height = browser_height if browser_height is not None else settings.browser_height
-    launch_devtools = devtools if devtools is not None else settings.browser_devtools
 
     coordinates = get_coordinates_from_city_state(location_param["city"]) if "city" in location_param else get_coordinates_from_zip(location_param["zip_code"])
 
@@ -176,121 +177,110 @@ async def scrape_google_maps(
     
     processed_place_ids: set[str] = set()
 
-    async with async_playwright() as p:
-        browser = await p.chromium.launch(
-            headless=launch_headless,
-            devtools=launch_devtools,
-            args=[f'--window-size={launch_width},{launch_height}']
-        )
-        page = await browser.new_page(viewport={'width': launch_width, 'height': launch_height})
+    page = await browser.new_page(viewport={'width': launch_width, 'height': launch_height})
+    try:
+        initial_url = f"https://www.google.com/maps/@{latitude},{longitude},15z?entry=ttu"
+        await page.goto(initial_url, wait_until="domcontentloaded")
+        await page.wait_for_timeout(3000)
+        logger.info(f"Navigated to initial map URL for {location_param}.")
 
+        # Handle Cookie Consent
         try:
-            initial_url = f"https://www.google.com/maps/@{latitude},{longitude},15z?entry=ttu"
-            await page.goto(initial_url, wait_until="domcontentloaded")
-            await page.wait_for_timeout(3000)
-            logger.info(f"Navigated to initial map URL for {location_param}.")
-
-            # Handle Cookie Consent
-            try:
-                reject_button = page.get_by_role("button", name=re.compile("Reject all", re.IGNORECASE))
-                if await reject_button.is_visible():
-                    logger.info("Cookie consent dialog found. Clicking 'Reject all'.")
-                    await reject_button.click()
-                    await page.wait_for_timeout(2000) # Wait for the dialog to disappear
-            except Exception as e:
-                logger.info(f"Could not find or click cookie consent button (this is okay if it's not present): {e}")
-
-            if zoom_out_level > 0:
-                zoom_out_button_selector = "button#widget-zoom-out"
-                await page.wait_for_selector(zoom_out_button_selector, timeout=10000)
-                for i in range(zoom_out_level):
-                    await page.click(zoom_out_button_selector)
-                    await page.wait_for_timeout(500)
-                logger.info(f"Zoomed out {zoom_out_level} times.")
-                await page.wait_for_timeout(5000)
-
-            # Initial scrape of the main area
-            for search_string in search_strings:
-                matched_area = scrape_index.is_area_scraped(search_string, latitude, longitude, ttl_days=ttl_days)
-                if matched_area:
-                    logger.info(f"Skipping initial area for phrase '{search_string}' as it falls within a recently scraped box ({matched_area.lat_min:.4f}, {matched_area.lon_min:.4f} to {matched_area.lat_max:.4f}, {matched_area.lon_max:.4f}).")
-                    continue
-
-                async for item in _scrape_area(
-                    page=page,
-                    search_string=search_string,
-                    processed_place_ids=processed_place_ids,
-                    scrape_index=scrape_index,
-                    force_refresh=force_refresh,
-                    ttl_days=ttl_days,
-                    debug=debug,
-                ):
-                    yield item
-
-            # Start of spiral out logic
-            logger.info("Starting spiral out search...")
-            current_lat, current_lon = latitude, longitude
-            distance_miles = 8
-            
-            bearings = [0, 90, 180, 270] # N, E, S, W
-            steps_in_direction = 1
-            leg_count = 0
-            direction_index = 0
-
-            while True: # This loop will run until the consumer (scrape_prospects) stops it
-                for _ in range(steps_in_direction):
-                    # Calculate new coordinates
-                    bearing = bearings[direction_index]
-                    current_lat, current_lon = calculate_new_coords(current_lat, current_lon, distance_miles, bearing)
-                    direction_name = ['North', 'East', 'South', 'West'][direction_index]
-                    logger.info(f"Moving {distance_miles} miles {direction_name} to {current_lat:.4f}, {current_lon:.4f}...")
-                    
-                    # Navigate to new coordinates
-                    new_url = f"https://www.google.com/maps/@{current_lat},{current_lon},15z?entry=ttu"
-                    await page.goto(new_url, wait_until="domcontentloaded")
-                    await page.wait_for_timeout(5000) # Wait for map to settle
-
-                    # Click "Search this area"
-                    try:
-                        search_this_area_button = page.get_by_role("button", name=re.compile("Search this area", re.IGNORECASE))
-                        if await search_this_area_button.is_visible():
-                            logger.info("'Search this area' button found. Clicking...")
-                            await search_this_area_button.click()
-                            await page.wait_for_timeout(5000) # Wait for results to load
-                        else:
-                            logger.warning("'Search this area' button not visible.")
-                    except Exception:
-                        logger.warning("'Search this area' button not found.")
-
-                    # Scrape the new area for each search string
-                    for search_string in search_strings:
-                        matched_area = scrape_index.is_area_scraped(search_string, current_lat, current_lon, ttl_days=ttl_days)
-                        if matched_area:
-                            logger.info(f"Skipping area for phrase '{search_string}' as it falls within a recently scraped box ({matched_area.lat_min:.4f}, {matched_area.lon_min:.4f} to {matched_area.lat_max:.4f}, {matched_area.lon_max:.4f}).")
-                            continue
-
-                        async for item in _scrape_area(
-                            page=page,
-                            search_string=search_string,
-                            processed_place_ids=processed_place_ids,
-                            scrape_index=scrape_index,
-                            force_refresh=force_refresh,
-                            ttl_days=ttl_days,
-                            debug=debug,
-                        ):
-                            yield item
-
-                # Update spiral direction and steps
-                leg_count += 1
-                if leg_count % 2 == 0:
-                    steps_in_direction += 1
-                direction_index = (direction_index + 1) % 4
-
-
-
+            reject_button = page.get_by_role("button", name=re.compile("Reject all", re.IGNORECASE))
+            if await reject_button.is_visible():
+                logger.info("Cookie consent dialog found. Clicking 'Reject all'.")
+                await reject_button.click()
+                await page.wait_for_timeout(2000) # Wait for the dialog to disappear
         except Exception as e:
-            logger.error(f"An error occurred during scraping: {e}")
-        finally:
-            # This is not ideal as it will be called after each yield, but it's the safest place for now
-            GoogleMapsCache().save()
-            await browser.close()
+            logger.info(f"Could not find or click cookie consent button (this is okay if it's not present): {e}")
+
+        if zoom_out_level > 0:
+            zoom_out_button_selector = "button#widget-zoom-out"
+            await page.wait_for_selector(zoom_out_button_selector, timeout=10000)
+            for i in range(zoom_out_level):
+                await page.click(zoom_out_button_selector)
+                await page.wait_for_timeout(500)
+            logger.info(f"Zoomed out {zoom_out_level} times.")
+            await page.wait_for_timeout(5000)
+
+        # Initial scrape of the main area
+        for search_string in search_strings:
+            matched_area = scrape_index.is_area_scraped(search_string, latitude, longitude, ttl_days=ttl_days)
+            if matched_area:
+                logger.info(f"Skipping initial area for phrase '{search_string}' as it falls within a recently scraped box ({matched_area.lat_min:.4f}, {matched_area.lon_min:.4f} to {matched_area.lat_max:.4f}, {matched_area.lon_max:.4f}).")
+                continue
+
+            async for item in _scrape_area(
+                page=page,
+                search_string=search_string,
+                processed_place_ids=processed_place_ids,
+                scrape_index=scrape_index,
+                force_refresh=force_refresh,
+                ttl_days=ttl_days,
+                debug=debug,
+            ):
+                yield item
+
+        # Start of spiral out logic
+        logger.info("Starting spiral out search...")
+        current_lat, current_lon = latitude, longitude
+        distance_miles = 8
+        
+        bearings = [0, 90, 180, 270] # N, E, S, W
+        steps_in_direction = 1
+        leg_count = 0
+        direction_index = 0
+
+        while True: # This loop will run until the consumer (scrape_prospects) stops it
+            for _ in range(steps_in_direction):
+                # Calculate new coordinates
+                bearing = bearings[direction_index]
+                current_lat, current_lon = calculate_new_coords(current_lat, current_lon, distance_miles, bearing)
+                direction_name = ['North', 'East', 'South', 'West'][direction_index]
+                logger.info(f"Moving {distance_miles} miles {direction_name} to {current_lat:.4f}, {current_lon:.4f}...")
+                
+                # Navigate to new coordinates
+                new_url = f"https://www.google.com/maps/@{current_lat},{current_lon},15z?entry=ttu"
+                await page.goto(new_url, wait_until="domcontentloaded")
+                await page.wait_for_timeout(5000) # Wait for map to settle
+
+                # Click "Search this area"
+                try:
+                    search_this_area_button = page.get_by_role("button", name=re.compile("Search this area", re.IGNORECASE))
+                    if await search_this_area_button.is_visible():
+                        logger.info("'Search this area' button found. Clicking...")
+                        await search_this_area_button.click()
+                        await page.wait_for_timeout(5000) # Wait for results to load
+                    else:
+                        logger.warning("'Search this area' button not visible.")
+                except Exception:
+                    logger.warning("'Search this area' button not found.")
+
+                # Scrape the new area for each search string
+                for search_string in search_strings:
+                    matched_area = scrape_index.is_area_scraped(search_string, current_lat, current_lon, ttl_days=ttl_days)
+                    if matched_area:
+                        logger.info(f"Skipping area for phrase '{search_string}' as it falls within a recently scraped box ({matched_area.lat_min:.4f}, {matched_area.lon_min:.4f} to {matched_area.lat_max:.4f}, {matched_area.lon_max:.4f}).")
+                        continue
+
+                    async for item in _scrape_area(
+                        page=page,
+                        search_string=search_string,
+                        processed_place_ids=processed_place_ids,
+                        scrape_index=scrape_index,
+                        force_refresh=force_refresh,
+                        ttl_days=ttl_days,
+                        debug=debug,
+                    ):
+                        yield item
+
+            # Update spiral direction and steps
+            leg_count += 1
+            if leg_count % 2 == 0:
+                steps_in_direction += 1
+            direction_index = (direction_index + 1) % 4
+    except Exception as e:
+        logger.error(f"An error occurred during scraping: {e}")
+    finally:
+        GoogleMapsCache().save()
+        await page.close()

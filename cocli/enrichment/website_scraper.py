@@ -4,7 +4,7 @@ import asyncio
 import xml.etree.ElementTree as ET
 from pathlib import Path
 from typing import Optional, List, Callable, Coroutine, Any
-from playwright.async_api import async_playwright, Page
+from playwright.async_api import async_playwright, Page, Browser
 from bs4 import BeautifulSoup
 import logging
 from urllib.parse import urljoin
@@ -21,11 +21,10 @@ class WebsiteScraper:
 
     async def run(
         self,
+        browser: Browser, # Added browser argument
         domain: str,
         force_refresh: bool = False,
         ttl_days: int = 30,
-        headed: bool = False,
-        devtools: bool = False,
         debug: bool = False
     ) -> Optional[Website]:
         if not domain:
@@ -49,69 +48,67 @@ class WebsiteScraper:
         logger.info(f"Starting website scraping for {domain}")
 
         website_data = Website(url=domain, scraper_version=CURRENT_SCRAPER_VERSION)
-
+        page = await browser.new_page(viewport={'width': 1536, 'height': 1700})
         try:
-            async with async_playwright() as p:
-                browser = await p.chromium.launch(headless=not headed, devtools=devtools)
-                page = await browser.new_page(viewport={'width': 1536, 'height': 1700})
-                await page.goto(f"http://{domain}", wait_until="domcontentloaded", timeout=30000)
+            await page.goto(f"http://{domain}", wait_until="domcontentloaded", timeout=30000)
 
-                if debug:
-                    breakpoint()
+            if debug:
+                breakpoint()
 
-                # Scrape main page
-                website_data = await self._scrape_page(page, website_data)
+            # Scrape main page
+            website_data = await self._scrape_page(page, website_data)
 
-                # Try to find and scrape pages from sitemap
-                sitemap_pages = await self._get_sitemap_urls(f"http://{domain}")
-                if sitemap_pages:
-                    page_map = {
-                        "About Us": ["about"],
-                        "Contact Us": ["contact"],
-                        "Services": ["service"],
-                        "Products": ["product"],
-                    }
-                    scrape_tasks = []
-                    for page_type, keywords in page_map.items():
-                        for keyword in keywords:
-                            for url in sitemap_pages:
-                                if keyword in url:
-                                    scrape_function = None
-                                    if page_type == "About Us":
-                                        scrape_function = self._scrape_page
-                                    elif page_type == "Contact Us":
-                                        scrape_function = self._scrape_contact_page
-                                    elif page_type == "Services":
-                                        scrape_function = self._scrape_services_page
-                                    elif page_type == "Products":
-                                        scrape_function = self._scrape_products_page
+            # Try to find and scrape pages from sitemap
+            sitemap_pages = await self._get_sitemap_urls(f"http://{domain}")
+            if sitemap_pages:
+                page_map = {
+                    "About Us": ["about"],
+                    "Contact Us": ["contact"],
+                    "Services": ["service"],
+                    "Products": ["product"],
+                }
+                scrape_tasks = []
+                for page_type, keywords in page_map.items():
+                    for keyword in keywords:
+                        for url in sitemap_pages:
+                            if keyword in url:
+                                scrape_function = None
+                                if page_type == "About Us":
+                                    scrape_function = self._scrape_page
+                                elif page_type == "Contact Us":
+                                    scrape_function = self._scrape_contact_page
+                                elif page_type == "Services":
+                                    scrape_function = self._scrape_services_page
+                                elif page_type == "Products":
+                                    scrape_function = self._scrape_products_page
 
-                                    if scrape_function:
-                                        scrape_tasks.append(self._scrape_sitemap_page(url, page_type, scrape_function, website_data, browser, debug))
-                                        break
-                            else:
-                                continue
-                            break
-                    if scrape_tasks:
-                        await asyncio.gather(*scrape_tasks)
+                                if scrape_function:
+                                    scrape_tasks.append(self._scrape_sitemap_page(url, page_type, scrape_function, website_data, browser, debug))
+                                    break
+                        else:
+                            continue
+                        break
+                if scrape_tasks:
+                    await asyncio.gather(*scrape_tasks)
 
-                # Fallback to navigating and scraping
-                if not website_data.about_us_url:
-                    await self._navigate_and_scrape(page, website_data, ["About Us", "About"], "About Us", self._scrape_page, debug)
-                if not website_data.contact_url:
-                    await self._navigate_and_scrape(page, website_data, ["Contact Us", "Contact"], "Contact Us", self._scrape_contact_page, debug)
-                if not website_data.services:
-                    await self._navigate_and_scrape(page, website_data, ["Services"], "Services", self._scrape_services_page, debug)
-                if not website_data.products:
-                    await self._navigate_and_scrape(page, website_data, ["Products"], "Products", self._scrape_products_page, debug)
+            # Fallback to navigating and scraping
+            if not website_data.about_us_url:
+                await self._navigate_and_scrape(page, website_data, ["About Us", "About"], "About Us", self._scrape_page, debug)
+            if not website_data.contact_url:
+                await self._navigate_and_scrape(page, website_data, ["Contact Us", "Contact"], "Contact Us", self._scrape_contact_page, debug)
+            if not website_data.services:
+                await self._navigate_and_scrape(page, website_data, ["Services"], "Services", self._scrape_services_page, debug)
+            if not website_data.products:
+                await self._navigate_and_scrape(page, website_data, ["Products"], "Products", self._scrape_products_page, debug)
 
-                await browser.close()
         except Exception as e:
             logger.error(f"Error during website scraping for {domain}: {e}")
             # Still save what we have, even if there was an error
             cache.add_or_update(website_data)
             cache.save()
             return None
+        finally:
+            await page.close()
 
         # Add to cache and save
         cache.add_or_update(website_data)
@@ -259,14 +256,14 @@ class WebsiteScraper:
 
         # Extract Phone Number
         if not website_data.phone:
-            phone_match = re.search(r"\b(\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4})\b", soup.get_text())
+            phone_match = re.search(r"\b(\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4})\b", soup.get_text(separator=' '))
             if phone_match:
                 website_data.phone = phone_match.group(0)
                 logger.info(f"Found phone number: {website_data.phone}")
 
         # Extract Email
         if not website_data.email:
-            email_match = re.search(r"\b[a-zA-Z0-9._%+-]+ ?@ ?[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}\b", soup.get_text())
+            email_match = re.search(r"\b[a-zA-Z0-9._%+-]+ ?@ ?[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}\b", soup.get_text(separator=' '))
             if email_match:
                 website_data.email = email_match.group(0).replace(" ", "")
                 logger.info(f"Found email: {website_data.email}")
@@ -305,7 +302,7 @@ class WebsiteScraper:
         # Extract Address
         if not website_data.address:
             # A simple regex for US addresses
-            address_match = re.search(r"\d+\s+([a-zA-Z]+\s+)+[a-zA-Z]+,?\s+[A-Z]{2}\s+\d{5}", soup.get_text())
+            address_match = re.search(r"\d+\s+([a-zA-Z]+\s+)+[a-zA-Z]+,?\s+[A-Z]{2}\s+\d{5}", soup.get_text(separator=' '))
             if address_match:
                 website_data.address = address_match.group(0)
                 logger.info(f"Found address: {website_data.address}")
@@ -340,7 +337,7 @@ class WebsiteScraper:
         soup = BeautifulSoup(html_content, "html.parser")
 
         # Example: find email addresses with roles
-        email_matches = re.findall(r"(\w+\s*:\s*[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})", soup.get_text())
+        email_matches = re.findall(r"(\w+\s*:\s*[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})", soup.get_text(separator=' '))
         for match in email_matches:
             website_data.personnel.append(match)
         return website_data

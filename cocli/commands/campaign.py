@@ -9,6 +9,7 @@ import logging
 
 from ..scrapers.google_maps import scrape_google_maps
 from ..core.config import get_scraped_data_dir, get_companies_dir, get_cocli_base_dir
+from ..core.geocoding import get_coordinates_from_city_state
 from ..models.google_maps import GoogleMapsData
 from ..models.company import Company
 from ..core.utils import slugify
@@ -244,7 +245,11 @@ def achieve_goal(
                     if emails_found_count >= goal_emails:
                         break
 
-                    console.print(f"[grey66][{datetime.now().strftime('%H:%M:%S')}][/] [bold blue]-- Starting location: {location} --[/bold blue]")
+                    coords = get_coordinates_from_city_state(location)
+                    if coords:
+                        console.print(f"[grey66][{datetime.now().strftime('%H:%M:%S')}][/] [bold blue]-- Starting location: {location} ({coords['latitude']:.4f}, {coords['longitude']:.4f}) --[/bold blue]")
+                    else:
+                        console.print(f"[grey66][{datetime.now().strftime('%H:%M:%S')}][/] [bold blue]-- Starting location: {location} (Coordinates not found) --[/bold blue]")
 
                     # 1. Scrape (Generator)
                     prospect_generator = scrape_google_maps(
@@ -274,17 +279,16 @@ def achieve_goal(
                             company=company,
                             force=force,
                             ttl_days=ttl_days,
-                            headed=headed,
-                            devtools=devtools,
                             debug=debug
                         )
 
                         if website_data and website_data.email:
                             console.print(f"[grey66][{datetime.now().strftime('%H:%M:%S')}][/] [green]   -> Found email: {website_data.email}[/green]")
                             # Save enrichment data and compile
-                            enrichment_dir = company.get_directory() / "enrichments"
+                            company_dir = get_companies_dir() / company.slug
+                            enrichment_dir = company_dir / "enrichments"
                             website_md_path = enrichment_dir / "website.md"
-                            website_data.associated_company_folder = company.get_directory().name
+                            website_data.associated_company_folder = company_dir.name
                             enrichment_dir.mkdir(parents=True, exist_ok=True)
                             with open(website_md_path, "w") as f:
                                 f.write("---")
@@ -292,7 +296,7 @@ def achieve_goal(
                                 f.write("---")
                             
                             compiler = WebsiteCompiler()
-                            compiler.compile(company.get_directory())
+                            compiler.compile(company_dir)
 
                             emails_found_count += 1
                             console.print(f"[grey66][{datetime.now().strftime('%H:%M:%S')}][/] [bold green]Progress: {emails_found_count} / {goal_emails} emails found.[/bold green]")
