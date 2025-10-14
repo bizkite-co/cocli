@@ -27,6 +27,10 @@ from ..core.scrape_index import ScrapeIndex
 
 logger = logging.getLogger(__name__)
 app = typer.Typer(no_args_is_help=True)
+
+from . import prospects
+app.add_typer(prospects.app, name="prospects")
+
 console = Console()
 
 @app.command()

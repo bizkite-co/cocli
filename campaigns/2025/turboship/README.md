@@ -17,3 +17,11 @@ This campaign is focused on ingesting and enriching customer data from Turboship
     *   Website scraping to identify the services they offer.
 3.  **Analyze Customer Data**: Analyze the enriched data to identify patterns and insights.
 4.  **Generate Leads**: Use the analysis to generate a list of 100 new potential customers.
+
+## Observations
+
+"in Omaha, they're building the Project Health Tower, which should open in 2030. In Orlando, there's a 14-story tower coming next year, and in San Marcos, California, Scripps Health is opening a new campus starting 2025. You can focus on those areas to find flooring installers nearby!"
+
+Keep track of hospital construction using sources like the American Society for Health Care Engineering, which shares annual surveys, and platforms like Definitive Healthcare’s HospitalView, which offers detailed data on new and ongoing healthcare projects.
+
+HospitalView from Definitive Healthcare does include details on construction phases, and it can show whether flooring is needed in those projects.

@@ -66,6 +66,11 @@ def get_scraped_data_dir() -> Path:
     scraped_data_dir.mkdir(parents=True, exist_ok=True)
     return scraped_data_dir
 
+def get_campaigns_dir() -> Path:
+    campaigns_dir = get_cocli_base_dir() / "campaigns"
+    campaigns_dir.mkdir(parents=True, exist_ok=True)
+    return campaigns_dir
+
 
 class ScraperSettings(BaseSettings):
     google_maps_delay_seconds: float = 1.0
