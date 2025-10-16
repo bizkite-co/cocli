@@ -5,3 +5,5 @@ __pycache__
 cocli.egg-info/
 .gemini/
 cocli_data
+.gz
+.tar
