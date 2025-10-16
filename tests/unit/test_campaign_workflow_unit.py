@@ -7,9 +7,9 @@ from cocli.commands.campaign import next_step as campaign_next_step
 
 class TestCampaignWorkflow:
     @pytest.fixture
-    def workflow(self):
-        with patch('cocli.core.campaign_workflow.CampaignWorkflow._get_campaign_config_path') as mock_get_config_path:
-            mock_get_config_path.return_value = Path("campaigns/test_campaign/config.toml")
+    def workflow(self, tmp_path):
+        with patch('cocli.core.campaign_workflow.get_campaign_dir') as mock_get_campaign_dir:
+            mock_get_campaign_dir.return_value = tmp_path / "campaigns" / "test_campaign"
             with patch.object(Path, 'exists', return_value=True):
                 with patch('toml.load', return_value={"campaign": {"current_state": "idle"}}):
                     with patch('toml.dump'):
@@ -29,19 +29,21 @@ class TestCampaignWorkflow:
 
 class TestCampaignCommands:
     @pytest.fixture
-    def mock_campaign_workflow(self):
-        with patch('cocli.commands.campaign.CampaignWorkflow') as MockCampaignWorkflow:
-            mock_instance = MagicMock(spec=CampaignWorkflow)
-            mock_instance.state = "prospecting_enriching" # Initial state for the mock
+    def mock_campaign_workflow(self, tmp_path):
+        with patch('cocli.commands.campaign.get_campaign_dir') as mock_get_campaign_dir:
+            mock_get_campaign_dir.return_value = tmp_path / "campaigns" / "test_campaign"
+            with patch('cocli.commands.campaign.CampaignWorkflow') as MockCampaignWorkflow:
+                mock_instance = MagicMock(spec=CampaignWorkflow)
+                mock_instance.state = "prospecting_enriching" # Initial state for the mock
 
-            # Explicitly add the finish_enriching method to the mock
-            mock_instance.finish_enriching = MagicMock()
+                # Explicitly add the finish_enriching method to the mock
+                mock_instance.finish_enriching = MagicMock()
 
-            def mock_finish_enriching():
-                mock_instance.state = "outreach" # Simulate state change
-            mock_instance.finish_enriching.side_effect = mock_finish_enriching
-            MockCampaignWorkflow.return_value = mock_instance
-            yield mock_instance
+                def mock_finish_enriching():
+                    mock_instance.state = "outreach" # Simulate state change
+                mock_instance.finish_enriching.side_effect = mock_finish_enriching
+                MockCampaignWorkflow.return_value = mock_instance
+                yield mock_instance
 
     def test_next_step_calls_finish_enriching(self, mock_campaign_workflow):
         campaign_next_step(campaign_name="test_campaign")

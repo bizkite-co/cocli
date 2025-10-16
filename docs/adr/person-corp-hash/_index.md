@@ -82,9 +82,9 @@ The current `_get_all_searchable_items()` function in `cocli/core/utils.py` iter
 
 ### B. Context Setting Mechanism
 
-A new CLI command, e.g., `cocli context`, would manage the active context.
+A new CLI command, e.g., `cocli campaign set`, would manage the active context.
 
-*   **`cocli context set <path>`:** Sets the current working context to a specific path within the `companies/` or `people/` directories. This path could be relative to `cocli_data/`. The context would be stored in a configuration file (e.g., `cocli_config.toml` or a dedicated `context.toml`).
+*   **`cocli campaign set <campaign_name>`:** Sets the current working context to a specific campaign. The context would be stored in a configuration file (e.g., `cocli_config.toml` or a dedicated `context.toml`).
 *   **`cocli context clear`:** Clears the active context, reverting to searching all entities.
 *   **`cocli context show`:** Displays the current active context.
 

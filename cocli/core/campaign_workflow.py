@@ -4,7 +4,7 @@ from typing import List, Optional, Dict, Any
 import toml
 import typer
 
-from ..core.config import get_campaign, set_campaign, get_config_path, save_config, load_config
+from ..core.config import get_campaign, set_campaign, get_config_path, save_config, load_config, get_campaign_dir
 from rich.console import Console
 
 console = Console()
@@ -23,11 +23,11 @@ class CampaignWorkflow:
     ]
 
     def _get_campaign_config_path(self, campaign_name: str) -> Path:
-        campaign_dirs = list(Path("campaigns").glob(f"**/{campaign_name}"))
-        if not campaign_dirs:
+        campaign_dir = get_campaign_dir(campaign_name)
+        if not campaign_dir:
             console.print(f"[bold red]Campaign '{campaign_name}' not found.[/bold red]")
             raise typer.Exit(code=1)
-        return campaign_dirs[0] / "config.toml"
+        return campaign_dir / "config.toml"
 
     def _load_current_state(self) -> str:
         if self.config_path.exists():

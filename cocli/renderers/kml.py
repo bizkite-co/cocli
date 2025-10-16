@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Optional
 import logging
 
-from ..core.config import get_companies_dir, get_people_dir
+from ..core.config import get_companies_dir, get_people_dir, get_campaign_dir
 from ..core.geocoding import get_coordinates_from_zip, get_coordinates_from_city_state, get_coordinates_from_address
 from ..models.company import Company
 from ..models.person import Person
@@ -20,11 +20,10 @@ def render_kml_for_campaign(campaign_name: str):
     Generates a KML file for a specific campaign.
     """
     
-    campaign_dirs = list(Path("campaigns").glob(f"**/{campaign_name}"))
-    if not campaign_dirs:
+    campaign_dir = get_campaign_dir(campaign_name)
+    if not campaign_dir:
         logger.error(f"Campaign '{campaign_name}' not found.")
         return
-    campaign_dir = campaign_dirs[0]
     config_path = campaign_dir / "config.toml"
     
     if not config_path.exists():

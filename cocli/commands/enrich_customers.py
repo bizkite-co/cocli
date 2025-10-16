@@ -6,7 +6,7 @@ import logging
 
 logger = logging.getLogger(__name__)
 
-from ..core.config import get_companies_dir, get_people_dir
+from ..core.config import get_companies_dir, get_people_dir, get_campaign_dir
 from ..scrapers.google_maps_finder import find_business_on_google_maps
 from ..models.person import Person
 from ..core.utils import slugify
@@ -21,11 +21,10 @@ def enrich_customers(
     Enrich existing customers for a campaign with Google Maps data.
     """
     
-    campaign_dirs = list(Path("campaigns").glob(f"**/{campaign_name}"))
-    if not campaign_dirs:
+    campaign_dir = get_campaign_dir(campaign_name)
+    if not campaign_dir:
         logger.error(f"Campaign '{campaign_name}' not found.")
         raise typer.Exit(code=1)
-    campaign_dir = campaign_dirs[0]
     config_path = campaign_dir / "config.toml"
     
     if not config_path.exists():

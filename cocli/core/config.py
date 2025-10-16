@@ -72,6 +72,17 @@ def get_campaigns_dir() -> Path:
     return campaigns_dir
 
 
+def get_campaign_dir(campaign_name: str) -> Optional[Path]:
+    """
+    Returns the directory for a specific campaign.
+    """
+    campaigns_dir = get_campaigns_dir()
+    campaign_dir = campaigns_dir / campaign_name
+    if campaign_dir.exists() and campaign_dir.is_dir():
+        return campaign_dir
+    return None
+
+
 class ScraperSettings(BaseSettings):
     google_maps_delay_seconds: float = 1.0
     google_maps_max_retries: int = 3

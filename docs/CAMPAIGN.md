@@ -4,7 +4,7 @@ A Campaign is a new primitive in `cocli` designed to manage marketing and data e
 
 ## Campaign Structure
 
-A campaign is represented by a directory within the `campaigns` directory. The directory name is the slug of the campaign name. For example, a campaign named "Turboship Q3 2025" would be located at `campaigns/2025/turboship-q3-2025`.
+A campaign is represented by a directory within the `~/.local/share/cocli/campaigns` directory. The directory name is the slug of the campaign name. For example, a campaign named "Turboship Q3 2025" would be located at `~/.local/share/cocli/campaigns/turboship-q3-2025`.
 
 Each campaign directory will contain:
 

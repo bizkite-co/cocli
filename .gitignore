@@ -7,3 +7,4 @@ cocli.egg-info/
 cocli_data
 .gz
 .tar
+dist/
