@@ -57,11 +57,11 @@ def _interactive_view_company(company_name: str):
     logger = logging.getLogger(__name__)
     logger.debug(f"Starting _interactive_view_company for {company_name}")
     companies_dir = get_companies_dir()
-    logging.info(f"companies_dir: {companies_dir}")
+
     company_slug = slugify(company_name)
-    logging.info(f"company_slug: {company_slug}")
+    logging.debug(f"company_slug: {company_slug}")
     selected_company_dir = companies_dir / company_slug
-    logging.info(f"selected_company_dir: {selected_company_dir}")
+    logging.debug(f"selected_company_dir: {selected_company_dir}")
 
     if not selected_company_dir.exists():
         company_names = [d.name for d in companies_dir.iterdir() if d.is_dir()]

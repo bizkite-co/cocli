@@ -7,14 +7,14 @@ from datetime import datetime
 
 from .config import get_cocli_base_dir
 
-def setup_logging(level=logging.DEBUG):
+def setup_logging(level=logging.INFO):
     """
     Sets up basic application-wide logging to the console.
     """
     logging.basicConfig(
         level=level,
         format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-        stream=sys.stdout, # Default to stdout
+        stream=sys.stderr, # Default to stderr
     )
     logging.getLogger().setLevel(level)
 
@@ -46,7 +46,7 @@ def setup_file_logging(command_name: str, console_level=logging.INFO, file_level
 
     if not disable_console:
         # Create console handler for less verbose output
-        console_handler = logging.StreamHandler(sys.stdout)
+        console_handler = logging.StreamHandler(sys.stderr)
         console_handler.setLevel(console_level)
         console_formatter = logging.Formatter('[%(asctime)s] %(message)s', datefmt='%H:%M:%S') # Keep console output clean
         console_handler.setFormatter(console_formatter)

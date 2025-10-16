@@ -84,7 +84,7 @@ def fz(filter_override: Optional[str] = typer.Option(None, "--filter", "-f", hel
                 entity_type_str = match.group(1)
                 entity_name_or_id = match.group(2).strip()
 
-                console.print(f"Opening {entity_type_str}: {entity_name_or_id}")
+                # console.print(f"Opening {entity_type_str}: {entity_name_or_id}")
                 if entity_type_str == "COMPANY":
                     view_company(company_name=entity_name_or_id)
                 elif entity_type_str == "PERSON":
