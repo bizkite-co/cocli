@@ -25,8 +25,30 @@ from ..core.logging_config import setup_file_logging
 from ..compilers.website_compiler import WebsiteCompiler
 from ..core.scrape_index import ScrapeIndex
 
-logger = logging.getLogger(__name__)
-app = typer.Typer(no_args_is_help=True)
+from typing_extensions import Annotated
+from cocli.models.campaign import Campaign
+from cocli.core.config import get_cocli_base_dir
+
+app = typer.Typer()
+
+@app.command()
+def add(
+    name: Annotated[str, typer.Argument(help="The name of the campaign.")],
+    company: Annotated[str, typer.Argument(help="The name of the company.")],
+):
+    """
+    Adds a new campaign.
+    """
+    data_home = get_cocli_base_dir()
+    try:
+        Campaign.create(name, company, data_home)
+        print(f"Campaign '{name}' created successfully.")
+    except FileNotFoundError as e:
+        print(f"Error: {e}")
+        raise typer.Exit(code=1)
+    except Exception as e:
+        print(f"An unexpected error occurred: {e}")
+        raise typer.Exit(code=1)
 
 from . import prospects
 app.add_typer(prospects.app, name="prospects")
