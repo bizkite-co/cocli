@@ -37,6 +37,8 @@ async def test_scrape_google_maps_returns_data():
         # Fix: mock_page.locator should be a synchronous method (MagicMock)
         mock_scrollable_div = MagicMock()
         mock_page.locator = MagicMock(return_value=mock_scrollable_div)
+        mock_page.get_by_role = MagicMock()
+        mock_page.get_by_role.return_value.is_visible = AsyncMock(return_value=False)
 
         mock_listing_div = MagicMock()
         mock_listing_div.inner_html = AsyncMock(return_value=SAMPLE_ITEM_HTML)
@@ -45,7 +47,7 @@ async def test_scrape_google_maps_returns_data():
         all_listings_mock = AsyncMock(return_value=[mock_listing_div])
         mock_scrollable_div.locator.return_value.all = all_listings_mock
 
-        mock_scrollable_div.evaluate.side_effect = [100, 100]
+        mock_scrollable_div.evaluate = AsyncMock(side_effect=[100, 100])
 
         zip_code = "90210"
         search_string = "photography studio"
