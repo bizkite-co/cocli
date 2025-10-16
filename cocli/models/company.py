@@ -1,7 +1,7 @@
-import logging
 import re
 from pathlib import Path
 from typing import Optional, List, Any, Iterator
+import logging
 
 import yaml
 from pydantic import BaseModel, Field, BeforeValidator, ValidationError, model_validator
@@ -98,7 +98,7 @@ class Company(BaseModel):
             tags_path = company_dir / "tags.lst"
 
             if not index_path.exists():
-
+                logger.warning(f"_index.md not found in {company_dir}")
                 return None
 
             content = index_path.read_text()

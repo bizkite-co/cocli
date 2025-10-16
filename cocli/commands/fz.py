@@ -4,8 +4,11 @@ import sys
 import re
 import shutil
 from typing import Optional
+import logging
 
 from rich.console import Console
+
+logger = logging.getLogger(__name__)
 from typer.models import OptionInfo
 
 from ..core.cache import get_cached_items
@@ -42,14 +45,26 @@ def fz(filter_override: Optional[str] = typer.Option(None, "--filter", "-f", hel
     """
     context_filter = get_context()
     filter_str = filter_override or context_filter
+    logger.debug(f"Context filter: '{context_filter}', Filter override: '{filter_override}', Final filter: '{filter_str}'")
+
+    if filter_str == "None":
+        logger.debug("Filter string is 'None', setting to None.")
+        filter_str = None
+
+    if filter_str == "None":
+        logger.debug("Filter string is 'None', setting to None.")
+        filter_str = None
 
     campaign: Optional[str] = None
     campaign = get_campaign()
+    logger.debug(f"Current campaign context: {campaign}")
+
     all_searchable_items = get_cached_items(filter_str=filter_str, campaign=campaign)
     if campaign:
         exclusion_manager = ExclusionManager(campaign=campaign)
         all_searchable_items = [item for item in all_searchable_items if not (item.get("type") == "company" and item.get("domain") is not None and exclusion_manager.is_excluded(str(item.get("domain"))))]
 
+    logger.debug(f"Found {len(all_searchable_items)} searchable items.")
     if not all_searchable_items:
         if filter_str:
             console.print(f"No companies or people found with filter '{filter_str}'.")

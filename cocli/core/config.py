@@ -14,15 +14,27 @@ logger = logging.getLogger(__name__)
 
 def get_cocli_base_dir() -> Path:
     """
-    Determines the root data directory for cocli, respecting environment variables.
-    Order of precedence: COCLI_DATA_HOME > XDG_DATA_HOME > default.
+    Determines the root data directory for cocli.
+    Order of precedence: COCLI_DATA_HOME (env var) > data.home (config file) > XDG_DATA_HOME (env var) > default.
     """
+    # 1. Environment variable
     if "COCLI_DATA_HOME" in os.environ:
         cocli_base_dir = Path(os.environ["COCLI_DATA_HOME"]).expanduser()
-    elif "XDG_DATA_HOME" in os.environ:
+        cocli_base_dir.mkdir(parents=True, exist_ok=True)
+        return cocli_base_dir
+
+    # 2. Config file
+    config = load_config()
+    if "data" in config and "home" in config["data"]:
+        cocli_base_dir = Path(config["data"]["home"]).expanduser()
+        cocli_base_dir.mkdir(parents=True, exist_ok=True)
+        return cocli_base_dir
+
+    # 3. XDG_DATA_HOME
+    if "XDG_DATA_HOME" in os.environ:
         cocli_base_dir = Path(os.environ["XDG_DATA_HOME"]).expanduser() / "cocli"
     else:
-        # Default location based on OS
+        # 4. Default location based on OS
         if platform.system() == "Windows":
             cocli_base_dir = Path(os.environ.get("LOCALAPPDATA", Path.home() / "AppData" / "Local")) / "cocli"
         elif platform.system() == "Darwin": # macOS

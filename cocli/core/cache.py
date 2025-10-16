@@ -3,6 +3,7 @@ import json
 import datetime
 from pathlib import Path
 from typing import List, Dict, Any, Optional
+import logging
 
 from .config import get_cocli_base_dir, get_companies_dir, get_people_dir
 from ..models.company import Company
@@ -11,8 +12,10 @@ from .utils import _format_entity_for_fzf
 
 CACHE_FILE_NAME = "fz_cache.json"
 
-def get_cache_path() -> Path:
+def get_cache_path(campaign: Optional[str] = None) -> Path:
     """Returns the path to the fz cache file."""
+    if campaign:
+        return get_cocli_base_dir() / f"fz_cache_{campaign}.json"
     return get_cocli_base_dir() / CACHE_FILE_NAME
 
 def _get_most_recent_mtime(directory: Path) -> Optional[float]:
@@ -32,9 +35,9 @@ def _get_most_recent_mtime(directory: Path) -> Optional[float]:
                 pass
     return max_mtime
 
-def is_cache_valid() -> bool:
+def is_cache_valid(campaign: Optional[str] = None) -> bool:
     """Checks if the cache is valid by comparing modification times."""
-    cache_path = get_cache_path()
+    cache_path = get_cache_path(campaign=campaign)
     if not cache_path.exists():
         return False
 
@@ -53,9 +56,9 @@ def is_cache_valid() -> bool:
 
     return True
 
-def read_cache() -> List[Dict[str, Any]]:
+def read_cache(campaign: Optional[str] = None) -> List[Dict[str, Any]]:
     """Reads the cache file and returns its items."""
-    cache_path = get_cache_path()
+    cache_path = get_cache_path(campaign=campaign)
     if not cache_path.exists():
         return []
     with open(cache_path, 'r') as f:
@@ -65,23 +68,30 @@ def read_cache() -> List[Dict[str, Any]]:
         except json.JSONDecodeError:
             return []
 
-def write_cache(items: List[Dict[str, Any]]):
+def write_cache(items: List[Dict[str, Any]], campaign: Optional[str] = None):
     """Writes items to the cache file."""
-    cache_path = get_cache_path()
+    cache_path = get_cache_path(campaign=campaign)
     with open(cache_path, 'w') as f:
-        json.dump({"metadata": {"created_at": datetime.datetime.utcnow().isoformat()}, "items": items}, f)
+        json.dump({"metadata": {"created_at": datetime.datetime.now(datetime.UTC).isoformat()}, "items": items}, f)
 
-def build_cache() -> List[Dict[str, Any]]:
+def build_cache(campaign: Optional[str] = None) -> List[Dict[str, Any]]:
     """Builds the cache from source files."""
+    logger = logging.getLogger(__name__)
+    logger.info("Building fz cache...")
     all_items = []
     companies_dir = get_companies_dir()
     people_dir = get_people_dir()
 
+    logger.debug(f"Searching for companies in: {companies_dir}")
     if companies_dir.exists():
         for company_dir in companies_dir.iterdir():
+            logger.debug(f"Processing company directory: {company_dir}")
             if company_dir.is_dir():
                 company = Company.from_directory(company_dir)
                 if company:
+                    if campaign and campaign not in company.tags:
+                        continue
+                    logger.debug(f"Successfully loaded company: {company.name}")
                     all_items.append({
                         "type": "company",
                         "name": company.name,
@@ -90,12 +100,17 @@ def build_cache() -> List[Dict[str, Any]]:
                         "domain": company.domain,
                         "display": _format_entity_for_fzf("company", company)
                     })
+                else:
+                    logger.warning(f"Failed to load company from directory: {company_dir}")
 
+    logger.debug(f"Searching for people in: {people_dir}")
     if people_dir.exists():
         for person_file in people_dir.iterdir():
             if person_file.is_file() and person_file.suffix == ".md":
                 person = Person.from_file(person_file)
                 if person:
+                    if campaign and campaign not in person.tags:
+                        continue
                     all_items.append({
                         "type": "person",
                         "name": person.name,
@@ -104,7 +119,8 @@ def build_cache() -> List[Dict[str, Any]]:
                         "display": _format_entity_for_fzf("person", person)
                     })
     
-    write_cache(all_items)
+    logger.info(f"Cache build complete. Found {len(all_items)} items.")
+    write_cache(all_items, campaign=campaign)
     return all_items
 
 def get_cached_items(filter_str: Optional[str] = None, campaign: Optional[str] = None) -> List[Dict[str, Any]]:
@@ -112,13 +128,10 @@ def get_cached_items(filter_str: Optional[str] = None, campaign: Optional[str] =
     Gets items from cache. Rebuilds cache if invalid.
     Filters by tag or other conditions if a filter is provided.
     """
-    if not is_cache_valid():
-        items = build_cache()
+    if not is_cache_valid(campaign=campaign):
+        items = build_cache(campaign=campaign)
     else:
-        items = read_cache()
-
-    if campaign:
-        items = [item for item in items if campaign in item.get("tags", [])]
+        items = read_cache(campaign=campaign)
 
     if filter_str:
         if filter_str.startswith("tag:"):
