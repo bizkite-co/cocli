@@ -39,7 +39,10 @@ def run_fzf(fzf_input: str) -> str:
 
 
 @app.command()
-def fz(filter_override: Optional[str] = typer.Option(None, "--filter", "-f", help="Filter items by a specific filter (e.g., 'tag:prospect', 'missing:email'). Overrides current context.")):
+def fz(
+    filter_override: Optional[str] = typer.Option(None, "--filter", "-f", help="Filter items by a specific filter (e.g., 'tag:prospect', 'missing:email'). Overrides current context."),
+    force_rebuild_cache: bool = typer.Option(False, "--force-rebuild-cache", help="Force a rebuild of the fz cache.")
+):
     """
     Fuzzy search for companies and people using fzf and open the selection.
     """
@@ -59,7 +62,7 @@ def fz(filter_override: Optional[str] = typer.Option(None, "--filter", "-f", hel
     campaign = get_campaign()
     logger.debug(f"Current campaign context: {campaign}")
 
-    all_searchable_items = get_cached_items(filter_str=filter_str, campaign=campaign)
+    all_searchable_items = get_cached_items(filter_str=filter_str, campaign=campaign, force_rebuild=force_rebuild_cache)
     if campaign:
         exclusion_manager = ExclusionManager(campaign=campaign)
         all_searchable_items = [item for item in all_searchable_items if not (item.get("type") == "company" and item.get("domain") is not None and exclusion_manager.is_excluded(str(item.get("domain"))))]
@@ -76,25 +79,28 @@ def fz(filter_override: Optional[str] = typer.Option(None, "--filter", "-f", hel
     fzf_input = "\n".join(fzf_input_lines)
 
     try:
+        console.clear()
         selected_item = run_fzf(fzf_input)
 
         if selected_item:
-            match = re.match(r"^(COMPANY|PERSON):([^:(]+)(?:\s*\(.*)?(?:[:](.*))?$", selected_item)
+            match = re.match(r"^(COMPANY|PERSON):(?P<name>.+?)\s*--\s*(?P<slug>[^)]+)$", selected_item)
             if match:
                 entity_type_str = match.group(1)
-                entity_name_or_id = match.group(2).strip()
+                entity_name_for_display = match.group('name').strip()
+                entity_slug = match.group('slug').strip()
 
-                # console.print(f"Opening {entity_type_str}: {entity_name_or_id}")
+                console.print(f"Opening {entity_type_str}: {entity_name_for_display} (Slug: {entity_slug})")
                 if entity_type_str == "COMPANY":
-                    view_company(company_name=entity_name_or_id)
+                    view_company(company_slug=entity_slug)
                 elif entity_type_str == "PERSON":
                     console.print(f"--- Person Details ---")
-                    selected_person_data = next((p for p in all_searchable_items if p["type"] == "person" and p["name"] == entity_name_or_id), None)
-                    if selected_person_data:
-                        console.print(f"Name: {selected_person_data['name']}")
-                        console.print(f"Company: {selected_person_data.get('company_name', 'N/A')}")
+                    # For person, we still need to find the original item to get company_name
+                    selected_person_item = next((item for item in all_searchable_items if item["display"] == selected_item), None)
+                    if selected_person_item:
+                        console.print(f"Name: {selected_person_item['name']}")
+                        console.print(f"Company: {selected_person_item.get('company_name', 'N/A')}")
                     else:
-                        console.print(f"Could not retrieve details for {entity_name_or_id}.")
+                        console.print(f"Could not retrieve details for {entity_name_for_display}.")
             else:
                 console.print(f"Could not parse selection: '{selected_item}'")
         else:

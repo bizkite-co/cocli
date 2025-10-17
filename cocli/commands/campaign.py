@@ -6,6 +6,8 @@ from pathlib import Path
 from typing import List, Dict, Optional
 from datetime import datetime
 import logging
+
+logger = logging.getLogger(__name__)
 import httpx
 
 from ..scrapers.google_maps import scrape_google_maps

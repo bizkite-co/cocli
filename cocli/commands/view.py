@@ -46,36 +46,23 @@ def _load_frontmatter(index_path: Path) -> Dict[str, Any]:
 
 @app.command()
 def view_company(
-    company_name: str = typer.Argument(..., help="Name of the company to view.")
+    company_slug: str = typer.Argument(..., help="Slug of the company to view.")
 ):
     """
     View details of a specific company.
     """
-    _interactive_view_company(company_name)
+    _interactive_view_company(company_slug)
 
-def _interactive_view_company(company_name: str):
+def _interactive_view_company(company_slug: str):
     logger = logging.getLogger(__name__)
-    logger.debug(f"Starting _interactive_view_company for {company_name}")
+    logger.debug(f"Starting _interactive_view_company for slug: {company_slug}")
     companies_dir = get_companies_dir()
 
-    company_slug = slugify(company_name)
-    logging.debug(f"company_slug: {company_slug}")
     selected_company_dir = companies_dir / company_slug
-    logging.debug(f"selected_company_dir: {selected_company_dir}")
 
     if not selected_company_dir.exists():
-        company_names = [d.name for d in companies_dir.iterdir() if d.is_dir()]
-        matches = process.extractOne(company_name, company_names)
-        if matches and matches[1] >= 80:
-            if typer.confirm(f"Company '{company_name}' not found. Do you want to view '{matches[0]}' instead?"):
-                selected_company_dir = companies_dir / slugify(matches[0])
-                company_name = matches[0] # Update company_name to the matched one
-            else:
-                logger.info("Operation cancelled.")
-                raise typer.Exit()
-        else:
-            logger.error(f"Company '{company_name}' not found.")
-            raise typer.Exit(code=1)
+        logger.error(f"Company directory for slug '{company_slug}' not found.")
+        raise typer.Exit(code=1)
 
     logger.debug("Calling Company.from_directory")
     company = Company.from_directory(selected_company_dir)

@@ -89,7 +89,9 @@ def build_cache(campaign: Optional[str] = None) -> List[Dict[str, Any]]:
             if company_dir.is_dir():
                 company = Company.from_directory(company_dir)
                 if company:
+                    logger.debug(f"Loaded company: {company.name} with tags: {company.tags}")
                     if campaign and campaign not in company.tags:
+                        logger.debug(f"Company {company.name} excluded by campaign filter: {campaign} not in {company.tags}")
                         continue
                     logger.debug(f"Successfully loaded company: {company.name}")
                     all_items.append({
@@ -98,6 +100,7 @@ def build_cache(campaign: Optional[str] = None) -> List[Dict[str, Any]]:
                         "tags": company.tags,
                         "email": company.email,
                         "domain": company.domain,
+                        "slug": company.slug,
                         "display": _format_entity_for_fzf("company", company)
                     })
                 else:
@@ -123,12 +126,12 @@ def build_cache(campaign: Optional[str] = None) -> List[Dict[str, Any]]:
     write_cache(all_items, campaign=campaign)
     return all_items
 
-def get_cached_items(filter_str: Optional[str] = None, campaign: Optional[str] = None) -> List[Dict[str, Any]]:
+def get_cached_items(filter_str: Optional[str] = None, campaign: Optional[str] = None, force_rebuild: bool = False) -> List[Dict[str, Any]]:
     """
     Gets items from cache. Rebuilds cache if invalid.
     Filters by tag or other conditions if a filter is provided.
     """
-    if not is_cache_valid(campaign=campaign):
+    if force_rebuild or not is_cache_valid(campaign=campaign):
         items = build_cache(campaign=campaign)
     else:
         items = read_cache(campaign=campaign)

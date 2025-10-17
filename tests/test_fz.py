@@ -39,10 +39,20 @@ tags: ["test"]
 This is a test company.
 ''')
 
+    tags_path = company_dir / "tags.lst"
+    tags_path.write_text("test\n")
+
     # Patch the config functions to use the temporary directory
     mocker.patch('cocli.core.cache.get_cocli_base_dir', return_value=cocli_base_dir)
     mocker.patch('cocli.core.cache.get_companies_dir', return_value=companies_dir)
     mocker.patch('cocli.core.cache.get_people_dir', return_value=people_dir)
+
+    # Create a temporary config file for the test
+    test_config_dir = cocli_base_dir / "config"
+    test_config_dir.mkdir()
+    test_config_path = test_config_dir / "cocli_config.toml"
+    test_config_path.write_text('[campaign]\nname = "test"\n')
+    mocker.patch('cocli.core.config.get_config_path', return_value=test_config_path)
 
     return company_name, cocli_base_dir
 
@@ -53,13 +63,14 @@ def test_fz_finds_and_views_company(setup_test_environment):
     - Ensures fzf is called with the correct input.
     - Ensures the selected company is viewed.
     """
-    company_name, _ = setup_test_environment
+    company_name, cocli_base_dir = setup_test_environment
+    company_slug = slugify(company_name)
 
     with patch('cocli.commands.fz.run_fzf') as mock_run_fzf, \
          patch('cocli.commands.fz.view_company') as mock_view_company:
 
         # Simulate fzf selecting the test company
-        mock_run_fzf.return_value = f'COMPANY: {company_name}'
+        mock_run_fzf.return_value = f'COMPANY:{company_name} -- {company_slug}'
 
         # Run the fz command
         result = runner.invoke(app, ["fz"])
@@ -73,8 +84,8 @@ def test_fz_finds_and_views_company(setup_test_environment):
         fzf_input = mock_run_fzf.call_args[0][0]
         assert company_name in fzf_input
 
-        # Verify that view_company was called with the correct company name
-        mock_view_company.assert_called_once_with(company_name=company_name)
+        # Verify that view_company was called with the correct company slug
+        mock_view_company.assert_called_once_with(company_slug=company_slug)
 
 def test_fz_with_none_filter_in_config(setup_test_environment, mocker):
     """
@@ -82,6 +93,7 @@ def test_fz_with_none_filter_in_config(setup_test_environment, mocker):
     It should treat it as if there is no filter.
     """
     company_name, _ = setup_test_environment
+    company_slug = slugify(company_name)
 
     # Mock get_context to return the problematic "None" string
     mocker.patch('cocli.commands.fz.get_context', return_value="None")
@@ -90,7 +102,7 @@ def test_fz_with_none_filter_in_config(setup_test_environment, mocker):
          patch('cocli.commands.fz.view_company') as mock_view_company:
 
         # Simulate fzf selecting the test company
-        mock_run_fzf.return_value = f'COMPANY: {company_name}'
+        mock_run_fzf.return_value = f'COMPANY:{company_name} -- {company_slug}'
 
         # Run the fz command
         result = runner.invoke(app, ["fz"])
@@ -105,4 +117,4 @@ def test_fz_with_none_filter_in_config(setup_test_environment, mocker):
         assert company_name in fzf_input
 
         # Verify that view_company was called
-        mock_view_company.assert_called_once_with(company_name=company_name)
+        mock_view_company.assert_called_once_with(company_slug=company_slug)
