@@ -31,7 +31,7 @@ from typing_extensions import Annotated
 from cocli.models.campaign import Campaign
 from cocli.core.config import get_cocli_base_dir
 
-app = typer.Typer()
+app = typer.Typer(no_args_is_help=True)
 
 @app.command()
 def add(
