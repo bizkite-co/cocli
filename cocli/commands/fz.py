@@ -83,24 +83,28 @@ def fz(
         selected_item = run_fzf(fzf_input)
 
         if selected_item:
-            match = re.match(r"^(COMPANY|PERSON):(?P<name>.+?)\s*--\s*(?P<slug>[^)]+)$", selected_item)
+            match = re.match(r"^(COMPANY|PERSON):(?P<name>.+?)$", selected_item)
             if match:
                 entity_type_str = match.group(1)
                 entity_name_for_display = match.group('name').strip()
-                entity_slug = match.group('slug').strip()
 
-                console.print(f"Opening {entity_type_str}: {entity_name_for_display} (Slug: {entity_slug})")
-                if entity_type_str == "COMPANY":
-                    view_company(company_slug=entity_slug)
-                elif entity_type_str == "PERSON":
-                    console.print(f"--- Person Details ---")
-                    # For person, we still need to find the original item to get company_name
-                    selected_person_item = next((item for item in all_searchable_items if item["display"] == selected_item), None)
-                    if selected_person_item:
-                        console.print(f"Name: {selected_person_item['name']}")
-                        console.print(f"Company: {selected_person_item.get('company_name', 'N/A')}")
-                    else:
-                        console.print(f"Could not retrieve details for {entity_name_for_display}.")
+                selected_entity_item = next((item for item in all_searchable_items if item["display"] == selected_item), None)
+                if selected_entity_item:
+                    entity_slug = selected_entity_item['slug']
+                    console.print(f"Opening {entity_type_str}: {entity_name_for_display} (Slug: {entity_slug})")
+                    if entity_type_str == "COMPANY":
+                        view_company(company_slug=entity_slug)
+                    elif entity_type_str == "PERSON":
+                        console.print(f"--- Person Details ---")
+                        # For person, we still need to find the original item to get company_name
+                        selected_person_item = next((item for item in all_searchable_items if item["display"] == selected_item), None)
+                        if selected_person_item:
+                            console.print(f"Name: {selected_person_item['name']}")
+                            console.print(f"Company: {selected_person_item.get('company_name', 'N/A')}")
+                        else:
+                            console.print(f"Could not retrieve details for {entity_name_for_display}.")
+                else:
+                    console.print(f"Could not find details for selected item: '{selected_item}'")
             else:
                 console.print(f"Could not parse selection: '{selected_item}'")
         else:

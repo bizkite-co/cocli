@@ -192,7 +192,7 @@ def _format_entity_for_fzf(entity_type: str, entity: Any) -> str:
             display_name += f" ({entity.average_rating:.1f} ★, {entity.reviews_count} reviews)"
         if entity.visits_per_day is not None:
             display_name += f" ({entity.visits_per_day} visits)"
-        return f"COMPANY:{entity.name} -- {entity.slug}"
+        return f"COMPANY:{display_name}"
     elif entity_type == "person":
         return f"PERSON:{entity.name}:{entity.company_name if entity.company_name else ''}"
     return ""
