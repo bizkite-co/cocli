@@ -122,5 +122,15 @@ docker-build: ## Build the docker image
 	@docker build -t enrichment-service .
 
 .PHONY: docker-run-enrichment
+
 docker-run-enrichment: ## Start docker enrichment service
+
 	@docker run -d -p 8000:8000 --name cocli-enrichment enrichment-service
+
+
+
+.PHONY: migrate-website-cache
+
+migrate-website-cache: install ## Migrate website cache to the new index
+
+	$(VENV_DIR)/bin/python scripts/migrate_website_cache.py

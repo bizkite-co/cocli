@@ -9,8 +9,8 @@ from ..core.config import get_companies_dir, get_people_dir
 from ..core.utils import slugify, create_company_files, create_person_files
 from ..models.person import Person
 from ..models.company import Company
-from ..models.website import Website
-from ..core.website_cache import WebsiteCache
+from ..models.website_domain_csv import WebsiteDomainCsv
+from ..core.website_domain_csv_manager import WebsiteDomainCsvManager
 
 logger = logging.getLogger(__name__)
 
@@ -22,7 +22,7 @@ def import_customers(
     """
     Imports customers and their addresses from CSV files, creating companies and people.
     """
-    website_cache = WebsiteCache()
+    website_csv_manager = WebsiteDomainCsvManager()
 
     # Load addresses into a dictionary for easy lookup
     addresses: Dict[str, Dict] = {}
@@ -71,7 +71,7 @@ def import_customers(
             company_name = ""
             website_url = ""
 
-            cached_website = website_cache.get_by_url(domain)
+            cached_website = website_csv_manager.get_by_domain(domain)
             is_email_provider = cached_website and cached_website.is_email_provider
 
             if not is_email_provider:
@@ -97,18 +97,17 @@ def import_customers(
                 person.company_name = company.name
 
                 if company.domain:
-                    website = website_cache.get_by_url(company.domain)
+                    website = website_csv_manager.get_by_domain(company.domain)
                     if not website:
-                        website = Website(url=company.domain)
+                        website = WebsiteDomainCsv(domain=company.domain)
                     for tag in tags:
                         if tag not in website.tags:
                             website.tags.append(tag)
-                    website_cache.add_or_update(website)
+                    website_csv_manager.add_or_update(website)
 
             people_dir = get_people_dir()
             person_dir = people_dir / slugify(person.name)
             create_person_files(person, person_dir)
 
             logger.info(f"Imported customer: {person.name}")
-    
-    website_cache.save()
+

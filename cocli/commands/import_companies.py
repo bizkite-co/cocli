@@ -9,8 +9,8 @@ logger = logging.getLogger(__name__)
 
 from cocli.core.utils import slugify, create_company_files
 from cocli.models.company import Company
-from cocli.models.website import Website
-from cocli.core.website_cache import WebsiteCache
+from cocli.models.website_domain_csv import WebsiteDomainCsv
+from cocli.core.website_domain_csv_manager import WebsiteDomainCsvManager
 from fuzzywuzzy import process # type: ignore
 from cocli.core.config import get_campaign, get_scraped_data_dir, get_companies_dir
 
@@ -23,7 +23,7 @@ def core_import_logic(
     match_threshold: int = 80,
 ):
     """Core logic for importing prospects from a CSV file."""
-    website_cache = WebsiteCache()
+    website_csv_manager = WebsiteDomainCsvManager()
 
     company_dirs = {d.name: d for d in companies_dir.iterdir() if d.is_dir()}
 
@@ -117,15 +117,15 @@ def core_import_logic(
                 company = Company(**company_data_from_csv)
                 create_company_files(company, company_dir)
 
-            # Add to website cache
+            # Add to website index
             if company and company.domain:
-                website = website_cache.get_by_url(company.domain)
+                website = website_csv_manager.get_by_domain(company.domain)
                 if not website:
-                    website = Website(url=company.domain)
+                    website = WebsiteDomainCsv(domain=company.domain)
                 for tag in tags:
                     if tag not in website.tags:
                         website.tags.append(tag)
-                website_cache.add_or_update(website)
+                website_csv_manager.add_or_update(website)
 
             # Create or update enrichment file
             enrichment_dir = company_dir / "enrichments"
@@ -136,12 +136,13 @@ def core_import_logic(
             enrichment_data['version'] = 1
 
             with open(google_maps_md_path, "w") as f_md:
-                f_md.write("---\\n")
+                f_md.write("---\
+")
                 yaml.dump(enrichment_data, f_md, sort_keys=False, default_flow_style=False, allow_unicode=True)
-                f_md.write("---\\n")
+                f_md.write("---\
+")
             logger.info(f"Created/Updated google-maps.md for {company_name}")
 
-    website_cache.save()
 
 @app.command(name="google-maps-cache-to-company-files")
 def google_maps_cache_to_company_files(

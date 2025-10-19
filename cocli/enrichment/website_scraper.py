@@ -11,7 +11,8 @@ from urllib.parse import urljoin
 from datetime import datetime, timedelta
 
 from ..models.website import Website
-from ..core.website_cache import WebsiteCache
+from ..core.website_domain_csv_manager import WebsiteDomainCsvManager
+from ..models.website_domain_csv import WebsiteDomainCsv
 
 logger = logging.getLogger(__name__)
 
@@ -31,17 +32,19 @@ class WebsiteScraper:
             logger.info("No domain provided. Skipping website scraping.")
             return None
 
-        cache = WebsiteCache()
+        index = WebsiteDomainCsvManager()
         fresh_delta = timedelta(days=ttl_days)
 
-        # Check cache first
-        cached_item = cache.get_by_url(domain)
-        if cached_item:
-            is_stale = (datetime.utcnow() - cached_item.updated_at) >= fresh_delta
-            is_old_version = (cached_item.scraper_version or 1) < CURRENT_SCRAPER_VERSION
+        # Check index first
+        indexed_item = index.get_by_domain(domain)
+        if indexed_item:
+            is_stale = (datetime.utcnow() - indexed_item.updated_at) >= fresh_delta
+            is_old_version = (indexed_item.scraper_version or 1) < CURRENT_SCRAPER_VERSION
             if not force_refresh and not is_stale and not is_old_version:
-                logger.info(f"Using cached data for {domain}")
-                return cached_item
+                logger.info(f"Using indexed data for {domain}, converting to Website model")
+                # We have the indexed data, but the caller expects a full Website object.
+                # We can create a Website object from the indexed data.
+                return Website(**indexed_item.model_dump())
             if is_old_version:
                 logger.info(f"Re-scraping {domain} due to new scraper version.")
 
@@ -103,16 +106,36 @@ class WebsiteScraper:
 
         except Exception as e:
             logger.error(f"Error during website scraping for {domain}: {e}")
-            # Still save what we have, even if there was an error
-            cache.add_or_update(website_data)
-            cache.save()
             return None
         finally:
             await page.close()
 
-        # Add to cache and save
-        cache.add_or_update(website_data)
-        cache.save()
+        # Add to index
+        website_domain_csv_data = WebsiteDomainCsv(
+            domain=website_data.url,
+            company_name=website_data.company_name,
+            phone=website_data.phone,
+            email=website_data.email,
+            facebook_url=website_data.facebook_url,
+            linkedin_url=website_data.linkedin_url,
+            instagram_url=website_data.instagram_url,
+            twitter_url=website_data.twitter_url,
+            youtube_url=website_data.youtube_url,
+            address=website_data.address,
+            personnel=website_data.personnel,
+            description=website_data.description,
+            about_us_url=website_data.about_us_url,
+            contact_url=website_data.contact_url,
+            services_url=website_data.services_url,
+            products_url=website_data.products_url,
+            tags=website_data.tags,
+            scraper_version=website_data.scraper_version,
+            associated_company_folder=website_data.associated_company_folder,
+            is_email_provider=website_data.is_email_provider,
+            created_at=website_data.created_at,
+            updated_at=website_data.updated_at,
+        )
+        index.add_or_update(website_domain_csv_data)
 
         return website_data
 

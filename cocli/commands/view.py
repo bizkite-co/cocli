@@ -21,7 +21,7 @@ from ..models.company import Company
 from ..models.person import Person
 from ..models.meeting import Meeting
 
-from ..core.website_cache import WebsiteCache
+
 from ..models.website import Website
 from ..renderers.company_view import display_company_view
 from ..core.exclusions import ExclusionManager
@@ -75,10 +75,19 @@ def _interactive_view_company(company_slug: str):
         company.slug = slugify(company.name)
 
 
-    website_cache = WebsiteCache()
     website_data: Optional[Website] = None
-    if company.domain:
-        website_data = website_cache.get_by_url(company.domain)
+    if company.slug:
+        enrichment_file = get_companies_dir() / company.slug / "enrichments" / "website.md"
+        if enrichment_file.exists():
+            with open(enrichment_file, 'r') as f:
+                content = f.read()
+                if content.startswith("---") and "---" in content[3:]:
+                    frontmatter_str, _ = content.split("---", 2)[1:]
+                    try:
+                        website_data_dict = yaml.safe_load(frontmatter_str) or {}
+                        website_data = Website(**website_data_dict)
+                    except yaml.YAMLError:
+                        pass # ignore errors
 
     while True:
         assert company is not None # Ensure company is not None for mypy
