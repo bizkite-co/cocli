@@ -1,5 +1,5 @@
-build/
-temp/
+build
+temp
 __pycache__
 .pytest_cache
 cocli.egg-info/
@@ -7,4 +7,4 @@ cocli.egg-info/
 cocli_data
 .gz
 .tar
-dist/
+dist

@@ -30,8 +30,44 @@ from ..core.scrape_index import ScrapeIndex
 from typing_extensions import Annotated
 from cocli.models.campaign import Campaign
 from cocli.core.config import get_cocli_base_dir
+from ..core.utils import run_fzf
+from ..core.config import get_all_campaign_dirs, get_campaign_dir
 
 app = typer.Typer(no_args_is_help=True)
+
+@app.command()
+def edit(
+    campaign_name: Annotated[Optional[str], typer.Argument(help="The name of the campaign to edit.")] = None
+):
+    """
+    Edits an existing campaign's configuration.
+    """
+    if campaign_name is None:
+        campaign_dirs = get_all_campaign_dirs()
+        if not campaign_dirs:
+            console.print("[bold red]No campaigns found.[/bold red]")
+            raise typer.Exit(code=1)
+
+        campaign_names = [d.name for d in campaign_dirs]
+        fzf_input = "\n".join(campaign_names)
+        selected_campaign = run_fzf(fzf_input)
+
+        if not selected_campaign:
+            console.print("No campaign selected.")
+            raise typer.Exit(code=1)
+        campaign_name = selected_campaign
+
+    campaign_dir = get_campaign_dir(campaign_name)
+    if not campaign_dir:
+        console.print(f"[bold red]Campaign '{campaign_name}' not found.[/bold red]")
+        raise typer.Exit(code=1)
+
+    config_path = campaign_dir / "config.toml"
+    if not config_path.exists():
+        console.print(f"[bold red]Configuration file not found for campaign '{campaign_name}'.[/bold red]")
+        raise typer.Exit(code=1)
+
+    typer.edit(filename=str(config_path))
 
 @app.command()
 def add(
@@ -286,7 +322,8 @@ async def achieve_goal(
         logger.error(f"Configuration file not found for campaign '{campaign_name}'.")
 
         raise typer.Exit(code=1)
-    with open(config_path, "r") as f:        config = toml.load(f)
+    with open(config_path, "r") as f:
+        config = toml.load(f)
     prospecting_config = config.get("prospecting", {})
     locations = prospecting_config.get("locations", [])
     search_phrases = prospecting_config.get("queries", [])

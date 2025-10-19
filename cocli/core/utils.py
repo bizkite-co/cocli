@@ -6,13 +6,19 @@ import termios
 import sys
 import logging
 
-import yaml # This import might not be needed here if models handle YAML loading
+import shutil
+import subprocess
+
+import yaml  # This import might not be needed here if models handle YAML loading
+from rich.console import Console
 
 from ..models.company import Company
-from ..models.person import Person # Import Company and Person models
-from .config import get_companies_dir, get_people_dir # Import directory getters
+from ..models.person import Person  # Import Company and Person models
+from .config import get_companies_dir, get_people_dir  # Import directory getters
 
 logger = logging.getLogger(__name__)
+
+console = Console()
 
 # Custom representer for None to ensure it's explicitly written as 'null'
 def represent_none(self, data):
@@ -225,3 +231,38 @@ def _getch():
     finally:
         termios.tcsetattr(fd, termios.TCSADRAIN, old_settings)
     return ch
+
+
+import subprocess
+import shutil
+from rich.console import Console
+
+console = Console()
+
+def run_fzf(fzf_input: str) -> Optional[str]:
+    fzf_path = shutil.which("fzf")
+    if not fzf_path:
+        console.print("[bold red]Error:[/bold red] 'fzf' command not found.")
+        console.print("Please install fzf to use this feature. (e.g., `brew install fzf` or `sudo apt install fzf`)")
+        return None
+    try:
+        result = subprocess.run(
+            [fzf_path],
+            input=fzf_input,
+            text=True,
+            capture_output=True,
+            check=False # check=False to handle non-zero exit codes gracefully
+        )
+        if result.returncode == 0:
+            return result.stdout.strip()
+        elif result.returncode == 1: # No match
+            return None
+        elif result.returncode == 130: # Ctrl-C
+            return None
+        else:
+            console.print(f"[bold red]Error during fzf selection:[/bold red] {result.stderr.strip()}")
+            return None
+    except FileNotFoundError:
+        # This is redundant now with shutil.which, but good for safety
+        console.print("Error: 'fzf' command not found. Please ensure fzf is installed and in your PATH.")
+        return None

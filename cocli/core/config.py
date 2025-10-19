@@ -94,6 +94,15 @@ def get_campaign_dir(campaign_name: str) -> Optional[Path]:
         return campaign_dir
     return None
 
+def get_all_campaign_dirs() -> list[Path]:
+    """
+    Returns a list of all campaign directories.
+    """
+    campaigns_dir = get_campaigns_dir()
+    if campaigns_dir.exists() and campaigns_dir.is_dir():
+        return [d for d in campaigns_dir.iterdir() if d.is_dir()]
+    return []
+
 
 class ScraperSettings(BaseSettings):
     google_maps_delay_seconds: float = 1.0
@@ -191,7 +200,7 @@ def create_default_config_file():
     config_file = config_dir / "cocli_config.toml"
 
     if not config_file.exists():
-        default_settings_template = """\
+        default_settings_template = """
 # cocli Configuration File
 
 # Scraper settings for Google Maps
