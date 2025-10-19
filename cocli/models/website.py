@@ -1,4 +1,4 @@
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, computed_field
 from typing import Optional, List
 from datetime import datetime
 from .domain import Domain
@@ -6,7 +6,12 @@ from .domain import Domain
 class Website(BaseModel):
     created_at: datetime = Field(default_factory=datetime.utcnow)
     updated_at: datetime = Field(default_factory=datetime.utcnow)
-    domain: Domain
+    url: Domain # Called `domain` in the website CSV model
+
+    @computed_field
+    def domain(self) -> Domain:
+        return self.url
+
     company_name: Optional[str] = None
     phone: Optional[str] = None
     email: Optional[str] = None
