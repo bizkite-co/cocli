@@ -19,6 +19,10 @@ from ..models.person import Person
 def _render_company_details(company: Company, tags: List[str], content: str, website_data: Optional[Website]) -> Panel:
     """Renders company details, including tags, services, and markdown content."""
     output = ""
+
+    if content.strip():
+        output += f"\n{content.strip()}\n"
+
     for key, value in company.model_dump().items():
         if value is None or key == "name":
             continue
@@ -36,9 +40,6 @@ def _render_company_details(company: Company, tags: List[str], content: str, web
 
     if website_data and website_data.services:
         output += f"- Services: {', '.join(website_data.services)}\n"
-
-    if content.strip():
-        output += f"\n{content.strip()}\n"
 
     return Panel(Markdown(output), title="Company Details", border_style="green")
 
