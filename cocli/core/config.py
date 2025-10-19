@@ -9,6 +9,9 @@ import logging
 
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
+from rich.console import Console
+
+console = Console()
 
 logger = logging.getLogger(__name__)
 
@@ -191,6 +194,15 @@ def set_campaign(name: Optional[str]):
         if "campaign" in config and not config["campaign"]:
             del config["campaign"]
     save_config(config)
+
+def get_editor_command() -> Optional[str]:
+    """
+    Returns the editor command from the config file.
+    """
+    config = load_config()
+    # TODO: Move editor to its own section in the config file
+    return config.get("context", {}).get("editor")
+
 
 def create_default_config_file():
     """

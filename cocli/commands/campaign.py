@@ -2,6 +2,7 @@ import typer
 import toml
 import csv
 import asyncio
+import subprocess
 from pathlib import Path
 from typing import List, Dict, Optional
 from datetime import datetime
@@ -33,6 +34,9 @@ from cocli.core.config import get_cocli_base_dir
 from ..core.utils import run_fzf
 from ..core.config import get_all_campaign_dirs, get_campaign_dir
 
+import subprocess
+from ..core.config import get_editor_command
+
 app = typer.Typer(no_args_is_help=True)
 
 @app.command()
@@ -47,11 +51,11 @@ def edit(
         if not campaign_dirs:
             console.print("[bold red]No campaigns found.[/bold red]")
             raise typer.Exit(code=1)
-
+        
         campaign_names = [d.name for d in campaign_dirs]
         fzf_input = "\n".join(campaign_names)
         selected_campaign = run_fzf(fzf_input)
-
+        
         if not selected_campaign:
             console.print("No campaign selected.")
             raise typer.Exit(code=1)
@@ -63,11 +67,40 @@ def edit(
         raise typer.Exit(code=1)
 
     config_path = campaign_dir / "config.toml"
-    if not config_path.exists():
-        console.print(f"[bold red]Configuration file not found for campaign '{campaign_name}'.[/bold red]")
-        raise typer.Exit(code=1)
+    readme_path = campaign_dir / "README.md"
 
-    typer.edit(filename=str(config_path))
+    editor_command = get_editor_command()
+
+    if editor_command:
+        files_to_edit = []
+        if config_path.exists():
+            files_to_edit.append(str(config_path))
+        else:
+            console.print(f"[bold red]Configuration file not found for campaign '{campaign_name}'.[/bold red]")
+
+        if readme_path.exists():
+            files_to_edit.append(str(readme_path))
+
+        if not files_to_edit:
+            console.print(f"[bold red]No files to edit for campaign '{campaign_name}'.[/bold red]")
+            raise typer.Exit(code=1)
+
+        command = [editor_command]
+        # For vim/nvim, use -o for horizontal split
+        if "vim" in editor_command or "nvim" in editor_command:
+            command.append("-o")
+        
+        command.extend(files_to_edit)
+        
+        subprocess.run(command)
+    else:
+        if config_path.exists():
+            typer.edit(filename=str(config_path))
+        else:
+            console.print(f"[bold red]Configuration file not found for campaign '{campaign_name}'.[/bold red]")
+
+        if readme_path.exists():
+            console.print("[yellow]To edit the README.md as well, please configure an editor in your cocli_config.toml.[/yellow]")
 
 @app.command()
 def add(
