@@ -1,5 +1,8 @@
 [tools]
-python = { version = "3.12.7", venv = ".venv" }
+python = { version = "3.12", venv = ".venv" }
+
+[settings]
+python.uv_venv_auto = true
 
 [tasks]
 install = "uv sync --extra dev && uv pip install -e . && playwright install"
