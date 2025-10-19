@@ -50,7 +50,7 @@ class WebsiteScraper:
 
         logger.info(f"Starting website scraping for {domain}")
 
-        website_data = Website(url=domain, scraper_version=CURRENT_SCRAPER_VERSION)
+        website_data = Website(domain=domain, scraper_version=CURRENT_SCRAPER_VERSION)
         page = await browser.new_page(viewport={'width': 1536, 'height': 1700})
         try:
             await page.goto(f"http://{domain}", wait_until="domcontentloaded", timeout=30000)
@@ -112,7 +112,7 @@ class WebsiteScraper:
 
         # Add to index
         website_domain_csv_data = WebsiteDomainCsv(
-            domain=website_data.url,
+            domain=website_data.domain,
             company_name=website_data.company_name,
             phone=website_data.phone,
             email=website_data.email,
@@ -254,7 +254,7 @@ class WebsiteScraper:
                         breakpoint()
                     await scrape_function(page, website_data)
         except Exception as e:
-            logger.warning(f"Failed to navigate or scrape {page_type} page for {website_data.url}: {e}")
+            logger.warning(f"Failed to navigate or scrape {page_type} page for {website_data.domain}: {e}")
 
     async def _scrape_page(self, page: Page, website_data: Website) -> Website:
         html_content = await page.content()
@@ -343,13 +343,13 @@ class WebsiteScraper:
                 for tag in soup.body.select('nav, footer, header'):
                     tag.decompose()
                 website_data.description = soup.body.get_text(separator='\n', strip=True)
-            logger.info(f"Found description for {website_data.url} from About Us page")
+            logger.info(f"Found description for {website_data.domain} from About Us page")
         elif not website_data.description:
             # Fallback for other pages if description not already found
             about_section = soup.find(id=re.compile("about", re.IGNORECASE)) or soup.find(class_=re.compile("about", re.IGNORECASE))
             if about_section:
                 website_data.description = about_section.get_text(separator='\n', strip=True)
-                logger.info(f"Found description for {website_data.url}")
+                logger.info(f"Found description for {website_data.domain}")
 
         return website_data
 

@@ -1,9 +1,10 @@
 from pydantic import BaseModel, Field
 from typing import Optional, List
 from datetime import datetime
+from .domain import Domain
 
 class WebsiteDomainCsv(BaseModel):
-    domain: str
+    domain: Domain
     company_name: Optional[str] = None
     phone: Optional[str] = None
     email: Optional[str] = None

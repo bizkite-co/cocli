@@ -1,11 +1,12 @@
 from pydantic import BaseModel, Field
 from typing import Optional, List
 from datetime import datetime
+from .domain import Domain
 
 class Website(BaseModel):
     created_at: datetime = Field(default_factory=datetime.utcnow)
     updated_at: datetime = Field(default_factory=datetime.utcnow)
-    url: str
+    domain: Domain
     company_name: Optional[str] = None
     phone: Optional[str] = None
     email: Optional[str] = None
