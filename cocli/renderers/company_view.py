@@ -15,6 +15,7 @@ from ..core.config import get_companies_dir
 from ..models.company import Company
 from ..models.website import Website
 from ..models.person import Person
+from ..models.note import Note
 
 def _render_company_details(company: Company, tags: List[str], content: str, website_data: Optional[Website]) -> Panel:
     """Renders company details, including tags, services, and markdown content."""
@@ -132,6 +133,30 @@ def _render_meetings(meetings_dir: Path) -> Tuple[Panel, Dict[int, Path]]:
     meeting_map = {num: file for num, file in all_displayable_meetings}
     return Panel(Markdown(output), title="Meetings", border_style="magenta"), meeting_map
 
+def _render_notes(notes_dir: Path) -> Panel:
+    """Renders the most recent three notes."""
+    notes = []
+    if notes_dir.exists():
+        for note_file in notes_dir.iterdir():
+            if note_file.is_file() and note_file.suffix == ".md":
+                note = Note.from_file(note_file)
+                if note:
+                    notes.append(note)
+
+    notes.sort(key=lambda n: n.timestamp, reverse=True)
+
+    output = ""
+    if notes:
+        for i, note in enumerate(notes[:3]): # Display only the most recent 3 notes
+            output += f"[bold]{note.timestamp.strftime('%Y-%m-%d %H:%M')}[/bold] - [bold]{note.title}[/bold]\n"
+            output += f"{note.content}\n\n"
+            if i < len(notes[:3]) - 1:
+                output += "---\n\n" # Separator between notes
+    else:
+        output = "No notes found."
+
+    return Panel(Markdown(output), title="Recent Notes", border_style="cyan")
+
 
 def display_company_view(console: Console, company: Company, website_data: Optional[Website]):
     console.clear()
@@ -146,6 +171,7 @@ def display_company_view(console: Console, company: Company, website_data: Optio
     tags_path = selected_company_dir / "tags.lst"
     meetings_dir = selected_company_dir / "meetings"
     contacts_dir = selected_company_dir / "contacts"
+    notes_dir = selected_company_dir / "notes"
 
     # Load tags
     tags = []
@@ -165,10 +191,12 @@ def display_company_view(console: Console, company: Company, website_data: Optio
     details_panel = _render_company_details(company, tags, content, website_data)
     contacts_panel = _render_contacts(contacts_dir)
     meetings_panel, meeting_map = _render_meetings(meetings_dir)
+    notes_panel = _render_notes(notes_dir)
 
     # Display layout
     top_columns = Columns([details_panel, contacts_panel], expand=True, equal=True)
     console.print(top_columns)
     console.print(meetings_panel)
+    console.print(notes_panel)
 
     return meeting_map

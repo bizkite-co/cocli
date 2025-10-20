@@ -2,6 +2,7 @@ import re
 from pathlib import Path
 from typing import Optional, List, Any, Iterator
 import logging
+from datetime import datetime
 
 import yaml
 from pydantic import BaseModel, Field, BeforeValidator, ValidationError, model_validator
@@ -63,6 +64,7 @@ class Company(BaseModel):
     meta_description: Optional[str] = None
     meta_keywords: Optional[str] = None
     place_id: Optional[str] = None
+    last_enriched: Optional[datetime] = None
 
     @model_validator(mode='after')
     def parse_full_address(self) -> 'Company':

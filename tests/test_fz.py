@@ -56,7 +56,7 @@ This is a test company.
 
     return company_name, cocli_base_dir
 
-def test_fz_finds_and_views_company(setup_test_environment):
+def test_fz_finds_and_views_company(setup_test_environment, mocker):
     """
     Integration test for the fz command.
     - Ensures the cache is built correctly.
@@ -66,8 +66,9 @@ def test_fz_finds_and_views_company(setup_test_environment):
     company_name, cocli_base_dir = setup_test_environment
     company_slug = slugify(company_name)
 
-    with patch('cocli.commands.fz.run_fzf') as mock_run_fzf, \
-         patch('cocli.commands.fz.view_company') as mock_view_company:
+    mock_view_company = mocker.patch('cocli.commands.fz.view_company')
+
+    with patch('cocli.commands.fz.run_fzf') as mock_run_fzf:
 
         # Simulate fzf selecting the test company
         mock_run_fzf.return_value = f'COMPANY:{company_name} -- {company_slug}'
@@ -84,7 +85,6 @@ def test_fz_finds_and_views_company(setup_test_environment):
         fzf_input = mock_run_fzf.call_args[0][0]
         assert company_name in fzf_input
 
-        # Verify that view_company was called with the correct company slug
         mock_view_company.assert_called_once_with(company_slug=company_slug)
 
 def test_fz_with_none_filter_in_config(setup_test_environment, mocker):
@@ -98,8 +98,9 @@ def test_fz_with_none_filter_in_config(setup_test_environment, mocker):
     # Mock get_context to return the problematic "None" string
     mocker.patch('cocli.commands.fz.get_context', return_value="None")
 
-    with patch('cocli.commands.fz.run_fzf') as mock_run_fzf, \
-         patch('cocli.commands.fz.view_company') as mock_view_company:
+    mock_view_company = mocker.patch('cocli.commands.fz.view_company')
+
+    with patch('cocli.commands.fz.run_fzf') as mock_run_fzf:
 
         # Simulate fzf selecting the test company
         mock_run_fzf.return_value = f'COMPANY:{company_name} -- {company_slug}'

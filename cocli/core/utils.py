@@ -80,6 +80,11 @@ def create_company_files(company: Company, company_dir: Path) -> Path:
 
     merged_data["name"] = company.name # Ensure name is always from the new company object
 
+    if company.last_enriched:
+        merged_data["last_enriched"] = company.last_enriched.isoformat(timespec='seconds') + 'Z'
+    elif "last_enriched" in merged_data:
+        del merged_data["last_enriched"]
+
     # Merge tags
     merged_tags = sorted(list(existing_tags.union(set(company.tags))))
 
@@ -132,7 +137,7 @@ def create_person_files(person: Person, person_dir: Path) -> Path:
             logger.warning(f"Warning: No valid YAML front matter found in {person_file}. Overwriting with new data.")
 
     # Prepare new data for YAML front matter
-    new_person_data_for_yaml = person.model_dump(exclude={'tags'})
+    new_person_data_for_yaml = person.model_dump(exclude={'tags'}, exclude_none=False)
     new_person_data_for_yaml.pop("name", None)
 
     # Merge existing data with new data
@@ -192,7 +197,7 @@ def _format_entity_for_fzf(entity_type: str, entity: Any) -> str:
             display_name += f" ({entity.average_rating:.1f} ★, {entity.reviews_count} reviews)"
         if entity.visits_per_day is not None:
             display_name += f" ({entity.visits_per_day} visits)"
-        return f"COMPANY:{display_name}"
+        return f"COMPANY:{display_name} -- {entity.slug}"
     elif entity_type == "person":
         return f"PERSON:{entity.name}:{entity.company_name if entity.company_name else ''}"
     return ""

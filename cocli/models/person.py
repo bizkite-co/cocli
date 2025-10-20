@@ -3,14 +3,15 @@ from typing import Any, Optional
 import logging
 
 import yaml
-from pydantic import BaseModel, Field, ValidationError
+from pydantic import BaseModel, Field, ValidationError, EmailStr, field_validator
+import re
 
 logger = logging.getLogger(__name__)
 
 class Person(BaseModel):
     name: str
-    email: Optional[str] = None
-    phone: Optional[str] = None
+    email: Optional[EmailStr] = None
+    phone: Optional[str] = Field(None, pattern=r"^(\+?\d{1,3}[-. ]?)?[(]?[0-9]{3}[)]?[-. ]?[0-9]{3}[-. ]?[0-9]{4}$")
     company_name: Optional[str] = None  # Added to link person to company
     role: Optional[str] = None
     tags: list[str] = Field(default_factory=list)
