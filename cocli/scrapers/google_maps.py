@@ -17,6 +17,31 @@ def calculate_new_coords(lat, lon, distance_miles, bearing):
     destination = geodesic(kilometers=distance_km).destination(start_point, bearing)
     return destination.latitude, destination.longitude
 
+def get_viewport_bounds(center_lat, center_lon, map_width_miles, map_height_miles, margin=0.1):
+    """
+    Calculates the bounding box of the map viewport, inset by a margin.
+    A margin of 0.1 means the box is 10% smaller on each side (80% of original area).
+    """
+    effective_width_miles = map_width_miles * (1 - 2 * margin)
+    effective_height_miles = map_height_miles * (1 - 2 * margin)
+
+    half_width = effective_width_miles / 2
+    half_height = effective_height_miles / 2
+
+    lat_max, _ = calculate_new_coords(center_lat, center_lon, half_height, 0)  # North
+    lat_min, _ = calculate_new_coords(center_lat, center_lon, half_height, 180) # South
+
+    # For longitude, calculate from the center latitude for better accuracy
+    _, lon_max = calculate_new_coords(center_lat, center_lon, half_width, 90)  # East
+    _, lon_min = calculate_new_coords(center_lat, center_lon, half_width, 270) # West
+
+    return {
+        'lat_min': lat_min,
+        'lat_max': lat_max,
+        'lon_min': lon_min,
+        'lon_max': lon_max,
+    }
+
 from ..core.config import load_scraper_settings
 from ..core.geocoding import get_coordinates_from_zip, get_coordinates_from_city_state
 from .google_maps_parser import parse_business_listing_html
@@ -33,7 +58,6 @@ async def _scrape_area(
     page: Page,
     search_string: str, # Changed from search_strings
     processed_place_ids: set,
-    scrape_index: ScrapeIndex, # Added scrape_index
     force_refresh: bool,
     ttl_days: int,
     debug: bool,
@@ -41,13 +65,11 @@ async def _scrape_area(
     """
     Helper function to scrape a specific map area for a single search query.
     This function contains the core logic for scrolling, parsing, and yielding results.
-    It now also records the bounding box of found results to the scrape_index.
     """
     settings = load_scraper_settings()
     delay_seconds = settings.google_maps_delay_seconds
     cache = GoogleMapsCache()
     fresh_delta = timedelta(days=ttl_days)
-    found_coords = []
 
     logger.info(f"--- Starting search for query: '{search_string}' ---")
     search_box_selector = 'input[name="q"]'
@@ -130,8 +152,6 @@ async def _scrape_area(
             business_data = GoogleMapsData(**business_data_dict)
             cache.add_or_update(business_data)
             logger.info(f"Yielding new record: {business_data.Name}")
-            if business_data.Latitude and business_data.Longitude:
-                found_coords.append((business_data.Latitude, business_data.Longitude))
             yield business_data
 
         last_processed_div_count = len(listing_divs)
@@ -152,18 +172,6 @@ async def _scrape_area(
             page_source = await page.content()
             with open(f"page_source_after_scroll_{search_string.replace(' ', '_')}.html", "w") as f:
                 f.write(page_source)
-
-    # After finishing the scrape for this area, calculate bounds and save to index
-    if found_coords:
-        lats, lons = zip(*found_coords)
-        bounds = {
-            'lat_min': min(lats),
-            'lat_max': max(lats),
-            'lon_min': min(lons),
-            'lon_max': max(lons),
-        }
-        scrape_index.add_area(search_string, bounds)
-        logger.info(f"Added bounding box to scrape index for phrase '{search_string}'.")
 
 from playwright.async_api import async_playwright, Page, Locator, Browser
 
@@ -229,6 +237,9 @@ async def scrape_google_maps(
             logger.info(f"Zoomed out {zoom_out_level} times.")
             await page.wait_for_timeout(5000)
 
+        map_width_miles: float = 0.0
+        map_height_miles: float = 0.0
+        px_per_mile: float = 0.0
         try:
             scale_button = page.locator('button[jsaction="scale.click"]')
             scale_label = await scale_button.text_content()
@@ -251,6 +262,7 @@ async def scrape_google_maps(
                     
                     if px_per_mile > 0:
                         map_width_miles = launch_width / px_per_mile
+                        map_height_miles = launch_height / px_per_mile
                         logger.info(f"Map scale: {scale_label} = {width_px}px. Estimated map width: {map_width_miles:.2f} miles.")
         except Exception as e:
             logger.warning(f"Could not extract map scale: {e}")
@@ -262,16 +274,22 @@ async def scrape_google_maps(
                 logger.info(f"Skipping initial area for phrase '{search_string}' as it falls within a recently scraped box ({matched_area.lat_min:.4f}, {matched_area.lon_min:.4f} to {matched_area.lat_max:.4f}, {matched_area.lon_max:.4f}).")
                 continue
 
+            found_items_in_area = False
             async for item in _scrape_area(
                 page=page,
                 search_string=search_string,
                 processed_place_ids=processed_place_ids,
-                scrape_index=scrape_index,
                 force_refresh=force_refresh,
                 ttl_days=ttl_days,
                 debug=debug,
             ):
+                found_items_in_area = True
                 yield item
+            
+            if found_items_in_area and map_width_miles > 0:
+                viewport_bounds = get_viewport_bounds(latitude, longitude, map_width_miles, map_height_miles)
+                scrape_index.add_area(search_string, viewport_bounds)
+                logger.info(f"Added viewport-based bounding box to scrape index for phrase '{search_string}'.")
 
         # Start of spiral out logic
         logger.info("Starting spiral out search...")
@@ -315,16 +333,22 @@ async def scrape_google_maps(
                         logger.info(f"Skipping area for phrase '{search_string}' as it falls within a recently scraped box ({matched_area.lat_min:.4f}, {matched_area.lon_min:.4f} to {matched_area.lat_max:.4f}, {matched_area.lon_max:.4f}).")
                         continue
 
+                    found_items_in_area = False
                     async for item in _scrape_area(
                         page=page,
                         search_string=search_string,
                         processed_place_ids=processed_place_ids,
-                        scrape_index=scrape_index,
                         force_refresh=force_refresh,
                         ttl_days=ttl_days,
                         debug=debug,
                     ):
+                        found_items_in_area = True
                         yield item
+
+                    if found_items_in_area and map_width_miles > 0:
+                        viewport_bounds = get_viewport_bounds(current_lat, current_lon, map_width_miles, map_height_miles)
+                        scrape_index.add_area(search_string, viewport_bounds)
+                        logger.info(f"Added viewport-based bounding box to scrape index for phrase '{search_string}'.")
 
             # Update spiral direction and steps
             leg_count += 1

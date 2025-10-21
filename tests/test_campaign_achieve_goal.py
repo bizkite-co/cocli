@@ -4,8 +4,22 @@ import pytest
 
 runner = CliRunner()
 
+from cocli.models.google_maps import GoogleMapsData
+
 async def async_generator():
-    yield "mock_prospect_data"
+    mock_google_maps_data = GoogleMapsData(
+        Name="Mock Company",
+        Place_ID="mock_place_id",
+        Address="123 Mock St",
+        Website="mock.com",
+        Phone="555-123-4567",
+        Latitude=0.0,
+        Longitude=0.0,
+        Category="Mock Category",
+        Search_Query="mock query",
+        GMB_URL="mock.gmb.url"
+    )
+    yield mock_google_maps_data
 
 @pytest.fixture
 def mock_achieve_goal_dependencies(mocker):

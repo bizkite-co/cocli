@@ -4,8 +4,8 @@ from datetime import datetime
 from .domain import Domain
 
 class Website(BaseModel):
-    created_at: datetime = Field(default_factory=datetime.utcnow)
-    updated_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=lambda: datetime.now(datetime.UTC))
+    updated_at: datetime = Field(default_factory=lambda: datetime.now(datetime.UTC))
     url: Domain # Called `domain` in the website CSV model
 
     @model_validator(mode='before')
@@ -16,7 +16,6 @@ class Website(BaseModel):
         return values
 
     @computed_field
-    @property
     def domain(self) -> Domain:
         return self.url
 
