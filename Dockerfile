@@ -11,9 +11,17 @@ WORKDIR /app
 # Install uv
 RUN pip install uv
 
+# Install 1Password CLI
+COPY --from=1password/op:2 /usr/local/bin/op /usr/local/bin/op
+
+# Install jq for JSON parsing in entrypoint.sh
+RUN apt-get update && apt-get install -y jq && rm -rf /var/lib/apt/lists/*
+
 # Copy the dependency files and application code
 COPY pyproject.toml uv.lock* ./
 COPY ./cocli ./cocli
+COPY ./cocli/entrypoint.sh /usr/local/bin/entrypoint.sh
+RUN chmod +x /usr/local/bin/entrypoint.sh
 
 # Install project dependencies using uv
 # This also installs the project itself in editable mode
@@ -29,4 +37,4 @@ RUN playwright install chromium
 EXPOSE 8000
 
 # Define the command to run the application
-CMD ["uvicorn", "cocli.services.enrichment_service.main:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["/usr/local/bin/entrypoint.sh"]

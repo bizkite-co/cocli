@@ -1,5 +1,5 @@
-from pydantic import BaseModel, Field, computed_field
-from typing import Optional, List
+from pydantic import BaseModel, Field, model_validator, computed_field
+from typing import Optional, List, Dict, Any
 from datetime import datetime
 from .domain import Domain
 
@@ -8,7 +8,15 @@ class Website(BaseModel):
     updated_at: datetime = Field(default_factory=datetime.utcnow)
     url: Domain # Called `domain` in the website CSV model
 
+    @model_validator(mode='before')
+    @classmethod
+    def _populate_url_from_domain(cls, values: Dict[str, Any]) -> Dict[str, Any]:
+        if 'domain' in values and 'url' not in values:
+            values['url'] = values['domain']
+        return values
+
     @computed_field
+    @property
     def domain(self) -> Domain:
         return self.url
 

@@ -51,6 +51,8 @@ async def enrich_domain(request: EnrichmentRequest):
             
             logger.info(f"Successfully enriched domain: {request.domain}")
             return website_data
+        except HTTPException as e:
+            raise e
         except Exception as e:
             logger.error(f"An unexpected error occurred during enrichment for {request.domain}: {e}")
             raise HTTPException(status_code=500, detail="An internal error occurred during enrichment.")

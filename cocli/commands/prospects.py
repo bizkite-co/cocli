@@ -3,14 +3,21 @@ import csv
 import logging
 from typing_extensions import Annotated
 from typing import Optional, Iterator, List
+import asyncio
+import httpx
+import yaml
+from rich.console import Console
 
 from pydantic import ValidationError
 
 from cocli.models.company import Company
 from cocli.models.hubspot import HubspotContactCsv
-from cocli.core.config import get_campaign, get_campaigns_dir
+from cocli.core.config import get_campaign, get_campaigns_dir, get_companies_dir, get_scraped_data_dir
+from cocli.models.website import Website
+from cocli.compilers.website_compiler import WebsiteCompiler
+from cocli.core.utils import slugify
 
-app = typer.Typer()
+app = typer.Typer(no_args_is_help=True)
 
 logger = logging.getLogger(__name__)
 
@@ -69,3 +76,124 @@ def to_hubspot_csv(
                 logger.warning(f"Skipping prospect {prospect.name} due to invalid data: {e}")
 
     print(f"Exported {exported_count} prospects to {output_file}")
+
+
+async def enrich_prospect(client: httpx.AsyncClient, prospect: Company, force: bool, ttl_days: int, console: Console):
+    try:
+        response = await client.post(
+            "http://localhost:8000/enrich",
+            json={
+                "domain": prospect.domain,
+                "force": force,
+                "ttl_days": ttl_days,
+            },
+            timeout=120.0,
+        )
+        response.raise_for_status()
+        response_json = response.json()
+        if response_json:
+            website_data = Website(**response_json)
+            if website_data.email:
+                console.print(f"  -> Found email for {prospect.name}: {website_data.email}")
+                if prospect.slug is None:
+                    logger.warning(f"Skipping enrichment data save for company {prospect.name} due to missing slug.")
+                    return
+                company_dir = get_companies_dir() / prospect.slug
+                enrichment_dir = company_dir / "enrichments"
+                website_md_path = enrichment_dir / "website.md"
+                website_data.associated_company_folder = company_dir.name
+                enrichment_dir.mkdir(parents=True, exist_ok=True)
+                with open(website_md_path, "w") as f:
+                    f.write("---")
+                    yaml.dump(
+                        website_data.model_dump(exclude_none=True),
+                        f,
+                        sort_keys=False,
+                        default_flow_style=False,
+                        allow_unicode=True,
+                    )
+                    f.write("---")
+                compiler = WebsiteCompiler()
+                compiler.compile(company_dir)
+            else:
+                console.print(f"  -> No new information found for {prospect.name}")
+
+    except httpx.RequestError as e:
+        console.print(f"  -> Error enriching {prospect.name}: {e}")
+    except Exception as e:
+        console.print(f"  -> Error enriching {prospect.name}: {e}")
+
+@app.command("enrich")
+def enrich_prospects_command(
+    force: Annotated[bool, typer.Option("--force", "-f", help="Force re-enrichment even if fresh data exists.")] = False,
+    ttl_days: Annotated[int, typer.Option("--ttl-days", help="Time-to-live for cached data in days.")] = 30,
+):
+    """
+    Enriches prospects for the current campaign with website data.
+    """
+    campaign_name = get_campaign()
+    if not campaign_name:
+        print("No campaign set. Please set a campaign using `cocli campaign set <campaign_name>`.")
+        raise typer.Exit(1)
+
+    console = Console()
+    console.print(f"Enriching prospects for campaign: [bold]{campaign_name}[/bold]")
+
+    prospects = list(get_prospects(campaign_name, with_email=False, city=None, state=None))
+    console.print(f"Found {len(prospects)} prospects to enrich.")
+
+    async def main():
+        async with httpx.AsyncClient() as client:
+            tasks = []
+            for prospect in prospects:
+                if prospect.domain:
+                    tasks.append(enrich_prospect(client, prospect, force, ttl_days, console))
+            await asyncio.gather(*tasks)
+
+    asyncio.run(main())
+
+@app.command("tag-from-csv")
+def tag_prospects_from_csv():
+    """
+    Updates company tags based on the prospects.csv file for the current campaign.
+    This is a recovery tool to tag prospects that were imported without a campaign tag.
+    """
+    campaign_name = get_campaign()
+    if not campaign_name:
+        print("No campaign set. Please set a campaign using `cocli campaign set <campaign_name>`.")
+        raise typer.Exit(1)
+
+    console = Console()
+    console.print(f"Tagging prospects from CSV for campaign: [bold]{campaign_name}[/bold]")
+
+    prospects_csv_path = get_scraped_data_dir() / campaign_name / "prospects" / "prospects.csv"
+    if not prospects_csv_path.exists():
+        console.print(f"[bold red]Prospects CSV not found at: {prospects_csv_path}[/bold red]")
+        raise typer.Exit(code=1)
+
+    companies_dir = get_companies_dir()
+    updated_count = 0
+    with open(prospects_csv_path, 'r', encoding='utf-8') as f:
+        reader = csv.DictReader(f)
+        for row in reader:
+            domain = row.get('Domain')
+            if not domain:
+                continue
+
+            slug = slugify(domain)
+            company_dir = companies_dir / slug
+            if company_dir.is_dir():
+                tags_path = company_dir / "tags.lst"
+                tags = []
+                if tags_path.exists():
+                    with open(tags_path, 'r') as tags_file:
+                        tags = [line.strip() for line in tags_file.readlines()]
+                
+                if campaign_name not in tags:
+                    tags.append(campaign_name)
+                    with open(tags_path, 'w') as tags_file:
+                        tags_file.write("\n".join(tags))
+                    updated_count += 1
+                    console.print(f"Tagged {domain} with campaign '{campaign_name}'")
+
+    console.print(f"[bold green]Tagging complete. Updated {updated_count} companies.[/bold green]")

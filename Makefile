@@ -34,7 +34,7 @@ test: install ## Run tests using pytest
 	source $(VENV_DIR)/bin/activate && pytest -s tests/
 
 lint: install ## Run mypy to perform static type checking
-	source $(VENV_DIR)/bin/activate && mypy --config-file pyproject.toml .
+	$(VENV_DIR)/bin/python -m mypy --config-file pyproject.toml .
 
 test-file: install ## Run a specific test file, e.g., make test-file FILE=tests/test_google_maps_scraper.py
 	source $(VENV_DIR)/bin/activate && pytest $(FILE)
@@ -44,6 +44,10 @@ activate: install ## Run tests using pytest
 
 list-packages: install ## List installed packages
 	source $(VENV_DIR)/bin/activate && uv pip list
+docker-stop:
+	@docker stop cocli-enrichment
+
+docker-refresh: docker-stop docker-build docker-run-enrichment ## Stop and rebuild docker enrichment
 
 clean: ## Clean up virtual environment and uv.lock
 	rm -rf $(VENV_DIR) uv.lock
@@ -124,8 +128,7 @@ docker-build: ## Build the docker image
 .PHONY: docker-run-enrichment
 
 docker-run-enrichment: ## Start docker enrichment service
-
-	@docker run -d -p 8000:8000 --name cocli-enrichment enrichment-service
+	@docker run --rm -d -p 8000:8000 --name cocli-enrichment -e LOCAL_DEV=1 enrichment-service
 
 
 

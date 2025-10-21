@@ -9,7 +9,8 @@ from ..core.config import get_companies_dir
 
 def import_prospect(
     prospect_data: GoogleMapsData,
-    existing_domains: Set[str]
+    existing_domains: Set[str],
+    campaign: Optional[str] = None
 ) -> Optional[Company]:
     """
     Imports a single prospect from a GoogleMapsData object into the canonical company structure.
@@ -17,6 +18,7 @@ def import_prospect(
     Args:
         prospect_data: The GoogleMapsData object for the prospect.
         existing_domains: A set of domains that already exist in the CRM to prevent duplicates.
+        campaign: The name of the campaign to associate with the prospect.
 
     Returns:
         The newly created Company object, or None if the prospect already exists.
@@ -43,8 +45,10 @@ def import_prospect(
     company_dir = get_companies_dir() / slug
     company_dir.mkdir(exist_ok=True)
 
-    # Add prospect tag
+    # Add prospect and campaign tags
     tags = ["prospect"]
+    if campaign:
+        tags.append(campaign)
     tags_path = company_dir / "tags.lst"
     with open(tags_path, 'w') as tags_file:
         tags_file.write("\n".join(tags))

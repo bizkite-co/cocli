@@ -267,7 +267,7 @@ def import_prospects(
             prospect_data = GoogleMapsData(**model_data)
 
             # Call the core import function
-            new_company = import_prospect(prospect_data, existing_domains)
+            new_company = import_prospect(prospect_data, existing_domains, campaign=campaign_name)
 
             if new_company:
                 console.print(f"[green]Imported new prospect:[/] {new_company.name}")
@@ -292,114 +292,131 @@ async def pipeline(
     debug: bool,
     existing_domains: Set[str],
     console: Console,
+    browser_width: int,
+    browser_height: int,
 ):
     emails_found_count = 0
-    async with async_playwright() as p:
-        browser = await p.chromium.launch(headless=not headed, devtools=devtools)
-        try:
-            for location in locations:
-                if emails_found_count >= goal_emails:
-                    break
-                coords = get_coordinates_from_city_state(location)
-                if coords:
-                    console.print(
-                        f"[grey50][{datetime.now().strftime('%H:%M:%S')}][/] [bold blue]-- Starting location: {location} ({coords['latitude']:.4f}, {coords['longitude']:.4f}) --[/bold blue]"
-                    )
-                else:
-                    console.print(
-                        f"[grey50][{datetime.now().strftime('%H:%M:%S')}][/] [bold blue]-- Starting location: {location} (Coordinates not found) --[/bold blue]"
-                    )
-                # 1. Scrape (Generator)
 
-                prospect_generator = scrape_google_maps(
-                    browser=browser,
-                    location_param={"city": location},
-                    search_strings=search_phrases,
-                    campaign_name=campaign_name,
-                    zoom_out_level=zoom_out_level,
-                    force_refresh=force,
-                    ttl_days=ttl_days,
-                    debug=debug,
-                )
-                async for prospect_data in prospect_generator:
-                    # 2. Import
-                    company = import_prospect(prospect_data, existing_domains)
-                    if not company or not company.domain:
-                        continue  # Skip duplicates or prospects without a domain
-                    console.print(
-                        f"[grey50][{datetime.now().strftime('%H:%M:%S')}][/] [cyan]New prospect imported:[/] {company.name}"
-                    )
-                    existing_domains.add(
-                        company.domain
-                    )  # Add to set to avoid re-importing from same CSV
-                    # 3. Enrich (via Service)
-                    website_data = None
-                    async with httpx.AsyncClient() as client:
-                        try:
-                            response = await client.post(
-                                "http://localhost:8000/enrich",
-                                json={
-                                    "domain": company.domain,
-                                    "force": force,
-                                    "ttl_days": ttl_days,
-                                    "debug": debug,
-                                },
-                                timeout=120.0,  # Generous timeout for scraping
-                            )
-                            response.raise_for_status()  # Raise exception for 4xx/5xx
-                            # Assuming the service returns a dict that can be loaded into the Website model
-                            response_json = response.json()
-                            if response_json:  # Check if response is not empty
-                                website_data = Website(**response_json)
-                        except httpx.RequestError as e:
-                            logger.error(
-                                f"HTTP request to enrichment service failed for {company.domain}: {e}"
-                            )
-                        except Exception as e:
-                            logger.error(
-                                f"Error processing enrichment response for {company.domain}: {e}"
-                            )
-                    if website_data and website_data.email:
+    prospects_csv_path = get_scraped_data_dir() / campaign_name / "prospects" / "prospects.csv"
+    prospects_csv_path.parent.mkdir(parents=True, exist_ok=True)
+    write_header = not prospects_csv_path.exists()
+
+    with open(prospects_csv_path, 'a', newline='', encoding='utf-8') as csvfile:
+        writer = csv.DictWriter(csvfile, fieldnames=GoogleMapsData.model_fields.keys())
+        if write_header:
+            writer.writeheader()
+
+        async with async_playwright() as p:
+            browser = await p.chromium.launch(headless=not headed, devtools=devtools)
+            try:
+                for location in locations:
+                    if emails_found_count >= goal_emails:
+                        break
+                    coords = get_coordinates_from_city_state(location)
+                    if coords:
                         console.print(
-                            f"[grey50][{datetime.now().strftime('%H:%M:%S')}][/] [green]   -> Found email: {website_data.email}[/green]"
-                        )
-                        # Save enrichment data and compile
-                        if company.slug is None:
-                            logger.warning(f"Skipping enrichment data save for company {company.name} due to missing slug.")
-                            continue
-                        company_dir = get_companies_dir() / company.slug
-                        enrichment_dir = company_dir / "enrichments"
-                        website_md_path = enrichment_dir / "website.md"
-                        website_data.associated_company_folder = company_dir.name
-                        enrichment_dir.mkdir(parents=True, exist_ok=True)
-                        with open(website_md_path, "w") as f:
-                            f.write("---")
-                            yaml.dump(
-                                website_data.model_dump(exclude_none=True),
-                                f,
-                                sort_keys=False,
-                                default_flow_style=False,
-                                allow_unicode=True,
-                            )
-                            f.write("---")
-                        compiler = WebsiteCompiler()
-                        compiler.compile(company_dir)
-                        emails_found_count += 1
-                        console.print(
-                            f"[grey50][{datetime.now().strftime('%H:%M:%S')}][/] [bold green]Progress: {emails_found_count} / {goal_emails} emails found.[/bold green]"
+                            f"[grey50][{datetime.now().strftime('%H:%M:%S')}][/] [bold blue]-- Starting location: {location} ({coords['latitude']:.4f}, {coords['longitude']:.4f}) --[/bold blue]"
                         )
                     else:
                         console.print(
-                            f"[grey50][{datetime.now().strftime('%H:%M:%S')}][/] [yellow] -> No email found for {company.name}[/yellow]"
+                            f"[grey50][{datetime.now().strftime('%H:%M:%S')}][/] [bold blue]-- Starting location: {location} (Coordinates not found) --[/bold blue]"
                         )
-                        # 4. Check Goal
-                        if emails_found_count >= goal_emails:
+                    # 1. Scrape (Generator)
+
+                    prospect_generator = scrape_google_maps(
+                        browser=browser,
+                        location_param={"city": location},
+                        search_strings=search_phrases,
+                        campaign_name=campaign_name,
+                        zoom_out_level=zoom_out_level,
+                        force_refresh=force,
+                        ttl_days=ttl_days,
+                        debug=debug,
+                        browser_width=browser_width,
+                        browser_height=browser_height,
+                    )
+                    async for prospect_data in prospect_generator:
+                        # Write to CSV
+                        writer.writerow(prospect_data.model_dump())
+
+                        # 2. Import
+                        company = import_prospect(prospect_data, existing_domains, campaign=campaign_name)
+                        if not company or not company.domain:
+                            continue  # Skip duplicates or prospects without a domain
+                        console.print(
+                            f"[grey50][{datetime.now().strftime('%H:%M:%S')}][/] [cyan]New prospect imported:[/] {company.name}"
+                        )
+                        existing_domains.add(
+                            company.domain
+                        )  # Add to set to avoid re-importing from same CSV
+                        # 3. Enrich (via Service)
+                        website_data = None
+                        async with httpx.AsyncClient() as client:
+                            try:
+                                response = await client.post(
+                                    "http://localhost:8000/enrich",
+                                    json={
+                                        "domain": company.domain,
+                                        "force": force,
+                                        "ttl_days": ttl_days,
+                                        "debug": debug,
+                                    },
+                                    timeout=120.0,  # Generous timeout for scraping
+                                )
+                                response.raise_for_status()  # Raise exception for 4xx/5xx
+                                # Assuming the service returns a dict that can be loaded into the Website model
+                                response_json = response.json()
+                                if response_json:  # Check if response is not empty
+                                    website_data = Website(**response_json)
+                            except httpx.RequestError as e:
+                                logger.error(
+                                    f"HTTP request to enrichment service failed for {company.domain}: {e}"
+                                )
+                            except Exception as e:
+                                logger.error(
+                                    f"Error processing enrichment response for {company.domain}: {e}"
+                                )
+                        if website_data and website_data.email:
                             console.print(
-                                f"[grey50][{datetime.now().strftime('%H:%M:%S')}][/] [bold magenta]Goal of {goal_emails} emails met. Stopping search.[/bold magenta]"
+                                f"[grey50][{datetime.now().strftime('%H:%M:%S')}][/] [green]   -> Found email: {website_data.email}[/green]"
                             )
-                            break
-        finally:
-            await browser.close()
+                            # Save enrichment data and compile
+                            if company.slug is None:
+                                logger.warning(f"Skipping enrichment data save for company {company.name} due to missing slug.")
+                                continue
+                            company_dir = get_companies_dir() / company.slug
+                            enrichment_dir = company_dir / "enrichments"
+                            website_md_path = enrichment_dir / "website.md"
+                            website_data.associated_company_folder = company_dir.name
+                            enrichment_dir.mkdir(parents=True, exist_ok=True)
+                            with open(website_md_path, "w") as f:
+                                f.write("---")
+                                yaml.dump(
+                                    website_data.model_dump(exclude_none=True),
+                                    f,
+                                    sort_keys=False,
+                                    default_flow_style=False,
+                                    allow_unicode=True,
+                                )
+                                f.write("---")
+                            compiler = WebsiteCompiler()
+                            compiler.compile(company_dir)
+                            emails_found_count += 1
+                            console.print(
+                                f"[grey50][{datetime.now().strftime('%H:%M:%S')}][/] [bold green]Progress: {emails_found_count} / {goal_emails} emails found.[/bold green]"
+                            )
+                        else:
+                            console.print(
+                                f"[grey50][{datetime.now().strftime('%H:%M:%S')}][/] [yellow] -> No email found for {company.name}[/yellow]"
+                            )
+                            # 4. Check Goal
+                            if emails_found_count >= goal_emails:
+                                console.print(
+                                    f"[grey50][{datetime.now().strftime('%H:%M:%S')}][/] [bold magenta]Goal of {goal_emails} emails met. Stopping search.[/bold magenta]"
+                                )
+                                break
+            finally:
+                await browser.close()
 
 
 @app.command()
@@ -420,6 +437,10 @@ def achieve_goal(
     devtools: bool = typer.Option(False, "--devtools", help="Open browser with devtools open."),
 
     debug: bool = typer.Option(False, "--debug", help="Enable debug mode with breakpoints."),
+
+    browser_width: int = typer.Option(2000, help="The width of the browser viewport."),
+
+    browser_height: int = typer.Option(1500, help="The height of the browser viewport."),
 
 ):
 
@@ -522,16 +543,18 @@ def achieve_goal(
             debug=debug,
             existing_domains=existing_domains,
             console=console,
+            browser_width=browser_width,
+            browser_height=browser_height,
         )
     )
     message = f"[grey50][{datetime.now().strftime('%H:%M:%S')}][/] [bold blue]Pipeline finished.[/bold blue]"
     console.print(message)
 
 
-@app.command(name="visualize-coverage") # type: ignore # type: ignore # type: ignore # type: ignore # type: ignore # type: ignore
+@app.command(name="visualize-coverage")
 def visualize_coverage(
     campaign_name: Optional[str] = typer.Argument(None, help="Name of the campaign to visualize. If not provided, uses the current campaign context."),
-    output_file: Path = typer.Option("coverage.kml", "--output", "-o", help="The path to save the KML file."),
+    output_file: Optional[Path] = typer.Option(None, "--output", "-o", help="The path to save the KML file. Defaults to coverage.kml in the campaign directory."),
 ):
     """
     Generates a KML file to visualize the scraped areas for a campaign.
@@ -543,6 +566,14 @@ def visualize_coverage(
             raise typer.Exit(code=1)
 
     console.print(f"[bold]Generating coverage visualization for campaign: '{campaign_name}'[/bold]")
+
+    campaign_dir = get_campaign_dir(campaign_name)
+    if not campaign_dir:
+        console.print(f"[bold red]Campaign '{campaign_name}' not found.[/bold red]")
+        raise typer.Exit(code=1)
+
+    final_output_file = output_file if output_file else campaign_dir / "coverage.kml"
+
 
     assert campaign_name is not None # mypy needs this to understand campaign_name is not None here
     effective_campaign_name: str = campaign_name # Explicitly type hint for mypy
@@ -604,9 +635,9 @@ def visualize_coverage(
 </kml>'''
 
     try:
-        with open(output_file, 'w') as f:
+        with open(final_output_file, 'w') as f:
             f.write(kml_content)
-        console.print(f"[bold green]Successfully generated KML file at: {output_file.absolute()}[/bold green]")
+        console.print(f"[bold green]Successfully generated KML file at: {final_output_file.absolute()}[/bold green]")
     except IOError as e:
-        console.print(f"[bold red]Error writing to file {output_file}: {e}[/bold red]")
+        console.print(f"[bold red]Error writing to file {final_output_file}: {e}[/bold red]")
         raise typer.Exit(code=1)

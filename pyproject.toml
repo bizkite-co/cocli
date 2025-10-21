@@ -70,3 +70,10 @@ exclude = [
     "data",
 ]
 follow_imports = "skip"
+
+[[tool.mypy.overrides]]
+module = [
+    "aws_cdk.*",
+    "constructs.*",
+]
+ignore_missing_imports = true

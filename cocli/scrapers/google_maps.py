@@ -65,7 +65,12 @@ async def _scrape_area(
     while True:
         await page.wait_for_timeout(1500)
         listing_divs = await scrollable_div.locator("> div").all()
-        logger.info(f"[SCROLL_DEBUG] Found {len(listing_divs)} listing divs before scroll.")
+        logger.info(f"[SCROLL_DEBUG] Found {len(listing_divs)} listing divs before scroll. last_processed_div_count: {last_processed_div_count}")
+
+        if debug:
+            page_source = await page.content()
+            with open(f"page_source_before_scroll_{search_string.replace(' ', '_')}.html", "w") as f:
+                f.write(page_source)
 
         if not listing_divs or len(listing_divs) == last_processed_div_count:
             logger.info("No new listing divs found. Moving to next query.")
@@ -87,7 +92,11 @@ async def _scrape_area(
             business_data_dict = parse_business_listing_html(html_content, search_string, debug=debug)
             place_id = business_data_dict.get("Place_ID")
 
+            logger.info(f"Checking place_id: {place_id}")
+            logger.info(f"processed_place_ids: {processed_place_ids}")
+
             if not place_id or place_id in processed_place_ids:
+                logger.info(f"Skipping duplicate place_id: {place_id}")
                 continue
             
             processed_place_ids.add(place_id)
@@ -127,19 +136,22 @@ async def _scrape_area(
 
         last_processed_div_count = len(listing_divs)
 
-        logger.info("[SCROLL_DEBUG] Attempting to scroll...")
-        current_scroll_height = await scrollable_div.evaluate("element => element.scrollHeight")
-        logger.info(f"[SCROLL_DEBUG]   Scroll height before scroll action: {current_scroll_height}")
-
-        if current_scroll_height == last_scroll_height:
-            logger.info(f"[SCROLL_DEBUG] Scroll height hasn't changed. Reached end of content for '{search_string}'.")
-            logger.info(f"Reached end of results for query: '{search_string}'")
+        # Check for the end of the list message
+        end_of_list_text = "You've reached the end of the list."
+        if await page.get_by_text(end_of_list_text).is_visible():
+            logger.info(f"'{end_of_list_text}' message visible. Reached end of content for '{search_string}'.")
             break
 
-        await scrollable_div.evaluate("element => element.scrollTop = element.scrollHeight")
-        last_scroll_height = current_scroll_height
+        # Scroll down to trigger loading of more results
+        await scrollable_div.hover()
+        await page.mouse.wheel(0, 10000) # Scroll down by a large amount
         logger.info("[SCROLL_DEBUG]   ...scrolled. Waiting for content to load.")
         await page.wait_for_timeout(delay_seconds * 1000)
+
+        if debug:
+            page_source = await page.content()
+            with open(f"page_source_after_scroll_{search_string.replace(' ', '_')}.html", "w") as f:
+                f.write(page_source)
 
     # After finishing the scrape for this area, calculate bounds and save to index
     if found_coords:
@@ -216,6 +228,32 @@ async def scrape_google_maps(
                 await page.wait_for_timeout(500)
             logger.info(f"Zoomed out {zoom_out_level} times.")
             await page.wait_for_timeout(5000)
+
+        try:
+            scale_button = page.locator('button[jsaction="scale.click"]')
+            scale_label = await scale_button.text_content()
+            scale_inner_div = scale_button.locator('div').first
+            style = await scale_inner_div.get_attribute('style')
+            width_match = re.search(r'width:\s*(\d+)px;', style)
+            if width_match and scale_label:
+                width_px = int(width_match.group(1))
+                # Extract the number and unit from the scale label (e.g., "2 mi" -> 2, "mi")
+                scale_number_match = re.search(r'(\d+)', scale_label)
+                if scale_number_match:
+                    scale_number = int(scale_number_match.group(1))
+                    # Calculate pixels per mile
+                    if "mi" in scale_label:
+                        px_per_mile = width_px / scale_number
+                    elif "km" in scale_label:
+                        px_per_mile = width_px / (scale_number * 0.621371)
+                    else: # assume feet
+                        px_per_mile = width_px / (scale_number / 5280)
+                    
+                    if px_per_mile > 0:
+                        map_width_miles = launch_width / px_per_mile
+                        logger.info(f"Map scale: {scale_label} = {width_px}px. Estimated map width: {map_width_miles:.2f} miles.")
+        except Exception as e:
+            logger.warning(f"Could not extract map scale: {e}")
 
         # Initial scrape of the main area
         for search_string in search_strings:
