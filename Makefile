@@ -47,7 +47,8 @@ activate: install ## Run tests using pytest
 
 list-packages: install ## List installed packages
 	source $(VENV_DIR)/bin/activate && uv pip list
-docker-stop:
+
+docker-stop: ## Stop cocli-enrichment
 	@docker stop cocli-enrichment
 
 docker-refresh: docker-stop docker-build docker-run-enrichment ## Stop and rebuild docker enrichment
@@ -132,6 +133,10 @@ docker-build: ## Build the docker image
 
 docker-run-enrichment: ## Start docker enrichment service
 	@docker run --rm -d -p 8000:8000 --name cocli-enrichment -e LOCAL_DEV=1 enrichment-service
+
+.PHONY: check-scraper-version
+check-scraper-version: ## Check if local website_scraper.py is newer than in the Docker image
+	python3 ./scripts/check_scraper_version.py --image-name enrichment-service
 
 
 

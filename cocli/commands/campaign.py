@@ -4,9 +4,12 @@ import csv
 import asyncio
 import subprocess
 from pathlib import Path
-from typing import Optional, Set
+from typing import Optional, Set, Dict, Any
 from datetime import datetime
 import logging
+import re
+import math
+import pandas as pd
 
 logger = logging.getLogger(__name__)
 import httpx
@@ -24,6 +27,7 @@ from ..core.campaign_workflow import CampaignWorkflow
 from ..core.logging_config import setup_file_logging
 from ..compilers.website_compiler import WebsiteCompiler
 from ..core.scrape_index import ScrapeIndex
+from ..core.location_prospects_index import LocationProspectsIndex
 
 from typing_extensions import Annotated
 from cocli.models.campaign import Campaign
@@ -290,6 +294,7 @@ async def pipeline(
     console: Console,
     browser_width: int,
     browser_height: int,
+    location_prospects_index: LocationProspectsIndex,
 ):
     emails_found_count = 0
 
@@ -305,112 +310,183 @@ async def pipeline(
         async with async_playwright() as p:
             browser = await p.chromium.launch(headless=not headed, devtools=devtools)
             try:
-                for location in locations:
-                    if emails_found_count >= goal_emails:
+                # Initialize location data with current prospect counts
+                location_data = []
+                for loc_name in locations:
+                    current_prospects = location_prospects_index.get_prospect_count(loc_name)
+                    location_data.append({"name": loc_name, "prospect_count": current_prospects})
+
+                # Convert to DataFrame for easy sorting
+                location_df = pd.DataFrame(location_data)
+
+                while emails_found_count < goal_emails:
+                    # Sort locations by prospect count (least prospected first)
+                    location_df = location_df.sort_values(by="prospect_count", ascending=True).reset_index(drop=True)
+
+                    # Select the top 3 least prospected locations, or fewer if less than 3 are available
+                    num_locations_to_process = min(3, len(location_df))
+                    if num_locations_to_process == 0:
+                        console.print("[bold red]No locations to process. Exiting.[/bold red]")
                         break
-                    coords = get_coordinates_from_city_state(location)
-                    if coords:
-                        console.print(
-                            f"[grey50][{datetime.now().strftime('%H:%M:%S')}][/] [bold blue]-- Starting location: {location} ({coords['latitude']:.4f}, {coords['longitude']:.4f}) --[/bold blue]"
-                        )
-                    else:
-                        console.print(
-                            f"[grey50][{datetime.now().strftime('%H:%M:%S')}][/] [bold blue]-- Starting location: {location} (Coordinates not found) --[/bold blue]"
-                        )
-                    # 1. Scrape (Generator)
 
-                    prospect_generator = scrape_google_maps(
-                        browser=browser,
-                        location_param={"city": location},
-                        search_strings=search_phrases,
-                        campaign_name=campaign_name,
-                        zoom_out_level=zoom_out_level,
-                        force_refresh=force,
-                        ttl_days=ttl_days,
-                        debug=debug,
-                        browser_width=browser_width,
-                        browser_height=browser_height,
-                    )
-                    async for prospect_data in prospect_generator:
-                        # Write to CSV
-                        writer.writerow(prospect_data.model_dump())
+                    selected_locations = location_df.head(num_locations_to_process)
 
-                        # 2. Import
-                        company = import_prospect(prospect_data, existing_domains, campaign=campaign_name)
-                        if not company or not company.domain:
-                            continue  # Skip duplicates or prospects without a domain
-                        console.print(
-                            f"[grey50][{datetime.now().strftime('%H:%M:%S')}][/] [cyan]New prospect imported:[/] {company.name}"
-                        )
-                        existing_domains.add(
-                            company.domain
-                        )  # Add to set to avoid re-importing from same CSV
-                        # 3. Enrich (via Service)
-                        website_data = None
-                        async with httpx.AsyncClient() as client:
-                            try:
-                                response = await client.post(
-                                    "http://localhost:8000/enrich",
-                                    json={
-                                        "domain": company.domain,
-                                        "force": force,
-                                        "ttl_days": ttl_days,
-                                        "debug": debug,
-                                    },
-                                    timeout=120.0,  # Generous timeout for scraping
-                                )
-                                response.raise_for_status()  # Raise exception for 4xx/5xx
-                                # Assuming the service returns a dict that can be loaded into the Website model
-                                response_json = response.json()
-                                if response_json:  # Check if response is not empty
-                                    website_data = Website(**response_json)
-                            except httpx.RequestError as e:
-                                logger.error(
-                                    f"HTTP request to enrichment service failed for {company.domain}: {e}"
-                                )
-                            except Exception as e:
-                                logger.error(
-                                    f"Error processing enrichment response for {company.domain}: {e}"
-                                )
-                        if website_data and website_data.email:
+                    # Calculate emails to scrape per selected location
+                    remaining_emails = goal_emails - emails_found_count
+                    emails_per_location = math.ceil(remaining_emails / num_locations_to_process)
+
+                    console.print(f"[grey50][{datetime.now().strftime('%H:%M:%S')}][/] [bold yellow]Targeting {num_locations_to_process} least prospected locations. Aiming for ~{emails_per_location} emails per location.[/bold yellow]")
+
+                    for _, loc_row in selected_locations.iterrows():
+                        location = str(loc_row["name"])
+                        if emails_found_count >= goal_emails:
+                            break
+
+                        coords = get_coordinates_from_city_state(location)
+                        if coords:
                             console.print(
-                                f"[grey50][{datetime.now().strftime('%H:%M:%S')}][/] [green]   -> Found email: {website_data.email}[/green]"
-                            )
-                            # Save enrichment data and compile
-                            if company.slug is None:
-                                logger.warning(f"Skipping enrichment data save for company {company.name} due to missing slug.")
-                                continue
-                            company_dir = get_companies_dir() / company.slug
-                            enrichment_dir = company_dir / "enrichments"
-                            website_md_path = enrichment_dir / "website.md"
-                            website_data.associated_company_folder = company_dir.name
-                            enrichment_dir.mkdir(parents=True, exist_ok=True)
-                            with open(website_md_path, "w") as f:
-                                f.write("---")
-                                yaml.dump(
-                                    website_data.model_dump(exclude_none=True),
-                                    f,
-                                    sort_keys=False,
-                                    default_flow_style=False,
-                                    allow_unicode=True,
-                                )
-                                f.write("---")
-                            compiler = WebsiteCompiler()
-                            compiler.compile(company_dir)
-                            emails_found_count += 1
-                            console.print(
-                                f"[grey50][{datetime.now().strftime('%H:%M:%S')}][/] [bold green]Progress: {emails_found_count} / {goal_emails} emails found.[/bold green]"
+                                f"[grey50][{datetime.now().strftime('%H:%M:%S')}][/] [bold blue]-- Starting location: {location} ({coords['latitude']:.4f}, {coords['longitude']:.4f}) --[/bold blue]"
                             )
                         else:
                             console.print(
-                                f"[grey50][{datetime.now().strftime('%H:%M:%S')}][/] [yellow] -> No email found for {company.name}[/yellow]"
+                                f"[grey50][{datetime.now().strftime('%H:%M:%S')}] [/] [bold blue]-- Starting location: {location} (Coordinates not found) --[/bold blue]"
                             )
-                            # 4. Check Goal
-                            if emails_found_count >= goal_emails:
+                            continue
+
+                        # 1. Scrape (Generator)
+                        prospect_generator = scrape_google_maps(
+                            browser=browser,
+                            location_param={"city": location},
+                            search_strings=search_phrases,
+                            campaign_name=campaign_name,
+                            zoom_out_level=zoom_out_level,
+                            force_refresh=force,
+                            ttl_days=ttl_days,
+                            debug=debug,
+                            browser_width=browser_width,
+                            browser_height=browser_height,
+                        )
+                        
+                        scraped_from_current_location = 0
+                        async for prospect_data in prospect_generator:
+                            # Write to CSV
+                            writer.writerow(prospect_data.model_dump())
+
+                            # 2. Import
+                            company = import_prospect(prospect_data, existing_domains, campaign=campaign_name)
+                            if not company or not company.domain:
+                                continue  # Skip duplicates or prospects without a domain
+                            console.print(
+                                f"[grey50][{datetime.now().strftime('%H:%M:%S')}][/] [cyan]New prospect imported:[/] {company.name}"
+                            )
+                            existing_domains.add(
+                                company.domain
+                            )  # Add to set to avoid re-importing from same CSV
+                            # 3. Enrich (via Service)
+                            website_data = None
+                            async with httpx.AsyncClient() as client:
+                                try:
+                                    response = await client.post(
+                                        "http://localhost:8000/enrich",
+                                        json={
+                                            "domain": company.domain,
+                                            "force": force,
+                                            "ttl_days": ttl_days,
+                                            "debug": debug,
+                                        },
+                                        timeout=120.0,  # Generous timeout for scraping
+                                    )
+                                    response.raise_for_status()  # Raise exception for 4xx/5xx
+                                    # Assuming the service returns a dict that can be loaded into the Website model
+                                    response_json = response.json()
+                                    if response_json:  # Check if response is not empty
+                                        # Pre-process personnel field if it's malformed
+                                        if "personnel" in response_json and isinstance(response_json["personnel"], list):
+                                            processed_personnel = []
+                                            for item in response_json["personnel"]:
+                                                if isinstance(item, str):
+                                                    # Attempt to parse email from string
+                                                    email_match = re.search(r'Email:\s*(\S+@\S+)', item)
+                                                    if email_match:
+                                                        processed_personnel.append({"email": email_match.group(1).replace(" ", "")})
+                                                    else:
+                                                        logger.warning(f"Could not parse personnel string into dictionary: {item}")
+                                                elif isinstance(item, dict):
+                                                    processed_personnel.append(item)
+                                                else:
+                                                    logger.warning(f"Unexpected type for personnel item: {type(item)}. Skipping.")
+                                            response_json["personnel"] = processed_personnel
+                                        elif "personnel" in response_json and isinstance(response_json["personnel"], str):
+                                            # Handle the case where personnel itself is a single string
+                                            email_match = re.search(r'Email:\s*(\S+@\S+)', response_json["personnel"])
+                                            if email_match:
+                                                response_json["personnel"] = [{"email": email_match.group(1).replace(" ", "")}]
+                                            else:
+                                                logger.warning(f"Could not parse personnel string into dictionary: {response_json['personnel']}. Setting to empty list.")
+                                                response_json["personnel"] = []
+                                        elif "personnel" not in response_json:
+                                            response_json["personnel"] = [] # Ensure personnel field exists as a list
+
+                                        website_data = Website(**response_json)
+                                except httpx.RequestError as e:
+                                    logger.error(
+                                        f"HTTP request to enrichment service failed for {company.domain}: {e}"
+                                    )
+                                except Exception as e:
+                                    logger.error(
+                                        f"Error processing enrichment response for {company.domain}: {e}"
+                                    )
+                            if website_data and website_data.email:
                                 console.print(
-                                    f"[grey50][{datetime.now().strftime('%H:%M:%S')}][/] [bold magenta]Goal of {goal_emails} emails met. Stopping search.[/bold magenta]"
+                                    f"[grey50][{datetime.now().strftime('%H:%M:%S')}][/] [green]   -> Found email: {website_data.email}[/green]"
                                 )
+                                # Save enrichment data and compile
+                                if company.slug is None:
+                                    logger.warning(f"Skipping enrichment data save for company {company.name} due to missing slug.")
+                                    continue
+                                company_dir = get_companies_dir() / company.slug
+                                enrichment_dir = company_dir / "enrichments"
+                                website_md_path = enrichment_dir / "website.md"
+                                website_data.associated_company_folder = company_dir.name
+                                enrichment_dir.mkdir(parents=True, exist_ok=True)
+                                with open(website_md_path, "w") as f:
+                                    f.write("---")
+                                    yaml.dump(
+                                        website_data.model_dump(exclude_none=True),
+                                        f,
+                                        sort_keys=False,
+                                        default_flow_style=False,
+                                        allow_unicode=True,
+                                    )
+                                    f.write("---")
+                                compiler = WebsiteCompiler()
+                                compiler.compile(company_dir)
+                                emails_found_count += 1
+                                scraped_from_current_location += 1
+                                location_prospects_index.update_prospect_count(location, 1)
+                                # Update the DataFrame for the current location
+                                location_df.loc[location_df["name"] == location, "prospect_count"] += 1
+                                console.print(
+                                    f"[grey50][{datetime.now().strftime('%H:%M:%S')}][/] [bold green]Progress: {emails_found_count} / {goal_emails} emails found.[/bold green]"
+                                )
+                            else:
+                                console.print(
+                                    f"[grey50][{datetime.now().strftime('%H:%M:%S')}][/] [yellow] -> No email found for {company.name}[/yellow]"
+                                )
+                                # 4. Check Goal
+                                if emails_found_count >= goal_emails:
+                                    console.print(
+                                        f"[grey50][{datetime.now().strftime('%H:%M:%S')}][/] [bold magenta]Goal of {goal_emails} emails met. Stopping search.[/bold magenta]"
+                                    )
+                                    break
+                            
+                            # Stop scraping from current location if we've met its quota or overall goal
+                            if scraped_from_current_location >= emails_per_location or emails_found_count >= goal_emails:
                                 break
+                    
+                    if emails_found_count >= goal_emails:
+                        break
+
             finally:
                 await browser.close()
 
@@ -457,6 +533,22 @@ def achieve_goal(
             logger.error("Error: No campaign name provided and no campaign context is set.")
 
             raise typer.Exit(code=1)
+
+    # --- Check for newer local scraper code ---
+    console.print(f"[grey50][{datetime.now().strftime('%H:%M:%S')}][/] [dim]Checking for newer local website scraper code...[/dim]")
+    result = subprocess.run(
+        ["./scripts/check_scraper_version.py", "--image-name", "enrichment-service"],
+        capture_output=True,
+        text=True,
+        check=False # Don't raise an exception for non-zero exit codes
+    )
+    console.print(result.stdout)
+    if result.returncode == 1: # Local is newer
+        console.print("[bold red]Error: Local website_scraper.py is newer than the one in the 'enrichment-service' Docker image.[/bold red]")
+        console.print("[red]Please rebuild the Docker image using 'make docker-build' and restart the container using 'make docker-run-enrichment'.[/red]")
+        raise typer.Exit(code=1)
+
+    # --- Health Check for Enrichment Service ---
 
     # --- Health Check for Enrichment Service ---
 
@@ -524,6 +616,8 @@ def achieve_goal(
 
     existing_domains = {c.domain for c in Company.get_all() if c.domain}
 
+    location_prospects_index = LocationProspectsIndex(campaign_name=campaign_name)
+
     # --- Main Pipeline Loop ---
     asyncio.run(
         pipeline(
@@ -541,6 +635,7 @@ def achieve_goal(
             console=console,
             browser_width=browser_width,
             browser_height=browser_height,
+            location_prospects_index=location_prospects_index,
         )
     )
     message = f"[grey50][{datetime.now().strftime('%H:%M:%S')}][/] [bold blue]Pipeline finished.[/bold blue]"
