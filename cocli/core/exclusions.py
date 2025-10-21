@@ -1,7 +1,6 @@
 import csv
 from pathlib import Path
-from typing import Optional, List, Dict
-from datetime import datetime
+from typing import Optional, Dict
 
 from ..models.exclusion import Exclusion
 from .config import get_cocli_base_dir

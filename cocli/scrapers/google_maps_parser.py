@@ -1,5 +1,4 @@
 import re
-import uuid
 from typing import Dict, Any, Optional
 from bs4 import BeautifulSoup
 

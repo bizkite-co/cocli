@@ -1,6 +1,5 @@
 import typer
 import pandas as pd
-from pathlib import Path
 from rich.console import Console
 import yaml
 
@@ -8,7 +7,6 @@ from cocli.core.config import get_scraped_data_dir, get_companies_dir
 from cocli.core.utils import slugify, create_company_files
 from cocli.enrichment.website_scraper import WebsiteScraper
 from cocli.models.company import Company
-from cocli.models.website import Website
 
 app = typer.Typer()
 console = Console()

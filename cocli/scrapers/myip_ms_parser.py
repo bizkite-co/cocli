@@ -1,6 +1,4 @@
-from typing import Dict, Any, Optional
-from bs4 import BeautifulSoup
-import uuid
+from typing import Dict, Any
 import re
 import logging
 

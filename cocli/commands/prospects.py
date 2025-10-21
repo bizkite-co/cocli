@@ -2,7 +2,7 @@ import typer
 import csv
 import logging
 from typing_extensions import Annotated
-from typing import Optional, Iterator, List
+from typing import Optional, Iterator
 import asyncio
 import httpx
 import yaml

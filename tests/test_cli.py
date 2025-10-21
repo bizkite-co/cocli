@@ -1,6 +1,4 @@
-import pytest
 from unittest.mock import patch
-from pathlib import Path
 import subprocess
 
 def test_help_command(runner, cli_app):

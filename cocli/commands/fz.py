@@ -9,7 +9,6 @@ import logging
 from rich.console import Console
 
 logger = logging.getLogger(__name__)
-from typer.models import OptionInfo
 
 from ..core.cache import get_cached_items
 from ..core.config import get_context, get_campaign
@@ -95,7 +94,7 @@ def fz(
                     if entity_type_str == "COMPANY":
                         view_company(company_slug=entity_slug)
                     elif entity_type_str == "PERSON":
-                        console.print(f"--- Person Details ---")
+                        console.print("--- Person Details ---")
                         # For person, we still need to find the original item to get company_name
                         selected_person_item = next((item for item in all_searchable_items if item["display"] == selected_item), None)
                         if selected_person_item:

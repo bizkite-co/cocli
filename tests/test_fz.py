@@ -1,7 +1,6 @@
 import pytest
 from typer.testing import CliRunner
-from unittest.mock import patch, MagicMock
-from pathlib import Path
+from unittest.mock import patch
 
 from cocli.main import app
 from cocli.core.utils import slugify

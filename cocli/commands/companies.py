@@ -1,5 +1,4 @@
 import typer
-from pathlib import Path
 from rich.console import Console
 
 from ..core.config import get_companies_dir
@@ -26,7 +25,7 @@ def list_recent(
 
     sorted_dirs = sorted(company_dirs, key=lambda d: d.stat().st_ctime, reverse=True)
 
-    console.print(f"[bold]Most recently created companies:[/bold]")
+    console.print("[bold]Most recently created companies:[/bold]")
     for i, company_dir in enumerate(sorted_dirs):
         if i >= count:
             break

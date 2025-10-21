@@ -1,4 +1,3 @@
-import typer
 from ..core.config import create_default_config_file
 
 def init():

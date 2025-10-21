@@ -1,12 +1,8 @@
 import typer
 import pandas as pd
-from pathlib import Path
-from typing import List
 from rich.console import Console
 
-from cocli.core.config import get_scraped_data_dir, get_companies_dir
-from cocli.models.company import Company
-from cocli.core.utils import create_company_files, slugify
+from cocli.core.config import get_scraped_data_dir
 
 app = typer.Typer()
 console = Console()

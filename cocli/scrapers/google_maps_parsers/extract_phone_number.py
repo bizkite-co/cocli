@@ -1,6 +1,5 @@
 import re
 from bs4 import BeautifulSoup
-from typing import Optional
 import logging
 
 logger = logging.getLogger(__name__)

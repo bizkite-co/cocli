@@ -1,7 +1,7 @@
 import yaml
 import logging
 import typer
-from typing import Optional, List, Any, Dict
+from typing import Optional, Any, Dict
 from pathlib import Path
 import subprocess
 import webbrowser
@@ -10,19 +10,14 @@ import os
 import shutil
 import sys
 import datetime
-from datetime import UTC
 
 from rich.console import Console
-from rich.markdown import Markdown
-from rich.prompt import Prompt
 
-from fuzzywuzzy import process # type: ignore
 
-from ..core.utils import slugify, _format_entity_for_fzf, create_person_files, _getch, run_fzf
+from ..core.utils import slugify, create_person_files, _getch, run_fzf
 from ..core.config import get_companies_dir, get_people_dir, get_campaign, get_editor_command
 from ..models.company import Company
 from ..models.person import Person
-from ..models.meeting import Meeting
 from ..models.note import Note
 
 

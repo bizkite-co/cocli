@@ -1,9 +1,8 @@
 from pydantic import BaseModel, Field
-from typing import List, Optional
+from typing import List
 import toml
 from pathlib import Path
 from cocli.core.utils import slugify
-import shutil
 
 class CampaignImport(BaseModel):
     format: str

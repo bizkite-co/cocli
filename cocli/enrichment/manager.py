@@ -1,7 +1,7 @@
 import importlib
 import pkgutil
 from pathlib import Path
-from typing import List, Type, Optional, Dict
+from typing import List, Optional, Dict
 import logging
 import yaml
 from ..core.utils import slugify

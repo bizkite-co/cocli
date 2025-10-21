@@ -1,7 +1,5 @@
 
 import logging
-import os
-from pathlib import Path
 import sys
 from datetime import datetime
 

@@ -3,8 +3,7 @@ from typing import Any, Optional
 import logging
 
 import yaml
-from pydantic import BaseModel, Field, ValidationError, EmailStr, field_validator
-import re
+from pydantic import BaseModel, Field, ValidationError, EmailStr
 
 logger = logging.getLogger(__name__)
 

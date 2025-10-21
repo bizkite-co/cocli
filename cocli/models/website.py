@@ -1,11 +1,11 @@
 from pydantic import BaseModel, Field, model_validator, computed_field
 from typing import Optional, List, Dict, Any
-from datetime import datetime
+from datetime import datetime, timezone
 from .domain import Domain
 
 class Website(BaseModel):
-    created_at: datetime = Field(default_factory=lambda: datetime.now(datetime.UTC))
-    updated_at: datetime = Field(default_factory=lambda: datetime.now(datetime.UTC))
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     url: Domain # Called `domain` in the website CSV model
 
     @model_validator(mode='before')
@@ -28,7 +28,7 @@ class Website(BaseModel):
     twitter_url: Optional[str] = None
     youtube_url: Optional[str] = None
     address: Optional[str] = None
-    personnel: List[str] = []
+    personnel: List[Dict[str, Any]] = []
     description: Optional[str] = None
     about_us_url: Optional[str] = None
     contact_url: Optional[str] = None

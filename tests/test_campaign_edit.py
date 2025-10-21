@@ -1,10 +1,8 @@
 import pytest
 from typer.testing import CliRunner
-from unittest.mock import patch, MagicMock
-from pathlib import Path
+from unittest.mock import patch
 
 from cocli.main import app
-from cocli.core.config import get_campaigns_dir
 
 runner = CliRunner()
 

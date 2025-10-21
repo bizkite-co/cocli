@@ -1,9 +1,8 @@
 
 from typing import Optional, Dict, Any
-from playwright.sync_api import sync_playwright, Page
+from playwright.sync_api import sync_playwright
 from .google_maps_parser import parse_business_listing_html
 from ..core.geocoding import get_coordinates_from_city_state, get_coordinates_from_zip, get_coordinates_from_address
-import re
 import logging
 
 logger = logging.getLogger(__name__)

@@ -1,5 +1,4 @@
 import csv
-import os
 import re
 import tempfile
 import shutil # Import shutil for rmtree

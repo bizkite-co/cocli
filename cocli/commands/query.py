@@ -1,7 +1,6 @@
 import typer
 from typing import Optional, List
 from rich.console import Console
-from rich.table import Table
 from pathlib import Path
 import logging
 import csv
@@ -10,7 +9,6 @@ from geopy.distance import geodesic # type: ignore
 from ..core.config import get_companies_dir, get_scraped_data_dir, get_cocli_base_dir
 from ..core.geocoding import get_coordinates_from_city_state
 from ..core.utils import slugify
-from ..models.company import Company
 from ..models.person import Person
 import yaml
 

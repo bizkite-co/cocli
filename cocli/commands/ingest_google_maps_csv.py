@@ -1,7 +1,7 @@
 import typer
 import csv
 from pathlib import Path
-from typing import List, Optional
+from typing import Optional
 import logging
 
 from ..core.google_maps_cache import GoogleMapsCache

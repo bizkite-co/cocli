@@ -1,9 +1,5 @@
 import pytest
 from pytest_bdd import scenario, given, when, then, parsers
-from typer.testing import CliRunner
-from pathlib import Path
-import shutil
-import os
 import toml
 
 from cocli.main import app

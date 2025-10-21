@@ -2,7 +2,6 @@ import logging
 import typer
 from typing_extensions import Annotated
 import pandas as pd
-from pathlib import Path
 import yaml
 
 from cocli.core.utils import generate_company_hash

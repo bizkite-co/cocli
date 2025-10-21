@@ -5,7 +5,7 @@ import typer
 import logging
 from typing import Dict, List, Optional, cast
 
-from ..core.config import get_scraped_data_dir, get_companies_dir, get_people_dir
+from ..core.config import get_scraped_data_dir, get_people_dir
 from ..models.company import Company
 from ..models.person import Person
 

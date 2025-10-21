@@ -1,14 +1,12 @@
 import os
 from pathlib import Path
-import shutil
 import platform
 import tomli
 import tomli_w
 from typing import Optional
 import logging
 
-from pydantic import Field
-from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic_settings import BaseSettings
 from rich.console import Console
 
 console = Console()

@@ -1,10 +1,10 @@
 from transitions import Machine
 from pathlib import Path
-from typing import List, Optional, Dict, Any
+from typing import List, Dict, Any
 import toml
 import typer
 
-from ..core.config import get_campaign, set_campaign, get_config_path, save_config, load_config, get_campaign_dir
+from ..core.config import set_campaign, get_campaign_dir
 from rich.console import Console
 
 console = Console()

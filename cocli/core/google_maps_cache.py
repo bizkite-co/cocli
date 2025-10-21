@@ -1,7 +1,7 @@
 
 import csv
 from pathlib import Path
-from typing import Optional, List, Dict
+from typing import Optional, Dict
 from datetime import datetime, UTC
 
 from ..models.google_maps import GoogleMapsData

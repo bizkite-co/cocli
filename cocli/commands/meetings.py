@@ -4,7 +4,7 @@ import datetime
 import re
 import shutil
 from pathlib import Path
-from typing import List, Optional, Dict, Any
+from typing import List, Dict, Any
 from dataclasses import dataclass
 import sys # Import sys
 
@@ -14,7 +14,6 @@ from tzlocal import get_localzone
 import yaml
 
 from ..core.config import get_companies_dir
-from ..core.utils import slugify
 
 console = Console()
 app = typer.Typer()

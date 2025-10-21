@@ -1,7 +1,7 @@
 import csv
 import re
 from pathlib import Path
-from typing import Optional, Dict, Any, List, Set, Tuple
+from typing import Optional, Set
 from playwright.sync_api import sync_playwright, Page, Playwright
 from bs4 import BeautifulSoup
 import uuid
@@ -234,7 +234,7 @@ def scrape_myip_ms(
                 logger.info(f"Scraped {scraped_on_page} new records from page segment {_get_current_segment_from_url(page.url)}. Total scraped: {total_scraped_count}")
 
                 if page_num < end_page:
-                    logger.info(f"Proceeding to next page after random delay...")
+                    logger.info("Proceeding to next page after random delay...")
                     _random_delay(4, 10)
                 else:
                     logger.info(f"Reached end_page ({end_page}). Stopping pagination.")

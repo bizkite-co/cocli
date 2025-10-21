@@ -1,6 +1,6 @@
 import asyncio
 import re
-from typing import List, Dict, Any, Optional
+from typing import List, Dict
 import logging
 
 from bs4 import BeautifulSoup

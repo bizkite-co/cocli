@@ -25,7 +25,7 @@ if __name__ == "__main__":
         logger.info("No location provided, defaulting to zip code 90210.")
 
 
-    logger.info(f"--- Starting Google Maps Scraper Debug Session ---")
+    logger.info("--- Starting Google Maps Scraper Debug Session ---")
     logger.info(f"Search Query: {args.search}")
     logger.info(f"Location: {location}")
 
@@ -38,10 +38,10 @@ if __name__ == "__main__":
         devtools=args.devtools,
     )
 
-    logger.info(f"\n--- Scraped Data ---")
+    logger.info("\n--- Scraped Data ---")
     for item in scraped_data:
         logger.info(item.model_dump_json(indent=2))
-    logger.info(f"--- End of Scraped Data ---")
+    logger.info("--- End of Scraped Data ---")
 
     if scraped_data:
         assert len(scraped_data) > 0

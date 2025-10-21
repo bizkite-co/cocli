@@ -4,7 +4,7 @@ import csv
 import asyncio
 import subprocess
 from pathlib import Path
-from typing import List, Dict, Optional, Set
+from typing import Optional, Set
 from datetime import datetime
 import logging
 
@@ -17,13 +17,10 @@ from ..core.geocoding import get_coordinates_from_city_state
 from ..models.google_maps import GoogleMapsData
 from ..models.company import Company
 from ..models.website import Website
-from ..core.utils import slugify
 import yaml
-from ..models.google_maps import GoogleMapsData
 from ..core.config import get_campaign, set_campaign
 from rich.console import Console
 from ..core.campaign_workflow import CampaignWorkflow
-from ..core.enrichment import enrich_company_website
 from ..core.logging_config import setup_file_logging
 from ..compilers.website_compiler import WebsiteCompiler
 from ..core.scrape_index import ScrapeIndex
@@ -32,9 +29,8 @@ from typing_extensions import Annotated
 from cocli.models.campaign import Campaign
 from cocli.core.config import get_cocli_base_dir
 from ..core.utils import run_fzf
-from ..core.config import get_all_campaign_dirs, get_campaign_dir
+from ..core.config import get_all_campaign_dirs
 
-import subprocess
 from ..core.config import get_editor_command
 
 app = typer.Typer(no_args_is_help=True)
@@ -479,7 +475,7 @@ def achieve_goal(
         console.print("[bold red]Error: Could not connect to the enrichment service.[/bold red]")
 
         console.print(
-            f"[red]Please ensure the Docker container is running: 'docker run -d -p 8000:8000 --name cocli-enrichment enrichment-service'[/red]"
+            "[red]Please ensure the Docker container is running: 'docker run -d -p 8000:8000 --name cocli-enrichment enrichment-service'[/red]"
         )
 
         console.print(f"[dim]Details: {e}[/dim]")

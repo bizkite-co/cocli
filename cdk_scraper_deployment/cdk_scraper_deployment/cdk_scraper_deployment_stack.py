@@ -6,7 +6,6 @@ from aws_cdk import (
     aws_ec2 as ec2,
     aws_secretsmanager as secretsmanager,
     aws_iam as iam,
-    Duration,
 )
 from constructs import Construct
 import os

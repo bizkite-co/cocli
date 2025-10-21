@@ -1,6 +1,6 @@
 import re
 from pathlib import Path
-from typing import Any, List, Optional
+from typing import Any, Optional
 import tty
 import termios
 import sys
@@ -14,7 +14,7 @@ from rich.console import Console
 
 from ..models.company import Company
 from ..models.person import Person  # Import Company and Person models
-from .config import get_companies_dir, get_people_dir  # Import directory getters
+from .config import get_companies_dir  # Import directory getters
 
 logger = logging.getLogger(__name__)
 
@@ -204,7 +204,6 @@ def _format_entity_for_fzf(entity_type: str, entity: Any) -> str:
 
 
 
-import hashlib
 import uuid
 
 def generate_company_hash(data: dict) -> str:
@@ -238,8 +237,6 @@ def _getch():
     return ch
 
 
-import subprocess
-import shutil
 from rich.console import Console
 
 console = Console()

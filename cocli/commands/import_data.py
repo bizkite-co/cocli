@@ -1,6 +1,6 @@
 import typer
 from pathlib import Path
-from typing import Any, Optional # Import Optional
+from typing import Optional # Import Optional
 import logging
 
 logger = logging.getLogger(__name__)

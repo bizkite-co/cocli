@@ -1,6 +1,5 @@
 import subprocess
-import pytest
-from pytest_bdd import scenario, given, when, then, parsers
+from pytest_bdd import scenario, when, then, parsers
 
 @scenario('../features/cli_help.feature', 'Display help when no arguments are provided')
 def test_display_help_no_args():

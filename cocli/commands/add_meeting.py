@@ -3,7 +3,6 @@ import dateparser
 import datetime
 import subprocess
 from typing import Optional
-from pathlib import Path
 from pytz import timezone
 from tzlocal import get_localzone
 import logging

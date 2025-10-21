@@ -1,11 +1,7 @@
-import csv
 import re
-from pathlib import Path
-from typing import Optional, Dict, Any, List, AsyncIterator
+from typing import Optional, Dict, List, AsyncIterator
 from datetime import datetime, timedelta, UTC
-from playwright.async_api import async_playwright, Page, Locator
-from bs4 import BeautifulSoup
-import uuid
+from playwright.async_api import Page
 import logging
 from rich.console import Console
 from geopy.distance import geodesic # type: ignore
@@ -173,7 +169,7 @@ async def _scrape_area(
             with open(f"page_source_after_scroll_{search_string.replace(' ', '_')}.html", "w") as f:
                 f.write(page_source)
 
-from playwright.async_api import async_playwright, Page, Locator, Browser
+from playwright.async_api import Page, Browser
 
 async def scrape_google_maps(
     browser: Browser,

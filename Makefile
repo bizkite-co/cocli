@@ -36,6 +36,9 @@ test: install ## Run tests using pytest
 lint: install ## Run mypy to perform static type checking
 	$(VENV_DIR)/bin/python -m mypy --config-file pyproject.toml .
 
+ruff: ## Run ruff check
+	@ruff check . && mypy .
+
 test-file: install ## Run a specific test file, e.g., make test-file FILE=tests/test_google_maps_scraper.py
 	source $(VENV_DIR)/bin/activate && pytest $(FILE)
 

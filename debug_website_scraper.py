@@ -13,7 +13,7 @@ async def main():
     
     args = parser.parse_args()
 
-    logger.info(f"--- Starting Website Scraper Debug Session ---")
+    logger.info("--- Starting Website Scraper Debug Session ---")
     logger.info(f"Domain: {args.domain}")
 
     scraper = WebsiteScraper()
@@ -25,9 +25,9 @@ async def main():
     )
 
     if website_data:
-        logger.info(f"\n--- Scraped Data ---")
+        logger.info("\n--- Scraped Data ---")
         logger.info(website_data.model_dump_json(indent=2))
-        logger.info(f"--- End of Scraped Data ---")
+        logger.info("--- End of Scraped Data ---")
     else:
         logger.warning("--- No data scraped ---")
 
