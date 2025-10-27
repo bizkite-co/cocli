@@ -4,43 +4,39 @@ import csv
 import asyncio
 import subprocess
 from pathlib import Path
-from typing import Optional, Set, Dict, Any, ContextManager
-from typer import Context
+from typing import Optional, Set
 from datetime import datetime
 import logging
 import re
 import math
 import pandas as pd
-
-logger = logging.getLogger(__name__)
 import httpx
 
 from ..scrapers.google_maps import scrape_google_maps
-from ..core.config import get_scraped_data_dir, get_companies_dir, get_cocli_base_dir, get_campaign_dir
+from ..core.config import get_scraped_data_dir, get_companies_dir, get_campaign_dir, get_cocli_base_dir, get_people_dir, get_all_campaign_dirs, get_editor_command
 from ..core.geocoding import get_coordinates_from_city_state
 from ..models.google_maps import GoogleMapsData
 from ..models.company import Company
-from ..models.website import Website
+from ..models.person import Person
 import yaml
 from ..core.config import get_campaign, set_campaign
 from rich.console import Console
 from ..renderers.campaign_view import display_campaign_view
-
-console = Console()
 from ..core.campaign_workflow import CampaignWorkflow
 from ..core.logging_config import setup_file_logging
 from ..compilers.website_compiler import WebsiteCompiler
 from ..core.scrape_index import ScrapeIndex
 from ..core.location_prospects_index import LocationProspectsIndex
 from cocli.core.enrichment_service_utils import ensure_enrichment_service_ready
+from cocli.models.campaign import Campaign
+from ..core.utils import run_fzf, slugify
 
 from typing_extensions import Annotated
-from cocli.models.campaign import Campaign
-from cocli.core.config import get_cocli_base_dir
-from ..core.utils import run_fzf
-from ..core.config import get_all_campaign_dirs
 
-from ..core.config import get_editor_command
+from . import prospects
+
+logger = logging.getLogger(__name__)
+console = Console()
 
 app = typer.Typer(no_args_is_help=True, invoke_without_command=True)
 
@@ -51,6 +47,46 @@ def campaign(ctx: typer.Context):
     """
     if ctx.invoked_subcommand is None:
         show()
+
+@app.command()
+def tui(
+    campaign_name: Optional[str] = typer.Argument(None, help="Name of the campaign to view. If not provided, uses the current campaign context.")
+):
+    """
+    Launches the Textual TUI for campaigns.
+    """
+    if campaign_name is None:
+        campaign_name = get_campaign()
+        if campaign_name is None:
+            logger.error("Error: No campaign name provided and no campaign context is set.")
+            raise typer.Exit(code=1)
+
+    campaign_dir = get_campaign_dir(campaign_name)
+    if not campaign_dir:
+        console.print(f"[bold red]Campaign '{campaign_name}' not found.[/bold red]")
+        raise typer.Exit(code=1)
+
+    config_path = campaign_dir / "config.toml"
+    if not config_path.exists():
+        console.print(f"[bold red]Configuration file not found for campaign '{campaign_name}'.[/bold red]")
+        raise typer.Exit(code=1)
+
+    with open(config_path, "r") as f:
+        config_data = toml.load(f)
+    
+    flat_config = config_data.pop('campaign')
+    flat_config.update(config_data)
+
+    try:
+        campaign = Campaign.model_validate(flat_config)
+    except Exception as e:
+        console.print(f"[bold red]Error validating campaign configuration for '{campaign_name}': {e}[/bold red]")
+        raise typer.Exit(code=1)
+
+    from ..tui.campaign_app import CampaignApp
+    app = CampaignApp(campaign=campaign)
+    app.run()
+
 
 @app.command()
 def edit(
@@ -134,7 +170,6 @@ def add(
         print(f"An unexpected error occurred: {e}")
         raise typer.Exit(code=1)
 
-from . import prospects
 app.add_typer(prospects.app, name="prospects")
 
 console = Console()
@@ -149,9 +184,6 @@ def set(campaign_name: str = typer.Argument(..., help="The name of the campaign 
     console.print(f"[green]Campaign context set to:[/][bold]{campaign_name}[/]")
     console.print(f"[green]Current workflow state for '{campaign_name}':[/][bold]{workflow.state}[/]")
 
-from ..models.person import Person
-from ..core.config import get_people_dir
-from ..core.utils import slugify
 
 @app.command(name="import-contacts")
 def import_contacts(
@@ -213,7 +245,6 @@ def unset():
     set_campaign(None)
     console.print("[green]Campaign context cleared.[/]")
 
-from ..renderers.campaign_view import display_campaign_view
 
 @app.command()
 def show():

@@ -3,12 +3,12 @@ import toml
 import yaml
 import logging
 
-logger = logging.getLogger(__name__)
-
 from ..core.config import get_companies_dir, get_people_dir, get_campaign_dir
 from ..scrapers.google_maps_finder import find_business_on_google_maps
 from ..models.person import Person
 from ..core.utils import slugify
+
+logger = logging.getLogger(__name__)
 
 app = typer.Typer()
 

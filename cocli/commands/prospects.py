@@ -18,7 +18,6 @@ from cocli.compilers.website_compiler import WebsiteCompiler
 from cocli.core.utils import slugify
 from cocli.core.enrichment_service_utils import ensure_enrichment_service_ready
 from cocli.core.logging_config import setup_file_logging
-import logging
 
 app = typer.Typer(no_args_is_help=True)
 

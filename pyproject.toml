@@ -27,6 +27,7 @@ dependencies = [
     "geopy",
     "fastapi",
     "uvicorn[standard]",
+    "textual",
 ]
 
 [project.scripts]
@@ -47,6 +48,7 @@ dev = [
     "pandas-stubs",
     "types-dateparser",
     "types-pytz",
+    "ruff",
 ]
 
 [tool.setuptools]

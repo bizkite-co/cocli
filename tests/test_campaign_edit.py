@@ -30,7 +30,7 @@ def test_campaign_edit_with_editor_configured(setup_test_campaign):
     readme_path = campaign_dir / "README.md"
     editor_cmd = "my-editor"
 
-    with patch('cocli.commands.campaign.get_editor_command', return_value=editor_cmd) as mock_get_editor, \
+    with patch('cocli.commands.campaign.get_editor_command', return_value=editor_cmd), \
          patch('subprocess.run') as mock_subprocess_run:
         result = runner.invoke(app, ["campaign", "edit", campaign_name])
 
@@ -43,7 +43,7 @@ def test_campaign_edit_with_vim_editor(setup_test_campaign):
     readme_path = campaign_dir / "README.md"
     editor_cmd = "nvim"
 
-    with patch('cocli.commands.campaign.get_editor_command', return_value=editor_cmd) as mock_get_editor, \
+    with patch('cocli.commands.campaign.get_editor_command', return_value=editor_cmd), \
          patch('subprocess.run') as mock_subprocess_run:
         result = runner.invoke(app, ["campaign", "edit", campaign_name])
 
@@ -55,7 +55,7 @@ def test_campaign_edit_no_editor_configured(setup_test_campaign):
     campaign_name, campaign_dir = setup_test_campaign
     config_path = campaign_dir / "config.toml"
 
-    with patch('cocli.commands.campaign.get_editor_command', return_value=None) as mock_get_editor, \
+    with patch('cocli.commands.campaign.get_editor_command', return_value=None), \
          patch('typer.edit') as mock_typer_edit:
         result = runner.invoke(app, ["campaign", "edit", campaign_name])
 

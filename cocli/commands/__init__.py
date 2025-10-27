@@ -27,7 +27,7 @@ def register_commands(app: typer.Typer):
     from . import status
     from . import sync
     from . import view
-    from . import google_maps
+
 
     app.command(name="add")(add.add)
     app.command(name="add-email")(add_email.add_email)

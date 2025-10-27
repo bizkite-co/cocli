@@ -2,12 +2,12 @@ import typer
 from typing import Optional
 import logging
 
-logger = logging.getLogger(__name__)
-
 from ..core.config import get_companies_dir, get_people_dir
 from ..core.utils import slugify, create_company_files, create_person_files
 from ..models.company import Company
 from ..models.person import Person
+
+logger = logging.getLogger(__name__)
 
 app = typer.Typer()
 
