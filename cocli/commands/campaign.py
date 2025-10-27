@@ -4,7 +4,8 @@ import csv
 import asyncio
 import subprocess
 from pathlib import Path
-from typing import Optional, Set, Dict, Any
+from typing import Optional, Set, Dict, Any, ContextManager
+from typer import Context
 from datetime import datetime
 import logging
 import re
@@ -23,11 +24,15 @@ from ..models.website import Website
 import yaml
 from ..core.config import get_campaign, set_campaign
 from rich.console import Console
+from ..renderers.campaign_view import display_campaign_view
+
+console = Console()
 from ..core.campaign_workflow import CampaignWorkflow
 from ..core.logging_config import setup_file_logging
 from ..compilers.website_compiler import WebsiteCompiler
 from ..core.scrape_index import ScrapeIndex
 from ..core.location_prospects_index import LocationProspectsIndex
+from cocli.core.enrichment_service_utils import ensure_enrichment_service_ready
 
 from typing_extensions import Annotated
 from cocli.models.campaign import Campaign
@@ -37,7 +42,15 @@ from ..core.config import get_all_campaign_dirs
 
 from ..core.config import get_editor_command
 
-app = typer.Typer(no_args_is_help=True)
+app = typer.Typer(no_args_is_help=True, invoke_without_command=True)
+
+@app.callback()
+def campaign(ctx: typer.Context):
+    """
+    Manage campaigns.
+    """
+    if ctx.invoked_subcommand is None:
+        show()
 
 @app.command()
 def edit(
@@ -136,6 +149,62 @@ def set(campaign_name: str = typer.Argument(..., help="The name of the campaign 
     console.print(f"[green]Campaign context set to:[/][bold]{campaign_name}[/]")
     console.print(f"[green]Current workflow state for '{campaign_name}':[/][bold]{workflow.state}[/]")
 
+from ..models.person import Person
+from ..core.config import get_people_dir
+from ..core.utils import slugify
+
+@app.command(name="import-contacts")
+def import_contacts(
+    csv_path: Path = typer.Argument(..., help="Path to the CSV file containing contacts."),
+    campaign_name: Optional[str] = typer.Argument(None, help="Name of the campaign to import contacts into. If not provided, uses the current campaign context."),
+):
+    """
+    Imports contacts from a CSV file into a campaign.
+
+    The CSV file should have the following headers:
+    name, email, phone, company_name, role, tags, full_address, street_address, city, state, zip_code, country
+    """
+    if campaign_name is None:
+        campaign_name = get_campaign()
+        if campaign_name is None:
+            logger.error("Error: No campaign name provided and no campaign context is set.")
+            raise typer.Exit(code=1)
+
+    campaign_dir = get_campaign_dir(campaign_name)
+    if not campaign_dir:
+        console.print(f"[bold red]Campaign '{campaign_name}' not found.[/bold red]")
+        raise typer.Exit(code=1)
+
+    contacts_dir = campaign_dir / "contacts"
+    contacts_dir.mkdir(exist_ok=True)
+
+    people_dir = get_people_dir()
+
+    with open(csv_path, 'r', encoding='utf-8') as f:
+        reader = csv.DictReader(f)
+        for row in reader:
+            try:
+                person = Person(**row)
+                person_slug = slugify(person.name)
+                person_dir = people_dir / person_slug
+                person_dir.mkdir(exist_ok=True)
+
+                person_file = person_dir / f"{person_slug}.md"
+                with open(person_file, "w") as pf:
+                    pf.write("---")
+                    yaml.dump(person.model_dump(exclude_none=True), pf, sort_keys=False, default_flow_style=False, allow_unicode=True)
+                    pf.write("---")
+
+                symlink_path = contacts_dir / person_slug
+                if not symlink_path.exists():
+                    symlink_path.symlink_to(person_dir)
+                
+                console.print(f"[green]Imported contact:[/] {person.name}")
+
+            except Exception as e:
+                console.print(f"[bold red]Error importing contact: {e}[/bold red]")
+
+
 @app.command()
 def unset():
     """
@@ -144,6 +213,8 @@ def unset():
     set_campaign(None)
     console.print("[green]Campaign context cleared.[/]")
 
+from ..renderers.campaign_view import display_campaign_view
+
 @app.command()
 def show():
     """
@@ -151,7 +222,31 @@ def show():
     """
     campaign_name = get_campaign()
     if campaign_name:
-        console.print(f"Current campaign context is: [bold]{campaign_name}[/]")
+        campaign_dir = get_campaign_dir(campaign_name)
+        if not campaign_dir:
+            console.print(f"[bold red]Campaign '{campaign_name}' not found.[/bold red]")
+            raise typer.Exit(code=1)
+
+        config_path = campaign_dir / "config.toml"
+        if not config_path.exists():
+            console.print(f"[bold red]Configuration file not found for campaign '{campaign_name}'.[/bold red]")
+            raise typer.Exit(code=1)
+
+        with open(config_path, "r") as f:
+            config_data = toml.load(f)
+        
+        # The campaign data is under a 'campaign' key in the TOML file,
+        # and other sections are at the top level. We need to flatten it.
+        flat_config = config_data.pop('campaign')
+        flat_config.update(config_data)
+
+        try:
+            campaign = Campaign.model_validate(flat_config)
+        except Exception as e:
+            console.print(f"[bold red]Error validating campaign configuration for '{campaign_name}': {e}[/bold red]")
+            raise typer.Exit(code=1)
+
+        display_campaign_view(console, campaign)
     else:
         console.print("No campaign context is set.")
 
@@ -525,61 +620,19 @@ def achieve_goal(
     console = Console()
 
     if campaign_name is None:
-
         campaign_name = get_campaign()
-
         if campaign_name is None:
-
             logger.error("Error: No campaign name provided and no campaign context is set.")
-
             raise typer.Exit(code=1)
 
-    # --- Check for newer local scraper code ---
-    console.print(f"[grey50][{datetime.now().strftime('%H:%M:%S')}][/] [dim]Checking for newer local website scraper code...[/dim]")
-    result = subprocess.run(
-        ["./scripts/check_scraper_version.py", "--image-name", "enrichment-service"],
-        capture_output=True,
-        text=True,
-        check=False # Don't raise an exception for non-zero exit codes
-    )
-    console.print(result.stdout)
-    if result.returncode == 1: # Local is newer
-        console.print("[bold red]Error: Local website_scraper.py is newer than the one in the 'enrichment-service' Docker image.[/bold red]")
-        console.print("[red]Please rebuild the Docker image using 'make docker-build' and restart the container using 'make docker-run-enrichment'.[/red]")
-        raise typer.Exit(code=1)
-
-    # --- Health Check for Enrichment Service ---
-
-    # --- Health Check for Enrichment Service ---
-
-    console.print(f"[grey50][{datetime.now().strftime('%H:%M:%S')}][/] [dim]Pinging enrichment service...[/dim]")
-
-    try:
-        # Using httpx.get for a synchronous check
-        with httpx.Client() as client:
-            response = client.get("http://localhost:8000/health", timeout=5.0)
-            response.raise_for_status()
-
-        console.print(f"[grey50][{datetime.now().strftime('%H:%M:%S')}][/] [green]Enrichment service is online.[/green]")
-
-    except httpx.RequestError as e:
-
-        console.print("[bold red]Error: Could not connect to the enrichment service.[/bold red]")
-
-        console.print(
-            "[red]Please ensure the Docker container is running: 'docker run -d -p 8000:8000 --name cocli-enrichment enrichment-service'[/red]"
-        )
-
-        console.print(f"[dim]Details: {e}[/dim]")
-
-        raise typer.Exit(code=1)
+    ensure_enrichment_service_ready(console)
 
     console.print(
         f"[grey50][{datetime.now().strftime('%H:%M:%S')}][/] [bold]Achieving goal for campaign: '{campaign_name}'[/bold]"
     )
 
     console.print(
-        f"[grey50][{datetime.now().strftime('%H:%M:%S')}][/] [bold]Goal:[/] Find {goal_emails} new companies with emails."
+        f"[grey50][{datetime.now().strftime('%H:%M:%S')}][/] [bold]Goal:[/bold] Find {goal_emails} new companies with emails."
     )  # --- Load Campaign Config ---
 
     campaign_dir = get_campaign_dir(campaign_name)

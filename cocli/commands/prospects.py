@@ -16,6 +16,9 @@ from cocli.core.config import get_campaign, get_campaigns_dir, get_companies_dir
 from cocli.models.website import Website
 from cocli.compilers.website_compiler import WebsiteCompiler
 from cocli.core.utils import slugify
+from cocli.core.enrichment_service_utils import ensure_enrichment_service_ready
+from cocli.core.logging_config import setup_file_logging
+import logging
 
 app = typer.Typer(no_args_is_help=True)
 
@@ -79,7 +82,9 @@ def to_hubspot_csv(
 
 
 async def enrich_prospect(client: httpx.AsyncClient, prospect: Company, force: bool, ttl_days: int, console: Console):
+    logger.info(f"Attempting to enrich domain: {prospect.domain} for company: {prospect.name}")
     try:
+        logger.debug(f"Sending enrichment request for domain: {prospect.domain}")
         response = await client.post(
             "http://localhost:8000/enrich",
             json={
@@ -89,12 +94,13 @@ async def enrich_prospect(client: httpx.AsyncClient, prospect: Company, force: b
             },
             timeout=120.0,
         )
+        logger.debug(f"Received response for {prospect.domain}: Status {response.status_code}")
         response.raise_for_status()
         response_json = response.json()
         if response_json:
             website_data = Website(**response_json)
             if website_data.email:
-                console.print(f"  -> Found email for {prospect.name}: {website_data.email}")
+                logger.info(f"  -> Found email for {prospect.name}: {website_data.email}")
                 if prospect.slug is None:
                     logger.warning(f"Skipping enrichment data save for company {prospect.name} due to missing slug.")
                     return
@@ -117,10 +123,11 @@ async def enrich_prospect(client: httpx.AsyncClient, prospect: Company, force: b
                 compiler.compile(company_dir)
             else:
                 console.print(f"  -> No new information found for {prospect.name}")
-
     except httpx.RequestError as e:
+        logger.error(f"HTTP Request Error enriching {prospect.name}: {e}")
         console.print(f"  -> Error enriching {prospect.name}: {e}")
     except Exception as e:
+        logger.error(f"Unexpected Error enriching {prospect.name}: {e}")
         console.print(f"  -> Error enriching {prospect.name}: {e}")
 
 @app.command("enrich")
@@ -137,6 +144,8 @@ def enrich_prospects_command(
         raise typer.Exit(1)
 
     console = Console()
+    setup_file_logging(f"{campaign_name}-prospects-enrich", console_level=logging.INFO, file_level=logging.DEBUG)
+    ensure_enrichment_service_ready(console)
     console.print(f"Enriching prospects for campaign: [bold]{campaign_name}[/bold]")
 
     prospects = list(get_prospects(campaign_name, with_email=False, city=None, state=None))
