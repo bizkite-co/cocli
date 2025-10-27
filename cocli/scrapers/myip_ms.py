@@ -53,7 +53,8 @@ def _navigate_and_handle_captcha(page: Page, url: str, prompt_message: str, debu
     """
     Navigates to a URL, handles CAPTCHA if present, and introduces delays.
     """
-    if debug: logger.debug(f"Debug: Navigating to {url}")
+    if debug:
+        logger.debug(f"Debug: Navigating to {url}")
     page.goto(url, wait_until="domcontentloaded")
 
     if "myip.ms/info/limitexcess" in page.url:
@@ -68,7 +69,8 @@ def _navigate_and_handle_captcha(page: Page, url: str, prompt_message: str, debu
         page.wait_for_load_state('domcontentloaded')
         _random_delay(4, 10)
     else:
-        if debug: logger.debug(f"Debug: No CAPTCHA detected on {page.url}")
+        if debug:
+            logger.debug(f"Debug: No CAPTCHA detected on {page.url}")
 
 def _click_full_list_link(page: Page, debug: bool) -> None:
     """Finds and clicks the 'full list of sites' link."""
@@ -80,7 +82,8 @@ def _click_full_list_link(page: Page, debug: bool) -> None:
             full_list_link.click()
             page.wait_for_load_state("domcontentloaded")
             _random_delay(8, 20)
-            if debug: logger.debug(f"Debug: After clicking full list link. Current URL: {page.url}")
+            if debug:
+                logger.debug(f"Debug: After clicking full list link. Current URL: {page.url}")
         else:
             logger.warning(f"Warning: Full list link not found or not visible on {page.url}.")
     except Exception as e:
@@ -119,7 +122,8 @@ def _extract_data_from_page(
 
     current_site_data = {}
     for row_index, row in enumerate(data_rows):
-        if debug: logger.debug(f"Debug: Processing row {row_index}...")
+        if debug:
+            logger.debug(f"Debug: Processing row {row_index}...")
         if "expand-child" not in row.attrs.get("class", []):
             # This is a main site listing row
             cols = row.select("td")
@@ -134,7 +138,8 @@ def _extract_data_from_page(
                 current_site_data["Country"] = country_element.getText()
 
                 current_site_data["Popularity_Visitors_Per_Day"] = "" # Reset for new main row
-            if debug: logger.debug(f"Debug: Main row data extracted: {current_site_data}")
+            if debug:
+                logger.debug(f"Debug: Main row data extracted: {current_site_data}")
         else:
             # This is an expand-child row, extract popularity
             popularity_div = row.select_one("div.stitle:-soup-contains('Website Popularity:') + div.sval")
@@ -144,7 +149,8 @@ def _extract_data_from_page(
                 if match:
                     current_site_data["Popularity_Visitors_Per_Day"] = match.group(1)
 
-            if debug: logger.debug(f"Debug: Expand-child row popularity extracted: {current_site_data.get('Popularity_Visitors_Per_Day')}")
+            if debug:
+                logger.debug(f"Debug: Expand-child row popularity extracted: {current_site_data.get('Popularity_Visitors_Per_Day')}")
 
             if current_site_data.get("Website") and current_site_data["Website"] not in processed_urls:
                 if current_site_data.get("Country") in ["United States", "Canada"]:
@@ -162,9 +168,11 @@ def _extract_data_from_page(
                     scraped_on_page_count += 1
                     logger.info(f"Scraped: {current_site_data['Website']} (Country: {current_site_data['Country']}, Popularity: {current_site_data['Popularity_Visitors_Per_Day']})")
                 else:
-                    if debug: logger.debug(f"Debug: Skipping {current_site_data['Website']} due to country: {current_site_data.get('Country')}")
+                    if debug:
+                        logger.debug(f"Debug: Skipping {current_site_data['Website']} due to country: {current_site_data.get('Country')}")
             else:
-                if debug: logger.debug(f"Debug: Skipping duplicate or invalid URL: {current_site_data.get('Website')}")
+                if debug:
+                    logger.debug(f"Debug: Skipping duplicate or invalid URL: {current_site_data.get('Website')}")
 
             current_site_data = {} # Clear for the next pair of rows
 
@@ -181,7 +189,8 @@ def scrape_myip_ms(
     Orchestrates scraping Shopify store information from myip.ms
     Requires user intervention for CAPTCHA.
     """
-    if debug: logger.debug(f"Debug: scrape_myip_ms called with debug={debug}")
+    if debug:
+        logger.debug(f"Debug: scrape_myip_ms called with debug={debug}")
 
     output_dir.mkdir(parents=True, exist_ok=True)
     output_filename = f"shopify-myip-ms-{ip_address.replace('.', '-')}-{datetime.now().strftime('%Y%m%d%H%M%S')}.csv"
@@ -189,7 +198,7 @@ def scrape_myip_ms(
 
     with sync_playwright() as p:
         page = _initialize_browser(p)
-        browser = page.context.browser # Keep browser reference for closing if needed
+        _ = page.context.browser # Keep browser reference for closing if needed
 
         try:
             # The file is now opened in append mode inside the loop.

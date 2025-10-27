@@ -1,10 +1,21 @@
 import re
 from typing import Optional, Dict, List, AsyncIterator
 from datetime import datetime, timedelta, UTC
-from playwright.async_api import Page
+from playwright.async_api import Page, Browser
 import logging
 from rich.console import Console
 from geopy.distance import geodesic # type: ignore
+
+from ..core.config import load_scraper_settings
+from ..core.geocoding import get_coordinates_from_zip, get_coordinates_from_city_state
+from .google_maps_parser import parse_business_listing_html
+from .google_maps_gmb_parser import parse_gmb_page
+from ..models.google_maps import GoogleMapsData
+from ..core.google_maps_cache import GoogleMapsCache
+from ..core.scrape_index import ScrapeIndex
+
+logger = logging.getLogger(__name__)
+console = Console()
 
 def calculate_new_coords(lat, lon, distance_miles, bearing):
     """Calculate new lat/lon from a starting point, distance, and bearing."""
@@ -38,21 +49,9 @@ def get_viewport_bounds(center_lat, center_lon, map_width_miles, map_height_mile
         'lon_max': lon_max,
     }
 
-from ..core.config import load_scraper_settings
-from ..core.geocoding import get_coordinates_from_zip, get_coordinates_from_city_state
-from .google_maps_parser import parse_business_listing_html
-from .google_maps_gmb_parser import parse_gmb_page
-from ..models.google_maps import GoogleMapsData
-from ..core.google_maps_cache import GoogleMapsCache
-
-logger = logging.getLogger(__name__)
-console = Console()
-
-from ..core.scrape_index import ScrapeIndex
-
 async def _scrape_area(
     page: Page,
-    search_string: str, # Changed from search_strings
+    search_string: str,
     processed_place_ids: set,
     force_refresh: bool,
     ttl_days: int,
@@ -78,7 +77,7 @@ async def _scrape_area(
     await page.wait_for_selector(scrollable_div_selector, timeout=10000)
     scrollable_div = page.locator(scrollable_div_selector)
 
-    last_scroll_height = -1
+    _ = -1
     last_processed_div_count = 0
     while True:
         await page.wait_for_timeout(1500)
@@ -169,8 +168,6 @@ async def _scrape_area(
             with open(f"page_source_after_scroll_{search_string.replace(' ', '_')}.html", "w") as f:
                 f.write(page_source)
 
-from playwright.async_api import Page, Browser
-
 async def scrape_google_maps(
     browser: Browser,
     location_param: Dict[str, str],
@@ -189,7 +186,8 @@ async def scrape_google_maps(
     
     Uses a pre-existing browser instance.
     """
-    if debug: logger.debug(f"scrape_google_maps called with debug={debug}")
+    if debug:
+        logger.debug(f"scrape_google_maps called with debug={debug}")
     settings = load_scraper_settings()
     scrape_index = ScrapeIndex(campaign_name)
 
@@ -237,10 +235,10 @@ async def scrape_google_maps(
         map_height_miles: float = 0.0
         px_per_mile: float = 0.0
         try:
-            scale_button = page.locator('button[jsaction="scale.click"]')
+            scale_button = page.locator("button[jsaction=\"scale.click\"]")
             scale_label = await scale_button.text_content()
-            scale_inner_div = scale_button.locator('div').first
-            style = await scale_inner_div.get_attribute('style')
+            scale_inner_div = scale_button.locator("div").first
+            style = await scale_inner_div.get_attribute("style")
             width_match = re.search(r'width:\s*(\d+)px;', style)
             if width_match and scale_label:
                 width_px = int(width_match.group(1))

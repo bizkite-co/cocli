@@ -35,7 +35,7 @@ class WebsiteDomainCsvManager:
                     if row.get(field):
                         try:
                             row[field] = eval(row[field])
-                        except:
+                        except Exception:
                             row[field] = []
                 
                 model_data = {k: v for k, v in row.items() if k in WebsiteDomainCsv.model_fields}

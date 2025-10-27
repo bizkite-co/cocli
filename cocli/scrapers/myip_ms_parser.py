@@ -1,3 +1,4 @@
+from ..core.utils import generate_company_hash
 from typing import Dict, Any
 import re
 import logging
@@ -66,8 +67,6 @@ SHOPIFY_HEADERS = [
     "Scrape_Date", # New field for myip.ms data
 ]
 
-from ..core.utils import generate_company_hash
-
 def extract_domain_from_url(url: str) -> str:
     """Extracts the domain from a given URL."""
     if not url:
@@ -83,7 +82,8 @@ def parse_myip_ms_listing(row_data: Dict[str, str], debug: bool = False) -> Dict
     data: Dict[str, Any] = {header: "" for header in SHOPIFY_HEADERS}
     data["Keyword"] = "shopify-myip-ms" # Default keyword for this source
 
-    if debug: logger.debug(f"Raw row data for parser: {row_data}")
+    if debug:
+        logger.debug(f"Raw row data for parser: {row_data}")
 
     # Map fields from myip.ms CSV to SHOPIFY_HEADERS
     data["Website"] = row_data.get("Website", "")
@@ -104,5 +104,6 @@ def parse_myip_ms_listing(row_data: Dict[str, str], debug: bool = False) -> Dict
 
     data["id"] = generate_company_hash(data)
 
-    if debug: logger.debug(f"Parsed data: {data}")
+    if debug:
+        logger.debug(f"Parsed data: {data}")
     return data

@@ -5,14 +5,14 @@ import yaml
 from typing import List, Optional
 import logging
 
-logger = logging.getLogger(__name__)
-
 from cocli.core.utils import slugify, create_company_files
 from cocli.models.company import Company
 from cocli.models.website_domain_csv import WebsiteDomainCsv
 from cocli.core.website_domain_csv_manager import WebsiteDomainCsvManager
 from fuzzywuzzy import process # type: ignore
 from cocli.core.config import get_campaign, get_scraped_data_dir, get_companies_dir
+
+logger = logging.getLogger(__name__)
 
 app = typer.Typer()
 

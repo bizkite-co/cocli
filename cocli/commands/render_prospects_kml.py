@@ -125,9 +125,12 @@ def render_prospects_kml(
                 description_parts.append('<hr><b>Associated People:</b><br>')
                 for person in associated_people:
                     person_info = f'{person.name}'
-                    if person.role: person_info += f' ({person.role})'
-                    if person.email: person_info += f' - <a href="mailto:{person.email}">{person.email}</a>'
-                    if person.phone: person_info += f' - {person.phone}'
+                    if person.role:
+                        person_info += f' ({person.role})'
+                    if person.email:
+                        person_info += f' - <a href="mailto:{person.email}">{person.email}</a>'
+                    if person.phone:
+                        person_info += f' - {person.phone}'
                     description_parts.append(f'{person_info}<br>')
 
             description_parts.append("]]>") # End CDATA block

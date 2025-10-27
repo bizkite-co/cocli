@@ -26,5 +26,6 @@ def extract_categories(soup: BeautifulSoup, inner_text: str, debug: bool = False
         if re.match(r"^\(\d*\)$", line):
             use_next_line = True
 
-    if debug: logger.debug(f"Extracted categories: {categories}")
+    if debug:
+        logger.debug(f"Extracted categories: {categories}")
     return categories

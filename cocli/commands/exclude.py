@@ -2,11 +2,11 @@ import typer
 from typing import Optional
 import logging
 
-logger = logging.getLogger(__name__)
-
 from ..core.config import get_companies_dir
 from ..models.company import Company
 from ..core.exclusions import ExclusionManager
+
+logger = logging.getLogger(__name__)
 
 app = typer.Typer()
 

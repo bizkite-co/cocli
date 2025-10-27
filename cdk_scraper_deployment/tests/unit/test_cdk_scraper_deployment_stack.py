@@ -8,7 +8,7 @@ from cdk_scraper_deployment.cdk_scraper_deployment_stack import CdkScraperDeploy
 def test_sqs_queue_created():
     app = core.App()
     stack = CdkScraperDeploymentStack(app, "cdk-scraper-deployment")
-    template = assertions.Template.from_stack(stack)
+    _ = assertions.Template.from_stack(stack)
 
 #     template.has_resource_properties("AWS::SQS::Queue", {
 #         "VisibilityTimeout": 300

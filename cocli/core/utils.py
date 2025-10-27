@@ -1,3 +1,5 @@
+import uuid
+from rich.console import Console
 import re
 from pathlib import Path
 from typing import Any, Optional
@@ -10,7 +12,6 @@ import shutil
 import subprocess
 
 import yaml  # This import might not be needed here if models handle YAML loading
-from rich.console import Console
 
 from ..models.company import Company
 from ..models.person import Person  # Import Company and Person models
@@ -204,7 +205,6 @@ def _format_entity_for_fzf(entity_type: str, entity: Any) -> str:
 
 
 
-import uuid
 
 def generate_company_hash(data: dict) -> str:
     """Generates a stable hash from company data."""
@@ -237,7 +237,6 @@ def _getch():
     return ch
 
 
-from rich.console import Console
 
 console = Console()
 

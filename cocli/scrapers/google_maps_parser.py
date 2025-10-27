@@ -1,3 +1,5 @@
+from ..core.utils import generate_company_hash
+
 import re
 from typing import Dict, Any, Optional
 from bs4 import BeautifulSoup
@@ -70,8 +72,6 @@ GOOGLE_MAPS_HEADERS = [
     "Crowd",
     "Planning",
 ]
-
-from ..core.utils import generate_company_hash
 
 QUOTES_RE = re.compile(r'"(.*?)"')
 

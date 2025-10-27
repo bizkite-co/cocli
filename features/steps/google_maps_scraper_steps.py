@@ -3,7 +3,7 @@ import re
 import tempfile
 import shutil # Import shutil for rmtree
 from pathlib import Path
-from behave import *
+from behave import given, when, then
 import logging
 
 from cocli.scrapers.google_maps import scrape_google_maps
@@ -43,7 +43,7 @@ def step_then_csv_file_created(context, filename_pattern):
 def step_then_csv_contains_entries(context):
     with open(context.output_csv_path, 'r', encoding='utf-8') as f:
         reader = csv.reader(f)
-        header = next(reader) # Skip header
+        _ = next(reader) # Skip header
         rows = list(reader)
         assert len(rows) > 0, "CSV file contains no business entries."
 

@@ -5,13 +5,13 @@ import re
 import yaml
 import logging
 
-logger = logging.getLogger(__name__)
-
 from ..core.config import get_companies_dir, get_people_dir
 from ..core.utils import slugify, create_company_files, create_person_files
 from ..models.person import Person
 from ..models.company import Company
 from ..models.shopify import ShopifyData
+
+logger = logging.getLogger(__name__)
 
 app = typer.Typer()
 

@@ -3,10 +3,10 @@ from pathlib import Path
 from typing import Optional # Import Optional
 import logging
 
-logger = logging.getLogger(__name__)
-
 from ..importers import google_maps # Import specific importer
 from ..core.config import get_scraped_data_dir # Import get_scraped_data_dir
+
+logger = logging.getLogger(__name__)
 
 app = typer.Typer()
 

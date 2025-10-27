@@ -37,7 +37,7 @@ class WebsiteCache:
                         # We need to evaluate it back into a list.
                         try:
                             row[field] = eval(row[field])
-                        except:
+                        except Exception:
                             row[field] = []
                 
                 model_data = {k: v for k, v in row.items() if k in Website.model_fields}

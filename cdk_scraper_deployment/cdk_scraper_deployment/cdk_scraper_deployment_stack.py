@@ -19,7 +19,7 @@ class CdkScraperDeploymentStack(Stack):
         dockerfile_path = os.path.join(os.path.dirname(__file__), "..", "..", "cocli")
 
         # ECR Repository
-        ecr_repository = ecr.Repository(self, "ScraperRepository")
+        _ = ecr.Repository(self, "ScraperRepository")
 
         # Build and push Docker image to ECR
         # The image will be built from the Dockerfile in the cocli directory

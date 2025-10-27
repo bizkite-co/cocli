@@ -24,7 +24,8 @@ def extract_business_status_hours(soup: BeautifulSoup, inner_text: str, debug: b
             hours = hours_text.split("⋅")[-1].strip().replace("\u202f", " ")
         elif hours_text:
             hours = hours_text.replace("\u202f", " ")
-        if debug: logger.debug(f"Extracted Business_Status/Hours (innerText): {business_status} {hours}")
+        if debug:
+            logger.debug(f"Extracted Business_Status/Hours (innerText): {business_status} {hours}")
     else:
         # Fallback to HTML selectors
         status_hours_element = soup.find("span", string=re.compile(r"(Open|Closed|Closes)", re.IGNORECASE))
@@ -32,15 +33,18 @@ def extract_business_status_hours(soup: BeautifulSoup, inner_text: str, debug: b
             full_text = status_hours_element.text.strip()
             if "Open" in full_text or "Closed" in full_text:
                 business_status = full_text.split("⋅")[0].strip()
-                if debug: logger.debug(f"Extracted Business_Status (HTML fallback): {business_status}")
+                if debug:
+                    logger.debug(f"Extracted Business_Status (HTML fallback): {business_status}")
             if "Closes" in full_text or ("Open" in full_text and ("PM" in full_text or "AM" in full_text)):
                 hours_match = HOURS_RE.search(full_text)
                 if hours_match:
                     hours = hours_match.group(1).strip()
                 else:
                     hours = full_text
-                if debug: logger.debug(f"Extracted Hours (HTML fallback): {hours}")
+                if debug:
+                    logger.debug(f"Extracted Hours (HTML fallback): {hours}")
         if not business_status and not hours:
-            if debug: logger.debug("Business Status and Hours elements not found from innerText or HTML fallback.")
+            if debug:
+                logger.debug("Business Status and Hours elements not found from innerText or HTML fallback.")
 
     return {"Business_Status": business_status, "Hours": hours}

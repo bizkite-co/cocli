@@ -8,12 +8,12 @@ import logging
 
 from rich.console import Console
 
-logger = logging.getLogger(__name__)
-
 from ..core.cache import get_cached_items
 from ..core.config import get_context, get_campaign
 from ..core.exclusions import ExclusionManager
 from .view import view_company
+
+logger = logging.getLogger(__name__)
 
 console = Console()
 app = typer.Typer()

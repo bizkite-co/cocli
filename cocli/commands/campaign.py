@@ -1,3 +1,5 @@
+from playwright.async_api import async_playwright
+from ..core.importing import import_prospect
 import typer
 import toml
 import csv
@@ -12,7 +14,9 @@ import math
 import pandas as pd
 import httpx
 
+from ..models.website import Website
 from ..scrapers.google_maps import scrape_google_maps
+
 from ..core.config import get_scraped_data_dir, get_companies_dir, get_campaign_dir, get_cocli_base_dir, get_people_dir, get_all_campaign_dirs, get_editor_command
 from ..core.geocoding import get_coordinates_from_city_state
 from ..models.google_maps import GoogleMapsData
@@ -358,7 +362,6 @@ def next_step(
         console.print("[bold red]Campaign is in a failed state. Please review logs.[/bold red]")
     else:
         console.print(f"[bold yellow]No automatic next step defined for current state: {current_state}.[/bold yellow]")
-from ..core.importing import import_prospect
 
 @app.command()
 def import_prospects(
@@ -402,8 +405,6 @@ def import_prospects(
                 new_companies_imported += 1
 
     console.print(f"[bold green]Import complete. Added {new_companies_imported} new companies.[/bold green]")
-from playwright.async_api import async_playwright
-
 
 async def pipeline(
     locations: list,
@@ -801,11 +802,12 @@ def visualize_coverage(
         </Placemark> '''
         kml_placemarks.append(placemark)
 
+    joined_placemarks = "\n".join(kml_placemarks)
     kml_content = f'''<?xml version="1.0" encoding="UTF-8"?>
 <kml xmlns="http://www.opengis.net/kml/2.2">
     <Document>
         <name>Scrape Coverage for {campaign_name}</name>
-{"\n".join(kml_placemarks)}
+{joined_placemarks}
     </Document>
 </kml>'''
 

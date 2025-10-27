@@ -76,7 +76,7 @@ class CampaignApp(App):
         table = self.query_one(DataTable)
         cell_key = table.cursor_coordinate
         if cell_key:
-            row_index, col_index = cell_key.row, cell_key.column
+            row_index, _ = cell_key.row, cell_key.column
             displayed_attribute_name = table.get_cell_value((row_index, 0))
             # Convert displayed name back to model attribute name
             attribute_name = str(table.get_row_at(row_index).key)

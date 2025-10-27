@@ -1,11 +1,10 @@
+from cocli.models.google_maps import GoogleMapsData
 from typer.testing import CliRunner
 from cocli.main import app
 import pytest
 from unittest.mock import AsyncMock, MagicMock
 
 runner = CliRunner()
-
-from cocli.models.google_maps import GoogleMapsData
 
 async def async_generator():
     mock_google_maps_data = GoogleMapsData(
@@ -23,7 +22,29 @@ async def async_generator():
     yield mock_google_maps_data
 
 @pytest.fixture
-def mock_achieve_goal_dependencies(mocker):
+def mock_achieve_goal_dependencies(mocker, tmp_path):
+    campaign_name = "test-campaign"
+    campaign_dir = tmp_path / "campaigns" / campaign_name
+    campaign_dir.mkdir(parents=True)
+    config_path = campaign_dir / "config.toml"
+    config_content = """
+[campaign]
+name = "test-campaign"
+
+[prospecting]
+locations = ["New York"]
+queries = ["software company"]
+"""
+    config_path.write_text(config_content)
+
+    mocker.patch("cocli.commands.campaign.get_campaign", return_value=campaign_name)
+    mocker.patch("cocli.commands.campaign.get_campaign_dir", return_value=campaign_dir)
+    mocker.patch("cocli.commands.campaign.get_cocli_base_dir", return_value=tmp_path)
+    mocker.patch("cocli.commands.campaign.get_scraped_data_dir", return_value=tmp_path / "scraped_data")
+    mocker.patch("cocli.commands.campaign.get_companies_dir", return_value=tmp_path / "companies")
+
+    mocker.patch("cocli.commands.campaign.ensure_enrichment_service_ready", return_value=None)
+
     # Mock the entire async_playwright context manager
     mock_playwright_manager = MagicMock()
     mock_playwright_manager.__aenter__.return_value = AsyncMock(
