@@ -57,12 +57,13 @@ class CampaignApp(App):
         yield Footer()
         
         table = DataTable()
+        table.add_column("Key", width=0)
         table.add_column("Attribute", width=20)
         table.add_column("Value")
         
         for key, value in self.campaign.model_dump().items():
             if value is not None:
-                table.add_row(key.replace('_', ' ').title(), str(value), key=key)
+                table.add_row(key, key.replace('_', ' ').title(), str(value))
 
         yield table
 
@@ -77,9 +78,8 @@ class CampaignApp(App):
         cell_key = table.cursor_coordinate
         if cell_key:
             row_index, _ = cell_key.row, cell_key.column
-            displayed_attribute_name = table.get_cell_value((row_index, 0))
-            # Convert displayed name back to model attribute name
-            attribute_name = str(table.get_row_at(row_index).key)
+            attribute_name = str(table.get_row_at(row_index)[0])
+            displayed_attribute_name = str(table.get_row_at(row_index)[1])
             
             current_value = getattr(self.campaign, attribute_name, None)
 
