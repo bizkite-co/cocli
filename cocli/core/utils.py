@@ -3,7 +3,7 @@ import uuid
 from rich.console import Console
 import re
 from pathlib import Path
-from typing import Any, Optional, cast
+from typing import Any, Optional
 from yaml import Dumper
 from yaml.nodes import ScalarNode
 import tty
@@ -26,7 +26,7 @@ console = Console()
 
 # Custom representer for None to ensure it's explicitly written as 'null'
 def represent_none(self: Dumper, data: Any) -> ScalarNode:
-    return cast(ScalarNode, self.represent_scalar('tag:yaml.org,2002:null', 'null'))
+    return self.represent_scalar('tag:yaml.org,2002:null', 'null')
 
 yaml.add_representer(type(None), represent_none)
 

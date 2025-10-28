@@ -1,7 +1,7 @@
 
 import csv
 from pathlib import Path
-from typing import Optional, Dict
+from typing import Optional, Dict, Any
 from datetime import datetime, UTC
 
 from ..models.google_maps import GoogleMapsData
@@ -23,48 +23,37 @@ class GoogleMapsCache:
         with open(self.cache_file, "r", newline="", encoding="utf-8") as csvfile:
             reader = csv.DictReader(csvfile)
             for row in reader:
-                # Convert numeric and datetime fields
-                for field in ['Reviews_count']:
-                    if row.get(field):
-                        try:
-                            row[field] = int(row[field])
-                        except (ValueError, TypeError):
-                            row[field] = None
-                for field in ['Average_rating', 'Latitude', 'Longitude']:
-                    if row.get(field):
-                        try:
-                            row[field] = float(row[field])
-                        except (ValueError, TypeError):
-                            row[field] = None
-                for field in ['created_at', 'updated_at']:
-                    if row.get(field):
-                        try:
-                            dt_obj = datetime.fromisoformat(row[field])
-                            # If naive, assume UTC
-                            if dt_obj.tzinfo is None:
-                                row[field] = dt_obj.replace(tzinfo=UTC)
-                            else:
-                                row[field] = dt_obj
-                        except (ValueError, TypeError):
-                            row[field] = None
-
-
-                converted_data = {}
+                processed_row: Dict[str, Any] = {}
                 for k, v in row.items():
-                    if v is None:
-                        continue
-                    if k in ["created_at", "updated_at"]:
-                        converted_data[k] = datetime.fromisoformat(str(v)).replace(tzinfo=UTC)
-                    elif k == "version":
-                        converted_data[k] = int(str(v))
-                    elif k == "Reviews_count":
-                        converted_data[k] = int(str(v)) if v else None
-                    elif k in ["Average_rating", "Latitude", "Longitude"]:
-                        converted_data[k] = float(str(v)) if v else None
-                    elif k in GoogleMapsData.model_fields:
-                        converted_data[k] = v
-                if converted_data.get("Place_ID"):
-                    self.data[str(converted_data["Place_ID"])] = GoogleMapsData(**converted_data)
+                    if v is None or v == '':
+                        processed_row[k] = None
+                    elif k in ['Reviews_count']:
+                        try:
+                            processed_row[k] = int(v)
+                        except (ValueError, TypeError):
+                            processed_row[k] = None
+                    elif k in ['Average_rating', 'Latitude', 'Longitude']:
+                        try:
+                            processed_row[k] = float(v)
+                        except (ValueError, TypeError):
+                            processed_row[k] = None
+                    elif k in ['created_at', 'updated_at']:
+                        try:
+                            dt_obj = datetime.fromisoformat(v)
+                            if dt_obj.tzinfo is None:
+                                processed_row[k] = dt_obj.replace(tzinfo=UTC)
+                            else:
+                                processed_row[k] = dt_obj
+                        except (ValueError, TypeError):
+                            processed_row[k] = None
+                    else:
+                        processed_row[k] = v
+
+                if processed_row.get("Place_ID"):
+                    try:
+                        self.data[str(processed_row["Place_ID"])] = GoogleMapsData(**processed_row)
+                    except Exception as e:
+                        print(f"Error loading GoogleMapsData from cache: {e} for row: {row}")
 
     def get_by_place_id(self, place_id: str) -> Optional[GoogleMapsData]:
         return self.data.get(place_id)

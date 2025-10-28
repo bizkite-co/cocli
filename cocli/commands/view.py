@@ -22,7 +22,7 @@ from ..models.note import Note
 
 
 from ..models.website import Website
-from ..renderers.company_view import display_company_view
+from ..renderers.company_view import display_company_view, _render_meetings
 from ..core.exclusions import ExclusionManager
 from ..commands.add_meeting import _add_meeting_logic
 from ..core.website_domain_csv_manager import WebsiteDomainCsvManager
@@ -76,6 +76,7 @@ def _interactive_view_company(company_slug: str) -> None:
     if not company.slug:
         company.slug = slugify(company.name)
 
+    meeting_map: Dict[int, Path] = {}
 
     website_data: Optional[Website] = None
     if company.slug:
@@ -93,7 +94,9 @@ def _interactive_view_company(company_slug: str) -> None:
 
     while True:
         assert company is not None # Ensure company is not None for mypy
-        display_company_view(console, company, website_data)
+        meetings_dir = selected_company_dir / "meetings"
+        _, meeting_map = _render_meetings(meetings_dir)
+        display_company_view(console, company, website_data, meeting_map)
         console.print("\n[bold yellow]Press 'a' to add meeting, 'c' for contact menu, 't' to add tag, 'T' to remove tag, 'e' to edit _index.md, 'E' to add email, 'w' to open website, 'p' to call, 'm' to select meeting, 'X' to exclude, 'f' to go back to fuzzy finder, 'r' to re-enrich, 'n' to add note, 'N' to edit note, 'q' to quit.[/bold yellow]")
         char = _getch()
 
@@ -227,7 +230,9 @@ def _interactive_view_company(company_slug: str) -> None:
         elif char == 'c':
             while True:
                 console.clear()
-                display_company_view(console, company, website_data) # Re-display company view
+                meetings_dir = selected_company_dir / "meetings"
+                _, meeting_map = _render_meetings(meetings_dir)
+                display_company_view(console, company, website_data, meeting_map) # Re-display company view
                 console.print("\n[bold yellow]Contact Menu:[/bold yellow]")
                 console.print("  [bold green]1.[/bold green] Add New Contact")
                 console.print("  [bold green]2.[/bold green] Add Existing Contact")

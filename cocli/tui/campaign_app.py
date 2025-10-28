@@ -185,7 +185,6 @@ class CampaignApp(App[Any]):
         else:
             self.log(f"Cannot edit attribute '{attribute_name}' of type {type(current_value)}.")
         return None
-
     async def action_drill_down(self) -> None:
         table = self.query_one(DataTable)
         cell_key = table.cursor_coordinate

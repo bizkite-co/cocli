@@ -76,8 +76,9 @@ exclude = [
 follow_imports = "normal"
 
 [[tool.mypy.overrides]]
-module = [
-    "aws_cdk.*",
-    "constructs.*",
-]
-ignore_missing_imports = true
+module = "cocli.core.website_cache"
+disable_error_code = ["call-overload"]
+
+[[tool.mypy.overrides]]
+module = "cocli.tui.campaign_app"
+disable_error_code = ["func-returns-value"]

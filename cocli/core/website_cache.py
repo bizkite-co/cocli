@@ -1,6 +1,6 @@
 import csv
 from pathlib import Path
-from typing import Optional, Dict, Any, cast, List
+from typing import Optional, Dict, Any
 from datetime import datetime, timezone
 import json
 import logging
@@ -40,22 +40,18 @@ class WebsiteCache:
                 # Convert list fields from string representation
                 for field in ['personnel', 'services', 'products', 'tags']:
                     if row.get(field) and isinstance(row[field], str):
-                        field_value = cast(str, row[field])
                         try:
                             # Safely evaluate string representation of list
-                            evaluated_data = cast(Any, json.loads(field_value))
+                            evaluated_data = json.loads(row[field])
                             if isinstance(evaluated_data, list):
                                 if field == 'personnel':
-                                    processed_data[field] = cast(List[Dict[str, Any]], evaluated_data)
+                                    processed_data[field] = evaluated_data
                                 else:
-                                    processed_data[field] = cast(List[str], evaluated_data)
+                                    processed_data[field] = evaluated_data
                             else:
                                 processed_data[field] = []
                         except (json.JSONDecodeError, ValueError, SyntaxError):
                             processed_data[field] = []
-                    elif row.get(field) is not None:
-                        # If it's not a string but exists, keep it as is (e.g., already a list)
-                        processed_data[field] = row[field]
                 
                 # Convert 'url' to Domain object if it exists and is a string
                 if row.get("url") and isinstance(row["url"], str):
@@ -87,7 +83,7 @@ class WebsiteCache:
                 try:
                     if "url" in cleaned_data and isinstance(cleaned_data["url"], Domain):
                         assert isinstance(cleaned_data["url"], Domain)
-                        self.data[cleaned_data["url"].url] = Website(**cleaned_data)  # type: ignore  # type: ignore  # type: ignore
+                        self.data[cleaned_data["url"].url] = Website(**cleaned_data)  # type: ignore
                 except Exception as e:
                     logger.warning(f"Error loading Website from cache: {e} for row: {row}")
 
@@ -112,8 +108,8 @@ class WebsiteCache:
             writer.writeheader()
             for item in self.data.values():
                 dump = item.model_dump()
-                # Convert lists to strings for CSV
+                # Convert lists to JSON strings for CSV
                 for field in ['personnel', 'services', 'products', 'tags']:
                     if dump.get(field):
-                        dump[field] = str(dump[field])
+                        dump[field] = json.dumps(dump[field])
                 writer.writerow(dump)
