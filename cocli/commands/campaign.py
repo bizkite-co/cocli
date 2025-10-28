@@ -53,46 +53,6 @@ def campaign(ctx: typer.Context) -> None:
         show()
 
 @app.command()
-def tui(
-    campaign_name: Optional[str] = typer.Argument(None, help="Name of the campaign to view. If not provided, uses the current campaign context.")
-) -> None:
-    """
-    Launches the Textual TUI for campaigns.
-    """
-    if campaign_name is None:
-        campaign_name = get_campaign()
-        if campaign_name is None:
-            logger.error("Error: No campaign name provided and no campaign context is set.")
-            raise typer.Exit(code=1)
-
-    campaign_dir = get_campaign_dir(campaign_name)
-    if not campaign_dir:
-        console.print(f"[bold red]Campaign '{campaign_name}' not found.[/bold red]")
-        raise typer.Exit(code=1)
-
-    config_path = campaign_dir / "config.toml"
-    if not config_path.exists():
-        console.print(f"[bold red]Configuration file not found for campaign '{campaign_name}'.[/bold red]")
-        raise typer.Exit(code=1)
-
-    with open(config_path, "r") as f:
-        config_data = toml.load(f)
-    
-    flat_config = config_data.pop('campaign')
-    flat_config.update(config_data)
-
-    try:
-        campaign = Campaign.model_validate(flat_config)
-    except Exception as e:
-        console.print(f"[bold red]Error validating campaign configuration for '{campaign_name}': {e}[/bold red]")
-        raise typer.Exit(code=1)
-
-    from ..tui.campaign_app import CampaignApp
-    app = CampaignApp(campaign=campaign)
-    app.run()
-
-
-@app.command()
 def edit(
     campaign_name: Annotated[Optional[str], typer.Argument(help="The name of the campaign to edit.")] = None
 ) -> None:

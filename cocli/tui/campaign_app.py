@@ -1,10 +1,10 @@
 from __future__ import annotations
 
 from textual import events
-from textual.app import App, ComposeResult
-from textual.widgets import Header, Footer, DataTable, Input, Static
+from textual.screen import Screen, ModalScreen
+from textual.widgets import DataTable, Input, Static # Removed Header, Footer
 from textual.containers import Vertical
-from textual.screen import ModalScreen
+from textual.app import ComposeResult # Added ComposeResult import
 from typing import Any
 
 from ..models.campaign import Campaign, CampaignImport, GoogleMaps, Prospecting
@@ -95,19 +95,25 @@ class EditObjectScreen(ModalScreen[Any]):
         elif event.key == "ctrl+c":
             self.dismiss(None)
 
-class CampaignApp(App[Any]):
-    """A Textual app to view campaign details."""
+class CampaignScreen(Screen[None]): # Changed from App to Screen
+    """A Textual screen to view campaign details."""
 
     CSS = """
-    App {
+    CampaignScreen { # Changed from App
         background: transparent;
     }
     """
 
-    BINDINGS = [("q", "quit", "Quit"), ("j", "cursor_down", "Down"), ("k", "cursor_up", "Up"), ("e", "edit_cell", "Edit"), ("d", "drill_down", "Drill Down")]
+    BINDINGS = [
+        ("q", "dismiss", "Quit"), # Changed action from quit to dismiss
+        ("j", "cursor_down", "Down"),
+        ("k", "cursor_up", "Up"),
+        ("e", "edit_cell", "Edit"),
+        ("d", "drill_down", "Drill Down")
+    ]
 
-    def __init__(self, campaign: Campaign, *args: Any, **kwargs: Any):
-        super().__init__(*args, **kwargs)
+    def __init__(self, campaign: Campaign, name: str | None = None, id: str | None = None, classes: str | None = None):
+        super().__init__(name=name, id=id, classes=classes)
         self.campaign = campaign
         original_campaign_path = get_campaign_dir(campaign.name)
         if original_campaign_path is None:
@@ -115,9 +121,8 @@ class CampaignApp(App[Any]):
         self._original_campaign_path = original_campaign_path
 
     def compose(self) -> ComposeResult:
-        """Create child widgets for the app."""
-        yield Header()
-        yield Footer()
+        """Create child widgets for the screen."""
+        # Removed Header and Footer here, as they belong to the main App
         
         table: DataTable[Any] = DataTable()
         table.add_column("Key", key="key", width=0)
@@ -162,7 +167,7 @@ class CampaignApp(App[Any]):
         current_value = getattr(self.campaign, attribute_name, None)
 
         if isinstance(current_value, (str, int, float, bool)):
-            new_value = await self.push_screen(EditValueScreen(str(current_value), attribute_name))
+            new_value = await self.app.push_screen(EditValueScreen(str(current_value), attribute_name))
             if new_value is None:
                 return
             
@@ -197,7 +202,7 @@ class CampaignApp(App[Any]):
         current_value = getattr(self.campaign, attribute_name, None)
 
         if isinstance(current_value, list):
-            new_list = await self.push_screen(EditListScreen(current_value, attribute_name))
+            new_list = await self.app.push_screen(EditListScreen(current_value, attribute_name))
             if new_list is None:
                 return
 
@@ -207,9 +212,9 @@ class CampaignApp(App[Any]):
 
         elif isinstance(current_value, (dict, CampaignImport, GoogleMaps, Prospecting)):
             if isinstance(current_value, dict):
-                new_object = await self.push_screen(EditObjectScreen(current_value, attribute_name))
+                new_object = await self.app.push_screen(EditObjectScreen(current_value, attribute_name))
             else:
-                new_object = await self.push_screen(EditObjectScreen(current_value.model_dump(), attribute_name))
+                new_object = await self.app.push_screen(EditObjectScreen(current_value.model_dump(), attribute_name))
             if new_object is None:
                 return
 

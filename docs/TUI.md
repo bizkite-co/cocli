@@ -26,8 +26,14 @@ Based on the code and recent interactions, the TUI is expected to:
 
 - The TUI is intended to appear like a Terminal interface.
 - Buttons should be avoided as much as possible.
+- Abstract out BINDINGS to a config file.
 - Text shortcut verbiage should be used instead, in the standard Textual manner, or like (**s**)ave and (**c**)ancel instead of Save and Cancel buttons.
+- Use Textual widgets that match data types.
+- We should be able to create custom widgets for our special data types and Pydantic models.
 - Vim-like navigation should be used as much as possible.
+    - We can use `hjkl` for arrow navigation.
+    - We can use `i` to edit any field in focus.
+    - With properly displayed widgets and layouts, we should be able to navigate to the specific field we want by using `hjkl`, and then edit just that field, with propper input masking if required, by using the `i`. `ctrl+c`, `ESCAPE` should allow the user to escape `i` mode, just like in Vim, and we should be able to provide custom mappings for shortcuts like `alt+s` for `ESCAPE`.
 - We should never make the user use the mouse. If they want to use the mouse it's because we didn't present the options enough.
 
 ## Future Enhancements (Inferred)
@@ -42,10 +48,6 @@ While not explicitly implemented yet, the TUI could be extended to:
 This document will be updated as the TUI development progresses and its features become more defined.
 
 ## Development Notes
-
-### Type Checking
-
-Currently, `mypy` (as configured in `pyproject.toml` and run via `make lint`) is not catching all type-related errors that are identified by language servers in IDEs (e.g., NVim). This includes `AttributeError` and `NameError` issues. Further investigation is needed to configure `mypy` for stricter checking or to explore alternative type-checking solutions.
 
 ### Debugging
 
