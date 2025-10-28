@@ -10,7 +10,7 @@ from ..core.utils import create_company_files
 console = Console()
 
 class WebsiteCompiler(BaseCompiler):
-    def compile(self, company_dir: Path):
+    def compile(self, company_dir: Path) -> None:
         website_md_path = company_dir / "enrichments" / "website.md"
         if not website_md_path.exists():
             return

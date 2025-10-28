@@ -13,7 +13,7 @@ logger = logging.getLogger(__name__)
 
 def render_prospects_kml(
     campaign_name: str = typer.Argument(..., help="The name of the campaign to render the KML for.")
-):
+) -> None:
     """
     Generates a KML file for prospects from a CSV file for a specific campaign,
     including enriched data like emails, phones, and associated people.

@@ -7,7 +7,7 @@ app = typer.Typer()
 console = Console()
 
 @app.command()
-def status():
+def status() -> None:
     """
     Displays the current status of the cocli environment.
     """

@@ -18,7 +18,7 @@ def extract_gmb_url_coordinates_place_id(soup: BeautifulSoup, debug: bool = Fals
     # This remains HTML-based as it's an attribute, not easily in innerText
     gmb_url_element = soup.find("a", class_="hfpxzc")
     if gmb_url_element and gmb_url_element.has_attr("href"):
-        gmb_url = gmb_url_element["href"]
+        gmb_url = str(gmb_url_element["href"])
         if debug:
             logger.debug(f"Extracted GMB_URL (HTML): {gmb_url}")
 

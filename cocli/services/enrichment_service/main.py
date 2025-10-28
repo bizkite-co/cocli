@@ -22,7 +22,7 @@ class EnrichmentRequest(BaseModel):
     debug: bool = False
 
 @app.post("/enrich", response_model=Website)
-async def enrich_domain(request: EnrichmentRequest):
+async def enrich_domain(request: EnrichmentRequest) -> Website:
     """
     Accepts a domain and enrichment options, then scrapes the website
     to return structured data.
@@ -59,6 +59,6 @@ async def enrich_domain(request: EnrichmentRequest):
             await browser.close()
 
 @app.get("/health")
-async def health_check():
+async def health_check() -> dict[str, str]:
     return {"status": "ok"}
 

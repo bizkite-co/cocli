@@ -18,7 +18,7 @@ def extract_phone_number(soup: BeautifulSoup, inner_text: str, debug: bool = Fal
         # Fallback to HTML selector
         phone_element = soup.find("button", attrs={"data-tooltip": "Copy phone number"})
         if phone_element:
-            phone_number = phone_element.get("aria-label", "").replace("Phone: ", "").strip()
+            phone_number = str(phone_element.get("aria-label", "")).replace("Phone: ", "").strip()
             if debug:
                 logger.debug(f"Extracted Phone_1 (HTML fallback): {phone_number}")
         else:

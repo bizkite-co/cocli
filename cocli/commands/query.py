@@ -12,7 +12,7 @@ from ..core.utils import slugify
 from ..models.person import Person
 import yaml
 
-def get_enriched_emails(domain_to_slug_map: dict, domain: str) -> List[str]:
+def get_enriched_emails(domain_to_slug_map: dict[str, str], domain: str) -> List[str]:
     """Looks up a company by domain and returns all associated emails."""
     slug = domain_to_slug_map.get(domain)
     if not slug:
@@ -45,7 +45,7 @@ def get_enriched_emails(domain_to_slug_map: dict, domain: str) -> List[str]:
     
     return sorted(list(emails))
 
-def build_domain_to_slug_map() -> dict:
+def build_domain_to_slug_map() -> dict[str, str]:
     """Builds a lookup map from domain to a company's slug (directory name)."""
     domain_map = {}
     companies_dir = get_companies_dir()
@@ -75,10 +75,10 @@ def get_prospects_csv_path() -> Path:
     # based on the user's current campaign context.
     return get_scraped_data_dir() / "turboship" / "prospects" / "prospects.csv"
 
-def get_tags_for_domain(domain_to_tags_map: dict, domain: str) -> List[str]:
+def get_tags_for_domain(domain_to_tags_map: dict[str, List[str]], domain: str) -> List[str]:
     return domain_to_tags_map.get(domain, [])
 
-def build_domain_to_tags_map() -> dict:
+def build_domain_to_tags_map() -> dict[str, List[str]]:
     """Builds a lookup map from domain to a list of tags."""
     domain_map = {}
     companies_dir = get_companies_dir()
@@ -119,7 +119,7 @@ def prospects(
     state: str = typer.Option(..., "--state", help="State to search in."),
     radius: int = typer.Option(50, "--radius", help="Search radius in miles."),
     has_email: Optional[bool] = typer.Option(None, "--has-email/--no-email", help="Filter by email presence. Default is to include all."),
-):
+) -> None:
     """
     Find prospects within a certain radius of a city, using the prospects CSV for speed.
     """

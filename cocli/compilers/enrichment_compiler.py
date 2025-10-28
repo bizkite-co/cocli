@@ -10,10 +10,10 @@ from .base import BaseCompiler
 console = Console()
 
 class EnrichmentCompiler:
-    def __init__(self):
+    def __init__(self) -> None:
         self.compilers = self._discover_compilers()
 
-    def _discover_compilers(self):
+    def _discover_compilers(self) -> list[BaseCompiler]:
         compilers = []
         compiler_module_path = Path(__file__).parent
         for _, name, _ in pkgutil.iter_modules([str(compiler_module_path)]):
@@ -25,7 +25,7 @@ class EnrichmentCompiler:
                         compilers.append(attribute())
         return compilers
 
-    def run(self):
+    def run(self) -> None:
         companies_dir = get_companies_dir()
         if not companies_dir.exists():
             console.print("[bold red]Error:[/bold red] Companies directory not found.")

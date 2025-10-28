@@ -19,7 +19,7 @@ def add(
     person_name: Optional[str] = typer.Option(
         None, "--person", "-p", help="Name of the person"
     ),
-):
+) -> None:
     """
     Add a new company or a person to an existing company.
     """
@@ -39,7 +39,7 @@ def add(
         person_slug = slugify(person_name)
         person_dir = people_dir / person_slug
         if not person_dir.exists():
-            person = Person(name=person_name, company=company_name)
+            person = Person(name=person_name, company_name=company_name, phone=None)
             create_person_files(person, person_dir)
             logger.info(f"Person '{person_name}' created at {person_dir}")
         else:

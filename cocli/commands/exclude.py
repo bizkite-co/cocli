@@ -15,7 +15,7 @@ def exclude(
     company_name: str = typer.Argument(..., help="The name of the company to exclude."),
     campaign: str = typer.Option(..., "--campaign", "-c", help="The campaign to exclude the company from."),
     reason: Optional[str] = typer.Option(None, "--reason", "-r", help="The reason for excluding the company."),
-):
+) -> None:
     """
     Excludes a company from a campaign.
     """

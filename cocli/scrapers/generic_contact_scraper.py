@@ -9,7 +9,7 @@ from playwright.async_api import async_playwright
 logger = logging.getLogger(__name__)
 
 class GenericContactScraper:
-    def __init__(self):
+    def __init__(self) -> None:
         pass
 
     async def find_contact_pages(self, domain: str) -> List[str]:
@@ -42,7 +42,7 @@ class GenericContactScraper:
                 soup = BeautifulSoup(html_content, 'html.parser')
 
                 for a_tag in soup.find_all('a', href=True):
-                    href = a_tag['href']
+                    href = str(a_tag['href'])
                     if "contact" in href.lower() or "about" in href.lower():
                         # Construct absolute URL if it's relative
                         if href.startswith('/'):
@@ -81,7 +81,7 @@ class GenericContactScraper:
             for h5_tag in soup.find_all('h5'): # Iterate through h5 tags first
                 a_tag = h5_tag.find('a', href=re.compile(r'^(mailto:|email:)'))
                 if a_tag:
-                    email = a_tag['href'].replace('mailto:', '').replace('email:', '').strip()
+                    email = str(a_tag['href']).replace('mailto:', '').replace('email:', '').strip()
                     
                     # Skip if email is empty
                     if not email:
@@ -112,7 +112,7 @@ class GenericContactScraper:
         return contacts
 
 # Example usage (for testing)
-async def main():
+async def main() -> None:
     scraper = GenericContactScraper()
     domain = "dsb-plus.com"
     contact_pages = await scraper.find_contact_pages(domain)

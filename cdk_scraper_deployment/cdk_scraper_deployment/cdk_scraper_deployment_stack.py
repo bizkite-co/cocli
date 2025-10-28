@@ -10,9 +10,9 @@ from aws_cdk import (
 from constructs import Construct
 import os
 
-class CdkScraperDeploymentStack(Stack):
+class CdkScraperDeploymentStack(Stack):  # type: ignore[misc]
 
-    def __init__(self, scope: Construct, construct_id: str, **kwargs) -> None:
+    def __init__(self, scope: Construct, construct_id: str, **kwargs) -> None:  # type: ignore[no-untyped-def]
         super().__init__(scope, construct_id, **kwargs)
 
         # Define the path to the Dockerfile

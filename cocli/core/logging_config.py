@@ -5,7 +5,7 @@ from datetime import datetime
 
 from .config import get_cocli_base_dir
 
-def setup_logging(level=logging.INFO):
+def setup_logging(level: int = logging.INFO) -> None:
     """
     Sets up basic application-wide logging to the console.
     """
@@ -16,7 +16,7 @@ def setup_logging(level=logging.INFO):
     )
     logging.getLogger().setLevel(level)
 
-def setup_file_logging(command_name: str, console_level=logging.INFO, file_level=logging.DEBUG, disable_console: bool = False):
+def setup_file_logging(command_name: str, console_level: int = logging.INFO, file_level: int = logging.DEBUG, disable_console: bool = False) -> None:
     """
     Sets up logging to a timestamped file for a specific command and adjusts console output level.
     """

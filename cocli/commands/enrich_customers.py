@@ -15,7 +15,7 @@ app = typer.Typer()
 @app.command()
 def enrich_customers(
     campaign_name: str = typer.Argument(..., help="Name of the campaign to enrich customers for.")
-):
+) -> None:
     """
     Enrich existing customers for a campaign with Google Maps data.
     """

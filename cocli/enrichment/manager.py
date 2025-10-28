@@ -18,7 +18,7 @@ class EnrichmentManager:
         self.scripts: Dict[str, EnrichmentScript] = {}
         self._discover_scripts()
 
-    def _discover_scripts(self):
+    def _discover_scripts(self) -> None:
         """Discovers all enrichment scripts in the 'enrichment' package."""
         enrichment_package = importlib.import_module("cocli.enrichment")
         for _, name, is_pkg in pkgutil.iter_modules(enrichment_package.__path__):
@@ -53,7 +53,7 @@ class EnrichmentManager:
         company_dir = self._get_company_path(company_name)
         return Company.from_directory(company_dir)
 
-    def _save_company(self, company: Company):
+    def _save_company(self, company: Company) -> None:
         """Saves the updated Company object back to its _index.md file."""
         company_dir = self._get_company_path(company.name)
         index_path = company_dir / "_index.md"
@@ -88,7 +88,7 @@ class EnrichmentManager:
         index_path.write_text(new_content)
         logger.info(f"Saved updated company data for {company.name} to {index_path}")
 
-    def _update_run_tracking(self, company_name: str, script_name: str):
+    def _update_run_tracking(self, company_name: str, script_name: str) -> None:
         """Updates the run tracking file for a given company and script."""
         company_dir = self._get_company_path(company_name)
         run_tracking_dir = company_dir / ".enrichment-job-runs"

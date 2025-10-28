@@ -10,7 +10,7 @@ console = Console()
 @app.command()
 def process_shopify_scrapes(
     output_filename: str = typer.Option("index.csv", "--output", "-o", help="Output filename for the compiled data."),
-):
+) -> None:
     """
     Compiles and deduplicates scraped Shopify data from multiple CSV files into a single index file.
     """

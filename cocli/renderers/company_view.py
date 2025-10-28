@@ -157,7 +157,7 @@ def _render_notes(notes_dir: Path) -> Panel:
     return Panel(Markdown(output), title="Recent Notes", border_style="cyan")
 
 
-def display_company_view(console: Console, company: Company, website_data: Optional[Website]):
+def display_company_view(console: Console, company: Company, website_data: Optional[Website], meeting_map: Dict[int, Path]) -> None:
     console.clear()
 
     if not company.slug:
@@ -198,4 +198,4 @@ def display_company_view(console: Console, company: Company, website_data: Optio
     console.print(meetings_panel)
     console.print(notes_panel)
 
-    return meeting_map
+

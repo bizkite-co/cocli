@@ -26,7 +26,7 @@ def clean_phone_number(phone: str) -> str:
 def import_turboship(
     customers_csv_path: Path = typer.Argument(..., help="Path to the customers.csv file"),
     addresses_csv_path: Path = typer.Argument(..., help="Path to the customer_addresses.csv file"),
-):
+) -> None:
     """
     Import customers from a Turboship CSV file.
     """

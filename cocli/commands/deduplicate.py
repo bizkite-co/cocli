@@ -13,7 +13,7 @@ app = typer.Typer()
 @app.command()
 def deduplicate(
     dry_run: Annotated[bool, typer.Option(help="Print what would be changed without actually changing anything.")] = True,
-):
+) -> None:
     """
     Deduplicates company data by generating a stable hash for each company and removing duplicates.
     """

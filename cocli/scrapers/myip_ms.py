@@ -93,7 +93,7 @@ def _extract_data_from_page(
     page: Page,
     ip_address: str,
     processed_urls: Set[str],
-    writer: csv.DictWriter,
+    writer: csv.DictWriter[str],
     debug: bool,
 ) -> int:
     """
@@ -164,7 +164,7 @@ def _extract_data_from_page(
                         "Scrape_Date": datetime.now().isoformat(),
                     }
                     writer.writerow(data)
-                    processed_urls.add(current_site_data["Website"])
+                    processed_urls.add(str(current_site_data["Website"]))
                     scraped_on_page_count += 1
                     logger.info(f"Scraped: {current_site_data['Website']} (Country: {current_site_data['Country']}, Popularity: {current_site_data['Popularity_Visitors_Per_Day']})")
                 else:

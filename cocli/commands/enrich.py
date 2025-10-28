@@ -1,6 +1,6 @@
 import typer
 from pathlib import Path
-from typing import Optional, List
+from typing import Optional, List, Any
 import asyncio
 import logging
 
@@ -33,7 +33,7 @@ def run_enrichment(
         "-d",
         help="Directory containing company data. Defaults to the 'data/companies' directory.",
     ),
-):
+) -> None:
     """
     Run a specific enrichment script on one or all companies.
     """
@@ -100,7 +100,7 @@ def list_scripts(
         "-d",
         help="Directory containing company data. Defaults to the 'data/companies' directory.",
     ),
-):
+) -> None:
     """
     List all available enrichment scripts.
     """
@@ -116,7 +116,7 @@ def list_scripts(
 @app.command(name="contacts")
 def scrape_contacts(
     company_name: str = typer.Argument(..., help="Name of the company to scrape contacts for."),
-):
+) -> None:
     """
     Scrape contact information from a company's website and add/update them in the CRM.
     """
@@ -133,11 +133,15 @@ def scrape_contacts(
         logger.error(f"Could not load company data or company domain for '{company_name}'.")
         raise typer.Exit(code=1)
 
+    assert company.domain is not None # Ensure domain is not None for mypy
+
     logger.info(f"Scraping contacts for {company.name} ({company.domain})...")
     
     scraper = GenericContactScraper()
     
-    async def run_scraper():
+    async def run_scraper() -> List[Any]:
+        if company.domain is None:
+            return [] # Or handle this case as appropriate, e.g., log a warning and skip
         contact_pages = await scraper.find_contact_pages(company.domain)
         all_extracted_contacts = []
         for page_url in contact_pages:

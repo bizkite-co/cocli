@@ -21,7 +21,7 @@ def _safe_float(value: str) -> Optional[float]:
     except ValueError:
         return None
 
-def google_maps(filepath: Path, debug: bool = False): # Added debug parameter
+def google_maps(filepath: Path, debug: bool = False) -> None:
     """
     Importer for Google Maps CSV files.
 
@@ -86,7 +86,7 @@ def google_maps(filepath: Path, debug: bool = False): # Added debug parameter
                 # --- Validation and Creation ---
                 try:
                     # Pydantic automatically validates the data.
-                    company = Company(**company_data, by_alias=False)
+                    company = Company(**company_data)
 
                     # Construct company_dir
                     companies_base_dir = get_companies_dir()

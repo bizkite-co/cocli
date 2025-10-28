@@ -66,5 +66,5 @@ def import_prospect(
 
     # Create a Company object to return
     # This is slightly redundant but completes the model-to-model transform
-    company = Company(**company_data, slug=slug, tags=tags)
+    company = Company.model_validate(company_data | {"slug": slug, "tags": tags})
     return company

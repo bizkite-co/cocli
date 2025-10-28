@@ -13,7 +13,7 @@ def extract_name(soup: BeautifulSoup, inner_text: str, debug: bool = False) -> s
     link = soup.find('a', class_='hfpxzc')
     if link and link.get('aria-label'):
         # The aria-label might contain extra text like '· Visited link', remove it
-        name = link['aria-label'].split('·')[0].strip()
+        name = str(link['aria-label']).split('·')[0].strip()
         if debug:
             logger.debug(f"Extracted Name (aria-label): {name}")
         return name

@@ -15,7 +15,7 @@ def import_data(
     importer_name: str = typer.Argument(..., help="Name of the importer to use."),
     file_path: Optional[Path] = typer.Argument(None, help="Path to the data file to import. If not provided, a list of available files will be shown."), # Make file_path optional
     debug: bool = typer.Option(False, "--debug", help="Enable debug output."),
-):
+) -> None:
     """
     Import data using a specified importer.
     """

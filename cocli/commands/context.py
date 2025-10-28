@@ -6,7 +6,11 @@ from ..core.config import get_context, set_context
 
 console = Console()
 
-def context(filter_str: Optional[str] = typer.Argument(None, help="The filter to set as the current context (e.g., 'tag:prospect', 'missing:email'). If not provided, shows the current context.")):
+def context(
+
+    filter_str: Optional[str] = typer.Argument(None, help="The filter to set as the current context (e.g., 'tag:prospect', 'missing:email'). If not provided, shows the current context.")
+
+) -> None:
     """
     Sets, shows, or clears the current context.
     """

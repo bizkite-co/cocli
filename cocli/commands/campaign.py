@@ -45,7 +45,7 @@ console = Console()
 app = typer.Typer(no_args_is_help=True, invoke_without_command=True)
 
 @app.callback()
-def campaign(ctx: typer.Context):
+def campaign(ctx: typer.Context) -> None:
     """
     Manage campaigns.
     """
@@ -55,7 +55,7 @@ def campaign(ctx: typer.Context):
 @app.command()
 def tui(
     campaign_name: Optional[str] = typer.Argument(None, help="Name of the campaign to view. If not provided, uses the current campaign context.")
-):
+) -> None:
     """
     Launches the Textual TUI for campaigns.
     """
@@ -95,7 +95,7 @@ def tui(
 @app.command()
 def edit(
     campaign_name: Annotated[Optional[str], typer.Argument(help="The name of the campaign to edit.")] = None
-):
+) -> None:
     """
     Edits an existing campaign's configuration.
     """
@@ -159,7 +159,7 @@ def edit(
 def add(
     name: Annotated[str, typer.Argument(help="The name of the campaign.")],
     company: Annotated[str, typer.Argument(help="The name of the company.")],
-):
+) -> None:
     """
     Adds a new campaign.
     """
@@ -179,7 +179,7 @@ app.add_typer(prospects.app, name="prospects")
 console = Console()
 
 @app.command()
-def set(campaign_name: str = typer.Argument(..., help="The name of the campaign to set as the current context.")):
+def set(campaign_name: str = typer.Argument(..., help="The name of the campaign to set as the current context.")) -> None:
     """
     Sets the current campaign context.
     """
@@ -193,7 +193,7 @@ def set(campaign_name: str = typer.Argument(..., help="The name of the campaign 
 def import_contacts(
     csv_path: Path = typer.Argument(..., help="Path to the CSV file containing contacts."),
     campaign_name: Optional[str] = typer.Argument(None, help="Name of the campaign to import contacts into. If not provided, uses the current campaign context."),
-):
+) -> None:
     """
     Imports contacts from a CSV file into a campaign.
 
@@ -220,7 +220,7 @@ def import_contacts(
         reader = csv.DictReader(f)
         for row in reader:
             try:
-                person = Person(**row)
+                person = Person.model_validate(row)
                 person_slug = slugify(person.name)
                 person_dir = people_dir / person_slug
                 person_dir.mkdir(exist_ok=True)
@@ -242,7 +242,7 @@ def import_contacts(
 
 
 @app.command()
-def unset():
+def unset() -> None:
     """
     Clears the current campaign context.
     """
@@ -251,7 +251,7 @@ def unset():
 
 
 @app.command()
-def show():
+def show() -> None:
     """
     Displays the current campaign context.
     """
@@ -288,7 +288,7 @@ def show():
 @app.command()
 def status(
     campaign_name: Optional[str] = typer.Argument(None, help="Name of the campaign to show status for. If not provided, uses the current campaign context.")
-):
+) -> None:
     """
     Displays the current state of the campaign workflow.
     """
@@ -306,7 +306,7 @@ def status(
 @app.command(name="start-workflow")
 def start_workflow(
     campaign_name: Optional[str] = typer.Argument(None, help="Name of the campaign to start the workflow for. If not provided, uses the current campaign context.")
-):
+) -> None:
     """
     Starts the campaign workflow.
     """
@@ -327,7 +327,7 @@ def start_workflow(
 @app.command(name="next-step")
 def next_step(
     campaign_name: Optional[str] = typer.Argument(None, help="Name of the campaign to advance the workflow for. If not provided, uses the current campaign context.")
-):
+) -> None:
     """
     Advances the campaign workflow to the next logical step.
     """
@@ -366,7 +366,7 @@ def next_step(
 @app.command()
 def import_prospects(
     campaign_name: Optional[str] = typer.Argument(None, help="Name of the campaign to import prospects for. If not provided, uses the current campaign context."),
-):
+) -> None:
     """
     Imports prospects from a campaign's prospects.csv into the canonical company structure.
     """
@@ -393,7 +393,7 @@ def import_prospects(
         for row in reader:
             # Create a GoogleMapsData object from the CSV row
             model_data = {k: v for k, v in row.items() if k in GoogleMapsData.model_fields}
-            prospect_data = GoogleMapsData(**model_data)
+            prospect_data = GoogleMapsData.model_validate(model_data)
 
             # Call the core import function
             new_company = import_prospect(prospect_data, existing_domains, campaign=campaign_name)
@@ -407,8 +407,8 @@ def import_prospects(
     console.print(f"[bold green]Import complete. Added {new_companies_imported} new companies.[/bold green]")
 
 async def pipeline(
-    locations: list,
-    search_phrases: list,
+    locations: list[str],
+    search_phrases: list[str],
     goal_emails: int,
     headed: bool,
     devtools: bool,
@@ -422,7 +422,7 @@ async def pipeline(
     browser_width: int,
     browser_height: int,
     location_prospects_index: LocationProspectsIndex,
-):
+) -> None:
     emails_found_count = 0
 
     prospects_csv_path = get_scraped_data_dir() / campaign_name / "prospects" / "prospects.csv"
@@ -641,7 +641,7 @@ def achieve_goal(
 
     browser_height: int = typer.Option(1500, help="The height of the browser viewport."),
 
-):
+) -> None:
 
     """
 
@@ -731,7 +731,7 @@ def achieve_goal(
 def visualize_coverage(
     campaign_name: Optional[str] = typer.Argument(None, help="Name of the campaign to visualize. If not provided, uses the current campaign context."),
     output_file: Optional[Path] = typer.Option(None, "--output", "-o", help="The path to save the KML file. Defaults to coverage.kml in the campaign directory."),
-):
+) -> None:
     """
     Generates a KML file to visualize the scraped areas for a campaign.
     """
@@ -759,11 +759,11 @@ def visualize_coverage(
         if not scrape_index._index:
             console.print("[yellow]Scrape index is empty. No coverage to visualize.[/yellow]")
             return
-    except FileNotFoundError: # type: ignore
+    except FileNotFoundError:
         console.print(f"[bold red]Scrape index file not found for campaign '{str(campaign_name)}'.[/bold red]")
         full_path_str = f"{str(get_cocli_base_dir())}/indexes/{str(campaign_name)}/scraped_areas.csv"
         scraped_areas_csv_path = Path(full_path_str)
-        console.print(f"[dim]Looked for: {scraped_areas_csv_path}[/dim]") # type: ignore
+        console.print(f"[dim]Looked for: {scraped_areas_csv_path}[/dim]")
         raise typer.Exit(code=1)
 
     # Assign colors to phrases

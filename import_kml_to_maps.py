@@ -10,7 +10,7 @@ from pathlib import Path
 logger = logging.getLogger(__name__)
 
 
-def main(campaign_name: str = typer.Argument(..., help="The name of the campaign to import.")):
+def main(campaign_name: str = typer.Argument(..., help="The name of the campaign to import.")) -> None:
     """
     Automates the process of importing a KML file to Google My Maps.
     """
@@ -61,7 +61,7 @@ def main(campaign_name: str = typer.Argument(..., help="The name of the campaign
         page.wait_for_timeout(2000) # Wait for the password page to load
         page.fill('input[type="password"]', password)
         page.press('input[type="password"]', "Enter")
-        page.wait_for_navigation()
+        page.wait_for_load_state("networkidle")
         
         # --- Create a new map ---
         page.click("button:has-text('Create a new map')")

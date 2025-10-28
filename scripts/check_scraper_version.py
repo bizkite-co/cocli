@@ -9,14 +9,14 @@ LOCAL_FILE_PATH = "cocli/enrichment/website_scraper.py"
 CONTAINER_FILE_PATH = "/app/cocli/enrichment/website_scraper.py"
 TEMP_DIR = "/tmp/cocli_comparison"
 
-def get_file_mtime(filepath):
+def get_file_mtime(filepath: str) -> float | None:
     """Get the modification time of a local file."""
     try:
         return os.path.getmtime(filepath)
     except FileNotFoundError:
         return None
 
-def get_container_file_mtime(container_id):
+def get_container_file_mtime(container_id: str) -> str | None:
     """Copy file from container and get its modification time."""
     if not os.path.exists(TEMP_DIR):
         os.makedirs(TEMP_DIR)
@@ -30,7 +30,7 @@ def get_container_file_mtime(container_id):
             check=True,
             capture_output=True
         )
-        return os.path.getmtime(temp_container_file)
+        return str(os.path.getmtime(temp_container_file))
     except subprocess.CalledProcessError as e:
         print(f"Error copying file from container: {e.stderr.decode()}", file=sys.stderr)
         return None
@@ -42,7 +42,7 @@ def get_container_file_mtime(container_id):
         if os.path.exists(temp_container_file):
             os.remove(temp_container_file)
 
-def find_running_container(image_name):
+def find_running_container(image_name: str) -> str | None:
     """Find a running container ID by image name."""
     try:
         result = subprocess.run(
@@ -58,16 +58,17 @@ def find_running_container(image_name):
         print(f"Error finding running container: {e.stderr.decode()}", file=sys.stderr)
         return None
 
-def main():
+def main() -> None:
     parser = argparse.ArgumentParser(description="Check if local website_scraper.py is newer than in Docker image.")
     parser.add_argument("--image-name", required=True, help="Name of the Docker image (e.g., enrichment-service).")
     parser.add_argument("--container-id", help="Optional: ID of the running Docker container.")
     args = parser.parse_args()
 
-    local_mtime = int(get_file_mtime(LOCAL_FILE_PATH))
-    if local_mtime is None:
+    local_mtime_raw = get_file_mtime(LOCAL_FILE_PATH)
+    if local_mtime_raw is None:
         print(f"Error: Local file not found at {LOCAL_FILE_PATH}", file=sys.stderr)
         sys.exit(1)
+    local_mtime = int(local_mtime_raw)
 
     print(f"Local website_scraper.py modification time: {datetime.fromtimestamp(local_mtime)}")
 

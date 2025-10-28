@@ -14,7 +14,7 @@ def scrape_shopify_myip(
     end_page: int = typer.Option(10, "--end-page", "-e", help="Page number to end scraping at."),
     output_dir: Optional[Path] = typer.Option(None, "--output-dir", "-o", help="Directory to save the scraped CSV file."),
     debug: bool = typer.Option(False, "--debug", help="Enable debug output for scraping."),
-):
+) -> None:
     """
     Scrapes Shopify store information from myip.ms.
     Requires manual CAPTCHA solving in the opened browser window.

@@ -5,7 +5,7 @@ import logging
 
 logger = logging.getLogger(__name__)
 
-def main():
+def main() -> None:
     """
     Generates a KML file with placemarks for each company tagged with "turboship".
     """

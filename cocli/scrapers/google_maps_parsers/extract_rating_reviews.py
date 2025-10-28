@@ -26,14 +26,14 @@ def extract_rating_reviews(soup: BeautifulSoup, inner_text: str, debug: bool = F
         # Fallback to HTML selectors
         rating_element = soup.find("span", {"aria-label": re.compile(r"\d+\.\d+ stars")})
         if rating_element:
-            rating_match = RATING_RE.search(rating_element["aria-label"])
+            rating_match = RATING_RE.search(str(rating_element["aria-label"]))
             if rating_match:
                 rating = rating_match.group(1)
                 if debug:
                     logger.debug(f"Extracted Average_rating (HTML fallback): {rating}")
         reviews_count_element = soup.find("span", {"aria-label": re.compile(r"\d+ Reviews")})
         if reviews_count_element:
-            reviews_count_match = REVIEWS_RE.search(reviews_count_element["aria-label"])
+            reviews_count_match = REVIEWS_RE.search(str(reviews_count_element["aria-label"]))
             if reviews_count_match:
                 reviews_count = reviews_count_match.group(1)
                 if debug:

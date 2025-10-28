@@ -13,7 +13,7 @@ from ..core.utils import slugify
 
 logger = logging.getLogger(__name__)
 
-def render_kml_for_campaign(campaign_name: str):
+def render_kml_for_campaign(campaign_name: str) -> None:
     """
     Generates a KML file for a specific campaign.
     """

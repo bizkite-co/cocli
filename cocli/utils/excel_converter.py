@@ -25,7 +25,7 @@ def convert_xlsx_to_csv(xlsx_filepath: Path, output_dir: Path) -> Path:
 
     return csv_filepath
 
-def convert_all_xlsx_in_directory(source_dir: Path, output_dir: Path):
+def convert_all_xlsx_in_directory(source_dir: Path, output_dir: Path) -> None:
     """
     Converts all XLSX files in a source directory to CSV, saving them in an output directory.
     Only converts if the corresponding CSV file does not already exist.

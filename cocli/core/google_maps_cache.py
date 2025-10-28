@@ -16,7 +16,7 @@ class GoogleMapsCache:
         self.data: Dict[str, GoogleMapsData] = {}
         self._load_data()
 
-    def _load_data(self):
+    def _load_data(self) -> None:
         if not self.cache_file.exists():
             return
 
@@ -48,19 +48,33 @@ class GoogleMapsCache:
                         except (ValueError, TypeError):
                             row[field] = None
 
-                model_data = {k: v for k, v in row.items() if k in GoogleMapsData.model_fields}
-                if model_data.get("Place_ID"):
-                    self.data[model_data["Place_ID"]] = GoogleMapsData(**model_data)
+
+                converted_data = {}
+                for k, v in row.items():
+                    if v is None:
+                        continue
+                    if k in ["created_at", "updated_at"]:
+                        converted_data[k] = datetime.fromisoformat(str(v)).replace(tzinfo=UTC)
+                    elif k == "version":
+                        converted_data[k] = int(str(v))
+                    elif k == "Reviews_count":
+                        converted_data[k] = int(str(v)) if v else None
+                    elif k in ["Average_rating", "Latitude", "Longitude"]:
+                        converted_data[k] = float(str(v)) if v else None
+                    elif k in GoogleMapsData.model_fields:
+                        converted_data[k] = v
+                if converted_data.get("Place_ID"):
+                    self.data[str(converted_data["Place_ID"])] = GoogleMapsData(**converted_data)
 
     def get_by_place_id(self, place_id: str) -> Optional[GoogleMapsData]:
         return self.data.get(place_id)
 
-    def add_or_update(self, item: GoogleMapsData):
+    def add_or_update(self, item: GoogleMapsData) -> None:
         if item.Place_ID:
             item.updated_at = datetime.now(UTC)
             self.data[item.Place_ID] = item
 
-    def save(self):
+    def save(self) -> None:
         with open(self.cache_file, "w", newline="", encoding="utf-8") as csvfile:
             headers = GoogleMapsData.model_fields.keys()
             writer = csv.DictWriter(csvfile, fieldnames=headers)

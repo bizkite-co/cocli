@@ -15,13 +15,14 @@ def extract_website(soup: BeautifulSoup, inner_text: str, debug: bool = False) -
     # Prioritize data-value="Website", then any http/https link not related to maps
     website_element = soup.find("a", attrs={"data-value": "Website"})
     if website_element and website_element.has_attr("href"):
-        website = website_element["href"]
+        href_value = website_element["href"]
+        website = str(href_value) # Ensure it's a string
         if debug:
             logger.debug(f"Extracted Website (HTML data-value): {website}")
     else:
         for link in soup.find_all("a", href=True):
             href = link["href"]
-            if (
+            if isinstance(href, str) and (
                 href.startswith("http")
                 and "google.com/maps" not in href
                 and "maps.google.com" not in href

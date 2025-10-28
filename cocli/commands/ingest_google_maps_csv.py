@@ -15,7 +15,7 @@ app = typer.Typer()
 def google_maps_csv_to_google_maps_cache(
     csv_path: Optional[Path] = typer.Argument(None, help="Path to the CSV file to ingest. If not provided, infers from current campaign context.", exists=False, file_okay=True, dir_okay=False, readable=True),
     campaign_name: Optional[str] = typer.Option(None, "--campaign", "-c", help="Specify a campaign name to infer the CSV path from. Overrides current campaign context if set.")
-):
+) -> None:
     """
     Ingests a CSV file with Google Maps data into the Google Maps cache.
     """
@@ -56,7 +56,7 @@ def google_maps_csv_to_google_maps_cache(
                         model_data[field] = None
 
             if model_data.get("Place_ID"):
-                item = GoogleMapsData(**model_data)
+                item = GoogleMapsData.model_validate(model_data)
                 cache.add_or_update(item)
                 logger.info(f"Added/Updated {item.Name} in cache.")
 

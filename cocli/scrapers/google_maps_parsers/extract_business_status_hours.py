@@ -28,7 +28,11 @@ def extract_business_status_hours(soup: BeautifulSoup, inner_text: str, debug: b
             logger.debug(f"Extracted Business_Status/Hours (innerText): {business_status} {hours}")
     else:
         # Fallback to HTML selectors
-        status_hours_element = soup.find("span", string=re.compile(r"(Open|Closed|Closes)", re.IGNORECASE))
+        status_hours_element = None
+        for span_tag in soup.find_all("span"):
+            if span_tag.string and re.search(r"(Open|Closed|Closes)", span_tag.string, re.IGNORECASE):
+                status_hours_element = span_tag
+                break
         if status_hours_element:
             full_text = status_hours_element.text.strip()
             if "Open" in full_text or "Closed" in full_text:

@@ -21,7 +21,7 @@ def core_import_logic(
     tags: List[str],
     companies_dir: Path,
     match_threshold: int = 80,
-):
+) -> None:
     """Core logic for importing prospects from a CSV file."""
     website_csv_manager = WebsiteDomainCsvManager()
 
@@ -114,7 +114,7 @@ def core_import_logic(
                 company_slug = slugify(company_name)
                 company_dir = companies_dir / company_slug
                 company_data_from_csv["tags"] = tags
-                company = Company(**company_data_from_csv)
+                company = Company.model_validate(company_data_from_csv)
                 create_company_files(company, company_dir)
 
             # Add to website index
@@ -157,7 +157,7 @@ def google_maps_cache_to_company_files(
         80,
         help="Threshold for fuzzy matching company names."
     )
-):
+) -> None:
     """
     Imports prospects from a CSV file, creating or updating companies and their enrichments.
     """

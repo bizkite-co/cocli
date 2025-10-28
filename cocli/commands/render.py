@@ -8,7 +8,7 @@ app = typer.Typer()
 @app.command()
 def kml(
     campaign_name: str = typer.Argument(..., help="Name of the campaign to render.")
-):
+) -> None:
     """
     Render a KML file for a campaign.
     """

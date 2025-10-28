@@ -40,7 +40,7 @@ def to_hubspot_csv(
     with_email: Annotated[bool, typer.Option("--with-email", help="Only include prospects with email addresses.")] = True,
     city: Annotated[Optional[str], typer.Option(help="Filter by city.")] = None,
     state: Annotated[Optional[str], typer.Option(help="Filter by state.")] = None,
-):
+) -> None:
     """
     Exports campaign prospects to a HubSpot CSV file.
     """
@@ -70,7 +70,7 @@ def to_hubspot_csv(
                     website=prospect.website_url,
                     city=prospect.city,
                     state=prospect.state,
-                    email=prospect.email,
+                    email=prospect.email or "",
                 )
                 writer.writerow(contact.model_dump())
                 exported_count += 1
@@ -80,7 +80,7 @@ def to_hubspot_csv(
     print(f"Exported {exported_count} prospects to {output_file}")
 
 
-async def enrich_prospect(client: httpx.AsyncClient, prospect: Company, force: bool, ttl_days: int, console: Console):
+async def enrich_prospect(client: httpx.AsyncClient, prospect: Company, force: bool, ttl_days: int, console: Console) -> None:
     logger.info(f"Attempting to enrich domain: {prospect.domain} for company: {prospect.name}")
     try:
         logger.debug(f"Sending enrichment request for domain: {prospect.domain}")
@@ -133,7 +133,7 @@ async def enrich_prospect(client: httpx.AsyncClient, prospect: Company, force: b
 def enrich_prospects_command(
     force: Annotated[bool, typer.Option("--force", "-f", help="Force re-enrichment even if fresh data exists.")] = False,
     ttl_days: Annotated[int, typer.Option("--ttl-days", help="Time-to-live for cached data in days.")] = 30,
-):
+) -> None:
     """
     Enriches prospects for the current campaign with website data.
     """
@@ -150,7 +150,7 @@ def enrich_prospects_command(
     prospects = list(get_prospects(campaign_name, with_email=False, city=None, state=None))
     console.print(f"Found {len(prospects)} prospects to enrich.")
 
-    async def main():
+    async def main() -> None:
         async with httpx.AsyncClient() as client:
             tasks = []
             for prospect in prospects:
@@ -161,7 +161,7 @@ def enrich_prospects_command(
     asyncio.run(main())
 
 @app.command("tag-from-csv")
-def tag_prospects_from_csv():
+def tag_prospects_from_csv() -> None:
     """
     Updates company tags based on the prospects.csv file for the current campaign.
     This is a recovery tool to tag prospects that were imported without a campaign tag.

@@ -7,7 +7,7 @@ app = typer.Typer()
 console = Console()
 
 @app.command()
-def compile_enrichment():
+def compile_enrichment() -> None:
     """
     Compiles enrichment data from various sources into the main company _index.md files.
     """

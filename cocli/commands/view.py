@@ -49,13 +49,13 @@ def _load_frontmatter(index_path: Path) -> Dict[str, Any]:
 @app.command()
 def view_company(
     company_slug: str = typer.Argument(..., help="Slug of the company to view.")
-):
+) -> None:
     """
     View details of a specific company.
     """
     _interactive_view_company(company_slug)
 
-def _interactive_view_company(company_slug: str):
+def _interactive_view_company(company_slug: str) -> None:
     logger = logging.getLogger(__name__)
     logger.debug(f"Starting _interactive_view_company for slug: {company_slug}")
     companies_dir = get_companies_dir()
@@ -93,7 +93,7 @@ def _interactive_view_company(company_slug: str):
 
     while True:
         assert company is not None # Ensure company is not None for mypy
-        meeting_map = display_company_view(console, company, website_data)
+        display_company_view(console, company, website_data)
         console.print("\n[bold yellow]Press 'a' to add meeting, 'c' for contact menu, 't' to add tag, 'T' to remove tag, 'e' to edit _index.md, 'E' to add email, 'w' to open website, 'p' to call, 'm' to select meeting, 'X' to exclude, 'f' to go back to fuzzy finder, 'r' to re-enrich, 'n' to add note, 'N' to edit note, 'q' to quit.[/bold yellow]")
         char = _getch()
 
@@ -191,6 +191,22 @@ def _interactive_view_company(company_slug: str):
             _getch() # Wait for a key press to clear the message
         elif char == 'm':
             console.print("\n[bold green]Select a meeting by number:[/bold green]")
+            meetings_dir = selected_company_dir / "meetings"
+            meeting_files = []
+            if meetings_dir.exists():
+                meeting_files = sorted([f for f in meetings_dir.iterdir() if f.is_file() and f.suffix == ".md"])
+
+            if not meeting_files:
+                console.print("[bold yellow]No meetings found for this company. Press any key to continue.[/bold yellow]")
+                _getch()
+                continue
+
+            meeting_map = {}
+            console.print("\n[bold blue]Available Meetings:[/bold blue]")
+            for i, meeting_file in enumerate(meeting_files, 1):
+                console.print(f"  [bold green]{i}.[/bold green] {meeting_file.name}")
+                meeting_map[i] = meeting_file
+
             try:
                 meeting_num_str = typer.prompt("Enter meeting number")
                 meeting_num = int(meeting_num_str)
@@ -633,7 +649,7 @@ def _interactive_view_company(company_slug: str):
 @app.command()
 def view_meetings(
     company_name: str = typer.Argument(..., help="Name of the company to view meetings for.")
-):
+) -> None:
     """
     View all meetings for a specific company.
     """
@@ -666,7 +682,7 @@ def view_meetings(
 @app.command()
 def open_company_folder(
     company_name: str = typer.Argument(..., help="Name of the company to open folder for.")
-):
+) -> None:
     """
     Open the company's folder in nvim.
     """

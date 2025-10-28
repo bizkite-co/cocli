@@ -24,11 +24,11 @@ class LocationProspectsIndex:
                 return pd.DataFrame(columns=["location_name", "prospect_count", "last_updated"])
         return pd.DataFrame(columns=["location_name", "prospect_count", "last_updated"])
 
-    def _save_index(self):
+    def _save_index(self) -> None:
         self.index_df.to_csv(self.index_file, index=False)
         logger.info(f"Saved location prospects index to {self.index_file}")
 
-    def update_prospect_count(self, location_name: str, count: int):
+    def update_prospect_count(self, location_name: str, count: int) -> None:
         if location_name in self.index_df["location_name"].values:
             self.index_df.loc[self.index_df["location_name"] == location_name, "prospect_count"] += count
             self.index_df.loc[self.index_df["location_name"] == location_name, "last_updated"] = pd.Timestamp.now().isoformat()

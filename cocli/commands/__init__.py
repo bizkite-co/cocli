@@ -1,6 +1,6 @@
 import typer
 
-def register_commands(app: typer.Typer):
+def register_commands(app: typer.Typer) -> None:
     from . import add
     from . import add_email
     from . import add_meeting

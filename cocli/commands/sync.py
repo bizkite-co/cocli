@@ -8,7 +8,7 @@ app = typer.Typer()
 def sync(
     ctx: typer.Context,
     message: str = typer.Option(..., "--message", "-m", help="Commit message for the data folder changes."),
-):
+) -> None:
     """
     Performs a git sync and push of the data folder.
     """

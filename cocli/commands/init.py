@@ -1,6 +1,6 @@
 from ..core.config import create_default_config_file
 
-def init():
+def init() -> None:
     """
     Initializes the cocli configuration file.
     """

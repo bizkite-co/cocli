@@ -8,7 +8,7 @@ import logging
 
 logger = logging.getLogger(__name__)
 
-def ensure_enrichment_service_ready(console: Console):
+def ensure_enrichment_service_ready(console: Console) -> None:
     """
     Ensures the enrichment service is running and up-to-date.
     Performs a scraper version check and a health check.

@@ -18,14 +18,14 @@ def import_customers(
     customers_csv_path: Path = typer.Argument(..., help="Path to the customers.csv file", exists=True, file_okay=True, dir_okay=False, readable=True),
     addresses_csv_path: Path = typer.Argument(..., help="Path to the customer_addresses.csv file", exists=True, file_okay=True, dir_okay=False, readable=True),
     tags: List[str] = typer.Option(..., "--tag", help="Tags to add to the companies and people."),
-):
+) -> None:
     """
     Imports customers and their addresses from CSV files, creating companies and people.
     """
     website_csv_manager = WebsiteDomainCsvManager()
 
     # Load addresses into a dictionary for easy lookup
-    addresses: Dict[str, Dict] = {}
+    addresses: Dict[str, Dict[str, str | None]] = {}
     with open(addresses_csv_path, "r", newline="", encoding="utf-8") as f:
         reader = csv.reader(f)
         for row in reader:

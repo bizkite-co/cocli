@@ -8,7 +8,7 @@ logger = logging.getLogger(__name__)
 
 def flag_email_providers(
     domains: List[str] = typer.Argument(..., help="A list of email provider domains to flag in the cache.")
-):
+) -> None:
     """
     Flags a list of domains as email providers in the website cache.
     """

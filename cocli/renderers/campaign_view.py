@@ -18,7 +18,7 @@ def _render_campaign_details(campaign: Campaign) -> Panel:
 
     return Panel(Markdown(output), title="Campaign Details", border_style="green")
 
-def display_campaign_view(console: Console, campaign: Campaign):
+def display_campaign_view(console: Console, campaign: Campaign) -> None:
     console.clear()
 
     if not campaign.name:

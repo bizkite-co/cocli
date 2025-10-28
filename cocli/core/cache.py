@@ -2,7 +2,7 @@ import os
 import json
 import datetime
 from pathlib import Path
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any, Optional, cast
 import logging
 
 from .config import get_cocli_base_dir, get_companies_dir, get_people_dir
@@ -64,11 +64,11 @@ def read_cache(campaign: Optional[str] = None) -> List[Dict[str, Any]]:
     with open(cache_path, 'r') as f:
         try:
             data = json.load(f)
-            return data.get("items", [])
+            return cast(List[Dict[str, Any]], data.get("items", []))
         except json.JSONDecodeError:
             return []
 
-def write_cache(items: List[Dict[str, Any]], campaign: Optional[str] = None):
+def write_cache(items: List[Dict[str, Any]], campaign: Optional[str] = None) -> None:
     """Writes items to the cache file."""
     cache_path = get_cache_path(campaign=campaign)
     with open(cache_path, 'w') as f:

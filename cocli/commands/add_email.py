@@ -12,7 +12,7 @@ app = typer.Typer()
 def add_email(
     company_name: str = typer.Argument(..., help="The name of the company to add the email to."),
     email: str = typer.Argument(..., help="The email address to add."),
-):
+) -> None:
     """
     Adds an email address to a company.
     """

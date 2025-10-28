@@ -2,9 +2,9 @@ import re
 import httpx
 import asyncio
 import xml.etree.ElementTree as ET
-from typing import Optional, List, Callable, Coroutine, Any
-from playwright.async_api import Page, Browser
-from bs4 import BeautifulSoup
+from typing import Optional, List, Callable, Coroutine, Any, Dict
+from playwright.async_api import Page, Browser, BrowserContext
+from bs4 import BeautifulSoup, Tag
 import logging
 from urllib.parse import urljoin
 from datetime import datetime, timedelta
@@ -21,7 +21,7 @@ class WebsiteScraper:
 
     async def run(
         self,
-        browser: Browser, # Added browser argument
+        browser: Browser | BrowserContext, # Added browser argument
         domain: str,
         force_refresh: bool = False,
         ttl_days: int = 30,
@@ -49,8 +49,15 @@ class WebsiteScraper:
 
         logger.info(f"Starting website scraping for {domain}")
 
-        website_data = Website(domain=domain, scraper_version=CURRENT_SCRAPER_VERSION)
-        page = await browser.new_page(viewport={'width': 1536, 'height': 1700})
+        website_data = Website(url=domain, scraper_version=CURRENT_SCRAPER_VERSION)
+
+        context: BrowserContext
+        if isinstance(browser, Browser):
+            context = await browser.new_context()
+        else:
+            context = browser
+
+        page = await context.new_page()
         try:
             await page.goto(f"http://{domain}", wait_until="domcontentloaded", timeout=30000)
 
@@ -58,7 +65,7 @@ class WebsiteScraper:
                 breakpoint()
 
             # Scrape main page
-            website_data = await self._scrape_page(page, website_data, browser)
+            website_data = await self._scrape_page(page, website_data, context)
 
             # Try to find and scrape pages from sitemap
             sitemap_pages = await self._get_sitemap_urls(f"http://{domain}")
@@ -85,7 +92,7 @@ class WebsiteScraper:
                                     scrape_function = self._scrape_products_page
 
                                 if scrape_function:
-                                    scrape_tasks.append(self._scrape_sitemap_page(url, page_type, scrape_function, website_data, browser, debug))
+                                    scrape_tasks.append(self._scrape_sitemap_page(url, page_type, scrape_function, website_data, context, debug))
                                     break
                         else:
                             continue
@@ -95,23 +102,25 @@ class WebsiteScraper:
 
             # Fallback to navigating and scraping
             if not website_data.about_us_url:
-                await self._navigate_and_scrape(page, website_data, ["About Us", "About"], "About Us", self._scrape_page, browser, debug)
+                await self._navigate_and_scrape(page, website_data, ["About Us", "About"], "About Us", self._scrape_page, context, debug)
             if not website_data.contact_url:
-                await self._navigate_and_scrape(page, website_data, ["Contact Us", "Contact"], "Contact Us", self._scrape_contact_page, browser, debug)
+                await self._navigate_and_scrape(page, website_data, ["Contact Us", "Contact"], "Contact Us", self._scrape_contact_page, context, debug)
             if not website_data.services:
-                await self._navigate_and_scrape(page, website_data, ["Services"], "Services", self._scrape_services_page, browser, debug)
+                await self._navigate_and_scrape(page, website_data, ["Services"], "Services", self._scrape_services_page, context, debug)
             if not website_data.products:
-                await self._navigate_and_scrape(page, website_data, ["Products"], "Products", self._scrape_products_page, browser, debug)
+                await self._navigate_and_scrape(page, website_data, ["Products"], "Products", self._scrape_products_page, context, debug)
 
         except Exception as e:
             logger.error(f"Error during website scraping for {domain}: {e}")
             return None
         finally:
             await page.close()
+            if isinstance(browser, Browser):
+                await context.close()
 
         # Add to index
         website_domain_csv_data = WebsiteDomainCsv(
-            domain=website_data.domain,
+            domain=str(website_data.domain),
             company_name=website_data.company_name,
             phone=website_data.phone,
             email=website_data.email,
@@ -121,8 +130,8 @@ class WebsiteScraper:
             twitter_url=website_data.twitter_url,
             youtube_url=website_data.youtube_url,
             address=website_data.address,
-            personnel=website_data.personnel,
-            description=website_data.description,
+            personnel=[p.get("name", "") for p in website_data.personnel] if website_data.personnel else [],
+
             about_us_url=website_data.about_us_url,
             contact_url=website_data.contact_url,
             services_url=website_data.services_url,
@@ -138,7 +147,7 @@ class WebsiteScraper:
 
         return website_data
 
-    async def _scrape_sitemap_page(self, url: str, page_type: str, scrape_function: Callable, website_data: Website, browser, debug: bool):
+    async def _scrape_sitemap_page(self, url: str, page_type: str, scrape_function: Callable[[Page, Website, BrowserContext], Coroutine[Any, Any, Website]], website_data: Website, browser: BrowserContext, debug: bool) -> None:
         try:
             page = await browser.new_page()
             await page.goto(url, wait_until="domcontentloaded", timeout=30000)
@@ -148,7 +157,7 @@ class WebsiteScraper:
             logger.warning(f"Failed to scrape {page_type} page from sitemap: {e}")
 
     async def _get_sitemap_urls(self, domain: str) -> List[str]:
-        sitemap_url = urljoin(domain, "/sitemap.xml")
+        sitemap_url = urljoin(str(domain), "/sitemap.xml")
         try:
             async with httpx.AsyncClient() as client:
                 response = await client.get(sitemap_url, timeout=5)
@@ -166,13 +175,13 @@ class WebsiteScraper:
             logger.info(f"Could not fetch or parse sitemap for {domain}: {e}")
         return []
 
-    async def _scrape_services_page(self, page: Page, website_data: Website, browser: Browser) -> Website:
+    async def _scrape_services_page(self, page: Page, website_data: Website, browser: BrowserContext) -> Website:
         html_content = await page.content()
         soup = BeautifulSoup(html_content, "html.parser")
 
         services = []
         service_selectors = ["[id*=service]", "[class*=service]", "[id*=offering]", "[class*=offering]", "[id*=feature]", "[class*=feature]"]
-        service_sections = soup.select(", ".join(service_selectors))
+        service_sections: List[Tag] = soup.select(", ".join(service_selectors))
 
         if not service_sections:
             # If no specific sections are found, fall back to the old method
@@ -191,13 +200,13 @@ class WebsiteScraper:
         logger.info(f"Found {len(website_data.services)} potential services on {page.url}")
         return website_data
 
-    async def _scrape_products_page(self, page: Page, website_data: Website, browser: Browser) -> Website:
+    async def _scrape_products_page(self, page: Page, website_data: Website, browser: BrowserContext) -> Website:
         html_content = await page.content()
         soup = BeautifulSoup(html_content, "html.parser")
 
         products = []
         product_selectors = ["[id*=product]", "[class*=product]", "[id*=portfolio]", "[class*=portfolio]", "[id*=gallery]", "[class*=gallery]"]
-        product_sections = soup.select(", ".join(product_selectors))
+        product_sections: List[Tag] = soup.select(", ".join(product_selectors))
 
         if not product_sections:
             # If no specific sections are found, fall back to the old method
@@ -216,7 +225,7 @@ class WebsiteScraper:
         logger.info(f"Found {len(website_data.products)} potential products on {page.url}")
         return website_data
 
-    async def _navigate_and_scrape(self, page: Page, website_data: Website, link_texts: List[str], page_type: str, scrape_function: Callable[..., Coroutine[Any, Any, Website]], browser: Browser, debug: bool):
+    async def _navigate_and_scrape(self, page: Page, website_data: Website, link_texts: List[str], page_type: str, scrape_function: Callable[..., Coroutine[Any, Any, Website]], browser: BrowserContext, debug: bool) -> Website:
         # Use a case-insensitive regex for link text
         link_selector = ", ".join([f'a:text-matches("{text}", "i")' for text in link_texts])
         link = page.locator(link_selector).first
@@ -249,9 +258,10 @@ class WebsiteScraper:
                     await page.goto(url, wait_until="domcontentloaded", timeout=30000)
                     await scrape_function(page, website_data, browser)
         except Exception as e:
-            logger.warning(f"Failed to navigate or scrape {page_type} page for {website_data.domain}: {e}")
+            logger.error(f"Error navigating to or scraping {page_type} page: {e}")
+        return website_data
 
-    async def _scrape_page(self, page: Page, website_data: Website, browser: Browser) -> Website:
+    async def _scrape_page(self, page: Page, website_data: Website, browser: BrowserContext) -> Website:
         html_content = await page.content()
         soup = BeautifulSoup(html_content, "html.parser")
 
@@ -276,45 +286,45 @@ class WebsiteScraper:
         if not website_data.phone:
             phone_match = re.search(r"\b(\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4})\b", soup.get_text(separator=' '))
             if phone_match:
-                website_data.phone = phone_match.group(0)
+                website_data.phone = str(phone_match.group(0))
                 logger.info(f"Found phone number: {website_data.phone}")
 
         # Extract Email
         if not website_data.email:
             email_match = re.search(r"\b[a-zA-Z0-9._%+-]+ ?@ ?[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}\b", soup.get_text(separator=' '))
             if email_match:
-                website_data.email = email_match.group(0).replace(" ", "")
+                website_data.email = str(email_match.group(0)).replace(" ", "")
                 logger.info(f"Found email: {website_data.email}")
 
         # Extract Social Media URLs
         if not website_data.facebook_url:
             facebook_link = soup.find("a", href=re.compile(r"facebook\.com", re.IGNORECASE))
             if facebook_link:
-                website_data.facebook_url = facebook_link["href"]
+                website_data.facebook_url = str(facebook_link["href"])
                 logger.info(f"Found Facebook URL: {website_data.facebook_url}")
 
         if not website_data.linkedin_url:
             linkedin_link = soup.find("a", href=re.compile(r"linkedin\.com", re.IGNORECASE))
             if linkedin_link:
-                website_data.linkedin_url = linkedin_link["href"]
+                website_data.linkedin_url = str(linkedin_link["href"])
                 logger.info(f"Found LinkedIn URL: {website_data.linkedin_url}")
 
         if not website_data.instagram_url:
             instagram_link = soup.find("a", href=re.compile(r"instagram\.com", re.IGNORECASE))
             if instagram_link:
-                website_data.instagram_url = instagram_link["href"]
+                website_data.instagram_url = str(instagram_link["href"])
                 logger.info(f"Found Instagram URL: {website_data.instagram_url}")
 
         if not website_data.twitter_url:
             twitter_link = soup.find("a", href=re.compile(r"twitter\.com", re.IGNORECASE))
             if twitter_link:
-                website_data.twitter_url = twitter_link["href"]
+                website_data.twitter_url = str(twitter_link["href"])
                 logger.info(f"Found Twitter URL: {website_data.twitter_url}")
 
         if not website_data.youtube_url:
             youtube_link = soup.find("a", href=re.compile(r"youtube\.com", re.IGNORECASE))
             if youtube_link:
-                website_data.youtube_url = youtube_link["href"]
+                website_data.youtube_url = str(youtube_link["href"])
                 logger.info(f"Found Youtube URL: {website_data.youtube_url}")
 
         # Extract Address
@@ -322,7 +332,7 @@ class WebsiteScraper:
             # A simple regex for US addresses
             address_match = re.search(r"\d+\s+([a-zA-Z]+\s+)+[a-zA-Z]+,?\s+[A-Z]{2}\s+\d{5}", soup.get_text(separator=' '))
             if address_match:
-                website_data.address = address_match.group(0)
+                website_data.address = str(address_match.group(0))
                 logger.info(f"Found address: {website_data.address}")
 
         # Extract Description
@@ -332,23 +342,24 @@ class WebsiteScraper:
                 # Remove nav and footer from main content if they exist
                 for tag in main_content.select('nav, footer'):
                     tag.decompose()
-                website_data.description = main_content.get_text(separator='\n', strip=True)
+                website_data.description = str(main_content.get_text(separator='\n', strip=True))
             else:
                 # Fallback to body if no main content found
-                for tag in soup.body.select('nav, footer, header'):
-                    tag.decompose()
-                website_data.description = soup.body.get_text(separator='\n', strip=True)
+                if soup.body:
+                    for tag in soup.body.select('nav, footer, header'):
+                        tag.decompose()
+                    website_data.description = str(soup.body.get_text(separator='\n', strip=True))
             logger.info(f"Found description for {website_data.domain} from About Us page")
         elif not website_data.description:
             # Fallback for other pages if description not already found
             about_section = soup.find(id=re.compile("about", re.IGNORECASE)) or soup.find(class_=re.compile("about", re.IGNORECASE))
             if about_section:
-                website_data.description = about_section.get_text(separator='\n', strip=True)
+                website_data.description = str(about_section.get_text(separator='\n', strip=True))
                 logger.info(f"Found description for {website_data.domain}")
 
         return website_data
 
-    async def _scrape_contact_page(self, page: Page, website_data: Website, browser: Browser) -> Website:
+    async def _scrape_contact_page(self, page: Page, website_data: Website, browser: BrowserContext) -> Website:
         await self._scrape_page(page, website_data, browser)
         # Now, look for more specific contact info
         html_content = await page.content()
@@ -366,7 +377,7 @@ class WebsiteScraper:
         for element in personnel_elements:
             link = element.find("a", href=True)
             if link and link["href"]:
-                person_url = urljoin(page.url, link["href"])
+                person_url = urljoin(str(page.url), str(link["href"]))
                 if person_url and person_url != page.url:
                     logger.info(f"Navigating to personnel page: {person_url}")
                     person_page = await browser.new_page()
@@ -381,20 +392,20 @@ class WebsiteScraper:
                         await person_page.close()
         return website_data
 
-    async def _scrape_personnel_details(self, page: Page, website_data: Website) -> Optional[dict]:
+    async def _scrape_personnel_details(self, page: Page, website_data: Website) -> Optional[Dict[str, Any]]:
         html_content = await page.content()
         soup = BeautifulSoup(html_content, "html.parser")
 
-        person_data = {}
+        person_data: Dict[str, Any] = {}
 
         # Extract Name and Title
         name_element = soup.select_one("h1, .member__name, .person__name")
-        if name_element:
+        if name_element is not None:
             person_data["name"] = name_element.get_text(strip=True)
             logger.info(f"Found person name: {person_data['name']}")
 
         title_element = soup.select_one(".member__position, .person__position, .person__title")
-        if title_element:
+        if title_element is not None:
             person_data["title"] = title_element.get_text(strip=True)
             logger.info(f"Found person title: {person_data['title']}")
 
@@ -407,13 +418,13 @@ class WebsiteScraper:
         # Extract LinkedIn URL
         linkedin_link = soup.find("a", href=re.compile(r"linkedin\.com/in/", re.IGNORECASE))
         if linkedin_link:
-            person_data["linkedin_url"] = linkedin_link["href"]
+            person_data["linkedin_url"] = str(linkedin_link["href"])
             logger.info(f"Found person LinkedIn URL: {person_data['linkedin_url']}")
 
         # Extract Phone Number
         phone_match = re.search(r"\b(\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4})\b", soup.get_text(separator=' '))
         if phone_match:
-            person_data["phone"] = phone_match.group(0)
+            person_data["phone"] = str(phone_match.group(0))
             logger.info(f"Found person phone: {person_data['phone']}")
 
         if person_data:

@@ -1,6 +1,6 @@
 import requests
 import time
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, cast
 import logging
 import json
 
@@ -65,7 +65,7 @@ def get_coordinates_from_city_state(city_state: str) -> Optional[Dict[str, float
         try:
             with open(cache_file, 'r') as f:
                 logger.info(f"Loading coordinates for '{city_state}' from cache.")
-                return json.load(f)
+                return cast(Dict[str, float], json.load(f))
         except (json.JSONDecodeError, IOError) as e:
             logger.warning(f"Could not read cache file {cache_file}: {e}. Fetching from API.")
 

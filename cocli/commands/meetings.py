@@ -124,7 +124,7 @@ def _format_meeting_for_fzf(meeting: Meeting) -> str:
     return formatted_string
 
 @app.command(name="next", help="List and select upcoming meetings.")
-def next_meetings():
+def next_meetings() -> None:
     """
     Lists upcoming meetings and allows interactive selection.
     """
@@ -185,7 +185,7 @@ def next_meetings():
         raise typer.Exit(code=1)
 
 @app.command(name="recent", help="List and select recent meetings.")
-def recent_meetings():
+def recent_meetings() -> None:
     """
     Lists recent meetings and allows interactive selection.
     """

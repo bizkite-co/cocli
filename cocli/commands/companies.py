@@ -9,7 +9,7 @@ console = Console()
 @app.command("list-recent")
 def list_recent(
     count: int = typer.Option(10, "--count", "-c", help="The number of recent companies to list.")
-):
+) -> None:
     """
     Lists the most recently created companies.
     """

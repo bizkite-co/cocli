@@ -2,6 +2,7 @@ import csv
 from pathlib import Path
 from typing import Optional, Dict
 from datetime import datetime
+import ast
 
 from ..models.website_domain_csv import WebsiteDomainCsv
 from .config import get_cocli_base_dir
@@ -15,49 +16,61 @@ class WebsiteDomainCsvManager:
         self.data: Dict[str, WebsiteDomainCsv] = {}
         self._load_data()
 
-    def _load_data(self):
+    def _load_data(self) -> None:
         if not self.csv_file.exists():
             return
 
         with open(self.csv_file, "r", newline="", encoding="utf-8") as csvfile:
             reader = csv.DictReader(csvfile)
             for row in reader:
+                processed_row = dict(row)
                 # Convert datetime fields
                 for field in ['created_at', 'updated_at']:
-                    if row.get(field):
+                    if processed_row.get(field):
                         try:
-                            row[field] = datetime.fromisoformat(row[field])
+                            processed_row[field] = datetime.fromisoformat(processed_row[field])
                         except (ValueError, TypeError):
-                            row[field] = None
+                            processed_row[field] = None
                 
                 # Convert list fields
                 for field in ['personnel', 'tags']:
-                    if row.get(field):
+                    if processed_row.get(field):
                         try:
-                            row[field] = eval(row[field])
-                        except Exception:
-                            row[field] = []
+                            processed_row[field] = ast.literal_eval(processed_row[field])
+                        except (ValueError, SyntaxError):
+                            processed_row[field] = []
                 
-                model_data = {k: v for k, v in row.items() if k in WebsiteDomainCsv.model_fields}
+                # Convert boolean field
+                if processed_row.get('is_email_provider'):
+                    processed_row['is_email_provider'] = processed_row['is_email_provider'].lower() == 'true'
+                
+                # Convert int field
+                if processed_row.get('scraper_version'):
+                    try:
+                        processed_row['scraper_version'] = int(processed_row['scraper_version'])
+                    except (ValueError, TypeError):
+                        processed_row['scraper_version'] = None
+
+                model_data = {k: v for k, v in processed_row.items() if k in WebsiteDomainCsv.model_fields and v is not None}
                 if model_data.get("domain"):
-                    self.data[model_data["domain"]] = WebsiteDomainCsv(**model_data)
+                    self.data[str(model_data["domain"])] = WebsiteDomainCsv(**model_data)
 
     def get_by_domain(self, domain: str) -> Optional[WebsiteDomainCsv]:
         return self.data.get(domain)
 
-    def add_or_update(self, item: WebsiteDomainCsv):
+    def add_or_update(self, item: WebsiteDomainCsv) -> None:
         item.updated_at = datetime.utcnow()
         self.data[item.domain] = item
         self.save()
 
-    def flag_as_email_provider(self, domain: str):
+    def flag_as_email_provider(self, domain: str) -> None:
         item = self.get_by_domain(domain)
         if not item:
             item = WebsiteDomainCsv(domain=domain)
         item.is_email_provider = True
         self.add_or_update(item)
 
-    def save(self):
+    def save(self) -> None:
         with open(self.csv_file, "w", newline="", encoding="utf-8") as csvfile:
             headers = list(WebsiteDomainCsv.model_fields.keys())
             writer = csv.DictWriter(csvfile, fieldnames=headers)

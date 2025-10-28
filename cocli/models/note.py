@@ -70,7 +70,7 @@ class Note(BaseModel):
             logger.error(f"Unexpected error loading note from {note_path}: {e}")
             return None
 
-    def to_file(self, notes_dir: Path):
+    def to_file(self, notes_dir: Path) -> None:
         # Ensure notes_dir exists
         notes_dir.mkdir(parents=True, exist_ok=True)
 
@@ -91,4 +91,4 @@ class Note(BaseModel):
         file_content = f"---\n{frontmatter}---\n{self.content.strip()}\n"
 
         note_path.write_text(file_content)
-        return note_path
+

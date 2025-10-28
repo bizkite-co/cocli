@@ -1,8 +1,11 @@
+import yaml
 import uuid
 from rich.console import Console
 import re
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any, Optional, cast
+from yaml import Dumper
+from yaml.nodes import ScalarNode
 import tty
 import termios
 import sys
@@ -11,7 +14,7 @@ import logging
 import shutil
 import subprocess
 
-import yaml  # This import might not be needed here if models handle YAML loading
+
 
 from ..models.company import Company
 from ..models.person import Person  # Import Company and Person models
@@ -22,8 +25,8 @@ logger = logging.getLogger(__name__)
 console = Console()
 
 # Custom representer for None to ensure it's explicitly written as 'null'
-def represent_none(self, data):
-    return self.represent_scalar('tag:yaml.org,2002:null', 'null')
+def represent_none(self: Dumper, data: Any) -> ScalarNode:
+    return cast(ScalarNode, self.represent_scalar('tag:yaml.org,2002:null', 'null'))
 
 yaml.add_representer(type(None), represent_none)
 
@@ -206,7 +209,7 @@ def _format_entity_for_fzf(entity_type: str, entity: Any) -> str:
 
 
 
-def generate_company_hash(data: dict) -> str:
+def generate_company_hash(data: dict[str, Any]) -> str:
     """Generates a stable hash from company data."""
     # Normalize and combine the fields
     name = data.get("Name", "").lower().strip()
@@ -221,7 +224,7 @@ def generate_company_hash(data: dict) -> str:
     # Generate the hash
     return str(uuid.uuid5(uuid.NAMESPACE_DNS, hash_string))
 
-def _getch():
+def _getch() -> str:
     """
     Reads a single character from stdin without echoing it to the console
     and without requiring the user to press Enter.

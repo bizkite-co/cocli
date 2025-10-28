@@ -180,11 +180,11 @@ class CampaignApp(App[Any]):
             self.campaign = self.campaign.model_copy(update={attribute_name: converted_value})
             self._save_campaign()
             self.refresh_table()
-
         elif isinstance(current_value, (list, dict, CampaignImport, GoogleMaps, Prospecting)):
             self.log(f"Editing of complex attribute '{attribute_name}' not yet supported. Use 'd' to drill down.")
         else:
             self.log(f"Cannot edit attribute '{attribute_name}' of type {type(current_value)}.")
+        return None
 
     async def action_drill_down(self) -> None:
         table = self.query_one(DataTable)
@@ -217,6 +217,6 @@ class CampaignApp(App[Any]):
             setattr(self.campaign, attribute_name, new_object)
             self._save_campaign()
             self.refresh_table()
-
         else:
             self.log(f"Cannot drill down into attribute '{attribute_name}' of type {type(current_value)}.")
+        return None

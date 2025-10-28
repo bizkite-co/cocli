@@ -41,7 +41,7 @@ def run_fzf(fzf_input: str) -> str:
 def fz(
     filter_override: Optional[str] = typer.Option(None, "--filter", "-f", help="Filter items by a specific filter (e.g., 'tag:prospect', 'missing:email'). Overrides current context."),
     force_rebuild_cache: bool = typer.Option(False, "--force-rebuild-cache", help="Force a rebuild of the fz cache.")
-):
+) -> None:
     """
     Fuzzy search for companies and people using fzf and open the selection.
     """

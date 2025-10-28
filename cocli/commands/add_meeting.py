@@ -13,7 +13,7 @@ from ..core.utils import slugify
 logger = logging.getLogger(__name__)
 app = typer.Typer()
 
-def _add_meeting_logic(company_name: str, date_str: Optional[str] = None, time_str: Optional[str] = None, title_str: Optional[str] = None, phone_number_str: Optional[str] = None):
+def _add_meeting_logic(company_name: str, date_str: Optional[str] = None, time_str: Optional[str] = None, title_str: Optional[str] = None, phone_number_str: Optional[str] = None) -> None:
     """
     Core logic for adding a new meeting.
     """
@@ -95,7 +95,7 @@ def add_meeting(
     title: Optional[str] = typer.Option(
         None, "--title", "-T", help="Title of the meeting."
     ),
-):
+) -> None:
     """
     Add a new meeting for a company.
     """

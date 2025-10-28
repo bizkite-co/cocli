@@ -3,7 +3,7 @@ from pathlib import Path
 import platform
 import tomli
 import tomli_w
-from typing import Optional
+from typing import Optional, Any, Dict
 import logging
 
 from pydantic_settings import BaseSettings
@@ -134,7 +134,7 @@ def load_scraper_settings() -> ScraperSettings:
             else:
                 logger.info(f"'scraper' section not found in {config_file}. Using default scraper settings.")
                 return ScraperSettings()
-    except tomli.TomlDecodeError as e:
+    except tomli.TOMLDecodeError as e:
         logger.error(f"Error decoding TOML config file {config_file}: {e}. Using default scraper settings.")
         return ScraperSettings()
     except Exception as e:
@@ -146,14 +146,14 @@ def get_config_path() -> Path:
     config_dir = get_config_dir()
     return config_dir / "cocli_config.toml"
 
-def load_config() -> dict:
+def load_config() -> Dict[str, Any]:
     config_file = get_config_path()
     if not config_file.exists():
         return {}
     with config_file.open("rb") as f:
         return tomli.load(f)
 
-def save_config(config_data: dict):
+def save_config(config_data: Dict[str, Any]) -> None:
     config_file = get_config_path()
     config_file.parent.mkdir(parents=True, exist_ok=True)
     with config_file.open("wb") as f:
@@ -161,36 +161,46 @@ def save_config(config_data: dict):
 
 def get_context() -> Optional[str]:
     config = load_config()
-    return config.get("context", {}).get("filter")
+    context_config: Optional[Dict[str, Any]] = config.get("context")
+    if context_config:
+        return context_config.get("filter")
+    return None
 
-def set_context(filter_str: Optional[str]):
+def set_context(filter_str: Optional[str]) -> None:
     config = load_config()
+    context_config = config.get("context", {})
     if "context" not in config:
-        config["context"] = {}
+        config["context"] = context_config
     if filter_str:
-        config["context"]["filter"] = filter_str
+        context_config["filter"] = filter_str
     else:
-        if "context" in config and "filter" in config["context"]:
-            del config["context"]["filter"]
-        if "context" in config and not config["context"]:
-            del config["context"]
+        if "filter" in context_config:
+            del context_config["filter"]
+        if not context_config:
+            if "context" in config:
+                del config["context"]
     save_config(config)
 
 def get_campaign() -> Optional[str]:
     config = load_config()
-    return config.get("campaign", {}).get("name")
+    campaign_config: Optional[Dict[str, Any]] = config.get("campaign")
+    if campaign_config:
+        return campaign_config.get("name")
+    return None
 
-def set_campaign(name: Optional[str]):
+def set_campaign(name: Optional[str]) -> None:
     config = load_config()
+    campaign_config = config.get("campaign", {})
     if "campaign" not in config:
-        config["campaign"] = {}
+        config["campaign"] = campaign_config
     if name:
-        config["campaign"]["name"] = name
+        campaign_config["name"] = name
     else:
-        if "campaign" in config and "name" in config["campaign"]:
-            del config["campaign"]["name"]
-        if "campaign" in config and not config["campaign"]:
-            del config["campaign"]
+        if "name" in campaign_config:
+            del campaign_config["name"]
+        if not campaign_config:
+            if "campaign" in config:
+                del config["campaign"]
     save_config(config)
 
 def get_editor_command() -> Optional[str]:
@@ -199,10 +209,13 @@ def get_editor_command() -> Optional[str]:
     """
     config = load_config()
     # TODO: Move editor to its own section in the config file
-    return config.get("context", {}).get("editor")
+    context_config: Optional[Dict[str, Any]] = config.get("context")
+    if context_config:
+        return context_config.get("editor")
+    return None
 
 
-def create_default_config_file():
+def create_default_config_file() -> None:
     """
     Creates a default cocli_config.toml file if it doesn't exist.
     """

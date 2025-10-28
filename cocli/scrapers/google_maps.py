@@ -17,14 +17,14 @@ from ..core.scrape_index import ScrapeIndex
 logger = logging.getLogger(__name__)
 console = Console()
 
-def calculate_new_coords(lat, lon, distance_miles, bearing):
+def calculate_new_coords(lat: float, lon: float, distance_miles: float, bearing: float) -> tuple[float, float]:
     """Calculate new lat/lon from a starting point, distance, and bearing."""
     start_point = (lat, lon)
     distance_km = distance_miles * 1.60934
     destination = geodesic(kilometers=distance_km).destination(start_point, bearing)
     return destination.latitude, destination.longitude
 
-def get_viewport_bounds(center_lat, center_lon, map_width_miles, map_height_miles, margin=0.1):
+def get_viewport_bounds(center_lat: float, center_lon: float, map_width_miles: float, map_height_miles: float, margin: float = 0.1) -> dict[str, float]:
     """
     Calculates the bounding box of the map viewport, inset by a margin.
     A margin of 0.1 means the box is 10% smaller on each side (80% of original area).
@@ -52,7 +52,7 @@ def get_viewport_bounds(center_lat, center_lon, map_width_miles, map_height_mile
 async def _scrape_area(
     page: Page,
     search_string: str,
-    processed_place_ids: set,
+    processed_place_ids: set[str],
     force_refresh: bool,
     ttl_days: int,
     debug: bool,
@@ -239,7 +239,8 @@ async def scrape_google_maps(
             scale_label = await scale_button.text_content()
             scale_inner_div = scale_button.locator("div").first
             style = await scale_inner_div.get_attribute("style")
-            width_match = re.search(r'width:\s*(\d+)px;', style)
+            if style:
+                width_match = re.search(r'width:\s*(\d+)px;', style)
             if width_match and scale_label:
                 width_px = int(width_match.group(1))
                 # Extract the number and unit from the scale label (e.g., "2 mi" -> 2, "mi")

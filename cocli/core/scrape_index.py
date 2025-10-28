@@ -28,7 +28,7 @@ class ScrapeIndex:
         self._index: List[ScrapedArea] = []
         self._load_index()
 
-    def _load_index(self):
+    def _load_index(self) -> None:
         if not self.index_file.exists():
             return
         
@@ -51,7 +51,7 @@ class ScrapeIndex:
         except Exception as e:
             logger.error(f"Failed to load scrape index: {e}")
 
-    def add_area(self, phrase: str, bounds: dict):
+    def add_area(self, phrase: str, bounds: dict[str, float]) -> None:
         """Adds a new scraped area to the index and saves it."""
         if not all(key in bounds for key in ['lat_min', 'lat_max', 'lon_min', 'lon_max']):
             logger.warning("Attempted to add area with incomplete bounds.")
@@ -70,7 +70,7 @@ class ScrapeIndex:
         # Save immediately
         self._save_index()
 
-    def _save_index(self):
+    def _save_index(self) -> None:
         """Saves the current index to the CSV file."""
         try:
             with self.index_file.open('w', newline='', encoding='utf-8') as f:
