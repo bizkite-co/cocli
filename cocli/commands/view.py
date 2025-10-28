@@ -253,7 +253,7 @@ def _interactive_view_company(company_slug: str) -> None:
                     contact_phone = typer.prompt("Enter contact phone (optional, e.g., +1-555-123-4567)", default="")
                     contact_role = typer.prompt("Enter contact role (optional)", default="")
 
-                    new_person = Person(name=contact_name, email=contact_email if contact_email else None, phone=contact_phone if contact_phone else None, role=contact_role if contact_role else None)
+                    new_person = Person(name=contact_name, email=contact_email if contact_email else None, phone=contact_phone if contact_phone else None, role=contact_role if contact_role else None, slug=slugify(contact_name)) # Add slug here
                     
                     people_dir = get_people_dir()
                     person_dir = people_dir / slugify(new_person.name)

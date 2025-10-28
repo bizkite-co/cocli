@@ -110,7 +110,7 @@ def build_cache(campaign: Optional[str] = None) -> List[Dict[str, Any]]:
     if people_dir.exists():
         for person_file in people_dir.iterdir():
             if person_file.is_file() and person_file.suffix == ".md":
-                person = Person.from_file(person_file)
+                person = Person.from_file(person_file, person_file.stem)
                 if person:
                     if campaign and campaign not in person.tags:
                         continue

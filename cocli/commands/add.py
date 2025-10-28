@@ -28,7 +28,7 @@ def add(
     company_dir = companies_dir / company_slug
 
     if not company_dir.exists():
-        company = Company(name=company_name)
+        company = Company(name=company_name, slug=company_slug) # Add slug here
         create_company_files(company, company_dir)
         logger.info(f"Company '{company_name}' created at {company_dir}")
     else:
@@ -39,7 +39,7 @@ def add(
         person_slug = slugify(person_name)
         person_dir = people_dir / person_slug
         if not person_dir.exists():
-            person = Person(name=person_name, company_name=company_name, phone=None)
+            person = Person(name=person_name, company_name=company_name, phone=None, slug=person_slug) # Add slug here
             create_person_files(person, person_dir)
             logger.info(f"Person '{person_name}' created at {person_dir}")
         else:

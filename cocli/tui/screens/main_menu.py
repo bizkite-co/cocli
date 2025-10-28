@@ -11,5 +11,6 @@ class MainMenu(Screen[None]):
             ListItem(Label("Campaigns"), id="campaigns"),
             ListItem(Label("Companies"), id="companies"),
             ListItem(Label("People"), id="people"),
+            ListItem(Label("ETL/Enrichment"), id="etl_enrichment"),
             ListItem(Label("Exit"), id="exit"),
         )

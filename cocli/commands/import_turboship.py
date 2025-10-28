@@ -78,6 +78,7 @@ def import_turboship(
             state=row['state'] if not pd.isna(row['state']) else None,
             zip_code=row['zip'] if not pd.isna(row['zip']) else None,
             country=row['country'] if not pd.isna(row['country']) else None,
+            slug=slugify(name), # Add slug here
         )
 
         company_name_from_address = row['company_name'] if not pd.isna(row['company_name']) else None
@@ -99,6 +100,7 @@ def import_turboship(
                 domain=website,
                 tags=["turboship", "customer"],
                 phone_1=row['phone'] if not pd.isna(row['phone']) else None,
+                slug=slugify(company_name.replace("-", " ").title()), # Add slug here
             )
             company_dir = get_companies_dir() / slugify(company.name)
             create_company_files(company, company_dir)

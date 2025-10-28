@@ -64,6 +64,7 @@ def import_customers(
                 state=address_data.get("state"),
                 zip_code=address_data.get("zip"),
                 country=address_data.get("country"),
+                slug=slugify(name), # Add slug here
             )
 
             company_name_from_address = address_data.get('company_name')
@@ -91,6 +92,7 @@ def import_customers(
                     domain=website_url,
                     tags=tags,
                     phone_1=phone or address_data.get("address_phone"),
+                    slug=slugify(company_name.replace("-", " ").title()), # Add slug here
                 )
                 company_dir = get_companies_dir() / slugify(company.name)
                 create_company_files(company, company_dir)

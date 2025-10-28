@@ -41,7 +41,7 @@ def enrich_customers(
     people_dir = get_people_dir()
     for person_file in people_dir.glob("**/*.md"):
         if person_file.is_file():
-            person = Person.from_file(person_file)
+            person = Person.from_file(person_file, person_file.parent.name)
             if not person:
                 continue
 

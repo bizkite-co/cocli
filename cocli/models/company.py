@@ -24,7 +24,7 @@ class Company(BaseModel):
     domain: Optional[str] = None
     type: str = "N/A"
     tags: list[str] = Field(default_factory=list)
-    slug: Optional[str] = None
+    slug: str # Changed from Optional[str] to str
     description: Optional[str] = None
     visits_per_day: Optional[int] = None
 
@@ -90,6 +90,15 @@ class Company(BaseModel):
                 company = cls.from_directory(company_dir)
                 if company:
                     yield company
+
+    @classmethod
+    def get(cls, slug: str) -> Optional["Company"]:
+        """Retrieves a single company by its slug."""
+        companies_dir = get_companies_dir()
+        company_dir = companies_dir / slug
+        if company_dir.is_dir():
+            return cls.from_directory(company_dir)
+        return None
 
     @classmethod
     def from_directory(cls, company_dir: Path) -> Optional["Company"]:

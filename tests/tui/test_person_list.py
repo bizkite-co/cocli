@@ -1,7 +1,6 @@
 import pytest
-from textual.app import App, ComposeResult
-from textual.widgets import ListView, ListItem, Label
-from textual.containers import VerticalScroll
+from textual.app import App
+from textual.widgets import ListView, ListItem
 from unittest.mock import patch
 
 from cocli.tui.screens.person_list import PersonList
@@ -35,7 +34,7 @@ async def test_person_list_display_people():
     """Test that the PersonList screen displays people correctly."""
     with patch('cocli.tui.screens.person_list.Person', new=MockPerson):
         app = PersonListTestApp()
-        async with app.run_test() as driver:
+        async with app.run_test(): # Removed 'as driver'
             # Get the PersonList screen
             person_list_screen = app.get_screen("person_list")
             assert isinstance(person_list_screen, PersonList)

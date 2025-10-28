@@ -216,7 +216,8 @@ def scrape_contacts(
                 email=email if email else None,
                 phone=None, # Scraper doesn't get phone
                 role=role if role else None,
-                company_name=company.name # Link to current company
+                company_name=company.name, # Link to current company
+                slug=slugify(person_name_to_use) # Add slug here
             )
             person_slug = slugify(new_person.name)
             new_person_dir = people_dir / person_slug

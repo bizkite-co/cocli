@@ -64,7 +64,7 @@ def render_kml_for_campaign(campaign_name: str) -> None:
         # --- Find Associated Person for Address (for most accurate geocoding) ---
         associated_person: Optional[Person] = None
         for person_file in people_dir.glob("**/*.md"):
-            person = Person.from_file(person_file)
+            person = Person.from_file(person_file, person_file.parent.name)
             if person and person.company_name and slugify(person.company_name) == slugify(company.name):
                 associated_person = person
                 break
