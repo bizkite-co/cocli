@@ -1,17 +1,27 @@
+from __future__ import annotations
+
+from textual import events
 from textual.app import App, ComposeResult
-from textual.widgets import Header, Footer, DataTable, Input, Button, Static
-from textual.containers import Vertical, Horizontal
+from textual.widgets import Header, Footer, DataTable, Input, Static
+from textual.containers import Vertical
 from textual.screen import ModalScreen
 from typing import Any
 
 from ..models.campaign import Campaign, CampaignImport, GoogleMaps, Prospecting
+
 import toml
 from cocli.core.config import get_campaign_dir
 
-class EditValueScreen(ModalScreen):
+import logging
+
+logger = logging.getLogger(__name__)
+
+class EditValueScreen(ModalScreen[Any]):
     """Modal screen to edit a single value."""
 
-    def __init__(self, initial_value: str, attribute_name: str, *args, **kwargs):
+    BINDINGS = [("ctrl+s", "save", "Save"), ("ctrl+c", "cancel", "Cancel")]
+
+    def __init__(self, initial_value: str, attribute_name: str, *args: Any, **kwargs: Any):
         super().__init__(*args, **kwargs)
         self.initial_value = initial_value
         self.attribute_name = attribute_name
@@ -20,23 +30,72 @@ class EditValueScreen(ModalScreen):
         with Vertical(id="edit_dialog"):
             yield Static(f"Editing {self.attribute_name}:")
             yield Input(value=self.initial_value, id="edit_input")
-            with Horizontal(id="edit_buttons"):
-                yield Button("Save", variant="primary", id="save_button")
-                yield Button("Cancel", id="cancel_button")
+            yield Static("([bold]s[/])ave, ([bold]c[/])ancel")
 
-    def on_button_pressed(self, event: Button.Pressed) -> None:
-        if event.button.id == "save_button":
+    def on_key(self, event: events.Key) -> None:
+        if event.key == "ctrl+s":
             new_value = self.query_one("#edit_input", Input).value
             self.dismiss(new_value)
-        elif event.button.id == "cancel_button":
-            self.dismiss(self.initial_value)
+        elif event.key == "ctrl+c":
+            self.dismiss(None)
 
-    def on_input_submitted(self, event: Input.Submitted) -> None:
-        if event.input.id == "edit_input":
-            self.dismiss(event.value)
+class EditListScreen(ModalScreen[Any]):
+    """Modal screen to edit a list of strings."""
 
+    BINDINGS = [("ctrl+a", "add", "Add"), ("ctrl+d", "delete", "Delete"), ("ctrl+s", "save", "Save"), ("ctrl+c", "cancel", "Cancel")]
 
-class CampaignApp(App):
+    def __init__(self, initial_list: list[str], attribute_name: str, *args: Any, **kwargs: Any):
+        super().__init__(*args, **kwargs)
+        self.initial_list = initial_list
+        self.attribute_name = attribute_name
+
+    def compose(self) -> ComposeResult:
+        with Vertical(id="edit_list_dialog"):
+            yield Static(f"Editing {self.attribute_name}:")
+            for item in self.initial_list:
+                yield Input(value=item)
+            yield Static("([bold]a[/])dd, ([bold]d[/])elete, ([bold]s[/])ave, ([bold]c[/])ancel")
+
+    def on_key(self, event: events.Key) -> None:
+        if event.key == "ctrl+s":
+            new_list = [i.value for i in self.query(Input)]
+            self.dismiss(new_list)
+        elif event.key == "ctrl+c":
+            self.dismiss(None)
+        elif event.key == "ctrl+a":
+            self.query_one("#edit_list_dialog").mount(Input())
+        elif event.key == "ctrl+d":
+            if self.query(Input):
+                self.query(Input)[-1].remove()
+
+class EditObjectScreen(ModalScreen[Any]):
+    """Modal screen to edit an object."""
+
+    BINDINGS = [("ctrl+s", "save", "Save"), ("ctrl+c", "cancel", "Cancel")]
+
+    def __init__(self, initial_object: dict[str, Any], attribute_name: str, *args: Any, **kwargs: Any):
+        super().__init__(*args, **kwargs)
+        self.initial_object = initial_object
+        self.attribute_name = attribute_name
+
+    def compose(self) -> ComposeResult:
+        with Vertical(id="edit_object_dialog"):
+            yield Static(f"Editing {self.attribute_name}:")
+            for key, value in self.initial_object.items():
+                yield Static(key)
+                yield Input(value=str(value), id=key)
+            yield Static("([bold]s[/])ave, ([bold]c[/])ancel")
+
+    def on_key(self, event: events.Key) -> None:
+        if event.key == "ctrl+s":
+            new_object = {}
+            for key, _ in self.initial_object.items():
+                new_object[key] = self.query_one(f"#{key}", Input).value
+            self.dismiss(new_object)
+        elif event.key == "ctrl+c":
+            self.dismiss(None)
+
+class CampaignApp(App[Any]):
     """A Textual app to view campaign details."""
 
     CSS = """
@@ -45,21 +104,25 @@ class CampaignApp(App):
     }
     """
 
-    BINDINGS = [("q", "quit", "Quit"), ("j", "cursor_down", "Down"), ("k", "cursor_up", "Up"), ("e", "edit_cell", "Edit")]
+    BINDINGS = [("q", "quit", "Quit"), ("j", "cursor_down", "Down"), ("k", "cursor_up", "Up"), ("e", "edit_cell", "Edit"), ("d", "drill_down", "Drill Down")]
 
-    def __init__(self, campaign: Campaign, *args, **kwargs):
+    def __init__(self, campaign: Campaign, *args: Any, **kwargs: Any):
         super().__init__(*args, **kwargs)
         self.campaign = campaign
+        original_campaign_path = get_campaign_dir(campaign.name)
+        if original_campaign_path is None:
+            raise ValueError(f"Campaign directory for {campaign.name} not found.")
+        self._original_campaign_path = original_campaign_path
 
     def compose(self) -> ComposeResult:
         """Create child widgets for the app."""
         yield Header()
         yield Footer()
         
-        table = DataTable()
-        table.add_column("Key", width=0)
-        table.add_column("Attribute", width=20)
-        table.add_column("Value")
+        table: DataTable[Any] = DataTable()
+        table.add_column("Key", key="key", width=0)
+        table.add_column("Attribute", key="attribute", width=20)
+        table.add_column("Value", key="value")
         
         for key, value in self.campaign.model_dump().items():
             if value is not None:
@@ -68,74 +131,92 @@ class CampaignApp(App):
         yield table
 
     def action_cursor_down(self) -> None:
-        self.query_one("DataTable").action_cursor_down()
+        table = self.query_one(DataTable)
+        table.action_cursor_down()
 
     def action_cursor_up(self) -> None:
-        self.query_one("DataTable").action_cursor_up()
-
-    def action_edit_cell(self) -> None:
         table = self.query_one(DataTable)
-        cell_key = table.cursor_coordinate
-        if cell_key:
-            row_index, _ = cell_key.row, cell_key.column
-            attribute_name = str(table.get_row_at(row_index)[0])
-            displayed_attribute_name = str(table.get_row_at(row_index)[1])
-            
-            current_value = getattr(self.campaign, attribute_name, None)
-
-            if isinstance(current_value, (str, int, float, bool)):
-                def update_value(new_value: str) -> None:
-                    converted_value: Any # Use Any for now to avoid type issues with mixed types
-                    # Attempt to convert new_value to the correct type
-                    if isinstance(current_value, int):
-                        converted_value = int(new_value)
-                    elif isinstance(current_value, float):
-                        converted_value = float(new_value)
-                    elif isinstance(current_value, bool):
-                        converted_value = new_value.lower() == 'true'
-                    else:
-                        converted_value = new_value
-
-                    setattr(self.campaign, attribute_name, converted_value)
-                    self._save_campaign()
-                    self.refresh_table()
-
-                self.push_screen(EditValueScreen(str(current_value), displayed_attribute_name), update_value)
-            elif isinstance(current_value, (list, dict, CampaignImport, GoogleMaps, Prospecting)):
-                self.log(f"Editing of complex attribute '{displayed_attribute_name}' not yet supported. Use 'd' to drill down.")
-            else:
-                self.log(f"Cannot edit attribute '{displayed_attribute_name}' of type {type(current_value)}.")
+        table.action_cursor_up()
 
     def _save_campaign(self) -> None:
-        campaign_dir = get_campaign_dir(self.campaign.name)
-        if not campaign_dir:
-            self.log(f"Error: Campaign '{self.campaign.name}' directory not found.")
-            return
-
-        config_path = campaign_dir / "config.toml"
-        if not config_path.exists():
-            self.log(f"Error: Configuration file not found for campaign '{self.campaign.name}'.")
-            return
-
-        with open(config_path, "r") as f:
-            config_data = toml.load(f)
-        
-        # Update the campaign section in config_data
-        campaign_dict = self.campaign.model_dump(by_alias=True)
-        config_data['campaign'] = {k: v for k, v in campaign_dict.items() if k not in ['import', 'google_maps', 'prospecting']}
-        config_data['import'] = campaign_dict['import']
-        config_data['google_maps'] = campaign_dict['google_maps']
-        config_data['prospecting'] = campaign_dict['prospecting']
-
-        with open(config_path, "w") as f:
-            toml.dump(config_data, f)
-        self.log(f"Campaign '{self.campaign.name}' saved successfully.")
+        full_campaign_path = self._original_campaign_path / "config.toml"
+        with open(full_campaign_path, "w") as f:
+            toml.dump(self.campaign.model_dump(by_alias=True), f)
 
     def refresh_table(self) -> None:
-        table = self.query_one("DataTable")
+        table: DataTable[Any] = self.query_one(DataTable)
         table.clear()
-        table.add_column("Attribute", width=20)
-        table.add_column("Value")
         for key, value in self.campaign.model_dump().items():
             if value is not None:
-                table.add_row(key.replace('_', ' ').title(), str(value))
+                table.add_row(key, key.replace('_', ' ').title(), str(value))
+
+    async def action_edit_cell(self) -> None:
+        table = self.query_one(DataTable)
+        cell_key = table.cursor_coordinate
+        if not cell_key.row:
+            return
+        
+        row_key = table.get_row_at(table.cursor_row)[0]
+        attribute_name = str(row_key)
+        
+        current_value = getattr(self.campaign, attribute_name, None)
+
+        if isinstance(current_value, (str, int, float, bool)):
+            new_value = await self.push_screen(EditValueScreen(str(current_value), attribute_name))
+            if new_value is None:
+                return
+            
+            converted_value: Any # Use Any for now to avoid type issues with mixed types
+            # Attempt to convert new_value to the correct type
+            if isinstance(current_value, int):
+                converted_value = int(new_value)
+            elif isinstance(current_value, float):
+                converted_value = float(new_value)
+            elif isinstance(current_value, bool):
+                converted_value = new_value.lower() == 'true'
+            else:
+                converted_value = new_value
+
+            self.campaign = self.campaign.model_copy(update={attribute_name: converted_value})
+            self._save_campaign()
+            self.refresh_table()
+
+        elif isinstance(current_value, (list, dict, CampaignImport, GoogleMaps, Prospecting)):
+            self.log(f"Editing of complex attribute '{attribute_name}' not yet supported. Use 'd' to drill down.")
+        else:
+            self.log(f"Cannot edit attribute '{attribute_name}' of type {type(current_value)}.")
+
+    async def action_drill_down(self) -> None:
+        table = self.query_one(DataTable)
+        cell_key = table.cursor_coordinate
+        if not cell_key.row:
+            return
+
+        row_key = table.get_row_at(table.cursor_row)[0]
+        attribute_name = str(row_key)
+
+        current_value = getattr(self.campaign, attribute_name, None)
+
+        if isinstance(current_value, list):
+            new_list = await self.push_screen(EditListScreen(current_value, attribute_name))
+            if new_list is None:
+                return
+
+            setattr(self.campaign, attribute_name, new_list)
+            self._save_campaign()
+            self.refresh_table()
+
+        elif isinstance(current_value, (dict, CampaignImport, GoogleMaps, Prospecting)):
+            if isinstance(current_value, dict):
+                new_object = await self.push_screen(EditObjectScreen(current_value, attribute_name))
+            else:
+                new_object = await self.push_screen(EditObjectScreen(current_value.model_dump(), attribute_name))
+            if new_object is None:
+                return
+
+            setattr(self.campaign, attribute_name, new_object)
+            self._save_campaign()
+            self.refresh_table()
+
+        else:
+            self.log(f"Cannot drill down into attribute '{attribute_name}' of type {type(current_value)}.")

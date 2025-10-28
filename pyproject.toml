@@ -58,6 +58,8 @@ packages = ["cocli"]
 package = true
 
 [tool.mypy]
+strict = true
+ignore_missing_imports = false
 exclude = [
     ".venv",
     "build",
@@ -71,7 +73,7 @@ exclude = [
     "cocli.egg-info",
     "data",
 ]
-follow_imports = "skip"
+follow_imports = "normal"
 
 [[tool.mypy.overrides]]
 module = [

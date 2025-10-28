@@ -22,6 +22,14 @@ Based on the code and recent interactions, the TUI is expected to:
 *   **Integrate with Campaign Workflow:** The TUI should be able to display the current state of the campaign workflow and potentially allow users to advance or re-run specific steps. This implies a connection to the `CampaignWorkflow` class and its state management.
 *   **Provide Interactive Elements:** Utilize `Textual` widgets to enable user interaction, such as buttons for actions, input fields for editing, and display areas for logs or results.
 
+## TUI Style
+
+- The TUI is intended to appear like a Terminal interface.
+- Buttons should be avoided as much as possible.
+- Text shortcut verbiage should be used instead, in the standard Textual manner, or like (**s**)ave and (**c**)ancel instead of Save and Cancel buttons.
+- Vim-like navigation should be used as much as possible.
+- We should never make the user use the mouse. If they want to use the mouse it's because we didn't present the options enough.
+
 ## Future Enhancements (Inferred)
 
 While not explicitly implemented yet, the TUI could be extended to:
@@ -32,3 +40,13 @@ While not explicitly implemented yet, the TUI could be extended to:
 *   **Customizable Views:** Offer different views or dashboards for various aspects of campaign management.
 
 This document will be updated as the TUI development progresses and its features become more defined.
+
+## Development Notes
+
+### Type Checking
+
+Currently, `mypy` (as configured in `pyproject.toml` and run via `make lint`) is not catching all type-related errors that are identified by language servers in IDEs (e.g., NVim). This includes `AttributeError` and `NameError` issues. Further investigation is needed to configure `mypy` for stricter checking or to explore alternative type-checking solutions.
+
+### Debugging
+
+The `textual` and `textual-dev` CLIs offer debugging tools (e.g., `textual console`) that may be useful for diagnosing issues within the TUI. These should be explored when encountering difficult-to-debug problems.
