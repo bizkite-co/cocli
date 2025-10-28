@@ -1,5 +1,5 @@
 from .commands import companies
-from .commands import tui
+from .commands.tui import run_tui_app # New import
 
 import typer
 
@@ -18,7 +18,10 @@ logging_config.setup_logging()
 app = typer.Typer(no_args_is_help=True)
 app.add_typer(enrich.app, name="enrich", help="Commands for enriching company data.")
 app.add_typer(query.app, name="query", help="Commands for querying company data.")
-app.add_typer(tui.app, name="tui", help="Launches the Textual TUI for cocli.")
+
+@app.command(name="tui", help="Launches the Textual TUI for cocli.") # New command
+def tui_command() -> None:
+    run_tui_app()
 
 app.add_typer(companies.app, name="companies", help="Commands for managing companies.")
 

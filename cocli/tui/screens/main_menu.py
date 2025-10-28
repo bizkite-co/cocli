@@ -9,5 +9,7 @@ class MainMenu(Screen[None]):
         yield Label("Main Menu")
         yield ListView(
             ListItem(Label("Campaigns"), id="campaigns"),
+            ListItem(Label("Companies"), id="companies"),
+            ListItem(Label("People"), id="people"),
             ListItem(Label("Exit"), id="exit"),
         )
