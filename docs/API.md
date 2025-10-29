@@ -82,3 +82,59 @@ This service is responsible for importing data from external sources into the `c
     - `campaign` (str, optional): The name of the campaign to associate with the prospect.
 - **Returns:** A `Company` object if the prospect is successfully imported, otherwise `None`.
 
+### 5. Development Guidelines
+
+To ensure the `cocli` application maintains a clean separation between its UI layers (Typer CLI and Textual TUI) and its core business logic, the following guidelines should be adhered to during development:
+
+#### API Location and Structure
+
+The `cocli/application` directory is designated as the primary location for the application's API. This directory should contain modules that expose functions and classes representing the core functionalities of the application. These modules should be UI-agnostic, accepting raw data or Pydantic models as input and returning similar data structures.
+
+A suggested structure within `cocli/application` could be:
+
+```
+cocli/application/
+├── __init__.py
+├── company_service.py    # Functions related to company management (add, find, update, delete)
+├── person_service.py     # Functions related to person management
+├── meeting_service.py    # Functions related to meeting management
+├── search_service.py     # (Already exists) Functions for searching
+├── campaign_service.py   # Functions for campaign orchestration
+└── ...                   # Other logical service groupings
+```
+
+#### Preventing API Bypass
+
+While direct imports from `cocli/commands` or `cocli/tui` into `cocli/core` appear to be minimal currently, it's crucial to maintain this separation.
+
+*   **Code Reviews:** During code reviews, always check that UI components (CLI commands or TUI screens) interact with the application's core logic *only* through the `cocli/application` layer. Direct imports from `cocli/core`, `cocli/models`, or other internal implementation details should be flagged.
+*   **Layered Architecture:** Enforce a strict layered architecture where:
+    *   **UI Layer (`cocli/commands`, `cocli/tui`):** Handles user interaction, input parsing, and presentation. It calls functions in the `cocli/application` layer.
+    *   **Application Layer (`cocli/application`):** Orchestrates business logic, calls functions in the `cocli/core` layer, and interacts with data models. This is the "API" layer.
+    *   **Core Layer (`cocli/core`):** Contains fundamental business logic, utilities, and data access mechanisms. It should not directly interact with the UI.
+    *   **Data Layer (`cocli/models`):** Defines data structures (Pydantic models).
+
+#### Identifying and Adapting Existing Functionality
+
+When refactoring or adding new features, consider the following scenarios:
+
+1.  **Adapting Existing Core Functionality to the API:**
+    *   **Identify Core Logic:** Look for functions or classes within `cocli/core` or other utility modules that encapsulate significant business logic (e.g., data manipulation, complex calculations, external service integrations).
+    *   **Create an Application Service:** Create a new module (or extend an existing one) in `cocli/application` (e.g., `company_service.py`, `meeting_service.py`).
+    *   **Wrap Core Logic:** Create a function in the application service that calls the core logic. This function should provide a clean, UI-agnostic interface.
+    *   **Update UI Calls:** Modify the CLI commands or TUI screens to call this new application service function instead of directly invoking the core logic.
+
+2.  **Moving CLI-Dependent Functionality to the API (for TUI Reusability):**
+    *   **Isolate Business Logic:** If a CLI command contains business logic intertwined with `typer` specifics (e.g., `typer.Option`, `typer.prompt`), extract the pure business logic into a standalone function.
+    *   **Relocate to Application Layer:** Move this extracted business logic function into an appropriate module within `cocli/application`.
+    *   **Refactor CLI Command:** The original CLI command should then become a thin wrapper around the new application service function, handling only CLI-specific concerns (parsing arguments, printing output).
+    *   **Integrate with TUI:** The TUI can then directly call the application service function, reusing the business logic.
+
+3.  **New Development: API-First Approach:**
+    *   **Define API Interface First:** Before writing any UI code for a new feature, define the necessary functions and their signatures within the `cocli/application` layer. Think about what data the UI will need to provide and what data it expects in return.
+    *   **Implement Business Logic:** Implement the core business logic for these API functions in the `cocli/core` layer, or by orchestrating existing core components.
+    *   **Implement Application Service:** Create the functions in `cocli/application` that expose this business logic.
+    *   **Develop UI:** Finally, develop the CLI command or TUI screen, making calls to the newly defined application service functions. This ensures the UI acts as a facade, and the core logic remains reusable and testable.
+
+By following these guidelines, we can ensure that `cocli` evolves with a robust, maintainable, and testable architecture.
+
