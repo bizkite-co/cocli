@@ -10,13 +10,9 @@ async def async_generator():
     mock_google_maps_data = GoogleMapsData(
         Name="Mock Company",
         Place_ID="mock_place_id",
-        Address="123 Mock St",
         Website="mock.com",
-        Phone="555-123-4567",
         Latitude=0.0,
         Longitude=0.0,
-        Category="Mock Category",
-        Search_Query="mock query",
         GMB_URL="mock.gmb.url"
     )
     yield mock_google_maps_data

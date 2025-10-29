@@ -8,10 +8,11 @@ import logging
 
 from rich.console import Console
 
-from ..core.cache import get_cached_items
+# from ..core.cache import get_cached_items # Removed
 from ..core.config import get_context, get_campaign
-from ..core.exclusions import ExclusionManager
+# from ..core.exclusions import ExclusionManager # Removed
 from .view import view_company
+from ..application.search_service import get_fuzzy_search_results # New import
 
 logger = logging.getLogger(__name__)
 
@@ -53,18 +54,12 @@ def fz(
         logger.debug("Filter string is 'None', setting to None.")
         filter_str = None
 
-    if filter_str == "None":
-        logger.debug("Filter string is 'None', setting to None.")
-        filter_str = None
-
-    campaign: Optional[str] = None
-    campaign = get_campaign()
-    logger.debug(f"Current campaign context: {campaign}")
-
-    all_searchable_items = get_cached_items(filter_str=filter_str, campaign=campaign, force_rebuild=force_rebuild_cache)
-    if campaign:
-        exclusion_manager = ExclusionManager(campaign=campaign)
-        all_searchable_items = [item for item in all_searchable_items if not (item.get("type") == "company" and item.get("domain") is not None and exclusion_manager.is_excluded(str(item.get("domain"))))]
+    # The get_fuzzy_search_results function now handles campaign context and filtering
+    all_searchable_items = get_fuzzy_search_results(
+        search_query=filter_str if filter_str is not None else "", # Pass filter_str as search_query
+        campaign_name=get_campaign(), # Pass campaign explicitly
+        force_rebuild_cache=force_rebuild_cache
+    )
 
     logger.debug(f"Found {len(all_searchable_items)} searchable items.")
     if not all_searchable_items:
@@ -87,6 +82,7 @@ def fz(
                 entity_type_str = match.group(1)
                 entity_name_for_display = match.group('name').strip()
 
+                # Find the selected item using its display string
                 selected_entity_item = next((item for item in all_searchable_items if item["display"] == selected_item), None)
                 if selected_entity_item:
                     entity_slug = selected_entity_item['slug']
@@ -96,10 +92,10 @@ def fz(
                     elif entity_type_str == "PERSON":
                         console.print("--- Person Details ---")
                         # For person, we still need to find the original item to get company_name
-                        selected_person_item = next((item for item in all_searchable_items if item["display"] == selected_item), None)
-                        if selected_person_item:
-                            console.print(f"Name: {selected_person_item['name']}")
-                            console.print(f"Company: {selected_person_item.get('company_name', 'N/A')}")
+                        # The selected_person_item is already available from selected_entity_item
+                        if selected_entity_item:
+                            console.print(f"Name: {selected_entity_item['name']}")
+                            console.print(f"Company: {selected_entity_item.get('company_name', 'N/A')}")
                         else:
                             console.print(f"Could not retrieve details for {entity_name_for_display}.")
                 else:

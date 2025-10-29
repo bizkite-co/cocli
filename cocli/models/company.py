@@ -89,6 +89,7 @@ class Company(BaseModel):
             if company_dir.is_dir():
                 company = cls.from_directory(company_dir)
                 if company:
+                    logger.debug(f"Yielding company with slug: {company.slug}") # Debug print
                     yield company
 
     @classmethod
@@ -109,7 +110,7 @@ class Company(BaseModel):
             tags_path = company_dir / "tags.lst"
 
             if not index_path.exists():
-                logger.warning(f"_index.md not found in {company_dir}")
+                logger.warning(f"Skipping {company_dir.name}: _index.md not found.") # More explicit message
                 return None
 
             content = index_path.read_text()
@@ -120,8 +121,9 @@ class Company(BaseModel):
                 frontmatter_str, markdown_content = content.split("---", 2)[1:]
                 try:
                     frontmatter_data = yaml.safe_load(frontmatter_str) or {}
-                except yaml.YAMLError:
-                    pass # Ignore YAML errors for now, return what we have
+                except yaml.YAMLError as e: # Catch YAML errors specifically
+                    logger.warning(f"Skipping {company_dir.name}: YAML error in _index.md: {e}")
+                    return None
 
             # Load tags from tags.lst
             tags = []
@@ -142,10 +144,10 @@ class Company(BaseModel):
             try:
                 return cls(**model_data)
             except ValidationError as e:
-                logging.error(f"Validation error loading company from {company_dir}: {e}")
+                logging.error(f"Skipping {company_dir.name}: Validation error loading company: {e}") # More explicit message
                 return None
             except Exception as e:
-                logging.error(f"Unexpected error loading company from {company_dir}: {e}")
+                logging.error(f"Skipping {company_dir.name}: Unexpected error loading company: {e}") # More explicit message
                 return None
         except Exception as e:
             logging.error(f"Error in from_directory for {company_dir}: {e}")

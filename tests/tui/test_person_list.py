@@ -4,22 +4,17 @@ from textual.widgets import ListView, ListItem
 from unittest.mock import patch
 
 from cocli.tui.screens.person_list import PersonList
-from cocli.utils.textual_utils import sanitize_id
+from cocli.utils.textual_utils import sanitize_id # Re-added for sanitizing expected IDs
 
-# Mock the Person class and its get_all method
-class MockPerson:
-    def __init__(self, name: str, slug: str):
-        self.name = name
-        self.slug = slug
-
-    @classmethod
-    def get_all(cls):
-        return [
-            cls(name="Person One", slug="person-one"),
-            cls(name="Person Two", slug="person-two"),
-            cls(name="Person Three", slug="person-three"),
-            cls(name="1st Person", slug="1st-person"),
-        ]
+# Mock data that get_filtered_items_from_fz would return for persons
+mock_fz_person_items = [
+    {"name": "Person One", "slug": "person-one", "type": "person", "unique_id": "person-one"},
+    {"name": "Person Two", "slug": "person-two", "type": "person", "unique_id": "person-two"},
+    {"name": "Person Three", "slug": "person-three", "type": "person", "unique_id": "person-three"},
+    {"name": "1st Person", "slug": "1st-person", "type": "person", "unique_id": "_1st-person"},
+    {"name": "Duplicate Person", "slug": "duplicate-person", "type": "person", "unique_id": "duplicate-person"},
+    {"name": "Another Duplicate Person", "slug": "duplicate-person", "type": "person", "unique_id": "duplicate-person-1"},
+]
 
 class PersonListTestApp(App[None]):
     """A test app for the PersonList screen."""
@@ -30,26 +25,56 @@ class PersonListTestApp(App[None]):
         self.push_screen("person_list")
 
 @pytest.mark.asyncio
-async def test_person_list_display_people():
+@patch('cocli.tui.screens.person_list.get_filtered_items_from_fz')
+async def test_person_list_display_people(mock_get_fz_items):
     """Test that the PersonList screen displays people correctly."""
-    with patch('cocli.tui.screens.person_list.Person', new=MockPerson):
-        app = PersonListTestApp()
-        async with app.run_test(): # Removed 'as driver'
-            # Get the PersonList screen
-            person_list_screen = app.get_screen("person_list")
-            assert isinstance(person_list_screen, PersonList)
+    mock_get_fz_items.return_value = mock_fz_person_items # Return all mock items
+    app = PersonListTestApp()
+    async with app.run_test():
+        # Get the PersonList screen
+        person_list_screen = app.get_screen("person_list")
+        assert isinstance(person_list_screen, PersonList)
 
-            # Find the ListView widget
-            list_view = person_list_screen.query_one(ListView)
-            assert isinstance(list_view, ListView)
+        # Find the ListView widget
+        list_view = person_list_screen.query_one(ListView)
+        assert isinstance(list_view, ListView)
 
-            # Assert that the ListView contains the expected person slugs
-            expected_person_slugs = [
-                sanitize_id("person-one"),
-                sanitize_id("person-two"),
-                sanitize_id("person-three"),
-                sanitize_id("1st-person"),
+        # Assert that the ListView contains the expected person unique_ids
+        expected_unique_ids = [sanitize_id(item["unique_id"]) for item in mock_fz_person_items]
+        displayed_items = [item.id for item in list_view.children if isinstance(item, ListItem)]
+        
+        assert sorted(displayed_items) == sorted(expected_unique_ids)
+
+@pytest.mark.asyncio
+@patch('cocli.tui.screens.person_list.get_filtered_items_from_fz')
+async def test_person_list_search_duplicate_slugs(mock_get_fz_items):
+    """Test that searching with duplicate slugs doesn't cause MountError."""
+    # Mock get_filtered_items_from_fz to simulate search results
+    def mock_get_filtered_items_from_fz_side_effect(*args, **kwargs):
+        search_query = kwargs.get("search_query", "").lower()
+        if "duplicate" in search_query:
+            # Return only the items matching 'duplicate' when search query is 'duplicate'
+            return [
+                {"name": "Duplicate Person", "slug": "duplicate-person", "type": "person", "unique_id": "duplicate-person"},
+                {"name": "Another Duplicate Person", "slug": "duplicate-person", "type": "person", "unique_id": "duplicate-person-1"},
             ]
-            displayed_items = [item.id for item in list_view.children if isinstance(item, ListItem)]
-            
-            assert sorted(displayed_items) == sorted(expected_person_slugs)
+        return mock_fz_person_items # Default case for initial load
+
+    mock_get_fz_items.side_effect = mock_get_filtered_items_from_fz_side_effect
+
+    app = PersonListTestApp()
+    async with app.run_test() as driver:
+        person_list_screen = app.get_screen("person_list")
+        assert isinstance(person_list_screen, PersonList)
+
+        list_view = person_list_screen.query_one(ListView)
+        # Simulate typing a search query that would include duplicate slugs
+        await driver.click("#person_search_input")
+        await driver.press("d", "u", "p", "l", "i", "c", "a", "t", "e")
+        await driver.pause() # Allow Textual to process the input and update the list
+
+        # Assert that no MountError occurred and the list contains expected items
+        displayed_items_ids = [item.id for item in list_view.children if isinstance(item, ListItem)]
+        assert sanitize_id("duplicate-person") in displayed_items_ids
+        assert sanitize_id("duplicate-person-1") in displayed_items_ids
+        assert len(displayed_items_ids) == 2 # Should show both duplicate persons with their unique IDs
