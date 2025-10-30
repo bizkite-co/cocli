@@ -22,7 +22,7 @@ from ..models.note import Note
 
 
 from ..models.website import Website
-from ..renderers.company_view import display_company_view, _render_meetings
+from ..renderers.company_view import display_company_view
 from ..core.exclusions import ExclusionManager
 from ..commands.add_meeting import _add_meeting_logic
 from ..core.website_domain_csv_manager import WebsiteDomainCsvManager

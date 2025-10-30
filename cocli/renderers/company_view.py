@@ -1,16 +1,14 @@
 import datetime
 import re
 from pathlib import Path
-from typing import Dict, List, Tuple, Optional
+from typing import Dict, List, Tuple, Optional, Any
 
 from rich.console import Console
 from rich.markdown import Markdown
 from rich.panel import Panel
 from rich.columns import Columns
 
-from pytz import timezone
 from tzlocal import get_localzone
-from ..core.config import get_companies_dir
 from ..models.company import Company
 from ..models.website import Website
 from ..models.person import Person
@@ -43,66 +41,78 @@ def _render_company_details(company: Company, tags: List[str], content: str, web
 
     return Panel(Markdown(output), title="Company Details", border_style="green")
 
-def _render_contacts(contacts_dir: Path) -> Panel:
-    """Renders a list of contacts with more details."""
-    if not contacts_dir.exists():
+
+
+
+def display_company_view(console: Console, company_data: Dict[str, Any]) -> None:
+    console.clear()
+
+    company = Company.model_validate(company_data["company"])
+    tags = company_data["tags"]
+    content = company_data["content"]
+    website_data = Website.model_validate(company_data["website_data"]) if company_data["website_data"] else None
+    contacts_data = company_data["contacts"]
+    meetings_data = company_data["meetings"]
+    notes_data = company_data["notes"]
+
+    if not company.slug:
+        console.print("[bold red]Error: Company slug is missing.[/]")
+        return
+
+    # Render components
+    details_panel = _render_company_details(company, tags, content, website_data)
+    contacts_panel = _render_contacts_from_data(contacts_data)
+    meetings_panel, meeting_map = _render_meetings_from_data(meetings_data)
+    notes_panel = _render_notes_from_data(notes_data)
+
+    # Display layout
+    top_columns = Columns([details_panel, contacts_panel], expand=True, equal=True)
+    console.print(top_columns)
+    console.print(meetings_panel)
+    console.print(notes_panel)
+
+def _render_contacts_from_data(contacts_data: List[Dict[str, Any]]) -> Panel:
+    """Renders a list of contacts from pre-fetched data."""
+    if not contacts_data:
         return Panel("No contacts found.", title="Contacts", border_style="blue")
 
     contact_panels = []
-    for contact_symlink in contacts_dir.iterdir():
-        if contact_symlink.is_symlink():
-            person_dir = contact_symlink.resolve()
-            person = Person.from_directory(person_dir)
-            if person:
-                contact_details = f"[bold]{person.name}[/bold]\n"
-                if person.role:
-                    contact_details += f"Role: {person.role}\n"
-                if person.email:
-                    contact_details += f"Email: {person.email}\n"
-                if person.phone:
-                    contact_details += f"Phone: {person.phone}"
-                contact_panels.append(Panel(contact_details, title=person.name, border_style="blue"))
+    for contact_dict in contacts_data:
+        person = Person.model_validate(contact_dict)
+        contact_details = f"[bold]{person.name}[/bold]\n"
+        if person.role:
+            contact_details += f"Role: {person.role}\n"
+        if person.email:
+            contact_details += f"Email: {person.email}\n"
+        if person.phone:
+            contact_details += f"Phone: {person.phone}"
+        contact_panels.append(Panel(contact_details, title=person.name, border_style="blue"))
 
     if not contact_panels:
         return Panel("No contacts found.", title="Contacts", border_style="blue")
 
     return Panel(Columns(contact_panels, expand=True, equal=True), title="Contacts", border_style="blue")
 
-
-def _render_meetings(meetings_dir: Path) -> Tuple[Panel, Dict[int, Path]]:
-    """Renders upcoming and recent meetings."""
+def _render_meetings_from_data(meetings_data: List[Dict[str, Any]]) -> Tuple[Panel, Dict[int, Path]]:
+    """Renders upcoming and recent meetings from pre-fetched data."""
     next_meetings = []
     recent_meetings = []
 
-    if meetings_dir.exists():
-        now_local = datetime.datetime.now(get_localzone())
-        six_months_ago_local = now_local - datetime.timedelta(days=180)
+    now_local = datetime.datetime.now(get_localzone())
+    six_months_ago_local = now_local - datetime.timedelta(days=180)
 
-        for meeting_file in sorted(meetings_dir.iterdir()):
-            if meeting_file.is_file() and meeting_file.suffix == ".md":
-                try:
-                    match = re.match(r"^(\d{4}-\d{2}-\d{2}(?:T\d{4}Z)?)-?(.*)\.md$", meeting_file.name)
-                    if not match:
-                        continue
+    for meeting_dict in meetings_data:
+        meeting_datetime_utc = datetime.datetime.fromisoformat(meeting_dict["datetime_utc"])
+        meeting_title = meeting_dict["title"]
+        meeting_file_path = Path(meeting_dict["file_path"])
 
-                    datetime_str = match.group(1)
-                    title_slug = match.group(2)
+        local_tz = get_localzone()
+        meeting_datetime_local = meeting_datetime_utc.astimezone(local_tz)
 
-                    if 'T' in datetime_str and datetime_str.endswith('Z'):
-                        meeting_datetime_utc = datetime.datetime.strptime(datetime_str, '%Y-%m-%dT%H%MZ').replace(tzinfo=timezone('UTC'))
-                    else:
-                        meeting_datetime_utc = datetime.datetime.strptime(datetime_str, '%Y-%m-%d').replace(tzinfo=timezone('UTC'))
-
-                    local_tz = get_localzone()
-                    meeting_datetime_local = meeting_datetime_utc.astimezone(local_tz)
-                    meeting_title = title_slug.replace("-", " ") if title_slug else "Untitled Meeting"
-
-                    if meeting_datetime_local > now_local:
-                        next_meetings.append((meeting_datetime_local, meeting_file, meeting_title))
-                    elif meeting_datetime_local >= six_months_ago_local:
-                        recent_meetings.append((meeting_datetime_local, meeting_file, meeting_title))
-                except (ValueError, IndexError):
-                    pass
+        if meeting_datetime_local > now_local:
+            next_meetings.append((meeting_datetime_local, meeting_file_path, meeting_title))
+        elif meeting_datetime_local >= six_months_ago_local:
+            recent_meetings.append((meeting_datetime_local, meeting_file_path, meeting_title))
 
     next_meetings.sort(key=lambda x: x[0])
     recent_meetings.sort(key=lambda x: x[0], reverse=True)
@@ -132,16 +142,9 @@ def _render_meetings(meetings_dir: Path) -> Tuple[Panel, Dict[int, Path]]:
     meeting_map = {num: file for num, file in all_displayable_meetings}
     return Panel(Markdown(output), title="Meetings", border_style="magenta"), meeting_map
 
-def _render_notes(notes_dir: Path) -> Panel:
-    """Renders the most recent three notes."""
-    notes = []
-    if notes_dir.exists():
-        for note_file in notes_dir.iterdir():
-            if note_file.is_file() and note_file.suffix == ".md":
-                note = Note.from_file(note_file)
-                if note:
-                    notes.append(note)
-
+def _render_notes_from_data(notes_data: List[Dict[str, Any]]) -> Panel:
+    """Renders the most recent three notes from pre-fetched data."""
+    notes = [Note.model_validate(n) for n in notes_data]
     notes.sort(key=lambda n: n.timestamp, reverse=True)
 
     output = ""
@@ -155,47 +158,5 @@ def _render_notes(notes_dir: Path) -> Panel:
         output = "No notes found."
 
     return Panel(Markdown(output), title="Recent Notes", border_style="cyan")
-
-
-def display_company_view(console: Console, company: Company, website_data: Optional[Website], meeting_map: Dict[int, Path]) -> None:
-    console.clear()
-
-    if not company.slug:
-        console.print("[bold red]Error: Company slug is missing.[/]")
-        return
-
-    selected_company_dir = get_companies_dir() / company.slug
-
-    index_path = selected_company_dir / "_index.md"
-    tags_path = selected_company_dir / "tags.lst"
-    meetings_dir = selected_company_dir / "meetings"
-    contacts_dir = selected_company_dir / "contacts"
-    notes_dir = selected_company_dir / "notes"
-
-    # Load tags
-    tags = []
-    if tags_path.exists():
-        tags = tags_path.read_text().strip().splitlines()
-
-    # Load markdown content from _index.md
-    content = ""
-    if index_path.exists():
-        file_content = index_path.read_text()
-        if file_content.startswith("---") and "---" in file_content[3:]:
-            _, _, content = file_content.split("---", 2)
-        else:
-            content = file_content
-
-    # Render components
-    details_panel = _render_company_details(company, tags, content, website_data)
-    contacts_panel = _render_contacts(contacts_dir)
-    meetings_panel, meeting_map = _render_meetings(meetings_dir)
-    notes_panel = _render_notes(notes_dir)
-
-    # Display layout
-    top_columns = Columns([details_panel, contacts_panel], expand=True, equal=True)
-    console.print(top_columns)
-    console.print(meetings_panel)
-    console.print(notes_panel)
 
 

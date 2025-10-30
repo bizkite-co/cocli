@@ -9,7 +9,7 @@ from .screens.main_menu import MainMenu
 from .screens.campaign_selection import CampaignSelection
 from .screens.company_list import CompanyList
 from .screens.person_list import PersonList
-from .screens.company_detail import CompanyDetail
+from .screens.company_detail import CompanyDetailScreen # Updated import
 from .screens.person_detail import PersonDetail
 from .screens.etl_enrichment_menu import EtlEnrichmentMenu
 from ..models.campaign import Campaign
@@ -26,10 +26,6 @@ class CocliApp(App[None]):
     BINDINGS = [
         Binding("d", "toggle_dark", "Toggle dark mode"),
         Binding("q", "quit", "Quit", show=True),
-        Binding("j", "cursor_down", "Down", show=False), # New binding
-        Binding("k", "cursor_up", "Up", show=False),     # New binding
-        Binding("i", "focus_search_input", "Search", show=False), # New binding
-        Binding("escape", "blur_search_input", "Exit Search", show=False), # New binding
     ]
 
     def on_mount(self) -> None:
@@ -48,9 +44,6 @@ class CocliApp(App[None]):
         elif event.item.id == "exit":
             self.exit()
 
-    def on_company_list_company_selected(self, message: CompanyList.CompanySelected) -> None:
-        """Handle CompanySelected message from CompanyList."""
-        self.push_screen(CompanyDetail(company_slug=message.company_slug))
 
     def on_person_list_person_selected(self, message: PersonList.PersonSelected) -> None:
         """Handle PersonSelected message from PersonList."""
@@ -89,29 +82,6 @@ class CocliApp(App[None]):
         """An action to toggle dark mode."""
         self.dark = not self.dark
 
-    def action_cursor_down(self) -> None:
-        """Move cursor down in the current ListView."""
-        if isinstance(self.screen, (MainMenu, CompanyList, PersonList, EtlEnrichmentMenu)):
-            list_view = self.screen.query_one(ListView)
-            list_view.action_cursor_down()
-
-    def action_cursor_up(self) -> None:
-        """Move cursor up in the current ListView."""
-        if isinstance(self.screen, (MainMenu, CompanyList, PersonList, EtlEnrichmentMenu)):
-            list_view = self.screen.query_one(ListView)
-            list_view.action_cursor_up()
-
-    def action_focus_search_input(self) -> None:
-        """Focus on the search input if available."""
-        if isinstance(self.screen, (CompanyList, PersonList)):
-            search_input = self.screen.query_one(Input)
-            search_input.focus()
-
-    def action_blur_search_input(self) -> None:
-        """Blur the search input if focused."""
-        if isinstance(self.screen, (CompanyList, PersonList)):
-            search_input = self.screen.query_one(Input)
-            search_input.blur()
 
 if __name__ == "__main__":
     app = CocliApp()
