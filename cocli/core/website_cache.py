@@ -7,14 +7,14 @@ import logging
 
 from cocli.models.domain import Domain
 from cocli.models.website import Website
-from .config import get_cocli_base_dir
+from .config import get_cocli_app_data_dir
 
 logger = logging.getLogger(__name__)
 
 class WebsiteCache:
     def __init__(self, cache_dir: Optional[Path] = None):
         if not cache_dir:
-            cache_dir = get_cocli_base_dir() / "cache"
+            cache_dir = get_cocli_app_data_dir() / "cache"
         cache_dir.mkdir(parents=True, exist_ok=True)
         self.cache_file = cache_dir / "website_data_cache.csv"
         self.data: Dict[str, Website] = {}

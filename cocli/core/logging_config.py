@@ -3,24 +3,13 @@ import logging
 import sys
 from datetime import datetime
 
-from .config import get_cocli_base_dir
-
-def setup_logging(level: int = logging.INFO) -> None:
-    """
-    Sets up basic application-wide logging to the console.
-    """
-    logging.basicConfig(
-        level=level,
-        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-        stream=sys.stderr, # Default to stderr
-    )
-    logging.getLogger().setLevel(level)
+from .config import get_cocli_app_data_dir
 
 def setup_file_logging(command_name: str, console_level: int = logging.INFO, file_level: int = logging.DEBUG, disable_console: bool = False) -> None:
     """
     Sets up logging to a timestamped file for a specific command and adjusts console output level.
     """
-    log_dir = get_cocli_base_dir() / "logs"
+    log_dir = get_cocli_app_data_dir() / "logs"
     log_dir.mkdir(exist_ok=True)
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     log_file = log_dir / f"{timestamp}_{command_name}.log"
@@ -28,8 +17,8 @@ def setup_file_logging(command_name: str, console_level: int = logging.INFO, fil
     # Get the root logger
     root_logger = logging.getLogger()
     # Set logger to the most verbose level required by any handler
-    effective_level = min(console_level, file_level) if not disable_console else file_level
-    root_logger.setLevel(effective_level)
+    # If file_level is DEBUG, ensure root_logger is also DEBUG
+    root_logger.setLevel(file_level)
 
     # Clear existing handlers to avoid duplicate logs
     for handler in root_logger.handlers[:]:

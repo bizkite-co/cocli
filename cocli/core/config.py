@@ -13,9 +13,27 @@ console = Console()
 
 logger = logging.getLogger(__name__)
 
+def get_cocli_app_data_dir() -> Path:
+    """
+    Determines the root data directory for cocli application-specific files (logs, caches).
+    This is distinct from the user's business data directory.
+    """
+    if "XDG_DATA_HOME" in os.environ:
+        cocli_app_data_dir = Path(os.environ["XDG_DATA_HOME"]).expanduser() / "cocli"
+    else:
+        if platform.system() == "Windows":
+            cocli_app_data_dir = Path(os.environ.get("LOCALAPPDATA", Path.home() / "AppData" / "Local")) / "cocli"
+        elif platform.system() == "Darwin": # macOS
+            cocli_app_data_dir = Path.home() / "Library" / "Application Support" / "cocli"
+        else: # Linux and other Unix-like
+            cocli_app_data_dir = Path.home() / ".local" / "share" / "cocli"
+
+    cocli_app_data_dir.mkdir(parents=True, exist_ok=True)
+    return cocli_app_data_dir
+
 def get_cocli_base_dir() -> Path:
     """
-    Determines the root data directory for cocli.
+    Determines the root data directory for cocli user business data (companies, people, campaigns).
     Order of precedence: COCLI_DATA_HOME (env var) > data.home (config file) > XDG_DATA_HOME (env var) > default.
     """
     # 1. Environment variable
@@ -33,15 +51,15 @@ def get_cocli_base_dir() -> Path:
 
     # 3. XDG_DATA_HOME
     if "XDG_DATA_HOME" in os.environ:
-        cocli_base_dir = Path(os.environ["XDG_DATA_HOME"]).expanduser() / "cocli"
+        cocli_base_dir = Path(os.environ["XDG_DATA_HOME"]).expanduser() / "cocli_data"
     else:
         # 4. Default location based on OS
         if platform.system() == "Windows":
-            cocli_base_dir = Path(os.environ.get("LOCALAPPDATA", Path.home() / "AppData" / "Local")) / "cocli"
+            cocli_base_dir = Path(os.environ.get("LOCALAPPDATA", Path.home() / "AppData" / "Local")) / "cocli_data"
         elif platform.system() == "Darwin": # macOS
-            cocli_base_dir = Path.home() / "Library" / "Application Support" / "cocli"
+            cocli_base_dir = Path.home() / "Library" / "Application Support" / "cocli_data"
         else: # Linux and other Unix-like
-            cocli_base_dir = Path.home() / ".local" / "share" / "cocli"
+            cocli_base_dir = Path.home() / ".local" / "share" / "cocli_data"
 
     cocli_base_dir.mkdir(parents=True, exist_ok=True)
 
