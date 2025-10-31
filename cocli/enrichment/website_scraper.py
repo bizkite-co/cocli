@@ -105,6 +105,8 @@ class WebsiteScraper:
                 await self._navigate_and_scrape(page, website_data, ["About Us", "About"], "About Us", self._scrape_page, context, debug)
             if not website_data.contact_url:
                 await self._navigate_and_scrape(page, website_data, ["Contact Us", "Contact"], "Contact Us", self._scrape_contact_page, context, debug)
+            if not website_data.contact_url:
+                await self._navigate_and_scrape(page, website_data, ["Our Team", "Team"], "Our Team", self._scrape_contact_page, context, debug)
             if not website_data.services:
                 await self._navigate_and_scrape(page, website_data, ["Services"], "Services", self._scrape_services_page, context, debug)
             if not website_data.products:
@@ -231,17 +233,17 @@ class WebsiteScraper:
         link = page.locator(link_selector).first
 
         try:
-            if not await link.is_visible(timeout=1000):
+            if not await link.is_visible(timeout=5000):
                 logger.info(f"Link for {page_type} not immediately visible, trying to find a hoverable parent.")
                 # A common pattern is that the `li` containing the `a` is the hover target
                 hover_target = link.locator('xpath=..')
                 if hover_target:
-                    await hover_target.hover(timeout=1000)
+                    await hover_target.hover(timeout=5000)
         except Exception:
             logger.info(f"Could not hover to find link for {page_type}. Will try to proceed anyway.")
 
         try:
-            url = await link.get_attribute("href", timeout=1000)
+            url = await link.get_attribute("href", timeout=5000)
             if url:
                 url = urljoin(page.url, url)
                 if url and url != page.url:

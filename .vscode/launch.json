@@ -26,6 +26,27 @@
             }
         },
         {
+            "name": "Python: Launch cocli campaign prospects enrich",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/.venv/bin/cocli",
+            "python": "${workspaceFolder}/.venv/bin/python",
+            "args": [
+                "campaign",
+                "prospects",
+                "enrich",
+                "--runner",
+                "local",
+                "--workers",
+                "1"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "env": {
+                "PYTHONPATH": "${workspaceFolder}"
+            }
+        },
+        {
             "name": "Python: Launch Custom Program with Args",
             "type": "python",
             "request": "launch",
@@ -60,7 +81,7 @@
                 "--debug"
             ],
             "console": "integratedTerminal",
-            "justMyCode": true 
+            "justMyCode": true
         },
         {
             "name": "Python: Behave Test",

@@ -1,3 +1,4 @@
+
 import typer
 import csv
 import logging
@@ -7,8 +8,8 @@ import asyncio
 import httpx
 import yaml
 from rich.console import Console
-
 from pydantic import ValidationError
+from playwright.async_api import async_playwright, Browser
 
 from cocli.models.company import Company
 from cocli.models.hubspot import HubspotContactCsv
@@ -18,10 +19,13 @@ from cocli.compilers.website_compiler import WebsiteCompiler
 from cocli.core.utils import slugify
 from cocli.core.enrichment_service_utils import ensure_enrichment_service_ready
 from cocli.core.logging_config import setup_file_logging
+from cocli.core.enrichment import enrich_company_website
+
 
 app = typer.Typer(no_args_is_help=True)
 
 logger = logging.getLogger(__name__)
+
 
 def get_prospects(campaign: str, with_email: bool, city: Optional[str], state: Optional[str]) -> Iterator[Company]:
     """Yields companies that match the filter criteria."""
@@ -34,6 +38,7 @@ def get_prospects(campaign: str, with_email: bool, city: Optional[str], state: O
             if state and company.state != state:
                 continue
             yield company
+
 
 @app.command("to-hubspot-csv")
 def to_hubspot_csv(
@@ -80,7 +85,7 @@ def to_hubspot_csv(
     print(f"Exported {exported_count} prospects to {output_file}")
 
 
-async def enrich_prospect(client: httpx.AsyncClient, prospect: Company, force: bool, ttl_days: int, console: Console) -> None:
+async def enrich_prospect_docker(client: httpx.AsyncClient, prospect: Company, force: bool, ttl_days: int, console: Console) -> None:
     logger.info(f"Attempting to enrich domain: {prospect.domain} for company: {prospect.name}")
     try:
         logger.debug(f"Sending enrichment request for domain: {prospect.domain}")
@@ -129,13 +134,70 @@ async def enrich_prospect(client: httpx.AsyncClient, prospect: Company, force: b
         logger.error(f"Unexpected Error enriching {prospect.name}: {e}")
         console.print(f"  -> Error enriching {prospect.name}: {e}")
 
+
+async def enrich_prospect_local(
+    prospect: Company,
+    force: bool,
+    ttl_days: int,
+    console: Console,
+    browser: Browser,
+    semaphore: asyncio.Semaphore,
+) -> None:
+    """Enriches a single prospect locally using Playwright."""
+    async with semaphore:
+        logger.info(f"Attempting to enrich domain: {prospect.domain} for company: {prospect.name}")
+        try:
+            website_data = await enrich_company_website(
+                browser=browser,
+                company=prospect,
+                force=force,
+                ttl_days=ttl_days,
+                debug=False,  # Assuming debug is false for batch processing
+            )
+            logger.debug(f"Received website_data for {prospect.domain}: {website_data}")
+
+            if website_data and website_data.email:
+                logger.info(f"  -> Found email for {prospect.name}: {website_data.email}")
+                if prospect.slug is None:
+                    logger.warning(f"Skipping enrichment data save for company {prospect.name} due to missing slug.")
+                    return
+                company_dir = get_companies_dir() / prospect.slug
+                enrichment_dir = company_dir / "enrichments"
+                website_md_path = enrichment_dir / "website.md"
+                website_data.associated_company_folder = company_dir.name
+                enrichment_dir.mkdir(parents=True, exist_ok=True)
+                with open(website_md_path, "w") as f:
+                    f.write("---")
+                    yaml.dump(
+                        website_data.model_dump(exclude_none=True),
+                        f,
+                        sort_keys=False,
+                        default_flow_style=False,
+                        allow_unicode=True,
+                    )
+                    f.write("---")
+                compiler = WebsiteCompiler()
+                compiler.compile(company_dir)
+            else:
+                console.print(f"  -> No new information found for {prospect.name}")
+        except Exception as e:
+            logger.error(f"Unexpected Error enriching {prospect.name}: {e}", exc_info=True)
+            console.print(f"  -> Error enriching {prospect.name}: {e}")
+
+
 @app.command("enrich")
 def enrich_prospects_command(
     force: Annotated[bool, typer.Option("--force", "-f", help="Force re-enrichment even if fresh data exists.")] = False,
     ttl_days: Annotated[int, typer.Option("--ttl-days", help="Time-to-live for cached data in days.")] = 30,
+    runner: Annotated[str, typer.Option(help="Choose the execution runner.")] = "docker",
+    workers: Annotated[int, typer.Option(help="Number of concurrent workers for local runner.")] = 4,
 ) -> None:
     """
     Enriches prospects for the current campaign with website data.
+
+    You can choose between two runners:
+    - `docker`: Uses the enrichment service running in a Docker container. (Default)
+    - `local`: Runs the enrichment process locally using Playwright.
     """
     campaign_name = get_campaign()
     if not campaign_name:
@@ -144,21 +206,51 @@ def enrich_prospects_command(
 
     console = Console()
     setup_file_logging(f"{campaign_name}-prospects-enrich", console_level=logging.INFO, file_level=logging.DEBUG)
-    ensure_enrichment_service_ready(console)
-    console.print(f"Enriching prospects for campaign: [bold]{campaign_name}[/bold]")
 
     prospects = list(get_prospects(campaign_name, with_email=False, city=None, state=None))
-    console.print(f"Found {len(prospects)} prospects to enrich.")
+    console.print(f"Found {len(prospects)} prospects to enrich using {runner} runner.")
 
-    async def main() -> None:
+    async def main_docker() -> None:
+        ensure_enrichment_service_ready(console)
+        console.print(f"Enriching prospects for campaign: [bold]{campaign_name}[/bold]")
         async with httpx.AsyncClient() as client:
             tasks = []
             for prospect in prospects:
                 if prospect.domain:
-                    tasks.append(enrich_prospect(client, prospect, force, ttl_days, console))
+                    tasks.append(enrich_prospect_docker(client, prospect, force, ttl_days, console))
             await asyncio.gather(*tasks)
 
-    asyncio.run(main())
+    async def main_local() -> None:
+        console.print(f"Enriching prospects for campaign: [bold]{campaign_name}[/bold] with {workers} workers.")
+        semaphore = asyncio.Semaphore(workers)
+        async with async_playwright() as p:
+            browser = await p.chromium.launch(headless=True)
+            try:
+                tasks = []
+                for prospect in prospects:
+                    if prospect.domain:
+                        tasks.append(
+                            enrich_prospect_local(
+                                prospect=prospect,
+                                force=force,
+                                ttl_days=ttl_days,
+                                console=console,
+                                browser=browser,
+                                semaphore=semaphore,
+                            )
+                        )
+                await asyncio.gather(*tasks)
+            finally:
+                await browser.close()
+
+    if runner == "docker":
+        asyncio.run(main_docker())
+    elif runner == "local":
+        asyncio.run(main_local())
+    else:
+        console.print(f"[bold red]Invalid runner: {runner}. Please choose 'docker' or 'local'.[/bold red]")
+        raise typer.Exit(1)
+
 
 @app.command("tag-from-csv")
 def tag_prospects_from_csv() -> None:
@@ -205,3 +297,4 @@ def tag_prospects_from_csv() -> None:
                     console.print(f"Tagged {domain} with campaign '{campaign_name}'")
 
     console.print(f"[bold green]Tagging complete. Updated {updated_count} companies.[/bold green]")
+

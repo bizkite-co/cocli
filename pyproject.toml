@@ -27,7 +27,7 @@ dependencies = [
     "geopy",
     "fastapi",
     "uvicorn[standard]",
-    "textual",
+    "textual"
 ]
 
 [project.scripts]
