@@ -2,6 +2,42 @@
     "version": "0.2.0",
     "configurations": [
         {
+            "name": "Python: Launch Current File",
+            "type": "python",
+            "request": "launch",
+            "program": "${file}",
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "env": {
+                "PYTHONPATH": "${workspaceFolder}"
+            }
+        },
+        {
+            "name": "Python: Launch cocli campaign prospects to-hubspot-csv",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/.venv/bin/cocli",
+            "python": "${workspaceFolder}/.venv/bin/python",
+            "args": ["campaign", "prospects", "to-hubspot-csv"],
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "env": {
+                "PYTHONPATH": "${workspaceFolder}"
+            }
+        },
+        {
+            "name": "Python: Launch Custom Program with Args",
+            "type": "python",
+            "request": "launch",
+            "program": "${workspaceFolder}/path/to/your_script.py",
+            "args": ["--param1", "value1", "--param2", "value2"],
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "env": {
+                "PYTHONPATH": "${workspaceFolder}"
+            }
+        },
+        {
             "name": "cocli fz",
             "type": "python",
             "request": "launch",
@@ -24,7 +60,7 @@
                 "--debug"
             ],
             "console": "integratedTerminal",
-            "justMyCode": false // Set to false to debug into installed packages if needed
+            "justMyCode": true 
         },
         {
             "name": "Python: Behave Test",
@@ -58,10 +94,7 @@
             "python": "${workspaceFolder}/.venv/bin/python",
             "module": "cocli.main",
             "args": [
-                "enrich-shopify-data",
-                // "--debug",
-                // "--headed",
-                // "--devtools"
+                "enrich-shopify-data"
             ],
             "console": "integratedTerminal",
             "justMyCode": false
