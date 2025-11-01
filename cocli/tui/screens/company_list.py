@@ -19,7 +19,18 @@ class CompanyList(Screen[None]):
         ("up", "cursor_up", "Cursor Up"),
         ("down", "cursor_down", "Cursor Down"),
         ("escape", "app.pop_screen", "Back to main menu"),
+        ("h", "app.go_back", "Back"),
+        ("l", "select_item", "Select"),
     ]
+
+    def action_select_item(self) -> None:
+        logger.debug("l key pressed in CompanyList, calling handle_company_selection directly.")
+        list_view = self.query_one("#company_list_view", ListView)
+        if list_view.highlighted_child and list_view.index is not None:
+            dummy_event = ListView.Selected(list_view, list_view.highlighted_child, list_view.index)
+            self.handle_company_selection(dummy_event)
+        else:
+            logger.debug("No item highlighted or index is None in ListView when l was pressed.")
 
     class CompanySelected(Message):
         """Posted when a company is selected from the list."""
@@ -83,6 +94,10 @@ class CompanyList(Screen[None]):
         else:
             logger.debug("Selected item has no ID.")
 
+    @on(ListView.Highlighted)
+    def on_list_view_highlighted(self, event: ListView.Highlighted) -> None:
+        logger.debug(f"Highlighted item: {event.item}")
+
     def on_key(self, event: events.Key) -> None:
         if event.key == "enter":
             logger.debug("Enter key pressed in CompanyList, calling handle_company_selection directly.")
@@ -94,10 +109,6 @@ class CompanyList(Screen[None]):
                 self.handle_company_selection(dummy_event)
             else:
                 logger.debug("No item highlighted or index is None in ListView when Enter was pressed.")
-
-    @on(ListView.Highlighted)
-    def on_list_view_highlighted(self, event: ListView.Highlighted) -> None:
-        logger.debug(f"Highlighted item: {event.item}")
 
 
 
