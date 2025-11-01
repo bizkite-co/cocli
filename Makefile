@@ -33,6 +33,9 @@ install: ## Install development dependencies using uv
 test: install ## Run tests using pytest
 	source $(VENV_DIR)/bin/activate && pytest -s tests/
 
+test-tui: install ## Run TUI test with names
+	source $(VENV_DIR)/bin/activate && pytest -v tests/tui
+
 lint: install ## Run ruff and mypy to perform static type checking
 	-$(VENV_DIR)/bin/ruff check .
 	-$(VENV_DIR)/bin/python -m mypy --config-file pyproject.toml .
