@@ -1,11 +1,7 @@
+import logging
 import toml
-import logging
-
-import logging
 
 from textual.app import App
-from textual.binding import Binding
-from textual.widgets import ListView
 from textual.binding import Binding
 from textual.widgets import ListView
 
@@ -19,7 +15,7 @@ from .screens.company_detail import CompanyDetailScreen
 from ..application.company_service import get_company_details_for_view
 from ..models.campaign import Campaign
 from ..core.config import get_campaign_dir, create_default_config_file
-from ..core import logging_config # New import
+from ..core import logging_config
 from .campaign_app import CampaignScreen
 
 logger = logging.getLogger(__name__)
