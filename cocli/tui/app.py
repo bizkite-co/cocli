@@ -69,6 +69,12 @@ class CocliApp(App[None]):
             list_view = self.screen.query_one(ListView)
             list_view.action_cursor_down()
 
+    def action_cursor_up(self) -> None:
+        """Move cursor up in the current ListView."""
+        if isinstance(self.screen, (MainMenu, PersonList, EtlEnrichmentMenu, CompanyList, CampaignSelection)):
+            list_view = self.screen.query_one(ListView)
+            list_view.action_cursor_up()
+
 
 
     def on_person_list_person_selected(self, message: PersonList.PersonSelected) -> None:

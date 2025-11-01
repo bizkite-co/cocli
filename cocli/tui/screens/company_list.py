@@ -23,14 +23,17 @@ class CompanyList(Screen[None]):
         ("l", "select_item", "Select"),
     ]
 
-    def action_select_item(self) -> None:
-        logger.debug("l key pressed in CompanyList, calling handle_company_selection directly.")
+    def _select_highlighted_item(self) -> None:
         list_view = self.query_one("#company_list_view", ListView)
         if list_view.highlighted_child and list_view.index is not None:
             dummy_event = ListView.Selected(list_view, list_view.highlighted_child, list_view.index)
             self.handle_company_selection(dummy_event)
         else:
-            logger.debug("No item highlighted or index is None in ListView when l was pressed.")
+            logger.debug("No item highlighted or index is None in ListView when selection was attempted.")
+
+    def action_select_item(self) -> None:
+        logger.debug("l key pressed in CompanyList, calling _select_highlighted_item.")
+        self._select_highlighted_item()
 
     class CompanySelected(Message):
         """Posted when a company is selected from the list."""
@@ -100,15 +103,8 @@ class CompanyList(Screen[None]):
 
     def on_key(self, event: events.Key) -> None:
         if event.key == "enter":
-            logger.debug("Enter key pressed in CompanyList, calling handle_company_selection directly.")
-            # Manually create a ListView.Selected event to pass to the handler
-            # This is a workaround if the ListView is not emitting the event itself
-            list_view = self.query_one("#company_list_view", ListView)
-            if list_view.highlighted_child and list_view.index is not None:
-                dummy_event = ListView.Selected(list_view, list_view.highlighted_child, list_view.index)
-                self.handle_company_selection(dummy_event)
-            else:
-                logger.debug("No item highlighted or index is None in ListView when Enter was pressed.")
+            logger.debug("Enter key pressed in CompanyList, calling _select_highlighted_item.")
+            self._select_highlighted_item()
 
 
 
