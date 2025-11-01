@@ -1,7 +1,11 @@
 import toml
 import logging
 
+import logging
+
 from textual.app import App
+from textual.binding import Binding
+from textual.widgets import ListView
 from textual.binding import Binding
 from textual.widgets import ListView
 
@@ -30,7 +34,20 @@ class CocliApp(App[None]):
         Binding("q", "quit", "Quit", show=True),
         Binding("j", "cursor_down", "Down", show=False),
         Binding("k", "cursor_up", "Up", show=False),
+        Binding("h", "go_back", "Back"),
+        Binding("l", "select_item", "Select"),
     ]
+
+    def action_go_back(self) -> None:
+        logger.debug("action_go_back called")
+        self.pop_screen()
+
+    def action_select_item(self) -> None:
+        logger.debug("action_select_item called")
+        try:
+            self.screen.query_one(ListView).action_select_cursor()
+        except Exception as e:
+            logger.error(f"Error selecting item: {e}")
 
     def on_mount(self) -> None:
         create_default_config_file()
