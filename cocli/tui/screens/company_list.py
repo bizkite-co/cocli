@@ -69,7 +69,6 @@ class CompanyList(Screen[None]):
         list_view.action_cursor_down()
 
 
-    @on(ListView.Selected)
     def handle_company_selection(self, event: ListView.Selected) -> None:
         """Handle the selection of a company in the list."""
         logger.debug(f"Company selection event received for item: {event.item}")
@@ -90,12 +89,11 @@ class CompanyList(Screen[None]):
             # Manually create a ListView.Selected event to pass to the handler
             # This is a workaround if the ListView is not emitting the event itself
             list_view = self.query_one("#company_list_view", ListView)
-            if list_view.highlighted_child:
-                # Create a dummy event with the highlighted item
+            if list_view.highlighted_child and list_view.index is not None:
                 dummy_event = ListView.Selected(list_view, list_view.highlighted_child, list_view.index)
                 self.handle_company_selection(dummy_event)
             else:
-                logger.debug("No item highlighted in ListView when Enter was pressed.")
+                logger.debug("No item highlighted or index is None in ListView when Enter was pressed.")
 
     @on(ListView.Highlighted)
     def on_list_view_highlighted(self, event: ListView.Highlighted) -> None:

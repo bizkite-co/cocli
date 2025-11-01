@@ -1,17 +1,17 @@
 import logging
+from typing import Dict, Optional, Any
 
 from textual.screen import Screen
-from textual.widgets import Header, Footer, Static
-from textual.containers import VerticalScroll, Horizontal
+from textual.widgets import Header, Footer, DataTable, Static
+from textual.containers import VerticalScroll
 from textual.app import ComposeResult
 
-from rich.console import Console as RichConsole
+from rich.text import Text
 
-from typing import Dict, Any, Optional
-
-from cocli.models.company import Company
-from cocli.models.website import Website
-from cocli.renderers.company_view import _render_company_details, _render_contacts_from_data, _render_meetings_from_data, _render_notes_from_data
+from ...models.company import Company
+from ...models.website import Website
+from ...models.person import Person
+from ...models.note import Note
 
 logger = logging.getLogger(__name__)
 
@@ -19,6 +19,8 @@ class CompanyDetailScreen(Screen[None]):
     BINDINGS = [
         ("escape", "app.pop_screen", "Back to list"),
         ("q", "app.pop_screen", "Back to list"),
+        ("j", "cursor_down", "Down"),
+        ("k", "cursor_up", "Up"),
     ]
 
     def __init__(self, company_data: Dict[str, Any], name: Optional[str] = None, id: Optional[str] = None, classes: Optional[str] = None):
@@ -27,48 +29,106 @@ class CompanyDetailScreen(Screen[None]):
         logger.debug(f"CompanyDetailScreen initialized with data for: {company_data.get('company', {}).get('name')}")
 
     def compose(self) -> ComposeResult:
-        logger.debug("CompanyDetailScreen compose method called")
+        yield Header()
+        with VerticalScroll():
+            yield Static("Company Details", classes="header")
+            yield self._render_company_details()
+
+            yield Static("Contacts", classes="header")
+            yield self._render_contacts()
+
+            yield Static("Meetings", classes="header")
+            yield self._render_meetings()
+
+            yield Static("Recent Notes", classes="header")
+            yield self._render_notes()
+        yield Footer()
+
+    def _render_company_details(self) -> DataTable[Any]:
+        table: DataTable[Any] = DataTable()
+        table.add_column("Attribute")
+        table.add_column("Value")
+
         company = Company.model_validate(self.company_data["company"])
         tags = self.company_data["tags"]
         content = self.company_data["content"]
         website_data = Website.model_validate(self.company_data["website_data"]) if self.company_data["website_data"] else None
+
+        if content.strip():
+            table.add_row("Content", content.strip())
+
+        for key, value in company.model_dump().items():
+            if value is None or key == "name":
+                continue
+
+            key_str = key.replace('_', ' ').title()
+            if key == "domain" and isinstance(value, str):
+                table.add_row(key_str, Text(value, style=f"link http://{value}"))
+            elif key == "phone_number" and isinstance(value, str):
+                table.add_row(key_str, f"{value} (p to call)")
+            else:
+                table.add_row(key_str, str(value))
+
+        if tags:
+            table.add_row("Tags", ", ".join(tags))
+
+        if website_data and website_data.services:
+            table.add_row("Services", ", ".join(website_data.services))
+
+        return table
+
+    def _render_contacts(self) -> DataTable[Any]:
+        table: DataTable[Any] = DataTable()
+        table.add_column("Name")
+        table.add_column("Role")
+        table.add_column("Email")
+        table.add_column("Phone")
+
         contacts_data = self.company_data["contacts"]
+        if not contacts_data:
+            return DataTable()
+
+        for contact_dict in contacts_data:
+            person = Person.model_validate(contact_dict)
+            table.add_row(person.name, person.role, person.email, person.phone)
+
+        return table
+
+    def _render_meetings(self) -> DataTable[Any]:
+        table: DataTable[Any] = DataTable()
+        table.add_column("Date")
+        table.add_column("Time")
+        table.add_column("Title")
+
         meetings_data = self.company_data["meetings"]
+        if not meetings_data:
+            return DataTable()
+
+        for meeting_dict in meetings_data:
+            table.add_row(meeting_dict["datetime_utc"], "", meeting_dict["title"])
+
+        return table
+
+    def _render_notes(self) -> DataTable[Any]:
+        table: DataTable[Any] = DataTable()
+        table.add_column("Date")
+        table.add_column("Title")
+        table.add_column("Content")
+
         notes_data = self.company_data["notes"]
+        if not notes_data:
+            return DataTable()
 
-        rich_console = RichConsole(force_terminal=True, width=self.app.size.width - 4) # Adjust width for panel padding
+        for note_dict in notes_data:
+            note = Note.model_validate(note_dict)
+            table.add_row(note.timestamp.strftime("%Y-%m-%d %H:%M"), note.title, note.content)
 
-        # Render Rich panels using the refactored renderer functions
-        details_panel = _render_company_details(company, tags, content, website_data)
-        contacts_panel = _render_contacts_from_data(contacts_data)
-        meetings_panel, _ = _render_meetings_from_data(meetings_data) # meeting_map is not used in TUI rendering directly
-        notes_panel = _render_notes_from_data(notes_data)
+        return table
 
-        # Convert Rich renderables to Textual Static widgets
-        # This is a workaround as Textual does not directly support RichPanel in compose
-        # We render the RichPanel to a string and then display it in a Static widget
-        
-        with rich_console.capture() as capture:
-            rich_console.print(details_panel)
-        details_static = Static(capture.get(), expand=True)
+    def action_cursor_down(self) -> None:
+        # This is a placeholder for navigating between widgets
+        self.focus_next()
 
-        with rich_console.capture() as capture:
-            rich_console.print(contacts_panel)
-        contacts_static = Static(capture.get(), expand=True)
-
-        with rich_console.capture() as capture:
-            rich_console.print(meetings_panel)
-        meetings_static = Static(capture.get(), expand=True)
-
-        with rich_console.capture() as capture:
-            rich_console.print(notes_panel)
-        notes_static = Static(capture.get(), expand=True)
-
-        yield Header()
-        with VerticalScroll():
-            with Horizontal():
-                yield details_static
-                yield contacts_static
-            yield meetings_static
-            yield notes_static
-        yield Footer()
+    def action_cursor_up(self) -> None:
+        # This is a placeholder for navigating between widgets
+        self.focus_previous()

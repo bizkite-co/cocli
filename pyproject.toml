@@ -73,6 +73,7 @@ exclude = [
     "cocli_data",
     "cocli.egg-info",
     "data",
+    "cdk_scraper_deployment",
 ]
 follow_imports = "normal"
 

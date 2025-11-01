@@ -54,3 +54,19 @@ However, in our case, it seems that the `ListView` was not emitting the `ListVie
 By adding the `on_key` handler and manually triggering the selection logic, we effectively bypassed the `ListView`'s internal event emission mechanism. This is a valid workaround, and it has the added benefit of making the selection logic more explicit and easier to debug.
 
 In the future, if we encounter a similar issue, we should not assume that Textual's event handling will "just work". We should start by adding logging to confirm that the events are being emitted and received as expected.
+
+## Dynamically Created Lists and Event Handling
+
+A key learning from this debugging session is the potential for unexpected behavior when dealing with dynamically created lists in Textual. Our initial assumption was that a `ListView`, even when populated dynamically, would consistently emit `ListView.Selected` events when an item was chosen. However, this proved not to be the case.
+
+It appears that the `ListView` in our `CompanyList` screen was not emitting the `ListView.Selected` event at all, despite items being added and user interaction simulating selection. This behavior is reminiscent of how dynamically created DOM elements in JavaScript often require events to be explicitly reattached or delegated.
+
+While the exact internal mechanism within Textual that caused this issue is not fully clear, the implication is significant:
+
+*   **Caution with Dynamic `ListView`s:** When working with `ListView`s that are populated or updated dynamically, do not assume that standard selection events will automatically fire.
+*   **Consider Alternatives:** For lists where items change frequently or are generated dynamically, Textual offers alternatives that might be more robust:
+    *   **`DataTable`:** As suggested by online resources, `DataTable` might be a more suitable widget for managing dynamic data, as it's designed for frequently changing items.
+    *   **Custom Widgets:** For highly specific dynamic list behaviors, creating a custom widget based on Textual's lower-level API might be necessary.
+*   **Explicit Event Handling:** If a `ListView` is not emitting expected events, a pragmatic workaround, as demonstrated in our solution, is to explicitly handle key presses (e.g., "Enter") and manually trigger the desired selection logic.
+
+This reinforces the principle of "Observe, Don't Assume" and highlights the importance of understanding the nuances of event handling in dynamic UI components.

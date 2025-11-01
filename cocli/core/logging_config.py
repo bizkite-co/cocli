@@ -20,7 +20,7 @@ def setup_file_logging(command_name: str, console_level: int = logging.INFO, fil
         #     log_file.unlink()
     else:
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        log_file = log_dir / f"{command_name}.log"
+        log_file = log_dir / f"{timestamp}_{command_name}.log"
 
     # Get the root logger
     root_logger = logging.getLogger()
@@ -48,5 +48,5 @@ def setup_file_logging(command_name: str, console_level: int = logging.INFO, fil
         root_logger.addHandler(console_handler)
 
     logger = logging.getLogger(__name__)
-    print(f"Detailed logs for this run are being saved to: {log_file}")
+    logger.info(f"Detailed logs for this run are being saved to: {log_file}")
 
