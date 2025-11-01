@@ -24,6 +24,27 @@ The project is built using `typer` for the CLI, `pydantic` for data modeling, an
     ```bash
     source .venv/bin/activate
     ```
+### Changing Code
+
+* Use a principle of step-and-test
+    * Make your plan a sequence of small tests, each of which can be tested in some way.
+        * Estimate the biggest step that you are certain that can be completed.
+        * If it fails, readjust your estimate and start over from the beggining with a smaller step. Your first attempt was too big of a leap.
+    * Implement the first step as a testable change that you think will succeed.
+        * You can run `make lint` after each code change and before you expect the code to work if you need to check for any syntax or attribute errors.
+    * Once you have implemented the change, `make test`.
+        * You might not even have created a unit test to test your change yet, but you want to make sure the app still builds and the prior tests still all pass. You want to make sure you haven't broken anything. "First, do no harm."
+        * If your test fails, think about why that happened. 
+            * Think about how what you thought you knew was wrong.
+            * Make a best guess about an improvement. 
+            * Consider ways to reduce the operational length of your step.
+            * Cosider if you have to reset the changes and start of from the begining of where you started.
+            * Begin at the same step.
+        * If your test passes:
+            * Appreciate your achievement. Little victories compose big victories.
+            * Continue to the next step in the plan.
+    * Whether the test passed or failed, you learned something valuable.
+
 
 ### Running Commands
 
