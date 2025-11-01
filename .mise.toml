@@ -10,6 +10,9 @@ test = { run = "pytest -s tests/", depends = ["install"] }
 lint = { run = "mypy --config-file pyproject.toml .", depends = ["install"] }
 build = { run = "python -m build", depends = ["install"] }
 clean = "rm -rf ./.venv uv.lock"
+mypy-daemon-start = { run = "mypy --daemon run --config-file pyproject.toml", depends = ["install"] }
+mypy-daemon-stop = { run = "mypy --daemon stop" }
+mypy-daemon-status = { run = "mypy --daemon status" }
 import-turboship = { run = "./.venv/bin/cocli import-turboship /home/mstouffer/.local/share/cocli_data/scraped_data/turboship/customers/customers.csv /home/mstouffer/.local/share/cocli_data/scraped_data/turboship/customers/customer_addresses.csv", depends = ["install"] }
 render-kml = { run = "./.venv/bin/cocli render kml", depends = ["install"] }
 scrape-prospects = { run = "./.venv/bin/cocli campaign scrape-prospects", depends = ["install"] }

@@ -1,7 +1,7 @@
 import yaml
 import logging
 import typer
-from typing import Optional, Any, Dict
+from typing import Any, Dict
 from pathlib import Path
 import subprocess
 import webbrowser
@@ -26,6 +26,7 @@ from ..renderers.company_view import display_company_view
 from ..core.exclusions import ExclusionManager
 from ..commands.add_meeting import _add_meeting_logic
 from ..core.website_domain_csv_manager import WebsiteDomainCsvManager
+from ..application.company_service import get_company_details_for_view # New Import
 import httpx
 from ..compilers.website_compiler import WebsiteCompiler
 
@@ -58,48 +59,19 @@ def view_company(
 def _interactive_view_company(company_slug: str) -> None:
     logger = logging.getLogger(__name__)
     logger.debug(f"Starting _interactive_view_company for slug: {company_slug}")
-    companies_dir = get_companies_dir()
-
-    selected_company_dir = companies_dir / company_slug
-
-    if not selected_company_dir.exists():
-        logger.error(f"Company directory for slug '{company_slug}' not found.")
-        raise typer.Exit(code=1)
-
-    logger.debug("Calling Company.from_directory")
-    company = Company.from_directory(selected_company_dir)
-    if not company:
-        logger.error(f"Could not load company data from {selected_company_dir}")
-        raise typer.Exit(code=1)
-    assert company is not None # Assert that company is not None
-
-    if not company.slug:
-        company.slug = slugify(company.name)
-
-    meeting_map: Dict[int, Path] = {}
-
-    website_data: Optional[Website] = None
-    if company.slug:
-        enrichment_file = get_companies_dir() / company.slug / "enrichments" / "website.md"
-        if enrichment_file.exists():
-            with open(enrichment_file, 'r') as f:
-                content = f.read()
-                if content.startswith("---") and "---" in content[3:]:
-                    frontmatter_str, _ = content.split("---", 2)[1:]
-                    try:
-                        website_data_dict = yaml.safe_load(frontmatter_str) or {}
-                        website_data = Website(**website_data_dict)
-                    except yaml.YAMLError:
-                        pass # ignore errors
 
     while True:
-        assert company is not None # Ensure company is not None for mypy
-        meetings_dir = selected_company_dir / "meetings"
-        _, meeting_map = _render_meetings(meetings_dir)
-        display_company_view(console, company, website_data, meeting_map)
+        company_data = get_company_details_for_view(company_slug)
+        if not company_data:
+            logger.error(f"Company data for slug '{company_slug}' not found.")
+            raise typer.Exit(code=1)
+
+        company = Company.model_validate(company_data["company"])
+        display_company_view(console, company_data)
         console.print("\n[bold yellow]Press 'a' to add meeting, 'c' for contact menu, 't' to add tag, 'T' to remove tag, 'e' to edit _index.md, 'E' to add email, 'w' to open website, 'p' to call, 'm' to select meeting, 'X' to exclude, 'f' to go back to fuzzy finder, 'r' to re-enrich, 'n' to add note, 'N' to edit note, 'q' to quit.[/bold yellow]")
         char = _getch()
 
+        selected_company_dir = get_companies_dir() / company_slug
         index_path = selected_company_dir / "_index.md"
         frontmatter_data = _load_frontmatter(index_path)
 
@@ -133,12 +105,13 @@ def _interactive_view_company(company_slug: str) -> None:
 
             reason = typer.prompt("Reason for exclusion")
             logger.debug(f"Calling from_directory with: {selected_company_dir}")
-            company = Company.from_directory(selected_company_dir)
-            if company is None: # Handle the case where company is None after re-loading
+            # Reload company data to ensure it's up-to-date after potential external changes
+            reloaded_company = Company.from_directory(selected_company_dir)
+            if reloaded_company is None:
                 console.print("[bold red]Error: Could not reload company data after exclusion. Press any key to continue.[/bold red]")
                 _getch()
                 continue
-            assert company is not None # Assert that company is not None after re-loading
+            company = reloaded_company # Update the company object in the current scope
 
             if company.domain: # Now company is guaranteed not to be None
                 exclusion_manager = ExclusionManager(campaign=campaign)
@@ -194,45 +167,40 @@ def _interactive_view_company(company_slug: str) -> None:
             _getch() # Wait for a key press to clear the message
         elif char == 'm':
             console.print("\n[bold green]Select a meeting by number:[/bold green]")
-            meetings_dir = selected_company_dir / "meetings"
-            meeting_files = []
-            if meetings_dir.exists():
-                meeting_files = sorted([f for f in meetings_dir.iterdir() if f.is_file() and f.suffix == ".md"])
+            meetings_data = company_data["meetings"]
+            if meetings_data:
+                # Reconstruct meeting_map from meetings_data for selection
+                meeting_map = {i + 1: Path(m["file_path"]) for i, m in enumerate(meetings_data)}
+                
+                console.print("\n[bold blue]Available Meetings:[/bold blue]")
+                for i, m in enumerate(meetings_data, 1):
+                    # Rewritten f-string to avoid nested quotes issue
+                    console.print(f"  [bold green]{i}.[/bold green] {m['title']} ({datetime.datetime.fromisoformat(m['datetime_utc']).strftime('%Y-%m-%d %H:%M')})")
 
-            if not meeting_files:
+                try:
+                    meeting_num_str = typer.prompt("Enter meeting number")
+                    meeting_num = int(meeting_num_str)
+                    selected_meeting_file = meeting_map.get(meeting_num)
+                    if selected_meeting_file:
+                        console.print(f"\n[bold green]Opening meeting: {selected_meeting_file.name} in NVim...[/bold green]")
+                        subprocess.run(["nvim", str(selected_meeting_file)], check=True)
+                        console.print("[bold green]Meeting closed. Press any key to continue.[/bold green]")
+                    else:
+                        console.print(f"[bold red]Invalid meeting number: {meeting_num}. Press any key to continue.[/bold red]")
+                    _getch()
+                except ValueError:
+                    console.print("[bold red]Invalid input. Please enter a number. Press any key to continue.[/bold red]")
+                    _getch()
+                except Exception as e:
+                    console.print(f"[bold red]Error opening NVim: {e}. Press any key to continue.[/bold red]")
+                    _getch()
+            else:
                 console.print("[bold yellow]No meetings found for this company. Press any key to continue.[/bold yellow]")
-                _getch()
-                continue
-
-            meeting_map = {}
-            console.print("\n[bold blue]Available Meetings:[/bold blue]")
-            for i, meeting_file in enumerate(meeting_files, 1):
-                console.print(f"  [bold green]{i}.[/bold green] {meeting_file.name}")
-                meeting_map[i] = meeting_file
-
-            try:
-                meeting_num_str = typer.prompt("Enter meeting number")
-                meeting_num = int(meeting_num_str)
-                selected_meeting_file = meeting_map.get(meeting_num)
-                if selected_meeting_file:
-                    console.print(f"\n[bold green]Opening meeting: {selected_meeting_file.name} in NVim...[/bold green]")
-                    subprocess.run(["nvim", str(selected_meeting_file)], check=True)
-                    console.print("[bold green]Meeting closed. Press any key to continue.[/bold green]")
-                else:
-                    console.print(f"[bold red]Invalid meeting number: {meeting_num}. Press any key to continue.[/bold red]")
-                _getch()
-            except ValueError:
-                console.print("[bold red]Invalid input. Please enter a number. Press any key to continue.[/bold red]")
-                _getch()
-            except Exception as e:
-                console.print(f"[bold red]Error opening NVim: {e}. Press any key to continue.[/bold red]")
                 _getch()
         elif char == 'c':
             while True:
                 console.clear()
-                meetings_dir = selected_company_dir / "meetings"
-                _, meeting_map = _render_meetings(meetings_dir)
-                display_company_view(console, company, website_data, meeting_map) # Re-display company view
+                display_company_view(console, company_data) # Re-display company view
                 console.print("\n[bold yellow]Contact Menu:[/bold yellow]")
                 console.print("  [bold green]1.[/bold green] Add New Contact")
                 console.print("  [bold green]2.[/bold green] Add Existing Contact")

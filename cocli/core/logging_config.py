@@ -12,15 +12,15 @@ def setup_file_logging(command_name: str, console_level: int = logging.INFO, fil
     """
     log_dir = get_cocli_app_data_dir() / "logs"
     log_dir.mkdir(exist_ok=True)
-    
+
     if command_name == "tui":
         log_file = log_dir / "tui.log"
         # Overwrite the log file for TUI sessions for predictability
-        if log_file.exists():
-            log_file.unlink()
+        # if log_file.exists():
+        #     log_file.unlink()
     else:
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        log_file = log_dir / f"{timestamp}_{command_name}.log"
+        log_file = log_dir / f"{command_name}.log"
 
     # Get the root logger
     root_logger = logging.getLogger()
@@ -48,5 +48,5 @@ def setup_file_logging(command_name: str, console_level: int = logging.INFO, fil
         root_logger.addHandler(console_handler)
 
     logger = logging.getLogger(__name__)
-    logger.info(f"Detailed logs for this run are being saved to: {log_file}")
+    print(f"Detailed logs for this run are being saved to: {log_file}")
 

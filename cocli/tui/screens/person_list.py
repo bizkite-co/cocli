@@ -45,12 +45,11 @@ class PersonList(Screen[None]):
         list_view = self.query_one("#person_list_view", ListView)
         await list_view.clear()
         for item in self.filtered_fz_items[:20]:
-            list_view.append(ListItem(Label(item["name"]), id=sanitize_id(item["unique_id"])))
+            list_view.append(ListItem(Label(item.name), id=sanitize_id(item.unique_id)))
 
     def on_list_view_selected(self, event: ListView.Selected) -> None:
         """Called when a person is selected from the list."""
         if event.item.id:
-            # We need to extract the original slug from the unique_id
-            # Assuming unique_id is original_slug or original_slug-counter
-            original_slug = event.item.id.split('-')[0] if '-' in event.item.id and not event.item.id.startswith('_') else event.item.id
-            self.post_message(self.PersonSelected(original_slug))
+            selected_item = next((item for item in self.filtered_fz_items if sanitize_id(item.unique_id) == event.item.id), None)
+            if selected_item and selected_item.slug:
+                self.post_message(self.PersonSelected(selected_item.slug))

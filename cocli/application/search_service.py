@@ -1,14 +1,15 @@
-from typing import List, Dict, Any, Optional
+from typing import List, Optional
 from cocli.core.cache import get_cached_items
 from cocli.core.config import get_campaign
 from cocli.core.exclusions import ExclusionManager # Assuming this is part of core logic
+from cocli.models.search import SearchResult
 
 def get_fuzzy_search_results(
     search_query: str = "",
     item_type: Optional[str] = None,
     campaign_name: Optional[str] = None,
     force_rebuild_cache: bool = False
-) -> List[Dict[str, Any]]:
+) -> List[SearchResult]:
     """
     Provides fuzzy search results for companies and people, respecting campaign context.
 
@@ -19,7 +20,7 @@ def get_fuzzy_search_results(
         force_rebuild_cache: Whether to force a rebuild of the fz cache.
 
     Returns:
-        A list of dictionaries, each representing a filtered item.
+        A list of Pydantic SearchResult objects, each representing a filtered item.
     """
     campaign = campaign_name or get_campaign() # Use provided campaign or get from context
     
@@ -67,4 +68,4 @@ def get_fuzzy_search_results(
         item["unique_id"] = unique_id
         final_items.append(item)
 
-    return final_items
+    return [SearchResult(**item) for item in final_items]

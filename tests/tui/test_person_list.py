@@ -5,15 +5,16 @@ from unittest.mock import patch
 
 from cocli.tui.screens.person_list import PersonList
 from cocli.utils.textual_utils import sanitize_id # Re-added for sanitizing expected IDs
+from cocli.models.search import SearchResult
 
 # Mock data that get_filtered_items_from_fz would return for persons
 mock_fz_person_items = [
-    {"name": "Person One", "slug": "person-one", "type": "person", "unique_id": "person-one"},
-    {"name": "Person Two", "slug": "person-two", "type": "person", "unique_id": "person-two"},
-    {"name": "Person Three", "slug": "person-three", "type": "person", "unique_id": "person-three"},
-    {"name": "1st Person", "slug": "1st-person", "type": "person", "unique_id": "_1st-person"},
-    {"name": "Duplicate Person", "slug": "duplicate-person", "type": "person", "unique_id": "duplicate-person"},
-    {"name": "Another Duplicate Person", "slug": "duplicate-person", "type": "person", "unique_id": "duplicate-person-1"},
+    SearchResult(name="Person One", slug="person-one", type="person", unique_id="person-one", tags=[], display=""),
+    SearchResult(name="Person Two", slug="person-two", type="person", unique_id="person-two", tags=[], display=""),
+    SearchResult(name="Person Three", slug="person-three", type="person", unique_id="person-three", tags=[], display=""),
+    SearchResult(name="1st Person", slug="1st-person", type="person", unique_id="_1st-person", tags=[], display=""),
+    SearchResult(name="Duplicate Person", slug="duplicate-person", type="person", unique_id="duplicate-person", tags=[], display=""),
+    SearchResult(name="Another Duplicate Person", slug="duplicate-person", type="person", unique_id="duplicate-person-1", tags=[], display=""),
 ]
 
 class PersonListTestApp(App[None]):
@@ -40,7 +41,7 @@ async def test_person_list_display_people(mock_get_fz_items):
         assert isinstance(list_view, ListView)
 
         # Assert that the ListView contains the expected person unique_ids
-        expected_unique_ids = [sanitize_id(item["unique_id"]) for item in mock_fz_person_items]
+        expected_unique_ids = [sanitize_id(item.unique_id) for item in mock_fz_person_items]
         displayed_items = [item.id for item in list_view.children if isinstance(item, ListItem)]
         
         assert sorted(displayed_items) == sorted(expected_unique_ids)
@@ -55,8 +56,8 @@ async def test_person_list_search_duplicate_slugs(mock_get_fz_items):
         if "duplicate" in search_query:
             # Return only the items matching 'duplicate' when search query is 'duplicate'
             return [
-                {"name": "Duplicate Person", "slug": "duplicate-person", "type": "person", "unique_id": "duplicate-person"},
-                {"name": "Another Duplicate Person", "slug": "duplicate-person", "type": "person", "unique_id": "duplicate-person-1"},
+                SearchResult(name="Duplicate Person", slug="duplicate-person", type="person", unique_id="duplicate-person", tags=[], display=""),
+                SearchResult(name="Another Duplicate Person", slug="duplicate-person", type="person", unique_id="duplicate-person-1", tags=[], display=""),
             ]
         return mock_fz_person_items # Default case for initial load
 

@@ -69,7 +69,7 @@ def fz(
             console.print("No companies or people found to search.")
         raise typer.Exit()
 
-    fzf_input_lines = [item["display"] for item in all_searchable_items]
+    fzf_input_lines = [item.display for item in all_searchable_items]
     fzf_input = "\n".join(fzf_input_lines)
 
     try:
@@ -83,21 +83,24 @@ def fz(
                 entity_name_for_display = match.group('name').strip()
 
                 # Find the selected item using its display string
-                selected_entity_item = next((item for item in all_searchable_items if item["display"] == selected_item), None)
+                selected_entity_item = next((item for item in all_searchable_items if item.display == selected_item), None)
                 if selected_entity_item:
-                    entity_slug = selected_entity_item['slug']
-                    console.print(f"Opening {entity_type_str}: {entity_name_for_display} (Slug: {entity_slug})")
-                    if entity_type_str == "COMPANY":
-                        view_company(company_slug=entity_slug)
-                    elif entity_type_str == "PERSON":
-                        console.print("--- Person Details ---")
-                        # For person, we still need to find the original item to get company_name
-                        # The selected_person_item is already available from selected_entity_item
-                        if selected_entity_item:
-                            console.print(f"Name: {selected_entity_item['name']}")
-                            console.print(f"Company: {selected_entity_item.get('company_name', 'N/A')}")
-                        else:
-                            console.print(f"Could not retrieve details for {entity_name_for_display}.")
+                    entity_slug = selected_entity_item.slug
+                    if entity_slug:
+                        console.print(f"Opening {entity_type_str}: {entity_name_for_display} (Slug: {entity_slug})")
+                        if entity_type_str == "COMPANY":
+                            view_company(company_slug=entity_slug)
+                        elif entity_type_str == "PERSON":
+                            console.print("--- Person Details ---")
+                            # For person, we still need to find the original item to get company_name
+                            # The selected_person_item is already available from selected_entity_item
+                            if selected_entity_item:
+                                console.print(f"Name: {selected_entity_item.name}")
+                                console.print(f"Company: {selected_entity_item.company_name or 'N/A'}")
+                            else:
+                                console.print(f"Could not retrieve details for {entity_name_for_display}.")
+                    else:
+                        console.print(f"Could not find slug for selected item: '{selected_item}'")
                 else:
                     console.print(f"Could not find details for selected item: '{selected_item}'")
             else:
