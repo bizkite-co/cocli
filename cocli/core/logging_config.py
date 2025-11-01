@@ -47,6 +47,3 @@ def setup_file_logging(command_name: str, console_level: int = logging.INFO, fil
         console_handler.setFormatter(console_formatter)
         root_logger.addHandler(console_handler)
 
-    logger = logging.getLogger(__name__)
-    logger.info(f"Detailed logs for this run are being saved to: {log_file}")
-
