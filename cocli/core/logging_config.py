@@ -7,12 +7,20 @@ from .config import get_cocli_app_data_dir
 
 def setup_file_logging(command_name: str, console_level: int = logging.INFO, file_level: int = logging.DEBUG, disable_console: bool = False) -> None:
     """
-    Sets up logging to a timestamped file for a specific command and adjusts console output level.
+    Sets up logging to a file for a specific command and adjusts console output level.
+    For the TUI, it uses a static filename.
     """
     log_dir = get_cocli_app_data_dir() / "logs"
     log_dir.mkdir(exist_ok=True)
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    log_file = log_dir / f"{timestamp}_{command_name}.log"
+    
+    if command_name == "tui":
+        log_file = log_dir / "tui.log"
+        # Overwrite the log file for TUI sessions for predictability
+        if log_file.exists():
+            log_file.unlink()
+    else:
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        log_file = log_dir / f"{timestamp}_{command_name}.log"
 
     # Get the root logger
     root_logger = logging.getLogger()

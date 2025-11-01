@@ -40,6 +40,9 @@ lint: install ## Run ruff and mypy to perform static type checking
 test-file: install ## Run a specific test file, e.g., make test-file FILE=tests/test_google_maps_scraper.py
 	source $(VENV_DIR)/bin/activate && pytest $(FILE)
 
+tail-tui: ## Tail the TUI log
+	 tail -f ~/.local/share/cocli/logs/tui.log
+
 activate: install ## Run tests using pytest
 	source $(VENV_DIR)/bin/activate
 

@@ -1,10 +1,8 @@
-from typing import Dict, Any, List, Optional
-from pathlib import Path
+from typing import Dict, Any, Optional
 import re
 import datetime
 
 from ..models.company import Company
-from ..models.website import Website
 from ..models.person import Person
 from ..models.note import Note
 from ..core.config import get_companies_dir

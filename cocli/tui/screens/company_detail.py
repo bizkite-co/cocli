@@ -1,23 +1,21 @@
+import logging
+
 from textual.screen import Screen
 from textual.widgets import Header, Footer, Static
-from textual.containers import VerticalScroll, Horizontal, Container
-from rich.markdown import Markdown
-from rich.columns import Columns
-from rich.panel import Panel as RichPanel
-from rich.console import Console as RichConsole
-from rich.text import Text
+from textual.containers import VerticalScroll, Horizontal
+from textual.app import ComposeResult
 
-from typing import Dict, Any, List, Tuple, Optional # Added Optional
-from pathlib import Path
-import datetime
+from rich.console import Console as RichConsole
+
+from typing import Dict, Any, Optional
 
 from cocli.models.company import Company
 from cocli.models.website import Website
-from cocli.models.person import Person
-from cocli.models.note import Note
 from cocli.renderers.company_view import _render_company_details, _render_contacts_from_data, _render_meetings_from_data, _render_notes_from_data
 
-class CompanyDetailScreen(Screen):
+logger = logging.getLogger(__name__)
+
+class CompanyDetailScreen(Screen[None]):
     BINDINGS = [
         ("escape", "app.pop_screen", "Back to list"),
         ("q", "app.pop_screen", "Back to list"),
@@ -26,8 +24,10 @@ class CompanyDetailScreen(Screen):
     def __init__(self, company_data: Dict[str, Any], name: Optional[str] = None, id: Optional[str] = None, classes: Optional[str] = None):
         super().__init__(name=name, id=id, classes=classes)
         self.company_data = company_data
+        logger.debug(f"CompanyDetailScreen initialized with data for: {company_data.get('company', {}).get('name')}")
 
-    def compose(self):
+    def compose(self) -> ComposeResult:
+        logger.debug("CompanyDetailScreen compose method called")
         company = Company.model_validate(self.company_data["company"])
         tags = self.company_data["tags"]
         content = self.company_data["content"]
