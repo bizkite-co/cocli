@@ -1,0 +1,1348 @@
+# Textual
+
+> Textual is a TUI framework for Python, inspired by modern web development.
+
+## Documentation
+
+### Introduction
+
+Source: [https://textual.textualize.io/getting_started/](https://textual.textualize.io/getting_started/)
+
+# Getting started
+
+All you need to get started building Textual apps.
+
+## Requirements[¶](#requirements "Permanent link")
+
+Textual requires Python 3.9 or later (if you have a choice, pick the most recent Python). Textual runs on Linux, macOS, Windows and probably any OS where Python also runs.
+
+Your platform
+
+###  Linux (all distros)[¶](#linux-all-distros "Permanent link")
+
+All Linux distros come with a terminal emulator that can run Textual apps.
+
+###  macOS[¶](#macos "Permanent link")
+
+The default terminal app is limited to 256 colors. We recommend installing a newer terminal such as [iterm2](https://iterm2.com/), [Ghostty](https://ghostty.org/), [Kitty](https://sw.kovidgoyal.net/kitty/), or [WezTerm](https://wezfurlong.org/wezterm/).
+
+###  Windows[¶](#windows "Permanent link")
+
+The new [Windows Terminal](https://apps.microsoft.com/store/detail/windows-terminal/9N0DX20HK701?hl=en-gb&gl=GB) runs Textual apps beautifully.
+
+## Installation[¶](#installation "Permanent link")
+
+Here's how to install Textual.
+
+### From PyPI[¶](#from-pypi "Permanent link")
+
+You can install Textual via PyPI, with the following command:
+
+`[](#%5F%5Fcodelineno-0-1)pip install textual
+`
+
+If you plan on developing Textual apps, you should also install textual developer tools:
+
+`[](#%5F%5Fcodelineno-1-1)pip install textual-dev
+`
+
+If you would like to enable syntax highlighting in the [TextArea](../widgets/text%5Farea/) widget, you should specify the "syntax" extras when you install Textual:
+
+`[](#%5F%5Fcodelineno-2-1)pip install "textual[syntax]"
+`
+
+### From conda-forge[¶](#from-conda-forge "Permanent link")
+
+Textual is also available on [conda-forge](https://conda-forge.org/). The preferred package manager for conda-forge is currently [micromamba](https://mamba.readthedocs.io/en/latest/installation/micromamba-installation.html):
+
+`[](#%5F%5Fcodelineno-3-1)micromamba install -c conda-forge textual
+`
+
+And for the textual developer tools:
+
+`[](#%5F%5Fcodelineno-4-1)micromamba install -c conda-forge textual-dev
+`
+
+### Textual CLI[¶](#textual-cli "Permanent link")
+
+If you installed the developer tools you should have access to the `textual` command. There are a number of sub-commands available which will aid you in building Textual apps. Run the following for a list of the available commands:
+
+`[](#%5F%5Fcodelineno-5-1)textual --help
+`
+
+See [devtools](../guide/devtools/) for more about the `textual` command.
+
+## Demo[¶](#demo "Permanent link")
+
+Once you have Textual installed, run the following to get an impression of what it can do:
+
+`[](#%5F%5Fcodelineno-6-1)python -m textual
+`
+
+## Examples[¶](#examples "Permanent link")
+
+The Textual repository comes with a number of example apps. To try out the examples, first clone the Textual repository:
+
+HTTPSSSHGitHub CLI
+
+`[](#%5F%5Fcodelineno-7-1)git clone https://github.com/Textualize/textual.git
+`
+
+`[](#%5F%5Fcodelineno-8-1)git clone git@github.com:Textualize/textual.git
+`
+
+`[](#%5F%5Fcodelineno-9-1)gh repo clone Textualize/textual
+`
+
+With the repository cloned, navigate to the `/examples/` directory where you will find a number of Python files you can run from the command line:
+
+`[](#%5F%5Fcodelineno-10-1)cd textual/examples/
+[](#%5F%5Fcodelineno-10-2)python code_browser.py ../
+`
+
+### Widget examples[¶](#widget-examples "Permanent link")
+
+In addition to the example apps, you can also find the code listings used to generate the screenshots in these docs in the `docs/examples` directory.
+
+## Need help?[¶](#need-help "Permanent link")
+
+See the [help](../help/) page for how to get help with Textual, or to report bugs.
+
+### Tutorial
+
+Source: [https://textual.textualize.io/tutorial/](https://textual.textualize.io/tutorial/) - Step-by-step tutorials
+
+# Tutorial[¶](#tutorial "Permanent link")
+
+Welcome to the Textual Tutorial!
+
+By the end of this page you should have a solid understanding of app development with Textual.
+
+Quote
+
+If you want people to build things, make it fun.
+
+— **Will McGugan** (creator of Rich and Textual)
+
+## Video series[¶](#video-series "Permanent link")
+
+This tutorial has an accompanying [video series](https://www.youtube.com/playlist?list=PLHhDR%5FQ5Me1MxO4LmfzMNNQyKfwa275Qe) which covers the same content.
+
+## Stopwatch Application[¶](#stopwatch-application "Permanent link")
+
+We're going to build a stopwatch application. This application should show a list of stopwatches with buttons to start, stop, and reset the stopwatches. We also want the user to be able to add and remove stopwatches as required.
+
+This will be a simple yet **fully featured** app — you could distribute this app if you wanted to!
+
+Here's what the finished app will look like:
+
+stopwatch.py ⭘StopwatchApp ▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔╭─╮╭─╮ ╭─╮╭─╮ ╶╮ ╷ ╷ ╶─╮╶─╮  Stop │ ││ │ : │ ││ │ : │ ╰─┤ ─┤┌─┘ ▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁╰─╯╰─╯ ╰─╯╰─╯ ╶┴╴ ╵•╶─╯╰─╴ ▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔╭─╮╭─╮ ╭─╮╭─╮ ╶╮ ╶─╮ ╶╮ ╷ ╷  Stop │ ││ │ : │ ││ │ : │ ┌─┘ │ ╰─┤ ▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁╰─╯╰─╯ ╰─╯╰─╯ ╶┴╴╰─╴•╶┴╴ ╵ ▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔╭─╮╭─╮ ╭─╮╭─╮ ╭─╮╭─╮ ╭─╮╭─╮  Stop │ ││ │ : │ ││ │ : │ │├─┤ │ │╰─┤ ▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁╰─╯╰─╯ ╰─╯╰─╯ ╰─╯╰─╯•╰─╯╶─╯  d Toggle dark mode  a Add  r Remove ▏^p palette 
+
+Info
+
+Did you notice the `^p palette` at the bottom right hand corner? This is the [Command Palette](../guide/command%5Fpalette/). You can think of it as a dedicated command prompt for your app.
+
+### Get the code[¶](#get-the-code "Permanent link")
+
+If you want to try the finished Stopwatch app and follow along with the code, first make sure you have [Textual installed](../getting%5Fstarted/) then check out the [Textual](https://github.com/Textualize/textual) repository:
+
+HTTPSSSHGitHub CLI
+
+`[](#%5F%5Fcodelineno-0-1)git clone https://github.com/Textualize/textual.git
+`
+
+`[](#%5F%5Fcodelineno-1-1)git clone git@github.com:Textualize/textual.git
+`
+
+`[](#%5F%5Fcodelineno-2-1)gh repo clone Textualize/textual
+`
+
+With the repository cloned, navigate to `docs/examples/tutorial` and run `stopwatch.py`.
+
+`[](#%5F%5Fcodelineno-3-1)cd textual/docs/examples/tutorial
+[](#%5F%5Fcodelineno-3-2)python stopwatch.py
+`
+
+## Type hints (in brief)[¶](#type-hints-in-brief "Permanent link")
+
+Tip
+
+Type hints are entirely optional in Textual. We've included them in the example code but it's up to you whether you add them to your own projects.
+
+We're a big fan of Python type hints at Textualize. If you haven't encountered type hinting, it's a way to express the types of your data, parameters, and return values. Type hinting allows tools like [mypy](https://mypy.readthedocs.io/en/stable/) to catch bugs before your code runs.
+
+The following function contains type hints:
+
+`[](#%5F%5Fcodelineno-4-1)def repeat(text: str, count: int) -> str:
+[](#%5F%5Fcodelineno-4-2)    """Repeat a string a given number of times."""
+[](#%5F%5Fcodelineno-4-3)    return text * count
+`
+
+Parameter types follow a colon. So `text: str` indicates that `text` requires a string and `count: int` means that `count` requires an integer.
+
+Return types follow `->`. So `-> str:` indicates this method returns a string.
+
+## The App class[¶](#the-app-class "Permanent link")
+
+The first step in building a Textual app is to import and extend the `App` class. Here's a basic app class we will use as a starting point for the stopwatch app.
+
+stopwatch01.py
+
+`[](#%5F%5Fcodelineno-5-1)from textual.app import App, ComposeResult
+[](#%5F%5Fcodelineno-5-2)from textual.widgets import Footer, Header
+[](#%5F%5Fcodelineno-5-3)
+[](#%5F%5Fcodelineno-5-4)
+[](#%5F%5Fcodelineno-5-5)class StopwatchApp(App):
+[](#%5F%5Fcodelineno-5-6)    """A Textual app to manage stopwatches."""
+[](#%5F%5Fcodelineno-5-7)
+[](#%5F%5Fcodelineno-5-8)    BINDINGS = [("d", "toggle_dark", "Toggle dark mode")]
+[](#%5F%5Fcodelineno-5-9)
+[](#%5F%5Fcodelineno-5-10)    def compose(self) -> ComposeResult:
+[](#%5F%5Fcodelineno-5-11)        """Create child widgets for the app."""
+[](#%5F%5Fcodelineno-5-12)        yield Header()
+[](#%5F%5Fcodelineno-5-13)        yield Footer()
+[](#%5F%5Fcodelineno-5-14)
+[](#%5F%5Fcodelineno-5-15)    def action_toggle_dark(self) -> None:
+[](#%5F%5Fcodelineno-5-16)        """An action to toggle dark mode."""
+[](#%5F%5Fcodelineno-5-17)        self.theme = (
+[](#%5F%5Fcodelineno-5-18)            "textual-dark" if self.theme == "textual-light" else "textual-light"
+[](#%5F%5Fcodelineno-5-19)        )
+[](#%5F%5Fcodelineno-5-20)
+[](#%5F%5Fcodelineno-5-21)
+[](#%5F%5Fcodelineno-5-22)if __name__ == "__main__":
+[](#%5F%5Fcodelineno-5-23)    app = StopwatchApp()
+[](#%5F%5Fcodelineno-5-24)    app.run()
+`
+
+If you run this code, you should see something like the following:
+
+stopwatch01.py ⭘StopwatchApp  d Toggle dark mode ▏^p palette 
+
+Hit the D key to toggle between light and dark themes.
+
+stopwatch01.py ⭘StopwatchApp  d Toggle dark mode ▏^p palette 
+
+Hit Ctrl+Q to exit the app and return to the command prompt.
+
+### A closer look at the App class[¶](#a-closer-look-at-the-app-class "Permanent link")
+
+Let's examine `stopwatch01.py` in more detail.
+
+stopwatch01.py
+
+`[](#%5F%5Fcodelineno-6-1)from textual.app import App, ComposeResult
+[](#%5F%5Fcodelineno-6-2)from textual.widgets import Footer, Header
+[](#%5F%5Fcodelineno-6-3)
+[](#%5F%5Fcodelineno-6-4)
+[](#%5F%5Fcodelineno-6-5)class StopwatchApp(App):
+[](#%5F%5Fcodelineno-6-6)    """A Textual app to manage stopwatches."""
+[](#%5F%5Fcodelineno-6-7)
+[](#%5F%5Fcodelineno-6-8)    BINDINGS = [("d", "toggle_dark", "Toggle dark mode")]
+[](#%5F%5Fcodelineno-6-9)
+[](#%5F%5Fcodelineno-6-10)    def compose(self) -> ComposeResult:
+[](#%5F%5Fcodelineno-6-11)        """Create child widgets for the app."""
+[](#%5F%5Fcodelineno-6-12)        yield Header()
+[](#%5F%5Fcodelineno-6-13)        yield Footer()
+[](#%5F%5Fcodelineno-6-14)
+[](#%5F%5Fcodelineno-6-15)    def action_toggle_dark(self) -> None:
+[](#%5F%5Fcodelineno-6-16)        """An action to toggle dark mode."""
+[](#%5F%5Fcodelineno-6-17)        self.theme = (
+[](#%5F%5Fcodelineno-6-18)            "textual-dark" if self.theme == "textual-light" else "textual-light"
+[](#%5F%5Fcodelineno-6-19)        )
+[](#%5F%5Fcodelineno-6-20)
+[](#%5F%5Fcodelineno-6-21)
+[](#%5F%5Fcodelineno-6-22)if __name__ == "__main__":
+[](#%5F%5Fcodelineno-6-23)    app = StopwatchApp()
+[](#%5F%5Fcodelineno-6-24)    app.run()
+`
+
+The first line imports `App` class, which is the base class for all Textual apps. The second line imports two builtin widgets: [Footer](../widgets/footer/) which shows a bar at the bottom of the screen with bound keys, and [Header](../widgets/header/) which shows a title at the top of the screen. Widgets are re-usable components responsible for managing a part of the screen. We will cover how to build widgets in this tutorial.
+
+The following lines define the app itself:
+
+stopwatch01.py
+
+`[](#%5F%5Fcodelineno-7-1)from textual.app import App, ComposeResult
+[](#%5F%5Fcodelineno-7-2)from textual.widgets import Footer, Header
+[](#%5F%5Fcodelineno-7-3)
+[](#%5F%5Fcodelineno-7-4)
+[](#%5F%5Fcodelineno-7-5)class StopwatchApp(App):
+[](#%5F%5Fcodelineno-7-6)    """A Textual app to manage stopwatches."""
+[](#%5F%5Fcodelineno-7-7)
+[](#%5F%5Fcodelineno-7-8)    BINDINGS = [("d", "toggle_dark", "Toggle dark mode")]
+[](#%5F%5Fcodelineno-7-9)
+[](#%5F%5Fcodelineno-7-10)    def compose(self) -> ComposeResult:
+[](#%5F%5Fcodelineno-7-11)        """Create child widgets for the app."""
+[](#%5F%5Fcodelineno-7-12)        yield Header()
+[](#%5F%5Fcodelineno-7-13)        yield Footer()
+[](#%5F%5Fcodelineno-7-14)
+[](#%5F%5Fcodelineno-7-15)    def action_toggle_dark(self) -> None:
+[](#%5F%5Fcodelineno-7-16)        """An action to toggle dark mode."""
+[](#%5F%5Fcodelineno-7-17)        self.theme = (
+[](#%5F%5Fcodelineno-7-18)            "textual-dark" if self.theme == "textual-light" else "textual-light"
+[](#%5F%5Fcodelineno-7-19)        )
+[](#%5F%5Fcodelineno-7-20)
+[](#%5F%5Fcodelineno-7-21)
+[](#%5F%5Fcodelineno-7-22)if __name__ == "__main__":
+[](#%5F%5Fcodelineno-7-23)    app = StopwatchApp()
+[](#%5F%5Fcodelineno-7-24)    app.run()
+`
+
+The App class is where most of the logic of Textual apps is written. It is responsible for loading configuration, setting up widgets, handling keys, and more.
+
+Here's what the above app defines:
+
+* `BINDINGS` is a list of tuples that maps (or _binds_) keys to actions in your app. The first value in the tuple is the key; the second value is the name of the action; the final value is a short description. We have a single binding which maps the D key on to the "toggle\_dark" action. See [key bindings](../guide/input/#bindings) in the guide for details.
+* `compose()` is where we construct a user interface with widgets. The `compose()` method may return a list of widgets, but it is generally easier to _yield_ them (making this method a generator). In the example code we yield an instance of each of the widget classes we imported, i.e. `Header()` and `Footer()`.
+* `action_toggle_dark()` defines an _action_ method. Actions are methods beginning with `action_` followed by the name of the action. The `BINDINGS` list above tells Textual to run this action when the user hits the D key. See [actions](../guide/actions/) in the guide for details.
+
+stopwatch01.py
+
+`[](#%5F%5Fcodelineno-8-1)from textual.app import App, ComposeResult
+[](#%5F%5Fcodelineno-8-2)from textual.widgets import Footer, Header
+[](#%5F%5Fcodelineno-8-3)
+[](#%5F%5Fcodelineno-8-4)
+[](#%5F%5Fcodelineno-8-5)class StopwatchApp(App):
+[](#%5F%5Fcodelineno-8-6)    """A Textual app to manage stopwatches."""
+[](#%5F%5Fcodelineno-8-7)
+[](#%5F%5Fcodelineno-8-8)    BINDINGS = [("d", "toggle_dark", "Toggle dark mode")]
+[](#%5F%5Fcodelineno-8-9)
+[](#%5F%5Fcodelineno-8-10)    def compose(self) -> ComposeResult:
+[](#%5F%5Fcodelineno-8-11)        """Create child widgets for the app."""
+[](#%5F%5Fcodelineno-8-12)        yield Header()
+[](#%5F%5Fcodelineno-8-13)        yield Footer()
+[](#%5F%5Fcodelineno-8-14)
+[](#%5F%5Fcodelineno-8-15)    def action_toggle_dark(self) -> None:
+[](#%5F%5Fcodelineno-8-16)        """An action to toggle dark mode."""
+[](#%5F%5Fcodelineno-8-17)        self.theme = (
+[](#%5F%5Fcodelineno-8-18)            "textual-dark" if self.theme == "textual-light" else "textual-light"
+[](#%5F%5Fcodelineno-8-19)        )
+[](#%5F%5Fcodelineno-8-20)
+[](#%5F%5Fcodelineno-8-21)
+[](#%5F%5Fcodelineno-8-22)if __name__ == "__main__":
+[](#%5F%5Fcodelineno-8-23)    app = StopwatchApp()
+[](#%5F%5Fcodelineno-8-24)    app.run()
+`
+
+The final three lines create an instance of the app and calls the [run()](../api/app/#textual.app.App.run "            run") method which puts your terminal into _application mode_ and runs the app until you exit with Ctrl+Q. This happens within a `__name__ == "__main__"` block so we could run the app with `python stopwatch01.py` or import it as part of a larger project.
+
+## Designing a UI with widgets[¶](#designing-a-ui-with-widgets "Permanent link")
+
+Textual has a large number of [builtin widgets](../widget%5Fgallery/). For our app we will need new widgets, which we can create by extending and combining the builtin widgets.
+
+Before we dive into building widgets, let's first sketch a design for the app — so we know what we're aiming for.
+
+eyJ2ZXJzaW9uIjoiMSIsImVuY29kaW5nIjoiYnN0cmluZyIsImNvbXByZXNzZWQiOnRydWUsImVuY29kZWQiOiJ4nNVcXGlP40pcdTAwMTb93r9cdTAwMDIxX2akxq/2paXRqFx1MDAwM4R9XHUwMDBiW8PMXHUwMDEzMrFDXGbxguNA4Kn/+5SddOwktuM4S/tFLVx1MDAxYVxcjuu66tx77lJVf33Z2NhcZj48c/PbxqbZb+pcdTAwMWTL8PX3za/h9TfT71quo5pQ9HfX7fnN6M52XHUwMDEweN1vf/xh6/6LXHUwMDE5eFx1MDAxZL1pam9Wt6d3ukHPsFxcrenaf1iBaXf/XHUwMDEz/jzVbfPfnmtcdTAwMWKBr8WdbJmGXHUwMDE1uP6gL7Nj2qZcdTAwMTN01dP/q/7e2Pgr+pmQzjebge48dczoXHUwMDBiUVMsIFx1MDAwNmzy6qnrRMJcbi5cdTAwMDWFXGaR0VxyVndHdVx1MDAxN5iGam0pkc24Jby0+aizxo/G/VPr6uX83Hu/ueqSPo97bVmdzmXw0Ymk6rrqZeK2buC7L+atZVx1MDAwNG3VXG4nrmd9y3d7T23H7HbHvuN6etNcbj7Ca1x1MDAwMIyuXHUwMDBlhuDbRnylXHUwMDFmTlx1MDAxMCdcdTAwMWFkXHUwMDAwUoboqCH8KpJcXCOEYpi4Plx1MDAxMGbb7ajBV8L8XHUwMDAzRJ9YnEe9+fKkZHKM+Fx1MDAxZVx1MDAwMpqAJlx1MDAwNuF9+IqqQ1xyy4lcdTAwMGXapvXUXHUwMDBlXHUwMDA2gmtcdTAwMWNcbp7o24yGXHUwMDFkXCLEOUFcYqNRS9ijd2BEXGL4c3Lg2rrvXHJcdTAwMDdos1x1MDAxYv6RkDZcdTAwMTR0d1x1MDAxMj5JXGIlpvag2/C2m5+HRzdcdTAwMTf1t7uL8114vnc4etZcdTAwMTjedN933zdHLT+Hv8Wi9TxDXHUwMDFmgFxiMlx1MDAwNiRcdTAwMTaSXHUwMDEwgmNcdTAwMWN2LOdFNTq9Tie+5jZfYtxFV39+LYF3gmBcdTAwMTbeJVx1MDAxNYJQSorj3XrEnty37P7JsSlcdTAwMWT97NV7/VGvON5cdTAwMDXRXHUwMDA0wXxcdTAwMWPsXHUwMDE4YlxyYyqT18uAvaVTRNE02JWGTWOcsSlwc8FcdTAwMDRUUCDrXHUwMDAy9y/MXHUwMDA0Zj9cdTAwMThH82CG67KPb+3+/bFcclx1MDAwZnZunFx1MDAwN3v/sL01XHUwMDE3tlx1MDAxOVx1MDAwNVxigWVhe0zOYmZcdTAwMWMqXHUwMDExXHUwMDE4R1x1MDAxY4nCuE5/63RcXLf1Zrvnm1VAtkxDNlZ4X1x1MDAxY9mBrztdT/dcdTAwMTWaUtBNU9CN8LTpJlAqky9WgO5lXHUwMDAyMJ5n11x0Lq3PcKhcdTAwMTNcdTAwMGZcYq/WddvqfIxNVYRMJell4CZcdTAwMDXVu6bqMcIhXHUwMDFmu/d7x3pcbpG72VTvYPpjoFx1MDAwZSzl6oxusC3DSFx1MDAxYfOmXHUwMDEyQFfP9Fx1MDAwZopcdTAwMThh17eeLEfvXFwl5SvPXHUwMDFmjMlM/lAug0SCo8J65lx1MDAxY2/3t06R6Fx1MDAxY8BG42brXHUwMDAzXFw1/I9q81x1MDAwN2NEXHUwMDAzWIJJd4lgpPRcZoGF/aWmaVx1MDAxMEMvSiFiSskgR8q1XHUwMDEyZG1cdTAwMTQymMpeXHUwMDFmn+zsideL9zuj9tK6sE9/bDfS/aNIU2Jcbvma/thZzJTeYXFmXHUwMDEyWPmXWMaTtVwiZqJcdOM4yUycXHUwMDAzyVxiT8zsLI3JXHUwMDFm5ooyk7JcdTAwMTnpOkOp8rpcdTAwMTbXmaWQXHUwMDEzXHUwMDA3XGIoXHUwMDFkS7jhqyenXHUwMDEyXHUwMDE4XFyMnFx1MDAxYWbXXGbWyk4zTPwkO1xyXHUwMDA0LE9PMGFcdTAwMTEntI1wXGKQXHUwMDE0rHh4c/zs9smja183ru5Ojp73jWtcdTAwMTI0q01PhCtVo2Lc34v8QMQ1oMhhPKYuXHUwMDEz4kSfND3DXHUwMDFhnExcdTAwMTiMXHUwMDE0XHUwMDBlU02OO6dDveMq5FRcdTAwMTaArkDtyvHKx0n/ljx8Xlx1MDAwN96xW/NZv+18st1cbkY8kmRcdTAwMDFcdTAwMWQyjpVZ4ax4wJP+0lx1MDAxNadcdTAwMTVcdTAwMTVIZGBd+WJ0knCWzitcdTAwMDRPwzyFV6hcdTAwMDQq5GGr8MeqXHUwMDEz9Fx1MDAwMPAt/Mc1XHUwMDA018ouMyz0JLskxSzPMVhmptCgQFxicVxuOSusende//LkZGf39uiqVoeg3Ttv+8e/k2RwkZQxXHUwMDA1krOpnDGBQmOccrGqIIgypnHO8Vx1MDAxOJOMJY1cdTAwMDVcdTAwMWRPZY/CXCJcdTAwMDRcdTAwMTX/XHUwMDEwsVYtXHUwMDE0XHUwMDEwYonm0MLyoKRcdTAwMTRngpJcdTAwMTPJkVx1MDAwNKQ4XHUwMDFmyGOhO/unXHKf1M97bbttXl1cdTAwMWZUvZAhqFx1MDAwNlx1MDAwNaWEXHQ+XHUwMDE5mlx1MDAxM00uI7ubVcoomt1ccrP8gvLEq6wlNP++3Xpr2O32XHUwMDE2Mz6fejY4erg74uOuz3JD8/RcdTAwMGWr50IpK5KlM0x5XHUwMDBmXHUwMDAwwDlcXKj8Ua6oXHUwMDBipaxCltJQppElKM1yYnMsXHUwMDAwXHUwMDEwfFx1MDAxNTW/6vhQl4Hurzc2n2HlpzPHoYBcdTAwMGL4TSiborCQiOE5XHUwMDEyYW7t5NW8QPzItnuNeqv/dnyB33+vuvFcIsE5XHUwMDAxqZkwXCKVT1xuVqxspVx1MDAwMnRKwuhFrrve/iDfL8+O/Ju9k7bVMPZcdTAwMGZcdTAwMDS+P2uvkrTSO6xcdTAwMWVpIZpZgFGBP8CcUFA8xZU/zFx1MDAxNVUjXHUwMDE192eoXHUwMDExpVx1MDAxYV9xOrlY2C9cdFx1MDAxMpJSuM5s8lx1MDAxMIFwXHUwMDBlXHUwMDA0LsZYw3BcdTAwMWFo41x1MDAwM7py3pph+zOi/kjM8uyFWKazKFx1MDAxOEZcdTAwMDBcdTAwMTFQ3Fl8RkivfaKzXHUwMDFh3vGI34JXd82b/d9cdTAwMTlfkdlBP9Mog1x1MDAxNOGpJVx1MDAwNsroaVx1MDAwYkf8Lf1cdTAwMTFcdTAwMDCaXHUwMDE28XNccipdXHUwMDFh0/WR4il9R1igsPeoXHUwMDBmOKmHXGJcdTAwMTBlXHUwMDEwMV1fOXRcdTAwMTbP6PpcdTAwMTXbu7o/OFx1MDAwMSe39nZw+eRcdTAwMWScXs63WkxIXHRji7NcIp6BIDvBLJByJOZYXHUwMDE3mf7O6XBv+m63u9XWg2b794NewEzQh1x1MDAwZVx1MDAxM4aMrDTJTCmfXHUwMDA2fUqAxCRcdTAwMDJUKcl6
+
+*[Content truncated]*
+
+### Guide
+
+Source: [https://textual.textualize.io/guide/](https://textual.textualize.io/guide/) - Comprehensive guides
+
+# Guide[¶](#guide "Permanent link")
+
+Welcome to the Textual Guide! An in-depth reference on how to build apps with Textual.
+
+## Example code[¶](#example-code "Permanent link")
+
+Most of the code in this guide is fully working—you could cut and paste it if you wanted to.
+
+Although it is probably easier to check out the [Textual repository](https://github.com/Textualize/textual) and navigate to the `docs/examples/guide` directory and run the examples from there.
+
+### Reference
+
+Source: [https://textual.textualize.io/reference/](https://textual.textualize.io/reference/)
+
+# Reference[¶](#reference "Permanent link")
+
+Welcome to the Textual Reference.
+
+* **CSS Types**  
+---  
+CSS Types are the data types that CSS [styles](../styles/) accept in their rules.  
+[CSS Types Reference](../css%5Ftypes/)
+* **Events**  
+---  
+Events are how Textual communicates with your application.  
+[Events Reference](../events/)
+* **Styles**  
+---  
+All the styles you can use to take your Textual app to the next level.  
+[ Styles Reference](../styles/)
+* **Widgets**  
+---  
+How to use the many widgets builtin to Textual.  
+[Widgets Reference](../widgets/)
+
+### API
+
+Source: [https://textual.textualize.io/api/](https://textual.textualize.io/api/)
+
+# API[¶](#api "Permanent link")
+
+This is a API-level reference to the Textual API. Click the links to your left (or in the  menu) to open a reference for each module.
+
+If you are new to Textual, you may want to read the [tutorial](../tutorial/) or [guide](../guide/) first.
+
+### How To
+
+Source: [https://textual.textualize.io/how-to/](https://textual.textualize.io/how-to/)
+
+# How To[¶](#how-to "Permanent link")
+
+Welcome to the How To section.
+
+Here you will find How To articles which cover various topics at a higher level than the Guide or Reference. We will be adding more articles in the future. If there is anything you would like to see covered, [open an issue](https://github.com/Textualize/textual/issues) in the Textual repository!
+
+### Devtools
+
+Source: [https://textual.textualize.io/guide/devtools/](https://textual.textualize.io/guide/devtools/)
+
+# Devtools[¶](#devtools "Permanent link")
+
+Note
+
+If you don't have the `textual` command on your path, you may have forgotten to install the `textual-dev` package.
+
+See [getting started](../../getting%5Fstarted/#installation) for details.
+
+Textual comes with a command line application of the same name. The `textual` command is a super useful tool that will help you to build apps.
+
+Take a moment to look through the available subcommands. There will be even more helpful tools here in the future.
+
+`[](#%5F%5Fcodelineno-0-1)textual --help
+`
+
+## Run[¶](#run "Permanent link")
+
+The `run` sub-command runs Textual apps. If you supply a path to a Python file it will load and run the app.
+
+`[](#%5F%5Fcodelineno-1-1)textual run my_app.py
+`
+
+This is equivalent to running `python my_app.py` from the command prompt, but will allow you to set various switches which can help you debug, such as `--dev` which enable the [Console](#console).
+
+See the `run` subcommand's help for details:
+
+`[](#%5F%5Fcodelineno-2-1)textual run --help
+`
+
+You can also run Textual apps from a python import. The following command would import `music.play` and run a Textual app in that module:
+
+`[](#%5F%5Fcodelineno-3-1)textual run music.play
+`
+
+This assumes you have a Textual app instance called `app` in `music.play`. If your app has a different name, you can append it after a colon:
+
+`[](#%5F%5Fcodelineno-4-1)textual run music.play:MusicPlayerApp
+`
+
+Note
+
+This works for both Textual app _instances_ and _classes_.
+
+### Running from commands[¶](#running-from-commands "Permanent link")
+
+If your app is installed as a command line script, you can use the `-c` switch to run it. For instance, the following will run the `textual colors` command:
+
+`[](#%5F%5Fcodelineno-5-1)textual run -c textual colors
+`
+
+## Serve[¶](#serve "Permanent link")
+
+The devtools can also serve your application in a browser. Effectively turning your terminal app into a web application!
+
+The `serve` sub-command is similar to `run`. Here's how you can serve an app launched from a Python file:
+
+`[](#%5F%5Fcodelineno-6-1)textual serve my_app.py
+`
+
+You can also serve a Textual app launched via a command. Here's an example:
+
+`[](#%5F%5Fcodelineno-7-1)textual serve "textual keys"
+`
+
+The syntax for launching an app in a module is slightly different from `run`. You need to specify the full command, including `python`. Here's how you would run the Textual demo:
+
+`[](#%5F%5Fcodelineno-8-1)textual serve "python -m textual"
+`
+
+Textual's builtin web-server is quite powerful. You can serve multiple instances of your application at once!
+
+Tip
+
+Textual serve is also useful when developing your app. If you make changes to your code, simply refresh the browser to update.
+
+There are some additional switches for serving Textual apps. Run the following for a list:
+
+`[](#%5F%5Fcodelineno-9-1)textual serve --help
+`
+
+## Live editing[¶](#live-editing "Permanent link")
+
+If you combine the `run` command with the `--dev` switch your app will run in _development mode_.
+
+`[](#%5F%5Fcodelineno-10-1)textual run --dev my_app.py
+`
+
+One of the features of _dev_ mode is live editing of CSS files: any changes to your CSS will be reflected in the terminal a few milliseconds later.
+
+This is a great feature for iterating on your app's look and feel. Open the CSS in your editor and have your app running in a terminal. Edits to your CSS will appear almost immediately after you save.
+
+## Console[¶](#console "Permanent link")
+
+When building a typical terminal application you are generally unable to use `print` when debugging (or log to the console). This is because anything you write to standard output will overwrite application content. Textual has a solution to this in the form of a debug console which restores `print` and adds a few additional features to help you debug.
+
+To use the console, open up **two** terminal emulators. Run the following in one of the terminals:
+
+`[](#%5F%5Fcodelineno-11-1)textual console
+`
+
+You should see the Textual devtools welcome message:
+
+textual console ▌Textual Development Console v4.0.0 ▌Run a Textual app with textual run --dev my\_app.py to connect. ▌Press Ctrl+C to quit. 
+
+In the other console, run your application with `textual run` and the `--dev` switch:
+
+`[](#%5F%5Fcodelineno-12-1)textual run --dev my_app.py
+`
+
+Anything you `print` from your application will be displayed in the console window. Textual will also write log messages to this window which may be helpful when debugging your application.
+
+### Increasing verbosity[¶](#increasing-verbosity "Permanent link")
+
+Textual writes log messages to inform you about certain events, such as when the user presses a key or clicks on the terminal. To avoid swamping you with too much information, some events are marked as "verbose" and will be excluded from the logs. If you want to see these log messages, you can add the `-v` switch.
+
+`[](#%5F%5Fcodelineno-13-1)textual console -v
+`
+
+### Decreasing verbosity[¶](#decreasing-verbosity "Permanent link")
+
+Log messages are classififed into groups, and the `-x` flag can be used to **exclude** all message from a group. The groups are: `EVENT`, `DEBUG`, `INFO`, `WARNING`, `ERROR`, `PRINT`, `SYSTEM`, `LOGGING` and `WORKER`. The group a message belongs to is printed after its timestamp.
+
+Multiple groups may be excluded, for example to exclude everything except warning, errors, and `print` statements:
+
+`[](#%5F%5Fcodelineno-14-1)textual console -x SYSTEM -x EVENT -x DEBUG -x INFO
+`
+
+### Custom port[¶](#custom-port "Permanent link")
+
+You can use the option `--port` to specify a custom port to run the console on, which comes in handy if you have other software running on the port that Textual uses by default:
+
+`[](#%5F%5Fcodelineno-15-1)textual console --port 7342
+`
+
+Then, use the command `run` with the same `--port` option:
+
+`[](#%5F%5Fcodelineno-16-1)textual run --dev --port 7342 my_app.py
+`
+
+## Textual log[¶](#textual-log "Permanent link")
+
+Use the `log` function to pretty-print data structures and anything that [Rich](https://rich.readthedocs.io/en/latest/) can display.
+
+You can import the log function as follows:
+
+`[](#%5F%5Fcodelineno-17-1)from textual import log
+`
+
+Here's a few examples of writing to the console, with `log`:
+
+`[](#%5F%5Fcodelineno-18-1)def on_mount(self) -> None:
+[](#%5F%5Fcodelineno-18-2)    log("Hello, World")  # simple string
+[](#%5F%5Fcodelineno-18-3)    log(locals())  # Log local variables
+[](#%5F%5Fcodelineno-18-4)    log(children=self.children, pi=3.141592)  # key/values
+[](#%5F%5Fcodelineno-18-5)    log(self.tree)  # Rich renderables
+`
+
+### Log method[¶](#log-method "Permanent link")
+
+There's a convenient shortcut to `log` on the `App` and `Widget` objects. This is useful in event handlers. Here's an example:
+
+`[](#%5F%5Fcodelineno-19-1)from textual.app import App
+[](#%5F%5Fcodelineno-19-2)
+[](#%5F%5Fcodelineno-19-3)class LogApp(App):
+[](#%5F%5Fcodelineno-19-4)
+[](#%5F%5Fcodelineno-19-5)    def on_load(self):
+[](#%5F%5Fcodelineno-19-6)        self.log("In the log handler!", pi=3.141529)
+[](#%5F%5Fcodelineno-19-7)
+[](#%5F%5Fcodelineno-19-8)    def on_mount(self):
+[](#%5F%5Fcodelineno-19-9)        self.log(self.tree)
+[](#%5F%5Fcodelineno-19-10)
+[](#%5F%5Fcodelineno-19-11)if __name__ == "__main__":
+[](#%5F%5Fcodelineno-19-12)    LogApp().run()
+`
+
+## Logging handler[¶](#logging-handler "Permanent link")
+
+Textual has a [logging handler](../../api/logging/#textual.logging.TextualHandler "            TextualHandler") which will write anything logged via the builtin logging library to the devtools. This may be useful if you have a third-party library that uses the logging module, and you want to see those logs with Textual logs.
+
+Note
+
+The logging library works with strings only, so you won't be able to log Rich renderables such as `self.tree` with the logging handler.
+
+Here's an example of configuring logging to use the `TextualHandler`.
+
+`[](#%5F%5Fcodelineno-20-1)import logging
+[](#%5F%5Fcodelineno-20-2)from textual.app import App
+[](#%5F%5Fcodelineno-20-3)from textual.logging import TextualHandler
+[](#%5F%5Fcodelineno-20-4)
+[](#%5F%5Fcodelineno-20-5)logging.basicConfig(
+[](#%5F%5Fcodelineno-20-6)    level="NOTSET",
+[](#%5F%5Fcodelineno-20-7)    handlers=[TextualHandler()],
+[](#%5F%5Fcodelineno-20-8))
+[](#%5F%5Fcodelineno-20-9)
+[](#%5F%5Fcodelineno-20-10)
+[](#%5F%5Fcodelineno-20-11)class LogApp(App):
+[](#%5F%5Fcodelineno-20-12)    """Using logging with Textual."""
+[](#%5F%5Fcodelineno-20-13)
+[](#%5F%5Fcodelineno-20-14)    def on_mount(self) -> None:
+[](#%5F%5Fcodelineno-20-15)        logging.debug("Logged via TextualHandler")
+[](#%5F%5Fcodelineno-20-16)
+[](#%5F%5Fcodelineno-20-17)
+[](#%5F%5Fcodelineno-20-18)if __name__ == "__main__":
+[](#%5F%5Fcodelineno-20-19)    LogApp().run()
+`
+
+### App Basics
+
+Source: [https://textual.textualize.io/guide/app/](https://textual.textualize.io/guide/app/)
+
+# App Basics[¶](#app-basics "Permanent link")
+
+In this chapter we will cover how to use Textual's App class to create an application. Just enough to get you up to speed. We will go into more detail in the following chapters.
+
+## The App class[¶](#the-app-class "Permanent link")
+
+The first step in building a Textual app is to import the [App](../../api/app/#textual.app.App "            App") class and create a subclass. Let's look at the simplest app class:
+
+`[](#%5F%5Fcodelineno-0-1)from textual.app import App
+[](#%5F%5Fcodelineno-0-2)
+[](#%5F%5Fcodelineno-0-3)
+[](#%5F%5Fcodelineno-0-4)class MyApp(App):
+[](#%5F%5Fcodelineno-0-5)    pass
+`
+
+### The run method[¶](#the-run-method "Permanent link")
+
+To run an app we create an instance and call [run()](../../api/app/#textual.app.App.run "            run").
+
+simple02.py
+
+`[](#%5F%5Fcodelineno-1-1)from textual.app import App
+[](#%5F%5Fcodelineno-1-2)
+[](#%5F%5Fcodelineno-1-3)
+[](#%5F%5Fcodelineno-1-4)class MyApp(App):
+[](#%5F%5Fcodelineno-1-5)    pass
+[](#%5F%5Fcodelineno-1-6)
+[](#%5F%5Fcodelineno-1-7)
+[](#%5F%5Fcodelineno-1-8)if __name__ == "__main__":
+[](#%5F%5Fcodelineno-1-9)    app = MyApp()
+[](#%5F%5Fcodelineno-1-10)    app.run()
+`
+
+Apps don't get much simpler than this—don't expect it to do much.
+
+Tip
+
+The `__name__ == "__main__":` condition is true only if you run the file with `python` command. This allows us to import `app` without running the app immediately. It also allows the [devtools run](../devtools/#run) command to run the app in development mode. See the [Python docs](https://docs.python.org/3/library/%5F%5Fmain%5F%5F.html#idiomatic-usage) for more information.
+
+If we run this app with `python simple02.py` you will see a blank terminal, something like the following:
+
+MyApp 
+
+When you call [App.run()](../../api/app/#textual.app.App.run "            run") Textual puts the terminal into a special state called _application mode_. When in application mode the terminal will no longer echo what you type. Textual will take over responding to user input (keyboard and mouse) and will update the visible portion of the terminal (i.e. the _screen_).
+
+If you hit Ctrl+Q Textual will exit application mode and return you to the command prompt. Any content you had in the terminal prior to application mode will be restored.
+
+#### Run inline[¶](#run-inline "Permanent link")
+
+Added in version 0.55.0
+
+You can also run apps in _inline_ mode, which will cause the app to appear beneath the prompt (and won't go into application mode). Inline apps are useful for tools that integrate closely with the typical workflow of a terminal.
+
+To run an app in inline mode set the `inline` parameter to `True` when you call [App.run()](../../api/app/#textual.app.App.run "            run"). See [Style Inline Apps](../../how-to/style-inline-apps/) for how to apply additional styles to inline apps.
+
+Note
+
+Inline mode is not currently supported on Windows.
+
+#### ANSI colors[¶](#ansi-colors "Permanent link")
+
+Added in version 0.80.0
+
+Terminals support 16 theme-able _ANSI_ colors, which you can personalize from your terminal settings. By default, Textual will replace these colors with its own color choices (see the [FAQ for details](../../FAQ/#why-doesnt-textual-support-ansi-themes)).
+
+You can disable this behavior by setting `ansi_color=True` in the [App constructor](../../api/app/#textual.app.App "            App").
+
+We recommend the default behavior for full-screen apps, but you may want to preserve ANSI colors in [inline](#run-inline) apps.
+
+## Events[¶](#events "Permanent link")
+
+Textual has an [event system](../events/) you can use to respond to key presses, mouse actions, and internal state changes. Event handlers are methods prefixed with `on_` followed by the name of the event.
+
+One such event is the _mount_ event which is sent to an application after it enters application mode. You can respond to this event by defining a method called `on_mount`.
+
+Another such event is the _key_ event which is sent when the user presses a key. The following example contains handlers for both those events:
+
+event01.py
+
+`[](#%5F%5Fcodelineno-2-1)from textual.app import App
+[](#%5F%5Fcodelineno-2-2)from textual import events
+[](#%5F%5Fcodelineno-2-3)
+[](#%5F%5Fcodelineno-2-4)
+[](#%5F%5Fcodelineno-2-5)class EventApp(App):
+[](#%5F%5Fcodelineno-2-6)
+[](#%5F%5Fcodelineno-2-7)    COLORS = [
+[](#%5F%5Fcodelineno-2-8)        "white",
+[](#%5F%5Fcodelineno-2-9)        "maroon",
+[](#%5F%5Fcodelineno-2-10)        "red",
+[](#%5F%5Fcodelineno-2-11)        "purple",
+[](#%5F%5Fcodelineno-2-12)        "fuchsia",
+[](#%5F%5Fcodelineno-2-13)        "olive",
+[](#%5F%5Fcodelineno-2-14)        "yellow",
+[](#%5F%5Fcodelineno-2-15)        "navy",
+[](#%5F%5Fcodelineno-2-16)        "teal",
+[](#%5F%5Fcodelineno-2-17)        "aqua",
+[](#%5F%5Fcodelineno-2-18)    ]
+[](#%5F%5Fcodelineno-2-19)
+[](#%5F%5Fcodelineno-2-20)    def on_mount(self) -> None:
+[](#%5F%5Fcodelineno-2-21)        self.screen.styles.background = "darkblue"
+[](#%5F%5Fcodelineno-2-22)
+[](#%5F%5Fcodelineno-2-23)    def on_key(self, event: events.Key) -> None:
+[](#%5F%5Fcodelineno-2-24)        if event.key.isdecimal():
+[](#%5F%5Fcodelineno-2-25)            self.screen.styles.background = self.COLORS[int(event.key)]
+[](#%5F%5Fcodelineno-2-26)
+[](#%5F%5Fcodelineno-2-27)
+[](#%5F%5Fcodelineno-2-28)if __name__ == "__main__":
+[](#%5F%5Fcodelineno-2-29)    app = EventApp()
+[](#%5F%5Fcodelineno-2-30)    app.run()
+`
+
+The `on_mount` handler sets the `self.screen.styles.background` attribute to `"darkblue"` which (as you can probably guess) turns the background blue. Since the mount event is sent immediately after entering application mode, you will see a blue screen when you run this code.
+
+EventApp 
+
+When you press a key, the key event handler (`on_key`) which will receive a [Key](../../api/events/#textual.events.Key "            Key") instance. If you don't require the event in your handler, you can omit it.
+
+Events may contain additional information which you can inspect in the handler. In the case of the [Key](../../api/events/#textual.events.Key "            Key") event, there is a `key` attribute which is the name of the key that was pressed. The `on_key` method above uses this attribute to change the background color if any of the keys from 0 to 9 are pressed.
+
+### Async events[¶](#async-events "Permanent link")
+
+Textual is powered by Python's [asyncio](https://docs.python.org/3/library/asyncio.html) framework which uses the `async` and `await` keywords.
+
+Textual knows to _await_ your event handlers if they are coroutines (i.e. prefixed with the `async` keyword). Regular functions are generally fine unless you plan on integrating other async libraries (such as [httpx](https://www.python-httpx.org/) for reading data from the internet).
+
+Tip
+
+For a friendly introduction to async programming in Python, see FastAPI's [concurrent burgers](https://fastapi.tiangolo.com/async/) article.
+
+## Widgets[¶](#widgets "Permanent link")
+
+Widgets are self-contained components responsible for generating the output for a portion of the screen. Widgets respond to events in much the same way as the App. Most apps that do anything interesting will contain at least one (and probably many) widgets which together form a User Interface.
+
+Widgets can be as simple as a piece of text, a button, or a fully-fledged component like a text editor or file browser (which may contain widgets of their own).
+
+### Composing[¶](#composing "Permanent link")
+
+To add widgets to your app implement a [compose()](../../api/app/#textual.app.App.compose "            compose") method which should return an iterable of `Widget` instances. A list would work, but it is convenient to yield widgets, making the method a _generator_.
+
+The following example imports a builtin `Welcome` widget and yields it from `App.compose()`.
+
+widgets01.py
+
+`[](#%5F%5Fcodelineno-3-1)from textual.app import App, ComposeResult
+[](#%5F%5Fcodelineno-3-2)from textual.widgets import Welcome
+[](#%5F%5Fcodelineno-3-3)
+[](#%5F%5Fcodelineno-3-4)
+[](#%5F%5Fcodelineno-3-5)class WelcomeApp(App):
+[](#%5F%5Fcodelineno-3-6)    def compose(self) -> ComposeResult:
+[](#%5F%5Fcodelineno-3-7)        yield Welcome()
+[](#%5F%5Fcodelineno-3-8)
+[](#%5F%5Fcodelineno-3-9)    def on_button_pressed(self) -> None:
+[](#%5F%5Fcodelineno-3-10)        self.exit()
+[](#%5F%5Fcodelineno-3-11)
+[](#%5F%5Fcodelineno-3-12)
+[](#%5F%5Fcodelineno-3-13)if __name__ == "__main__":
+[](#%5F%5Fcodelineno-3-14)    app = WelcomeApp()
+[](#%5F%5Fcodelineno-3-15)    app.run()
+`
+
+When you run this code, Textual will _mount_ the `Welcome` widget which contains Markdown content and a button:
+
+WelcomeApp ┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓ ┃Welcome!┃ ┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛ Textual is a TUI, or Text User Interface, framework for Python inspired by modern web development. We hope you enjoy using Textual! Dune quote ▌ "I must not fear.Fear is the mind-killer.Fear is the little-death that ▌ brings total obliteration.I will face my fear.I will permit it to pass ▌ over me and through me.And when it has gone past, I will turn the inner ▌ eye to see its path.Where the fear has gone there will be nothing. Only ▌ I will remain." ▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔  OK ▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁ 
+
+Notice the `on_button_pressed` method which handles the [Button.Pressed](../../widgets/button/#textual.widgets.Button " Button") event sent by a button contained in the `Welcome` widget. The handler calls [App.exit()](../../api/app/#textual.app.App.exit "            exit") to exit the app.
+
+### Mounting[¶](#mounting "Permanent link")
+
+While composing is the preferred way of adding widgets when your app starts it is sometimes necessary to add new widget(s) in response to events. You can do this by calling [mount()](../../api/widget/#textual.widget.Widget.mount "            mount") which will add a new widget to the UI.
+
+Here's an app which adds a welcome widget in response to any key press:
+
+widgets02.py
+
+`[](#%5F%5Fcodelineno-4-1)from textual.app import App
+[](#%5F%5Fcodelineno-4-2)from textual.widgets import Welcome
+[](#%5F%5Fcodelineno-4-3)
+[](#%5F%5Fcodelineno-4-4)
+[](#%5F%5Fcodelineno-4-5)class WelcomeApp(App):
+[](#%5F%5Fcodelineno-4-6)    def on_key(self) -> None:
+[](#%5F%5Fcodelineno-4-7)        self.mount(Welcome())
+[](#%5F%5Fcodelineno-4-8)
+[](#%5F%5Fcodelineno-4-9)    def on_button_pressed(self) -> None:
+[](#%5F%5Fcodelineno-4-10)        self.exit()
+[](#%5F%5Fcodelineno-4-11)
+[](#%5F%5Fcodelineno-4-12)
+[](#%5F%5Fcodelineno-4-13)if __name__ == "__main__":
+[](#%5F%5Fcodelineno-4-14)    app = WelcomeApp()
+[](#%5F%5Fcodelineno-4-15)    app.run()
+`
+
+When you first run this you will get a blank screen. Press any key to add the welcome widget. You can even press a key multiple times to add several widgets.
+
+WelcomeApp ┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓ ┃Welcome!┃▂▂ ┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛ Textual is a TUI, or Text User Interface, framework for Python inspired by modern web development. We hope you enjoy using Textual! Dune quote ▌ "I must not fear.Fear is the mind-killer.Fear is the little-death ▌ that brings total obliteration.I will face my fear.I will permit it ▌ to pass over me and through me.And when it has gone past, I will turn ▌ the inner eye to see its path.Where the fear has gone there will be ▌ nothing. Only I will remain." ▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔  OK ▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁ 
+
+#### Awaiting mount[¶](#awaiting-mount "Permanent link")
+
+When you mount a widget, Textual will mount everything the widget _composes_. Textual guarantees that the mounting will be complete by the _next_ message handler, but not immediately after the call to `mount()`. This may be a problem if you want to make any changes to the widget in the same message handler.
+
+Let's first illustrate the problem with an example. The following code will mount the Welcome widget in response to a key press. It will also attempt to modify the Button in the Welcome widget by changing its label from "OK" to "YES!".
+
+`[](#%5F%5Fcodelineno-5-1)from textual.app import App
+[](#%5F%5Fcodelineno-5-2)from textual.widgets import Button, Welcome
+[](#%5F%5Fcodelineno-5-3)
+[](#%5F%5Fcodelineno-5-4)
+[](#%5F%5Fcodelineno-5-5)class WelcomeApp(App):
+[](#%5F%5Fcodelineno-5-6)    def on_key(self) -> None:
+[](#%5F%5Fcodelineno-5-7)        self.mount(Welcome())
+[](#%5F%5Fcodelineno-5-8)        self.query_one(Button).label = "YES!" # (1)!
+[](#%5F%5Fcodelineno-5-9)
+[](#%5F%5Fcodelineno-5-10)
+[](#%5F%5Fcodelineno-5-11)if __name__ == "__main__":
+[](#%5F%5Fcodelineno-5-12)    app = WelcomeApp()
+[](#%5F%5Fcodelineno-5-13)    app.run()
+`
+
+1. See [queries](../queries/) for more information on the `query_one` method.
+
+If you run this example, you will find that Textual raises a [NoMatches](../../api/query/#textual.css.query.NoMatches "            NoMatches") exception when you press a key. This is because the mount process has not yet completed when we attempt to change the button.
+
+To solve this we can optionally await the result of `mount()`, which requires we make the function `async`. This guarantees that by the following line, the Button has been mounted, and we can change its label.
+
+`[](#%5F%5Fcodelineno-6-1)from textual.app import App
+[](#%5F%5Fcodelineno-6-2)from textual.widgets import Button, Welcome
+[](#%5F%5Fcodelineno-6-3)
+[](#%5F%5Fcodelineno-6-4)
+[](#%5F%5Fcodelineno-6-5)class WelcomeApp(App):
+[](#%5F%5Fcodelineno-6-6)    async def on_key(self) -> None:
+[](#%5F%5Fcodelineno-6-7)        await self.mount(Welcome())
+[](#%5F%5Fcodelineno-6-8)        self.query_one(Button).label = "YES!"
+[](#%5F%5Fcodelineno-6-9)
+[](#%5F%5Fcodelineno-6-10)
+[](#%5F%5Fcodelineno-6-11)if __name__ == "__main__":
+[](#%5F%5Fcodelineno-6-12)    app = WelcomeApp()
+[](#%5F%5Fcodelineno-6-13)    app.run()
+`
+
+Here's the output. Note the changed button text:
+
+WelcomeApp ┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓ ┃Welcome!┃ ┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛ Textual is a TUI, or Text User Interface, framework for Python inspired by modern web development. We hope you enjoy using Textual! Dune quote ▌ "I must not fear.Fear is the mind-killer.Fear is the little-death that ▌ brings total obliteration.I will face my fear.I will permit it to pass ▌ over me and through me.And when it has gone past, I will turn the inner ▌ eye to see its path.Where the fear has gone there will be nothing. Only ▌ I will remain." ▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔  YES! ▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁
+
+*[Content truncated]*
+
+*70 more documentation links available on the website*
+
+
+## Main
+
+### Home
+
+Source: [https://textual.textualize.io/](https://textual.textualize.io/)
+
+Tip
+
+See the navigation links in the header or side-bar.
+
+Click  (top left) on mobile.
+
+# Welcome[¶](#welcome "Permanent link")
+
+Welcome to the [Textual](https://github.com/Textualize/textual) framework documentation.
+
+[Get started](getting%5Fstarted/) or go straight to the [Tutorial](tutorial/)
+
+## What is Textual?[¶](#what-is-textual "Permanent link")
+
+Textual is a _Rapid Application Development_ framework for Python, built by [Textualize.io](https://www.textualize.io).
+
+Build sophisticated user interfaces with a simple Python API. Run your apps in the terminal _or_ a [web browser](https://github.com/Textualize/textual-serve)!
+
+* **Rapid development**  
+---  
+Uses your existing Python skills to build beautiful user interfaces.
+* **Low requirements**  
+---  
+Run Textual on a single board computer if you want to.
+* **Cross platform**  
+---  
+Textual runs just about everywhere.
+* **Remote**  
+---  
+Textual apps can run over SSH.
+* **CLI Integration**  
+---  
+Textual apps can be launched and run from the command prompt.
+* **Open Source**  
+---  
+Textual is licensed under MIT.
+
+---
+
+# Built with Textual[¶](#built-with-textual "Permanent link")
+
+Textual has enabled an ecosystem of applications and tools for developers and non-developers alike.
+
+Here are a few examples.
+
+## Posting[¶](#posting "Permanent link")
+
+The API client that lives in your terminal. Posting is a beautiful open-source terminal app for developing and testing APIs.
+
+[Posting Website](https://posting.sh/)
+
+[Posting Github Repository](https://github.com/darrenburns/posting)
+
+[ Posting Posting2.3.0darrenburns@arcadia.local PUT▼https://jsonplaceholder.typicode.com/comments/1■■■■■■■Send ╭────────────────── Collection ─╮╭────────────────────────────────────────────────────────── Request ─╮ │GET echo││Headers•Body•Query•AuthInfoScriptsOptions│ │GET get random user││╸━━━━━━━━╺━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━│ │POS echo post││ Content-Type  application/json │ │▼ jsonplaceholder/││ Referer  https://example.com/ │ │▼ posts/││ Accept-Encoding  gzip │ │GET get all││ Cache-Control  no-cache │ │GET get one│││ │POS create│││ │DEL delete a post││User-ValueAdd│ │▼ comments/│╰───────▎User\-Agent───────────────────────────────────╯ │GET get comments│╭───────▎Upgrade-Insecure\-Requests─────────────── Response  200 OK ─╮ │GET get comments (via pa││BodyHeadersCookiesScriptsTrace│ │\>PUT edit a comment││╸━━━━╺━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━│ │▼ todos/││1 { │ │GET get all││2 "postId": 1, │ │GET get one││3 "name": "Updated Commenter Name", │ │▼ users/││4 "email": "updated.email@example.com", │ │GET get a user││5 "body": "This is the updated comment body.", │ │GET get all users││6 "id": 1│ │───────────────────────────────││7 } │ │Edit a comment││Visual2:4read-onlyJSON▼Wrap▐X▌│ ╰─ sample-collections ──────────╯╰────────────────────────────────────────────── 151.00B in 366.86ms─╯  ^j Send  ^t Method  ^s Save  ^n New  ^p Commands  ^o Jump  ^c Quit  f1 Help ](https://posting.sh) 
+
+---
+
+## Toolong[¶](#toolong "Permanent link")
+
+A terminal application to view, tail, merge, and search log files (plus JSONL).
+
+[Toolong Github Repository](https://github.com/textualize/toolong)
+
+[ UI ▊▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▎▊▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▎▊▔▔▔▔▔▔▔▔▔▔▔▎ ▊feeds▎▊▐X▌ Case sensitive▎▊▐X▌ Regex▎ ▊▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▎▊▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▎▊▁▁▁▁▁▁▁▁▁▁▁▎ ┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓ ┃162.71.236.120 \- - \[29/Jan/2024:13:34:58 +0000\]"GET /feeds/posts/ HTTP/1.1"200107059"-""Net┃ ┃52.70.240.171 \- - \[29/Jan/2024:13:35:33 +0000\]"GET /2007/07/10/postmarkup-105/ HTTP/1.1"3010┃ ┃121.137.55.45 \- - \[29/Jan/2024:13:36:19 +0000\]"GET /blog/rootblog/feeds/posts/ HTTP/1.1"20010┃ ┃98.207.26.211 \- - \[29/Jan/2024:13:36:37 +0000\]"GET /feeds/posts HTTP/1.1"3070"-""Mozilla/5.┃ ┃98.207.26.211 \- - \[29/Jan/2024:13:36:42 +0000\]"GET /feeds/posts/ HTTP/1.1"20098063"-""Mozil┃ ┃18.183.222.19 \- - \[29/Jan/2024:13:37:44 +0000\]"GET /blog/rootblog/feeds/posts/ HTTP/1.1"20010┃ ┃66.249.64.164 \- - \[29/Jan/2024:13:37:46 +0000\]"GET /blog/tech/post/a-texture-mapped-spinning-3d┃ ┃116.203.207.165 \- - \[29/Jan/2024:13:37:55 +0000\]"GET /blog/tech/feeds/posts/ HTTP/1.1"2001182┃ ┃128.65.195.158 \- - \[29/Jan/2024:13:38:44 +0000\]"GET /feeds/posts/ HTTP/1.1"200107059"https:/┃ ┃128.65.195.158 \- - \[29/Jan/2024:13:38:46 +0000\]"GET /feeds/posts/ HTTP/1.1"200107059"https:/┃ ┃51.222.253.12 \- - \[29/Jan/2024:13:41:17 +0000\]"GET /blog/tech/post/css-in-the-terminal-with-pyt┃ ┃154.159.237.77 \- - \[29/Jan/2024:13:42:28 +0000\]"GET /feeds/posts/ HTTP/1.1"200107059"-""Moz┃ ┃92.247.181.10 \- - \[29/Jan/2024:13:43:23 +0000\]"GET /feed/ HTTP/1.1"200107059"https://www.wil┃ ┃134.209.40.52 \- - \[29/Jan/2024:13:43:41 +0000\]"GET /blog/tech/feeds/posts/ HTTP/1.1"200118238┃ ┃192.3.134.205 \- - \[29/Jan/2024:13:43:55 +0000\]"GET /feeds/posts/ HTTP/1.1"200107059"-""Mozi┃ ┃174.136.108.22 \- - \[29/Jan/2024:13:44:42 +0000\]"GET /feeds/posts/ HTTP/1.1"200107059"-""Tin┃ ┃64.71.157.117 \- - \[29/Jan/2024:13:45:16 +0000\]"GET /feed/ HTTP/1.1"200107059"-""Feedbin fee┃ ┃121.137.55.45 \- - \[29/Jan/2024:13:45:19 +0000\]"GET /blog/rootblog/feeds/posts/ HTTP/1.1"20010┃ ┃216.244.66.233 \- - \[29/Jan/2024:13:45:22 +0000\]"GET /robots.txt HTTP/1.1"200132"-""Mozilla/┃ ┃78.82.5.250 \- - \[29/Jan/2024:13:45:29 +0000\]"GET /blog/tech/post/real-working-hyperlinks-in-the┃ ┃78.82.5.250 \- - \[29/Jan/2024:13:45:30 +0000\]"GET /favicon.ico HTTP/1.1"2005694"https://www.w▁▁┃ ┃46.244.252.112 \- - \[29/Jan/2024:13:46:44 +0000\]"GET /blog/tech/feeds/posts/ HTTP/1.1"20011823▁▁┃ ┃▌┃ ┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛ f1 Help^t Tail^l Line nos.^g Go to↓ Next↑ PreviousTAIL29/01/2024 13:34:58 • 2540 ](https://github.com/Textualize/toolong) 
+
+---
+
+## Memray[¶](#memray "Permanent link")
+
+Memray is a memory profiler for Python, built by Bloomberg.
+
+[Memray Github Repository](https://github.com/bloomberg/memray)
+
+[ TUIApp Memray live tracking Tue Feb 20 13:53:11 2024  (∩｀-´)⊃━☆ﾟ.\*･｡ﾟ ╭─ Heap Usage ─────────────────────╮ PID: 77542CMD: memray run --live -m http.server│ ███│ TID: 0x1Thread 1 of 1│ ███│ Samples: 6Duration: 6.1 seconds│ ███│ │ ███│ ╰── 1.501MB (100% of 1.501MB max) ─╯  Location Total Bytes% TotalOwn Bytes% OwnAllocations  \_run\_tracker  1.440MB 95.94% 1.111KB0.07% 440 memray.comman  \_run\_module\_code  1.381MB 91.99% 0.000B0.00% 388 <frozen runpy  \_find\_and\_load  1.364MB 90.86% 960.000B0.06% 361 <frozen impor  \_load\_unlocked  1.360MB 90.62% 0.000B0.00% 355 <frozen impor▄▄  exec\_module  1.355MB 90.28% 1.225KB0.08% 351 <frozen impor  run\_module  1.351MB 90.00% 1.273KB0.08% 354 <frozen runpy  \_run\_code  1.334MB 88.90% 890.000B0.06% 341 <frozen runpy  \_call\_with\_frames\_removed  1.298MB 86.49% 0.000B0.00% 283 <frozen impor  get\_code  1.168MB 77.80% 0.000B0.00% 185 <frozen impor  <module>  1.095MB 72.96% 1.688KB0.11% 95 http.server  \_find\_and\_load\_unlocked  59.031KB 3.84% 1.000B0.00% 40 <frozen impor  test  42.097KB 2.74% 0.000B0.00% 27 http.server  \_\_init\_\_  41.565KB 2.70% 0.000B0.00% 20 socketserver  getfqdn  40.933KB 2.66% 2.135KB0.14% 18 socket  server\_bind  40.933KB 2.66% 0.000B0.00% 18 http.server  search\_function  38.798KB 2.52% 0.000B0.00% 16 encodings  \_handle\_fromlist  29.723KB 1.93% 0.000B0.00% 33 <frozen impor  <module>  24.617KB 1.60% 1.688KB0.11% 6 encodings.idn  \_compile  23.629KB 1.54% 0.000B0.00% 11 re ▊  Q  Quit  <  Previous Thread  \>  Next Thread  T  Sort by Total  O  Sort by Own  A  Sort by Allocations  SPACE  Pause ](https://github.com/bloomberg/memray) 
+
+---
+
+## Dolphie[¶](#dolphie "Permanent link")
+
+Your single pane of glass for real-time analytics into MySQL/MariaDB & ProxySQL
+
+[Dolphie Github Repository](https://github.com/charles-001/dolphie)
+
+[ Dolphie  🐬 Dolphiev6.7.0\[R/W\] W492F0YXKJ:21728 press ? for commands W492F0YXKJ:21728 ╸━━━━━━━━━━━━━━━━╺━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ ▊▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▎▊▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▎▊▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▎▊▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▎▊▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▎ ▊¹Host Information ▎▊ System Utilization ▎▊ InnoDB ▎▊ Binary Log ▎▊ Statistics/s ▎ ▊VersionMySQL 8.0.27 ▎▊Uptime9 days, 18:05:00 ▎▊Read Hit96.58%▎▊File namemysql-bin.000005▎▊Queries21.00K▎ ▊macos11 (x86\_64) ▎▊CPU89.0%cores 10 ▎▊Chkpt AgeN/A ▎▊Position233551615 ▎▊SELECT9.60K▎ ▊TypeMySQL ▎▊Load11.97 10.08 7.01 ▎▊AHI Hit4.85%▎▊Size222.73MB▎▊INSERT4.20K▎ ▊Uptime9 days, 17:33:10 ▎▊Memory39.79%▎▊BP Instance1 ▎▊Diff4.75MB▎▊UPDATE5.44K▎ ▊Replicas2 ▎▊12.73GB/32GB▎▊BP Size128MB▎▊Cache Hit99.96% ▎▊DELETE325 ▎ ▊Threadscon 13/run 11/cac 0 ▎▊Swap192KB/1GB▎▊BP Available224KB▎▊FormatROW (FULL) ▎▊REPLACE0 ▎ ▊Tablesopen 2.46K/opened 2.79K▎▊DiskIOPS R 3.33K▎▊BP Dirty61.02MB▎▊GTIDON ▎▊COMMIT718 ▎ ▊Runtime0:01:04 Latency 0.01s ▎▊IOPS W 21.32K▎▊History List220 ▎▊CompressionOFF ▎▊ROLLBACK2 ▎ ▊▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▎▊▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▎▊▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▎▊▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▎▊▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▎ ▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▃▃▃▃▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇█████▇▇▇▇▇▇▇▇▆▆▆▆▇▇▇▇▇▆▆▆▆▅▅▅▅▄▄▄▄▄▆▆▆▆▅▅▅▅▆▆▆▆▆▆▆▆▆▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇▆▆▆▆▇▇▇▇▄▄▄▄▆▆▆▆▆▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇ ³Metric Graphs SystemDMLBP RequestsHistory ListAHICheckpointRedo LogTable CacheThreadsTemp ObjectsAborted ConnectionsDisk I/O ╸━━━━━━╺━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ CPU % 89 Memory Used 12.73GBIOPS Read 3.33KIOPS Write 21.32KNet Dn 20.84MBNet Up 20.84MB ┌─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┐┌─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┐ 100┤⢕⢕ CPU % ⢀⡠⠊⠒⠤⠤⠤⠤⠔⠤⣀⣀⣀⠤⠒⠒⠒⠒⠣⡀⢀⠤⠤⠒⠒⠒⠒⠒⠒⠉⠉⠉⠉⠉⠉⠉⠉⠉⠉⠑⠢⢄│ 32GB├⢕⢕ Memory Used ────────────────────────────────────────────────────────────────────────────────────────────────────Total┤ │⡇⠑⠔⠁⠑⢄⣀⣀⠔⠑⠢⡄⡎⠢⡀⢀⠔⠒⠊⠒⠒⠒⠒⠒⠊⠉⠉⠢⣀⣀⡠⣀│││ │⡇⠘⡄⡸⠈⠁⠉│││ │⢠⠃⠘⠇│25.60GB┤│  80┤⢸│││ │⢸│││ │⣴⡎│19.20GB┤│  60┤⢀⠟⡄⡇│││ │⢸⢇⢀⠇│││ │⡎⢸⢸│12.80GB┤⠤⠤⠤⠤⠤⠤⠤⠤⠤⠤⠤⠤⠤⠤⠤⠤⠤⠤⠤⠤⠤⠤⠤⠤⠤⠤⠤⠤⠤⠤⠤⠤⠤⠤⠤⠤⠤⠤⠤⠤⠤⠤⠤⠤⠢⠤⠤⠤⠢⠤⠤⠤⠤⠤⠤⠤⠤⠤⠤⠤⠤⠤⠤⠤⠤⠤⠤⠤⠤⠤⠤⠤⠤⠤⠤⠤⠤⠤⠔⠒⠒⠒⠒⠒⠒⠒⠢⠤⠤⠤⠤⠤⠤⠤⠤⠤⠤⠤⠤⠤⠤⠤⠤⠔⠤⠤⠤⠤⠤⠤⠤⠤⠤⠤⠤⠤⠤⠤⠤⠤⠤│ │⢀⠇⣿│││  40┤⢸⠙│││ │⢀⣀⡠⠔⠊│ 6.40GB┤│ │⡴⡀⡰⠁│││ │⣀⣀⡀⢀⡄⡜⠘⢄⡰⠁│││  20┤⠤⠤⠤⠤⠢⠤⢄⣀⣀⣀⡠⠊⠈⠑⠢⠤⠔⠁⠈⠢⠔⠊⠒⠒⠤⠤⠤⠔⠒⠚⠑⠤⠊│ 0├─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┤ └┬──────────────────────────────┬──────────────────────────────┬──────────────────────────────┬──────────────────────────────┬┘└┬─────────────────────────────┬─────────────────────────────┬─────────────────────────────┬─────────────────────────────┬┘ 07/12/24 15:34:0507/12/24 15:34:2007/12/24 15:34:3607/12/24 15:34:5207/12/24 15:35:0807/12/24 15:34:0507/12/24 15:34:2007/12/24 15:34:3607/12/24 15:34:5207/12/24 15:35:08 ┌──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┐┌─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┐ 27.86K┤⢕⢕ IOPS Read ⢀⠎⠢⡀│21.81MB┤⢕⢕ Net Dn ⢀⡠⣀⣀⣀⣀⢀⠤⠤⢄⢀⠔⠑⠢⠤⠤⡄⡠⠤⠴⡀⣀⣀⣀⣀⡀⡠⠤⠔⠤⣀│ │⢕⢕ IOPS Write ⣀⣀⣀⡠⠤⠒⠑⠢⠎⠈⠒⠤⠤⠤⣀⣀⡠⠊⠢⣀⣀⡄││⢕⢕ Net Up ⣀⣀⡠⠊⠁⠉⠉⠁⠑⠃⠱⡀⣠⣀⡠⠊⠱⡀⣠⢀⠎⠑⢄⢀⠔⠉│ │⣀⠤⠊⠘⡄⢀⠾⡀││⢸⠑⠊⢣⢠⡆⢀⠤⠤⠤⠊⠑⠊⢸⢠⠃⠁│ 22.29K┤⢰⠉⠈⢆⢰⠑⢄⡜⠱⡀⢀⡠⠊⠢⣀⣀⠤⠒⠣⡀⡠⠤⠤⠤⠤⣀⣀│17.45MB┤⢸⢱⡸⠸⡀⡎⡇⢸│ │⢸⠑⡄⡎⠁⠑⠤⣀⠔⠁⠑⢄⣀⡀⢀⠤⠒⠉⠈⠊││⡇⢣⡇⢣⡜⢱⡇│ │⡇⠈⠢⡀⢰⠁⢣⡜││⡇⠈⢆⢸⠁⠸⣠⠃│ 16.71K┤⡇⠑⢄⡎⠈⡆⢰⠁│13.08MB┤⢸⠑⢄⡎⣿│ │⢸⠁⠸⡇││⢸⠑⠇⠈│ │⢸││⡇│ 11.14K┤⡇│ 8.72MB┤⡇│ │⡔⢄⢠⠃││⢸│ │⡸⠱⢸││⡜│  5.57K┤⢠⠃⡎⡀⡀⢀⡔⠉⠙⢄│ 4.36MB┤⡇│ │⢀⠎⢀⠇⠑⠒⠒⠒⠑⠒⠒⠉⠈⠉⠑⠒⠢⠤⢄⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⠔⠉⠢⡀⡠⠢⣀⢀⠎⠑⠤⠤⠤⠤⣀⣀⣀⣀⡀││⢸│ │⡜⢸⠈⠉⠉⠑⠢⠔⠁⠉⠉⠉⠑⠢⠤⠤⠒⠒⠉⠉⠉⠉⠉⠉⠈⠉⠒⠒⠒⠒⠒⠊││⡜│  0┤⠒⠒⠒⠒⠑⠒⠒⠒⠤⠤⠤⠔⠤⠤⠤⠤⠤⠔⠤⠤⠤⠤⠤⠤⠤⠤⠤⠢⠤⠤⠤⠤⠤⠤⠤⠤⠤⠤⠤⠤⠤⠤⠔⠒⠚│ 0┤⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⡇│ └┬─────────────────────────────┬──────────────────────────────┬─────────────────────────────┬─────────────────────────────┬┘└┬─────────────────────────────┬─────────────────────────────┬─────────────────────────────┬─────────────────────────────┬┘ 07/12/24 15:34:0507/12/24 15:34:2007/12/24 15:34:3607/12/24 15:34:5207/12/24 15:35:0807/12/24 15:34:0507/12/24 15:34:2007/12/24 15:34:3607/12/24 15:34:5207/12/24 15:35:08 IOPS ReadIOPS WriteNet DnNet Up ▊▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▎ ▊²Processlist (6)▎ ▊ Thread ID  Protocol  Username  Command  State  TRX State  R-Lock  R-Mod  Age  Query ▎ ▊ 1581  SSL/TLS  msandbox  Query  System lock  RUNNING  2  5 00:00:00SELECT s\_quantity, s\_data, s\_dist\_08 s\_dist FROM stock10 WHERE s\_i\_id \=70489AND s\_w\_id\=5FORUPDATE▎ ▊ 1577  SSL/TLS  msandbox  Query  statistics  RUNNING  7  12 00:00:00SELECT i\_price, i\_name, i\_data FROM item8 WHERE i\_id \=44929▎ ▊ 1579  SSL/TLS  msandbox  Query  statistics  RUNNING  2  2 00:00:00SELECT c\_id FROM customer7 WHERE c\_w\_id \=4AND c\_d\_id\=3AND c\_last\='ATIONEINGEING'ORDERBY c\_first▎ ▊ 1580  SSL/TLS  msandbox  Query  System lock  RUNNING 0000:00:00UPDATE district7 SET d\_next\_o\_id \=3152WHERE d\_id \=5AND d\_w\_id\=2▎ ▊ 1582  SSL/TLS  msandbox  Query  System lock  RUNNING  2  5 00:00:00SELECT s\_quantity, s\_data, s\_dist\_07 s\_dist FROM stock5 WHERE s\_i\_id \=76760AND s\_w\_id\=3FORUPDATE▎ ▊ 1583  SSL/TLS  msandbox  Query  statistics N/A0000:00:00SELECTcount(c\_id) namecnt FROM customer7 WHERE c\_w\_id \=2AND c\_d\_id\=1AND c\_last\='ABLEPRIBAR'▎ ▊▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▎ ](https://github.com/charles-001/dolphie) 
+
+---
+
+## Harlequin[¶](#harlequin "Permanent link")
+
+An easy, fast, and beautiful database client for the terminal.
+
+[Harlequin website](https://harlequin.sh/)
+
+[ Harlequin╭─ Data Catalog ─────────────╮╭─ Query Editor ─────────────────────────────────────────────────────────────────────────╮ │▼ f1 db││ 1 select│ │└─ ▼ main sch││ 2 drivers.surname, │ │├─ ▶ circuits t││ 3 drivers.forename, │ │├─ ▶ constructor\_result││ 4 drivers.nationality, │ │├─ ▶ constructor\_standi││ 5 avg(driver\_standings.position)asavg\_standing, │ │├─ ▶ constructors t││ 6 avg(driver\_standings.points
+
+*[Content truncated]*
+
+### Widgets
+
+Source: [https://textual.textualize.io/widget_gallery/](https://textual.textualize.io/widget_gallery/)
+
+# Widgets[¶](#widgets "Permanent link")
+
+Welcome to the Textual widget gallery.
+
+We have many more widgets planned, or you can [build your own](../guide/widgets/).
+
+Info
+
+Textual is a **TUI** framework. Everything below runs in the _terminal_.
+
+## Button[¶](#button "Permanent link")
+
+A simple button with a variety of semantic styles.
+
+[Button reference](../widgets/button/)
+
+ButtonsApp Standard ButtonsDisabled ButtonsFlat ButtonsDisabled Flat Buttons ▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄  Default  Default █ Default ██ Default █ ▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀ ▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄  Primary!  Primary! █ Primary! ██ Primary! █ ▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀ ▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄  Success!  Success! █ Success! ██ Success! █ ▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀ ▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄  Warning!  Warning! █ Warning! ██ Warning! █ ▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀ ▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄  Error!  Error! █ Error! ██ Error! █ ▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀ 
+
+## Checkbox[¶](#checkbox "Permanent link")
+
+A classic checkbox control.
+
+[Checkbox reference](../widgets/checkbox/)
+
+CheckboxApp ▊▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▎ ▊▐X▌Arrakis :sweat:▎ ▊▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▎ ▊▔▔▔▔▔▔▔▔▔▔▔▔▔▎ ▊▐X▌Caladan▎ ▊▁▁▁▁▁▁▁▁▁▁▁▁▁▎ ▊▔▔▔▔▔▔▔▔▔▔▔▔▎ ▊▐X▌Chusuk▎ ▊▁▁▁▁▁▁▁▁▁▁▁▁▎ ▊▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▎ ▊▐X▌Giedi Prime▎ ▊▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▎ ▊▔▔▔▔▔▔▔▔▔▔▔▎ ▊▐X▌Ginaz▎ ▊▁▁▁▁▁▁▁▁▁▁▁▎ ▊▔▔▔▔▔▔▔▔▔▔▔▔▔▎ ▊▐X▌Grumman▎ ▊▁▁▁▁▁▁▁▁▁▁▁▁▁▎ ▊▔▔▔▔▔▔▔▔▔▔▔▔▔▎▃▃ ▊▐X▌Kaitain▎ ▊▁▁▁▁▁▁▁▁▁▁▁▁▁▎ ▊▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▎ 
+
+## Collapsible[¶](#collapsible "Permanent link")
+
+Content that may be toggled on and off by clicking a title.
+
+[Collapsible reference](../widgets/collapsible/)
+
+CollapsibleApp ▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔ ▼ Leto \# Duke Leto I Atreides Head of House Atreides. ▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔ ▼ Jessica Lady Jessica Bene Gesserit and concubine of Leto, and mother of Paul and Alia. ▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔ ▶ Paul  c Collapse All  e Expand All ▏^p palette 
+
+## ContentSwitcher[¶](#contentswitcher "Permanent link")
+
+A widget for containing and switching display between multiple child widgets.
+
+[ContentSwitcher reference](../widgets/content%5Fswitcher/)
+
+## DataTable[¶](#datatable "Permanent link")
+
+A powerful data table, with configurable cursors.
+
+[DataTable reference](../widgets/data%5Ftable/)
+
+TableApp  lane  swimmer  country  time  4  Joseph Schooling  Singapore  50.39  2  Michael Phelps  United States  51.14  5  Chad le Clos  South Africa  51.14  6  László Cseh  Hungary  51.14  3  Li Zhuhao  China  51.26  8  Mehdy Metella  France  51.58  7  Tom Shields  United States  51.73  1  Aleksandr Sadovnikov  Russia  51.84  10  Darren Burns  Scotland  51.84 
+
+## Digits[¶](#digits "Permanent link")
+
+Display numbers in tall characters.
+
+[Digits reference](../widgets/digits/)
+
+DigitApp ╔══════════════════════════════════════════════╗ ║╶─╮ ╶╮ ╷ ╷╶╮ ╭─╴╭─╮╶─╮ ╭─╴╭─╴╶─╮ ╭─╴╭─╮╭─╮╶─┐║ ║ ─┤ │ ╰─┤ │ ╰─╮╰─┤┌─┘ ├─╮╰─╮ ─┤ ╰─╮├─┤╰─┤ │║ ║╶─╯•╶┴╴ ╵╶┴╴,╶─╯╶─╯╰─╴,╰─╯╶─╯╶─╯,╶─╯╰─╯╶─╯ ╵║ ╚══════════════════════════════════════════════╝ 
+
+## DirectoryTree[¶](#directorytree "Permanent link")
+
+A tree view of files and folders.
+
+[DirectoryTree reference](../widgets/directory%5Ftree/)
+
+DirectoryTreeApp 📂 ├── 📁 .cache ├── 📁 .faq ├── 📁 .git ├── 📁 .github ├── 📁 .ipynb\_checkpoints ├── 📁 .mypy\_cache ├── 📁 .pytest\_cache ├── 📁 .ropeproject ├── 📁 .ruff\_cache ├── 📁 .screenshot\_cache ├── 📁 .vscode▇▇ ├── 📁 \_\_pycache\_\_ ├── 📁 dist ├── 📁 docs ├── 📁 examples ├── 📁 imgs ├── 📁 notes ├── 📁 questions ├── 📁 reference ├── 📁 sandbox ├── 📁 site ├── 📁 src ├── 📁 tests 
+
+## Footer[¶](#footer "Permanent link")
+
+A footer to display and interact with key bindings.
+
+[Footer reference](../widgets/footer/)
+
+FooterApp  q Quit the app  ? Show help screen  del Delete the thing ▏^p palette 
+
+## Header[¶](#header "Permanent link")
+
+A header to display the app's title and subtitle.
+
+[Header reference](../widgets/header/)
+
+HeaderApp ⭘HeaderApp 
+
+## Input[¶](#input "Permanent link")
+
+A control to enter text.
+
+[Input reference](../widgets/input/)
+
+InputApp ▊▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▎ ▊Darren▎ ▊▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▎ ▊▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▎ ▊Last Name▎ ▊▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▎ 
+
+## Label[¶](#label "Permanent link")
+
+A simple text label.
+
+[Label reference](../widgets/label/)
+
+## Link[¶](#link "Permanent link")
+
+A clickable link that opens a URL.
+
+[Link reference](../widgets/link/)
+
+## ListView[¶](#listview "Permanent link")
+
+Display a list of items (items may be other widgets).
+
+[ListView reference](../widgets/list%5Fview/)
+
+ListViewExample One Two Three ▏^p palette 
+
+## LoadingIndicator[¶](#loadingindicator "Permanent link")
+
+Display an animation while data is loading.
+
+[LoadingIndicator reference](../widgets/loading%5Findicator/)
+
+LoadingApp ● ● ● ● ● 
+
+## Log[¶](#log "Permanent link")
+
+Display and update lines of text (such as from a file).
+
+[Log reference](../widgets/log/)
+
+LogApp And when it has gone past, I will turn the inner eye to see its path. Where the fear has gone there will be nothing. Only I will remain. I must not fear. Fear is the mind-killer. Fear is the little-death that brings total obliteration. I will face my fear. I will permit it to pass over me and through me. And when it has gone past, I will turn the inner eye to see its path. Where the fear has gone there will be nothing. Only I will remain. I must not fear. Fear is the mind-killer. Fear is the little-death that brings total obliteration. I will face my fear. I will permit it to pass over me and through me. And when it has gone past, I will turn the inner eye to see its path. Where the fear has gone there will be nothing. Only I will remain.▄▄ I must not fear. Fear is the mind-killer. Fear is the little-death that brings total obliteration. I will face my fear. I will permit it to pass over me and through me. And when it has gone past, I will turn the inner eye to see its path. Where the fear has gone there will be nothing. Only I will remain. 
+
+## MarkdownViewer[¶](#markdownviewer "Permanent link")
+
+Display and interact with a Markdown document (adds a table of contents and browser-like navigation to Markdown).
+
+[MarkdownViewer reference](../widgets/markdown%5Fviewer/)
+
+MarkdownExampleApp ▼ Ⅰ Markdown Viewer ├── Ⅱ FeaturesMarkdown Viewer ├── Ⅱ Tables ├── Ⅱ Code BlocksThis is an example of Textual's MarkdownViewer widget. └── Ⅱ Litany Against Fear Features Markdown syntax and extensions are supported. • Typography emphasis, strong, inline code etc. • Headers • Lists (bullet and ordered) • Syntax highlighted code blocks • Tables! Tables Tables are displayed in a DataTable widget. ┌──────────────────┬────────┬───────────┬─────────────────────────────────────────────┐ │Name│Type│Default│Description│ ├──────────────────┼────────┼───────────┼─────────────────────────────────────────────┤ │show\_header│bool│True│Show the table header│ ├──────────────────┼────────┼───────────┼─────────────────────────────────────────────┤ │fixed\_rows│int│0│Number of fixed rows│ ├──────────────────┼────────┼───────────┼─────────────────────────────────────────────┤ │fixed\_columns│int│0│Number of fixed columns│ ├──────────────────┼────────┼───────────┼─────────────────────────────────────────────┤ │zebra\_stripes│bool│False│Display alternating colors on rows│ ├──────────────────┼────────┼───────────┼─────────────────────────────────────────────┤ │header\_height│int│1│Height of header row│ ├──────────────────┼────────┼───────────┼─────────────────────────────────────────────┤ │show\_cursor│bool│True│Show a cell cursor│ └──────────────────┴────────┴───────────┴─────────────────────────────────────────────┘ Code Blocks ▅▅ Code blocks are syntax highlighted. classListViewExample(App): defcompose(self) \-\>ComposeResult: yieldListView( ListItem(Label("One")), ListItem(Label("Two")), ListItem(Label("Three")), 
+
+## Markdown[¶](#markdown "Permanent link")
+
+Display a markdown document.
+
+[Markdown reference](../widgets/markdown/)
+
+MarkdownExampleApp Markdown • Typography emphasis, strong, inline code etc. • Headers • Lists • Syntax highlighted code blocks • Tables and more Quotes ▌I must not fear. ▌ ▌▌Fear is the mind-killer. Fear is the little-death that brings total obliteration. I will face my fear. ▌▌ ▌▌▌I will permit it to pass over me and through me. And when it has gone past, I will turn the inner eye to ▌▌▌see its path. Where the fear has gone there will be nothing. Only I will remain. ▌▌ ▌ Tables ┌──────────────────────────────┬────────────┬──────────────────┬───────────────────────────────────────────────────┐ │Name│Type│Default│Description│ ├──────────────────────────────┼────────────┼──────────────────┼───────────────────────────────────────────────────┤ │show\_header│bool│True│Show the table header│ ├──────────────────────────────┼────────────┼──────────────────┼───────────────────────────────────────────────────┤ │fixed\_rows│int│0│Number of fixed rows│ ├──────────────────────────────┼────────────┼──────────────────┼───────────────────────────────────────────────────┤ │fixed\_columns│int│0│Number of fixed columns│ └──────────────────────────────┴────────────┴──────────────────┴───────────────────────────────────────────────────┘ Code blocks defloop\_last(values: Iterable\[T\]) \-\>Iterable\[Tuple\[bool, T\]\]: """Iterate and generate a tuple with a flag for last value.""" iter\_values\=iter(values) try: previous\_value\=next(iter\_values) exceptStopIteration: return forvalueiniter\_values: yieldFalse, previous\_value previous\_value\=value yieldTrue, previous\_value 
+
+## MaskedInput[¶](#maskedinput "Permanent link")
+
+A control to enter input according to a template mask.
+
+[MaskedInput reference](../widgets/masked%5Finput/)
+
+MaskedInputApp Enter a valid credit card number. ▊▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▎ ▊0000-0000-0000-0000▎ ▊▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▎ 
+
+## OptionList[¶](#optionlist "Permanent link")
+
+Display a vertical list of options (options may be Rich renderables).
+
+[OptionList reference](../widgets/option%5Flist/)
+
+OptionListApp ⭘OptionListApp ▊▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▎ ▊Aerilon▎ ▊Aquaria▎ ▊──────────────────────────────────────────────────▎ ▊Canceron▎ ▊Caprica▎ ▊──────────────────────────────────────────────────▎ ▊Gemenon▎ ▊──────────────────────────────────────────────────▎ ▊Leonis▎ ▊Libran▎ ▊──────────────────────────────────────────────────▎ ▊Picon▁▁▎ ▊──────────────────────────────────────────────────▎ ▊Sagittaron▎ ▊Scorpia▎ ▊▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▎ ▏^p palette 
+
+## Placeholder[¶](#placeholder "Permanent link")
+
+Display placeholder content while you are designing a UI.
+
+[Placeholder reference](../widgets/placeholder/)
+
+PlaceholderApp Placeholder p2 here! This is a custom label for p1. #p4 #p3#p5Placeholde r Lorem ipsum dolor sit 26 x 6amet, consectetur27 x 6 adipiscing elit. Etiam feugiat ac elit sit amet Lorem ipsum dolor sit amet, consectetur adipiscing elit. Etiam40 x 6 feugiat ac elit sit amet accumsan. Suspendisse bibendum nec libero quis gravida. Phasellus id eleifend ligula. Nullam imperdiet sem tellus, sed vehicula nisl faucibus sit amet.Lorem ipsum dolor sit amet, Praesent iaculis tempor ultricies. Sedconsectetur adipiscing elit. Etiam lacinia, tellus id rutrum lacinia,feugiat ac elit sit amet accumsan. sapien sapien congue mauris, sit ametSuspendisse bibendum nec libero quis 
+
+## Pretty[¶](#pretty "Permanent link")
+
+Display a pretty-formatted Rich renderable.
+
+[Pretty reference](../widgets/pretty/)
+
+PrettyExample { 'title': 'Back to the Future', 'releaseYear': 1985, 'director': 'Robert Zemeckis', 'genre': 'Adventure, Comedy, Sci-Fi', 'cast': \[ {'actor': 'Michael J. Fox', 'character': 'Marty McFly'}, {'actor': 'Christopher Lloyd', 'character': 'Dr. Emmett Brown'} \] } 
+
+## ProgressBar[¶](#progressbar "Permanent link")
+
+A configurable progress bar with ETA and percentage complete.
+
+[ProgressBar reference](../widgets/progress%5Fbar/)
+
+Funding tracking ⭘Funding tracking Funding: ━━━━━━━━━━━━━━━━╺━━━━━━━━━━━━━━━50% ▊▔▔▔▔▔▔▔▔▔▔▔▔▔▔▎▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔ ▊$$$▎ Donate ▊▁▁▁▁▁▁▁▁▁▁▁▁▁▁▎▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁ Donation for $50 received! 
+
+## RadioButton[¶](#radiobutton "Permanent link")
+
+A simple radio button.
+
+[RadioButton reference](../widgets/radiobutton/)
+
+RadioChoicesApp ▊▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▎ ▊▐●▌Battlestar Galactica▎ ▊▐●▌Dune 1984▎ ▊▐●▌Dune 2021▎ ▊▐●▌Serenity▎ ▊▐●▌Star Trek: The Motion Picture▎ ▊▐●▌Star Wars: A New Hope▎ ▊▐●▌The Last Starfighter▎ ▊▐●▌Total Recall 👉 🔴▎ ▊▐●▌Wing Commander▎ ▊▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▎ 
+
+## RadioSet[¶](#radioset "Permanent link")
+
+A collection of radio buttons, that enforces uniqueness.
+
+[RadioSet reference](../widgets/radioset/)
+
+RadioChoicesApp ▊▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▎▊▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▎ ▊▐●▌Battlestar Galactica▎▊▐●▌Amanda▎ ▊▐●▌Dune 1984▎▊▐●▌Connor MacLeod▎ ▊▐●▌Dune 2021▎▊▐●▌Duncan MacLeod▎ ▊▐●▌Serenity▎▊▐●▌Heather MacLeod▎ ▊▐●▌Star Trek: The Motion Pictu…▎▊▐●▌Joe Dawson▎ ▊▐●▌Star Wars: A New Hope▎▊▐●▌Kurgan, The▎ ▊▐●▌The Last Starfighter▎▊▐●▌Methos▎ ▊▐●▌Total Recall 👉 🔴▎▊▐●▌Rachel Ellenstein▎ ▊▐●▌Wing Commander▎▊▐●▌Ramírez▎ ▊▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▎▊▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▎ 
+
+## RichLog[¶](#richlog "Permanent link")
+
+Display and update text in a scrolling panel.
+
+[RichLog reference](../widgets/rich%5Flog/)
+
+RichLogApp │ │ previous\_value\=next(iter\_values) │ exceptStopIteration: │ │ return │ first\=True▅▅ │ forvalueiniter\_values: │ │ yieldfirst,False,previous\_value │ │ first\=False │ │ previous\_value\=value │ yieldfirst,True,previous\_value ┏━━━━━━┳━━━━━━━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━━┳━━━━━━━┓ ┃lane┃swimmer ┃country ┃time ┃ ┡━━━━━━╇━━━━━━━━━━━━━━━━━━━━━━╇━━━━━━━━━━━━━━━╇━━━━━━━┩ │4 │Joseph Schooling │Singapore │50.39│ │2 │Michael Phelps │United States│51.14│ │5 │Chad le Clos │South Africa │51.14│ │6 │László Cseh │Hungary │51.14│ │3 │Li Zhuhao │China │51.26│ │8 │Mehdy Metella │France │51.58│ │7 │Tom Shields │United States│51.73│ │1 │Aleksandr Sadovnikov│Russia │51.84│ └──────┴──────────────────────┴───────────────┴───────┘ Write text or any Rich renderable! Key(key\='H', character\='H', name\='upper\_h', is\_printable\=True) Key(key\='i', character\='i', name\='i',
+
+*[Content truncated]*
+
+### Roadmap
+
+Source: [https://textual.textualize.io/roadmap/](https://textual.textualize.io/roadmap/)
+
+# Roadmap[¶](#roadmap "Permanent link")
+
+We ([textualize.io](https://www.textualize.io/)) are actively building and maintaining Textual.
+
+We have many new features in the pipeline. This page will keep track of that work.
+
+## Features[¶](#features "Permanent link")
+
+High-level features we plan on implementing.
+
+* Accessibility  
+   * Integration with screen readers  
+   * Monochrome mode  
+   * High contrast theme  
+   * Color-blind themes
+* Command palette  
+   * Fuzzy search
+* Configuration (.toml based extensible configuration format)
+* Console
+* Devtools  
+   * Integrated log  
+   * DOM tree view  
+   * REPL
+* Reactive state abstraction
+* Themes  
+   * Customize via config  
+   * Builtin theme editor
+
+## Widgets[¶](#widgets "Permanent link")
+
+Widgets are key to making user-friendly interfaces. The builtin widgets should cover many common (and some uncommon) use-cases. The following is a list of the widgets we have built or are planning to build.
+
+* Buttons  
+   * Error / warning variants
+* Color picker
+* Checkbox
+* Content switcher
+* DataTable  
+   * Cell select  
+   * Row / Column select  
+   * API to update cells / rows  
+   * Lazy loading API
+* Date picker
+* Drop-down menus
+* Form Widget  
+   * Serialization / Deserialization  
+   * Export to `attrs` objects  
+   * Export to `PyDantic` objects
+* Image support  
+   * Half block  
+   * Braille  
+   * Sixels, and other image extensions
+* Input  
+   * Validation  
+   * Error / warning states  
+   * Template types: IP address, physical units (weight, volume), currency, credit card etc
+* Select control (pull-down)
+* Markdown viewer  
+   * Collapsible sections  
+   * Custom widgets
+* Plots  
+   * bar chart  
+   * line chart  
+   * Candlestick chars
+* Progress bars  
+   * Style variants (solid, thin etc)
+* Radio boxes
+* Spark-lines
+* Switch
+* Tabs
+* TextArea (multi-line input)  
+   * Basic controls  
+   * Indentation guides  
+   * Smart features for various languages  
+   * Syntax highlighting
+
+### CSS Types
+
+Source: [https://textual.textualize.io/css_types/](https://textual.textualize.io/css_types/)
+
+# CSS Types[¶](#css-types "Permanent link")
+
+CSS types define the values that Textual CSS styles accept.
+
+CSS types will be linked from within the [styles reference](../styles/) in the "Formal Syntax" section of each style. The CSS types will be denoted by a keyword enclosed by angle brackets `<` and `>`.
+
+For example, the style [align-horizontal](../styles/align/) references the CSS type [<horizontal>](horizontal/):
+
+align-horizontal: [<horizontal>](./horizontal/);
+
+### <border>
+
+Source: [https://textual.textualize.io/css_types/border/](https://textual.textualize.io/css_types/border/)
+
+# <border>[¶](#border "Permanent link")
+
+The `<border>` CSS type represents a border style.
+
+## Syntax[¶](#syntax "Permanent link")
+
+The [<border>](./) type can take any of the following values:
+
+| Border type | Description                                              |
+| ----------- | -------------------------------------------------------- |
+| ascii       | A border with plus, hyphen, and vertical bar characters. |
+| blank       | A blank border (reserves space for a border).            |
+| dashed      | Dashed line border.                                      |
+| double      | Double lined border.                                     |
+| heavy       | Heavy border.                                            |
+| hidden      | Alias for "none".                                        |
+| hkey        | Horizontal key-line border.                              |
+| inner       | Thick solid border.                                      |
+| none        | Disabled border.                                         |
+| outer       | Solid border with additional space around content.       |
+| panel       | Solid border with thick top.                             |
+| round       | Rounded corners.                                         |
+| solid       | Solid border.                                            |
+| tall        | Solid border with additional space top and bottom.       |
+| thick       | Border style that is consistently thick across edges.    |
+| vkey        | Vertical key-line border.                                |
+| wide        | Solid border with additional space left and right.       |
+
+## Border command[¶](#border-command "Permanent link")
+
+The `textual` CLI has a subcommand which will let you explore the various border types interactively, when applied to the CSS rule [border](../../styles/border/):
+
+`[](#%5F%5Fcodelineno-0-1)textual borders
+`
+
+## Examples[¶](#examples "Permanent link")
+
+### CSS[¶](#css "Permanent link")
+
+`[](#%5F%5Fcodelineno-1-1)#container {
+[](#%5F%5Fcodelineno-1-2)    border: heavy red;
+[](#%5F%5Fcodelineno-1-3)}
+[](#%5F%5Fcodelineno-1-4)
+[](#%5F%5Fcodelineno-1-5)#heading {
+[](#%5F%5Fcodelineno-1-6)    border-bottom: solid blue;
+[](#%5F%5Fcodelineno-1-7)}
+`
+
+### Python[¶](#python "Permanent link")
+
+`[](#%5F%5Fcodelineno-2-1)widget.styles.border = ("heavy", "red")
+[](#%5F%5Fcodelineno-2-2)widget.styles.border_bottom = ("solid", "blue")
+`
+
+*148 more main links available on the website*
+
+
+## Optional
+
+### FAQ
+
+Source: [https://textual.textualize.io/FAQ/](https://textual.textualize.io/FAQ/)
+
+*Additional content available at [https://textual.textualize.io/FAQ/](https://textual.textualize.io/FAQ/)*
+
+### Blog
+
+Source: [https://textual.textualize.io/blog/](https://textual.textualize.io/blog/) - Latest articles and updates
+
+*Additional content available at [https://textual.textualize.io/blog/](https://textual.textualize.io/blog/)*
+
+### Help
+
+Source: [https://textual.textualize.io/help/](https://textual.textualize.io/help/)
+
+*Additional content available at [https://textual.textualize.io/help/](https://textual.textualize.io/help/)*
+
+*7 more optional links available on the website*
+
+

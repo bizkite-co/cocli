@@ -1,0 +1,40 @@
+# Textual
+
+> Textual is a TUI framework for Python, inspired by modern web development.
+
+Visit textual.textualize.io for more information.
+
+## Documentation
+
+- [Introduction](https://textual.textualize.io/getting_started/)
+- [Tutorial](https://textual.textualize.io/tutorial/): Step-by-step tutorials
+- [Guide](https://textual.textualize.io/guide/): Comprehensive guides
+- [Reference](https://textual.textualize.io/reference/)
+- [API](https://textual.textualize.io/api/)
+- [How To](https://textual.textualize.io/how-to/)
+- [Devtools](https://textual.textualize.io/guide/devtools/)
+- [App Basics](https://textual.textualize.io/guide/app/)
+- [Styles](https://textual.textualize.io/guide/styles/)
+- [Textual CSS](https://textual.textualize.io/guide/CSS/)
+
+## Main
+
+- [Home](https://textual.textualize.io/)
+- [Widgets](https://textual.textualize.io/widget_gallery/)
+- [Roadmap](https://textual.textualize.io/roadmap/)
+- [CSS Types](https://textual.textualize.io/css_types/)
+- [<border>](https://textual.textualize.io/css_types/border/)
+- [<color>](https://textual.textualize.io/css_types/color/)
+- [<hatch>](https://textual.textualize.io/css_types/hatch/)
+- [<horizontal>](https://textual.textualize.io/css_types/horizontal/)
+- [<integer>](https://textual.textualize.io/css_types/integer/)
+- [<keyline>](https://textual.textualize.io/css_types/keyline/)
+
+## Optional
+
+- [FAQ](https://textual.textualize.io/FAQ/)
+- [Blog](https://textual.textualize.io/blog/): Latest articles and updates
+- [Help](https://textual.textualize.io/help/)
+- [2025](https://textual.textualize.io/blog/archive/2025/)
+- [2024](https://textual.textualize.io/blog/archive/2024/)
+
