@@ -1,9 +1,11 @@
 import pytest
 from unittest.mock import patch
 from cocli.tui.app import CocliApp
-from cocli.tui.screens.company_list import CompanyList
+
 from cocli.models.search import SearchResult
 from pytest_mock import MockerFixture
+from cocli.tui.screens.company_list import CompanyList
+from textual.widgets import ListView
 
 
 @pytest.mark.asyncio
@@ -13,9 +15,11 @@ async def test_company_list_mounts(mock_get_fz_items):
     mock_get_fz_items.return_value = []
     app = CocliApp()
     async with app.run_test() as driver:
-        await driver.app.push_screen(CompanyList())
+        # Select 'Companies' from the main menu
+        await driver.press("j") # Move to Companies
+        await driver.press("l") # Select Companies
         await driver.pause()
-        assert isinstance(app.screen, CompanyList)
+        assert isinstance(app.query_one("#body").children[0], CompanyList)
 
 
 @pytest.mark.asyncio
@@ -28,9 +32,11 @@ async def test_company_list_populates(mock_get_fz_items):
     ]
     app = CocliApp()
     async with app.run_test() as driver:
-        await driver.app.push_screen(CompanyList())
+        # Select 'Companies' from the main menu
+        await driver.press("j") # Move to Companies
+        await driver.press("l") # Select Companies
         await driver.pause()
-        list_view = app.screen.query_one("#company_list_view")
+        list_view = app.query_one("#body").query_one("#company_list_view")
         assert list_view.children is not None
         assert len(list_view.children) == 2
 
@@ -44,18 +50,19 @@ async def test_company_list_selection_posts_message(mock_get_fz_items, mocker: M
     ]
     app = CocliApp()
     async with app.run_test() as driver:
-        company_list_screen = CompanyList()
+        # Select 'Companies' from the main menu
+        await driver.press("j") # Move to Companies
+        await driver.press("l") # Select Companies
+        await driver.pause()
+        company_list_screen = app.query_one("#body").children[0]
         spy = mocker.spy(company_list_screen, "post_message")
 
-        await driver.app.push_screen(company_list_screen)
-        await driver.pause()
-
         # Move focus to the list view and select the first item
-        await driver.press("tab")
-        await driver.press("down")
-        await driver.press("enter")
+        company_list_screen.query_one(ListView).focus()
         await driver.pause()
-
+        await driver.press("down")
+        await driver.press("l")
+        await driver.pause()
         # Assert that post_message was called with a CompanySelected message
         found_message = False
         for call in spy.call_args_list:

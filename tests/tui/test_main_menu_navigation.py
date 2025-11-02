@@ -1,6 +1,7 @@
 import pytest
 from cocli.tui.app import CocliApp
-from cocli.tui.screens.main_menu import MainMenu
+from cocli.tui.widgets.main_menu import MainMenu
+
 
 
 @pytest.mark.asyncio
@@ -11,7 +12,7 @@ async def test_k_key_moves_up_in_main_menu():
     app = CocliApp()
     async with app.run_test() as driver:
         # Check that we are on the main menu screen
-        assert isinstance(app.screen, MainMenu)
+        assert isinstance(app.query_one("#main_menu"), MainMenu)
 
         # Press 'j' to move down
         await driver.press("j")
@@ -22,4 +23,4 @@ async def test_k_key_moves_up_in_main_menu():
         await driver.pause()
 
         # Check that the first item is highlighted
-        assert app.screen.query_one("ListView").index == 0
+        assert app.query_one("#main_menu").query_one("ListView").index == 0

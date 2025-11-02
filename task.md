@@ -29,30 +29,19 @@ To avoid the pitfalls of previous attempts, we will take a very small, deliberat
     *   Run `make lint` as often as you need to. It's very fast and will give you early warnings of problems.
     *   Run `make test` when you bet that you have working code.
     *   If `make test` fails repeatedly, break your test path opperational steps down into smaller steps. Baby steps lead to little victories, and little victories compose larger victories.
-2.  **Refactor Main Menu from Screen to Widget and Establish Persistent Layout:**
-    *   **Objective:** Convert the existing main menu `Screen` into a `Widget` and integrate it into a persistent layout where the main menu is on the left and a dynamic content area is on the right. This is the foundational step for enabling VIM-like navigation.
+2.  **Address `l` key behavior in actual TUI:**
+    *   **Objective:** Ensure the `l` key correctly selects items in `ListView` widgets within the content area in the live application.
+    *   **Current Status:** In the live TUI, pressing `l` on the main menu displays the Company search, but `l` does not select a company from the list.
     *   **Steps:**
-        *   Modify `cocli/tui/app.py`:
-            *   Import `Horizontal` and `Container` from `textual.containers`.
-            *   Implement a `compose` method to define the main layout: a `Horizontal` container with the new `MainMenu` Widget on the left and a `Container` (id="body") for dynamic content on the right.
-            *   Modify `on_mount` to focus the `MainMenu` initially.
-            *   Update `on_list_view_selected` to mount/unmount screens (e.g., `CampaignSelection`, `CompanyList`) into the `#body` container instead of pushing them as full screens.
-            *   Update `on_person_list_person_selected`, `on_company_list_company_selected`, and `on_campaign_selection_campaign_selected` to mount their respective detail screens into the `#body` container.
-            *   Modify `action_go_back` to remove the last child from the `#body` container. If `#body` is empty, focus the `MainMenu`.
-            *   Modify `action_cursor_down`, `action_cursor_up`, and `action_select_item` to operate on the currently focused widget within the `#body` container.
-        *   Create a new file for the `MainMenu` Widget (e.g., `cocli/tui/widgets/main_menu.py`) and move the relevant logic from the old `MainMenu` Screen into this new Widget.
-        *   Update `tests/tui/test_campaign_navigation.py` and other relevant TUI tests:
-            *   Adjust assertions from `assert isinstance(app.screen, SomeScreen)` to `assert isinstance(app.query_one("#body", Container).children[0], SomeScreen)` (or similar, depending on the specific test context).
-            *   Ensure mocks are correctly set up for the new flow (e.g., `get_campaign` returning `None` for default cache path).
-    *   **Verification:** Run `make test-tui` and ensure all existing TUI tests pass with the new layout. This will be a significant step, and we will verify each sub-step.
-3.  **Implement `h` Navigation (Refined):**
-    *   **Objective:** Ensure the `h` key correctly navigates "back" within the content area.
-    *   **Steps:** This will largely be covered by the refactoring in step 2, as `action_go_back` will now manage the content area's history.
-    *   **Verification:** The updated `test_h_key_goes_back_from_campaign_screen` (and potentially other `h` key tests) should pass.
-4.  **Implement `l` Navigation (Refined):**
-    *   **Objective:** Ensure the `l` key correctly selects items in `ListView` widgets within the content area.
-    *   **Steps:** This will also largely be covered by the refactoring in step 2, as `action_select_item` will now operate on the focused widget in the content area.
-    *   **Verification:** The `test_l_key_selects_item` test should pass.
-5.  **Address `l` in Detail Fields and Subproperties:** (This remains a future task, after the layout and basic navigation are solid).
+        *   Add debug logging to `CocliApp`'s `on_key` method (if it exists) or the `CompanyList`'s `on_key` method to see how the `l` key press is being handled in the live environment.
+        *   Based on the debug logs, identify why the `l` key press is not triggering the `action_select_item` in the `ListView` when it is focused.
+        *   Implement a fix to ensure the `l` key correctly triggers the selection.
+    *   **Verification:** Run the TUI (`python -m cocli.tui.app`), navigate to "Companies", and verify that pressing `l` selects a company and displays its detail screen.
+3.  **Can't go into Campaigns:**
+    *   **Objective:** Enable navigation into the Campaigns screen.
+    *   **Current Status:** The Campaigns menu item is not functional.
+    *   **Steps:** Investigate the `on_list_view_selected` method in `cocli/tui/app.py` and the `CampaignSelection` screen to identify why it's not being mounted correctly.
+    *   **Verification:** Run the TUI, navigate to "Campaigns", and verify that the Campaign selection screen is displayed.
+4.  **Address `l` in Detail Fields and Subproperties:** (This remains a future task, after the layout and basic navigation are solid).
 
 By following this plan, we can ensure that we are making steady, verifiable progress and that we are not introducing new bugs along the way.

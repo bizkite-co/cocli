@@ -1,11 +1,12 @@
 import logging
 import toml
 
-from textual.app import App
+from textual.app import App, ComposeResult
 from textual.binding import Binding
 from textual.widgets import ListView
+from textual.containers import Horizontal, Container
 
-from .screens.main_menu import MainMenu
+from .widgets.main_menu import MainMenu
 from .screens.campaign_selection import CampaignSelection
 from .screens.company_list import CompanyList
 from .screens.person_list import PersonList
@@ -24,7 +25,8 @@ class CocliApp(App[None]):
     """A Textual app to manage cocli."""
 
     dark: bool = False
-
+    
+    CSS_PATH = "tui.css" 
     BINDINGS = [
         Binding("d", "toggle_dark", "Toggle dark mode"),
         Binding("q", "quit", "Quit", show=True),
@@ -36,51 +38,76 @@ class CocliApp(App[None]):
 
     def action_go_back(self) -> None:
         logger.debug("action_go_back called")
-        self.pop_screen()
+        body_container = self.query_one("#body", Container)
+        if body_container.children:
+            body_container.children[-1].remove()
+        else:
+            self.query_one("#main_menu").focus()
 
     def action_select_item(self) -> None:
         logger.debug("action_select_item called")
-        try:
-            self.screen.query_one(ListView).action_select_cursor()
-        except Exception as e:
-            logger.error(f"Error selecting item: {e}")
+        focused_widget = self.focused
+        if focused_widget:
+            if isinstance(focused_widget, ListView):
+                focused_widget.action_select_cursor()
+            elif isinstance(focused_widget, CompanyList):
+                focused_widget.select_highlighted_company()
+            elif hasattr(focused_widget, "action_select_item"):
+                focused_widget.action_select_item()
+            else:
+                logger.warning(f"No select_item action found for focused widget: {focused_widget}")
+
+    def compose(self) -> ComposeResult:
+        """Create child widgets for the app."""
+        yield Horizontal(
+            MainMenu(id="main_menu"),
+            Container(id="body")
+        )
 
     def on_mount(self) -> None:
         create_default_config_file()
         logging_config.setup_file_logging("tui", file_level=logging.DEBUG) # Moved logging setup here
-        self.push_screen(MainMenu())
+        self.query_one("#main_menu").focus()
 
     def on_list_view_selected(self, event: ListView.Selected) -> None:
         logger.debug(f"on_list_view_selected called with item ID: {event.item.id}")
+        # Clear the body container before mounting a new screen
+        self.query_one("#body").remove_children()
+
         if event.item.id == "campaigns":
-            self.push_screen(CampaignSelection())
+            self.query_one("#body").mount(CampaignSelection())
         elif event.item.id == "companies":
-            self.push_screen(CompanyList())
+            self.query_one("#body").mount(CompanyList())
         elif event.item.id == "people":
-            self.push_screen(PersonList())
+            self.query_one("#body").mount(PersonList())
         elif event.item.id == "etl_enrichment":
-            self.push_screen(EtlEnrichmentMenu())
+            self.query_one("#body").mount(EtlEnrichmentMenu())
         elif event.item.id == "exit":
             self.exit()
 
     def action_cursor_down(self) -> None:
-        """Move cursor down in the current ListView."""
-        if isinstance(self.screen, (MainMenu, PersonList, EtlEnrichmentMenu, CompanyList, CampaignSelection)):
-            list_view = self.screen.query_one(ListView)
-            list_view.action_cursor_down()
+        """Move cursor down in the currently focused ListView or widget."""
+        focused_widget = self.focused
+        if focused_widget and isinstance(focused_widget, ListView):
+            focused_widget.action_cursor_down()
+        elif focused_widget and hasattr(focused_widget, "action_cursor_down"):
+            focused_widget.action_cursor_down()
 
     def action_cursor_up(self) -> None:
-        """Move cursor up in the current ListView."""
-        if isinstance(self.screen, (MainMenu, PersonList, EtlEnrichmentMenu, CompanyList, CampaignSelection)):
-            list_view = self.screen.query_one(ListView)
-            list_view.action_cursor_up()
+        """Move cursor up in the currently focused ListView or widget."""
+        focused_widget = self.focused
+        if focused_widget and isinstance(focused_widget, ListView):
+            focused_widget.action_cursor_up()
+        elif focused_widget and hasattr(focused_widget, "action_cursor_up"):
+            focused_widget.action_cursor_up()
 
 
 
     def on_person_list_person_selected(self, message: PersonList.PersonSelected) -> None:
         """Handle PersonSelected message from PersonList."""
         logger.debug(f"on_person_list_person_selected called with slug: {message.person_slug}")
-        self.push_screen(PersonDetail(person_slug=message.person_slug))
+        self.query_one("#body").remove_children()
+        self.query_one("#body").mount(PersonDetail(person_slug=message.person_slug))
 
     def on_company_list_company_selected(self, message: CompanyList.CompanySelected) -> None:
         """Handle CompanySelected message from CompanyList."""
@@ -88,7 +115,8 @@ class CocliApp(App[None]):
         company_slug = message.company_slug
         company_data = get_company_details_for_view(company_slug)
         if company_data:
-            self.push_screen(CompanyDetailScreen(company_data))
+            self.query_one("#body").remove_children()
+            self.query_one("#body").mount(CompanyDetailScreen(company_data))
         else:
             self.bell()
 
@@ -97,7 +125,6 @@ class CocliApp(App[None]):
         logger.debug(f"on_campaign_selection_campaign_selected called with campaign: {message.campaign_name}")
         campaign_name = message.campaign_name
         assert campaign_name is not None
-        self.pop_screen() # Pop the selection screen
 
         campaign_dir = get_campaign_dir(campaign_name)
         if not campaign_dir:
@@ -121,7 +148,8 @@ class CocliApp(App[None]):
             self.notify(f"Error validating campaign configuration for '{campaign_name}': {e}", severity="error")
             return
 
-        self.push_screen(CampaignScreen(campaign=campaign))
+        self.query_one("#body").remove_children()
+        self.query_one("#body").mount(CampaignScreen(campaign=campaign))
 
     def action_toggle_dark(self) -> None:
         """An action to toggle dark mode."""
