@@ -46,6 +46,9 @@ test-file: install ## Run a specific test file, e.g., make test-file FILE=tests/
 tail-tui: ## Tail the TUI log
 	 tail -f ~/.local/share/cocli/logs/tui.log
 
+stable: lint test ## Tag the current commit stable-ground if it suffices
+	git tag -d stable-ground && git tag stable-ground
+
 activate: install ## Run tests using pytest
 	source $(VENV_DIR)/bin/activate
 

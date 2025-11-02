@@ -26,6 +26,7 @@ The project is built using `typer` for the CLI, `pydantic` for data modeling, an
     ```
 ### Changing Code
 
+* Never perform distructiv Git actions, such as `git reset --hard HEAD`. You can use `git log`, `git show`, `git diff` or any other read operations.
 * Use a principle of step-and-test
     * Make your plan a sequence of small tests, each of which can be tested in some way.
         * Estimate the biggest step that you are certain that can be completed.
