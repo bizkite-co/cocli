@@ -41,7 +41,7 @@ class CompanyList(Container):
 
     async def on_mount(self) -> None:
         """Called when the screen is mounted."""
-        pass
+        self.query_one("#company_search_input").focus()
 
     async def on_input_changed(self, event: Input.Changed) -> None:
         """Called when the search input changes."""

@@ -36,6 +36,10 @@ test: install ## Run tests using pytest
 test-tui: install ## Run TUI test with names
 	source $(VENV_DIR)/bin/activate && pytest -v tests/tui
 
+textual: ## Run the app in textual
+	@uv tool install textual-dev
+	textual run cocli.tui.app
+
 lint: install ## Run ruff and mypy to perform static type checking
 	-$(VENV_DIR)/bin/ruff check .
 	-$(VENV_DIR)/bin/python -m mypy --config-file pyproject.toml .

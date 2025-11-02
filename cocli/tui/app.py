@@ -5,6 +5,7 @@ from textual.app import App, ComposeResult
 from textual.binding import Binding
 from textual.widgets import ListView
 from textual.containers import Horizontal, Container
+from textual import events # Import events for on_key
 
 from .widgets.main_menu import MainMenu
 from .screens.campaign_selection import CampaignSelection
@@ -25,6 +26,7 @@ class CocliApp(App[None]):
     """A Textual app to manage cocli."""
 
     dark: bool = False
+    CSS_PATH = "tui.css"
     
     CSS_PATH = "tui.css" 
     BINDINGS = [
@@ -35,6 +37,9 @@ class CocliApp(App[None]):
         Binding("h", "go_back", "Back"),
         Binding("l", "select_item", "Select"),
     ]
+
+    async def on_key(self, event: events.Key) -> None:
+        logger.debug(f"Key pressed: {event.key}")
 
     def action_go_back(self) -> None:
         logger.debug("action_go_back called")
