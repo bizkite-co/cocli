@@ -9,12 +9,12 @@ from textual.message import Message
 from cocli.utils.textual_utils import sanitize_id
 from cocli.tui.fz_utils import get_filtered_items_from_fz
 
+from textual import events, on
+
 logger = logging.getLogger(__name__)
 
 class CompanyList(Container):
     """A screen to display a list of companies."""
-
-    BINDINGS = [("l", "select_item", "Select Item")]
 
 
 
@@ -49,6 +49,9 @@ class CompanyList(Container):
         logger.debug(f"Search input changed: {search_query}")
         self.filtered_fz_items = get_filtered_items_from_fz(search_query=search_query, item_type="company")
         await self.update_company_list_view()
+        list_view = self.query_one("#company_list_view", ListView)
+        if len(list_view.children) > 0:
+            list_view.index = 0
 
     async def update_company_list_view(self) -> None:
         """Updates the ListView with filtered companies."""
@@ -67,15 +70,43 @@ class CompanyList(Container):
         list_view = self.query_one("#company_list_view", ListView)
         if list_view.highlighted_child and list_view.index is not None:
             selected_id = list_view.highlighted_child.id
-            logger.debug(f"Selected item ID: {selected_id}")
             selected_item = next((item for item in self.filtered_fz_items if sanitize_id(item.unique_id) == selected_id), None)
             if selected_item and selected_item.slug:
-                logger.debug(f"Found matching item: {selected_item.name}, slug: {selected_item.slug}")
                 self.post_message(self.CompanySelected(selected_item.slug))
             else:
-                logger.debug("No matching item found for selected ID.")
+                pass
         else:
-            logger.debug("No item highlighted or index is None in ListView when selection was attempted.")
+            pass
+
+    @on(ListView.Selected)
+    def on_list_view_selected(self, event: ListView.Selected) -> None:
+        """Called when a company is selected from the list."""
+        logger.debug(f"ListView.Selected event received in CompanyList for item ID: {event.item.id}")
+        selected_id = event.item.id
+        selected_item = next((item for item in self.filtered_fz_items if sanitize_id(item.unique_id) == selected_id), None)
+        if selected_item and selected_item.slug:
+            self.post_message(self.CompanySelected(selected_item.slug))
+        else:
+            logger.warning(f"Could not find selected item or slug for ID: {selected_id}")
+
+    async def on_key(self, event: events.Key) -> None:
+        list_view = self.query_one("#company_list_view", ListView)
+        if self.query_one("#company_search_input").has_focus:
+            if event.key == "down":
+                list_view.focus()
+                if len(list_view.children) > 0:
+                    list_view.index = 0
+                event.stop()
+        elif list_view.has_focus:
+            if event.key == "up" and list_view.index == 0:
+                self.query_one("#company_search_input").focus()
+                event.stop()
+            elif event.key == "j":
+                list_view.action_cursor_down()
+                event.stop()
+            elif event.key == "k":
+                list_view.action_cursor_up()
+                event.stop()
 
     def action_cursor_up(self) -> None:
         list_view = self.query_one("#company_list_view", ListView)

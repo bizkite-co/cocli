@@ -1,9 +1,8 @@
 import logging
 from typing import Dict, Optional, Any
 
-from textual.screen import Screen
-from textual.widgets import Header, Footer, DataTable, Static
-from textual.containers import VerticalScroll
+from textual.widgets import DataTable, Static
+from textual.containers import VerticalScroll, Container
 from textual.app import ComposeResult
 
 from rich.text import Text
@@ -15,10 +14,10 @@ from ...models.note import Note
 
 logger = logging.getLogger(__name__)
 
-class CompanyDetailScreen(Screen[None]):
+class CompanyDetailScreen(Container):
     BINDINGS = [
-        ("escape", "app.pop_screen", "Back to list"),
-        ("q", "app.pop_screen", "Back to list"),
+        ("escape", "app.go_back", "Back to list"),
+        ("q", "app.go_back", "Back to list"),
         ("j", "cursor_down", "Down"),
         ("k", "cursor_up", "Up"),
     ]
@@ -29,7 +28,7 @@ class CompanyDetailScreen(Screen[None]):
         logger.debug(f"CompanyDetailScreen initialized with data for: {company_data.get('company', {}).get('name')}")
 
     def compose(self) -> ComposeResult:
-        yield Header()
+        logger.debug("CompanyDetailScreen compose called")
         with VerticalScroll():
             yield Static("Company Details", classes="header")
             yield self._render_company_details()
@@ -42,7 +41,9 @@ class CompanyDetailScreen(Screen[None]):
 
             yield Static("Recent Notes", classes="header")
             yield self._render_notes()
-        yield Footer()
+
+    def on_mount(self) -> None:
+        logger.debug("CompanyDetailScreen on_mount called")
 
     def _render_company_details(self) -> DataTable[Any]:
         table: DataTable[Any] = DataTable()
@@ -125,10 +126,4 @@ class CompanyDetailScreen(Screen[None]):
 
         return table
 
-    def action_cursor_down(self) -> None:
-        # This is a placeholder for navigating between widgets
-        self.focus_next()
 
-    def action_cursor_up(self) -> None:
-        # This is a placeholder for navigating between widgets
-        self.focus_previous()

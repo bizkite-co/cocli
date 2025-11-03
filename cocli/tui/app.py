@@ -56,7 +56,7 @@ class CocliApp(App[None]):
             if isinstance(focused_widget, ListView):
                 focused_widget.action_select_cursor()
             elif isinstance(focused_widget, CompanyList):
-                focused_widget.select_highlighted_company()
+                focused_widget.query_one("#company_list_view", ListView).action_select_cursor()
             elif hasattr(focused_widget, "action_select_item"):
                 focused_widget.action_select_item()
             else:
@@ -121,7 +121,9 @@ class CocliApp(App[None]):
         company_data = get_company_details_for_view(company_slug)
         if company_data:
             self.query_one("#body").remove_children()
-            self.query_one("#body").mount(CompanyDetailScreen(company_data))
+            company_detail_screen = CompanyDetailScreen(company_data)
+            self.query_one("#body").mount(company_detail_screen)
+            company_detail_screen.styles.display = "block"
         else:
             self.bell()
 
