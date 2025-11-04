@@ -12,12 +12,10 @@ from conftest import wait_for_widget
 @pytest.mark.asyncio
 @patch('cocli.tui.widgets.company_list.get_filtered_items_from_fz')
 async def test_company_list_mounts(mock_get_fz_items):
-    mock_get_fz_items.return_value = []
     app = CocliApp()
     async with app.run_test() as driver:
-        # Select 'Companies' from the main menu
-        await driver.press("j") # Move to Companies
-        await driver.press("l") # Select Companies
+        # Select 'Companies' using the hotkey
+        await driver.press("alt+c")
         await driver.pause()
         company_list_screen = await wait_for_widget(driver, CompanyList)
         assert isinstance(company_list_screen, CompanyList)
@@ -32,9 +30,8 @@ async def test_company_list_populates(mock_get_fz_items):
     ]
     app = CocliApp()
     async with app.run_test() as driver:
-        # Select 'Companies' from the main menu
-        await driver.press("j") # Move to Companies
-        await driver.press("l") # Select Companies
+        # Select 'Companies' using the hotkey
+        await driver.press("alt+c")
         await driver.pause()
         company_list_screen = await wait_for_widget(driver, CompanyList)
         list_view = company_list_screen.query_one("#company_list_view")
@@ -51,9 +48,8 @@ async def test_company_list_selection_posts_message(mock_get_fz_items, mocker: M
     ]
     app = CocliApp()
     async with app.run_test() as driver:
-        # Select 'Companies' from the main menu
-        await driver.press("j") # Move to Companies
-        await driver.press("l") # Select Companies
+        # Select 'Companies' using the hotkey
+        await driver.press("alt+c")
         await driver.pause()
         company_list_screen = await wait_for_widget(driver, CompanyList)
         spy = mocker.spy(company_list_screen, "post_message")

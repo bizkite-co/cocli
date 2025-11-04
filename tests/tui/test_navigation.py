@@ -25,9 +25,8 @@ async def test_l_key_selects_item(mock_get_company_details):
     """
     app = CocliApp()
     async with app.run_test() as driver:
-        # Select 'Companies' from the main menu
-        await driver.press("j") # Move to Companies
-        await driver.press("l") # Select Companies
+        # Select 'Companies' using the hotkey
+        await driver.press("alt+c")
         await driver.pause()
         
         # Check that we are on the company list screen

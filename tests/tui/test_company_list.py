@@ -31,9 +31,8 @@ async def test_company_selection_integration(mock_get_fz_items, mock_get_company
 
     # Act & Assert
     async with app.run_test() as driver:
-        # Select 'Companies' from the main menu
-        await driver.press("j") # Move to Companies
-        await driver.press("l") # Select Companies
+        # Select 'Companies' using the hotkey
+        await driver.press("alt+c")
         await driver.pause()
 
         company_list_screen = await wait_for_widget(driver, CompanyList)

@@ -3,11 +3,11 @@ import toml
 
 from textual.app import App, ComposeResult
 from textual.binding import Binding
-from textual.widgets import ListView, Header
+from textual.widgets import Header, Static, ListView
 from textual.containers import Container
 from textual import events # Import events for on_key
 
-from .widgets.main_menu import MainMenu
+
 from .widgets.campaign_selection import CampaignSelection
 from .widgets.company_list import CompanyList
 from .widgets.person_list import PersonList
@@ -32,84 +32,36 @@ class CocliApp(App[None]):
     BINDINGS = [
         Binding("d", "toggle_dark", "Toggle dark mode"),
         Binding("q", "quit", "Quit", show=True),
-        Binding("j", "cursor_down", "Down", show=False),
-        Binding("k", "cursor_up", "Up", show=False),
-        Binding("h", "go_back", "Back"),
-        Binding("l", "select_item", "Select"),
+        Binding("alt+shift+c", "show_campaigns", "Campaigns", show=True),
+        Binding("alt+shift+p", "show_people", "People", show=True),
+        Binding("alt+c", "show_companies", "Companies", show=True),
+        Binding("alt+p", "show_prospects", "Prospect", show=True),
+        Binding("l", "select_item", "Select", show=False),
     ]
 
     async def on_key(self, event: events.Key) -> None:
         logger.debug(f"Key pressed: {event.key}")
 
-    def action_go_back(self) -> None:
-        logger.debug("action_go_back called")
-        body_container = self.query_one("#app_content", Container)
-        logger.debug(f"body_container.children: {body_container.children}")
-        if body_container.children:
-            body_container.children[-1].remove()
-            logger.debug(f"Removed child. body_container.children: {body_container.children}")
-        
-        if not body_container.children:
-            logger.debug("Mounting MainMenu")
-            self.query_one("#app_content").mount(MainMenu(id="main_menu"))
-            self.query_one("#main_menu").focus()
-            logger.debug("MainMenu mounted and focused")
 
-    def action_select_item(self) -> None:
-        logger.debug("action_select_item called")
-        focused_widget = self.focused
-        if focused_widget and hasattr(focused_widget, "action_select_item"):
-            focused_widget.action_select_item()
-        elif isinstance(focused_widget, ListView):
-            focused_widget.action_select_cursor()
-        else:
-            logger.warning(f"No select_item action found for focused widget: {focused_widget}")
+        
+
+
+
 
     def compose(self) -> ComposeResult:
         """Create child widgets for the app."""
         yield Header()
+        yield Static("[b]Campaigns[/b] (Alt+Shift+C) | [b]People[/b] (Alt+Shift+P) | [b]Companies[/b] (Alt+C) | [b]Prospect[/b] (Alt+P)", id="menu_bar")
         yield Container(id="app_content")
 
     def on_mount(self) -> None:
         create_default_config_file()
         logging_config.setup_file_logging("tui", file_level=logging.DEBUG) # Moved logging setup here
-        # self.query_one("#main_menu").focus() # MainMenu no longer exists
-        self.query_one("#app_content").mount(MainMenu(id="main_menu")) # Mount MainMenu initially
-        self.query_one("#main_menu").focus()
 
-    def on_list_view_selected(self, event: ListView.Selected) -> None:
-        logger.debug(f"on_list_view_selected called with item ID: {event.item.id}")
-        # Clear the body container before mounting a new screen
-        self.query_one("#app_content").remove_children()
-        logger.debug(f"Mounting {event.item.id} into #app_content")
 
-        if event.item.id == "campaigns":
-            self.query_one("#app_content").mount(CampaignSelection())
-        elif event.item.id == "companies":
-            self.query_one("#app_content").mount(CompanyList())
-            logger.debug("CompanyList mounted.")
-        elif event.item.id == "people":
-            self.query_one("#app_content").mount(PersonList())
-        elif event.item.id == "prospect":
-            self.query_one("#app_content").mount(ProspectMenu())
-        elif event.item.id == "exit":
-            self.exit()
 
-    def action_cursor_down(self) -> None:
-        """Move cursor down in the currently focused ListView or widget."""
-        focused_widget = self.focused
-        if focused_widget and isinstance(focused_widget, ListView):
-            focused_widget.action_cursor_down()
-        elif focused_widget and hasattr(focused_widget, "action_cursor_down"):
-            focused_widget.action_cursor_down()
 
-    def action_cursor_up(self) -> None:
-        """Move cursor up in the currently focused ListView or widget."""
-        focused_widget = self.focused
-        if focused_widget and isinstance(focused_widget, ListView):
-            focused_widget.action_cursor_up()
-        elif focused_widget and hasattr(focused_widget, "action_cursor_up"):
-            focused_widget.action_cursor_up()
+
 
 
 
@@ -162,6 +114,44 @@ class CocliApp(App[None]):
 
         self.query_one("#app_content").remove_children()
         self.query_one("#app_content").mount(CampaignScreen(campaign=campaign))
+
+    def action_show_campaigns(self) -> None:
+        """Show the campaigns selection screen."""
+        self.query_one("#app_content").remove_children()
+        campaign_selection = CampaignSelection()
+        self.query_one("#app_content").mount(campaign_selection)
+        campaign_selection.focus()
+
+    def action_show_people(self) -> None:
+        """Show the people list screen."""
+        self.query_one("#app_content").remove_children()
+        person_list = PersonList()
+        self.query_one("#app_content").mount(person_list)
+        person_list.focus()
+
+    def action_show_companies(self) -> None:
+        """Show the company list screen."""
+        self.query_one("#app_content").remove_children()
+        company_list = CompanyList()
+        self.query_one("#app_content").mount(company_list)
+        company_list.focus()
+
+    def action_show_prospects(self) -> None:
+        """Show the prospect menu screen."""
+        self.query_one("#app_content").remove_children()
+        prospect_menu = ProspectMenu()
+        self.query_one("#app_content").mount(prospect_menu)
+        prospect_menu.focus()
+
+    def action_select_item(self) -> None:
+        """Selects the currently focused item, if the focused widget supports it."""
+        focused_widget = self.focused
+        if focused_widget and hasattr(focused_widget, "action_select_item"):
+            focused_widget.action_select_item()
+        elif isinstance(focused_widget, ListView):
+            focused_widget.action_select_cursor()
+        else:
+            logger.warning(f"No select_item action found for focused widget: {focused_widget}")
 
     def action_toggle_dark(self) -> None:
         """An action to toggle dark mode."""
