@@ -52,15 +52,12 @@ class CocliApp(App[None]):
     def action_select_item(self) -> None:
         logger.debug("action_select_item called")
         focused_widget = self.focused
-        if focused_widget:
-            if isinstance(focused_widget, ListView):
-                focused_widget.action_select_cursor()
-            elif isinstance(focused_widget, CompanyList):
-                focused_widget.query_one("#company_list_view", ListView).action_select_cursor()
-            elif hasattr(focused_widget, "action_select_item"):
-                focused_widget.action_select_item()
-            else:
-                logger.warning(f"No select_item action found for focused widget: {focused_widget}")
+        if focused_widget and hasattr(focused_widget, "action_select_item"):
+            focused_widget.action_select_item()
+        elif isinstance(focused_widget, ListView):
+            focused_widget.action_select_cursor()
+        else:
+            logger.warning(f"No select_item action found for focused widget: {focused_widget}")
 
     def compose(self) -> ComposeResult:
         """Create child widgets for the app."""
@@ -78,11 +75,13 @@ class CocliApp(App[None]):
         logger.debug(f"on_list_view_selected called with item ID: {event.item.id}")
         # Clear the body container before mounting a new screen
         self.query_one("#body").remove_children()
+        logger.debug(f"Mounting {event.item.id} into #body")
 
         if event.item.id == "campaigns":
             self.query_one("#body").mount(CampaignSelection())
         elif event.item.id == "companies":
             self.query_one("#body").mount(CompanyList())
+            logger.debug("CompanyList mounted.")
         elif event.item.id == "people":
             self.query_one("#body").mount(PersonList())
         elif event.item.id == "etl_enrichment":

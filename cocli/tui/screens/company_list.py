@@ -63,7 +63,9 @@ class CompanyList(Container):
             list_view.append(ListItem(Label(item.name), name=item.name, id=sanitize_id(item.unique_id)))
 
     def action_select_item(self) -> None:
-        self.select_highlighted_company()
+        """Called when the user presses 'l' or 'enter' to select an item."""
+        list_view = self.query_one("#company_list_view", ListView)
+        list_view.action_select_cursor()
 
     def select_highlighted_company(self) -> None:
         """Handle the selection of a company in the list."""
@@ -96,6 +98,12 @@ class CompanyList(Container):
                 list_view.focus()
                 if len(list_view.children) > 0:
                     list_view.index = 0
+                event.stop()
+            elif event.key == "enter":
+                list_view.focus() # Transfer focus to the list view
+                if len(list_view.children) > 0:
+                    list_view.index = 0 # Ensure an item is highlighted before selecting
+                    list_view.action_select_cursor() # This should trigger ListView.Selected
                 event.stop()
         elif list_view.has_focus:
             if event.key == "up" and list_view.index == 0:

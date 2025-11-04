@@ -6,6 +6,7 @@ from cocli.models.search import SearchResult
 from pytest_mock import MockerFixture
 from cocli.tui.screens.company_list import CompanyList
 from textual.widgets import ListView
+from conftest import wait_for_widget
 
 
 @pytest.mark.asyncio
@@ -19,7 +20,8 @@ async def test_company_list_mounts(mock_get_fz_items):
         await driver.press("j") # Move to Companies
         await driver.press("l") # Select Companies
         await driver.pause()
-        assert isinstance(app.query_one("#body").children[0], CompanyList)
+        company_list_screen = await wait_for_widget(driver, CompanyList)
+        assert isinstance(company_list_screen, CompanyList)
 
 
 @pytest.mark.asyncio
@@ -36,7 +38,8 @@ async def test_company_list_populates(mock_get_fz_items):
         await driver.press("j") # Move to Companies
         await driver.press("l") # Select Companies
         await driver.pause()
-        list_view = app.query_one("#body").query_one("#company_list_view")
+        company_list_screen = await wait_for_widget(driver, CompanyList)
+        list_view = company_list_screen.query_one("#company_list_view")
         assert list_view.children is not None
         assert len(list_view.children) == 2
 
@@ -54,7 +57,7 @@ async def test_company_list_selection_posts_message(mock_get_fz_items, mocker: M
         await driver.press("j") # Move to Companies
         await driver.press("l") # Select Companies
         await driver.pause()
-        company_list_screen = app.query_one("#body").children[0]
+        company_list_screen = await wait_for_widget(driver, CompanyList)
         spy = mocker.spy(company_list_screen, "post_message")
 
         # Move focus to the list view and select the first item

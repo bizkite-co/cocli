@@ -18,8 +18,6 @@ class CompanyDetailScreen(Container):
     BINDINGS = [
         ("escape", "app.go_back", "Back to list"),
         ("q", "app.go_back", "Back to list"),
-        ("j", "cursor_down", "Down"),
-        ("k", "cursor_up", "Up"),
     ]
 
     def __init__(self, company_data: Dict[str, Any], name: Optional[str] = None, id: Optional[str] = None, classes: Optional[str] = None):
@@ -44,6 +42,7 @@ class CompanyDetailScreen(Container):
 
     def on_mount(self) -> None:
         logger.debug("CompanyDetailScreen on_mount called")
+        self.focus()
 
     def _render_company_details(self) -> DataTable[Any]:
         table: DataTable[Any] = DataTable()

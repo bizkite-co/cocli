@@ -2,6 +2,19 @@
     "version": "0.2.0",
     "configurations": [
         {
+            "name": "Python: Launch TUI Dev Mode",
+            "type": "python",
+            "request": "launch",
+            "module": "cocli.tui.app",
+            "console": "integratedTerminal",
+            "justMyCode": true,
+            "env": {
+                "TEXTUAL_DEV": "true",
+                "PYTHONPATH": "${workspaceFolder}"
+            },
+            "python": "${workspaceFolder}/.venv/bin/python"
+        },
+        {
             "name": "Python: Launch Current File",
             "type": "python",
             "request": "launch",
