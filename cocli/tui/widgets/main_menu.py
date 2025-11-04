@@ -10,7 +10,7 @@ class MainMenu(Container):
             ListItem(Label("Campaigns"), id="campaigns"),
             ListItem(Label("Companies"), id="companies"),
             ListItem(Label("People"), id="people"),
-            ListItem(Label("ETL & Enrichment"), id="etl_enrichment"),
+            ListItem(Label("Prospect"), id="prospect"),
             ListItem(Label("Exit"), id="exit"),
             id="main_menu_list"
         )

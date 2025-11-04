@@ -3,14 +3,14 @@ import logging
 import sys
 from datetime import datetime
 
-from .config import get_cocli_app_data_dir
+from pathlib import Path
 
 def setup_file_logging(command_name: str, console_level: int = logging.INFO, file_level: int = logging.DEBUG, disable_console: bool = False) -> None:
     """
     Sets up logging to a file for a specific command and adjusts console output level.
     For the TUI, it uses a static filename.
     """
-    log_dir = get_cocli_app_data_dir() / "logs"
+    log_dir = Path(".logs")
     log_dir.mkdir(exist_ok=True)
 
     if command_name == "tui":

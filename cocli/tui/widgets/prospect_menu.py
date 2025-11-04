@@ -2,8 +2,8 @@ from textual.screen import Screen
 from textual.widgets import ListView, ListItem, Label
 from textual.app import ComposeResult
 
-class EtlEnrichmentMenu(Screen[None]):
-    """A screen to display ETL/Enrichment options."""
+class ProspectMenu(Screen[None]):
+    """A screen to display Prospect options."""
 
     BINDINGS = [
         ("escape", "app.pop_screen", "Back"),

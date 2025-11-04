@@ -3,8 +3,8 @@ import toml
 
 from textual.app import App, ComposeResult
 from textual.binding import Binding
-from textual.widgets import ListView
-from textual.containers import Horizontal, Container
+from textual.widgets import ListView, Header
+from textual.containers import Container
 from textual import events # Import events for on_key
 
 from .widgets.main_menu import MainMenu
@@ -12,7 +12,7 @@ from .widgets.campaign_selection import CampaignSelection
 from .widgets.company_list import CompanyList
 from .widgets.person_list import PersonList
 from .widgets.person_detail import PersonDetail
-from .widgets.etl_enrichment_menu import EtlEnrichmentMenu
+from .widgets.prospect_menu import ProspectMenu
 from .widgets.company_detail import CompanyDetail
 from ..application.company_service import get_company_details_for_view
 from ..models.campaign import Campaign
@@ -43,11 +43,17 @@ class CocliApp(App[None]):
 
     def action_go_back(self) -> None:
         logger.debug("action_go_back called")
-        body_container = self.query_one("#body", Container)
+        body_container = self.query_one("#app_content", Container)
+        logger.debug(f"body_container.children: {body_container.children}")
         if body_container.children:
             body_container.children[-1].remove()
-        else:
+            logger.debug(f"Removed child. body_container.children: {body_container.children}")
+        
+        if not body_container.children:
+            logger.debug("Mounting MainMenu")
+            self.query_one("#app_content").mount(MainMenu(id="main_menu"))
             self.query_one("#main_menu").focus()
+            logger.debug("MainMenu mounted and focused")
 
     def action_select_item(self) -> None:
         logger.debug("action_select_item called")
@@ -61,31 +67,31 @@ class CocliApp(App[None]):
 
     def compose(self) -> ComposeResult:
         """Create child widgets for the app."""
-        yield Horizontal(
-            MainMenu(id="main_menu"),
-            Container(id="body")
-        )
+        yield Header()
+        yield Container(id="app_content")
 
     def on_mount(self) -> None:
         create_default_config_file()
         logging_config.setup_file_logging("tui", file_level=logging.DEBUG) # Moved logging setup here
+        # self.query_one("#main_menu").focus() # MainMenu no longer exists
+        self.query_one("#app_content").mount(MainMenu(id="main_menu")) # Mount MainMenu initially
         self.query_one("#main_menu").focus()
 
     def on_list_view_selected(self, event: ListView.Selected) -> None:
         logger.debug(f"on_list_view_selected called with item ID: {event.item.id}")
         # Clear the body container before mounting a new screen
-        self.query_one("#body").remove_children()
-        logger.debug(f"Mounting {event.item.id} into #body")
+        self.query_one("#app_content").remove_children()
+        logger.debug(f"Mounting {event.item.id} into #app_content")
 
         if event.item.id == "campaigns":
-            self.query_one("#body").mount(CampaignSelection())
+            self.query_one("#app_content").mount(CampaignSelection())
         elif event.item.id == "companies":
-            self.query_one("#body").mount(CompanyList())
+            self.query_one("#app_content").mount(CompanyList())
             logger.debug("CompanyList mounted.")
         elif event.item.id == "people":
-            self.query_one("#body").mount(PersonList())
-        elif event.item.id == "etl_enrichment":
-            self.query_one("#body").mount(EtlEnrichmentMenu())
+            self.query_one("#app_content").mount(PersonList())
+        elif event.item.id == "prospect":
+            self.query_one("#app_content").mount(ProspectMenu())
         elif event.item.id == "exit":
             self.exit()
 
@@ -110,8 +116,8 @@ class CocliApp(App[None]):
     def on_person_list_person_selected(self, message: PersonList.PersonSelected) -> None:
         """Handle PersonSelected message from PersonList."""
         logger.debug(f"on_person_list_person_selected called with slug: {message.person_slug}")
-        self.query_one("#body").remove_children()
-        self.query_one("#body").mount(PersonDetail(person_slug=message.person_slug))
+        self.query_one("#app_content").remove_children()
+        self.query_one("#app_content").mount(PersonDetail(person_slug=message.person_slug))
 
     def on_company_list_company_selected(self, message: CompanyList.CompanySelected) -> None:
         """Handle CompanySelected message from CompanyList."""
@@ -119,9 +125,9 @@ class CocliApp(App[None]):
         company_slug = message.company_slug
         company_data = get_company_details_for_view(company_slug)
         if company_data:
-            self.query_one("#body").remove_children()
+            self.query_one("#app_content").remove_children()
             company_detail = CompanyDetail(company_data)
-            self.query_one("#body").mount(company_detail)
+            self.query_one("#app_content").mount(company_detail)
             company_detail.styles.display = "block"
         else:
             self.bell()
@@ -154,8 +160,8 @@ class CocliApp(App[None]):
             self.notify(f"Error validating campaign configuration for '{campaign_name}': {e}", severity="error")
             return
 
-        self.query_one("#body").remove_children()
-        self.query_one("#body").mount(CampaignScreen(campaign=campaign))
+        self.query_one("#app_content").remove_children()
+        self.query_one("#app_content").mount(CampaignScreen(campaign=campaign))
 
     def action_toggle_dark(self) -> None:
         """An action to toggle dark mode."""

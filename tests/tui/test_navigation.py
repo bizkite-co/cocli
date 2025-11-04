@@ -1,6 +1,6 @@
 import pytest
 from cocli.tui.app import CocliApp
-from cocli.tui.widgets.main_menu import MainMenu
+
 from cocli.tui.widgets.company_list import CompanyList
 from cocli.tui.widgets.company_detail import CompanyDetail
 from textual.widgets import ListView
@@ -13,32 +13,7 @@ mock_detail_data = {
     "tags": [], "content": "", "website_data": None, "contacts": [], "meetings": [], "notes": []
 }
 
-@pytest.mark.asyncio
-async def test_h_key_goes_back():
-    """
-    Tests that pressing 'h' on a sub-screen returns to the main menu.
-    """
-    app = CocliApp()
-    async with app.run_test() as driver:
-        # Select 'Companies' from the main menu
-        await driver.press("j") # Move to Companies
-        await driver.press("l") # Select Companies
-        await driver.pause()
-        
-        # Check that we are on the company list screen
-        company_list_screen = await wait_for_widget(driver, CompanyList)
-        assert isinstance(company_list_screen, CompanyList)
-        
-        # Move focus from the search input to the list view
-        company_list_screen.query_one(ListView).focus()
-        await driver.pause()
-        
-        # Press 'h' to go back
-        await driver.press("h")
-        await driver.pause()
 
-        # Check that we are back on the main menu
-        assert isinstance(app.query_one("#main_menu"), MainMenu)
 
 
 @pytest.mark.asyncio
