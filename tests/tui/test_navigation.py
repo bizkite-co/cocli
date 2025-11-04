@@ -1,8 +1,8 @@
 import pytest
 from cocli.tui.app import CocliApp
 from cocli.tui.widgets.main_menu import MainMenu
-from cocli.tui.screens.company_list import CompanyList
-from cocli.tui.screens.company_detail import CompanyDetailScreen
+from cocli.tui.widgets.company_list import CompanyList
+from cocli.tui.widgets.company_detail import CompanyDetail
 from textual.widgets import ListView
 from unittest.mock import patch
 from conftest import wait_for_widget
@@ -68,5 +68,5 @@ async def test_l_key_selects_item(mock_get_company_details):
         await driver.pause()
 
         # Check that the company detail screen is displayed
-        company_detail_screen = await wait_for_widget(driver, CompanyDetailScreen)
-        assert isinstance(company_detail_screen, CompanyDetailScreen)
+        company_detail = await wait_for_widget(driver, CompanyDetail)
+        assert isinstance(company_detail, CompanyDetail)

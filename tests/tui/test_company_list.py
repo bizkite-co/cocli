@@ -1,7 +1,7 @@
 import pytest
 from unittest.mock import patch
-from cocli.tui.screens.company_list import CompanyList
-from cocli.tui.screens.company_detail import CompanyDetailScreen
+from cocli.tui.widgets.company_list import CompanyList
+from cocli.tui.widgets.company_detail import CompanyDetail
 from textual.widgets import ListView
 from conftest import wait_for_widget
 
@@ -18,7 +18,7 @@ mock_detail_data = {
 
 @pytest.mark.asyncio
 @patch('cocli.tui.app.get_company_details_for_view')
-@patch('cocli.tui.screens.company_list.get_filtered_items_from_fz')
+@patch('cocli.tui.widgets.company_list.get_filtered_items_from_fz')
 async def test_company_selection_integration(mock_get_fz_items, mock_get_company_details):
     """Test full company selection flow from main menu to detail screen."""
     # Arrange
@@ -67,6 +67,6 @@ async def test_company_selection_integration(mock_get_fz_items, mock_get_company
         assert any(msg.__class__.__name__ == 'CompanySelected' for msg in posted_messages), "CompanySelected message was not posted"
         # --------------------------------------------------
 
-        company_detail_screen = await wait_for_widget(driver, CompanyDetailScreen)
-        assert isinstance(company_detail_screen, CompanyDetailScreen)
+        company_detail = await wait_for_widget(driver, CompanyDetail)
+        assert isinstance(company_detail, CompanyDetail)
         mock_get_company_details.assert_called_once_with("test-company")

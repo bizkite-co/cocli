@@ -3,7 +3,7 @@ from textual.app import App
 from textual.widgets import ListView, ListItem
 from unittest.mock import patch
 
-from cocli.tui.screens.person_list import PersonList
+from cocli.tui.widgets.person_list import PersonList
 from cocli.utils.textual_utils import sanitize_id # Re-added for sanitizing expected IDs
 from cocli.models.search import SearchResult
 
@@ -26,9 +26,8 @@ class PersonListTestApp(App[None]):
         self.push_screen("person_list")
 
 @pytest.mark.asyncio
-@patch('cocli.tui.screens.person_list.get_filtered_items_from_fz')
+@patch('cocli.tui.widgets.person_list.get_filtered_items_from_fz')
 async def test_person_list_display_people(mock_get_fz_items):
-    """Test that the PersonList screen displays people correctly."""
     mock_get_fz_items.return_value = mock_fz_person_items # Return all mock items
     app = PersonListTestApp()
     async with app.run_test():
@@ -47,9 +46,8 @@ async def test_person_list_display_people(mock_get_fz_items):
         assert sorted(displayed_items) == sorted(expected_unique_ids)
 
 @pytest.mark.asyncio
-@patch('cocli.tui.screens.person_list.get_filtered_items_from_fz')
+@patch('cocli.tui.widgets.person_list.get_filtered_items_from_fz')
 async def test_person_list_search_duplicate_slugs(mock_get_fz_items):
-    """Test that searching with duplicate slugs doesn't cause MountError."""
     # Mock get_filtered_items_from_fz to simulate search results
     def mock_get_filtered_items_from_fz_side_effect(*args, **kwargs):
         search_query = kwargs.get("search_query", "").lower()

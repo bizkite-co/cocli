@@ -14,7 +14,7 @@ from ...models.note import Note
 
 logger = logging.getLogger(__name__)
 
-class CompanyDetailScreen(Container):
+class CompanyDetail(Container):
     BINDINGS = [
         ("escape", "app.go_back", "Back to list"),
         ("q", "app.go_back", "Back to list"),

@@ -8,12 +8,12 @@ from textual.containers import Horizontal, Container
 from textual import events # Import events for on_key
 
 from .widgets.main_menu import MainMenu
-from .screens.campaign_selection import CampaignSelection
-from .screens.company_list import CompanyList
-from .screens.person_list import PersonList
-from .screens.person_detail import PersonDetail
-from .screens.etl_enrichment_menu import EtlEnrichmentMenu
-from .screens.company_detail import CompanyDetailScreen
+from .widgets.campaign_selection import CampaignSelection
+from .widgets.company_list import CompanyList
+from .widgets.person_list import PersonList
+from .widgets.person_detail import PersonDetail
+from .widgets.etl_enrichment_menu import EtlEnrichmentMenu
+from .widgets.company_detail import CompanyDetail
 from ..application.company_service import get_company_details_for_view
 from ..models.campaign import Campaign
 from ..core.config import get_campaign_dir, create_default_config_file
@@ -120,9 +120,9 @@ class CocliApp(App[None]):
         company_data = get_company_details_for_view(company_slug)
         if company_data:
             self.query_one("#body").remove_children()
-            company_detail_screen = CompanyDetailScreen(company_data)
-            self.query_one("#body").mount(company_detail_screen)
-            company_detail_screen.styles.display = "block"
+            company_detail = CompanyDetail(company_data)
+            self.query_one("#body").mount(company_detail)
+            company_detail.styles.display = "block"
         else:
             self.bell()
 
