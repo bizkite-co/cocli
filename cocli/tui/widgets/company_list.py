@@ -53,6 +53,13 @@ class CompanyList(Container):
     def on_mount(self) -> None:
         self.query_one(Input).focus()
 
+    @on(Input.Submitted)
+    def on_input_submitted(self, event: Input.Submitted) -> None:
+        """Called when the user presses enter on the search input."""
+        list_view = self.query_one(ListView)
+        list_view.action_select_cursor()
+
+
 
 
     async def on_input_changed(self, event: Input.Changed) -> None:
