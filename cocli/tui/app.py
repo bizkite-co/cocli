@@ -14,11 +14,11 @@ from .widgets.person_list import PersonList
 from .widgets.person_detail import PersonDetail
 from .widgets.prospect_menu import ProspectMenu
 from .widgets.company_detail import CompanyDetail
+from .widgets.campaign_detail import CampaignDetail
 from ..application.company_service import get_company_details_for_view
 from ..models.campaign import Campaign
 from ..core.config import get_campaign_dir, create_default_config_file
 from ..core import logging_config
-from .campaign_app import CampaignScreen
 
 logger = logging.getLogger(__name__)
 
@@ -139,8 +139,7 @@ class CocliApp(App[None]):
             self.notify(f"Error validating campaign configuration for '{campaign_name}': {e}", severity="error")
             return
 
-        self.query_one("#app_content").remove_children()
-        self.query_one("#app_content").mount(CampaignScreen(campaign=campaign))
+        self.push_screen(CampaignDetail(campaign=campaign))
 
     async def action_show_campaigns(self) -> None:
         """Show the campaigns selection screen."""

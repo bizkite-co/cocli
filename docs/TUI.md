@@ -22,6 +22,22 @@ Based on the code and recent interactions, the TUI is expected to:
 *   **Integrate with Campaign Workflow:** The TUI should be able to display the current state of the campaign workflow and potentially allow users to advance or re-run specific steps. This implies a connection to the `CampaignWorkflow` class and its state management.
 *   **Provide Interactive Elements:** Utilize `Textual` widgets to enable user interaction, such as buttons for actions, input fields for editing, and display areas for logs or results.
 
+## Implemented Navigation Schemes
+
+The TUI now supports several keyboard-centric navigation methods:
+
+*   **Leader Key Navigation:** The main screens (Campaigns, People, Companies, Prospects) are accessed using a leader key combination. Press `space` followed by a character (`a`, `p`, `c`, `s`) to navigate to the corresponding screen.
+
+*   **VIM-like List Navigation:** In simple list screens like `Campaigns` and `Prospects`, you can now use:
+    *   `j`: Move highlight down.
+    *   `k`: Move highlight up.
+    *   `l` or `enter`: Select the highlighted item.
+
+*   **Search List Navigation:** In search-oriented lists like the `CompanyList`:
+    *   Typing in the search box filters the list.
+    *   `enter`: Selects the highlighted item in the list, even while the search input is focused.
+    *   `down` / `up`: Moves the highlight in the list, even while the search input is focused.
+
 ## TUI Style
 
 - The TUI is intended to appear like a Terminal interface.
