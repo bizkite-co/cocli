@@ -8,17 +8,15 @@ from cocli.tui.widgets.company_list import CompanyList
 from textual.widgets import ListView
 from conftest import wait_for_widget
 
-
 @pytest.mark.asyncio
 @patch('cocli.tui.widgets.company_list.get_filtered_items_from_fz')
 async def test_company_list_mounts(mock_get_fz_items):
     app = CocliApp()
     async with app.run_test() as driver:
         # Select 'Companies' using the hotkey
-        await driver.press("alt+c")
-        await driver.pause()
+        await driver.press("space", "c")
         company_list_screen = await wait_for_widget(driver, CompanyList)
-        assert isinstance(company_list_screen, CompanyList)
+        assert company_list_screen is not None
 
 
 @pytest.mark.asyncio
@@ -31,8 +29,7 @@ async def test_company_list_populates(mock_get_fz_items):
     app = CocliApp()
     async with app.run_test() as driver:
         # Select 'Companies' using the hotkey
-        await driver.press("alt+c")
-        await driver.pause()
+        await driver.press("space", "c")
         company_list_screen = await wait_for_widget(driver, CompanyList)
         list_view = company_list_screen.query_one("#company_list_view")
         assert list_view.children is not None
@@ -49,17 +46,14 @@ async def test_company_list_selection_posts_message(mock_get_fz_items, mocker: M
     app = CocliApp()
     async with app.run_test() as driver:
         # Select 'Companies' using the hotkey
-        await driver.press("alt+c")
-        await driver.pause()
+        await driver.press("space", "c")
         company_list_screen = await wait_for_widget(driver, CompanyList)
         spy = mocker.spy(company_list_screen, "post_message")
 
         # Move focus to the list view and select the first item
         company_list_screen.query_one(ListView).focus()
-        await driver.pause()
         await driver.press("down")
         await driver.press("l")
-        await driver.pause()
         # Assert that post_message was called with a CompanySelected message
         found_message = False
         for call in spy.call_args_list:

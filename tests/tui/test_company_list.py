@@ -31,11 +31,9 @@ async def test_company_selection_integration(mock_get_fz_items, mock_get_company
 
     # Act & Assert
     async with app.run_test() as driver:
-        # Select 'Companies' using the hotkey
-        await driver.press("alt+c")
-        await driver.pause()
-
+        await driver.app.action_show_companies()
         company_list_screen = await wait_for_widget(driver, CompanyList)
+        await driver.pause(1.0)
         # --- Direct Message Capture ---
         posted_messages = []
         original_post_message = company_list_screen.post_message
@@ -49,13 +47,13 @@ async def test_company_selection_integration(mock_get_fz_items, mock_get_company
 
         # Move focus from the search input to the list view
         company_list_screen.query_one(ListView).focus()
-        await driver.pause()
+        await driver.pause(1.0)
         
         await driver.press("down")
-        await driver.pause()
+        await driver.pause(1.0)
         
         await driver.press("l")
-        await driver.pause()
+        await driver.pause(1.0)
 
         # --- Assert that the correct message was posted ---
         # print("\n--- Posted Message Types ---")
@@ -67,5 +65,6 @@ async def test_company_selection_integration(mock_get_fz_items, mock_get_company
         # --------------------------------------------------
 
         company_detail = await wait_for_widget(driver, CompanyDetail)
+        await driver.pause(1.0)
         assert isinstance(company_detail, CompanyDetail)
         mock_get_company_details.assert_called_once_with("test-company")

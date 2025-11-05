@@ -3,7 +3,7 @@ import toml
 
 from textual.app import App, ComposeResult
 from textual.binding import Binding
-from textual.widgets import Header, Static, ListView
+from textual.widgets import Header, Static, ListView, Input
 from textual.containers import Container
 from textual import events # Import events for on_key
 
@@ -22,41 +22,69 @@ from .campaign_app import CampaignScreen
 
 logger = logging.getLogger(__name__)
 
+LEADER_KEY = "space"
+
 class CocliApp(App[None]):
     """A Textual app to manage cocli."""
 
     dark: bool = False
     CSS_PATH = "tui.css"
     
-    CSS_PATH = "tui.css" 
     BINDINGS = [
-        Binding("d", "toggle_dark", "Toggle dark mode"),
-        Binding("q", "quit", "Quit", show=True),
-        Binding("alt+shift+c", "show_campaigns", "Campaigns", show=True),
-        Binding("alt+shift+p", "show_people", "People", show=True),
-        Binding("alt+c", "show_companies", "Companies", show=True),
-        Binding("alt+p", "show_prospects", "Prospect", show=True),
-        Binding("l", "select_item", "Select", show=False),
+        # General
+        ("l", "select_item", "Select"),
+        ("q", "quit", "Quit"),
+        Binding("ctrl+c", "escape", "Escape", show=False),
     ]
 
-    async def on_key(self, event: events.Key) -> None:
-        logger.debug(f"Key pressed: {event.key}")
-
-
-        
-
-
-
+    leader_mode: bool = False
+    leader_key_buffer: str = ""
 
     def compose(self) -> ComposeResult:
         """Create child widgets for the app."""
         yield Header()
-        yield Static("[b]Campaigns[/b] (Alt+Shift+C) | [b]People[/b] (Alt+Shift+P) | [b]Companies[/b] (Alt+C) | [b]Prospect[/b] (Alt+P)", id="menu_bar")
+        yield Static(f"[b]Campaigns[/b] ({LEADER_KEY.upper()}+A) | [b]People[/b] ({LEADER_KEY.upper()}+P) | [b]Companies[/b] ({LEADER_KEY.upper()}+C) | [b]Prospect[/b] ({LEADER_KEY.upper()}+S)", id="menu_bar")
         yield Container(id="app_content")
 
     def on_mount(self) -> None:
         create_default_config_file()
         logging_config.setup_file_logging("tui", file_level=logging.DEBUG) # Moved logging setup here
+
+    async def on_key(self, event: events.Key) -> None:
+        logger.debug(f"Key pressed: {event.key}")
+        if event.key == LEADER_KEY:
+            self.leader_mode = True
+            self.leader_key_buffer = LEADER_KEY
+            event.prevent_default() # Prevent the space key from being processed further
+            return
+
+        if self.leader_mode:
+            self.leader_key_buffer += event.key
+            logger.debug(f"Leader key buffer: {self.leader_key_buffer}")
+            
+            # Check for leader key combinations
+            if self.leader_key_buffer == LEADER_KEY + "c":
+                self.call_later(self.action_show_companies)
+            elif self.leader_key_buffer == LEADER_KEY + "p":
+                self.call_later(self.action_show_people)
+            elif self.leader_key_buffer == LEADER_KEY + "s":
+                self.call_later(self.action_show_prospects)
+            elif self.leader_key_buffer == LEADER_KEY + "a":
+                self.call_later(self.action_show_campaigns)
+            else:
+                logger.warning(f"Unknown leader key combination: {self.leader_key_buffer}")
+            
+            self.reset_leader_mode()
+            event.prevent_default() # Prevent the key from being processed further
+            return
+        
+        # If not in leader mode, let Textual handle other bindings
+        # The default Textual binding handler will be called after this method
+        # if event.prevent_default() is not called.
+
+    def reset_leader_mode(self) -> None:
+        self.leader_mode = False
+        self.leader_key_buffer = ""
 
 
 
@@ -72,7 +100,6 @@ class CocliApp(App[None]):
         self.query_one("#app_content").mount(PersonDetail(person_slug=message.person_slug))
 
     def on_company_list_company_selected(self, message: CompanyList.CompanySelected) -> None:
-        """Handle CompanySelected message from CompanyList."""
         logger.debug(f"on_company_list_company_selected called with slug: {message.company_slug}")
         company_slug = message.company_slug
         company_data = get_company_details_for_view(company_slug)
@@ -115,33 +142,28 @@ class CocliApp(App[None]):
         self.query_one("#app_content").remove_children()
         self.query_one("#app_content").mount(CampaignScreen(campaign=campaign))
 
-    def action_show_campaigns(self) -> None:
+    async def action_show_campaigns(self) -> None:
         """Show the campaigns selection screen."""
-        self.query_one("#app_content").remove_children()
-        campaign_selection = CampaignSelection()
-        self.query_one("#app_content").mount(campaign_selection)
-        campaign_selection.focus()
+        logger.debug("action_show_campaigns invoked")
+        self.push_screen(CampaignSelection())
 
-    def action_show_people(self) -> None:
+    async def action_show_people(self) -> None:
         """Show the people list screen."""
-        self.query_one("#app_content").remove_children()
-        person_list = PersonList()
-        self.query_one("#app_content").mount(person_list)
-        person_list.focus()
+        logger.debug("action_show_people invoked")
+        self.push_screen(PersonList())
 
-    def action_show_companies(self) -> None:
+    async def action_show_companies(self) -> None:
         """Show the company list screen."""
+        logger.debug("action_show_companies called")
         self.query_one("#app_content").remove_children()
         company_list = CompanyList()
         self.query_one("#app_content").mount(company_list)
         company_list.focus()
 
-    def action_show_prospects(self) -> None:
+    async def action_show_prospects(self) -> None:
         """Show the prospect menu screen."""
-        self.query_one("#app_content").remove_children()
-        prospect_menu = ProspectMenu()
-        self.query_one("#app_content").mount(prospect_menu)
-        prospect_menu.focus()
+        logger.debug("action_show_prospects invoked")
+        self.push_screen(ProspectMenu())
 
     def action_select_item(self) -> None:
         """Selects the currently focused item, if the focused widget supports it."""
@@ -156,6 +178,18 @@ class CocliApp(App[None]):
     def action_toggle_dark(self) -> None:
         """An action to toggle dark mode."""
         self.dark = not self.dark
+
+    def action_escape(self) -> None:
+        """Escape the current context (pop screen or clear input)."""
+        if len(self.screen_stack) > 1:
+            self.pop_screen()
+        else:
+            focused_widget = self.focused
+            if isinstance(focused_widget, Input):
+                focused_widget.value = ""
+                logger.debug("Cleared focused input field.")
+            else:
+                logger.debug("Escape pressed, but no screen to pop and no input to clear.")
 
     async def on_message(self, message: object) -> None:
         """Log all messages in debug mode."""

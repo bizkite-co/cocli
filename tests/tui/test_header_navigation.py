@@ -1,12 +1,13 @@
 import pytest
 
 from textual.widgets import Header
+from unittest.mock import patch
 from cocli.tui.app import CocliApp
 from cocli.tui.widgets.prospect_menu import ProspectMenu
 from cocli.tui.widgets.company_list import CompanyList
 from cocli.tui.widgets.person_list import PersonList
 from cocli.tui.widgets.campaign_selection import CampaignSelection
-from conftest import wait_for_widget
+from conftest import wait_for_widget, wait_for_screen
 
 @pytest.mark.asyncio
 async def test_header_is_visible():
@@ -18,41 +19,39 @@ async def test_header_is_visible():
         assert header.visible
 
 @pytest.mark.asyncio
-async def test_alt_shift_c_shows_campaigns():
-    """Test that Alt+Shift+c shows the CampaignSelection widget."""
+async def test_leader_a_shows_campaigns():
+    """Test that Leader+a shows the CampaignSelection widget."""
     app = CocliApp()
     async with app.run_test() as driver:
-        await driver.press("alt+shift+c")
-        await driver.pause()
-        campaign_selection = await wait_for_widget(driver, CampaignSelection)
+        await driver.press("space", "a")
+        campaign_selection = await wait_for_screen(driver, CampaignSelection)
         assert isinstance(campaign_selection, CampaignSelection)
 
 @pytest.mark.asyncio
-async def test_alt_shift_p_shows_people():
-    """Test that Alt+Shift+p shows the PersonList widget."""
+async def test_leader_p_shows_people():
+    """Test that Leader+p shows the PersonList widget."""
     app = CocliApp()
     async with app.run_test() as driver:
-        await driver.press("alt+shift+p")
-        await driver.pause()
-        person_list = await wait_for_widget(driver, PersonList)
+        await driver.press("space", "p")
+        person_list = await wait_for_screen(driver, PersonList)
         assert isinstance(person_list, PersonList)
 
 @pytest.mark.asyncio
-async def test_alt_c_shows_companies():
-    """Test that Alt+c shows the CompanyList widget."""
+@patch('cocli.tui.widgets.company_list.get_filtered_items_from_fz')
+async def test_leader_c_shows_companies(mock_get_fz_items):
+    """Test that Leader+c shows the CompanyList widget."""
+    mock_get_fz_items.return_value = [] # Provide an empty list or a mock SearchResult
     app = CocliApp()
     async with app.run_test() as driver:
-        await driver.press("alt+c")
-        await driver.pause()
+        await driver.press("space", "c")
         company_list = await wait_for_widget(driver, CompanyList)
         assert isinstance(company_list, CompanyList)
 
 @pytest.mark.asyncio
-async def test_alt_p_shows_prospects():
-    """Test that Alt+p shows the ProspectMenu widget."""
+async def test_leader_s_shows_prospects():
+    """Test that Leader+s shows the ProspectMenu widget."""
     app = CocliApp()
     async with app.run_test() as driver:
-        await driver.press("alt+p")
-        await driver.pause()
-        prospect_menu = await wait_for_widget(driver, ProspectMenu)
+        await driver.press("space", "s")
+        prospect_menu = await wait_for_screen(driver, ProspectMenu)
         assert isinstance(prospect_menu, ProspectMenu)
