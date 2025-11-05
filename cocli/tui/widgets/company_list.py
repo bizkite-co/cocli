@@ -6,6 +6,8 @@ from textual.app import ComposeResult
 
 from textual.message import Message
 
+from textual import events
+
 from cocli.utils.textual_utils import sanitize_id
 from cocli.tui.fz_utils import get_filtered_items_from_fz
 
@@ -58,6 +60,17 @@ class CompanyList(Container):
         """Called when the user presses enter on the search input."""
         list_view = self.query_one(ListView)
         list_view.action_select_cursor()
+
+    def on_key(self, event: events.Key) -> None:
+        """Handle key events for the CompanyList widget."""
+        if event.key == "down":
+            list_view = self.query_one(ListView)
+            list_view.action_cursor_down()
+            event.prevent_default()
+        elif event.key == "up":
+            list_view = self.query_one(ListView)
+            list_view.action_cursor_up()
+            event.prevent_default()
 
 
 

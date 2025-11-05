@@ -39,6 +39,31 @@ async def test_l_key_selects_item(mock_get_fz_items, mock_get_company_details):
         assert isinstance(company_detail, CompanyDetail)
         mock_get_company_details.assert_called_once_with("test-company")
 
+
+@pytest.mark.asyncio
+@patch('cocli.tui.widgets.company_list.get_filtered_items_from_fz')
+async def test_down_arrow_moves_highlight_in_company_list(mock_get_fz_items):
+    """
+    Tests that pressing 'down' moves the highlight in the ListView, even when the Input is focused.
+    """
+    mock_get_fz_items.return_value = [
+        SearchResult(name="Test Company 1", slug="test-company-1", domain="test1.com", type="company", unique_id="test-company-1", tags=[], display=""),
+        SearchResult(name="Test Company 2", slug="test-company-2", domain="test2.com", type="company", unique_id="test-company-2", tags=[], display=""),
+    ]
+
+    app = CocliApp()
+    async with app.run_test() as driver:
+        await driver.press("space", "c")
+        company_list_screen = await wait_for_widget(driver, CompanyList)
+
+        # The input is focused by default
+        list_view = company_list_screen.query_one(ListView)
+        assert list_view.index == 0
+
+        # Press 'down' and check that the index changes
+        await driver.press("down")
+        assert list_view.index == 1
+
 @pytest.mark.asyncio
 @patch('cocli.tui.app.get_company_details_for_view')
 @patch('cocli.tui.widgets.company_list.get_filtered_items_from_fz')
