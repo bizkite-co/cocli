@@ -9,5 +9,5 @@ def run_tui_app() -> None:
     Launches the Textual TUI for cocli.
     """
     setup_file_logging("tui", file_level=logging.DEBUG)
-    app = CocliApp()
+    app: CocliApp = CocliApp()
     app.run()

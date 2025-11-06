@@ -1,4 +1,6 @@
-from textual.screen import Screen
+import logging
+
+from textual.containers import Container
 from textual.widgets import ListView, ListItem, Label
 from textual.app import ComposeResult
 from textual.containers import VerticalScroll
@@ -8,12 +10,15 @@ from textual import events
 from cocli.core.config import get_all_campaign_dirs
 from cocli.core.utils import slugify
 
+
+logger = logging.getLogger(__name__)
+
 class CampaignListItem(ListItem):
     def __init__(self, name: str) -> None:
         super().__init__(Label(name), id=slugify(name))
         self.campaign_name = name
 
-class CampaignSelection(Screen[None]):
+class CampaignSelection(Container):
     """A screen to select a campaign."""
 
     class CampaignSelected(Message):
@@ -33,6 +38,7 @@ class CampaignSelection(Screen[None]):
     
     def on_list_view_selected(self, event: ListView.Selected) -> None:
         if isinstance(event.item, CampaignListItem):
+            logger.debug(f"on_list_view_selected called with item: {event.item.campaign_name}")
             self.post_message(self.CampaignSelected(event.item.campaign_name))
 
     def on_key(self, event: events.Key) -> None:

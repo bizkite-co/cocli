@@ -1,5 +1,6 @@
 import logging
 import toml
+from typing import Any
 
 from textual.app import App, ComposeResult
 from textual.binding import Binding
@@ -11,6 +12,8 @@ from textual import events # Import events for on_key
 from .widgets.campaign_selection import CampaignSelection
 from .widgets.company_list import CompanyList
 from .widgets.person_list import PersonList
+from .widgets.master_detail import MasterDetailView
+from .widgets.company_preview import CompanyPreview
 from .widgets.person_detail import PersonDetail
 from .widgets.prospect_menu import ProspectMenu
 from .widgets.company_detail import CompanyDetail
@@ -18,9 +21,7 @@ from .widgets.campaign_detail import CampaignDetail
 from ..application.company_service import get_company_details_for_view
 from ..models.campaign import Campaign
 from pydantic import ValidationError
-from .widgets.error_screen import ErrorScreen
 from ..core.config import get_campaign_dir, create_default_config_file
-from ..core import logging_config
 
 logger = logging.getLogger(__name__)
 
@@ -48,9 +49,12 @@ class CocliApp(App[None]):
         yield Static(f"[b]Campaigns[/b] ({LEADER_KEY.upper()}+A) | [b]People[/b] ({LEADER_KEY.upper()}+P) | [b]Companies[/b] ({LEADER_KEY.upper()}+C) | [b]Prospect[/b] ({LEADER_KEY.upper()}+S)", id="menu_bar")
         yield Container(id="app_content")
 
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
+        super().__init__(*args, **kwargs)
+
     def on_mount(self) -> None:
+        self.main_content = self.query_one("#app_content", Container)
         create_default_config_file()
-        logging_config.setup_file_logging("tui", file_level=logging.DEBUG) # Moved logging setup here
 
     async def on_key(self, event: events.Key) -> None:
         logger.debug(f"Key pressed: {event.key}")
@@ -113,20 +117,48 @@ class CocliApp(App[None]):
         else:
             self.bell()
 
+
+
+    def action_show_companies(self) -> None:
+        """Show the company list view."""
+        self.main_content.remove_children()
+        company_list = CompanyList()
+        company_preview = CompanyPreview(Static("Select a company to see details."), id="company-preview")
+        self.main_content.mount(MasterDetailView(master=company_list, detail=company_preview))
+
+    def action_show_people(self) -> None:
+        """Show the person list view."""
+        self.main_content.remove_children()
+        self.main_content.mount(PersonList())
+
+    def action_show_campaigns(self) -> None:
+        """Show the campaign selection view."""
+        self.main_content.remove_children()
+        campaign_list = CampaignSelection()
+        campaign_detail = CampaignDetail(id="campaign-detail")
+        self.main_content.mount(MasterDetailView(master=campaign_list, detail=campaign_detail))
+
+    def on_company_list_company_highlighted(self, message: CompanyList.CompanyHighlighted) -> None:
+        """Handle CompanyHighlighted message from CompanyList widget."""
+        preview = self.query_one("#company-preview", CompanyPreview)
+        preview.update_preview(message.company)
+
     def on_campaign_selection_campaign_selected(self, message: CampaignSelection.CampaignSelected) -> None:
         """Handle CampaignSelected message from CampaignSelection screen."""
         logger.debug(f"on_campaign_selection_campaign_selected called with campaign: {message.campaign_name}")
         campaign_name = message.campaign_name
         assert campaign_name is not None
 
+        detail = self.query_one("#campaign-detail", CampaignDetail)
+
         campaign_dir = get_campaign_dir(campaign_name)
         if not campaign_dir:
-            self.notify(f"Campaign '{campaign_name}' not found.", severity="error")
+            detail.display_error(f"Campaign Not Found: {campaign_name}", f"Campaign '{campaign_name}' not found.")
             return
 
         config_path = campaign_dir / "config.toml"
         if not config_path.exists():
-            self.notify(f"Configuration file not found for campaign '{campaign_name}'.", severity="error")
+            detail.display_error(f"Configuration Not Found: {campaign_name}", f"Configuration file not found for campaign '{campaign_name}'.")
             return
 
         with open(config_path, "r") as f:
@@ -139,28 +171,10 @@ class CocliApp(App[None]):
             campaign = Campaign.model_validate(flat_config)
         except ValidationError as e:
             error_message = "\n".join([f"- {err['loc'][0]}: {err['msg']}" for err in e.errors()])
-            self.push_screen(ErrorScreen(title=f"Invalid Campaign: {campaign_name}", message=error_message))
+            detail.display_error(f"Invalid Campaign: {campaign_name}", error_message)
             return
 
-        self.push_screen(CampaignDetail(campaign=campaign))
-
-    async def action_show_campaigns(self) -> None:
-        """Show the campaigns selection screen."""
-        logger.debug("action_show_campaigns invoked")
-        self.push_screen(CampaignSelection())
-
-    async def action_show_people(self) -> None:
-        """Show the people list screen."""
-        logger.debug("action_show_people invoked")
-        self.push_screen(PersonList())
-
-    async def action_show_companies(self) -> None:
-        """Show the company list screen."""
-        logger.debug("action_show_companies called")
-        self.query_one("#app_content").remove_children()
-        company_list = CompanyList()
-        self.query_one("#app_content").mount(company_list)
-        company_list.focus()
+        detail.update_detail(campaign)
 
     async def action_show_prospects(self) -> None:
         """Show the prospect menu screen."""
@@ -213,5 +227,5 @@ class CocliApp(App[None]):
 
 
 if __name__ == "__main__":
-    app = CocliApp()
+    app: CocliApp = CocliApp()
     app.run()

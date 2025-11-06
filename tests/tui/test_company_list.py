@@ -31,7 +31,7 @@ async def test_company_selection_integration(mock_get_fz_items, mock_get_company
 
     # Act & Assert
     async with app.run_test() as driver:
-        await driver.app.action_show_companies()
+        driver.app.action_show_companies()
         company_list_screen = await wait_for_widget(driver, CompanyList)
         await driver.pause(1.0)
         # --- Direct Message Capture ---

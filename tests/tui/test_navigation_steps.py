@@ -5,60 +5,20 @@ from pathlib import Path
 from cocli.tui.app import CocliApp
 from cocli.tui.widgets.campaign_selection import CampaignSelection
 from cocli.tui.widgets.campaign_detail import CampaignDetail
-from conftest import wait_for_screen
+from textual.widgets import Static
+from conftest import wait_for_widget, wait_for_campaign_detail_update
 
 @pytest.mark.asyncio
 @patch('cocli.tui.widgets.campaign_selection.get_all_campaign_dirs')
-async def test_navigation_to_campaign_selection(mock_get_all_campaign_dirs):
-    """Test that pressing space -> a navigates to the CampaignSelection screen."""
+@patch('cocli.tui.app.toml.load')
+@patch('cocli.tui.app.get_campaign_dir')
+async def test_valid_campaign_selection(mock_get_campaign_dir, mock_toml_load, mock_get_all_campaign_dirs):
+    """Test that selecting a valid campaign shows the CampaignDetail widget."""
     # Arrange
-    mock_get_all_campaign_dirs.return_value = []
-    app = CocliApp()
-
-    # Act
-    async with app.run_test() as driver:
-        await driver.press("space", "a")
-        await wait_for_screen(driver, CampaignSelection)
-
-        # Assert
-        assert isinstance(app.screen, CampaignSelection)
-
-
-@patch('cocli.tui.widgets.campaign_selection.get_all_campaign_dirs')
-async def test_campaign_selection_widget_sends_message(mock_get_all_campaign_dirs):
-    """Test that the CampaignSelection widget sends a CampaignSelected message."""
-    # Arrange
-    from textual.app import App, ComposeResult
-
     mock_campaign_a = MagicMock(spec=Path)
     mock_campaign_a.name = 'Test Campaign'
     mock_get_all_campaign_dirs.return_value = [mock_campaign_a]
 
-    class TestApp(App[None]):
-        def __init__(self):
-            super().__init__()
-            self.messages = []
-
-        def compose(self) -> ComposeResult:
-            yield CampaignSelection()
-
-        def on_campaign_selection_campaign_selected(self, message: CampaignSelection.CampaignSelected):
-            self.messages.append(message)
-
-    app = TestApp()
-    async with app.run_test() as driver:
-        # Act
-        await driver.press("enter")
-
-    # Assert
-    assert any(isinstance(m, CampaignSelection.CampaignSelected) and m.campaign_name == 'Test Campaign' for m in app.messages)
-
-
-@patch('cocli.tui.app.get_campaign_dir')
-@patch('cocli.tui.app.toml.load')
-def test_app_handles_campaign_selected_message(mock_toml_load, mock_get_campaign_dir):
-    """Test that the app handles the CampaignSelected message and pushes the correct screen."""
-    # Arrange
     mock_get_campaign_dir.return_value.exists.return_value = True
     mock_toml_load.return_value = {
         'campaign': {
@@ -74,15 +34,51 @@ def test_app_handles_campaign_selected_message(mock_toml_load, mock_get_campaign
     }
 
     app = CocliApp()
-    app.push_screen = MagicMock() # Mock the push_screen method
+    async with app.run_test() as driver:
+        # Act
+        await driver.press("space", "a")
+        await wait_for_widget(driver, CampaignSelection)
+        await driver.press("enter")
+        await driver.pause()
+        await driver.pause()
+        await driver.pause() # Give the app time to process events
+        detail_widget = await wait_for_widget(driver, CampaignDetail)
+        await wait_for_campaign_detail_update(detail_widget)
 
-    # Act
-    app.on_campaign_selection_campaign_selected(
-        CampaignSelection.CampaignSelected(campaign_name='Test Campaign')
-    )
+        # Assert
+        assert detail_widget.campaign is not None
+        assert detail_widget.campaign.name == "Test Campaign"
 
-    # Assert
-    app.push_screen.assert_called_once()
-    pushed_screen = app.push_screen.call_args[0][0]
-    assert isinstance(pushed_screen, CampaignDetail)
-    assert pushed_screen.campaign.name == 'Test Campaign'
+@pytest.mark.asyncio
+@patch('cocli.tui.widgets.campaign_selection.get_all_campaign_dirs')
+@patch('cocli.tui.app.toml.load')
+@patch('cocli.tui.app.get_campaign_dir')
+async def test_invalid_campaign_selection(mock_get_campaign_dir, mock_toml_load, mock_get_all_campaign_dirs):
+    """Test that selecting an invalid campaign shows the ErrorScreen."""
+    # Arrange
+    mock_campaign_a = MagicMock(spec=Path)
+    mock_campaign_a.name = 'Test Campaign'
+    mock_get_all_campaign_dirs.return_value = [mock_campaign_a]
+
+    mock_get_campaign_dir.return_value.exists.return_value = True
+    mock_toml_load.return_value = {
+        'campaign': {
+            'name': 'Test Campaign',
+        }
+    }
+
+    app = CocliApp()
+    async with app.run_test() as driver:
+        # Act
+        await driver.press("space", "a")
+        await wait_for_widget(driver, CampaignSelection)
+        await driver.press("enter")
+        await driver.pause()
+        await driver.pause()
+        await driver.pause() # Give the app time to process events
+        detail_widget = await wait_for_widget(driver, CampaignDetail)
+
+        # Assert
+        assert detail_widget.campaign is None # No valid campaign loaded
+        error_static = await wait_for_widget(driver, Static, parent_widget=detail_widget)
+        assert "Invalid Campaign: Test Campaign" in str(error_static)

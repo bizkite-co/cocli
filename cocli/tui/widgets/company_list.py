@@ -10,25 +10,19 @@ from textual import events
 
 from cocli.utils.textual_utils import sanitize_id
 from cocli.tui.fz_utils import get_filtered_items_from_fz
+from cocli.models.company import Company
 
 from textual import on
+
 
 logger = logging.getLogger(__name__)
 
 class CompanyList(Container):
-    DEFAULT_CSS = """
-    CompanyList {
-        height: auto;
-    }
-    CompanyList:focus {
-        border: thick solid blue;
-    }
-    """
 
-    """A screen to display a list of companies."""
-
-
-
+    class CompanyHighlighted(Message):
+        def __init__(self, company: Company) -> None:
+            super().__init__()
+            self.company = company
 
 
     class CompanySelected(Message):
@@ -98,18 +92,18 @@ class CompanyList(Container):
 
 
 
-    @on(ListView.Selected)
     def on_list_view_selected(self, event: ListView.Selected) -> None:
-        """Called when a company is selected from the list."""
-        logger.debug(f"ListView.Selected event received in CompanyList for item ID: {event.item.id}")
-        selected_id = event.item.id
-        print(f"DEBUG: on_list_view_selected - selected_id: {selected_id}") # Temporary debug print
-        selected_item = next((item for item in self.filtered_fz_items if sanitize_id(item.unique_id) == selected_id), None)
-        if selected_item and selected_item.slug:
-            print(f"DEBUG: on_list_view_selected - selected_item.slug: {selected_item.slug}") # Temporary debug print
-            self.post_message(self.CompanySelected(selected_item.slug))
-        else:
-            logger.warning(f"Could not find selected item or slug for ID: {selected_id}")
+        if event.item.id:
+            self.post_message(self.CompanySelected(event.item.id))
+
+    def on_list_view_highlighted(self, event: ListView.Highlighted) -> None:
+        if event.item and event.item.id:
+            # Find the search result from the list of items
+            search_result = next((item for item in self.all_fz_items if item.unique_id == event.item.id), None)
+            if search_result and search_result.slug:
+                company = Company.get(search_result.slug)
+                if company:
+                    self.post_message(self.CompanyHighlighted(company))
 
 
 

@@ -24,7 +24,7 @@ async def test_leader_a_shows_campaigns():
     app = CocliApp()
     async with app.run_test() as driver:
         await driver.press("space", "a")
-        campaign_selection = await wait_for_screen(driver, CampaignSelection)
+        campaign_selection = await wait_for_widget(driver, CampaignSelection)
         assert isinstance(campaign_selection, CampaignSelection)
 
 @pytest.mark.asyncio
@@ -33,7 +33,7 @@ async def test_leader_p_shows_people():
     app = CocliApp()
     async with app.run_test() as driver:
         await driver.press("space", "p")
-        person_list = await wait_for_screen(driver, PersonList)
+        person_list = await wait_for_widget(driver, PersonList)
         assert isinstance(person_list, PersonList)
 
 @pytest.mark.asyncio
