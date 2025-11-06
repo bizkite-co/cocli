@@ -1,47 +1,43 @@
-# TUI Next Steps: Campaign Detail View & Rich Widgets
+# TUI Next Steps: Debugging, Enhancements, and Master-Detail for Person
 
-## Summary of Completed Work
+## Summary of Current Work
 
-All outstanding TUI test failures have been resolved. The test suite is now stable, fast, and reliable. Key navigation improvements have been implemented:
+The TUI has been refactored to implement a master-detail navigation paradigm for Companies, People, and Campaigns. Key changes include:
 
-*   **Test-Driven Development:** A systematic, one-at-a-time TDD approach was successfully used to fix all failing tests and implement new features.
-*   **Leader Key Navigation:** The main app screen now correctly handles leader key sequences (e.g., `space+c`) to navigate to different sections.
-*   **Search List Navigation:** The Company List search is now more intuitive:
-    *   Pressing `enter` while the search input is focused selects the highlighted item in the list.
-    *   Pressing `down` and `up` while the search input is focused correctly navigates the list items.
-*   **VIM-like List Navigation:** The `CampaignSelection` and `ProspectMenu` screens now support `j` (down), `k` (up), `l` (select), and `enter` (select) for navigation.
+*   **Master-Detail View:** A generic `MasterDetailView` widget has been introduced to manage the layout, with a master list on the left and a detail/preview pane on the right.
+*   **Campaign Detail Widget:** `CampaignSelection` and `CampaignDetail` have been refactored from `Screen`s to `Widget`s/`Container`s to integrate into the master-detail layout.
+*   **Company List and Preview:** `CompanyList` now posts a `CompanyHighlighted` message, and `CompanyPreview` is a placeholder for company details.
+*   **Test Refinements:** Integration tests for campaign selection (`test_navigation_steps.py`) have been updated to reflect the new widget-based approach and include helper functions for waiting on UI updates.
 
-## Next Objective: Campaign Detail View
+However, the TUI integration tests are currently failing with `TimeoutError`s, indicating issues with event processing and UI updates within the test environment.
 
-The immediate next goal is to create a detail view for a selected campaign. Currently, selecting a campaign from the `CampaignSelection` screen does nothing. We need to implement a new screen that displays the details of the selected campaign.
+## Next Objective: Resolve Test Failures and Enhance Existing Views
 
-This serves as the first step towards a larger goal of creating rich, interactive detail views for all our data objects.
+The immediate next goal is to resolve the persistent `TimeoutError`s in the TUI integration tests. Once stable, we will proceed with enhancing the `CompanyPreview` widget and implementing the master-detail pattern for the `Person` view.
 
 ## Plan of Attack
 
 We will continue to use a strict, test-driven approach.
 
-1.  **Write a Failing Test:**
-    *   Create a new test that simulates selecting a campaign from the `CampaignSelection` screen.
-    *   Assert that a new `CampaignDetail` screen is pushed and becomes visible.
-    *   This test will fail because the `on_campaign_selection_campaign_selected` handler in `CocliApp` does not yet push a detail screen.
+1.  **Address Persistent `TimeoutError` in TUI Tests:**
+    *   Increase the default `timeout` value for all `wait_for_` helper functions in `tests/conftest.py` to 60 seconds as a diagnostic step.
+    *   Carefully examine the captured logs from test runs to understand the exact flow of events and data.
+    *   Re-evaluate the `CampaignDetail` widget's `display_error` and `update_detail` methods for any subtle issues preventing the UI from rendering or the `campaign` attribute from being set.
+    *   Ensure that `CampaignSelection.CampaignSelected` messages are being correctly posted and processed by `CocliApp`.
 
-2.  **Create the `CampaignDetail` Widget:**
-    *   Create a new file: `cocli/tui/widgets/campaign_detail.py`.
-    *   Define a new `CampaignDetail` widget (likely a `Screen`) that takes a `Campaign` object in its constructor.
-    *   For the initial implementation, it can simply display the campaign name in a `Label`.
+2.  **Enhance `CompanyPreview`:**
+    *   Once tests are stable, update `cocli/tui/widgets/company_preview.py` to display more detailed information from the `Company` object. This will involve accessing attributes of the `Company` object passed via the `CompanyHighlighted` message.
 
-3.  **Implement the Navigation:**
-    *   Modify the `on_campaign_selection_campaign_selected` method in `cocli/tui/app.py`.
-    *   Instead of its current behavior, it should construct and `push_screen` a new `CampaignDetail` screen, passing the selected campaign object to it.
-
-4.  **Run the Test Again:**
-    *   Run the new test to confirm that it passes.
+3.  **Implement Master-Detail for `Person` View:**
+    *   Create `PersonList` and `PersonPreview` widgets similar to their `Company` counterparts.
+    *   Integrate these into the `MasterDetailView` when `action_show_people` is called in `cocli/tui/app.py`.
+    *   Ensure proper event handling for `PersonHighlighted` messages to update the `PersonPreview`.
 
 ## Future Work (The Bigger Picture)
 
-This task is the entry point for developing rich detail views. Future tasks will involve:
+This task is a continuation of developing rich detail views within the master-detail paradigm. Future tasks will involve:
 
+*   **Refining `CampaignDetail`:** Implement `j/k` navigation and `i` for editing within the `CampaignDetail` widget.
 *   **Developing Custom Widgets:** Create custom Textual widgets to represent our Pydantic models (`Company`, `Person`, `Meeting`, etc.) in a structured and interactive way.
 *   **Formalizing the API Interface:** Ensure a clean separation between the TUI and the application's core logic by passing well-defined data objects (Pydantic models) across the API boundary, and test both sides of this interface.
-*   **Expanding VIM Navigation:** Implement `hjkl` and `i` (insert/edit) navigation within the new detail views.
+*   **Expanding VIM Navigation:** Implement `hjkl` and `i` (insert/edit) navigation within all detail views.

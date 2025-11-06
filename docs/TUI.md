@@ -6,34 +6,40 @@ The `cocli` project aims to incorporate a Text User Interface (TUI) to provide a
 
 The primary purpose of the TUI is to:
 
-1.  **Visualize Campaign State:** Offer a real-time, interactive view of the current state of a campaign, including its workflow, associated data, and progress.
-2.  **Interactive Campaign Management:** Allow users to interact with and manage campaign-related tasks directly from the terminal, without needing to remember complex CLI commands. This includes actions like:
-    *   Viewing campaign details.
-    *   Triggering workflow steps (e.g., scraping, enrichment, rendering).
-    *   Inspecting intermediate data generated during workflow execution.
-    *   Editing campaign configuration.
-3.  **Improved User Experience:** Provide a more intuitive and engaging way to interact with `cocli`, especially for users who prefer a visual interface over pure command-line interaction.
+1.  **Interactive Data Management:** Offer a real-time, interactive view and management capabilities for Companies, People, and Campaigns through a master-detail navigation paradigm.
+2.  **Visualize Campaign State:** Provide an interactive view of the current state of a campaign, including its workflow, associated data, and progress.
+3.  **Streamlined Workflow Interaction:** Allow users to interact with and manage campaign-related tasks directly from the terminal, without needing to remember complex CLI commands. This includes actions like viewing details, triggering workflow steps, inspecting intermediate data, and editing configuration.
+4.  **Improved User Experience:** Provide a more intuitive and engaging way to interact with `cocli`, especially for users who prefer a visual interface over pure command-line interaction.
 
 ## Current Understanding of TUI Functionality (as of current development)
 
-Based on the code and recent interactions, the TUI is expected to:
+Based on the code and recent interactions, the TUI now features a master-detail layout for key data entities:
 
-*   **Display Campaign Data:** Present key information about the selected campaign, likely in a structured format (e.g., a data table). This would include details like campaign name, domain, associated company slug, workflows, and configuration settings.
-*   **Integrate with Campaign Workflow:** The TUI should be able to display the current state of the campaign workflow and potentially allow users to advance or re-run specific steps. This implies a connection to the `CampaignWorkflow` class and its state management.
-*   **Provide Interactive Elements:** Utilize `Textual` widgets to enable user interaction, such as buttons for actions, input fields for editing, and display areas for logs or results.
+*   **Master-Detail Layout:** The main content area of the TUI is structured into two panes: a master list on the left and a detail/preview pane on the right.
+*   **Company View:** Displays a searchable list of companies in the master pane, with a real-time preview of the highlighted company's details in the detail pane.
+*   **Campaign View:** Presents a navigable list of campaigns in the master pane. Selecting a campaign displays its full details in the detail pane. A searchable list is a planned enhancement.
+*   **Person View:** (Planned) Will feature a searchable list of people in the master pane, with a real-time preview of the highlighted person's details in the detail pane.
+*   **Error Handling:** Validation errors or issues during data loading are displayed directly within the detail pane of the respective view, providing immediate feedback to the user.
+
+## Master-Detail Navigation
+
+The TUI utilizes a master-detail pattern to efficiently browse and manage data:
+
+*   **Master Pane (Left):** Contains a list of items (e.g., Companies, Campaigns, People). Users can navigate this list using keyboard shortcuts (e.g., `j`, `k`, arrow keys) and often filter it via a search input.
+*   **Detail Pane (Right):** Displays detailed information about the currently selected or highlighted item from the master pane. For searchable lists (like Companies), this updates in real-time as items are highlighted. For navigable lists (like Campaigns), details are shown upon selection.
 
 ## Implemented Navigation Schemes
 
-The TUI now supports several keyboard-centric navigation methods:
+The TUI now supports several keyboard-centric navigation methods, integrated with the master-detail paradigm:
 
-*   **Leader Key Navigation:** The main screens (Campaigns, People, Companies, Prospects) are accessed using a leader key combination. Press `space` followed by a character (`a`, `p`, `c`, `s`) to navigate to the corresponding screen.
+*   **Leader Key Navigation:** The main views (Campaigns, People, Companies, Prospects) are accessed using a leader key combination. Press `space` followed by a character (`a`, `p`, `c`, `s`) to navigate to the corresponding view.
 
-*   **VIM-like List Navigation:** In simple list screens like `Campaigns` and `Prospects`, you can now use:
+*   **VIM-like List Navigation:** In master lists (e.g., `CampaignSelection`, `CompanyList`), you can now use:
     *   `j`: Move highlight down.
     *   `k`: Move highlight up.
-    *   `l` or `enter`: Select the highlighted item.
+    *   `l` or `enter`: Select the highlighted item (for navigable lists) or trigger a detail view update (for searchable lists).
 
-*   **Search List Navigation:** In search-oriented lists like the `CompanyList`:
+*   **Search List Navigation:** In searchable master lists (e.g., `CompanyList`):
     *   Typing in the search box filters the list.
     *   `enter`: Selects the highlighted item in the list, even while the search input is focused.
     *   `down` / `up`: Moves the highlight in the list, even while the search input is focused.
@@ -52,14 +58,12 @@ The TUI now supports several keyboard-centric navigation methods:
     - With properly displayed widgets and layouts, we should be able to navigate to the specific field we want by using `hjkl`, and then edit just that field, with propper input masking if required, by using the `i`. `ctrl+c`, `ESCAPE` should allow the user to escape `i` mode, just like in Vim, and we should be able to provide custom mappings for shortcuts like `alt+s` for `ESCAPE`.
 - We should never make the user use the mouse. If they want to use the mouse it's because we didn't present the options enough.
 
-## Future Enhancements (Inferred)
-
-While not explicitly implemented yet, the TUI could be extended to:
+## Future Enhancements
 
 *   **Real-time Logging:** Display live logs or progress updates from long-running operations (e.g., scraping, enrichment).
 *   **Data Exploration:** Allow users to browse and inspect the generated data (e.g., scraped websites, enriched company data) within the TUI.
-*   **Error Reporting:** Provide clear and actionable error messages within the TUI.
 *   **Customizable Views:** Offer different views or dashboards for various aspects of campaign management.
+*   **Expanding VIM Navigation:** Implement `hjkl` and `i` (insert/edit) navigation within all detail views.
 
 This document will be updated as the TUI development progresses and its features become more defined.
 

@@ -36,7 +36,8 @@ test: install ## Run all non-TUI tests using pytest
 	source $(VENV_DIR)/bin/activate && pytest -s tests/ --ignore=tests/tui/test_navigation_steps.py
 
 test-tui-integration: install ## Run only the TUI integration tests
-	source $(VENV_DIR)/bin/activate && pytest -s tests/tui/test_navigation_steps.py
+	source $(VENV_DIR)/bin/activate && pytest tests/tui/test_navigation_steps.py
+	cat .logs/tui.log
 
 
 test-tui: install ## Run TUI test with names
