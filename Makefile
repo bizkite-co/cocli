@@ -30,8 +30,14 @@ install: ## Install development dependencies using uv
 	uv sync --extra dev
 	source $(VENV_DIR)/bin/activate && uv pip install -e . && playwright install
 
-test: install ## Run tests using pytest
-	source $(VENV_DIR)/bin/activate && pytest -s tests/
+# Note: TUI integration tests are run separately due to terminal driver conflicts.
+# Use 'make test-tui-integration' to run them.
+test: install ## Run all non-TUI tests using pytest
+	source $(VENV_DIR)/bin/activate && pytest -s tests/ --ignore=tests/tui/test_navigation_steps.py
+
+test-tui-integration: install ## Run only the TUI integration tests
+	source $(VENV_DIR)/bin/activate && pytest -s tests/tui/test_navigation_steps.py
+
 
 test-tui: install ## Run TUI test with names
 	source $(VENV_DIR)/bin/activate && pytest -v tests/tui

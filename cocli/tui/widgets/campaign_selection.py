@@ -6,6 +6,12 @@ from textual.message import Message
 from textual import events
 
 from cocli.core.config import get_all_campaign_dirs
+from cocli.core.utils import slugify
+
+class CampaignListItem(ListItem):
+    def __init__(self, name: str) -> None:
+        super().__init__(Label(name), id=slugify(name))
+        self.campaign_name = name
 
 class CampaignSelection(Screen[None]):
     """A screen to select a campaign."""
@@ -22,12 +28,12 @@ class CampaignSelection(Screen[None]):
         yield Label("Select a Campaign")
         with VerticalScroll():
             yield ListView(
-                *[ListItem(Label(name), id=name) for name in campaign_names]
+                *[CampaignListItem(name) for name in campaign_names]
             )
     
     def on_list_view_selected(self, event: ListView.Selected) -> None:
-        if event.item.id:
-            self.post_message(self.CampaignSelected(event.item.id))
+        if isinstance(event.item, CampaignListItem):
+            self.post_message(self.CampaignSelected(event.item.campaign_name))
 
     def on_key(self, event: events.Key) -> None:
         """Handle key events for the CampaignSelection screen."""

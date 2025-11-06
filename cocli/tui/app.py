@@ -17,6 +17,8 @@ from .widgets.company_detail import CompanyDetail
 from .widgets.campaign_detail import CampaignDetail
 from ..application.company_service import get_company_details_for_view
 from ..models.campaign import Campaign
+from pydantic import ValidationError
+from .widgets.error_screen import ErrorScreen
 from ..core.config import get_campaign_dir, create_default_config_file
 from ..core import logging_config
 
@@ -135,8 +137,9 @@ class CocliApp(App[None]):
 
         try:
             campaign = Campaign.model_validate(flat_config)
-        except Exception as e:
-            self.notify(f"Error validating campaign configuration for '{campaign_name}': {e}", severity="error")
+        except ValidationError as e:
+            error_message = "\n".join([f"- {err['loc'][0]}: {err['msg']}" for err in e.errors()])
+            self.push_screen(ErrorScreen(title=f"Invalid Campaign: {campaign_name}", message=error_message))
             return
 
         self.push_screen(CampaignDetail(campaign=campaign))
