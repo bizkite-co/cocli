@@ -8,5 +8,5 @@ cocli_data
 .gz
 .tar
 dist
-#.logs/
 .vscode/
+.logs/

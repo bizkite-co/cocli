@@ -1,0 +1,18 @@
+[campaign]
+name = "Test Campaign"
+tag = "test"
+domain = "example.com"
+company-slug = "test-company"
+workflows = []
+
+[import]
+format = "csv"
+
+[google_maps]
+email = "test@example.com"
+one_password_path = "path/to/password"
+
+[prospecting]
+locations = []
+tools = []
+queries = []

@@ -31,4 +31,4 @@ class CampaignDetail(VerticalScroll):
         """Display an error message within the detail pane."""
         self.campaign = None # Clear any previous campaign data
         self.remove_children()
-        self.mount(Static(Panel(message, title=title, border_style="red")))
+        self.mount(Static(Panel(message, title=title, border_style="red"), id="error_message"))

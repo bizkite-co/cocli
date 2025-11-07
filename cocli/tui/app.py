@@ -150,6 +150,7 @@ class CocliApp(App[None]):
         assert campaign_name is not None
 
         detail = self.query_one("#campaign-detail", CampaignDetail)
+        logger.debug(f"Found detail widget: {detail}")
 
         campaign_dir = get_campaign_dir(campaign_name)
         if not campaign_dir:
@@ -175,6 +176,7 @@ class CocliApp(App[None]):
             return
 
         detail.update_detail(campaign)
+        logger.debug(f"Updated detail widget with campaign: {campaign.name}")
 
     async def action_show_prospects(self) -> None:
         """Show the prospect menu screen."""
