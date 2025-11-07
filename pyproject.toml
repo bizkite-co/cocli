@@ -6,28 +6,39 @@ authors = [{ name = "Mark Stouffer", email = "mark@getbizkite.com" }]
 requires-python = ">=3.8"
 dependencies = [
     "typer",
-    "pyyaml",
-    "pydantic[email]",
-    "fuzzywuzzy",
-    "python-Levenshtein",
+    "pydantic",
     "rich",
+    "textual",
     "requests",
-    "dateparser",
-    "playwright",
     "beautifulsoup4",
-    "pandas", # For XLSX to CSV conversion
-    "openpyxl", # Backend for pandas to read XLSX
-    "tomli", # For parsing TOML files
-    "tomli_w", # For writing TOML files
-    "simplekml",
-    "toml",
-    "httpx",
-    "pydantic-settings", # Added for BaseSettings
-    "transitions",
-    "geopy",
+    "pyyaml",
+    "google-api-python-client",
+    "google-auth-httplib2",
+    "google-auth-oauthlib",
+    "selenium",
+    "webdriver-manager",
+    "lxml",
+    "playwright",
+    "pandas",
+    "html5lib",
+    "lxml_html_clean",
     "fastapi",
-    "uvicorn[standard]",
-    "textual"
+    "uvicorn",
+    "pydantic-settings",
+    "boto3",
+    "simple-term-menu",
+    "jmespath",
+    "appdirs",
+    "tomli",
+    "tomli_w",
+    "email-validator",
+    "toml",
+    "geopy",
+    "dateparser",
+    "httpx",
+    "transitions",
+    "fuzzywuzzy",
+    "simplekml",
 ]
 
 [project.scripts]

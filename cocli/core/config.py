@@ -123,6 +123,13 @@ def get_all_campaign_dirs() -> list[Path]:
     return []
 
 
+class Tui(BaseModel):
+    master_width: int = 30
+
+class Config(BaseModel):
+    data_home: Path
+    tui: Tui = Tui()
+
 class ScraperSettings(BaseSettings):
     google_maps_delay_seconds: float = 1.0
     google_maps_max_retries: int = 3
