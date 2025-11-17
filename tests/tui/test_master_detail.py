@@ -9,9 +9,8 @@ from conftest import wait_for_widget
 async def test_master_detail_layout(tmp_path, monkeypatch):
     """Test that the master-detail view is laid out horizontally."""
     # Arrange
-    monkeypatch.setenv("COCLI_DATA_HOME", str(tmp_path))
-    (tmp_path / "config.toml").write_text("""
-[tui]
+    monkeypatch.setenv("COCLI_CONFIG_HOME", str(tmp_path))
+    (tmp_path / "cocli_config.toml").write_text("""[tui]
 master_width = 40
 """)
 
@@ -26,4 +25,4 @@ master_width = 40
         assert len(app.query("Horizontal")) == 1
         assert len(app.query("CampaignSelection")) == 1
         assert len(app.query("CampaignDetail")) == 1
-        assert app.query_one("CampaignSelection").styles.width.value == 40
+        assert app.query_one("#master-pane").styles.width.value == 40

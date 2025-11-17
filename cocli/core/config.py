@@ -5,6 +5,7 @@ import tomli
 import tomli_w
 from typing import Optional, Any, Dict
 import logging
+from pydantic import BaseModel, Field
 
 from pydantic_settings import BaseSettings
 from rich.console import Console
@@ -43,9 +44,9 @@ def get_cocli_base_dir() -> Path:
         return cocli_base_dir
 
     # 2. Config file
-    config = load_config()
-    if "data" in config and "home" in config["data"]:
-        cocli_base_dir = Path(config["data"]["home"]).expanduser()
+    config_data_home = _read_data_home_from_config_file()
+    if config_data_home:
+        cocli_base_dir = config_data_home.expanduser()
         cocli_base_dir.mkdir(parents=True, exist_ok=True)
         return cocli_base_dir
 
@@ -123,12 +124,36 @@ def get_all_campaign_dirs() -> list[Path]:
     return []
 
 
+def _read_data_home_from_config_file() -> Optional[Path]:
+    """
+    Safely reads the data_home path from the config file without triggering recursion.
+    """
+    config_path = get_config_path()
+    if config_path.exists():
+        try:
+            with config_path.open("rb") as f:
+                data = tomli.load(f)
+            if "data_home" in data:
+                return Path(data["data_home"])
+        except tomli.TOMLDecodeError as e:
+            logger.error(f"Error decoding TOML config file {config_path}: {e}")
+        except Exception as e:
+            logger.error(f"Error reading config file {config_path}: {e}")
+    return None
+
+
 class Tui(BaseModel):
     master_width: int = 30
 
 class Config(BaseModel):
-    data_home: Path
+    data_home: Path = Field(default_factory=get_cocli_base_dir)
     tui: Tui = Tui()
+    campaign: Optional[Dict[str, Any]] = None
+    context: Optional[Dict[str, Any]] = None
+
+def get_config() -> Config:
+    config_path = get_config_path()
+    return load_config(config_path)
 
 class ScraperSettings(BaseSettings):
     google_maps_delay_seconds: float = 1.0
@@ -171,12 +196,12 @@ def get_config_path() -> Path:
     config_dir = get_config_dir()
     return config_dir / "cocli_config.toml"
 
-def load_config() -> Dict[str, Any]:
-    config_file = get_config_path()
-    if not config_file.exists():
-        return {}
-    with config_file.open("rb") as f:
-        return tomli.load(f)
+def load_config(config_path: Path) -> Config:
+    if not config_path.exists():
+        return Config()
+    with config_path.open("rb") as f:
+        data = tomli.load(f)
+    return Config(**data)
 
 def save_config(config_data: Dict[str, Any]) -> None:
     config_file = get_config_path()
@@ -185,58 +210,51 @@ def save_config(config_data: Dict[str, Any]) -> None:
         tomli_w.dump(config_data, f)
 
 def get_context() -> Optional[str]:
-    config = load_config()
-    context_config: Optional[Dict[str, Any]] = config.get("context")
-    if context_config:
-        return context_config.get("filter")
+    config = load_config(get_config_path())
+    if config.context:
+        return config.context.get("filter")
     return None
 
 def set_context(filter_str: Optional[str]) -> None:
-    config = load_config()
-    context_config = config.get("context", {})
-    if "context" not in config:
-        config["context"] = context_config
+    config = load_config(get_config_path())
+    if config.context is None:
+        config.context = {}
     if filter_str:
-        context_config["filter"] = filter_str
+        config.context["filter"] = filter_str
     else:
-        if "filter" in context_config:
-            del context_config["filter"]
-        if not context_config:
-            if "context" in config:
-                del config["context"]
-    save_config(config)
+        if "filter" in config.context:
+            del config.context["filter"]
+        if not config.context:
+            config.context = None
+    save_config(config.model_dump())
 
 def get_campaign() -> Optional[str]:
-    config = load_config()
-    campaign_config: Optional[Dict[str, Any]] = config.get("campaign")
-    if campaign_config:
-        return campaign_config.get("name")
+    config = load_config(get_config_path())
+    if config.campaign:
+        return config.campaign.get("name")
     return None
 
 def set_campaign(name: Optional[str]) -> None:
-    config = load_config()
-    campaign_config = config.get("campaign", {})
-    if "campaign" not in config:
-        config["campaign"] = campaign_config
+    config = load_config(get_config_path())
+    if config.campaign is None:
+        config.campaign = {}
     if name:
-        campaign_config["name"] = name
+        config.campaign["name"] = name
     else:
-        if "name" in campaign_config:
-            del campaign_config["name"]
-        if not campaign_config:
-            if "campaign" in config:
-                del config["campaign"]
-    save_config(config)
+        if "name" in config.campaign:
+            del config.campaign["name"]
+        if not config.campaign:
+            config.campaign = None
+    save_config(config.model_dump())
 
 def get_editor_command() -> Optional[str]:
     """
     Returns the editor command from the config file.
     """
-    config = load_config()
+    config = load_config(get_config_path())
     # TODO: Move editor to its own section in the config file
-    context_config: Optional[Dict[str, Any]] = config.get("context")
-    if context_config:
-        return context_config.get("editor")
+    if config.context:
+        return config.context.get("editor")
     return None
 
 

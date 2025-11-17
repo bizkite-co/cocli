@@ -21,7 +21,7 @@ from .widgets.campaign_detail import CampaignDetail
 from ..application.company_service import get_company_details_for_view
 from ..models.campaign import Campaign
 from pydantic import ValidationError
-from ..core.config import get_campaign_dir, create_default_config_file
+from ..core.config import get_campaign_dir, create_default_config_file, get_config
 
 logger = logging.getLogger(__name__)
 
@@ -133,10 +133,12 @@ class CocliApp(App[None]):
 
     def action_show_campaigns(self) -> None:
         """Show the campaign selection view."""
+        config = get_config()
+        master_width = config.tui.master_width
         self.main_content.remove_children()
         campaign_list = CampaignSelection()
         campaign_detail = CampaignDetail(id="campaign-detail")
-        self.main_content.mount(MasterDetailView(master=campaign_list, detail=campaign_detail))
+        self.main_content.mount(MasterDetailView(master=campaign_list, detail=campaign_detail, master_width=master_width))
 
     def on_company_list_company_highlighted(self, message: CompanyList.CompanyHighlighted) -> None:
         """Handle CompanyHighlighted message from CompanyList widget."""
