@@ -178,7 +178,10 @@ async def scrape_google_maps(
     ttl_days: int = 30,
     browser_width: Optional[int] = None,
     browser_height: Optional[int] = None,
-    zoom_out_level: int = 0,
+    zoom_out_button_selector: str = "div#zoomOutButton",
+    panning_distance_miles: int = 8,
+    initial_zoom_out_level: int = 3,
+    omit_zoom_feature: bool = False,
 ) -> AsyncIterator[GoogleMapsData]:
     """
     Scrapes business information from Google Maps for a list of search queries,
@@ -222,13 +225,12 @@ async def scrape_google_maps(
         except Exception as e:
             logger.info(f"Could not find or click cookie consent button (this is okay if it's not present): {e}")
 
-        if zoom_out_level > 0:
-            zoom_out_button_selector = "button#widget-zoom-out"
+        if not omit_zoom_feature and initial_zoom_out_level > 0:
             await page.wait_for_selector(zoom_out_button_selector, timeout=10000)
-            for i in range(zoom_out_level):
+            for i in range(initial_zoom_out_level):
                 await page.click(zoom_out_button_selector)
                 await page.wait_for_timeout(500)
-            logger.info(f"Zoomed out {zoom_out_level} times.")
+            logger.info(f"Zoomed out {initial_zoom_out_level} times.")
             await page.wait_for_timeout(5000)
 
         map_width_miles: float = 0.0
@@ -283,13 +285,13 @@ async def scrape_google_maps(
             
             if found_items_in_area and map_width_miles > 0:
                 viewport_bounds = get_viewport_bounds(latitude, longitude, map_width_miles, map_height_miles)
-                scrape_index.add_area(search_string, viewport_bounds)
+                scrape_index.add_area(search_string, viewport_bounds, lat_miles=map_height_miles, lon_miles=map_width_miles)
                 logger.info(f"Added viewport-based bounding box to scrape index for phrase '{search_string}'.")
 
         # Start of spiral out logic
         logger.info("Starting spiral out search...")
         current_lat, current_lon = latitude, longitude
-        distance_miles = 8
+        distance_miles = panning_distance_miles
         
         bearings = [0, 90, 180, 270] # N, E, S, W
         steps_in_direction = 1
@@ -342,7 +344,7 @@ async def scrape_google_maps(
 
                     if found_items_in_area and map_width_miles > 0:
                         viewport_bounds = get_viewport_bounds(current_lat, current_lon, map_width_miles, map_height_miles)
-                        scrape_index.add_area(search_string, viewport_bounds)
+                        scrape_index.add_area(search_string, viewport_bounds, lat_miles=map_height_miles, lon_miles=map_width_miles)
                         logger.info(f"Added viewport-based bounding box to scrape index for phrase '{search_string}'.")
 
             # Update spiral direction and steps

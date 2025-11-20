@@ -1,43 +1,33 @@
-# TUI Next Steps: Debugging, Enhancements, and Master-Detail for Person
+# Current Task: Debug Google Maps Scraper and Stabilize Local ETL Workflow
 
-## Summary of Current Work
+This task focuses on debugging the newly encountered `list index out of range` error in the Google Maps scraper and ensuring the local ETL workflow (Google Maps scraping + local website enrichment) is fully stable.
 
-The TUI has been refactored to implement a master-detail navigation paradigm for Companies, People, and Campaigns. Key changes include:
+## Objective
 
-*   **Master-Detail View:** A generic `MasterDetailView` widget has been introduced to manage the layout, with a master list on the left and a detail/preview pane on the right.
-*   **Campaign Detail Widget:** `CampaignSelection` and `CampaignDetail` have been refactored from `Screen`s to `Widget`s/`Container`s to integrate into the master-detail layout.
-*   **Company List and Preview:** `CompanyList` now posts a `CompanyHighlighted` message, and `CompanyPreview` is a placeholder for company details.
-*   **Test Refinements:** Integration tests for campaign selection (`test_navigation_steps.py`) have been updated to reflect the new widget-based approach and include helper functions for waiting on UI updates.
-
-However, the TUI integration tests are currently failing with `TimeoutError`s, indicating issues with event processing and UI updates within the test environment.
-
-## Next Objective: Resolve Test Failures and Enhance Existing Views
-
-The immediate next goal is to resolve the persistent `TimeoutError`s in the TUI integration tests. Once stable, we will proceed with enhancing the `CompanyPreview` widget and implementing the master-detail pattern for the `Person` view.
+To have the local Google Maps scraper consistently find and process prospects without errors, and to confirm the end-to-end local workflow is functional before proceeding with server-side deployments.
 
 ## Plan of Attack
 
-We will continue to use a strict, test-driven approach.
+1.  **Debug `list index out of range` error in Google Maps scraper:**
+    *   Run the `achieve-goal` command with debug flags:
+        ```bash
+        cocli campaign achieve-goal turboship --emails 1 --headed --devtools --debug
+        ```
+    *   Analyze the generated HTML dumps (e.g., `page_source_before_scroll_*.html`, `page_source_after_scroll_*.html`) and the detailed logs to pinpoint the exact location and cause of the `list index out of range` error.
+    *   Identify the specific HTML structure that is causing the parsing to fail.
+    *   Implement a fix in `cocli/scrapers/google_maps.py` or `cocli/scrapers/google_maps_parser.py` to handle the unexpected HTML structure gracefully.
+    *   Rebuild the Docker image (`make docker-refresh`) and re-test after implementing the fix.
+2.  **Verify local Google Maps scrape is fully stable:**
+    *   Run the `achieve-goal` command multiple times with varying `goal_emails` and locations to ensure consistent and error-free operation.
+    *   Confirm that prospects are correctly imported and enriched locally.
+3.  **Revisit Website Enrichment to AWS Fargate (Next Major Step):**
+    *   Once local Google Maps scraping is stable, we will proceed with containerizing the website enrichment service and deploying it to Fargate.
+    *   For the global domain index, we will implement the S3-based file-per-row approach as discussed, leveraging S3 object tags for metadata and status. This will involve creating an `S3DomainManager`.
 
-1.  **Address Persistent `TimeoutError` in TUI Tests:**
-    *   Increase the default `timeout` value for all `wait_for_` helper functions in `tests/conftest.py` to 60 seconds as a diagnostic step.
-    *   Carefully examine the captured logs from test runs to understand the exact flow of events and data.
-    *   Re-evaluate the `CampaignDetail` widget's `display_error` and `update_detail` methods for any subtle issues preventing the UI from rendering or the `campaign` attribute from being set.
-    *   Ensure that `CampaignSelection.CampaignSelected` messages are being correctly posted and processed by `CocliApp`.
+## Future Considerations (for subsequent tasks)
 
-2.  **Enhance `CompanyPreview`:**
-    *   Once tests are stable, update `cocli/tui/widgets/company_preview.py` to display more detailed information from the `Company` object. This will involve accessing attributes of the `Company` object passed via the `CompanyHighlighted` message.
-
-3.  **Implement Master-Detail for `Person` View:**
-    *   Create `PersonList` and `PersonPreview` widgets similar to their `Company` counterparts.
-    *   Integrate these into the `MasterDetailView` when `action_show_people` is called in `cocli/tui/app.py`.
-    *   Ensure proper event handling for `PersonHighlighted` messages to update the `PersonPreview`.
-
-## Future Work (The Bigger Picture)
-
-This task is a continuation of developing rich detail views within the master-detail paradigm. Future tasks will involve:
-
-*   **Refining `CampaignDetail`:** Implement `j/k` navigation and `i` for editing within the `CampaignDetail` widget.
-*   **Developing Custom Widgets:** Create custom Textual widgets to represent our Pydantic models (`Company`, `Person`, `Meeting`, etc.) in a structured and interactive way.
-*   **Formalizing the API Interface:** Ensure a clean separation between the TUI and the application's core logic by passing well-defined data objects (Pydantic models) across the API boundary, and test both sides of this interface.
-*   **Expanding VIM Navigation:** Implement `hjkl` and `i` (insert/edit) navigation within all detail views.
+*   **Website Enrichment Trigger:** Determine how the Fargate service will be triggered (e.g., SQS queue, Step Functions).
+*   **Error Handling and Monitoring:** Implement robust error handling, logging, and monitoring for the Fargate service.
+*   **Synchronization Strategy:** Develop a strategy for synchronizing domains from the local CLI's operations (e.g., Google Maps scraping output) into the S3-based domain index. This could involve:
+    *   A simple `aws s3 sync` command run periodically by the local user.
+    *   A more sophisticated mechanism that pushes new domains to S3 as they are discovered locally.

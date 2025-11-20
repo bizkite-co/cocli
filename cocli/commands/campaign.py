@@ -373,7 +373,10 @@ async def pipeline(
     headed: bool,
     devtools: bool,
     campaign_name: str,
-    zoom_out_level: int,
+    zoom_out_button_selector: str,
+    panning_distance_miles: int,
+    initial_zoom_out_level: int,
+    omit_zoom_feature: bool,
     force: bool,
     ttl_days: int,
     debug: bool,
@@ -446,7 +449,10 @@ async def pipeline(
                             location_param={"city": location},
                             search_strings=search_phrases,
                             campaign_name=campaign_name,
-                            zoom_out_level=zoom_out_level,
+                            zoom_out_button_selector=zoom_out_button_selector,
+                            panning_distance_miles=panning_distance_miles,
+                            initial_zoom_out_level=initial_zoom_out_level,
+                            omit_zoom_feature=omit_zoom_feature,
                             force_refresh=force,
                             ttl_days=ttl_days,
                             debug=debug,
@@ -585,8 +591,6 @@ def achieve_goal(
 
     campaign_name: Optional[str] = typer.Argument(None, help="Name of the campaign to run. If not provided, uses the current campaign context."),
 
-    zoom_out_level: int = typer.Option(3, help="How many times to zoom out to set the initial search area."),
-
     force: bool = typer.Option(False, "--force", "-f", help="Force enrichment of all companies, even if they have fresh data."),
 
     ttl_days: int = typer.Option(30, "--ttl-days", help="Time-to-live for cached data in days."),
@@ -648,6 +652,11 @@ def achieve_goal(
     prospecting_config = config.get("prospecting", {})
     locations = prospecting_config.get("locations", [])
     search_phrases = prospecting_config.get("queries", [])
+    zoom_out_button_selector = prospecting_config.get("zoom-out-button-selector", "div#zoomOutButton")
+    panning_distance_miles = prospecting_config.get("panning-distance-miles", 8)
+    initial_zoom_out_level = prospecting_config.get("initial-zoom-out-level", 3)
+    omit_zoom_feature = prospecting_config.get("omit-zoom-feature", False)
+
     if not locations or not search_phrases:
         logger.error("No locations or queries found in the prospecting configuration.")
 
@@ -672,7 +681,10 @@ def achieve_goal(
             headed=headed,
             devtools=devtools,
             campaign_name=campaign_name,
-            zoom_out_level=zoom_out_level,
+            zoom_out_button_selector=zoom_out_button_selector,
+            panning_distance_miles=panning_distance_miles,
+            initial_zoom_out_level=initial_zoom_out_level,
+            omit_zoom_feature=omit_zoom_feature,
             force=force,
             ttl_days=ttl_days,
             debug=debug,

@@ -1,47 +1,70 @@
-# Plan for `cocli` Development
+# Plan for `cocli` Development - ETL Focus
 
-This document outlines the detailed plan to enhance the `cocli` Python application, focusing on improving the data import and search functionalities, and adding developer utility.
+This document outlines the detailed plan to enhance the `cocli` Python application, focusing on transitioning the Google Maps scraping and website enrichment functionalities to a scalable, serverless architecture on AWS.
 
-## Phase 1: Enhance `importer` Command (Revisit)
+## Phase 1: Website Enrichment (AWS Fargate)
 
-The primary goal is to ensure the `importer` command extracts *all* comprehensive and useful information from CSV files and correctly updates existing records, with proper YAML frontmatter and tag handling.
+The primary goal is to containerize the existing website enrichment service and deploy it to AWS Fargate, replacing local data storage with shared, persistent solutions.
 
-1.  **Deep Dive into Data Mapping**: Re-verified `cocli/importers.py` and `cocli/core.py` against a sample CSV to ensure *all* useful columns are mapped and correctly stored in the `Company` model. Removed the `id` field. (Completed)
-2.  **Test Data Completeness**: Ran the importer and manually inspected a company's `_index.md` to confirm all expected data is present and correctly formatted. (Completed)
+1.  **Containerize Website Enrichment Service:**
+    *   Create a `Dockerfile` for the FastAPI service (`cocli/services/enrichment_service/main.py`) and its dependencies, including `cocli/enrichment/website_scraper.py`.
+    *   Build and push the Docker image to Amazon Elastic Container Registry (ECR).
+2.  **Replace `WebsiteDomainCsvManager` with DynamoDB:**
+    *   Design a DynamoDB table to store website domain information, including domain name, last scraped time, scraper version, and scrape status (e.g., `scrape-locked` with a TTL attribute).
+    *   Modify `cocli/core/website_domain_csv_manager.py` (or create a new service) to interact with this DynamoDB table instead of the local CSV file. This will serve as the global company domain index.
+3.  **Deploy Website Enrichment to Fargate:**
+    *   Set up an AWS Fargate service to run the containerized website enrichment application.
+    *   Configure Fargate tasks to scale based on demand (e.g., number of messages in an SQS queue).
+4.  **Integrate with S3 for Enriched Data Storage:**
+    *   Modify the website enrichment service to store enriched data directly into an S3 bucket (e.g., `s3://your-bucket/enriched-data/{domain}/website.md`).
 
-## Phase 2: Enhance `find` Command (Continued)
+## Phase 2: Google Maps Scraper (AWS Fargate with Step Functions)
 
-The goal is to make the `find` command more intuitive, powerful, and user-friendly for navigating company and person data, and to add developer utility.
+The goal is to transition the Google Maps scraper to a serverless, trickle-scrape process orchestrated by AWS Step Functions, utilizing Fargate tasks and S3/DynamoDB for state management.
 
-1.  **Implement Better Fuzzy Search**: Integrated a more sophisticated fuzzy string matching algorithm (`fuzzywuzzy`) to improve search accuracy. (Completed)
-2.  **Company-Centric Results**: Modified the `find` command to primarily list unique companies (based on their directories), rather than individual files. (Completed)
-3.  **Direct Search Parameter**: Ensured the `find` command correctly accepts an optional search query as a direct parameter (e.g., `cocli find "Company Name"`). (Completed)
-4.  **Detailed Company View**: When a company is selected (either via interactive prompt or direct search), render a comprehensive view including:
-    *   The full content of the company's `_index.md` file, with its YAML frontmatter parsed and displayed as structured key-value pairs.
-    *   The concatenated content of its `tags.lst` file.
-    *   A list of the most recent meetings and conversations, sorted by date ascending (most recent at the bottom).
-    *   Implemented configurable limits for meetings (e.g., only the most recent 5, and only within the last 6 months).
-    *   Presented an option/command to view *all* meetings for the selected company.
-    *   Presented a command to *add a new meeting* for the selected company. (Completed)
-5.  **Add `nvim` Integration**: Implemented a new command `cocli open-company-folder <company_name>` that launches `nvim` directly in the selected company's data directory. (Completed)
-6.  **Test Enhanced Find**: Thoroughly tested all new functionalities of the `find` command. (Completed)
+1.  **Containerize Google Maps Scraper:**
+    *   Create a `Dockerfile` for the Google Maps scraper (`cocli/scrapers/google_maps.py`) and its Playwright dependencies.
+    *   Build and push the Docker image to ECR.
+2.  **Replace `ScrapeIndex` and `GoogleMapsCache` with S3/DynamoDB:**
+    *   Adapt `cocli/core/scrape_index.py` and `cocli/core/google_maps_cache.py` to use S3 or DynamoDB for persistent storage of geographic scrape areas and individual business details.
+3.  **Orchestrate Trickle-Scrape with AWS Step Functions:**
+    *   Design an AWS Step Functions state machine to manage the trickle-scrape workflow.
+    *   The state machine will read campaign `config.toml` files (stored in S3) to determine locations and queries.
+    *   It will trigger Fargate tasks (running the Google Maps scraper container) to perform small batches of scraping.
+4.  **Store Raw Scraped Data in S3:**
+    *   Modify the Google Maps scraper to store raw scraped company data (e.g., individual JSON files per company) directly into an S3 bucket (e.g., `s3://your-bucket/google-maps-scrapes/{campaign_name}/{query_id}/{company_id}.json`).
+5.  **Integrate Google Maps Scraper Output with Website Enrichment Input:**
+    *   After a company is scraped by the Google Maps scraper, add its domain to an SQS queue.
+    *   Configure the Website Enrichment Fargate service to consume messages from this SQS queue to trigger enrichment.
 
-## Phase 3: PyPi Deployment Workflow (Paused)
+## Phase 3: Refinement and Optimization
 
-This phase is currently paused due to time constraints and previous issues. It involves setting up a GitHub Actions workflow for automated PyPi deployment. This will be revisited if time permits or if explicitly requested.
+1.  **Monitoring and Logging:** Implement comprehensive monitoring and logging for both Fargate services and Step Functions workflows using CloudWatch.
+2.  **Cost Optimization:** Optimize Fargate task sizes, scaling policies, and DynamoDB provisioned capacity for cost efficiency.
+3.  **Security Enhancements:** Implement IAM roles, network configurations, and secrets management best practices.
+4.  **Error Handling and Retries:** Enhance error handling and retry mechanisms within Step Functions and individual services.
 
 ```mermaid
 graph TD
-    A[Start] --> B{Phase 1: Enhance importer Command (Revisit)};
+    A[Start] --> B{Phase 1: Website Enrichment (AWS Fargate)};
 
-    B --> B1[Deep Dive into Data Mapping (Completed)];
-    B1 --> B2[Test Data Completeness (Completed)];
-    B2 --> C{Phase 2: Enhance find Command (Continued)};
-    C --> C1[Implement Better Fuzzy Search (Completed)];
-    C1 --> C2[Company-Centric Results (Completed)];
-    C2 --> C3[Direct Search Parameter (Completed)];
-    C3 --> C4[Detailed Company View (Completed)];
-    C4 --> C5[Add nvim Integration (Completed)];
-    C5 --> C6[Test Enhanced Find (Completed)];
-    C6 --> D[Phase 3: PyPi Deployment Workflow (Paused)];
-    D --> E[End];
+    B --> B1[Containerize Website Enrichment Service];
+    B1 --> B2[Replace WebsiteDomainCsvManager with DynamoDB];
+    B2 --> B3[Deploy Website Enrichment to Fargate];
+    B3 --> B4[Integrate with S3 for Enriched Data Storage];
+
+    B4 --> C{Phase 2: Google Maps Scraper (AWS Fargate with Step Functions)};
+
+    C --> C1[Containerize Google Maps Scraper];
+    C1 --> C2[Replace ScrapeIndex and GoogleMapsCache with S3/DynamoDB];
+    C2 --> C3[Orchestrate Trickle-Scrape with AWS Step Functions];
+    C3 --> C4[Store Raw Scraped Data in S3];
+    C4 --> C5[Integrate Google Maps Scraper Output with Website Enrichment Input];
+
+    C5 --> D{Phase 3: Refinement and Optimization};
+
+    D --> D1[Monitoring and Logging];
+    D1 --> D2[Cost Optimization];
+    D2 --> D3[Security Enhancements];
+    D3 --> D4[Error Handling and Retries];
+    D4 --> E[End];

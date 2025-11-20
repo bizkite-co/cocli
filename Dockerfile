@@ -4,12 +4,13 @@ FROM python:3.12-slim
 # Set environment variables
 ENV PYTHONUNBUFFERED 1
 ENV PLAYWRIGHT_BROWSERS_PATH /ms-playwright
+ENV DEBIAN_FRONTEND=noninteractive
 
 # Set the working directory in the container
 WORKDIR /app
 
 # Install uv
-RUN pip install uv
+RUN pip install uv --root-user-action=ignore
 
 # Install 1Password CLI
 COPY --from=1password/op:2 /usr/local/bin/op /usr/local/bin/op

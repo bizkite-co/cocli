@@ -17,6 +17,8 @@ class ScrapedArea(NamedTuple):
     lat_max: float
     lon_min: float
     lon_max: float
+    lat_miles: float
+    lon_miles: float
 
 class ScrapeIndex:
     """Manages the index of previously scraped geographic areas."""
@@ -35,23 +37,40 @@ class ScrapeIndex:
         try:
             with self.index_file.open('r', encoding='utf-8') as f:
                 reader = csv.reader(f)
-                next(reader)  # Skip header
+                header = next(reader)  # Read header
+                # Determine column indices dynamically
+                try:
+                    phrase_idx = header.index('phrase')
+                    scrape_date_idx = header.index('scrape_date')
+                    lat_min_idx = header.index('lat_min')
+                    lat_max_idx = header.index('lat_max')
+                    lon_min_idx = header.index('lon_min')
+                    lon_max_idx = header.index('lon_max')
+                    lat_miles_idx = header.index('lat_miles')
+                    lon_miles_idx = header.index('lon_miles')
+                except ValueError as e:
+                    logger.error(f"Missing expected column in scrape_index header: {e}. Recreating index.")
+                    self.index_file.unlink(missing_ok=True) # Delete old index if header is malformed
+                    return
+
                 for row in reader:
                     try:
                         self._index.append(ScrapedArea(
-                            phrase=row[0],
-                            scrape_date=datetime.fromisoformat(row[1]),
-                            lat_min=float(row[2]),
-                            lat_max=float(row[3]),
-                            lon_min=float(row[4]),
-                            lon_max=float(row[5]),
+                            phrase=row[phrase_idx],
+                            scrape_date=datetime.fromisoformat(row[scrape_date_idx]),
+                            lat_min=float(row[lat_min_idx]),
+                            lat_max=float(row[lat_max_idx]),
+                            lon_min=float(row[lon_min_idx]),
+                            lon_max=float(row[lon_max_idx]),
+                            lat_miles=float(row[lat_miles_idx]),
+                            lon_miles=float(row[lon_miles_idx]),
                         ))
                     except (ValueError, IndexError) as e:
                         logger.warning(f"Skipping malformed row in scrape_index: {row} - {e}")
         except Exception as e:
             logger.error(f"Failed to load scrape index: {e}")
 
-    def add_area(self, phrase: str, bounds: dict[str, float]) -> None:
+    def add_area(self, phrase: str, bounds: dict[str, float], lat_miles: float, lon_miles: float) -> None:
         """Adds a new scraped area to the index and saves it."""
         if not all(key in bounds for key in ['lat_min', 'lat_max', 'lon_min', 'lon_max']):
             logger.warning("Attempted to add area with incomplete bounds.")
@@ -64,6 +83,8 @@ class ScrapeIndex:
             lat_max=bounds['lat_max'],
             lon_min=bounds['lon_min'],
             lon_max=bounds['lon_max'],
+            lat_miles=lat_miles,
+            lon_miles=lon_miles,
         )
         self._index.append(area)
         
@@ -75,7 +96,7 @@ class ScrapeIndex:
         try:
             with self.index_file.open('w', newline='', encoding='utf-8') as f:
                 writer = csv.writer(f)
-                writer.writerow(['phrase', 'scrape_date', 'lat_min', 'lat_max', 'lon_min', 'lon_max'])
+                writer.writerow(['phrase', 'scrape_date', 'lat_min', 'lat_max', 'lon_min', 'lon_max', 'lat_miles', 'lon_miles'])
                 for area in self._index:
                     writer.writerow([
                         area.phrase,
@@ -84,6 +105,8 @@ class ScrapeIndex:
                         area.lat_max,
                         area.lon_min,
                         area.lon_max,
+                        area.lat_miles,
+                        area.lon_miles,
                     ])
         except Exception as e:
             logger.error(f"Failed to save scrape index: {e}")

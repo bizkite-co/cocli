@@ -67,7 +67,7 @@ list-packages: install ## List installed packages
 	source $(VENV_DIR)/bin/activate && uv pip list
 
 docker-stop: ## Stop cocli-enrichment
-	@docker stop cocli-enrichment
+	-@docker rm -f cocli-enrichment
 
 docker-refresh: docker-stop docker-build docker-run-enrichment ## Stop and rebuild docker enrichment
 
@@ -145,7 +145,7 @@ debug-google-maps-scraper: install ## Run the Google Maps scraper in headed mode
 
 .PHONY: docker-build
 docker-build: ## Build the docker image
-	@docker build -t enrichment-service .
+	@docker build --no-cache -t enrichment-service .
 
 .PHONY: docker-run-enrichment
 

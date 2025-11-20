@@ -15,6 +15,10 @@ class Prospecting(BaseModel):
     locations: List[str]
     tools: List[str]
     queries: List[str]
+    zoom_out_button_selector: str = Field("div#zoomOutButton", alias="zoom-out-button-selector")
+    panning_distance_miles: int = Field(8, alias="panning-distance-miles")
+    initial_zoom_out_level: int = Field(3, alias="initial-zoom-out-level")
+    omit_zoom_feature: bool = Field(False, alias="omit-zoom-feature")
 
 class Campaign(BaseModel):
     name: str

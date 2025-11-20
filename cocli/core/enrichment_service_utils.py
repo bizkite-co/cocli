@@ -13,8 +13,8 @@ def ensure_enrichment_service_ready(console: Console) -> None:
     Ensures the enrichment service is running and up-to-date.
     Performs a scraper version check and a health check.
     """
-    # --- Check for newer local scraper code ---
-    console.print(f"[grey50][{datetime.now().strftime('%H:%M:%S')}][/] [dim]Checking for newer local website scraper code...[/dim]")
+    # --- Check for running container ---
+    console.print(f"[grey50][{datetime.now().strftime('%H:%M:%S')}][/] [dim]Searching for running enrichment service container...[/dim]")
     result = subprocess.run(
         ["./scripts/check_scraper_version.py", "--image-name", "enrichment-service"],
         capture_output=True,
@@ -22,9 +22,9 @@ def ensure_enrichment_service_ready(console: Console) -> None:
         check=False # Don't raise an exception for non-zero exit codes
     )
     console.print(result.stdout)
-    if result.returncode == 1: # Local is newer
-        console.print("[bold red]Error: Local website_scraper.py is newer than the one in the 'enrichment-service' Docker image.[/bold red]")
-        console.print("[red]Please rebuild the Docker image using 'make docker-build' and restart the container using 'make docker-run-enrichment'.[/red]")
+    if result.returncode == 1: # No running container found
+        console.print("[bold red]Error: Enrichment service Docker container is not running.[/bold red]")
+        console.print("[red]Please start the Docker container using 'make docker-run-enrichment' or 'make docker-refresh'.[/red]")
         raise typer.Exit(code=1)
 
     # --- Health Check for Enrichment Service ---
