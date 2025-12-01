@@ -7,10 +7,107 @@ To provide a unified, flexible, and robust data management layer for `cocli` tha
 ## Core Principles
 
 *   **Storage Abstraction:** Consumers of the data manager should not need to know the underlying storage mechanism (local file, S3 object, database entry).
-*   **Data Type Awareness:** The manager understands the structure and format of different data types (e.g., `Company` Pydantic models, `GoogleMapsData` CSVs, `Website` Markdown files).
+*   **Data Type Awareness (Pydantic First):** All data persisted by `cocli` must be defined by a Pydantic model. This includes data stored as CSVs (e.g., `GoogleMapsData`), JSON, or Markdown.
+    *   **1-to-1 Mapping:** There should be a strict 1-to-1 mapping between the storage format and its corresponding Pydantic model. For example, a row in `prospects.csv` must map exactly to a `GoogleMapsDataCSV` model (or similar).
+    *   **Explicit Transformation:** Any transformation between models (e.g., from a raw scraped `GoogleMapsData` to a `Company` record) must be explicit and handled by a transformation service, not implicitly by the storage layer.
 *   **Intelligent Caching/Indexing:** Optimize access patterns by maintaining local caches/indexes while ensuring eventual consistency with remote stores.
 *   **Pluggable Storage Backends:** Allow easy extension to support new storage types (e.g., databases, other cloud storage).
 *   **Campaign-Centric:** Operations are often scoped to a specific campaign, allowing for isolated data management.
+
+## Architecture Diagrams
+
+### Class Diagram (Mermaid)
+
+```mermaid
+classDiagram
+    class DataManager {
+        +get_company(slug: str) Company
+        +save_company(company: Company)
+        +get_index_manager(campaign: Campaign, index_type: str) IndexManager
+        +sync(campaign: Campaign)
+    }
+
+    class StorageAdapter {
+        <<interface>>
+        +read_object(path: Path) bytes
+        +write_object(path: Path, data: bytes)
+        +list_objects(prefix: Path) List[Path]
+    }
+
+    class LocalFilesystemAdapter {
+        +read_object(path: Path) bytes
+        +write_object(path: Path, data: bytes)
+    }
+
+    class S3Adapter {
+        +read_object(path: Path) bytes
+        +write_object(path: Path, data: bytes)
+    }
+
+    class IndexManager {
+        <<interface>>
+        +load_index(campaign: Campaign)
+        +update_index(campaign: Campaign, data: Any)
+    }
+
+    class LocalIndexManager {
+        +load_index()
+        +update_index()
+    }
+
+    class S3DomainManager {
+        +get_by_domain(domain: str) WebsiteDomainCsv
+        +add_or_update(data: WebsiteDomainCsv)
+    }
+
+    class DataSynchronizer {
+        +push_to_s3(campaign: Campaign)
+        +pull_from_s3(campaign: Campaign)
+    }
+
+    DataManager --> StorageAdapter
+    DataManager --> IndexManager
+    DataManager --> DataSynchronizer
+    StorageAdapter <|-- LocalFilesystemAdapter
+    StorageAdapter <|-- S3Adapter
+    IndexManager <|-- LocalIndexManager
+    IndexManager <|-- S3DomainManager
+```
+
+### Data Flow Diagram (Mermaid)
+
+```mermaid
+flowchart TD
+    subgraph "Local Environment"
+        CLI[cocli CLI]
+        LocalFS[Local Filesystem (cocli_data)]
+        LocalIndex[Local Index (CSVs)]
+    end
+
+    subgraph "Cloud Environment (AWS)"
+        S3Bucket[S3 Bucket (cocli-data-turboship)]
+        S3Index[S3 Index Objects (JSON)]
+    end
+
+    subgraph "Services"
+        Scraper[Google Maps Scraper]
+        Enricher[Website Enrichment Service]
+    end
+
+    %% Local Workflow
+    CLI -->|1. Scrape| Scraper
+    Scraper -->|2. Save Raw Data| LocalFS
+    CLI -->|3. Enrich| Enricher
+    
+    %% S3 Integration (Enrichment)
+    Enricher -->|4. Check/Update Index| S3DomainManager
+    S3DomainManager -->|5. Get/Put Object| S3Index
+
+    %% Synchronization
+    CLI -->|6. Sync (Push/Pull)| DataSynchronizer
+    DataSynchronizer -->|7. Read/Write| LocalFS
+    DataSynchronizer -->|8. Put/Get Object| S3Bucket
+```
 
 ## Key Components
 

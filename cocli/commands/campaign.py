@@ -486,6 +486,7 @@ async def pipeline(
                                             "force": force,
                                             "ttl_days": ttl_days,
                                             "debug": debug,
+                                            "campaign_name": campaign_name,
                                         },
                                         timeout=120.0,  # Generous timeout for scraping
                                     )
