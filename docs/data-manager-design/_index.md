@@ -4,6 +4,10 @@
 
 To provide a unified, flexible, and robust data management layer for `cocli` that abstracts storage mechanisms (local filesystem, S3), intelligently handles various data types (Pydantic models, CSVs, Markdown), and facilitates synchronization between local and cloud environments, especially for campaign-specific data and indexes. This design aims to support both local development and cloud deployments (e.g., EC2, Fargate) with data persistence and scalability.
 
+## Related Documentation
+
+*   [S3 Integration Sequence Diagram](./s3-integration-sequence.md)
+
 ## Core Principles
 
 *   **Storage Abstraction:** Consumers of the data manager should not need to know the underlying storage mechanism (local file, S3 object, database entry).

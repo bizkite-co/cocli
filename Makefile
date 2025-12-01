@@ -146,11 +146,11 @@ debug-google-maps-scraper: install ## Run the Google Maps scraper in headed mode
 
 .PHONY: docker-build
 docker-build: ## Build the docker image
-	@docker build --no-cache -t enrichment-service .
+	@docker buildx build --no-cache -t enrichment-service .
 
 .PHONY: start-enricher
 start-enricher: ## Start docker enrichment service
-	@docker run --rm -d -p 8000:8000 --name cocli-enrichment -e LOCAL_DEV=1 enrichment-service
+	@docker run --rm -d -p 8000:8000 --name cocli-enrichment -e LOCAL_DEV=1 -v $(HOME)/.aws:/root/.aws:ro enrichment-service
 
 .PHONY: check-scraper-version
 check-scraper-version: ## Check if local website_scraper.py is newer than in the Docker image
