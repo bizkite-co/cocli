@@ -10,7 +10,8 @@ ENV DEBIAN_FRONTEND=noninteractive
 WORKDIR /app
 
 # Install uv
-RUN pip install uv --root-user-action=ignore
+RUN pip install uv
+RUN pip install --upgrade pip --root-user-action=ignore
 
 # Install 1Password CLI
 COPY --from=1password/op:2 /usr/local/bin/op /usr/local/bin/op
@@ -26,7 +27,7 @@ RUN chmod +x /usr/local/bin/entrypoint.sh
 
 # Install project dependencies using uv
 # This also installs the project itself in editable mode
-RUN uv pip install -e . --system
+RUN uv pip install -e . --system 
 
 # Install system dependencies for Playwright
 RUN playwright install-deps

@@ -25,17 +25,35 @@ def extract_address(soup: BeautifulSoup, inner_text: str, debug: bool = False) -
         text = div.get_text(separator='|', strip=True)
         if '·' in text and re.search(r'\d', text): # A simple check for a digit, common in addresses
             parts = [p.strip() for p in text.split('|') if p.strip()]
-            # The address is often the last piece of text after the last '·'
             try:
-                last_dot_index = max(i for i, part in enumerate(parts) if '·' in part)
-                potential_address = parts[last_dot_index + 1]
+                # Find the index of the last part containing '·'
+                # If no part has '·', last_dot_index should be -1
+                last_dot_index_of_part = -1
+                for i, part in enumerate(parts):
+                    if '·' in part:
+                        last_dot_index_of_part = i
+                
+                if last_dot_index_of_part != -1 and (last_dot_index_of_part + 1 < len(parts)):
+                    # Address is after the last '·' separated part
+                    potential_address = parts[last_dot_index_of_part + 1]
+                    logger.debug(f"Potential address after last '·' part: {potential_address}")
+                elif last_dot_index_of_part != -1 and (last_dot_index_of_part < len(parts)):
+                    # Address is the last part containing '·'
+                    potential_address = parts[last_dot_index_of_part]
+                    logger.debug(f"Potential address is the last '·' part: {potential_address}")
+                else:
+                    # No '·' or address is the first part
+                    potential_address = parts[0] if parts else ""
+                    logger.debug(f"Potential address is first part or empty, no '·' found: {potential_address}")
+
                 # Basic validation: does it look like an address?
                 if re.search(r'\d.*[a-zA-Z]', potential_address):
                     address_text = potential_address
                     logger.debug(f"Found potential address text: {address_text}")
                     break
-            except ValueError:
-                continue # No '·' found
+            except Exception as e:
+                logger.debug(f"Error during primary address extraction attempt: {e}")
+                continue # Continue to next div or fallback
 
     if address_text:
         full_address = address_text

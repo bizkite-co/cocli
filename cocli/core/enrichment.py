@@ -4,6 +4,7 @@ from typing import Optional
 from playwright.async_api import Browser, BrowserContext
 
 from ..models.company import Company
+from ..models.campaign import Campaign # New import
 from ..enrichment.website_scraper import WebsiteScraper
 from ..models.website import Website
 
@@ -12,6 +13,7 @@ logger = logging.getLogger(__name__)
 async def enrich_company_website(
     browser: Browser | BrowserContext,
     company: Company,
+    campaign: Optional[Campaign] = None, # New parameter
     force: bool = False,
     ttl_days: int = 30,
     debug: bool = False
@@ -27,6 +29,7 @@ async def enrich_company_website(
     Args:
         browser: The shared Playwright browser instance.
         company: The Company object to enrich.
+        campaign: The Campaign object associated with the enrichment.
         force: Force re-scraping even if fresh data is in the cache.
         ttl_days: Time-to-live for cached data in days.
         debug: Enable debug mode with breakpoints.
@@ -43,6 +46,7 @@ async def enrich_company_website(
     website_data = await scraper.run(
         browser=browser,
         domain=company.domain,
+        campaign=campaign, # Pass the campaign object
         force_refresh=force,
         ttl_days=ttl_days,
         debug=debug

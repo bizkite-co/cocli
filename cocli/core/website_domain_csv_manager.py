@@ -7,6 +7,8 @@ import ast
 from ..models.website_domain_csv import WebsiteDomainCsv
 from .config import get_cocli_base_dir
 
+CURRENT_SCRAPER_VERSION = 6
+
 class WebsiteDomainCsvManager:
     def __init__(self, indexes_dir: Optional[Path] = None):
         if not indexes_dir:

@@ -629,7 +629,11 @@ def achieve_goal(
 
     console.print(
         f"[grey50][{datetime.now().strftime('%H:%M:%S')}][/] [bold]Goal:[/bold] Find {goal_emails} new companies with emails."
-    )  # --- Load Campaign Config ---
+    )
+    if goal_emails > 0:
+        console.print(
+            f"[grey50][{datetime.now().strftime('%H:%M:%S')}][/] [yellow]Note: The 'achieve-goal' pipeline runs sequentially when a specific email goal is set, processing one prospect at a time through Google Maps scraping and website enrichment.[/yellow]"
+        )  # --- Load Campaign Config ---
 
     campaign_dir = get_campaign_dir(campaign_name)
 

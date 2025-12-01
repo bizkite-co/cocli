@@ -69,7 +69,8 @@ list-packages: install ## List installed packages
 docker-stop: ## Stop cocli-enrichment
 	-@docker rm -f cocli-enrichment
 
-docker-refresh: docker-stop docker-build docker-run-enrichment ## Stop and rebuild docker enrichment
+docker-refresh: docker-stop docker-build 
+	$(MAKE) start-enricher ## Stop and rebuild docker enrichment
 
 clean: ## Clean up virtual environment and uv.lock
 	rm -rf $(VENV_DIR) uv.lock
@@ -147,9 +148,8 @@ debug-google-maps-scraper: install ## Run the Google Maps scraper in headed mode
 docker-build: ## Build the docker image
 	@docker build --no-cache -t enrichment-service .
 
-.PHONY: docker-run-enrichment
-
-docker-run-enrichment: ## Start docker enrichment service
+.PHONY: start-enricher
+start-enricher: ## Start docker enrichment service
 	@docker run --rm -d -p 8000:8000 --name cocli-enrichment -e LOCAL_DEV=1 enrichment-service
 
 .PHONY: check-scraper-version

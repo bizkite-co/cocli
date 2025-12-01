@@ -1,5 +1,5 @@
 from pydantic import BaseModel, Field
-from typing import List
+from typing import List, Optional
 import toml
 from pathlib import Path
 from cocli.core.utils import slugify
@@ -29,6 +29,7 @@ class Campaign(BaseModel):
     import_settings: CampaignImport = Field(..., alias='import')
     google_maps: GoogleMaps
     prospecting: Prospecting
+    aws_profile_name: Optional[str] = Field(None, alias="aws-profile-name")
 
     @classmethod
     def create(cls, name: str, company: str, data_home: Path) -> 'Campaign':

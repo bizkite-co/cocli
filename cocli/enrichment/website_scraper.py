@@ -10,12 +10,12 @@ from urllib.parse import urljoin
 from datetime import datetime, timedelta
 
 from ..models.website import Website
-from ..core.website_domain_csv_manager import WebsiteDomainCsvManager
+from ..core.website_domain_csv_manager import WebsiteDomainCsvManager, CURRENT_SCRAPER_VERSION
+from ..core.s3_domain_manager import S3DomainManager # New import
 from ..models.website_domain_csv import WebsiteDomainCsv
+from ..models.campaign import Campaign # New import
 
 logger = logging.getLogger(__name__)
-
-CURRENT_SCRAPER_VERSION = 6
 
 class WebsiteScraper:
 
@@ -23,6 +23,7 @@ class WebsiteScraper:
         self,
         browser: Browser | BrowserContext, # Added browser argument
         domain: str,
+        campaign: Optional[Campaign] = None, # New parameter
         force_refresh: bool = False,
         ttl_days: int = 30,
         debug: bool = False
@@ -31,11 +32,16 @@ class WebsiteScraper:
             logger.info("No domain provided. Skipping website scraping.")
             return None
 
-        index = WebsiteDomainCsvManager()
+        index_manager: WebsiteDomainCsvManager | S3DomainManager
+        if campaign and campaign.aws_profile_name:
+            index_manager = S3DomainManager(campaign=campaign)
+        else:
+            index_manager = WebsiteDomainCsvManager()
+        
         fresh_delta = timedelta(days=ttl_days)
 
         # Check index first
-        indexed_item = index.get_by_domain(domain)
+        indexed_item = index_manager.get_by_domain(domain)
         if indexed_item:
             is_stale = (datetime.utcnow() - indexed_item.updated_at) >= fresh_delta
             is_old_version = (indexed_item.scraper_version or 1) < CURRENT_SCRAPER_VERSION
@@ -145,7 +151,7 @@ class WebsiteScraper:
             created_at=website_data.created_at,
             updated_at=website_data.updated_at,
         )
-        index.add_or_update(website_domain_csv_data)
+        index_manager.add_or_update(website_domain_csv_data)
 
         return website_data
 
@@ -370,7 +376,7 @@ class WebsiteScraper:
         # Example: find email addresses with roles
         email_matches = re.findall(r"(\w+\s*:\s*[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})", soup.get_text(separator=' '))
         for match in email_matches:
-            website_data.personnel.append(match)
+            website_data.personnel.append({"email": match.replace(" ", "")})
 
         # Look for personnel links
         personnel_selectors = [".member__wrapper", ".person__card", ".team__member", ".staff__item"]

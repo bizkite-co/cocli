@@ -1,0 +1,97 @@
+# Intelligent Data Manager Design
+
+## Objective
+
+To provide a unified, flexible, and robust data management layer for `cocli` that abstracts storage mechanisms (local filesystem, S3), intelligently handles various data types (Pydantic models, CSVs, Markdown), and facilitates synchronization between local and cloud environments, especially for campaign-specific data and indexes. This design aims to support both local development and cloud deployments (e.g., EC2, Fargate) with data persistence and scalability.
+
+## Core Principles
+
+*   **Storage Abstraction:** Consumers of the data manager should not need to know the underlying storage mechanism (local file, S3 object, database entry).
+*   **Data Type Awareness:** The manager understands the structure and format of different data types (e.g., `Company` Pydantic models, `GoogleMapsData` CSVs, `Website` Markdown files).
+*   **Intelligent Caching/Indexing:** Optimize access patterns by maintaining local caches/indexes while ensuring eventual consistency with remote stores.
+*   **Pluggable Storage Backends:** Allow easy extension to support new storage types (e.g., databases, other cloud storage).
+*   **Campaign-Centric:** Operations are often scoped to a specific campaign, allowing for isolated data management.
+
+## Key Components
+
+### 1. `DataManager` (Singleton/Facade)
+
+*   **Role:** The primary entry point for all data operations within `cocli`. It acts as a facade, delegating requests to appropriate `StorageAdapters` and `IndexManagers`.
+*   **Responsibilities:**
+    *   Manages global configuration (e.g., `COCLI_DATA_HOME`, AWS profile, S3 bucket names).
+    *   Initializes and provides access to `StorageAdapter` and `IndexManager` instances based on configuration.
+    *   Provides high-level methods for common data operations (e.g., `get_company(slug)`, `save_company(company)`, `get_campaign_index(campaign, index_type)`).
+    *   Orchestrates data synchronization via `DataSynchronizer`.
+
+### 2. `StorageAdapter` (Interface/Abstract Base Class)
+
+*   **Role:** Defines a common interface for interacting with different storage backends for raw data objects (e.g., company Markdown files, scraped CSVs).
+*   **Interface Methods (Examples):**
+    *   `read_object(path: Path) -> bytes`
+    *   `write_object(path: Path, data: bytes) -> None`
+    *   `list_objects(prefix: Path) -> List[Path]`
+    *   `delete_object(path: Path) -> None`
+    *   `get_metadata(path: Path) -> Dict[str, Any]` (e.g., S3 object tags)
+*   **Concrete Implementations:**
+    *   **`LocalFilesystemAdapter`:** Handles operations on the local `COCLI_DATA_HOME` directory.
+    *   **`S3Adapter`:** Handles operations on an S3 bucket using `boto3`. It will manage S3 object keys corresponding to file paths.
+
+### 3. `IndexManager` (Interface/Abstract Base Class)
+
+*   **Role:** Defines a common interface for managing campaign-specific indexes (e.g., `WebsiteDomainCsvManager`, `LocationProspectsIndex`). These indexes are typically structured text files (CSV, JSON) that provide fast lookups for aggregated data.
+*   **Interface Methods (Examples):**
+    *   `load_index(campaign: Campaign) -> Any`
+    *   `update_index(campaign: Campaign, data: Any) -> None`
+    *   `get_entry(campaign: Campaign, key: str) -> Optional[Any]`
+    *   `list_entries(campaign: Campaign) -> List[Any]`
+*   **Concrete Implementations:**
+    *   **`LocalIndexManager`:** Manages indexes stored on the local filesystem (e.g., CSVs in `cocli_data/indexes/`).
+    *   **`S3IndexManager` (New - e.g., `S3DomainManager`):** Manages indexes stored in S3.
+        *   **Strategy 1 (Aggregated File):** Store index data as a single aggregated file (e.g., CSV or JSON) in S3 (e.g., `s3://bucket/campaigns/turboship/indexes/domains.csv`). This is simpler but can lead to concurrency issues with frequent updates.
+        *   **Strategy 2 (Object-per-Entry):** Store each index entry as an individual S3 object (e.g., `s3://bucket/campaigns/turboship/indexes/domains/{domain_slug}.json`). Metadata (like `updated_at`, `scraper_version`) can be stored as S3 object tags. This is more robust for concurrent updates and partial reads/writes. This strategy aligns well with the user's preference for directory-like structures and `aws s3 sync`.
+
+### 4. `DataSynchronizer` (New Utility)
+
+*   **Role:** Responsible for synchronizing data between a `LocalFilesystemAdapter` and an `S3Adapter`.
+*   **Responsibilities:**
+    *   **Push to S3:** Uploads local changes (new files, updated files) to S3.
+    *   **Pull from S3:** Downloads remote changes from S3 to the local filesystem.
+    *   **Conflict Resolution:** Implements strategies for handling conflicts (e.g., last-write-wins, or more sophisticated logic based on data types and timestamps).
+    *   **Filtering:** Allows specifying path patterns or data types for selective synchronization.
+*   **Integration:** Can be invoked as a `cocli` command (e.g., `cocli sync campaign <campaign_name> --direction push/pull`), or integrated into `DataManager` lifecycle hooks.
+
+## Data Flow & Interaction
+
+### Local Development Workflow
+
+1.  `cocli` commands (e.g., `achieve-goal`) interact with the `DataManager`.
+2.  `DataManager` primarily uses `LocalFilesystemAdapter` and `LocalIndexManager` for fast local access.
+3.  When a campaign is configured with `aws_profile_name` and an S3 bucket, the `DataManager` can be configured to use `S3Adapter` and `S3IndexManager` for specific operations or for synchronization.
+4.  A `cocli sync` command (powered by `DataSynchronizer`) is used to explicitly push local `cocli_data/` changes to S3 or pull remote changes.
+
+### Cloud Deployment Workflow (EC2/Fargate)
+
+1.  `cocli` application instances (e.g., enrichment service on Fargate, Google Maps scraper on EC2) are configured with `COCLI_DATA_HOME` pointing to a local mount point (e.g., `/mnt/cocli_data`).
+2.  The `DataManager` on these instances is configured to use `S3Adapter` and `S3IndexManager` as the primary storage for critical data and indexes.
+3.  A `cron` job or similar mechanism on EC2 instances (or within Fargate tasks) periodically runs `aws s3 sync` to keep the local mount point synchronized with the S3 bucket for bulk data (e.g., company Markdown files).
+4.  The `S3IndexManager` (e.g., `S3DomainManager`) directly interacts with S3 for its index operations, ensuring consistency across distributed services.
+
+## Example: `achieve-goal` with S3 Integration
+
+1.  `cocli campaign achieve-goal turboship --emails 10`
+2.  `DataManager` is initialized. It detects `aws_profile_name` in the `turboship` campaign config and initializes an `S3Adapter` and `S3IndexManager` for domain indexing.
+3.  **Pre-Scrape Sync (Optional but Recommended):** `DataSynchronizer` pulls relevant campaign data (e.g., existing company files) and indexes from S3 to the local `COCLI_DATA_HOME` to ensure the local environment is up-to-date.
+4.  Google Maps scraper runs, writing new prospects to local `cocli_data/scraped_data/turboship/prospects.csv`.
+5.  For each prospect, the website enrichment service (running locally in Docker) uses the `S3IndexManager` to check/update domain status directly in S3. This ensures that the global domain index is immediately updated and visible to other potential services.
+6.  After `achieve-goal` completes, `DataSynchronizer` pushes all local changes (new prospects CSV, updated company Markdown files) to S3.
+
+## Benefits
+
+*   **Decoupling:** Separates data access logic from business logic, making components more independent.
+*   **Scalability:** Leverages S3 for highly scalable and durable storage of raw data and indexes.
+*   **Resilience:** Data is persisted in S3, making compute instances (EC2, Fargate) ephemeral and easily replaceable.
+*   **Flexibility:** Easy to switch between local filesystem and S3-backed operations, and to extend with new storage types.
+*   **Clearer Data Flow:** Explicit synchronization steps and well-defined interfaces for data interaction.
+*   **Incremental Adoption:** Allows for gradual migration of data management to S3 without a complete rewrite.
+
+This design provides a comprehensive roadmap for building the intelligent data manager, addressing the complexities of S3 integration and preparing `cocli` for robust cloud deployment.

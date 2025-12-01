@@ -100,13 +100,22 @@ async def _scrape_area(
             try:
                 # Set a shorter timeout for getting the HTML of a single element
                 html_content = await listing_div.inner_html(timeout=5000)
-            except Exception as e:
-                logger.warning(f"Could not get HTML for a listing div, it might have been unloaded. Skipping. Error: {e}")
+            except Exception:
+                logger.warning(f"Skipping unloaded listing div {i} for query '{search_string}' (timeout).")
                 continue
             if not html_content or "All filters" in html_content or "Prices come from Google" in html_content:
                 continue
 
-            business_data_dict = parse_business_listing_html(html_content, search_string, debug=debug)
+            business_data_dict = {}
+            try:
+                business_data_dict = parse_business_listing_html(html_content, search_string, debug=debug)
+            except IndexError as e:
+                logger.error(f"IndexError during parsing for search_string '{search_string}'. HTML content: {html_content[:500]}... Error: {e}", exc_info=True)
+                continue
+            except Exception as e:
+                logger.error(f"Unexpected error during parsing for search_string '{search_string}'. HTML content: {html_content[:500]}... Error: {e}", exc_info=True)
+                continue
+            
             place_id = business_data_dict.get("Place_ID")
 
             logger.info(f"Checking place_id: {place_id}")
