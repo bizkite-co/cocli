@@ -2,8 +2,8 @@
 FROM python:3.12-slim
 
 # Set environment variables
-ENV PYTHONUNBUFFERED 1
-ENV PLAYWRIGHT_BROWSERS_PATH /ms-playwright
+ENV PYTHONUNBUFFERED=1
+ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
 ENV DEBIAN_FRONTEND=noninteractive
 
 # Set the working directory in the container

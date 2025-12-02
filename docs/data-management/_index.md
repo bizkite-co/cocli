@@ -84,13 +84,13 @@ classDiagram
 flowchart TD
     subgraph "Local Environment"
         CLI[cocli CLI]
-        LocalFS[Local Filesystem (cocli_data)]
-        LocalIndex[Local Index (CSVs)]
+        LocalFS["Local Filesystem (cocli_data)"]
+        LocalIndex["Local Index (CSVs)"]
     end
 
     subgraph "Cloud Environment (AWS)"
-        S3Bucket[S3 Bucket (cocli-data-turboship)]
-        S3Index[S3 Index Objects (JSON)]
+        S3Bucket["S3 Bucket (cocli-data-turboship)"]
+        S3Index["S3 Index Objects (JSON)"]
     end
 
     subgraph "Services"
