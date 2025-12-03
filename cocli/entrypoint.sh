@@ -2,29 +2,29 @@
 set -e
 
 if [ -z "$LOCAL_DEV" ]; then
-  # Check if OP_SESSION_TOKEN is set
-  if [ -z "$OP_SESSION_TOKEN" ]; then
-    echo "Error: OP_SESSION_TOKEN environment variable is not set."
-    exit 1
+  # Only attempt 1Password retrieval if a valid token is provided and it's not the placeholder
+  if [ -n "$OP_SESSION_TOKEN" ] && [ "$OP_SESSION_TOKEN" != "placeholder_for_now" ]; then
+    # Retrieve the 1Password item
+    OP_ITEM_ID="4lcddpkk5ytnvemniodqmfxq3i"
+    # Correct command syntax: op item get
+    ITEM_DETAILS=$(op item get $OP_ITEM_ID --format json)
+
+    # Extract credentials from the 1Password item
+    export ACCOUNT_ID=$(echo "$ITEM_DETAILS" | jq -r '.fields[] | select(.label == "account_id").value')
+    export ACCESS_KEY_ID=$(echo "$ITEM_DETAILS" | jq -r '.fields[] | select(.label == "access_key_id").value')
+    export SECRET_ACCESS_KEY=$(echo "$ITEM_DETAILS" | jq -r '.fields[] | select(.label == "secret_access_key").value')
+
+    if [ -n "$ACCOUNT_ID" ] && [ -n "$ACCESS_KEY_ID" ] && [ -n "$SECRET_ACCESS_KEY" ]; then
+        echo "Successfully retrieved credentials from 1Password."
+        # Export standard AWS env vars if found
+        export AWS_ACCESS_KEY_ID=$ACCESS_KEY_ID
+        export AWS_SECRET_ACCESS_KEY=$SECRET_ACCESS_KEY
+    else
+        echo "Warning: Failed to retrieve all credentials from 1Password item $OP_ITEM_ID."
+    fi
+  else
+    echo "Skipping 1Password retrieval (Using IAM Task Role or pre-configured environment)."
   fi
-
-  # Retrieve the 1Password item
-  OP_ITEM_ID="4lcddpkk5ytnvemniodqmfxq3i"
-  ITEM_DETAILS=$(op get item $OP_ITEM_ID --format json)
-
-  # Extract credentials from the 1Password item
-  # Assuming the fields are named 'account_id', 'access_key_id', 'secret_access_key'
-  export ACCOUNT_ID=$(echo "$ITEM_DETAILS" | jq -r '.fields[] | select(.label == "account_id").value')
-  export ACCESS_KEY_ID=$(echo "$ITEM_DETAILS" | jq -r '.fields[] | select(.label == "access_key_id").value')
-  export SECRET_ACCESS_KEY=$(echo "$ITEM_DETAILS" | jq -r '.fields[] | select(.label == "secret_access_key").value')
-
-  # Check if credentials were successfully retrieved
-  if [ -z "$ACCOUNT_ID" ] || [ -z "$ACCESS_KEY_ID" ] || [ -z "$SECRET_ACCESS_KEY" ]; then
-    echo "Error: Failed to retrieve all credentials from 1Password item $OP_ITEM_ID."
-    exit 1
-  fi
-
-  echo "Successfully retrieved credentials from 1Password."
 fi
 
 # Execute the original command

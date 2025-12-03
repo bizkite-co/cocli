@@ -26,7 +26,8 @@ def campaign_fixture() -> Campaign:
         'workflows': ['test-workflow'],
         'import': {'format': 'csv'},
         'google_maps': {'email': 'test@test.com', 'one_password_path': 'op://test/test/password'},
-        'prospecting': {'locations': ['Test Location'], 'tools': ['test-tool'], 'queries': ['test-query']}
+        'prospecting': {'locations': ['Test Location'], 'tools': ['test-tool'], 'queries': ['test-query']},
+        'aws-profile-name': 'test-profile' # Ensure aws_profile_name is present
     })
 
 @pytest.fixture(autouse=True)
@@ -48,7 +49,7 @@ async def test_campaign_app(campaign_fixture: Campaign, setup_campaign_dir):
     async with app.run_test():
         # The CampaignScreen is pushed on mount, so we query for it.
         campaign_screen = app.screen # Changed to app.screen
-        assert campaign_screen.query_one("DataTable").row_count == len(campaign_fixture.model_dump())
+        assert campaign_screen.query_one("DataTable").row_count == len(campaign_fixture.model_fields)
 
 async def test_edit_multiple_cells(campaign_fixture: Campaign):
     # Ensure the campaign directory exists for the test

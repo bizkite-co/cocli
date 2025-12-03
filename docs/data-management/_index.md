@@ -161,6 +161,31 @@ flowchart TD
     *   **Filtering:** Allows specifying path patterns or data types for selective synchronization.
 *   **Integration:** Can be invoked as a `cocli` command (e.g., `cocli sync campaign <campaign_name> --direction push/pull`), or integrated into `DataManager` lifecycle hooks.
 
+### 5. Dual Index Strategy
+
+To balance the need for massive write concurrency (cloud workers) with fast read access (CLI search), we employ two distinct index types:
+
+*   **Coordination Index (Write-Optimized):**
+    *   **Format:** Object-per-record (Individual JSON objects in S3).
+    *   **Location:** `s3://bucket/campaigns/<slug>/indexes/domains/<domain>.json`.
+    *   **Purpose:** Allows thousands of distributed workers to check status and update progress simultaneously without locking or race conditions.
+    *   **Primary User:** Fargate/EC2 workers.
+
+*   **Search Index (Read-Optimized):**
+    *   **Format:** Aggregated CSV (e.g., `website-domains.csv`).
+    *   **Location:** S3 (synced to local cache).
+    *   **Purpose:** Extremely fast local searching (`cocli fz`, `rg`) and bulk reporting.
+    *   **Primary User:** CLI users, analysts.
+
+### 6. `IndexConsolidator` (New Utility)
+
+*   **Role:** Bridges the gap between the Coordination Index and the Search Index.
+*   **Responsibilities:**
+    *   Periodically scans the Coordination Index (S3 objects).
+    *   Aggregates the data into a single Search Index CSV.
+    *   Uploads the updated CSV to S3 for distribution.
+*   **Execution:** Can be run as a scheduled Lambda function or a batch job at the end of a scraping run.
+
 ## Data Flow & Interaction
 
 ### Local Development Workflow

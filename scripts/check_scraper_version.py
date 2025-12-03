@@ -1,9 +1,7 @@
 #!/usr/bin/env python3
-import os
 import subprocess
 import sys
 import argparse
-from datetime import datetime
 
 # Removed LOCAL_FILE_PATH, CONTAINER_FILE_PATH, TEMP_DIR as mtime comparison is being removed.
 

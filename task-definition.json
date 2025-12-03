@@ -1,0 +1,39 @@
+{
+    "family": "cocli-enrichment-task",
+    "networkMode": "awsvpc",
+    "containerDefinitions": [
+        {
+            "name": "cocli-enrichment",
+            "image": "193481341784.dkr.ecr.us-east-1.amazonaws.com/cocli-enrichment-service:latest",
+            "portMappings": [
+                {
+                    "containerPort": 8000,
+                    "hostPort": 8000,
+                    "protocol": "tcp"
+                }
+            ],
+            "essential": true,
+            "logConfiguration": {
+                "logDriver": "awslogs",
+                "options": {
+                    "awslogs-group": "/ecs/cocli-enrichment",
+                    "awslogs-region": "us-east-1",
+                    "awslogs-stream-prefix": "ecs"
+                }
+            },
+            "environment": [
+                {
+                    "name": "OP_SESSION_TOKEN",
+                    "value": "placeholder_for_now"
+                }
+            ]
+        }
+    ],
+    "requiresCompatibilities": [
+        "FARGATE"
+    ],
+    "cpu": "1024",
+    "memory": "3072",
+    "executionRoleArn": "arn:aws:iam::193481341784:role/ecsTaskExecutionRole",
+    "taskRoleArn": "arn:aws:iam::193481341784:role/ecsTaskExecutionRole"
+}

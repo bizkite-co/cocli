@@ -2,9 +2,14 @@
 FROM python:3.12-slim
 
 # Set environment variables
-ENV PYTHONUNBUFFERED=1
-ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
+ENV PYTHONUNBUFFERED 1
+ENV PLAYWRIGHT_BROWSERS_PATH /ms-playwright
 ENV DEBIAN_FRONTEND=noninteractive
+
+# Versioning
+ARG VERSION=0.0.0
+ENV COCLI_VERSION=$VERSION
+RUN echo $VERSION > /app_version
 
 # Set the working directory in the container
 WORKDIR /app

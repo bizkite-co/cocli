@@ -1,11 +1,11 @@
 import json
 import logging
 from typing import List, Optional, Any, Dict
-from pathlib import Path
+from datetime import datetime # Added import
 
 import boto3
 from botocore.exceptions import ClientError
-from pydantic import BaseModel, ValidationError
+from pydantic import ValidationError
 
 from ..models.campaign import Campaign
 from ..models.website_domain_csv import WebsiteDomainCsv  # Assuming this model exists
@@ -21,25 +21,33 @@ class S3DomainManager:
     """
     def __init__(self, campaign: Campaign):
         self.campaign = campaign
-        if not self.campaign.aws_profile_name:
-            raise ValueError("Campaign must have 'aws_profile_name' configured for S3DomainManager.")
         
         # We need an S3 bucket name. For now, let's assume a default convention
         # or it will be configured in campaign.
         # For this implementation, let's derive it from the account ID and a fixed prefix.
         # This will need to be made configurable later if necessary.
-        self.s3_bucket_name = f"cocli-data-{self.campaign.aws_profile_name.split('-')[0].lower()}" # Example: turboship-support -> cocli-data-turboship. This needs to be improved.
-        if "turboship" in self.campaign.aws_profile_name: # Temporary special casing for turboship
+        profile_name = self.campaign.aws_profile_name
+        self.s3_bucket_name = f"cocli-data-{profile_name.split('-')[0].lower()}" if profile_name else "cocli-data-turboship" # Default/Fallback bucket
+        
+        if profile_name and "turboship" in profile_name: # Temporary special casing for turboship
             self.s3_bucket_name = "cocli-data-turboship"
 
         self.s3_prefix = f"campaigns/{self.campaign.company_slug}/indexes/domains/"
 
         try:
-            session = boto3.Session(profile_name=self.campaign.aws_profile_name)
+            if profile_name:
+                session = boto3.Session(profile_name=profile_name)
+            else:
+                session = boto3.Session()
             self.s3_client = session.client("s3")
-        except ClientError as e:
-            logger.error(f"Failed to create S3 client with profile '{self.campaign.aws_profile_name}': {e}")
-            raise
+        except Exception as e: # Catch ProfileNotFound or other config errors
+            logger.warning(f"Failed to create S3 client with profile '{profile_name}': {e}. Falling back to default credentials chain.")
+            try:
+                session = boto3.Session()
+                self.s3_client = session.client("s3")
+            except Exception as inner_e:
+                logger.error(f"Failed to create S3 client with default credentials: {inner_e}")
+                raise
 
     def _get_s3_key(self, domain: str) -> str:
         """Constructs the S3 key for a given domain."""
@@ -101,9 +109,6 @@ class S3DomainManager:
             'updated-at': data.updated_at.isoformat()
         }
         
-        # Create a Tagging object for boto3
-        tagging = {'TagSet': [{'Key': k, 'Value': v} for k, v in s3_tags.items()]}
-
         try:
             self.s3_client.put_object(
                 Bucket=self.s3_bucket_name,

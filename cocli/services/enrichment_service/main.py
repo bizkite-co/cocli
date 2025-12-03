@@ -2,16 +2,16 @@
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 import logging
+import os
 from playwright.async_api import async_playwright
 import toml # New import
-from pathlib import Path # New import
 from typing import Optional # New import
 
 # Adjust imports to be absolute from the project root
 from cocli.core.enrichment import enrich_company_website
 from cocli.models.website import Website
 from cocli.models.company import Company
-from cocli.models.campaign import Campaign # New import
+from cocli.models.campaign import Campaign # New imports
 from cocli.core.config import get_campaign_dir # New import
 
 # Configure logging
@@ -20,12 +20,19 @@ logger = logging.getLogger(__name__)
 
 app = FastAPI()
 
+@app.on_event("startup")
+async def startup_event() -> None:
+    version = os.getenv("COCLI_VERSION", "unknown")
+    logger.info(f"Starting Enrichment Service v{version}")
+
 class EnrichmentRequest(BaseModel):
     domain: str
     force: bool = False
     ttl_days: int = 30
     debug: bool = False
-    campaign_name: Optional[str] = None # New field
+    campaign_name: Optional[str] = None
+    aws_profile_name: Optional[str] = None # New field
+    company_slug: Optional[str] = None # New field
 
 @app.post("/enrich", response_model=Website)
 async def enrich_domain(request: EnrichmentRequest) -> Website:
@@ -38,21 +45,46 @@ async def enrich_domain(request: EnrichmentRequest) -> Website:
     campaign: Optional[Campaign] = None
     if request.campaign_name:
         campaign_dir = get_campaign_dir(request.campaign_name)
-        if not campaign_dir:
-            logger.error(f"Campaign '{request.campaign_name}' not found for enrichment request.")
-            raise HTTPException(status_code=404, detail=f"Campaign '{request.campaign_name}' not found.")
-        
-        config_path = campaign_dir / "config.toml"
-        if not config_path.exists():
-            logger.error(f"Configuration file not found for campaign '{request.campaign_name}'.")
-            raise HTTPException(status_code=404, detail=f"Configuration file not found for campaign '{request.campaign_name}'.")
-        
-        with open(config_path, "r") as f:
-            config_data = toml.load(f)
-        
-        flat_config = config_data.pop('campaign')
-        flat_config.update(config_data)
-        campaign = Campaign.model_validate(flat_config)
+        if campaign_dir and (campaign_dir / "config.toml").exists():
+            # Try loading from file first
+            with open(campaign_dir / "config.toml", "r") as f:
+                config_data = toml.load(f)
+            flat_config = config_data.pop('campaign')
+            flat_config.update(config_data)
+            campaign = Campaign.model_validate(flat_config)
+        elif request.aws_profile_name and request.company_slug:
+            # Fallback to constructing ephemeral campaign from request params
+            logger.info("Campaign config not found locally. Using provided parameters for stateless operation.")
+            # Minimal campaign object for S3 access
+            campaign_data = {
+                "campaign": {
+                    "name": request.campaign_name,
+                    "tag": "placeholder",
+                    "domain": "placeholder.com",
+                    "company-slug": request.company_slug,  # Use alias for dictionary
+                    "aws-profile-name": request.aws_profile_name,  # Use alias
+                    "workflows": [],
+                },
+                "import": {  # Use alias for dictionary
+                    "format": "csv"
+                },
+                "google_maps": {  # Use field name if no alias
+                    "email": "placeholder",
+                    "one_password_path": "placeholder"
+                },
+                "prospecting": {  # Use field name if no alias
+                    "locations": [],
+                    "tools": [],
+                    "queries": []
+                }
+            }
+            # Flatten for validation
+            flat_config = campaign_data.pop('campaign')
+            flat_config.update(campaign_data)
+            campaign = Campaign.model_validate(flat_config)
+        else:
+            logger.error(f"Campaign '{request.campaign_name}' config not found and insufficient parameters provided.")
+            raise HTTPException(status_code=404, detail=f"Campaign '{request.campaign_name}' configuration not found and params missing.")
 
     async with async_playwright() as p:
         # Using --no-sandbox is often necessary in Docker environments

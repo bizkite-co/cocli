@@ -1,70 +1,63 @@
-# Plan for `cocli` Development - ETL Focus
+# Plan for `cocli` Development - Cloud Native Transition
 
-This document outlines the detailed plan to enhance the `cocli` Python application, focusing on transitioning the Google Maps scraping and website enrichment functionalities to a scalable, serverless architecture on AWS.
+This document outlines the roadmap for transitioning `cocli` from a purely local tool to a scalable, cloud-integrated platform using AWS Fargate and S3.
 
-## Phase 1: Website Enrichment (AWS Fargate)
+## Phase 1: Hybrid Architecture (Local Scrape / Cloud Enrich)
 
-The primary goal is to containerize the existing website enrichment service and deploy it to AWS Fargate, replacing local data storage with shared, persistent solutions.
+**Goal:** Offload the resource-intensive website enrichment process to the cloud while keeping the complex Google Maps scraping local for control.
 
-1.  **Containerize Website Enrichment Service:**
-    *   Create a `Dockerfile` for the FastAPI service (`cocli/services/enrichment_service/main.py`) and its dependencies, including `cocli/enrichment/website_scraper.py`.
-    *   Build and push the Docker image to Amazon Elastic Container Registry (ECR).
-2.  **Replace `WebsiteDomainCsvManager` with DynamoDB:**
-    *   Design a DynamoDB table to store website domain information, including domain name, last scraped time, scraper version, and scrape status (e.g., `scrape-locked` with a TTL attribute).
-    *   Modify `cocli/core/website_domain_csv_manager.py` (or create a new service) to interact with this DynamoDB table instead of the local CSV file. This will serve as the global company domain index.
-3.  **Deploy Website Enrichment to Fargate:**
-    *   Set up an AWS Fargate service to run the containerized website enrichment application.
-    *   Configure Fargate tasks to scale based on demand (e.g., number of messages in an SQS queue).
-4.  **Integrate with S3 for Enriched Data Storage:**
-    *   Modify the website enrichment service to store enriched data directly into an S3 bucket (e.g., `s3://your-bucket/enriched-data/{domain}/website.md`).
+1.  **Infrastructure Foundation (Current Focus):**
+    *   [x] Design "Object-per-Record" indexing strategy for S3 concurrency.
+    *   [x] Containerize Enrichment Service (Docker).
+    *   [x] Set up ECR, ECS Cluster, and IAM Roles.
+    *   [ ] Deploy Enrichment Service to AWS Fargate Spot.
+    *   [ ] Implement "Coordination Index" (S3) logic in the service.
 
-## Phase 2: Google Maps Scraper (AWS Fargate with Step Functions)
+2.  **CLI Integration:**
+    *   [ ] Update `cocli` to target remote Enrichment Service (Fargate IP/Load Balancer).
+    *   [ ] Implement `IndexConsolidator` to merge S3 index objects into a local CSV for `cocli fz`.
 
-The goal is to transition the Google Maps scraper to a serverless, trickle-scrape process orchestrated by AWS Step Functions, utilizing Fargate tasks and S3/DynamoDB for state management.
+3.  **Scalability:**
+    *   [ ] Introduce AWS SQS to decouple Scraper and Enricher.
+    *   [ ] Configure Fargate Auto Scaling based on queue depth.
 
-1.  **Containerize Google Maps Scraper:**
-    *   Create a `Dockerfile` for the Google Maps scraper (`cocli/scrapers/google_maps.py`) and its Playwright dependencies.
-    *   Build and push the Docker image to ECR.
-2.  **Replace `ScrapeIndex` and `GoogleMapsCache` with S3/DynamoDB:**
-    *   Adapt `cocli/core/scrape_index.py` and `cocli/core/google_maps_cache.py` to use S3 or DynamoDB for persistent storage of geographic scrape areas and individual business details.
-3.  **Orchestrate Trickle-Scrape with AWS Step Functions:**
-    *   Design an AWS Step Functions state machine to manage the trickle-scrape workflow.
-    *   The state machine will read campaign `config.toml` files (stored in S3) to determine locations and queries.
-    *   It will trigger Fargate tasks (running the Google Maps scraper container) to perform small batches of scraping.
-4.  **Store Raw Scraped Data in S3:**
-    *   Modify the Google Maps scraper to store raw scraped company data (e.g., individual JSON files per company) directly into an S3 bucket (e.g., `s3://your-bucket/google-maps-scrapes/{campaign_name}/{query_id}/{company_id}.json`).
-5.  **Integrate Google Maps Scraper Output with Website Enrichment Input:**
-    *   After a company is scraped by the Google Maps scraper, add its domain to an SQS queue.
-    *   Configure the Website Enrichment Fargate service to consume messages from this SQS queue to trigger enrichment.
+## Phase 2: Cloud Native Scraping
 
-## Phase 3: Refinement and Optimization
+**Goal:** Move the Google Maps scraper to the cloud for fully automated, scheduled data gathering.
 
-1.  **Monitoring and Logging:** Implement comprehensive monitoring and logging for both Fargate services and Step Functions workflows using CloudWatch.
-2.  **Cost Optimization:** Optimize Fargate task sizes, scaling policies, and DynamoDB provisioned capacity for cost efficiency.
-3.  **Security Enhancements:** Implement IAM roles, network configurations, and secrets management best practices.
-4.  **Error Handling and Retries:** Enhance error handling and retry mechanisms within Step Functions and individual services.
+1.  **Containerize Scraper:**
+    *   [ ] Package Playwright scraper into a Docker image.
+    *   [ ] Adapt scraper to read configuration from S3/Environment variables.
+
+2.  **Orchestration:**
+    *   [ ] Create AWS Step Functions state machine to coordinate Scrape -> Queue -> Enrich workflow.
+    *   [ ] Schedule runs via EventBridge (Cron).
+
+## Phase 3: Data Management & Optimization
+
+**Goal:** robust data handling, cost optimization, and observability.
+
+1.  **Unified Data Manager:**
+    *   [ ] Finalize `DataManager` class in Python to abstract S3 vs Local FS.
+    *   [ ] Implement `DataSynchronizer` for efficient `cocli sync`.
+
+2.  **Optimization:**
+    *   [ ] Use Fargate Spot for all compute.
+    *   [ ] Implement strict lifecycle policies for S3 data.
+    *   [ ] Add centralized logging and metrics (CloudWatch).
 
 ```mermaid
 graph TD
-    A[Start] --> B{Phase 1: Website Enrichment (AWS Fargate)};
+    A[Start] --> B{Phase 1: Hybrid Architecture};
+    B --> B1[Deploy Enricher to Fargate];
+    B --> B2[Implement S3 Object Indexing];
+    B --> B3[Connect Local CLI to Cloud Enricher];
 
-    B --> B1[Containerize Website Enrichment Service];
-    B1 --> B2[Replace WebsiteDomainCsvManager with DynamoDB];
-    B2 --> B3[Deploy Website Enrichment to Fargate];
-    B3 --> B4[Integrate with S3 for Enriched Data Storage];
+    B3 --> C{Phase 2: Cloud Native Scraping};
+    C --> C1[Containerize GMaps Scraper];
+    C --> C2[Orchestrate with Step Functions];
 
-    B4 --> C{Phase 2: Google Maps Scraper (AWS Fargate with Step Functions)};
-
-    C --> C1[Containerize Google Maps Scraper];
-    C1 --> C2[Replace ScrapeIndex and GoogleMapsCache with S3/DynamoDB];
-    C2 --> C3[Orchestrate Trickle-Scrape with AWS Step Functions];
-    C3 --> C4[Store Raw Scraped Data in S3];
-    C4 --> C5[Integrate Google Maps Scraper Output with Website Enrichment Input];
-
-    C5 --> D{Phase 3: Refinement and Optimization};
-
-    D --> D1[Monitoring and Logging];
-    D1 --> D2[Cost Optimization];
-    D2 --> D3[Security Enhancements];
-    D3 --> D4[Error Handling and Retries];
-    D4 --> E[End];
+    C --> D{Phase 3: Optimization};
+    D --> D1[Data Manager & Sync];
+    D --> D2[Cost & Observability];
+```

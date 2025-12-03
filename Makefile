@@ -32,7 +32,7 @@ install: ## Install development dependencies using uv
 
 # Note: TUI integration tests are run separately due to terminal driver conflicts.
 # Use 'make test-tui-integration' to run them.
-test: install ## Run all non-TUI tests using pytest
+test: install lint ## Run all non-TUI tests using pytest
 	source $(VENV_DIR)/bin/activate && pytest -s tests/ --ignore=tests/tui/test_navigation_steps.py
 
 test-tui-integration: install ## Run only the TUI integration tests
@@ -146,7 +146,9 @@ debug-google-maps-scraper: install ## Run the Google Maps scraper in headed mode
 
 .PHONY: docker-build
 docker-build: ## Build the docker image
-	@docker buildx build --no-cache -t enrichment-service .
+	$(eval VERSION := $(shell python3 scripts/increment_version.py))
+	@echo "Building version: $(VERSION)"
+	@docker buildx build --no-cache --load --build-arg VERSION=$(VERSION) -t enrichment-service .
 
 .PHONY: start-enricher
 start-enricher: ## Start docker enrichment service
@@ -157,6 +159,10 @@ check-scraper-version: ## Check if local website_scraper.py is newer than in the
 	python3 ./scripts/check_scraper_version.py --image-name enrichment-service
 
 
+
+.PHONY: deploy-enrichment
+deploy-enrichment: test docker-build ## Build and deploy the enrichment service to AWS Fargate
+	@./scripts/deploy_enrichment_service.sh
 
 .PHONY: migrate-website-cache
 
