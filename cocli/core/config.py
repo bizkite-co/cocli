@@ -257,6 +257,12 @@ def get_editor_command() -> Optional[str]:
         return config.context.get("editor")
     return None
 
+def get_enrichment_service_url() -> str:
+    """
+    Returns the URL for the enrichment service, either from an environment variable
+    or defaulting to the local Docker endpoint.
+    """
+    return os.getenv("COCLI_ENRICHMENT_SERVICE_URL", "http://localhost:8000")
 
 def create_default_config_file() -> None:
     """

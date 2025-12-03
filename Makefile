@@ -158,11 +158,17 @@ start-enricher: ## Start docker enrichment service
 check-scraper-version: ## Check if local website_scraper.py is newer than in the Docker image
 	python3 ./scripts/check_scraper_version.py --image-name enrichment-service
 
+verify: ## verify Fargate deployment
+	. ./scripts/verify_fargate_deployment.sh
 
 
 .PHONY: deploy-enrichment
 deploy-enrichment: test docker-build ## Build and deploy the enrichment service to AWS Fargate
 	@./scripts/deploy_enrichment_service.sh
+
+.PHONY: verify
+verify: ## Verify the Fargate deployment
+	@./scripts/verify_fargate_deployment.sh
 
 .PHONY: migrate-website-cache
 

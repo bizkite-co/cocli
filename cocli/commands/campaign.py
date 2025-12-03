@@ -17,7 +17,7 @@ import httpx
 from ..models.website import Website
 from ..scrapers.google_maps import scrape_google_maps
 
-from ..core.config import get_scraped_data_dir, get_companies_dir, get_campaign_dir, get_cocli_base_dir, get_people_dir, get_all_campaign_dirs, get_editor_command
+from ..core.config import get_scraped_data_dir, get_companies_dir, get_campaign_dir, get_cocli_base_dir, get_people_dir, get_all_campaign_dirs, get_editor_command, get_enrichment_service_url
 from ..core.geocoding import get_coordinates_from_city_state
 from ..models.google_maps import GoogleMapsData
 from ..models.company import Company
@@ -477,10 +477,11 @@ async def pipeline(
                             )  # Add to set to avoid re-importing from same CSV
                             # 3. Enrich (via Service)
                             website_data = None
+                            enrichment_service_url = get_enrichment_service_url()
                             async with httpx.AsyncClient() as client:
                                 try:
                                     response = await client.post(
-                                        "http://localhost:8000/enrich",
+                                        f"{enrichment_service_url}/enrich",
                                         json={
                                             "domain": company.domain,
                                             "force": force,

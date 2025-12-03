@@ -6,12 +6,14 @@ This document outlines the roadmap for transitioning `cocli` from a purely local
 
 **Goal:** Offload the resource-intensive website enrichment process to the cloud while keeping the complex Google Maps scraping local for control.
 
-1.  **Infrastructure Foundation (Current Focus):**
+1.  **Infrastructure Foundation (Completed):**
     *   [x] Design "Object-per-Record" indexing strategy for S3 concurrency.
     *   [x] Containerize Enrichment Service (Docker).
     *   [x] Set up ECR, ECS Cluster, and IAM Roles.
-    *   [ ] Deploy Enrichment Service to AWS Fargate Spot.
-    *   [ ] Implement "Coordination Index" (S3) logic in the service.
+    *   [x] Deploy Enrichment Service to AWS Fargate Spot.
+    *   [x] Implemented robust S3 session handling and tagging.
+    *   [x] Integrated versioning into build and application logs.
+    *   [x] Streamlined deployment process with `make deploy-enrichment` and version incrementing.
 
 2.  **CLI Integration:**
     *   [ ] Update `cocli` to target remote Enrichment Service (Fargate IP/Load Balancer).

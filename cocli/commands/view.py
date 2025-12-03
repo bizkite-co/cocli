@@ -15,7 +15,7 @@ from rich.console import Console
 
 
 from ..core.utils import slugify, create_person_files, _getch, run_fzf
-from ..core.config import get_companies_dir, get_people_dir, get_campaign, get_editor_command
+from ..core.config import get_companies_dir, get_people_dir, get_campaign, get_editor_command, get_enrichment_service_url
 from ..models.company import Company
 from ..models.person import Person
 from ..models.note import Note
@@ -496,10 +496,11 @@ def _interactive_view_company(company_slug: str) -> None:
 
                 # Trigger enrichment service
                 website_data = None
+                enrichment_service_url = get_enrichment_service_url()
                 try:
                     with httpx.Client() as client:
                         response = client.post(
-                            "http://localhost:8000/enrich",
+                            f"{enrichment_service_url}/enrich",
                             json={
                                 "domain": new_domain,
                                 "force": True, # Force re-enrichment

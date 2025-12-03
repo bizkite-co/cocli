@@ -104,6 +104,10 @@ class CampaignWorkflow:
         prospecting_config = config.get("prospecting", {})
         locations = prospecting_config.get("locations", [])
         search_phrases = prospecting_config.get("queries", [])
+        zoom_out_button_selector = prospecting_config.get("zoom-out-button-selector", "div#zoomOutButton")
+        panning_distance_miles = prospecting_config.get("panning-distance-miles", 8)
+        initial_zoom_out_level = prospecting_config.get("initial-zoom-out-level", 3)
+        omit_zoom_feature = prospecting_config.get("omit-zoom-feature", False)
 
         if not locations or not search_phrases:
             console.print("[bold red]No locations or queries found in the prospecting configuration.[/bold red]")
@@ -122,7 +126,10 @@ class CampaignWorkflow:
                     headed=False,
                     devtools=False,
                     campaign_name=self.name,
-                    zoom_out_level=3,  # Default, can be made configurable
+                    zoom_out_button_selector=zoom_out_button_selector,
+                    panning_distance_miles=panning_distance_miles,
+                    initial_zoom_out_level=initial_zoom_out_level,
+                    omit_zoom_feature=omit_zoom_feature,
                     force=False,
                     ttl_days=30,  # Default, can be made configurable
                     debug=False,

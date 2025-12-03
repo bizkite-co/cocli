@@ -1,6 +1,6 @@
 import json
 import logging
-from typing import List, Optional, Any, Dict
+from typing import List, Optional, Dict
 from datetime import datetime # Added import
 
 import boto3
@@ -160,6 +160,6 @@ class S3DomainManager:
             raise
         return domains
 
-    def _format_tags_for_s3(self, tags: Dict[str, str]) -> Dict[str, Any]:
-        """Formats a dictionary of tags into the structure expected by boto3 for S3 object tagging."""
-        return {'TagSet': [{'Key': k, 'Value': v} for k, v in tags.items()]}
+    def _format_tags_for_s3(self, tags: Dict[str, str]) -> str:
+        """Formats a dictionary of tags into the URL-encoded string expected by boto3 for S3 object tagging."""
+        return "&".join([f"{k}={v}" for k, v in tags.items()])

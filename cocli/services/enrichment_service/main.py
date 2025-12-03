@@ -5,7 +5,7 @@ import logging
 import os
 from playwright.async_api import async_playwright
 import toml # New import
-from typing import Optional # New import
+from typing import Optional, Dict, Any, cast # New imports
 
 # Adjust imports to be absolute from the project root
 from cocli.core.enrichment import enrich_company_website
@@ -78,10 +78,14 @@ async def enrich_domain(request: EnrichmentRequest) -> Website:
                     "queries": []
                 }
             }
-            # Flatten for validation
-            flat_config = campaign_data.pop('campaign')
-            flat_config.update(campaign_data)
-            campaign = Campaign.model_validate(flat_config)
+            
+            # Extract the 'campaign' section and merge other sections into it
+            flat_config = cast(Dict[str, Any], campaign_data.pop("campaign"))
+            # Now flat_config is a dict. Merge the rest of campaign_data into it.
+            # Use ** for dictionary unpacking to ensure mypy knows it's a dict
+            final_config_dict = {**flat_config, **campaign_data}
+            
+            campaign = Campaign.model_validate(final_config_dict)
         else:
             logger.error(f"Campaign '{request.campaign_name}' config not found and insufficient parameters provided.")
             raise HTTPException(status_code=404, detail=f"Campaign '{request.campaign_name}' configuration not found and params missing.")

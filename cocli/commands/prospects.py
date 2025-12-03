@@ -13,7 +13,7 @@ from playwright.async_api import async_playwright, Browser
 
 from cocli.models.company import Company
 from cocli.models.hubspot import HubspotContactCsv
-from cocli.core.config import get_campaign, get_campaigns_dir, get_companies_dir, get_scraped_data_dir
+from cocli.core.config import get_campaign, get_campaigns_dir, get_companies_dir, get_scraped_data_dir, get_enrichment_service_url
 from cocli.models.website import Website
 from cocli.compilers.website_compiler import WebsiteCompiler
 from cocli.core.utils import slugify
@@ -89,8 +89,9 @@ async def enrich_prospect_docker(client: httpx.AsyncClient, prospect: Company, f
     logger.info(f"Attempting to enrich domain: {prospect.domain} for company: {prospect.name}")
     try:
         logger.debug(f"Sending enrichment request for domain: {prospect.domain}")
+        enrichment_service_url = get_enrichment_service_url()
         response = await client.post(
-            "http://localhost:8000/enrich",
+            f"{enrichment_service_url}/enrich",
             json={
                 "domain": prospect.domain,
                 "force": force,
