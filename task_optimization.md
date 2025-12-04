@@ -27,3 +27,17 @@ Refactor `scrape_google_maps` to extracting data from the **List View** in batch
 *   Scraper moves through map areas much faster (scanning lists instead of clicking details).
 *   Queue fills up rapidly with candidates.
 *   Enrichment/Detail workers process the backlog in parallel.
+
+## Sub-Task: Legacy Data Ingestion
+**Goal:** Migrate 5704 legacy prospects from `scraped_data/turboship/prospects/prospects.csv` into the new Queue System to stress-test the Fargate consumer.
+
+1.  **Script:** `scripts/ingest_legacy_csv.py` (Created)
+    *   Reads CSV.
+    *   Creates local company files (`cocli_data/companies/`).
+    *   Pushes `enrichment` tasks to `LocalFileQueue`.
+2.  **Command:** `cocli prospects enrich-from-queue` (Created)
+    *   Polls queue.
+    *   Calls Fargate Service (`/enrich`).
+3.  **Execution:**
+    *   Run ingestion.
+    *   Run 10-20 concurrent consumers against Fargate.

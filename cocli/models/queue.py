@@ -19,6 +19,7 @@ class QueueMessage(BaseModel):
     
     # Lifecycle Metadata
     attempts: int = 0
+    http_500_attempts: int = 0 # New field to track 500 errors specifically
     created_at: datetime = Field(default_factory=datetime.utcnow)
     updated_at: datetime = Field(default_factory=datetime.utcnow)
     

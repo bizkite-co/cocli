@@ -88,7 +88,7 @@ class LocalFileQueue(QueueManager):
         else:
             logger.warning(f"Attempted to ack message {message.id} but file not found in processing.")
 
-    def nack(self, message: QueueMessage) -> None:
+    def nack(self, message: QueueMessage, is_http_500: bool = False) -> None:
         """
         Moves the message back to pending for retry.
         If attempts exceed a threshold, move to failed.
@@ -97,14 +97,19 @@ class LocalFileQueue(QueueManager):
         if processing_path.exists():
             # Update attempts
             message.attempts += 1
+            if is_http_500:
+                message.http_500_attempts += 1
             message.updated_at = datetime.utcnow()
             
             # Write updated metadata back to file
             with open(processing_path, "w") as f:
                 f.write(message.model_dump_json())
 
-            if message.attempts > 5: # Max retries
-                logger.warning(f"Message {message.id} exceeded max retries. Moving to failed.")
+            if message.attempts > 5: # Max total retries
+                logger.warning(f"Message {message.id} exceeded max total retries. Moving to failed.")
+                shutil.move(str(processing_path), str(self.failed_dir / processing_path.name))
+            elif message.http_500_attempts > 2: # Max 500 retries
+                logger.warning(f"Message {message.id} exceeded max HTTP 500 retries. Moving to failed.")
                 shutil.move(str(processing_path), str(self.failed_dir / processing_path.name))
             else:
                 logger.info(f"Nacking message {message.id}. Moving back to pending.")
