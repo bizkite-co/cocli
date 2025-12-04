@@ -170,6 +170,11 @@ deploy-enrichment: test docker-build ## Build and deploy the enrichment service 
 verify: ## Verify the Fargate deployment
 	@./scripts/verify_fargate_deployment.sh
 
+.PHONY: ingest-legacy
+ingest-legacy: ## Ingest legacy prospects.csv into the new queue system (Usage: make ingest-legacy CAMPAIGN=name)
+	@if [ -z "$(CAMPAIGN)" ]; then echo "Error: CAMPAIGN variable is required. Usage: make ingest-legacy CAMPAIGN=name"; exit 1; fi
+	@$(VENV_DIR)/bin/python scripts/ingest_legacy_csv.py $(CAMPAIGN)
+
 .PHONY: migrate-website-cache
 
 migrate-website-cache: install ## Migrate website cache to the new index

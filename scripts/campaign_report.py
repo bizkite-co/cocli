@@ -1,0 +1,90 @@
+import typer
+import csv
+from pathlib import Path
+from rich.console import Console
+from rich.table import Table
+from cocli.core.config import get_scraped_data_dir, get_companies_dir, get_cocli_base_dir
+
+app = typer.Typer()
+console = Console()
+
+@app.command()
+def main(campaign_name: str):
+    """
+    Generates a data funnel report for the specified campaign.
+    """
+    # 1. Total Prospects (gm-detail)
+    prospects_csv = get_scraped_data_dir() / campaign_name / "prospects" / "prospects.csv"
+    total_prospects = 0
+    if prospects_csv.exists():
+        with open(prospects_csv, 'r', encoding='utf-8', errors='ignore') as f:
+            total_prospects = sum(1 for _ in f) - 1 # Subtract header
+            if total_prospects < 0: total_prospects = 0
+
+    # 2. Queue Stats
+    queue_base = get_cocli_base_dir() / "queues" / f"{campaign_name}_enrichment"
+    pending_count = sum(1 for _ in (queue_base / "pending").iterdir() if _.is_file()) if (queue_base / "pending").exists() else 0
+    processing_count = sum(1 for _ in (queue_base / "processing").iterdir() if _.is_file()) if (queue_base / "processing").exists() else 0
+    failed_count = sum(1 for _ in (queue_base / "failed").iterdir() if _.is_file()) if (queue_base / "failed").exists() else 0
+    completed_count = sum(1 for _ in (queue_base / "completed").iterdir() if _.is_file()) if (queue_base / "completed").exists() else 0
+
+    # 3. Enriched & Emails (Scan companies)
+    enriched_count = 0
+    emails_found_count = 0
+    
+    slugs = set()
+    if prospects_csv.exists():
+        with open(prospects_csv, 'r', encoding='utf-8', errors='ignore') as f:
+            reader = csv.DictReader(f)
+            from cocli.core.utils import slugify
+            for row in reader:
+                if row.get('Domain'):
+                    slugs.add(slugify(row['Domain']))
+    
+    companies_dir = get_companies_dir()
+    for slug in slugs:
+        company_path = companies_dir / slug
+        if (company_path / "enrichments" / "website.md").exists():
+            enriched_count += 1
+            
+            # Check for email in the compiled index or website enrichment
+            # Let's check _index.md for "email: " string to avoid full yaml parse
+            index_path = company_path / "_index.md"
+            if index_path.exists():
+                try:
+                    content = index_path.read_text()
+                    if "email: " in content and "email: null" not in content and "email: ''" not in content:
+                        emails_found_count += 1
+                except:
+                    pass
+
+    # Display Table
+    table = Table(title=f"Campaign Report: {campaign_name}")
+    table.add_column("Stage", style="cyan")
+    table.add_column("Count", justify="right", style="magenta")
+    table.add_column("Percentage/Details", justify="right", style="green")
+
+    table.add_row("Prospects (gm-detail)", str(total_prospects), "100%")
+    
+    # Queue Breakdown
+    table.add_row("Queue Pending", str(pending_count), "[yellow]Waiting[/yellow]")
+    table.add_row("Queue Processing", str(processing_count), "[blue]In Flight[/blue]")
+    table.add_row("Queue Failed", str(failed_count), "[red]Errors/Retries[/red]")
+    table.add_row("Queue Completed", str(completed_count), "[dim]Done[/dim]")
+
+    # Enriched % relative to total
+    enriched_pct = f"{(enriched_count / total_prospects * 100):.1f}%" if total_prospects else "0%"
+    table.add_row("Enriched (web-enrich)", str(enriched_count), enriched_pct)
+    
+    # Email % relative to Enriched (Yield)
+    email_pct = f"{(emails_found_count / enriched_count * 100):.1f}%" if enriched_count else "0%"
+    table.add_row("Emails Found", str(emails_found_count), f"{email_pct} (Yield)")
+
+    console.print(table)
+    
+    if failed_count > 0:
+        console.print(f"\n[bold red]Warning:[/bold red] {failed_count} tasks failed. Check logs or move them back to pending to retry.")
+
+
+if __name__ == "__main__":
+    app()

@@ -14,6 +14,7 @@ from playwright.async_api import async_playwright, Browser
 from cocli.models.company import Company
 from cocli.models.hubspot import HubspotContactCsv
 from cocli.core.config import get_campaign, get_campaigns_dir, get_companies_dir, get_scraped_data_dir, get_enrichment_service_url
+from cocli.core.queue.factory import get_queue_manager
 from cocli.models.website import Website
 from cocli.compilers.website_compiler import WebsiteCompiler
 from cocli.core.utils import slugify
@@ -251,6 +252,112 @@ def enrich_prospects_command(
     else:
         console.print(f"[bold red]Invalid runner: {runner}. Please choose 'docker' or 'local'.[/bold red]")
         raise typer.Exit(1)
+
+
+@app.command("enrich-from-queue")
+def enrich_from_queue(
+    campaign_name: Optional[str] = typer.Argument(None, help="Name of the campaign. If not provided, uses current context."),
+    runner: Annotated[str, typer.Option(help="Choose the execution runner.")] = "docker",
+    batch_size: int = typer.Option(5, help="Number of messages to poll at once."),
+) -> None:
+    """
+    Consumes enrichment tasks from the campaign's queue.
+    """
+    if not campaign_name:
+        campaign_name = get_campaign()
+    
+    if not campaign_name:
+        console.print("[bold red]No campaign set. Please provide a campaign name.[/bold red]")
+        raise typer.Exit(1)
+
+    console = Console()
+    queue_manager = get_queue_manager(f"{campaign_name}_enrichment")
+    console.print(f"[bold blue]Starting Enrichment Consumer for '{campaign_name}' using {runner}...[/bold blue]")
+
+    async def process_message_docker(client: httpx.AsyncClient, msg):
+        # Construct a minimal Company object for compatibility with existing helpers
+        # or just call the logic directly. calling existing helper is easier but it expects Company.
+        # Let's construct a minimal company.
+        prospect = Company(name=msg.domain, domain=msg.domain, slug=msg.company_slug)
+        
+        # We reuse enrich_prospect_docker logic but catch exceptions to avoid crashing the loop
+        try:
+            # Note: enrich_prospect_docker currently logs but doesn't return success/fail status explicitly
+            # We might want to modify it or copy the logic. 
+            # For now, I'll inline the relevant logic for better control over ACK/NACK
+            enrichment_service_url = get_enrichment_service_url()
+            response = await client.post(
+                f"{enrichment_service_url}/enrich",
+                json={
+                    "domain": msg.domain,
+                    "force": msg.force_refresh,
+                    "ttl_days": msg.ttl_days,
+                },
+                timeout=120.0,
+            )
+            response.raise_for_status()
+            response_json = response.json()
+            
+            if response_json:
+                website_data = Website(**response_json)
+                if website_data.email:
+                    logger.info(f"Found email for {msg.domain}: {website_data.email}")
+                    console.print(f"[green]Found email for {msg.domain}: {website_data.email}[/green]")
+                    
+                    # Save logic
+                    company_dir = get_companies_dir() / msg.company_slug
+                    if not (company_dir / "_index.md").exists():
+                        console.print(f"[yellow]Creating skeleton company for {msg.company_slug}[/yellow]")
+                        company_dir.mkdir(parents=True, exist_ok=True)
+                        with open(company_dir / "_index.md", "w") as f:
+                            f.write("---\n")
+                            yaml.dump({"name": msg.domain, "domain": msg.domain}, f)
+                            f.write("---\n")
+                    
+                    enrichment_dir = company_dir / "enrichments"
+                    enrichment_dir.mkdir(parents=True, exist_ok=True)
+                    with open(enrichment_dir / "website.md", "w") as f:
+                        f.write("---")
+                        yaml.dump(website_data.model_dump(exclude_none=True), f)
+                        f.write("---")
+                    
+                    compiler = WebsiteCompiler()
+                    compiler.compile(company_dir)
+                    
+                    queue_manager.ack(msg)
+                else:
+                    console.print(f"[dim]No email for {msg.domain}[/dim]")
+                    queue_manager.ack(msg) # Ack even if no email found, work is done
+            else:
+                queue_manager.ack(msg) # Empty response?
+
+        except Exception as e:
+            console.print(f"[bold red]Error processing {msg.domain}: {e}[/bold red]")
+            # Decide whether to Nack (retry) or Ack (give up) based on error type?
+            # For now, let's Nack to retry later.
+            queue_manager.nack(msg)
+
+    async def consumer_loop_docker():
+        ensure_enrichment_service_ready(console)
+        async with httpx.AsyncClient() as client:
+            while True:
+                messages = queue_manager.poll(batch_size=batch_size)
+                if not messages:
+                    console.print("[dim]Queue empty. Waiting...[/dim]")
+                    await asyncio.sleep(5)
+                    continue
+                
+                console.print(f"Processing batch of {len(messages)}...")
+                tasks = [process_message_docker(client, msg) for msg in messages]
+                await asyncio.gather(*tasks)
+
+    if runner == "docker":
+        try:
+            asyncio.run(consumer_loop_docker())
+        except KeyboardInterrupt:
+            console.print("[bold yellow]Consumer stopped by user.[/bold yellow]")
+    else:
+        console.print("[bold red]Only 'docker' runner is implemented for this command currently.[/bold red]")
 
 
 @app.command("tag-from-csv")
