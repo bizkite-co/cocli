@@ -1,18 +1,26 @@
 import typer
 import csv
+from typing import Optional
 from pathlib import Path
 from rich.console import Console
 from rich.table import Table
-from cocli.core.config import get_scraped_data_dir, get_companies_dir, get_cocli_base_dir
+from cocli.core.config import get_scraped_data_dir, get_companies_dir, get_cocli_base_dir, get_campaign
 
 app = typer.Typer()
 console = Console()
 
 @app.command()
-def main(campaign_name: str):
+def main(campaign_name: Optional[str] = typer.Argument(None, help="Campaign name. Defaults to current context.")):
     """
     Generates a data funnel report for the specified campaign.
     """
+    if not campaign_name:
+        campaign_name = get_campaign()
+    
+    if not campaign_name:
+        console.print("[bold red]Error: No campaign specified and no current context set.[/bold red]")
+        raise typer.Exit(1)
+
     # 1. Total Prospects (gm-detail)
     prospects_csv = get_scraped_data_dir() / campaign_name / "prospects" / "prospects.csv"
     total_prospects = 0

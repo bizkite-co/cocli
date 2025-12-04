@@ -39,6 +39,8 @@ test-tui-integration: install ## Run only the TUI integration tests
 	source $(VENV_DIR)/bin/activate && pytest tests/tui/test_navigation_steps.py
 	cat .logs/tui.log
 
+report: ## Show the report for the current campaign (Usage: make report [CAMPAIGN=name])
+	@$(VENV_DIR)/bin/python scripts/campaign_report.py $(CAMPAIGN)
 
 test-tui: install ## Run TUI test with names
 	source $(VENV_DIR)/bin/activate && pytest -v tests/tui
