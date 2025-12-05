@@ -15,6 +15,7 @@ from cocli.models.company import Company
 from cocli.models.hubspot import HubspotContactCsv
 from cocli.core.config import get_campaign, get_campaigns_dir, get_companies_dir, get_scraped_data_dir, get_enrichment_service_url
 from cocli.core.queue.factory import get_queue_manager
+from cocli.models.queue import QueueMessage # Added import
 from cocli.models.website import Website
 from cocli.compilers.website_compiler import WebsiteCompiler
 from cocli.core.utils import slugify
@@ -26,6 +27,7 @@ from cocli.core.enrichment import enrich_company_website
 app = typer.Typer(no_args_is_help=True)
 
 logger = logging.getLogger(__name__)
+console = Console() # Instantiate console globally
 
 
 def get_prospects(campaign: str, with_email: bool, city: Optional[str], state: Optional[str]) -> Iterator[Company]:
@@ -263,6 +265,7 @@ def enrich_from_queue(
     """
     Consumes enrichment tasks from the campaign's queue.
     """
+    console = Console() # Instantiate console at the beginning of the function
     if not campaign_name:
         campaign_name = get_campaign()
     
@@ -270,7 +273,6 @@ def enrich_from_queue(
         console.print("[bold red]No campaign set. Please provide a campaign name.[/bold red]")
         raise typer.Exit(1)
 
-    console = Console()
     queue_manager = get_queue_manager(f"{campaign_name}_enrichment")
     console.print(f"[bold blue]Starting Enrichment Consumer for '{campaign_name}' using {runner}...[/bold blue]")
 
@@ -278,7 +280,7 @@ def enrich_from_queue(
     circuit_state = {"consecutive_errors": 0}
     MAX_CONSECUTIVE_ERRORS = 10 # Allow some failures, but stop if systematic
 
-    async def process_message_docker(client: httpx.AsyncClient, msg) -> bool:
+    async def process_message_docker(client: httpx.AsyncClient, msg: QueueMessage) -> bool:
         """Returns True if successful (even if no email found), False if error/exception."""
         try:
             enrichment_service_url = get_enrichment_service_url()
@@ -375,7 +377,7 @@ def enrich_from_queue(
             queue_manager.nack(msg)
             return False
 
-    async def consumer_loop_docker():
+    async def consumer_loop_docker() -> None:
         ensure_enrichment_service_ready(console)
         async with httpx.AsyncClient() as client:
             while True:

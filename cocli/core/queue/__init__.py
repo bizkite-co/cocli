@@ -1,5 +1,5 @@
 from abc import ABC, abstractmethod
-from typing import List, Optional
+from typing import List
 from ...models.queue import QueueMessage
 
 class QueueManager(ABC):
@@ -28,7 +28,7 @@ class QueueManager(ABC):
         pass
 
     @abstractmethod
-    def nack(self, message: QueueMessage) -> None:
+    def nack(self, message: QueueMessage, is_http_500: bool = False) -> None:
         """
         Negative acknowledgement. The message should be returned to the queue for retry.
         """

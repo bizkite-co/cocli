@@ -5,7 +5,6 @@ import typer
 from rich.console import Console
 from datetime import datetime
 import logging
-import os
 from cocli.core.config import get_enrichment_service_url
 
 logger = logging.getLogger(__name__)

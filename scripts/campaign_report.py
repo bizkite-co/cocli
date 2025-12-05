@@ -1,7 +1,6 @@
 import typer
 import csv
 from typing import Optional
-from pathlib import Path
 from rich.console import Console
 from rich.table import Table
 from cocli.core.config import get_scraped_data_dir, get_companies_dir, get_cocli_base_dir, get_campaign
@@ -10,7 +9,7 @@ app = typer.Typer()
 console = Console()
 
 @app.command()
-def main(campaign_name: Optional[str] = typer.Argument(None, help="Campaign name. Defaults to current context.")):
+def main(campaign_name: Optional[str] = typer.Argument(None, help="Campaign name. Defaults to current context.")) -> None:
     """
     Generates a data funnel report for the specified campaign.
     """
@@ -27,7 +26,8 @@ def main(campaign_name: Optional[str] = typer.Argument(None, help="Campaign name
     if prospects_csv.exists():
         with open(prospects_csv, 'r', encoding='utf-8', errors='ignore') as f:
             total_prospects = sum(1 for _ in f) - 1 # Subtract header
-            if total_prospects < 0: total_prospects = 0
+            if total_prospects < 0: 
+                total_prospects = 0
 
     # 2. Queue Stats
     queue_base = get_cocli_base_dir() / "queues" / f"{campaign_name}_enrichment"
@@ -63,7 +63,7 @@ def main(campaign_name: Optional[str] = typer.Argument(None, help="Campaign name
                     content = index_path.read_text()
                     if "email: " in content and "email: null" not in content and "email: ''" not in content:
                         emails_found_count += 1
-                except:
+                except Exception:
                     pass
 
     # Display Table

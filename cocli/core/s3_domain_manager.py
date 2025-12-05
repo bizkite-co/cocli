@@ -3,8 +3,8 @@ import logging
 from typing import List, Optional, Dict
 from datetime import datetime # Added import
 
-import boto3
-from botocore.exceptions import ClientError
+import boto3 # type: ignore
+from botocore.exceptions import ClientError # type: ignore
 from pydantic import ValidationError
 
 from ..models.campaign import Campaign

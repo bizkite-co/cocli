@@ -1,0 +1,83 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+.venv/
+env/
+venv/
+pip-log.txt
+pip-delete-this-directory.txt
+.tox/
+.coverage
+.coverage.*
+.hypothesis/
+.pytest_cache/
+.mypy_cache/
+*.egg-info/
+.ruff_cache/
+
+# IDEs and Editors
+.vscode/
+.idea/
+*.swp
+*.bak
+*.swo
+
+# OS generated files
+.DS_Store
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Build artifacts
+build/
+dist/
+*.tgz
+*.zip
+
+# Logs and databases
+*.log
+*.sqlite
+*.db
+
+# Data
+data/
+temp/
+test_data/
+google_maps_results.json/
+
+# Project-specific ignored files (like CDK assets or other generated files)
+cdk.out/
+.cdk.staging/
+cdk_scraper_deployment/
+.gemini/
+.git/
+.github/
+docs/
+features/
+scripts/
+tests/
+Makefile
+.envrc
+.mise.toml
+.python-version
+GEMINI.md
+HELP.md
+PROMPT.md
+plan.md
+task_optimization.md
+task.md
+uv.lock
+VERSION
+ecs-trust-policy.json
+generate_kml.py
+import_kml_to_maps.py
+install.sh
+mypy.ini
+pytest.ini
+README.md
+run_fz.py
+task-definition.json
+debug_website_scraper.py

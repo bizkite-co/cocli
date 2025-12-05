@@ -55,9 +55,19 @@ queries = ["software company"]
     mock_playwright_manager.__aexit__.return_value = None
     mocker.patch("cocli.commands.campaign.async_playwright", return_value=mock_playwright_manager)
 
-    mocker.patch("cocli.commands.campaign.get_coordinates_from_city_state", return_value={"latitude": 40.7596, "longitude": -111.8868})
+    mocker.patch("cocli.core.geocoding.get_coordinates_from_city_state", return_value={"latitude": 40.7596, "longitude": -111.8868})
     mocker.patch("cocli.commands.campaign.scrape_google_maps", return_value=async_generator())
     mocker.patch("cocli.commands.campaign.import_prospect", return_value=type('obj', (object,), {'name': 'mock_company', 'domain': 'mock.com', 'slug': 'mock-company'}))
+
+    mock_website = MagicMock()
+    mock_website.email = "test@example.com"
+    mock_website.model_dump.return_value = {
+        "email": "test@example.com", 
+        "url": "http://example.com", 
+        "domain": "example.com",
+        "company_name": "Test Company"
+    }
+    mocker.patch("cocli.commands.campaign.enrich_company_website", new_callable=AsyncMock, return_value=mock_website)
 
     mocker.patch("httpx.Client.get", return_value=MagicMock(raise_for_status=MagicMock()))
 

@@ -1,8 +1,8 @@
 import json
 import logging
 from typing import List, Optional
-import boto3
-from botocore.exceptions import ClientError
+import boto3 # type: ignore
+from botocore.exceptions import ClientError # type: ignore
 
 from ...models.queue import QueueMessage
 from . import QueueManager
@@ -34,7 +34,7 @@ class SQSQueue(QueueManager):
                 QueueUrl=self.queue_url,
                 MessageBody=message.model_dump_json(exclude={'ack_token'})
             )
-            return response.get('MessageId', '')
+            return str(response.get('MessageId', ''))
         except ClientError as e:
             logger.error(f"Error pushing to SQS: {e}")
             raise
@@ -94,7 +94,7 @@ class SQSQueue(QueueManager):
         except ClientError as e:
             logger.error(f"Error acking SQS message {message.id}: {e}")
 
-    def nack(self, message: QueueMessage) -> None:
+    def nack(self, message: QueueMessage, is_http_500: bool = False) -> None:
         """
         Change visibility timeout to 0 to make it immediately available again.
         """

@@ -6,6 +6,7 @@ from pathlib import Path
 from rich.console import Console
 from rich.progress import track
 from fuzzywuzzy import fuzz # type: ignore
+from typing import List, Dict, Any # Added missing imports
 
 # Setup
 app = typer.Typer()
@@ -18,9 +19,9 @@ def meters_to_latlon(x: float, y: float) -> tuple[float, float]:
     lat = 180 / math.pi * (2 * math.atan(math.exp(lat * math.pi / 180)) - math.pi / 2)
     return lat, lon
 
-def parse_markdown_beds(md_path: Path) -> list[dict]:
+def parse_markdown_beds(md_path: Path) -> List[Dict[str, Any]]:
     """Extracts {name, beds} from the markdown list."""
-    hospitals = []
+    hospitals: List[Dict[str, Any]] = []
     with open(md_path, 'r') as f:
         for line in f:
             # Match: * Hospital Name (Location): 1,234 beds
@@ -36,7 +37,7 @@ def main(
     csv_path: Path = typer.Argument(..., help="Path to Structures...csv"),
     md_path: Path = typer.Argument(..., help="Path to largest-hospitals.md"),
     output_path: Path = typer.Argument(..., help="Path to save target_locations.csv"),
-):
+) -> None:
     """
     Merges Hospital CSV with Bed counts and converts coordinates to Lat/Lon.
     """

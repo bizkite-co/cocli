@@ -160,10 +160,6 @@ start-enricher: ## Start docker enrichment service
 check-scraper-version: ## Check if local website_scraper.py is newer than in the Docker image
 	python3 ./scripts/check_scraper_version.py --image-name enrichment-service
 
-verify: ## verify Fargate deployment
-	. ./scripts/verify_fargate_deployment.sh
-
-
 .PHONY: deploy-enrichment
 deploy-enrichment: test docker-build ## Build and deploy the enrichment service to AWS Fargate
 	@./scripts/deploy_enrichment_service.sh
@@ -177,8 +173,7 @@ ingest-legacy: ## Ingest legacy prospects.csv into the new queue system (Usage: 
 	@if [ -z "$(CAMPAIGN)" ]; then echo "Error: CAMPAIGN variable is required. Usage: make ingest-legacy CAMPAIGN=name"; exit 1; fi
 	@$(VENV_DIR)/bin/python scripts/ingest_legacy_csv.py $(CAMPAIGN)
 
-.PHONY: migrate-website-cache
-
-migrate-website-cache: install ## Migrate website cache to the new index
-
-	$(VENV_DIR)/bin/python scripts/migrate_website_cache.py
+.PHONY: queue-missing
+queue-missing: ## Identify and queue missing enrichments (Gap Analysis) (Usage: make queue-missing CAMPAIGN=name)
+	@if [ -z "$(CAMPAIGN)" ]; then echo "Error: CAMPAIGN variable is required."; exit 1; fi
+	@$(VENV_DIR)/bin/python scripts/queue_missing_enrichments.py $(CAMPAIGN)

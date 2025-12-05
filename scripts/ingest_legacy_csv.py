@@ -2,10 +2,10 @@ import typer
 import csv
 import logging
 from pathlib import Path
-from typing import Optional, Set
+from typing import Optional
 from rich.console import Console
 
-from cocli.core.config import get_scraped_data_dir, get_companies_dir
+from cocli.core.config import get_scraped_data_dir
 from cocli.core.importing import import_prospect
 from cocli.models.google_maps import GoogleMapsData
 from cocli.models.company import Company
@@ -62,6 +62,7 @@ def main(
                 company = import_prospect(prospect_data, existing_domains, campaign=campaign_name)
                 
                 domain = prospect_data.Domain
+                assert domain is not None # Ensure domain is not None for mypy
                 # Calculate slug manually if company object is not returned
                 from cocli.core.utils import slugify
                 slug = company.slug if company else slugify(domain)
@@ -76,6 +77,7 @@ def main(
                     campaign_name=campaign_name,
                     force_refresh=force,
                     ttl_days=30, # Default
+                    ack_token=None,
                 )
                 queue_manager.push(msg)
                 queued += 1
@@ -91,7 +93,7 @@ def main(
                 console.print(f"[bold red]Failed to ingest row {count} ({row.get('Name', 'N/A')}): {e}[/bold red]")
                 logger.warning(f"Failed to ingest row {count}: {e}")
                 
-    console.print(f"[bold green]Ingestion Complete.[/bold green]")
+    console.print("[bold green]Ingestion Complete.[/bold green]")
     console.print(f"Total Rows Processed: {count}")
     console.print(f"Tasks Queued: {queued}")
 

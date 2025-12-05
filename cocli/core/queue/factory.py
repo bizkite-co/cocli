@@ -1,5 +1,3 @@
-from typing import Optional
-from ..config import get_config
 from . import QueueManager
 from .local_file_queue import LocalFileQueue
 from .sqs_queue import SQSQueue

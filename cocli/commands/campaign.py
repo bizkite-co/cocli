@@ -10,7 +10,6 @@ from typing import Optional, Set, List, Dict, Any
 from datetime import datetime
 import logging
 import re
-import math
 import pandas as pd
 import httpx
 
@@ -18,7 +17,6 @@ from ..models.website import Website
 from ..scrapers.google_maps import scrape_google_maps
 
 from ..core.config import get_scraped_data_dir, get_companies_dir, get_campaign_dir, get_cocli_base_dir, get_people_dir, get_all_campaign_dirs, get_editor_command, get_enrichment_service_url
-from ..core.geocoding import get_coordinates_from_city_state
 from ..models.google_maps import GoogleMapsData
 from ..models.company import Company
 from ..models.person import Person
@@ -388,9 +386,12 @@ async def pipeline(
     browser_width: int,
     browser_height: int,
     location_prospects_index: LocationProspectsIndex,
+    target_locations: Optional[List[Dict[str, Any]]] = None,
+    aws_profile_name: Optional[str] = None,
+    use_cloud_queue: bool = False,
 ) -> None:
     
-    queue_manager = get_queue_manager(f"{campaign_name}_enrichment")
+    queue_manager = get_queue_manager(f"{campaign_name}_enrichment", use_cloud=use_cloud_queue)
     stop_event = asyncio.Event()
     emails_found_count = 0
     
@@ -399,7 +400,7 @@ async def pipeline(
         browser = await p.chromium.launch(headless=not headed, devtools=devtools)
         
         # --- Consumer Task ---
-        async def consumer_task():
+        async def consumer_task() -> None:
             nonlocal emails_found_count
             console.print("[bold blue]Starting Enrichment Consumer...[/bold blue]")
             
@@ -418,7 +419,8 @@ async def pipeline(
                     continue
                 
                 for msg in messages:
-                    if stop_event.is_set(): break
+                    if stop_event.is_set(): 
+                        break
                     
                     console.print(f"[dim]Processing: {msg.domain}[/dim]")
                     website_data = None
@@ -435,7 +437,7 @@ async def pipeline(
                                         "ttl_days": msg.ttl_days,
                                         "debug": debug,
                                         "campaign_name": msg.campaign_name,
-                                        "aws_profile_name": msg.aws_profile_name,
+                                        "aws_profile_name": msg.aws_profile_name or aws_profile_name,
                                         "company_slug": msg.company_slug
                                     },
                                     timeout=120.0
@@ -471,8 +473,28 @@ async def pipeline(
                                         response_json["personnel"] = [] # Ensure personnel field exists as a list
 
                                     website_data = Website(**response_json)
+                            except httpx.HTTPStatusError as e:
+                                status = e.response.status_code
+                                if status == 404:
+                                    console.print(f"[yellow]Service returned 404 for {msg.domain}. Saving empty result.[/yellow]")
+                                    # Save empty result logic below (shared)
+                                    website_data = Website(domain=msg.domain, url=f"http://{msg.domain}", company_name=msg.domain) # type: ignore
+                                    # We mark it as failed in a way? Or just save with empty email?
+                                    # Actually better to save explicit error
+                                    # But we want to reuse the save block.
+                                    # Let's just proceed to save, website_data will have empty email.
+                                elif status == 500:
+                                    console.print(f"[bold red]HTTP 500 for {msg.domain}. Retrying.[/bold red]")
+                                    queue_manager.nack(msg, is_http_500=True)
+                                    continue
+                                else:
+                                    console.print(f"[bold red]HTTP {status} for {msg.domain}. Retrying.[/bold red]")
+                                    queue_manager.nack(msg)
+                                    continue
                             except Exception as e:
                                 logger.error(f"Enrichment failed for {msg.domain}: {e}")
+                                queue_manager.nack(msg)
+                                continue
                     else:
                         # Local Enrichment
                         # We need a Company object. We can reconstruct basic info or load from disk.
@@ -480,23 +502,41 @@ async def pipeline(
                         # But msg only has pointers.
                         # Let's just pass a dummy company with the domain to the scraper
                         dummy_company = Company(name=msg.domain, domain=msg.domain, slug=msg.company_slug)
-                        website_data = await enrich_company_website(
-                            browser=consumer_context, # Pass context!
-                            company=dummy_company,
-                            # campaign object? We might need to construct it or pass None if local doesn't strictly need it for logic
-                            # Local scraper mainly needs domain.
-                            force=msg.force_refresh,
-                            ttl_days=msg.ttl_days,
-                            debug=debug
-                        )
+                        try:
+                            assert consumer_context is not None
+                            website_data = await enrich_company_website(
+                                browser=consumer_context, # Pass context!
+                                company=dummy_company,
+                                # campaign object? We might need to construct it or pass None if local doesn't strictly need it for logic
+                                # Local scraper mainly needs domain.
+                                force=msg.force_refresh,
+                                ttl_days=msg.ttl_days,
+                                debug=debug
+                            )
+                        except Exception as e:
+                             logger.error(f"Local enrichment failed: {e}")
+                             queue_manager.nack(msg)
+                             continue
 
-                    # Handle Result
-                    if website_data and website_data.email:
-                        console.print(f"[green]Found email: {website_data.email}[/green]")
-                        emails_found_count += 1
+                    # Handle Result (Success or Handled Failure)
+                    if website_data:
+                        if website_data.email:
+                            console.print(f"[green]Found email: {website_data.email}[/green]")
+                            emails_found_count += 1
+                        else:
+                            console.print(f"[dim]No email for {msg.domain} (Saving result)[/dim]")
+
+                        # Create Skeleton if needed (Robustness)
+                        company_dir = get_companies_dir() / msg.company_slug
+                        if not (company_dir / "_index.md").exists():
+                            console.print(f"[yellow]Creating skeleton company for {msg.company_slug}[/yellow]")
+                            company_dir.mkdir(parents=True, exist_ok=True)
+                            with open(company_dir / "_index.md", "w") as f:
+                                f.write("---\n")
+                                yaml.dump({"name": msg.domain, "domain": msg.domain}, f)
+                                f.write("---\n")
                         
                         # Save to disk (Critical!)
-                        company_dir = get_companies_dir() / msg.company_slug
                         enrichment_dir = company_dir / "enrichments"
                         enrichment_dir.mkdir(parents=True, exist_ok=True)
                         with open(enrichment_dir / "website.md", "w") as f:
@@ -512,20 +552,34 @@ async def pipeline(
                         if emails_found_count >= goal_emails:
                             console.print("[bold magenta]Goal Met! Stopping.[/bold magenta]")
                             stop_event.set()
+                        
+                        queue_manager.ack(msg)
                     else:
-                        console.print(f"[dim]No email for {msg.domain}[/dim]")
-                    
-                    queue_manager.ack(msg)
+                        # Should not happen if 404 handled above, but just in case
+                        console.print(f"[dim]No result data for {msg.domain}[/dim]")
+                        queue_manager.ack(msg) # Ack to avoid loop if no exception but no data
 
         # --- Producer Task ---
-        async def producer_task():
+        async def producer_task() -> None:
             console.print("[bold blue]Starting Scraper Producer...[/bold blue]")
             
             # Initialize location data
             location_data = []
-            for loc_name in locations:
-                current_prospects = location_prospects_index.get_prospect_count(loc_name)
-                location_data.append({"name": loc_name, "prospect_count": current_prospects})
+            
+            if target_locations:
+                for loc in target_locations:
+                    current_prospects = location_prospects_index.get_prospect_count(loc["name"])
+                    location_data.append({
+                        "name": loc["name"],
+                        "prospect_count": current_prospects,
+                        "latitude": loc.get("lat"),
+                        "longitude": loc.get("lon")
+                    })
+            else:
+                for loc_name in locations:
+                    current_prospects = location_prospects_index.get_prospect_count(loc_name)
+                    location_data.append({"name": loc_name, "prospect_count": current_prospects})
+            
             location_df = pd.DataFrame(location_data)
 
             prospects_csv_path = get_scraped_data_dir() / campaign_name / "prospects" / "prospects.csv"
@@ -545,14 +599,20 @@ async def pipeline(
                     selected_locations = location_df.head(3)
                     
                     for _, loc_row in selected_locations.iterrows():
-                        if stop_event.is_set(): break
+                        if stop_event.is_set(): 
+                            break
                         
                         location = str(loc_row["name"])
+                        
+                        location_param = {"city": location}
+                        if "latitude" in loc_row and pd.notnull(loc_row["latitude"]):
+                             location_param["latitude"] = str(loc_row["latitude"])
+                             location_param["longitude"] = str(loc_row["longitude"])
                         
                         # Scrape
                         prospect_generator = scrape_google_maps(
                             browser=browser, # Use main browser instance (new page per search)
-                            location_param={"city": location},
+                            location_param=location_param,
                             search_strings=search_phrases,
                             campaign_name=campaign_name,
                             zoom_out_button_selector=zoom_out_button_selector,
@@ -567,7 +627,8 @@ async def pipeline(
                         )
                         
                         async for prospect_data in prospect_generator:
-                            if stop_event.is_set(): break
+                            if stop_event.is_set(): 
+                                break
                             
                             # Write CSV
                             writer.writerow(prospect_data.model_dump())
@@ -587,8 +648,7 @@ async def pipeline(
                                     campaign_name=campaign_name,
                                     force_refresh=force,
                                     ttl_days=ttl_days,
-                                    # We assume local config exists for profile name if needed, or pass it if we have it
-                                    # For now let's leave aws_profile_name None unless we fetch it from config
+                                    ack_token=None,
                                 )
                                 queue_manager.push(msg)
                                 console.print(f"[cyan]Queued:[/cyan] {company.name}")
@@ -621,6 +681,8 @@ def achieve_goal(
     browser_width: int = typer.Option(2000, help="The width of the browser viewport."),
 
     browser_height: int = typer.Option(1500, help="The height of the browser viewport."),
+
+    cloud_queue: bool = typer.Option(False, "--cloud-queue", help="Use the cloud SQS queue instead of local file queue."),
 
 ) -> None:
 
@@ -677,9 +739,34 @@ def achieve_goal(
     panning_distance_miles = prospecting_config.get("panning-distance-miles", 8)
     initial_zoom_out_level = prospecting_config.get("initial-zoom-out-level", 3)
     omit_zoom_feature = prospecting_config.get("omit-zoom-feature", False)
+    target_locations_csv = prospecting_config.get("target-locations-csv")
 
-    if not locations or not search_phrases:
-        logger.error("No locations or queries found in the prospecting configuration.")
+    target_locations = None
+    if target_locations_csv:
+        csv_path = Path(target_locations_csv)
+        if not csv_path.is_absolute():
+            csv_path = campaign_dir / csv_path
+        
+        if csv_path.exists():
+            target_locations = []
+            try:
+                with open(csv_path, 'r', encoding='utf-8') as f:
+                    reader = csv.DictReader(f)
+                    for row in reader:
+                        if "name" in row and "lat" in row and "lon" in row:
+                            target_locations.append({
+                                "name": row["name"],
+                                "lat": float(row["lat"]),
+                                "lon": float(row["lon"])
+                            })
+                console.print(f"[green]Loaded {len(target_locations)} target locations from {csv_path.name}[/green]")
+            except Exception as e:
+                logger.error(f"Error reading target locations CSV: {e}")
+        else:
+            logger.warning(f"Target locations CSV configured but not found at {csv_path}")
+
+    if (not locations and not target_locations) or not search_phrases:
+        logger.error("No locations (or target-locations-csv) or queries found in the prospecting configuration.")
 
         raise typer.Exit(code=1)  # --- Setup ---
 
@@ -692,11 +779,15 @@ def achieve_goal(
     existing_domains = {c.domain for c in Company.get_all() if c.domain}
 
     location_prospects_index = LocationProspectsIndex(campaign_name=campaign_name)
+    
+    aws_profile_name = config.get("campaign", {}).get("aws_profile_name")
 
     # --- Main Pipeline Loop ---
     asyncio.run(
         pipeline(
             locations=locations,
+            target_locations=target_locations,
+            aws_profile_name=aws_profile_name,
             search_phrases=search_phrases,
             goal_emails=goal_emails,
             headed=headed,
@@ -714,6 +805,7 @@ def achieve_goal(
             browser_width=browser_width,
             browser_height=browser_height,
             location_prospects_index=location_prospects_index,
+            use_cloud_queue=cloud_queue,
         )
     )
     message = f"[grey50][{datetime.now().strftime('%H:%M:%S')}][/] [bold blue]Pipeline finished.[/bold blue]"
