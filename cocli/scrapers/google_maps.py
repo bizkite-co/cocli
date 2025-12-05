@@ -206,14 +206,19 @@ async def scrape_google_maps(
     launch_width = browser_width if browser_width is not None else settings.browser_width
     launch_height = browser_height if browser_height is not None else settings.browser_height
 
-    coordinates = get_coordinates_from_city_state(location_param["city"]) if "city" in location_param else get_coordinates_from_zip(location_param["zip_code"])
+    if "latitude" in location_param and "longitude" in location_param:
+        latitude = float(location_param["latitude"])
+        longitude = float(location_param["longitude"])
+        logger.info(f"Using explicit coordinates: {latitude}, {longitude}")
+    else:
+        coordinates = get_coordinates_from_city_state(location_param["city"]) if "city" in location_param else get_coordinates_from_zip(location_param["zip_code"])
 
-    if not coordinates:
-        logger.error(f"Error: Could not find coordinates for {location_param}")
-        return
+        if not coordinates:
+            logger.error(f"Error: Could not find coordinates for {location_param}")
+            return
 
-    latitude = coordinates["latitude"]
-    longitude = coordinates["longitude"]
+        latitude = coordinates["latitude"]
+        longitude = coordinates["longitude"]
     
     processed_place_ids: set[str] = set()
 

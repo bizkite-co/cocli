@@ -274,20 +274,18 @@ def enrich_from_queue(
     queue_manager = get_queue_manager(f"{campaign_name}_enrichment")
     console.print(f"[bold blue]Starting Enrichment Consumer for '{campaign_name}' using {runner}...[/bold blue]")
 
-    async def process_message_docker(client: httpx.AsyncClient, msg):
-        # Construct a minimal Company object for compatibility with existing helpers
-        # or just call the logic directly. calling existing helper is easier but it expects Company.
-        # Let's construct a minimal company.
-        prospect = Company(name=msg.domain, domain=msg.domain, slug=msg.company_slug)
-        
-        # We reuse enrich_prospect_docker logic but catch exceptions to avoid crashing the loop
+    # Shared state for circuit breaker
+    circuit_state = {"consecutive_errors": 0}
+    MAX_CONSECUTIVE_ERRORS = 10 # Allow some failures, but stop if systematic
+
+    async def process_message_docker(client: httpx.AsyncClient, msg) -> bool:
+        """Returns True if successful (even if no email found), False if error/exception."""
         try:
-            # Note: enrich_prospect_docker currently logs but doesn't return success/fail status explicitly
-            # We might want to modify it or copy the logic. 
-            # For now, I'll inline the relevant logic for better control over ACK/NACK
             enrichment_service_url = get_enrichment_service_url()
+            target_url = f"{enrichment_service_url}/enrich"
+            
             response = await client.post(
-                f"{enrichment_service_url}/enrich",
+                target_url,
                 json={
                     "domain": msg.domain,
                     "force": msg.force_refresh,
@@ -300,47 +298,91 @@ def enrich_from_queue(
             
             if response_json:
                 website_data = Website(**response_json)
-                if website_data.email:
-                    logger.info(f"Found email for {msg.domain}: {website_data.email}")
-                    console.print(f"[green]Found email for {msg.domain}: {website_data.email}[/green]")
-                    
-                    # Save logic
-                    company_dir = get_companies_dir() / msg.company_slug
-                    if not (company_dir / "_index.md").exists():
-                        console.print(f"[yellow]Creating skeleton company for {msg.company_slug}[/yellow]")
-                        company_dir.mkdir(parents=True, exist_ok=True)
-                        with open(company_dir / "_index.md", "w") as f:
-                            f.write("---\n")
-                            yaml.dump({"name": msg.domain, "domain": msg.domain}, f)
-                            f.write("---\n")
-                    
-                    enrichment_dir = company_dir / "enrichments"
-                    enrichment_dir.mkdir(parents=True, exist_ok=True)
-                    with open(enrichment_dir / "website.md", "w") as f:
-                        f.write("---")
-                        yaml.dump(website_data.model_dump(exclude_none=True), f)
-                        f.write("---")
-                    
-                    compiler = WebsiteCompiler()
-                    compiler.compile(company_dir)
-                    
-                    queue_manager.ack(msg)
-                else:
-                    console.print(f"[dim]No email for {msg.domain}[/dim]")
-                    queue_manager.ack(msg) # Ack even if no email found, work is done
-            else:
-                queue_manager.ack(msg) # Empty response?
+                
+                # Create Company Skeleton if needed
+                company_dir = get_companies_dir() / msg.company_slug
+                if not (company_dir / "_index.md").exists():
+                    # Check if the directory exists but is empty or corrupted?
+                    # Just proceed with creation
+                    company_dir.mkdir(parents=True, exist_ok=True)
+                    with open(company_dir / "_index.md", "w") as f:
+                        f.write("---\n")
+                        yaml.dump({"name": msg.domain, "domain": msg.domain}, f)
+                        f.write("---\n")
+                        console.print(f"[yellow]Created skeleton company for {msg.company_slug}[/yellow]")
 
+                # ALWAYS Save result (even if email is null) to mark as enriched
+                enrichment_dir = company_dir / "enrichments"
+                enrichment_dir.mkdir(parents=True, exist_ok=True)
+                with open(enrichment_dir / "website.md", "w") as f:
+                    f.write("---")
+                    yaml.dump(website_data.model_dump(exclude_none=True), f)
+                    f.write("---")
+                
+                compiler = WebsiteCompiler()
+                compiler.compile(company_dir)
+
+                if website_data.email:
+                    console.print(f"[green]Found email for {msg.domain}: {website_data.email}[/green]")
+                else:
+                    console.print(f"[dim]No email for {msg.domain} (Saved result)[/dim]")
+                
+                queue_manager.ack(msg)
+                return True
+            else:
+                console.print(f"[yellow]Empty response for {msg.domain}[/yellow]")
+                queue_manager.ack(msg) # Treat empty as success (server responded)
+                return True
+
+        except httpx.HTTPStatusError as e:
+            status = e.response.status_code
+            if status == 404:
+                console.print(f"[yellow]Service returned 404 (Not Found/Scrape Fail) for {msg.domain}. Saving empty result.[/yellow]")
+                
+                company_dir = get_companies_dir() / msg.company_slug
+                if not (company_dir / "_index.md").exists():
+                    company_dir.mkdir(parents=True, exist_ok=True)
+                    with open(company_dir / "_index.md", "w") as f:
+                        f.write("---\n")
+                        yaml.dump({"name": msg.domain, "domain": msg.domain}, f)
+                        f.write("---\n")
+
+                enrichment_dir = company_dir / "enrichments"
+                enrichment_dir.mkdir(parents=True, exist_ok=True)
+                with open(enrichment_dir / "website.md", "w") as f:
+                    f.write("---")
+                    yaml.dump({"domain": msg.domain, "error": f"Service returned {status}"}, f)
+                    f.write("---")
+                
+                compiler = WebsiteCompiler()
+                compiler.compile(company_dir)
+                
+                queue_manager.ack(msg)
+                return True
+            
+            elif status == 500:
+                # For 500s, Nack with is_http_500 flag. If it exceeds threshold, it will be moved to failed.
+                console.print(f"[bold red]HTTP Error 500 for {msg.domain} at {e.request.url}. Retrying.[/bold red]")
+                queue_manager.nack(msg, is_http_500=True) # Pass the flag
+                return False
+            else:
+                # Other HTTP errors (401, 403, etc.) - Nack
+                console.print(f"[bold red]HTTP Error {status} for {msg.domain} at {e.request.url}. Retrying.[/bold red]")
+                queue_manager.nack(msg)
+                return False
         except Exception as e:
             console.print(f"[bold red]Error processing {msg.domain}: {e}[/bold red]")
-            # Decide whether to Nack (retry) or Ack (give up) based on error type?
-            # For now, let's Nack to retry later.
             queue_manager.nack(msg)
+            return False
 
     async def consumer_loop_docker():
         ensure_enrichment_service_ready(console)
         async with httpx.AsyncClient() as client:
             while True:
+                if circuit_state["consecutive_errors"] >= MAX_CONSECUTIVE_ERRORS:
+                    console.print(f"[bold red]Circuit Breaker Tripped! {MAX_CONSECUTIVE_ERRORS} consecutive errors. Stopping.[/bold red]")
+                    break
+
                 messages = queue_manager.poll(batch_size=batch_size)
                 if not messages:
                     console.print("[dim]Queue empty. Waiting...[/dim]")
@@ -349,7 +391,22 @@ def enrich_from_queue(
                 
                 console.print(f"Processing batch of {len(messages)}...")
                 tasks = [process_message_docker(client, msg) for msg in messages]
-                await asyncio.gather(*tasks)
+                results = await asyncio.gather(*tasks)
+                
+                # Update circuit breaker
+                failure_count = results.count(False)
+                success_count = results.count(True)
+                
+                if failure_count == len(messages):
+                    circuit_state["consecutive_errors"] += failure_count
+                else:
+                    # If at least one succeeded, reset (or reduce) the counter?
+                    # Strict mode: reset only if ALL succeed? 
+                    # Lenient mode: reset if ANY succeed.
+                    if success_count > 0:
+                        circuit_state["consecutive_errors"] = 0
+                    else:
+                        circuit_state["consecutive_errors"] += failure_count
 
     if runner == "docker":
         try:

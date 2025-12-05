@@ -13,6 +13,7 @@ class GoogleMaps(BaseModel):
 
 class Prospecting(BaseModel):
     locations: List[str]
+    target_locations_csv: Optional[str] = Field(None, alias="target-locations-csv")
     tools: List[str]
     queries: List[str]
     zoom_out_button_selector: str = Field("div#zoomOutButton", alias="zoom-out-button-selector")

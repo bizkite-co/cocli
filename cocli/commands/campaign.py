@@ -6,7 +6,7 @@ import csv
 import asyncio
 import subprocess
 from pathlib import Path
-from typing import Optional, Set
+from typing import Optional, Set, List, Dict, Any
 from datetime import datetime
 import logging
 import re
@@ -811,3 +811,4 @@ def visualize_coverage(
     except IOError as e:
         console.print(f"[bold red]Error writing to file {final_output_file}: {e}[/bold red]")
         raise typer.Exit(code=1)
+
