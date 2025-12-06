@@ -1,45 +1,50 @@
-# Current Task: Deploy Website Enrichment to AWS Fargate (Cloud Native Transition)
+# Current Task: Hybrid Cloud Scraping & Enrichment (HTTPS/SQS/S3)
 
-This task focuses on transitioning the local Docker-based enrichment service to a true cloud-native architecture running on AWS Fargate. This bypasses local credential management issues and aligns with the long-term "Cloud Native" ETL strategy.
+This task successfully transitioned the project from a local-only workflow to a robust Hybrid Cloud architecture. We have decoupled scraping from enrichment using SQS, offloaded heavy compute to AWS Fargate (via HTTPS), and established S3 as the canonical data store.
 
-## Objective
+## Objective (Achieved)
 
-To deploy the `enrichment-service` to AWS Fargate, verify its connectivity to S3 using IAM Task Roles, and establish the foundation for the "Local Scrape / Cloud Enrich" hybrid workflow.
+To implement a scalable, reliable prospecting pipeline where:
+1.  **Scraping (Producer):** Runs locally (for Google Maps safety) but pushes tasks to a Cloud Queue.
+2.  **Queue:** AWS SQS manages workload and state.
+3.  **Enrichment (Consumer):** Runs on AWS Fargate (headless browsers), accessible via secure HTTPS.
+4.  **Data:** Saved canonically to S3 and locally.
 
-## Plan of Attack
+## Accomplished
 
-1.  **Document ETL Architectures (Completed):**
-    *   Defined `local-parallel`, `local-scrape-cloud-enrich`, and `cloud-native` scenarios in `docs/data-management/ETL_SCENARIO.md`.
-    *   Clarified "Object-per-Record" indexing strategy for cloud concurrency.
+### 1. Infrastructure (AWS CDK)
+*   **HTTPS Enabled:** Deployed ALB with ACM Certificate for `enrich.turboheat.net`.
+*   **SQS Integration:** Created `EnrichmentQueue` in CDK.
+*   **Fargate Service:** Scaled to 3 Tasks (Spot), 1 vCPU/3GB RAM each.
+*   **Network:** Configured HTTP->HTTPS redirection and health checks.
 
-2.  **Infrastructure Setup (Completed):**
-    *   [x] Create ECR Repository: `cocli-enrichment-service`.
-    *   [x] Build and Push Docker Image: Updated `entrypoint.sh` to handle IAM roles gracefully.
-    *   [x] Create IAM Roles: `ecsTaskExecutionRole` with S3 access.
-    *   [x] Register Fargate Task Definition: `cocli-enrichment-task`.
-    *   [x] Created `scripts/deploy_enrichment_service.sh` and `make deploy-enrichment` rule for automated deployment.
-    *   [x] Implemented versioning (VERSION file, build-arg, main.py logging).
-    *   [x] Ensured Docker build caching is bypassed (`--no-cache`).
+### 2. Application Logic (`cocli`)
+*   **Producer (`achieve-goal`):**
+    *   Implemented `SQSQueue` adapter.
+    *   Added `--cloud-queue` flag to switch from local files to SQS.
+    *   Added `--proximity <miles>` to bound Google Maps searching.
+    *   Added randomization to target selection to avoid "stuck" loops.
+*   **Consumer (`enrich-from-queue`):**
+    *   Created dedicated `prospects enrich-from-queue` command.
+    *   Implemented client-side concurrency (`--batch-size`) to saturate Fargate capacity.
+    *   Added "Poison Pill" handling (ACK and save error after max retries) to prevent queue blocking.
+*   **Service (`EnrichmentService`):**
+    *   Updated `WebsiteScraper` to use `S3CompanyManager`.
+    *   **Canonical S3 Storage:** Saves `website.md` (YAML) to `s3://bucket/campaigns/<owner>/companies/<slug>/enrichments/`.
+    *   Fixed logging and credential chain issues.
 
-3.  **Verification (Completed):**
-    *   [x] Launched Fargate Task manually via CLI.
-    *   [x] Confirmed Service Started and Logged Version (v0.2.7).
-    *   [x] Tested connectivity via `/health` endpoint.
-    *   [x] Successfully sent an enrichment request to the Fargate service, which processed it and is expected to have written to S3.
-    *   [x] Verified S3 object creation for the enriched domain (`example.com`).
+### 3. Data Management & Reporting
+*   **Report:** Updated `make report` to query SQS for "Pending" counts, providing visibility into the cloud backlog.
+*   **Architecture:** Confirmed Hybrid model where Local Client acts as Orchestrator (pulls SQS) and Fargate acts as Compute (executes scrape).
 
-4.  **Integration Testing (Next):**
-    *   [ ] Modify `cocli` CLI to support sending enrichment requests to a remote URL (Fargate IP/Load Balancer).
-    *   [ ] Run a test `achieve-goal` command pointed at the Fargate service to verify the full loop: Local Scrape -> Cloud Enrich -> S3 Write.
-    *   [ ] Verify S3 object creation for the enriched domain.
+## Current State
 
-## Status
-
-*   **Website Enrichment Service:** Successfully deployed and tested on AWS Fargate. It can receive requests, scrape websites (in headless Chromium within the container), and interact with S3.
-*   **Version:** `0.2.7` (confirmed via logs).
-*   **S3 Integration:** Confirmed to be working from the service side, and specific S3 object creation was verified.
+*   **Scraping:** Running stable with `proximity` logic.
+*   **Enrichment:** Processing ~300 items/hour (depending on batch size/instances).
+*   **Quality:** `mypy` and `ruff` clean. Tests passing.
 
 ## Next Actions
 
-1.  **Modify `cocli` CLI:** Update `cocli` to interact with the deployed Fargate service instead of the local Docker container. This will involve a configuration setting for the enrichment service endpoint.
-2.  **Run Full Flow Test:** Execute `cocli campaign achieve-goal` pointing to the Fargate service.
+1.  **Data Synchronization:** Implement `cocli sync` to pull enriched data from S3 to local (or vice versa) without relying on the consumer loop.
+2.  **Scaling:** Monitor SQS depth and adjust Fargate `desired_count` via CLI/CDK as needed.
+3.  **Cleanup:** Delete legacy/misfiled S3 objects from early testing.

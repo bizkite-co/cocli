@@ -249,17 +249,9 @@ class WebsiteScraper:
         link = page.locator(link_selector).first
 
         try:
-            if not await link.is_visible(timeout=5000):
-                logger.info(f"Link for {page_type} not immediately visible, trying to find a hoverable parent.")
-                # A common pattern is that the `li` containing the `a` is the hover target
-                hover_target = link.locator('xpath=..')
-                if hover_target:
-                    await hover_target.hover(timeout=5000)
-        except Exception:
-            logger.info(f"Could not hover to find link for {page_type}. Will try to proceed anyway.")
-
-        try:
-            url = await link.get_attribute("href", timeout=5000)
+            # Wait for the link to be visible, with a shorter timeout. If it's not visible, assume it doesn't exist for navigation.
+            await link.wait_for(state='visible', timeout=2000)
+            url = await link.get_attribute("href") # No timeout here, as visibility already checked
             if url:
                 url = urljoin(page.url, url)
                 if url and url != page.url:
@@ -275,6 +267,8 @@ class WebsiteScraper:
 
                     await page.goto(url, wait_until="domcontentloaded", timeout=30000)
                     await scrape_function(page, website_data, browser)
+        except TimeoutError: # Catch specific Playwright timeout
+            logger.info(f"Link for {page_type} not found within timeout ({link_texts}). Skipping navigation.")
         except Exception as e:
             logger.error(f"Error navigating to or scraping {page_type} page: {e}")
         return website_data

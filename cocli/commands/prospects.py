@@ -261,6 +261,7 @@ def enrich_from_queue(
     campaign_name: Optional[str] = typer.Argument(None, help="Name of the campaign. If not provided, uses current context."),
     runner: Annotated[str, typer.Option(help="Choose the execution runner.")] = "docker",
     batch_size: int = typer.Option(5, help="Number of messages to poll at once."),
+    cloud_queue: bool = typer.Option(False, "--cloud-queue", help="Use the cloud SQS queue instead of local file queue."),
 ) -> None:
     """
     Consumes enrichment tasks from the campaign's queue.
@@ -273,7 +274,9 @@ def enrich_from_queue(
         console.print("[bold red]No campaign set. Please provide a campaign name.[/bold red]")
         raise typer.Exit(1)
 
-    queue_manager = get_queue_manager(f"{campaign_name}_enrichment")
+    queue_manager = get_queue_manager(f"{campaign_name}_enrichment", use_cloud=cloud_queue)
+    if hasattr(queue_manager, 'queue_url'):
+        console.print(f"[blue]Using Queue URL: {queue_manager.queue_url}[/blue]") # Debug logging
     console.print(f"[bold blue]Starting Enrichment Consumer for '{campaign_name}' using {runner}...[/bold blue]")
 
     # Shared state for circuit breaker

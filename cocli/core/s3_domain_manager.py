@@ -22,18 +22,15 @@ class S3DomainManager:
     def __init__(self, campaign: Campaign):
         self.campaign = campaign
         
-        # We need an S3 bucket name. For now, let's assume a default convention
-        # or it will be configured in campaign.
-        # For this implementation, let's derive it from the account ID and a fixed prefix.
-        # This will need to be made configurable later if necessary.
-        self.s3_bucket_name = "cocli-data-turboship" # Default/Fallback bucket (hardcoded for now)
-        
+        # Determine S3 bucket and prefix for the campaign's domain index
+        self.s3_bucket_name = "cocli-data-turboship" # Default for domain index
+
         self.s3_prefix = f"campaigns/{self.campaign.company_slug}/indexes/domains/"
 
         try:
             session = boto3.Session()
             self.s3_client = session.client("s3")
-        except Exception as e: # Catch ProfileNotFound or other config errors
+        except Exception as e:
             logger.error(f"Failed to create S3 client with default credentials: {e}")
             raise
 

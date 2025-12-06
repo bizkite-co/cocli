@@ -1,5 +1,7 @@
 import typer
 import csv
+import os
+import boto3 # type: ignore
 from typing import Optional
 from rich.console import Console
 from rich.table import Table
@@ -7,6 +9,18 @@ from cocli.core.config import get_scraped_data_dir, get_companies_dir, get_cocli
 
 app = typer.Typer()
 console = Console()
+
+def get_sqs_pending_count(queue_url: str) -> int:
+    try:
+        sqs = boto3.client("sqs")
+        response = sqs.get_queue_attributes(
+            QueueUrl=queue_url,
+            AttributeNames=['ApproximateNumberOfMessages']
+        )
+        return int(response['Attributes']['ApproximateNumberOfMessages'])
+    except Exception as e:
+        console.print(f"[yellow]Warning: Could not fetch SQS count: {e}[/yellow]")
+        return 0
 
 @app.command()
 def main(campaign_name: Optional[str] = typer.Argument(None, help="Campaign name. Defaults to current context.")) -> None:
@@ -30,9 +44,30 @@ def main(campaign_name: Optional[str] = typer.Argument(None, help="Campaign name
                 total_prospects = 0
 
     # 2. Queue Stats
+    queue_url = os.getenv("COCLI_SQS_QUEUE_URL")
+    using_cloud_queue = queue_url is not None
+    
+    if using_cloud_queue and queue_url:
+        pending_count = get_sqs_pending_count(queue_url)
+        processing_count = 0 # Harder to track in flight without tracking logic
+        # We could check messages not visible?
+        # For now, assume SQS ApproximateNumberOfMessagesNotVisible = Processing
+        try:
+            sqs = boto3.client("sqs")
+            response = sqs.get_queue_attributes(
+                QueueUrl=queue_url,
+                AttributeNames=['ApproximateNumberOfMessagesNotVisible']
+            )
+            processing_count = int(response['Attributes']['ApproximateNumberOfMessagesNotVisible'])
+        except Exception:
+            pass
+    else:
+        queue_base = get_cocli_base_dir() / "queues" / f"{campaign_name}_enrichment"
+        pending_count = sum(1 for _ in (queue_base / "pending").iterdir() if _.is_file()) if (queue_base / "pending").exists() else 0
+        processing_count = sum(1 for _ in (queue_base / "processing").iterdir() if _.is_file()) if (queue_base / "processing").exists() else 0
+    
+    # Failed/Completed are still local concepts unless we use DLQ/S3
     queue_base = get_cocli_base_dir() / "queues" / f"{campaign_name}_enrichment"
-    pending_count = sum(1 for _ in (queue_base / "pending").iterdir() if _.is_file()) if (queue_base / "pending").exists() else 0
-    processing_count = sum(1 for _ in (queue_base / "processing").iterdir() if _.is_file()) if (queue_base / "processing").exists() else 0
     failed_count = sum(1 for _ in (queue_base / "failed").iterdir() if _.is_file()) if (queue_base / "failed").exists() else 0
     completed_count = sum(1 for _ in (queue_base / "completed").iterdir() if _.is_file()) if (queue_base / "completed").exists() else 0
 
@@ -75,24 +110,31 @@ def main(campaign_name: Optional[str] = typer.Argument(None, help="Campaign name
     table.add_row("Prospects (gm-detail)", str(total_prospects), "100%")
     
     # Queue Breakdown
-    table.add_row("Queue Pending", str(pending_count), "[yellow]Waiting[/yellow]")
-    table.add_row("Queue Processing", str(processing_count), "[blue]In Flight[/blue]")
-    table.add_row("Queue Failed", str(failed_count), "[red]Errors/Retries[/red]")
-    table.add_row("Queue Completed", str(completed_count), "[dim]Done[/dim]")
+    if using_cloud_queue:
+        table.add_row("Queue Pending (Cloud)", str(pending_count), "[yellow]SQS Available[/yellow]")
+        table.add_row("Queue In-Flight (Cloud)", str(processing_count), "[blue]SQS Invisible[/blue]")
+    else:
+        table.add_row("Queue Pending", str(pending_count), "[yellow]Waiting[/yellow]")
+        table.add_row("Queue Processing", str(processing_count), "[blue]In Flight[/blue]")
+        
+    table.add_row("Queue Failed (Local)", str(failed_count), "[red]Errors/Retries[/red]")
+    table.add_row("Queue Completed (Local)", str(completed_count), "[dim]Done[/dim]") 
 
     # Enriched % relative to total
     enriched_pct = f"{(enriched_count / total_prospects * 100):.1f}%" if total_prospects else "0%"
-    table.add_row("Enriched (web-enrich)", str(enriched_count), enriched_pct)
+    table.add_row("Enriched (Local)", str(enriched_count), enriched_pct)
     
     # Email % relative to Enriched (Yield)
     email_pct = f"{(emails_found_count / enriched_count * 100):.1f}%" if enriched_count else "0%"
-    table.add_row("Emails Found", str(emails_found_count), f"{email_pct} (Yield)")
+    table.add_row("Emails Found (Local)", str(emails_found_count), f"{email_pct} (Yield)")
 
     console.print(table)
     
     if failed_count > 0:
-        console.print(f"\n[bold red]Warning:[/bold red] {failed_count} tasks failed. Check logs or move them back to pending to retry.")
-
+        console.print(f"\n[bold red]Warning:[/bold red] {failed_count} tasks failed locally. Check logs or move them back to pending to retry.")
+    
+    if using_cloud_queue:
+        console.print(f"[dim]Note: Report shows local data. SQS has {pending_count} pending items. Run consumer to process.[/dim]")
 
 if __name__ == "__main__":
     app()

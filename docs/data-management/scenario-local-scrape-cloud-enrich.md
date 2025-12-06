@@ -1,55 +1,55 @@
-# Scenario: Local Scrape / Cloud Enrich
+# Scenario: Hybrid Cloud (Local Orchestrator / Cloud Compute)
 
-This scenario ("Hybrid") offloads the heavy lifting of website enrichment to the cloud while keeping the Google Maps scraping local (often for easier IP rotation control or session management).
+This scenario represents the currently implemented architecture. It combines the control of local scraping with the scalability of cloud enrichment.
 
 ## Description
 
-1.  **Local Scrape:** The user runs the Google Maps scraper locally.
-2.  **Queue Injection:** Found prospects are sent to an AWS SQS queue.
-3.  **Cloud Enrichment:** A fleet of Fargate Spot instances consumes the queue and enriches websites in parallel.
-4.  **Cloud Persistence:** Results are written directly to S3.
+1.  **Local Scrape (Producer):** The user runs `cocli campaign achieve-goal`. It scrapes Google Maps locally (safer for IPs) and pushes "Enrichment Candidate" messages to AWS SQS.
+2.  **Cloud Queue:** SQS holds the backlog of domains to be enriched.
+3.  **Local Orchestrator (Consumer):** The user runs `cocli campaign prospects enrich-from-queue`. This process:
+    *   Polls SQS for a batch of messages.
+    *   Sends concurrent HTTP POST requests to the Cloud Enrichment Service.
+4.  **Cloud Enrich (Compute):** The Fargate Service (`EnrichmentService`) receives the request, spins up headless Chrome, scrapes the website, and returns the data.
+5.  **Dual Persistence:**
+    *   **Cloud:** The Fargate Service writes the canonical `website.md` directly to S3.
+    *   **Local:** The Local Orchestrator receives the JSON response and writes it to the local filesystem.
 
 ## Sequence Diagram
 
 ```mermaid
 sequenceDiagram
-    participant User
-    participant CLI as cocli (Host)
-    participant Scraper as GMaps Scraper (Local)
+    participant Producer as cocli achieve-goal (Local)
     participant SQS as AWS SQS
-    participant Fargate as Enrichment Service (AWS Fargate Spot)
-    participant S3Index as S3 Index (Objects)
-    participant S3Data as S3 Data Bucket
+    participant Consumer as cocli enrich-from-queue (Local)
+    participant Fargate as Enrichment Service (AWS Fargate)
+    participant S3 as AWS S3
+    participant LocalFS as Local Filesystem
 
     %% Phase 1: Scrape & Queue
-    User->>CLI: cocli scrape-prospects --target cloud
-    CLI->>Scraper: Start Scrape
-    loop For each prospect found
-        Scraper->>SQS: Send Message (Domain, Metadata)
-    end
-    
-    %% Phase 2: Cloud Enrichment (Async)
-    loop Fargate Workers
-        Fargate->>SQS: Poll Message
-        Fargate->>S3Index: Check Index (s3://.../indexes/domains/{slug}.json)
-        
-        alt Not Indexed
-            Fargate->>Fargate: Scrape Website
-            Fargate->>S3Data: Save Enriched Data (MD/JSON)
-            Fargate->>S3Index: Create Index Object
-        end
-        
-        Fargate->>SQS: Delete Message
-    end
+    Producer->>Producer: Scrape Google Maps
+    Producer->>SQS: Push Message (Domain)
 
-    %% Phase 3: Sync Back (Optional)
-    User->>CLI: cocli sync pull
-    CLI->>S3Data: Download new Enriched Data
+    %% Phase 2: Enrichment Loop
+    loop Batch Processing
+        Consumer->>SQS: Poll Messages (Batch=10)
+        
+        par Concurrent Requests
+            Consumer->>Fargate: POST /enrich {domain}
+            activate Fargate
+            Fargate->>Fargate: Scrape Website (Playwright)
+            Fargate->>S3: Save website.md (Canonical)
+            Fargate-->>Consumer: 200 OK {json data}
+            deactivate Fargate
+        end
+
+        Consumer->>LocalFS: Save website.md (Local Copy)
+        Consumer->>SQS: Delete Message (Ack)
+    end
 ```
 
-## Data Persistence
+## Key Benefits
 
-*   **Raw Data:** Local `prospects.csv` (can be synced to S3).
-*   **Queue:** AWS SQS holds transient work items.
-*   **Indexes:** **Object-per-Record** in S3 (`indexes/domains/{domain}.json`). This allows high concurrency from Fargate workers without locking a single CSV file.
-*   **Enriched Data:** Stored directly in S3 as Markdown or JSON files.
+*   **Decoupling:** Scraping can run continuously without waiting for slow enrichment.
+*   **Scalability:** Enrichment capacity is defined by Fargate tasks (Server) and Client Batch Size (Orchestrator).
+*   **Resilience:** SQS visibility timeouts handle crashes. Client-side "Poison Pill" logic handles infinite retries.
+*   **Data Safety:** Data is dual-written. S3 acts as the immutable source of truth.

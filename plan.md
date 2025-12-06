@@ -14,14 +14,17 @@ This document outlines the roadmap for transitioning `cocli` from a purely local
     *   [x] Implemented robust S3 session handling and tagging.
     *   [x] Integrated versioning into build and application logs.
     *   [x] Streamlined deployment process with `make deploy-enrichment` and version incrementing.
+    *   [x] **HTTPS:** Secure ALB with ACM Certificate (`enrich.turboheat.net`).
 
-2.  **CLI Integration:**
-    *   [ ] Update `cocli` to target remote Enrichment Service (Fargate IP/Load Balancer).
-    *   [ ] Implement `IndexConsolidator` to merge S3 index objects into a local CSV for `cocli fz`.
+2.  **CLI Integration (Completed):**
+    *   [x] Update `cocli` to target remote Enrichment Service (Fargate IP/Load Balancer).
+    *   [x] Implement `IndexConsolidator` logic (via `S3DomainManager`).
+    *   [x] **Dedicated Consumer:** `cocli campaign prospects enrich-from-queue`.
 
-3.  **Scalability:**
-    *   [ ] Introduce AWS SQS to decouple Scraper and Enricher.
-    *   [ ] Configure Fargate Auto Scaling based on queue depth.
+3.  **Scalability (Completed):**
+    *   [x] Introduce AWS SQS to decouple Scraper and Enricher.
+    *   [x] **Manual Scaling:** Verified scaling Fargate tasks via CLI.
+    *   [x] **Queue Visibility:** Integrated SQS stats into `make report`.
 
 ## Phase 2: Cloud Native Scraping
 
@@ -30,6 +33,7 @@ This document outlines the roadmap for transitioning `cocli` from a purely local
 1.  **Containerize Scraper:**
     *   [ ] Package Playwright scraper into a Docker image.
     *   [ ] Adapt scraper to read configuration from S3/Environment variables.
+    *   [ ] **Proxy Integration:** Implement residential proxies to bypass Google blocking in data centers.
 
 2.  **Orchestration:**
     *   [ ] Create AWS Step Functions state machine to coordinate Scrape -> Queue -> Enrich workflow.
@@ -40,8 +44,8 @@ This document outlines the roadmap for transitioning `cocli` from a purely local
 **Goal:** robust data handling, cost optimization, and observability.
 
 1.  **Unified Data Manager:**
-    *   [ ] Finalize `DataManager` class in Python to abstract S3 vs Local FS.
-    *   [ ] Implement `DataSynchronizer` for efficient `cocli sync`.
+    *   [x] Finalize `S3CompanyManager` for canonical S3 storage.
+    *   [ ] Implement `DataSynchronizer` (`cocli sync`) for efficient bi-directional sync.
 
 2.  **Optimization:**
     *   [ ] Use Fargate Spot for all compute.
@@ -54,8 +58,9 @@ graph TD
     B --> B1[Deploy Enricher to Fargate];
     B --> B2[Implement S3 Object Indexing];
     B --> B3[Connect Local CLI to Cloud Enricher];
+    B3 --> B4[Decouple with SQS];
 
-    B3 --> C{Phase 2: Cloud Native Scraping};
+    B4 --> C{Phase 2: Cloud Native Scraping};
     C --> C1[Containerize GMaps Scraper];
     C --> C2[Orchestrate with Step Functions];
 

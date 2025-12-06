@@ -8,13 +8,16 @@ The project uses **AWS CDK (Cloud Development Kit)** in Python to define the inf
 
 ### Key Components (`cdk_scraper_deployment_stack.py`)
 
-*   **VPC (`ScraperVpc`):** A dedicated network for the service.
+*   **VPC (`ScraperVpc`):** A dedicated network for the service (max 2 AZs).
 *   **Cluster (`ScraperCluster`):** An ECS Cluster using Fargate Spot capacity (cheaper compute).
-*   **Service (`ScraperService`):** An Application Load Balanced Fargate Service.
-    *   **Load Balancer:** Public-facing ALB that routes traffic to containers.
-    *   **Task Definition:** Defines the container (RAM, CPU, Image).
-    *   **Auto-Build:** CDK automatically finds the `Dockerfile` in `cocli/`, builds it, pushes it to ECR (Elastic Container Registry), and deploys it.
-*   **Secrets:** Integrates with AWS Secrets Manager to inject `OP_SESSION_TOKEN` securely.
+*   **Service (`EnrichmentService`):** An Application Load Balanced Fargate Service.
+    *   **Load Balancer (ALB):** Public-facing ALB listening on HTTPS (443).
+    *   **Certificate:** ACM Certificate for `enrich.turboheat.net`.
+    *   **Redirect:** HTTP (80) redirects to HTTPS (443).
+    *   **Task Definition:** Defines the container (1 vCPU, 3GB RAM).
+    *   **Auto-Build:** CDK automatically finds the `Dockerfile` in `cocli/`, builds it, pushes it to ECR, and deploys it.
+*   **Queue (`EnrichmentQueue`):** SQS Standard Queue for decoupling scraper and enricher.
+*   **DNS:** Route53 Alias Record creating `enrich.turboheat.net`.
 
 ### How to Deploy to a New Environment (e.g., `roadmap` / `prs`)
 
@@ -22,26 +25,18 @@ To deploy this stack to a new AWS Account or Profile (`prs`), follow these steps
 
 1.  **Prerequisites:**
     *   Ensure `AWS_PROFILE=prs` is configured locally.
-    *   **Manual Step:** Create a Secret in the target AWS Account's Secrets Manager named `1PasswordSessionToken` containing the session token.
-        *  Manual Parts:
-            *  The secret 1PasswordSessionToken must be created manually in AWS Secrets Manager beforehand.
-            *  The AWS profile/credentials must be set in your CLI environment (export AWS_PROFILE=...) before running CDK.
-            *  Level of Effort to "CDK-ify": It is already 95% "CDK-ified". The only missing piece might be parameterizing the Account, Region, and Campaign-specific tags so you can deploy multiple instances (e.g., for different campaigns or companies) without them clashing.
     *   Bootstrap CDK (if first time): `cdk bootstrap --profile prs`
 
 2.  **Deployment:**
     ```bash
     export AWS_PROFILE=prs
-    cd cdk_scraper_deployment
-    cdk deploy
+    make deploy-enrichment
     ```
 
 3.  **Scaling:**
-    To increase parallelism, edit `cdk_scraper_deployment_stack.py`:
-    ```python
-    desired_count=5, # Increase from 1 to 5 containers
-    ```
-    Then run `cdk deploy` again.
+    To increase parallelism, update the service manually or via code:
+    *   **CLI (Fast):** `aws ecs update-service --service EnrichmentService --desired-count 5`
+    *   **CDK (Persistent):** Edit `cdk_scraper_deployment_stack.py` -> `desired_count=5`, then `cdk deploy`.
 
 ## 2. Data Pipeline Stages
 
@@ -53,7 +48,7 @@ The prospecting pipeline is divided into three logical stages.
 | **2** | **`gm-detail`** | **Local** | Visits the **Detail Page** for each list item. <br> *Output:* Full metadata (Website, Phone). Slower, higher risk of blocks. |
 | **3** | **`web-enrich`** | **AWS (Fargate)** | Visits the company's **Website**. <br> *Output:* Emails, Social Links. Portable, runs on Cloud. |
 
-*Current Status:* `gm-list` and `gm-detail` are currently tightly coupled in `scrape_google_maps`. `web-enrich` is fully decoupled via the Queue.
+*Current Status:* `gm-list` and `gm-detail` are currently tightly coupled in `scrape_google_maps`. `web-enrich` is fully decoupled via SQS.
 
 ## 3. Discrepancy Analysis & Queue Logic
 
@@ -63,8 +58,7 @@ When analyzing report numbers (e.g., 5704 Prospects vs 2156 Queued), understand 
 *   **Queue Ingestion:** The migration script (`ingest_legacy_csv.py`) performs a **Deduplication Check**.
     *   It checks if `cocli_data/companies/<slug>` already exists.
     *   If it exists, it **skips** queueing (assuming previous runs handled it).
-    *   *Result:* The "Queued" count reflects only *new* or *unprocessed* items, not the total historical volume.
-*   **Enrichment Yield:** "Enriched" counts files with `website.md`. If the service returns "No Email Found" or "404", the system now saves an empty result to record the attempt.
+*   **Cloud Queue:** `make report` queries SQS directly for "Pending" counts.
 
 ## 4. Roadmap
 
@@ -79,5 +73,5 @@ When analyzing report numbers (e.g., 5704 Prospects vs 2156 Queued), understand 
     *   *Solution:* To move this to AWS, we must implement **Residential Proxies** (e.g., Bright Data) to mask the Fargate IP as a home user. Without this, Cloud scraping of Google Maps is non-functional.
 
 ### Parallelism
-*   **Client-Side:** The CLI consumer sends concurrent requests (`--batch-size`).
+*   **Client-Side:** The CLI consumer (`enrich-from-queue`) sends concurrent requests (`--batch-size`).
 *   **Server-Side:** Scale `desired_count` in CDK to run multiple Fargate tasks.
