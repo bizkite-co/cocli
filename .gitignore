@@ -10,3 +10,4 @@ cocli_data
 dist
 .vscode/
 .logs/
+.envrc

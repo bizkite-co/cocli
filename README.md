@@ -200,12 +200,15 @@ export COCLI_DATA_HOME="/path/to/your/custom/cocli_data"
 The design and architecture of `cocli` are guided by a set of principles that emphasize clarity, composability, and explicit data flows.
 
 *   **[ADR-001: The "From-Model-to-Model" Transformation Pattern](docs/adr/from-model-to-model.md)**: Describes the core philosophy of treating CLI commands as explicit data transformations.
-*   **[Index Intermediates as Model Transformations](docs/INDEX-INTERMEDIATES.md)**: Explains how search indexes are created and managed using the core transformation pattern.
+*   **[Index Intermediates as Model Transformations](docs/data-management/INDEX-INTERMEDIATES.md)**: Explains how search indexes are created and managed using the core transformation pattern.
 
 ## Documentation
-*   [Detailed Plan](docs/TEST_PLAN.md)
-*   [Proposed Application Structure](docs/structure.md)
+
+For a complete guide to the project's architecture, data management, and development standards, please refer to the **[Documentation Index](docs/README.md)**.
+
+**Key Links:**
+*   [Detailed Test Plan](docs/development/test-plan.md)
+*   [Application Structure](docs/architecture/structure.md)
+*   [Data Management Strategy](docs/data-management/DIRECTORY-DATA-STRUCTURE.md)
 *   [Current Task Breakdown](task.md)
-*   [Session Summary: Initial Setup & CRM Development](docs/chats/20250813-150830-session-summary.md)
 *   [Full Command Help](HELP.md) (Run `uv run cocli help` for the most up-to-date command list)
-*   [Enrichment Policy: Source Monitoring](docs/enrichment_policy.md)
