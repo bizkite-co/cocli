@@ -62,8 +62,10 @@ async def enrich_domain(request: EnrichmentRequest) -> Website:
                     "tag": "placeholder",
                     "domain": "placeholder.com",
                     "company-slug": request.company_slug,  # Use alias for dictionary
-                    "aws-profile-name": request.aws_profile_name,  # Use alias
                     "workflows": [],
+                },
+                "aws": {
+                    "profile": request.aws_profile_name
                 },
                 "import": {  # Use alias for dictionary
                     "format": "csv"

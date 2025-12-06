@@ -7,6 +7,10 @@ from cocli.core.utils import slugify
 class CampaignImport(BaseModel):
     format: str
 
+class AwsSettings(BaseModel):
+    profile: str
+    hosted_zone_id: Optional[str] = Field(None, alias="hosted-zone-id")
+
 class GoogleMaps(BaseModel):
     email: str
     one_password_path: str
@@ -30,7 +34,7 @@ class Campaign(BaseModel):
     import_settings: CampaignImport = Field(..., alias='import')
     google_maps: GoogleMaps
     prospecting: Prospecting
-    aws_profile_name: Optional[str] = Field(None, alias="aws-profile-name")
+    aws: Optional[AwsSettings] = None
 
     @classmethod
     def create(cls, name: str, company: str, data_home: Path) -> 'Campaign':

@@ -1,4 +1,4 @@
-.PHONY: help
+ gPHONY: hel0
 help: ## Display this help screen
 	@echo "Available commands:"
 	@awk 'BEGIN {FS = ":.*?## "}; /^[a-zA-Z_-]+:.*?## / {printf "  \033[32m%-20s\033[0m %s\n", $$1, $$2}' $(MAKEFILE_LIST)
@@ -35,6 +35,9 @@ install: ## Install development dependencies using uv
 test: install lint ## Run all non-TUI tests using pytest
 	source $(VENV_DIR)/bin/activate && pytest -s tests/ --ignore=tests/tui/test_navigation_steps.py
 
+test-unit: install lint ## Run unit tests (excluding TUI folder)
+	source $(VENV_DIR)/bin/activate && pytest -s tests/ --ignore=tests/tui
+
 test-tui-integration: install ## Run only the TUI integration tests
 	source $(VENV_DIR)/bin/activate && pytest tests/tui/test_navigation_steps.py
 	cat .logs/tui.log
@@ -50,8 +53,8 @@ textual: ## Run the app in textual
 	textual run cocli.tui.app
 
 lint: install ## Run ruff and mypy to perform static type checking
-	-$(VENV_DIR)/bin/ruff check . --fix
-	-$(VENV_DIR)/bin/python -m mypy --config-file pyproject.toml .
+	$(VENV_DIR)/bin/ruff check . --fix
+	$(VENV_DIR)/bin/python -m mypy --config-file pyproject.toml .
 
 test-file: install ## Run a specific test file, e.g., make test-file FILE=tests/test_google_maps_scraper.py
 	source $(VENV_DIR)/bin/activate && pytest $(FILE)
@@ -124,10 +127,6 @@ import-customers: install ## Import customers from the turboship campaign
 render-prospects-kml: install ## Render KML for turboship prospects
 	$(VENV_DIR)/bin/cocli render-prospects-kml turboship
 
-.PHONY: populate-email-providers
-populate-email-providers: install ## Populate the cache with common email providers
-	$(VENV_DIR)/bin/cocli flag-email-providers gmail.com yahoo.com hotmail.com outlook.com aol.com icloud.com live.com msn.com yandex.ru mail.ru
-
 .PHONY: ingest-prospects
 ingest-prospects: install ## Ingest the existing prospects.csv file for the current campaign into the cache
 	$(VENV_DIR)/bin/cocli google-maps-csv to-google-maps-cache
@@ -172,6 +171,11 @@ verify: ## Verify the Fargate deployment
 ingest-legacy: ## Ingest legacy prospects.csv into the new queue system (Usage: make ingest-legacy CAMPAIGN=name)
 	@if [ -z "$(CAMPAIGN)" ]; then echo "Error: CAMPAIGN variable is required. Usage: make ingest-legacy CAMPAIGN=name"; exit 1; fi
 	@$(VENV_DIR)/bin/python scripts/ingest_legacy_csv.py $(CAMPAIGN)
+
+.PHONY: export-emails
+export-emails: ## Export enriched emails to CSV (Usage: make export-emails CAMPAIGN=name)
+	@if [ -z "$(CAMPAIGN)" ]; then echo "Error: CAMPAIGN variable is required."; exit 1; fi
+	@$(VENV_DIR)/bin/python scripts/export_enriched_emails.py $(CAMPAIGN)
 
 .PHONY: queue-missing
 queue-missing: ## Identify and queue missing enrichments (Gap Analysis) (Usage: make queue-missing CAMPAIGN=name)

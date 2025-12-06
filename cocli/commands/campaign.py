@@ -388,7 +388,9 @@ async def pipeline(
     location_prospects_index: LocationProspectsIndex,
     target_locations: Optional[List[Dict[str, Any]]] = None,
     aws_profile_name: Optional[str] = None,
+    campaign_company_slug: Optional[str] = None,
     use_cloud_queue: bool = False,
+    max_proximity_miles: float = 0.0,
 ) -> None:
     
     queue_manager = get_queue_manager(f"{campaign_name}_enrichment", use_cloud=use_cloud_queue)
@@ -438,7 +440,7 @@ async def pipeline(
                                         "debug": debug,
                                         "campaign_name": msg.campaign_name,
                                         "aws_profile_name": msg.aws_profile_name or aws_profile_name,
-                                        "company_slug": msg.company_slug
+                                        "company_slug": campaign_company_slug or msg.company_slug
                                     },
                                     timeout=120.0
                                 )
@@ -567,6 +569,7 @@ async def pipeline(
             location_data = []
             
             if target_locations:
+                # We rely on max_proximity_miles to constrain the search area around each target
                 for loc in target_locations:
                     current_prospects = location_prospects_index.get_prospect_count(loc["name"])
                     location_data.append({
@@ -595,8 +598,16 @@ async def pipeline(
                     # Sort locations by prospect count (least prospected first)
                     location_df = location_df.sort_values(by="prospect_count", ascending=True).reset_index(drop=True)
                     
-                    # Pick top 3
-                    selected_locations = location_df.head(3)
+                    # Filter to candidates with the minimum prospect count to ensure round-robin
+                    min_count = location_df["prospect_count"].min()
+                    candidates = location_df[location_df["prospect_count"] == min_count]
+                    
+                    # Pick random 1 (instead of 3, to cycle faster) from the candidates
+                    if len(candidates) > 0:
+                        selected_locations = candidates.sample(n=1)
+                    else:
+                        # Fallback (shouldn't happen if list not empty)
+                        selected_locations = location_df.head(1)
                     
                     for _, loc_row in selected_locations.iterrows():
                         if stop_event.is_set(): 
@@ -604,6 +615,8 @@ async def pipeline(
                         
                         location = str(loc_row["name"])
                         
+                        console.print(f"[bold yellow]Scraping target:[/bold yellow] {location}")
+
                         location_param = {"city": location}
                         if "latitude" in loc_row and pd.notnull(loc_row["latitude"]):
                              location_param["latitude"] = str(loc_row["latitude"])
@@ -624,6 +637,7 @@ async def pipeline(
                             debug=debug,
                             browser_width=browser_width,
                             browser_height=browser_height,
+                            max_proximity_miles=max_proximity_miles,
                         )
                         
                         async for prospect_data in prospect_generator:
@@ -683,7 +697,7 @@ def achieve_goal(
     browser_height: int = typer.Option(1500, help="The height of the browser viewport."),
 
     cloud_queue: bool = typer.Option(False, "--cloud-queue", help="Use the cloud SQS queue instead of local file queue."),
-
+    proximity_miles: float = typer.Option(10.0, "--proximity", help="Max radius in miles to scrape around each target location."),
 ) -> None:
 
     """
@@ -780,7 +794,8 @@ def achieve_goal(
 
     location_prospects_index = LocationProspectsIndex(campaign_name=campaign_name)
     
-    aws_profile_name = config.get("campaign", {}).get("aws_profile_name")
+    aws_profile_name = config.get("aws", {}).get("profile")
+    campaign_company_slug = config.get("campaign", {}).get("company-slug")
 
     # --- Main Pipeline Loop ---
     asyncio.run(
@@ -788,6 +803,7 @@ def achieve_goal(
             locations=locations,
             target_locations=target_locations,
             aws_profile_name=aws_profile_name,
+            campaign_company_slug=campaign_company_slug,
             search_phrases=search_phrases,
             goal_emails=goal_emails,
             headed=headed,
@@ -806,6 +822,7 @@ def achieve_goal(
             browser_height=browser_height,
             location_prospects_index=location_prospects_index,
             use_cloud_queue=cloud_queue,
+            max_proximity_miles=proximity_miles,
         )
     )
     message = f"[grey50][{datetime.now().strftime('%H:%M:%S')}][/] [bold blue]Pipeline finished.[/bold blue]"

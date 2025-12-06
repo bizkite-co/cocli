@@ -72,6 +72,8 @@ def get_config_dir() -> Path:
     """
     if "COCLI_CONFIG_HOME" in os.environ:
         return Path(os.environ["COCLI_CONFIG_HOME"]).expanduser()
+    elif "COCLI_DATA_HOME" in os.environ: # Prioritize COCLI_DATA_HOME for config
+        return Path(os.environ["COCLI_DATA_HOME"]).expanduser() / "config"
     elif "XDG_CONFIG_HOME" in os.environ:
         return Path(os.environ["XDG_CONFIG_HOME"]).expanduser() / "cocli"
     else:

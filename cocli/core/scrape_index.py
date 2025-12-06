@@ -101,12 +101,12 @@ class ScrapeIndex:
                     writer.writerow([
                         area.phrase,
                         area.scrape_date.isoformat(),
-                        area.lat_min,
-                        area.lat_max,
-                        area.lon_min,
-                        area.lon_max,
-                        area.lat_miles,
-                        area.lon_miles,
+                        f"{area.lat_min:.5f}",
+                        f"{area.lat_max:.5f}",
+                        f"{area.lon_min:.5f}",
+                        f"{area.lon_max:.5f}",
+                        f"{area.lat_miles:.3f}",
+                        f"{area.lon_miles:.3f}",
                     ])
         except Exception as e:
             logger.error(f"Failed to save scrape index: {e}")

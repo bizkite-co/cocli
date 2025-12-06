@@ -26,28 +26,16 @@ class S3DomainManager:
         # or it will be configured in campaign.
         # For this implementation, let's derive it from the account ID and a fixed prefix.
         # This will need to be made configurable later if necessary.
-        profile_name = self.campaign.aws_profile_name
-        self.s3_bucket_name = f"cocli-data-{profile_name.split('-')[0].lower()}" if profile_name else "cocli-data-turboship" # Default/Fallback bucket
+        self.s3_bucket_name = "cocli-data-turboship" # Default/Fallback bucket (hardcoded for now)
         
-        if profile_name and "turboship" in profile_name: # Temporary special casing for turboship
-            self.s3_bucket_name = "cocli-data-turboship"
-
         self.s3_prefix = f"campaigns/{self.campaign.company_slug}/indexes/domains/"
 
         try:
-            if profile_name:
-                session = boto3.Session(profile_name=profile_name)
-            else:
-                session = boto3.Session()
+            session = boto3.Session()
             self.s3_client = session.client("s3")
         except Exception as e: # Catch ProfileNotFound or other config errors
-            logger.warning(f"Failed to create S3 client with profile '{profile_name}': {e}. Falling back to default credentials chain.")
-            try:
-                session = boto3.Session()
-                self.s3_client = session.client("s3")
-            except Exception as inner_e:
-                logger.error(f"Failed to create S3 client with default credentials: {inner_e}")
-                raise
+            logger.error(f"Failed to create S3 client with default credentials: {e}")
+            raise
 
     def _get_s3_key(self, domain: str) -> str:
         """Constructs the S3 key for a given domain."""

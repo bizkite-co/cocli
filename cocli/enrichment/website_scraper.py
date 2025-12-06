@@ -11,9 +11,10 @@ from datetime import datetime, timedelta
 
 from ..models.website import Website
 from ..core.website_domain_csv_manager import WebsiteDomainCsvManager, CURRENT_SCRAPER_VERSION
-from ..core.s3_domain_manager import S3DomainManager # New import
+from ..core.s3_domain_manager import S3DomainManager
+from ..core.s3_company_manager import S3CompanyManager # New import
 from ..models.website_domain_csv import WebsiteDomainCsv
-from ..models.campaign import Campaign # New import
+from ..models.campaign import Campaign
 
 logger = logging.getLogger(__name__)
 
@@ -21,9 +22,9 @@ class WebsiteScraper:
 
     async def run(
         self,
-        browser: Browser | BrowserContext, # Added browser argument
+        browser: Browser | BrowserContext,
         domain: str,
-        campaign: Optional[Campaign] = None, # New parameter
+        campaign: Optional[Campaign] = None,
         force_refresh: bool = False,
         ttl_days: int = 30,
         debug: bool = False
@@ -32,23 +33,27 @@ class WebsiteScraper:
             logger.info("No domain provided. Skipping website scraping.")
             return None
 
-        index_manager: WebsiteDomainCsvManager | S3DomainManager
-        if campaign and campaign.aws_profile_name:
-            index_manager = S3DomainManager(campaign=campaign)
+        # S3DomainManager is used for the scrape index (lat/lon bounds), not for individual website.md files
+        domain_index_manager: WebsiteDomainCsvManager | S3DomainManager
+        if campaign and campaign.aws and campaign.aws.profile:
+            domain_index_manager = S3DomainManager(campaign=campaign)
         else:
-            index_manager = WebsiteDomainCsvManager()
+            domain_index_manager = WebsiteDomainCsvManager() # Fallback to local
         
+        # S3CompanyManager is for saving the actual website.md and _index.md files
+        s3_company_manager: Optional[S3CompanyManager] = None
+        if campaign and campaign.aws and campaign.aws.profile:
+            s3_company_manager = S3CompanyManager(campaign=campaign)
+
         fresh_delta = timedelta(days=ttl_days)
 
-        # Check index first
-        indexed_item = index_manager.get_by_domain(domain)
+        # Check domain index first (using S3DomainManager or local CSV)
+        indexed_item = domain_index_manager.get_by_domain(domain)
         if indexed_item:
             is_stale = (datetime.utcnow() - indexed_item.updated_at) >= fresh_delta
             is_old_version = (indexed_item.scraper_version or 1) < CURRENT_SCRAPER_VERSION
             if not force_refresh and not is_stale and not is_old_version:
                 logger.info(f"Using indexed data for {domain}, converting to Website model")
-                # We have the indexed data, but the caller expects a full Website object.
-                # We can create a Website object from the indexed data.
                 return Website(**indexed_item.model_dump())
             if is_old_version:
                 logger.info(f"Re-scraping {domain} due to new scraper version.")
@@ -126,7 +131,12 @@ class WebsiteScraper:
             if isinstance(browser, Browser):
                 await context.close()
 
-        # Add to index
+        # Save canonical website.md to S3 (if S3CompanyManager is active)
+        if s3_company_manager and website_data.domain and campaign.company_slug: # type: ignore
+             await s3_company_manager.save_website_enrichment(campaign.company_slug, website_data) # type: ignore
+             logger.info(f"Saved canonical website.md for {domain} to S3.")
+
+        # Add to domain index (for cache checking)
         website_domain_csv_data = WebsiteDomainCsv(
             domain=str(website_data.domain),
             company_name=website_data.company_name,
@@ -149,9 +159,9 @@ class WebsiteScraper:
             associated_company_folder=website_data.associated_company_folder,
             is_email_provider=website_data.is_email_provider,
             created_at=website_data.created_at,
-            updated_at=website_data.updated_at,
+            updated_at=datetime.utcnow(), # Ensure updated_at is always current
         )
-        index_manager.add_or_update(website_domain_csv_data)
+        domain_index_manager.add_or_update(website_domain_csv_data)
 
         return website_data
 

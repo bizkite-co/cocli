@@ -4,7 +4,10 @@ from fastapi.testclient import TestClient
 from cocli.services.enrichment_service.main import app
 from cocli.models.website import Website
 
-client = TestClient(app)
+@pytest.fixture
+def client():
+    with TestClient(app) as c:
+        yield c
 
 @pytest.fixture
 def mock_playwright():
@@ -26,7 +29,7 @@ def mock_enrich_company_website():
         mock.return_value = Website(url="http://example.com", domain="example.com")
         yield mock
 
-def test_enrich_domain_stateless_success(mock_playwright, mock_enrich_company_website):
+def test_enrich_domain_stateless_success(client, mock_playwright, mock_enrich_company_website):
     """
     Test that the enrichment endpoint works with provided parameters
     even when local config is missing (stateless mode).
@@ -51,10 +54,11 @@ def test_enrich_domain_stateless_success(mock_playwright, mock_enrich_company_we
     campaign = kwargs.get("campaign")
     assert campaign is not None
     assert campaign.name == "test-campaign"
-    assert campaign.aws_profile_name == "test-profile"
+    assert campaign.aws is not None
+    assert campaign.aws.profile == "test-profile"
     assert campaign.company_slug == "test-company"
 
-def test_enrich_domain_missing_config_and_params(mock_playwright):
+def test_enrich_domain_missing_config_and_params(client, mock_playwright):
     """
     Test that it fails with 404 if config is missing and params are insufficient.
     """

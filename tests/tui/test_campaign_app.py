@@ -27,7 +27,7 @@ def campaign_fixture() -> Campaign:
         'import': {'format': 'csv'},
         'google_maps': {'email': 'test@test.com', 'one_password_path': 'op://test/test/password'},
         'prospecting': {'locations': ['Test Location'], 'tools': ['test-tool'], 'queries': ['test-query']},
-        'aws-profile-name': 'test-profile' # Ensure aws_profile_name is present
+        'aws': {'profile': 'test-profile', 'hosted-zone-id': 'test-zone'}
     })
 
 @pytest.fixture(autouse=True)

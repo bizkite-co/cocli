@@ -7,6 +7,8 @@ from aws_cdk import (
     aws_iam as iam,
     aws_s3 as s3,
     aws_sqs as sqs,
+    aws_route53 as route53,
+    aws_elasticloadbalancingv2 as elbv2,
     Duration,
     CfnOutput,
 )
@@ -49,6 +51,12 @@ class CdkScraperDeploymentStack(Stack):  # type: ignore[misc]
         enrichment_queue.grant_send_messages(task_role)
         enrichment_queue.grant_consume_messages(task_role)
 
+        # --- DNS / HTTPS ---
+        zone = route53.HostedZone.from_hosted_zone_attributes(self, "HostedZone",
+            hosted_zone_id="Z0754885WA4ZOH1QH7PJ",
+            zone_name="turboheat.net"
+        )
+
         # Outputs
         CfnOutput(self, "QueueUrl", value=enrichment_queue.queue_url)
         CfnOutput(self, "BucketName", value=data_bucket.bucket_name)
@@ -60,6 +68,10 @@ class CdkScraperDeploymentStack(Stack):  # type: ignore[misc]
             cpu=1024,  # 1 vCPU (Playwright needs this)
             memory_limit_mib=3072, # 3GB RAM (Playwright needs this)
             desired_count=1,
+            domain_name="enrich.turboheat.net",
+            domain_zone=zone,
+            protocol=elbv2.ApplicationProtocol.HTTPS, # Explicitly set HTTPS protocol
+            redirect_http=True, # Redirect HTTP to HTTPS
             task_image_options=ecs_patterns.ApplicationLoadBalancedTaskImageOptions(
                 image=ecs.ContainerImage.from_registry(repository.repository_uri + ":latest"),
                 container_port=8000,
@@ -81,3 +93,9 @@ class CdkScraperDeploymentStack(Stack):  # type: ignore[misc]
         
         # Grant permissions to pull image from ECR
         repository.grant_pull(fargate_service.task_definition.obtain_execution_role())
+
+        # Configure Health Check
+        fargate_service.target_group.configure_health_check(
+            path="/health",
+            healthy_http_codes="200"
+        )
