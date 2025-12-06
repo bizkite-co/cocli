@@ -95,10 +95,45 @@ def get_people_dir() -> Path:
     people_dir.mkdir(parents=True, exist_ok=True)
     return people_dir
 
-def get_scraped_data_dir() -> Path:
+def get_shared_scraped_data_dir() -> Path:
+    """
+    Returns the shared scraped data directory (e.g., shopify_csv).
+    Previously used for all scraped data.
+    """
     scraped_data_dir = get_cocli_base_dir() / "scraped_data"
     scraped_data_dir.mkdir(parents=True, exist_ok=True)
     return scraped_data_dir
+
+def get_scraped_data_dir() -> Path:
+    """
+    Legacy alias for get_shared_scraped_data_dir.
+    TODO: Deprecate and remove.
+    """
+    return get_shared_scraped_data_dir()
+
+def get_campaign_scraped_data_dir(campaign_name: str) -> Path:
+    """
+    Returns the scraped data directory for a specific campaign.
+    Path: cocli_data/campaigns/<campaign>/scraped_data/
+    """
+    campaign_dir = get_campaign_dir(campaign_name)
+    if not campaign_dir:
+        # Fallback if campaign dir doesn't exist yet (though it should)
+        campaign_dir = get_campaigns_dir() / campaign_name
+        campaign_dir.mkdir(parents=True, exist_ok=True)
+    
+    scraped_data_dir = campaign_dir / "scraped_data"
+    scraped_data_dir.mkdir(parents=True, exist_ok=True)
+    return scraped_data_dir
+
+def get_indexes_dir() -> Path:
+    """
+    Returns the base directory for shared indexes.
+    Path: cocli_data/indexes/
+    """
+    indexes_dir = get_cocli_base_dir() / "indexes"
+    indexes_dir.mkdir(parents=True, exist_ok=True)
+    return indexes_dir
 
 def get_campaigns_dir() -> Path:
     campaigns_dir = get_cocli_base_dir() / "campaigns"

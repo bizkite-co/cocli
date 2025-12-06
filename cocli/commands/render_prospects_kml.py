@@ -5,7 +5,7 @@ import typer
 import logging
 from typing import Dict, List, Optional, cast
 
-from ..core.config import get_scraped_data_dir, get_people_dir
+from ..core.config import get_campaign_scraped_data_dir, get_people_dir, get_campaign_dir
 from ..models.company import Company
 from ..models.person import Person
 
@@ -19,13 +19,12 @@ def render_prospects_kml(
     including enriched data like emails, phones, and associated people.
     """
     # Find campaign directory
-    campaign_dirs = list(Path("campaigns").glob(f"**/{campaign_name}"))
-    if not campaign_dirs:
+    campaign_dir = get_campaign_dir(campaign_name)
+    if not campaign_dir:
         logger.error(f"Campaign '{campaign_name}' not found.")
         raise typer.Exit(code=1)
-    campaign_dir = campaign_dirs[0]
 
-    prospects_csv_path = get_scraped_data_dir() / campaign_name / "prospects" / "prospects.csv"
+    prospects_csv_path = get_campaign_scraped_data_dir(campaign_name) / "prospects.csv"
     output_kml_path = campaign_dir / f"{campaign_name}_prospects.kml"
 
     if not prospects_csv_path.exists():

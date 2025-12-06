@@ -3,7 +3,7 @@ from typing import Optional
 import typer
 
 from cocli.scrapers.myip_ms import scrape_myip_ms
-from cocli.core.config import get_scraped_data_dir
+from cocli.core.config import get_shared_scraped_data_dir
 
 app = typer.Typer()
 
@@ -35,7 +35,7 @@ def scrape_shopify_myip(
     typer.echo(f"Starting myip.ms Shopify scrape for IP: '{ip_address}' (index: {ip_index})")
 
     if not output_dir:
-        output_dir = get_scraped_data_dir() / "shopify_csv"
+        output_dir = get_shared_scraped_data_dir() / "shopify_csv"
 
     scraped_csv_path = scrape_myip_ms(
         ip_address=ip_address,

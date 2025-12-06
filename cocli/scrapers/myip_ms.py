@@ -10,7 +10,7 @@ import time
 import random
 import logging
 
-from cocli.core.config import get_scraped_data_dir
+from cocli.core.config import get_shared_scraped_data_dir
 
 logger = logging.getLogger(__name__)
 
@@ -182,7 +182,7 @@ def scrape_myip_ms(
     ip_address: str,
     start_page: int = 1,
     end_page: int = 10,
-    output_dir: Path = get_scraped_data_dir() / "shopify_csv",
+    output_dir: Path = get_shared_scraped_data_dir() / "shopify_csv",
     debug: bool = False,
 ) -> Optional[Path]:
     """

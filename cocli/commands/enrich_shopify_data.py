@@ -5,7 +5,7 @@ import yaml
 import asyncio
 from playwright.async_api import async_playwright
 
-from cocli.core.config import get_scraped_data_dir, get_companies_dir
+from cocli.core.config import get_shared_scraped_data_dir, get_companies_dir
 from cocli.core.utils import slugify, create_company_files
 from cocli.enrichment.website_scraper import WebsiteScraper
 from cocli.models.company import Company
@@ -24,7 +24,7 @@ def enrich_shopify_data(
     """
     Enriches company data from a list of Shopify domains.
     """
-    shopify_csv_dir = get_scraped_data_dir() / "shopify_csv"
+    shopify_csv_dir = get_shared_scraped_data_dir() / "shopify_csv"
     input_path = shopify_csv_dir / input_filename
     if not input_path.exists():
         console.print(f"[bold red]Error:[/bold red] Input file not found: {input_path}")

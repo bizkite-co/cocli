@@ -181,7 +181,6 @@ async def scrape_google_maps(
     browser: Browser,
     location_param: Dict[str, str],
     search_strings: List[str],
-    campaign_name: str,
     debug: bool = False,
     force_refresh: bool = False,
     ttl_days: int = 30,
@@ -203,7 +202,7 @@ async def scrape_google_maps(
         if debug:
             logger.debug(f"scrape_google_maps called with debug={debug}")
         settings = load_scraper_settings()
-        scrape_index = ScrapeIndex(campaign_name)
+        scrape_index = ScrapeIndex()
     
         launch_width = browser_width if browser_width is not None else settings.browser_width
         launch_height = browser_height if browser_height is not None else settings.browser_height

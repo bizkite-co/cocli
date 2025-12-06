@@ -2,7 +2,7 @@ import typer
 import pandas as pd
 from rich.console import Console
 
-from cocli.core.config import get_scraped_data_dir
+from cocli.core.config import get_shared_scraped_data_dir
 
 app = typer.Typer()
 console = Console()
@@ -14,7 +14,7 @@ def process_shopify_scrapes(
     """
     Compiles and deduplicates scraped Shopify data from multiple CSV files into a single index file.
     """
-    shopify_csv_dir = get_scraped_data_dir() / "shopify_csv"
+    shopify_csv_dir = get_shared_scraped_data_dir() / "shopify_csv"
     if not shopify_csv_dir.exists():
         console.print(f"[bold red]Error:[/bold red] Directory not found: {shopify_csv_dir}")
         raise typer.Exit(code=1)

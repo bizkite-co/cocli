@@ -10,7 +10,7 @@ from cocli.models.company import Company
 from cocli.models.website_domain_csv import WebsiteDomainCsv
 from cocli.core.website_domain_csv_manager import WebsiteDomainCsvManager
 from fuzzywuzzy import process # type: ignore
-from cocli.core.config import get_campaign, get_scraped_data_dir, get_companies_dir
+from cocli.core.config import get_campaign, get_campaign_scraped_data_dir, get_companies_dir
 
 logger = logging.getLogger(__name__)
 
@@ -170,7 +170,7 @@ def google_maps_cache_to_company_files(
             logger.error("Error: No prospects CSV path provided and no campaign context is set. Please provide a CSV path, a campaign name with --campaign, or set a campaign context using 'cocli campaign set <campaign_name>'.")
             raise typer.Exit(code=1)
         
-        inferred_csv_path = get_scraped_data_dir() / effective_campaign_name / "prospects" / "prospects.csv"
+        inferred_csv_path = get_campaign_scraped_data_dir(effective_campaign_name) / "prospects.csv"
         if not inferred_csv_path.exists():
             logger.error(f"Error: Inferred prospects CSV path does not exist: {inferred_csv_path}")
             raise typer.Exit(code=1)

@@ -13,7 +13,7 @@ from playwright.async_api import async_playwright, Browser
 
 from cocli.models.company import Company
 from cocli.models.hubspot import HubspotContactCsv
-from cocli.core.config import get_campaign, get_campaigns_dir, get_companies_dir, get_scraped_data_dir, get_enrichment_service_url
+from cocli.core.config import get_campaign, get_campaigns_dir, get_companies_dir, get_campaign_scraped_data_dir, get_enrichment_service_url
 from cocli.core.queue.factory import get_queue_manager
 from cocli.models.queue import QueueMessage # Added import
 from cocli.models.website import Website
@@ -436,7 +436,7 @@ def tag_prospects_from_csv() -> None:
     console = Console()
     console.print(f"Tagging prospects from CSV for campaign: [bold]{campaign_name}[/bold]")
 
-    prospects_csv_path = get_scraped_data_dir() / campaign_name / "prospects" / "prospects.csv"
+    prospects_csv_path = get_campaign_scraped_data_dir(campaign_name) / "prospects.csv"
     if not prospects_csv_path.exists():
         console.print(f"[bold red]Prospects CSV not found at: {prospects_csv_path}[/bold red]")
         raise typer.Exit(code=1)
@@ -467,4 +467,5 @@ def tag_prospects_from_csv() -> None:
                     console.print(f"Tagged {domain} with campaign '{campaign_name}'")
 
     console.print(f"[bold green]Tagging complete. Updated {updated_count} companies.[/bold green]")
+
 

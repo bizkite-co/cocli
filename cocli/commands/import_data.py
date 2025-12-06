@@ -4,7 +4,7 @@ from typing import Optional # Import Optional
 import logging
 
 from ..importers import google_maps # Import specific importer
-from ..core.config import get_scraped_data_dir # Import get_scraped_data_dir
+from ..core.config import get_shared_scraped_data_dir # Import get_shared_scraped_data_dir
 
 logger = logging.getLogger(__name__)
 
@@ -20,7 +20,7 @@ def import_data(
     Import data using a specified importer.
     """
     if file_path is None:
-        scraped_data_dir = get_scraped_data_dir()
+        scraped_data_dir = get_shared_scraped_data_dir()
         available_files = [f for f in scraped_data_dir.iterdir() if f.is_file()]
 
         if not available_files:
