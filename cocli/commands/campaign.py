@@ -486,7 +486,8 @@ async def pipeline(
                                     # But we want to reuse the save block.
                                     # Let's just proceed to save, website_data will have empty email.
                                 elif status == 500:
-                                    console.print(f"[bold red]HTTP 500 for {msg.domain}. Retrying.[/bold red]")
+                                    error_details = e.response.text[:200] if e.response else "No details"
+                                    console.print(f"[bold red]HTTP 500 for {msg.domain}. Error: {error_details}. Retrying.[/bold red]")
                                     queue_manager.nack(msg, is_http_500=True)
                                     continue
                                 else:

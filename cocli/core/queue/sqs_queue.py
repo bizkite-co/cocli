@@ -97,9 +97,16 @@ class SQSQueue(QueueManager):
     def nack(self, message: QueueMessage, is_http_500: bool = False) -> None:
         """
         Change visibility timeout to 0 to make it immediately available again.
+        If is_http_500 is True and attempts >= 3, ack (drop) the message to prevent infinite loops.
         """
         if not message.ack_token:
             logger.warning(f"Cannot nack message {message.id}: No receipt handle (ack_token).")
+            return
+
+        # Short-circuit logic for persistent 500 errors
+        if is_http_500 and message.attempts >= 3:
+            logger.warning(f"Message {message.domain} (ID: {message.id}) exceeded max HTTP 500 retries ({message.attempts}). Dropping (Acking).")
+            self.ack(message)
             return
 
         try:
