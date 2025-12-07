@@ -699,6 +699,10 @@ def achieve_goal(
 
     cloud_queue: bool = typer.Option(False, "--cloud-queue", help="Use the cloud SQS queue instead of local file queue."),
     proximity_miles: float = typer.Option(10.0, "--proximity", help="Max radius in miles to scrape around each target location."),
+    opt_panning_distance_miles: Optional[int] = typer.Option(None, "--panning-distance", help="Distance in miles to pan in each step of the spiral search. Overrides config.toml."),
+    opt_initial_zoom_out_level: Optional[int] = typer.Option(None, "--initial-zoom", help="Initial zoom-out level at the start of scraping. Overrides config.toml."),
+    opt_zoom_out_button_selector: Optional[str] = typer.Option(None, "--zoom-selector", help="CSS selector for the zoom out button. Overrides config.toml."),
+    opt_omit_zoom_feature: Optional[bool] = typer.Option(None, "--omit-zoom", help="Omit the initial zoom-out feature. Overrides config.toml."),
 ) -> None:
 
     """
@@ -750,10 +754,13 @@ def achieve_goal(
     prospecting_config = config.get("prospecting", {})
     locations = prospecting_config.get("locations", [])
     search_phrases = prospecting_config.get("queries", [])
-    zoom_out_button_selector = prospecting_config.get("zoom-out-button-selector", "div#zoomOutButton")
-    panning_distance_miles = prospecting_config.get("panning-distance-miles", 8)
-    initial_zoom_out_level = prospecting_config.get("initial-zoom-out-level", 3)
-    omit_zoom_feature = prospecting_config.get("omit-zoom-feature", False)
+    
+    # Use command-line options if provided, otherwise fall back to config
+    zoom_out_button_selector = opt_zoom_out_button_selector if opt_zoom_out_button_selector is not None else prospecting_config.get("zoom-out-button-selector", "div#zoomOutButton")
+    panning_distance_miles = opt_panning_distance_miles if opt_panning_distance_miles is not None else prospecting_config.get("panning-distance-miles", 8)
+    initial_zoom_out_level = opt_initial_zoom_out_level if opt_initial_zoom_out_level is not None else prospecting_config.get("initial-zoom-out-level", 3)
+    omit_zoom_feature = opt_omit_zoom_feature if opt_omit_zoom_feature is not None else prospecting_config.get("omit-zoom-feature", False)
+    
     target_locations_csv = prospecting_config.get("target-locations-csv")
 
     target_locations = None
