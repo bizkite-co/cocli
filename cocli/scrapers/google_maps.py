@@ -82,7 +82,7 @@ async def _scrape_area(
     while True:
         await page.wait_for_timeout(1500)
         listing_divs = await scrollable_div.locator("> div").all()
-        logger.info(f"[SCROLL_DEBUG] Found {len(listing_divs)} listing divs before scroll. last_processed_div_count: {last_processed_div_count}")
+        logger.debug(f"[SCROLL_DEBUG] Found {len(listing_divs)} listing divs before scroll. last_processed_div_count: {last_processed_div_count}")
 
         if debug:
             page_source = await page.content()
@@ -90,7 +90,7 @@ async def _scrape_area(
                 f.write(page_source)
 
         if not listing_divs or len(listing_divs) == last_processed_div_count:
-            logger.info("No new listing divs found. Moving to next query.")
+            logger.debug("No new listing divs found. Moving to next query.")
             break
 
         # Only process the new divs that have appeared since the last scroll
@@ -118,18 +118,18 @@ async def _scrape_area(
             
             place_id = business_data_dict.get("Place_ID")
 
-            logger.info(f"Checking place_id: {place_id}")
-            logger.info(f"processed_place_ids: {processed_place_ids}")
+            logger.debug(f"Checking place_id: {place_id}")
+            logger.debug(f"processed_place_ids: {processed_place_ids}")
 
             if not place_id or place_id in processed_place_ids:
-                logger.info(f"Skipping duplicate place_id: {place_id}")
+                logger.debug(f"Skipping duplicate place_id: {place_id}")
                 continue
             
             processed_place_ids.add(place_id)
 
             cached_item = cache.get_by_place_id(place_id)
             if cached_item and not force_refresh and (datetime.now(UTC) - cached_item.updated_at < fresh_delta):
-                logger.info(f"Yielding cached data for: {cached_item.Name}")
+                logger.debug(f"Yielding cached data for: {cached_item.Name}")
                 yield cached_item
                 continue
 
@@ -163,13 +163,13 @@ async def _scrape_area(
         # Check for the end of the list message
         end_of_list_text = "You've reached the end of the list."
         if await page.get_by_text(end_of_list_text).is_visible():
-            logger.info(f"'{end_of_list_text}' message visible. Reached end of content for '{search_string}'.")
+            logger.debug(f"'{end_of_list_text}' message visible. Reached end of content for '{search_string}'.")
             break
 
         # Scroll down to trigger loading of more results
         await scrollable_div.hover()
         await page.mouse.wheel(0, 10000) # Scroll down by a large amount
-        logger.info("[SCROLL_DEBUG]   ...scrolled. Waiting for content to load.")
+        logger.debug("[SCROLL_DEBUG]   ...scrolled. Waiting for content to load.")
         await page.wait_for_timeout(delay_seconds * 1000)
 
         if debug:
@@ -284,12 +284,17 @@ async def scrape_google_maps(
     
             # Initial scrape of the main area
             for search_string in search_strings:
+                # Check if area is already known wilderness
+                if scrape_index.is_wilderness_area(latitude, longitude):
+                    logger.info(f"Skipping initial area ({latitude:.4f}, {longitude:.4f}) as it falls within a known wilderness area.")
+                    continue
+
                 matched_area = scrape_index.is_area_scraped(search_string, latitude, longitude, ttl_days=ttl_days)
                 if matched_area:
                     logger.info(f"Skipping initial area for phrase '{search_string}' as it falls within a recently scraped box ({matched_area.lat_min:.4f}, {matched_area.lon_min:.4f} to {matched_area.lat_max:.4f}, {matched_area.lon_max:.4f}).")
                     continue
     
-                found_items_in_area = False
+                items_found_in_area = 0
                 async for item in _scrape_area(
                     page=page,
                     search_string=search_string,
@@ -298,16 +303,22 @@ async def scrape_google_maps(
                     ttl_days=ttl_days,
                     debug=debug,
                 ):
-                    found_items_in_area = True
+                    items_found_in_area += 1
                     yield item
                 
-                if found_items_in_area and map_width_miles > 0:
+                if items_found_in_area > 0 and map_width_miles > 0:
                     viewport_bounds = get_viewport_bounds(latitude, longitude, map_width_miles, map_height_miles)
                     # Round values for cleaner CSV
                     for k, v in viewport_bounds.items():
                         viewport_bounds[k] = round(v, 5)
-                    scrape_index.add_area(search_string, viewport_bounds, lat_miles=round(map_height_miles, 3), lon_miles=round(map_width_miles, 3))
-                    logger.info(f"Added viewport-based bounding box to scrape index for phrase '{search_string}'.")
+                    scrape_index.add_area(search_string, viewport_bounds, lat_miles=round(map_height_miles, 3), lon_miles=round(map_width_miles, 3), items_found=items_found_in_area)
+                    logger.info(f"Added viewport-based bounding box to scrape index for phrase '{search_string}'. Items found: {items_found_in_area}")
+                elif map_width_miles > 0: # items_found_in_area is 0
+                    viewport_bounds = get_viewport_bounds(latitude, longitude, map_width_miles, map_height_miles)
+                    for k, v in viewport_bounds.items():
+                        viewport_bounds[k] = round(v, 5)
+                    scrape_index.add_wilderness_area(viewport_bounds, lat_miles=round(map_height_miles, 3), lon_miles=round(map_width_miles, 3), items_found=0)
+                    logger.info(f"No items found in initial area for phrase '{search_string}'. Marked as wilderness.")
     
             if disable_panning:
                 logger.info("Panning is disabled. Finishing scrape for this location.")
@@ -352,18 +363,23 @@ async def scrape_google_maps(
                             await search_this_area_button.click()
                             await page.wait_for_timeout(5000) # Wait for results to load
                         else:
-                            logger.info("'Search this area' button not visible.")
+                            logger.debug("'Search this area' button not visible.")
                     except Exception:
-                        logger.info("'Search this area' button not found.")
+                        logger.debug("'Search this area' button not found.")
 
                     # Scrape the new area for each search string
                     for search_string in search_strings:
+                        # Check if area is already known wilderness
+                        if scrape_index.is_wilderness_area(current_lat, current_lon):
+                            logger.info(f"Skipping area ({current_lat:.4f}, {current_lon:.4f}) as it falls within a known wilderness area.")
+                            continue
+
                         matched_area = scrape_index.is_area_scraped(search_string, current_lat, current_lon, ttl_days=ttl_days)
                         if matched_area:
                             logger.info(f"Skipping area for phrase '{search_string}' as it falls within a recently scraped box ({matched_area.lat_min:.4f}, {matched_area.lon_min:.4f} to {matched_area.lat_max:.4f}, {matched_area.lon_max:.4f}).")
                             continue
 
-                        found_items_in_area = False
+                        items_found_in_area = 0
                         async for item in _scrape_area(
                             page=page,
                             search_string=search_string,
@@ -372,13 +388,17 @@ async def scrape_google_maps(
                             ttl_days=ttl_days,
                             debug=debug,
                         ):
-                            found_items_in_area = True
+                            items_found_in_area += 1
                             yield item
 
-                        if found_items_in_area and map_width_miles > 0:
+                        if items_found_in_area > 0 and map_width_miles > 0:
                             viewport_bounds = get_viewport_bounds(current_lat, current_lon, map_width_miles, map_height_miles)
-                            scrape_index.add_area(search_string, viewport_bounds, lat_miles=map_height_miles, lon_miles=map_width_miles)
-                            logger.info(f"Added viewport-based bounding box to scrape index for phrase '{search_string}'.")
+                            scrape_index.add_area(search_string, viewport_bounds, lat_miles=map_height_miles, lon_miles=map_width_miles, items_found=items_found_in_area)
+                            logger.info(f"Added viewport-based bounding box to scrape index for phrase '{search_string}'. Items found: {items_found_in_area}")
+                        elif map_width_miles > 0: # items_found_in_area is 0
+                            viewport_bounds = get_viewport_bounds(current_lat, current_lon, map_width_miles, map_height_miles)
+                            scrape_index.add_wilderness_area(viewport_bounds, lat_miles=map_height_miles, lon_miles=map_width_miles, items_found=0)
+                            logger.info(f"No items found in area for phrase '{search_string}'. Marked as wilderness.")
 
                 # Update spiral direction and steps
                 leg_count += 1

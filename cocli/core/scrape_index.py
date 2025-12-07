@@ -20,6 +20,7 @@ class ScrapedArea(NamedTuple):
     lon_max: float
     lat_miles: float
     lon_miles: float
+    items_found: int
 
 class ScrapeIndex:
     """Manages the index of previously scraped geographic areas, stored per-phrase."""
@@ -57,6 +58,7 @@ class ScrapeIndex:
                     lon_max_idx = header.index('lon_max')
                     lat_miles_idx = header.index('lat_miles')
                     lon_miles_idx = header.index('lon_miles')
+                    items_found_idx = header.index('items_found') # New column
                 except ValueError as e:
                     logger.error(f"Missing expected column in scrape_index header for {phrase}: {e}. Recreating index.")
                     # We might want to backup instead of delete, but for now matching old behavior
@@ -74,9 +76,25 @@ class ScrapeIndex:
                             lon_max=float(row[lon_max_idx]),
                             lat_miles=float(row[lat_miles_idx]),
                             lon_miles=float(row[lon_miles_idx]),
+                            items_found=int(row[items_found_idx]), # New column
                         ))
                     except (ValueError, IndexError) as e:
-                        logger.warning(f"Skipping malformed row in scrape_index for {phrase}: {row} - {e}")
+                        logger.warning(f"Skipping malformed row in scrape_index for {phrase}: {row} - {e}. Attempting to re-read with default items_found=0 for old format.")
+                        # Attempt to parse old format without items_found for backward compatibility
+                        try:
+                            areas.append(ScrapedArea(
+                                phrase=row[phrase_idx],
+                                scrape_date=datetime.fromisoformat(row[scrape_date_idx]),
+                                lat_min=float(row[lat_min_idx]),
+                                lat_max=float(row[lat_max_idx]),
+                                lon_min=float(row[lon_min_idx]),
+                                lon_max=float(row[lon_max_idx]),
+                                lat_miles=float(row[lat_miles_idx]),
+                                lon_miles=float(row[lon_miles_idx]),
+                                items_found=0, # Default to 0 for old entries
+                            ))
+                        except (ValueError, IndexError) as e_fallback:
+                            logger.error(f"Still failed to parse row after fallback for {phrase}: {row} - {e_fallback}")
         except Exception as e:
             logger.error(f"Failed to load scrape index for {phrase}: {e}")
             
@@ -88,7 +106,7 @@ class ScrapeIndex:
         try:
             with index_file.open('w', newline='', encoding='utf-8') as f:
                 writer = csv.writer(f)
-                writer.writerow(['phrase', 'scrape_date', 'lat_min', 'lat_max', 'lon_min', 'lon_max', 'lat_miles', 'lon_miles'])
+                writer.writerow(['phrase', 'scrape_date', 'lat_min', 'lat_max', 'lon_min', 'lon_max', 'lat_miles', 'lon_miles', 'items_found'])
                 for area in areas:
                     writer.writerow([
                         area.phrase,
@@ -99,11 +117,12 @@ class ScrapeIndex:
                         f"{area.lon_max:.5f}",
                         f"{area.lat_miles:.3f}",
                         f"{area.lon_miles:.3f}",
+                        area.items_found,
                     ])
         except Exception as e:
             logger.error(f"Failed to save scrape index for {phrase}: {e}")
 
-    def add_area(self, phrase: str, bounds: dict[str, float], lat_miles: float, lon_miles: float) -> None:
+    def add_area(self, phrase: str, bounds: dict[str, float], lat_miles: float, lon_miles: float, items_found: int = 0) -> None:
         """Adds a new scraped area to the index and saves it."""
         if not all(key in bounds for key in ['lat_min', 'lat_max', 'lon_min', 'lon_max']):
             logger.warning("Attempted to add area with incomplete bounds.")
@@ -121,6 +140,7 @@ class ScrapeIndex:
             lon_max=bounds['lon_max'],
             lat_miles=lat_miles,
             lon_miles=lon_miles,
+            items_found=items_found,
         )
         areas.append(new_area)
         
@@ -142,6 +162,118 @@ class ScrapeIndex:
                 continue
 
             # Check if the coordinate is within the bounding box
+            if (area.lat_min <= lat <= area.lat_max) and \
+               (area.lon_min <= lon <= area.lon_max):
+                return area
+        return None
+
+    def _get_wilderness_index_file(self) -> Path:
+        """Returns the CSV file path for wilderness areas."""
+        return self.index_dir / "wilderness_areas.csv"
+
+    def _load_wilderness_areas(self) -> List[ScrapedArea]:
+        """Loads wilderness areas from its CSV file."""
+        index_file = self._get_wilderness_index_file()
+        areas: List[ScrapedArea] = []
+        
+        if not index_file.exists():
+            return areas
+        
+        try:
+            with index_file.open('r', encoding='utf-8') as f:
+                reader = csv.reader(f)
+                try:
+                    header = next(reader)  # Read header
+                except StopIteration:
+                    return areas # Empty file
+
+                try:
+                    phrase_idx = header.index('phrase') # Will be 'wilderness'
+                    scrape_date_idx = header.index('scrape_date')
+                    lat_min_idx = header.index('lat_min')
+                    lat_max_idx = header.index('lat_max')
+                    lon_min_idx = header.index('lon_min')
+                    lon_max_idx = header.index('lon_max')
+                    lat_miles_idx = header.index('lat_miles')
+                    lon_miles_idx = header.index('lon_miles')
+                    items_found_idx = header.index('items_found')
+                except ValueError as e:
+                    logger.error(f"Missing expected column in wilderness_areas header: {e}. Recreating index.")
+                    index_file.unlink(missing_ok=True)
+                    return areas
+
+                for row in reader:
+                    try:
+                        areas.append(ScrapedArea(
+                            phrase=row[phrase_idx],
+                            scrape_date=datetime.fromisoformat(row[scrape_date_idx]),
+                            lat_min=float(row[lat_min_idx]),
+                            lat_max=float(row[lat_max_idx]),
+                            lon_min=float(row[lon_min_idx]),
+                            lon_max=float(row[lon_max_idx]),
+                            lat_miles=float(row[lat_miles_idx]),
+                            lon_miles=float(row[lon_miles_idx]),
+                            items_found=int(row[items_found_idx]),
+                        ))
+                    except (ValueError, IndexError) as e:
+                        logger.warning(f"Skipping malformed row in wilderness_areas: {row} - {e}")
+        except Exception as e:
+            logger.error(f"Failed to load wilderness_areas index: {e}")
+            
+        return areas
+
+    def _save_wilderness_areas(self, areas: List[ScrapedArea]) -> None:
+        """Saves the list of wilderness areas to its CSV file."""
+        index_file = self._get_wilderness_index_file()
+        try:
+            with index_file.open('w', newline='', encoding='utf-8') as f:
+                writer = csv.writer(f)
+                writer.writerow(['phrase', 'scrape_date', 'lat_min', 'lat_max', 'lon_min', 'lon_max', 'lat_miles', 'lon_miles', 'items_found'])
+                for area in areas:
+                    writer.writerow([
+                        area.phrase, # Will be 'wilderness'
+                        area.scrape_date.isoformat(),
+                        f"{area.lat_min:.5f}",
+                        f"{area.lat_max:.5f}",
+                        f"{area.lon_min:.5f}",
+                        f"{area.lon_max:.5f}",
+                        f"{area.lat_miles:.3f}",
+                        f"{area.lon_miles:.3f}",
+                        area.items_found,
+                    ])
+        except Exception as e:
+            logger.error(f"Failed to save wilderness_areas index: {e}")
+
+    def add_wilderness_area(self, bounds: dict[str, float], lat_miles: float, lon_miles: float, items_found: int) -> None:
+        """Adds a new wilderness area to the index and saves it."""
+        if not all(key in bounds for key in ['lat_min', 'lat_max', 'lon_min', 'lon_max']):
+            logger.warning("Attempted to add wilderness area with incomplete bounds.")
+            return
+
+        areas = self._load_wilderness_areas()
+
+        new_area = ScrapedArea(
+            phrase="wilderness", # Generic phrase for wilderness areas
+            scrape_date=datetime.now(),
+            lat_min=bounds['lat_min'],
+            lat_max=bounds['lat_max'],
+            lon_min=bounds['lon_min'],
+            lon_max=bounds['lon_max'],
+            lat_miles=lat_miles,
+            lon_miles=lon_miles,
+            items_found=items_found,
+        )
+        areas.append(new_area)
+        
+        self._save_wilderness_areas(areas)
+
+    def is_wilderness_area(self, lat: float, lon: float) -> Optional[ScrapedArea]:
+        """
+        Checks if a given coordinate falls within any of the known wilderness areas.
+        """
+        areas = self._load_wilderness_areas()
+        
+        for area in areas:
             if (area.lat_min <= lat <= area.lat_max) and \
                (area.lon_min <= lon <= area.lon_max):
                 return area

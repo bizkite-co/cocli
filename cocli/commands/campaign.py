@@ -785,7 +785,7 @@ def achieve_goal(
 
         raise typer.Exit(code=1)  # --- Setup ---
 
-    setup_file_logging(f"{campaign_name}-achieve-goal", console_level=logging.WARNING, disable_console=False)
+    setup_file_logging(f"{campaign_name}-achieve-goal", file_level=logging.DEBUG, disable_console=True)
 
     console.print(
         f"[grey50][{datetime.now().strftime('%H:%M:%S')}][/] [dim]Building map of existing companies...[/dim]"
@@ -873,18 +873,22 @@ def visualize_coverage(
 
     scrape_index = ScrapeIndex()
     scraped_areas = scrape_index.get_all_areas_for_phrases(search_phrases)
+    wilderness_areas = scrape_index._load_wilderness_areas() # Load wilderness areas
+
+    all_areas = scraped_areas + wilderness_areas
     
-    if not scraped_areas:
-        console.print("[yellow]No scraped areas found for the campaign's search phrases.[/yellow]")
+    if not all_areas:
+        console.print("[yellow]No scraped or wilderness areas found for the campaign's search phrases.[/yellow]")
         return
 
-    # Assign colors to phrases
+    # Assign colors to phrases and wilderness
     phrases = sorted(list({area.phrase for area in scraped_areas}))
     colors = ["ff0000ff", "ff00ff00", "ffff0000", "ff00ffff", "ffff00ff", "ffffff00"] # Red, Green, Blue, Cyan, Magenta, Yellow
     phrase_colors = {phrase: colors[i % len(colors)] for i, phrase in enumerate(phrases)}
+    phrase_colors["wilderness"] = "ff808080" # Grey for wilderness areas
 
     kml_placemarks = []
-    for area in scraped_areas:
+    for area in all_areas:
         coordinates = (
             f"{area.lon_min},{area.lat_min},0 "
             f"{area.lon_max},{area.lat_min},0 "
@@ -894,7 +898,15 @@ def visualize_coverage(
         )
         placemark = f'''        <Placemark>
             <name>{area.phrase}</name>
-            <description>Scraped on {area.scrape_date.strftime('%Y-%m-%d')}</description>
+            <description><![CDATA[
+                <b>Scrape Date:</b> {area.scrape_date.strftime('%Y-%m-%d %H:%M:%S')}<br/>
+                <b>Lat Miles:</b> {area.lat_miles:.3f}<br/>
+                <b>Lon Miles:</b> {area.lon_miles:.3f}<br/>
+                <b>Items Found:</b> {area.items_found}<br/>
+                <b>Bounds:</b><br/>
+                &nbsp;&nbsp;Lat: {area.lat_min:.5f} to {area.lat_max:.5f}<br/>
+                &nbsp;&nbsp;Lon: {area.lon_min:.5f} to {area.lon_max:.5f}
+            ]]></description>
             <Style>
                 <LineStyle>
                     <color>{phrase_colors.get(area.phrase, 'ffffffff')}</color>
