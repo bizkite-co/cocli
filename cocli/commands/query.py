@@ -70,10 +70,103 @@ app = typer.Typer()
 console = Console()
 logger = logging.getLogger(__name__)
 
-def get_prospects_csv_path() -> Path:
-    # Assuming a single campaign context for now, this could be made dynamic
-    # based on the user's current campaign context.
-    return get_scraped_data_dir() / "turboship" / "prospects" / "prospects.csv"
+import typer
+from pathlib import Path
+from typing import Optional, List
+import csv
+from geopy.distance import geodesic # type: ignore
+import logging
+from rich.console import Console
+
+from ..core.config import get_companies_dir, get_campaign_scraped_data_dir, get_cocli_base_dir, get_campaign
+from ..core.geocoding import get_coordinates_from_city_state
+
+logger = logging.getLogger(__name__)
+console = Console()
+
+app = typer.Typer()
+
+@app.command()
+def query_prospects_location(
+    city: str = typer.Argument(..., help="The city to search around (e.g., 'New York, NY')."),
+    radius: float = typer.Option(50.0, "--radius", "-r", help="Radius in miles to search."),
+    campaign_name: Optional[str] = typer.Option(None, "--campaign", "-c", help="Campaign name. Defaults to current context.")
+) -> None:
+    """
+    Find prospects within a certain radius of a city, using the prospects CSV for speed.
+    This avoids iterating through thousands of individual company files.
+    """
+    if not campaign_name:
+        campaign_name = get_campaign()
+    
+    if not campaign_name:
+        console.print("[bold red]Error: No campaign specified and no current context set.[/bold red]")
+        raise typer.Exit(1)
+
+    # 1. Geocode the input city
+    console.print(f"[dim]Geocoding '{city}'...[/dim]")
+    origin_coords = get_coordinates_from_city_state(city)
+    if not origin_coords:
+        console.print(f"[bold red]Could not geocode '{city}'. Please use 'City, ST' format.[/bold red]")
+        raise typer.Exit(1)
+    
+    origin_point = (origin_coords["latitude"], origin_coords["longitude"])
+    console.print(f"[dim]Origin: {origin_point}[/dim]")
+
+    # 2. Load prospects CSV
+    prospects_csv_path = get_campaign_scraped_data_dir(campaign_name) / "prospects.csv"
+    if not prospects_csv_path.exists():
+        console.print(f"[bold red]Prospects CSV not found at: {prospects_csv_path}[/bold red]")
+        raise typer.Exit(1)
+
+    console.print(f"[dim]Reading prospects from {prospects_csv_path}...[/dim]")
+    
+    matches = []
+    
+    with open(prospects_csv_path, 'r', encoding='utf-8') as f:
+        reader = csv.DictReader(f)
+        for row in reader:
+            try:
+                lat_str = row.get('Latitude')
+                lon_str = row.get('Longitude')
+                
+                if not lat_str or not lon_str:
+                    continue
+                    
+                point = (float(lat_str), float(lon_str))
+                distance = geodesic(origin_point, point).miles
+                
+                if distance <= radius:
+                    row['distance_miles'] = round(distance, 1)
+                    matches.append(row)
+            except (ValueError, TypeError):
+                continue # Skip bad data
+
+    # 3. Sort by distance
+    matches.sort(key=lambda x: x['distance_miles']) # type: ignore
+
+    # 4. Display results
+    if not matches:
+        console.print(f"[yellow]No prospects found within {radius} miles of {city}.[/yellow]")
+        return
+
+    console.print(f"[bold green]Found {len(matches)} prospects within {radius} miles of {city}:[/bold green]")
+    
+    # Print simple table
+    # ID/Name | City, State | Distance
+    print(f"{'Name':<40} | {'City, State':<30} | {'Distance':<10} | {'Phone':<15} | {'Website'}")
+    print("-" * 120)
+    
+    for m in matches:
+        name = (m.get('Name') or "")[:38]
+        city_state = f"{m.get('City') or ''}, {m.get('State') or ''}"
+        dist = f"{m['distance_miles']} mi"
+        phone = m.get('Phone_1') or ""
+        website = m.get('Website') or ""
+        print(f"{name:<40} | {city_state:<30} | {dist:<10} | {phone:<15} | {website}")
+
+if __name__ == "__main__":
+    app()
 
 def get_tags_for_domain(domain_to_tags_map: dict[str, List[str]], domain: str) -> List[str]:
     return domain_to_tags_map.get(domain, [])

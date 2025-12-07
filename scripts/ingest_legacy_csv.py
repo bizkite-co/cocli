@@ -5,7 +5,7 @@ from pathlib import Path
 from typing import Optional
 from rich.console import Console
 
-from cocli.core.config import get_scraped_data_dir
+from cocli.core.config import get_campaign_scraped_data_dir
 from cocli.core.importing import import_prospect
 from cocli.models.google_maps import GoogleMapsData
 from cocli.models.company import Company
@@ -28,7 +28,7 @@ def main(
     2. Pushes enrichment tasks to the queue.
     """
     if csv_path is None:
-        prospects_csv_path = get_scraped_data_dir() / campaign_name / "prospects" / "prospects.csv"
+        prospects_csv_path = get_campaign_scraped_data_dir(campaign_name) / "prospects.csv"
     else:
         prospects_csv_path = csv_path
     

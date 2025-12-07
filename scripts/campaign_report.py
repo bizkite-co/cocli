@@ -5,7 +5,7 @@ import boto3 # type: ignore
 from typing import Optional
 from rich.console import Console
 from rich.table import Table
-from cocli.core.config import get_scraped_data_dir, get_companies_dir, get_cocli_base_dir, get_campaign
+from cocli.core.config import get_campaign_scraped_data_dir, get_companies_dir, get_cocli_base_dir, get_campaign
 
 app = typer.Typer()
 console = Console()
@@ -35,7 +35,7 @@ def main(campaign_name: Optional[str] = typer.Argument(None, help="Campaign name
         raise typer.Exit(1)
 
     # 1. Total Prospects (gm-detail)
-    prospects_csv = get_scraped_data_dir() / campaign_name / "prospects" / "prospects.csv"
+    prospects_csv = get_campaign_scraped_data_dir(campaign_name) / "prospects.csv"
     total_prospects = 0
     if prospects_csv.exists():
         with open(prospects_csv, 'r', encoding='utf-8', errors='ignore') as f:

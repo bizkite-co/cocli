@@ -16,7 +16,7 @@ import httpx
 from ..models.website import Website
 from ..scrapers.google_maps import scrape_google_maps
 
-from ..core.config import get_scraped_data_dir, get_companies_dir, get_campaign_dir, get_cocli_base_dir, get_people_dir, get_all_campaign_dirs, get_editor_command, get_enrichment_service_url
+from ..core.config import get_scraped_data_dir, get_companies_dir, get_campaign_dir, get_cocli_base_dir, get_people_dir, get_all_campaign_dirs, get_editor_command, get_enrichment_service_url, get_campaign_scraped_data_dir
 from ..models.google_maps import GoogleMapsData
 from ..models.company import Company
 from ..models.person import Person
@@ -339,7 +339,7 @@ def import_prospects(
 
     console.print(f"[bold]Importing prospects for campaign: '{campaign_name}'[/bold]")
 
-    prospects_csv_path = get_scraped_data_dir() / campaign_name / "prospects" / "prospects.csv"
+    prospects_csv_path = get_campaign_scraped_data_dir(campaign_name) / "prospects.csv"
     if not prospects_csv_path.exists():
         console.print(f"[bold red]Prospects CSV not found at: {prospects_csv_path}[/bold red]")
         raise typer.Exit(code=1)
@@ -586,8 +586,8 @@ async def pipeline(
             
             location_df = pd.DataFrame(location_data)
 
-            prospects_csv_path = get_scraped_data_dir() / campaign_name / "prospects" / "prospects.csv"
-            prospects_csv_path.parent.mkdir(parents=True, exist_ok=True)
+            prospects_csv_path = get_campaign_scraped_data_dir(campaign_name) / "prospects.csv"
+            # prospects_csv_path.parent.mkdir(parents=True, exist_ok=True) # Handled by getter
             write_header = not prospects_csv_path.exists()
             
             with open(prospects_csv_path, 'a', newline='', encoding='utf-8') as csvfile:
@@ -857,25 +857,34 @@ def visualize_coverage(
     assert campaign_name is not None # mypy needs this to understand campaign_name is not None here
     effective_campaign_name: str = campaign_name # Explicitly type hint for mypy
 
-    try:
-        scrape_index = ScrapeIndex(effective_campaign_name)
-        if not scrape_index._index:
-            console.print("[yellow]Scrape index is empty. No coverage to visualize.[/yellow]")
-            return
-    except FileNotFoundError:
-        console.print(f"[bold red]Scrape index file not found for campaign '{str(campaign_name)}'.[/bold red]")
-        full_path_str = f"{str(get_cocli_base_dir())}/indexes/{str(campaign_name)}/scraped_areas.csv"
-        scraped_areas_csv_path = Path(full_path_str)
-        console.print(f"[dim]Looked for: {scraped_areas_csv_path}[/dim]")
+    # Load search phrases from campaign config to find relevant indexes
+    config_path = campaign_dir / "config.toml"
+    if not config_path.exists():
+        console.print(f"[bold red]Configuration file not found for campaign '{effective_campaign_name}'.[/bold red]")
         raise typer.Exit(code=1)
+    
+    with open(config_path, "r") as f:
+        config = toml.load(f)
+    
+    search_phrases = config.get("prospecting", {}).get("queries", [])
+    if not search_phrases:
+        console.print("[yellow]No search phrases found in campaign configuration.[/yellow]")
+        return
+
+    scrape_index = ScrapeIndex()
+    scraped_areas = scrape_index.get_all_areas_for_phrases(search_phrases)
+    
+    if not scraped_areas:
+        console.print("[yellow]No scraped areas found for the campaign's search phrases.[/yellow]")
+        return
 
     # Assign colors to phrases
-    phrases = sorted(list({area.phrase for area in scrape_index._index}))
+    phrases = sorted(list({area.phrase for area in scraped_areas}))
     colors = ["ff0000ff", "ff00ff00", "ffff0000", "ff00ffff", "ffff00ff", "ffffff00"] # Red, Green, Blue, Cyan, Magenta, Yellow
     phrase_colors = {phrase: colors[i % len(colors)] for i, phrase in enumerate(phrases)}
 
     kml_placemarks = []
-    for area in scrape_index._index:
+    for area in scraped_areas:
         coordinates = (
             f"{area.lon_min},{area.lat_min},0 "
             f"{area.lon_max},{area.lat_min},0 "

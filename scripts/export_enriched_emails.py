@@ -3,7 +3,7 @@ import csv
 import yaml
 from rich.console import Console
 from rich.progress import track
-from cocli.core.config import get_companies_dir, get_campaign_dir, get_scraped_data_dir
+from cocli.core.config import get_companies_dir, get_campaign_dir, get_campaign_scraped_data_dir
 from cocli.core.utils import slugify
 
 app = typer.Typer()
@@ -22,7 +22,7 @@ def main(campaign_name: str) -> None:
     output_file = export_dir / f"enriched_emails_{campaign_name}.csv"
     
     # Load slugs from campaign prospects.csv to filter
-    prospects_csv = get_scraped_data_dir() / campaign_name / "prospects" / "prospects.csv"
+    prospects_csv = get_campaign_scraped_data_dir(campaign_name) / "prospects.csv"
     target_slugs = set()
     if prospects_csv.exists():
         with open(prospects_csv, 'r', encoding='utf-8', errors='ignore') as f:

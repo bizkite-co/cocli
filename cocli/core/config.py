@@ -111,6 +111,15 @@ def get_scraped_data_dir() -> Path:
     """
     return get_shared_scraped_data_dir()
 
+def get_indexes_dir() -> Path:
+    """
+    Returns the base directory for shared indexes.
+    Path: cocli_data/indexes/
+    """
+    indexes_dir = get_cocli_base_dir() / "indexes"
+    indexes_dir.mkdir(parents=True, exist_ok=True)
+    return indexes_dir
+
 def get_scraped_areas_index_dir() -> Path:
     """
     Returns the directory for phrase-specific scraped area indexes.
