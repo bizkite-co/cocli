@@ -13,7 +13,7 @@ from playwright.async_api import async_playwright, Browser
 
 from cocli.models.company import Company
 from cocli.models.hubspot import HubspotContactCsv
-from cocli.core.config import get_campaign, get_campaigns_dir, get_companies_dir, get_scraped_data_dir, get_campaign_scraped_data_dir, get_enrichment_service_url
+from cocli.core.config import get_campaign, get_campaigns_dir, get_companies_dir, get_scraped_data_dir, get_enrichment_service_url
 from cocli.core.queue.factory import get_queue_manager
 from cocli.models.queue import QueueMessage # Added import
 from cocli.models.website import Website

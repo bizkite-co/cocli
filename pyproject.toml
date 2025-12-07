@@ -85,6 +85,7 @@ exclude = [
     "cocli.egg-info",
     "data",
     "cdk_scraper_deployment",
+    "turboship", # Exclude the entire turboship directory
 ]
 follow_imports = "normal"
 

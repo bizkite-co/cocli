@@ -16,7 +16,7 @@ import httpx
 from ..models.website import Website
 from ..scrapers.google_maps import scrape_google_maps
 
-from ..core.config import get_scraped_data_dir, get_companies_dir, get_campaign_dir, get_cocli_base_dir, get_people_dir, get_all_campaign_dirs, get_editor_command, get_enrichment_service_url, get_campaign_scraped_data_dir
+from ..core.config import get_companies_dir, get_campaign_dir, get_cocli_base_dir, get_people_dir, get_all_campaign_dirs, get_editor_command, get_enrichment_service_url, get_campaign_scraped_data_dir
 from ..models.google_maps import GoogleMapsData
 from ..models.company import Company
 from ..models.person import Person

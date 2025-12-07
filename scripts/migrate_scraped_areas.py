@@ -1,7 +1,8 @@
 import typer
 import csv
-from pathlib import Path
 from rich.console import Console
+from typing import List # Added import
+
 from cocli.core.config import get_all_campaign_dirs, get_cocli_base_dir, get_scraped_areas_index_dir
 from cocli.core.utils import slugify
 
@@ -57,7 +58,7 @@ def main(
                 continue
 
             # Group by phrase
-            rows_by_phrase = {}
+            rows_by_phrase: dict[str, List[List[str]]] = {}
             for row in rows_to_write:
                 phrase = row[phrase_idx]
                 slug = slugify(phrase)
@@ -88,7 +89,7 @@ def main(
             if not dry_run:
                 try:
                     legacy_index_path.rename(legacy_index_path.with_suffix('.csv.migrated'))
-                    console.print(f"  [green]Renamed legacy file to .migrated[/green]")
+                    console.print("  [green]Renamed legacy file to .migrated[/green]")
                 except OSError as e:
                     console.print(f"  [red]Error renaming legacy file: {e}[/red]")
 

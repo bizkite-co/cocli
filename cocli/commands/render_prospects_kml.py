@@ -1,6 +1,5 @@
 import csv
 import simplekml # type: ignore
-from pathlib import Path
 import typer
 import logging
 from typing import Dict, List, Optional, cast
