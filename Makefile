@@ -32,7 +32,8 @@ install: ## Install development dependencies using uv
 
 # Note: TUI integration tests are run separately due to terminal driver conflicts.
 # Use 'make test-tui-integration' to run them.
-test: install lint ## Run all non-TUI tests using pytest
+test: install ## Run all non-TUI tests using pytest
+	-$(MAKE) lint
 	source $(VENV_DIR)/bin/activate && pytest -s tests/ --ignore=tests/tui/test_navigation_steps.py
 
 test-unit: install lint ## Run unit tests (excluding TUI folder)
@@ -171,6 +172,15 @@ verify: ## Verify the Fargate deployment
 ingest-legacy: ## Ingest legacy prospects.csv into the new queue system (Usage: make ingest-legacy CAMPAIGN=name)
 	@if [ -z "$(CAMPAIGN)" ]; then echo "Error: CAMPAIGN variable is required. Usage: make ingest-legacy CAMPAIGN=name"; exit 1; fi
 	@$(VENV_DIR)/bin/python scripts/ingest_legacy_csv.py $(CAMPAIGN)
+
+scrape: ## Run the scraper
+	cocli campaign achieve-goal turboship --emails 10000 --cloud-queue --proximity 7
+
+enrich: ## Run the cloud enricher
+	cocli campaign prospects enrich-from-queue turboship --batch-size 2 --cloud-queue
+
+coverage-kml: ## Generate scrape coverage KML
+	cocli campaign visualize-coverage turboship
 
 .PHONY: export-emails
 export-emails: ## Export enriched emails to CSV (Usage: make export-emails CAMPAIGN=name)

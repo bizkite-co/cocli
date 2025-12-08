@@ -22,6 +22,32 @@ class ScrapedArea(NamedTuple):
     lon_miles: float
     items_found: int
 
+def _calculate_overlap_area(bounds1: dict[str, float], bounds2: dict[str, float]) -> float:
+    """
+    Calculates the overlapping area between two bounding boxes.
+    Assumes bounds are in {'lat_min', 'lat_max', 'lon_min', 'lon_max'} format.
+    Returns the area in 'square miles' based on lat_miles and lon_miles in ScrapedArea,
+    but here we'll use a simpler lat/lon intersection for relative overlap.
+    """
+    # Calculate the intersection rectangle coordinates
+    overlap_lon_min = max(bounds1['lon_min'], bounds2['lon_min'])
+    overlap_lat_min = max(bounds1['lat_min'], bounds2['lat_min'])
+    overlap_lon_max = min(bounds1['lon_max'], bounds2['lon_max'])
+    overlap_lat_max = min(bounds1['lat_max'], bounds2['lat_max'])
+
+    # If no overlap, return 0
+    if overlap_lon_max < overlap_lon_min or overlap_lat_max < overlap_lat_min:
+        return 0.0
+
+    # Approximate overlap width and height in degrees
+    overlap_width_degrees = overlap_lon_max - overlap_lon_min
+    overlap_height_degrees = overlap_lat_max - overlap_lat_min
+
+    # For a simple relative overlap check, we can use degrees directly.
+    # If absolute area in square miles is needed, a more complex geodesic calculation is required.
+    # For now, using product of degrees as a proxy for area for relative comparison.
+    return overlap_width_degrees * overlap_height_degrees
+
 class ScrapeIndex:
     """Manages the index of previously scraped geographic areas, stored per-phrase."""
 
@@ -146,24 +172,36 @@ class ScrapeIndex:
         
         self._save_areas_for_phrase(phrase, areas)
 
-    def is_area_scraped(self, phrase: str, lat: float, lon: float, ttl_days: Optional[int] = None) -> Optional[ScrapedArea]:
+    def is_area_scraped(self, phrase: str, bounds: dict[str, float], ttl_days: Optional[int] = None, overlap_threshold_percent: float = 0.0) -> Optional[ScrapedArea]:
         """
-        Checks if a given coordinate for a specific phrase falls within any of the
+        Checks if a given bounding box for a specific phrase significantly overlaps with any of the
         already scraped bounding boxes.
         """
         areas = self._load_areas_for_phrase(phrase)
         fresh_delta = timedelta(days=ttl_days) if ttl_days is not None else None
 
-        # Check in reverse order (newest first) might be better? 
-        # But CSV load order is oldest first usually.
+        # Calculate area of the current bounds in degrees for relative comparison
+        current_bounds_width = bounds['lon_max'] - bounds['lon_min']
+        current_bounds_height = bounds['lat_max'] - bounds['lat_min']
+        area_of_current_bounds = current_bounds_width * current_bounds_height
+        
+        if area_of_current_bounds <= 0: # Avoid division by zero for point or line bounds
+            return None
+
         for area in areas:
             # Check if the entry is stale
             if fresh_delta and (datetime.now() - area.scrape_date > fresh_delta):
                 continue
+            
+            # Calculate overlap area
+            overlap_area = _calculate_overlap_area(bounds, {
+                'lat_min': area.lat_min, 'lat_max': area.lat_max,
+                'lon_min': area.lon_min, 'lon_max': area.lon_max
+            })
+            
+            overlap_percentage = (overlap_area / area_of_current_bounds) * 100
 
-            # Check if the coordinate is within the bounding box
-            if (area.lat_min <= lat <= area.lat_max) and \
-               (area.lon_min <= lon <= area.lon_max):
+            if overlap_percentage >= overlap_threshold_percent:
                 return area
         return None
 
@@ -267,15 +305,30 @@ class ScrapeIndex:
         
         self._save_wilderness_areas(areas)
 
-    def is_wilderness_area(self, lat: float, lon: float) -> Optional[ScrapedArea]:
+    def is_wilderness_area(self, bounds: dict[str, float], overlap_threshold_percent: float = 0.0) -> Optional[ScrapedArea]:
         """
-        Checks if a given coordinate falls within any of the known wilderness areas.
+        Checks if a given bounding box falls within any of the known wilderness areas.
         """
         areas = self._load_wilderness_areas()
         
+        # Calculate area of the current bounds in degrees for relative comparison
+        current_bounds_width = bounds['lon_max'] - bounds['lon_min']
+        current_bounds_height = bounds['lat_max'] - bounds['lat_min']
+        area_of_current_bounds = current_bounds_width * current_bounds_height
+
+        if area_of_current_bounds <= 0:
+            return None
+
         for area in areas:
-            if (area.lat_min <= lat <= area.lat_max) and \
-               (area.lon_min <= lon <= area.lon_max):
+            # Calculate overlap area
+            overlap_area = _calculate_overlap_area(bounds, {
+                'lat_min': area.lat_min, 'lat_max': area.lat_max,
+                'lon_min': area.lon_min, 'lon_max': area.lon_max
+            })
+            
+            overlap_percentage = (overlap_area / area_of_current_bounds) * 100
+
+            if overlap_percentage >= overlap_threshold_percent:
                 return area
         return None
 

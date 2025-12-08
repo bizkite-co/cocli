@@ -196,7 +196,7 @@ def import_contacts(
                 if not symlink_path.exists():
                     symlink_path.symlink_to(person_dir)
                 
-                console.print(f"[green]Imported contact:[/] {person.name}")
+                console.print(f"[green]Imported contact:{person.name}[/green]") 
 
             except Exception as e:
                 console.print(f"[bold red]Error importing contact: {e}[/bold red]")
@@ -360,7 +360,7 @@ def import_prospects(
             new_company = import_prospect(prospect_data, existing_domains, campaign=campaign_name)
 
             if new_company:
-                console.print(f"[green]Imported new prospect:[/] {new_company.name}")
+                console.print(f"[green]Imported new prospect:{new_company.name}[/green]") 
                 if new_company.domain:
                     existing_domains.add(new_company.domain) # Add to set to avoid re-importing from same CSV
                 new_companies_imported += 1
@@ -374,6 +374,7 @@ async def pipeline(
     headed: bool,
     devtools: bool,
     campaign_name: str,
+    overlap_threshold_percent: float, # Moved to a non-default position
     zoom_out_button_selector: str,
     panning_distance_miles: int,
     initial_zoom_out_level: int,
@@ -535,9 +536,9 @@ async def pipeline(
                             console.print(f"[yellow]Creating skeleton company for {msg.company_slug}[/yellow]")
                             company_dir.mkdir(parents=True, exist_ok=True)
                             with open(company_dir / "_index.md", "w") as f:
-                                f.write("---\n")
+                                f.write("---")
                                 yaml.dump({"name": msg.domain, "domain": msg.domain}, f)
-                                f.write("---\n")
+                                f.write("---")
                         
                         # Save to disk (Critical!)
                         enrichment_dir = company_dir / "enrichments"
@@ -639,6 +640,7 @@ async def pipeline(
                             browser_width=browser_width,
                             browser_height=browser_height,
                             max_proximity_miles=max_proximity_miles,
+                            overlap_threshold_percent=overlap_threshold_percent,
                         )
                         
                         async for prospect_data in prospect_generator:
@@ -666,7 +668,7 @@ async def pipeline(
                                     ack_token=None,
                                 )
                                 queue_manager.push(msg)
-                                console.print(f"[cyan]Queued:[/cyan] {company.name}")
+                                console.print(f"[cyan]Queued:{company.name}[/cyan]") 
                             
                             # Yield control to let consumer run
                             await asyncio.sleep(0.01)
@@ -703,6 +705,7 @@ def achieve_goal(
     opt_initial_zoom_out_level: Optional[int] = typer.Option(None, "--initial-zoom", help="Initial zoom-out level at the start of scraping. Overrides config.toml."),
     opt_zoom_out_button_selector: Optional[str] = typer.Option(None, "--zoom-selector", help="CSS selector for the zoom out button. Overrides config.toml."),
     opt_omit_zoom_feature: Optional[bool] = typer.Option(None, "--omit-zoom", help="Omit the initial zoom-out feature. Overrides config.toml."),
+    opt_allowed_overlap_percentage: Optional[float] = typer.Option(None, "--overlap-percentage", help="Minimum overlap percentage to consider an area already scraped or wilderness. Overrides config.toml."),
 ) -> None:
 
     """
@@ -730,8 +733,7 @@ def achieve_goal(
     )
     if goal_emails > 0:
         console.print(
-            f"[grey50][{datetime.now().strftime('%H:%M:%S')}][/] [yellow]Note: The 'achieve-goal' pipeline runs sequentially when a specific email goal is set, processing one prospect at a time through Google Maps scraping and website enrichment.[/yellow]"
-        )  # --- Load Campaign Config ---
+            f"[grey50][{datetime.now().strftime('%H:%M:%S')}][/] [yellow]Note: The 'achieve-goal' pipeline runs sequentially when a specific email goal is set, processing one prospect at a time through Google Maps scraping and website enrichment.[/yellow]"        )  # --- Load Campaign Config ---
 
     campaign_dir = get_campaign_dir(campaign_name)
 
@@ -760,6 +762,7 @@ def achieve_goal(
     panning_distance_miles = opt_panning_distance_miles if opt_panning_distance_miles is not None else prospecting_config.get("panning-distance-miles", 8)
     initial_zoom_out_level = opt_initial_zoom_out_level if opt_initial_zoom_out_level is not None else prospecting_config.get("initial-zoom-out-level", 3)
     omit_zoom_feature = opt_omit_zoom_feature if opt_omit_zoom_feature is not None else prospecting_config.get("omit-zoom-feature", False)
+    allowed_overlap_percentage = opt_allowed_overlap_percentage if opt_allowed_overlap_percentage is not None else prospecting_config.get("allowed-overlap-percentage", 30.0)
     
     target_locations_csv = prospecting_config.get("target-locations-csv")
 
@@ -817,6 +820,7 @@ def achieve_goal(
             headed=headed,
             devtools=devtools,
             campaign_name=campaign_name,
+            overlap_threshold_percent=allowed_overlap_percentage,
             zoom_out_button_selector=zoom_out_button_selector,
             panning_distance_miles=panning_distance_miles,
             initial_zoom_out_level=initial_zoom_out_level,
@@ -949,4 +953,3 @@ def visualize_coverage(
     except IOError as e:
         console.print(f"[bold red]Error writing to file {final_output_file}: {e}[/bold red]")
         raise typer.Exit(code=1)
-

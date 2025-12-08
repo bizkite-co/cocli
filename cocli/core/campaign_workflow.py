@@ -138,6 +138,7 @@ class CampaignWorkflow:
                     browser_width=2000,
                     browser_height=1500,
                     location_prospects_index=location_prospects_index,
+                    overlap_threshold_percent=30,
                 )
             )
             self.finish_scraping()  # type: ignore

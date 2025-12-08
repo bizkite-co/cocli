@@ -22,6 +22,8 @@ def mock_achieve_goal_dependencies(mocker, tmp_path):
     campaign_name = "test-campaign"
     campaign_dir = tmp_path / "campaigns" / campaign_name
     campaign_dir.mkdir(parents=True)
+    # ADDED: Create the scraped_data directory
+    (tmp_path / "scraped_data").mkdir(parents=True, exist_ok=True) # <--- Added this line
     config_path = campaign_dir / "config.toml"
     config_content = """
 [campaign]
@@ -36,7 +38,7 @@ queries = ["software company"]
     mocker.patch("cocli.commands.campaign.get_campaign", return_value=campaign_name)
     mocker.patch("cocli.commands.campaign.get_campaign_dir", return_value=campaign_dir)
     mocker.patch("cocli.commands.campaign.get_cocli_base_dir", return_value=tmp_path)
-    mocker.patch("cocli.commands.campaign.get_scraped_data_dir", return_value=tmp_path / "scraped_data")
+    mocker.patch("cocli.commands.campaign.get_campaign_scraped_data_dir", return_value=tmp_path / "scraped_data")
     mocker.patch("cocli.commands.campaign.get_companies_dir", return_value=tmp_path / "companies")
 
     mocker.patch("cocli.commands.campaign.ensure_enrichment_service_ready", return_value=None)
@@ -56,7 +58,7 @@ queries = ["software company"]
     mocker.patch("cocli.commands.campaign.async_playwright", return_value=mock_playwright_manager)
 
     mocker.patch("cocli.core.geocoding.get_coordinates_from_city_state", return_value={"latitude": 40.7596, "longitude": -111.8868})
-    mocker.patch("cocli.commands.campaign.scrape_google_maps", return_value=async_generator())
+    mocker.patch("cocli.commands.campaign.scrape_google_maps", return_value=async_generator()) # Reverted
     mocker.patch("cocli.commands.campaign.import_prospect", return_value=type('obj', (object,), {'name': 'mock_company', 'domain': 'mock.com', 'slug': 'mock-company'}))
 
     mock_website = MagicMock()
