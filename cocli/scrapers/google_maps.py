@@ -1,10 +1,11 @@
 import re
 from typing import Optional, Dict, List, AsyncIterator
 from datetime import datetime, timedelta, UTC
-from playwright.async_api import Page, Browser
+from playwright.async_api import Page, Browser, Error # Import Error
 import logging
 from rich.console import Console
 from geopy.distance import geodesic # type: ignore
+import asyncio # Import asyncio
 
 from ..core.config import load_scraper_settings
 from ..core.geocoding import get_coordinates_from_zip, get_coordinates_from_city_state
@@ -15,6 +16,7 @@ from ..core.google_maps_cache import GoogleMapsCache
 from ..core.scrape_index import ScrapeIndex
 
 logger = logging.getLogger(__name__)
+logger.setLevel(logging.DEBUG)
 console = Console()
 
 def calculate_new_coords(lat: float, lon: float, distance_miles: float, bearing: float) -> tuple[float, float]:
@@ -56,6 +58,8 @@ async def _scrape_area(
     force_refresh: bool,
     ttl_days: int,
     debug: bool,
+    retries: int = 3,
+    retry_delay: float = 1.0,
 ) -> AsyncIterator[GoogleMapsData]:
     """
     Helper function to scrape a specific map area for a single search query.
@@ -67,6 +71,12 @@ async def _scrape_area(
     fresh_delta = timedelta(days=ttl_days)
 
     logger.info(f"--- Starting search for query: '{search_string}' ---")
+    
+    # Check if page is closed before starting
+    if page.is_closed():
+        logger.warning(f"Page was already closed when _scrape_area was called for '{search_string}'. Exiting.")
+        return
+
     search_box_selector = 'input[name="q"]'
     await page.wait_for_selector(search_box_selector)
     await page.fill(search_box_selector, search_string)
@@ -80,13 +90,17 @@ async def _scrape_area(
     _ = -1
     last_processed_div_count = 0
     while True:
+        if page.is_closed(): # Check again within the loop
+            logger.warning(f"Page closed unexpectedly during scraping for '{search_string}'. Breaking loop.")
+            break
+
         await page.wait_for_timeout(1500)
         listing_divs = await scrollable_div.locator("> div").all()
         logger.debug(f"[SCROLL_DEBUG] Found {len(listing_divs)} listing divs before scroll. last_processed_div_count: {last_processed_div_count}")
 
         if debug:
             page_source = await page.content()
-            with open(f"page_source_before_scroll_{search_string.replace(' ', '_')}.html", "w") as f:
+            with open(f"temp/page_source_before_scroll_{search_string.replace(' ', '_')}.html", "w") as f:
                 f.write(page_source)
 
         if not listing_divs or len(listing_divs) == last_processed_div_count:
@@ -95,14 +109,32 @@ async def _scrape_area(
 
         # Only process the new divs that have appeared since the last scroll
         for i in range(last_processed_div_count, len(listing_divs)):
+            if page.is_closed(): # Check within inner loop
+                logger.warning(f"Page closed unexpectedly during processing listing divs for '{search_string}'. Breaking inner loop.")
+                break
+
             listing_div = listing_divs[i]
             html_content = ""
-            try:
-                # Set a shorter timeout for getting the HTML of a single element
-                html_content = await listing_div.inner_html(timeout=5000)
-            except Exception:
-                logger.warning(f"Skipping unloaded listing div {i} for query '{search_string}' (timeout).")
-                continue
+            for attempt in range(retries):
+                try:
+                    # Set a shorter timeout for getting the HTML of a single element
+                    html_content = await listing_div.inner_html(timeout=5000)
+                    break # Success, break from retry loop
+                except Error as e: # Catch Playwright-specific errors
+                    logger.warning(f"Playwright error fetching inner_html for listing div {i} (attempt {attempt + 1}/{retries}): {e}")
+                    if attempt < retries - 1:
+                        await asyncio.sleep(retry_delay)
+                    else:
+                        logger.error(f"Failed to fetch inner_html for listing div {i} after {retries} attempts. Skipping.")
+                        continue # Skip to next listing_div
+                except Exception as e:
+                    logger.warning(f"Generic error fetching inner_html for listing div {i} (attempt {attempt + 1}/{retries}): {e}")
+                    if attempt < retries - 1:
+                        await asyncio.sleep(retry_delay)
+                    else:
+                        logger.error(f"Failed to fetch inner_html for listing div {i} after {retries} attempts. Skipping.")
+                        continue # Skip to next listing_div
+
             if not html_content or "All filters" in html_content or "Prices come from Google" in html_content:
                 continue
 
@@ -174,7 +206,7 @@ async def _scrape_area(
 
         if debug:
             page_source = await page.content()
-            with open(f"page_source_after_scroll_{search_string.replace(' ', '_')}.html", "w") as f:
+            with open(f"temp/page_source_after_scroll_{search_string.replace(' ', '_')}.html", "w") as f:
                 f.write(page_source)
 
 async def scrape_google_maps(
@@ -220,9 +252,13 @@ async def scrape_google_maps(
             logger.error(f"Error: Could not find coordinates for {location_param}")
             return
 
-        latitude = coordinates["latitude"]
-        longitude = coordinates["longitude"]
         
+
+        latitude = coordinates["latitude"]
+
+        longitude = coordinates["longitude"]
+
+        logger.debug(f"Initial coordinates obtained: Latitude={latitude}, Longitude={longitude}")        
     start_lat, start_lon = latitude, longitude # Remember starting point for proximity check
     
     processed_place_ids: set[str] = set()
@@ -241,16 +277,23 @@ async def scrape_google_maps(
                 logger.info("Cookie consent dialog found. Clicking 'Reject all'.")
                 await reject_button.click()
                 await page.wait_for_timeout(2000) # Wait for the dialog to disappear
+        except Error as e: # Catch Playwright-specific errors here
+            logger.info(f"Playwright error handling cookie consent (this is okay if it's not present): {e}")
         except Exception as e:
             logger.info(f"Could not find or click cookie consent button (this is okay if it's not present): {e}")
 
         if not omit_zoom_feature and initial_zoom_out_level > 0:
-            await page.wait_for_selector(zoom_out_button_selector, timeout=10000)
-            for i in range(initial_zoom_out_level):
-                await page.click(zoom_out_button_selector)
-                await page.wait_for_timeout(500)
-            logger.info(f"Zoomed out {initial_zoom_out_level} times.")
-            await page.wait_for_timeout(5000)
+            try:
+                await page.wait_for_selector(zoom_out_button_selector, timeout=10000)
+                for i in range(initial_zoom_out_level):
+                    await page.click(zoom_out_button_selector)
+                    await page.wait_for_timeout(500)
+                logger.info(f"Zoomed out {initial_zoom_out_level} times.")
+                await page.wait_for_timeout(5000)
+            except Error as e:
+                logger.warning(f"Playwright error during initial zoom out: {e}")
+            except Exception as e:
+                logger.warning(f"Unexpected error during initial zoom out: {e}")
 
         map_width_miles: float = 0.0
         map_height_miles: float = 0.0
@@ -286,9 +329,16 @@ async def scrape_google_maps(
 
         # Initial scrape of the main area
         for search_string in search_strings:
-            # Calculate viewport bounds for the current location
-            current_viewport_bounds = get_viewport_bounds(latitude, longitude, map_width_miles, map_height_miles)
+            if page.is_closed(): # Check within loop
+                logger.warning(f"Page closed unexpectedly during initial area scraping for '{search_string}'. Breaking loop.")
+                break
 
+            # Calculate viewport bounds for the current location
+            logger.debug(f"Calculating initial viewport bounds with: lat={latitude}, lon={longitude}, width_miles={map_width_miles}, height_miles={map_height_miles}")
+            current_viewport_bounds = get_viewport_bounds(latitude, longitude, map_width_miles, map_height_miles)
+            logger.debug(f"Initial viewport bounds calculated: {current_viewport_bounds}")
+
+            logger.debug(f"Checking initial area for wilderness with bounds: {current_viewport_bounds}")
             # Check if area is already known wilderness
             if scrape_index.is_wilderness_area(current_viewport_bounds, overlap_threshold_percent):
                 logger.info(f"Skipping initial area ({latitude:.4f}, {longitude:.4f}) as it falls within a known wilderness area.")
@@ -322,6 +372,7 @@ async def scrape_google_maps(
                 viewport_bounds = get_viewport_bounds(latitude, longitude, map_width_miles, map_height_miles)
                 for k, v in viewport_bounds.items():
                     viewport_bounds[k] = round(v, 5)
+                logger.debug(f"Adding wilderness area with bounds: {viewport_bounds}")
                 scrape_index.add_wilderness_area(viewport_bounds, lat_miles=round(map_height_miles, 3), lon_miles=round(map_width_miles, 3), items_found=0)
                 logger.info(f"No items found in initial area for phrase '{search_string}'. Marked as wilderness.")
     
@@ -340,25 +391,58 @@ async def scrape_google_maps(
         direction_index = 0
     
         while True: # This loop will run until the consumer (scrape_prospects) stops it
+            if page.is_closed(): # Check again within the loop
+                logger.warning(f"Page closed unexpectedly during spiral search. Breaking loop.")
+                break
+
             for _ in range(steps_in_direction):
+                if page.is_closed(): # Check within inner loop
+                    logger.warning(f"Page closed unexpectedly during spiral step. Breaking inner loop.")
+                    break
+
                 # Calculate new coordinates
                 bearing = bearings[direction_index]
                 current_lat, current_lon = calculate_new_coords(current_lat, current_lon, distance_miles, bearing)
+                logger.debug(f"Panned coordinates: current_lat={current_lat}, current_lon={current_lon}")
                 
                 # Check Proximity limit
                 if max_proximity_miles > 0:
                     dist_from_start = geodesic((start_lat, start_lon), (current_lat, current_lon)).miles
                     if dist_from_start > max_proximity_miles:
                         console.print(f"[yellow]Reached max proximity ({dist_from_start:.2f} > {max_proximity_miles} miles). Stopping scrape for this location.[/yellow]")
+                        logger.info(f"Reached max proximity ({dist_from_start:.2f} > {max_proximity_miles} miles). Stopping scrape for this location.")
                         return
     
                 direction_name = ['North', 'East', 'South', 'West'][direction_index]
-                console.print(f"[grey50][{datetime.now().strftime('%H:%M:%S')}][/] [bold yellow]Moving {distance_miles} miles {direction_name} to {current_lat:.4f}, {current_lon:.4f}...[/bold yellow]")
+                logger.info(f"Moving {distance_miles} miles {direction_name} to {current_lat:.4f}, {current_lon:.4f}...")
                 
                 # Navigate to new coordinates
-                new_url = f"https://www.google.com/maps/@{current_lat},{current_lon},15z?entry=ttu"
-                await page.goto(new_url, wait_until="domcontentloaded")
-                await page.wait_for_timeout(5000) # Wait for map to settle
+                for attempt in range(retries):
+                    try:
+                        await page.goto(f"https://www.google.com/maps/@{current_lat},{current_lon},15z?entry=ttu", wait_until="domcontentloaded")
+                        await page.wait_for_timeout(5000) # Wait for map to settle
+                        break
+                    except Error as e:
+                        logger.warning(f"Playwright error navigating to new coordinates (attempt {attempt + 1}/{retries}): {e}")
+                        if attempt < retries - 1:
+                            await asyncio.sleep(retry_delay)
+                        else:
+                            logger.error(f"Failed to navigate to {current_lat},{current_lon} after {retries} attempts. Skipping this location.")
+                            # Consider what to do here: skip this location or re-raise?
+                            # For now, just skip current location's processing
+                            break # Break retry loop, continue to next part of outer loop
+                    except Exception as e:
+                        logger.warning(f"Generic error navigating to new coordinates (attempt {attempt + 1}/{retries}): {e}")
+                        if attempt < retries - 1:
+                            await asyncio.sleep(retry_delay)
+                        else:
+                            logger.error(f"Failed to navigate to {current_lat},{current_lon} after {retries} attempts. Skipping this location.")
+                            break
+
+                if page.is_closed(): # Check after navigation attempts
+                    logger.warning(f"Page closed unexpectedly after navigation for {current_lat},{current_lon}. Breaking current step.")
+                    break
+
 
                 # Click "Search this area"
                 try:
@@ -369,15 +453,24 @@ async def scrape_google_maps(
                         await page.wait_for_timeout(5000) # Wait for results to load
                     else:
                         logger.debug("'Search this area' button not visible.")
+                except Error as e:
+                    logger.warning(f"Playwright error clicking 'Search this area' button: {e}")
                 except Exception:
                     logger.debug("'Search this area' button not found.")
 
                 # Scrape the new area for each search string
                 for search_string in search_strings:
+                    if page.is_closed(): # Check within inner loop
+                        logger.warning(f"Page closed unexpectedly during area scraping for '{search_string}'. Breaking loop.")
+                        break
+
                     # Calculate viewport bounds for the current location
+                    logger.debug(f"Calculating panned viewport bounds with: lat={current_lat}, lon={current_lon}, width_miles={map_width_miles}, height_miles={map_height_miles}")
                     current_viewport_bounds = get_viewport_bounds(current_lat, current_lon, map_width_miles, map_height_miles)
+                    logger.debug(f"Panned viewport bounds calculated: {current_viewport_bounds}")
 
                     # Check if area is already known wilderness
+                    logger.debug(f"Checking panned area for wilderness with bounds: {current_viewport_bounds}")
                     if scrape_index.is_wilderness_area(current_viewport_bounds, overlap_threshold_percent):
                         logger.info(f"Skipping area ({current_lat:.4f}, {current_lon:.4f}) as it falls within a known wilderness area.")
                         continue
@@ -407,6 +500,7 @@ async def scrape_google_maps(
                         viewport_bounds = get_viewport_bounds(current_lat, current_lon, map_width_miles, map_height_miles)
                         for k, v in viewport_bounds.items():
                             viewport_bounds[k] = round(v, 5)
+                        logger.debug(f"Adding wilderness area (panned) with bounds: {viewport_bounds}")
                         scrape_index.add_wilderness_area(viewport_bounds, lat_miles=map_height_miles, lon_miles=map_width_miles, items_found=0)
                         logger.info(f"No items found in area for phrase '{search_string}'. Marked as wilderness.")
 
@@ -418,6 +512,8 @@ async def scrape_google_maps(
 
     except Exception as e:
         logger.error(f"An error occurred during scraping: {e}")
+        console.log(f"[bold red]ERROR during Google Maps scraping:[/bold red] {e}", style="bold red")
     finally:
         GoogleMapsCache().save()
         await page.close()
+
