@@ -45,6 +45,7 @@ This document outlines the roadmap for transitioning `cocli` from a purely local
 
 1.  **Unified Data Manager:**
     *   [x] Finalize `S3CompanyManager` for canonical S3 storage.
+    *   [x] **Local Data Recovery and Consolidation:** Recovered and standardized local `ScrapedArea` and `website-domains.csv` indexes.
     *   [ ] Implement `DataSynchronizer` (`cocli sync`) for efficient bi-directional sync.
 
 2.  **Optimization:**

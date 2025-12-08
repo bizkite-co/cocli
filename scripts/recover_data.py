@@ -2,7 +2,7 @@ import csv
 from datetime import datetime
 from pathlib import Path
 import logging
-from typing import List, Dict, Any, NamedTuple, Optional, Set
+from typing import List, Dict, Any, Optional
 import argparse # Import argparse
 import math # Import math for geographical calculations
 
@@ -11,8 +11,6 @@ from dateutil import tz # Import for timezone handling
 # Assuming cocli is installed or available in the Python path
 # Adjust imports if necessary based on how this script will be run
 from cocli.core.scrape_index import ScrapedArea, ScrapeIndex
-from cocli.core.config import get_scraped_areas_index_dir
-from cocli.core.utils import slugify # For phrase slugification
 from cocli.core.website_domain_csv_manager import WebsiteDomainCsvManager # Import manager
 from cocli.models.website_domain_csv import WebsiteDomainCsv # Import model
 

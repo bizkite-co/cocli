@@ -36,6 +36,7 @@ To implement a scalable, reliable prospecting pipeline where:
 ### 3. Data Management & Reporting
 *   **Report:** Updated `make report` to query SQS for "Pending" counts, providing visibility into the cloud backlog.
 *   **Architecture:** Confirmed Hybrid model where Local Client acts as Orchestrator (pulls SQS) and Fargate acts as Compute (executes scrape).
+*   **Local Data Index Recovery and Consolidation:** Recovered and standardized local `ScrapedArea` and `website-domains.csv` indexes, ensuring data integrity and consistency.
 
 ## Current State
 
@@ -45,6 +46,6 @@ To implement a scalable, reliable prospecting pipeline where:
 
 ## Next Actions
 
-1.  **Data Synchronization:** Implement `cocli sync` to pull enriched data from S3 to local (or vice versa) without relying on the consumer loop.
+1.  **Data Synchronization:** Implement `cocli sync` to pull enriched data from S3 to local (or vice versa) without relying on the consumer loop. (Facilitated by recent local data recovery.)
 2.  **Scaling:** Monitor SQS depth and adjust Fargate `desired_count` via CLI/CDK as needed.
 3.  **Cleanup:** Delete legacy/misfiled S3 objects from early testing.

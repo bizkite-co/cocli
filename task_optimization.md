@@ -35,9 +35,13 @@ Refactor `scrape_google_maps` to extracting data from the **List View** in batch
     *   Reads CSV.
     *   Creates local company files (`cocli_data/companies/`).
     *   Pushes `enrichment` tasks to `LocalFileQueue`.
+    *   *Note:* Data from `prospects.csv` was recently used to enrich `website-domains.csv` as part of local data recovery efforts.
 2.  **Command:** `cocli prospects enrich-from-queue` (Created)
     *   Polls queue.
     *   Calls Fargate Service (`/enrich`).
 3.  **Execution:**
     *   Run ingestion.
     *   Run 10-20 concurrent consumers against Fargate.
+
+## Future Actions / Considerations:
+*   **Rename `prospects.csv`:** Consider renaming `campaigns/turboship/scraped_data/prospects.csv` to `gm-prospects.csv` or `google-maps-prospects.csv` to more clearly indicate its Google Maps origin and differentiate it from general prospect lists.
