@@ -617,6 +617,7 @@ async def pipeline(
                         
                         location = str(loc_row["name"])
                         
+                        logger.info(f"[bold yellow]Scraping target:[/bold yellow] {location}")
                         console.print(f"[bold yellow]Scraping target:[/bold yellow] {location}")
 
                         location_param = {"city": location}

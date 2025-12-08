@@ -68,14 +68,6 @@ def calculate_miles_from_bounds(lat_min: float, lat_max: float, lon_min: float, 
 
     return round(lat_miles, 3), round(lon_miles, 3) # Round to 3 decimal places for consistency
 
-# --- Central Domains Master Header (Kept for reference of fields identified for website-domains.csv) ---
-# This is NOT the actual header for website-domains.csv now. It was for the discarded domains_master.csv.
-# This list will be updated as we decide which fields to add to WebsiteDomainCsv model.
-# CENTRAL_DOMAINS_MASTER_HEADER = [
-#     'domain', 'company_name', 'gmb_name', 'phone_website', 'phone_gmb_primary',
-#     ...
-# ]
-
 
 # --- Helper for merging ScrapedArea objects ---
 def merge_scraped_areas(existing_areas: List[ScrapedArea], new_areas: List[ScrapedArea]) -> List[ScrapedArea]:
@@ -215,10 +207,91 @@ def recover_scraped_area_data():
 
 # --- Website Domain Data Recovery (to ORIGINAL_WEBSITE_DOMAINS_CSV) ---
 def recover_website_domain_data():
-    # This function needs to be re-written to adhere to "least touching"
-    # and integrate data into the existing website-domains.csv using WebsiteDomainCsvManager
-    logger.warning("Website Domain Data Recovery is temporarily disabled pending refactoring for 'least touching'.")
-    pass
+    logger.info("Starting Website Domain Data Recovery (to original website-domains.csv)...")
+    
+    manager = WebsiteDomainCsvManager() # This loads existing data from website-domains.csv
+
+    # Load prospects.csv data
+    prospects_data: List[Dict[str, Any]] = []
+    if PROSPECTS_CSV_PATH.exists():
+        with PROSPECTS_CSV_PATH.open('r', encoding='utf-8') as f:
+            reader = csv.DictReader(f)
+            for row in reader:
+                prospects_data.append(row)
+        logger.info(f"Loaded {len(prospects_data)} records from {PROSPECTS_CSV_PATH}")
+    else:
+        logger.warning(f"Prospects CSV not found: {PROSPECTS_CSV_PATH}. Skipping prospect data integration.")
+        return
+
+    # Iterate through prospects data and merge into manager's data
+    for p_record in prospects_data:
+        domain_from_prospects = p_record.get('Domain', '').lower()
+        if not domain_from_prospects:
+            logger.debug(f"Skipping prospect record with no domain: {p_record.get('Name', 'N/A')}")
+            continue
+
+        # Get existing WebsiteDomainCsv object from manager or create a new one
+        existing_item = manager.get_by_domain(domain_from_prospects)
+        if not existing_item:
+            # Create a new WebsiteDomainCsv item
+            existing_item = WebsiteDomainCsv(domain=domain_from_prospects)
+            
+            # Populate basic fields from prospect record
+            # We must use timezone-aware datetimes consistently
+            now_utc = datetime.now(tz.tzutc())
+            existing_item.created_at = parse_datetime_str(p_record.get('created_at', '')) or now_utc
+            existing_item.updated_at = parse_datetime_str(p_record.get('updated_at', '')) or now_utc
+        
+        # Merge logic for WebsiteDomainCsv fields (fill gaps in existing_item from p_record)
+        # If both have values, prefer existing_item's value (website-derived is primary for this file).
+        
+        # company_name
+        if not existing_item.company_name and p_record.get('Name'):
+            existing_item.company_name = p_record['Name']
+        # phone
+        if not existing_item.phone and p_record.get('Phone_1'):
+            existing_item.phone = p_record['Phone_1']
+        # email
+        # prospects.csv has no 'Email' field by default, but if it did...
+        if not existing_item.email and p_record.get('Email'): 
+            existing_item.email = p_record['Email']
+        # address
+        if not existing_item.address and p_record.get('Full_Address'):
+            existing_item.address = p_record['Full_Address']
+
+        # Social media URLs
+        for social_field_wd, social_field_p in [
+            ('facebook_url', 'Facebook_URL'), ('linkedin_url', 'Linkedin_URL'),
+            ('instagram_url', 'Instagram_URL'), ('twitter_url', 'Twitter_URL'),
+            ('youtube_url', 'Youtube_URL')
+        ]:
+            if not getattr(existing_item, social_field_wd) and p_record.get(social_field_p):
+                setattr(existing_item, social_field_wd, p_record[social_field_p])
+
+        # Timestamps - always take latest for updated_at, earliest for created_at
+        p_created_at_dt = parse_datetime_str(p_record.get('created_at', ''))
+        p_updated_at_dt = parse_datetime_str(p_record.get('updated_at', ''))
+
+        # Ensure existing_item's timestamps are timezone-aware for comparison
+        if existing_item.created_at and existing_item.created_at.tzinfo is None:
+            existing_item.created_at = existing_item.created_at.replace(tzinfo=tz.tzutc())
+        if existing_item.updated_at and existing_item.updated_at.tzinfo is None:
+            existing_item.updated_at = existing_item.updated_at.replace(tzinfo=tz.tzutc())
+
+        if p_created_at_dt and existing_item.created_at:
+            existing_item.created_at = min(existing_item.created_at, p_created_at_dt)
+        elif p_created_at_dt and not existing_item.created_at:
+            existing_item.created_at = p_created_at_dt
+        
+        if p_updated_at_dt and existing_item.updated_at:
+            existing_item.updated_at = max(existing_item.updated_at, p_updated_at_dt)
+        elif p_updated_at_dt and not existing_item.updated_at:
+            existing_item.updated_at = p_updated_at_dt
+        
+        # Call manager to add/update and save
+        manager.add_or_update(existing_item) # This will save to ORIGINAL_WEBSITE_DOMAINS_CSV
+
+    logger.info("Finished Website Domain Data Recovery (to original website-domains.csv).")
 
 
 # --- Main Execution ---
@@ -238,9 +311,7 @@ def main():
         recover_scraped_area_data()
     
     if args.task == "website-domains" or args.task == "all":
-        # Temporary disable the website domain recovery until its refactoring is complete
-        # recover_website_domain_data() 
-        pass
+        recover_website_domain_data() 
     
     logger.info("Data recovery script finished.")
 
