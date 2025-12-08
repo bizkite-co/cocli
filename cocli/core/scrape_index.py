@@ -1,6 +1,6 @@
 
 import csv
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, UTC
 from typing import List, Optional, NamedTuple
 from pathlib import Path
 import logging
@@ -9,6 +9,7 @@ from .config import get_scraped_areas_index_dir
 from ..core.utils import slugify
 
 logger = logging.getLogger(__name__)
+logger.setLevel(logging.DEBUG)
 
 class ScrapedArea(NamedTuple):
     """Represents a single entry in the scrape index."""
@@ -190,7 +191,7 @@ class ScrapeIndex:
 
         for area in areas:
             # Check if the entry is stale
-            if fresh_delta and (datetime.now() - area.scrape_date > fresh_delta):
+            if fresh_delta and (datetime.now(UTC) - area.scrape_date > fresh_delta):
                 continue
             
             # Calculate overlap area
@@ -202,6 +203,7 @@ class ScrapeIndex:
             overlap_percentage = (overlap_area / area_of_current_bounds) * 100
 
             if overlap_percentage >= overlap_threshold_percent:
+                logger.debug(f"Current bounds {bounds} overlap by {overlap_percentage:.2f}% with scraped area {area.lat_min:.4f},{area.lon_min:.4f} to {area.lat_max:.4f},{area.lon_max:.4f}. Skipping as already scraped.")
                 return area
         return None
 
@@ -329,6 +331,7 @@ class ScrapeIndex:
             overlap_percentage = (overlap_area / area_of_current_bounds) * 100
 
             if overlap_percentage >= overlap_threshold_percent:
+                logger.debug(f"Current bounds {bounds} overlap by {overlap_percentage:.2f}% with wilderness area {area.lat_min:.4f},{area.lon_min:.4f} to {area.lat_max:.4f},{area.lon_max:.4f}. Skipping.")
                 return area
         return None
 

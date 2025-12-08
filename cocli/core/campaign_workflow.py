@@ -136,7 +136,7 @@ class CampaignWorkflow:
                     existing_domains=existing_domains,
                     console=console,
                     browser_width=2000,
-                    browser_height=1500,
+                    browser_height=2000,
                     location_prospects_index=location_prospects_index,
                     overlap_threshold_percent=30,
                 )

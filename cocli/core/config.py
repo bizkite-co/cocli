@@ -207,7 +207,7 @@ class ScraperSettings(BaseSettings):
     google_maps_retry_delay_seconds: float = 5.0
     google_maps_cache_ttl_days: int = 30
     browser_headless: bool = True
-    browser_width: int = 2500
+    browser_width: int = 2000
     browser_height: int = 2000
     browser_devtools: bool = False
 

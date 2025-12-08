@@ -26,6 +26,31 @@
             }
         },
         {
+            "name": "Launch: achieve-goal emails=10,000 proximit=15",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/.venv/bin/cocli",
+            "python": "${workspaceFolder}/.venv/bin/python",
+            "args": [
+                "campaign",
+                "ahcieve-goal",
+                "turboship",
+                "--emails",
+                "10000",
+                "--cloud-queue",
+                "--proximity",
+                "15",
+                "--debug",
+                "--panning-distance",
+                "3"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "env": {
+                "PYTHONPATH": "${workspaceFolder}"
+            }
+        },
+        {
             "name": "Python: Launch cocli campaign prospects to-hubspot-csv",
             "type": "debugpy",
             "request": "launch",

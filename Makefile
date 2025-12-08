@@ -30,6 +30,16 @@ install: ## Install development dependencies using uv
 	uv sync --extra dev
 	source $(VENV_DIR)/bin/activate && uv pip install -e . && playwright install
 
+log: ## Display the last 100 lines of the latest log file
+	@latest_log=$$(ls -t .logs/ | head -n 1); \
+	echo "Displaying log file: .logs/$$latest_log"; \
+	tail -n 100 .logs/$$latest_log
+
+logf: ## Display the last 100 lines of the latest log file
+	@latest_log=$$(ls -t .logs/ | head -n 1); \
+	echo "Displaying log file: .logs/$$latest_log"; \
+	tail -f -n 100 .logs/$$latest_log
+
 # Note: TUI integration tests are run separately due to terminal driver conflicts.
 # Use 'make test-tui-integration' to run them.
 test: install ## Run all non-TUI tests using pytest
@@ -174,7 +184,7 @@ ingest-legacy: ## Ingest legacy prospects.csv into the new queue system (Usage: 
 	@$(VENV_DIR)/bin/python scripts/ingest_legacy_csv.py $(CAMPAIGN)
 
 scrape: ## Run the scraper
-	cocli campaign achieve-goal turboship --emails 10000 --cloud-queue --proximity 7
+	cocli campaign achieve-goal turboship --emails 10000 --cloud-queue --proximity 15 --debug --panning-distance 3
 
 enrich: ## Run the cloud enricher
 	cocli campaign prospects enrich-from-queue turboship --batch-size 2 --cloud-queue
