@@ -39,6 +39,7 @@ dependencies = [
     "transitions",
     "fuzzywuzzy",
     "simplekml",
+    "python-dateutil",
 ]
 
 [project.scripts]

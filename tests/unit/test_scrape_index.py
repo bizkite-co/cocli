@@ -1,5 +1,4 @@
-from cocli.core.scrape_index import ScrapeIndex, ScrapedArea, _calculate_overlap_area
-from datetime import datetime, timedelta
+from cocli.core.scrape_index import ScrapeIndex, _calculate_overlap_area
 from pathlib import Path
 import pytest
 

@@ -1,0 +1,65 @@
+2025-12-07 18:42:50,550 - INFO - Starting data recovery script...
+2025-12-07 18:42:50,550 - INFO - Starting Scraped Area Data Recovery...
+2025-12-07 18:42:50,553 - INFO - Processing Scraped Area data from: /home/mstouffer/.local/share/cocli_data/indexes/commercial-vinyl-flooring-contractor.csv
+2025-12-07 18:42:51,810 - INFO - Processing Scraped Area data from: /home/mstouffer/.local/share/cocli_data/indexes/rubber-flooring-contractor.csv
+2025-12-07 18:42:52,596 - INFO - Processing Scraped Area data from: /home/mstouffer/.local/share/cocli_data/indexes/sports-flooring-contractor.csv
+2025-12-07 18:42:53,040 - INFO - Finished Scraped Area Data Recovery.
+2025-12-07 18:42:53,040 - INFO - Starting Website Domain Data Recovery (to new domains_master.csv)...
+2025-12-07 18:42:53,061 - INFO - Loaded 1214 records from /home/mstouffer/.local/share/cocli_data/indexes/website-domains.csv
+2025-12-07 18:42:53,358 - INFO - Loaded 17172 records from /home/mstouffer/.local/share/cocli_data/campaigns/turboship/scraped_data/prospects.csv
+2025-12-07 18:51:22,228 - INFO - Starting data recovery script...
+2025-12-07 18:51:22,228 - INFO - Starting Scraped Area Data Recovery...
+2025-12-07 18:51:22,228 - INFO - Processing Scraped Area data from: /home/mstouffer/.local/share/cocli_data/indexes/commercial-vinyl-flooring-contractor.csv
+2025-12-07 18:51:25,408 - INFO - Processing Scraped Area data from: /home/mstouffer/.local/share/cocli_data/indexes/rubber-flooring-contractor.csv
+2025-12-07 18:51:27,343 - INFO - Processing Scraped Area data from: /home/mstouffer/.local/share/cocli_data/indexes/sports-flooring-contractor.csv
+2025-12-07 18:51:28,235 - INFO - Processing Scraped Area data from: /home/mstouffer/.local/share/cocli_data/indexes/financial-advisor.csv
+2025-12-07 18:51:28,236 - ERROR - Missing expected column in /home/mstouffer/.local/share/cocli_data/indexes/financial-advisor.csv header: 'lat_miles' is not in list. Skipping this file.
+2025-12-07 18:51:28,236 - INFO - Processing Scraped Area data from: /home/mstouffer/.local/share/cocli_data/indexes/financial-planner.csv
+2025-12-07 18:51:28,237 - ERROR - Missing expected column in /home/mstouffer/.local/share/cocli_data/indexes/financial-planner.csv header: 'lat_miles' is not in list. Skipping this file.
+2025-12-07 18:51:28,238 - INFO - Processing Scraped Area data from: /home/mstouffer/.local/share/cocli_data/indexes/pacific-life.csv
+2025-12-07 18:51:28,238 - ERROR - Missing expected column in /home/mstouffer/.local/share/cocli_data/indexes/pacific-life.csv header: 'lat_miles' is not in list. Skipping this file.
+2025-12-07 18:51:28,238 - INFO - Processing Scraped Area data from: /home/mstouffer/.local/share/cocli_data/indexes/wealth-manager.csv
+2025-12-07 18:51:28,239 - ERROR - Missing expected column in /home/mstouffer/.local/share/cocli_data/indexes/wealth-manager.csv header: 'lat_miles' is not in list. Skipping this file.
+2025-12-07 18:51:28,239 - INFO - Finished Scraped Area Data Recovery.
+2025-12-07 18:51:28,239 - INFO - Starting Website Domain Data Recovery (to new domains_master.csv)...
+2025-12-07 18:51:28,259 - INFO - Loaded 1214 records from /home/mstouffer/.local/share/cocli_data/indexes/website-domains.csv
+2025-12-07 18:51:28,455 - INFO - Loaded 17172 records from /home/mstouffer/.local/share/cocli_data/campaigns/turboship/scraped_data/prospects.csv
+2025-12-07 18:51:28,549 - INFO - Writing 5150 consolidated domain records to /home/mstouffer/.local/share/cocli_data/indexes/domains_master.csv
+2025-12-07 18:51:28,629 - INFO - Finished Website Domain Data Recovery.
+2025-12-07 18:51:28,641 - INFO - Data recovery script finished.
+2025-12-07 20:23:24,664 - INFO - Starting data recovery script for task: scraped-areas...
+2025-12-07 20:23:24,665 - INFO - Starting Scraped Area Data Recovery...
+2025-12-07 20:23:24,667 - WARNING - Scraped Area data file not found: /home/mstouffer/.local/share/cocli_data/indexes/commercial-vinyl-flooring-contractor.csv. Skipping.
+2025-12-07 20:23:24,668 - WARNING - Scraped Area data file not found: /home/mstouffer/.local/share/cocli_data/indexes/rubber-flooring-contractor.csv. Skipping.
+2025-12-07 20:23:24,668 - WARNING - Scraped Area data file not found: /home/mstouffer/.local/share/cocli_data/indexes/sports-flooring-contractor.csv. Skipping.
+2025-12-07 20:23:24,668 - INFO - Loading old Scraped Area data from: /home/mstouffer/.local/share/cocli_data/indexes/financial-advisor.csv
+2025-12-07 20:23:24,669 - ERROR - Missing expected column in /home/mstouffer/.local/share/cocli_data/indexes/financial-advisor.csv header: 'lat_miles' is not in list. Skipping this file as it doesn't match ScrapedArea schema.
+2025-12-07 20:23:24,669 - INFO - Loading old Scraped Area data from: /home/mstouffer/.local/share/cocli_data/indexes/financial-planner.csv
+2025-12-07 20:23:24,670 - ERROR - Missing expected column in /home/mstouffer/.local/share/cocli_data/indexes/financial-planner.csv header: 'lat_miles' is not in list. Skipping this file as it doesn't match ScrapedArea schema.
+2025-12-07 20:23:24,670 - INFO - Loading old Scraped Area data from: /home/mstouffer/.local/share/cocli_data/indexes/pacific-life.csv
+2025-12-07 20:23:24,670 - ERROR - Missing expected column in /home/mstouffer/.local/share/cocli_data/indexes/pacific-life.csv header: 'lat_miles' is not in list. Skipping this file as it doesn't match ScrapedArea schema.
+2025-12-07 20:23:24,671 - INFO - Loading old Scraped Area data from: /home/mstouffer/.local/share/cocli_data/indexes/wealth-manager.csv
+2025-12-07 20:23:24,671 - ERROR - Missing expected column in /home/mstouffer/.local/share/cocli_data/indexes/wealth-manager.csv header: 'lat_miles' is not in list. Skipping this file as it doesn't match ScrapedArea schema.
+2025-12-07 20:23:24,671 - INFO - Finished Scraped Area Data Recovery.
+2025-12-07 20:23:24,671 - INFO - Data recovery script finished.
+2025-12-07 20:28:43,433 - INFO - Starting data recovery script for task: scraped-areas...
+2025-12-07 20:28:43,433 - INFO - Starting Scraped Area Data Recovery...
+2025-12-07 20:28:43,435 - INFO - Loading old Scraped Area data from: /home/mstouffer/.local/share/cocli_data/indexes/commercial-vinyl-flooring-contractor.csv
+2025-12-07 20:28:43,438 - INFO - Loading old Scraped Area data from: /home/mstouffer/.local/share/cocli_data/indexes/rubber-flooring-contractor.csv
+2025-12-07 20:28:43,440 - INFO - Loading old Scraped Area data from: /home/mstouffer/.local/share/cocli_data/indexes/sports-flooring-contractor.csv
+2025-12-07 20:28:43,442 - INFO - Loading old Scraped Area data from: /home/mstouffer/.local/share/cocli_data/indexes/financial-advisor.csv
+2025-12-07 20:28:43,443 - ERROR - Missing expected column in /home/mstouffer/.local/share/cocli_data/indexes/financial-advisor.csv header: 'lat_miles' is not in list. Skipping this file as it doesn't match ScrapedArea schema.
+2025-12-07 20:28:43,444 - INFO - Loading old Scraped Area data from: /home/mstouffer/.local/share/cocli_data/indexes/financial-planner.csv
+2025-12-07 20:28:43,444 - ERROR - Missing expected column in /home/mstouffer/.local/share/cocli_data/indexes/financial-planner.csv header: 'lat_miles' is not in list. Skipping this file as it doesn't match ScrapedArea schema.
+2025-12-07 20:28:43,444 - INFO - Loading old Scraped Area data from: /home/mstouffer/.local/share/cocli_data/indexes/pacific-life.csv
+2025-12-07 20:28:43,445 - ERROR - Missing expected column in /home/mstouffer/.local/share/cocli_data/indexes/pacific-life.csv header: 'lat_miles' is not in list. Skipping this file as it doesn't match ScrapedArea schema.
+2025-12-07 20:28:43,445 - INFO - Loading old Scraped Area data from: /home/mstouffer/.local/share/cocli_data/indexes/wealth-manager.csv
+2025-12-07 20:28:43,446 - ERROR - Missing expected column in /home/mstouffer/.local/share/cocli_data/indexes/wealth-manager.csv header: 'lat_miles' is not in list. Skipping this file as it doesn't match ScrapedArea schema.
+2025-12-07 20:28:43,446 - INFO - Merging and saving ScrapedArea data for phrase: commercial-vinyl-flooring-contractor
+2025-12-07 20:28:43,452 - INFO - Saved 509 unique ScrapedArea records for 'commercial-vinyl-flooring-contractor'.
+2025-12-07 20:28:43,452 - INFO - Merging and saving ScrapedArea data for phrase: rubber-flooring-contractor
+2025-12-07 20:28:43,455 - INFO - Saved 418 unique ScrapedArea records for 'rubber-flooring-contractor'.
+2025-12-07 20:28:43,455 - INFO - Merging and saving ScrapedArea data for phrase: sports-flooring-contractor
+2025-12-07 20:28:43,457 - INFO - Saved 286 unique ScrapedArea records for 'sports-flooring-contractor'.
+2025-12-07 20:28:43,457 - INFO - Finished Scraped Area Data Recovery.
+2025-12-07 20:28:43,457 - INFO - Data recovery script finished.

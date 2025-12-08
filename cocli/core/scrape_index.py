@@ -148,7 +148,7 @@ class ScrapeIndex:
         except Exception as e:
             logger.error(f"Failed to save scrape index for {phrase}: {e}")
 
-    def add_area(self, phrase: str, bounds: dict[str, float], lat_miles: float, lon_miles: float, items_found: int = 0) -> None:
+    def add_area(self, phrase: str, bounds: dict[str, float], lat_miles: float, lon_miles: float, items_found: int = 0, scrape_date: Optional[datetime] = None) -> None:
         """Adds a new scraped area to the index and saves it."""
         if not all(key in bounds for key in ['lat_min', 'lat_max', 'lon_min', 'lon_max']):
             logger.warning("Attempted to add area with incomplete bounds.")
@@ -159,7 +159,7 @@ class ScrapeIndex:
 
         new_area = ScrapedArea(
             phrase=slugify(phrase),
-            scrape_date=datetime.now(),
+            scrape_date=scrape_date if scrape_date is not None else datetime.now(),
             lat_min=bounds['lat_min'],
             lat_max=bounds['lat_max'],
             lon_min=bounds['lon_min'],
