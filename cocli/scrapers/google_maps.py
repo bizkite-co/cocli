@@ -100,7 +100,7 @@ async def _scrape_area(
 
         if debug:
             page_source = await page.content()
-            with open(f"temp/page_source_before_scroll_{search_string.replace(' ', '_')}.html", "w") as f:
+            with open(f"test_data/page_source_before_scroll_{search_string.replace(' ', '_')}.html", "w") as f:
                 f.write(page_source)
 
         if not listing_divs or len(listing_divs) == last_processed_div_count:
@@ -206,7 +206,7 @@ async def _scrape_area(
 
         if debug:
             page_source = await page.content()
-            with open(f"temp/page_source_after_scroll_{search_string.replace(' ', '_')}.html", "w") as f:
+            with open(f"test_data/page_source_after_scroll_{search_string.replace(' ', '_')}.html", "w") as f:
                 f.write(page_source)
 
 async def scrape_google_maps(
@@ -269,7 +269,9 @@ async def scrape_google_maps(
     page = await browser.new_page(viewport={'width': launch_width, 'height': launch_height})
     try:
         initial_url = f"https://www.google.com/maps/@{latitude},{longitude},15z?entry=ttu"
+        logger.debug(f"Attempting to navigate to initial map URL: {initial_url}")
         await page.goto(initial_url, wait_until="domcontentloaded")
+        logger.debug(f"Successfully navigated to initial map URL: {initial_url}")
         await page.wait_for_timeout(3000)
         logger.info(f"Navigated to initial map URL for {location_param}.")
 
