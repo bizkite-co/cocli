@@ -71,7 +71,7 @@ async def _scrape_area(
     fresh_delta = timedelta(days=ttl_days)
 
     logger.info(f"--- Starting search for query: '{search_string}' ---")
-    
+
     # Check if page is closed before starting
     if page.is_closed():
         logger.warning(f"Page was already closed when _scrape_area was called for '{search_string}'. Exiting.")
@@ -147,7 +147,7 @@ async def _scrape_area(
             except Exception as e:
                 logger.error(f"Unexpected error during parsing for search_string '{search_string}'. HTML content: {html_content[:500]}... Error: {e}", exc_info=True)
                 continue
-            
+
             place_id = business_data_dict.get("Place_ID")
 
             logger.debug(f"Checking place_id: {place_id}")
@@ -156,7 +156,7 @@ async def _scrape_area(
             if not place_id or place_id in processed_place_ids:
                 logger.debug(f"Skipping duplicate place_id: {place_id}")
                 continue
-            
+
             processed_place_ids.add(place_id)
 
             cached_item = cache.get_by_place_id(place_id)
@@ -230,12 +230,15 @@ async def scrape_google_maps(
     """
     Scrapes business information from Google Maps for a list of search queries,
     yielding each result as it is found.
-    
+
     Uses a pre-existing browser instance.
     """
+    settings = load_scraper_settings()
+    retries = settings.google_maps_max_retries
     if debug:
         logger.debug(f"scrape_google_maps called with debug={debug}")
     settings = load_scraper_settings()
+    retry_delay = settings.google_maps_retry_delay_seconds
     scrape_index = ScrapeIndex()
 
     launch_width = browser_width if browser_width is not None else settings.browser_width
@@ -252,15 +255,15 @@ async def scrape_google_maps(
             logger.error(f"Error: Could not find coordinates for {location_param}")
             return
 
-        
+
 
         latitude = coordinates["latitude"]
 
         longitude = coordinates["longitude"]
 
-        logger.debug(f"Initial coordinates obtained: Latitude={latitude}, Longitude={longitude}")        
+        logger.debug(f"Initial coordinates obtained: Latitude={latitude}, Longitude={longitude}")
     start_lat, start_lon = latitude, longitude # Remember starting point for proximity check
-    
+
     processed_place_ids: set[str] = set()
 
     page = await browser.new_page(viewport={'width': launch_width, 'height': launch_height})
@@ -319,7 +322,7 @@ async def scrape_google_maps(
                         px_per_mile = width_px / (scale_number * 0.621371)
                     else: # assume feet
                         px_per_mile = width_px / (scale_number / 5280)
-                    
+
                     if px_per_mile > 0:
                         map_width_miles = launch_width / px_per_mile
                         map_height_miles = launch_height / px_per_mile
@@ -346,9 +349,9 @@ async def scrape_google_maps(
 
             matched_area = scrape_index.is_area_scraped(search_string, current_viewport_bounds, ttl_days=ttl_days, overlap_threshold_percent=overlap_threshold_percent)
             if matched_area:
-                logger.info(f"Skipping initial area for phrase '{search_string}' as it falls within a recently scraped box ({matched_area.lat_min:.4f}, {matched_area.lon_min:.4f} to {matched_area.lat_max:.4f}, {matched_area.lon_max:.4f}).")
+                logger.info(f"Skipping initial area for phrase '{search_string}' as it falls within a recently scraped '{matched_area.phrase}' box ({matched_area.lat_min:.4f}, {matched_area.lon_min:.4f} to {matched_area.lat_max:.4f}, {matched_area.lon_max:.4f}).")
                 continue
-    
+
             items_found_in_area = 0
             async for item in _scrape_area(
                 page=page,
@@ -360,7 +363,7 @@ async def scrape_google_maps(
             ):
                 items_found_in_area += 1
                 yield item
-            
+
             if items_found_in_area > 0 and map_width_miles > 0:
                 viewport_bounds = get_viewport_bounds(latitude, longitude, map_width_miles, map_height_miles)
                 # Round values for cleaner CSV
@@ -375,36 +378,36 @@ async def scrape_google_maps(
                 logger.debug(f"Adding wilderness area with bounds: {viewport_bounds}")
                 scrape_index.add_wilderness_area(viewport_bounds, lat_miles=round(map_height_miles, 3), lon_miles=round(map_width_miles, 3), items_found=0)
                 logger.info(f"No items found in initial area for phrase '{search_string}'. Marked as wilderness.")
-    
+
         if disable_panning:
             logger.info("Panning is disabled. Finishing scrape for this location.")
             return
-    
+
         # Start of spiral out logic
         logger.info("Starting spiral out search...")
         current_lat, current_lon = latitude, longitude
         distance_miles = panning_distance_miles
-        
+
         bearings = [0, 90, 180, 270] # N, E, S, W
         steps_in_direction = 1
         leg_count = 0
         direction_index = 0
-    
+
         while True: # This loop will run until the consumer (scrape_prospects) stops it
             if page.is_closed(): # Check again within the loop
-                logger.warning(f"Page closed unexpectedly during spiral search. Breaking loop.")
+                logger.warning("Page closed unexpectedly during spiral search. Breaking loop.")
                 break
 
             for _ in range(steps_in_direction):
                 if page.is_closed(): # Check within inner loop
-                    logger.warning(f"Page closed unexpectedly during spiral step. Breaking inner loop.")
+                    logger.warning("Page closed unexpectedly during spiral step. Breaking inner loop.")
                     break
 
                 # Calculate new coordinates
                 bearing = bearings[direction_index]
                 current_lat, current_lon = calculate_new_coords(current_lat, current_lon, distance_miles, bearing)
                 logger.debug(f"Panned coordinates: current_lat={current_lat}, current_lon={current_lon}")
-                
+
                 # Check Proximity limit
                 if max_proximity_miles > 0:
                     dist_from_start = geodesic((start_lat, start_lon), (current_lat, current_lon)).miles
@@ -412,10 +415,10 @@ async def scrape_google_maps(
                         console.print(f"[yellow]Reached max proximity ({dist_from_start:.2f} > {max_proximity_miles} miles). Stopping scrape for this location.[/yellow]")
                         logger.info(f"Reached max proximity ({dist_from_start:.2f} > {max_proximity_miles} miles). Stopping scrape for this location.")
                         return
-    
+
                 direction_name = ['North', 'East', 'South', 'West'][direction_index]
                 logger.info(f"Moving {distance_miles} miles {direction_name} to {current_lat:.4f}, {current_lon:.4f}...")
-                
+
                 # Navigate to new coordinates
                 for attempt in range(retries):
                     try:

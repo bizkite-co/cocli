@@ -20,6 +20,7 @@ This document outlines the roadmap for transitioning `cocli` from a purely local
     *   [x] Update `cocli` to target remote Enrichment Service (Fargate IP/Load Balancer).
     *   [x] Implement `IndexConsolidator` logic (via `S3DomainManager`).
     *   [x] **Dedicated Consumer:** `cocli campaign prospects enrich-from-queue`.
+    *   [x] **Robust Producer:** Fixed `achieve-goal` pipeline to correctly handle and queue existing companies for enrichment.
 
 3.  **Scalability (Completed):**
     *   [x] Introduce AWS SQS to decouple Scraper and Enricher.
@@ -46,6 +47,7 @@ This document outlines the roadmap for transitioning `cocli` from a purely local
 1.  **Unified Data Manager:**
     *   [x] Finalize `S3CompanyManager` for canonical S3 storage.
     *   [x] **Local Data Recovery and Consolidation:** Recovered and standardized local `ScrapedArea` and `website-domains.csv` indexes.
+    *   [x] **Config Stability:** Fixed TOML serialization for paths and null values.
     *   [ ] Implement `DataSynchronizer` (`cocli sync`) for efficient bi-directional sync.
 
 2.  **Optimization:**

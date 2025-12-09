@@ -113,7 +113,9 @@ class Company(BaseModel):
                 logger.warning(f"Skipping {company_dir.name}: _index.md not found.") # More explicit message
                 return None
 
+            logger.info(f"Start reading indexes: {index_path}")
             content = index_path.read_text()
+            logger.info(f"Finished reading indexes: {index_path}")
             frontmatter_data: dict[str, Any] = {}
             markdown_content = ""
 

@@ -114,7 +114,7 @@ class CampaignWorkflow:
             self.fail_campaign()  # type: ignore
             return
 
-        existing_domains = {c.domain for c in Company.get_all() if c.domain}
+        existing_companies_map = {c.domain: c.slug for c in Company.get_all() if c.domain and c.slug}
         location_prospects_index = LocationProspectsIndex(campaign_name=self.name)
 
         try:
@@ -133,7 +133,7 @@ class CampaignWorkflow:
                     force=False,
                     ttl_days=30,  # Default, can be made configurable
                     debug=False,
-                    existing_domains=existing_domains,
+                    existing_companies_map=existing_companies_map,
                     console=console,
                     browser_width=2000,
                     browser_height=2000,

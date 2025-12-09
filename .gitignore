@@ -8,7 +8,6 @@ cocli_data
 .gz
 .tar
 dist
-.vscode/
 .logs/
 .envrc
 turboship

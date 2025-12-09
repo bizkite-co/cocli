@@ -33,7 +33,7 @@
             "python": "${workspaceFolder}/.venv/bin/python",
             "args": [
                 "campaign",
-                "ahcieve-goal",
+                "achieve-goal",
                 "turboship",
                 "--emails",
                 "10000",

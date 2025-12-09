@@ -24,6 +24,8 @@ To implement a scalable, reliable prospecting pipeline where:
     *   Added `--cloud-queue` flag to switch from local files to SQS.
     *   Added `--proximity <miles>` to bound Google Maps searching.
     *   Added randomization to target selection to avoid "stuck" loops.
+    *   **Fix:** Updated producer to correctly identify existing companies via `domain` -> `slug` mapping and queue them if email is missing.
+    *   **Fix:** Resolved config serialization issues (`PosixPath`, `None` type) preventing campaign context saving.
 *   **Consumer (`enrich-from-queue`):**
     *   Created dedicated `prospects enrich-from-queue` command.
     *   Implemented client-side concurrency (`--batch-size`) to saturate Fargate capacity.
@@ -40,7 +42,7 @@ To implement a scalable, reliable prospecting pipeline where:
 
 ## Current State
 
-*   **Scraping:** Running stable with `proximity` logic.
+*   **Scraping:** Running stable with `proximity` logic. `make scrape` is fully functional and queuing items.
 *   **Enrichment:** Processing ~300 items/hour (depending on batch size/instances).
 *   **Quality:** `mypy` and `ruff` clean. Tests passing.
 

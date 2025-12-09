@@ -6,7 +6,7 @@ import csv
 import asyncio
 import subprocess
 from pathlib import Path
-from typing import Optional, Set, List, Dict, Any
+from typing import Optional, List, Dict, Any, Set
 from datetime import datetime
 import logging
 import re
@@ -382,7 +382,7 @@ async def pipeline(
     force: bool,
     ttl_days: int,
     debug: bool,
-    existing_domains: Set[str],
+    existing_companies_map: Dict[str, str],
     console: Console,
     browser_width: int,
     browser_height: int,
@@ -651,25 +651,45 @@ async def pipeline(
                             # Write CSV
                             writer.writerow(prospect_data.model_dump())
                             
-                            # Import Local
-                            company = import_prospect(prospect_data, existing_domains, campaign=campaign_name)
+                            # Handle Company Lookup/Import
+                            company: Optional[Company] = None
+                            domain = prospect_data.Domain
+                            
+                            if domain and domain in existing_companies_map:
+                                slug = existing_companies_map[domain]
+                                company = Company.get(slug)
+                            else:
+                                # Import Local
+                                # Explicitly create a set of strings for existing domains
+                                existing_domains_set: Set[str] = set(list(existing_companies_map.keys())) # type: ignore
+                                company = import_prospect(prospect_data, existing_domains_set, campaign=campaign_name)
+                                if company and company.domain:
+                                    existing_companies_map[company.domain] = company.slug
                             
                             if company and company.domain:
-                                existing_domains.add(company.domain)
                                 location_prospects_index.update_prospect_count(location, 1)
                                 location_df.loc[location_df["name"] == location, "prospect_count"] += 1
                                 
-                                # Push to Queue
-                                msg = QueueMessage(
-                                    domain=company.domain,
-                                    company_slug=company.slug,
-                                    campaign_name=campaign_name,
-                                    force_refresh=force,
-                                    ttl_days=ttl_days,
-                                    ack_token=None,
-                                )
-                                queue_manager.push(msg)
-                                console.print(f"[cyan]Queued:{company.name}[/cyan]") 
+                                # Decide whether to queue
+                                should_queue = False
+                                if force:
+                                    should_queue = True
+                                elif not company.email:
+                                    # If no email, we queue it to try and find one
+                                    should_queue = True
+                                
+                                if should_queue:
+                                    # Push to Queue
+                                    msg = QueueMessage(
+                                        domain=company.domain,
+                                        company_slug=company.slug,
+                                        campaign_name=campaign_name,
+                                        force_refresh=force,
+                                        ttl_days=ttl_days,
+                                        ack_token=None,
+                                    )
+                                    queue_manager.push(msg)
+                                    console.print(f"[cyan]Queued: {company.name}[/cyan]") 
                             
                             # Yield control to let consumer run
                             await asyncio.sleep(0.01)
@@ -802,7 +822,7 @@ def achieve_goal(
         f"[grey50][{datetime.now().strftime('%H:%M:%S')}][/] [dim]Building map of existing companies...[/dim]"
     )
 
-    existing_domains = {c.domain for c in Company.get_all() if c.domain}
+    existing_companies_map = {c.domain: c.slug for c in Company.get_all() if c.domain and c.slug}
 
     location_prospects_index = LocationProspectsIndex(campaign_name=campaign_name)
     
@@ -829,7 +849,7 @@ def achieve_goal(
             force=force,
             ttl_days=ttl_days,
             debug=debug,
-            existing_domains=existing_domains,
+            existing_companies_map=existing_companies_map,
             console=console,
             browser_width=browser_width,
             browser_height=browser_height,

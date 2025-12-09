@@ -252,8 +252,32 @@ def load_config(config_path: Path) -> Config:
 def save_config(config_data: Dict[str, Any]) -> None:
     config_file = get_config_path()
     config_file.parent.mkdir(parents=True, exist_ok=True)
+    
+    # Convert Path objects to strings for TOML serialization
+    # We do a shallow conversion as config_data is mostly flat or simple dicts
+    # If deeper nesting with Path objects occurs, a recursive function would be needed.
+    serializable_config: Dict[str, Any] = {}
+    for k, v in config_data.items():
+        if v is None:
+            continue # Skip None values as TOML doesn't support them
+        
+        if isinstance(v, Path):
+            serializable_config[k] = str(v)
+        elif isinstance(v, dict):
+             # Handle one level deep for nested dicts like 'campaign' or 'tui'
+             serializable_config[k] = {}
+             for sk, sv in v.items():
+                 if sv is None:
+                     continue
+                 if isinstance(sv, Path):
+                     serializable_config[k][sk] = str(sv)
+                 else:
+                     serializable_config[k][sk] = sv
+        else:
+            serializable_config[k] = v
+
     with config_file.open("wb") as f:
-        tomli_w.dump(config_data, f)
+        tomli_w.dump(serializable_config, f)
 
 def get_context() -> Optional[str]:
     config = load_config(get_config_path())
