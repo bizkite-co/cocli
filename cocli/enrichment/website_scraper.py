@@ -64,13 +64,31 @@ class WebsiteScraper:
 
         context: BrowserContext
         if isinstance(browser, Browser):
-            context = await browser.new_context()
+            context = await browser.new_context(ignore_https_errors=True, user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
         else:
             context = browser
 
         page = await context.new_page()
         try:
-            await page.goto(f"http://{domain}", wait_until="domcontentloaded", timeout=30000)
+            # Try HTTPS first, then fallback to HTTP
+            protocols = ["https", "http"]
+            navigated = False
+            last_error = None
+
+            for protocol in protocols:
+                try:
+                    url = f"{protocol}://{domain}"
+                    logger.info(f"Attempting navigation to {url}")
+                    await page.goto(url, wait_until="domcontentloaded", timeout=30000)
+                    navigated = True
+                    break
+                except Exception as e:
+                    logger.warning(f"Failed to navigate to {protocol}://{domain}: {e}")
+                    last_error = e
+            
+            if not navigated:
+                logger.error(f"Could not navigate to {domain} with either HTTPS or HTTP. Last error: {last_error}")
+                return None
 
             if debug:
                 breakpoint()

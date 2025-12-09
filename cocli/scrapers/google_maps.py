@@ -19,6 +19,14 @@ logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
 console = Console()
 
+# Timeouts (in milliseconds)
+NAVIGATION_TIMEOUT_MS = 60000
+WAIT_FOR_SELECTOR_TIMEOUT_MS = 30000
+SEARCH_BOX_WAIT_MS = 5000
+SCROLL_WAIT_MS = 1500
+COOKIE_CONSENT_WAIT_MS = 2000
+ZOOM_WAIT_MS = 5000
+
 def calculate_new_coords(lat: float, lon: float, distance_miles: float, bearing: float) -> tuple[float, float]:
     """Calculate new lat/lon from a starting point, distance, and bearing."""
     start_point = (lat, lon)
@@ -272,12 +280,12 @@ async def scrape_google_maps(
         logger.debug(f"Attempting to navigate to initial map URL: {initial_url}")
         # Change wait_until to 'commit' to return as soon as server sends headers. 
         # This avoids hanging on slow resources.
-        await page.goto(initial_url, wait_until="commit", timeout=60000)
+        await page.goto(initial_url, wait_until="commit", timeout=NAVIGATION_TIMEOUT_MS)
         logger.debug(f"Successfully navigated to initial map URL (commit): {initial_url}")
         
         # Manually wait for the map to be somewhat ready
         try:
-             await page.wait_for_selector("canvas", timeout=30000)
+             await page.wait_for_selector("canvas", timeout=WAIT_FOR_SELECTOR_TIMEOUT_MS)
              logger.debug("Map canvas detected.")
         except Exception as e:
              logger.warning(f"Map canvas not detected immediately: {e}")
