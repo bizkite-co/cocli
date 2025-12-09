@@ -274,7 +274,10 @@ async def scrape_google_maps(
 
     processed_place_ids: set[str] = set()
 
-    page = await browser.new_page(viewport={'width': launch_width, 'height': launch_height})
+    page = await browser.new_page(
+        viewport={'width': launch_width, 'height': launch_height},
+        default_navigation_timeout=60000 # 60 seconds
+    )
     try:
         initial_url = f"https://www.google.com/maps/@{latitude},{longitude},15z?entry=ttu"
         logger.debug(f"Attempting to navigate to initial map URL: {initial_url}")
@@ -442,7 +445,7 @@ async def scrape_google_maps(
                 # Navigate to new coordinates
                 for attempt in range(retries):
                     try:
-                        await page.goto(f"https://www.google.com/maps/@{current_lat},{current_lon},15z?entry=ttu", wait_until="domcontentloaded")
+                        await page.goto(f"https://www.google.com/maps/@{current_lat},{current_lon},15z?entry=ttu", wait_until="commit", timeout=60000)
                         await page.wait_for_timeout(5000) # Wait for map to settle
                         break
                     except Error as e:

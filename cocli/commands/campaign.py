@@ -393,6 +393,7 @@ async def pipeline(
     campaign_company_slug: Optional[str] = None,
     use_cloud_queue: bool = False,
     max_proximity_miles: float = 0.0,
+    navigation_timeout_ms: Optional[int] = None, # New parameter
 ) -> None:
     
     queue_manager = get_queue_manager(f"{campaign_name}_enrichment", use_cloud=use_cloud_queue)
@@ -401,7 +402,19 @@ async def pipeline(
     
     # Shared browser instance
     async with async_playwright() as p:
-        browser = await p.chromium.launch(headless=not headed, devtools=devtools)
+        browser = await p.chromium.launch(
+            headless=not headed,
+            devtools=devtools,
+            args=[
+                '--no-sandbox',
+                '--disable-setuid-sandbox',
+                '--disable-dev-shm-usage',
+                '--disable-accelerated-2d-canvas',
+                '--no-first-run',
+                '--no-zygote',
+                '--disable-gpu'
+            ]
+        )
         
         # --- Consumer Task ---
         async def consumer_task() -> None:
@@ -442,7 +455,8 @@ async def pipeline(
                                         "debug": debug,
                                         "campaign_name": msg.campaign_name,
                                         "aws_profile_name": msg.aws_profile_name or aws_profile_name,
-                                        "company_slug": campaign_company_slug or msg.company_slug
+                                        "company_slug": campaign_company_slug or msg.company_slug,
+                                        "navigation_timeout_ms": navigation_timeout_ms # Pass new param
                                     },
                                     timeout=120.0
                                 )
@@ -732,6 +746,7 @@ def achieve_goal(
     opt_zoom_out_button_selector: Optional[str] = typer.Option(None, "--zoom-selector", help="CSS selector for the zoom out button. Overrides config.toml."),
     opt_omit_zoom_feature: Optional[bool] = typer.Option(None, "--omit-zoom", help="Omit the initial zoom-out feature. Overrides config.toml."),
     opt_allowed_overlap_percentage: Optional[float] = typer.Option(None, "--overlap-percentage", help="Minimum overlap percentage to consider an area already scraped or wilderness. Overrides config.toml."),
+    navigation_timeout_ms: Optional[int] = typer.Option(None, "--navigation-timeout", help="Timeout in milliseconds for Playwright navigation in the enrichment service. Overrides default."),
 ) -> None:
 
     """
@@ -861,6 +876,7 @@ def achieve_goal(
             location_prospects_index=location_prospects_index,
             use_cloud_queue=cloud_queue,
             max_proximity_miles=proximity_miles,
+            navigation_timeout_ms=navigation_timeout_ms,
         )
     )
     message = f"[grey50][{datetime.now().strftime('%H:%M:%S')}][/] [bold blue]Pipeline finished.[/bold blue]"

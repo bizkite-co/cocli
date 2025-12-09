@@ -182,6 +182,9 @@ deploy-enrichment: test docker-build ## Build and deploy the enrichment service 
 verify: ## Verify the Fargate deployment
 	@./scripts/verify_fargate_deployment.sh
 
+force-update: ## Force Update of service
+	aws ecs update-service --cluster ScraperCluster --service EnrichmentService --force-new-deployment --profile turboship-support
+
 .PHONY: ingest-legacy
 ingest-legacy: ## Ingest legacy prospects.csv into the new queue system (Usage: make ingest-legacy CAMPAIGN=name)
 	@if [ -z "$(CAMPAIGN)" ]; then echo "Error: CAMPAIGN variable is required. Usage: make ingest-legacy CAMPAIGN=name"; exit 1; fi
@@ -205,3 +208,12 @@ export-emails: ## Export enriched emails to CSV (Usage: make export-emails CAMPA
 queue-missing: ## Identify and queue missing enrichments (Gap Analysis) (Usage: make queue-missing CAMPAIGN=name)
 	@if [ -z "$(CAMPAIGN)" ]; then echo "Error: CAMPAIGN variable is required."; exit 1; fi
 	@$(VENV_DIR)/bin/python scripts/queue_missing_enrichments.py $(CAMPAIGN)
+
+.PHONY: enrich-domain
+enrich-domain: ## Enrich a single domain using the Fargate service (Usage: make enrich-domain DOMAIN=example.com [NAV_TIMEOUT_MS=15000] [FORCE=1] [DEBUG=1])
+	@if [ -z "$(DOMAIN)" ]; then echo "Error: DOMAIN is required. Usage: make enrich-domain DOMAIN=example.com"; exit 1; fi
+	@echo "Enriching $(DOMAIN)..."
+	@python scripts/enrich_domain.py "$(DOMAIN)" \
+		$(if $(NAV_TIMEOUT_MS), --navigation-timeout "$(NAV_TIMEOUT_MS)") \
+		$(if $(FORCE), --force) \
+		$(if $(DEBUG), --debug)
