@@ -26,6 +26,7 @@ To implement a scalable, reliable prospecting pipeline where:
     *   Added randomization to target selection to avoid "stuck" loops.
     *   **Fix:** Updated producer to correctly identify existing companies via `domain` -> `slug` mapping and queue them if email is missing.
     *   **Fix:** Resolved config serialization issues (`PosixPath`, `None` type) preventing campaign context saving.
+    *   **Fix:** Renamed internal `set` command function (`cocli campaign set`) to `set_default_campaign` to avoid shadowing Python's built-in `set()`, resolving a critical `TypeError` crash in the `achieve-goal` pipeline. This means the producer is now stable and queuing items.
 *   **Consumer (`enrich-from-queue`):**
     *   Created dedicated `prospects enrich-from-queue` command.
     *   Implemented client-side concurrency (`--batch-size`) to saturate Fargate capacity.
@@ -42,12 +43,13 @@ To implement a scalable, reliable prospecting pipeline where:
 
 ## Current State
 
-*   **Scraping:** Running stable with `proximity` logic. `make scrape` is fully functional and queuing items.
-*   **Enrichment:** Processing ~300 items/hour (depending on batch size/instances).
+*   **Scraping (Producer):** Running stable with `proximity` logic and actively queuing items.
+*   **Enrichment (Consumer):** Processing items from the queue.
 *   **Quality:** `mypy` and `ruff` clean. Tests passing.
 
 ## Next Actions
 
-1.  **Data Synchronization:** Implement `cocli sync` to pull enriched data from S3 to local (or vice versa) without relying on the consumer loop. (Facilitated by recent local data recovery.)
-2.  **Scaling:** Monitor SQS depth and adjust Fargate `desired_count` via CLI/CDK as needed.
-3.  **Cleanup:** Delete legacy/misfiled S3 objects from early testing.
+1.  **Investigate 404s from Enrichment Service:** Determine why the remote enrichment service is returning 404 for many domains and not yielding emails. This could involve checking service logs, domain validity, or internal processing within the enrichment service.
+2.  **Data Synchronization:** Implement `cocli sync` to pull enriched data from S3 to local (or vice versa) without relying on the consumer loop. (Facilitated by recent local data recovery.)
+3.  **Scaling:** Monitor SQS depth and adjust Fargate `desired_count` via CLI/CDK as needed.
+4.  **Cleanup:** Delete legacy/misfiled S3 objects from early testing.

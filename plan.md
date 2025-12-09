@@ -21,6 +21,7 @@ This document outlines the roadmap for transitioning `cocli` from a purely local
     *   [x] Implement `IndexConsolidator` logic (via `S3DomainManager`).
     *   [x] **Dedicated Consumer:** `cocli campaign prospects enrich-from-queue`.
     *   [x] **Robust Producer:** Fixed `achieve-goal` pipeline to correctly handle and queue existing companies for enrichment.
+    *   [x] **CLI Command Clarity:** Renamed internal `set` command function to avoid shadowing Python's built-in `set()`, resolving a critical runtime `TypeError`.
 
 3.  **Scalability (Completed):**
     *   [x] Introduce AWS SQS to decouple Scraper and Enricher.

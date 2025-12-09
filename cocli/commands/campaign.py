@@ -139,8 +139,8 @@ app.add_typer(prospects.app, name="prospects")
 
 console = Console()
 
-@app.command()
-def set(campaign_name: str = typer.Argument(..., help="The name of the campaign to set as the current context.")) -> None:
+@app.command(name="set")
+def set_default_campaign(campaign_name: str = typer.Argument(..., help="The name of the campaign to set as the current context.")) -> None:
     """
     Sets the current campaign context.
     """
@@ -718,7 +718,7 @@ def achieve_goal(
 
     browser_width: int = typer.Option(2000, help="The width of the browser viewport."),
 
-    browser_height: int = typer.Option(1500, help="The height of the browser viewport."),
+    browser_height: int = typer.Option(2000, help="The height of the browser viewport."),
 
     cloud_queue: bool = typer.Option(False, "--cloud-queue", help="Use the cloud SQS queue instead of local file queue."),
     proximity_miles: float = typer.Option(10.0, "--proximity", help="Max radius in miles to scrape around each target location."),
