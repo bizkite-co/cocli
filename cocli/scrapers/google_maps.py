@@ -270,8 +270,18 @@ async def scrape_google_maps(
     try:
         initial_url = f"https://www.google.com/maps/@{latitude},{longitude},15z?entry=ttu"
         logger.debug(f"Attempting to navigate to initial map URL: {initial_url}")
-        await page.goto(initial_url, wait_until="domcontentloaded")
-        logger.debug(f"Successfully navigated to initial map URL: {initial_url}")
+        # Change wait_until to 'commit' to return as soon as server sends headers. 
+        # This avoids hanging on slow resources.
+        await page.goto(initial_url, wait_until="commit", timeout=60000)
+        logger.debug(f"Successfully navigated to initial map URL (commit): {initial_url}")
+        
+        # Manually wait for the map to be somewhat ready
+        try:
+             await page.wait_for_selector("canvas", timeout=30000)
+             logger.debug("Map canvas detected.")
+        except Exception as e:
+             logger.warning(f"Map canvas not detected immediately: {e}")
+
         await page.wait_for_timeout(3000)
         logger.info(f"Navigated to initial map URL for {location_param}.")
 
