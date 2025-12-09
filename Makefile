@@ -40,6 +40,10 @@ logf: ## Display the last 100 lines of the latest log file
 	echo "Displaying log file: .logs/$$latest_log"; \
 	tail -f -n 100 .logs/$$latest_log
 
+logname: ## Get the latest log file name
+	@latest_log=$$(ls -t .logs/ | head -n 1); \
+	echo ".logs/$$latest_log"
+
 # Note: TUI integration tests are run separately due to terminal driver conflicts.
 # Use 'make test-tui-integration' to run them.
 test: install ## Run all non-TUI tests using pytest
