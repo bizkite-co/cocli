@@ -45,7 +45,11 @@ To implement a scalable, reliable prospecting pipeline where:
 
 *   **Scraping (Producer):** Running stable with `proximity` logic and actively queuing items.
 *   **Enrichment (Consumer):** Processing items from the queue. Success verified for some domains (`shopbriansflooring.com`).
-*   **Issues:** High rate of 404s for valid, reachable domains (e.g., `bestfloorsllc.com` returns 200 via local curl but 404 from Fargate). This confirms that Fargate IPs are being blocked/filtered by target sites (Bot Detection/WAF).
+*   **Issues:** High rate of 404s for valid, reachable domains (e.g., `bestfloorsllc.com`). **Root Cause Confirmed via Logs:**
+    *   `net::ERR_CONNECTION_RESET`: Indicates active blocking/firewalling by target sites against AWS IPs.
+    *   `net::ERR_NAME_NOT_RESOLVED`: Indicates DNS issues or dead domains.
+    *   `Page.content` race condition: Playwright timing issues on redirecting sites.
+    This confirms the need for proxies and robust retry logic, rather than a code regression in the scraper itself.
 *   **Quality:** `mypy` and `ruff` clean. Tests passing.
 
 ## Next Actions
