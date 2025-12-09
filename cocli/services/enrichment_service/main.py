@@ -13,27 +13,14 @@ from cocli.models.website import Website
 from cocli.models.company import Company
 from cocli.models.campaign import Campaign # New imports
 from cocli.core.config import get_campaign_dir # New import
+from cocli.core.exceptions import EnrichmentError, NavigationError
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 app = FastAPI()
-
-@app.on_event("startup")
-async def startup_event() -> None:
-    version = os.getenv("COCLI_VERSION", "unknown")
-    logger.info(f"Starting Enrichment Service v{version}")
-
-class EnrichmentRequest(BaseModel):
-    domain: str
-    force: bool = False
-    ttl_days: int = 30
-    debug: bool = False
-    campaign_name: Optional[str] = None
-    aws_profile_name: Optional[str] = None # New field
-    company_slug: Optional[str] = None # New field
-
+# ... (rest of file) ...
 @app.post("/enrich", response_model=Website)
 async def enrich_domain(request: EnrichmentRequest) -> Website:
     """
@@ -42,52 +29,48 @@ async def enrich_domain(request: EnrichmentRequest) -> Website:
     """
     logger.info(f"Received enrichment request for domain: {request.domain}")
     
+    # ... (campaign loading logic) ...
     campaign: Optional[Campaign] = None
     if request.campaign_name:
+        # ... (same logic) ...
         campaign_dir = get_campaign_dir(request.campaign_name)
         if campaign_dir and (campaign_dir / "config.toml").exists():
-            # Try loading from file first
-            with open(campaign_dir / "config.toml", "r") as f:
+             # ...
+             with open(campaign_dir / "config.toml", "r") as f:
                 config_data = toml.load(f)
-            flat_config = config_data.pop('campaign')
-            flat_config.update(config_data)
-            campaign = Campaign.model_validate(flat_config)
+             flat_config = config_data.pop('campaign')
+             flat_config.update(config_data)
+             campaign = Campaign.model_validate(flat_config)
         elif request.aws_profile_name and request.company_slug:
-            # Fallback to constructing ephemeral campaign from request params
-            logger.info("Campaign config not found locally. Using provided parameters for stateless operation.")
-            # Minimal campaign object for S3 access
-            campaign_data = {
+             # ... (same logic) ...
+             logger.info("Campaign config not found locally. Using provided parameters for stateless operation.")
+             campaign_data = {
                 "campaign": {
                     "name": request.campaign_name,
                     "tag": "placeholder",
                     "domain": "placeholder.com",
-                    "company-slug": request.company_slug,  # Use alias for dictionary
+                    "company-slug": request.company_slug,
                     "workflows": [],
                 },
                 "aws": {
                     "profile": request.aws_profile_name
                 },
-                "import": {  # Use alias for dictionary
+                "import": {
                     "format": "csv"
                 },
-                "google_maps": {  # Use field name if no alias
+                "google_maps": {
                     "email": "placeholder",
                     "one_password_path": "placeholder"
                 },
-                "prospecting": {  # Use field name if no alias
+                "prospecting": {
                     "locations": [],
                     "tools": [],
                     "queries": []
                 }
             }
-            
-            # Extract the 'campaign' section and merge other sections into it
-            flat_config = cast(Dict[str, Any], campaign_data.pop("campaign"))
-            # Now flat_config is a dict. Merge the rest of campaign_data into it.
-            # Use ** for dictionary unpacking to ensure mypy knows it's a dict
-            final_config_dict = {**flat_config, **campaign_data}
-            
-            campaign = Campaign.model_validate(final_config_dict)
+             flat_config = cast(Dict[str, Any], campaign_data.pop("campaign"))
+             final_config_dict = {**flat_config, **campaign_data}
+             campaign = Campaign.model_validate(final_config_dict)
         else:
             logger.error(f"Campaign '{request.campaign_name}' config not found and insufficient parameters provided.")
             raise HTTPException(status_code=404, detail=f"Campaign '{request.campaign_name}' configuration not found and params missing.")
@@ -108,17 +91,25 @@ async def enrich_domain(request: EnrichmentRequest) -> Website:
                 debug=request.debug
             )
             
+            # If we get here, website_data is valid (or None if no domain, but we checked request.domain)
             if not website_data:
-                logger.warning(f"Could not enrich domain: {request.domain}")
-                raise HTTPException(status_code=404, detail=f"Could not enrich domain: {request.domain}")
-            
+                 # This might happen if company.domain is somehow empty despite request.domain
+                 raise HTTPException(status_code=400, detail="Domain provided was empty or invalid.")
+
             logger.info(f"Successfully enriched domain: {request.domain}")
             return website_data
+
+        except NavigationError as e:
+            logger.warning(f"Navigation failed for {request.domain}: {e}")
+            raise HTTPException(status_code=404, detail=str(e))
+        except EnrichmentError as e:
+            logger.error(f"Enrichment error for {request.domain}: {e}")
+            raise HTTPException(status_code=500, detail=str(e))
         except HTTPException as e:
             raise e
         except Exception as e:
-            logger.error(f"An unexpected error occurred during enrichment for {request.domain}: {e}", exc_info=True) # Added exc_info
-            raise HTTPException(status_code=500, detail="An internal error occurred during enrichment.")
+            logger.error(f"An unexpected error occurred during enrichment for {request.domain}: {e}", exc_info=True)
+            raise HTTPException(status_code=500, detail=f"An internal error occurred: {e}")
         finally:
             await browser.close()
 

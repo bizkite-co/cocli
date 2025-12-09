@@ -12,9 +12,10 @@ from datetime import datetime, timedelta
 from ..models.website import Website
 from ..core.website_domain_csv_manager import WebsiteDomainCsvManager, CURRENT_SCRAPER_VERSION
 from ..core.s3_domain_manager import S3DomainManager
-from ..core.s3_company_manager import S3CompanyManager # New import
+from ..core.s3_company_manager import S3CompanyManager
 from ..models.website_domain_csv import WebsiteDomainCsv
 from ..models.campaign import Campaign
+from ..core.exceptions import NavigationError, EnrichmentError
 
 logger = logging.getLogger(__name__)
 
@@ -87,8 +88,9 @@ class WebsiteScraper:
                     last_error = e
             
             if not navigated:
-                logger.error(f"Could not navigate to {domain} with either HTTPS or HTTP. Last error: {last_error}")
-                return None
+                error_msg = f"Could not navigate to {domain} with either HTTPS or HTTP. Last error: {last_error}"
+                logger.error(error_msg)
+                raise NavigationError(error_msg)
 
             if debug:
                 breakpoint()
@@ -141,9 +143,12 @@ class WebsiteScraper:
             if not website_data.products:
                 await self._navigate_and_scrape(page, website_data, ["Products"], "Products", self._scrape_products_page, context, debug)
 
+        except NavigationError:
+            raise # Re-raise NavigationError
         except Exception as e:
-            logger.error(f"Error during website scraping for {domain}: {e}")
-            return None
+            error_msg = f"Error during website scraping for {domain}: {e}"
+            logger.error(error_msg)
+            raise EnrichmentError(error_msg)
         finally:
             await page.close()
             if isinstance(browser, Browser):

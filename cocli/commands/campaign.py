@@ -35,6 +35,7 @@ from ..core.utils import run_fzf, slugify
 from ..core.queue.factory import get_queue_manager # New import
 from ..models.queue import QueueMessage # New import
 from ..core.enrichment import enrich_company_website # New import
+from ..core.exceptions import NavigationError
 
 from typing_extensions import Annotated
 
@@ -425,7 +426,7 @@ async def pipeline(
                     if stop_event.is_set(): 
                         break
                     
-                    console.print(f"[dim]Processing: {msg.domain}[/dim]")
+                    console.print(f"[grey50][{datetime.now().strftime('%H:%M:%S')}][/][dim]Processing: {msg.domain}[/dim]")
                     website_data = None
                     
                     # Enrich
@@ -517,6 +518,10 @@ async def pipeline(
                                 ttl_days=msg.ttl_days,
                                 debug=debug
                             )
+                        except NavigationError as e:
+                             console.print(f"[yellow]Navigation failed for {msg.domain}: {e}. Saving empty result.[/yellow]")
+                             # Treat as 404 - Save empty result
+                             website_data = Website(domain=msg.domain, url=f"http://{msg.domain}", company_name=msg.domain)
                         except Exception as e:
                              logger.error(f"Local enrichment failed: {e}")
                              queue_manager.nack(msg)
@@ -551,7 +556,7 @@ async def pipeline(
                         compiler = WebsiteCompiler()
                         compiler.compile(company_dir)
                         
-                        console.print(f"[bold green]Progress: {emails_found_count} / {goal_emails} emails found.[/bold green]")
+                        console.print(f"[grey50][{datetime.now().strftime('%H:%M:%S')}][/][bold green]Progress: {emails_found_count} / {goal_emails} emails found.[/bold green]")
                         
                         if emails_found_count >= goal_emails:
                             console.print("[bold magenta]Goal Met! Stopping.[/bold magenta]")
