@@ -275,7 +275,7 @@ class WebsiteScraper:
             # Wait for the page to be idle to ensure dynamic content has loaded
             await page.wait_for_load_state('networkidle')
             # Wait for the link to be visible, with an increased timeout.
-            await link.wait_for(state='visible', timeout=5000)
+            await link.wait_for(state='visible', timeout=15000)
             url = await link.get_attribute("href") # No timeout here, as visibility already checked
             if url:
                 url = urljoin(page.url, url)
