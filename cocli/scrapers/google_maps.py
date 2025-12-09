@@ -108,7 +108,7 @@ async def _scrape_area(
 
         if debug:
             page_source = await page.content()
-            with open(f"test_data/page_source_before_scroll_{search_string.replace(' ', '_')}.html", "w") as f:
+            with open(f"temp/page_source_before_scroll_{search_string.replace(' ', '_')}.html", "w") as f:
                 f.write(page_source)
 
         if not listing_divs or len(listing_divs) == last_processed_div_count:
@@ -214,7 +214,7 @@ async def _scrape_area(
 
         if debug:
             page_source = await page.content()
-            with open(f"test_data/page_source_after_scroll_{search_string.replace(' ', '_')}.html", "w") as f:
+            with open(f"temp/page_source_after_scroll_{search_string.replace(' ', '_')}.html", "w") as f:
                 f.write(page_source)
 
 async def scrape_google_maps(
@@ -232,8 +232,8 @@ async def scrape_google_maps(
     initial_zoom_out_level: int = 3,
     omit_zoom_feature: bool = False,
     disable_panning: bool = False,
-    max_proximity_miles: float = 0.0, # 0.0 means unlimited (or constrained by other factors)
-    overlap_threshold_percent: float = 30.0, # New parameter
+    max_proximity_miles: float = 0.0,  # 0.0 means unlimited (or constrained by other factors)
+    overlap_threshold_percent: float = 60.0, # Increased to 60% for debugging
 ) -> AsyncIterator[GoogleMapsData]:
     """
     Scrapes business information from Google Maps for a list of search queries,
@@ -245,6 +245,7 @@ async def scrape_google_maps(
     retries = settings.google_maps_max_retries
     if debug:
         logger.debug(f"scrape_google_maps called with debug={debug}")
+        logger.debug(f"Using overlap_threshold_percent: {overlap_threshold_percent}")
     settings = load_scraper_settings()
     retry_delay = settings.google_maps_retry_delay_seconds
     scrape_index = ScrapeIndex()
@@ -274,10 +275,8 @@ async def scrape_google_maps(
 
     processed_place_ids: set[str] = set()
 
-    page = await browser.new_page(
-        viewport={'width': launch_width, 'height': launch_height},
-        default_navigation_timeout=60000 # 60 seconds
-    )
+    page = await browser.new_page(viewport={'width': launch_width, 'height': launch_height})
+    page.set_default_navigation_timeout(60000) # Set timeout on the page after creation
     try:
         initial_url = f"https://www.google.com/maps/@{latitude},{longitude},15z?entry=ttu"
         logger.debug(f"Attempting to navigate to initial map URL: {initial_url}")

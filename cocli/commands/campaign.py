@@ -691,11 +691,17 @@ async def pipeline(
                                 
                                 # Decide whether to queue
                                 should_queue = False
+                                logger.debug(f"DEBUGGING QUEUE: Company {company.name} (Domain: {company.domain}, Slug: {company.slug}). Has email: {bool(company.email)}. Force mode: {force}")
+
                                 if force:
                                     should_queue = True
-                                elif not company.email:
+                                    logger.debug(f"Queuing {company.domain}: --force is True.")
+                                elif company.email: # Check if company already has an email
+                                    logger.debug(f"Skipping queue for {company.domain}: Company already has email.")
+                                else:
                                     # If no email, we queue it to try and find one
                                     should_queue = True
+                                    logger.debug(f"Queuing {company.domain}: No email found yet.")
                                 
                                 if should_queue:
                                     # Push to Queue
@@ -708,7 +714,10 @@ async def pipeline(
                                         ack_token=None,
                                     )
                                     queue_manager.push(msg)
-                                    console.print(f"[cyan]Queued: {company.name}[/cyan]") 
+                                    console.print(f"[cyan]Queued: {company.name} (Domain: {company.domain})[/cyan]")
+                                    logger.debug(f"Pushed to queue: Domain={company.domain}, Slug={company.slug}")
+                                else:
+                                    logger.debug(f"NOT QUEUED: {company.domain} based on logic. Has email: {bool(company.email)}. Force mode: {force}")
                             
                             # Yield control to let consumer run
                             await asyncio.sleep(0.01)

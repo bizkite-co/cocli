@@ -81,7 +81,7 @@ class WebsiteScraper:
                 try:
                     url = f"{protocol}://{domain}"
                     logger.info(f"Attempting navigation to {url}")
-                    await page.goto(url, wait_until="domcontentloaded", timeout=30000)
+                    await page.goto(url, wait_until="domcontentloaded", timeout=navigation_timeout_ms or 60000) # Increased timeout
                     navigated = True
                     break
                 except Exception as e:
@@ -147,9 +147,9 @@ class WebsiteScraper:
         except NavigationError:
             raise # Re-raise NavigationError
         except Exception as e:
-            error_msg = f"Error during website scraping for {domain}: {e}"
-            logger.error(error_msg)
-            raise EnrichmentError(error_msg)
+            error_msg = f"Error during website scraping for {domain}. Type: {type(e).__name__}, Message: {e}"
+            logger.error(error_msg, exc_info=True) # Log full traceback to CloudWatch
+            raise EnrichmentError(error_msg) from e # Chain the exception
         finally:
             await page.close()
             if isinstance(browser, Browser):
@@ -272,7 +272,7 @@ class WebsiteScraper:
         link_selector = ", ".join([f'a:text-matches("{text}", "i")' for text in link_texts])
         link = page.locator(link_selector).first
 
-        actual_timeout = navigation_timeout_ms if navigation_timeout_ms is not None else 15000
+        actual_timeout = navigation_timeout_ms if navigation_timeout_ms is not None else 60000 # Increased default timeout
 
         try:
             # Wait for the page to be idle to ensure dynamic content has loaded
@@ -293,7 +293,7 @@ class WebsiteScraper:
                     elif page_type == "Products":
                         website_data.products_url = url
 
-                    await page.goto(url, wait_until="domcontentloaded", timeout=30000)
+                    await page.goto(url, wait_until="domcontentloaded", timeout=navigation_timeout_ms or 60000)
                     await scrape_function(page, website_data, browser)
         except TimeoutError: # Catch specific Playwright timeout
             logger.info(f"Link for {page_type} not found within timeout ({link_texts}). Skipping navigation.")

@@ -45,16 +45,12 @@ To implement a scalable, reliable prospecting pipeline where:
 
 *   **Scraping (Producer):** Running stable with `proximity` logic and actively queuing items.
 *   **Enrichment (Consumer):** Processing items from the queue. Success verified for some domains (`shopbriansflooring.com`).
-*   **Issues:** High rate of 404s for valid, reachable domains (e.g., `bestfloorsllc.com`). **Root Cause Confirmed via Logs:**
-    *   `net::ERR_CONNECTION_RESET`: Indicates active blocking/firewalling by target sites against AWS IPs.
-    *   `net::ERR_NAME_NOT_RESOLVED`: Indicates DNS issues or dead domains.
-    *   `Page.content` race condition: Playwright timing issues on redirecting sites.
-    This confirms the need for proxies and robust retry logic, rather than a code regression in the scraper itself.
+*   **Issues Resolved:** High rate of 404s/500s for valid domains was caused by a scraper regression (blind HTTP navigation and strict SSL checking). **Fixed** by implementing HTTPS-first logic and ignoring certificate errors in `WebsiteScraper`.
 *   **Quality:** `mypy` and `ruff` clean. Tests passing.
 
 ## Next Actions
 
-1.  **Proxy Integration:** **CRITICAL.** Implement residential proxies in the Enrichment Service to bypass IP blocking/bot detection. Without this, enrichment yield will remain low.
+1.  **Monitor & Optimize:** Monitor Fargate logs for any remaining edge cases (e.g. true bot detection or timeouts) and tune concurrency if needed.
 2.  **Data Synchronization:** Implement `cocli sync` to pull enriched data from S3 to local (or vice versa) without relying on the consumer loop.
 3.  **Scaling:** Monitor SQS depth and adjust Fargate `desired_count` via CLI/CDK as needed.
 4.  **Cleanup:** Delete legacy/misfiled S3 objects from early testing.
