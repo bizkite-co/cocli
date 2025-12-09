@@ -40,10 +40,13 @@ class GoogleMapsCache:
                     elif k in ['created_at', 'updated_at']:
                         try:
                             dt_obj = datetime.fromisoformat(v)
+                            # Ensure the datetime object is UTC-aware
                             if dt_obj.tzinfo is None:
+                                # If naive, assume it's UTC and make it aware
                                 processed_row[k] = dt_obj.replace(tzinfo=UTC)
                             else:
-                                processed_row[k] = dt_obj
+                                # If already aware, convert it to UTC timezone
+                                processed_row[k] = dt_obj.astimezone(UTC)
                         except (ValueError, TypeError):
                             processed_row[k] = None
                     else:

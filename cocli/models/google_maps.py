@@ -4,11 +4,13 @@ from pydantic import BaseModel, Field, model_validator
 from datetime import datetime, UTC
 import logging
 
+from cocli.models.types import AwareDatetime # Import the custom type
+
 logger = logging.getLogger(__name__)
 
 class GoogleMapsData(BaseModel):
-    created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
-    updated_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
+    created_at: AwareDatetime = Field(default_factory=lambda: datetime.now(UTC))
+    updated_at: AwareDatetime = Field(default_factory=lambda: datetime.now(UTC))
     version: int = 1
     id: Optional[str] = None
     Keyword: Optional[str] = None

@@ -63,10 +63,10 @@ class ScrapeIndex:
         """Loads scraped areas for a specific phrase from its CSV file."""
         index_file = self._get_index_file(phrase)
         areas: List[ScrapedArea] = []
-        
+
         if not index_file.exists():
             return areas
-        
+
         try:
             with index_file.open('r', encoding='utf-8') as f:
                 reader = csv.reader(f)
@@ -94,9 +94,15 @@ class ScrapeIndex:
 
                 for row in reader:
                     try:
+                        parsed_scrape_date = datetime.fromisoformat(row[scrape_date_idx])
+                        if parsed_scrape_date.tzinfo is None:
+                            scrape_date = parsed_scrape_date.replace(tzinfo=UTC)
+                        else:
+                            scrape_date = parsed_scrape_date.astimezone(UTC)
+
                         areas.append(ScrapedArea(
                             phrase=row[phrase_idx],
-                            scrape_date=datetime.fromisoformat(row[scrape_date_idx]),
+                            scrape_date=scrape_date,
                             lat_min=float(row[lat_min_idx]),
                             lat_max=float(row[lat_max_idx]),
                             lon_min=float(row[lon_min_idx]),
@@ -109,9 +115,15 @@ class ScrapeIndex:
                         logger.warning(f"Skipping malformed row in scrape_index for {phrase}: {row} - {e}. Attempting to re-read with default items_found=0 for old format.")
                         # Attempt to parse old format without items_found for backward compatibility
                         try:
+                            parsed_scrape_date = datetime.fromisoformat(row[scrape_date_idx])
+                            if parsed_scrape_date.tzinfo is None:
+                                scrape_date = parsed_scrape_date.replace(tzinfo=UTC)
+                            else:
+                                scrape_date = parsed_scrape_date.astimezone(UTC)
+
                             areas.append(ScrapedArea(
                                 phrase=row[phrase_idx],
-                                scrape_date=datetime.fromisoformat(row[scrape_date_idx]),
+                                scrape_date=scrape_date,
                                 lat_min=float(row[lat_min_idx]),
                                 lat_max=float(row[lat_max_idx]),
                                 lon_min=float(row[lon_min_idx]),
@@ -124,7 +136,7 @@ class ScrapeIndex:
                             logger.error(f"Still failed to parse row after fallback for {phrase}: {row} - {e_fallback}")
         except Exception as e:
             logger.error(f"Failed to load scrape index for {phrase}: {e}")
-            
+
         return areas
 
     def _save_areas_for_phrase(self, phrase: str, areas: List[ScrapedArea]) -> None:
@@ -160,7 +172,7 @@ class ScrapeIndex:
 
         new_area = ScrapedArea(
             phrase=slugify(phrase),
-            scrape_date=scrape_date if scrape_date is not None else datetime.now(),
+            scrape_date=scrape_date if scrape_date is not None else datetime.now(UTC),
             lat_min=bounds['lat_min'],
             lat_max=bounds['lat_max'],
             lon_min=bounds['lon_min'],
@@ -170,7 +182,7 @@ class ScrapeIndex:
             items_found=items_found,
         )
         areas.append(new_area)
-        
+
         self._save_areas_for_phrase(phrase, areas)
 
     def is_area_scraped(self, phrase: str, bounds: dict[str, float], ttl_days: Optional[int] = None, overlap_threshold_percent: float = 0.0) -> Optional[ScrapedArea]:
@@ -185,26 +197,30 @@ class ScrapeIndex:
         current_bounds_width = bounds['lon_max'] - bounds['lon_min']
         current_bounds_height = bounds['lat_max'] - bounds['lat_min']
         area_of_current_bounds = current_bounds_width * current_bounds_height
-        
+
         if area_of_current_bounds <= 0: # Avoid division by zero for point or line bounds
             return None
 
         for area in areas:
-            # Check if the entry is stale
-            if fresh_delta and (datetime.now(UTC) - area.scrape_date > fresh_delta):
-                continue
-            
-            # Calculate overlap area
-            overlap_area = _calculate_overlap_area(bounds, {
-                'lat_min': area.lat_min, 'lat_max': area.lat_max,
-                'lon_min': area.lon_min, 'lon_max': area.lon_max
-            })
-            
-            overlap_percentage = (overlap_area / area_of_current_bounds) * 100
+            try:
+                # Check if the entry is stale
+                if fresh_delta and (datetime.now(UTC) - area.scrape_date > fresh_delta):
+                    continue
 
-            if overlap_percentage >= overlap_threshold_percent:
-                logger.debug(f"Current bounds {bounds} overlap by {overlap_percentage:.2f}% with scraped area {area.lat_min:.4f},{area.lon_min:.4f} to {area.lat_max:.4f},{area.lon_max:.4f}. Skipping as already scraped.")
-                return area
+                # Calculate overlap area
+                overlap_area = _calculate_overlap_area(bounds, {
+                    'lat_min': area.lat_min, 'lat_max': area.lat_max,
+                    'lon_min': area.lon_min, 'lon_max': area.lon_max
+                })
+
+                overlap_percentage = (overlap_area / area_of_current_bounds) * 100
+
+                if overlap_percentage >= overlap_threshold_percent:
+                    logger.debug(f"Current bounds {bounds} overlap by {overlap_percentage:.2f}% with scraped area {area.lat_min:.4f},{area.lon_min:.4f} to {area.lat_max:.4f},{area.lon_max:.4f}. Skipping as already scraped.")
+                    return area
+            except Exception as e:
+                logger.error(f"Scraped area matching error: {e}")
+                return None
         return None
 
     def _get_wilderness_index_file(self) -> Path:
@@ -215,10 +231,10 @@ class ScrapeIndex:
         """Loads wilderness areas from its CSV file."""
         index_file = self._get_wilderness_index_file()
         areas: List[ScrapedArea] = []
-        
+
         if not index_file.exists():
             return areas
-        
+
         try:
             with index_file.open('r', encoding='utf-8') as f:
                 reader = csv.reader(f)
@@ -259,7 +275,7 @@ class ScrapeIndex:
                         logger.warning(f"Skipping malformed row in wilderness_areas: {row} - {e}")
         except Exception as e:
             logger.error(f"Failed to load wilderness_areas index: {e}")
-            
+
         return areas
 
     def _save_wilderness_areas(self, areas: List[ScrapedArea]) -> None:
@@ -294,7 +310,7 @@ class ScrapeIndex:
 
         new_area = ScrapedArea(
             phrase="wilderness", # Generic phrase for wilderness areas
-            scrape_date=datetime.now(),
+            scrape_date=datetime.now(UTC),
             lat_min=bounds['lat_min'],
             lat_max=bounds['lat_max'],
             lon_min=bounds['lon_min'],
@@ -304,7 +320,7 @@ class ScrapeIndex:
             items_found=items_found,
         )
         areas.append(new_area)
-        
+
         self._save_wilderness_areas(areas)
 
     def is_wilderness_area(self, bounds: dict[str, float], overlap_threshold_percent: float = 0.0) -> Optional[ScrapedArea]:
@@ -312,7 +328,7 @@ class ScrapeIndex:
         Checks if a given bounding box falls within any of the known wilderness areas.
         """
         areas = self._load_wilderness_areas()
-        
+
         # Calculate area of the current bounds in degrees for relative comparison
         current_bounds_width = bounds['lon_max'] - bounds['lon_min']
         current_bounds_height = bounds['lat_max'] - bounds['lat_min']
@@ -327,7 +343,7 @@ class ScrapeIndex:
                 'lat_min': area.lat_min, 'lat_max': area.lat_max,
                 'lon_min': area.lon_min, 'lon_max': area.lon_max
             })
-            
+
             overlap_percentage = (overlap_area / area_of_current_bounds) * 100
 
             if overlap_percentage >= overlap_threshold_percent:
