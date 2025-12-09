@@ -44,13 +44,13 @@ To implement a scalable, reliable prospecting pipeline where:
 ## Current State
 
 *   **Scraping (Producer):** Running stable with `proximity` logic and actively queuing items.
-*   **Enrichment (Consumer):** Processing items from the queue. Success verified for smaller domains (`shopbriansflooring.com`).
-*   **Issues:** High rate of 404s for major retailers (`homedepot.com`, `menards.com`), strongly suggesting bot detection/blocking by target sites.
+*   **Enrichment (Consumer):** Processing items from the queue. Success verified for some domains (`shopbriansflooring.com`).
+*   **Issues:** High rate of 404s for valid, reachable domains (e.g., `bestfloorsllc.com` returns 200 via local curl but 404 from Fargate). This confirms that Fargate IPs are being blocked/filtered by target sites (Bot Detection/WAF).
 *   **Quality:** `mypy` and `ruff` clean. Tests passing.
 
 ## Next Actions
 
-1.  **Proxy Integration:** Implement residential proxies in the Enrichment Service to bypass bot detection for major domains.
+1.  **Proxy Integration:** **CRITICAL.** Implement residential proxies in the Enrichment Service to bypass IP blocking/bot detection. Without this, enrichment yield will remain low.
 2.  **Data Synchronization:** Implement `cocli sync` to pull enriched data from S3 to local (or vice versa) without relying on the consumer loop.
 3.  **Scaling:** Monitor SQS depth and adjust Fargate `desired_count` via CLI/CDK as needed.
 4.  **Cleanup:** Delete legacy/misfiled S3 objects from early testing.
