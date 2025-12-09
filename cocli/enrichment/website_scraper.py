@@ -272,8 +272,10 @@ class WebsiteScraper:
         link = page.locator(link_selector).first
 
         try:
-            # Wait for the link to be visible, with a shorter timeout. If it's not visible, assume it doesn't exist for navigation.
-            await link.wait_for(state='visible', timeout=2000)
+            # Wait for the page to be idle to ensure dynamic content has loaded
+            await page.wait_for_load_state('networkidle')
+            # Wait for the link to be visible, with an increased timeout.
+            await link.wait_for(state='visible', timeout=5000)
             url = await link.get_attribute("href") # No timeout here, as visibility already checked
             if url:
                 url = urljoin(page.url, url)
