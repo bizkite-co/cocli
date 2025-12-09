@@ -1,18 +1,17 @@
-
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 import logging
 import os
 from playwright.async_api import async_playwright
-import toml # New import
-from typing import Optional, Dict, Any, cast # New imports
+import toml 
+from typing import Optional, Dict, Any, cast
 
 # Adjust imports to be absolute from the project root
 from cocli.core.enrichment import enrich_company_website
 from cocli.models.website import Website
 from cocli.models.company import Company
-from cocli.models.campaign import Campaign # New imports
-from cocli.core.config import get_campaign_dir # New import
+from cocli.models.campaign import Campaign 
+from cocli.core.config import get_campaign_dir
 from cocli.core.exceptions import EnrichmentError, NavigationError
 import socket
 import httpx
@@ -23,7 +22,19 @@ logger = logging.getLogger(__name__)
 
 app = FastAPI()
 
-# ... (existing startup_event)
+@app.on_event("startup")
+async def startup_event() -> None:
+    version = os.getenv("COCLI_VERSION", "unknown")
+    logger.info(f"Starting Enrichment Service v{version}")
+
+class EnrichmentRequest(BaseModel):
+    domain: str
+    force: bool = False
+    ttl_days: int = 30
+    debug: bool = False
+    campaign_name: Optional[str] = None
+    aws_profile_name: Optional[str] = None
+    company_slug: Optional[str] = None
 
 @app.get("/debug/network")
 async def debug_network() -> Dict[str, Any]:
@@ -55,7 +66,6 @@ async def debug_network() -> Dict[str, Any]:
     return results
 
 @app.post("/enrich", response_model=Website)
-# ...
 async def enrich_domain(request: EnrichmentRequest) -> Website:
     """
     Accepts a domain and enrichment options, then scrapes the website
@@ -63,48 +73,52 @@ async def enrich_domain(request: EnrichmentRequest) -> Website:
     """
     logger.info(f"Received enrichment request for domain: {request.domain}")
     
-    # ... (campaign loading logic) ...
     campaign: Optional[Campaign] = None
     if request.campaign_name:
-        # ... (same logic) ...
         campaign_dir = get_campaign_dir(request.campaign_name)
         if campaign_dir and (campaign_dir / "config.toml").exists():
-             # ...
-             with open(campaign_dir / "config.toml", "r") as f:
+            # Try loading from file first
+            with open(campaign_dir / "config.toml", "r") as f:
                 config_data = toml.load(f)
-             flat_config = config_data.pop('campaign')
-             flat_config.update(config_data)
-             campaign = Campaign.model_validate(flat_config)
+            flat_config = config_data.pop('campaign')
+            flat_config.update(config_data)
+            campaign = Campaign.model_validate(flat_config)
         elif request.aws_profile_name and request.company_slug:
-             # ... (same logic) ...
-             logger.info("Campaign config not found locally. Using provided parameters for stateless operation.")
-             campaign_data = {
+            # Fallback to constructing ephemeral campaign from request params
+            logger.info("Campaign config not found locally. Using provided parameters for stateless operation.")
+            # Minimal campaign object for S3 access
+            campaign_data = {
                 "campaign": {
                     "name": request.campaign_name,
                     "tag": "placeholder",
                     "domain": "placeholder.com",
-                    "company-slug": request.company_slug,
+                    "company-slug": request.company_slug,  # Use alias for dictionary
                     "workflows": [],
                 },
                 "aws": {
                     "profile": request.aws_profile_name
                 },
-                "import": {
+                "import": {  # Use alias for dictionary
                     "format": "csv"
                 },
-                "google_maps": {
+                "google_maps": {  # Use field name if no alias
                     "email": "placeholder",
                     "one_password_path": "placeholder"
                 },
-                "prospecting": {
+                "prospecting": {  # Use field name if no alias
                     "locations": [],
                     "tools": [],
                     "queries": []
                 }
             }
-             flat_config = cast(Dict[str, Any], campaign_data.pop("campaign"))
-             final_config_dict = {**flat_config, **campaign_data}
-             campaign = Campaign.model_validate(final_config_dict)
+            
+            # Extract the 'campaign' section and merge other sections into it
+            flat_config = cast(Dict[str, Any], campaign_data.pop("campaign"))
+            # Now flat_config is a dict. Merge the rest of campaign_data into it.
+            # Use ** for dictionary unpacking to ensure mypy knows it's a dict
+            final_config_dict = {**flat_config, **campaign_data}
+            
+            campaign = Campaign.model_validate(final_config_dict)
         else:
             logger.error(f"Campaign '{request.campaign_name}' config not found and insufficient parameters provided.")
             raise HTTPException(status_code=404, detail=f"Campaign '{request.campaign_name}' configuration not found and params missing.")
@@ -142,7 +156,7 @@ async def enrich_domain(request: EnrichmentRequest) -> Website:
         except HTTPException as e:
             raise e
         except Exception as e:
-            logger.error(f"An unexpected error occurred during enrichment for {request.domain}: {e}", exc_info=True)
+            logger.error(f"An unexpected error occurred during enrichment for {request.domain}: {e}", exc_info=True) # Added exc_info
             raise HTTPException(status_code=500, detail=f"An internal error occurred: {e}")
         finally:
             await browser.close()
@@ -150,4 +164,3 @@ async def enrich_domain(request: EnrichmentRequest) -> Website:
 @app.get("/health")
 async def health_check() -> dict[str, str]:
     return {"status": "ok"}
-
