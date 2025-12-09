@@ -14,14 +14,48 @@ from cocli.models.company import Company
 from cocli.models.campaign import Campaign # New imports
 from cocli.core.config import get_campaign_dir # New import
 from cocli.core.exceptions import EnrichmentError, NavigationError
+import socket
+import httpx
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 app = FastAPI()
-# ... (rest of file) ...
+
+# ... (existing startup_event)
+
+@app.get("/debug/network")
+async def debug_network() -> Dict[str, Any]:
+    results = {}
+    
+    # 1. DNS Check
+    try:
+        ip = socket.gethostbyname("google.com")
+        results["dns_google"] = f"OK: {ip}"
+    except Exception as e:
+        results["dns_google"] = f"FAIL: {e}"
+
+    # 2. HTTP Check (to google)
+    try:
+        async with httpx.AsyncClient() as client:
+            resp = await client.get("https://www.google.com", timeout=5.0)
+            results["http_google"] = f"OK: {resp.status_code}"
+    except Exception as e:
+        results["http_google"] = f"FAIL: {e}"
+
+    # 3. HTTP Check (to a target that failed, e.g. softroc.com)
+    try:
+        async with httpx.AsyncClient(verify=False) as client: # verify=False to mimic scraper
+             resp = await client.get("https://softroc.com", timeout=5.0)
+             results["http_softroc"] = f"OK: {resp.status_code}"
+    except Exception as e:
+         results["http_softroc"] = f"FAIL: {e}"
+
+    return results
+
 @app.post("/enrich", response_model=Website)
+# ...
 async def enrich_domain(request: EnrichmentRequest) -> Website:
     """
     Accepts a domain and enrichment options, then scrapes the website
