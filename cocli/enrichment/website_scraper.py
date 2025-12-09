@@ -28,7 +28,8 @@ class WebsiteScraper:
         campaign: Optional[Campaign] = None,
         force_refresh: bool = False,
         ttl_days: int = 30,
-        debug: bool = False
+        debug: bool = False,
+        navigation_timeout_ms: Optional[int] = None # New parameter
     ) -> Optional[Website]:
         if not domain:
             logger.info("No domain provided. Skipping website scraping.")
@@ -133,15 +134,15 @@ class WebsiteScraper:
 
             # Fallback to navigating and scraping
             if not website_data.about_us_url:
-                await self._navigate_and_scrape(page, website_data, ["About Us", "About"], "About Us", self._scrape_page, context, debug)
+                await self._navigate_and_scrape(page, website_data, ["About Us", "About"], "About Us", self._scrape_page, context, debug, navigation_timeout_ms)
             if not website_data.contact_url:
-                await self._navigate_and_scrape(page, website_data, ["Contact Us", "Contact"], "Contact Us", self._scrape_contact_page, context, debug)
+                await self._navigate_and_scrape(page, website_data, ["Contact Us", "Contact"], "Contact Us", self._scrape_contact_page, context, debug, navigation_timeout_ms)
             if not website_data.contact_url:
-                await self._navigate_and_scrape(page, website_data, ["Our Team", "Team"], "Our Team", self._scrape_contact_page, context, debug)
+                await self._navigate_and_scrape(page, website_data, ["Our Team", "Team"], "Our Team", self._scrape_contact_page, context, debug, navigation_timeout_ms)
             if not website_data.services:
-                await self._navigate_and_scrape(page, website_data, ["Services"], "Services", self._scrape_services_page, context, debug)
+                await self._navigate_and_scrape(page, website_data, ["Services"], "Services", self._scrape_services_page, context, debug, navigation_timeout_ms)
             if not website_data.products:
-                await self._navigate_and_scrape(page, website_data, ["Products"], "Products", self._scrape_products_page, context, debug)
+                await self._navigate_and_scrape(page, website_data, ["Products"], "Products", self._scrape_products_page, context, debug, navigation_timeout_ms)
 
         except NavigationError:
             raise # Re-raise NavigationError
@@ -266,16 +267,18 @@ class WebsiteScraper:
         logger.info(f"Found {len(website_data.products)} potential products on {page.url}")
         return website_data
 
-    async def _navigate_and_scrape(self, page: Page, website_data: Website, link_texts: List[str], page_type: str, scrape_function: Callable[..., Coroutine[Any, Any, Website]], browser: BrowserContext, debug: bool) -> Website:
+    async def _navigate_and_scrape(self, page: Page, website_data: Website, link_texts: List[str], page_type: str, scrape_function: Callable[..., Coroutine[Any, Any, Website]], browser: BrowserContext, debug: bool, navigation_timeout_ms: Optional[int]) -> Website:
         # Use a case-insensitive regex for link text
         link_selector = ", ".join([f'a:text-matches("{text}", "i")' for text in link_texts])
         link = page.locator(link_selector).first
+
+        actual_timeout = navigation_timeout_ms if navigation_timeout_ms is not None else 15000
 
         try:
             # Wait for the page to be idle to ensure dynamic content has loaded
             await page.wait_for_load_state('networkidle')
             # Wait for the link to be visible, with an increased timeout.
-            await link.wait_for(state='visible', timeout=15000)
+            await link.wait_for(state='visible', timeout=actual_timeout)
             url = await link.get_attribute("href") # No timeout here, as visibility already checked
             if url:
                 url = urljoin(page.url, url)

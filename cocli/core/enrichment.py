@@ -13,10 +13,11 @@ logger = logging.getLogger(__name__)
 async def enrich_company_website(
     browser: Browser | BrowserContext,
     company: Company,
-    campaign: Optional[Campaign] = None, # New parameter
+    campaign: Optional[Campaign] = None,
     force: bool = False,
     ttl_days: int = 30,
-    debug: bool = False
+    debug: bool = False,
+    navigation_timeout_ms: Optional[int] = None # New parameter
 ) -> Optional[Website]:
     """
     Enriches a single Company object with data scraped from its website.
@@ -49,7 +50,8 @@ async def enrich_company_website(
         campaign=campaign, # Pass the campaign object
         force_refresh=force,
         ttl_days=ttl_days,
-        debug=debug
+        debug=debug,
+        navigation_timeout_ms=navigation_timeout_ms # Pass new param
     )
 
     return website_data

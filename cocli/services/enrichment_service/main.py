@@ -35,6 +35,7 @@ class EnrichmentRequest(BaseModel):
     campaign_name: Optional[str] = None
     aws_profile_name: Optional[str] = None
     company_slug: Optional[str] = None
+    navigation_timeout_ms: Optional[int] = None # New field
 
 @app.get("/debug/network")
 async def debug_network() -> Dict[str, Any]:
@@ -136,7 +137,8 @@ async def enrich_domain(request: EnrichmentRequest) -> Website:
                 campaign=campaign, # Pass the campaign object
                 force=request.force,
                 ttl_days=request.ttl_days,
-                debug=request.debug
+                debug=request.debug,
+                navigation_timeout_ms=request.navigation_timeout_ms # Pass new param
             )
             
             # If we get here, website_data is valid (or None if no domain, but we checked request.domain)
