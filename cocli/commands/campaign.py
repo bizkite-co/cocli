@@ -6,7 +6,7 @@ import csv
 import asyncio
 import subprocess
 from pathlib import Path
-from typing import Optional, List, Dict, Any, Set
+from typing import Optional, List, Dict, Any
 from datetime import datetime
 import logging
 import re
@@ -358,7 +358,7 @@ def import_prospects(
             prospect_data = GoogleMapsData.model_validate(model_data)
 
             # Call the core import function
-            new_company = import_prospect(prospect_data, existing_domains, campaign=campaign_name)
+            new_company = import_prospect(prospect_data, campaign=campaign_name)
 
             if new_company:
                 console.print(f"[green]Imported new prospect:{new_company.name}[/green]") 
@@ -375,6 +375,7 @@ async def pipeline(
     headed: bool,
     devtools: bool,
     campaign_name: str,
+    existing_companies_map: Dict[str, str],
     overlap_threshold_percent: float, # Moved to a non-default position
     zoom_out_button_selector: str,
     panning_distance_miles: int,
@@ -383,7 +384,6 @@ async def pipeline(
     force: bool,
     ttl_days: int,
     debug: bool,
-    existing_companies_map: Dict[str, str],
     console: Console,
     browser_width: int,
     browser_height: int,
@@ -579,7 +579,7 @@ async def pipeline(
                         queue_manager.ack(msg) # Ack to avoid loop if no exception but no data
 
         # --- Producer Task ---
-        async def producer_task() -> None:
+        async def producer_task(existing_companies_map: Dict[str, str]) -> None:
             console.print("[bold blue]Starting Scraper Producer...[/bold blue]")
             
             # Initialize location data
@@ -675,9 +675,8 @@ async def pipeline(
                                 company = Company.get(slug)
                             else:
                                 # Import Local
-                                # Explicitly create a set of strings for existing domains
-                                existing_domains_set: Set[str] = set(existing_companies_map.keys())
-                                company = import_prospect(prospect_data, existing_domains_set, campaign=campaign_name)
+
+                                company = import_prospect(prospect_data, campaign=campaign_name)
                                 if company and company.domain:
                                     existing_companies_map[company.domain] = company.slug
                             
@@ -719,7 +718,7 @@ async def pipeline(
                             await asyncio.sleep(0.01)
 
         # Run both
-        await asyncio.gather(producer_task(), consumer_task())
+        await asyncio.gather(producer_task(existing_companies_map), consumer_task())
         console.print("[bold green]Pipeline Finished.[/bold green]")
 
 

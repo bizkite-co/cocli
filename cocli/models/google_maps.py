@@ -5,6 +5,7 @@ from datetime import datetime, UTC
 import logging
 
 from cocli.models.types import AwareDatetime # Import the custom type
+from cocli.core.utils import slugify
 
 logger = logging.getLogger(__name__)
 
@@ -60,6 +61,12 @@ class GoogleMapsData(BaseModel):
     Reviews: Optional[str] = None
     Quotes: Optional[str] = None
     Uuid: Optional[str] = None
+
+    @property
+    def company_slug(self) -> Optional[str]:
+        if self.Name:
+            return slugify(self.Name)
+        return None
 
     @model_validator(mode='before')
     @classmethod

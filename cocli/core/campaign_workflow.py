@@ -85,7 +85,6 @@ class CampaignWorkflow:
 
     def run_prospecting_scrape(self) -> None:
         from ..commands.campaign import pipeline
-        from ..models.company import Company
         from ..core.location_prospects_index import LocationProspectsIndex
         import asyncio
         import toml
@@ -114,6 +113,8 @@ class CampaignWorkflow:
             self.fail_campaign()  # type: ignore
             return
 
+        # existing_companies_map is no longer needed after import_prospect refactoring
+        from ..models.company import Company
         existing_companies_map = {c.domain: c.slug for c in Company.get_all() if c.domain and c.slug}
         location_prospects_index = LocationProspectsIndex(campaign_name=self.name)
 
@@ -126,6 +127,7 @@ class CampaignWorkflow:
                     headed=False,
                     devtools=False,
                     campaign_name=self.name,
+                    existing_companies_map=existing_companies_map,
                     zoom_out_button_selector=zoom_out_button_selector,
                     panning_distance_miles=panning_distance_miles,
                     initial_zoom_out_level=initial_zoom_out_level,
@@ -133,7 +135,6 @@ class CampaignWorkflow:
                     force=False,
                     ttl_days=30,  # Default, can be made configurable
                     debug=False,
-                    existing_companies_map=existing_companies_map,
                     console=console,
                     browser_width=2000,
                     browser_height=2000,
