@@ -234,6 +234,8 @@ async def scrape_google_maps(
     disable_panning: bool = False,
     max_proximity_miles: float = 0.0,  # 0.0 means unlimited (or constrained by other factors)
     overlap_threshold_percent: float = 60.0, # Increased to 60% for debugging
+    expansion_factor: float = 1.0, # Factor to expand initial search area if already scraped (1.0 means 100% expansion)
+    max_initial_expansion_attempts: int = 3, # Max times to try expanding initial area
 ) -> AsyncIterator[GoogleMapsData]:
     """
     Scrapes business information from Google Maps for a list of search queries,
@@ -353,27 +355,34 @@ async def scrape_google_maps(
             logger.warning(f"Could not extract map scale: {e}")
 
         # Initial scrape of the main area
+        initial_map_width_miles, initial_map_height_miles = map_width_miles, map_height_miles # Capture these for potential expand-out if needed
+
+        current_viewport_bounds_initial = get_viewport_bounds(latitude, longitude, map_width_miles, map_height_miles) # Calculate once for the initial area
+
+        # Check if initial area is already known wilderness
+        wilderness_check_initial = scrape_index.is_wilderness_area(current_viewport_bounds_initial, overlap_threshold_percent)
+        if wilderness_check_initial:
+            wilderness_area_initial, wilderness_overlap_percent_initial = wilderness_check_initial
+            logger.info(f"Skipping initial area ({latitude:.4f}, {longitude:.4f}) as it falls within a known wilderness area (overlap: {wilderness_overlap_percent_initial:.2f}%).")
+            all_initial_searches_skipped_due_to_wilderness = True
+        else:
+            all_initial_searches_skipped_due_to_wilderness = False
+
         for search_string in search_strings:
             if page.is_closed(): # Check within loop
                 logger.warning(f"Page closed unexpectedly during initial area scraping for '{search_string}'. Breaking loop.")
                 break
 
-            # Calculate viewport bounds for the current location
-            logger.debug(f"Calculating initial viewport bounds with: lat={latitude}, lon={longitude}, width_miles={map_width_miles}, height_miles={map_height_miles}")
-            current_viewport_bounds = get_viewport_bounds(latitude, longitude, map_width_miles, map_height_miles)
-            logger.debug(f"Initial viewport bounds calculated: {current_viewport_bounds}")
-
-            logger.debug(f"Checking initial area for wilderness with bounds: {current_viewport_bounds}")
-            # Check if area is already known wilderness
-            if scrape_index.is_wilderness_area(current_viewport_bounds, overlap_threshold_percent):
-                logger.info(f"Skipping initial area ({latitude:.4f}, {longitude:.4f}) as it falls within a known wilderness area.")
+            if all_initial_searches_skipped_due_to_wilderness:
+                logger.info(f"Skipping initial search '{search_string}' due to wilderness area detection.")
                 continue
 
-            matched_area = scrape_index.is_area_scraped(search_string, current_viewport_bounds, ttl_days=ttl_days, overlap_threshold_percent=overlap_threshold_percent)
-            if matched_area:
-                logger.info(f"Skipping initial area for phrase '{search_string}' as it falls within a recently scraped '{matched_area.phrase}' box ({matched_area.lat_min:.4f}, {matched_area.lon_min:.4f} to {matched_area.lat_max:.4f}, {matched_area.lon_max:.4f}).")
+            matched_area_check_initial = scrape_index.is_area_scraped(search_string, current_viewport_bounds_initial, ttl_days=ttl_days, overlap_threshold_percent=overlap_threshold_percent)
+            if matched_area_check_initial:
+                matched_area_initial, overlap_percent_initial = matched_area_check_initial
+                logger.info(f"Skipping initial area for phrase '{search_string}' as it falls within a recently scraped '{matched_area_initial.phrase}' box (overlap: {overlap_percent_initial:.2f}%).")
                 continue
-
+            
             items_found_in_area = 0
             async for item in _scrape_area(
                 page=page,
@@ -386,19 +395,19 @@ async def scrape_google_maps(
                 items_found_in_area += 1
                 yield item
 
-            if items_found_in_area > 0 and map_width_miles > 0:
-                viewport_bounds = get_viewport_bounds(latitude, longitude, map_width_miles, map_height_miles)
+            if items_found_in_area > 0 and initial_map_width_miles > 0: # Use initial_map_width_miles here
+                viewport_bounds_to_add = get_viewport_bounds(latitude, longitude, initial_map_width_miles, initial_map_height_miles) # Use initial_map_width_miles here
                 # Round values for cleaner CSV
-                for k, v in viewport_bounds.items():
-                    viewport_bounds[k] = round(v, 5)
-                scrape_index.add_area(search_string, viewport_bounds, lat_miles=round(map_height_miles, 3), lon_miles=round(map_width_miles, 3), items_found=items_found_in_area)
+                for k, v in viewport_bounds_to_add.items():
+                    viewport_bounds_to_add[k] = round(v, 5)
+                scrape_index.add_area(search_string, viewport_bounds_to_add, lat_miles=round(initial_map_height_miles, 3), lon_miles=round(initial_map_width_miles, 3), items_found=items_found_in_area)
                 logger.info(f"Added viewport-based bounding box to scrape index for phrase '{search_string}'. Items found: {items_found_in_area}")
-            elif map_width_miles > 0: # items_found_in_area is 0
-                viewport_bounds = get_viewport_bounds(latitude, longitude, map_width_miles, map_height_miles)
+            elif initial_map_width_miles > 0: # items_found_in_area is 0, and we use initial_map_width_miles
+                viewport_bounds = get_viewport_bounds(latitude, longitude, initial_map_width_miles, initial_map_height_miles) # Use initial_map_width_miles here
                 for k, v in viewport_bounds.items():
                     viewport_bounds[k] = round(v, 5)
                 logger.debug(f"Adding wilderness area with bounds: {viewport_bounds}")
-                scrape_index.add_wilderness_area(viewport_bounds, lat_miles=round(map_height_miles, 3), lon_miles=round(map_width_miles, 3), items_found=0)
+                scrape_index.add_wilderness_area(viewport_bounds, lat_miles=round(initial_map_height_miles, 3), lon_miles=round(initial_map_width_miles, 3), items_found=0)
                 logger.info(f"No items found in initial area for phrase '{search_string}'. Marked as wilderness.")
 
         if disable_panning:
@@ -483,27 +492,132 @@ async def scrape_google_maps(
                 except Exception:
                     logger.debug("'Search this area' button not found.")
 
-                # Scrape the new area for each search string
+                # Calculate viewport bounds for the current location (panned)
+                logger.debug(f"Calculating panned viewport bounds with: lat={current_lat}, lon={current_lon}, width_miles={map_width_miles}, height_miles={map_height_miles}")
+                panned_viewport_center_lat, panned_viewport_center_lon = current_lat, current_lon
+                current_panned_map_width_miles, current_panned_map_height_miles = map_width_miles, map_height_miles # These will expand within the dynamic expand-out
+
+                # --- Begin Dynamic Expand-Out Logic ---
+                performed_expand_out_for_panned_area = False
+                for expand_attempt in range(max_initial_expansion_attempts + 1): # Using max_initial_expansion_attempts for current implementation
+                    current_expanded_viewport_bounds = get_viewport_bounds(panned_viewport_center_lat, panned_viewport_center_lon, current_panned_map_width_miles, current_panned_map_height_miles)
+                    logger.debug(f"Expand-out attempt {expand_attempt + 1}: Current expanded viewport bounds for check: {current_expanded_viewport_bounds}")
+
+                    # Check if current expanded area is already known wilderness
+                    wilderness_check = scrape_index.is_wilderness_area(current_expanded_viewport_bounds, overlap_threshold_percent)
+                    if wilderness_check:
+                        wilderness_area, wilderness_overlap_percent = wilderness_check
+                        logger.info(f"Expand-out attempt {expand_attempt + 1}: Expanded area ({panned_viewport_center_lat:.4f}, {panned_viewport_center_lon:.4f}) is wilderness (overlap: {wilderness_overlap_percent:.2f}%).")
+                        # If the expanded area is wilderness, mark this larger area and break from expand-out
+                        if current_panned_map_width_miles > 0:
+                            viewport_bounds_to_add = get_viewport_bounds(panned_viewport_center_lat, panned_viewport_center_lon, current_panned_map_width_miles, current_panned_map_height_miles)
+                            for k, v in viewport_bounds_to_add.items():
+                                viewport_bounds_to_add[k] = round(v, 5)
+                            scrape_index.add_wilderness_area(viewport_bounds_to_add, lat_miles=round(current_panned_map_height_miles, 3), lon_miles=round(current_panned_map_width_miles, 3), items_found=0)
+                            logger.info(f"Marked expanded area as wilderness for {panned_viewport_center_lat:.4f}, {panned_viewport_center_lon:.4f}. Resuming spiral.")
+                        performed_expand_out_for_panned_area = True
+                        break # Exit expand-out loop
+
+                    all_searches_skipped_in_expanded_area = True
+                    for search_string in search_strings:
+                        if page.is_closed():
+                            logger.warning(f"Page closed unexpectedly during expand-out search for '{search_string}'. Breaking loop.")
+                            all_searches_skipped_in_expanded_area = False
+                            break
+
+                        matched_area_check = scrape_index.is_area_scraped(search_string, current_expanded_viewport_bounds, ttl_days=ttl_days, overlap_threshold_percent=overlap_threshold_percent)
+                        if matched_area_check:
+                            matched_area, overlap_percent = matched_area_check
+                            logger.info(f"Expand-out attempt {expand_attempt + 1}: Skipping '{search_string}' as it overlaps existing scraped area (overlap: {overlap_percent:.2f}%).")
+                            continue
+
+                        all_searches_skipped_in_expanded_area = False # At least one search string is not skipped for this expanded area
+                        break # Found an unscraped search string, so this expanded area is good enough to scrape
+
+                    if not all_searches_skipped_in_expanded_area:
+                        logger.info(f"Expand-out attempt {expand_attempt + 1}: Found sufficiently unscraped area for {panned_viewport_center_lat:.4f}, {panned_viewport_center_lon:.4f}. Proceeding to scrape expanded area.")
+                        # Visual Confirmation (Zoom Out) logic would go here if implemented, e.g., adjust actual map zoom
+                        # For now, just scrape the determined expanded area
+
+                        # It's important to navigate to the center of the potentially expanded area
+                        # so that the _scrape_area function operates on the correct map view.
+                        expanded_url = f"https://www.google.com/maps/@{panned_viewport_center_lat},{panned_viewport_center_lon},15z?entry=ttu"
+                        await page.goto(expanded_url, wait_until="commit", timeout=NAVIGATION_TIMEOUT_MS)
+                        await page.wait_for_timeout(5000) # Wait for map to settle
+
+
+                        items_found_in_expanded_area = 0
+                        for search_string_to_scrape in search_strings: # Re-iterate all search strings for the expanded area
+                            if page.is_closed():
+                                logger.warning(f"Page closed unexpectedly during scraping expanded area for '{search_string_to_scrape}'. Breaking loop.")
+                                break
+
+                            # Re-check against the newly expanded bounds in case the previous check was too broad
+                            recheck_matched_area = scrape_index.is_area_scraped(search_string_to_scrape, current_expanded_viewport_bounds, ttl_days=ttl_days, overlap_threshold_percent=overlap_threshold_percent)
+                            if recheck_matched_area:
+                                logger.info(f"Skipping expanded area scrape for '{search_string_to_scrape}' as it's now covered (overlap: {recheck_matched_area[1]:.2f}%).")
+                                continue
+
+                            async for item in _scrape_area(
+                                page=page,
+                                search_string=search_string_to_scrape,
+                                processed_place_ids=processed_place_ids,
+                                force_refresh=force_refresh,
+                                ttl_days=ttl_days,
+                                debug=debug,
+                            ):
+                                items_found_in_expanded_area += 1
+                                yield item
+
+                            if items_found_in_expanded_area > 0 and current_panned_map_width_miles > 0:
+                                viewport_bounds_to_add = get_viewport_bounds(panned_viewport_center_lat, panned_viewport_center_lon, current_panned_map_width_miles, current_panned_map_height_miles)
+                                for k, v in viewport_bounds_to_add.items():
+                                    viewport_bounds_to_add[k] = round(v, 5)
+                                scrape_index.add_area(search_string_to_scrape, viewport_bounds_to_add, lat_miles=round(current_panned_map_height_miles, 3), lon_miles=round(current_panned_map_width_miles, 3), items_found=items_found_in_expanded_area)
+                                logger.info(f"Added expanded viewport bounding box to scrape index for phrase '{search_string_to_scrape}'. Items found: {items_found_in_expanded_area}")
+                            elif current_panned_map_width_miles > 0:
+                                viewport_bounds_to_add = get_viewport_bounds(panned_viewport_center_lat, panned_viewport_center_lon, current_panned_map_width_miles, current_panned_map_height_miles)
+                                for k, v in viewport_bounds_to_add.items():
+                                    viewport_bounds_to_add[k] = round(v, 5)
+                                scrape_index.add_wilderness_area(viewport_bounds_to_add, lat_miles=round(current_panned_map_height_miles, 3), lon_miles=round(current_panned_map_width_miles, 3), items_found=0)
+                                logger.info(f"No items found in expanded area for phrase '{search_string_to_scrape}'. Marked as wilderness.")
+
+                        performed_expand_out_for_panned_area = True
+                        break # Exit expand-out loop since we scraped a good area
+
+                    if expand_attempt < max_initial_expansion_attempts:
+                        logger.info(f"Expand-out attempt {expand_attempt + 1}: All searches skipped for current expanded area. Increasing expansion factor.")
+                        current_panned_map_width_miles *= (1 + expansion_factor)
+                        current_panned_map_height_miles *= (1 + expansion_factor)
+                        # Check proximity limit during expansion
+                        if max_proximity_miles > 0:
+                            dist_from_start = geodesic((start_lat, start_lon), (panned_viewport_center_lat, panned_viewport_center_lon)).miles
+                            # Check if the furthest point of the expanded area exceeds max_proximity_miles
+                            # This approximation assumes a square expansion and checks center distance + half diagonal
+                            diagonal_half_miles = ((current_panned_map_width_miles/2)**2 + (current_panned_map_height_miles/2)**2)**0.5
+                            if (dist_from_start + diagonal_half_miles) > max_proximity_miles:
+                                logger.info(f"Expand-out attempt {expand_attempt + 1}: Expanded area exceeds max proximity ({dist_from_start + diagonal_half_miles:.2f} > {max_proximity_miles} miles). Stopping expand-out.")
+                                performed_expand_out_for_panned_area = True # Even if not scraped, we tried to expand.
+                                break
+                    else:
+                        logger.info(f"Expand-out attempt {expand_attempt + 1}: Max expansion attempts reached for current panned location. No sufficiently unscraped expanded area found.")
+                        performed_expand_out_for_panned_area = True # Tried all attempts
+
+                if performed_expand_out_for_panned_area: # If we handled the area via expand-out (scraped or marked as wilderness), continue the spiral
+                    continue
+                # --- End Dynamic Expand-Out Logic ---
+
+                # If not handled by expand-out (i.e., not heavily scraped), proceed with normal scraping for each search string at current panned_map_width_miles/height_miles
                 for search_string in search_strings:
+                    # The existing logic for checking wilderness and matched_area is now inside expand-out,
+                    # so if we reach here, it means this area (at its current size) was not heavily scraped.
+                    # We just need to scrape it normally.
                     if page.is_closed(): # Check within inner loop
                         logger.warning(f"Page closed unexpectedly during area scraping for '{search_string}'. Breaking loop.")
                         break
 
-                    # Calculate viewport bounds for the current location
-                    logger.debug(f"Calculating panned viewport bounds with: lat={current_lat}, lon={current_lon}, width_miles={map_width_miles}, height_miles={map_height_miles}")
-                    current_viewport_bounds = get_viewport_bounds(current_lat, current_lon, map_width_miles, map_height_miles)
-                    logger.debug(f"Panned viewport bounds calculated: {current_viewport_bounds}")
-
-                    # Check if area is already known wilderness
-                    logger.debug(f"Checking panned area for wilderness with bounds: {current_viewport_bounds}")
-                    if scrape_index.is_wilderness_area(current_viewport_bounds, overlap_threshold_percent):
-                        logger.info(f"Skipping area ({current_lat:.4f}, {current_lon:.4f}) as it falls within a known wilderness area.")
-                        continue
-
-                    matched_area = scrape_index.is_area_scraped(search_string, current_viewport_bounds, ttl_days=ttl_days, overlap_threshold_percent=overlap_threshold_percent)
-                    if matched_area:
-                        logger.info(f"Skipping area for phrase '{search_string}' as it falls within a recently scraped box ({matched_area.lat_min:.4f}, {matched_area.lon_min:.4f} to {matched_area.lat_max:.4f}, {matched_area.lon_max:.4f}).")
-                        continue
+                    # current_viewport_bounds is implicitly the original panned area since no expansion occurred.
+                    # The get_viewport_bounds is called directly where needed below.
 
                     items_found_in_area = 0
                     async for item in _scrape_area(

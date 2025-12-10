@@ -15,14 +15,14 @@ if project_root not in sys.path:
 try:
     from cocli.core.config import get_enrichment_service_url
 except ImportError:
-    def get_enrichment_service_url():
+    def get_enrichment_service_url() -> str: # Changed return type to str
         # Fallback if cocli is not properly installed or path is not set up
         # This is a basic heuristic, user might need to adjust
         print("Warning: cocli.core.config could not be imported. Falling back to default enrichment URL.", file=sys.stderr)
         return os.environ.get("COCLI_ENRICHMENT_SERVICE_URL", "https://enrich.turboheat.net")
 
 
-def main():
+def main() -> None: # Added return type annotation
     parser = argparse.ArgumentParser(description="Enrich a single domain using the Fargate service.")
     parser.add_argument("domain", help="The domain to enrich (e.g., example.com).")
     parser.add_argument("--navigation-timeout", type=int, default=None,

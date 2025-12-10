@@ -496,11 +496,7 @@ async def pipeline(
                                 if status == 404:
                                     console.print(f"[yellow]Service returned 404 for {msg.domain}. Saving empty result.[/yellow]")
                                     # Save empty result logic below (shared)
-                                    website_data = Website(domain=msg.domain, url=f"http://{msg.domain}", company_name=msg.domain) # type: ignore
-                                    # We mark it as failed in a way? Or just save with empty email?
-                                    # Actually better to save explicit error
-                                    # But we want to reuse the save block.
-                                    # Let's just proceed to save, website_data will have empty email.
+                                    website_data = Website(url=f"http://{msg.domain}", company_name=msg.domain)
                                 elif status == 500:
                                     error_details = e.response.text[:200] if e.response else "No details"
                                     console.print(f"[bold red]HTTP 500 for {msg.domain}. Error: {error_details}. Retrying.[/bold red]")
@@ -535,7 +531,7 @@ async def pipeline(
                         except NavigationError as e:
                              console.print(f"[yellow]Navigation failed for {msg.domain}: {e}. Saving empty result.[/yellow]")
                              # Treat as 404 - Save empty result
-                             website_data = Website(domain=msg.domain, url=f"http://{msg.domain}", company_name=msg.domain)
+                             website_data = Website(url=f"http://{msg.domain}", company_name=msg.domain)
                         except Exception as e:
                              logger.error(f"Local enrichment failed: {e}")
                              queue_manager.nack(msg)
@@ -680,7 +676,7 @@ async def pipeline(
                             else:
                                 # Import Local
                                 # Explicitly create a set of strings for existing domains
-                                existing_domains_set: Set[str] = set(list(existing_companies_map.keys())) # type: ignore
+                                existing_domains_set: Set[str] = set(existing_companies_map.keys())
                                 company = import_prospect(prospect_data, existing_domains_set, campaign=campaign_name)
                                 if company and company.domain:
                                     existing_companies_map[company.domain] = company.slug

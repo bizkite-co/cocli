@@ -1,7 +1,7 @@
 
 import csv
 from datetime import datetime, timedelta, UTC
-from typing import List, Optional, NamedTuple
+from typing import List, Optional, NamedTuple, Tuple
 from pathlib import Path
 import logging
 
@@ -185,7 +185,7 @@ class ScrapeIndex:
 
         self._save_areas_for_phrase(phrase, areas)
 
-    def is_area_scraped(self, phrase: str, bounds: dict[str, float], ttl_days: Optional[int] = None, overlap_threshold_percent: float = 0.0) -> Optional[ScrapedArea]:
+    def is_area_scraped(self, phrase: str, bounds: dict[str, float], ttl_days: Optional[int] = None, overlap_threshold_percent: float = 0.0) -> Optional[Tuple[ScrapedArea, float]]:
         """
         Checks if a given bounding box for a specific phrase significantly overlaps with any of the
         already scraped bounding boxes.
@@ -217,7 +217,7 @@ class ScrapeIndex:
 
                 if overlap_percentage >= overlap_threshold_percent:
                     logger.debug(f"Current bounds {bounds} overlap by {overlap_percentage:.2f}% with scraped area {area.lat_min:.4f},{area.lon_min:.4f} to {area.lat_max:.4f},{area.lon_max:.4f}. Skipping as already scraped.")
-                    return area
+                    return area, overlap_percentage
             except Exception as e:
                 logger.error(f"Scraped area matching error: {e}")
                 return None
@@ -323,7 +323,7 @@ class ScrapeIndex:
 
         self._save_wilderness_areas(areas)
 
-    def is_wilderness_area(self, bounds: dict[str, float], overlap_threshold_percent: float = 0.0) -> Optional[ScrapedArea]:
+    def is_wilderness_area(self, bounds: dict[str, float], overlap_threshold_percent: float = 0.0) -> Optional[Tuple[ScrapedArea, float]]:
         """
         Checks if a given bounding box falls within any of the known wilderness areas.
         """
@@ -348,7 +348,7 @@ class ScrapeIndex:
 
             if overlap_percentage >= overlap_threshold_percent:
                 logger.debug(f"Current bounds {bounds} overlap by {overlap_percentage:.2f}% with wilderness area {area.lat_min:.4f},{area.lon_min:.4f} to {area.lat_max:.4f},{area.lon_max:.4f}. Skipping.")
-                return area
+                return area, overlap_percentage
         return None
 
     def get_all_areas_for_phrases(self, phrases: List[str]) -> List[ScrapedArea]:
@@ -360,3 +360,4 @@ class ScrapeIndex:
         for phrase in phrases:
             all_areas.extend(self._load_areas_for_phrase(phrase))
         return all_areas
+
