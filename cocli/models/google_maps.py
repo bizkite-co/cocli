@@ -5,7 +5,7 @@ from datetime import datetime, UTC
 import logging
 
 from cocli.models.types import AwareDatetime # Import the custom type
-from cocli.core.utils import slugify
+from cocli.core.text_utils import slugify
 
 logger = logging.getLogger(__name__)
 

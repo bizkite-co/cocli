@@ -599,7 +599,11 @@ async def pipeline(
             else:
                 for loc_name in locations:
                     current_prospects = location_prospects_index.get_prospect_count(loc_name)
-                    location_data.append({"name": loc_name, "prospect_count": current_prospects})
+                    location_data.append({
+                        "name": loc_name, 
+                        "prospect_count": current_prospects,
+                        "saturation_score": 100000.0
+                    })
             
             location_df = pd.DataFrame(location_data)
 

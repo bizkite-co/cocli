@@ -1,8 +1,6 @@
 import typer
 import csv
 import logging
-from pathlib import Path
-from typing import Optional
 from rich.console import Console
 from rich.progress import track
 
@@ -35,7 +33,7 @@ def main(
         console.print(f"[bold red]CSV file not found: {csv_path}[/bold red]")
         raise typer.Exit(code=1)
 
-    console.print(f"[bold blue]Loading scraped areas...[/bold blue]")
+    console.print("[bold blue]Loading scraped areas...[/bold blue]")
     scrape_index = ScrapeIndex()
     scraped_areas = scrape_index.get_all_scraped_areas()
     console.print(f"Loaded {len(scraped_areas)} scraped areas.")

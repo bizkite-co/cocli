@@ -1,11 +1,8 @@
 import yaml
 import uuid
 from rich.console import Console
-import re
 from pathlib import Path
 from typing import Any, Optional
-from yaml import Dumper
-from yaml.nodes import ScalarNode
 import tty
 import termios
 import sys
@@ -19,22 +16,9 @@ import subprocess
 from ..models.company import Company
 from ..models.person import Person  # Import Company and Person models
 from .config import get_companies_dir  # Import directory getters
+from .text_utils import slugify
 
 logger = logging.getLogger(__name__)
-
-console = Console()
-
-# Custom representer for None to ensure it's explicitly written as 'null'
-def represent_none(self: Dumper, data: Any) -> ScalarNode:
-    return self.represent_scalar('tag:yaml.org,2002:null', 'null')
-
-yaml.add_representer(type(None), represent_none)
-
-def slugify(text: str) -> str:
-    """Converts text to a filesystem-friendly slug."""
-    text = text.lower()
-    text = re.sub(r'[\s\W]+', '-', text)
-    return text.strip('-')
 
 def create_company_files(company: Company, company_dir: Path) -> Path:
     """
