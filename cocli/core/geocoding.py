@@ -5,7 +5,7 @@ import logging
 import json
 
 from ..core.config import get_cocli_base_dir
-from ..core.utils import slugify
+from cocli.core.text_utils import slugify
 
 logger = logging.getLogger(__name__)
 

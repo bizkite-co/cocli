@@ -8,7 +8,7 @@ from tzlocal import get_localzone
 import logging
 
 from ..core.config import get_companies_dir
-from ..core.utils import slugify
+from cocli.core.text_utils import slugify
 
 logger = logging.getLogger(__name__)
 app = typer.Typer()

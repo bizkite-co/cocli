@@ -6,7 +6,8 @@ from typing import List, Dict
 import logging
 
 from ..core.config import get_companies_dir, get_people_dir
-from ..core.utils import slugify, create_company_files, create_person_files
+from cocli.core.text_utils import slugify
+from cocli.core.utils import create_company_files, create_person_files
 from ..models.person import Person
 from ..models.company import Company
 from ..models.website_domain_csv import WebsiteDomainCsv

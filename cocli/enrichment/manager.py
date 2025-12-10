@@ -4,7 +4,7 @@ from pathlib import Path
 from typing import List, Optional, Dict
 import logging
 import yaml
-from ..core.utils import slugify
+from cocli.core.text_utils import slugify
 from datetime import datetime
 
 from .base import EnrichmentScript

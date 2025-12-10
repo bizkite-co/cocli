@@ -6,7 +6,7 @@ from pathlib import Path
 import logging
 
 from .config import get_scraped_areas_index_dir
-from ..core.utils import slugify
+from cocli.core.text_utils import slugify
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
@@ -365,7 +365,7 @@ class ScrapeIndex:
         """
         Loads all scraped areas from all CSV files in the index directory.
         """
-        all_areas = []
+        all_areas: List[ScrapedArea] = []
         if not self.index_dir.exists():
             return all_areas
         

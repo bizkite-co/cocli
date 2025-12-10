@@ -3,7 +3,7 @@ from typer.testing import CliRunner
 from unittest.mock import patch
 
 from cocli.main import app
-from cocli.core.utils import slugify
+from cocli.core.text_utils import slugify
 
 runner = CliRunner()
 

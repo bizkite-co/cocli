@@ -18,7 +18,7 @@ from cocli.core.queue.factory import get_queue_manager
 from cocli.models.queue import QueueMessage # Added import
 from cocli.models.website import Website
 from cocli.compilers.website_compiler import WebsiteCompiler
-from cocli.core.utils import slugify
+from cocli.core.text_utils import slugify
 from cocli.core.enrichment_service_utils import ensure_enrichment_service_ready
 from cocli.core.logging_config import setup_file_logging
 from cocli.core.enrichment import enrich_company_website

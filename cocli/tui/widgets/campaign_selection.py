@@ -8,7 +8,7 @@ from textual.widgets import Static
 from textual import events
 
 from cocli.core.config import get_all_campaign_dirs
-from cocli.core.utils import slugify
+from cocli.core.text_utils import slugify
 
 
 logger = logging.getLogger(__name__)

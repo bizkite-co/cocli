@@ -4,7 +4,8 @@ from typing import Dict, Any, Optional
 import logging
 
 from ..models.company import Company
-from ..core.utils import create_company_files, slugify
+from cocli.core.text_utils import slugify
+from cocli.core.utils import create_company_files
 from ..core.config import get_companies_dir
 
 logger = logging.getLogger(__name__)

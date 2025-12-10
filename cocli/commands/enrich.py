@@ -8,7 +8,8 @@ from ..enrichment.manager import EnrichmentManager
 from ..core.config import get_companies_dir, get_people_dir
 from ..models.company import Company
 from ..models.person import Person
-from ..core.utils import slugify, create_person_files
+from cocli.core.text_utils import slugify
+from cocli.core.utils import create_person_files
 from ..scrapers.generic_contact_scraper import GenericContactScraper
 
 logger = logging.getLogger(__name__)

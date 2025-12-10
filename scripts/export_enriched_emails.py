@@ -4,7 +4,7 @@ import yaml
 from rich.console import Console
 from rich.progress import track
 from cocli.core.config import get_companies_dir, get_campaign_dir, get_campaign_scraped_data_dir
-from cocli.core.utils import slugify
+from cocli.core.text_utils import slugify
 
 app = typer.Typer()
 console = Console()

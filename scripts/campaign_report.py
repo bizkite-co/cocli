@@ -79,7 +79,7 @@ def main(campaign_name: Optional[str] = typer.Argument(None, help="Campaign name
     if prospects_csv.exists():
         with open(prospects_csv, 'r', encoding='utf-8', errors='ignore') as f:
             reader = csv.DictReader(f)
-            from cocli.core.utils import slugify
+            from cocli.core.text_utils import slugify
             for row in reader:
                 if row.get('Domain'):
                     slugs.add(slugify(row['Domain']))

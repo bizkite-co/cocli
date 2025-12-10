@@ -9,7 +9,7 @@ from ..core.geocoding import get_coordinates_from_zip, get_coordinates_from_city
 from ..models.company import Company
 from ..models.person import Person
 from ..models.geocode import GeocodeData
-from ..core.utils import slugify
+from cocli.core.text_utils import slugify
 
 logger = logging.getLogger(__name__)
 

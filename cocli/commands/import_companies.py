@@ -5,7 +5,8 @@ import yaml
 from typing import List, Optional
 import logging
 
-from cocli.core.utils import slugify, create_company_files
+from cocli.core.text_utils import slugify
+from cocli.core.utils import create_company_files
 from cocli.models.company import Company
 from cocli.models.website_domain_csv import WebsiteDomainCsv
 from cocli.core.website_domain_csv_manager import WebsiteDomainCsvManager

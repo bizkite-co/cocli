@@ -108,7 +108,7 @@ def import_prospect(
             "reviews_count": prospect_data.Reviews_count,
             "average_rating": prospect_data.Average_rating,
             "place_id": prospect_data.Place_ID,
-            "last_enriched_at": None, # New company, not yet enriched
+            "last_enriched": None, # New company, not yet enriched
             "enrichment_ttl_days": Company.model_fields["enrichment_ttl_days"].default # Use model default
         }
 

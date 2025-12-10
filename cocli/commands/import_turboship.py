@@ -6,7 +6,8 @@ import yaml
 import logging
 
 from ..core.config import get_companies_dir, get_people_dir
-from ..core.utils import slugify, create_company_files, create_person_files
+from ..core.text_utils import slugify
+from ..core.utils import create_company_files, create_person_files
 from ..models.person import Person
 from ..models.company import Company
 from ..models.shopify import ShopifyData

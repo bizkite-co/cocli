@@ -1,4 +1,4 @@
-from typing import Optional
+from typing import Optional, Any
 from pydantic import BaseModel, Field, field_serializer
 
 class TargetLocation(BaseModel):
@@ -17,5 +17,5 @@ class TargetLocation(BaseModel):
     }
 
     @field_serializer('lat', 'lon')
-    def serialize_coordinates(self, v: float, _info):
+    def serialize_coordinates(self, v: float, _info: Any) -> float:
         return round(v, 5)

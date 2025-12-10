@@ -14,7 +14,8 @@ import datetime
 from rich.console import Console
 
 
-from ..core.utils import slugify, create_person_files, _getch, run_fzf
+from cocli.core.text_utils import slugify
+from cocli.core.utils import _getch, run_fzf, create_person_files
 from ..core.config import get_companies_dir, get_people_dir, get_campaign, get_editor_command, get_enrichment_service_url
 from ..models.company import Company
 from ..models.person import Person

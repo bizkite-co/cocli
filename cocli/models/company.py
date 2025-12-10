@@ -65,6 +65,7 @@ class Company(BaseModel):
     meta_keywords: Optional[str] = None
     place_id: Optional[str] = None
     last_enriched: Optional[datetime] = None
+    enrichment_ttl_days: int = 30
 
     @model_validator(mode='after')
     def parse_full_address(self) -> 'Company':

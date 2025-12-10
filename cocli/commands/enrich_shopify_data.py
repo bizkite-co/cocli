@@ -6,7 +6,8 @@ import asyncio
 from playwright.async_api import async_playwright
 
 from cocli.core.config import get_scraped_data_dir, get_companies_dir
-from cocli.core.utils import slugify, create_company_files
+from cocli.core.text_utils import slugify
+from cocli.core.utils import create_company_files
 from cocli.enrichment.website_scraper import WebsiteScraper
 from cocli.models.company import Company
 

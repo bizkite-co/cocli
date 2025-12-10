@@ -2,7 +2,7 @@ from pydantic import BaseModel, Field
 from typing import List, Optional
 import toml
 from pathlib import Path
-from cocli.core.utils import slugify
+from cocli.core.text_utils import slugify
 
 class CampaignImport(BaseModel):
     format: str

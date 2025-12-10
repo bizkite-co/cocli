@@ -27,6 +27,9 @@ To implement a scalable, reliable prospecting pipeline where:
     *   **Fix:** Updated producer to correctly identify existing companies via `domain` -> `slug` mapping and queue them if email is missing.
     *   **Fix:** Resolved config serialization issues (`PosixPath`, `None` type) preventing campaign context saving.
     *   **Fix:** Renamed internal `set` command function (`cocli campaign set`) to `set_default_campaign` to avoid shadowing Python's built-in `set()`, resolving a critical `TypeError` crash in the `achieve-goal` pipeline. This means the producer is now stable and queuing items.
+    *   **Refactor:** Moved `slugify` to `cocli.core.text_utils` to resolve circular import dependencies.
+    *   **Fix:** Added missing `enrichment_ttl_days` field to `Company` model and corrected `last_enriched` assignment, resolving `KeyError` during prospect import.
+    *   **Stability:** Resolved multiple `make lint` and `mypy` errors (undefined variables, missing type hints) to ensure a clean and typed codebase.
 *   **Consumer (`enrich-from-queue`):**
     *   Created dedicated `prospects enrich-from-queue` command.
     *   Implemented client-side concurrency (`--batch-size`) to saturate Fargate capacity.

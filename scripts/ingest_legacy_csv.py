@@ -64,7 +64,7 @@ def main(
                 domain = prospect_data.Domain
                 assert domain is not None # Ensure domain is not None for mypy
                 # Calculate slug manually if company object is not returned
-                from cocli.core.utils import slugify
+                from cocli.core.text_utils import slugify
                 slug = company.slug if company else slugify(domain)
 
                 # 2. Push to Queue (Always push for migration, or check if we want to skip processed)

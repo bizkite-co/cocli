@@ -31,7 +31,8 @@ from ..core.scrape_index import ScrapeIndex
 from ..core.location_prospects_index import LocationProspectsIndex
 from cocli.core.enrichment_service_utils import ensure_enrichment_service_ready
 from cocli.models.campaign import Campaign
-from ..core.utils import run_fzf, slugify
+from cocli.core.text_utils import slugify
+from cocli.core.utils import run_fzf
 from ..core.queue.factory import get_queue_manager # New import
 from ..models.queue import QueueMessage # New import
 from ..core.enrichment import enrich_company_website # New import
