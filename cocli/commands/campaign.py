@@ -593,7 +593,8 @@ async def pipeline(
                         "name": loc["name"],
                         "prospect_count": current_prospects,
                         "latitude": loc.get("lat"),
-                        "longitude": loc.get("lon")
+                        "longitude": loc.get("lon"),
+                        "saturation_score": loc.get("saturation_score", 0.0)
                     })
             else:
                 for loc_name in locations:
@@ -612,14 +613,19 @@ async def pipeline(
                     writer.writeheader()
 
                 while not stop_event.is_set():
-                    # Sort locations by prospect count (least prospected first)
-                    location_df = location_df.sort_values(by="prospect_count", ascending=True).reset_index(drop=True)
+                    # Sort locations by saturation_score (primary) and prospect_count (secondary)
+                    # We want least saturated first.
+                    location_df = location_df.sort_values(by=["saturation_score", "prospect_count"], ascending=[True, True]).reset_index(drop=True)
                     
-                    # Filter to candidates with the minimum prospect count to ensure round-robin
-                    min_count = location_df["prospect_count"].min()
-                    candidates = location_df[location_df["prospect_count"] == min_count]
+                    # Filter to candidates with the minimum saturation_score to ensure round-robin among equally unsaturated
+                    if not location_df.empty:
+                        min_saturation = location_df["saturation_score"].min()
+                        # Use a small epsilon for float comparison if needed, but direct comparison is usually fine for sorted df head
+                        candidates = location_df[location_df["saturation_score"] <= min_saturation + 0.01]
+                    else:
+                        candidates = location_df
                     
-                    # Pick random 1 (instead of 3, to cycle faster) from the candidates
+                    # Pick random 1 from the candidates
                     if len(candidates) > 0:
                         selected_locations = candidates.sample(n=1)
                     else:
@@ -827,7 +833,8 @@ def achieve_goal(
                             target_locations.append({
                                 "name": row["name"],
                                 "lat": float(row["lat"]),
-                                "lon": float(row["lon"])
+                                "lon": float(row["lon"]),
+                                "saturation_score": float(row.get("saturation_score", 0.0))
                             })
                 console.print(f"[green]Loaded {len(target_locations)} target locations from {csv_path.name}[/green]")
             except Exception as e:
