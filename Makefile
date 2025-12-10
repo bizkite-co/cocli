@@ -190,6 +190,10 @@ ingest-legacy: ## Ingest legacy prospects.csv into the new queue system (Usage: 
 	@if [ -z "$(CAMPAIGN)" ]; then echo "Error: CAMPAIGN variable is required. Usage: make ingest-legacy CAMPAIGN=name"; exit 1; fi
 	@$(VENV_DIR)/bin/python scripts/ingest_legacy_csv.py $(CAMPAIGN)
 
+.PHONY: calc-saturation
+calc-saturation: ## Calculate saturation scores for target locations (Usage: make calc-saturation [CAMPAIGN=name])
+	@$(VENV_DIR)/bin/python scripts/calculate_saturation.py $(or $(CAMPAIGN), turboship)
+
 scrape: ## Run the scraper
 	cocli campaign achieve-goal turboship --emails 10000 --cloud-queue --proximity 15\
 		$(if $(DEBUG), --debug)\

@@ -361,3 +361,84 @@ class ScrapeIndex:
             all_areas.extend(self._load_areas_for_phrase(phrase))
         return all_areas
 
+    def get_all_scraped_areas(self) -> List[ScrapedArea]:
+        """
+        Loads all scraped areas from all CSV files in the index directory.
+        """
+        all_areas = []
+        if not self.index_dir.exists():
+            return all_areas
+        
+        for file_path in self.index_dir.glob("*.csv"):
+            if file_path.name == "wilderness_areas.csv":
+                continue
+            
+            # Extract phrase from filename (reverse slugify roughly, or just use slug as phrase)
+            # Actually _load_areas_for_phrase uses the phrase to find the file.
+            # Here we have the file, we can just parse it.
+            # Reuse logic or call _load_areas_for_phrase if we can reverse the slug.
+            # But simpler to just parse the file content as we don't strictly need the phrase argument
+            # if the CSV contains it (which it does).
+            
+            # Actually, ScrapedArea needs a phrase. The CSV has it.
+            # Let's just read the file directly similar to _load_areas_for_phrase logic
+            # OR refactor _load_areas_for_phrase to take a file path.
+            # OR just duplicate the reading logic slightly or use a helper.
+            
+            # Let's just parse the file.
+            try:
+                with file_path.open('r', encoding='utf-8') as f:
+                    reader = csv.reader(f)
+                    try:
+                        header = next(reader)
+                    except StopIteration:
+                        continue
+
+                    try:
+                        phrase_idx = header.index('phrase')
+                        scrape_date_idx = header.index('scrape_date')
+                        lat_min_idx = header.index('lat_min')
+                        lat_max_idx = header.index('lat_max')
+                        lon_min_idx = header.index('lon_min')
+                        lon_max_idx = header.index('lon_max')
+                        lat_miles_idx = header.index('lat_miles')
+                        lon_miles_idx = header.index('lon_miles')
+                        # Try to get items_found, default to None if missing
+                        try:
+                            items_found_idx = header.index('items_found')
+                        except ValueError:
+                            items_found_idx = -1
+                    except ValueError:
+                        logger.warning(f"Skipping malformed index file (missing core columns): {file_path}")
+                        continue
+
+                    for row in reader:
+                        try:
+                            parsed_scrape_date = datetime.fromisoformat(row[scrape_date_idx])
+                            if parsed_scrape_date.tzinfo is None:
+                                scrape_date = parsed_scrape_date.replace(tzinfo=UTC)
+                            else:
+                                scrape_date = parsed_scrape_date.astimezone(UTC)
+                            
+                            items_found = 0
+                            if items_found_idx != -1 and items_found_idx < len(row):
+                                items_found = int(row[items_found_idx])
+
+                            all_areas.append(ScrapedArea(
+                                phrase=row[phrase_idx],
+                                scrape_date=scrape_date,
+                                lat_min=float(row[lat_min_idx]),
+                                lat_max=float(row[lat_max_idx]),
+                                lon_min=float(row[lon_min_idx]),
+                                lon_max=float(row[lon_max_idx]),
+                                lat_miles=float(row[lat_miles_idx]),
+                                lon_miles=float(row[lon_miles_idx]),
+                                items_found=items_found,
+                            ))
+                        except (ValueError, IndexError):
+                             continue
+            except Exception as e:
+                logger.error(f"Error reading {file_path}: {e}")
+        
+        return all_areas
+
