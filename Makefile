@@ -195,14 +195,14 @@ calc-saturation: ## Calculate saturation scores for target locations (Usage: mak
 	@$(VENV_DIR)/bin/python scripts/calculate_saturation.py $(or $(CAMPAIGN), turboship)
 
 scrape: ## Run the scraper
-	cocli campaign achieve-goal turboship --emails 10000 --cloud-queue --proximity 15\
+	cocli campaign achieve-goal turboship --emails 10000 --cloud-queue --proximity 30\
 		$(if $(DEBUG), --debug)\
 		$(if $(HEADED), --headed)\
 		$(if $(DEBUG), --devtools)\
 		$(if $(PANNING_DISTANCE), --panning-distance $(PANNING_DISTANCE))
 
 enrich: ## Run the cloud enricher
-	cocli campaign prospects enrich-from-queue turboship --batch-size 2 --cloud-queue
+	cocli campaign prospects enrich-from-queue turboship --batch-size 6 --cloud-queue
 
 coverage-kml: ## Generate scrape coverage KML
 	cocli campaign visualize-coverage turboship

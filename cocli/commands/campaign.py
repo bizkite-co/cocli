@@ -440,6 +440,17 @@ async def pipeline(
                     if stop_event.is_set(): 
                         break
                     
+                    # Optimization: Check if we already have the email locally before calling enrichment
+                    if not msg.force_refresh:
+                        try:
+                            cached_company = Company.get(msg.company_slug)
+                            if cached_company and cached_company.email:
+                                console.print(f"[dim]Skipping {msg.domain}: Email already exists locally.[/dim]")
+                                queue_manager.ack(msg)
+                                continue
+                        except Exception as e:
+                            logger.warning(f"Failed to check local cache for {msg.company_slug}: {e}")
+
                     console.print(f"[grey50][{datetime.now().strftime('%H:%M:%S')}][/][dim]Processing: {msg.domain}[/dim]")
                     website_data = None
                     
