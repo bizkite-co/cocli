@@ -1,221 +1,11 @@
-import re
-from typing import Optional, Dict, List, AsyncIterator
-from datetime import datetime, timedelta, UTC
-from playwright.async_api import Page, Browser, Error # Import Error
 import logging
-from rich.console import Console
-from geopy.distance import geodesic # type: ignore
-import asyncio # Import asyncio
+from typing import AsyncIterator, Dict, List, Optional
+from playwright.async_api import Browser
 
-from ..core.config import load_scraper_settings
-from ..core.geocoding import get_coordinates_from_zip, get_coordinates_from_city_state
-from .google_maps_parser import parse_business_listing_html
-from .google_maps_gmb_parser import parse_gmb_page
+from .gm_scraper.coordinator import ScrapeCoordinator
 from ..models.google_maps import GoogleMapsData
-from ..core.google_maps_cache import GoogleMapsCache
-from ..core.scrape_index import ScrapeIndex
 
 logger = logging.getLogger(__name__)
-logger.setLevel(logging.DEBUG)
-console = Console()
-
-# Timeouts (in milliseconds)
-NAVIGATION_TIMEOUT_MS = 60000
-WAIT_FOR_SELECTOR_TIMEOUT_MS = 30000
-SEARCH_BOX_WAIT_MS = 5000
-SCROLL_WAIT_MS = 1500
-COOKIE_CONSENT_WAIT_MS = 2000
-ZOOM_WAIT_MS = 5000
-
-def calculate_new_coords(lat: float, lon: float, distance_miles: float, bearing: float) -> tuple[float, float]:
-    """Calculate new lat/lon from a starting point, distance, and bearing."""
-    start_point = (lat, lon)
-    distance_km = distance_miles * 1.60934
-    destination = geodesic(kilometers=distance_km).destination(start_point, bearing)
-    return destination.latitude, destination.longitude
-
-def get_viewport_bounds(center_lat: float, center_lon: float, map_width_miles: float, map_height_miles: float, margin: float = 0.1) -> dict[str, float]:
-    """
-    Calculates the bounding box of the map viewport, inset by a margin.
-    A margin of 0.1 means the box is 10% smaller on each side (80% of original area).
-    """
-    effective_width_miles = map_width_miles * (1 - 2 * margin)
-    effective_height_miles = map_height_miles * (1 - 2 * margin)
-
-    half_width = effective_width_miles / 2
-    half_height = effective_height_miles / 2
-
-    lat_max, _ = calculate_new_coords(center_lat, center_lon, half_height, 0)  # North
-    lat_min, _ = calculate_new_coords(center_lat, center_lon, half_height, 180) # South
-
-    # For longitude, calculate from the center latitude for better accuracy
-    _, lon_max = calculate_new_coords(center_lat, center_lon, half_width, 90)  # East
-    _, lon_min = calculate_new_coords(center_lat, center_lon, half_width, 270) # West
-
-    return {
-        'lat_min': lat_min,
-        'lat_max': lat_max,
-        'lon_min': lon_min,
-        'lon_max': lon_max,
-    }
-
-async def _scrape_area(
-    page: Page,
-    search_string: str,
-    processed_place_ids: set[str],
-    force_refresh: bool,
-    ttl_days: int,
-    debug: bool,
-    retries: int = 3,
-    retry_delay: float = 1.0,
-) -> AsyncIterator[GoogleMapsData]:
-    """
-    Helper function to scrape a specific map area for a single search query.
-    This function contains the core logic for scrolling, parsing, and yielding results.
-    """
-    settings = load_scraper_settings()
-    delay_seconds = settings.google_maps_delay_seconds
-    cache = GoogleMapsCache()
-    fresh_delta = timedelta(days=ttl_days)
-
-    logger.info(f"--- Starting search for query: '{search_string}' ---")
-
-    # Check if page is closed before starting
-    if page.is_closed():
-        logger.warning(f"Page was already closed when _scrape_area was called for '{search_string}'. Exiting.")
-        return
-
-    search_box_selector = 'input[name="q"]'
-    await page.wait_for_selector(search_box_selector)
-    await page.fill(search_box_selector, search_string)
-    await page.press(search_box_selector, 'Enter')
-    await page.wait_for_timeout(5000)
-
-    scrollable_div_selector = 'div[role="feed"]'
-    await page.wait_for_selector(scrollable_div_selector, timeout=10000)
-    scrollable_div = page.locator(scrollable_div_selector)
-
-    _ = -1
-    last_processed_div_count = 0
-    while True:
-        if page.is_closed(): # Check again within the loop
-            logger.warning(f"Page closed unexpectedly during scraping for '{search_string}'. Breaking loop.")
-            break
-
-        await page.wait_for_timeout(1500)
-        listing_divs = await scrollable_div.locator("> div").all()
-        logger.debug(f"[SCROLL_DEBUG] Found {len(listing_divs)} listing divs before scroll. last_processed_div_count: {last_processed_div_count}")
-
-        if debug:
-            page_source = await page.content()
-            with open(f"temp/page_source_before_scroll_{search_string.replace(' ', '_')}.html", "w") as f:
-                f.write(page_source)
-
-        if not listing_divs or len(listing_divs) == last_processed_div_count:
-            logger.debug("No new listing divs found. Moving to next query.")
-            break
-
-        # Only process the new divs that have appeared since the last scroll
-        for i in range(last_processed_div_count, len(listing_divs)):
-            if page.is_closed(): # Check within inner loop
-                logger.warning(f"Page closed unexpectedly during processing listing divs for '{search_string}'. Breaking inner loop.")
-                break
-
-            listing_div = listing_divs[i]
-            html_content = ""
-            for attempt in range(retries):
-                try:
-                    # Set a shorter timeout for getting the HTML of a single element
-                    html_content = await listing_div.inner_html(timeout=5000)
-                    break # Success, break from retry loop
-                except Error as e: # Catch Playwright-specific errors
-                    logger.warning(f"Playwright error fetching inner_html for listing div {i} (attempt {attempt + 1}/{retries}): {e}")
-                    if attempt < retries - 1:
-                        await asyncio.sleep(retry_delay)
-                    else:
-                        logger.error(f"Failed to fetch inner_html for listing div {i} after {retries} attempts. Skipping.")
-                        continue # Skip to next listing_div
-                except Exception as e:
-                    logger.warning(f"Generic error fetching inner_html for listing div {i} (attempt {attempt + 1}/{retries}): {e}")
-                    if attempt < retries - 1:
-                        await asyncio.sleep(retry_delay)
-                    else:
-                        logger.error(f"Failed to fetch inner_html for listing div {i} after {retries} attempts. Skipping.")
-                        continue # Skip to next listing_div
-
-            if not html_content or "All filters" in html_content or "Prices come from Google" in html_content:
-                continue
-
-            business_data_dict = {}
-            try:
-                business_data_dict = parse_business_listing_html(html_content, search_string, debug=debug)
-            except IndexError as e:
-                logger.error(f"IndexError during parsing for search_string '{search_string}'. HTML content: {html_content[:500]}... Error: {e}", exc_info=True)
-                continue
-            except Exception as e:
-                logger.error(f"Unexpected error during parsing for search_string '{search_string}'. HTML content: {html_content[:500]}... Error: {e}", exc_info=True)
-                continue
-
-            place_id = business_data_dict.get("Place_ID")
-
-            logger.debug(f"Checking place_id: {place_id}")
-            logger.debug(f"processed_place_ids: {processed_place_ids}")
-
-            if not place_id or place_id in processed_place_ids:
-                logger.debug(f"Skipping duplicate place_id: {place_id}")
-                continue
-
-            processed_place_ids.add(place_id)
-
-            cached_item = cache.get_by_place_id(place_id)
-            if cached_item and not force_refresh and (datetime.now(UTC) - cached_item.updated_at < fresh_delta):
-                logger.debug(f"Yielding cached data for: {cached_item.Name}")
-                yield cached_item
-                continue
-
-            gmb_url = business_data_dict.get("GMB_URL")
-            if gmb_url and (not business_data_dict.get("Website") or not business_data_dict.get("Full_Address")):
-                try:
-                    browser = page.context.browser
-                    if browser:
-                        context = await browser.new_context()
-                        gmb_page = await context.new_page()
-                        try:
-                            await gmb_page.goto(gmb_url)
-                            gmb_html = await gmb_page.content()
-                            gmb_data = parse_gmb_page(gmb_html)
-                            business_data_dict.update(gmb_data)
-                        finally:
-                            await context.close() # Closes the context and all its pages
-                    else:
-                        # This should not happen in a normal run
-                        raise Exception("Browser object not available from page context.")
-                except Exception as gmb_e:
-                    logger.warning(f"Failed to scrape GMB page {gmb_url}: {gmb_e}")
-
-            business_data = GoogleMapsData(**business_data_dict)
-            cache.add_or_update(business_data)
-            logger.info(f"Yielding new record: {business_data.Name}")
-            yield business_data
-
-        last_processed_div_count = len(listing_divs)
-
-        # Check for the end of the list message
-        end_of_list_text = "You've reached the end of the list."
-        if await page.get_by_text(end_of_list_text).is_visible():
-            logger.debug(f"'{end_of_list_text}' message visible. Reached end of content for '{search_string}'.")
-            break
-
-        # Scroll down to trigger loading of more results
-        await scrollable_div.hover()
-        await page.mouse.wheel(0, 10000) # Scroll down by a large amount
-        logger.debug("[SCROLL_DEBUG]   ...scrolled. Waiting for content to load.")
-        await page.wait_for_timeout(delay_seconds * 1000)
-
-        if debug:
-            page_source = await page.content()
-            with open(f"temp/page_source_after_scroll_{search_string.replace(' ', '_')}.html", "w") as f:
-                f.write(page_source)
 
 async def scrape_google_maps(
     browser: Browser,
@@ -232,427 +22,65 @@ async def scrape_google_maps(
     initial_zoom_out_level: int = 3,
     omit_zoom_feature: bool = False,
     disable_panning: bool = False,
-    max_proximity_miles: float = 0.0,  # 0.0 means unlimited (or constrained by other factors)
-    overlap_threshold_percent: float = 60.0, # Increased to 60% for debugging
-    expansion_factor: float = 1.0, # Factor to expand initial search area if already scraped (1.0 means 100% expansion)
-    max_initial_expansion_attempts: int = 3, # Max times to try expanding initial area
+    max_proximity_miles: float = 0.0,
+    overlap_threshold_percent: float = 60.0,
+    expansion_factor: float = 1.0,
+    max_initial_expansion_attempts: int = 3,
 ) -> AsyncIterator[GoogleMapsData]:
     """
-    Scrapes business information from Google Maps for a list of search queries,
-    yielding each result as it is found.
-
-    Uses a pre-existing browser instance.
+    Scrapes business information from Google Maps using the modular ScrapeCoordinator.
+    Maintains compatibility with the legacy signature.
     """
-    settings = load_scraper_settings()
-    retries = settings.google_maps_max_retries
-    if debug:
-        logger.debug(f"scrape_google_maps called with debug={debug}")
-        logger.debug(f"Using overlap_threshold_percent: {overlap_threshold_percent}")
-    settings = load_scraper_settings()
-    retry_delay = settings.google_maps_retry_delay_seconds
-    scrape_index = ScrapeIndex()
-
-    launch_width = browser_width if browser_width is not None else settings.browser_width
-    launch_height = browser_height if browser_height is not None else settings.browser_height
-
+    logger.info("Using modular ScrapeCoordinator for Google Maps scraping.")
+    
+    # Resolve coordinates
+    # We leave this resolution logic here or move it? 
+    # Coordinator expects lat/lon. Let's resolve here to keep Coordinator clean.
+    from ..core.geocoding import get_coordinates_from_zip, get_coordinates_from_city_state
+    
+    latitude = 0.0
+    longitude = 0.0
+    
     if "latitude" in location_param and "longitude" in location_param:
         latitude = float(location_param["latitude"])
         longitude = float(location_param["longitude"])
-        logger.info(f"Using explicit coordinates: {latitude}, {longitude}")
     else:
-        coordinates = get_coordinates_from_city_state(location_param["city"]) if "city" in location_param else get_coordinates_from_zip(location_param["zip_code"])
-
-        if not coordinates:
-            logger.error(f"Error: Could not find coordinates for {location_param}")
-            return
-
-
-
-        latitude = coordinates["latitude"]
-
-        longitude = coordinates["longitude"]
-
-        logger.debug(f"Initial coordinates obtained: Latitude={latitude}, Longitude={longitude}")
-    start_lat, start_lon = latitude, longitude # Remember starting point for proximity check
-
-    processed_place_ids: set[str] = set()
-
-    page = await browser.new_page(viewport={'width': launch_width, 'height': launch_height})
-    page.set_default_navigation_timeout(60000) # Set timeout on the page after creation
-    try:
-        initial_url = f"https://www.google.com/maps/@{latitude},{longitude},15z?entry=ttu"
-        logger.debug(f"Attempting to navigate to initial map URL: {initial_url}")
-        # Change wait_until to 'commit' to return as soon as server sends headers. 
-        # This avoids hanging on slow resources.
-        await page.goto(initial_url, wait_until="commit", timeout=NAVIGATION_TIMEOUT_MS)
-        logger.debug(f"Successfully navigated to initial map URL (commit): {initial_url}")
-        
-        # Manually wait for the map to be somewhat ready
-        try:
-             await page.wait_for_selector("canvas", timeout=WAIT_FOR_SELECTOR_TIMEOUT_MS)
-             logger.debug("Map canvas detected.")
-        except Exception as e:
-             logger.warning(f"Map canvas not detected immediately: {e}")
-
-        await page.wait_for_timeout(3000)
-        logger.info(f"Navigated to initial map URL for {location_param}.")
-
-        # Handle Cookie Consent
-        try:
-            reject_button = page.get_by_role("button", name=re.compile("Reject all", re.IGNORECASE))
-            if await reject_button.is_visible():
-                logger.info("Cookie consent dialog found. Clicking 'Reject all'.")
-                await reject_button.click()
-                await page.wait_for_timeout(2000) # Wait for the dialog to disappear
-        except Error as e: # Catch Playwright-specific errors here
-            logger.info(f"Playwright error handling cookie consent (this is okay if it's not present): {e}")
-        except Exception as e:
-            logger.info(f"Could not find or click cookie consent button (this is okay if it's not present): {e}")
-
-        if not omit_zoom_feature and initial_zoom_out_level > 0:
-            try:
-                await page.wait_for_selector(zoom_out_button_selector, timeout=10000)
-                for i in range(initial_zoom_out_level):
-                    await page.click(zoom_out_button_selector)
-                    await page.wait_for_timeout(500)
-                logger.info(f"Zoomed out {initial_zoom_out_level} times.")
-                await page.wait_for_timeout(5000)
-            except Error as e:
-                logger.warning(f"Playwright error during initial zoom out: {e}")
-            except Exception as e:
-                logger.warning(f"Unexpected error during initial zoom out: {e}")
-
-        map_width_miles: float = 0.0
-        map_height_miles: float = 0.0
-        px_per_mile: float = 0.0
-        try:
-            scale_button = page.locator("button[jsaction=\"scale.click\"]")
-            scale_label = await scale_button.text_content()
-            scale_inner_div = scale_button.locator("div").first
-            style = await scale_inner_div.get_attribute("style")
-            width_match: Optional[re.Match[str]] = None # Initialize to None
-            if style:
-                width_match = re.search(r'width:\s*(\d+)px;', style)
-            if width_match and scale_label:
-                width_px = int(width_match.group(1))
-                # Extract the number and unit from the scale label (e.g., "2 mi" -> 2, "mi")
-                scale_number_match = re.search(r'(\d+)', scale_label)
-                if scale_number_match:
-                    scale_number = int(scale_number_match.group(1))
-                    # Calculate pixels per mile
-                    if "mi" in scale_label:
-                        px_per_mile = width_px / scale_number
-                    elif "km" in scale_label:
-                        px_per_mile = width_px / (scale_number * 0.621371)
-                    else: # assume feet
-                        px_per_mile = width_px / (scale_number / 5280)
-
-                    if px_per_mile > 0:
-                        map_width_miles = launch_width / px_per_mile
-                        map_height_miles = launch_height / px_per_mile
-                        logger.info(f"Map scale: {scale_label} = {width_px}px. Estimated map width: {map_width_miles:.2f} miles.")
-        except Exception as e:
-            logger.warning(f"Could not extract map scale: {e}")
-
-        # Initial scrape of the main area
-        initial_map_width_miles, initial_map_height_miles = map_width_miles, map_height_miles # Capture these for potential expand-out if needed
-
-        current_viewport_bounds_initial = get_viewport_bounds(latitude, longitude, map_width_miles, map_height_miles) # Calculate once for the initial area
-
-        # Check if initial area is already known wilderness
-        wilderness_check_initial = scrape_index.is_wilderness_area(current_viewport_bounds_initial, overlap_threshold_percent)
-        if wilderness_check_initial:
-            wilderness_area_initial, wilderness_overlap_percent_initial = wilderness_check_initial
-            logger.info(f"Skipping initial area ({latitude:.4f}, {longitude:.4f}) as it falls within a known wilderness area (overlap: {wilderness_overlap_percent_initial:.2f}%).")
-            all_initial_searches_skipped_due_to_wilderness = True
-        else:
-            all_initial_searches_skipped_due_to_wilderness = False
-
-        for search_string in search_strings:
-            if page.is_closed(): # Check within loop
-                logger.warning(f"Page closed unexpectedly during initial area scraping for '{search_string}'. Breaking loop.")
-                break
-
-            if all_initial_searches_skipped_due_to_wilderness:
-                logger.info(f"Skipping initial search '{search_string}' due to wilderness area detection.")
-                continue
-
-            matched_area_check_initial = scrape_index.is_area_scraped(search_string, current_viewport_bounds_initial, ttl_days=ttl_days, overlap_threshold_percent=overlap_threshold_percent)
-            if matched_area_check_initial:
-                matched_area_initial, overlap_percent_initial = matched_area_check_initial
-                logger.info(f"Skipping initial area for phrase '{search_string}' as it falls within a recently scraped '{matched_area_initial.phrase}' box (overlap: {overlap_percent_initial:.2f}%).")
-                continue
+        coordinates = None
+        if "city" in location_param:
+            coordinates = get_coordinates_from_city_state(location_param["city"])
+        elif "zip_code" in location_param:
+            coordinates = get_coordinates_from_zip(location_param["zip_code"])
             
-            items_found_in_area = 0
-            async for item in _scrape_area(
-                page=page,
-                search_string=search_string,
-                processed_place_ids=processed_place_ids,
-                force_refresh=force_refresh,
-                ttl_days=ttl_days,
-                debug=debug,
-            ):
-                items_found_in_area += 1
-                yield item
-
-            if items_found_in_area > 0 and initial_map_width_miles > 0: # Use initial_map_width_miles here
-                viewport_bounds_to_add = get_viewport_bounds(latitude, longitude, initial_map_width_miles, initial_map_height_miles) # Use initial_map_width_miles here
-                # Round values for cleaner CSV
-                for k, v in viewport_bounds_to_add.items():
-                    viewport_bounds_to_add[k] = round(v, 5)
-                scrape_index.add_area(search_string, viewport_bounds_to_add, lat_miles=round(initial_map_height_miles, 3), lon_miles=round(initial_map_width_miles, 3), items_found=items_found_in_area)
-                logger.info(f"Added viewport-based bounding box to scrape index for phrase '{search_string}'. Items found: {items_found_in_area}")
-            elif initial_map_width_miles > 0: # items_found_in_area is 0, and we use initial_map_width_miles
-                viewport_bounds = get_viewport_bounds(latitude, longitude, initial_map_width_miles, initial_map_height_miles) # Use initial_map_width_miles here
-                for k, v in viewport_bounds.items():
-                    viewport_bounds[k] = round(v, 5)
-                logger.debug(f"Adding wilderness area with bounds: {viewport_bounds}")
-                scrape_index.add_wilderness_area(viewport_bounds, lat_miles=round(initial_map_height_miles, 3), lon_miles=round(initial_map_width_miles, 3), items_found=0)
-                logger.info(f"No items found in initial area for phrase '{search_string}'. Marked as wilderness.")
-
-        if disable_panning:
-            logger.info("Panning is disabled. Finishing scrape for this location.")
+        if coordinates:
+            latitude = coordinates["latitude"]
+            longitude = coordinates["longitude"]
+        else:
+            logger.error(f"Could not resolve coordinates for {location_param}")
             return
 
-        # Start of spiral out logic
-        logger.info("Starting spiral out search...")
-        current_lat, current_lon = latitude, longitude
-        distance_miles = panning_distance_miles
-
-        bearings = [0, 90, 180, 270] # N, E, S, W
-        steps_in_direction = 1
-        leg_count = 0
-        direction_index = 0
-
-        while True: # This loop will run until the consumer (scrape_prospects) stops it
-            if page.is_closed(): # Check again within the loop
-                logger.warning("Page closed unexpectedly during spiral search. Breaking loop.")
-                break
-
-            for _ in range(steps_in_direction):
-                if page.is_closed(): # Check within inner loop
-                    logger.warning("Page closed unexpectedly during spiral step. Breaking inner loop.")
-                    break
-
-                # Calculate new coordinates
-                bearing = bearings[direction_index]
-                current_lat, current_lon = calculate_new_coords(current_lat, current_lon, distance_miles, bearing)
-                logger.debug(f"Panned coordinates: current_lat={current_lat}, current_lon={current_lon}")
-
-                # Check Proximity limit
-                if max_proximity_miles > 0:
-                    dist_from_start = geodesic((start_lat, start_lon), (current_lat, current_lon)).miles
-                    if dist_from_start > max_proximity_miles:
-                        console.print(f"[yellow]Reached max proximity ({dist_from_start:.2f} > {max_proximity_miles} miles). Stopping scrape for this location.[/yellow]")
-                        logger.info(f"Reached max proximity ({dist_from_start:.2f} > {max_proximity_miles} miles). Stopping scrape for this location.")
-                        return
-
-                direction_name = ['North', 'East', 'South', 'West'][direction_index]
-                logger.info(f"Moving {distance_miles} miles {direction_name} to {current_lat:.4f}, {current_lon:.4f}...")
-
-                # Navigate to new coordinates
-                for attempt in range(retries):
-                    try:
-                        await page.goto(f"https://www.google.com/maps/@{current_lat},{current_lon},15z?entry=ttu", wait_until="commit", timeout=60000)
-                        await page.wait_for_timeout(5000) # Wait for map to settle
-                        break
-                    except Error as e:
-                        logger.warning(f"Playwright error navigating to new coordinates (attempt {attempt + 1}/{retries}): {e}")
-                        if attempt < retries - 1:
-                            await asyncio.sleep(retry_delay)
-                        else:
-                            logger.error(f"Failed to navigate to {current_lat},{current_lon} after {retries} attempts. Skipping this location.")
-                            # Consider what to do here: skip this location or re-raise?
-                            # For now, just skip current location's processing
-                            break # Break retry loop, continue to next part of outer loop
-                    except Exception as e:
-                        logger.warning(f"Generic error navigating to new coordinates (attempt {attempt + 1}/{retries}): {e}")
-                        if attempt < retries - 1:
-                            await asyncio.sleep(retry_delay)
-                        else:
-                            logger.error(f"Failed to navigate to {current_lat},{current_lon} after {retries} attempts. Skipping this location.")
-                            break
-
-                if page.is_closed(): # Check after navigation attempts
-                    logger.warning(f"Page closed unexpectedly after navigation for {current_lat},{current_lon}. Breaking current step.")
-                    break
-
-
-                # Click "Search this area"
-                try:
-                    search_this_area_button = page.get_by_role("button", name=re.compile("Search this area", re.IGNORECASE))
-                    if await search_this_area_button.is_visible():
-                        logger.info("'Search this area' button found. Clicking...")
-                        await search_this_area_button.click()
-                        await page.wait_for_timeout(5000) # Wait for results to load
-                    else:
-                        logger.debug("'Search this area' button not visible.")
-                except Error as e:
-                    logger.warning(f"Playwright error clicking 'Search this area' button: {e}")
-                except Exception:
-                    logger.debug("'Search this area' button not found.")
-
-                # Calculate viewport bounds for the current location (panned)
-                logger.debug(f"Calculating panned viewport bounds with: lat={current_lat}, lon={current_lon}, width_miles={map_width_miles}, height_miles={map_height_miles}")
-                panned_viewport_center_lat, panned_viewport_center_lon = current_lat, current_lon
-                current_panned_map_width_miles, current_panned_map_height_miles = map_width_miles, map_height_miles # These will expand within the dynamic expand-out
-
-                # --- Begin Dynamic Expand-Out Logic ---
-                performed_expand_out_for_panned_area = False
-                for expand_attempt in range(max_initial_expansion_attempts + 1): # Using max_initial_expansion_attempts for current implementation
-                    current_expanded_viewport_bounds = get_viewport_bounds(panned_viewport_center_lat, panned_viewport_center_lon, current_panned_map_width_miles, current_panned_map_height_miles)
-                    logger.debug(f"Expand-out attempt {expand_attempt + 1}: Current expanded viewport bounds for check: {current_expanded_viewport_bounds}")
-
-                    # Check if current expanded area is already known wilderness
-                    wilderness_check = scrape_index.is_wilderness_area(current_expanded_viewport_bounds, overlap_threshold_percent)
-                    if wilderness_check:
-                        wilderness_area, wilderness_overlap_percent = wilderness_check
-                        logger.info(f"Expand-out attempt {expand_attempt + 1}: Expanded area ({panned_viewport_center_lat:.4f}, {panned_viewport_center_lon:.4f}) is wilderness (overlap: {wilderness_overlap_percent:.2f}%).")
-                        # If the expanded area is wilderness, mark this larger area and break from expand-out
-                        if current_panned_map_width_miles > 0:
-                            viewport_bounds_to_add = get_viewport_bounds(panned_viewport_center_lat, panned_viewport_center_lon, current_panned_map_width_miles, current_panned_map_height_miles)
-                            for k, v in viewport_bounds_to_add.items():
-                                viewport_bounds_to_add[k] = round(v, 5)
-                            scrape_index.add_wilderness_area(viewport_bounds_to_add, lat_miles=round(current_panned_map_height_miles, 3), lon_miles=round(current_panned_map_width_miles, 3), items_found=0)
-                            logger.info(f"Marked expanded area as wilderness for {panned_viewport_center_lat:.4f}, {panned_viewport_center_lon:.4f}. Resuming spiral.")
-                        performed_expand_out_for_panned_area = True
-                        break # Exit expand-out loop
-
-                    all_searches_skipped_in_expanded_area = True
-                    for search_string in search_strings:
-                        if page.is_closed():
-                            logger.warning(f"Page closed unexpectedly during expand-out search for '{search_string}'. Breaking loop.")
-                            all_searches_skipped_in_expanded_area = False
-                            break
-
-                        matched_area_check = scrape_index.is_area_scraped(search_string, current_expanded_viewport_bounds, ttl_days=ttl_days, overlap_threshold_percent=overlap_threshold_percent)
-                        if matched_area_check:
-                            matched_area, overlap_percent = matched_area_check
-                            logger.info(f"Expand-out attempt {expand_attempt + 1}: Skipping '{search_string}' as it overlaps existing scraped area (overlap: {overlap_percent:.2f}%).")
-                            continue
-
-                        all_searches_skipped_in_expanded_area = False # At least one search string is not skipped for this expanded area
-                        break # Found an unscraped search string, so this expanded area is good enough to scrape
-
-                    if not all_searches_skipped_in_expanded_area:
-                        logger.info(f"Expand-out attempt {expand_attempt + 1}: Found sufficiently unscraped area for {panned_viewport_center_lat:.4f}, {panned_viewport_center_lon:.4f}. Proceeding to scrape expanded area.")
-                        # Visual Confirmation (Zoom Out) logic would go here if implemented, e.g., adjust actual map zoom
-                        # For now, just scrape the determined expanded area
-
-                        # It's important to navigate to the center of the potentially expanded area
-                        # so that the _scrape_area function operates on the correct map view.
-                        expanded_url = f"https://www.google.com/maps/@{panned_viewport_center_lat},{panned_viewport_center_lon},15z?entry=ttu"
-                        await page.goto(expanded_url, wait_until="commit", timeout=NAVIGATION_TIMEOUT_MS)
-                        await page.wait_for_timeout(5000) # Wait for map to settle
-
-
-                        items_found_in_expanded_area = 0
-                        for search_string_to_scrape in search_strings: # Re-iterate all search strings for the expanded area
-                            if page.is_closed():
-                                logger.warning(f"Page closed unexpectedly during scraping expanded area for '{search_string_to_scrape}'. Breaking loop.")
-                                break
-
-                            # Re-check against the newly expanded bounds in case the previous check was too broad
-                            recheck_matched_area = scrape_index.is_area_scraped(search_string_to_scrape, current_expanded_viewport_bounds, ttl_days=ttl_days, overlap_threshold_percent=overlap_threshold_percent)
-                            if recheck_matched_area:
-                                logger.info(f"Skipping expanded area scrape for '{search_string_to_scrape}' as it's now covered (overlap: {recheck_matched_area[1]:.2f}%).")
-                                continue
-
-                            async for item in _scrape_area(
-                                page=page,
-                                search_string=search_string_to_scrape,
-                                processed_place_ids=processed_place_ids,
-                                force_refresh=force_refresh,
-                                ttl_days=ttl_days,
-                                debug=debug,
-                            ):
-                                items_found_in_expanded_area += 1
-                                yield item
-
-                            if items_found_in_expanded_area > 0 and current_panned_map_width_miles > 0:
-                                viewport_bounds_to_add = get_viewport_bounds(panned_viewport_center_lat, panned_viewport_center_lon, current_panned_map_width_miles, current_panned_map_height_miles)
-                                for k, v in viewport_bounds_to_add.items():
-                                    viewport_bounds_to_add[k] = round(v, 5)
-                                scrape_index.add_area(search_string_to_scrape, viewport_bounds_to_add, lat_miles=round(current_panned_map_height_miles, 3), lon_miles=round(current_panned_map_width_miles, 3), items_found=items_found_in_expanded_area)
-                                logger.info(f"Added expanded viewport bounding box to scrape index for phrase '{search_string_to_scrape}'. Items found: {items_found_in_expanded_area}")
-                            elif current_panned_map_width_miles > 0:
-                                viewport_bounds_to_add = get_viewport_bounds(panned_viewport_center_lat, panned_viewport_center_lon, current_panned_map_width_miles, current_panned_map_height_miles)
-                                for k, v in viewport_bounds_to_add.items():
-                                    viewport_bounds_to_add[k] = round(v, 5)
-                                scrape_index.add_wilderness_area(viewport_bounds_to_add, lat_miles=round(current_panned_map_height_miles, 3), lon_miles=round(current_panned_map_width_miles, 3), items_found=0)
-                                logger.info(f"No items found in expanded area for phrase '{search_string_to_scrape}'. Marked as wilderness.")
-
-                        performed_expand_out_for_panned_area = True
-                        break # Exit expand-out loop since we scraped a good area
-
-                    if expand_attempt < max_initial_expansion_attempts:
-                        logger.info(f"Expand-out attempt {expand_attempt + 1}: All searches skipped for current expanded area. Increasing expansion factor.")
-                        current_panned_map_width_miles *= (1 + expansion_factor)
-                        current_panned_map_height_miles *= (1 + expansion_factor)
-                        # Check proximity limit during expansion
-                        if max_proximity_miles > 0:
-                            dist_from_start = geodesic((start_lat, start_lon), (panned_viewport_center_lat, panned_viewport_center_lon)).miles
-                            # Check if the furthest point of the expanded area exceeds max_proximity_miles
-                            # This approximation assumes a square expansion and checks center distance + half diagonal
-                            diagonal_half_miles = ((current_panned_map_width_miles/2)**2 + (current_panned_map_height_miles/2)**2)**0.5
-                            if (dist_from_start + diagonal_half_miles) > max_proximity_miles:
-                                logger.info(f"Expand-out attempt {expand_attempt + 1}: Expanded area exceeds max proximity ({dist_from_start + diagonal_half_miles:.2f} > {max_proximity_miles} miles). Stopping expand-out.")
-                                performed_expand_out_for_panned_area = True # Even if not scraped, we tried to expand.
-                                break
-                    else:
-                        logger.info(f"Expand-out attempt {expand_attempt + 1}: Max expansion attempts reached for current panned location. No sufficiently unscraped expanded area found.")
-                        performed_expand_out_for_panned_area = True # Tried all attempts
-
-                if performed_expand_out_for_panned_area: # If we handled the area via expand-out (scraped or marked as wilderness), continue the spiral
-                    continue
-                # --- End Dynamic Expand-Out Logic ---
-
-                # If not handled by expand-out (i.e., not heavily scraped), proceed with normal scraping for each search string at current panned_map_width_miles/height_miles
-                for search_string in search_strings:
-                    # The existing logic for checking wilderness and matched_area is now inside expand-out,
-                    # so if we reach here, it means this area (at its current size) was not heavily scraped.
-                    # We just need to scrape it normally.
-                    if page.is_closed(): # Check within inner loop
-                        logger.warning(f"Page closed unexpectedly during area scraping for '{search_string}'. Breaking loop.")
-                        break
-
-                    # current_viewport_bounds is implicitly the original panned area since no expansion occurred.
-                    # The get_viewport_bounds is called directly where needed below.
-
-                    items_found_in_area = 0
-                    async for item in _scrape_area(
-                        page=page,
-                        search_string=search_string,
-                        processed_place_ids=processed_place_ids,
-                        force_refresh=force_refresh,
-                        ttl_days=ttl_days,
-                        debug=debug,
-                    ):
-                        items_found_in_area += 1
-                        yield item
-
-                    if items_found_in_area > 0 and map_width_miles > 0:
-                        viewport_bounds = get_viewport_bounds(current_lat, current_lon, map_width_miles, map_height_miles)
-                        scrape_index.add_area(search_string, viewport_bounds, lat_miles=map_height_miles, lon_miles=map_width_miles, items_found=items_found_in_area)
-                        logger.info(f"Added viewport-based bounding box to scrape index for phrase '{search_string}'. Items found: {items_found_in_area}")
-                    elif map_width_miles > 0: # items_found_in_area is 0
-                        viewport_bounds = get_viewport_bounds(current_lat, current_lon, map_width_miles, map_height_miles)
-                        for k, v in viewport_bounds.items():
-                            viewport_bounds[k] = round(v, 5)
-                        logger.debug(f"Adding wilderness area (panned) with bounds: {viewport_bounds}")
-                        scrape_index.add_wilderness_area(viewport_bounds, lat_miles=map_height_miles, lon_miles=map_width_miles, items_found=0)
-                        logger.info(f"No items found in area for phrase '{search_string}'. Marked as wilderness.")
-
-                # Update spiral direction and steps
-                leg_count += 1
-                if leg_count % 2 == 0:
-                    steps_in_direction += 1
-                direction_index = (direction_index + 1) % 4
-
-    except Exception as e:
-        logger.error(f"An error occurred during scraping: {e}")
-        console.log(f"[bold red]ERROR during Google Maps scraping:[/bold red] {e}", style="bold red")
-    finally:
-        GoogleMapsCache().save()
-        await page.close()
+    # Initialize Coordinator
+    # We approximate the base width/height for standard 15z view
+    # 15z is roughly 1-2 miles wide depending on lat. 
+    # Let's start with a conservative 2.0 miles width.
+    coordinator = ScrapeCoordinator(
+        browser=browser,
+        campaign_name=campaign_name,
+        base_width_miles=5.0,
+        base_height_miles=5.0,
+        viewport_width=launch_width,
+        viewport_height=launch_height,
+        debug=debug
+    )
+    
+    # Run
+    async for item in coordinator.run(
+        start_lat=latitude,
+        start_lon=longitude,
+        search_phrases=search_strings,
+        max_proximity_miles=max_proximity_miles,
+        panning_distance_miles=panning_distance_miles,
+        force_refresh=force_refresh,
+        ttl_days=ttl_days
+    ):
+        yield item
 

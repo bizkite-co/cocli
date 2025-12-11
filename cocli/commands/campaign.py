@@ -913,10 +913,10 @@ def achieve_goal(
 @app.command(name="visualize-coverage")
 def visualize_coverage(
     campaign_name: Optional[str] = typer.Argument(None, help="Name of the campaign to visualize. If not provided, uses the current campaign context."),
-    output_file: Optional[Path] = typer.Option(None, "--output", "-o", help="The path to save the KML file. Defaults to coverage.kml in the campaign directory."),
 ) -> None:
     """
-    Generates a KML file to visualize the scraped areas for a campaign.
+    Generates KML files to visualize the scraped areas for a campaign.
+    Creates separate files for each search phrase and wilderness areas in the campaign's export directory.
     """
     if campaign_name is None:
         campaign_name = get_campaign()
@@ -931,8 +931,8 @@ def visualize_coverage(
         console.print(f"[bold red]Campaign '{campaign_name}' not found.[/bold red]")
         raise typer.Exit(code=1)
 
-    final_output_file = output_file if output_file else campaign_dir / "coverage.kml"
-
+    export_dir = campaign_dir / "exports"
+    export_dir.mkdir(exist_ok=True)
 
     assert campaign_name is not None # mypy needs this to understand campaign_name is not None here
     effective_campaign_name: str = campaign_name # Explicitly type hint for mypy
@@ -955,70 +955,96 @@ def visualize_coverage(
     scraped_areas = scrape_index.get_all_areas_for_phrases(search_phrases)
     wilderness_areas = scrape_index._load_wilderness_areas() # Load wilderness areas
 
-    all_areas = scraped_areas + wilderness_areas
-    
-    if not all_areas:
+    if not scraped_areas and not wilderness_areas:
         console.print("[yellow]No scraped or wilderness areas found for the campaign's search phrases.[/yellow]")
         return
 
-    # Assign colors to phrases and wilderness
+    # Group areas by phrase
+    areas_by_phrase: Dict[str, List[Any]] = {}
+    for area in scraped_areas:
+        if area.phrase not in areas_by_phrase:
+            areas_by_phrase[area.phrase] = []
+        areas_by_phrase[area.phrase].append(area)
+    
+    # Add wilderness as a separate group
+    if wilderness_areas:
+        areas_by_phrase["wilderness"] = wilderness_areas
+
+    # Assign colors to phrases
+    # We keep the color logic to be consistent if multiple files are loaded
     phrases = sorted(list({area.phrase for area in scraped_areas}))
     colors = ["ff0000ff", "ff00ff00", "ffff0000", "ff00ffff", "ffff00ff", "ffffff00"] # Red, Green, Blue, Cyan, Magenta, Yellow
     phrase_colors = {phrase: colors[i % len(colors)] for i, phrase in enumerate(phrases)}
     phrase_colors["wilderness"] = "ff808080" # Grey for wilderness areas
 
-    kml_placemarks = []
-    for area in all_areas:
-        coordinates = (
-            f"{area.lon_min},{area.lat_min},0 "
-            f"{area.lon_max},{area.lat_min},0 "
-            f"{area.lon_max},{area.lat_max},0 "
-            f"{area.lon_min},{area.lat_max},0 "
-            f"{area.lon_min},{area.lat_min},0"
-        )
-        placemark = f'''        <Placemark>
-            <name>{area.phrase}</name>
-            <description><![CDATA[
-                <b>Scrape Date:</b> {area.scrape_date.strftime('%Y-%m-%d %H:%M:%S')}<br/>
-                <b>Lat Miles:</b> {area.lat_miles:.3f}<br/>
-                <b>Lon Miles:</b> {area.lon_miles:.3f}<br/>
-                <b>Items Found:</b> {area.items_found}<br/>
-                <b>Bounds:</b><br/>
-                &nbsp;&nbsp;Lat: {area.lat_min:.5f} to {area.lat_max:.5f}<br/>
-                &nbsp;&nbsp;Lon: {area.lon_min:.5f} to {area.lon_max:.5f}
-            ]]></description>
-            <Style>
-                <LineStyle>
-                    <color>{phrase_colors.get(area.phrase, 'ffffffff')}</color>
-                    <width>2</width>
-                </LineStyle>
-                <PolyStyle>
-                    <color>80{phrase_colors.get(area.phrase, 'ffffffff')[2:]}</color>  <!-- 50% opacity -->
-                </PolyStyle>
-            </Style>
-            <Polygon>
-                <outerBoundaryIs>
-                    <LinearRing>
-                        <coordinates>{coordinates}</coordinates>
-                    </LinearRing>
-                </outerBoundaryIs>
-            </Polygon>
-        </Placemark> '''
-        kml_placemarks.append(placemark)
+    for phrase, areas in areas_by_phrase.items():
+        kml_placemarks = []
+        for area in areas:
+            # Handle wilderness areas which might not have a 'phrase' attribute the same way or it matches "wilderness"
+            # The 'area' object structure depends on ScrapeIndex.get_all_areas_for_phrases vs _load_wilderness_areas return types.
+            # Assuming they are similar ScrapedArea objects.
+            
+            # Use the phrase from the loop key if the object doesn't have it or for consistency
+            current_phrase = phrase 
+            
+            coordinates = (
+                f"{area.lon_min},{area.lat_min},0 "
+                f"{area.lon_max},{area.lat_min},0 "
+                f"{area.lon_max},{area.lat_max},0 "
+                f"{area.lon_min},{area.lat_max},0 "
+                f"{area.lon_min},{area.lat_min},0"
+            )
+            
+            color = phrase_colors.get(current_phrase, 'ffffffff')
+            
+            placemark = f'''        <Placemark>
+                <name>{current_phrase}</name>
+                <description><![CDATA[
+                    <b>Scrape Date:</b> {area.scrape_date.strftime('%Y-%m-%d %H:%M:%S')}<br/>
+                    <b>Lat Miles:</b> {area.lat_miles:.3f}<br/>
+                    <b>Lon Miles:</b> {area.lon_miles:.3f}<br/>
+                    <b>Items Found:</b> {area.items_found}<br/>
+                    <b>Bounds:</b><br/>
+                    &nbsp;&nbsp;Lat: {area.lat_min:.5f} to {area.lat_max:.5f}<br/>
+                    &nbsp;&nbsp;Lon: {area.lon_min:.5f} to {area.lon_max:.5f}
+                ]]></description>
+                <Style>
+                    <LineStyle>
+                        <color>{color}</color>
+                        <width>2</width>
+                    </LineStyle>
+                    <PolyStyle>
+                        <color>80{color[2:]}</color>  <!-- 50% opacity -->
+                    </PolyStyle>
+                </Style>
+                <Polygon>
+                    <outerBoundaryIs>
+                        <LinearRing>
+                            <coordinates>{coordinates}</coordinates>
+                        </LinearRing>
+                    </outerBoundaryIs>
+                </Polygon>
+            </Placemark> '''
+            kml_placemarks.append(placemark)
 
-    joined_placemarks = "\n".join(kml_placemarks)
-    kml_content = f'''<?xml version="1.0" encoding="UTF-8"?>
+        joined_placemarks = "\n".join(kml_placemarks)
+        kml_content = f'''<?xml version="1.0" encoding="UTF-8"?>
 <kml xmlns="http://www.opengis.net/kml/2.2">
     <Document>
-        <name>Scrape Coverage for {campaign_name}</name>
+        <name>Scrape Coverage: {phrase}</name>
 {joined_placemarks}
     </Document>
 </kml>'''
 
-    try:
-        with open(final_output_file, 'w') as f:
-            f.write(kml_content)
-        console.print(f"[bold green]Successfully generated KML file at: {final_output_file.absolute()}[/bold green]")
-    except IOError as e:
-        console.print(f"[bold red]Error writing to file {final_output_file}: {e}[/bold red]")
-        raise typer.Exit(code=1)
+        # Generate filename
+        safe_phrase = slugify(phrase)
+        output_file = export_dir / f"coverage_{safe_phrase}.kml"
+
+        try:
+            with open(output_file, 'w') as f:
+                f.write(kml_content)
+            console.print(f"[green]Generated KML for '{phrase}': {output_file.name}[/green]")
+        except IOError as e:
+            console.print(f"[bold red]Error writing to file {output_file}: {e}[/bold red]")
+    
+    console.print(f"[bold green]Coverage visualization complete. Files saved in: {export_dir}[/bold green]")

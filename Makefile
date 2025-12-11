@@ -194,7 +194,7 @@ ingest-legacy: ## Ingest legacy prospects.csv into the new queue system (Usage: 
 calc-saturation: ## Calculate saturation scores for target locations (Usage: make calc-saturation [CAMPAIGN=name])
 	@$(VENV_DIR)/bin/python scripts/calculate_saturation.py $(or $(CAMPAIGN), turboship)
 
-scrape: ## Run the scraper
+scrape: calc-saturation ## Run the scraper
 	cocli campaign achieve-goal turboship --emails 10000 --cloud-queue --proximity 30\
 		$(if $(DEBUG), --debug)\
 		$(if $(HEADED), --headed)\
