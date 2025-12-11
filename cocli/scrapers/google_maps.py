@@ -4,6 +4,7 @@ from playwright.async_api import Browser
 
 from .gm_scraper.coordinator import ScrapeCoordinator
 from ..models.google_maps import GoogleMapsData
+from ..core.config import load_scraper_settings # Added import
 
 logger = logging.getLogger(__name__)
 
@@ -31,6 +32,11 @@ async def scrape_google_maps(
     Scrapes business information from Google Maps using the modular ScrapeCoordinator.
     Maintains compatibility with the legacy signature.
     """
+    settings = load_scraper_settings()
+
+    launch_width = browser_width if browser_width is not None else settings.browser_width
+    launch_height = browser_height if browser_height is not None else settings.browser_height
+
     logger.info("Using modular ScrapeCoordinator for Google Maps scraping.")
     
     # Resolve coordinates

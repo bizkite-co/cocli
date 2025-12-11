@@ -92,6 +92,13 @@ class ScrapeCoordinator:
                     if not success:
                         continue
                         
+                    # Calculate ACTUAL dimensions from map scale
+                    actual_width, actual_height = await navigator.get_current_map_dimensions()
+                    
+                    # Use actuals if available, otherwise fallback to planned
+                    record_width = actual_width if actual_width > 0 else current_width
+                    record_height = actual_height if actual_height > 0 else current_height
+                        
                     # Scrape
                     items_found = 0
                     async for item in scanner.scrape(query, processed_ids, force_refresh, ttl_days):
@@ -99,7 +106,7 @@ class ScrapeCoordinator:
                         items_found += 1
                         
                     # Mark Index
-                    self.wilderness.mark_scraped(bounds, query, items_found, current_width, current_height)
+                    self.wilderness.mark_scraped(bounds, query, items_found, record_width, record_height)
                     
         finally:
             await page.close()
