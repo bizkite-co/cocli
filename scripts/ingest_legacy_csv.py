@@ -7,7 +7,7 @@ from rich.console import Console
 
 from cocli.core.config import get_campaign_scraped_data_dir
 from cocli.core.importing import import_prospect
-from cocli.models.google_maps import GoogleMapsData
+from cocli.models.google_maps_prospect import GoogleMapsProspect
 from cocli.models.company import Company
 from cocli.core.queue.factory import get_queue_manager
 from cocli.models.queue import QueueMessage
@@ -49,13 +49,13 @@ def main(
         for row in reader:
             count += 1
             try:
-                valid_data = {k: v for k, v in row.items() if k in GoogleMapsData.model_fields}
+                valid_data = {k: v for k, v in row.items() if k in GoogleMapsProspect.model_fields}
                 
                 if not valid_data.get('Name') or not valid_data.get('Website') or not valid_data.get('Domain'):
                     logger.debug(f"Skipping row {count} due to missing Name, Website, or Domain: {row}")
                     continue
 
-                prospect_data = GoogleMapsData.model_validate(valid_data)
+                prospect_data = GoogleMapsProspect.model_validate(valid_data)
                 
                 # 1. Import (Idempotent - creates/updates local file)
                 # Note: import_prospect returns None if domain is in existing_domains

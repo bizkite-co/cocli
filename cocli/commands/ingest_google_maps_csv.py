@@ -5,7 +5,7 @@ from typing import Optional
 import logging
 
 from ..core.google_maps_cache import GoogleMapsCache
-from ..models.google_maps import GoogleMapsData
+from ..models.google_maps_prospect import GoogleMapsProspect
 from ..core.config import get_campaign, get_campaign_scraped_data_dir
 
 logger = logging.getLogger(__name__)
@@ -38,8 +38,8 @@ def google_maps_csv_to_google_maps_cache(
     with open(csv_path, "r", newline="", encoding="utf-8") as csvfile:
         reader = csv.DictReader(csvfile)
         for row in reader:
-            # Create a GoogleMapsData object from the row
-            model_data = {k: v for k, v in row.items() if k in GoogleMapsData.model_fields and v}
+            # Create a GoogleMapsProspect object from the row
+            model_data = {k: v for k, v in row.items() if k in GoogleMapsProspect.model_fields and v}
             
             # Type conversions
             for field in ['Reviews_count']:
@@ -56,7 +56,7 @@ def google_maps_csv_to_google_maps_cache(
                         model_data[field] = None
 
             if model_data.get("Place_ID"):
-                item = GoogleMapsData.model_validate(model_data)
+                item = GoogleMapsProspect.model_validate(model_data)
                 cache.add_or_update(item)
                 logger.info(f"Added/Updated {item.Name} in cache.")
 

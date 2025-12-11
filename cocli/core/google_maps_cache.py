@@ -4,7 +4,7 @@ from pathlib import Path
 from typing import Optional, Dict, Any
 from datetime import datetime, UTC
 
-from ..models.google_maps import GoogleMapsData
+from ..models.google_maps_prospect import GoogleMapsProspect
 from .config import get_cocli_base_dir
 
 class GoogleMapsCache:
@@ -13,7 +13,7 @@ class GoogleMapsCache:
             cache_dir = get_cocli_base_dir() / "cache"
         cache_dir.mkdir(parents=True, exist_ok=True)
         self.cache_file = cache_dir / "google_maps_cache.csv"
-        self.data: Dict[str, GoogleMapsData] = {}
+        self.data: Dict[str, GoogleMapsProspect] = {}
         self._load_data()
 
     def _load_data(self) -> None:
@@ -54,21 +54,21 @@ class GoogleMapsCache:
 
                 if processed_row.get("Place_ID"):
                     try:
-                        self.data[str(processed_row["Place_ID"])] = GoogleMapsData(**processed_row)
+                        self.data[str(processed_row["Place_ID"])] = GoogleMapsProspect(**processed_row)
                     except Exception as e:
-                        print(f"Error loading GoogleMapsData from cache: {e} for row: {row}")
+                        print(f"Error loading GoogleMapsProspect from cache: {e} for row: {row}")
 
-    def get_by_place_id(self, place_id: str) -> Optional[GoogleMapsData]:
+    def get_by_place_id(self, place_id: str) -> Optional[GoogleMapsProspect]:
         return self.data.get(place_id)
 
-    def add_or_update(self, item: GoogleMapsData) -> None:
+    def add_or_update(self, item: GoogleMapsProspect) -> None:
         if item.Place_ID:
             item.updated_at = datetime.now(UTC)
             self.data[item.Place_ID] = item
 
     def save(self) -> None:
         with open(self.cache_file, "w", newline="", encoding="utf-8") as csvfile:
-            headers = GoogleMapsData.model_fields.keys()
+            headers = GoogleMapsProspect.model_fields.keys()
             writer = csv.DictWriter(csvfile, fieldnames=headers)
             writer.writeheader()
             for item in self.data.values():

@@ -5,7 +5,7 @@ from playwright.async_api import Page
 
 from ...core.config import load_scraper_settings
 from ...core.google_maps_cache import GoogleMapsCache
-from ...models.google_maps import GoogleMapsData
+from ...models.google_maps_prospect import GoogleMapsProspect
 from ..google_maps_parser import parse_business_listing_html
 from ..google_maps_gmb_parser import parse_gmb_page
 
@@ -24,7 +24,7 @@ class SidebarScraper:
         processed_place_ids: Set[str],
         force_refresh: bool,
         ttl_days: int
-    ) -> AsyncIterator[GoogleMapsData]:
+    ) -> AsyncIterator[GoogleMapsProspect]:
         """
         Scrapes the sidebar results for the current map view.
         """
@@ -109,7 +109,7 @@ class SidebarScraper:
                      await self._fetch_gmb_details(gmb_url, business_data_dict)
 
                 # Yield
-                business_data = GoogleMapsData(**business_data_dict)
+                business_data = GoogleMapsProspect(**business_data_dict)
                 self.cache.add_or_update(business_data)
                 yield business_data
 

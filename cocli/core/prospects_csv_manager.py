@@ -2,7 +2,7 @@ import csv
 import logging
 from typing import List, Set
 
-from ..models.google_maps import GoogleMapsData
+from ..models.google_maps_prospect import GoogleMapsProspect
 from ..core.config import get_campaign_scraped_data_dir
 
 logger = logging.getLogger(__name__)
@@ -28,9 +28,9 @@ class ProspectsCSVManager:
                 logger.warning(f"Error reading existing prospects.csv for deduplication: {e}. Proceeding as if file is new.")
                 self._existing_place_ids.clear()
 
-    def read_all_prospects(self) -> List[GoogleMapsData]:
-        """Reads all prospects from the CSV and returns them as a list of GoogleMapsData objects."""
-        prospects: List[GoogleMapsData] = []
+    def read_all_prospects(self) -> List[GoogleMapsProspect]:
+        """Reads all prospects from the CSV and returns them as a list of GoogleMapsProspect objects."""
+        prospects: List[GoogleMapsProspect] = []
         if not self.prospects_csv_path.exists():
             return prospects
 
@@ -39,9 +39,9 @@ class ProspectsCSVManager:
                 reader = csv.DictReader(f)
                 for row in reader:
                     try:
-                        # Only include fields that are part of the GoogleMapsData model
-                        model_data = {k: v for k, v in row.items() if k in GoogleMapsData.model_fields}
-                        prospects.append(GoogleMapsData.model_validate(model_data))
+                        # Only include fields that are part of the GoogleMapsProspect model
+                        model_data = {k: v for k, v in row.items() if k in GoogleMapsProspect.model_fields}
+                        prospects.append(GoogleMapsProspect.model_validate(model_data))
                     except Exception as e:
                         logger.error(f"Error validating row from prospects.csv: {row}. Error: {e}")
             logger.debug(f"Read {len(prospects)} prospects from {self.prospects_csv_path}")
@@ -49,9 +49,9 @@ class ProspectsCSVManager:
             logger.error(f"Error reading prospects.csv: {e}")
         return prospects
 
-    def append_prospect(self, prospect_data: GoogleMapsData) -> bool:
+    def append_prospect(self, prospect_data: GoogleMapsProspect) -> bool:
         """
-        Appends a single GoogleMapsData object to the CSV, performing Place_ID deduplication.
+        Appends a single GoogleMapsProspect object to the CSV, performing Place_ID deduplication.
         Returns True if the prospect was written, False if skipped (due to duplicate Place_ID or missing Place_ID).
         """
         if not prospect_data.Place_ID:
@@ -67,7 +67,7 @@ class ProspectsCSVManager:
         
         try:
             with open(self.prospects_csv_path, 'a', newline='', encoding='utf-8') as csvfile:
-                fieldnames = list(GoogleMapsData.model_fields.keys())
+                fieldnames = list(GoogleMapsProspect.model_fields.keys())
                 writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
                 
                 if write_header:

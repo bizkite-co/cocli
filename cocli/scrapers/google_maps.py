@@ -3,7 +3,7 @@ from typing import AsyncIterator, Dict, List, Optional
 from playwright.async_api import Browser
 
 from .gm_scraper.coordinator import ScrapeCoordinator
-from ..models.google_maps import GoogleMapsData
+from ..models.google_maps_prospect import GoogleMapsProspect
 from ..core.config import load_scraper_settings # Added import
 
 logger = logging.getLogger(__name__)
@@ -27,7 +27,7 @@ async def scrape_google_maps(
     overlap_threshold_percent: float = 60.0,
     expansion_factor: float = 1.0,
     max_initial_expansion_attempts: int = 3,
-) -> AsyncIterator[GoogleMapsData]:
+) -> AsyncIterator[GoogleMapsProspect]:
     """
     Scrapes business information from Google Maps using the modular ScrapeCoordinator.
     Maintains compatibility with the legacy signature.

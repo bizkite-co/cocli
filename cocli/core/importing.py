@@ -3,22 +3,22 @@ from typing import Optional
 import logging
 
 from ..models.company import Company
-from ..models.google_maps import GoogleMapsData
+from ..models.google_maps_prospect import GoogleMapsProspect
 from ..core.config import get_companies_dir
 
 logger = logging.getLogger(__name__)
 
 def import_prospect(
-    prospect_data: GoogleMapsData,
+    prospect_data: GoogleMapsProspect,
     campaign: Optional[str] = None
 ) -> Optional[Company]:
     """
-    Imports a single prospect from a GoogleMapsData object into the canonical company structure.
+    Imports a single prospect from a GoogleMapsProspect object into the canonical company structure.
     If the company already exists by slug, it updates relevant fields.
     Initializes enrichment tracking fields for new companies.
 
     Args:
-        prospect_data: The GoogleMapsData object for the prospect.
+        prospect_data: The GoogleMapsProspect object for the prospect.
         campaign: The name of the campaign to associate with the prospect.
 
     Returns:

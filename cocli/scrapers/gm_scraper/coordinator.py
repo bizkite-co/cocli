@@ -3,7 +3,7 @@ from typing import List, AsyncIterator
 from playwright.async_api import Browser
 from geopy.distance import geodesic # type: ignore
 
-from ...models.google_maps import GoogleMapsData
+from ...models.google_maps_prospect import GoogleMapsProspect
 from .navigator import Navigator
 from .strategy import SpiralStrategy
 from .wilderness import WildernessManager
@@ -41,7 +41,7 @@ class ScrapeCoordinator:
         panning_distance_miles: int = 5,
         force_refresh: bool = False,
         ttl_days: int = 30
-    ) -> AsyncIterator[GoogleMapsData]:
+    ) -> AsyncIterator[GoogleMapsProspect]:
         
         # Create a new page for this session
         page = await self.browser.new_page(viewport={'width': self.viewport_width, 'height': self.viewport_height})

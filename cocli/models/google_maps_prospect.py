@@ -9,7 +9,7 @@ from cocli.core.text_utils import slugify
 
 logger = logging.getLogger(__name__)
 
-class GoogleMapsData(BaseModel):
+class GoogleMapsProspect(BaseModel):
     created_at: AwareDatetime = Field(default_factory=lambda: datetime.now(UTC))
     updated_at: AwareDatetime = Field(default_factory=lambda: datetime.now(UTC))
     version: int = 1

@@ -1,4 +1,4 @@
-from cocli.models.google_maps import GoogleMapsData
+from cocli.models.google_maps_prospect import GoogleMapsProspect
 from typer.testing import CliRunner
 from cocli.main import app
 import pytest
@@ -7,7 +7,7 @@ from unittest.mock import AsyncMock, MagicMock
 runner = CliRunner()
 
 async def async_generator():
-    mock_google_maps_data = GoogleMapsData(
+    mock_google_maps_data = GoogleMapsProspect(
         Name="Mock Company",
         Place_ID="mock_place_id",
         Website="mock.com",
