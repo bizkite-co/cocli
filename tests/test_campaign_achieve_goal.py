@@ -38,7 +38,8 @@ queries = ["software company"]
     mocker.patch("cocli.commands.campaign.get_campaign", return_value=campaign_name)
     mocker.patch("cocli.commands.campaign.get_campaign_dir", return_value=campaign_dir)
     mocker.patch("cocli.commands.campaign.get_cocli_base_dir", return_value=tmp_path)
-    mocker.patch("cocli.commands.campaign.get_campaign_scraped_data_dir", return_value=tmp_path / "scraped_data")
+    # Patched in the manager now
+    mocker.patch("cocli.core.prospects_csv_manager.get_campaign_scraped_data_dir", return_value=tmp_path / "scraped_data")
     mocker.patch("cocli.commands.campaign.get_companies_dir", return_value=tmp_path / "companies")
 
     mocker.patch("cocli.commands.campaign.ensure_enrichment_service_ready", return_value=None)

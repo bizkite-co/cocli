@@ -13,7 +13,7 @@ from playwright.async_api import async_playwright, Browser
 
 from cocli.models.company import Company
 from cocli.models.hubspot import HubspotContactCsv
-from cocli.core.config import get_campaign, get_campaigns_dir, get_companies_dir, get_scraped_data_dir, get_enrichment_service_url
+from cocli.core.config import get_campaign, get_campaigns_dir, get_companies_dir, get_enrichment_service_url
 from cocli.core.queue.factory import get_queue_manager
 from cocli.models.queue import QueueMessage # Added import
 from cocli.models.website import Website
@@ -436,35 +436,38 @@ def tag_prospects_from_csv() -> None:
     console = Console()
     console.print(f"Tagging prospects from CSV for campaign: [bold]{campaign_name}[/bold]")
 
-    prospects_csv_path = get_scraped_data_dir() / campaign_name / "prospects" / "prospects.csv"
-    if not prospects_csv_path.exists():
-        console.print(f"[bold red]Prospects CSV not found at: {prospects_csv_path}[/bold red]")
+    from ..core.prospects_csv_manager import ProspectsCSVManager
+    manager = ProspectsCSVManager(campaign_name)
+
+    if not manager.prospects_csv_path.exists():
+        console.print(f"[bold red]Prospects CSV not found at: {manager.prospects_csv_path}[/bold red]")
         raise typer.Exit(code=1)
 
     companies_dir = get_companies_dir()
     updated_count = 0
-    with open(prospects_csv_path, 'r', encoding='utf-8') as f:
-        reader = csv.DictReader(f)
-        for row in reader:
-            domain = row.get('Domain')
-            if not domain:
-                continue
+    
+    prospects = manager.read_all_prospects()
+    
+    for prospect in prospects:
+        domain = prospect.Domain
+        if not domain:
+            continue
 
-            slug = slugify(domain)
-            company_dir = companies_dir / slug
-            if company_dir.is_dir():
-                tags_path = company_dir / "tags.lst"
-                tags = []
-                if tags_path.exists():
-                    with open(tags_path, 'r') as tags_file:
-                        tags = [line.strip() for line in tags_file.readlines()]
-                
-                if campaign_name not in tags:
-                    tags.append(campaign_name)
-                    with open(tags_path, 'w') as tags_file:
-                        tags_file.write("\n".join(tags))
-                    updated_count += 1
-                    console.print(f"Tagged {domain} with campaign '{campaign_name}'")
+        slug = slugify(domain)
+        company_dir = companies_dir / slug
+        if company_dir.is_dir():
+            tags_path = company_dir / "tags.lst"
+            tags = []
+            if tags_path.exists():
+                with open(tags_path, 'r') as tags_file:
+                    tags = [line.strip() for line in tags_file.readlines()]
+            
+            if campaign_name not in tags:
+                tags.append(campaign_name)
+                with open(tags_path, 'w') as tags_file:
+                    tags_file.write("\n".join(tags))
+                updated_count += 1
+                console.print(f"Tagged {domain} with campaign '{campaign_name}'")
 
     console.print(f"[bold green]Tagging complete. Updated {updated_count} companies.[/bold green]")
 

@@ -16,8 +16,7 @@ import httpx
 from ..models.website import Website
 from ..scrapers.google_maps import scrape_google_maps
 
-from ..core.config import get_companies_dir, get_campaign_dir, get_cocli_base_dir, get_people_dir, get_all_campaign_dirs, get_editor_command, get_enrichment_service_url, get_campaign_scraped_data_dir
-from ..models.google_maps import GoogleMapsData
+from ..core.config import get_companies_dir, get_campaign_dir, get_cocli_base_dir, get_people_dir, get_all_campaign_dirs, get_editor_command, get_enrichment_service_url
 from ..models.company import Company
 from ..models.person import Person
 import yaml
@@ -37,6 +36,7 @@ from ..core.queue.factory import get_queue_manager # New import
 from ..models.queue import QueueMessage # New import
 from ..core.enrichment import enrich_company_website # New import
 from ..core.exceptions import NavigationError
+from ..core.prospects_csv_manager import ProspectsCSVManager
 
 from typing_extensions import Annotated
 
@@ -341,9 +341,11 @@ def import_prospects(
 
     console.print(f"[bold]Importing prospects for campaign: '{campaign_name}'[/bold]")
 
-    prospects_csv_path = get_campaign_scraped_data_dir(campaign_name) / "prospects.csv"
-    if not prospects_csv_path.exists():
-        console.print(f"[bold red]Prospects CSV not found at: {prospects_csv_path}[/bold red]")
+    csv_manager = ProspectsCSVManager(campaign_name)
+    prospects = csv_manager.read_all_prospects()
+
+    if not prospects:
+        console.print(f"[bold red]No prospects found (or file missing) for campaign: {campaign_name}[/bold red]")
         raise typer.Exit(code=1)
 
     # Build a map of existing domains to prevent duplicates
@@ -351,21 +353,16 @@ def import_prospects(
     existing_domains = {c.domain for c in Company.get_all() if c.domain}
 
     new_companies_imported = 0
-    with open(prospects_csv_path, 'r', encoding='utf-8') as f:
-        reader = csv.DictReader(f)
-        for row in reader:
-            # Create a GoogleMapsData object from the CSV row
-            model_data = {k: v for k, v in row.items() if k in GoogleMapsData.model_fields}
-            prospect_data = GoogleMapsData.model_validate(model_data)
+    
+    for prospect_data in prospects:
+        # Call the core import function
+        new_company = import_prospect(prospect_data, campaign=campaign_name)
 
-            # Call the core import function
-            new_company = import_prospect(prospect_data, campaign=campaign_name)
-
-            if new_company:
-                console.print(f"[green]Imported new prospect:{new_company.name}[/green]") 
-                if new_company.domain:
-                    existing_domains.add(new_company.domain) # Add to set to avoid re-importing from same CSV
-                new_companies_imported += 1
+        if new_company:
+            console.print(f"[green]Imported new prospect:{new_company.name}[/green]") 
+            if new_company.domain:
+                existing_domains.add(new_company.domain) # Add to set to avoid re-importing from same CSV
+            new_companies_imported += 1
 
     console.print(f"[bold green]Import complete. Added {new_companies_imported} new companies.[/bold green]")
 
@@ -619,125 +616,118 @@ async def pipeline(
             
             location_df = pd.DataFrame(location_data)
 
-            prospects_csv_path = get_campaign_scraped_data_dir(campaign_name) / "prospects.csv"
-            # prospects_csv_path.parent.mkdir(parents=True, exist_ok=True) # Handled by getter
-            write_header = not prospects_csv_path.exists()
-            
-            with open(prospects_csv_path, 'a', newline='', encoding='utf-8') as csvfile:
-                writer = csv.DictWriter(csvfile, fieldnames=GoogleMapsData.model_fields.keys())
-                if write_header:
-                    writer.writeheader()
+            csv_manager = ProspectsCSVManager(campaign_name)
 
-                while not stop_event.is_set():
-                    # Sort locations by saturation_score (primary) and prospect_count (secondary)
-                    # We want least saturated first.
-                    location_df = location_df.sort_values(by=["saturation_score", "prospect_count"], ascending=[True, True]).reset_index(drop=True)
+            while not stop_event.is_set():
+                # Sort locations by saturation_score (primary) and prospect_count (secondary)
+                # We want least saturated first.
+                location_df = location_df.sort_values(by=["saturation_score", "prospect_count"], ascending=[True, True]).reset_index(drop=True)
+                
+                # Filter to candidates with the minimum saturation_score to ensure round-robin among equally unsaturated
+                if not location_df.empty:
+                    min_saturation = location_df["saturation_score"].min()
+                    # Use a small epsilon for float comparison if needed, but direct comparison is usually fine for sorted df head
+                    candidates = location_df[location_df["saturation_score"] <= min_saturation + 0.01]
+                else:
+                    candidates = location_df
+                
+                # Pick random 1 from the candidates
+                if len(candidates) > 0:
+                    selected_locations = candidates.sample(n=1)
+                else:
+                    # Fallback (shouldn't happen if list not empty)
+                    selected_locations = location_df.head(1)
+                
+                for _, loc_row in selected_locations.iterrows():
+                    if stop_event.is_set(): 
+                        break
                     
-                    # Filter to candidates with the minimum saturation_score to ensure round-robin among equally unsaturated
-                    if not location_df.empty:
-                        min_saturation = location_df["saturation_score"].min()
-                        # Use a small epsilon for float comparison if needed, but direct comparison is usually fine for sorted df head
-                        candidates = location_df[location_df["saturation_score"] <= min_saturation + 0.01]
-                    else:
-                        candidates = location_df
+                    location = str(loc_row["name"])
                     
-                    # Pick random 1 from the candidates
-                    if len(candidates) > 0:
-                        selected_locations = candidates.sample(n=1)
-                    else:
-                        # Fallback (shouldn't happen if list not empty)
-                        selected_locations = location_df.head(1)
+                    logger.info(f"Scraping target: {location}")
+                    console.print(f"[grey50][{datetime.now().strftime('%H:%M:%S')}][/] [bold yellow]Scraping target:[/bold yellow] {location}")
+
+                    location_param = {"city": location}
+                    if "latitude" in loc_row and pd.notnull(loc_row["latitude"]):
+                            location_param["latitude"] = str(loc_row["latitude"])
+                            location_param["longitude"] = str(loc_row["longitude"])
                     
-                    for _, loc_row in selected_locations.iterrows():
+                    # Scrape
+                    prospect_generator = scrape_google_maps(
+                        browser=browser, # Use main browser instance (new page per search)
+                        location_param=location_param,
+                        search_strings=search_phrases,
+                        campaign_name=campaign_name,
+                        zoom_out_button_selector=zoom_out_button_selector,
+                        panning_distance_miles=panning_distance_miles,
+                        initial_zoom_out_level=initial_zoom_out_level,
+                        omit_zoom_feature=omit_zoom_feature,
+                        force_refresh=force,
+                        ttl_days=ttl_days,
+                        debug=debug,
+                        browser_width=browser_width,
+                        browser_height=browser_height,
+                        max_proximity_miles=max_proximity_miles,
+                        overlap_threshold_percent=overlap_threshold_percent,
+                    )
+                    
+                    async for prospect_data in prospect_generator:
                         if stop_event.is_set(): 
                             break
                         
-                        location = str(loc_row["name"])
+                        # Write CSV
+                        csv_manager.append_prospect(prospect_data)
                         
-                        logger.info(f"[bold yellow]Scraping target:[/bold yellow] {location}")
-                        console.print(f"[bold yellow]Scraping target:[/bold yellow] {location}")
+                        # Handle Company Lookup/Import
+                        company: Optional[Company] = None
+                        domain = prospect_data.Domain
+                        
+                        if domain and domain in existing_companies_map:
+                            slug = existing_companies_map[domain]
+                            company = Company.get(slug)
+                        else:
+                            # Import Local
 
-                        location_param = {"city": location}
-                        if "latitude" in loc_row and pd.notnull(loc_row["latitude"]):
-                             location_param["latitude"] = str(loc_row["latitude"])
-                             location_param["longitude"] = str(loc_row["longitude"])
-                        
-                        # Scrape
-                        prospect_generator = scrape_google_maps(
-                            browser=browser, # Use main browser instance (new page per search)
-                            location_param=location_param,
-                            search_strings=search_phrases,
-                            campaign_name=campaign_name,
-                            zoom_out_button_selector=zoom_out_button_selector,
-                            panning_distance_miles=panning_distance_miles,
-                            initial_zoom_out_level=initial_zoom_out_level,
-                            omit_zoom_feature=omit_zoom_feature,
-                            force_refresh=force,
-                            ttl_days=ttl_days,
-                            debug=debug,
-                            browser_width=browser_width,
-                            browser_height=browser_height,
-                            max_proximity_miles=max_proximity_miles,
-                            overlap_threshold_percent=overlap_threshold_percent,
-                        )
-                        
-                        async for prospect_data in prospect_generator:
-                            if stop_event.is_set(): 
-                                break
-                            
-                            # Write CSV
-                            writer.writerow(prospect_data.model_dump())
-                            
-                            # Handle Company Lookup/Import
-                            company: Optional[Company] = None
-                            domain = prospect_data.Domain
-                            
-                            if domain and domain in existing_companies_map:
-                                slug = existing_companies_map[domain]
-                                company = Company.get(slug)
-                            else:
-                                # Import Local
-
-                                company = import_prospect(prospect_data, campaign=campaign_name)
-                                if company and company.domain:
-                                    existing_companies_map[company.domain] = company.slug
-                            
+                            company = import_prospect(prospect_data, campaign=campaign_name)
                             if company and company.domain:
-                                location_prospects_index.update_prospect_count(location, 1)
-                                location_df.loc[location_df["name"] == location, "prospect_count"] += 1
-                                
-                                # Decide whether to queue
-                                should_queue = False
-                                logger.debug(f"DEBUGGING QUEUE: Company {company.name} (Domain: {company.domain}, Slug: {company.slug}). Has email: {bool(company.email)}. Force mode: {force}")
-
-                                if force:
-                                    should_queue = True
-                                    logger.debug(f"Queuing {company.domain}: --force is True.")
-                                elif company.email: # Check if company already has an email
-                                    logger.debug(f"Skipping queue for {company.domain}: Company already has email.")
-                                else:
-                                    # If no email, we queue it to try and find one
-                                    should_queue = True
-                                    logger.debug(f"Queuing {company.domain}: No email found yet.")
-                                
-                                if should_queue:
-                                    # Push to Queue
-                                    msg = QueueMessage(
-                                        domain=company.domain,
-                                        company_slug=company.slug,
-                                        campaign_name=campaign_name,
-                                        force_refresh=force,
-                                        ttl_days=ttl_days,
-                                        ack_token=None,
-                                    )
-                                    queue_manager.push(msg)
-                                    console.print(f"[cyan]Queued: {company.name} (Domain: {company.domain})[/cyan]")
-                                    logger.debug(f"Pushed to queue: Domain={company.domain}, Slug={company.slug}")
-                                else:
-                                    logger.debug(f"NOT QUEUED: {company.domain} based on logic. Has email: {bool(company.email)}. Force mode: {force}")
+                                existing_companies_map[company.domain] = company.slug
+                        
+                        if company and company.domain:
+                            location_prospects_index.update_prospect_count(location, 1)
+                            location_df.loc[location_df["name"] == location, "prospect_count"] += 1
                             
-                            # Yield control to let consumer run
-                            await asyncio.sleep(0.01)
+                            # Decide whether to queue
+                            should_queue = False
+                            logger.debug(f"DEBUGGING QUEUE: Company {company.name} (Domain: {company.domain}, Slug: {company.slug}). Has email: {bool(company.email)}. Force mode: {force}")
+
+                            if force:
+                                should_queue = True
+                                logger.debug(f"Queuing {company.domain}: --force is True.")
+                            elif company.email: # Check if company already has an email
+                                logger.debug(f"Skipping queue for {company.domain}: Company already has email.")
+                            else:
+                                # If no email, we queue it to try and find one
+                                should_queue = True
+                                logger.debug(f"Queuing {company.domain}: No email found yet.")
+                            
+                            if should_queue:
+                                # Push to Queue
+                                msg = QueueMessage(
+                                    domain=company.domain,
+                                    company_slug=company.slug,
+                                    campaign_name=campaign_name,
+                                    force_refresh=force,
+                                    ttl_days=ttl_days,
+                                    ack_token=None,
+                                )
+                                queue_manager.push(msg)
+                                console.print(f"[cyan]Queued: {company.name} (Domain: {company.domain})[/cyan]")
+                                logger.debug(f"Pushed to queue: Domain={company.domain}, Slug={company.slug}")
+                            else:
+                                logger.debug(f"NOT QUEUED: {company.domain} based on logic. Has email: {bool(company.email)}. Force mode: {force}")
+                        
+                        # Yield control to let consumer run
+                        await asyncio.sleep(0.01)
 
         # Run both
         await asyncio.gather(producer_task(existing_companies_map), consumer_task())

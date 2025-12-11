@@ -1,10 +1,9 @@
-import csv
 import simplekml # type: ignore
 import typer
 import logging
-from typing import Dict, List, Optional, cast
+from typing import Dict, List, Optional
 
-from ..core.config import get_campaign_scraped_data_dir, get_people_dir, get_campaign_dir
+from ..core.config import get_people_dir, get_campaign_dir
 from ..models.company import Company
 from ..models.person import Person
 
@@ -23,11 +22,13 @@ def render_prospects_kml(
         logger.error(f"Campaign '{campaign_name}' not found.")
         raise typer.Exit(code=1)
 
-    prospects_csv_path = get_campaign_scraped_data_dir(campaign_name) / "prospects.csv"
+    from ..core.prospects_csv_manager import ProspectsCSVManager
+    manager = ProspectsCSVManager(campaign_name)
+
     output_kml_path = campaign_dir / f"{campaign_name}_prospects.kml"
 
-    if not prospects_csv_path.exists():
-        logger.error(f"Error: Prospects CSV file not found at {prospects_csv_path}")
+    if not manager.prospects_csv_path.exists():
+        logger.error(f"Error: Prospects CSV file not found at {manager.prospects_csv_path}")
         raise typer.Exit(code=1)
 
     kml = simplekml.Kml()
@@ -49,90 +50,89 @@ def render_prospects_kml(
             if person and person.company_name:
                 people_by_company_name.setdefault(person.company_name, []).append(person)
 
-    with open(prospects_csv_path, 'r', encoding='utf-8') as f:
-        reader = csv.DictReader(f)
-        for row in reader:
-            name = row.get('Name')
-            lat = row.get('Latitude')
-            lon = row.get('Longitude')
-            place_id = row.get('Place_ID')
+    prospects = manager.read_all_prospects()
+    for prospect in prospects:
+        name = prospect.Name
+        lat = prospect.Latitude
+        lon = prospect.Longitude
+        place_id = prospect.Place_ID
 
-            if not all([name, lat, lon, place_id]):
-                logger.warning(f"Skipping prospect due to missing data: {row.get('Name', 'N/A')}")
-                continue
+        if not all([name, lat, lon, place_id]):
+            logger.warning(f"Skipping prospect due to missing data: {name or 'N/A'}")
+            continue
 
-            # Get enriched Company data
-            company: Optional[Company] = companies_by_place_id.get(cast(str, place_id)) # Cast place_id to str
-            if not company:
-                # Fallback to name lookup if place_id not found in canonical companies
-                company = companies_by_name.get(cast(str, name)) # Cast name to str
+        # Get enriched Company data
+        company: Optional[Company] = companies_by_place_id.get(str(place_id))
+        if not company and name:
+            # Fallback to name lookup if place_id not found in canonical companies
+            company = companies_by_name.get(str(name))
 
-            if not company:
-                logger.warning(f"Skipping prospect '{name}' (Place ID: {place_id}) as no matching Company record was found.")
-                continue
+        if not company:
+            logger.warning(f"Skipping prospect '{name}' (Place ID: {place_id}) as no matching Company record was found.")
+            continue
 
-            # At this point, 'company' is guaranteed to be a Company object
+        # At this point, 'company' is guaranteed to be a Company object
 
-            # Get associated People
-            associated_people: List[Person] = people_by_company_name.get(company.name, [])
+        # Get associated People
+        associated_people: List[Person] = people_by_company_name.get(company.name, [])
 
-            placemark = kml.newpoint(name=name)
-            placemark.coords = [(lon, lat)]
+        placemark = kml.newpoint(name=name)
+        placemark.coords = [(lon, lat)]
 
-            # --- Construct rich HTML description ---
-            description_parts = []
-            description_parts.append("<![CDATA[") # Start CDATA block
+        # --- Construct rich HTML description ---
+        description_parts = []
+        description_parts.append("<![CDATA[") # Start CDATA block
 
-            # Thumbnail
-            thumbnail_url = row.get('Thumbnail_URL')
-            if thumbnail_url:
-                description_parts.append(f'<img src="{thumbnail_url}" width="150"><br>')
+        # Thumbnail
+        thumbnail_url = prospect.Thumbnail_URL
+        if thumbnail_url:
+            description_parts.append(f'<img src="{thumbnail_url}" width="150"><br>')
 
-            # Basic Info
-            description_parts.append(f'<b>Name:</b> {name}<br>')
-            if company.domain:
-                description_parts.append(f'<b>Domain:</b> <a href="https://{company.domain}">{company.domain}</a><br>')
-            elif row.get('Website'):
-                website = row.get('Website')
-                description_parts.append(f'<b>Website:</b> <a href="{website}">{website}</a><br>')
-            
-            # Email
-            email_address = None
-            if company.email:
-                email_address = company.email
-            elif row.get('Email'):
-                email_address = row.get('Email')
-            if email_address:
-                description_parts.append(f'<b>Email:</b> <a href="mailto:{email_address}">{email_address}</a><br>')
+        # Basic Info
+        description_parts.append(f'<b>Name:</b> {name}<br>')
+        if company.domain:
+            description_parts.append(f'<b>Domain:</b> <a href="https://{company.domain}">{company.domain}</a><br>')
+        elif prospect.Website:
+            website = prospect.Website
+            description_parts.append(f'<b>Website:</b> <a href="{website}">{website}</a><br>')
+        
+        # Email
+        email_address = None
+        if company.email:
+            email_address = company.email
+        # Note: GoogleMapsProspect does not have an Email field by default, so we removed the fallback from CSV.
+        
+        if email_address:
+            description_parts.append(f'<b>Email:</b> <a href="mailto:{email_address}">{email_address}</a><br>')
 
-            # Phone
-            phone_number = None
-            if company.phone_number or company.phone_1:
-                phone_number = company.phone_number or company.phone_1
-            elif row.get('Phone_1'):
-                phone_number = row.get('Phone_1')
-            if phone_number:
-                description_parts.append(f'<b>Phone:</b> {phone_number}<br>')
+        # Phone
+        phone_number = None
+        if company.phone_number or company.phone_1:
+            phone_number = company.phone_number or company.phone_1
+        elif prospect.Phone_1:
+            phone_number = prospect.Phone_1
+        if phone_number:
+            description_parts.append(f'<b>Phone:</b> {phone_number}<br>')
 
-            full_address = company.full_address or row.get('Full_Address')
-            if full_address:
-                description_parts.append(f'<b>Address:</b> {full_address}<br>')
-            
-            # Associated People
-            if associated_people:
-                description_parts.append('<hr><b>Associated People:</b><br>')
-                for person in associated_people:
-                    person_info = f'{person.name}'
-                    if person.role:
-                        person_info += f' ({person.role})'
-                    if person.email:
-                        person_info += f' - <a href="mailto:{person.email}">{person.email}</a>'
-                    if person.phone:
-                        person_info += f' - {person.phone}'
-                    description_parts.append(f'{person_info}<br>')
+        full_address = company.full_address or prospect.Full_Address
+        if full_address:
+            description_parts.append(f'<b>Address:</b> {full_address}<br>')
+        
+        # Associated People
+        if associated_people:
+            description_parts.append('<hr><b>Associated People:</b><br>')
+            for person in associated_people:
+                person_info = f'{person.name}'
+                if person.role:
+                    person_info += f' ({person.role})'
+                if person.email:
+                    person_info += f' - <a href="mailto:{person.email}">{person.email}</a>'
+                if person.phone:
+                    person_info += f' - {person.phone}'
+                description_parts.append(f'{person_info}<br>')
 
-            description_parts.append("]]>") # End CDATA block
-            placemark.description = "".join(description_parts)
+        description_parts.append("]]>") # End CDATA block
+        placemark.description = "".join(description_parts)
 
     kml.save(output_kml_path)
     logger.info(f"KML file generated at: {output_kml_path}")

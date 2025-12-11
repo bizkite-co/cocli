@@ -2,7 +2,7 @@ import csv
 from pathlib import Path
 import typer
 import yaml
-from typing import List, Optional
+from typing import List, Optional, Dict, Any
 import logging
 
 from cocli.core.text_utils import slugify
@@ -11,29 +11,27 @@ from cocli.models.company import Company
 from cocli.models.website_domain_csv import WebsiteDomainCsv
 from cocli.core.website_domain_csv_manager import WebsiteDomainCsvManager
 from fuzzywuzzy import process # type: ignore
-from cocli.core.config import get_campaign, get_campaign_scraped_data_dir, get_companies_dir
+from cocli.core.config import get_campaign, get_companies_dir
 
 logger = logging.getLogger(__name__)
 
 app = typer.Typer()
 
 def core_import_logic(
-    prospects_csv_path: Path,
+    prospects: List[Dict[str, Any]],
     tags: List[str],
     companies_dir: Path,
     match_threshold: int = 80,
 ) -> None:
-    """Core logic for importing prospects from a CSV file."""
+    """Core logic for importing prospects from a list of dictionaries."""
     website_csv_manager = WebsiteDomainCsvManager()
 
     company_dirs = {d.name: d for d in companies_dir.iterdir() if d.is_dir()}
 
-    with open(prospects_csv_path, 'r', encoding='utf-8') as f:
-        reader = csv.DictReader(f)
-        for row in reader:
-            company_name = row.get('Name')
-            if not company_name:
-                continue
+    for row in prospects:
+        company_name = row.get('Name')
+        if not company_name:
+            continue
 
             place_id = row.get('Place_ID')
 
@@ -166,16 +164,27 @@ def google_maps_cache_to_company_files(
     if effective_campaign_name is None:
         effective_campaign_name = get_campaign()
 
+    prospects_data: List[Dict[str, Any]] = []
+
     if prospects_csv_path is None:
         if effective_campaign_name is None:
             logger.error("Error: No prospects CSV path provided and no campaign context is set. Please provide a CSV path, a campaign name with --campaign, or set a campaign context using 'cocli campaign set <campaign_name>'.")
             raise typer.Exit(code=1)
         
-        inferred_csv_path = get_campaign_scraped_data_dir(effective_campaign_name) / "prospects.csv"
-        if not inferred_csv_path.exists():
-            logger.error(f"Error: Inferred prospects CSV path does not exist: {inferred_csv_path}")
-            raise typer.Exit(code=1)
-        prospects_csv_path = inferred_csv_path
+        from ..core.prospects_csv_manager import ProspectsCSVManager
+        manager = ProspectsCSVManager(effective_campaign_name)
+        prospects_objs = manager.read_all_prospects()
+        
+        # Convert to list of dicts. We use model_dump() which returns field names as keys.
+        prospects_data = [p.model_dump() for p in prospects_objs]
+        
+        if not prospects_data:
+             logger.warning(f"No prospects found (or file missing) for campaign '{effective_campaign_name}'.")
+
+    else:
+        with open(prospects_csv_path, 'r', encoding='utf-8') as f:
+            reader = csv.DictReader(f)
+            prospects_data = list(reader)
 
     final_tags: List[str]
     if tags:
@@ -188,7 +197,7 @@ def google_maps_cache_to_company_files(
     final_companies_dir = companies_dir_cli if companies_dir_cli else get_companies_dir()
     
     core_import_logic(
-        prospects_csv_path=prospects_csv_path,
+        prospects=prospects_data,
         tags=final_tags,
         companies_dir=final_companies_dir,
         match_threshold=match_threshold
