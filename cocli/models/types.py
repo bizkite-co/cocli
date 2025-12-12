@@ -2,7 +2,6 @@ from datetime import datetime, UTC
 from typing import Annotated
 
 from pydantic import PlainSerializer, AfterValidator
-from pydantic_core import PydanticCustomError
 
 def validate_aware_datetime(v: datetime) -> datetime:
     """
