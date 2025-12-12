@@ -7,11 +7,10 @@ from pydantic_core import PydanticCustomError
 def validate_aware_datetime(v: datetime) -> datetime:
     """
     Validator for timezone-aware datetimes, ensuring they are in UTC.
+    If a naive datetime is provided, it is assumed to be in UTC.
     """
     if v.tzinfo is None:
-        raise PydanticCustomError(
-            'datetime_timezone_naive', 'timezone-naive datetimes are not allowed'
-        )
+        return v.replace(tzinfo=UTC)
     if v.tzinfo != UTC:
         # Convert to UTC if it's aware but not UTC
         return v.astimezone(UTC)
