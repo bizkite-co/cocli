@@ -17,12 +17,13 @@ Refine the Google Maps scraping pipeline to fix "wilderness" detection issues, i
     *   **Completed:** Refactored `ProspectsCSVManager` to `ProspectsIndexManager` to handle the new file structure.
     *   **Completed:** Fixed data model issues (`company_slug` persistence, `AwareDatetime` validation).
     *   **Completed:** Updated all scripts and Makefile targets to use the new index manager.
+    *   **Completed:** Removed legacy `google_maps_prospects.csv` files.
 *   **Scraped Areas Optimization:**
     *   **Completed:** Migrated `scraped_areas` from monolithic CSVs to a spatially partitioned file index (`indexes/scraped_areas/{phrase}/{lat_grid}_{lon_grid}/{bounds}.json`).
     *   **Completed:** Implemented "Latest Write Wins" for scraped areas.
     *   **Completed:** Refactored `ScrapeIndex` to use the new structure, enabling O(1) spatial lookups (checking only relevant 1x1 degree grid cells).
     *   **Completed:** Validated that `make coverage-kml` works with the new structure.
-    *   **Completed:** Removed legacy CSV files and obsolete scripts (`backfill_item_counts.py`).
+    *   **Completed:** Removed legacy scraped_areas CSV files and obsolete scripts (`backfill_item_counts.py`).
 
 ## Next Actions
 1.  **Scraper Verification:**
