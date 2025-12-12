@@ -43,22 +43,33 @@ class CdkScraperDeploymentStack(Stack):  # type: ignore[misc]
         data_bucket = s3.Bucket.from_bucket_name(self, "CocliDataBucket", "cocli-data-turboship")
         data_bucket.grant_read_write(task_role)
 
-        # --- SQS Queue ---
+        # --- SQS Queues ---
+        
+        # 1. Enrichment Queue (Existing) - For website enrichment tasks
         enrichment_queue = sqs.Queue(self, "EnrichmentQueue",
             visibility_timeout=Duration.minutes(5), # 5 mins for enrichment task
             retention_period=Duration.days(4)
         )
         enrichment_queue.grant_send_messages(task_role)
         enrichment_queue.grant_consume_messages(task_role)
+        
+        # 2. Scrape Tasks Queue (New) - For Google Maps scraping tasks (lat/lon/query)
+        scrape_tasks_queue = sqs.Queue(self, "ScrapeTasksQueue",
+            visibility_timeout=Duration.minutes(15), # 15 mins (scraping a grid cell takes time)
+            retention_period=Duration.days(4)
+        )
+        scrape_tasks_queue.grant_send_messages(task_role)
+        scrape_tasks_queue.grant_consume_messages(task_role)
 
         # --- DNS / HTTPS ---
         zone = route53.HostedZone.from_hosted_zone_attributes(self, "HostedZone",
             hosted_zone_id="Z0754885WA4ZOH1QH7PJ",
             zone_name="turboheat.net"
         )
-
+        
         # Outputs
-        CfnOutput(self, "QueueUrl", value=enrichment_queue.queue_url)
+        CfnOutput(self, "EnrichmentQueueUrl", value=enrichment_queue.queue_url)
+        CfnOutput(self, "ScrapeTasksQueueUrl", value=scrape_tasks_queue.queue_url)
         CfnOutput(self, "BucketName", value=data_bucket.bucket_name)
 
         # Application Load Balanced Fargate Service
@@ -76,12 +87,26 @@ class CdkScraperDeploymentStack(Stack):  # type: ignore[misc]
                 image=ecs.ContainerImage.from_registry(repository.repository_uri + ":latest"),
                 container_port=8000,
                 environment={
-                    "COCLI_SQS_QUEUE_URL": enrichment_queue.queue_url,
+                    "COCLI_ENRICHMENT_QUEUE_URL": enrichment_queue.queue_url,
+                    "COCLI_SCRAPE_TASKS_QUEUE_URL": scrape_tasks_queue.queue_url,
                     "COCLI_S3_BUCKET_NAME": data_bucket.bucket_name
                 },
                 task_role=task_role
             ),
             public_load_balancer=True,
+            assign_public_ip=True,
+            capacity_provider_strategies=[
+                ecs.CapacityProviderStrategy(
+                    capacity_provider="FARGATE_SPOT",
+                    weight=1
+                )
+            ]
+        )
+        
+        # Grant permissions to pull image from ECR
+        repository.grant_pull(fargate_service.task_definition.obtain_execution_role())
+
+        # Configure Health Check
             assign_public_ip=True,
             capacity_provider_strategies=[
                 ecs.CapacityProviderStrategy(

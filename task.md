@@ -1,31 +1,42 @@
-# Current Task: Remote Scraping Infrastructure (Proxy Tunneling)
+# Current Task: "Smart Worker" Distributed Scraping Architecture
 
 ## Objective
-Migrate the Google Maps scraping workload to AWS Fargate while routing browser traffic through a local residential IP to avoid data center blocks.
+Implement a distributed "Smart Worker" architecture where lightweight scraping workers (e.g., Raspberry Pis, Local Machines) consume scraping tasks from an SQS queue, executing the browser automation locally to leverage residential IPs, and push results back to the cloud.
 
 ## Context
-*   **Problem:** Google Maps blocks AWS/Data Center IPs.
-*   **Solution:** Hybrid Architecture.
-    *   **Compute (AWS Fargate):** Runs `cocli` logic, manages queues/state.
-    *   **Network (Local Machine):** Acts as a "dumb" proxy node.
-    *   **Connection:** Secure tunnel (e.g., SSH Reverse Tunnel, Ngrok, or VPN) bridging AWS to Local.
-*   **Parallelism (Future):** The architecture should support multiple proxy nodes (e.g., Raspberry Pis) consuming from a shared scrape-area queue.
+*   **Problem:** Google Maps blocks Data Center IPs (AWS). Proxying traffic via tunnel is complex and slow.
+*   **Solution:** Decouple the "Brain" (Planning) from the "Muscle" (Scraping).
+*   **Architecture:**
+    *   **Brain (Producer):** `cocli` (running on Fargate or Local) calculates high-value search areas (using `LocationProspectsIndex`, saturation scores, etc.) and pushes tasks to `ScrapeTasksQueue`.
+    *   **Muscle (Consumer):** `cocli worker scrape` (running on Distributed Nodes) pulls a task (lat/lon/query), runs the browser, and pushes discovered leads to S3 or the `EnrichmentQueue`.
+*   **Queues:**
+    *   `ScrapeTasksQueue`: Contains `{ lat, lon, zoom, query }`.
+    *   `EnrichmentQueue`: Existing queue for website enrichment.
 
 ## Plan
 
-### Phase 1: Application Support
-1.  **Config:** Add `proxy_url` support to `cocli` configuration (TOML/Env).
-2.  **Playwright:** Update `cocli/commands/campaign.py` to inject proxy settings into `browser.launch()` if configured.
-3.  **HTTPX:** Update enrichment clients to respect proxy settings (optional for now, focus on Maps).
+### Phase 1: Infrastructure (CDK)
+1.  **Revert:** Remove Proxy Secret configuration from CDK.
+2.  **Add Queue:** Define `ScrapeTasksQueue` in `cdk_scraper_deployment_stack.py`.
+3.  **Outputs:** Export the new Queue URL.
 
-### Phase 2: Tunnel & Deploy
-1.  **Tunnel POC:** Use a simple tunnel (e.g., Ngrok or SSH Reverse Forwarding to a bastion) to expose the local proxy port to the AWS VPC.
-2.  **Deploy:** Push the updated `cocli` image to ECR.
-3.  **Verify:** Run a remote scrape job that connects back through the tunnel and succeeds.
+### Phase 2: Producer (The Brain)
+1.  **Logic:** Create a command `cocli campaign queue-scrapes` (or integrate into `achieve-goal`).
+2.  **Function:** Instead of *executing* the scrape immediately, it serializes the target (`lat`, `lon`, `query`, `zoom`) and sends it to `ScrapeTasksQueue`.
+
+### Phase 3: Consumer (The Worker)
+1.  **Command:** Create `cocli worker scrape`.
+2.  **Loop:**
+    *   Poll `ScrapeTasksQueue`.
+    *   Launch Playwright (Local Browser).
+    *   Execute `scrape_google_maps` for the target.
+    *   Handle Results:
+        *   Option A (MVP): Write results to S3 (via `cocli sync` logic or direct upload).
+        *   Option B: Push `PlaceID` to `EnrichmentQueue` (if enrichment is needed).
 
 ## Todo
-- [ ] **Code:** Add `proxy_url` to `cocli` config/args.
-- [ ] **Code:** Update `pipeline` in `campaign.py` to use `proxy_url` in `chromium.launch()`.
-- [ ] **Test:** Verify local proxy usage (e.g., run local `cocli` pointing to a local proxy to confirm traffic flow).
-- [ ] **Infra:** Set up the tunnel method.
-- [ ] **Deploy:** Update AWS task definition/image.
+- [ ] **Infra:** Revert Proxy changes in CDK and add `ScrapeTasksQueue`.
+- [ ] **Code:** Implement `ScrapeTask` model (Pydantic).
+- [ ] **Code:** Implement `queue-scrapes` command (Producer).
+- [ ] **Code:** Implement `worker scrape` command (Consumer).
+- [ ] **Verify:** Test the full flow locally (Producer -> Local Queue -> Consumer).
