@@ -7,7 +7,7 @@ import logging
 from ..core.google_maps_cache import GoogleMapsCache
 from ..models.google_maps_prospect import GoogleMapsProspect
 from ..core.config import get_campaign
-from ..core.prospects_csv_manager import ProspectsCSVManager
+from ..core.prospects_csv_manager import ProspectsIndexManager
 
 logger = logging.getLogger(__name__)
 app = typer.Typer()
@@ -30,21 +30,20 @@ def google_maps_csv_to_google_maps_cache(
             logger.error("Error: No CSV path provided and no campaign context is set. Please provide a CSV path, a campaign name with --campaign, or set a campaign context using 'cocli campaign set <campaign_name>'.")
             raise typer.Exit(code=1)
         
-        manager = ProspectsCSVManager(campaign_name)
+        manager = ProspectsIndexManager(campaign_name)
         prospects = manager.read_all_prospects()
         
-        if not prospects:
-             logger.warning(f"No prospects found using inferred path for campaign '{campaign_name}'.")
-             # We don't exit error here necessarily, just save empty cache? Or exit?
-             # Previous code checked for path existence.
-             # read_all_prospects returns empty list if file missing.
-             # Let's check existence via manager if we want to error out exactly as before, 
-             # but "no prospects" is a fine warning.
-        
+        # We can't check 'if not prospects' easily on an iterator.
+        # But looping over empty iterator is fine.
+        count = 0
         for item in prospects:
+             count += 1
              if item.Place_ID:
                 cache.add_or_update(item)
                 logger.info(f"Added/Updated {item.Name} in cache.")
+        
+        if count == 0:
+             logger.warning(f"No prospects found in index for campaign '{campaign_name}'.")
 
     else:
         # Manual read for custom path

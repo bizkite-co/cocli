@@ -1,7 +1,7 @@
 from datetime import datetime, UTC
 from typing import Annotated
 
-from pydantic import PlainSerializer, BeforeValidator
+from pydantic import PlainSerializer, AfterValidator
 from pydantic_core import PydanticCustomError
 
 def validate_aware_datetime(v: datetime) -> datetime:
@@ -20,6 +20,6 @@ def validate_aware_datetime(v: datetime) -> datetime:
 # Define a custom Pydantic type for UTC-aware datetimes
 AwareDatetime = Annotated[
     datetime,
-    BeforeValidator(validate_aware_datetime),
+    AfterValidator(validate_aware_datetime),
     PlainSerializer(lambda x: x.isoformat(), return_type=str, when_used='unless-none')
 ]

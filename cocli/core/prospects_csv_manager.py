@@ -1,87 +1,82 @@
 import csv
 import logging
-from typing import List, Set
+from pathlib import Path
+from typing import Iterator
 
 from ..models.google_maps_prospect import GoogleMapsProspect
 from ..core.config import get_campaign_scraped_data_dir
 
 logger = logging.getLogger(__name__)
 
-class ProspectsCSVManager:
+class ProspectsIndexManager:
+    """
+    Manages Google Maps prospects stored as individual CSV files in a file-based index.
+    Directory: cocli_data/campaigns/{campaign}/indexes/google_maps_prospects/
+    Each file is named {Place_ID}.csv and contains a single row with header.
+    """
     def __init__(self, campaign_name: str):
         self.campaign_name = campaign_name
-        self.prospects_csv_path = get_campaign_scraped_data_dir(campaign_name) / "prospects.csv"
-        self._existing_place_ids: Set[str] = set()
-        self._load_existing_place_ids()
+        # Move from scraped_data to indexes
+        scraped_dir = get_campaign_scraped_data_dir(campaign_name)
+        self.index_dir = scraped_dir.parent / "indexes" / "google_maps_prospects"
+        self.index_dir.mkdir(parents=True, exist_ok=True)
 
-    def _load_existing_place_ids(self) -> None:
-        """Loads Place_IDs from an existing prospects.csv for deduplication."""
-        if self.prospects_csv_path.exists():
+    def _get_file_path(self, place_id: str) -> Path:
+        """Returns the file path for a given Place_ID."""
+        # Sanitize filename just in case, though Place_ID is usually safe
+        safe_filename = place_id.replace("/", "_").replace("\\", "_")
+        return self.index_dir / f"{safe_filename}.csv"
+
+    def read_all_prospects(self) -> Iterator[GoogleMapsProspect]:
+        """
+        Yields prospects from the file index.
+        Changed from returning a List to an Iterator for memory efficiency with large datasets.
+        """
+        if not self.index_dir.exists():
+            return
+
+        for file_path in self.index_dir.glob("*.csv"):
             try:
-                with open(self.prospects_csv_path, 'r', encoding='utf-8') as f:
+                with open(file_path, 'r', encoding='utf-8') as f:
                     reader = csv.DictReader(f)
                     for row in reader:
-                        if 'Place_ID' in row and row['Place_ID']:
-                            self._existing_place_ids.add(row['Place_ID'])
-                logger.debug(f"Loaded {len(self._existing_place_ids)} existing Place_IDs from {self.prospects_csv_path}")
+                        try:
+                            # Only include fields that are part of the GoogleMapsProspect model
+                            model_data = {k: v for k, v in row.items() if k in GoogleMapsProspect.model_fields}
+                            yield GoogleMapsProspect.model_validate(model_data)
+                        except Exception as e:
+                            logger.error(f"Error validating prospect in {file_path.name}: {e}")
             except Exception as e:
-                logger.warning(f"Error reading existing prospects.csv for deduplication: {e}. Proceeding as if file is new.")
-                self._existing_place_ids.clear()
-
-    def read_all_prospects(self) -> List[GoogleMapsProspect]:
-        """Reads all prospects from the CSV and returns them as a list of GoogleMapsProspect objects."""
-        prospects: List[GoogleMapsProspect] = []
-        if not self.prospects_csv_path.exists():
-            return prospects
-
-        try:
-            with open(self.prospects_csv_path, 'r', encoding='utf-8') as f:
-                reader = csv.DictReader(f)
-                for row in reader:
-                    try:
-                        # Only include fields that are part of the GoogleMapsProspect model
-                        model_data = {k: v for k, v in row.items() if k in GoogleMapsProspect.model_fields}
-                        prospects.append(GoogleMapsProspect.model_validate(model_data))
-                    except Exception as e:
-                        logger.error(f"Error validating row from prospects.csv: {row}. Error: {e}")
-            logger.debug(f"Read {len(prospects)} prospects from {self.prospects_csv_path}")
-        except Exception as e:
-            logger.error(f"Error reading prospects.csv: {e}")
-        return prospects
+                logger.error(f"Error reading file {file_path}: {e}")
 
     def append_prospect(self, prospect_data: GoogleMapsProspect) -> bool:
         """
-        Appends a single GoogleMapsProspect object to the CSV, performing Place_ID deduplication.
-        Returns True if the prospect was written, False if skipped (due to duplicate Place_ID or missing Place_ID).
+        Writes a single GoogleMapsProspect object to its individual file in the index.
+        This effectively acts as "Latest Write Wins" or "Upsert".
         """
         if not prospect_data.Place_ID:
-            logger.warning(f"Prospect data missing Place_ID, cannot deduplicate. Skipping: {prospect_data.Name or prospect_data.Domain}")
+            logger.warning(f"Prospect data missing Place_ID, cannot save to index. Skipping: {prospect_data.Name or prospect_data.Domain}")
             return False
         
-        if prospect_data.Place_ID in self._existing_place_ids:
-            logger.debug(f"Skipping duplicate prospect (Place_ID: {prospect_data.Place_ID}): {prospect_data.Name}")
-            return False
-        
-        # Determine if header needs to be written
-        write_header = not self.prospects_csv_path.exists() or self.prospects_csv_path.stat().st_size == 0
+        file_path = self._get_file_path(prospect_data.Place_ID)
         
         try:
-            with open(self.prospects_csv_path, 'a', newline='', encoding='utf-8') as csvfile:
+            with open(file_path, 'w', newline='', encoding='utf-8') as csvfile:
                 fieldnames = list(GoogleMapsProspect.model_fields.keys())
                 writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
-                
-                if write_header:
-                    writer.writeheader()
-                
-                writer.writerow(prospect_data.model_dump(by_alias=False)) # Use by_alias=False to use field names directly
+                writer.writeheader()
+                writer.writerow(prospect_data.model_dump(by_alias=False))
             
-            self._existing_place_ids.add(prospect_data.Place_ID)
-            logger.debug(f"Appended new prospect (Place_ID: {prospect_data.Place_ID}): {prospect_data.Name}")
+            logger.debug(f"Saved prospect to index: {file_path.name}")
             return True
         except Exception as e:
-            logger.error(f"Error appending prospect to CSV (Place_ID: {prospect_data.Place_ID}): {e}")
+            logger.error(f"Error writing prospect to index (Place_ID: {prospect_data.Place_ID}): {e}")
             return False
 
     def has_place_id(self, place_id: str) -> bool:
-        """Checks if a given Place_ID already exists in the manager's loaded set."""
-        return place_id in self._existing_place_ids
+        """Checks if a given Place_ID already exists in the index."""
+        if not place_id:
+            return False
+        return self._get_file_path(place_id).exists()
+
+

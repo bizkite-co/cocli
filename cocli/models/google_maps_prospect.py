@@ -9,7 +9,14 @@ from cocli.core.text_utils import slugify
 
 logger = logging.getLogger(__name__)
 
+###
+###
+
 class GoogleMapsProspect(BaseModel):
+    """
+    This model needs to include a `company_slug`, which is the unique identifier of the company data.
+    The `company_slug` needs to be written to the CSV record created by this model.
+    """
     created_at: AwareDatetime = Field(default_factory=lambda: datetime.now(UTC))
     updated_at: AwareDatetime = Field(default_factory=lambda: datetime.now(UTC))
     version: int = 1
@@ -61,12 +68,13 @@ class GoogleMapsProspect(BaseModel):
     Reviews: Optional[str] = None
     Quotes: Optional[str] = None
     Uuid: Optional[str] = None
+    company_slug: Optional[str] = None
 
-    @property
-    def company_slug(self) -> Optional[str]:
-        if self.Name:
-            return slugify(self.Name)
-        return None
+    @model_validator(mode='after')
+    def populate_company_slug(self) -> 'GoogleMapsProspect':
+        if not self.company_slug and self.Name:
+            self.company_slug = slugify(self.Name)
+        return self
 
     @model_validator(mode='before')
     @classmethod

@@ -113,8 +113,8 @@ scrape-prospects: install ## Scrape prospects for the current campaign context
 	$(VENV_DIR)/bin/cocli campaign scrape-prospects
 
 .PHONY: deduplicate-prospects
-deduplicate-prospects: install ## Deduplicate prospects for turboship campaign
-	$(VENV_DIR)/bin/cocli deduplicate prospects turboship
+deduplicate-prospects: ## Deduplicate prospects CSV (Usage: make deduplicate-prospects [CAMPAIGN=name])
+	$(VENV_DIR)/bin/python scripts/deduplicate_prospects.py $(or $(CAMPAIGN), turboship)
 
 WORKERS ?= 4
 
@@ -143,7 +143,7 @@ render-prospects-kml: install ## Render KML for turboship prospects
 	$(VENV_DIR)/bin/cocli render-prospects-kml turboship
 
 .PHONY: ingest-prospects
-ingest-prospects: install ## Ingest the existing prospects.csv file for the current campaign into the cache
+ingest-prospects: install ## Ingest the existing google_maps_prospects.csv file for the current campaign into the cache
 	$(VENV_DIR)/bin/cocli google-maps-csv to-google-maps-cache
 
 .PHONY: ingest-existing-customers
@@ -153,7 +153,7 @@ ingest-existing-customers: install ## Ingest the existing customers.csv file int
 .PHONY: prospects-with-emails
 prospects-with-emails:
 	rg '[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}' \
-		cocli_data/scraped_data/turboship/prospects/prospects.csv >> \
+		cocli_data/scraped_data/turboship/prospects/google_maps_prospects.csv >> \
 		cocli_data/scraped_data/turboship/prospects/prospects_with_emails.csv
 
 .PHONY: debug-google-maps-scraper
@@ -186,7 +186,7 @@ force-update: ## Force Update of service
 	aws ecs update-service --cluster ScraperCluster --service EnrichmentService --force-new-deployment --profile turboship-support
 
 .PHONY: ingest-legacy
-ingest-legacy: ## Ingest legacy prospects.csv into the new queue system (Usage: make ingest-legacy CAMPAIGN=name)
+ingest-legacy: ## Ingest legacy google_maps_prospects.csv into the new queue system (Usage: make ingest-legacy CAMPAIGN=name)
 	@if [ -z "$(CAMPAIGN)" ]; then echo "Error: CAMPAIGN variable is required. Usage: make ingest-legacy CAMPAIGN=name"; exit 1; fi
 	@$(VENV_DIR)/bin/python scripts/ingest_legacy_csv.py $(CAMPAIGN)
 
@@ -225,3 +225,12 @@ enrich-domain: ## Enrich a single domain using the Fargate service (Usage: make 
 		$(if $(NAV_TIMEOUT_MS), --navigation-timeout "$(NAV_TIMEOUT_MS)") \
 		$(if $(FORCE), --force) \
 		$(if $(DEBUG), --debug)
+
+migrate-prospects: ## Migrate google_maps_prospects.csv to file-based index (Usage: make migrate-prospects [CAMPAIGN=name])
+	$(VENV_DIR)/bin/python scripts/migrate_prospects_to_index.py $(or $(CAMPAIGN), turboship)
+
+gc-campaigns: ## Commit and push all changes to campaigns and indexes
+	cd cocli_data && git add camapaigns indexes && git commit -m "Update campaigns and indexes" && git push;; cd ..
+
+gc-companies: ## Commit and push all changes to companies and people
+	cd cocli_data && git add companies people && git commit -m "Update companies and people" && git push;; cd ..

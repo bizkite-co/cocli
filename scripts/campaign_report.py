@@ -1,11 +1,10 @@
 import typer
-import csv
 import os
 import boto3 # type: ignore
 from typing import Optional
 from rich.console import Console
 from rich.table import Table
-from cocli.core.config import get_campaign_scraped_data_dir, get_companies_dir, get_cocli_base_dir, get_campaign
+from cocli.core.config import get_companies_dir, get_cocli_base_dir, get_campaign
 
 app = typer.Typer()
 console = Console()
@@ -34,14 +33,12 @@ def main(campaign_name: Optional[str] = typer.Argument(None, help="Campaign name
         console.print("[bold red]Error: No campaign specified and no current context set.[/bold red]")
         raise typer.Exit(1)
 
-    # 1. Total Prospects (gm-detail)
-    prospects_csv = get_campaign_scraped_data_dir(campaign_name) / "prospects.csv"
+    # Get Scraped Count
+    from cocli.core.prospects_csv_manager import ProspectsIndexManager
+    manager = ProspectsIndexManager(campaign_name)
     total_prospects = 0
-    if prospects_csv.exists():
-        with open(prospects_csv, 'r', encoding='utf-8', errors='ignore') as f:
-            total_prospects = sum(1 for _ in f) - 1 # Subtract header
-            if total_prospects < 0: 
-                total_prospects = 0
+    if manager.index_dir.exists():
+        total_prospects = sum(1 for _ in manager.index_dir.glob("*.csv"))
 
     # 2. Queue Stats
     queue_url = os.getenv("COCLI_SQS_QUEUE_URL")
@@ -76,13 +73,10 @@ def main(campaign_name: Optional[str] = typer.Argument(None, help="Campaign name
     emails_found_count = 0
     
     slugs = set()
-    if prospects_csv.exists():
-        with open(prospects_csv, 'r', encoding='utf-8', errors='ignore') as f:
-            reader = csv.DictReader(f)
-            from cocli.core.text_utils import slugify
-            for row in reader:
-                if row.get('Domain'):
-                    slugs.add(slugify(row['Domain']))
+    from cocli.core.text_utils import slugify
+    for prospect in manager.read_all_prospects():
+        if prospect.Domain:
+            slugs.add(slugify(prospect.Domain))
     
     companies_dir = get_companies_dir()
     for slug in slugs:

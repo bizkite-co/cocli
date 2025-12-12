@@ -1,101 +1,32 @@
-# Current Task: Hybrid Cloud Scraping & Enrichment (HTTPS/SQS/S3)
+# Current Task: Google Maps Scraper Optimization & Data Standardization
 
-This task successfully transitioned the project from a local-only workflow to a robust Hybrid Cloud architecture. We have decoupled scraping from enrichment using SQS, offloaded heavy compute to AWS Fargate (via HTTPS), and established S3 as the canonical data store.
-
-## Objective (Achieved)
-
-To implement a scalable, reliable prospecting pipeline where:
-1.  **Scraping (Producer):** Runs locally (for Google Maps safety) but pushes tasks to a Cloud Queue.
-2.  **Queue:** AWS SQS manages workload and state.
-3.  **Enrichment (Consumer):** Runs on AWS Fargate (headless browsers), accessible via secure HTTPS.
-4.  **Data:** Saved canonically to S3 and locally.
+## Objective
+Refine the Google Maps scraping pipeline to fix "wilderness" detection issues, improve zoom level handling, and standardize the data model and storage format (`prospects.csv` -> `google_maps_prospects.csv` -> File-based Index).
 
 ## Accomplished
-
-### 1. Infrastructure (AWS CDK)
-*   **HTTPS Enabled:** Deployed ALB with ACM Certificate for `enrich.turboheat.net`.
-*   **SQS Integration:** Created `EnrichmentQueue` in CDK.
-*   **Fargate Service:** Scaled to 3 Tasks (Spot), 1 vCPU/3GB RAM each.
-*   **Network:** Configured HTTP->HTTPS redirection and health checks.
-
-### 2. Application Logic (`cocli`)
-*   **Producer (`achieve-goal`):**
-    *   Implemented `SQSQueue` adapter.
-    *   Added `--cloud-queue` flag to switch from local files to SQS.
-    *   Added `--proximity <miles>` to bound Google Maps searching.
-    *   Added randomization to target selection to avoid "stuck" loops.
-    *   **Fix:** Updated producer to correctly identify existing companies via `domain` -> `slug` mapping and queue them if email is missing.
-    *   **Fix:** Resolved config serialization issues (`PosixPath`, `None` type) preventing campaign context saving.
-    *   **Fix:** Renamed internal `set` command function (`cocli campaign set`) to `set_default_campaign` to avoid shadowing Python's built-in `set()`, resolving a critical `TypeError` crash in the `achieve-goal` pipeline. This means the producer is now stable and queuing items.
-    *   **Refactor:** Moved `slugify` to `cocli.core.text_utils` to resolve circular import dependencies.
-    *   **Fix:** Added missing `enrichment_ttl_days` field to `Company` model and corrected `last_enriched` assignment, resolving `KeyError` during prospect import.
-    *   **Stability:** Resolved multiple `make lint` and `mypy` errors (undefined variables, missing type hints) to ensure a clean and typed codebase.
-*   **Consumer (`enrich-from-queue`):**
-    *   Created dedicated `prospects enrich-from-queue` command.
-    *   Implemented client-side concurrency (`--batch-size`) to saturate Fargate capacity.
-    *   Added "Poison Pill" handling (ACK and save error after max retries) to prevent queue blocking.
-*   **Service (`EnrichmentService`):**
-    *   Updated `WebsiteScraper` to use `S3CompanyManager`.
-    *   **Canonical S3 Storage:** Saves `website.md` (YAML) to `s3://bucket/campaigns/<owner>/companies/<slug>/enrichments/`.
-    *   Fixed logging and credential chain issues.
-
-### 3. Data Management & Reporting
-*   **Report:** Updated `make report` to query SQS for "Pending" counts, providing visibility into the cloud backlog.
-*   **Architecture:** Confirmed Hybrid model where Local Client acts as Orchestrator (pulls SQS) and Fargate acts as Compute (executes scrape).
-*   **Local Data Index Recovery and Consolidation:** Recovered and standardized local `ScrapedArea` and `website-domains.csv` indexes, ensuring data integrity and consistency.
-
-## Current State
-
-*   **Scraping (Producer):** Running stable with `proximity` logic and actively queuing items.
-*   **Enrichment (Consumer):** Processing items from the queue. Success verified for some domains (`shopbriansflooring.com`).
-*   **Issues Resolved:** High rate of 404s/500s for valid domains was caused by a scraper regression (blind HTTP navigation and strict SSL checking). **Fixed** by implementing HTTPS-first logic and ignoring certificate errors in `WebsiteScraper`.
-*   **Quality:** `mypy` and `ruff` clean. Tests passing.
+*   **Refactoring & Standardization:**
+    *   Renamed `GoogleMapsData` model to `GoogleMapsProspect` for domain consistency.
+    *   Renamed `cocli/models/google_maps.py` to `cocli/models/google_maps_prospect.py`.
+    *   **Completed:** Implemented `ProspectsCSVManager` to centralize all reading/writing of prospect data.
+    *   **Completed:** Refactored all CLI commands (`campaign`, `query`, `import`, etc.) to use the Manager.
+*   **Data Migration & Deduplication:**
+    *   **Completed:** Renamed local data files from `prospects.csv` to `google_maps_prospects.csv`.
+    *   **Completed:** Migrated from a single monolithic CSV to a file-based index in `indexes/google_maps_prospects/`.
+        *   Each prospect is stored as an individual CSV file keyed by `Place_ID`.
+        *   This resolves the deduplication issue and enables concurrent "Latest Write Wins" updates.
+    *   **Completed:** Refactored `ProspectsCSVManager` to `ProspectsIndexManager` to handle the new file structure.
+    *   **Completed:** Fixed data model issues (`company_slug` persistence, `AwareDatetime` validation).
+    *   **Completed:** Updated all scripts and Makefile targets to use the new index manager.
+*   **Scraper Fixes (Pending Verification):**
+    *   Implemented integer rounding for zoom levels.
+    *   Added dynamic viewport measurement using the map scale bar.
 
 ## Next Actions
-
-1.  **Monitor & Optimize:** Monitor Fargate logs for any remaining edge cases (e.g. true bot detection or timeouts) and tune concurrency if needed.
-2.  **Data Synchronization:** Implement `cocli sync` to pull enriched data from S3 to local (or vice versa) without relying on the consumer loop.
-3.  **Scaling:** Monitor SQS depth and adjust Fargate `desired_count` via CLI/CDK as needed.
-4.  **Cleanup:** Delete legacy/misfiled S3 objects from early testing.
-
-### Google Maps Scraping Strategy Enhancements (In Progress)
-
-#### Objective
-To enhance the Google Maps scraping process by dynamically adapting its strategy when encountering heavily pre-scraped areas during the standard `spiral-out` search. This aims to prevent redundant scraping and efficiently cover areas that were previously processed, ensuring comprehensive data collection.
-
-#### Dynamic "Expand-Out" when Encountering Heavily Scraped Areas
-
-The scraping process will primarily utilize the existing `spiral-out` strategy. However, a dynamic "expand-out" mechanism will be triggered under specific conditions:
-
-1.  **Standard `Spiral-Out` Operation:**
-    *   The scraper begins its normal `spiral-out` search pattern, generating new target coordinates (`current_lat`, `current_lon`) and calculating `current_viewport_bounds` for each step.
-
-2.  **Detection of Heavily Scraped Area:**
-    *   For each `current_viewport_bounds` generated by the `spiral-out` (and for each `search_string`), the system will check the `ScrapeIndex` (both `is_wilderness_area` and `is_area_scraped`).
-    *   If, for *all* `search_strings`, the `current_viewport_bounds` is found to overlap an existing scraped area (or a wilderness area) by more than `overlap_threshold_percent` (e.g., 60%), it signifies a "heavily pre-scraped" region.
-
-3.  **Triggering "Expand-Out" for the Detected Area:**
-    *   Upon detecting such a heavily pre-scraped area, the system will *temporarily pause* the normal `spiral-out` progression for *that specific location*.
-    *   Instead, it will initiate an "expand-out" attempt for the `current_viewport_bounds`.
-
-4.  **Iterative Expansion of the Detected Area:**
-    *   An "expand-out" loop will commence, centered on the `current_lat`, `current_lon` of the detected heavily scraped area.
-    *   In each iteration of this loop, the conceptual `current_map_width_miles` and `current_map_height_miles` (used for bounds calculation) will be increased by `expansion_factor` (e.g., `1.0` for 100% expansion).
-    *   The `current_viewport_bounds` will be recalculated for this larger, expanded area.
-    *   This expansion will continue for `max_initial_expansion_attempts` times, or until a sufficiently "unscraped" state is reached (i.e., at least one `search_string` is *not* heavily covered by existing data within the expanded bounds).
-    *   **Proximity Limit Integration:** If `max_proximity_miles` is defined for the overall scrape, the expansion of *this particular area* will also cease if its furthest point from the original `start_lat`, `start_lon` of the *overall scrape* exceeds this limit.
-
-5.  **Visual Confirmation (Zoom Out):**
-    *   Once an acceptable expanded area is determined (or max attempts/proximity limit reached for this expansion), the Google Maps interface will be programmatically "zoomed out" to visually encompass this expanded `current_viewport_bounds`.
-    *   The entire visible and expanded area will then be scraped for *all* `search_strings` using the standard `_scrape_area` function.
-    *   After this scraping, a single, larger `ScrapedArea` entry will be added to the `ScrapeIndex` for each `search_string` that yielded results (or marked as wilderness if no items were found) for this *expanded* region. This prevents re-detection of the same heavily scraped "hole."
-
-6.  **Resuming `Spiral-Out`:**
-    *   After successfully handling the detected heavily scraped area via "expand-out" and marking the expanded region, the system will **resume its original `spiral-out` progression** from the point where it was paused, continuing its systematic exploration of the map.
-
-#### Logging and Debugging
-*   Extensive debug logging will track:
-    *   The triggering of an "expand-out" attempt.
-    *   Each expansion iteration (expanded bounds, overlap percentages, reason for continuing/stopping expansion).
-    *   The successful scraping and marking of the expanded area.
-    *   The seamless resumption of the `spiral-out` pattern.
+1.  **Scraper Verification:**
+    *   Run `make scrape` to verify the zoom level fixes and dynamic viewport logic against the new file-based storage.
+    *   Confirm `scraped_areas` are recorded accurately.
+2.  **S3 Synchronization:**
+    *   The S3 synchronization strategy needs to be updated to handle the new file-based index (syncing the `indexes/` directory instead of a single CSV).
+    *   This is a prerequisite for the future `DataSynchronizer`.
+3.  **Cleanup:**
+    *   Remove legacy "wilderness" entries if proven incorrect by new logic.

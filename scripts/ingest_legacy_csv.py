@@ -28,7 +28,7 @@ def main(
     2. Pushes enrichment tasks to the queue.
     """
     if csv_path is None:
-        prospects_csv_path = get_campaign_scraped_data_dir(campaign_name) / "prospects.csv"
+        prospects_csv_path = get_campaign_scraped_data_dir(campaign_name) / "google_maps_prospects.csv"
     else:
         prospects_csv_path = csv_path
     

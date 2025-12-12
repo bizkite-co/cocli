@@ -130,18 +130,18 @@ def query_prospects_location(
     origin_point = (origin_coords["latitude"], origin_coords["longitude"])
     console.print(f"[dim]Origin: {origin_point}[/dim]")
 
-    # 2. Load prospects CSV
-    from ..core.prospects_csv_manager import ProspectsCSVManager
-    csv_manager = ProspectsCSVManager(campaign_name)
+    # 2. Load prospects from index
+    from ..core.prospects_csv_manager import ProspectsIndexManager
+    manager = ProspectsIndexManager(campaign_name)
     
-    if not csv_manager.prospects_csv_path.exists():
-        console.print(f"[bold red]Prospects CSV not found at: {csv_manager.prospects_csv_path}[/bold red]")
+    if not manager.index_dir.exists():
+        console.print(f"[bold red]Prospects index not found at: {manager.index_dir}[/bold red]")
         raise typer.Exit(1)
 
-    console.print(f"[dim]Reading prospects from {csv_manager.prospects_csv_path}...[/dim]")
+    console.print(f"[dim]Reading prospects from {manager.index_dir}...[/dim]")
     
     matches = []
-    prospects = csv_manager.read_all_prospects()
+    prospects = manager.read_all_prospects()
 
     for prospect in prospects:
         if prospect.Latitude is None or prospect.Longitude is None:

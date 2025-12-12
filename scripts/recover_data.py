@@ -30,7 +30,7 @@ logger = logging.getLogger(__name__)
 COCLI_DATA_HOME = Path("/home/mstouffer/.local/share/cocli_data") # IMPORTANT: Adjust if cocli_data is elsewhere
 
 OLD_INDEXES_DIR = COCLI_DATA_HOME / "indexes"
-PROSPECTS_CSV_PATH = COCLI_DATA_HOME / "campaigns" / "turboship" / "scraped_data" / "prospects.csv"
+PROSPECTS_CSV_PATH = COCLI_DATA_HOME / "campaigns" / "turboship" / "scraped_data" / "google_maps_prospects.csv"
 ORIGINAL_WEBSITE_DOMAINS_CSV = OLD_INDEXES_DIR / "website-domains.csv" # The existing file we will update
 
 # --- Helper to convert datetime strings ---

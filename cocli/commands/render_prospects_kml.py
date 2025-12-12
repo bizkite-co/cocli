@@ -22,13 +22,13 @@ def render_prospects_kml(
         logger.error(f"Campaign '{campaign_name}' not found.")
         raise typer.Exit(code=1)
 
-    from ..core.prospects_csv_manager import ProspectsCSVManager
-    manager = ProspectsCSVManager(campaign_name)
+    from ..core.prospects_csv_manager import ProspectsIndexManager
+    manager = ProspectsIndexManager(campaign_name)
 
     output_kml_path = campaign_dir / f"{campaign_name}_prospects.kml"
 
-    if not manager.prospects_csv_path.exists():
-        logger.error(f"Error: Prospects CSV file not found at {manager.prospects_csv_path}")
+    if not manager.index_dir.exists():
+        logger.error(f"Error: Prospects index not found at {manager.index_dir}")
         raise typer.Exit(code=1)
 
     kml = simplekml.Kml()

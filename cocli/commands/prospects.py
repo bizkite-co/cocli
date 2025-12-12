@@ -436,11 +436,11 @@ def tag_prospects_from_csv() -> None:
     console = Console()
     console.print(f"Tagging prospects from CSV for campaign: [bold]{campaign_name}[/bold]")
 
-    from ..core.prospects_csv_manager import ProspectsCSVManager
-    manager = ProspectsCSVManager(campaign_name)
+    from ..core.prospects_csv_manager import ProspectsIndexManager
+    manager = ProspectsIndexManager(campaign_name)
 
-    if not manager.prospects_csv_path.exists():
-        console.print(f"[bold red]Prospects CSV not found at: {manager.prospects_csv_path}[/bold red]")
+    if not manager.index_dir.exists():
+        console.print(f"[bold red]Prospects index not found at: {manager.index_dir}[/bold red]")
         raise typer.Exit(code=1)
 
     companies_dir = get_companies_dir()
@@ -470,4 +470,5 @@ def tag_prospects_from_csv() -> None:
                 console.print(f"Tagged {domain} with campaign '{campaign_name}'")
 
     console.print(f"[bold green]Tagging complete. Updated {updated_count} companies.[/bold green]")
+
 

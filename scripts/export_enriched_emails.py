@@ -3,7 +3,7 @@ import csv
 import yaml
 from rich.console import Console
 from rich.progress import track
-from cocli.core.config import get_companies_dir, get_campaign_dir, get_campaign_scraped_data_dir
+from cocli.core.config import get_companies_dir, get_campaign_dir
 from cocli.core.text_utils import slugify
 
 app = typer.Typer()
@@ -21,16 +21,15 @@ def main(campaign_name: str) -> None:
     export_dir.mkdir(exist_ok=True)
     output_file = export_dir / f"enriched_emails_{campaign_name}.csv"
     
-    # Load slugs from campaign prospects.csv to filter
-    prospects_csv = get_campaign_scraped_data_dir(campaign_name) / "prospects.csv"
+    # Load slugs from campaign prospects to filter
+    from cocli.core.prospects_csv_manager import ProspectsIndexManager
+    manager = ProspectsIndexManager(campaign_name)
     target_slugs = set()
-    if prospects_csv.exists():
-        with open(prospects_csv, 'r', encoding='utf-8', errors='ignore') as f:
-            reader = csv.DictReader(f)
-            for row in reader:
-                domain = row.get("Domain")
-                if domain:
-                    target_slugs.add(slugify(domain))
+    
+    console.print("Loading prospects from index...")
+    for prospect in manager.read_all_prospects():
+        if prospect.Domain:
+            target_slugs.add(slugify(prospect.Domain))
     
     console.print(f"Found {len(target_slugs)} targets in campaign prospects.")
 

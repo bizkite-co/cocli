@@ -36,9 +36,9 @@ def main(campaign_name_arg: str = typer.Argument(None, help="Campaign name. Defa
     console.print(f"[bold]Backfilling item counts for campaign: '{campaign_name}'[/bold]")
 
     # 1. Load Prospects
-    prospects_csv = get_campaign_scraped_data_dir(campaign_name) / "prospects.csv"
+    prospects_csv = get_campaign_scraped_data_dir(campaign_name) / "google_maps_prospects.csv"
     if not prospects_csv.exists():
-        console.print(f"[red]No prospects.csv found for campaign {campaign_name}[/red]")
+        console.print(f"[red]No google_maps_prospects.csv found for campaign {campaign_name}[/red]")
         raise typer.Exit(1)
 
     prospects_by_phrase = defaultdict(list)

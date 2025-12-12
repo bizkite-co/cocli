@@ -36,7 +36,7 @@ from ..core.queue.factory import get_queue_manager # New import
 from ..models.queue import QueueMessage # New import
 from ..core.enrichment import enrich_company_website # New import
 from ..core.exceptions import NavigationError
-from ..core.prospects_csv_manager import ProspectsCSVManager
+from ..core.prospects_csv_manager import ProspectsIndexManager
 
 from typing_extensions import Annotated
 
@@ -341,8 +341,8 @@ def import_prospects(
 
     console.print(f"[bold]Importing prospects for campaign: '{campaign_name}'[/bold]")
 
-    csv_manager = ProspectsCSVManager(campaign_name)
-    prospects = csv_manager.read_all_prospects()
+    csv_manager = ProspectsIndexManager(campaign_name)
+    prospects = list(csv_manager.read_all_prospects())
 
     if not prospects:
         console.print(f"[bold red]No prospects found (or file missing) for campaign: {campaign_name}[/bold red]")
@@ -616,7 +616,7 @@ async def pipeline(
             
             location_df = pd.DataFrame(location_data)
 
-            csv_manager = ProspectsCSVManager(campaign_name)
+            csv_manager = ProspectsIndexManager(campaign_name)
 
             while not stop_event.is_set():
                 # Sort locations by saturation_score (primary) and prospect_count (secondary)

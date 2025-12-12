@@ -171,8 +171,8 @@ def google_maps_cache_to_company_files(
             logger.error("Error: No prospects CSV path provided and no campaign context is set. Please provide a CSV path, a campaign name with --campaign, or set a campaign context using 'cocli campaign set <campaign_name>'.")
             raise typer.Exit(code=1)
         
-        from ..core.prospects_csv_manager import ProspectsCSVManager
-        manager = ProspectsCSVManager(effective_campaign_name)
+        from ..core.prospects_csv_manager import ProspectsIndexManager
+        manager = ProspectsIndexManager(effective_campaign_name)
         prospects_objs = manager.read_all_prospects()
         
         # Convert to list of dicts. We use model_dump() which returns field names as keys.
