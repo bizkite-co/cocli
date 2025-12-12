@@ -6,7 +6,7 @@ import csv
 import asyncio
 import subprocess
 from pathlib import Path
-from typing import Optional, List, Dict, Any
+from typing import Optional, List, Dict, Any, cast
 from datetime import datetime
 import logging
 import re
@@ -16,7 +16,7 @@ import httpx
 from ..models.website import Website
 from ..scrapers.google_maps import scrape_google_maps
 
-from ..core.config import get_companies_dir, get_campaign_dir, get_cocli_base_dir, get_people_dir, get_all_campaign_dirs, get_editor_command, get_enrichment_service_url
+from ..core.config import get_companies_dir, get_campaign_dir, get_cocli_base_dir, get_people_dir, get_all_campaign_dirs, get_editor_command, get_enrichment_service_url, load_scraper_settings
 from ..models.company import Company
 from ..models.person import Person
 import yaml
@@ -392,17 +392,24 @@ async def pipeline(
     use_cloud_queue: bool = False,
     max_proximity_miles: float = 0.0,
     navigation_timeout_ms: Optional[int] = None, # New parameter
+    proxy_url: Optional[str] = None,
 ) -> None:
     
     queue_manager = get_queue_manager(f"{campaign_name}_enrichment", use_cloud=use_cloud_queue)
     stop_event = asyncio.Event()
     emails_found_count = 0
     
+    # Configure Proxy
+    launch_proxy = {"server": proxy_url} if proxy_url else None
+    if launch_proxy:
+         console.print(f"[bold yellow]Using proxy: {proxy_url}[/bold yellow]")
+
     # Shared browser instance
     async with async_playwright() as p:
         browser = await p.chromium.launch(
             headless=not headed,
             devtools=devtools,
+            proxy=cast(Any, launch_proxy),
             args=[
                 '--no-sandbox',
                 '--disable-setuid-sandbox',
@@ -763,6 +770,7 @@ def achieve_goal(
     opt_omit_zoom_feature: Optional[bool] = typer.Option(None, "--omit-zoom", help="Omit the initial zoom-out feature. Overrides config.toml."),
     opt_allowed_overlap_percentage: Optional[float] = typer.Option(None, "--overlap-percentage", help="Minimum overlap percentage to consider an area already scraped or wilderness. Overrides config.toml."),
     navigation_timeout_ms: Optional[int] = typer.Option(None, "--navigation-timeout", help="Timeout in milliseconds for Playwright navigation in the enrichment service. Overrides default."),
+    proxy: Optional[str] = typer.Option(None, "--proxy", help="Proxy URL (e.g., http://user:pass@host:port). Overrides config."),
 ) -> None:
 
     """
@@ -780,6 +788,10 @@ def achieve_goal(
             raise typer.Exit(code=1)
 
     ensure_enrichment_service_ready(console)
+
+    # Load settings for proxy resolution
+    settings = load_scraper_settings()
+    final_proxy_url = proxy if proxy else settings.proxy_url
 
     console.print(
         f"[grey50][{datetime.now().strftime('%H:%M:%S')}][/] [bold]Achieving goal for campaign: '{campaign_name}'[/bold]"
@@ -894,6 +906,7 @@ def achieve_goal(
             use_cloud_queue=cloud_queue,
             max_proximity_miles=proximity_miles,
             navigation_timeout_ms=navigation_timeout_ms,
+            proxy_url=final_proxy_url,
         )
     )
     message = f"[grey50][{datetime.now().strftime('%H:%M:%S')}][/] [bold blue]Pipeline finished.[/bold blue]"

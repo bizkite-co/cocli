@@ -210,6 +210,7 @@ class ScraperSettings(BaseSettings):
     browser_width: int = 2000
     browser_height: int = 2000
     browser_devtools: bool = False
+    proxy_url: Optional[str] = None
 
 def load_scraper_settings() -> ScraperSettings:
     """
