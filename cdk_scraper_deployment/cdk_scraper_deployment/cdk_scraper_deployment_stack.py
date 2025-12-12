@@ -107,19 +107,6 @@ class CdkScraperDeploymentStack(Stack):  # type: ignore[misc]
         repository.grant_pull(fargate_service.task_definition.obtain_execution_role())
 
         # Configure Health Check
-            assign_public_ip=True,
-            capacity_provider_strategies=[
-                ecs.CapacityProviderStrategy(
-                    capacity_provider="FARGATE_SPOT",
-                    weight=1
-                )
-            ]
-        )
-        
-        # Grant permissions to pull image from ECR
-        repository.grant_pull(fargate_service.task_definition.obtain_execution_role())
-
-        # Configure Health Check
         fargate_service.target_group.configure_health_check(
             path="/health",
             healthy_http_codes="200"

@@ -34,6 +34,7 @@ from cocli.core.text_utils import slugify
 from cocli.core.utils import run_fzf
 from ..core.queue.factory import get_queue_manager # New import
 from ..models.queue import QueueMessage # New import
+from ..models.scrape_task import ScrapeTask # New import
 from ..core.enrichment import enrich_company_website # New import
 from ..core.exceptions import NavigationError
 from ..core.prospects_csv_manager import ProspectsIndexManager
@@ -1051,3 +1052,100 @@ def visualize_coverage(
             console.print(f"[bold red]Error writing to file {output_file}: {e}[/bold red]")
     
     console.print(f"[bold green]Coverage visualization complete. Files saved in: {export_dir}[/bold green]")
+
+@app.command(name="queue-scrapes")
+def queue_scrapes(
+    campaign_name: Optional[str] = typer.Argument(None, help="Name of the campaign to queue scrapes for."),
+    force: bool = typer.Option(False, "--force", "-f", help="Force re-scraping of already covered areas."),
+) -> None:
+    """
+    Generates scraping tasks for target locations and pushes them to the ScrapeTasksQueue (Cloud).
+    """
+    if campaign_name is None:
+        campaign_name = get_campaign()
+        if campaign_name is None:
+            logger.error("Error: No campaign name provided and no campaign context is set.")
+            raise typer.Exit(code=1)
+
+    console.print(f"[bold]Queueing scrape tasks for campaign: '{campaign_name}'[/bold]")
+
+    campaign_dir = get_campaign_dir(campaign_name)
+    if not campaign_dir:
+        console.print(f"[bold red]Campaign '{campaign_name}' not found.[/bold red]")
+        raise typer.Exit(code=1)
+
+    # Load Config
+    config_path = campaign_dir / "config.toml"
+    if not config_path.exists():
+        console.print(f"[bold red]Configuration file not found for campaign '{campaign_name}'.[/bold red]")
+        raise typer.Exit(code=1)
+    
+    with open(config_path, "r") as f:
+        config = toml.load(f)
+    
+    prospecting_config = config.get("prospecting", {})
+    search_phrases = prospecting_config.get("queries", [])
+    target_locations_csv = prospecting_config.get("target-locations-csv")
+
+    if not search_phrases:
+         console.print("[bold red]No queries found in prospecting config.[/bold red]")
+         raise typer.Exit(code=1)
+
+    # Load Locations
+    target_locations = []
+    if target_locations_csv:
+        csv_path = Path(target_locations_csv)
+        if not csv_path.is_absolute():
+            csv_path = campaign_dir / csv_path
+        
+        if csv_path.exists():
+            try:
+                with open(csv_path, 'r', encoding='utf-8') as f:
+                    reader = csv.DictReader(f)
+                    for row in reader:
+                        if "name" in row and "lat" in row and "lon" in row:
+                            target_locations.append({
+                                "name": row["name"],
+                                "lat": float(row["lat"]),
+                                "lon": float(row["lon"])
+                            })
+                console.print(f"[green]Loaded {len(target_locations)} target locations from {csv_path.name}[/green]")
+            except Exception as e:
+                logger.error(f"Error reading target locations CSV: {e}")
+                raise typer.Exit(code=1)
+        else:
+            logger.warning(f"Target locations CSV configured but not found at {csv_path}")
+
+    if not target_locations:
+        # Fallback to 'locations' list if no CSV (requires Geocoding, tricky without local DB or API)
+        # For now, just warn.
+        console.print("[yellow]No target locations found (check target-locations-csv).[/yellow]")
+        return
+
+    # Connect to Queue
+    try:
+        queue_manager = get_queue_manager("scrape_tasks", use_cloud=True, queue_type="scrape")
+    except ValueError as e:
+        console.print(f"[bold red]Error connecting to queue: {e}[/bold red]")
+        console.print("[yellow]Ensure COCLI_SCRAPE_TASKS_QUEUE_URL is set.[/yellow]")
+        raise typer.Exit(code=1)
+
+    count = 0
+    with console.status("Pushing tasks to Cloud Queue...") as status:
+        for loc in target_locations:
+            for phrase in search_phrases:
+                task = ScrapeTask(
+                    latitude=float(loc["lat"]),
+                    longitude=float(loc["lon"]),
+                    zoom=13, # Default starting zoom (City Level)
+                    search_phrase=phrase,
+                    campaign_name=campaign_name,
+                    force_refresh=force,
+                    ack_token=None
+                )
+                queue_manager.push(task)
+                count += 1
+                if count % 10 == 0:
+                    status.update(f"Queued {count} tasks...")
+         
+    console.print(f"[bold green]Successfully queued {count} scrape tasks.[/bold green]")

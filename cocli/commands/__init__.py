@@ -27,6 +27,7 @@ def register_commands(app: typer.Typer) -> None:
     from . import status
     from . import sync
     from . import view
+    from . import worker
 
 
     app.command(name="add")(add.add)
@@ -59,3 +60,4 @@ def register_commands(app: typer.Typer) -> None:
     app.add_typer(campaign.app, name="campaign")
     app.add_typer(deduplicate.app, name="deduplicate")
     app.add_typer(render.app, name="render")
+    app.add_typer(worker.app, name="worker")
