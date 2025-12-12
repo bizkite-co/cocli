@@ -17,16 +17,18 @@ Refine the Google Maps scraping pipeline to fix "wilderness" detection issues, i
     *   **Completed:** Refactored `ProspectsCSVManager` to `ProspectsIndexManager` to handle the new file structure.
     *   **Completed:** Fixed data model issues (`company_slug` persistence, `AwareDatetime` validation).
     *   **Completed:** Updated all scripts and Makefile targets to use the new index manager.
-*   **Scraper Fixes (Pending Verification):**
-    *   Implemented integer rounding for zoom levels.
-    *   Added dynamic viewport measurement using the map scale bar.
+*   **Scraped Areas Optimization:**
+    *   **Completed:** Migrated `scraped_areas` from monolithic CSVs to a spatially partitioned file index (`indexes/scraped_areas/{phrase}/{lat_grid}_{lon_grid}/{bounds}.json`).
+    *   **Completed:** Implemented "Latest Write Wins" for scraped areas.
+    *   **Completed:** Refactored `ScrapeIndex` to use the new structure, enabling O(1) spatial lookups (checking only relevant 1x1 degree grid cells).
+    *   **Completed:** Removed legacy/broken scripts (`backfill_item_counts.py`).
 
 ## Next Actions
 1.  **Scraper Verification:**
-    *   Run `make scrape` to verify the zoom level fixes and dynamic viewport logic against the new file-based storage.
-    *   Confirm `scraped_areas` are recorded accurately.
+    *   Run `make scrape` to verify the entire pipeline (Prospects Index + Scraped Areas Index).
+    *   Confirm new data is written correctly to the partitioned indexes.
 2.  **S3 Synchronization:**
-    *   The S3 synchronization strategy needs to be updated to handle the new file-based index (syncing the `indexes/` directory instead of a single CSV).
-    *   This is a prerequisite for the future `DataSynchronizer`.
+    *   The S3 synchronization strategy is now much simpler.
+    *   We need to implement `cocli sync` to handle the bidirectional sync of the `indexes/` directory (both `google_maps_prospects` and `scraped_areas`).
 3.  **Cleanup:**
-    *   Remove legacy "wilderness" entries if proven incorrect by new logic.
+    *   Delete the old `scraped_areas` CSV files once verification is complete.

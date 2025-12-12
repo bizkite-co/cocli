@@ -943,7 +943,7 @@ def visualize_coverage(
 
     scrape_index = ScrapeIndex()
     scraped_areas = scrape_index.get_all_areas_for_phrases(search_phrases)
-    wilderness_areas = scrape_index._load_wilderness_areas() # Load wilderness areas
+    wilderness_areas = scrape_index.get_wilderness_areas() # Load wilderness areas
 
     if not scraped_areas and not wilderness_areas:
         console.print("[yellow]No scraped or wilderness areas found for the campaign's search phrases.[/yellow]")

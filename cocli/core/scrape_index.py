@@ -1,9 +1,9 @@
-
-import csv
-from datetime import datetime, timedelta, UTC
-from typing import List, Optional, NamedTuple, Tuple
-from pathlib import Path
+import json
+import math
 import logging
+from datetime import datetime, timedelta, UTC
+from typing import List, Optional, NamedTuple, Tuple, Iterator, Any
+from pathlib import Path
 
 from .config import get_scraped_areas_index_dir
 from cocli.core.text_utils import slugify
@@ -27,8 +27,6 @@ def _calculate_overlap_area(bounds1: dict[str, float], bounds2: dict[str, float]
     """
     Calculates the overlapping area between two bounding boxes.
     Assumes bounds are in {'lat_min', 'lat_max', 'lon_min', 'lon_max'} format.
-    Returns the area in 'square miles' based on lat_miles and lon_miles in ScrapedArea,
-    but here we'll use a simpler lat/lon intersection for relative overlap.
     """
     # Calculate the intersection rectangle coordinates
     overlap_lon_min = max(bounds1['lon_min'], bounds2['lon_min'])
@@ -44,401 +42,233 @@ def _calculate_overlap_area(bounds1: dict[str, float], bounds2: dict[str, float]
     overlap_width_degrees = overlap_lon_max - overlap_lon_min
     overlap_height_degrees = overlap_lat_max - overlap_lat_min
 
-    # For a simple relative overlap check, we can use degrees directly.
-    # If absolute area in square miles is needed, a more complex geodesic calculation is required.
-    # For now, using product of degrees as a proxy for area for relative comparison.
     return overlap_width_degrees * overlap_height_degrees
 
 class ScrapeIndex:
-    """Manages the index of previously scraped geographic areas, stored per-phrase."""
+    """
+    Manages the index of previously scraped geographic areas.
+    Uses a spatially partitioned file system structure:
+    indexes/scraped_areas/{phrase}/{lat_grid}_{lon_grid}/{lat_min}_{lat_max}_{lon_min}_{lon_max}.json
+    """
 
     def __init__(self) -> None:
         self.index_dir = get_scraped_areas_index_dir()
 
-    def _get_index_file(self, phrase: str) -> Path:
-        """Returns the CSV file path for a specific phrase."""
-        return self.index_dir / f"{slugify(phrase)}.csv"
+    def _get_grid_key(self, lat: float, lon: float) -> str:
+        """Returns the grid key for spatial partitioning (1x1 degree) using floor."""
+        return f"lat{math.floor(lat)}_lon{math.floor(lon)}"
 
-    def _load_areas_for_phrase(self, phrase: str) -> List[ScrapedArea]:
-        """Loads scraped areas for a specific phrase from its CSV file."""
-        index_file = self._get_index_file(phrase)
-        areas: List[ScrapedArea] = []
+    def _get_grid_dir(self, phrase: str, lat: float, lon: float) -> Path:
+        """Returns the directory path for a specific phrase and grid cell."""
+        return self.index_dir / slugify(phrase) / self._get_grid_key(lat, lon)
 
-        if not index_file.exists():
-            return areas
-
+    def _parse_filename_bounds(self, filename: str) -> Optional[dict[str, Any]]:
+        """
+        Extracts bounds from filename formatted as {lat_min}_{lat_max}_{lon_min}_{lon_max}.json
+        Returns None if format doesn't match.
+        """
         try:
-            with index_file.open('r', encoding='utf-8') as f:
-                reader = csv.reader(f)
-                try:
-                    header = next(reader)  # Read header
-                except StopIteration:
-                    return areas # Empty file
+            stem = filename.replace(".json", "")
+            parts = stem.split('_')
+            if len(parts) >= 4:
+                return {
+                    'lat_min': float(parts[0]),
+                    'lat_max': float(parts[1]),
+                    'lon_min': float(parts[2]),
+                    'lon_max': float(parts[3])
+                }
+        except ValueError:
+            pass
+        return None
 
-                # Determine column indices dynamically
-                try:
-                    phrase_idx = header.index('phrase')
-                    scrape_date_idx = header.index('scrape_date')
-                    lat_min_idx = header.index('lat_min')
-                    lat_max_idx = header.index('lat_max')
-                    lon_min_idx = header.index('lon_min')
-                    lon_max_idx = header.index('lon_max')
-                    lat_miles_idx = header.index('lat_miles')
-                    lon_miles_idx = header.index('lon_miles')
-                    items_found_idx = header.index('items_found') # New column
-                except ValueError as e:
-                    logger.error(f"Missing expected column in scrape_index header for {phrase}: {e}. Recreating index.")
-                    # We might want to backup instead of delete, but for now matching old behavior
-                    index_file.unlink(missing_ok=True)
-                    return areas
+    def _iter_areas_in_grid(self, phrase: str, grid_key: str) -> Iterator[dict[str, Any]]:
+        """
+        Fast scan: Yields bounds dicts for all files in a grid bucket based ONLY on filenames.
+        Does not read file content.
+        """
+        phrase_dir = self.index_dir / slugify(phrase)
+        grid_dir = phrase_dir / grid_key
+        
+        if not grid_dir.exists():
+            return
 
-                for row in reader:
-                    try:
-                        parsed_scrape_date = datetime.fromisoformat(row[scrape_date_idx])
-                        if parsed_scrape_date.tzinfo is None:
-                            scrape_date = parsed_scrape_date.replace(tzinfo=UTC)
-                        else:
-                            scrape_date = parsed_scrape_date.astimezone(UTC)
+        for file_path in grid_dir.iterdir():
+            if file_path.suffix == '.json':
+                bounds = self._parse_filename_bounds(file_path.name)
+                if bounds:
+                    # Attach the full path for later reading if needed
+                    bounds['_file_path'] = str(file_path)
+                    yield bounds
 
-                        areas.append(ScrapedArea(
-                            phrase=row[phrase_idx],
-                            scrape_date=scrape_date,
-                            lat_min=float(row[lat_min_idx]),
-                            lat_max=float(row[lat_max_idx]),
-                            lon_min=float(row[lon_min_idx]),
-                            lon_max=float(row[lon_max_idx]),
-                            lat_miles=float(row[lat_miles_idx]),
-                            lon_miles=float(row[lon_miles_idx]),
-                            items_found=int(row[items_found_idx]), # New column
-                        ))
-                    except (ValueError, IndexError) as e:
-                        logger.warning(f"Skipping malformed row in scrape_index for {phrase}: {row} - {e}. Attempting to re-read with default items_found=0 for old format.")
-                        # Attempt to parse old format without items_found for backward compatibility
-                        try:
-                            parsed_scrape_date = datetime.fromisoformat(row[scrape_date_idx])
-                            if parsed_scrape_date.tzinfo is None:
-                                scrape_date = parsed_scrape_date.replace(tzinfo=UTC)
-                            else:
-                                scrape_date = parsed_scrape_date.astimezone(UTC)
-
-                            areas.append(ScrapedArea(
-                                phrase=row[phrase_idx],
-                                scrape_date=scrape_date,
-                                lat_min=float(row[lat_min_idx]),
-                                lat_max=float(row[lat_max_idx]),
-                                lon_min=float(row[lon_min_idx]),
-                                lon_max=float(row[lon_max_idx]),
-                                lat_miles=float(row[lat_miles_idx]),
-                                lon_miles=float(row[lon_miles_idx]),
-                                items_found=0, # Default to 0 for old entries
-                            ))
-                        except (ValueError, IndexError) as e_fallback:
-                            logger.error(f"Still failed to parse row after fallback for {phrase}: {row} - {e_fallback}")
-        except Exception as e:
-            logger.error(f"Failed to load scrape index for {phrase}: {e}")
-
-        return areas
-
-    def _save_areas_for_phrase(self, phrase: str, areas: List[ScrapedArea]) -> None:
-        """Saves the list of areas to the phrase's CSV file."""
-        index_file = self._get_index_file(phrase)
+    def _load_area_from_file(self, file_path: Path) -> Optional[ScrapedArea]:
+        """Reads the full ScrapedArea data from a JSON file."""
         try:
-            with index_file.open('w', newline='', encoding='utf-8') as f:
-                writer = csv.writer(f)
-                writer.writerow(['phrase', 'scrape_date', 'lat_min', 'lat_max', 'lon_min', 'lon_max', 'lat_miles', 'lon_miles', 'items_found'])
-                for area in areas:
-                    writer.writerow([
-                        area.phrase,
-                        area.scrape_date.isoformat(),
-                        f"{area.lat_min:.5f}",
-                        f"{area.lat_max:.5f}",
-                        f"{area.lon_min:.5f}",
-                        f"{area.lon_max:.5f}",
-                        f"{area.lat_miles:.3f}",
-                        f"{area.lon_miles:.3f}",
-                        area.items_found,
-                    ])
+            with open(file_path, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+                
+            scrape_date = datetime.fromisoformat(data['scrape_date'])
+            if scrape_date.tzinfo is None:
+                scrape_date = scrape_date.replace(tzinfo=UTC)
+            
+            return ScrapedArea(
+                phrase=data['phrase'],
+                scrape_date=scrape_date,
+                lat_min=data['lat_min'],
+                lat_max=data['lat_max'],
+                lon_min=data['lon_min'],
+                lon_max=data['lon_max'],
+                lat_miles=data['lat_miles'],
+                lon_miles=data['lon_miles'],
+                items_found=data.get('items_found', 0),
+            )
         except Exception as e:
-            logger.error(f"Failed to save scrape index for {phrase}: {e}")
+            logger.error(f"Error loading area from {file_path}: {e}")
+            return None
 
     def add_area(self, phrase: str, bounds: dict[str, float], lat_miles: float, lon_miles: float, items_found: int = 0, scrape_date: Optional[datetime] = None) -> None:
-        """Adds a new scraped area to the index and saves it."""
+        """Adds a new scraped area to the index."""
         if not all(key in bounds for key in ['lat_min', 'lat_max', 'lon_min', 'lon_max']):
             logger.warning("Attempted to add area with incomplete bounds.")
             return
 
-        # Load existing to append (naive, could optimize to append-only file mode if read/write not mixed)
-        areas = self._load_areas_for_phrase(phrase)
+        phrase_slug = slugify(phrase)
+        
+        # Determine grid bucket based on bottom-left corner
+        grid_dir = self._get_grid_dir(phrase_slug, bounds['lat_min'], bounds['lon_min'])
+        grid_dir.mkdir(parents=True, exist_ok=True)
 
-        new_area = ScrapedArea(
-            phrase=slugify(phrase),
-            scrape_date=scrape_date if scrape_date is not None else datetime.now(UTC),
-            lat_min=bounds['lat_min'],
-            lat_max=bounds['lat_max'],
-            lon_min=bounds['lon_min'],
-            lon_max=bounds['lon_max'],
-            lat_miles=lat_miles,
-            lon_miles=lon_miles,
-            items_found=items_found,
-        )
-        areas.append(new_area)
+        # Generate filename
+        filename = f"{bounds['lat_min']:.5f}_{bounds['lat_max']:.5f}_{bounds['lon_min']:.5f}_{bounds['lon_max']:.5f}.json"
+        file_path = grid_dir / filename
 
-        self._save_areas_for_phrase(phrase, areas)
+        data = {
+            "phrase": phrase_slug,
+            "scrape_date": (scrape_date or datetime.now(UTC)).isoformat(),
+            "lat_min": bounds['lat_min'],
+            "lat_max": bounds['lat_max'],
+            "lon_min": bounds['lon_min'],
+            "lon_max": bounds['lon_max'],
+            "lat_miles": lat_miles,
+            "lon_miles": lon_miles,
+            "items_found": items_found
+        }
+
+        try:
+            with open(file_path, 'w', encoding='utf-8') as f:
+                json.dump(data, f)
+            logger.debug(f"Saved scraped area index: {file_path.name}")
+        except Exception as e:
+            logger.error(f"Failed to save scrape index {file_path}: {e}")
 
     def is_area_scraped(self, phrase: str, bounds: dict[str, float], ttl_days: Optional[int] = None, overlap_threshold_percent: float = 0.0) -> Optional[Tuple[ScrapedArea, float]]:
         """
-        Checks if a given bounding box for a specific phrase significantly overlaps with any of the
-        already scraped bounding boxes.
+        Checks if a given bounding box overlaps with existing scraped areas.
         """
-        areas = self._load_areas_for_phrase(phrase)
-        fresh_delta = timedelta(days=ttl_days) if ttl_days is not None else None
-
-        # Calculate area of the current bounds in degrees for relative comparison
-        current_bounds_width = bounds['lon_max'] - bounds['lon_min']
-        current_bounds_height = bounds['lat_max'] - bounds['lat_min']
-        area_of_current_bounds = current_bounds_width * current_bounds_height
-
-        if area_of_current_bounds <= 0: # Avoid division by zero for point or line bounds
-            return None
-
-        for area in areas:
-            try:
-                # Check if the entry is stale
-                if fresh_delta and (datetime.now(UTC) - area.scrape_date > fresh_delta):
+        phrase_slug = slugify(phrase)
+        
+        # Determine relevant grid buckets.
+        center_lat = (bounds['lat_min'] + bounds['lat_max']) / 2
+        center_lon = (bounds['lon_min'] + bounds['lon_max']) / 2
+        
+        center_lat_floor = math.floor(center_lat)
+        center_lon_floor = math.floor(center_lon)
+        
+        checked_grids = set()
+        
+        # Check 3x3 grid around center
+        for dlat in [-1, 0, 1]:
+            for dlon in [-1, 0, 1]:
+                lat_key = center_lat_floor + dlat
+                lon_key = center_lon_floor + dlon
+                grid_key = f"lat{lat_key}_lon{lon_key}"
+                
+                if grid_key in checked_grids:
                     continue
+                checked_grids.add(grid_key)
+                
+                # Scan this grid bucket
+                for area_bounds in self._iter_areas_in_grid(phrase_slug, grid_key):
+                    # Quick overlap check using bounds from filename
+                    
+                    # Ensure float typing for overlap calculation
+                    calc_bounds = {k: float(v) for k, v in area_bounds.items() if k in ['lat_min', 'lat_max', 'lon_min', 'lon_max']}
+                    overlap_area = _calculate_overlap_area(bounds, calc_bounds)
+                    
+                    current_area_size = (bounds['lon_max'] - bounds['lon_min']) * (bounds['lat_max'] - bounds['lat_min'])
+                    if current_area_size <= 0:
+                        continue
+                        
+                    percent = (overlap_area / current_area_size) * 100
+                    
+                    if percent >= overlap_threshold_percent:
+                        # Potential match! Now we need to read the file to check date/TTL
+                        file_path_str = area_bounds.get('_file_path')
+                        if not file_path_str:
+                             continue
+                        full_area = self._load_area_from_file(Path(str(file_path_str)))
+                        if not full_area:
+                            continue
+                            
+                        if ttl_days is not None:
+                            age = datetime.now(UTC) - full_area.scrape_date
+                            if age > timedelta(days=ttl_days):
+                                continue # Stale
+                        
+                        logger.debug(f"Overlap found ({percent:.1f}%) with {full_area.lat_min},{full_area.lon_min}")
+                        return full_area, percent
 
-                # Calculate overlap area
-                overlap_area = _calculate_overlap_area(bounds, {
-                    'lat_min': area.lat_min, 'lat_max': area.lat_max,
-                    'lon_min': area.lon_min, 'lon_max': area.lon_max
-                })
-
-                overlap_percentage = (overlap_area / area_of_current_bounds) * 100
-
-                if overlap_percentage >= overlap_threshold_percent:
-                    logger.debug(f"Current bounds {bounds} overlap by {overlap_percentage:.2f}% with scraped area {area.lat_min:.4f},{area.lon_min:.4f} to {area.lat_max:.4f},{area.lon_max:.4f}. Skipping as already scraped.")
-                    return area, overlap_percentage
-            except Exception as e:
-                logger.error(f"Scraped area matching error: {e}")
-                return None
         return None
-
-    def _get_wilderness_index_file(self) -> Path:
-        """Returns the CSV file path for wilderness areas."""
-        return self.index_dir / "wilderness_areas.csv"
-
-    def _load_wilderness_areas(self) -> List[ScrapedArea]:
-        """Loads wilderness areas from its CSV file."""
-        index_file = self._get_wilderness_index_file()
-        areas: List[ScrapedArea] = []
-
-        if not index_file.exists():
-            return areas
-
-        try:
-            with index_file.open('r', encoding='utf-8') as f:
-                reader = csv.reader(f)
-                try:
-                    header = next(reader)  # Read header
-                except StopIteration:
-                    return areas # Empty file
-
-                try:
-                    phrase_idx = header.index('phrase') # Will be 'wilderness'
-                    scrape_date_idx = header.index('scrape_date')
-                    lat_min_idx = header.index('lat_min')
-                    lat_max_idx = header.index('lat_max')
-                    lon_min_idx = header.index('lon_min')
-                    lon_max_idx = header.index('lon_max')
-                    lat_miles_idx = header.index('lat_miles')
-                    lon_miles_idx = header.index('lon_miles')
-                    items_found_idx = header.index('items_found')
-                except ValueError as e:
-                    logger.error(f"Missing expected column in wilderness_areas header: {e}. Recreating index.")
-                    index_file.unlink(missing_ok=True)
-                    return areas
-
-                for row in reader:
-                    try:
-                        areas.append(ScrapedArea(
-                            phrase=row[phrase_idx],
-                            scrape_date=datetime.fromisoformat(row[scrape_date_idx]),
-                            lat_min=float(row[lat_min_idx]),
-                            lat_max=float(row[lat_max_idx]),
-                            lon_min=float(row[lon_min_idx]),
-                            lon_max=float(row[lon_max_idx]),
-                            lat_miles=float(row[lat_miles_idx]),
-                            lon_miles=float(row[lon_miles_idx]),
-                            items_found=int(row[items_found_idx]),
-                        ))
-                    except (ValueError, IndexError) as e:
-                        logger.warning(f"Skipping malformed row in wilderness_areas: {row} - {e}")
-        except Exception as e:
-            logger.error(f"Failed to load wilderness_areas index: {e}")
-
-        return areas
-
-    def _save_wilderness_areas(self, areas: List[ScrapedArea]) -> None:
-        """Saves the list of wilderness areas to its CSV file."""
-        index_file = self._get_wilderness_index_file()
-        try:
-            with index_file.open('w', newline='', encoding='utf-8') as f:
-                writer = csv.writer(f)
-                writer.writerow(['phrase', 'scrape_date', 'lat_min', 'lat_max', 'lon_min', 'lon_max', 'lat_miles', 'lon_miles', 'items_found'])
-                for area in areas:
-                    writer.writerow([
-                        area.phrase, # Will be 'wilderness'
-                        area.scrape_date.isoformat(),
-                        f"{area.lat_min:.5f}",
-                        f"{area.lat_max:.5f}",
-                        f"{area.lon_min:.5f}",
-                        f"{area.lon_max:.5f}",
-                        f"{area.lat_miles:.3f}",
-                        f"{area.lon_miles:.3f}",
-                        area.items_found,
-                    ])
-        except Exception as e:
-            logger.error(f"Failed to save wilderness_areas index: {e}")
 
     def add_wilderness_area(self, bounds: dict[str, float], lat_miles: float, lon_miles: float, items_found: int) -> None:
-        """Adds a new wilderness area to the index and saves it."""
-        if not all(key in bounds for key in ['lat_min', 'lat_max', 'lon_min', 'lon_max']):
-            logger.warning("Attempted to add wilderness area with incomplete bounds.")
-            return
-
-        areas = self._load_wilderness_areas()
-
-        new_area = ScrapedArea(
-            phrase="wilderness", # Generic phrase for wilderness areas
-            scrape_date=datetime.now(UTC),
-            lat_min=bounds['lat_min'],
-            lat_max=bounds['lat_max'],
-            lon_min=bounds['lon_min'],
-            lon_max=bounds['lon_max'],
-            lat_miles=lat_miles,
-            lon_miles=lon_miles,
-            items_found=items_found,
-        )
-        areas.append(new_area)
-
-        self._save_wilderness_areas(areas)
+        """Adds a new wilderness area to the index."""
+        self.add_area("wilderness", bounds, lat_miles, lon_miles, items_found)
 
     def is_wilderness_area(self, bounds: dict[str, float], overlap_threshold_percent: float = 0.0) -> Optional[Tuple[ScrapedArea, float]]:
-        """
-        Checks if a given bounding box falls within any of the known wilderness areas.
-        """
-        areas = self._load_wilderness_areas()
+        """Checks if a given bounding box overlaps with wilderness areas."""
+        return self.is_area_scraped("wilderness", bounds, overlap_threshold_percent=overlap_threshold_percent)
 
-        # Calculate area of the current bounds in degrees for relative comparison
-        current_bounds_width = bounds['lon_max'] - bounds['lon_min']
-        current_bounds_height = bounds['lat_max'] - bounds['lat_min']
-        area_of_current_bounds = current_bounds_width * current_bounds_height
-
-        if area_of_current_bounds <= 0:
-            return None
-
-        for area in areas:
-            # Calculate overlap area
-            overlap_area = _calculate_overlap_area(bounds, {
-                'lat_min': area.lat_min, 'lat_max': area.lat_max,
-                'lon_min': area.lon_min, 'lon_max': area.lon_max
-            })
-
-            overlap_percentage = (overlap_area / area_of_current_bounds) * 100
-
-            if overlap_percentage >= overlap_threshold_percent:
-                logger.debug(f"Current bounds {bounds} overlap by {overlap_percentage:.2f}% with wilderness area {area.lat_min:.4f},{area.lon_min:.4f} to {area.lat_max:.4f},{area.lon_max:.4f}. Skipping.")
-                return area, overlap_percentage
-        return None
+    def get_wilderness_areas(self) -> List[ScrapedArea]:
+        """Loads all wilderness areas."""
+        return self.get_all_areas_for_phrases(["wilderness"])
 
     def get_all_areas_for_phrases(self, phrases: List[str]) -> List[ScrapedArea]:
         """
-        Aggregates all scraped areas for a list of phrases.
-        Useful for visualizing coverage for a campaign.
+        Recursively loads ALL areas for the given phrases.
+        Usage: KML generation (infrequent).
         """
-        all_areas = []
+        all_areas: List[ScrapedArea] = []
         for phrase in phrases:
-            all_areas.extend(self._load_areas_for_phrase(phrase))
+            phrase_slug = slugify(phrase)
+            phrase_dir = self.index_dir / phrase_slug
+            
+            if not phrase_dir.exists():
+                continue
+                
+            for grid_dir in phrase_dir.iterdir():
+                if grid_dir.is_dir():
+                    for file_path in grid_dir.glob("*.json"):
+                         area = self._load_area_from_file(file_path)
+                         if area:
+                             all_areas.append(area)
         return all_areas
 
     def get_all_scraped_areas(self) -> List[ScrapedArea]:
-        """
-        Loads all scraped areas from all CSV files in the index directory.
-        """
+        """Loads ALL scraped areas (all phrases). Expensive."""
         all_areas: List[ScrapedArea] = []
         if not self.index_dir.exists():
             return all_areas
-        
-        for file_path in self.index_dir.glob("*.csv"):
-            if file_path.name == "wilderness_areas.csv":
-                continue
             
-            # Extract phrase from filename (reverse slugify roughly, or just use slug as phrase)
-            # Actually _load_areas_for_phrase uses the phrase to find the file.
-            # Here we have the file, we can just parse it.
-            # Reuse logic or call _load_areas_for_phrase if we can reverse the slug.
-            # But simpler to just parse the file content as we don't strictly need the phrase argument
-            # if the CSV contains it (which it does).
-            
-            # Actually, ScrapedArea needs a phrase. The CSV has it.
-            # Let's just read the file directly similar to _load_areas_for_phrase logic
-            # OR refactor _load_areas_for_phrase to take a file path.
-            # OR just duplicate the reading logic slightly or use a helper.
-            
-            # Let's just parse the file.
-            try:
-                with file_path.open('r', encoding='utf-8') as f:
-                    reader = csv.reader(f)
-                    try:
-                        header = next(reader)
-                    except StopIteration:
-                        continue
-
-                    try:
-                        phrase_idx = header.index('phrase')
-                        scrape_date_idx = header.index('scrape_date')
-                        lat_min_idx = header.index('lat_min')
-                        lat_max_idx = header.index('lat_max')
-                        lon_min_idx = header.index('lon_min')
-                        lon_max_idx = header.index('lon_max')
-                        lat_miles_idx = header.index('lat_miles')
-                        lon_miles_idx = header.index('lon_miles')
-                        # Try to get items_found, default to None if missing
-                        try:
-                            items_found_idx = header.index('items_found')
-                        except ValueError:
-                            items_found_idx = -1
-                    except ValueError:
-                        logger.warning(f"Skipping malformed index file (missing core columns): {file_path}")
-                        continue
-
-                    for row in reader:
-                        try:
-                            parsed_scrape_date = datetime.fromisoformat(row[scrape_date_idx])
-                            if parsed_scrape_date.tzinfo is None:
-                                scrape_date = parsed_scrape_date.replace(tzinfo=UTC)
-                            else:
-                                scrape_date = parsed_scrape_date.astimezone(UTC)
-                            
-                            items_found = 0
-                            if items_found_idx != -1 and items_found_idx < len(row):
-                                items_found = int(row[items_found_idx])
-
-                            all_areas.append(ScrapedArea(
-                                phrase=row[phrase_idx],
-                                scrape_date=scrape_date,
-                                lat_min=float(row[lat_min_idx]),
-                                lat_max=float(row[lat_max_idx]),
-                                lon_min=float(row[lon_min_idx]),
-                                lon_max=float(row[lon_max_idx]),
-                                lat_miles=float(row[lat_miles_idx]),
-                                lon_miles=float(row[lon_miles_idx]),
-                                items_found=items_found,
-                            ))
-                        except (ValueError, IndexError):
-                             continue
-            except Exception as e:
-                logger.error(f"Error reading {file_path}: {e}")
-        
+        for phrase_dir in self.index_dir.iterdir():
+            if phrase_dir.is_dir():
+                phrase = phrase_dir.name
+                if phrase == "wilderness":
+                     continue
+                
+                # Load all grids
+                for grid_dir in phrase_dir.iterdir():
+                    if grid_dir.is_dir():
+                         for file_path in grid_dir.glob("*.json"):
+                             area = self._load_area_from_file(file_path)
+                             if area:
+                                 all_areas.append(area)
         return all_areas
-
