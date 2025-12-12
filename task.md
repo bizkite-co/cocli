@@ -21,14 +21,12 @@ Refine the Google Maps scraping pipeline to fix "wilderness" detection issues, i
     *   **Completed:** Migrated `scraped_areas` from monolithic CSVs to a spatially partitioned file index (`indexes/scraped_areas/{phrase}/{lat_grid}_{lon_grid}/{bounds}.json`).
     *   **Completed:** Implemented "Latest Write Wins" for scraped areas.
     *   **Completed:** Refactored `ScrapeIndex` to use the new structure, enabling O(1) spatial lookups (checking only relevant 1x1 degree grid cells).
-    *   **Completed:** Removed legacy/broken scripts (`backfill_item_counts.py`).
+    *   **Completed:** Validated that `make coverage-kml` works with the new structure.
+    *   **Completed:** Removed legacy CSV files and obsolete scripts (`backfill_item_counts.py`).
 
 ## Next Actions
 1.  **Scraper Verification:**
-    *   Run `make scrape` to verify the entire pipeline (Prospects Index + Scraped Areas Index).
+    *   Run `make scrape` to verify the entire pipeline (Prospects Index + Scraped Areas Index) in a live scenario.
     *   Confirm new data is written correctly to the partitioned indexes.
 2.  **S3 Synchronization:**
-    *   The S3 synchronization strategy is now much simpler.
-    *   We need to implement `cocli sync` to handle the bidirectional sync of the `indexes/` directory (both `google_maps_prospects` and `scraped_areas`).
-3.  **Cleanup:**
-    *   Delete the old `scraped_areas` CSV files once verification is complete.
+    *   Implement `cocli sync` to handle the bidirectional sync of the `indexes/` directory (both `google_maps_prospects` and `scraped_areas`).
