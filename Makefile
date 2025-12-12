@@ -174,6 +174,11 @@ start-enricher: ## Start docker enrichment service
 check-scraper-version: ## Check if local website_scraper.py is newer than in the Docker image
 	python3 ./scripts/check_scraper_version.py --image-name enrichment-service
 
+.PHONY: deploy-infra
+deploy-infra: install ## Deploy AWS Infrastructure (queues, Fargate service definition) using CDK
+	@echo "Deploying infrastructure..."
+	cd cdk_scraper_deployment && uv run cdk deploy --require-approval never --profile turboship-support
+
 .PHONY: deploy-enrichment
 deploy-enrichment: test docker-build ## Build and deploy the enrichment service to AWS Fargate
 	@./scripts/deploy_enrichment_service.sh

@@ -8,99 +8,58 @@ def test_help_command(runner, cli_app):
     assert "Commands" in result.stdout
 
 @patch("subprocess.run")
-@patch("pathlib.Path.is_dir")
-def test_sync_command_success(mock_is_dir, mock_subprocess_run, runner, cli_app):
-    mock_is_dir.return_value = True
+@patch("pathlib.Path.exists")
+def test_sync_command_success(mock_exists, mock_subprocess_run, runner, cli_app):
+    # Mock that directories exist
+    mock_exists.return_value = True
     mock_subprocess_run.return_value.check_returncode.return_value = None
 
-    result = runner.invoke(cli_app, ["sync", "--message", "Test sync message"])
+    # Test running sync for a specific campaign
+    result = runner.invoke(cli_app, ["sync", "my-campaign"])
 
     assert result.exit_code == 0
-    assert "Git sync and push of 'data' folder completed successfully." in result.stdout
-    mock_subprocess_run.assert_any_call(["git", "add", "data"], check=True)
-    mock_subprocess_run.assert_any_call(["git", "commit", "-m", "Test sync message"], check=True)
-    mock_subprocess_run.assert_any_call(["git", "pull", "--rebase"], check=True)
-    mock_subprocess_run.assert_any_call(["git", "push"], check=True)
+    assert "Sync Complete!" in result.stdout
+    
+    # We expect 4 calls to aws s3 sync:
+    # 1. Shared Index Down
+    # 2. Shared Index Up
+    # 3. Campaign Index Down
+    # 4. Campaign Index Up
+    assert mock_subprocess_run.call_count == 4
+    
+    # Check that AWS CLI was called (simplified check)
+    args, _ = mock_subprocess_run.call_args
+    assert args[0][0] == "aws"
+    assert args[0][1] == "s3"
+    assert args[0][2] == "sync"
 
 @patch("subprocess.run")
-@patch("pathlib.Path.is_dir")
-def test_sync_command_no_data_folder(mock_is_dir, mock_subprocess_run, runner, cli_app):
-    mock_is_dir.return_value = False
+@patch("pathlib.Path.exists")
+def test_sync_command_dry_run(mock_exists, mock_subprocess_run, runner, cli_app):
+    mock_exists.return_value = True
+    mock_subprocess_run.return_value.check_returncode.return_value = None
 
-    result = runner.invoke(cli_app, ["sync", "--message", "Test sync message"])
+    result = runner.invoke(cli_app, ["sync", "my-campaign", "--dry-run"])
 
-    assert result.exit_code == 1
-    assert "Error: 'data' folder not found. Please ensure you are in the project root directory." in result.stdout
-    mock_subprocess_run.assert_not_called()
-
-@patch("subprocess.run")
-@patch("pathlib.Path.is_dir")
-def test_sync_command_git_add_failure(mock_is_dir, mock_subprocess_run, runner, cli_app):
-    mock_is_dir.return_value = True
-    mock_subprocess_run.side_effect = [
-        subprocess.CalledProcessError(1, "git add"),
-        None, None, None
-    ]
-
-    result = runner.invoke(cli_app, ["sync", "--message", "Test sync message"])
-
-    assert result.exit_code == 1
-    assert "Error staging changes: Command 'git add' returned non-zero exit status 1." in result.stdout
-    mock_subprocess_run.assert_any_call(["git", "add", "data"], check=True)
-    mock_subprocess_run.call_count == 1
+    assert result.exit_code == 0
+    
+    # Verify --dryrun flag is passed
+    # Check at least one call has it
+    found_dryrun = False
+    for call in mock_subprocess_run.call_args_list:
+        if "--dryrun" in call[0][0]:
+            found_dryrun = True
+            break
+    assert found_dryrun
 
 @patch("subprocess.run")
-@patch("pathlib.Path.is_dir")
-def test_sync_command_git_commit_failure(mock_is_dir, mock_subprocess_run, runner, cli_app):
-    mock_is_dir.return_value = True
-    mock_subprocess_run.side_effect = [
-        None,
-        subprocess.CalledProcessError(1, "git commit"),
-        None, None
-    ]
+@patch("pathlib.Path.exists")
+def test_sync_command_failure(mock_exists, mock_subprocess_run, runner, cli_app):
+    mock_exists.return_value = True
+    # Simulate an error on the first call
+    mock_subprocess_run.side_effect = subprocess.CalledProcessError(1, ["aws", "s3", "sync"])
 
-    result = runner.invoke(cli_app, ["sync", "--message", "Test sync message"])
+    result = runner.invoke(cli_app, ["sync", "my-campaign"])
 
     assert result.exit_code == 1
-    assert "Error committing changes: Command 'git commit' returned non-zero exit status 1." in result.stdout
-    mock_subprocess_run.assert_any_call(["git", "add", "data"], check=True)
-    mock_subprocess_run.assert_any_call(["git", "commit", "-m", "Test sync message"], check=True)
-    mock_subprocess_run.call_count == 2
-
-@patch("subprocess.run")
-@patch("pathlib.Path.is_dir")
-def test_sync_command_git_pull_failure(mock_is_dir, mock_subprocess_run, runner, cli_app):
-    mock_is_dir.return_value = True
-    mock_subprocess_run.side_effect = [
-        None, None,
-        subprocess.CalledProcessError(1, "git pull"),
-        None
-    ]
-
-    result = runner.invoke(cli_app, ["sync", "--message", "Test sync message"])
-
-    assert result.exit_code == 1
-    assert "Error pulling changes: Command 'git pull' returned non-zero exit status 1." in result.stdout
-    mock_subprocess_run.assert_any_call(["git", "add", "data"], check=True)
-    mock_subprocess_run.assert_any_call(["git", "commit", "-m", "Test sync message"], check=True)
-    mock_subprocess_run.assert_any_call(["git", "pull", "--rebase"], check=True)
-    mock_subprocess_run.call_count == 3
-
-@patch("subprocess.run")
-@patch("pathlib.Path.is_dir")
-def test_sync_command_git_push_failure(mock_is_dir, mock_subprocess_run, runner, cli_app):
-    mock_is_dir.return_value = True
-    mock_subprocess_run.side_effect = [
-        None, None, None,
-        subprocess.CalledProcessError(1, "git push")
-    ]
-
-    result = runner.invoke(cli_app, ["sync", "--message", "Test sync message"])
-
-    assert result.exit_code == 1
-    assert "Error pushing changes: Command 'git push' returned non-zero exit status 1." in result.stdout
-    mock_subprocess_run.assert_any_call(["git", "add", "data"], check=True)
-    mock_subprocess_run.assert_any_call(["git", "commit", "-m", "Test sync message"], check=True)
-    mock_subprocess_run.assert_any_call(["git", "pull", "--rebase"], check=True)
-    mock_subprocess_run.assert_any_call(["git", "push"], check=True)
-    mock_subprocess_run.call_count == 4
+    assert "Error running sync" in result.stdout
