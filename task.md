@@ -23,11 +23,10 @@ Refine the Google Maps scraping pipeline to fix "wilderness" detection issues, i
     *   **Completed:** Implemented "Latest Write Wins" for scraped areas.
     *   **Completed:** Refactored `ScrapeIndex` to use the new structure, enabling O(1) spatial lookups (checking only relevant 1x1 degree grid cells).
     *   **Completed:** Validated that `make coverage-kml` works with the new structure.
-    *   **Completed:** Removed legacy scraped_areas CSV files and obsolete scripts (`backfill_item_counts.py`).
+    *   **Completed:** Removed legacy scraped_areas CSV files and obsolete scripts.
+*   **S3 Cleanup:**
+    *   **Completed:** Deleted garbage data in `s3://cocli-data-turboship/campaigns/` (misplaced domain-campaigns).
+    *   **Completed:** Cleaned up local legacy directories (`indexes/turboship/`).
 
 ## Next Actions
-1.  **Scraper Verification:**
-    *   Run `make scrape` to verify the entire pipeline (Prospects Index + Scraped Areas Index) in a live scenario.
-    *   Confirm new data is written correctly to the partitioned indexes.
-2.  **S3 Synchronization:**
-    *   Implement `cocli sync` to handle the bidirectional sync of the `indexes/` directory (both `google_maps_prospects` and `scraped_areas`).
+*   **Handover to New Task:** Implement `cocli sync` for bidirectional synchronization of the new file-based indexes.
