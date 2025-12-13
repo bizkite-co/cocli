@@ -2,12 +2,25 @@
 
 This document outlines the roadmap for transitioning `cocli` from a purely local tool to a scalable, cloud-integrated platform using AWS Fargate and S3.
 
-## Phase 2: Cloud Native Scraping
+## Phase 1: Hybrid Architecture (Completed)
 
-**Goal:** Move the Google Maps scraper to the cloud for fully automated, scheduled data gathering.
+**Goal:** Establish foundational cloud integration for enrichment and initial data decoupling.
 
-1.  **Containerize Scraper:**
-    *   [ ] Package Playwright scraper into a Docker image.
+1.  **Deploy Enricher to Fargate:** Fargate service deployed for website enrichment.
+2.  **Implement S3 Object Indexing:** S3 used for storing enriched data, with local indexes for fast lookups.
+3.  **Connect Local CLI to Cloud Enricher:** Local CLI can trigger cloud enrichment.
+4.  **Decouple with SQS:** Implemented `ScrapeTasksQueue` and `EnrichmentQueue` for asynchronous task processing.
+
+## Phase 2: Cloud Native Scraping (In Progress)
+
+**Goal:** Move the Google Maps scraper to the cloud for fully automated, scheduled data gathering, leveraging distributed local workers for scraping.
+
+1.  **Distributed Scrape Worker Architecture:**
+    *   [x] Implemented `ScrapeTask` model (Pydantic).
+    *   [x] Implemented `cocli campaign queue-scrapes` command (Producer) to push tasks to `ScrapeTasksQueue`.
+    *   [x] Implemented `cocli worker scrape` command (Consumer) to pull tasks, execute Playwright, and push results.
+    *   [x] Created Makefile rules for `queue-scrape-tasks` and `run-worker-scrape-bg`.
+    *   [ ] **Containerize Scraper:** Package Playwright scraper into a Docker image (for Fargate, or other cloud deployments).
     *   [ ] Adapt scraper to read configuration from S3/Environment variables.
     *   [ ] **Proxy Integration:** Implement residential proxies to bypass Google blocking in data centers.
 

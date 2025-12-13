@@ -17,7 +17,7 @@ def main(
 ) -> None:
     """
     Migrates pending messages from the Local File Queue to the Cloud SQS Queue.
-    Prerequisite: The SQS Queue must be deployed and configured in env vars (COCLI_SQS_QUEUE_URL) 
+    Prerequisite: The SQS Queue must be deployed and configured in env vars (COCLI_ENRICHMENT_QUEUE_URL) 
     or inferred by the factory if connected to AWS.
     """
     # 1. Setup Local Queue Reader (Manual access to files)
@@ -31,17 +31,17 @@ def main(
 
     # 2. Setup Cloud Queue Writer
     # We force use_cloud=True to get SQSQueue. 
-    # It requires COCLI_SQS_QUEUE_URL env var or valid AWS setup.
+    # It requires COCLI_ENRICHMENT_QUEUE_URL env var or valid AWS setup.
     try:
         # Note: get_queue_manager might raise if env var is missing. 
         # We assume the user has set it or we can find it via CDK outputs later.
         # For now, let's assume we can instantiate SQSQueue if we know the URL.
         # BUT get_queue_manager doesn't take URL arg, it reads env.
-        # So user must export COCLI_SQS_QUEUE_URL=... before running this.
+        # So user must export COCLI_ENRICHMENT_QUEUE_URL=... before running this.
         cloud_queue = get_queue_manager(f"{campaign_name}_enrichment", use_cloud=True)
     except Exception as e:
         console.print(f"[bold red]Failed to connect to Cloud Queue: {e}[/bold red]")
-        console.print("[yellow]Ensure COCLI_SQS_QUEUE_URL environment variable is set.[/yellow]")
+        console.print("[yellow]Ensure COCLI_ENRICHMENT_QUEUE_URL environment variable is set.[/yellow]")
         raise typer.Exit(1)
 
     # 3. Migrate

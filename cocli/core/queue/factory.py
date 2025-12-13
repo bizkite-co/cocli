@@ -19,9 +19,9 @@ def get_queue_manager(queue_name: str, use_cloud: bool = False, queue_type: str 
                  raise ValueError("COCLI_SCRAPE_TASKS_QUEUE_URL environment variable must be set for cloud queue mode.")
             return ScrapeSQSQueue(queue_url=queue_url)
         else:
-            queue_url = os.getenv("COCLI_ENRICHMENT_QUEUE_URL") or os.getenv("COCLI_SQS_QUEUE_URL")
+            queue_url = os.getenv("COCLI_ENRICHMENT_QUEUE_URL") or os.getenv("COCLI_ENRICHMENT_QUEUE_URL")
             if not queue_url:
-                 raise ValueError("COCLI_ENRICHMENT_QUEUE_URL (or COCLI_SQS_QUEUE_URL) environment variable must be set for cloud queue mode.")
+                 raise ValueError("COCLI_ENRICHMENT_QUEUE_URL (or COCLI_ENRICHMENT_QUEUE_URL) environment variable must be set for cloud queue mode.")
             return SQSQueue(queue_url=queue_url)
     else:
         # TODO: Implement LocalFileQueue for ScrapeTasks if needed (different file structure?)

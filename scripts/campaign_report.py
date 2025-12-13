@@ -41,7 +41,7 @@ def main(campaign_name: Optional[str] = typer.Argument(None, help="Campaign name
         total_prospects = sum(1 for _ in manager.index_dir.glob("*.csv"))
 
     # 2. Queue Stats
-    queue_url = os.getenv("COCLI_SQS_QUEUE_URL")
+    queue_url = os.getenv("COCLI_ENRICHMENT_QUEUE_URL")
     using_cloud_queue = queue_url is not None
     
     if using_cloud_queue and queue_url:

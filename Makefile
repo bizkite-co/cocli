@@ -150,6 +150,13 @@ ingest-prospects: install ## Ingest the existing google_maps_prospects.csv file 
 ingest-existing-customers: install ## Ingest the existing customers.csv file into the cache
 	$(VENV_DIR)/bin/cocli ingest-google-maps-csv /home/mstouffer/.local/share/cocli_data/scraped_data/turboship/customers/customers.csv
 
+.PHONY: queue-scrape-tasks
+queue-scrape-tasks: ## Queue scrape tasks for the 'turboship' campaign
+	export COCLI_SCRAPE_TASKS_QUEUE_URL="https://sqs.us-east-1.amazonaws.com/193481341784/CdkScraperDeploymentStack-ScrapeTasksQueue9836DB1F-TfprnaM0R5gs" \
+	export COCLI_ENRICHMENT_QUEUE_URL="https://sqs.us-east-1.amazonaws.com/193481341784/CdkScraperDeploymentStack-EnrichmentQueue4D4E619F-srLGUESiUDYU" \
+	export AWS_PROFILE=turboship-support \
+	uv run cocli campaign queue-scrapes turboship
+
 .PHONY: prospects-with-emails
 prospects-with-emails:
 	rg '[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}' \
@@ -159,6 +166,23 @@ prospects-with-emails:
 .PHONY: debug-google-maps-scraper
 debug-google-maps-scraper: install ## Run the Google Maps scraper in headed mode with debug tools for debugging
 	source $(VENV_DIR)/bin/activate && pytest tests/debug_google_maps_scraper.py
+
+.PHONY: run-worker-scrape-bg
+run-worker-scrape-bg: ## Run the cocli worker scrape command in the background
+	@echo "Starting cocli worker scrape in the background..."
+	@nohup sh -c 'export COCLI_SCRAPE_TASKS_QUEUE_URL="https://sqs.us-east-1.amazonaws.com/193481341784/CdkScraperDeploymentStack-ScrapeTasksQueue9836DB1F-TfprnaM0R5gs" \
+	export COCLI_ENRICHMENT_QUEUE_URL="https://sqs.us-east-1.amazonaws.com/193481341784/CdkScraperDeploymentStack-EnrichmentQueue4D4E619F-srLGUESiUDYU" \
+	export AWS_PROFILE=turboship-support \
+	uv run cocli worker scrape --headed > worker_scrape.log 2>&1' & \
+	echo "cocli worker scrape started in the background. Output redirected to worker_scrape.log"
+
+.PHONY: report-status
+report-status: ## Report the status of the SQS queues (ScrapeTasksQueue, EnrichmentQueue)
+	@echo "Checking SQS Queue Status..."
+	@echo "Scrape Tasks Queue:"
+	@aws sqs get-queue-attributes --queue-url $(COCLI_SCRAPE_TASKS_QUEUE_URL) --attribute-names ApproximateNumberOfMessages --profile $(AWS_PROFILE) --query 'Attributes.ApproximateNumberOfMessages' --output text
+	@echo "Enrichment Queue:"
+	@aws sqs get-queue-attributes --queue-url $(COCLI_ENRICHMENT_QUEUE_URL) --attribute-names ApproximateNumberOfMessages --profile $(AWS_PROFILE) --query 'Attributes.ApproximateNumberOfMessages' --output text
 
 .PHONY: docker-build
 docker-build: ## Build the docker image

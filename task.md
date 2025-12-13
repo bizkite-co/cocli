@@ -35,8 +35,10 @@ Implement a distributed "Smart Worker" architecture where lightweight scraping w
         *   Option B: Push `PlaceID` to `EnrichmentQueue` (if enrichment is needed).
 
 ## Todo
-- [ ] **Infra:** Revert Proxy changes in CDK and add `ScrapeTasksQueue`.
-- [ ] **Code:** Implement `ScrapeTask` model (Pydantic).
-- [ ] **Code:** Implement `queue-scrapes` command (Producer).
-- [ ] **Code:** Implement `worker scrape` command (Consumer).
-- [ ] **Verify:** Test the full flow locally (Producer -> Local Queue -> Consumer).
+- [x] **Infra:** Revert Proxy changes in CDK and add `ScrapeTasksQueue`.
+- [x] **Code:** Implement `ScrapeTask` model (Pydantic).
+- [x] **Code:** Implement `queue-scrapes` command (Producer).
+- [x] **Code:** Implement `worker scrape` command (Consumer).
+- [x] **Verify:** Test the full flow locally (Producer -> Local Queue -> Consumer).
+- [x] **Makefile:** Add rules for queuing and running the worker in the background.
+- [ ] **Run Worker in Background:** Use `make run-worker-scrape-bg` to avoid interactive mode.
