@@ -21,7 +21,7 @@ class ProspectsIndexManager:
         self.index_dir = scraped_dir.parent / "indexes" / "google_maps_prospects"
         self.index_dir.mkdir(parents=True, exist_ok=True)
 
-    def _get_file_path(self, place_id: str) -> Path:
+    def get_file_path(self, place_id: str) -> Path:
         """Returns the file path for a given Place_ID."""
         # Sanitize filename just in case, though Place_ID is usually safe
         safe_filename = place_id.replace("/", "_").replace("\\", "_")
@@ -58,7 +58,7 @@ class ProspectsIndexManager:
             logger.warning(f"Prospect data missing Place_ID, cannot save to index. Skipping: {prospect_data.Name or prospect_data.Domain}")
             return False
         
-        file_path = self._get_file_path(prospect_data.Place_ID)
+        file_path = self.get_file_path(prospect_data.Place_ID)
         
         try:
             with open(file_path, 'w', newline='', encoding='utf-8') as csvfile:
@@ -77,6 +77,6 @@ class ProspectsIndexManager:
         """Checks if a given Place_ID already exists in the index."""
         if not place_id:
             return False
-        return self._get_file_path(place_id).exists()
+        return self.get_file_path(place_id).exists()
 
 

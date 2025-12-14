@@ -1,23 +1,30 @@
 import typer
 import asyncio
 import logging
+import boto3
 from rich.console import Console
 from playwright.async_api import async_playwright
 
 from ..core.queue.factory import get_queue_manager
 from ..scrapers.google_maps import scrape_google_maps
 from ..models.queue import QueueMessage
+from ..core.prospects_csv_manager import ProspectsIndexManager
+from ..core.text_utils import slugify
 
 logger = logging.getLogger(__name__)
 console = Console()
 
 app = typer.Typer(no_args_is_help=True)
 
+# Hardcoded bucket for now, or move to config/env
+S3_BUCKET = "cocli-data-turboship"
+
 async def run_worker(headless: bool, debug: bool) -> None:
     try:
         scrape_queue = get_queue_manager("scrape_tasks", use_cloud=True, queue_type="scrape")
         enrichment_queue = get_queue_manager("enrichment", use_cloud=True, queue_type="enrichment")
-    except ValueError as e:
+        s3_client = boto3.client("s3")
+    except Exception as e:
         console.print(f"[bold red]Configuration Error: {e}[/bold red]")
         return
 
@@ -45,7 +52,20 @@ async def run_worker(headless: bool, debug: bool) -> None:
                 continue
             
             task = tasks[0] # batch_size=1
-            console.print(f"[cyan]Received Task:[/cyan] {task.search_phrase} @ {task.latitude}, {task.longitude}")
+            
+            # Identify Mode
+            grid_tiles = None
+            if task.tile_id:
+                console.print(f"[cyan]Grid Task ({task.tile_id}):[/cyan] {task.search_phrase}")
+                grid_tiles = [{
+                    "id": task.tile_id,
+                    "center_lat": task.latitude,
+                    "center_lon": task.longitude,
+                    # Fallback center dict for strategy compatibility
+                    "center": {"lat": task.latitude, "lon": task.longitude}
+                }]
+            else:
+                console.print(f"[cyan]Point Task:[/cyan] {task.search_phrase} @ {task.latitude}, {task.longitude}")
             
             try:
                 # Construct location param
@@ -53,6 +73,9 @@ async def run_worker(headless: bool, debug: bool) -> None:
                     "latitude": str(task.latitude),
                     "longitude": str(task.longitude)
                 }
+                
+                # Use manager for this campaign
+                csv_manager = ProspectsIndexManager(task.campaign_name)
                 
                 # Execute Scrape
                 # Note: scrape_google_maps is an async generator
@@ -65,30 +88,32 @@ async def run_worker(headless: bool, debug: bool) -> None:
                     debug=debug,
                     force_refresh=task.force_refresh,
                     ttl_days=task.ttl_days,
-                    # We rely on default behavior or pass explicit options if needed
-                    # For "Scout" mode, we might want to limit panning, but let's use default for now.
+                    grid_tiles=grid_tiles
                 ):
                     prospect_count += 1
                     
-                    # Push to Enrichment Queue
-                    # We check if it has a domain to enrich
+                    # 1. Save to Local Index (Worker's disk)
+                    if csv_manager.append_prospect(prospect):
+                        # 2. Upload to S3 (Immediate Sync)
+                        if prospect.Place_ID:
+                            file_path = csv_manager.get_file_path(prospect.Place_ID)
+                            if file_path.exists():
+                                # Construct S3 Key: campaigns/{campaign}/indexes/google_maps_prospects/{Place_ID}.csv
+                                s3_key = f"campaigns/{task.campaign_name}/indexes/google_maps_prospects/{file_path.name}"
+                                try:
+                                    s3_client.upload_file(str(file_path), S3_BUCKET, s3_key)
+                                except Exception as e:
+                                    console.print(f"[red]S3 Upload Error:[/red] {e}")
+
+                    # 3. Push to Enrichment Queue
                     if prospect.Domain and prospect.Name:
                         msg = QueueMessage(
                             domain=prospect.Domain,
-                            company_slug="", # We might not have this yet? Or we generate it? 
-                                             # Usually import_prospect generates it. 
-                                             # For distributed, we might send "raw" data or just domain.
-                                             # QueueMessage expects company_slug.
+                            company_slug=slugify(prospect.Name),
                             campaign_name=task.campaign_name,
                             force_refresh=task.force_refresh,
                             ack_token=None
                         )
-                        # We need a slug. 
-                        # Ideally, we should "Import" locally on the worker? No, worker is dumb.
-                        # Maybe we just use slugify(domain)?
-                        from ..core.text_utils import slugify
-                        msg.company_slug = slugify(prospect.Name) # Approximation
-                        
                         enrichment_queue.push(msg)
                 
                 console.print(f"[green]Task Complete. Found {prospect_count} prospects.[/green]")

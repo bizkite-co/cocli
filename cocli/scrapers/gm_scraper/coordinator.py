@@ -64,9 +64,9 @@ class ScrapeCoordinator:
                 # Unpack target based on length to support both Spiral (2) and Grid (3) strategies
                 tile_id = None
                 if len(target) == 3:
-                    lat, lon, tile_id = target # type: ignore
+                    lat, lon, tile_id = target
                 else:
-                    lat, lon = target # type: ignore
+                    lat, lon = target
 
                 # 1. Proximity Check (Skip for GridStrategy)
                 dist = 0.0

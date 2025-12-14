@@ -1283,7 +1283,7 @@ def scrape_grid(
 
     setup_file_logging(f"{campaign_name}-scrape-grid", file_level=logging.DEBUG, disable_console=True)
 
-    async def _run_scrape():
+    async def _run_scrape() -> None:
         csv_manager = ProspectsIndexManager(campaign_name)
         
         async with async_playwright() as p:
@@ -1314,7 +1314,7 @@ def scrape_grid(
                 browser=browser,
                 location_param=dummy_loc,
                 search_strings=search_phrases,
-                campaign_name=campaign_name, # type: ignore
+                campaign_name=campaign_name,
                 grid_tiles=grid_tiles,
                 force_refresh=force,
                 debug=debug,
@@ -1404,7 +1404,8 @@ def queue_scrapes(
                             search_phrase=phrase,
                             campaign_name=campaign_name,
                             force_refresh=force,
-                            tile_id=tile_id
+                            tile_id=tile_id,
+                            ack_token=None
                         ))
         except Exception as e:
             console.print(f"[bold red]Error loading grid file: {e}[/bold red]")
