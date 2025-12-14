@@ -1221,6 +1221,118 @@ def generate_grid(
     console.print(f"  JSON: {json_path.relative_to(campaign_dir)}")
     console.print(f"  KML:  {kml_path.relative_to(campaign_dir)}")
 
+@app.command(name="scrape-grid")
+def scrape_grid(
+    campaign_name: Optional[str] = typer.Argument(None, help="Name of the campaign. If not provided, uses the current campaign context."),
+    headed: bool = typer.Option(False, "--headed", help="Run the browser in headed mode."),
+    debug: bool = typer.Option(False, "--debug", help="Enable debug mode."),
+    force: bool = typer.Option(False, "--force", "-f", help="Force re-scrape of tiles."),
+    proxy: Optional[str] = typer.Option(None, "--proxy", help="Proxy URL (e.g., http://user:pass@host:port). Overrides config."),
+) -> None:
+    """
+    Executes the grid scrape plan defined in 'exports/target-areas.json'.
+    Scrapes all tiles sequentially and saves prospects to the campaign index.
+    """
+    if campaign_name is None:
+        campaign_name = get_campaign()
+        if campaign_name is None:
+            logger.error("Error: No campaign name provided and no campaign context is set.")
+            raise typer.Exit(code=1)
+
+    console.print(f"[bold]Starting Grid Scrape for campaign: '{campaign_name}'[/bold]")
+
+    campaign_dir = get_campaign_dir(campaign_name)
+    if not campaign_dir:
+        console.print(f"[bold red]Campaign '{campaign_name}' not found.[/bold red]")
+        raise typer.Exit(code=1)
+
+    # Load Grid
+    grid_file = campaign_dir / "exports" / "target-areas.json"
+    if not grid_file.exists():
+         console.print(f"[bold red]Grid file not found at {grid_file}. Please run 'cocli campaign generate-grid' first.[/bold red]")
+         raise typer.Exit(code=1)
+    
+    try:
+         import json
+         with open(grid_file, 'r') as f:
+             grid_tiles = json.load(f)
+         console.print(f"[green]Loaded {len(grid_tiles)} tiles from target-areas.json[/green]")
+    except Exception as e:
+         console.print(f"[bold red]Error loading grid file: {e}[/bold red]")
+         raise typer.Exit(code=1)
+
+    # Load Config (for search phrases)
+    config_path = campaign_dir / "config.toml"
+    if not config_path.exists():
+        console.print(f"[bold red]Configuration file not found for campaign '{campaign_name}'.[/bold red]")
+        raise typer.Exit(code=1)
+    
+    with open(config_path, "r") as f:
+        config = toml.load(f)
+    search_phrases = config.get("prospecting", {}).get("queries", [])
+    if not search_phrases:
+        console.print("[bold red]No queries found in prospecting config.[/bold red]")
+        raise typer.Exit(code=1)
+
+    # Proxy Setup
+    settings = load_scraper_settings()
+    final_proxy_url = proxy if proxy else settings.proxy_url
+    launch_proxy = {"server": final_proxy_url} if final_proxy_url else None
+    if launch_proxy:
+         console.print(f"[bold yellow]Using proxy: {final_proxy_url}[/bold yellow]")
+
+    setup_file_logging(f"{campaign_name}-scrape-grid", file_level=logging.DEBUG, disable_console=True)
+
+    async def _run_scrape():
+        csv_manager = ProspectsIndexManager(campaign_name)
+        
+        async with async_playwright() as p:
+            browser = await p.chromium.launch(
+                headless=not headed,
+                devtools=debug,
+                proxy=cast(Any, launch_proxy),
+                args=[
+                    '--no-sandbox',
+                    '--disable-setuid-sandbox',
+                    '--disable-dev-shm-usage',
+                    '--disable-accelerated-2d-canvas',
+                    '--no-first-run',
+                    '--no-zygote',
+                    '--disable-gpu'
+                ]
+            )
+            
+            # Dummy location for signature
+            dummy_loc = {"latitude": "0", "longitude": "0"}
+            if grid_tiles:
+                c = grid_tiles[0].get("center", {})
+                dummy_loc = {"latitude": str(c.get("lat", 0)), "longitude": str(c.get("lon", 0))}
+
+            console.print("[bold blue]Launching Scraper...[/bold blue]")
+            
+            generator = scrape_google_maps(
+                browser=browser,
+                location_param=dummy_loc,
+                search_strings=search_phrases,
+                campaign_name=campaign_name, # type: ignore
+                grid_tiles=grid_tiles,
+                force_refresh=force,
+                debug=debug,
+                browser_width=None,
+                browser_height=None
+            )
+            
+            count = 0
+            async for prospect in generator:
+                 csv_manager.append_prospect(prospect)
+                 count += 1
+                 if count % 10 == 0:
+                     console.print(f"Scraped {count} prospects...")
+            
+            console.print(f"[bold green]Scrape complete. Total prospects: {count}[/bold green]")
+
+    asyncio.run(_run_scrape())
+
 @app.command(name="queue-scrapes")
 def queue_scrapes(
     campaign_name: Optional[str] = typer.Argument(None, help="Name of the campaign to queue scrapes for."),
