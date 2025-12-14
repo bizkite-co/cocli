@@ -1,11 +1,11 @@
 import logging
-from typing import List, AsyncIterator
+from typing import List, AsyncIterator, Optional, Dict, Any, Union
 from playwright.async_api import Browser
 from geopy.distance import geodesic # type: ignore
 
 from ...models.google_maps_prospect import GoogleMapsProspect
 from .navigator import Navigator
-from .strategy import SpiralStrategy
+from .strategy import SpiralStrategy, GridStrategy
 from .wilderness import WildernessManager
 from .scanner import SidebarScraper
 from .utils import get_viewport_bounds
@@ -40,7 +40,8 @@ class ScrapeCoordinator:
         max_proximity_miles: float = 0.0,
         panning_distance_miles: int = 5,
         force_refresh: bool = False,
-        ttl_days: int = 30
+        ttl_days: int = 30,
+        grid_tiles: Optional[List[Dict[str, Any]]] = None
     ) -> AsyncIterator[GoogleMapsProspect]:
         
         # Create a new page for this session
@@ -48,17 +49,25 @@ class ScrapeCoordinator:
         navigator = Navigator(page)
         scanner = SidebarScraper(page, debug=self.debug)
         
-        strategy = SpiralStrategy(start_lat, start_lon, panning_distance_miles)
+        strategy: Union[SpiralStrategy, GridStrategy]
+        if grid_tiles:
+            logger.info(f"Using GridStrategy with {len(grid_tiles)} tiles.")
+            strategy = GridStrategy(grid_tiles)
+        else:
+            logger.info("Using SpiralStrategy.")
+            strategy = SpiralStrategy(start_lat, start_lon, panning_distance_miles)
         
         processed_ids: set[str] = set()
         
         try:
             for lat, lon in strategy:
-                # 1. Proximity Check
-                dist = geodesic((start_lat, start_lon), (lat, lon)).miles
-                if max_proximity_miles > 0 and dist > max_proximity_miles:
-                    logger.info(f"Reached max proximity ({dist:.2f} > {max_proximity_miles} miles). Stopping.")
-                    break
+                # 1. Proximity Check (Skip for GridStrategy)
+                dist = 0.0
+                if not grid_tiles:
+                    dist = geodesic((start_lat, start_lon), (lat, lon)).miles
+                    if max_proximity_miles > 0 and dist > max_proximity_miles:
+                        logger.info(f"Reached max proximity ({dist:.2f} > {max_proximity_miles} miles). Stopping.")
+                        break
                 
                 logger.info(f"Processing location: {lat:.4f}, {lon:.4f} (Dist: {dist:.1f} mi)")
                 

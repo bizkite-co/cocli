@@ -14,6 +14,7 @@ import pandas as pd
 import httpx
 
 from ..models.website import Website
+from ..models.google_maps_prospect import GoogleMapsProspect
 from ..scrapers.google_maps import scrape_google_maps
 
 from ..core.config import get_companies_dir, get_campaign_dir, get_cocli_base_dir, get_people_dir, get_all_campaign_dirs, get_editor_command, get_enrichment_service_url, load_scraper_settings
@@ -395,6 +396,7 @@ async def pipeline(
     max_proximity_miles: float = 0.0,
     navigation_timeout_ms: Optional[int] = None, # New parameter
     proxy_url: Optional[str] = None,
+    grid_tiles: Optional[List[Dict[str, Any]]] = None,
 ) -> None:
     
     queue_manager = get_queue_manager(f"{campaign_name}_enrichment", use_cloud=use_cloud_queue)
@@ -627,6 +629,97 @@ async def pipeline(
 
             csv_manager = ProspectsIndexManager(campaign_name)
 
+            async def process_prospect_item(prospect_data: GoogleMapsProspect, location_name: str) -> None:
+                # Write CSV
+                csv_manager.append_prospect(prospect_data)
+                
+                # Handle Company Lookup/Import
+                company: Optional[Company] = None
+                domain = prospect_data.Domain
+                
+                if domain and domain in existing_companies_map:
+                    slug = existing_companies_map[domain]
+                    company = Company.get(slug)
+                else:
+                    # Import Local
+                    company = import_prospect(prospect_data, campaign=campaign_name)
+                    if company and company.domain:
+                        existing_companies_map[company.domain] = company.slug
+                
+                if company and company.domain:
+                    # Update stats if valid location
+                    if location_name and location_name in location_df["name"].values:
+                        location_prospects_index.update_prospect_count(location_name, 1)
+                        location_df.loc[location_df["name"] == location_name, "prospect_count"] += 1
+                    
+                    # Decide whether to queue
+                    should_queue = False
+                    logger.debug(f"DEBUGGING QUEUE: Company {company.name} (Domain: {company.domain}, Slug: {company.slug}). Has email: {bool(company.email)}. Force mode: {force}")
+
+                    if force:
+                        should_queue = True
+                        logger.debug(f"Queuing {company.domain}: --force is True.")
+                    elif company.email: # Check if company already has an email
+                        logger.debug(f"Skipping queue for {company.domain}: Company already has email.")
+                    else:
+                        # If no email, we queue it to try and find one
+                        should_queue = True
+                        logger.debug(f"Queuing {company.domain}: No email found yet.")
+                    
+                    if should_queue:
+                        # Push to Queue
+                        msg = QueueMessage(
+                            domain=company.domain,
+                            company_slug=company.slug,
+                            campaign_name=campaign_name,
+                            force_refresh=force,
+                            ttl_days=ttl_days,
+                            ack_token=None,
+                        )
+                        queue_manager.push(msg)
+                        console.print(f"[cyan]Queued: {company.name} (Domain: {company.domain})[/cyan]")
+                        logger.debug(f"Pushed to queue: Domain={company.domain}, Slug={company.slug}")
+                    else:
+                        logger.debug(f"NOT QUEUED: {company.domain} based on logic. Has email: {bool(company.email)}. Force mode: {force}")
+
+
+            if grid_tiles:
+                console.print(f"[bold green]Running in Grid Mode with {len(grid_tiles)} tiles.[/bold green]")
+                # Dummy location for signature
+                dummy_loc = {"latitude": "0", "longitude": "0"}
+                if grid_tiles:
+                    c = grid_tiles[0].get("center", {})
+                    dummy_loc = {"latitude": str(c.get("lat", 0)), "longitude": str(c.get("lon", 0))}
+
+                prospect_generator = scrape_google_maps(
+                    browser=browser, # Use main browser instance (new page per search)
+                    location_param=dummy_loc,
+                    search_strings=search_phrases,
+                    campaign_name=campaign_name,
+                    zoom_out_button_selector=zoom_out_button_selector,
+                    panning_distance_miles=panning_distance_miles,
+                    initial_zoom_out_level=initial_zoom_out_level,
+                    omit_zoom_feature=omit_zoom_feature,
+                    force_refresh=force,
+                    ttl_days=ttl_days,
+                    debug=debug,
+                    browser_width=browser_width,
+                    browser_height=browser_height,
+                    max_proximity_miles=max_proximity_miles,
+                    overlap_threshold_percent=overlap_threshold_percent,
+                    grid_tiles=grid_tiles
+                )
+                
+                async for prospect_data in prospect_generator:
+                    if stop_event.is_set(): 
+                        break
+                    await process_prospect_item(prospect_data, "Grid Scan")
+                    # Yield control to let consumer run
+                    await asyncio.sleep(0.01)
+
+                console.print("[bold green]Grid scrape complete.[/bold green]")
+                return
+
             while not stop_event.is_set():
                 # Sort locations by saturation_score (primary) and prospect_count (secondary)
                 # We want least saturated first.
@@ -684,57 +777,7 @@ async def pipeline(
                         if stop_event.is_set(): 
                             break
                         
-                        # Write CSV
-                        csv_manager.append_prospect(prospect_data)
-                        
-                        # Handle Company Lookup/Import
-                        company: Optional[Company] = None
-                        domain = prospect_data.Domain
-                        
-                        if domain and domain in existing_companies_map:
-                            slug = existing_companies_map[domain]
-                            company = Company.get(slug)
-                        else:
-                            # Import Local
-
-                            company = import_prospect(prospect_data, campaign=campaign_name)
-                            if company and company.domain:
-                                existing_companies_map[company.domain] = company.slug
-                        
-                        if company and company.domain:
-                            location_prospects_index.update_prospect_count(location, 1)
-                            location_df.loc[location_df["name"] == location, "prospect_count"] += 1
-                            
-                            # Decide whether to queue
-                            should_queue = False
-                            logger.debug(f"DEBUGGING QUEUE: Company {company.name} (Domain: {company.domain}, Slug: {company.slug}). Has email: {bool(company.email)}. Force mode: {force}")
-
-                            if force:
-                                should_queue = True
-                                logger.debug(f"Queuing {company.domain}: --force is True.")
-                            elif company.email: # Check if company already has an email
-                                logger.debug(f"Skipping queue for {company.domain}: Company already has email.")
-                            else:
-                                # If no email, we queue it to try and find one
-                                should_queue = True
-                                logger.debug(f"Queuing {company.domain}: No email found yet.")
-                            
-                            if should_queue:
-                                # Push to Queue
-                                msg = QueueMessage(
-                                    domain=company.domain,
-                                    company_slug=company.slug,
-                                    campaign_name=campaign_name,
-                                    force_refresh=force,
-                                    ttl_days=ttl_days,
-                                    ack_token=None,
-                                )
-                                queue_manager.push(msg)
-                                console.print(f"[cyan]Queued: {company.name} (Domain: {company.domain})[/cyan]")
-                                logger.debug(f"Pushed to queue: Domain={company.domain}, Slug={company.slug}")
-                            else:
-                                logger.debug(f"NOT QUEUED: {company.domain} based on logic. Has email: {bool(company.email)}. Force mode: {force}")
-                        
+                        await process_prospect_item(prospect_data, location)
                         # Yield control to let consumer run
                         await asyncio.sleep(0.01)
 
@@ -773,6 +816,7 @@ def achieve_goal(
     opt_allowed_overlap_percentage: Optional[float] = typer.Option(None, "--overlap-percentage", help="Minimum overlap percentage to consider an area already scraped or wilderness. Overrides config.toml."),
     navigation_timeout_ms: Optional[int] = typer.Option(None, "--navigation-timeout", help="Timeout in milliseconds for Playwright navigation in the enrichment service. Overrides default."),
     proxy: Optional[str] = typer.Option(None, "--proxy", help="Proxy URL (e.g., http://user:pass@host:port). Overrides config."),
+    grid_mode: bool = typer.Option(False, "--grid", help="Use pre-generated grid from exports/target-areas.json instead of spiral/expansion."),
 ) -> None:
 
     """
@@ -867,6 +911,22 @@ def achieve_goal(
 
         raise typer.Exit(code=1)  # --- Setup ---
 
+    grid_tiles = None
+    if grid_mode:
+        grid_file = campaign_dir / "exports" / "target-areas.json"
+        if not grid_file.exists():
+             console.print(f"[bold red]Grid file not found at {grid_file}. Please run 'cocli campaign generate-grid' first.[/bold red]")
+             raise typer.Exit(code=1)
+        
+        try:
+             import json
+             with open(grid_file, 'r') as f:
+                 grid_tiles = json.load(f)
+             console.print(f"[green]Loaded {len(grid_tiles)} tiles from target-areas.json[/green]")
+        except Exception as e:
+             console.print(f"[bold red]Error loading grid file: {e}[/bold red]")
+             raise typer.Exit(code=1)
+
     setup_file_logging(f"{campaign_name}-achieve-goal", file_level=logging.DEBUG, disable_console=True)
 
     console.print(
@@ -909,6 +969,7 @@ def achieve_goal(
             max_proximity_miles=proximity_miles,
             navigation_timeout_ms=navigation_timeout_ms,
             proxy_url=final_proxy_url,
+            grid_tiles=grid_tiles,
         )
     )
     message = f"[grey50][{datetime.now().strftime('%H:%M:%S')}][/] [bold blue]Pipeline finished.[/bold blue]"

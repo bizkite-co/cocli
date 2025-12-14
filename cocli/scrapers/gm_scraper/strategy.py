@@ -1,4 +1,4 @@
-from typing import Iterator, Tuple
+from typing import Iterator, Tuple, List, Dict, Any
 from .utils import calculate_new_coords
 
 class SpiralStrategy:
@@ -33,3 +33,15 @@ class SpiralStrategy:
                 self.leg_count += 1
                 if self.leg_count % 2 == 0:
                     self.steps_in_direction += 1
+
+class GridStrategy:
+    def __init__(self, tiles: List[Dict[str, Any]]):
+        self.tiles = tiles
+
+    def __iter__(self) -> Iterator[Tuple[float, float]]:
+        for tile in self.tiles:
+            center = tile.get("center", {})
+            lat = center.get("lat")
+            lon = center.get("lon")
+            if lat is not None and lon is not None:
+                yield float(lat), float(lon)

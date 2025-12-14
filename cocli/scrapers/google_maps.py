@@ -1,5 +1,5 @@
 import logging
-from typing import AsyncIterator, Dict, List, Optional
+from typing import AsyncIterator, Dict, List, Optional, Any
 from playwright.async_api import Browser
 
 from .gm_scraper.coordinator import ScrapeCoordinator
@@ -27,6 +27,7 @@ async def scrape_google_maps(
     overlap_threshold_percent: float = 60.0,
     expansion_factor: float = 1.0,
     max_initial_expansion_attempts: int = 3,
+    grid_tiles: Optional[List[Dict[str, Any]]] = None,
 ) -> AsyncIterator[GoogleMapsProspect]:
     """
     Scrapes business information from Google Maps using the modular ScrapeCoordinator.
@@ -68,11 +69,16 @@ async def scrape_google_maps(
     # We approximate the base width/height for standard 15z view
     # 15z is roughly 1-2 miles wide depending on lat. 
     # Let's start with a conservative 2.0 miles width.
+    # If grid_tiles are provided (Grid Mode), we need to cover a 0.1 degree tile (approx 7 miles).
+    # We set base dimensions to 8.0 miles to ensure full coverage with some margin.
+    base_w = 8.0 if grid_tiles else 5.0
+    base_h = 8.0 if grid_tiles else 5.0
+
     coordinator = ScrapeCoordinator(
         browser=browser,
         campaign_name=campaign_name,
-        base_width_miles=5.0,
-        base_height_miles=5.0,
+        base_width_miles=base_w,
+        base_height_miles=base_h,
         viewport_width=launch_width,
         viewport_height=launch_height,
         debug=debug
@@ -86,7 +92,8 @@ async def scrape_google_maps(
         max_proximity_miles=max_proximity_miles,
         panning_distance_miles=panning_distance_miles,
         force_refresh=force_refresh,
-        ttl_days=ttl_days
+        ttl_days=ttl_days,
+        grid_tiles=grid_tiles
     ):
         yield item
 
