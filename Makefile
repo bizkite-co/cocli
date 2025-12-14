@@ -268,9 +268,9 @@ deploy-creds-rpi: ## Securely deploy AWS credentials to the Raspberry Pi
 # ==============================================================================
 # Planning & Analysis
 # ==============================================================================
-.PHONY: generate-grid-kml
-generate-grid-kml: install ## Generate a KML file of the scrape grid based on defined parameters
-	uv run python cocli/planning/generate_grid.py
+.PHONY: generate-campaign-grid
+generate-campaign-grid: install ## Generate 0.1-degree aligned grid for the current campaign
+	COCLI_DATA_HOME=$(pwd)/cocli_data uv run cocli campaign generate-grid
 
 # ==============================================================================
 # Raspberry Pi Worker Management
