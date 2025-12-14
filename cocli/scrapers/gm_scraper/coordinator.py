@@ -60,7 +60,14 @@ class ScrapeCoordinator:
         processed_ids: set[str] = set()
         
         try:
-            for lat, lon in strategy:
+            for target in strategy:
+                # Unpack target based on length to support both Spiral (2) and Grid (3) strategies
+                tile_id = None
+                if len(target) == 3:
+                    lat, lon, tile_id = target # type: ignore
+                else:
+                    lat, lon = target # type: ignore
+
                 # 1. Proximity Check (Skip for GridStrategy)
                 dist = 0.0
                 if not grid_tiles:
@@ -92,7 +99,9 @@ class ScrapeCoordinator:
                 
                 # Scrape each query
                 for query in search_phrases:
-                    if not self.wilderness.should_scrape(bounds, query):
+                    # In Grid Mode (tile_id present), we bypass the wilderness/overlap check
+                    # to strictly follow the grid plan.
+                    if not tile_id and not self.wilderness.should_scrape(bounds, query):
                         logger.info(f"Skipping '{query}' at {lat},{lon} (Already covered/wilderness).")
                         continue
                         
@@ -115,7 +124,7 @@ class ScrapeCoordinator:
                         items_found += 1
                         
                     # Mark Index
-                    self.wilderness.mark_scraped(bounds, query, items_found, record_width, record_height)
+                    self.wilderness.mark_scraped(bounds, query, items_found, record_width, record_height, tile_id=tile_id)
                     
         finally:
             await page.close()

@@ -125,7 +125,7 @@ class ScrapeIndex:
             logger.error(f"Error loading area from {file_path}: {e}")
             return None
 
-    def add_area(self, phrase: str, bounds: dict[str, float], lat_miles: float, lon_miles: float, items_found: int = 0, scrape_date: Optional[datetime] = None) -> None:
+    def add_area(self, phrase: str, bounds: dict[str, float], lat_miles: float, lon_miles: float, items_found: int = 0, scrape_date: Optional[datetime] = None, tile_id: Optional[str] = None) -> None:
         """Adds a new scraped area to the index."""
         if not all(key in bounds for key in ['lat_min', 'lat_max', 'lon_min', 'lon_max']):
             logger.warning("Attempted to add area with incomplete bounds.")
@@ -138,7 +138,11 @@ class ScrapeIndex:
         grid_dir.mkdir(parents=True, exist_ok=True)
 
         # Generate filename
-        filename = f"{bounds['lat_min']:.5f}_{bounds['lat_max']:.5f}_{bounds['lon_min']:.5f}_{bounds['lon_max']:.5f}.json"
+        if tile_id:
+            filename = f"{tile_id}.json"
+        else:
+            filename = f"{bounds['lat_min']:.5f}_{bounds['lat_max']:.5f}_{bounds['lon_min']:.5f}_{bounds['lon_max']:.5f}.json"
+        
         file_path = grid_dir / filename
 
         data = {
@@ -152,6 +156,9 @@ class ScrapeIndex:
             "lon_miles": lon_miles,
             "items_found": items_found
         }
+        
+        if tile_id:
+            data["tile_id"] = tile_id
 
         try:
             with open(file_path, 'w', encoding='utf-8') as f:

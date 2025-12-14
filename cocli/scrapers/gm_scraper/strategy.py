@@ -38,10 +38,11 @@ class GridStrategy:
     def __init__(self, tiles: List[Dict[str, Any]]):
         self.tiles = tiles
 
-    def __iter__(self) -> Iterator[Tuple[float, float]]:
+    def __iter__(self) -> Iterator[Tuple[float, float, str]]:
         for tile in self.tiles:
             center = tile.get("center", {})
             lat = center.get("lat")
             lon = center.get("lon")
+            tile_id = tile.get("id", "")
             if lat is not None and lon is not None:
-                yield float(lat), float(lon)
+                yield float(lat), float(lon), str(tile_id)

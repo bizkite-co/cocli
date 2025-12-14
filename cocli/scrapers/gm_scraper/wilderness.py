@@ -1,4 +1,4 @@
-from typing import Dict
+from typing import Dict, Optional
 from ...core.scrape_index import ScrapeIndex
 
 class WildernessManager:
@@ -26,7 +26,7 @@ class WildernessManager:
             
         return True
 
-    def mark_scraped(self, bounds: Dict[str, float], query: str, items_found: int, width_miles: float, height_miles: float) -> None:
+    def mark_scraped(self, bounds: Dict[str, float], query: str, items_found: int, width_miles: float, height_miles: float, tile_id: Optional[str] = None) -> None:
         """Updates the index with the results."""
         # Always mark as scraped for the specific query, even if 0 items found.
         # We no longer mark "Wilderness" (global empty).
@@ -35,5 +35,6 @@ class WildernessManager:
             bounds=bounds,
             lat_miles=height_miles,
             lon_miles=width_miles,
-            items_found=items_found
+            items_found=items_found,
+            tile_id=tile_id
         )
