@@ -1339,7 +1339,8 @@ def queue_scrapes(
     force: bool = typer.Option(False, "--force", "-f", help="Force re-scraping of already covered areas."),
 ) -> None:
     """
-    Generates scraping tasks for target locations and pushes them to the ScrapeTasksQueue (Cloud).
+    Generates scraping tasks and pushes them to the ScrapeTasksQueue (Cloud).
+    Prioritizes 'exports/target-areas.json' (Grid Mode). Falls back to 'target-locations-csv' (Point Mode).
     """
     if campaign_name is None:
         campaign_name = get_campaign()
@@ -1365,41 +1366,95 @@ def queue_scrapes(
     
     prospecting_config = config.get("prospecting", {})
     search_phrases = prospecting_config.get("queries", [])
-    target_locations_csv = prospecting_config.get("target-locations-csv")
-
+    
     if not search_phrases:
          console.print("[bold red]No queries found in prospecting config.[/bold red]")
          raise typer.Exit(code=1)
 
-    # Load Locations
-    target_locations = []
-    if target_locations_csv:
-        csv_path = Path(target_locations_csv)
-        if not csv_path.is_absolute():
-            csv_path = campaign_dir / csv_path
-        
-        if csv_path.exists():
-            try:
-                with open(csv_path, 'r', encoding='utf-8') as f:
-                    reader = csv.DictReader(f)
-                    for row in reader:
-                        if "name" in row and "lat" in row and "lon" in row:
-                            target_locations.append({
-                                "name": row["name"],
-                                "lat": float(row["lat"]),
-                                "lon": float(row["lon"])
-                            })
-                console.print(f"[green]Loaded {len(target_locations)} target locations from {csv_path.name}[/green]")
-            except Exception as e:
-                logger.error(f"Error reading target locations CSV: {e}")
-                raise typer.Exit(code=1)
-        else:
-            logger.warning(f"Target locations CSV configured but not found at {csv_path}")
+    tasks_to_queue: List[ScrapeTask] = []
+    grid_file = campaign_dir / "exports" / "target-areas.json"
 
-    if not target_locations:
-        # Fallback to 'locations' list if no CSV (requires Geocoding, tricky without local DB or API)
-        # For now, just warn.
-        console.print("[yellow]No target locations found (check target-locations-csv).[/yellow]")
+    # 1. Grid Mode
+    if grid_file.exists():
+        console.print("[bold cyan]Found Grid Plan (target-areas.json). Switching to Grid Mode.[/bold cyan]")
+        import json
+        try:
+            with open(grid_file, 'r') as f:
+                grid_tiles = json.load(f)
+            
+            console.print(f"[green]Loaded {len(grid_tiles)} tiles.[/green]")
+            
+            for tile in grid_tiles:
+                # Handle both flat and nested formats
+                lat = tile.get("center_lat")
+                lon = tile.get("center_lon")
+                if lat is None or lon is None:
+                    c = tile.get("center", {})
+                    lat = c.get("lat")
+                    lon = c.get("lon")
+                
+                tile_id = tile.get("id")
+                
+                if lat is not None and lon is not None and tile_id:
+                    for phrase in search_phrases:
+                        tasks_to_queue.append(ScrapeTask(
+                            latitude=float(lat),
+                            longitude=float(lon),
+                            zoom=13,
+                            search_phrase=phrase,
+                            campaign_name=campaign_name,
+                            force_refresh=force,
+                            tile_id=tile_id
+                        ))
+        except Exception as e:
+            console.print(f"[bold red]Error loading grid file: {e}[/bold red]")
+            raise typer.Exit(code=1)
+
+    # 2. Point Mode (Fallback)
+    else:
+        target_locations_csv = prospecting_config.get("target-locations-csv")
+        target_locations = []
+        if target_locations_csv:
+            csv_path = Path(target_locations_csv)
+            if not csv_path.is_absolute():
+                csv_path = campaign_dir / csv_path
+            
+            if csv_path.exists():
+                try:
+                    with open(csv_path, 'r', encoding='utf-8') as f:
+                        reader = csv.DictReader(f)
+                        for row in reader:
+                            if "name" in row and "lat" in row and "lon" in row:
+                                target_locations.append({
+                                    "name": row["name"],
+                                    "lat": float(row["lat"]),
+                                    "lon": float(row["lon"])
+                                })
+                    console.print(f"[green]Loaded {len(target_locations)} target locations from {csv_path.name}[/green]")
+                except Exception as e:
+                    logger.error(f"Error reading target locations CSV: {e}")
+                    raise typer.Exit(code=1)
+            else:
+                logger.warning(f"Target locations CSV configured but not found at {csv_path}")
+
+        if target_locations:
+            for loc in target_locations:
+                for phrase in search_phrases:
+                    tasks_to_queue.append(ScrapeTask(
+                        latitude=float(loc["lat"]),
+                        longitude=float(loc["lon"]),
+                        zoom=13,
+                        search_phrase=phrase,
+                        campaign_name=campaign_name,
+                        force_refresh=force,
+                        ack_token=None
+                    ))
+        else:
+            console.print("[yellow]No target locations found (check target-locations-csv or generate a grid).[/yellow]")
+            return
+
+    if not tasks_to_queue:
+        console.print("[yellow]No tasks generated.[/yellow]")
         return
 
     # Connect to Queue
@@ -1410,22 +1465,14 @@ def queue_scrapes(
         console.print("[yellow]Ensure COCLI_SCRAPE_TASKS_QUEUE_URL is set.[/yellow]")
         raise typer.Exit(code=1)
 
+    console.print(f"[bold]Pushing {len(tasks_to_queue)} tasks to Cloud Queue...[/bold]")
+    
     count = 0
-    with console.status("Pushing tasks to Cloud Queue...") as status:
-        for loc in target_locations:
-            for phrase in search_phrases:
-                task = ScrapeTask(
-                    latitude=float(loc["lat"]),
-                    longitude=float(loc["lon"]),
-                    zoom=13, # Default starting zoom (City Level)
-                    search_phrase=phrase,
-                    campaign_name=campaign_name,
-                    force_refresh=force,
-                    ack_token=None
-                )
-                queue_manager.push(task)
-                count += 1
-                if count % 10 == 0:
-                    status.update(f"Queued {count} tasks...")
+    with console.status("Pushing tasks...") as status:
+        for task in tasks_to_queue:
+            queue_manager.push(task)
+            count += 1
+            if count % 10 == 0:
+                status.update(f"Queued {count}/{len(tasks_to_queue)} tasks...")
          
     console.print(f"[bold green]Successfully queued {count} scrape tasks.[/bold green]")

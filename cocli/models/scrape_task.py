@@ -14,6 +14,7 @@ class ScrapeTask(BaseModel):
     
     # Optional metadata
     radius_miles: Optional[float] = None # approximate radius covered
+    tile_id: Optional[str] = None # For Grid Mode: ID of the 0.1 deg tile
     force_refresh: bool = False
     ttl_days: int = 30
     
