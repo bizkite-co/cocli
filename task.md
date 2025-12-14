@@ -34,6 +34,11 @@ Implement a distributed "Smart Worker" architecture where lightweight scraping w
         *   Option A (MVP): Write results to S3 (via `cocli sync` logic or direct upload).
         *   Option B: Push `PlaceID` to `EnrichmentQueue` (if enrichment is needed).
 
+### Phase 4: Grid Planning (Decidegree System)
+1.  **Concept:** Move from infinite search to a finite, pre-calculated grid of 0.1-degree tiles ("Decidegrees").
+2.  **Generator:** Create `cocli/planning/generate_grid.py` to produce standardized KML/JSON scrape plans.
+3.  **Integration:** Update `cocli campaign` commands to generate these grids based on target locations (cities) and queue tasks per tile.
+
 ## Todo
 - [x] **Infra:** Revert Proxy changes in CDK and add `ScrapeTasksQueue`.
 - [x] **Code:** Implement `ScrapeTask` model (Pydantic).
@@ -41,4 +46,6 @@ Implement a distributed "Smart Worker" architecture where lightweight scraping w
 - [x] **Code:** Implement `worker scrape` command (Consumer).
 - [x] **Verify:** Test the full flow locally (Producer -> Local Queue -> Consumer).
 - [x] **Makefile:** Add rules for queuing and running the worker in the background.
-- [ ] **Run Worker in Background:** Use `make run-worker-scrape-bg` to avoid interactive mode.
+- [x] **Deploy RPi Worker:** Successfully deployed and debugged worker on Raspberry Pi (headless, creds).
+- [x] **Grid Generator (Prototype):** Created `generate_grid.py` for 0.1-degree global grid.
+- [ ] **Campaign Integration:** Update campaign scraper to generate Decidegree Grid KMLs based on target locations.

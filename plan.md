@@ -20,11 +20,17 @@ This document outlines the roadmap for transitioning `cocli` from a purely local
     *   [x] Implemented `cocli campaign queue-scrapes` command (Producer) to push tasks to `ScrapeTasksQueue`.
     *   [x] Implemented `cocli worker scrape` command (Consumer) to pull tasks, execute Playwright, and push results.
     *   [x] Created Makefile rules for `queue-scrape-tasks` and `run-worker-scrape-bg`.
+    *   [x] **Deploy RPi Worker:** Successfully deployed headless worker on Raspberry Pi with secure credential transfer.
     *   [ ] **Containerize Scraper:** Package Playwright scraper into a Docker image (for Fargate, or other cloud deployments).
     *   [ ] Adapt scraper to read configuration from S3/Environment variables.
     *   [ ] **Proxy Integration:** Implement residential proxies to bypass Google blocking in data centers.
 
-2.  **Orchestration:**
+2.  **Decidegree Grid Planning (New):**
+    *   [x] **Prototype Generator:** Created `generate_grid.py` to produce 0.1-degree aligned global grids.
+    *   [ ] **Campaign Integration:** Update campaign scraper to use these grids instead of dynamic spiral search.
+    *   [ ] **KML Visualization:** Generate "Target Grids" KMLs for all campaign locations to visualize coverage.
+
+3.  **Orchestration:**
     *   [ ] Create AWS Step Functions state machine to coordinate Scrape -> Queue -> Enrich workflow.
     *   [ ] Schedule runs via EventBridge (Cron).
 
