@@ -53,7 +53,7 @@ RUN uv pip install --system -e .
 
 # Install Playwright browsers (will install into the uv-managed environment)
 # Playwright needs to be installed after application dependencies if it's a direct dependency
-RUN playwright install --with-deps
+# Moved to run_worker.sh to ensure execution context is correct.
 
 # Create the run_worker.sh script directly in the Dockerfile
 # This ensures it's always correctly configured within the container
@@ -64,6 +64,7 @@ RUN echo '#!/bin/bash' > docker/rpi-worker/run_worker.sh && \
     echo 'export COCLI_SCRAPE_TASKS_QUEUE_URL="https://sqs.us-east-1.amazonaws.com/193481341784/CdkScraperDeploymentStack-ScrapeTasksQueue9836DB1F-TfprnaM0R5gs"' >> docker/rpi-worker/run_worker.sh && \
     echo 'export COCLI_ENRICHMENT_QUEUE_URL="https://sqs.us-east-1.amazonaws.com/193481341784/CdkScraperDeploymentStack-EnrichmentQueue4D4E619F-srLGUESiUDYU"' >> docker/rpi-worker/run_worker.sh && \
     echo 'export AWS_PROFILE="turboship-support"' >> docker/rpi-worker/run_worker.sh && \
+    echo 'playwright install --with-deps' >> docker/rpi-worker/run_worker.sh && \
     echo 'uv run cocli worker scrape --headed' >> docker/rpi-worker/run_worker.sh && \
     chmod +x docker/rpi-worker/run_worker.sh
 
