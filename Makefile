@@ -259,6 +259,19 @@ gc-campaigns: ## Commit and push all changes to campaigns and indexes
 
 gc-companies: ## Commit and push all changes to companies and people
 	cd cocli_data && git add companies people && git commit -m "Update companies and people" && git push;; cd ..
+.PHONY: deploy-creds-rpi
+deploy-creds-rpi: ## Securely deploy AWS credentials to the Raspberry Pi
+	@echo "Deploying AWS credentials to $(RPI_USER)@$(RPI_HOST)..."
+	ssh $(RPI_USER)@$(RPI_HOST) "rm -rf ~/.aws && mkdir ~/.aws"
+	scp ~/.aws/credentials ~/.aws/config $(RPI_USER)@$(RPI_HOST):~/.aws/
+
+# ==============================================================================
+# Planning & Analysis
+# ==============================================================================
+.PHONY: generate-grid-kml
+generate-grid-kml: install ## Generate a KML file of the scrape grid based on defined parameters
+	uv run python cocli/planning/generate_grid.py
+
 # ==============================================================================
 # Raspberry Pi Worker Management
 # ==============================================================================
