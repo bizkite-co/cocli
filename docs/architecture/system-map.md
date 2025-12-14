@@ -20,6 +20,7 @@ These terms define *where* the code is running.
 | :--- | :--- |
 | **`local-code`** | The `cocli` Python application running on the user's local machine (Laptop/Workstation). |
 | **`local-browser`** | The Playwright browser instance running on the user's local machine (Headless or Headed). |
+| **`rpi-docker`** | The Scraper Worker running as a Docker container on a Raspberry Pi (`cocli-worker-rpi`). |
 | **`aws-docker`** | The Enrichment Service running as a Docker container in AWS Fargate. |
 | **`aws-lambda`** | (Future) Serverless functions for discrete tasks. |
 
@@ -30,14 +31,15 @@ These terms define the format and location of data persistence.
 | :--- | :--- |
 | **`local-csv`** | Flat files for tabular data. <br> *Ex: `scraped_data/<campaign>/prospects/prospects.csv`* |
 | **`local-directory-yaml`** | Structured data where each record is a folder containing YAML frontmatter files. <br> *Ex: `companies/<slug>/_index.md`* |
-| **`local-directory-json`** | Queue system storage where each message is a discrete JSON file in a status directory. <br> *Ex: `queues/<queue_name>/pending/*.json`* |
+| **`local-directory-json`** | Local queue system storage (legacy/dev). <br> *Ex: `queues/<queue_name>/pending/*.json`* |
+| **`sqs-queue`** | AWS Simple Queue Service for distributed task management. <br> *Ex: `ScrapeTasksQueue`, `EnrichmentQueue`* |
 | **`remote-object-storage`** | (Future) S3 Buckets for backup or shared state. |
 
 ---
 
 ## Data Flow Diagrams
 
-### 1. Standard Prospecting Flow (Current `achieve-goal`)
+### 1. Standard Prospecting Flow (Legacy Local `achieve-goal`)
 This flow combines `gm-list` and `gm-detail` into a single synchronous loop, then queues for `web-enrich`.
 
 ```mermaid
@@ -62,7 +64,39 @@ sequenceDiagram
     end
 ```
 
-### 2. Legacy Migration Flow (`ingest-legacy`)
+### 2. Distributed Scraping Flow (Current Architecture)
+This flow decouples the scraping and enrichment into distributed components using AWS SQS.
+
+```mermaid
+sequenceDiagram
+    participant Producer as local-code (cocli campaign queue-scrapes)
+    participant ScrapeQueue as sqs-queue (ScrapeTasksQueue)
+    participant RPiWorker as rpi-docker (cocli worker scrape)
+    participant EnrichmentQueue as sqs-queue (EnrichmentQueue)
+    participant Fargate as aws-docker (EnrichmentService)
+
+    Producer->>ScrapeQueue: Push ScrapeTask (Search & Location)
+    
+    loop Always On
+        RPiWorker->>ScrapeQueue: Poll Task
+        activate RPiWorker
+        RPiWorker->>RPiWorker: Browse Google Maps (gm-list + gm-detail)
+        RPiWorker->>EnrichmentQueue: Push Result (Domain, Name, etc.)
+        RPiWorker->>ScrapeQueue: Ack Task
+        deactivate RPiWorker
+    end
+
+    loop Always On (Cloud)
+        Fargate->>EnrichmentQueue: Poll Message
+        activate Fargate
+        Fargate->>Fargate: Scrape Website (web-enrich)
+        Fargate->>Fargate: Verify & Normalize Data
+        Fargate->>EnrichmentQueue: Ack Message (or save to DB)
+        deactivate Fargate
+    end
+```
+
+### 3. Legacy Migration Flow (`ingest-legacy`)
 This flow migrates existing `local-csv` data into the `local-directory-json` queue to backfill the enrichment process.
 
 ```mermaid
@@ -79,7 +113,7 @@ sequenceDiagram
     end
 ```
 
-### 3. Hybrid Enrichment Flow (`enrich-from-queue`)
+### 4. Hybrid Enrichment Flow (`enrich-from-queue`)
 This flow consumes tasks from the local queue, processes them via the remote Fargate service, and saves results locally.
 
 ```mermaid

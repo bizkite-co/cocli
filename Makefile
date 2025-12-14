@@ -259,3 +259,35 @@ gc-campaigns: ## Commit and push all changes to campaigns and indexes
 
 gc-companies: ## Commit and push all changes to companies and people
 	cd cocli_data && git add companies people && git commit -m "Update companies and people" && git push;; cd ..
+# ==============================================================================
+# Raspberry Pi Worker Management
+# ==============================================================================
+RPI_HOST ?= 10.0.0.12
+RPI_USER ?= mstouffer
+RPI_DIR ?= ~/repos/cocli
+
+.PHONY: ssh-rpi
+ssh-rpi: ## SSH into the Raspberry Pi worker
+	ssh $(RPI_USER)@$(RPI_HOST)
+
+.PHONY: rebuild-rpi-worker
+rebuild-rpi-worker: ## Pull latest code and rebuild Docker image on Raspberry Pi
+	ssh $(RPI_USER)@$(RPI_HOST) "cd $(RPI_DIR) && git pull && docker build -t cocli-worker-rpi -f docker/rpi-worker/Dockerfile ."
+
+.PHONY: start-rpi-worker
+start-rpi-worker: ## Start the Docker worker on Raspberry Pi
+	ssh $(RPI_USER)@$(RPI_HOST) "docker run -d --restart unless-stopped --name cocli-scraper-worker -v ~/.aws:/root/.aws:ro cocli-worker-rpi:latest"
+
+.PHONY: stop-rpi-worker
+stop-rpi-worker: ## Stop and remove the Docker worker on Raspberry Pi
+	-ssh $(RPI_USER)@$(RPI_HOST) "docker stop cocli-scraper-worker && docker rm cocli-scraper-worker"
+
+.PHONY: restart-rpi-worker
+restart-rpi-worker: stop-rpi-worker start-rpi-worker ## Restart the Raspberry Pi worker
+
+.PHONY: log-rpi-worker
+log-rpi-worker: ## Tail logs from the Raspberry Pi worker
+	ssh $(RPI_USER)@$(RPI_HOST) "docker logs -f cocli-scraper-worker"
+
+.PHONY: deploy-rpi
+deploy-rpi: rebuild-rpi-worker restart-rpi-worker ## Full deployment: rebuild and restart worker on Pi
