@@ -40,6 +40,7 @@ from ..core.exceptions import NavigationError
 from ..core.prospects_csv_manager import ProspectsIndexManager
 
 from typing_extensions import Annotated
+from cocli.planning.generate_grid import generate_global_grid, export_to_kml, DEFAULT_GRID_STEP_DEG
 
 from . import prospects
 
@@ -1052,6 +1053,112 @@ def visualize_coverage(
             console.print(f"[bold red]Error writing to file {output_file}: {e}[/bold red]")
     
     console.print(f"[bold green]Coverage visualization complete. Files saved in: {export_dir}[/bold green]")
+
+@app.command(name="generate-grid")
+def generate_grid(
+    campaign_name: Optional[str] = typer.Argument(None, help="Name of the campaign. If not provided, uses the current campaign context."),
+    proximity_miles: float = typer.Option(10.0, "--proximity", help="Radius in miles to generate grid around each target location."),
+) -> None:
+    """
+    Generates a 0.1-degree aligned scrape grid for each target location in the campaign.
+    Exports KML and JSON plans to the campaign's exports/grids directory.
+    """
+    if campaign_name is None:
+        campaign_name = get_campaign()
+        if campaign_name is None:
+            logger.error("Error: No campaign name provided and no campaign context is set.")
+            raise typer.Exit(code=1)
+
+    console.print(f"[bold]Generating planning grids for campaign: '{campaign_name}' (Radius: {proximity_miles} mi)[/bold]")
+
+    campaign_dir = get_campaign_dir(campaign_name)
+    if not campaign_dir:
+        console.print(f"[bold red]Campaign '{campaign_name}' not found.[/bold red]")
+        raise typer.Exit(code=1)
+
+    # Load Config
+    config_path = campaign_dir / "config.toml"
+    if not config_path.exists():
+        console.print(f"[bold red]Configuration file not found for campaign '{campaign_name}'.[/bold red]")
+        raise typer.Exit(code=1)
+    
+    with open(config_path, "r") as f:
+        config = toml.load(f)
+    
+    prospecting_config = config.get("prospecting", {})
+    target_locations_csv = prospecting_config.get("target-locations-csv")
+
+    # Load Locations
+    target_locations: List[Dict[str, Any]] = []
+    if target_locations_csv:
+        csv_path = Path(target_locations_csv)
+        if not csv_path.is_absolute():
+            csv_path = campaign_dir / csv_path
+        
+        if csv_path.exists():
+            try:
+                with open(csv_path, 'r', encoding='utf-8') as f:
+                    reader = csv.DictReader(f)
+                    for row in reader:
+                        if "name" in row and "lat" in row and "lon" in row:
+                            target_locations.append({
+                                "name": str(row["name"]),
+                                "lat": float(row["lat"]),
+                                "lon": float(row["lon"])
+                            })
+                console.print(f"[green]Loaded {len(target_locations)} target locations from {csv_path.name}[/green]")
+            except Exception as e:
+                logger.error(f"Error reading target locations CSV: {e}")
+                raise typer.Exit(code=1)
+        else:
+            logger.warning(f"Target locations CSV configured but not found at {csv_path}")
+
+    if not target_locations:
+        console.print("[yellow]No valid target locations found (check target-locations-csv). cannot generate grid without explicit lat/lon.[/yellow]")
+        return
+
+    # Generate Grids
+    export_dir = campaign_dir / "exports"
+    export_dir.mkdir(parents=True, exist_ok=True)
+    
+    all_tiles: Dict[str, Any] = {} # Use dict for deduplication by ID
+
+    for loc in target_locations:
+        loc_name = str(loc["name"])
+        lat = float(loc["lat"])
+        lon = float(loc["lon"])
+
+        console.print(f"[dim]Generating grid for {loc_name} ({lat}, {lon})...[/dim]")
+        
+        # Generate 0.1 degree grid
+        tiles = generate_global_grid(lat, lon, proximity_miles, step_deg=DEFAULT_GRID_STEP_DEG)
+        
+        # Add to collection (deduplicating by ID)
+        for tile in tiles:
+            if tile["id"] not in all_tiles:
+                all_tiles[tile["id"]] = tile
+
+    # Convert back to list
+    unique_tiles = list(all_tiles.values())
+
+    if not unique_tiles:
+        console.print("[yellow]No tiles generated.[/yellow]")
+        return
+
+    # Save Outputs
+    json_path = export_dir / "target-areas.json"
+    kml_path = export_dir / "target-areas.kml"
+    
+    with open(json_path, "w") as f:
+        import json
+        json.dump(unique_tiles, f, indent=2)
+        
+    export_to_kml(unique_tiles, str(kml_path), f"{campaign_name} - All Targets")
+    
+    console.print("[bold green]Grid generation complete.[/bold green]")
+    console.print(f"  Tiles: {len(unique_tiles)}")
+    console.print(f"  JSON: {json_path.relative_to(campaign_dir)}")
+    console.print(f"  KML:  {kml_path.relative_to(campaign_dir)}")
 
 @app.command(name="queue-scrapes")
 def queue_scrapes(
