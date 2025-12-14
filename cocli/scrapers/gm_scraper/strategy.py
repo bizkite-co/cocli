@@ -1,5 +1,8 @@
+import logging
 from typing import Iterator, Tuple, List, Dict, Any
 from .utils import calculate_new_coords
+
+logger = logging.getLogger(__name__)
 
 class SpiralStrategy:
     def __init__(self, start_lat: float, start_lon: float, step_miles: float):
@@ -39,10 +42,21 @@ class GridStrategy:
         self.tiles = tiles
 
     def __iter__(self) -> Iterator[Tuple[float, float, str]]:
+        logger.info(f"GridStrategy starting with {len(self.tiles)} tiles.")
         for tile in self.tiles:
-            center = tile.get("center", {})
-            lat = center.get("lat")
-            lon = center.get("lon")
+            # Check for direct keys first (new format)
+            lat = tile.get("center_lat")
+            lon = tile.get("center_lon")
+            
+            # Fallback to nested 'center' dict if present (robustness)
+            if lat is None or lon is None:
+                center = tile.get("center", {})
+                lat = center.get("lat")
+                lon = center.get("lon")
+
             tile_id = tile.get("id", "")
             if lat is not None and lon is not None:
+                logger.debug(f"Yielding tile {tile_id}: {lat}, {lon}")
                 yield float(lat), float(lon), str(tile_id)
+            else:
+                logger.warning(f"Skipping invalid tile: {tile}")
