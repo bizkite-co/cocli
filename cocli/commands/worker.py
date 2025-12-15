@@ -191,14 +191,16 @@ async def run_details_worker(headless: bool, debug: bool) -> None:
                         reader = csv.DictReader(f)
                         existing_data = next(reader, None)
                         if existing_data:
-                            existing_prospect = GoogleMapsProspect(**existing_data)
+                            # Use model_validate to handle type conversions from strings
+                            existing_prospect = GoogleMapsProspect.model_validate(existing_data) 
                 
                 final_prospect_data = detailed_prospect_data
                 if existing_prospect:
                     # Merge existing with new details, new details take precedence
                     merged_data = existing_prospect.model_dump()
-                    merged_data.update(detailed_prospect_data.model_dump())
-                    final_prospect_data = GoogleMapsProspect(**merged_data)
+                    # Use exclude_unset=True to ensure only explicitly set fields in detailed_prospect_data update merged_data
+                    merged_data.update(detailed_prospect_data.model_dump(exclude_unset=True)) 
+                    final_prospect_data = GoogleMapsProspect.model_validate(merged_data)
                 
                 # Update 'updated_at'
                 final_prospect_data.updated_at = datetime.now()

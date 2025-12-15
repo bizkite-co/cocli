@@ -1,7 +1,7 @@
 from bs4 import BeautifulSoup
 from typing import Dict, Any
 
-def parse_gmb_page(html: str) -> Dict[str, Any]:
+def parse_gmb_page(html: str, debug: bool = False) -> Dict[str, Any]:
     """
     Parses the HTML of a Google My Business page to extract additional information.
     """
