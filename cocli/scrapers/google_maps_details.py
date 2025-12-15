@@ -2,7 +2,7 @@ import logging
 from typing import Optional
 from playwright.async_api import Page
 
-from ...models.google_maps_prospect import GoogleMapsProspect
+from ..models.google_maps_prospect import GoogleMapsProspect
 from .google_maps_gmb_parser import parse_gmb_page
 
 logger = logging.getLogger(__name__)
