@@ -1,5 +1,4 @@
 import os
-import csv
 from pathlib import Path
 from rich.console import Console
 from cocli.core.queue.factory import get_queue_manager
@@ -53,7 +52,8 @@ def backfill():
             
             task = GmItemTask(
                 place_id=place_id,
-                campaign_name=CAMPAIGN
+                campaign_name=CAMPAIGN,
+                ack_token=None
             )
             
             queue_manager.push(task)

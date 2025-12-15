@@ -2,14 +2,19 @@ import typer
 import asyncio
 import logging
 import boto3
+import csv # Added for details worker to read CSV
+from datetime import datetime # Added for updated_at
 from rich.console import Console
 from playwright.async_api import async_playwright
 
 from ..core.queue.factory import get_queue_manager
 from ..scrapers.google_maps import scrape_google_maps
+from ..scrapers.google_maps_details import scrape_google_maps_details # New import
 from ..models.scrape_task import GmItemTask
+from ..models.google_maps_prospect import GoogleMapsProspect # New import for merging
+from ..models.queue import QueueMessage # Re-added for EnrichmentQueue
 from ..core.prospects_csv_manager import ProspectsIndexManager
-from ..core.text_utils import slugify
+from ..core.text_utils import slugify # Added for details worker
 
 logger = logging.getLogger(__name__)
 console = Console()
@@ -122,6 +127,114 @@ async def run_worker(headless: bool, debug: bool) -> None:
                 scrape_queue.nack(task)
                 # Maybe restart browser if it crashed?
 
+async def run_details_worker(headless: bool, debug: bool) -> None:
+    try:
+        gm_list_item_queue = get_queue_manager("gm_list_item", use_cloud=True, queue_type="gm_list_item")
+        enrichment_queue = get_queue_manager("enrichment", use_cloud=True, queue_type="enrichment")
+        s3_client = boto3.client("s3")
+    except Exception as e:
+        console.print(f"[bold red]Configuration Error: {e}[/bold red]")
+        return
+
+    console.print("[bold blue]Details Worker started. Polling for detail tasks...[/bold blue]")
+
+    async with async_playwright() as p:
+        browser = await p.chromium.launch(
+            headless=headless,
+            args=[
+                '--no-sandbox',
+                '--disable-setuid-sandbox',
+                '--disable-dev-shm-usage',
+                '--disable-accelerated-2d-canvas',
+                '--no-first-run',
+                '--no-zygote',
+                '--disable-gpu'
+            ]
+        )
+        
+        while True:
+            tasks = gm_list_item_queue.poll(batch_size=1)
+            
+            if not tasks:
+                await asyncio.sleep(5)
+                continue
+            
+            task = tasks[0] # batch_size=1
+            console.print(f"[cyan]Detail Task:[/cyan] {task.place_id}")
+            
+            try:
+                csv_manager = ProspectsIndexManager(task.campaign_name)
+                
+                # 1. Scrape Details
+                # Use new playwright page to not interfere with other potential browser operations
+                page = await browser.new_page()
+                try:
+                    detailed_prospect_data = await scrape_google_maps_details(
+                        page=page,
+                        place_id=task.place_id,
+                        campaign_name=task.campaign_name,
+                        debug=debug
+                    )
+                finally:
+                    await page.close()
+                
+                if not detailed_prospect_data:
+                    console.print(f"[yellow]No details scraped for {task.place_id}. Nacking task.[/yellow]")
+                    gm_list_item_queue.nack(task)
+                    continue
+
+                # 2. Load existing prospect data (if any) and merge
+                existing_prospect = None
+                file_path = csv_manager.get_file_path(task.place_id) # This will get it from inbox/ or root/
+                if file_path.exists():
+                    with open(file_path, 'r', encoding='utf-8') as f:
+                        reader = csv.DictReader(f)
+                        existing_data = next(reader, None)
+                        if existing_data:
+                            existing_prospect = GoogleMapsProspect(**existing_data)
+                
+                final_prospect_data = detailed_prospect_data
+                if existing_prospect:
+                    # Merge existing with new details, new details take precedence
+                    merged_data = existing_prospect.model_dump()
+                    merged_data.update(detailed_prospect_data.model_dump())
+                    final_prospect_data = GoogleMapsProspect(**merged_data)
+                
+                # Update 'updated_at'
+                final_prospect_data.updated_at = datetime.now()
+
+                # 3. Save updated prospect to Local Index
+                # Note: ProspectsIndexManager's append_prospect now handles root/inbox.
+                # When we update a prospect that was in inbox, it will update it in inbox.
+                # If we want to move it to root here, we need a separate manager method.
+                # For now, let's just save. The local sync will handle the S3 move.
+                if csv_manager.append_prospect(final_prospect_data):
+                    # 4. Upload to S3 (Immediate Sync)
+                    s3_key = f"campaigns/{task.campaign_name}/indexes/google_maps_prospects/{file_path.name}"
+                    try:
+                        s3_client.upload_file(str(file_path), S3_BUCKET, s3_key)
+                        console.print(f"[green]Updated and uploaded {file_path.name} to S3.[/green]")
+                    except Exception as e:
+                        console.print(f"[red]S3 Upload Error:[/red] {e}")
+
+                # 5. Push to Enrichment Queue
+                if final_prospect_data.Domain and final_prospect_data.Name:
+                    msg = QueueMessage(
+                        domain=final_prospect_data.Domain,
+                        company_slug=slugify(final_prospect_data.Name),
+                        campaign_name=task.campaign_name,
+                        force_refresh=task.force_refresh,
+                        ack_token=None
+                    )
+                    enrichment_queue.push(msg)
+                
+                console.print(f"[green]Detailing Complete for {task.place_id}.[/green]")
+                gm_list_item_queue.ack(task)
+                
+            except Exception as e:
+                console.print(f"[bold red]Detail Task Failed for {task.place_id}: {e}[/bold red]")
+                gm_list_item_queue.nack(task)
+
 @app.command()
 def scrape(
     headed: bool = typer.Option(False, "--headed", help="Run browser in headed mode."),
@@ -131,6 +244,16 @@ def scrape(
     Starts a worker node that polls for scrape tasks and executes them.
     """
     asyncio.run(run_worker(not headed, debug))
+
+@app.command()
+def details(
+    headed: bool = typer.Option(False, "--headed", help="Run browser in headed mode."),
+    debug: bool = typer.Option(False, "--debug", help="Enable debug logging.")
+) -> None:
+    """
+    Starts a worker node that polls for details tasks (Place IDs) and scrapes them.
+    """
+    asyncio.run(run_details_worker(not headed, debug))
 
 if __name__ == "__main__":
     app()
