@@ -1,8 +1,8 @@
 #!/bin/bash
 set -e
 
-CLUSTER="default"
-SERVICE="cocli-enrichment-task-service-biq83pqs"
+CLUSTER="ScraperCluster" # Corrected cluster name
+SERVICE="EnrichmentService" # Corrected service name
 REGION="us-east-1"
 PROFILE="turboship-support"
 
