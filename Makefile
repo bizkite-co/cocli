@@ -172,13 +172,9 @@ run-worker-scrape-bg: ## Run the cocli worker scrape command in the background
 	@nohup ./run_worker.sh > worker_scrape.log 2>&1 & \
 	echo "cocli worker scrape started in the background. Output redirected to worker_scrape.log"
 
-.PHONY: report-status
-report-status: ## Report the status of the SQS queues (ScrapeTasksQueue, EnrichmentQueue)
-	@echo "Checking SQS Queue Status..."
-	@echo "Scrape Tasks Queue:"
-	@aws sqs get-queue-attributes --queue-url "https://sqs.us-east-1.amazonaws.com/193481341784/CdkScraperDeploymentStack-ScrapeTasksQueue9836DB1F-TfprnaM0R5gs" --attribute-names ApproximateNumberOfMessages --profile turboship-support --query 'Attributes.ApproximateNumberOfMessages' --output text
-	@echo "Enrichment Queue:"
-	@aws sqs get-queue-attributes --queue-url "https://sqs.us-east-1.amazonaws.com/193481341784/CdkScraperDeploymentStack-EnrichmentQueue4D4E619F-srLGUESiUDYU" --attribute-names ApproximateNumberOfMessages --profile turboship-support --query 'Attributes.ApproximateNumberOfMessages' --output text
+.PHONY: watch-report
+watch-report: ## Watch the campaign report every 5 seconds
+	watch -n 5 -c "make report CAMPAIGN=$(CAMPAIGN)"
 
 .PHONY: docker-build
 docker-build: ## Build the docker image
@@ -320,7 +316,7 @@ log-rpi-details-worker: ## Tail logs from the Raspberry Pi Details Scraper worke
 
 .PHONY: log-rpi-all
 log-rpi-all: ## Tail logs from all Raspberry Pi cocli worker containers
-	ssh $(RPI_USER)@$(RPI_HOST) "docker ps --filter name=cocli- --format '{{.Names}}' | xargs -I {} docker logs -f {}"
+	ssh $(RPI_USER)@$(RPI_HOST) "docker ps --filter name=cocli- --format '{{.Names}}' | xargs -I {} docker logs -n 100 {}"
 
 .PHONY: deploy-rpi
 deploy-rpi: rebuild-rpi-worker restart-rpi-worker ## Full deployment: rebuild and restart worker on Pi

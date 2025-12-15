@@ -1,6 +1,7 @@
 from playwright.async_api import async_playwright
 from ..core.importing import import_prospect
 import typer
+import os # Added os import
 import toml
 import csv
 import asyncio
@@ -386,49 +387,54 @@ def upload_kml_coverage_for_turboship(
     Generates a KML file for the 'turboship' campaign and directly places it
     into the turboship project's kml-exports directory for deployment via its CDK stack.
     """
-    logging.getLogger("cocli").setLevel(logging.WARNING) # Set logging level for cocli modules
-    console.print(f"[bold]Generating and uploading KML coverage for campaign: '{campaign_name}'[/bold]")
-
-    # 1. Resolve the absolute path to the turboship kml-exports directory
-    resolved_exports_dir = (Path.cwd() / turboship_kml_exports_path).resolve()
-    resolved_exports_dir.mkdir(parents=True, exist_ok=True) # Ensure directory exists
-
-    # 2. Render the KML into a temporary file first (or directly to output_dir)
-    # Using a temporary name to avoid partial file uploads/deployment issues
-    temp_kml_path = resolved_exports_dir / f"temp_{kml_filename}"
+    original_logging_level = logging.root.level
+    logging.disable(logging.CRITICAL) # Temporarily disable all logging below CRITICAL
     
-    # We are calling the render function from renderers/kml.py
-    # This will create a KML file within campaign_dir/f"{campaign_name}_customers.kml" by default
-    # Or, with the new output_dir parameter, we can direct it.
-    
-    # Let's adjust render_kml_for_campaign to create a specific filename if needed
-    # For now, it creates f"{campaign_name}_customers.kml".
-    # We will copy that to the desired filename.
+    try:
+        console.print(f"[bold]Generating and uploading KML coverage for campaign: '{campaign_name}'[/bold]")
 
-    # Ensure the campaign directory for cocli data is correct for render_kml_for_campaign
-    campaign_data_dir = get_campaign_dir(campaign_name)
-    if not campaign_data_dir:
-        console.print(f"[bold red]Campaign '{campaign_name}' not found in cocli data.[/bold red]")
-        raise typer.Exit(code=1)
+        # 1. Resolve the absolute path to the turboship kml-exports directory
+        resolved_exports_dir = (Path.cwd() / turboship_kml_exports_path).resolve()
+        resolved_exports_dir.mkdir(parents=True, exist_ok=True) # Ensure directory exists
 
-    # Render KML into the temporary directory
-    render_kml_for_campaign(campaign_name, output_dir=resolved_exports_dir)
-    
-    # The render function creates a KML named f"{campaign_name}_customers.kml".
-    # It must be renamed to match the kml_filename argument for CloudFront to find it.
-    generated_kml_path = resolved_exports_dir / f"{campaign_name}_customers.kml"
-    
-    # Rename/move to the final desired filename
-    final_kml_path = resolved_exports_dir / kml_filename
-    if generated_kml_path.exists():
-        shutil.move(str(generated_kml_path), str(final_kml_path))
-        console.print(f"[green]KML file moved to {final_kml_path.relative_to(Path.cwd())}[/green]")
-    else:
-        console.print(f"[bold red]Error: KML file not found after rendering at {generated_kml_path}.[/bold red]")
-        raise typer.Exit(code=1)
+        # 2. Render the KML into a temporary file first (or directly to output_dir)
+        # Using a temporary name to avoid partial file uploads/deployment issues
+        temp_kml_path = resolved_exports_dir / f"temp_{kml_filename}"
+        
+        # We are calling the render function from renderers/kml.py
+        # This will create a KML file within campaign_dir/f"{campaign_name}_customers.kml" by default
+        # Or, with the new output_dir parameter, we can direct it.
+        
+        # Let's adjust render_kml_for_campaign to create a specific filename if needed
+        # For now, it creates f"{campaign_name}_customers.kml".
+        # We will copy that to the desired filename.
 
-    console.print("[bold green]KML coverage generation and placement complete.[/bold green]")
-    console.print("[yellow]Remember to deploy your turboship CDK to publish the updated KML to CloudFront.[/yellow]")
+        # Ensure the campaign directory for cocli data is correct for render_kml_for_campaign
+        campaign_data_dir = get_campaign_dir(campaign_name)
+        if not campaign_data_dir:
+            console.print(f"[bold red]Campaign '{campaign_name}' not found in cocli data.[/bold red]")
+            raise typer.Exit(code=1)
+
+        # Render KML into the temporary directory
+        render_kml_for_campaign(campaign_name, output_dir=resolved_exports_dir)
+        
+        # The render function creates a KML named f"{campaign_name}_customers.kml".
+        # It must be renamed to match the kml_filename argument for CloudFront to find it.
+        generated_kml_path = resolved_exports_dir / f"{campaign_name}_customers.kml"
+        
+        # Rename/move to the final desired filename
+        final_kml_path = resolved_exports_dir / kml_filename
+        if generated_kml_path.exists():
+            shutil.move(str(generated_kml_path), str(final_kml_path))
+            console.print(f"[green]KML file moved to {final_kml_path.relative_to(Path.cwd())}[/green]")
+        else:
+            console.print(f"[bold red]Error: KML file not found after rendering at {generated_kml_path}.[/bold red]")
+            raise typer.Exit(code=1)
+
+        console.print("[bold green]KML coverage generation and placement complete.[/bold green]")
+        console.print("[yellow]Remember to deploy your turboship CDK to publish the updated KML to CloudFront.[/yellow]")
+    finally:
+        logging.disable(logging.NOTSET) # Re-enable logging
 
 
 async def pipeline(
@@ -895,7 +901,9 @@ def achieve_goal(
             logger.error("Error: No campaign name provided and no campaign context is set.")
             raise typer.Exit(code=1)
 
-    ensure_enrichment_service_ready(console)
+    # Conditionally call ensure_enrichment_service_ready
+    if not os.getenv("COCLI_RUNNING_IN_FARGATE"):
+        ensure_enrichment_service_ready(console)
 
     # Load settings for proxy resolution
     settings = load_scraper_settings()

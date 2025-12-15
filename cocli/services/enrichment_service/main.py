@@ -13,6 +13,7 @@ from cocli.models.company import Company
 from cocli.models.campaign import Campaign 
 from cocli.core.config import get_campaign_dir
 from cocli.core.exceptions import EnrichmentError, NavigationError
+from cocli.core.text_utils import slugify
 import socket
 import httpx
 
@@ -84,20 +85,25 @@ async def enrich_domain(request: EnrichmentRequest) -> Website:
             flat_config = config_data.pop('campaign')
             flat_config.update(config_data)
             campaign = Campaign.model_validate(flat_config)
-        elif request.aws_profile_name and request.company_slug:
+        elif request.campaign_name:
             # Fallback to constructing ephemeral campaign from request params
+            # This handles the Fargate case where config.toml is missing and we use IAM roles (no profile)
             logger.info("Campaign config not found locally. Using provided parameters for stateless operation.")
+            
+            # Use provided company_slug or default to campaign_name (as a reasonable fallback for the folder name)
+            company_slug = request.company_slug or slugify(request.campaign_name)
+            
             # Minimal campaign object for S3 access
             campaign_data = {
                 "campaign": {
                     "name": request.campaign_name,
                     "tag": "placeholder",
                     "domain": "placeholder.com",
-                    "company-slug": request.company_slug,  # Use alias for dictionary
+                    "company-slug": company_slug,  # Use alias for dictionary
                     "workflows": [],
                 },
                 "aws": {
-                    "profile": request.aws_profile_name
+                    "profile": request.aws_profile_name or "default" # Dummy profile if missing, S3CompanyManager handles the rest
                 },
                 "import": {  # Use alias for dictionary
                     "format": "csv"
@@ -119,7 +125,11 @@ async def enrich_domain(request: EnrichmentRequest) -> Website:
             # Use ** for dictionary unpacking to ensure mypy knows it's a dict
             final_config_dict = {**flat_config, **campaign_data}
             
-            campaign = Campaign.model_validate(final_config_dict)
+            try:
+                campaign = Campaign.model_validate(final_config_dict)
+            except Exception as e:
+                logger.error(f"Failed to create ephemeral campaign object: {e}")
+                raise HTTPException(status_code=500, detail=f"Failed to initialize campaign context: {e}")
         else:
             logger.error(f"Campaign '{request.campaign_name}' config not found and insufficient parameters provided.")
             raise HTTPException(status_code=404, detail=f"Campaign '{request.campaign_name}' configuration not found and params missing.")

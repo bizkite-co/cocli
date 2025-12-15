@@ -105,7 +105,7 @@ class Company(BaseModel):
     @classmethod
     def from_directory(cls, company_dir: Path) -> Optional["Company"]:
         logger = logging.getLogger(__name__)
-        logger.debug(f"Starting from_directory for {company_dir}")
+        # logger.debug(f"Starting from_directory for {company_dir}")
         try:
             index_path = company_dir / "_index.md"
             tags_path = company_dir / "tags.lst"
@@ -114,9 +114,9 @@ class Company(BaseModel):
                 logger.warning(f"Skipping {company_dir.name}: _index.md not found.") # More explicit message
                 return None
 
-            logger.info(f"Start reading indexes: {index_path}")
+            # logger.info(f"Start reading indexes: {index_path}")
             content = index_path.read_text()
-            logger.info(f"Finished reading indexes: {index_path}")
+            # logger.info(f"Finished reading indexes: {index_path}")
             frontmatter_data: dict[str, Any] = {}
             markdown_content = ""
 

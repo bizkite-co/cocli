@@ -15,17 +15,18 @@ This document outlines the roadmap for transitioning `cocli` from a purely local
 
 **Goal:** Move the Google Maps scraper to the cloud for fully automated, scheduled data gathering, leveraging distributed local workers for scraping.
 
-1.  **Distributed Scrape Worker Architecture:**
+1.  **Distributed Scrape Worker Architecture (Done):**
     *   [x] Implemented `ScrapeTask` model (Pydantic).
     *   [x] Implemented `cocli campaign queue-scrapes` command (Producer) to push tasks to `ScrapeTasksQueue`.
     *   [x] Implemented `cocli worker scrape` command (Consumer) to pull tasks, execute Playwright, and push results.
+    *   [x] Implemented `cocli worker details` command (Consumer) for deep scraping.
     *   [x] Created Makefile rules for `queue-scrape-tasks` and `run-worker-scrape-bg`.
-    *   [x] **Deploy RPi Worker:** Successfully deployed headless worker on Raspberry Pi with secure credential transfer.
-    *   [ ] **Containerize Scraper:** Package Playwright scraper into a Docker image (for Fargate, or other cloud deployments).
-    *   [ ] Adapt scraper to read configuration from S3/Environment variables.
-    *   [ ] **Proxy Integration:** Implement residential proxies to bypass Google blocking in data centers.
+    *   [x] **Deploy RPi Worker:** Successfully deployed headless worker on Raspberry Pi.
+    *   [x] **Observability:** Enhanced Reporting to track active workers and in-flight queue messages.
+    *   [ ] **Containerize Scraper:** Package Playwright scraper into a Docker image (completed for RPi, need generic version).
+    *   [ ] **Proxy Integration:** Implement residential proxies (low priority with RPi mesh).
 
-2.  **Decidegree Grid Planning (New):**
+2.  **Decidegree Grid Planning (Next Focus):**
     *   [x] **Prototype Generator:** Created `generate_grid.py` to produce 0.1-degree aligned global grids.
     *   [ ] **Campaign Integration:** Update campaign scraper to use these grids instead of dynamic spiral search.
     *   [ ] **KML Visualization:** Generate "Target Grids" KMLs for all campaign locations to visualize coverage.
@@ -43,9 +44,9 @@ This document outlines the roadmap for transitioning `cocli` from a purely local
     *   [ ] Implement `DataSynchronizer` (`cocli sync`) for efficient bi-directional sync (now simpler with file index).
 
 2.  **Optimization:**
-    *   [ ] Use Fargate Spot for all compute.
+    *   [x] **Fargate Spot:** Enabled for Enrichment Service.
     *   [ ] Implement strict lifecycle policies for S3 data.
-    *   [ ] Add centralized logging and metrics (CloudWatch).
+    *   [ ] Add centralized logging and metrics (CloudWatch) for distributed workers.
 
 ```mermaid
 graph TD
@@ -56,8 +57,9 @@ graph TD
     B3 --> B4[Decouple with SQS];
 
     B4 --> C{Phase 2: Cloud Native Scraping};
-    C --> C1[Containerize GMaps Scraper];
-    C --> C2[Orchestrate with Step Functions];
+    C --> C1[Distributed Workers (RPi)];
+    C --> C2[Decidegree Grid Planning];
+    C --> C3[Orchestrate with Step Functions];
 
     C --> D{Phase 3: Optimization};
     D --> D1[Data Manager & Sync];

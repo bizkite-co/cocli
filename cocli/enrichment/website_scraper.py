@@ -44,8 +44,14 @@ class WebsiteScraper:
         
         # S3CompanyManager is for saving the actual website.md and _index.md files
         s3_company_manager: Optional[S3CompanyManager] = None
-        if campaign and campaign.aws and campaign.aws.profile:
-            s3_company_manager = S3CompanyManager(campaign=campaign)
+        # In Fargate, we might not have a profile, but we have IAM roles.
+        # We should try to init S3CompanyManager if we have a campaign context.
+        if campaign:
+            try:
+                s3_company_manager = S3CompanyManager(campaign=campaign)
+            except Exception as e:
+                logger.warning(f"Could not initialize S3CompanyManager: {e}")
+
 
         fresh_delta = timedelta(days=ttl_days)
 

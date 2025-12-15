@@ -1,6 +1,7 @@
 
 import typer
 import csv
+import os
 import logging
 from typing_extensions import Annotated
 from typing import Optional, Iterator
@@ -215,7 +216,8 @@ def enrich_prospects_command(
     console.print(f"Found {len(prospects)} prospects to enrich using {runner} runner.")
 
     async def main_docker() -> None:
-        ensure_enrichment_service_ready(console)
+        if not os.getenv("COCLI_RUNNING_IN_FARGATE"):
+            ensure_enrichment_service_ready(console)
         console.print(f"Enriching prospects for campaign: [bold]{campaign_name}[/bold]")
         async with httpx.AsyncClient() as client:
             tasks = []
@@ -295,6 +297,7 @@ def enrich_from_queue(
                     "domain": msg.domain,
                     "force": msg.force_refresh,
                     "ttl_days": msg.ttl_days,
+                    "campaign_name": campaign_name,
                 },
                 timeout=120.0,
             )
@@ -381,7 +384,10 @@ def enrich_from_queue(
             return False
 
     async def consumer_loop_docker() -> None:
-        ensure_enrichment_service_ready(console)
+        # Skip this check if running inside the container (Fargate/Docker)
+        if not os.getenv("COCLI_RUNNING_IN_FARGATE"):
+            ensure_enrichment_service_ready(console)
+        
         async with httpx.AsyncClient() as client:
             while True:
                 if circuit_state["consecutive_errors"] >= MAX_CONSECUTIVE_ERRORS:

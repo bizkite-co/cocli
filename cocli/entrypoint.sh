@@ -28,4 +28,16 @@ if [ -z "$LOCAL_DEV" ]; then
 fi
 
 # Execute the original command
-exec uvicorn cocli.services.enrichment_service.main:app --host 0.0.0.0 --port 8000
+# Start Uvicorn server in the background
+# It should pick up environment variables from Fargate task definition
+uvicorn cocli.services.enrichment_service.main:app --host 0.0.0.0 --port 8000 &
+
+# Set required environment variables for the consumer
+export COCLI_ENRICHMENT_QUEUE_URL="${COCLI_ENRICHMENT_QUEUE_URL}"
+export COCLI_S3_BUCKET_NAME="${COCLI_S3_BUCKET_NAME}"
+export COCLI_RUNNING_IN_FARGATE="true"
+
+# Start the SQS consumer (enrich-from-queue in consumer mode) in the foreground
+# It will use the COCLI_ENRICHMENT_QUEUE_URL and COCLI_S3_BUCKET_NAME env vars
+# And it will call the locally running API (uvicorn) for enrichment logic
+exec uv run cocli campaign prospects enrich-from-queue turboship --cloud-queue

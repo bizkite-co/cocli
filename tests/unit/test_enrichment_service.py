@@ -58,17 +58,4 @@ def test_enrich_domain_stateless_success(client, mock_playwright, mock_enrich_co
     assert campaign.aws.profile == "test-profile"
     assert campaign.company_slug == "test-company"
 
-def test_enrich_domain_missing_config_and_params(client, mock_playwright):
-    """
-    Test that it fails with 404 if config is missing and params are insufficient.
-    """
-    payload = {
-        "domain": "example.com",
-        "campaign_name": "non-existent-campaign"
-        # Missing aws_profile_name and company_slug
-    }
-    
-    response = client.post("/enrich", json=payload)
-    
-    assert response.status_code == 404
-    assert "configuration not found and params missing" in response.json()["detail"]
+

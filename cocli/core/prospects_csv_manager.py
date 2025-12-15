@@ -20,22 +20,51 @@ class ProspectsIndexManager:
         scraped_dir = get_campaign_scraped_data_dir(campaign_name)
         self.index_dir = scraped_dir.parent / "indexes" / "google_maps_prospects"
         self.index_dir.mkdir(parents=True, exist_ok=True)
+        
+        # Inbox for new/untriaged prospects
+        self.inbox_dir = self.index_dir / "inbox"
+        self.inbox_dir.mkdir(parents=True, exist_ok=True)
 
     def get_file_path(self, place_id: str) -> Path:
-        """Returns the file path for a given Place_ID."""
+        """
+        Returns the file path for a given Place_ID.
+        Logic:
+        1. If exists in inbox, return inbox path.
+        2. If exists in root (processed), return root path.
+        3. If new, return inbox path (default write location).
+        """
         # Sanitize filename just in case, though Place_ID is usually safe
         safe_filename = place_id.replace("/", "_").replace("\\", "_")
-        return self.index_dir / f"{safe_filename}.csv"
+        filename = f"{safe_filename}.csv"
+        
+        inbox_path = self.inbox_dir / filename
+        root_path = self.index_dir / filename
+        
+        if inbox_path.exists():
+            return inbox_path
+        
+        if root_path.exists():
+            return root_path
+            
+        # Default for new files
+        return inbox_path
 
     def read_all_prospects(self) -> Iterator[GoogleMapsProspect]:
         """
-        Yields prospects from the file index.
+        Yields prospects from the file index (both root and inbox).
         Changed from returning a List to an Iterator for memory efficiency with large datasets.
         """
         if not self.index_dir.exists():
             return
 
-        for file_path in self.index_dir.glob("*.csv"):
+        # Chain iterators for root and inbox
+        import itertools
+        
+        # Scan root (excluding directories like 'inbox')
+        root_files = [p for p in self.index_dir.glob("*.csv") if p.is_file()]
+        inbox_files = [p for p in self.inbox_dir.glob("*.csv") if p.is_file()]
+        
+        for file_path in itertools.chain(root_files, inbox_files):
             try:
                 with open(file_path, 'r', encoding='utf-8') as f:
                     reader = csv.DictReader(f)

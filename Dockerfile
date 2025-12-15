@@ -27,6 +27,7 @@ RUN apt-get update && apt-get install -y jq && rm -rf /var/lib/apt/lists/*
 # Copy the dependency files and application code
 COPY pyproject.toml uv.lock* ./
 COPY ./cocli ./cocli
+COPY ./scripts ./scripts
 COPY ./cocli/entrypoint.sh /usr/local/bin/entrypoint.sh
 RUN chmod +x /usr/local/bin/entrypoint.sh
 

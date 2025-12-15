@@ -3,6 +3,7 @@ import simplekml # type: ignore
 import toml
 from typing import Optional
 import logging
+from pathlib import Path # Import Path
 
 from ..core.config import get_companies_dir, get_people_dir, get_campaign_dir
 from ..core.geocoding import get_coordinates_from_zip, get_coordinates_from_city_state, get_coordinates_from_address
@@ -13,7 +14,7 @@ from cocli.core.text_utils import slugify
 
 logger = logging.getLogger(__name__)
 
-def render_kml_for_campaign(campaign_name: str) -> None:
+def render_kml_for_campaign(campaign_name: str, output_dir: Optional[Path] = None) -> None:
     """
     Generates a KML file for a specific campaign.
     """
@@ -42,6 +43,18 @@ def render_kml_for_campaign(campaign_name: str) -> None:
     
     company_count = 0
     
+    # --- OPTIMIZATION: Pre-load all people and map them to their company slug ---
+    logger.info("Pre-loading all person data...")
+    people_by_company_slug: Dict[str, List[Person]] = {}
+    for person_obj in Person.get_all(): # Person.get_all() is an iterator
+        if person_obj.company_name:
+            company_slug = slugify(person_obj.company_name)
+            if company_slug not in people_by_company_slug:
+                people_by_company_slug[company_slug] = []
+            people_by_company_slug[company_slug].append(person_obj)
+    logger.info(f"Finished pre-loading {len(people_by_company_slug)} distinct companies with associated people.")
+
+
     all_company_dirs = list(companies_dir.iterdir())
     total_companies = len(all_company_dirs)
     processed_count = 0
@@ -61,13 +74,11 @@ def render_kml_for_campaign(campaign_name: str) -> None:
         if tag not in company.tags or "customer" not in company.tags:
             continue # Only process companies with both tags
 
-        # --- Find Associated Person for Address (for most accurate geocoding) ---
+        # --- Find Associated Person for Address (optimized lookup) ---
         associated_person: Optional[Person] = None
-        for person_file in people_dir.glob("**/*.md"):
-            person = Person.from_file(person_file, person_file.parent.name)
-            if person and person.company_name and slugify(person.company_name) == slugify(company.name):
-                associated_person = person
-                break
+        if company.slug and company.slug in people_by_company_slug:
+            # Pick the first associated person found for this company
+            associated_person = people_by_company_slug[company.slug][0]
 
         # --- Geocoding Logic ---
         geocode_data: Optional[GeocodeData] = None
@@ -190,7 +201,10 @@ def render_kml_for_campaign(campaign_name: str) -> None:
             placemark.description = "<br>".join(description_parts)
             company_count += 1
 
-    kml_file_path = campaign_dir / f"{campaign_name}_customers.kml"
+    _output_dir = output_dir if output_dir else campaign_dir
+    _output_dir.mkdir(parents=True, exist_ok=True) # Ensure output directory exists
+
+    kml_file_path = _output_dir / f"{campaign_name}_customers.kml"
     kml.save(kml_file_path)
     logger.info(f"KML file '{kml_file_path}' created successfully.")
     logger.info(f"Added {company_count} companies to the KML file.")

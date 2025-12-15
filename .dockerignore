@@ -57,7 +57,7 @@ cdk_scraper_deployment/
 .github/
 docs/
 features/
-scripts/
+# scripts/    <--- REMOVED THIS LINE
 tests/
 Makefile
 .envrc
