@@ -197,7 +197,7 @@ check-scraper-version: ## Check if local website_scraper.py is newer than in the
 .PHONY: deploy-infra
 deploy-infra: install ## Deploy AWS Infrastructure (queues, Fargate service definition) using CDK
 	@echo "Deploying infrastructure..."
-	cd cdk_scraper_deployment && uv run cdk deploy --require-approval never --profile turboship-support
+	cd cdk_scraper_deployment && uv venv && . .venv/bin/activate && uv pip install -r requirements.txt && cdk deploy --require-approval never --profile turboship-support
 
 .PHONY: deploy-enrichment
 deploy-enrichment: test docker-build ## Build and deploy the enrichment service to AWS Fargate
@@ -289,7 +289,11 @@ rebuild-rpi-worker: ## Pull latest code and rebuild Docker image on Raspberry Pi
 
 .PHONY: start-rpi-worker
 start-rpi-worker: ## Start the Docker worker on Raspberry Pi
-	ssh $(RPI_USER)@$(RPI_HOST) "docker run -d --restart unless-stopped --name cocli-scraper-worker -v ~/.aws:/root/.aws:ro cocli-worker-rpi:latest"
+	ssh $(RPI_USER)@$(RPI_HOST) "docker run -d --restart unless-stopped --name cocli-scraper-worker \
+		-e COCLI_SCRAPE_TASKS_QUEUE_URL='$(COCLI_SCRAPE_TASKS_QUEUE_URL)' \
+		-e COCLI_ENRICHMENT_QUEUE_URL='$(COCLI_ENRICHMENT_QUEUE_URL)' \
+		-e COCLI_GM_LIST_ITEM_QUEUE_URL='$(COCLI_GM_LIST_ITEM_QUEUE_URL)' \
+		-v ~/.aws:/root/.aws:ro cocli-worker-rpi:latest"
 
 .PHONY: stop-rpi-worker
 stop-rpi-worker: ## Stop and remove the Docker worker on Raspberry Pi

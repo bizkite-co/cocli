@@ -2,6 +2,7 @@ from typing import Any
 from .local_file_queue import LocalFileQueue
 from .sqs_queue import SQSQueue
 from .scrape_sqs_queue import ScrapeSQSQueue
+from .gm_item_sqs_queue import GmItemSQSQueue
 
 def get_queue_manager(queue_name: str, use_cloud: bool = False, queue_type: str = "enrichment") -> Any:
     """
@@ -18,6 +19,11 @@ def get_queue_manager(queue_name: str, use_cloud: bool = False, queue_type: str 
             if not queue_url:
                  raise ValueError("COCLI_SCRAPE_TASKS_QUEUE_URL environment variable must be set for cloud queue mode.")
             return ScrapeSQSQueue(queue_url=queue_url)
+        elif queue_type == "gm_list_item":
+            queue_url = os.getenv("COCLI_GM_LIST_ITEM_QUEUE_URL")
+            if not queue_url:
+                 raise ValueError("COCLI_GM_LIST_ITEM_QUEUE_URL environment variable must be set for cloud queue mode.")
+            return GmItemSQSQueue(queue_url=queue_url)
         else:
             queue_url = os.getenv("COCLI_ENRICHMENT_QUEUE_URL") or os.getenv("COCLI_ENRICHMENT_QUEUE_URL")
             if not queue_url:

@@ -61,6 +61,14 @@ class CdkScraperDeploymentStack(Stack):  # type: ignore[misc]
         scrape_tasks_queue.grant_send_messages(task_role)
         scrape_tasks_queue.grant_consume_messages(task_role)
 
+        # 3. Google Maps List Item Queue (New) - For scraping details of found list items
+        gm_list_item_queue = sqs.Queue(self, "GmListItemQueue",
+            visibility_timeout=Duration.minutes(5), # 5 mins should be plenty for one detail scrape
+            retention_period=Duration.days(4)
+        )
+        gm_list_item_queue.grant_send_messages(task_role)
+        gm_list_item_queue.grant_consume_messages(task_role)
+
         # --- DNS / HTTPS ---
         zone = route53.HostedZone.from_hosted_zone_attributes(self, "HostedZone",
             hosted_zone_id="Z0754885WA4ZOH1QH7PJ",
@@ -70,6 +78,7 @@ class CdkScraperDeploymentStack(Stack):  # type: ignore[misc]
         # Outputs
         CfnOutput(self, "EnrichmentQueueUrl", value=enrichment_queue.queue_url)
         CfnOutput(self, "ScrapeTasksQueueUrl", value=scrape_tasks_queue.queue_url)
+        CfnOutput(self, "GmListItemQueueUrl", value=gm_list_item_queue.queue_url)
         CfnOutput(self, "BucketName", value=data_bucket.bucket_name)
 
         # Application Load Balanced Fargate Service
@@ -89,6 +98,7 @@ class CdkScraperDeploymentStack(Stack):  # type: ignore[misc]
                 environment={
                     "COCLI_ENRICHMENT_QUEUE_URL": enrichment_queue.queue_url,
                     "COCLI_SCRAPE_TASKS_QUEUE_URL": scrape_tasks_queue.queue_url,
+                    "COCLI_GM_LIST_ITEM_QUEUE_URL": gm_list_item_queue.queue_url,
                     "COCLI_S3_BUCKET_NAME": data_bucket.bucket_name
                 },
                 task_role=task_role

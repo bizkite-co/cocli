@@ -7,7 +7,7 @@ from playwright.async_api import async_playwright
 
 from ..core.queue.factory import get_queue_manager
 from ..scrapers.google_maps import scrape_google_maps
-from ..models.queue import QueueMessage
+from ..models.scrape_task import GmItemTask
 from ..core.prospects_csv_manager import ProspectsIndexManager
 from ..core.text_utils import slugify
 
@@ -22,7 +22,7 @@ S3_BUCKET = "cocli-data-turboship"
 async def run_worker(headless: bool, debug: bool) -> None:
     try:
         scrape_queue = get_queue_manager("scrape_tasks", use_cloud=True, queue_type="scrape")
-        enrichment_queue = get_queue_manager("enrichment", use_cloud=True, queue_type="enrichment")
+        gm_list_item_queue = get_queue_manager("gm_list_item", use_cloud=True, queue_type="gm_list_item")
         s3_client = boto3.client("s3")
     except Exception as e:
         console.print(f"[bold red]Configuration Error: {e}[/bold red]")
@@ -105,16 +105,14 @@ async def run_worker(headless: bool, debug: bool) -> None:
                                 except Exception as e:
                                     console.print(f"[red]S3 Upload Error:[/red] {e}")
 
-                    # 3. Push to Enrichment Queue
-                    if prospect.Domain and prospect.Name:
-                        msg = QueueMessage(
-                            domain=prospect.Domain,
-                            company_slug=slugify(prospect.Name),
-                            campaign_name=task.campaign_name,
-                            force_refresh=task.force_refresh,
-                            ack_token=None
-                        )
-                        enrichment_queue.push(msg)
+                            # 3. Push to Details Queue
+                            details_task = GmItemTask(
+                                place_id=prospect.Place_ID,
+                                campaign_name=task.campaign_name,
+                                force_refresh=task.force_refresh,
+                                ack_token=None
+                            )
+                            gm_list_item_queue.push(details_task)
                 
                 console.print(f"[green]Task Complete. Found {prospect_count} prospects.[/green]")
                 scrape_queue.ack(task)
