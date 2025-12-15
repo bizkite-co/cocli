@@ -386,6 +386,7 @@ def upload_kml_coverage_for_turboship(
     Generates a KML file for the 'turboship' campaign and directly places it
     into the turboship project's kml-exports directory for deployment via its CDK stack.
     """
+    logging.getLogger("cocli").setLevel(logging.WARNING) # Set logging level for cocli modules
     console.print(f"[bold]Generating and uploading KML coverage for campaign: '{campaign_name}'[/bold]")
 
     # 1. Resolve the absolute path to the turboship kml-exports directory
