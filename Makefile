@@ -279,8 +279,22 @@ RPI_DIR ?= ~/repos/cocli
 ssh-rpi: ## SSH into the Raspberry Pi worker
 	ssh $(RPI_USER)@$(RPI_HOST)
 
+.PHONY: check-git-sync
+check-git-sync: ## Verify that the local git repo is clean and synced with upstream
+	@if [ -n "$$(git status --porcelain)" ]; then \
+		echo "\033[0;31mError: You have uncommitted changes. Please commit them first.\033[0m"; \
+		git status --porcelain; \
+		exit 1; \
+	fi
+	@if [ -n "$$(git log @{u}..HEAD --oneline)" ]; then \
+		echo "\033[0;31mError: You have unpushed commits. Please push them to origin first.\033[0m"; \
+		git log @{u}..HEAD --oneline; \
+		exit 1; \
+	fi
+	@echo "\033[0;32mGit status is clean and synced.\033[0m"
+
 .PHONY: rebuild-rpi-worker
-rebuild-rpi-worker: ## Pull latest code and rebuild Docker image on Raspberry Pi
+rebuild-rpi-worker: check-git-sync ## Pull latest code and rebuild Docker image on Raspberry Pi
 	ssh $(RPI_USER)@$(RPI_HOST) "cd $(RPI_DIR) && git fetch --all && git reset --hard origin/main && docker build --no-cache -t cocli-worker-rpi -f docker/rpi-worker/Dockerfile ."
 
 .PHONY: start-rpi-worker
