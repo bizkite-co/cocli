@@ -311,8 +311,16 @@ stop-rpi-worker: ## Stop and remove the Docker worker on Raspberry Pi
 restart-rpi-worker: stop-rpi-worker start-rpi-worker ## Restart the Raspberry Pi worker
 
 .PHONY: log-rpi-worker
-log-rpi-worker: ## Tail logs from the Raspberry Pi worker
+log-rpi-worker: ## Tail logs from the Raspberry Pi List Scraper worker
 	ssh $(RPI_USER)@$(RPI_HOST) "docker logs -f cocli-scraper-worker"
+
+.PHONY: log-rpi-details-worker
+log-rpi-details-worker: ## Tail logs from the Raspberry Pi Details Scraper worker
+	ssh $(RPI_USER)@$(RPI_HOST) "docker logs -f cocli-details-worker"
+
+.PHONY: log-rpi-all
+log-rpi-all: ## Tail logs from all Raspberry Pi cocli worker containers
+	ssh $(RPI_USER)@$(RPI_HOST) "docker ps --filter name=cocli- --format '{{.Names}}' | xargs -I {} docker logs -f {}"
 
 .PHONY: deploy-rpi
 deploy-rpi: rebuild-rpi-worker restart-rpi-worker ## Full deployment: rebuild and restart worker on Pi
