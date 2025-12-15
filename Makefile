@@ -281,7 +281,7 @@ ssh-rpi: ## SSH into the Raspberry Pi worker
 
 .PHONY: rebuild-rpi-worker
 rebuild-rpi-worker: ## Pull latest code and rebuild Docker image on Raspberry Pi
-	ssh $(RPI_USER)@$(RPI_HOST) "cd $(RPI_DIR) && git pull && docker build -t cocli-worker-rpi -f docker/rpi-worker/Dockerfile ."
+	ssh $(RPI_USER)@$(RPI_HOST) "cd $(RPI_DIR) && git fetch --all && git reset --hard origin/main && docker build --no-cache -t cocli-worker-rpi -f docker/rpi-worker/Dockerfile ."
 
 .PHONY: start-rpi-worker
 start-rpi-worker: ## Start the Docker worker on Raspberry Pi
