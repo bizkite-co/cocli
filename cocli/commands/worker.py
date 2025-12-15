@@ -7,14 +7,14 @@ from datetime import datetime # Added for updated_at
 from rich.console import Console
 from playwright.async_api import async_playwright
 
-from ..core.queue.factory import get_queue_manager
-from ..scrapers.google_maps import scrape_google_maps
-from ..scrapers.google_maps_details import scrape_google_maps_details # New import
-from ..models.scrape_task import GmItemTask
-from ..models.google_maps_prospect import GoogleMapsProspect # New import for merging
-from ..models.queue import QueueMessage # Re-added for EnrichmentQueue
-from ..core.prospects_csv_manager import ProspectsIndexManager
-from ..core.text_utils import slugify # Added for details worker
+from cocli.core.queue.factory import get_queue_manager
+from cocli.scrapers.google_maps import scrape_google_maps
+from cocli.scrapers.google_maps_details import scrape_google_maps_details
+from cocli.models.scrape_task import GmItemTask
+from cocli.models.google_maps_prospect import GoogleMapsProspect
+from cocli.models.queue import QueueMessage
+from cocli.core.prospects_csv_manager import ProspectsIndexManager
+from cocli.core.text_utils import slugify
 
 logger = logging.getLogger(__name__)
 console = Console()
