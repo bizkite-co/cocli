@@ -1,5 +1,4 @@
 import typer
-import pandas as pd
 from rich.console import Console
 import yaml
 import asyncio
@@ -25,6 +24,7 @@ def enrich_shopify_data(
     """
     Enriches company data from a list of Shopify domains.
     """
+    import pandas as pd # Lazy import
     shopify_csv_dir = get_scraped_data_dir() / "shopify_csv"
     input_path = shopify_csv_dir / input_filename
     if not input_path.exists():

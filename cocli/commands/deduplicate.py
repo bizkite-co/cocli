@@ -1,7 +1,6 @@
 import logging
 import typer
 from typing_extensions import Annotated
-import pandas as pd
 import yaml
 
 from cocli.core.utils import generate_company_hash
@@ -17,6 +16,8 @@ def deduplicate(
     """
     Deduplicates company data by generating a stable hash for each company and removing duplicates.
     """
+    import pandas as pd # Lazy import
+    
     companies_dir = get_companies_dir()
     if not companies_dir.exists():
         logger.error("Companies directory does not exist.")

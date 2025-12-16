@@ -11,7 +11,6 @@ from typing import Optional, List, Dict, Any, cast
 from datetime import datetime
 import logging
 import re
-import pandas as pd
 import httpx
 
 from ..models.website import Website
@@ -669,6 +668,7 @@ async def pipeline(
         # --- Producer Task ---
         async def producer_task(existing_companies_map: Dict[str, str]) -> None:
             console.print("[bold blue]Starting Scraper Producer...[/bold blue]")
+            import pandas as pd
             
             # Initialize location data
             location_data = []

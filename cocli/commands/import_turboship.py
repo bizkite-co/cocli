@@ -1,5 +1,4 @@
 import typer
-import pandas as pd
 from pathlib import Path
 import re
 import yaml
@@ -31,6 +30,7 @@ def import_turboship(
     """
     Import customers from a Turboship CSV file.
     """
+    import pandas as pd # Lazy import
     if not customers_csv_path.exists():
         logger.error(f"Error: File not found at {customers_csv_path}")
         raise typer.Exit(1)

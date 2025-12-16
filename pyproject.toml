@@ -8,18 +8,11 @@ dependencies = [
     "typer",
     "pydantic",
     "rich",
-    "textual",
     "requests",
     "beautifulsoup4",
     "pyyaml",
-    "google-api-python-client",
-    "google-auth-httplib2",
-    "google-auth-oauthlib",
-    "selenium",
-    "webdriver-manager",
     "lxml",
     "playwright",
-    "pandas",
     "html5lib",
     "lxml_html_clean",
     "fastapi",
@@ -46,6 +39,15 @@ dependencies = [
 cocli = "cocli.main:app"
 
 [project.optional-dependencies]
+full = [
+    "pandas",
+    "textual",
+    "selenium",
+    "webdriver-manager",
+    "google-api-python-client",
+    "google-auth-httplib2",
+    "google-auth-oauthlib",
+]
 dev = [
     "pytest",
     "pytest-bdd",

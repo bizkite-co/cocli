@@ -1,11 +1,19 @@
 import os
-import pandas as pd
 import logging
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
+try:
+    import pandas as pd
+except ImportError:
+    pd = None # type: ignore
+
 class LocationProspectsIndex:
     def __init__(self, campaign_name: str, data_home: str = "~/.local/share/cocli_data"):
+        if pd is None:
+            raise ImportError("pandas is required for LocationProspectsIndex. Please install it with 'uv pip install pandas'.")
+            
         self.campaign_name = campaign_name
         self.data_home = os.path.expanduser(data_home)
         self.index_dir = os.path.join(self.data_home, "campaigns", campaign_name, "indexes")

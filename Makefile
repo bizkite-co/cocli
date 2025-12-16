@@ -29,7 +29,7 @@ open: activate ##Activate the venv and open
 	@cocli
 
 install: ## Install development dependencies using uv
-	uv sync --extra dev
+	uv sync --extra dev --extra full
 	source $(VENV_DIR)/bin/activate && uv pip install -e . && playwright install
 
 log: ## Display the last 100 lines of the latest log file
