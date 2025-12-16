@@ -69,6 +69,18 @@ class CdkScraperDeploymentStack(Stack):  # type: ignore[misc]
         gm_list_item_queue.grant_send_messages(task_role)
         gm_list_item_queue.grant_consume_messages(task_role)
 
+        # --- Grant Permissions to RPi User (mark) ---
+        rpi_user = iam.User.from_user_name(self, "RpiUser", "mark")
+        
+        enrichment_queue.grant_send_messages(rpi_user)
+        enrichment_queue.grant_consume_messages(rpi_user)
+        
+        scrape_tasks_queue.grant_send_messages(rpi_user)
+        scrape_tasks_queue.grant_consume_messages(rpi_user)
+        
+        gm_list_item_queue.grant_send_messages(rpi_user)
+        gm_list_item_queue.grant_consume_messages(rpi_user)
+
         # --- DNS / HTTPS ---
         zone = route53.HostedZone.from_hosted_zone_attributes(self, "HostedZone",
             hosted_zone_id="Z0754885WA4ZOH1QH7PJ",

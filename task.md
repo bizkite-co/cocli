@@ -15,9 +15,13 @@ Implement a "Decidegree" grid system (0.1° x 0.1° tiles) to systematically pla
 
 ## Todo
 - [x] **Prototype:** `generate_grid.py` exists and produces 0.1-degree grids.
-- [ ] **Integration:** Ensure `cocli campaign generate-grid` saves to `exports/target-areas.json`.
-- [ ] **Queueing:** Ensure `cocli campaign queue-scrapes` correctly reads `target-areas.json` and respects the "force" flag.
-- [ ] **Tracking:** Implement a way to mark tiles as "Completed" in the local state/map, not just SQS ack.
+- [x] **Integration:** `cocli campaign generate-grid` saves to `exports/target-areas.json`.
+- [x] **Queueing:** `cocli campaign queue-scrapes` correctly reads `target-areas.json` (Grid Mode) or falls back to CSV (Point Mode).
+- [x] **Visualization:**
+    - [x] Deployed dynamic `kml-viewer.html` to Turboship landing page (S3/CloudFront).
+    - [x] Implemented `cocli campaign visualize-coverage` to generate `coverage_grid_aggregated.kml` (Single polygon per tile with aggregated stats).
+    - [x] Configured `upload-kml-coverage` to support uploading the aggregated grid.
+- [ ] **Tracking:** Implement a way to mark tiles as "Completed" in the local state/map, not just SQS ack. (Currently relying on `items_found` stats in aggregation).
 
 ## Done
 - [x] **Smart Worker Infrastructure:**
@@ -27,6 +31,4 @@ Implement a "Decidegree" grid system (0.1° x 0.1° tiles) to systematically pla
     - [x] Added `make check-rpi-voltage` for hardware monitoring.
     - [x] **Resolved RPi Permissions:** Fixed `AccessDenied` on `GmListItemQueue` by using correct IAM user (`bizkite-support`).
     - [x] **Upgraded Hardware:** Migrated to Raspberry Pi 4 to resolve undervoltage/stability issues.
-- [x] **Visualization:**
-    - [x] Deployed dynamic `kml-viewer.html` to Turboship landing page (S3/CloudFront).
-    - [x] Configured CDK to deploy KML data files to `/kml/` path.
+    - [x] **Logging:** Enabled timestamped file logging on RPi workers (`setup_file_logging`).

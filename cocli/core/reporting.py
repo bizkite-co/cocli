@@ -1,8 +1,7 @@
 import os
 import boto3 # type: ignore
 import logging
-from typing import Dict, Any, Optional
-from pathlib import Path
+from typing import Dict, Any
 from rich.console import Console
 
 from cocli.core.config import get_cocli_base_dir, get_companies_dir
