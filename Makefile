@@ -337,5 +337,9 @@ clean-docker-pi: ## Remove all stopped containers, unused networks, dangling ima
 	@echo "Cleaning up Docker system on Raspberry Pi..."
 	ssh $(RPI_USER)@$(RPI_HOST) "docker system prune -f"
 
+.PHONY: stop-rpi-all
+stop-rpi-all: ## Stop all Raspberry Pi cocli worker containers
+	-ssh $(RPI_USER)@$(RPI_HOST) "docker stop \$$(docker ps -q --filter name=cocli-); docker rm \$$(docker ps -a -q --filter name=cocli-)"
+
 .PHONY: deploy-rpi
-deploy-rpi: rebuild-rpi-worker restart-rpi-worker ## Full deployment: rebuild and restart worker on Pi
+deploy-rpi: stop-rpi-all rebuild-rpi-worker start-rpi-worker start-rpi-details-worker ## Full deployment: stop all, rebuild, and restart both workers
