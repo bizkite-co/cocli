@@ -4,6 +4,7 @@ import typer
 import os # Added os import
 import toml
 import csv
+import shutil
 import asyncio
 import subprocess
 from pathlib import Path
@@ -39,6 +40,7 @@ from ..models.scrape_task import ScrapeTask # New import
 from ..core.enrichment import enrich_company_website # New import
 from ..core.exceptions import NavigationError
 from ..core.prospects_csv_manager import ProspectsIndexManager
+from ..renderers.kml import render_kml_for_campaign
 
 from typing_extensions import Annotated
 from cocli.planning.generate_grid import generate_global_grid, export_to_kml, DEFAULT_GRID_STEP_DEG
@@ -386,8 +388,8 @@ def upload_kml_coverage_for_turboship(
     Generates a KML file for the 'turboship' campaign and directly places it
     into the turboship project's kml-exports directory for deployment via its CDK stack.
     """
-    original_logging_level = logging.root.level
-    logging.disable(logging.CRITICAL) # Temporarily disable all logging below CRITICAL
+    # Temporarily disable all logging below CRITICAL
+    logging.disable(logging.CRITICAL) 
     
     try:
         console.print(f"[bold]Generating and uploading KML coverage for campaign: '{campaign_name}'[/bold]")
@@ -396,25 +398,16 @@ def upload_kml_coverage_for_turboship(
         resolved_exports_dir = (Path.cwd() / turboship_kml_exports_path).resolve()
         resolved_exports_dir.mkdir(parents=True, exist_ok=True) # Ensure directory exists
 
-        # 2. Render the KML into a temporary file first (or directly to output_dir)
-        # Using a temporary name to avoid partial file uploads/deployment issues
-        temp_kml_path = resolved_exports_dir / f"temp_{kml_filename}"
+        # 2. Render the KML
+        # The render function creates f"{campaign_name}_customers.kml" in the output directory
         
-        # We are calling the render function from renderers/kml.py
-        # This will create a KML file within campaign_dir/f"{campaign_name}_customers.kml" by default
-        # Or, with the new output_dir parameter, we can direct it.
-        
-        # Let's adjust render_kml_for_campaign to create a specific filename if needed
-        # For now, it creates f"{campaign_name}_customers.kml".
-        # We will copy that to the desired filename.
-
         # Ensure the campaign directory for cocli data is correct for render_kml_for_campaign
         campaign_data_dir = get_campaign_dir(campaign_name)
         if not campaign_data_dir:
             console.print(f"[bold red]Campaign '{campaign_name}' not found in cocli data.[/bold red]")
             raise typer.Exit(code=1)
 
-        # Render KML into the temporary directory
+        # Render KML into the export directory
         render_kml_for_campaign(campaign_name, output_dir=resolved_exports_dir)
         
         # The render function creates a KML named f"{campaign_name}_customers.kml".

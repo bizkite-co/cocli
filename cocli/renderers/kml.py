@@ -1,11 +1,11 @@
 import yaml
 import simplekml # type: ignore
 import toml
-from typing import Optional
+from typing import Optional, Dict, List
 import logging
 from pathlib import Path # Import Path
 
-from ..core.config import get_companies_dir, get_people_dir, get_campaign_dir
+from ..core.config import get_companies_dir, get_campaign_dir
 from ..core.geocoding import get_coordinates_from_zip, get_coordinates_from_city_state, get_coordinates_from_address
 from ..models.company import Company
 from ..models.person import Person
@@ -37,7 +37,6 @@ def render_kml_for_campaign(campaign_name: str, output_dir: Optional[Path] = Non
         logger.error(f"Tag not found in configuration for campaign '{campaign_name}'.")
         return
         
-    people_dir = get_people_dir()
     companies_dir = get_companies_dir()
     kml = simplekml.Kml()
     

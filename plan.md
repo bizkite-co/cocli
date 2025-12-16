@@ -22,6 +22,7 @@ This document outlines the roadmap for transitioning `cocli` from a purely local
     *   [x] Implemented `cocli worker details` command (Consumer) for deep scraping.
     *   [x] Created Makefile rules for `queue-scrape-tasks` and `run-worker-scrape-bg`.
     *   [x] **Deploy RPi Worker:** Successfully deployed headless worker on Raspberry Pi.
+    *   [x] **Infrastructure Hardening:** Upgraded to RPi 4, fixed IAM permissions (`AccessDenied`), and improved logging.
     *   [x] **Observability:** Enhanced Reporting to track active workers and in-flight queue messages.
     *   [ ] **Containerize Scraper:** Package Playwright scraper into a Docker image (completed for RPi, need generic version).
     *   [ ] **Proxy Integration:** Implement residential proxies (low priority with RPi mesh).
@@ -29,7 +30,7 @@ This document outlines the roadmap for transitioning `cocli` from a purely local
 2.  **Decidegree Grid Planning (Next Focus):**
     *   [x] **Prototype Generator:** Created `generate_grid.py` to produce 0.1-degree aligned global grids.
     *   [ ] **Campaign Integration:** Update campaign scraper to use these grids instead of dynamic spiral search.
-    *   [ ] **KML Visualization:** Generate "Target Grids" KMLs for all campaign locations to visualize coverage.
+    *   [x] **KML Visualization:** Deployed dynamic KML viewer and S3 deployment logic for coverage maps.
 
 3.  **Orchestration:**
     *   [ ] Create AWS Step Functions state machine to coordinate Scrape -> Queue -> Enrich workflow.

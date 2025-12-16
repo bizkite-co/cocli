@@ -18,7 +18,6 @@ Implement a "Decidegree" grid system (0.1° x 0.1° tiles) to systematically pla
 - [ ] **Integration:** Ensure `cocli campaign generate-grid` saves to `exports/target-areas.json`.
 - [ ] **Queueing:** Ensure `cocli campaign queue-scrapes` correctly reads `target-areas.json` and respects the "force" flag.
 - [ ] **Tracking:** Implement a way to mark tiles as "Completed" in the local state/map, not just SQS ack.
-- [ ] **Visualization:** Deploy `kml-viewer.html` (S3/CloudFront) to view the coverage map in a browser.
 
 ## Done
 - [x] **Smart Worker Infrastructure:**
@@ -26,3 +25,8 @@ Implement a "Decidegree" grid system (0.1° x 0.1° tiles) to systematically pla
     - [x] Fixed `ImportError` and `AttributeError` by making dependencies optional.
     - [x] Automated deployment (`make deploy-rpi`) with cleanup and safety checks.
     - [x] Added `make check-rpi-voltage` for hardware monitoring.
+    - [x] **Resolved RPi Permissions:** Fixed `AccessDenied` on `GmListItemQueue` by using correct IAM user (`bizkite-support`).
+    - [x] **Upgraded Hardware:** Migrated to Raspberry Pi 4 to resolve undervoltage/stability issues.
+- [x] **Visualization:**
+    - [x] Deployed dynamic `kml-viewer.html` to Turboship landing page (S3/CloudFront).
+    - [x] Configured CDK to deploy KML data files to `/kml/` path.

@@ -1,8 +1,9 @@
 import typer
-from pathlib import Path
+import pandas as pd
 import re
-import yaml
 import logging
+import yaml
+from pathlib import Path
 
 from ..core.config import get_companies_dir, get_people_dir
 from ..core.text_utils import slugify
