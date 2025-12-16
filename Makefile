@@ -332,5 +332,10 @@ log-rpi-details-worker: ## Tail logs from the Raspberry Pi Details Scraper worke
 log-rpi-all: ## Tail logs from all Raspberry Pi cocli worker containers
 	ssh $(RPI_USER)@$(RPI_HOST) "docker ps --filter name=cocli- --format '{{.Names}}' | xargs -I {} docker logs -n 100 {}"
 
+.PHONY: clean-docker-pi
+clean-docker-pi: ## Remove all stopped containers, unused networks, dangling images, and build cache on Raspberry Pi
+	@echo "Cleaning up Docker system on Raspberry Pi..."
+	ssh $(RPI_USER)@$(RPI_HOST) "docker system prune -f"
+
 .PHONY: deploy-rpi
 deploy-rpi: rebuild-rpi-worker restart-rpi-worker ## Full deployment: rebuild and restart worker on Pi
