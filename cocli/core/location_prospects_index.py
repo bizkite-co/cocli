@@ -21,7 +21,7 @@ class LocationProspectsIndex:
         self.index_file = os.path.join(self.index_dir, "location-prospects.csv")
         self.index_df = self._load_index()
 
-    def _load_index(self) -> pd.DataFrame:
+    def _load_index(self): # Removed -> pd.DataFrame
         if os.path.exists(self.index_file):
             try:
                 df = pd.read_csv(self.index_file)
@@ -56,8 +56,8 @@ class LocationProspectsIndex:
             return int(self.index_df.loc[self.index_df["location_name"] == location_name, "prospect_count"].iloc[0])
         return 0
 
-    def get_least_prospected_locations(self, n: int = 3) -> pd.DataFrame:
+    def get_least_prospected_locations(self, n: int = 3): # Removed -> pd.DataFrame
         return self.index_df.sort_values(by="prospect_count", ascending=True).head(n)
 
-    def get_all_locations(self) -> pd.DataFrame:
+    def get_all_locations(self): # Removed -> pd.DataFrame
         return self.index_df
