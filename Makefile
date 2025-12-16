@@ -279,6 +279,30 @@ RPI_DIR ?= ~/repos/cocli
 ssh-rpi: ## SSH into the Raspberry Pi worker
 	ssh $(RPI_USER)@$(RPI_HOST)
 
+.PHONY: check-rpi-voltage
+check-rpi-voltage: ## Check Raspberry Pi for undervoltage and throttling issues
+	@ssh $(RPI_USER)@$(RPI_HOST) "vcgencmd measure_volts; vcgencmd get_throttled" | while read line; do \
+		echo "$$line"; \
+		if [[ "$$line" == "throttled="* ]]; then \
+			STATUS=$${line#*=}; \
+			echo "Decoding Status: $$STATUS"; \
+			if [ "$$((STATUS & 0x1))" -ne 0 ]; then echo "  [CRITICAL] Undervoltage detected NOW"; fi; \
+			if [ "$$((STATUS & 0x2))" -ne 0 ]; then echo "  [CRITICAL] Frequency capped NOW"; fi; \
+			if [ "$$((STATUS & 0x4))" -ne 0 ]; then echo "  [WARNING] Throttled NOW"; fi; \
+			if [ "$$((STATUS & 0x8))" -ne 0 ]; then echo "  [WARNING] Soft temperature limit reached NOW"; fi; \
+			if [ "$$((STATUS & 0x10000))" -ne 0 ]; then echo "  [HISTORY] Undervoltage has occurred since boot"; fi; \
+			if [ "$$((STATUS & 0x20000))" -ne 0 ]; then echo "  [HISTORY] Frequency capping has occurred since boot"; fi; \
+			if [ "$$((STATUS & 0x40000))" -ne 0 ]; then echo "  [HISTORY] Throttling has occurred since boot"; fi; \
+			if [ "$$((STATUS & 0x80000))" -ne 0 ]; then echo "  [HISTORY] Soft temperature limit reached since boot"; fi; \
+			if [ "$$STATUS" == "0x0" ]; then echo "  [OK] Power status is healthy."; fi; \
+		fi; \
+	done
+
+.PHONY: shutdown-rpi
+shutdown-rpi: ## Safely shut down the Raspberry Pi (halts system)
+	@echo "Shutting down $(RPI_HOST)..."
+	-ssh $(RPI_USER)@$(RPI_HOST) "sudo shutdown -h now"
+
 .PHONY: check-git-sync
 check-git-sync: ## Verify that the local git repo is clean and synced with upstream
 	@if [ -n "$$(git status --porcelain)" ]; then \

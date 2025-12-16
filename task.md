@@ -1,35 +1,28 @@
-# Current Task: "Smart Worker" Distributed Scraping Architecture (Stabilization Phase)
+# Current Task: Grid Planning (Decidegree System)
 
 ## Objective
-Stabilize the distributed "Smart Worker" architecture where lightweight scraping workers (Raspberry Pi) consume scraping tasks from SQS queues, execute browser automation locally, and push results to S3 and the Enrichment service.
+Implement a "Decidegree" grid system (0.1° x 0.1° tiles) to systematically plan and execute scraping campaigns, moving away from dynamic spiral searches. This enables deterministic coverage, easier progress tracking, and parallelization.
 
 ## Context
-*   **Architecture Implemented:**
-    *   **Brain:** `cocli` on Fargate/Local pushes tasks to `ScrapeTasksQueue`.
-    *   **Muscle (RPi):** 
-        *   `cocli worker scrape`: Consumes `ScrapeTasksQueue` -> Pushes to `GMListItemQueue`.
-        *   `cocli worker details`: Consumes `GMListItemQueue` -> Pushes to S3 & `EnrichmentQueue`.
-    *   **Enrichment (Fargate):** Consumes `EnrichmentQueue` -> Enriches Websites -> Updates S3.
+*   **Previous Phase (Distributed Workers):** Completed. We have a Fargate Enrichment service (5 workers) and Raspberry Pi Scraping workers (2 workers) operating stably via SQS queues.
+*   **Problem:** Current "Spiral Search" is hard to visualize, hard to resume, and results in redundant scraping.
+*   **Solution:** Pre-calculate a grid of target tiles. Each tile is a discrete `ScrapeTask`.
 
-## Recent Wins
-*   **Fargate Enrichment:** Successfully scaled to 5 workers, stateless (IAM Roles), and fully operational.
-*   **Reporting:** Enhanced `make report` and `cocli status` to show "Active/In-Flight" tasks, giving visibility into RPi worker activity.
-*   **RPi Worker:** Deployed and currently debugging import issues.
+## Architecture
+1.  **Generator:** `cocli/planning/generate_grid.py` creates a JSON/KML plan based on target locations and proximity.
+2.  **Queueing:** `cocli campaign queue-scrapes` reads the JSON plan and pushes tasks to `ScrapeTasksQueue`.
+3.  **Visualization:** KML files allow us to see exactly which tiles are pending, active, or complete.
 
 ## Todo
-- [x] **Infra:** Revert Proxy changes in CDK and add `ScrapeTasksQueue`.
-- [x] **Code:** Implement `ScrapeTask` model (Pydantic).
-- [x] **Code:** Implement `queue-scrapes` command (Producer).
-- [x] **Code:** Implement `worker scrape` command (Consumer).
-- [x] **Code:** Implement `worker details` command (Consumer for GM Details).
-- [x] **Verify:** Test the full flow locally.
-- [x] **Ops:** Scale Fargate Enrichment service to 5 tasks.
-- [x] **Ops:** Fix relative import errors in RPi worker scripts.
-- [x] **Observability:** Add "Active Workers" and "In-Flight" counts to Campaign Report.
-- [ ] **Stabilize:** Verify RPi worker is successfully processing `GMListItemQueue` without crashing.
-- [ ] **Visualization:** Deploy `kml-viewer.html` for map-based coverage tracking.
+- [x] **Prototype:** `generate_grid.py` exists and produces 0.1-degree grids.
+- [ ] **Integration:** Ensure `cocli campaign generate-grid` saves to `exports/target-areas.json`.
+- [ ] **Queueing:** Ensure `cocli campaign queue-scrapes` correctly reads `target-areas.json` and respects the "force" flag.
+- [ ] **Tracking:** Implement a way to mark tiles as "Completed" in the local state/map, not just SQS ack.
+- [ ] **Visualization:** Deploy `kml-viewer.html` (S3/CloudFront) to view the coverage map in a browser.
 
-## Next Up: Grid Planning (Decidegree System)
-1.  **Concept:** Move from infinite search to a finite, pre-calculated grid of 0.1-degree tiles.
-2.  **Generator:** Create `cocli/planning/generate_grid.py` to produce standardized KML/JSON scrape plans.
-3.  **Integration:** Update `cocli campaign` commands to generate these grids based on target locations.
+## Done
+- [x] **Smart Worker Infrastructure:**
+    - [x] Optimized Docker image (no pandas/textual) for RPi.
+    - [x] Fixed `ImportError` and `AttributeError` by making dependencies optional.
+    - [x] Automated deployment (`make deploy-rpi`) with cleanup and safety checks.
+    - [x] Added `make check-rpi-voltage` for hardware monitoring.
