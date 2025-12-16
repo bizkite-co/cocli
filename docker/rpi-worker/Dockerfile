@@ -7,8 +7,6 @@ FROM python:3.12-slim-bullseye
 WORKDIR /app
 
 # Install system dependencies for Playwright
-# Playwright requires a few system libraries like libnss3, libatk-bridge2.0-0, libdrm2, etc.
-# These are commonly found on Debian-based systems.
 RUN apt-get update && apt-get install -y \
     wget \
     git \
@@ -46,29 +44,27 @@ RUN pip install uv
 # Copy the application code
 COPY . .
 
-# Install project dependencies
-# Use --system to avoid creating a new virtual environment inside the container
-# uv already manages it.
+# Install project dependencies into system python
+# We use --system so we don't need a venv inside the container
 RUN uv pip install --system -e .
 
-# Install Playwright browsers (will install into the uv-managed environment)
-# Playwright needs to be installed after application dependencies if it's a direct dependency
-# Moved to run_worker.sh to ensure execution context is correct.
+# Install Playwright Chromium ONLY during build time
+# This saves ~500MB+ and prevents download on every startup
+RUN playwright install chromium --with-deps
 
 # Create the run_worker.sh script directly in the Dockerfile
-# This ensures it's always correctly configured within the container
-# The AWS_PROFILE is set here because it's required for boto3 to find credentials
-# It assumes credentials are mounted or available through IAM roles (Fargate case)
-# For local Pi, it assumes ~/.aws/credentials will be mounted.
+# Optimized to run fast without re-installing
 RUN echo '#!/bin/bash' > docker/rpi-worker/run_worker.sh && \
     echo 'export COCLI_SCRAPE_TASKS_QUEUE_URL="https://sqs.us-east-1.amazonaws.com/193481341784/CdkScraperDeploymentStack-ScrapeTasksQueue9836DB1F-TfprnaM0R5gs"' >> docker/rpi-worker/run_worker.sh && \
     echo 'export COCLI_ENRICHMENT_QUEUE_URL="https://sqs.us-east-1.amazonaws.com/193481341784/CdkScraperDeploymentStack-EnrichmentQueue4D4E619F-srLGUESiUDYU"' >> docker/rpi-worker/run_worker.sh && \
     echo 'export AWS_PROFILE="turboship-support"' >> docker/rpi-worker/run_worker.sh && \
-    echo 'uv run playwright install --with-deps' >> docker/rpi-worker/run_worker.sh && \
-    echo 'uv run cocli worker scrape' >> docker/rpi-worker/run_worker.sh && \
+    echo '# Pass arguments to the script (e.g. "cocli worker details")' >> docker/rpi-worker/run_worker.sh && \
+    echo 'if [ "$#" -eq 0 ]; then' >> docker/rpi-worker/run_worker.sh && \
+    echo '    cocli worker scrape' >> docker/rpi-worker/run_worker.sh && \
+    echo 'else' >> docker/rpi-worker/run_worker.sh && \
+    echo '    "$@"' >> docker/rpi-worker/run_worker.sh && \
+    echo 'fi' >> docker/rpi-worker/run_worker.sh && \
     chmod +x docker/rpi-worker/run_worker.sh
 
 # Command to run the cocli worker
-# Playwright runs headless by default in Docker unless --headed is specified.
-# We explicitly specify --headed for debugging/observation as per previous discussions.
 CMD ["./docker/rpi-worker/run_worker.sh"]
