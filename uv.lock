@@ -537,16 +537,11 @@ dependencies = [
     { name = "fastapi" },
     { name = "fuzzywuzzy" },
     { name = "geopy" },
-    { name = "google-api-python-client" },
-    { name = "google-auth-httplib2" },
-    { name = "google-auth-oauthlib" },
     { name = "html5lib" },
     { name = "httpx" },
     { name = "jmespath" },
     { name = "lxml" },
     { name = "lxml-html-clean" },
-    { name = "pandas", version = "2.0.3", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.9'" },
-    { name = "pandas", version = "2.3.3", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.9'" },
     { name = "playwright", version = "1.48.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.9'" },
     { name = "playwright", version = "1.55.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.9'" },
     { name = "pydantic", version = "2.10.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.9'" },
@@ -559,14 +554,8 @@ dependencies = [
     { name = "requests", version = "2.32.5", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.9'" },
     { name = "rich", version = "14.1.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.9'" },
     { name = "rich", version = "14.2.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.9'" },
-    { name = "selenium", version = "4.27.1", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.9'" },
-    { name = "selenium", version = "4.32.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version == '3.9.*'" },
-    { name = "selenium", version = "4.38.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.10'" },
     { name = "simple-term-menu" },
     { name = "simplekml" },
-    { name = "textual", version = "0.73.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.8.1'" },
-    { name = "textual", version = "6.2.1", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.8.1' and python_full_version < '3.9'" },
-    { name = "textual", version = "6.4.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.9'" },
     { name = "toml" },
     { name = "tomli" },
     { name = "tomli-w", version = "1.0.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.9'" },
@@ -575,7 +564,6 @@ dependencies = [
     { name = "typer" },
     { name = "uvicorn", version = "0.33.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.9'" },
     { name = "uvicorn", version = "0.37.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.9'" },
-    { name = "webdriver-manager" },
 ]
 
 [package.optional-dependencies]
@@ -607,6 +595,20 @@ dev = [
     { name = "types-requests", version = "2.32.4.20250913", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.10'" },
     { name = "types-toml" },
 ]
+full = [
+    { name = "google-api-python-client" },
+    { name = "google-auth-httplib2" },
+    { name = "google-auth-oauthlib" },
+    { name = "pandas", version = "2.0.3", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.9'" },
+    { name = "pandas", version = "2.3.3", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.9'" },
+    { name = "selenium", version = "4.27.1", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.9'" },
+    { name = "selenium", version = "4.32.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version == '3.9.*'" },
+    { name = "selenium", version = "4.38.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.10'" },
+    { name = "textual", version = "0.73.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.8.1'" },
+    { name = "textual", version = "6.2.1", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.8.1' and python_full_version < '3.9'" },
+    { name = "textual", version = "6.4.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.9'" },
+    { name = "webdriver-manager" },
+]
 
 [package.metadata]
 requires-dist = [
@@ -620,16 +622,16 @@ requires-dist = [
     { name = "fastapi" },
     { name = "fuzzywuzzy" },
     { name = "geopy" },
-    { name = "google-api-python-client" },
-    { name = "google-auth-httplib2" },
-    { name = "google-auth-oauthlib" },
+    { name = "google-api-python-client", marker = "extra == 'full'" },
+    { name = "google-auth-httplib2", marker = "extra == 'full'" },
+    { name = "google-auth-oauthlib", marker = "extra == 'full'" },
     { name = "html5lib" },
     { name = "httpx" },
     { name = "jmespath" },
     { name = "lxml" },
     { name = "lxml-html-clean" },
     { name = "mypy", marker = "extra == 'dev'" },
-    { name = "pandas" },
+    { name = "pandas", marker = "extra == 'full'" },
     { name = "pandas-stubs", marker = "extra == 'dev'" },
     { name = "playwright" },
     { name = "pydantic" },
@@ -643,10 +645,10 @@ requires-dist = [
     { name = "requests" },
     { name = "rich" },
     { name = "ruff", marker = "extra == 'dev'" },
-    { name = "selenium" },
+    { name = "selenium", marker = "extra == 'full'" },
     { name = "simple-term-menu" },
     { name = "simplekml" },
-    { name = "textual" },
+    { name = "textual", marker = "extra == 'full'" },
     { name = "toml" },
     { name = "tomli" },
     { name = "tomli-w" },
@@ -658,9 +660,9 @@ requires-dist = [
     { name = "types-requests", marker = "extra == 'dev'" },
     { name = "types-toml", marker = "extra == 'dev'" },
     { name = "uvicorn" },
-    { name = "webdriver-manager" },
+    { name = "webdriver-manager", marker = "extra == 'full'" },
 ]
-provides-extras = ["dev"]
+provides-extras = ["full", "dev"]
 
 [[package]]
 name = "colorama"
