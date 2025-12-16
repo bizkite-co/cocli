@@ -271,9 +271,14 @@ generate-campaign-grid: install ## Generate 0.1-degree aligned grid for the curr
 # ==============================================================================
 # Raspberry Pi Worker Management
 # ==============================================================================
-RPI_HOST ?= 10.0.0.12
+RPI_HOST ?= octoprint.local
 RPI_USER ?= mstouffer
 RPI_DIR ?= ~/repos/cocli
+
+.PHONY: setup-rpi
+setup-rpi: ## Bootstap the Raspberry Pi with Docker and Git
+	scp scripts/setup_rpi.sh $(RPI_USER)@$(RPI_HOST):~/setup_rpi.sh
+	ssh $(RPI_USER)@$(RPI_HOST) "chmod +x ~/setup_rpi.sh && ~/setup_rpi.sh"
 
 .PHONY: ssh-rpi
 ssh-rpi: ## SSH into the Raspberry Pi worker
@@ -363,7 +368,7 @@ clean-docker-pi: ## Remove all stopped containers, unused networks, dangling ima
 
 .PHONY: stop-rpi-all
 stop-rpi-all: ## Stop all Raspberry Pi cocli worker containers
-	-ssh $(RPI_USER)@$(RPI_HOST) "docker stop \$$(docker ps -q --filter name=cocli-); docker rm \$$(docker ps -a -q --filter name=cocli-)"
+	-ssh $(RPI_USER)@$(RPI_HOST) "if [ -n \"\$$(docker ps -q --filter name=cocli-)\" ]; then docker stop \$$(docker ps -q --filter name=cocli-); fi; if [ -n \"\$$(docker ps -a -q --filter name=cocli-)\" ]; then docker rm \$$(docker ps -a -q --filter name=cocli-); fi"
 
 .PHONY: deploy-rpi
 deploy-rpi: stop-rpi-all rebuild-rpi-worker start-rpi-worker start-rpi-details-worker ## Full deployment: stop all, rebuild, and restart both workers

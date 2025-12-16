@@ -29,15 +29,13 @@ def main(campaign_name: Optional[str] = typer.Argument(None, help="Campaign name
     table.add_column("Count", justify="right", style="magenta")
     table.add_column("Percentage/Details", justify="right", style="green")
 
-    total_prospects = stats.get('prospects_count', 0)
-    table.add_row("Prospects (gm-detail)", str(total_prospects), "100%")
-    
     using_cloud_queue = stats.get('using_cloud_queue', False)
 
+    # 1. Pipeline Status (Workers & Queues)
     if using_cloud_queue:
         # Worker Status
         active_fargate = stats.get('active_fargate_tasks', 0)
-        table.add_row("Active Workers (Fargate)", str(active_fargate), "[bold green]Running[/bold green]" if active_fargate > 0 else "[dim]Stopped[/dim]")
+        table.add_row("Active Enrichment Workers (Fargate)", str(active_fargate), "[bold green]Running[/bold green]" if active_fargate > 0 else "[dim]Stopped[/dim]")
 
         # Queues & Processing
         # Scrape Tasks (gm-list)
@@ -55,11 +53,17 @@ def main(campaign_name: Optional[str] = typer.Argument(None, help="Campaign name
         enrich_inflight = stats.get('enrichment_inflight', 0)
         table.add_row("Enrichment Queue", f"{enrich_pending} / [blue]{enrich_inflight} Active[/blue]", "[yellow]SQS[/yellow]")
     else:
+        # Local Queues
         table.add_row("Queue Pending", str(stats.get('enrichment_pending', 0)), "[yellow]Waiting[/yellow]")
         table.add_row("Queue Processing", str(stats.get('enrichment_inflight', 0)), "[blue]In Flight[/blue]")
-        
+
+    # 2. Local Queue Status
     table.add_row("Queue Failed (Local)", str(stats.get('failed_count', 0)), "[red]Errors/Retries[/red]")
     table.add_row("Queue Completed (Local)", str(stats.get('completed_count', 0)), "[dim]Done[/dim]") 
+
+    # 3. Data Funnel
+    total_prospects = stats.get('prospects_count', 0)
+    table.add_row("Prospects (gm-detail)", str(total_prospects), "100%")
 
     # Enriched %
     enriched_count = stats.get('enriched_count', 0)
