@@ -22,6 +22,7 @@ class ScrapedArea(NamedTuple):
     lat_miles: float
     lon_miles: float
     items_found: int
+    tile_id: Optional[str] = None
 
 def _calculate_overlap_area(bounds1: dict[str, float], bounds2: dict[str, float]) -> float:
     """
@@ -120,6 +121,7 @@ class ScrapeIndex:
                 lat_miles=data['lat_miles'],
                 lon_miles=data['lon_miles'],
                 items_found=data.get('items_found', 0),
+                tile_id=data.get('tile_id')
             )
         except Exception as e:
             logger.error(f"Error loading area from {file_path}: {e}")

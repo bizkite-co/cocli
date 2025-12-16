@@ -382,7 +382,8 @@ def upload_kml_coverage_for_turboship(
         "--turboship-kml-exports-path",
         help="Path to the turboship project's data/kml-exports directory for deploying KMLs."
     ),
-    kml_filename: str = typer.Option("turboship_coverage.kml", "--filename", help="Filename for the generated KML.")
+    kml_filename: str = typer.Option("turboship_coverage.kml", "--filename", help="Filename for the generated KML."),
+    kml_type: str = typer.Option("customers", "--type", help="Type of KML to upload: 'customers' (default) or 'grid'.")
 ) -> None:
     """
     Generates a KML file for the 'turboship' campaign and directly places it
@@ -392,38 +393,53 @@ def upload_kml_coverage_for_turboship(
     logging.disable(logging.CRITICAL) 
     
     try:
-        console.print(f"[bold]Generating and uploading KML coverage for campaign: '{campaign_name}'[/bold]")
+        console.print(f"[bold]Generating/Uploading KML coverage for campaign: '{campaign_name}' (Type: {kml_type})[/bold]")
 
         # 1. Resolve the absolute path to the turboship kml-exports directory
         resolved_exports_dir = (Path.cwd() / turboship_kml_exports_path).resolve()
         resolved_exports_dir.mkdir(parents=True, exist_ok=True) # Ensure directory exists
-
-        # 2. Render the KML
-        # The render function creates f"{campaign_name}_customers.kml" in the output directory
         
-        # Ensure the campaign directory for cocli data is correct for render_kml_for_campaign
+        # Ensure the campaign directory for cocli data is correct
         campaign_data_dir = get_campaign_dir(campaign_name)
         if not campaign_data_dir:
             console.print(f"[bold red]Campaign '{campaign_name}' not found in cocli data.[/bold red]")
             raise typer.Exit(code=1)
 
-        # Render KML into the export directory
-        render_kml_for_campaign(campaign_name, output_dir=resolved_exports_dir)
+        generated_kml_path = None
+
+        if kml_type == "grid":
+            # Source: exports/target-areas.kml
+            source_path = campaign_data_dir / "exports" / "target-areas.kml"
+            if not source_path.exists():
+                console.print(f"[bold red]Grid KML not found at {source_path}. Run 'cocli campaign generate-grid' first.[/bold red]")
+                raise typer.Exit(code=1)
+            
+            # Destination temp path (to use common logic)
+            generated_kml_path = source_path
+            
+        else: # "customers"
+            # Render KML into the export directory
+            # render_kml_for_campaign creates f"{campaign_name}_customers.kml" in output_dir
+            render_kml_for_campaign(campaign_name, output_dir=resolved_exports_dir)
+            generated_kml_path = resolved_exports_dir / f"{campaign_name}_customers.kml"
         
-        # The render function creates a KML named f"{campaign_name}_customers.kml".
-        # It must be renamed to match the kml_filename argument for CloudFront to find it.
-        generated_kml_path = resolved_exports_dir / f"{campaign_name}_customers.kml"
-        
-        # Rename/move to the final desired filename
+        # Rename/move to the final desired filename in the exports dir
         final_kml_path = resolved_exports_dir / kml_filename
-        if generated_kml_path.exists():
-            shutil.move(str(generated_kml_path), str(final_kml_path))
-            console.print(f"[green]KML file moved to {final_kml_path.relative_to(Path.cwd())}[/green]")
+        
+        if generated_kml_path and generated_kml_path.exists():
+            if kml_type == "grid":
+                 # For grid, we copy from exports to turboship dir
+                 shutil.copy(str(generated_kml_path), str(final_kml_path))
+            else:
+                 # For customers, we move the rendered file
+                 shutil.move(str(generated_kml_path), str(final_kml_path))
+                 
+            console.print(f"[green]KML file ({kml_type}) placed at {final_kml_path.relative_to(Path.cwd())}[/green]")
         else:
-            console.print(f"[bold red]Error: KML file not found after rendering at {generated_kml_path}.[/bold red]")
+            console.print(f"[bold red]Error: Source KML file not found at {generated_kml_path}.[/bold red]")
             raise typer.Exit(code=1)
 
-        console.print("[bold green]KML coverage generation and placement complete.[/bold green]")
+        console.print("[bold green]KML placement complete.[/bold green]")
         console.print("[yellow]Remember to deploy your turboship CDK to publish the updated KML to CloudFront.[/yellow]")
     finally:
         logging.disable(logging.NOTSET) # Re-enable logging
@@ -1109,11 +1125,7 @@ def visualize_coverage(
     for phrase, areas in areas_by_phrase.items():
         kml_placemarks = []
         for area in areas:
-            # Handle wilderness areas which might not have a 'phrase' attribute the same way or it matches "wilderness"
-            # The 'area' object structure depends on ScrapeIndex.get_all_areas_for_phrases vs _load_wilderness_areas return types.
-            # Assuming they are similar ScrapedArea objects.
-            
-            # Use the phrase from the loop key if the object doesn't have it or for consistency
+            # ... (existing placemark generation) ...
             current_phrase = phrase 
             
             coordinates = (
@@ -1176,6 +1188,114 @@ def visualize_coverage(
         except IOError as e:
             console.print(f"[bold red]Error writing to file {output_file}: {e}[/bold red]")
     
+    console.print(f"[bold green]Coverage visualization complete. Files saved in: {export_dir}[/bold green]")
+
+    # --- Aggregated Grid Logic ---
+    console.print("[dim]Generating Grid-Aggregated KML...[/dim]")
+    import math
+    aggregated_tiles: Dict[str, Dict[str, Any]] = {}
+
+    for area in scraped_areas:
+        # Snap to 0.1 degree grid (South-West corner)
+        grid_lat = math.floor(area.lat_min * 10) / 10.0
+        grid_lon = math.floor(area.lon_min * 10) / 10.0
+        tile_id = f"{grid_lat:.1f}_{grid_lon:.1f}"
+
+        if tile_id not in aggregated_tiles:
+            aggregated_tiles[tile_id] = {
+                "lat": grid_lat,
+                "lon": grid_lon,
+                "total_items": 0,
+                "phrases": {},
+                "last_scraped": area.scrape_date
+            }
+        
+        tile_data = aggregated_tiles[tile_id]
+        tile_data["total_items"] += area.items_found
+        if area.scrape_date > tile_data["last_scraped"]:
+            tile_data["last_scraped"] = area.scrape_date
+        
+        # Aggregate stats per phrase
+        phrase_key = area.phrase
+        if phrase_key not in tile_data["phrases"]:
+            tile_data["phrases"][phrase_key] = {"count": 0, "found": 0}
+        
+        tile_data["phrases"][phrase_key]["count"] += 1
+        tile_data["phrases"][phrase_key]["found"] += area.items_found
+
+    # Generate Aggregated KML Content
+    agg_placemarks = []
+    for tile_id, data in aggregated_tiles.items():
+        # Define 0.1 degree box
+        lat_min = data["lat"]
+        lon_min = data["lon"]
+        lat_max = lat_min + 0.1
+        lon_max = lon_min + 0.1
+        
+        coordinates = (
+            f"{lon_min},{lat_min},0 "
+            f"{lon_max},{lat_min},0 "
+            f"{lon_max},{lat_max},0 "
+            f"{lon_min},{lat_max},0 "
+            f"{lon_min},{lat_min},0"
+        )
+
+        # Build Description Table
+        desc_rows = ""
+        for p, stats in data["phrases"].items():
+            desc_rows += f"<tr><td>{p}</td><td>{stats['count']}</td><td>{stats['found']}</td></tr>"
+        
+        description = f"""
+            <h3>Tile: {tile_id}</h3>
+            <p><b>Total Items Found:</b> {data['total_items']}<br/>
+            <b>Last Scraped:</b> {data['last_scraped'].strftime('%Y-%m-%d %H:%M')}</p>
+            <table border="1" cellpadding="3">
+                <tr><th>Phrase</th><th>Runs</th><th>Found</th></tr>
+                {desc_rows}
+            </table>
+        """
+
+        # Color logic: Green if items found, Grey if 0
+        color = "ff00ff00" if data["total_items"] > 0 else "ff808080"
+
+        placemark = f'''        <Placemark>
+            <name>{tile_id}</name>
+            <description><![CDATA[{description}]]></description>
+            <Style>
+                <LineStyle>
+                    <color>ffffffff</color>
+                    <width>2</width>
+                </LineStyle>
+                <PolyStyle>
+                    <color>40{color[2:]}</color> <!-- 25% opacity -->
+                </PolyStyle>
+            </Style>
+            <Polygon>
+                <outerBoundaryIs>
+                    <LinearRing>
+                        <coordinates>{coordinates}</coordinates>
+                    </LinearRing>
+                </outerBoundaryIs>
+            </Polygon>
+        </Placemark>'''
+        agg_placemarks.append(placemark)
+
+    agg_kml_content = f'''<?xml version="1.0" encoding="UTF-8"?>
+<kml xmlns="http://www.opengis.net/kml/2.2">
+    <Document>
+        <name>Grid Aggregated Coverage</name>
+{"\n".join(agg_placemarks)}
+    </Document>
+</kml>'''
+
+    agg_output_file = export_dir / "coverage_grid_aggregated.kml"
+    try:
+        with open(agg_output_file, 'w') as f:
+            f.write(agg_kml_content)
+        console.print(f"[green]Generated Aggregated KML: {agg_output_file.name}[/green]")
+    except IOError as e:
+        console.print(f"[bold red]Error writing aggregated KML: {e}[/bold red]")
+
     console.print(f"[bold green]Coverage visualization complete. Files saved in: {export_dir}[/bold green]")
 
 @app.command(name="generate-grid")
