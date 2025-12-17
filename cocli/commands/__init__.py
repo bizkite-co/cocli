@@ -16,7 +16,7 @@ def register_commands(app: typer.Typer) -> None:
     from . import import_companies
     from . import import_customers
     from . import import_data
-    from . import import_turboship # Removed
+    # from . import import_turboship # Removed to avoid pandas dependency on RPi
     from . import ingest_google_maps_csv
     from . import init
     from . import meetings
