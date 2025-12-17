@@ -322,6 +322,10 @@ check-git-sync: ## Verify that the local git repo is clean and synced with upstr
 	fi
 	@echo "\033[0;32mGit status is clean and synced.\033[0m"
 
+.PHONY: build-rpi-base
+build-rpi-base: check-git-sync ## Build the heavy base Docker image on RPi (Run once/rarely)
+	ssh $(RPI_USER)@$(RPI_HOST) "cd $(RPI_DIR) && git fetch --all && git reset --hard origin/main && docker build -t cocli-rpi-base:latest -f docker/rpi-worker/Dockerfile.base ."
+
 .PHONY: rebuild-rpi-worker
 rebuild-rpi-worker: check-git-sync ## Pull latest code and rebuild Docker image on Raspberry Pi
 	ssh $(RPI_USER)@$(RPI_HOST) "cd $(RPI_DIR) && git fetch --all && git reset --hard origin/main && docker build --no-cache -t cocli-worker-rpi -f docker/rpi-worker/Dockerfile ."

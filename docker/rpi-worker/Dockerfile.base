@@ -1,0 +1,35 @@
+# Dockerfile.base
+# This image contains all heavy system dependencies and compiled packages.
+# Build this ONCE (or rarely) on the Raspberry Pi.
+
+FROM python:3.12-slim-bullseye
+
+WORKDIR /app
+
+# 1. Install System Dependencies (Slow)
+RUN apt-get update && apt-get install -y \
+    wget git build-essential \
+    libnss3 libatk-bridge2.0-0 libdrm2 libgbm1 libglib2.0-0 \
+    libgtk-3-0 libasound2 libdbus-1-3 libxcomposite1 libxdamage1 \
+    libxext6 libxrandr2 libxkbcommon0 libcups2 libu2f-udev \
+    libvulkan1 libxkbfile1 libfontconfig1 libfreetype6 \
+    libharfbuzz0b libpng16-16 libjpeg62-turbo libwebp6 libgl1 \
+    --no-install-recommends && \
+    rm -rf /var/lib/apt/lists/*
+
+# 2. Install UV (Fast)
+RUN pip install uv
+
+# 3. Install Playwright Browsers (Very Slow / Heavy)
+# We install playwright package first to get the CLI tool
+RUN pip install playwright==1.57.0 && \
+    playwright install chromium --with-deps
+
+# 4. Install Core Python Dependencies (Slow if compiling required)
+# We copy pyproject.toml to install deps before copying the rest of the code
+COPY pyproject.toml .
+# Create a dummy README/src to satisfy build if needed, or just install deps
+# Note: uv pip install . requires the package structure usually.
+# A better trick: Install dependencies only first?
+# For simplicity in this base layer, we just install the heavy stuff above.
+# If we want to cache python packages, we can do it here, but they are fast with uv.
