@@ -257,9 +257,15 @@ gc-companies: ## Commit and push all changes to companies and people
 	cd cocli_data && git add companies people && git commit -m "Update companies and people" && git push;; cd ..
 .PHONY: deploy-creds-rpi
 deploy-creds-rpi: ## Securely deploy AWS credentials to the Raspberry Pi
+	@if [ ! -f "docker/rpi-worker/rpi_credentials" ] || [ ! -f "docker/rpi-worker/rpi_config" ]; then \
+		echo "\033[0;31mError: 'docker/rpi-worker/rpi_credentials' and 'docker/rpi-worker/rpi_config' files not found.\033[0m"; \
+		echo "Please create them with the [bizkite-support] profile for the RPi in that directory."; \
+		exit 1; \
+	fi
 	@echo "Deploying AWS credentials to $(RPI_USER)@$(RPI_HOST)..."
 	ssh $(RPI_USER)@$(RPI_HOST) "rm -rf ~/.aws && mkdir ~/.aws"
-	scp ~/.aws/credentials ~/.aws/config $(RPI_USER)@$(RPI_HOST):~/.aws/
+	scp docker/rpi-worker/rpi_credentials $(RPI_USER)@$(RPI_HOST):~/.aws/credentials
+	scp docker/rpi-worker/rpi_config $(RPI_USER)@$(RPI_HOST):~/.aws/config
 
 # ==============================================================================
 # Planning & Analysis
