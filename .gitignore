@@ -1,8 +1,8 @@
 build
 temp
 # AWS Credentials for RPi deployment
-docker/rpi-worker/rpi_credentials
-docker/rpi-worker/rpi_config
+docker/rpi-worker/.rpi_credentials
+docker/rpi-worker/.rpi_config
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
@@ -19,4 +19,3 @@ dist
 .envrc
 turboship
 quickbooks-search
-docker/rpi-worker/.rpi_credentials
