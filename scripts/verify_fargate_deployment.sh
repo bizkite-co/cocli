@@ -1,10 +1,10 @@
 #!/bin/bash
 set -e
 
-CLUSTER="ScraperCluster" # Corrected cluster name
+CLUSTER="ScraperCluster"    # Corrected cluster name
 SERVICE="EnrichmentService" # Corrected service name
 REGION="us-east-1"
-PROFILE="turboship-support"
+PROFILE="bizkite-support"
 
 echo "--- Verifying Fargate Deployment ---"
 
@@ -40,14 +40,14 @@ echo "Service is READY!"
 # 4. Run Enrichment Test
 echo "Running Enrichment Test..."
 curl -v -X POST "http://$PUBLIC_IP:8000/enrich" \
--H "Content-Type: application/json" \
--d '{
+    -H "Content-Type: application/json" \
+    -d '{
   "domain": "example.com",
   "force": true,
   "ttl_days": 30,
   "debug": false,
   "campaign_name": "turboship",
-  "aws_profile_name": "turboship-support",
+  "aws_profile_name": "bizkite-support",
   "company_slug": "turbo-heat-welding-tools"
 }'
 

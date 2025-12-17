@@ -3,7 +3,7 @@ set -e
 
 # Configuration
 AWS_REGION="us-east-1"
-AWS_PROFILE="turboship-support"
+AWS_PROFILE="bizkite-support"
 ECR_REPO_URI="193481341784.dkr.ecr.us-east-1.amazonaws.com/cocli-enrichment-service"
 
 echo "--- 1. Authenticating with ECR ---"

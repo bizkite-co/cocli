@@ -193,7 +193,7 @@ check-scraper-version: ## Check if local website_scraper.py is newer than in the
 .PHONY: deploy-infra
 deploy-infra: install ## Deploy AWS Infrastructure (queues, Fargate service definition) using CDK
 	@echo "Deploying infrastructure..."
-	cd cdk_scraper_deployment && uv venv && . .venv/bin/activate && uv pip install -r requirements.txt && cdk deploy --require-approval never --profile turboship-support
+	cd cdk_scraper_deployment && uv venv && . .venv/bin/activate && uv pip install -r requirements.txt && cdk deploy --require-approval never --profile bizkite-support
 
 .PHONY: deploy-enrichment
 deploy-enrichment: test docker-build ## Build and deploy the enrichment service to AWS Fargate
@@ -204,7 +204,7 @@ verify: ## Verify the Fargate deployment
 	@./scripts/verify_fargate_deployment.sh
 
 force-update: ## Force Update of service
-	aws ecs update-service --cluster ScraperCluster --service EnrichmentService --force-new-deployment --profile turboship-support
+	aws ecs update-service --cluster ScraperCluster --service EnrichmentService --force-new-deployment --profile bizkite-support
 
 .PHONY: ingest-legacy
 ingest-legacy: ## Ingest legacy google_maps_prospects.csv into the new queue system (Usage: make ingest-legacy CAMPAIGN=name)

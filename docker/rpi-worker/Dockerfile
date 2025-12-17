@@ -17,7 +17,7 @@ RUN uv pip install --system -e .
 RUN echo '#!/bin/bash' > docker/rpi-worker/run_worker.sh && \
     echo 'export COCLI_SCRAPE_TASKS_QUEUE_URL="https://sqs.us-east-1.amazonaws.com/193481341784/CdkScraperDeploymentStack-ScrapeTasksQueue9836DB1F-TfprnaM0R5gs"' >> docker/rpi-worker/run_worker.sh && \
     echo 'export COCLI_ENRICHMENT_QUEUE_URL="https://sqs.us-east-1.amazonaws.com/193481341784/CdkScraperDeploymentStack-EnrichmentQueue4D4E619F-srLGUESiUDYU"' >> docker/rpi-worker/run_worker.sh && \
-    echo 'export AWS_PROFILE="turboship-support"' >> docker/rpi-worker/run_worker.sh && \
+    echo 'export AWS_PROFILE="bizkite-support"' >> docker/rpi-worker/run_worker.sh && \
     echo '# Pass arguments to the script (e.g. "cocli worker details")' >> docker/rpi-worker/run_worker.sh && \
     echo 'if [ "$#" -eq 0 ]; then' >> docker/rpi-worker/run_worker.sh && \
     echo '    cocli worker scrape' >> docker/rpi-worker/run_worker.sh && \
