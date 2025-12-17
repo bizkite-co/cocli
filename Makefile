@@ -361,11 +361,11 @@ restart-rpi-worker: stop-rpi-worker start-rpi-worker ## Restart the Raspberry Pi
 
 .PHONY: log-rpi-worker
 log-rpi-worker: ## Tail logs from the Raspberry Pi List Scraper worker
-	ssh $(RPI_USER)@$(RPI_HOST) "docker logs -f cocli-scraper-worker"
+	ssh $(RPI_USER)@$(RPI_HOST) "docker logs cocli-scraper-worker"
 
 .PHONY: log-rpi-details-worker
 log-rpi-details-worker: ## Tail logs from the Raspberry Pi Details Scraper worker
-	ssh $(RPI_USER)@$(RPI_HOST) "docker logs -f cocli-details-worker"
+	ssh $(RPI_USER)@$(RPI_HOST) "docker logs cocli-details-worker"
 
 .PHONY: log-rpi-all
 log-rpi-all: ## Tail logs from all Raspberry Pi cocli worker containers
