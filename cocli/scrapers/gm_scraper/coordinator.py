@@ -44,8 +44,11 @@ class ScrapeCoordinator:
         grid_tiles: Optional[List[Dict[str, Any]]] = None
     ) -> AsyncIterator[GoogleMapsProspect]:
         
-        # Create a new page for this session
-        page = await self.browser.new_page(viewport={'width': self.viewport_width, 'height': self.viewport_height})
+        # Create a new context explicitly for this session
+        # This fixes 'Please use browser.new_context()' errors on some environments
+        context = await self.browser.new_context(viewport={'width': self.viewport_width, 'height': self.viewport_height})
+        page = await context.new_page()
+        
         navigator = Navigator(page)
         scanner = SidebarScraper(page, debug=self.debug)
         
@@ -127,4 +130,4 @@ class ScrapeCoordinator:
                     self.wilderness.mark_scraped(bounds, query, items_found, record_width, record_height, tile_id=tile_id)
                     
         finally:
-            await page.close()
+            await context.close()
