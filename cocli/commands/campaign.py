@@ -378,19 +378,17 @@ def upload_kml_coverage_for_turboship(
     campaign_name: str = typer.Argument("turboship", help="Name of the campaign."),
     # Path to the turboship kml-exports directory, relative to current working directory
     turboship_kml_exports_path: Path = typer.Option(
-        "../../turboheatweldingtools/turboship/data/kml-exports",
+        "../turboheatweldingtools/turboship/data/kml-exports",
         "--turboship-kml-exports-path",
         help="Path to the turboship project's data/kml-exports directory for deploying KMLs."
     ),
     kml_filename: str = typer.Option("turboship_coverage.kml", "--filename", help="Filename for the generated KML."),
-    kml_type: str = typer.Option("customers", "--type", help="Type of KML to upload: 'customers' (default) or 'grid'.")
+    kml_type: str = typer.Option("customers", "--type", help="Type of KML to upload: 'customers' (default), 'grid' (plan), or 'result-grid' (aggregated coverage).")
 ) -> None:
     """
     Generates a KML file for the 'turboship' campaign and directly places it
     into the turboship project's kml-exports directory for deployment via its CDK stack.
     """
-    # Temporarily disable all logging below CRITICAL
-    logging.disable(logging.CRITICAL) 
     
     try:
         console.print(f"[bold]Generating/Uploading KML coverage for campaign: '{campaign_name}' (Type: {kml_type})[/bold]")
@@ -408,15 +406,21 @@ def upload_kml_coverage_for_turboship(
         generated_kml_path = None
 
         if kml_type == "grid":
-            # Source: exports/target-areas.kml
+            # Source: exports/target-areas.kml (The PLAN)
             source_path = campaign_data_dir / "exports" / "target-areas.kml"
             if not source_path.exists():
-                console.print(f"[bold red]Grid KML not found at {source_path}. Run 'cocli campaign generate-grid' first.[/bold red]")
+                console.print(f"[bold red]Grid Plan KML not found at {source_path}. Run 'cocli campaign generate-grid' first.[/bold red]")
                 raise typer.Exit(code=1)
-            
-            # Destination temp path (to use common logic)
             generated_kml_path = source_path
             
+        elif kml_type == "result-grid":
+            # Source: exports/coverage_grid_aggregated.kml (The RESULT)
+            source_path = campaign_data_dir / "exports" / "coverage_grid_aggregated.kml"
+            if not source_path.exists():
+                console.print(f"[bold red]Aggregated Grid KML not found at {source_path}. Run 'cocli campaign visualize-coverage' first.[/bold red]")
+                raise typer.Exit(code=1)
+            generated_kml_path = source_path
+
         else: # "customers"
             # Render KML into the export directory
             # render_kml_for_campaign creates f"{campaign_name}_customers.kml" in output_dir
@@ -427,22 +431,28 @@ def upload_kml_coverage_for_turboship(
         final_kml_path = resolved_exports_dir / kml_filename
         
         if generated_kml_path and generated_kml_path.exists():
-            if kml_type == "grid":
-                 # For grid, we copy from exports to turboship dir
+            if kml_type in ["grid", "result-grid"]:
+                 # For grid files, we copy from exports to turboship dir
                  shutil.copy(str(generated_kml_path), str(final_kml_path))
             else:
                  # For customers, we move the rendered file
                  shutil.move(str(generated_kml_path), str(final_kml_path))
-                 
-            console.print(f"[green]KML file ({kml_type}) placed at {final_kml_path.relative_to(Path.cwd())}[/green]")
+            
+            try:
+                display_path = final_kml_path.relative_to(Path.cwd())
+            except ValueError:
+                display_path = final_kml_path
+
+            console.print(f"[green]KML file ({kml_type}) placed at {display_path}[/green]")
         else:
             console.print(f"[bold red]Error: Source KML file not found at {generated_kml_path}.[/bold red]")
             raise typer.Exit(code=1)
 
         console.print("[bold green]KML placement complete.[/bold green]")
         console.print("[yellow]Remember to deploy your turboship CDK to publish the updated KML to CloudFront.[/yellow]")
-    finally:
-        logging.disable(logging.NOTSET) # Re-enable logging
+    except Exception as e:
+        console.print(f"[bold red]An error occurred: {e}[/bold red]")
+        raise typer.Exit(code=1)
 
 
 async def pipeline(
@@ -1561,12 +1571,20 @@ def queue_scrapes(
     if grid_file.exists():
         console.print("[bold cyan]Found Grid Plan (target-areas.json). Switching to Grid Mode.[/bold cyan]")
         import json
+        
+        # Initialize Index for Deduplication
+        scrape_index = ScrapeIndex()
+        # Assume standard grid step if not in file, but 0.1 is standard
+        step = DEFAULT_GRID_STEP_DEG
+        half_step = step / 2.0
+        
         try:
             with open(grid_file, 'r') as f:
                 grid_tiles = json.load(f)
             
             console.print(f"[green]Loaded {len(grid_tiles)} tiles.[/green]")
             
+            skipped_count = 0
             for tile in grid_tiles:
                 # Handle both flat and nested formats
                 lat = tile.get("center_lat")
@@ -1579,10 +1597,27 @@ def queue_scrapes(
                 tile_id = tile.get("id")
                 
                 if lat is not None and lon is not None and tile_id:
+                    # Calculate bounds for this tile to check coverage
+                    lat = float(lat)
+                    lon = float(lon)
+                    bounds = {
+                        "lat_min": lat - half_step,
+                        "lat_max": lat + half_step,
+                        "lon_min": lon - half_step,
+                        "lon_max": lon + half_step
+                    }
+                    
                     for phrase in search_phrases:
+                        # Check Index (TTL 30 days default or per logic)
+                        if not force:
+                            # 90% overlap threshold to match essentially the same tile
+                            if scrape_index.is_area_scraped(phrase, bounds, ttl_days=30, overlap_threshold_percent=90.0):
+                                skipped_count += 1
+                                continue
+                                
                         tasks_to_queue.append(ScrapeTask(
-                            latitude=float(lat),
-                            longitude=float(lon),
+                            latitude=lat,
+                            longitude=lon,
                             zoom=13,
                             search_phrase=phrase,
                             campaign_name=campaign_name,
@@ -1590,6 +1625,9 @@ def queue_scrapes(
                             tile_id=tile_id,
                             ack_token=None
                         ))
+            if skipped_count > 0:
+                console.print(f"[yellow]Skipped {skipped_count} already scraped tasks (TTL valid).[/yellow]")
+                
         except Exception as e:
             console.print(f"[bold red]Error loading grid file: {e}[/bold red]")
             raise typer.Exit(code=1)

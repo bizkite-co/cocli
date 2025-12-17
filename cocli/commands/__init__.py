@@ -16,7 +16,7 @@ def register_commands(app: typer.Typer) -> None:
     from . import import_companies
     from . import import_customers
     from . import import_data
-    from . import import_turboship
+    from . import import_turboship # Removed
     from . import ingest_google_maps_csv
     from . import init
     from . import meetings
@@ -39,7 +39,7 @@ def register_commands(app: typer.Typer) -> None:
     app.command(name="google-maps-cache-to-company-files")(import_companies.google_maps_cache_to_company_files)
     app.command(name="import-customers")(import_customers.import_customers)
     app.command(name="import-data")(import_data.import_data)
-    app.command(name="import-turboship")(import_turboship.import_turboship)
+    # app.command(name="import-turboship")(import_turboship.import_turboship) # Removed
     app.command(name="google-maps-csv-to-google-maps-cache")(ingest_google_maps_csv.google_maps_csv_to_google_maps_cache)
     app.command(name="init")(init.init)
     app.command(name="next")(meetings.next_meetings)
