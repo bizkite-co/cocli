@@ -35,7 +35,7 @@ def setup_file_logging(command_name: str, console_level: int = logging.INFO, fil
     # Create file handler for detailed logs
     file_handler = logging.FileHandler(log_file)
     file_handler.setLevel(file_level)
-    file_formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s', datefmt='%Y-%m-%d %H:%M:%S')
+    file_formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s', datefmt='%Y-%m-%d %H:%M:%S %z')
     file_handler.setFormatter(file_formatter)
     root_logger.addHandler(file_handler)
 
@@ -43,7 +43,7 @@ def setup_file_logging(command_name: str, console_level: int = logging.INFO, fil
         # Create console handler for less verbose output
         console_handler = logging.StreamHandler(sys.stderr)
         console_handler.setLevel(console_level)
-        console_formatter = logging.Formatter('[%(asctime)s] %(message)s', datefmt='%Y-%m-%d %H:%M:%S') # Keep console output clean
+        console_formatter = logging.Formatter('[%(asctime)s] %(message)s', datefmt='%Y-%m-%d %H:%M:%S %z') # Keep console output clean
         console_handler.setFormatter(console_formatter)
         root_logger.addHandler(console_handler)
 
