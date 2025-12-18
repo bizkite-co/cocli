@@ -286,6 +286,11 @@ setup-rpi: ## Bootstap the Raspberry Pi with Docker and Git
 	scp scripts/setup_rpi.sh $(RPI_USER)@$(RPI_HOST):~/setup_rpi.sh
 	ssh $(RPI_USER)@$(RPI_HOST) "chmod +x ~/setup_rpi.sh && ~/setup_rpi.sh"
 
+.PHONY: boardcheck
+boardcheck: ## Copy boardcheck.sh to the Pi and run it
+	scp docker/rpi-worker/boardcheck.sh $(RPI_USER)@$(RPI_HOST):~/boardcheck.sh
+	ssh $(RPI_USER)@$(RPI_HOST) "chmod +x ~/boardcheck.sh && ~/boardcheck.sh"
+
 .PHONY: ssh-rpi
 ssh-rpi: ## SSH into the Raspberry Pi worker
 	ssh $(RPI_USER)@$(RPI_HOST)
