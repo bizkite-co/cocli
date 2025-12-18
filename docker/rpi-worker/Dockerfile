@@ -1,6 +1,6 @@
-# Use our local base image (built via Dockerfile.base)
+# Use our public base image from Docker Hub
 # This image already has OS libs, Python, UV, and Playwright Chromium installed.
-FROM cocli-rpi-base:latest
+FROM integrator/cocli-rpi-base:latest
 
 WORKDIR /app
 

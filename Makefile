@@ -291,8 +291,8 @@ ssh-rpi: ## SSH into the Raspberry Pi worker
 	ssh $(RPI_USER)@$(RPI_HOST)
 
 .PHONY: check-rpi-voltage
-check-rpi-voltage: ## Check Raspberry Pi for undervoltage and throttling issues
-	@ssh $(RPI_USER)@$(RPI_HOST) "vcgencmd measure_volts; vcgencmd get_throttled" | while read line; do \
+check-rpi-voltage: ## Check Raspberry Pi for load, undervoltage and throttling issues
+	@ssh $(RPI_USER)@$(RPI_HOST) "uptime; vcgencmd measure_volts; vcgencmd get_throttled" | while read line; do \
 		echo "$$line"; \
 		if [[ "$$line" == "throttled="* ]]; then \
 			STATUS=$${line#*=}; \
@@ -308,6 +308,13 @@ check-rpi-voltage: ## Check Raspberry Pi for undervoltage and throttling issues
 			if [ "$$STATUS" == "0x0" ]; then echo "  [OK] Power status is healthy."; fi; \
 		fi; \
 	done
+
+.PHONY: check-cluster-health
+check-cluster-health: ## Check health (load/voltage) of all known Raspberry Pi workers
+	@echo "=== Checking octoprint.local (Scraper) ==="
+	@$(MAKE) check-rpi-voltage RPI_HOST=octoprint.local
+	@echo "\n=== Checking coclipi.local (Details) ==="
+	@$(MAKE) check-rpi-voltage RPI_HOST=coclipi.local
 
 .PHONY: shutdown-rpi
 shutdown-rpi: ## Safely shut down the Raspberry Pi (halts system)
@@ -330,7 +337,11 @@ check-git-sync: ## Verify that the local git repo is clean and synced with upstr
 
 .PHONY: build-rpi-base
 build-rpi-base: check-git-sync ## Build the heavy base Docker image on RPi (Run once/rarely)
-	ssh $(RPI_USER)@$(RPI_HOST) "cd $(RPI_DIR) && git fetch --all && git reset --hard origin/main && docker build -t cocli-rpi-base:latest -f docker/rpi-worker/Dockerfile.base ."
+	ssh $(RPI_USER)@$(RPI_HOST) "cd $(RPI_DIR) && git fetch --all && git reset --hard origin/main && docker build -t integrator/cocli-rpi-base:latest -f docker/rpi-worker/Dockerfile.base ."
+
+.PHONY: push-rpi-base
+push-rpi-base: ## Push the base image to Docker Hub
+	ssh $(RPI_USER)@$(RPI_HOST) "docker push integrator/cocli-rpi-base:latest"
 
 .PHONY: rebuild-rpi-worker
 rebuild-rpi-worker: check-git-sync ## Pull latest code and rebuild Docker image on Raspberry Pi
