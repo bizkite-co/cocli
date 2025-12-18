@@ -136,7 +136,7 @@ class SidebarScraper:
             context = self.page.context
             page = await context.new_page()
             try:
-                await page.goto(url, timeout=30000)
+                await page.goto(url, timeout=60000)
                 html = await page.content()
                 details = parse_gmb_page(html)
                 data_dict.update(details)

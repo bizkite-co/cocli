@@ -356,16 +356,20 @@ start-rpi-details-worker: ## Start the Details Worker on Raspberry Pi
 stop-rpi-worker: ## Stop and remove the Docker worker on Raspberry Pi
 	-ssh $(RPI_USER)@$(RPI_HOST) "docker stop cocli-scraper-worker && docker rm cocli-scraper-worker"
 
+.PHONY: stop-rpi-details-worker
+stop-rpi-details-worker: ## Stop and remove the Details worker on Raspberry Pi
+	-ssh $(RPI_USER)@$(RPI_HOST) "docker stop cocli-details-worker && docker rm cocli-details-worker"
+
 .PHONY: restart-rpi-worker
 restart-rpi-worker: stop-rpi-worker start-rpi-worker ## Restart the Raspberry Pi worker
 
 .PHONY: log-rpi-worker
 log-rpi-worker: ## Tail logs from the Raspberry Pi List Scraper worker
-	ssh $(RPI_USER)@$(RPI_HOST) "docker logs cocli-scraper-worker"
+	ssh $(RPI_USER)@$(RPI_HOST) "docker logs -n 100 cocli-scraper-worker"
 
 .PHONY: log-rpi-details-worker
 log-rpi-details-worker: ## Tail logs from the Raspberry Pi Details Scraper worker
-	ssh $(RPI_USER)@$(RPI_HOST) "docker logs cocli-details-worker"
+	ssh $(RPI_USER)@$(RPI_HOST) "docker logs -n 100 cocli-details-worker"
 
 .PHONY: log-rpi-all
 log-rpi-all: ## Tail logs from all Raspberry Pi cocli worker containers
