@@ -239,6 +239,26 @@ sync-scraped-areas: ## Sync scraped areas from S3
 recent-scrapes: sync-scraped-areas ## List the 30 most recent scraped areas (syncs first)
 	@find cocli_data/indexes/scraped_areas/ -name "*.json" -printf "%TY-%Tm-%Td %TT %p\n" | sort -r | head -n 30
 
+.PHONY: check-freshness
+check-freshness: sync-scraped-areas ## Check if scraped data is fresh (warn if > 4 hours old)
+	@latest=$$(find cocli_data/indexes/scraped_areas/ -name "*.json" -printf "%T@ %p\n" | sort -n | tail -1); \
+	if [ -z "$$latest" ]; then \
+		echo "Warning: No scraped areas found."; \
+	else \
+		timestamp=$$(echo $$latest | cut -d' ' -f1 | cut -d'.' -f1); \
+		filename=$$(echo $$latest | cut -d' ' -f2-); \
+		now=$$(date +%s); \
+		age=$$((now - timestamp)); \
+		hours=$$((age / 3600)); \
+		if [ $$age -gt 14400 ]; then \
+			echo "\033[0;31m[CRITICAL] Data is stale! Last scrape was $$hours hours ago.\033[0m"; \
+			echo "File: $$filename"; \
+		else \
+			echo "\033[0;32m[OK] Data is fresh. Last scrape was $$hours hours ago.\033[0m"; \
+			echo "File: $$filename"; \
+		fi \
+	fi
+
 .PHONY: export-emails
 export-emails: ## Export enriched emails to CSV (Usage: make export-emails CAMPAIGN=name)
 	@if [ -z "$(CAMPAIGN)" ]; then echo "Error: CAMPAIGN variable is required."; exit 1; fi
