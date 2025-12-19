@@ -235,6 +235,10 @@ coverage-kml: ## Generate scrape coverage KML
 sync-scraped-areas: ## Sync scraped areas from S3
 	aws s3 sync s3://cocli-data-turboship/indexes/scraped_areas cocli_data/indexes/scraped_areas --profile bizkite-support
 
+.PHONY: sync-prospects
+sync-prospects: ## Sync prospects from S3
+	aws s3 sync s3://cocli-data-turboship/campaigns/$(or $(CAMPAIGN), turboship)/indexes/google_maps_prospects cocli_data/campaigns/$(or $(CAMPAIGN), turboship)/indexes/google_maps_prospects --profile bizkite-support
+
 .PHONY: recent-scrapes
 recent-scrapes: sync-scraped-areas ## List the 30 most recent scraped areas (syncs first)
 	@find cocli_data/indexes/scraped_areas/ -name "*.json" -printf "%TY-%Tm-%Td %TT %p\n" | sort -r | head -n 30
