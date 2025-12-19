@@ -78,9 +78,10 @@ class GoogleMapsProspect(BaseModel):
 
     @model_validator(mode='before')
     @classmethod
-    def clean_empty_ratings(cls, values: Dict[str, Any]) -> Dict[str, Any]:
-        if values.get('Reviews_count') == '':
-            values['Reviews_count'] = None
-        if values.get('Average_rating') == '':
-            values['Average_rating'] = None
+    def clean_empty_values(cls, values: Dict[str, Any]) -> Dict[str, Any]:
+        """Convert empty strings to None for numeric fields to handle CSV input."""
+        numeric_fields = ['Reviews_count', 'Average_rating', 'Latitude', 'Longitude']
+        for field in numeric_fields:
+            if values.get(field) == '':
+                values[field] = None
         return values
