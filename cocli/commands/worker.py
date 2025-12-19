@@ -94,41 +94,44 @@ async def run_worker(headless: bool, debug: bool) -> None:
                         # Execute Scrape
                         # Note: scrape_google_maps is an async generator
                         prospect_count = 0
-                        async for prospect in scrape_google_maps(
-                            browser=browser,
-                            location_param=location_param,
-                            search_strings=[task.search_phrase],
-                            campaign_name=task.campaign_name,
-                            debug=debug,
-                            force_refresh=task.force_refresh,
-                            ttl_days=task.ttl_days,
-                            grid_tiles=grid_tiles,
-                            s3_client=s3_client,
-                            s3_bucket=S3_BUCKET
-                        ):
-                            prospect_count += 1
-                            
-                            # 1. Save to Local Index (Worker's disk)
-                            if csv_manager.append_prospect(prospect):
-                                # 2. Upload to S3 (Immediate Sync)
-                                if prospect.Place_ID:
-                                    file_path = csv_manager.get_file_path(prospect.Place_ID)
-                                    if file_path.exists():
-                                        # Construct S3 Key: campaigns/{campaign}/indexes/google_maps_prospects/{Place_ID}.csv
-                                        s3_key = f"campaigns/{task.campaign_name}/indexes/google_maps_prospects/{file_path.name}"
-                                        try:
-                                            s3_client.upload_file(str(file_path), S3_BUCKET, s3_key)
-                                        except Exception as e:
-                                            console.print(f"[red]S3 Upload Error:[/red] {e}")
+                        
+                        # Watchdog: Enforce 15-minute timeout per task to prevent hangs
+                        async with asyncio.timeout(900):
+                            async for prospect in scrape_google_maps(
+                                browser=browser,
+                                location_param=location_param,
+                                search_strings=[task.search_phrase],
+                                campaign_name=task.campaign_name,
+                                debug=debug,
+                                force_refresh=task.force_refresh,
+                                ttl_days=task.ttl_days,
+                                grid_tiles=grid_tiles,
+                                s3_client=s3_client,
+                                s3_bucket=S3_BUCKET
+                            ):
+                                prospect_count += 1
+                                
+                                # 1. Save to Local Index (Worker's disk)
+                                if csv_manager.append_prospect(prospect):
+                                    # 2. Upload to S3 (Immediate Sync)
+                                    if prospect.Place_ID:
+                                        file_path = csv_manager.get_file_path(prospect.Place_ID)
+                                        if file_path.exists():
+                                            # Construct S3 Key: campaigns/{campaign}/indexes/google_maps_prospects/{Place_ID}.csv
+                                            s3_key = f"campaigns/{task.campaign_name}/indexes/google_maps_prospects/{file_path.name}"
+                                            try:
+                                                s3_client.upload_file(str(file_path), S3_BUCKET, s3_key)
+                                            except Exception as e:
+                                                console.print(f"[red]S3 Upload Error:[/red] {e}")
 
-                                    # 3. Push to Details Queue
-                                    details_task = GmItemTask(
-                                        place_id=prospect.Place_ID,
-                                        campaign_name=task.campaign_name,
-                                        force_refresh=task.force_refresh,
-                                        ack_token=None
-                                    )
-                                    gm_list_item_queue.push(details_task)
+                                        # 3. Push to Details Queue
+                                        details_task = GmItemTask(
+                                            place_id=prospect.Place_ID,
+                                            campaign_name=task.campaign_name,
+                                            force_refresh=task.force_refresh,
+                                            ack_token=None
+                                        )
+                                        gm_list_item_queue.push(details_task)
                         
                         console.print(f"[green]Task Complete. Found {prospect_count} prospects.[/green]")
                         scrape_queue.ack(task)
