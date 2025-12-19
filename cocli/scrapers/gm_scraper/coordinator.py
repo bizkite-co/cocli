@@ -21,7 +21,9 @@ class ScrapeCoordinator:
         base_height_miles: float = 1.0,
         viewport_width: int = 2000,
         viewport_height: int = 2000,
-        debug: bool = False
+        debug: bool = False,
+        s3_client: Any = None,
+        s3_bucket: Optional[str] = None
     ):
         self.browser = browser
         self.campaign_name = campaign_name
@@ -30,7 +32,7 @@ class ScrapeCoordinator:
         self.viewport_width = viewport_width
         self.viewport_height = viewport_height
         self.debug = debug
-        self.wilderness = WildernessManager()
+        self.wilderness = WildernessManager(s3_client=s3_client, s3_bucket=s3_bucket)
 
     async def run(
         self,

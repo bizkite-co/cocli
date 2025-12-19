@@ -127,11 +127,11 @@ class ScrapeIndex:
             logger.error(f"Error loading area from {file_path}: {e}")
             return None
 
-    def add_area(self, phrase: str, bounds: dict[str, float], lat_miles: float, lon_miles: float, items_found: int = 0, scrape_date: Optional[datetime] = None, tile_id: Optional[str] = None) -> None:
+    def add_area(self, phrase: str, bounds: dict[str, float], lat_miles: float, lon_miles: float, items_found: int = 0, scrape_date: Optional[datetime] = None, tile_id: Optional[str] = None) -> Optional[Path]:
         """Adds a new scraped area to the index."""
         if not all(key in bounds for key in ['lat_min', 'lat_max', 'lon_min', 'lon_max']):
             logger.warning("Attempted to add area with incomplete bounds.")
-            return
+            return None
 
         phrase_slug = slugify(phrase)
         
@@ -166,8 +166,10 @@ class ScrapeIndex:
             with open(file_path, 'w', encoding='utf-8') as f:
                 json.dump(data, f)
             logger.debug(f"Saved scraped area index: {file_path.name}")
+            return file_path
         except Exception as e:
             logger.error(f"Failed to save scrape index {file_path}: {e}")
+            return None
 
     def is_area_scraped(self, phrase: str, bounds: dict[str, float], ttl_days: Optional[int] = None, overlap_threshold_percent: float = 0.0) -> Optional[Tuple[ScrapedArea, float]]:
         """

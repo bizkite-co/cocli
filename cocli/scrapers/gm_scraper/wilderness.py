@@ -1,11 +1,19 @@
-from typing import Dict, Optional
+import logging
+from typing import Dict, Optional, Any
+from pathlib import Path
 from ...core.scrape_index import ScrapeIndex
+from ...core.config import get_scraped_areas_index_dir
+
+logger = logging.getLogger(__name__)
 
 class WildernessManager:
-    def __init__(self, overlap_threshold: float = 60.0, ttl_days: int = 30):
+    def __init__(self, overlap_threshold: float = 60.0, ttl_days: int = 30, s3_client: Any = None, s3_bucket: Optional[str] = None):
         self.index = ScrapeIndex()
         self.overlap_threshold = overlap_threshold
         self.ttl_days = ttl_days
+        self.s3_client = s3_client
+        self.s3_bucket = s3_bucket
+        self.base_dir = get_scraped_areas_index_dir()
 
     def should_scrape(self, bounds: Dict[str, float], query: str) -> bool:
         """
@@ -30,7 +38,7 @@ class WildernessManager:
         """Updates the index with the results."""
         # Always mark as scraped for the specific query, even if 0 items found.
         # We no longer mark "Wilderness" (global empty).
-        self.index.add_area(
+        file_path = self.index.add_area(
             phrase=query,
             bounds=bounds,
             lat_miles=height_miles,
@@ -38,3 +46,13 @@ class WildernessManager:
             items_found=items_found,
             tile_id=tile_id
         )
+
+        if file_path and self.s3_client and self.s3_bucket:
+            try:
+                # Calculate S3 Key: indexes/scraped_areas/{phrase}/{grid}/{file}
+                relative_path = file_path.relative_to(self.base_dir)
+                s3_key = f"indexes/scraped_areas/{relative_path}"
+                self.s3_client.upload_file(str(file_path), self.s3_bucket, s3_key)
+                logger.info(f"Uploaded scraped area to s3://{self.s3_bucket}/{s3_key}")
+            except Exception as e:
+                logger.error(f"Failed to upload scraped area to S3: {e}")

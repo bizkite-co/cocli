@@ -455,6 +455,90 @@ def upload_kml_coverage_for_turboship(
         raise typer.Exit(code=1)
 
 
+@app.command("publish-kml")
+def publish_kml(
+    campaign_name: Optional[str] = typer.Argument(None, help="Name of the campaign. If not provided, uses the current campaign context."),
+    bucket_name: str = typer.Option("landing-page-turboheat-net", "--bucket", help="S3 bucket name."),
+    profile: str = typer.Option("bizkite-support", "--profile", help="AWS profile to use.")
+) -> None:
+    """
+    Generates all KMLs (Customers, Prospects, Coverage) and uploads them to S3.
+    """
+    import boto3
+    
+    if campaign_name is None:
+        campaign_name = get_campaign()
+        if campaign_name is None:
+            logger.error("Error: No campaign name provided and no campaign context is set.")
+            raise typer.Exit(code=1)
+
+    console.print(f"[bold]Publishing KMLs for campaign: '{campaign_name}' to s3://{bucket_name}/kml/[/bold]")
+
+    campaign_dir = get_campaign_dir(campaign_name)
+    if not campaign_dir:
+        console.print(f"[bold red]Campaign '{campaign_name}' not found.[/bold red]")
+        raise typer.Exit(code=1)
+
+    # 1. Generate KMLs
+    console.print("[dim]Generating KML files...[/dim]")
+    try:
+        # Ensure context is set for commands that rely on it
+        subprocess.run(["cocli", "campaign", "set", campaign_name], check=True)
+        
+        # Coverage (Aggregated Grid)
+        console.print("  - Generating Coverage...")
+        subprocess.run(["cocli", "campaign", "visualize-coverage", campaign_name], check=True)
+        
+        # Prospects
+        console.print("  - Generating Prospects...")
+        subprocess.run(["cocli", "render-prospects-kml", campaign_name], check=True)
+        
+        # Customers
+        console.print("  - Generating Customers...")
+        subprocess.run(["cocli", "render", "kml", campaign_name], check=True)
+        
+    except subprocess.CalledProcessError as e:
+        console.print(f"[bold red]Error generating KMLs: {e}[/bold red]")
+        raise typer.Exit(code=1)
+
+    # 2. Identify Files
+    export_dir = campaign_dir / "exports" # coverage goes here
+    # render-prospects-kml saves to campaign_dir/{name}_prospects.kml
+    # render kml (customers) saves to campaign_dir/{name}.kml (based on standard behavior) or exports? 
+    # Let's check: renderers/kml.py usually saves to campaign_dir/{name}_customers.kml OR {name}.kml
+    # Assuming campaign_dir/{campaign_name}_customers.kml based on previous code usage
+    
+    files_to_upload = [
+        # (Local Path, Remote Key)
+        (campaign_dir / "exports" / "coverage_grid_aggregated.kml", f"kml/{campaign_name}_aggregated.kml"),
+        (campaign_dir / f"{campaign_name}_prospects.kml", f"kml/{campaign_name}_prospects.kml"),
+        (campaign_dir / f"{campaign_name}_customers.kml", f"kml/{campaign_name}_customers.kml"), 
+    ]
+
+    # 3. Upload to S3
+    session = boto3.Session(profile_name=profile)
+    s3 = session.client("s3")
+
+    for local_path, remote_key in files_to_upload:
+        if local_path.exists():
+            console.print(f"Uploading {local_path.name} to s3://{bucket_name}/{remote_key}...")
+            try:
+                s3.upload_file(
+                    str(local_path), 
+                    bucket_name, 
+                    remote_key,
+                    ExtraArgs={'ContentType': 'application/vnd.google-earth.kml+xml'}
+                )
+                console.print(f"[green]✓ Uploaded {remote_key}[/green]")
+            except Exception as e:
+                console.print(f"[red]✗ Failed to upload {local_path.name}: {e}[/red]")
+        else:
+            console.print(f"[yellow]⚠ File not found: {local_path} (Skipping)[/yellow]")
+
+    console.print(f"[bold green]KML Publishing Complete![/bold green]")
+    console.print(f"Viewer URL: https://turboheat.net/kml-viewer.html?kml=https://turboheat.net/kml/{campaign_name}_aggregated.kml")
+
+
 async def pipeline(
     locations: list[str],
     search_phrases: list[str],

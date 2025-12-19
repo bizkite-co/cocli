@@ -102,7 +102,9 @@ async def run_worker(headless: bool, debug: bool) -> None:
                             debug=debug,
                             force_refresh=task.force_refresh,
                             ttl_days=task.ttl_days,
-                            grid_tiles=grid_tiles
+                            grid_tiles=grid_tiles,
+                            s3_client=s3_client,
+                            s3_bucket=S3_BUCKET
                         ):
                             prospect_count += 1
                             

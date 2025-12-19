@@ -144,9 +144,12 @@ import-customers: install ## Import customers from the turboship campaign
 render-prospects-kml: install ## Render KML for turboship prospects
 	$(VENV_DIR)/bin/cocli render-prospects-kml turboship
 
+.PHONY: publish-kml
+publish-kml: install ## Generate and upload all KMLs (Coverage, Prospects, Customers) to S3
+	$(VENV_DIR)/bin/cocli campaign publish-kml $(or $(CAMPAIGN), turboship)
+
 .PHONY: ingest-prospects
-ingest-prospects: install ## Ingest the existing google_maps_prospects.csv file for the current campaign into the cache
-	$(VENV_DIR)/bin/cocli google-maps-csv to-google-maps-cache
+ingest-prospects: install ## Ingest the existing google_maps_prospects.csv for the current campaign into the cache
 
 .PHONY: ingest-existing-customers
 ingest-existing-customers: install ## Ingest the existing customers.csv file into the cache
@@ -227,6 +230,14 @@ enrich: ## Run the cloud enricher
 
 coverage-kml: ## Generate scrape coverage KML
 	cocli campaign visualize-coverage turboship
+
+.PHONY: sync-scraped-areas
+sync-scraped-areas: ## Sync scraped areas from S3
+	aws s3 sync s3://cocli-data-turboship/indexes/scraped_areas cocli_data/indexes/scraped_areas --profile bizkite-support
+
+.PHONY: recent-scrapes
+recent-scrapes: sync-scraped-areas ## List the 30 most recent scraped areas (syncs first)
+	@find cocli_data/indexes/scraped_areas/ -name "*.json" -printf "%TY-%Tm-%Td %TT %p\n" | sort -r | head -n 30
 
 .PHONY: export-emails
 export-emails: ## Export enriched emails to CSV (Usage: make export-emails CAMPAIGN=name)
@@ -404,3 +415,6 @@ stop-rpi-all: ## Stop all Raspberry Pi cocli worker containers
 
 .PHONY: deploy-rpi
 deploy-rpi: stop-rpi-all rebuild-rpi-worker start-rpi-worker start-rpi-details-worker ## Full deployment: stop all, rebuild, and restart both workers
+
+show-kmls: ## Show KML files online
+	aws s3 ls s3://landing-page-turboheat-net/kml/ --profile bizkite-support
