@@ -1,6 +1,5 @@
 import logging
 from typing import Dict, Optional, Any
-from pathlib import Path
 from ...core.scrape_index import ScrapeIndex
 from ...core.config import get_scraped_areas_index_dir
 

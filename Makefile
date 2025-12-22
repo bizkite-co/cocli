@@ -239,6 +239,10 @@ sync-scraped-areas: ## Sync scraped areas from S3
 sync-prospects: ## Sync prospects from S3
 	aws s3 sync s3://cocli-data-turboship/campaigns/$(or $(CAMPAIGN), turboship)/indexes/google_maps_prospects cocli_data/campaigns/$(or $(CAMPAIGN), turboship)/indexes/google_maps_prospects --profile bizkite-support
 
+.PHONY: sync-companies
+sync-companies: install ## Sync enriched companies from S3
+	$(VENV_DIR)/bin/cocli smart-sync companies
+
 .PHONY: recent-scrapes
 recent-scrapes: sync-scraped-areas ## List the 30 most recent scraped areas (syncs first)
 	@find cocli_data/indexes/scraped_areas/ -name "*.json" -printf "%TY-%Tm-%Td %TT %p\n" | sort -r | head -n 30

@@ -26,6 +26,7 @@ def register_commands(app: typer.Typer) -> None:
     from . import scrape_shopify
     from . import status
     from . import sync
+    from . import smart_sync
     from . import view
     from . import worker
 
@@ -60,4 +61,5 @@ def register_commands(app: typer.Typer) -> None:
     app.add_typer(campaign.app, name="campaign")
     app.add_typer(deduplicate.app, name="deduplicate")
     app.add_typer(render.app, name="render")
+    app.add_typer(smart_sync.app, name="smart-sync")
     app.add_typer(worker.app, name="worker")

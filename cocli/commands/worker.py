@@ -267,6 +267,7 @@ async def run_details_worker(headless: bool, debug: bool) -> None:
                                 ack_token=None
                             )
                             enrichment_queue.push(msg)
+                            console.print(f"[cyan]Pushed {final_prospect_data.Domain} to Enrichment Queue[/cyan]")
                         
                         console.print(f"[green]Detailing Complete for {task.place_id}.[/green]")
                         gm_list_item_queue.ack(task)

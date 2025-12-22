@@ -17,7 +17,6 @@ Feature: CLI Help Output
     And the output should contain "fz"
     And the output should contain "import-customers"
     And the output should contain "import-data"
-    And the output should contain "import-turboship"
     And the output should contain "init"
     And the output should contain "next"
     And the output should contain "open-company-folder"

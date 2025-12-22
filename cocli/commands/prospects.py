@@ -1,4 +1,3 @@
-
 import typer
 import csv
 import os
@@ -11,6 +10,7 @@ import yaml
 from rich.console import Console
 from pydantic import ValidationError
 from playwright.async_api import async_playwright, Browser
+import boto3
 
 from cocli.models.company import Company
 from cocli.models.hubspot import HubspotContactCsv
@@ -281,6 +281,12 @@ def enrich_from_queue(
         console.print(f"[blue]Using Queue URL: {queue_manager.queue_url}[/blue]") # Debug logging
     console.print(f"[bold blue]Starting Enrichment Consumer for '{campaign_name}' using {runner}...[/bold blue]")
 
+    # S3 Setup
+    s3_bucket = os.getenv("COCLI_S3_BUCKET_NAME")
+    s3_client = boto3.client("s3") if s3_bucket else None
+    if s3_bucket:
+         console.print(f"[blue]S3 Sync Enabled to: {s3_bucket}[/blue]")
+
     # Shared state for circuit breaker
     circuit_state = {"consecutive_errors": 0}
     MAX_CONSECUTIVE_ERRORS = 10 # Allow some failures, but stop if systematic
@@ -310,13 +316,11 @@ def enrich_from_queue(
                 # Create Company Skeleton if needed
                 company_dir = get_companies_dir() / msg.company_slug
                 if not (company_dir / "_index.md").exists():
-                    # Check if the directory exists but is empty or corrupted?
-                    # Just proceed with creation
                     company_dir.mkdir(parents=True, exist_ok=True)
                     with open(company_dir / "_index.md", "w") as f:
-                        f.write("---\n")
+                        f.write("---")
                         yaml.dump({"name": msg.domain, "domain": msg.domain}, f)
-                        f.write("---\n")
+                        f.write("---")
                         console.print(f"[yellow]Created skeleton company for {msg.company_slug}[/yellow]")
 
                 # ALWAYS Save result (even if email is null) to mark as enriched
@@ -329,6 +333,29 @@ def enrich_from_queue(
                 
                 compiler = WebsiteCompiler()
                 compiler.compile(company_dir)
+
+                # --- S3 Upload (Persistence) ---
+                if s3_client and s3_bucket:
+                    try:
+                        # Upload Skeleton
+                        index_path = company_dir / "_index.md"
+                        if index_path.exists():
+                            s3_client.upload_file(str(index_path), s3_bucket, f"companies/{msg.company_slug}/_index.md")
+                        
+                        # Upload Enrichment
+                        web_path = company_dir / "enrichments" / "website.md"
+                        if web_path.exists():
+                             s3_client.upload_file(str(web_path), s3_bucket, f"companies/{msg.company_slug}/enrichments/website.md")
+
+                        # Upload Compiled Company
+                        comp_path = company_dir / "company.md"
+                        if comp_path.exists():
+                             s3_client.upload_file(str(comp_path), s3_bucket, f"companies/{msg.company_slug}/company.md")
+                        
+                        # console.print(f"[dim]Synced {msg.company_slug} to S3[/dim]")
+                    except Exception as e:
+                        console.print(f"[red]S3 Sync Failed for {msg.company_slug}: {e}[/red]")
+                # -------------------------------
 
                 if website_data.email:
                     console.print(f"[green]Found email for {msg.domain}: {website_data.email}[/green]")
@@ -345,15 +372,15 @@ def enrich_from_queue(
         except httpx.HTTPStatusError as e:
             status = e.response.status_code
             if status == 404:
-                console.print(f"[yellow]Service returned 404 (Not Found/Scrape Fail) for {msg.domain}. Saving empty result.[/yellow]")
+                console.print(f"[yellow]Service returned 404 (Not Found/Scrape Fail) for {msg.domain}. Saving empty result.")
                 
                 company_dir = get_companies_dir() / msg.company_slug
                 if not (company_dir / "_index.md").exists():
                     company_dir.mkdir(parents=True, exist_ok=True)
                     with open(company_dir / "_index.md", "w") as f:
-                        f.write("---\n")
+                        f.write("---")
                         yaml.dump({"name": msg.domain, "domain": msg.domain}, f)
-                        f.write("---\n")
+                        f.write("---")
 
                 enrichment_dir = company_dir / "enrichments"
                 enrichment_dir.mkdir(parents=True, exist_ok=True)
@@ -365,16 +392,32 @@ def enrich_from_queue(
                 compiler = WebsiteCompiler()
                 compiler.compile(company_dir)
                 
+                # --- S3 Upload (Persistence for 404s too) ---
+                if s3_client and s3_bucket:
+                    try:
+                        index_path = company_dir / "_index.md"
+                        if index_path.exists():
+                            s3_client.upload_file(str(index_path), s3_bucket, f"companies/{msg.company_slug}/_index.md")
+                        
+                        web_path = company_dir / "enrichments" / "website.md"
+                        if web_path.exists():
+                             s3_client.upload_file(str(web_path), s3_bucket, f"companies/{msg.company_slug}/enrichments/website.md")
+
+                        comp_path = company_dir / "company.md"
+                        if comp_path.exists():
+                             s3_client.upload_file(str(comp_path), s3_bucket, f"companies/{msg.company_slug}/company.md")
+                    except Exception as e:
+                        console.print(f"[red]S3 Sync Failed for {msg.company_slug}: {e}[/red]")
+                # ---------------------------------------------
+
                 queue_manager.ack(msg)
                 return True
             
             elif status == 500:
-                # For 500s, Nack with is_http_500 flag. If it exceeds threshold, it will be moved to failed.
                 console.print(f"[bold red]HTTP Error 500 for {msg.domain} at {e.request.url}. Retrying.[/bold red]")
-                queue_manager.nack(msg, is_http_500=True) # Pass the flag
+                queue_manager.nack(msg, is_http_500=True) 
                 return False
             else:
-                # Other HTTP errors (401, 403, etc.) - Nack
                 console.print(f"[bold red]HTTP Error {status} for {msg.domain} at {e.request.url}. Retrying.[/bold red]")
                 queue_manager.nack(msg)
                 return False
@@ -411,9 +454,6 @@ def enrich_from_queue(
                 if failure_count == len(messages):
                     circuit_state["consecutive_errors"] += failure_count
                 else:
-                    # If at least one succeeded, reset (or reduce) the counter?
-                    # Strict mode: reset only if ALL succeed? 
-                    # Lenient mode: reset if ANY succeed.
                     if success_count > 0:
                         circuit_state["consecutive_errors"] = 0
                     else:
@@ -476,5 +516,3 @@ def tag_prospects_from_csv() -> None:
                 console.print(f"Tagged {domain} with campaign '{campaign_name}'")
 
     console.print(f"[bold green]Tagging complete. Updated {updated_count} companies.[/bold green]")
-
-

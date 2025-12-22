@@ -24,6 +24,7 @@ This document outlines the roadmap for transitioning `cocli` from a purely local
     *   [x] **Deploy RPi Worker:** Successfully deployed headless worker on Raspberry Pi.
     *   [x] **Infrastructure Hardening:** Upgraded to RPi 4, fixed IAM permissions (`AccessDenied`), and improved logging.
     *   [x] **Observability:** Enhanced Reporting to track active workers and in-flight queue messages.
+    *   [x] **Enrichment Persistence:** Fixed critical bug where Fargate workers saved data locally; implemented immediate S3 upload for enriched companies.
     *   [ ] **Containerize Scraper:** Package Playwright scraper into a Docker image (completed for RPi, need generic version).
     *   [ ] **Proxy Integration:** Implement residential proxies (low priority with RPi mesh).
 

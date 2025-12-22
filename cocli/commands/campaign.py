@@ -502,7 +502,7 @@ def publish_kml(
         raise typer.Exit(code=1)
 
     # 2. Identify Files
-    export_dir = campaign_dir / "exports" # coverage goes here
+    # export_dir = campaign_dir / "exports" # coverage goes here - unused
     # render-prospects-kml saves to campaign_dir/{name}_prospects.kml
     # render kml (customers) saves to campaign_dir/{name}.kml (based on standard behavior) or exports? 
     # Let's check: renderers/kml.py usually saves to campaign_dir/{name}_customers.kml OR {name}.kml
@@ -535,7 +535,7 @@ def publish_kml(
         else:
             console.print(f"[yellow]⚠ File not found: {local_path} (Skipping)[/yellow]")
 
-    console.print(f"[bold green]KML Publishing Complete![/bold green]")
+    console.print("[bold green]KML Publishing Complete![/bold green]")
     console.print(f"Viewer URL: https://turboheat.net/kml-viewer.html?kml=https://turboheat.net/kml/{campaign_name}_aggregated.kml")
 
 
@@ -1374,11 +1374,12 @@ def visualize_coverage(
         </Placemark>'''
         agg_placemarks.append(placemark)
 
+    joined_agg_placemarks = "\n".join(agg_placemarks)
     agg_kml_content = f'''<?xml version="1.0" encoding="UTF-8"?>
 <kml xmlns="http://www.opengis.net/kml/2.2">
     <Document>
         <name>Grid Aggregated Coverage</name>
-{"\n".join(agg_placemarks)}
+{joined_agg_placemarks}
     </Document>
 </kml>'''
 
