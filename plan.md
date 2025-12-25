@@ -25,15 +25,16 @@ This document outlines the roadmap for transitioning `cocli` from a purely local
     *   [x] **Infrastructure Hardening:** Upgraded to RPi 4, fixed IAM permissions (`AccessDenied`), and improved logging.
     *   [x] **Observability:** Enhanced Reporting to track active workers and in-flight queue messages.
     *   [x] **Enrichment Persistence:** Fixed critical bug where Fargate workers saved data locally; implemented immediate S3 upload for enriched companies.
-    *   [ ] **Containerize Scraper:** Package Playwright scraper into a Docker image (completed for RPi, need generic version).
+    *   [x] **Containerize Scraper:** Package Playwright scraper into a Docker image (completed for RPi).
     *   [ ] **Proxy Integration:** Implement residential proxies (low priority with RPi mesh).
 
-2.  **Decidegree Grid Planning (Next Focus):**
+2.  **Decidegree Grid Planning (Completed/In Use):**
     *   [x] **Prototype Generator:** Created `generate_grid.py` to produce 0.1-degree aligned global grids.
-    *   [ ] **Campaign Integration:** Update campaign scraper to use these grids instead of dynamic spiral search.
+    *   [x] **Campaign Integration:** Updated `queue-scrapes` to use the grid-based deduplication logic.
     *   [x] **KML Visualization:** Deployed dynamic KML viewer and S3 deployment logic for coverage maps.
+    *   [x] **Clean Grid Transition:** Implemented logic to ignore legacy (non-grid) scrapes by default to ensure uniform coverage.
 
-3.  **Orchestration:**
+3.  **Orchestration (Next Focus):**
     *   [ ] Create AWS Step Functions state machine to coordinate Scrape -> Queue -> Enrich workflow.
     *   [ ] Schedule runs via EventBridge (Cron).
 
@@ -43,7 +44,8 @@ This document outlines the roadmap for transitioning `cocli` from a purely local
 
 1.  **Unified Data Manager:**
     *   [x] **Completed:** Migrated prospects storage to a file-based index (`indexes/google_maps_prospects/`) to support deduplication and "Latest Wins" updates.
-    *   [ ] Implement `DataSynchronizer` (`cocli sync`) for efficient bi-directional sync (now simpler with file index).
+    *   [x] **Global Scrape Index:** Shared `scraped_areas` index on S3 to prevent cross-worker redundancy.
+    *   [ ] Implement `DataSynchronizer` (`cocli sync`) for efficient bi-directional sync.
 
 2.  **Optimization:**
     *   [x] **Fargate Spot:** Enabled for Enrichment Service.

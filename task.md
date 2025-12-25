@@ -5,17 +5,25 @@ Stabilize the distributed scraping and enrichment pipeline by ensuring robust da
 
 ## Context
 *   **Status:** Distributed workers (RPi & Fargate) are active.
-*   **Recent Fixes:** Resolved critical data loss in Fargate (Enrichment Service) where data was not persisting to S3. Fixed RPi worker hangs and validation errors.
-*   **Visualization:** KML Viewer now supports multiple layers.
+*   **Coverage:** 2,289 tasks queued (Full 763-tile grid x 3 queries) to ensure a "Clean Grid" transition.
+*   **Bucket:** Live site origin is `landing-page-turboheat-net`.
+*   **Indexes:** Local scrape index synced to S3 (~3,900 items).
 
 ## Todo
-- [ ] **Verify Enrichment:** Monitor S3 bucket for new `companies/` data from Fargate workers.
+- [ ] **RPi Stability:** Troubleshoot "Browser connection closed" errors on RPi workers.
+- [ ] **Code Quality:** Decompose `cocli/commands/campaign.py` into specialized modules.
+- [ ] **Deployment:** Move KML tools to a dedicated `cocli.turboheat.net` setup to separate from the main landing page.
 - [ ] **Sync Optimization:** Implement a `cocli sync` command (using Python/boto3) with a progress bar and reduced verbosity to handle large S3 syncs efficiently.
-- [ ] **Tracking:** Implement a way to mark tiles as "Completed" in the local state/map, not just SQS ack.
 
 ## Done
+- [x] **Clean Grid Transition:** Updated `queue-scrapes` to prioritize grid-aligned tiles and ignore legacy overlaps.
+- [x] **KML Viewer Enhancements:**
+    - [x] Renamed layers for clarity.
+    - [x] Implemented single-zoom logic.
+    - [x] Fixed viewport preservation on toggle.
+    - [x] Optimized z-index/opacity for Target Areas (`08ffffff`).
+- [x] **Deployment:** Corrected bucket and CloudFront targeting for `turboheat.net`.
 - [x] **Enrichment Persistence:** Updated `cocli/commands/prospects.py` to upload enriched companies to S3 immediately after processing. Deployed to Fargate.
-- [x] **KML Viewer:** Updated `kml-viewer.html` to support toggling "Coverage", "Prospects", and "Customers" layers via a checkbox UI.
 - [x] **RPi Stability:** Fixed validation crashes and browser hangs (watchdog).
 - [x] **Visualization:**
     - [x] Deployed dynamic `kml-viewer.html`.

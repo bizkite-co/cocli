@@ -1,5 +1,5 @@
 import math
-from typing import List, Dict
+from typing import List, Dict, Optional
 import simplekml
 from datetime import datetime
 import os
@@ -99,7 +99,7 @@ def generate_global_grid(
 
     return tiles
 
-def export_to_kml(tiles: List[Dict], filename: str, campaign_name: str):
+def export_to_kml(tiles: List[Dict], filename: str, campaign_name: str, color: Optional[str] = None):
     """
     Exports the generated grid tiles to a KML file for visualization.
     """
@@ -115,8 +115,14 @@ def export_to_kml(tiles: List[Dict], filename: str, campaign_name: str):
             (tile["south_west_lon"], tile["north_east_lat"]),
             (tile["south_west_lon"], tile["south_west_lat"])
         ]
-        # Transparent blue
-        pol.style.polystyle.color = simplekml.Color.changealphaint(100, simplekml.Color.blue)
+        
+        if color:
+            # color is expected in KML AABBGGRR hex format (e.g. "08ffffff")
+            pol.style.polystyle.color = color
+        else:
+            # Transparent blue (default)
+            pol.style.polystyle.color = simplekml.Color.changealphaint(100, simplekml.Color.blue)
+            
         pol.style.linestyle.width = 2
         
         desc = (
