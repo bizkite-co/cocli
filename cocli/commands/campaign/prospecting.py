@@ -195,6 +195,7 @@ def queue_scrapes(
         # Silence verbose libraries
         logging.getLogger("botocore").setLevel(logging.WARNING)
         logging.getLogger("urllib3").setLevel(logging.WARNING)
+        logging.getLogger("cocli").setLevel(logging.INFO)
         
         queue_manager = get_queue_manager("scrape_tasks", use_cloud=True, queue_type="scrape")
         

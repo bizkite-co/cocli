@@ -160,7 +160,7 @@ ingest-existing-customers: install ## Ingest the existing customers.csv file int
 
 .PHONY: queue-scrape-tasks
 queue-scrape-tasks: ## Queue scrape tasks for the 'turboship' campaign
-	COCLI_DATA_HOME=$(shell pwd)/cocli_data uv run cocli campaign queue-scrapes turboship
+	COCLI_DATA_HOME=$(shell pwd)/cocli_data uv run cocli campaign queue-scrapes turboship $(ARGS)
 
 .PHONY: prospects-with-emails
 prospects-with-emails:
