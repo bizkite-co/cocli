@@ -35,7 +35,18 @@ This document outlines the roadmap for transitioning `cocli` from a purely local
     *   [x] **Clean Grid Transition:** Implemented logic to ignore legacy (non-grid) scrapes by default to ensure uniform coverage.
     *   [x] **Fix Redundant Queuing:** Corrected `Makefile` environment paths and `ScrapeIndex` parsing to properly skip existing grid tiles.
 
-3.  **Orchestration (Next Focus):**
+3.  **Campaign-Agnostic Web Dashboard (New Focus):**
+    *   **Goal:** Decouple visualization from `turboship` repo and specific campaign data. Host a static SPA at `cocli.turboheat.net`.
+    *   **Architecture:**
+        *   **Repo:** `cocli/web/` contains static HTML/JS/CSS (the "Shell").
+        *   **Data:** Campaign-specific data (JSON/KML) resides in campaign S3 folders.
+        *   **Runtime:** The Shell fetches campaign data dynamically (e.g., `?campaign=turboship`).
+    *   **Components:**
+        *   [ ] **KML Viewer:** Migrate `kml-viewer.html` to `cocli` repo.
+        *   [ ] **HTML Report:** Create a renderer to output `make report` stats as `report.json` and a viewer page.
+        *   [ ] **Infrastructure:** Update `cdk_scraper_deployment` to provision `cocli.turboheat.net` (S3 + CloudFront).
+
+4.  **Orchestration:**
     *   [ ] Create AWS Step Functions state machine to coordinate Scrape -> Queue -> Enrich workflow.
     *   [ ] Schedule runs via EventBridge (Cron).
 

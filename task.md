@@ -10,8 +10,11 @@ Stabilize the distributed scraping and enrichment pipeline by ensuring robust da
 *   **Indexes:** Local scrape index synced to S3 (~3,900 items).
 
 ## Todo
+- [ ] **Web Dashboard:**
+    - [ ] **Infrastructure:** Update `cdk_scraper_deployment` to create `cocli.turboheat.net` bucket & distro.
+    - [ ] **Migration:** Move `kml-viewer.html` from `turboship` to `cocli/web/`.
+    - [ ] **Reporting:** Implement `cocli report --html` (or similar) to generate `report.json` for the dashboard.
 - [ ] **RPi Stability:** Troubleshoot "Browser connection closed" errors on RPi workers.
-- [ ] **Deployment:** Move KML tools to a dedicated `cocli.turboheat.net` setup to separate from the main landing page.
 - [ ] **Sync Optimization:** Implement a `cocli sync` command (using Python/boto3) with a progress bar and reduced verbosity to handle large S3 syncs efficiently.
 
 ## Done
