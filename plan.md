@@ -33,6 +33,7 @@ This document outlines the roadmap for transitioning `cocli` from a purely local
     *   [x] **Campaign Integration:** Updated `queue-scrapes` to use the grid-based deduplication logic.
     *   [x] **KML Visualization:** Deployed dynamic KML viewer and S3 deployment logic for coverage maps.
     *   [x] **Clean Grid Transition:** Implemented logic to ignore legacy (non-grid) scrapes by default to ensure uniform coverage.
+    *   [x] **Fix Redundant Queuing:** Corrected `Makefile` environment paths and `ScrapeIndex` parsing to properly skip existing grid tiles.
 
 3.  **Orchestration (Next Focus):**
     *   [ ] Create AWS Step Functions state machine to coordinate Scrape -> Queue -> Enrich workflow.

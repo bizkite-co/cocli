@@ -11,11 +11,12 @@ Stabilize the distributed scraping and enrichment pipeline by ensuring robust da
 
 ## Todo
 - [ ] **RPi Stability:** Troubleshoot "Browser connection closed" errors on RPi workers.
-- [ ] **Code Quality:** Decompose `cocli/commands/campaign.py` into specialized modules.
 - [ ] **Deployment:** Move KML tools to a dedicated `cocli.turboheat.net` setup to separate from the main landing page.
 - [ ] **Sync Optimization:** Implement a `cocli sync` command (using Python/boto3) with a progress bar and reduced verbosity to handle large S3 syncs efficiently.
 
 ## Done
+- [x] **Fix Queue Redundancy:** Resolved critical bug where `queue-scrapes` ignored existing grid history due to environment path mismatch and filename parsing issues.
+- [x] **Code Quality:** Decomposed `cocli/commands/campaign.py` into specialized modules (`prospecting`, `viz`, `mgmt`, `workflow`, `planning`).
 - [x] **Clean Grid Transition:** Updated `queue-scrapes` to prioritize grid-aligned tiles and ignore legacy overlaps.
 - [x] **KML Viewer Enhancements:**
     - [x] Renamed layers for clarity.

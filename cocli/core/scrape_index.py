@@ -65,8 +65,9 @@ class ScrapeIndex:
 
     def _parse_filename_bounds(self, filename: str) -> Optional[dict[str, Any]]:
         """
-        Extracts bounds from filename formatted as {lat_min}_{lat_max}_{lon_min}_{lon_max}.json
-        Returns None if format doesn't match.
+        Extracts bounds from filename.
+        Legacy: {lat_min}_{lat_max}_{lon_min}_{lon_max}.json
+        Grid: {lat}_{lon}.json (approximate bounds +/- 0.05)
         """
         try:
             stem = filename.replace(".json", "")
@@ -78,7 +79,43 @@ class ScrapeIndex:
                     'lon_min': float(parts[2]),
                     'lon_max': float(parts[3])
                 }
+            elif len(parts) == 2:
+                # Grid tile format: lat_lon
+                # We return approximate bounds for the 0.1 degree tile
+                lat = float(parts[0])
+                lon = float(parts[1])
+                return {
+                    'lat_min': lat - 0.05,
+                    'lat_max': lat + 0.05,
+                    'lon_min': lon - 0.05,
+                    'lon_max': lon + 0.05,
+                    '_is_grid_tile': True # Mark for full load
+                }
         except ValueError:
+            pass
+        return None
+
+    def is_tile_scraped(self, phrase: str, tile_id: str, ttl_days: Optional[int] = None) -> Optional[ScrapedArea]:
+        """
+        Directly checks if a specific tile ID has been scraped.
+        """
+        phrase_slug = slugify(phrase)
+        # Try to parse lat/lon from tile_id to find the right bucket
+        try:
+            lat_str, lon_str = tile_id.split('_')
+            lat, lon = float(lat_str), float(lon_str)
+            grid_dir = self._get_grid_dir(phrase_slug, lat, lon)
+            file_path = grid_dir / f"{tile_id}.json"
+            
+            if file_path.exists():
+                area = self._load_area_from_file(file_path)
+                if area:
+                    if ttl_days is not None:
+                        age = datetime.now(UTC) - area.scrape_date
+                        if age > timedelta(days=ttl_days):
+                            return None
+                    return area
+        except Exception:
             pass
         return None
 

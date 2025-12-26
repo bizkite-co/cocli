@@ -63,7 +63,7 @@ report: ## Show the report for the current campaign (Usage: make report [CAMPAIG
 	@./.venv/bin/python scripts/campaign_report.py $(CAMPAIGN)
 
 coverage-gap: ## Generate a report of unscraped target areas
-	@./.venv/bin/cocli campaign coverage-gap $(CAMPAIGN) --output coverage_gap.csv
+	@COCLI_DATA_HOME=$(shell pwd)/cocli_data ./.venv/bin/cocli campaign coverage-gap $(CAMPAIGN) --output coverage_gap.csv
 
 test-tui: install ## Run TUI test with names
 	source $(VENV_DIR)/bin/activate && pytest -v tests/tui
@@ -160,7 +160,7 @@ ingest-existing-customers: install ## Ingest the existing customers.csv file int
 
 .PHONY: queue-scrape-tasks
 queue-scrape-tasks: ## Queue scrape tasks for the 'turboship' campaign
-	uv run cocli campaign queue-scrapes turboship
+	COCLI_DATA_HOME=$(shell pwd)/cocli_data uv run cocli campaign queue-scrapes turboship
 
 .PHONY: prospects-with-emails
 prospects-with-emails:
