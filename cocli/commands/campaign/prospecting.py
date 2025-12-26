@@ -192,9 +192,31 @@ def queue_scrapes(
                     tasks_to_queue.append(ScrapeTask(latitude=float(lat), longitude=float(lon), zoom=13, search_phrase=phrase, campaign_name=campaign_name, force_refresh=force, tile_id=tile_id))
     
     if tasks_to_queue:
+        # Silence verbose libraries
+        logging.getLogger("botocore").setLevel(logging.WARNING)
+        logging.getLogger("urllib3").setLevel(logging.WARNING)
+        
         queue_manager = get_queue_manager("scrape_tasks", use_cloud=True, queue_type="scrape")
-        for t in tasks_to_queue: queue_manager.push(t)
-        console.print(f"Queued {len(tasks_to_queue)} tasks.")
+        
+        from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, TaskProgressColumn, TimeRemainingColumn
+        
+        with Progress(
+            SpinnerColumn(),
+            TextColumn("[progress.description]{task.description}"),
+            BarColumn(),
+            TaskProgressColumn(),
+            TimeRemainingColumn(),
+            console=console
+        ) as progress:
+            task_id = progress.add_task(f"[cyan]Pushing {len(tasks_to_queue)} tasks...[/cyan]", total=len(tasks_to_queue))
+            
+            for task in tasks_to_queue:
+                queue_manager.push(task)
+                progress.advance(task_id)
+                
+        console.print(f"[bold green]Successfully queued {len(tasks_to_queue)} scrape tasks.[/bold green]")
+    else:
+        console.print("[yellow]No tasks to queue (all areas covered or no targets found).[/yellow]")
 
 @app.command()
 def achieve_goal(
