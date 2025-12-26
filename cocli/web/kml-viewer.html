@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>KML Map Viewer</title>
+    <style>
+        html, body { height: 100%; margin: 0; padding: 0; }
+        #map { height: 100%; }
+        #layer-control {
+            background: white; padding: 10px; border: 1px solid #ccc;
+            border-radius: 4px; box-shadow: 0 2px 6px rgba(0,0,0,0.3);
+            font-family: Arial, sans-serif; margin: 10px;
+            max-height: 90%; overflow-y: auto;
+        }
+        .layer-item { margin-bottom: 5px; }
+    </style>
+    <script async defer
+        src="https://maps.googleapis.com/maps/api/js?key=AIzaSyCwMXoSea-O43V02XWegH-zW_LcSV3etS8&callback=initMap">
+    </script>
+</head>
+<body>
+    <div id="layer-control" style="display:none;">
+        <strong>Layers</strong><br><br>
+        <div id="layer-list"></div>
+    </div>
+    <div id="map"></div>
+    <script>
+        async function initMap() {
+            const map = new google.maps.Map(document.getElementById("map"), {
+                zoom: 11,
+                center: { lat: 30.2672, lng: -97.7431 }, // Austin
+                mapTypeControl: true,
+                streetViewControl: false
+            });
+
+            let layers = [];
+            
+            // Try to load dynamic layers from layers.json
+            try {
+                const response = await fetch('kml/layers.json');
+                if (response.ok) {
+                    layers = await response.json();
+                    console.log("Loaded layers from layers.json");
+                }
+            } catch (e) {
+                console.warn("Could not load layers.json, using defaults.", e);
+            }
+
+            // Fallback to defaults if layers.json failed or was empty
+            if (!layers || layers.length === 0) {
+                 layers = [
+                    { name: "Target Areas", url: "https://turboheat.net/kml/turboship_targets.kml", default: true },
+                    { name: "Scraped Areas", url: "https://turboheat.net/kml/turboship_aggregated.kml", default: true },
+                    { name: "Legacy Scrapes", url: "https://turboheat.net/kml/turboship_legacy.kml", default: false },
+                    { name: "Prospects", url: "https://turboheat.net/kml/turboship_prospects.kml", default: false },
+                    { name: "Customers", url: "https://turboheat.net/kml/turboship_customers.kml", default: false }
+                ];
+            }
+
+            const urlParams = new URLSearchParams(window.location.search);
+            const extraKml = urlParams.get('kml') || urlParams.get('url');
+            
+            if (extraKml) {
+                // If query param is provided, it OVERRIDES the defaults to avoid duplicates
+                layers = extraKml.split(',').map((url, i) => {
+                    const trimmedUrl = url.trim();
+                    return {
+                        name: trimmedUrl.split('/').pop().replace('.kml', '').replace(/_/g, ' '),
+                        url: trimmedUrl,
+                        default: true
+                    };
+                });
+            }
+
+            const controlDiv = document.getElementById('layer-control');
+            const listDiv = document.getElementById('layer-list');
+            controlDiv.style.display = 'block';
+            map.controls[google.maps.ControlPosition.RIGHT_TOP].push(controlDiv);
+
+            let zoomed = false;
+            layers.forEach((layerData, index) => {
+                const isTarget = layerData.name === "Target Areas";
+                let preserve = true;
+                
+                if (!isTarget && !zoomed && layerData.default) {
+                    preserve = false;
+                    zoomed = true;
+                }
+
+                // Append timestamp to prevent caching
+                const kmlUrl = layerData.url + (layerData.url.includes('?') ? '&' : '?') + 'v=' + Date.now();
+
+                const layer = new google.maps.KmlLayer({
+                    url: kmlUrl,
+                    map: layerData.default ? map : null,
+                    preserveViewport: preserve,
+                    suppressInfoWindows: false 
+                });
+
+                const itemDiv = document.createElement('div');
+                itemDiv.className = 'layer-item';
+                const checkbox = document.createElement('input');
+                checkbox.type = 'checkbox';
+                checkbox.checked = layerData.default;
+                checkbox.id = 'layer-' + index;
+                
+                const label = document.createElement('label');
+                label.htmlFor = 'layer-' + index;
+                label.textContent = ' ' + layerData.name;
+
+                checkbox.addEventListener('change', () => layer.setMap(checkbox.checked ? map : null));
+
+                itemDiv.appendChild(checkbox);
+                itemDiv.appendChild(label);
+                listDiv.appendChild(itemDiv);
+
+                layer.addListener('status_changed', () => {
+                    if (layer.getStatus() !== 'OK') {
+                        console.error(`Layer ${layerData.name} error:`, layer.getStatus());
+                        label.style.color = 'red';
+                    }
+                });
+            });
+        }
+    </script>
+</body>
+</html>

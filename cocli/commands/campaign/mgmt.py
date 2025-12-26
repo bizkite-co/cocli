@@ -1,9 +1,7 @@
 import typer
 import subprocess
 import toml
-import yaml
 import logging
-from pathlib import Path
 from typing import Optional
 from rich.console import Console
 from typing_extensions import Annotated

@@ -7,7 +7,7 @@ from datetime import datetime, timezone
 from rich.console import Console
 from rich.progress import Progress, SpinnerColumn, BarColumn, TextColumn, TimeRemainingColumn
 from concurrent.futures import ThreadPoolExecutor
-from typing import List, Tuple, Optional
+from typing import List, Tuple
 
 console = Console()
 app = typer.Typer()

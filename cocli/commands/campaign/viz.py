@@ -84,7 +84,8 @@ def visualize_coverage(
             </Placemark>'''
             kml_placemarks.append(placemark)
 
-        kml_content = f'''<?xml version="1.0" encoding="UTF-8"?><kml xmlns="http://www.opengis.net/kml/2.2"><Document>{"\n".join(kml_placemarks)}</Document></kml>'''
+        kml_body = "\n".join(kml_placemarks)
+        kml_content = f'''<?xml version="1.0" encoding="UTF-8"?><kml xmlns="http://www.opengis.net/kml/2.2"><Document>{kml_body}</Document></kml>'''
         with open(export_dir / f"coverage_{slugify(phrase)}.kml", 'w') as f:
             f.write(kml_content)
 
@@ -107,8 +108,9 @@ def visualize_coverage(
         placemark = f'''<Placemark><name>{tile_id}</name><Style><LineStyle><color>ffffffff</color></LineStyle><PolyStyle><color>40{color[2:]}</color></PolyStyle></Style><Polygon><outerBoundaryIs><LinearRing><coordinates>{coordinates}</coordinates></LinearRing></outerBoundaryIs></Polygon></Placemark>'''
         agg_placemarks.append(placemark)
 
+    agg_body = "\n".join(agg_placemarks)
     with open(export_dir / "coverage_grid_aggregated.kml", 'w') as f:
-        f.write(f'''<?xml version="1.0" encoding="UTF-8"?><kml xmlns="http://www.opengis.net/kml/2.2"><Document>{"\n".join(agg_placemarks)}</Document></kml>''')
+        f.write(f'''<?xml version="1.0" encoding="UTF-8"?><kml xmlns="http://www.opengis.net/kml/2.2"><Document>{agg_body}</Document></kml>''')
 
     console.print(f"[bold green]Coverage visualization complete. Files saved in: {export_dir}[/bold green]")
 
@@ -122,7 +124,8 @@ def visualize_legacy_scrapes(
     if campaign_name is None:
         campaign_name = get_campaign()
     campaign_dir = get_campaign_dir(campaign_name)
-    if not campaign_dir: return
+    if not campaign_dir:
+        return
 
     export_dir = campaign_dir / "exports"
     export_dir.mkdir(exist_ok=True)
@@ -139,22 +142,26 @@ def visualize_legacy_scrapes(
         placemark = f'''<Placemark><name>Legacy: {area.phrase}</name><Style><LineStyle><color>ffffaa00</color></LineStyle><PolyStyle><color>20ffaa00</color></PolyStyle></Style><Polygon><outerBoundaryIs><LinearRing><coordinates>{coordinates}</coordinates></LinearRing></outerBoundaryIs></Polygon></Placemark>'''
         kml_placemarks.append(placemark)
 
+    legacy_body = "\n".join(kml_placemarks)
     with open(export_dir / "legacy_scrapes.kml", 'w') as f:
-        f.write(f'''<?xml version="1.0" encoding="UTF-8"?><kml xmlns="http://www.opengis.net/kml/2.2"><Document>{"\n".join(kml_placemarks)}</Document></kml>''')
+        f.write(f'''<?xml version="1.0" encoding="UTF-8"?><kml xmlns="http://www.opengis.net/kml/2.2"><Document>{legacy_body}</Document></kml>''')
     console.print(f"[bold green]Legacy coverage KML saved.[/bold green]")
 
 @app.command("publish-kml")
 def publish_kml(
     campaign_name: Annotated[Optional[str], typer.Argument(help="Name of the campaign. If not provided, uses the current campaign context.")] = None,
     bucket_name: str = typer.Option("landing-page-turboheat-net", "--bucket", help="S3 bucket name."),
+    domain: str = typer.Option("turboheat.net", "--domain", help="Public domain name for KML URLs (required by Google Maps)."),
     profile: str = typer.Option("bizkite-support", "--profile", help="AWS profile to use.")
 ) -> None:
     """
     Generates all KMLs (Customers, Prospects, Coverage) and uploads them to S3.
     """
     import boto3
-    if campaign_name is None: campaign_name = get_campaign()
-    if campaign_name is None: raise typer.Exit(code=1)
+    if campaign_name is None:
+        campaign_name = get_campaign()
+    if campaign_name is None:
+        raise typer.Exit(code=1)
 
     logging.getLogger("cocli").setLevel(logging.WARNING)
     campaign_dir = get_campaign_dir(campaign_name)
@@ -190,11 +197,11 @@ def publish_kml(
 
     # 3. layers.json
     layers = [
-        {"name": "Target Areas", "url": f"https://{bucket_name}/kml/{campaign_name}_targets.kml", "default": True},
-        {"name": "Scraped Areas", "url": f"https://{bucket_name}/kml/{campaign_name}_aggregated.kml", "default": True},
-        {"name": "Legacy Scrapes", "url": f"https://{bucket_name}/kml/{campaign_name}_legacy.kml", "default": False},
-        {"name": "Prospects", "url": f"https://{bucket_name}/kml/{campaign_name}_prospects.kml", "default": True},
-        {"name": "Customers", "url": f"https://{bucket_name}/kml/{campaign_name}_customers.kml", "default": True}
+        {"name": "Target Areas", "url": f"https://{domain}/kml/{campaign_name}_targets.kml", "default": True},
+        {"name": "Scraped Areas", "url": f"https://{domain}/kml/{campaign_name}_aggregated.kml", "default": True},
+        {"name": "Legacy Scrapes", "url": f"https://{domain}/kml/{campaign_name}_legacy.kml", "default": False},
+        {"name": "Prospects", "url": f"https://{domain}/kml/{campaign_name}_prospects.kml", "default": True},
+        {"name": "Customers", "url": f"https://{domain}/kml/{campaign_name}_customers.kml", "default": True}
     ]
     s3.put_object(Bucket=bucket_name, Key="kml/layers.json", Body=json.dumps(layers, indent=2), ContentType="application/json")
     console.print("[green]Published layers.json[/green]")
@@ -212,7 +219,8 @@ def upload_kml_coverage_for_turboship(
     resolved_exports_dir = (Path.cwd() / turboship_kml_exports_path).resolve()
     resolved_exports_dir.mkdir(parents=True, exist_ok=True)
     campaign_data_dir = get_campaign_dir(campaign_name)
-    if not campaign_data_dir: raise typer.Exit(code=1)
+    if not campaign_data_dir:
+        raise typer.Exit(code=1)
 
     if kml_type == "grid": 
         source_path = campaign_data_dir / "exports" / "target-areas.kml"

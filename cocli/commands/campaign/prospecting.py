@@ -2,19 +2,14 @@ import typer
 import asyncio
 import logging
 import toml
-import csv
 import json
-import os
-import re
 import httpx
-from pathlib import Path
 from typing import Optional, List, Dict, Any, cast
-from datetime import datetime
 from rich.console import Console
 from playwright.async_api import async_playwright
 import yaml
 
-from ...core.config import get_companies_dir, get_campaign_dir, get_campaign, load_scraper_settings, get_enrichment_service_url
+from ...core.config import get_companies_dir, get_campaign_dir, get_campaign, get_enrichment_service_url
 from ...core.importing import import_prospect
 from ...core.prospects_csv_manager import ProspectsIndexManager
 from ...core.scrape_index import ScrapeIndex
@@ -28,9 +23,6 @@ from ...models.website import Website
 from ...scrapers.google_maps import scrape_google_maps
 from ...compilers.website_compiler import WebsiteCompiler
 from ...core.enrichment import enrich_company_website
-from ...core.exceptions import NavigationError
-from ...core.enrichment_service_utils import ensure_enrichment_service_ready
-from ...planning.generate_grid import DEFAULT_GRID_STEP_DEG
 
 logger = logging.getLogger(__name__)
 console = Console()
@@ -115,7 +107,7 @@ async def pipeline(
                         dummy_company = Company(name=msg.domain, domain=msg.domain, slug=msg.company_slug)
                         try:
                             website_data = await enrich_company_website(browser=consumer_context, company=dummy_company, force=msg.force_refresh, ttl_days=msg.ttl_days)
-                        except Exception as e:
+                        except Exception:
                             queue_manager.nack(msg)
                             continue
 
@@ -134,7 +126,6 @@ async def pipeline(
                         queue_manager.ack(msg)
 
         async def producer_task(existing_companies_map: Dict[str, str]) -> None: 
-            import pandas as pd
             csv_manager = ProspectsIndexManager(campaign_name)
 
             async def process_prospect_item(prospect_data: GoogleMapsProspect, location_name: str) -> None: 

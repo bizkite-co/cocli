@@ -8,9 +8,14 @@ from aws_cdk import (
     aws_s3 as s3,
     aws_sqs as sqs,
     aws_route53 as route53,
+    aws_route53_targets as targets,
     aws_elasticloadbalancingv2 as elbv2,
+    aws_cloudfront as cloudfront,
+    aws_cloudfront_origins as origins,
+    aws_certificatemanager as acm,
     Duration,
     CfnOutput,
+    RemovalPolicy,
 )
 from constructs import Construct
 
@@ -88,11 +93,64 @@ class CdkScraperDeploymentStack(Stack):  # type: ignore[misc]
             zone_name="turboheat.net"
         )
         
+        # --- Static Website Infrastructure (cocli.turboheat.net) ---
+        
+        # 1. Bucket for Web Assets
+        web_bucket = s3.Bucket(self, "CocliWebAssets",
+            bucket_name="cocli-web-assets", # Explicit name
+            block_public_access=s3.BlockPublicAccess.BLOCK_ALL,
+            encryption=s3.BucketEncryption.S3_MANAGED,
+            removal_policy=RemovalPolicy.DESTROY, # For dev/testing ease
+            auto_delete_objects=True
+        )
+        
+        # 2. Certificate for CloudFront
+        web_cert = acm.Certificate(self, "CocliWebCert",
+            domain_name="cocli.turboheat.net",
+            validation=acm.CertificateValidation.from_dns(zone)
+        )
+        
+        # 3. CloudFront Distribution
+        web_distro = cloudfront.Distribution(self, "CocliWebDistro",
+            default_behavior=cloudfront.BehaviorOptions(
+                origin=origins.S3Origin(web_bucket),
+                viewer_protocol_policy=cloudfront.ViewerProtocolPolicy.REDIRECT_TO_HTTPS,
+                cache_policy=cloudfront.CachePolicy.CACHING_DISABLED # Disable caching for now to see updates instantly
+            ),
+            domain_names=["cocli.turboheat.net"],
+            certificate=web_cert,
+            default_root_object="index.html", # Optional, but good practice
+            error_responses=[
+                cloudfront.ErrorResponse(
+                    http_status=403,
+                    response_http_status=200,
+                    response_page_path="/index.html", # For SPA routing if needed
+                    ttl=Duration.minutes(0)
+                ),
+                cloudfront.ErrorResponse(
+                    http_status=404,
+                    response_http_status=200,
+                    response_page_path="/index.html",
+                    ttl=Duration.minutes(0)
+                )
+            ]
+        )
+        
+        # 4. Route53 Record
+        route53.ARecord(self, "CocliWebAlias",
+            zone=zone,
+            record_name="cocli",
+            target=route53.RecordTarget.from_alias(targets.CloudFrontTarget(web_distro))
+        )
+
         # Outputs
         CfnOutput(self, "EnrichmentQueueUrl", value=enrichment_queue.queue_url)
         CfnOutput(self, "ScrapeTasksQueueUrl", value=scrape_tasks_queue.queue_url)
         CfnOutput(self, "GmListItemQueueUrl", value=gm_list_item_queue.queue_url)
         CfnOutput(self, "BucketName", value=data_bucket.bucket_name)
+        CfnOutput(self, "WebBucketName", value=web_bucket.bucket_name)
+        CfnOutput(self, "WebDistributionId", value=web_distro.distribution_id)
+        CfnOutput(self, "WebDomainName", value="cocli.turboheat.net")
 
         # Application Load Balanced Fargate Service
         fargate_service = ecs_patterns.ApplicationLoadBalancedFargateService(self, "ScraperService",

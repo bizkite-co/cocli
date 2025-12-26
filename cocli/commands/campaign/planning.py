@@ -9,9 +9,8 @@ from typing import Optional, List, Dict, Any
 from rich.console import Console
 from datetime import datetime
 
-from ...core.config import get_campaign_dir, get_cocli_base_dir, get_people_dir, get_campaign
+from ...core.config import get_campaign_dir, get_people_dir, get_campaign
 from ...models.person import Person
-from ...models.company import Company
 from ...core.text_utils import slugify
 from ...core.importing import import_prospect
 from ...core.prospects_csv_manager import ProspectsIndexManager
