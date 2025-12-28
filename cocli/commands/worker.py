@@ -21,11 +21,33 @@ from cocli.core.text_utils import slugify
 from cocli.core.config import get_campaign, load_campaign_config, get_campaigns_dir
 
 # Load Version
-VERSION_FILE = Path(__file__).parent.parent.parent / "VERSION"
-try:
-    VERSION = VERSION_FILE.read_text().strip()
-except Exception:
-    VERSION = "unknown"
+def get_version() -> str:
+    # 1. Try file in project root (dev mode)
+    try:
+        root_version = (Path(__file__).parent.parent.parent / "VERSION")
+        if root_version.exists():
+            return root_version.read_text().strip()
+    except Exception:
+        pass
+    
+    # 2. Try file in package dir (installed mode)
+    try:
+        pkg_version = (Path(__file__).parent.parent / "VERSION")
+        if pkg_version.exists():
+            return pkg_version.read_text().strip()
+    except Exception:
+        pass
+        
+    # 3. Fallback to importlib.metadata
+    try:
+        from importlib.metadata import version
+        return version("cocli")
+    except Exception:
+        pass
+        
+    return "unknown"
+
+VERSION = get_version()
 
 logger = logging.getLogger(__name__)
 console = Console()

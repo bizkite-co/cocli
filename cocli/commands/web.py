@@ -105,11 +105,21 @@ def deploy(
     s3.put_object(Bucket=bucket_name, Key=report_key, Body=json.dumps(stats, indent=2), ContentType="application/json")
     console.print(f"[green]Report uploaded to s3://{bucket_name}/{report_key}[/green]")
 
-    # 2b. Upload Config
+    # 2b. Upload Config to both web and data buckets
     if config_path.exists():
         config_key = f"campaigns/{campaign_name}/config.toml"
+        # 1. Upload to Web Bucket
         s3.upload_file(str(config_path), bucket_name, config_key, ExtraArgs={"ContentType": "application/toml"})
         console.print(f"[green]Config uploaded to s3://{bucket_name}/{config_key}[/green]")
+        
+        # 2. Upload to Data Bucket (for workers)
+        data_bucket = f"cocli-data-{campaign_name}"
+        try:
+            s3.upload_file(str(config_path), data_bucket, "config.toml", ExtraArgs={"ContentType": "application/toml"})
+            s3.upload_file(str(config_path), data_bucket, config_key, ExtraArgs={"ContentType": "application/toml"})
+            console.print(f"[green]Config uploaded to s3://{data_bucket}/config.toml (and {config_key})[/green]")
+        except Exception as e:
+            console.print(f"[yellow]Note: Could not upload to data bucket {data_bucket}: {e}[/yellow]")
     else:
         console.print(f"[yellow]Config file not found at {config_path}. Skipping upload.[/yellow]")
 
