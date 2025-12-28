@@ -22,19 +22,81 @@ console = Console()
 
 app = typer.Typer(no_args_is_help=True)
 
-# Hardcoded bucket for now, or move to config/env
-S3_BUCKET = "cocli-data-turboship"
+import toml
+import os
+from pathlib import Path
+from cocli.core.config import get_campaign, load_campaign_config, get_campaign_dir
 
-async def run_worker(headless: bool, debug: bool) -> None:
+logger = logging.getLogger(__name__)
+console = Console()
+
+app = typer.Typer(no_args_is_help=True)
+
+def ensure_campaign_config(campaign_name: str) -> None:
+    """
+    Ensures the campaign config exists locally. 
+    If missing, attempts to fetch it from the campaign's web assets bucket.
+    """
+    campaign_dir = get_campaign_dir(campaign_name)
+    config_path = campaign_dir / "config.toml"
+    
+    if config_path.exists():
+        return
+
+    console.print(f"[yellow]Local config for '{campaign_name}' not found. Attempting to fetch from S3...[/yellow]")
+    
+    # Deriving bucket name - following the convention in web.py
+    # We don't have the domain slug yet because we don't have the config! 
+    # This is a bit of a catch-22 if the bucket name is highly variable.
+    # However, for now we'll assume the convention cocli-data-{campaign_name} 
+    # or look for a standardized 'bootstrap' bucket if needed.
+    # Given the user's setup, cocli-data-{campaign_name} is the data bucket.
+    
+    bucket_name = f"cocli-data-{campaign_name}"
+    config_key = f"config.toml" # In the data bucket it might be at root or campaigns/{name}/config.toml
+    
+    # Try multiple common locations
+    keys_to_try = [f"config.toml", f"campaigns/{campaign_name}/config.toml"]
+    
+    s3 = boto3.client("s3")
+    for key in keys_to_try:
+        try:
+            console.print(f"  Trying s3://{bucket_name}/{key}...")
+            campaign_dir.mkdir(parents=True, exist_ok=True)
+            s3.download_file(bucket_name, key, str(config_path))
+            console.print(f"[green]Successfully fetched config from S3.[/green]")
+            return
+        except Exception:
+            continue
+            
+    console.print(f"[bold red]Failed to fetch config for '{campaign_name}' from S3 bucket '{bucket_name}'.[/bold red]")
+    console.print(f"[dim]Note: Ensure 'web deploy' has been run for this campaign or the config is manually placed at {config_path}[/dim]")
+
+async def run_worker(headless: bool, debug: bool, campaign_name: str) -> None:
     try:
-        scrape_queue = get_queue_manager("scrape_tasks", use_cloud=True, queue_type="scrape")
-        gm_list_item_queue = get_queue_manager("gm_list_item", use_cloud=True, queue_type="gm_list_item")
-        s3_client = boto3.client("s3")
+        ensure_campaign_config(campaign_name)
+        # S3_BUCKET following convention: cocli-data-{campaign}
+        bucket_name = f"cocli-data-{campaign_name}"
+        
+        scrape_queue = get_queue_manager("scrape_tasks", use_cloud=True, queue_type="scrape", campaign_name=campaign_name)
+        gm_list_item_queue = get_queue_manager("gm_list_item", use_cloud=True, queue_type="gm_list_item", campaign_name=campaign_name)
+        
+        # Determine AWS profile for S3 client
+        config = load_campaign_config(campaign_name)
+        aws_config = config.get("aws", {})
+        profile_name = aws_config.get("profile") or aws_config.get("aws_profile")
+        
+        if profile_name:
+            session = boto3.Session(profile_name=profile_name)
+        else:
+            session = boto3.Session()
+        s3_client = session.client("s3")
+        
     except Exception as e:
         console.print(f"[bold red]Configuration Error: {e}[/bold red]")
         return
 
-    console.print("[bold blue]Worker started. Polling for scrape tasks...[/bold blue]")
+    console.print(f"[bold blue]Worker started for campaign '{campaign_name}'. Polling for scrape tasks...[/bold blue]")
 
     async with async_playwright() as p:
         while True:  # Browser Restart Loop
@@ -107,7 +169,7 @@ async def run_worker(headless: bool, debug: bool) -> None:
                                 ttl_days=task.ttl_days,
                                 grid_tiles=grid_tiles,
                                 s3_client=s3_client,
-                                s3_bucket=S3_BUCKET
+                                s3_bucket=bucket_name
                             ):
                                 prospect_count += 1
                                 
@@ -120,7 +182,7 @@ async def run_worker(headless: bool, debug: bool) -> None:
                                             # Construct S3 Key: campaigns/{campaign}/indexes/google_maps_prospects/{Place_ID}.csv
                                             s3_key = f"campaigns/{task.campaign_name}/indexes/google_maps_prospects/{file_path.name}"
                                             try:
-                                                s3_client.upload_file(str(file_path), S3_BUCKET, s3_key)
+                                                s3_client.upload_file(str(file_path), bucket_name, s3_key)
                                             except Exception as e:
                                                 console.print(f"[red]S3 Upload Error:[/red] {e}")
 
@@ -157,16 +219,30 @@ async def run_worker(headless: bool, debug: bool) -> None:
                 console.print("[yellow]Restarting browser session in 5 seconds...[/yellow]")
                 await asyncio.sleep(5)
 
-async def run_details_worker(headless: bool, debug: bool) -> None:
+async def run_details_worker(headless: bool, debug: bool, campaign_name: str) -> None:
     try:
-        gm_list_item_queue = get_queue_manager("gm_list_item", use_cloud=True, queue_type="gm_list_item")
-        enrichment_queue = get_queue_manager("enrichment", use_cloud=True, queue_type="enrichment")
-        s3_client = boto3.client("s3")
+        ensure_campaign_config(campaign_name)
+        bucket_name = f"cocli-data-{campaign_name}"
+
+        gm_list_item_queue = get_queue_manager("gm_list_item", use_cloud=True, queue_type="gm_list_item", campaign_name=campaign_name)
+        enrichment_queue = get_queue_manager("enrichment", use_cloud=True, queue_type="enrichment", campaign_name=campaign_name)
+        
+        # Determine AWS profile for S3 client
+        config = load_campaign_config(campaign_name)
+        aws_config = config.get("aws", {})
+        profile_name = aws_config.get("profile") or aws_config.get("aws_profile")
+        
+        if profile_name:
+            session = boto3.Session(profile_name=profile_name)
+        else:
+            session = boto3.Session()
+        s3_client = session.client("s3")
+        
     except Exception as e:
         console.print(f"[bold red]Configuration Error: {e}[/bold red]")
         return
 
-    console.print("[bold blue]Details Worker started. Polling for detail tasks...[/bold blue]")
+    console.print(f"[bold blue]Details Worker started for campaign '{campaign_name}'. Polling for detail tasks...[/bold blue]")
 
     async with async_playwright() as p:
         while True: # Browser Restart Loop
@@ -244,15 +320,11 @@ async def run_details_worker(headless: bool, debug: bool) -> None:
                         final_prospect_data.updated_at = datetime.now()
 
                         # 3. Save updated prospect to Local Index
-                        # Note: ProspectsIndexManager's append_prospect now handles root/inbox.
-                        # When we update a prospect that was in inbox, it will update it in inbox.
-                        # If we want to move it to root here, we need a separate manager method.
-                        # For now, let's just save. The local sync will handle the S3 move.
                         if csv_manager.append_prospect(final_prospect_data):
                             # 4. Upload to S3 (Immediate Sync)
                             s3_key = f"campaigns/{task.campaign_name}/indexes/google_maps_prospects/{file_path.name}"
                             try:
-                                s3_client.upload_file(str(file_path), S3_BUCKET, s3_key)
+                                s3_client.upload_file(str(file_path), bucket_name, s3_key)
                                 console.print(f"[green]Updated and uploaded {file_path.name} to S3.[/green]")
                             except Exception as e:
                                 console.print(f"[red]S3 Upload Error:[/red] {e}")
@@ -295,27 +367,41 @@ async def run_details_worker(headless: bool, debug: bool) -> None:
 
 @app.command()
 def scrape(
+    campaign: str = typer.Option(None, "--campaign", "-c", help="Campaign name."),
     headed: bool = typer.Option(False, "--headed", help="Run browser in headed mode."),
     debug: bool = typer.Option(False, "--debug", help="Enable debug logging.")
 ) -> None:
     """
     Starts a worker node that polls for scrape tasks and executes them.
     """
+    if not campaign:
+        campaign = get_campaign()
+    if not campaign:
+        console.print("[bold red]Error: No campaign specified and no active context.[/bold red]")
+        raise typer.Exit(1)
+
     log_level = logging.DEBUG if debug else logging.INFO
     setup_file_logging("worker_scrape", console_level=log_level)
-    asyncio.run(run_worker(not headed, debug))
+    asyncio.run(run_worker(not headed, debug, campaign))
 
 @app.command()
 def details(
+    campaign: str = typer.Option(None, "--campaign", "-c", help="Campaign name."),
     headed: bool = typer.Option(False, "--headed", help="Run browser in headed mode."),
     debug: bool = typer.Option(False, "--debug", help="Enable debug logging.")
 ) -> None:
     """
     Starts a worker node that polls for details tasks (Place IDs) and scrapes them.
     """
+    if not campaign:
+        campaign = get_campaign()
+    if not campaign:
+        console.print("[bold red]Error: No campaign specified and no active context.[/bold red]")
+        raise typer.Exit(1)
+
     log_level = logging.DEBUG if debug else logging.INFO
     setup_file_logging("worker_details", console_level=log_level)
-    asyncio.run(run_details_worker(not headed, debug))
+    asyncio.run(run_details_worker(not headed, debug, campaign))
 
 if __name__ == "__main__":
     app()
