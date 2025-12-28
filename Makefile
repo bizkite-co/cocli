@@ -398,18 +398,14 @@ rebuild-rpi-worker: check-git-sync ## Pull latest code and rebuild Docker image 
 start-rpi-worker: ## Start the Docker worker on Raspberry Pi
 	ssh $(RPI_USER)@$(RPI_HOST) "docker run -d --restart unless-stopped --name cocli-scraper-worker \
 		-e TZ=America/Los_Angeles \
-		-e COCLI_SCRAPE_TASKS_QUEUE_URL='$(COCLI_SCRAPE_TASKS_QUEUE_URL)' \
-		-e COCLI_ENRICHMENT_QUEUE_URL='$(COCLI_ENRICHMENT_QUEUE_URL)' \
-		-e COCLI_GM_LIST_ITEM_QUEUE_URL='$(COCLI_GM_LIST_ITEM_QUEUE_URL)' \
+		-e CAMPAIGN_NAME='$(or $(CAMPAIGN), turboship)' \
 		-v ~/.aws:/root/.aws:ro cocli-worker-rpi:latest"
 
 .PHONY: start-rpi-details-worker
 start-rpi-details-worker: ## Start the Details Worker on Raspberry Pi
 	ssh $(RPI_USER)@$(RPI_HOST) "docker run -d --restart unless-stopped --name cocli-details-worker \
 		-e TZ=America/Los_Angeles \
-		-e COCLI_SCRAPE_TASKS_QUEUE_URL='$(COCLI_SCRAPE_TASKS_QUEUE_URL)' \
-		-e COCLI_ENRICHMENT_QUEUE_URL='$(COCLI_ENRICHMENT_QUEUE_URL)' \
-		-e COCLI_GM_LIST_ITEM_QUEUE_URL='$(COCLI_GM_LIST_ITEM_QUEUE_URL)' \
+		-e CAMPAIGN_NAME='$(or $(CAMPAIGN), turboship)' \
 		-v ~/.aws:/root/.aws:ro cocli-worker-rpi:latest cocli worker details"
 
 .PHONY: stop-rpi-worker
