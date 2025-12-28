@@ -1,21 +1,27 @@
 import typer
 import csv
 import yaml
+from typing import Optional
 from rich.console import Console
 from rich.progress import track
-from cocli.core.config import get_companies_dir, get_campaign_dir
+from cocli.core.config import get_companies_dir, get_campaign, get_campaigns_dir
 from cocli.core.text_utils import slugify
 
 app = typer.Typer()
 console = Console()
 
 @app.command()
-def main(campaign_name: str) -> None:
-    companies_dir = get_companies_dir()
-    campaign_dir = get_campaign_dir(campaign_name)
-    if not campaign_dir:
-        console.print(f"[bold red]Campaign '{campaign_name}' not found.[/bold red]")
+def main(campaign_name: Optional[str] = typer.Argument(None, help="Campaign name. Defaults to current context.")) -> None:
+    if not campaign_name:
+        campaign_name = get_campaign()
+    
+    if not campaign_name:
+        console.print("[bold red]Error: No campaign specified and no active context.[/bold red]")
         raise typer.Exit(1)
+
+    companies_dir = get_companies_dir()
+    campaign_dir = get_campaigns_dir() / campaign_name
+    campaign_dir.mkdir(parents=True, exist_ok=True)
         
     export_dir = campaign_dir / "exports"
     export_dir.mkdir(exist_ok=True)

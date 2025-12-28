@@ -5,7 +5,7 @@ from pathlib import Path
 from typing import Optional
 from rich.console import Console
 
-from cocli.core.config import get_campaign_scraped_data_dir
+from cocli.core.config import get_campaign_scraped_data_dir, get_campaign
 from cocli.core.importing import import_prospect
 from cocli.models.google_maps_prospect import GoogleMapsProspect
 from cocli.models.company import Company
@@ -18,7 +18,7 @@ app = typer.Typer()
 
 @app.command()
 def main(
-    campaign_name: str = typer.Argument(..., help="Name of the campaign to ingest prospects from."),
+    campaign_name: Optional[str] = typer.Argument(None, help="Name of the campaign. Defaults to current context."),
     csv_path: Optional[Path] = typer.Option(None, "--csv", "-c", help="Path to the legacy prospects CSV file. Defaults to standard scraped_data location."),
     force: bool = typer.Option(False, "--force", "-f", help="Force re-enrichment even if data exists."),
 ) -> None:
@@ -27,6 +27,13 @@ def main(
     1. Creates local company records.
     2. Pushes enrichment tasks to the queue.
     """
+    if not campaign_name:
+        campaign_name = get_campaign()
+    
+    if not campaign_name:
+        console.print("[bold red]Error: No campaign specified and no active context.[/bold red]")
+        raise typer.Exit(1)
+
     if csv_path is None:
         prospects_csv_path = get_campaign_scraped_data_dir(campaign_name) / "google_maps_prospects.csv"
     else:
@@ -36,9 +43,9 @@ def main(
         console.print(f"[bold red]Prospects CSV not found at: {prospects_csv_path}[/bold red]")
         raise typer.Exit(code=1)
 
-    console.print(f"[bold blue]Ingesting from: {prospects_csv_path}[/bold blue]")
+    console.print(f"[bold blue]Ingesting from: {prospects_csv_path} for campaign: {campaign_name}[/bold blue]")
     
-    queue_manager = get_queue_manager(f"{campaign_name}_enrichment")
+    queue_manager = get_queue_manager("enrichment", use_cloud=True, campaign_name=campaign_name)
     existing_domains = {c.domain for c in Company.get_all() if c.domain} # Load existing companies once
     
     count = 0

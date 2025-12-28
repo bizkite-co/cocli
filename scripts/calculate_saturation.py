@@ -1,13 +1,14 @@
 import typer
 import csv
 import logging
+from typing import Optional
 from rich.console import Console
 from rich.progress import track
 
 from cocli.models.target_location import TargetLocation
 from cocli.core.scrape_index import ScrapeIndex
 from cocli.core.saturation_calculator import calculate_saturation_score
-from cocli.core.config import get_campaign_dir
+from cocli.core.config import get_campaign, get_campaigns_dir
 
 logger = logging.getLogger(__name__)
 console = Console()
@@ -15,7 +16,7 @@ app = typer.Typer()
 
 @app.command()
 def main(
-    campaign_name: str = typer.Argument(..., help="Name of the campaign."),
+    campaign_name: Optional[str] = typer.Argument(None, help="Name of the campaign. Defaults to current context."),
     csv_filename: str = typer.Option("target_locations.csv", "--csv", help="Filename of the target locations CSV within the campaign directory."),
     max_proximity: float = typer.Option(20.0, "--proximity", help="Max proximity in miles to consider for saturation."),
 ) -> None:
@@ -23,11 +24,14 @@ def main(
     Calculates saturation scores for target locations based on scraped areas
     and updates the target locations CSV file.
     """
-    campaign_dir = get_campaign_dir(campaign_name)
-    if not campaign_dir:
-        console.print(f"[bold red]Campaign '{campaign_name}' not found.[/bold red]")
-        raise typer.Exit(code=1)
+    if not campaign_name:
+        campaign_name = get_campaign()
+    
+    if not campaign_name:
+        console.print("[bold red]Error: No campaign specified and no active context.[/bold red]")
+        raise typer.Exit(1)
 
+    campaign_dir = get_campaigns_dir() / campaign_name
     csv_path = campaign_dir / csv_filename
     if not csv_path.exists():
         console.print(f"[bold red]CSV file not found: {csv_path}[/bold red]")

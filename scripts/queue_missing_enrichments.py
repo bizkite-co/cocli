@@ -3,7 +3,8 @@ import json
 from rich.console import Console
 from rich.progress import track
 
-from cocli.core.config import get_companies_dir, get_cocli_base_dir
+from typing import Optional
+from cocli.core.config import get_companies_dir, get_cocli_base_dir, get_campaign
 from cocli.core.queue.factory import get_queue_manager
 from cocli.models.queue import QueueMessage
 
@@ -12,16 +13,25 @@ console = Console()
 
 @app.command()
 def main(
-    campaign_name: str = typer.Argument(..., help="Campaign name to target."),
+    campaign_name: Optional[str] = typer.Argument(None, help="Campaign name. Defaults to current context."),
     force: bool = typer.Option(False, "--force", "-f", help="Force re-queueing even if marked as failed."),
 ) -> None:
     """
     Finds companies that have no enrichment data (website.md) and are not currently in the queue.
     Pushes them to the enrichment queue.
     """
+    if not campaign_name:
+        campaign_name = get_campaign()
+    
+    if not campaign_name:
+        console.print("[bold red]Error: No campaign specified and no active context.[/bold red]")
+        raise typer.Exit(1)
+
     console.print(f"[bold]Gap Analysis for campaign: {campaign_name}[/bold]")
     
     # 1. Identify Queued Domains
+    # In cloud mode, we can't easily list all pending domains without polling the whole queue
+    # which is destructive. However, we can check our local 'queues/' folder if it exists.
     queue_base = get_cocli_base_dir() / "queues" / f"{campaign_name}_enrichment"
     queued_domains = set()
     
@@ -41,16 +51,14 @@ def main(
                 except Exception:
                     pass
     
-    console.print(f"Found {len(queued_domains)} domains currently in queue ({', '.join(dirs_to_check)}).")
+    console.print(f"Found {len(queued_domains)} domains currently in local queues ({', '.join(dirs_to_check)}).")
 
     # 2. Scan Companies
     companies_dir = get_companies_dir()
-    # We can iterate all directories, or use Company.get_all() if we trust it.
-    # Iterating directories is safer for finding "corrupt" or "partial" ones.
     
     missing_count = 0
     requeued_count = 0
-    queue_manager = get_queue_manager(f"{campaign_name}_enrichment")
+    queue_manager = get_queue_manager("enrichment", use_cloud=True, campaign_name=campaign_name)
     
     # Get all folders
     company_folders = [f for f in companies_dir.iterdir() if f.is_dir()]

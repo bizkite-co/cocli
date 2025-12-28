@@ -1,26 +1,26 @@
 import csv
 import sys
 import typer
+from typing import Optional
 from rich.console import Console
-from cocli.core.config import get_campaign_scraped_data_dir, get_campaign
+from cocli.core.config import get_campaign_scraped_data_dir, get_campaign, get_campaigns_dir
 
+app = typer.Typer()
 console = Console()
 
-def main(campaign_name: str = typer.Argument(None, help="Name of the campaign.")) -> None:
+@app.command()
+def main(campaign_name: Optional[str] = typer.Argument(None, help="Name of the campaign. Defaults to current context.")) -> None:
     if not campaign_name:
-        campaign_name_opt = get_campaign()
-        if not campaign_name_opt:
-            console.print("[bold red]No campaign set. Please provide a campaign name.[/bold red]")
-            sys.exit(1)
-        campaign_name = campaign_name_opt
+        campaign_name = get_campaign()
     
-    if not campaign_name: # Redundant check for type safety mostly
-        console.print("[bold red]No campaign set. Please provide a campaign name.[/bold red]")
-        sys.exit(1)
+    if not campaign_name:
+        console.print("[bold red]No campaign specified and no active context.[/bold red]")
+        raise typer.Exit(1)
 
+    campaign_dir = get_campaigns_dir() / campaign_name
     data_dir = get_campaign_scraped_data_dir(campaign_name)
     csv_path = data_dir / "google_maps_prospects.csv"
-    index_dir = data_dir.parent / "indexes" / "google_maps_prospects"
+    index_dir = campaign_dir / "indexes" / "google_maps_prospects"
 
     if not csv_path.exists():
         console.print(f"[bold red]Source CSV not found at: {csv_path}[/bold red]")
