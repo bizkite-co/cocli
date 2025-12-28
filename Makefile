@@ -200,6 +200,11 @@ check-scraper-version: ## Check if local website_scraper.py is newer than in the
 deploy-infra: install ## Deploy AWS Infrastructure (queues, Fargate service definition) using CDK
 	@echo "Deploying infrastructure..."
 	cd cdk_scraper_deployment && uv venv && . .venv/bin/activate && uv pip install -r requirements.txt && cdk deploy --require-approval never --profile bizkite-support
+	@$(MAKE) update-infra-config
+
+.PHONY: update-infra-config
+update-infra-config: ## Update campaign config.toml with latest SQS URLs from AWS
+	./.venv/bin/python scripts/update_campaign_infra_config.py $(CAMPAIGN)
 
 .PHONY: deploy-enrichment
 deploy-enrichment: test docker-build ## Build and deploy the enrichment service to AWS Fargate
