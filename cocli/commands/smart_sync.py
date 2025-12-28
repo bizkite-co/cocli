@@ -37,6 +37,7 @@ def download_file(s3_client, bucket: str, key: str, local_path: Path, progress, 
 
 @app.command("companies")
 def sync_companies(
+    campaign_name: str = typer.Option(None, "--campaign", "-c", help="Campaign name"),
     workers: int = typer.Option(20, help="Number of concurrent download threads."),
     full: bool = typer.Option(False, "--full", help="Perform a full integrity check (slower). Checks file sizes/existence locally."),
     force: bool = typer.Option(False, "--force", help="Force download all files (overwrites local)."),
@@ -49,19 +50,48 @@ def sync_companies(
     
     Use --full to scan all files and check for missing/changed files locally.
     """
-    s3 = boto3.client("s3")
-    local_base = DATA_DIR / "companies"
+    from ..core.config import get_campaign, load_campaign_config
+    
+    if not campaign_name:
+        campaign_name = get_campaign()
+        if not campaign_name:
+             console.print("[bold red]No campaign specified or active context.[/bold red]")
+             raise typer.Exit(code=1)
+             
+    config = load_campaign_config(campaign_name)
+    aws_config = config.get("aws", {})
+    profile_name = aws_config.get("profile") or aws_config.get("aws_profile")
+    
+    # Bucket convention
+    bucket_name = f"cocli-data-{campaign_name}"
+    
+    try:
+        if profile_name:
+            session = boto3.Session(profile_name=profile_name)
+        else:
+            session = boto3.Session()
+        s3 = session.client("s3")
+    except Exception as e:
+         console.print(f"[bold red]Failed to create AWS session: {e}[/bold red]")
+         raise typer.Exit(code=1)
+
+    local_base = DATA_DIR / "companies" # Note: This might need to be campaign-specific too? 
+    # Convention seems to be all companies in one shared folder, OR campaign specific?
+    # Context says "companies are stored in folders slugified from their Name...". 
+    # If the bucket is campaign-specific, do we mix them locally?
+    # For now, keeping DATA_DIR/companies as is, assuming it's a shared local store or correct.
+    
     prefix = "companies/"
     
     # Load State
     state = load_state()
-    last_sync_ts = state.get("companies_last_sync")
+    last_sync_ts = state.get(f"{campaign_name}_companies_last_sync")
     
     if last_sync_ts and not full and not force:
         last_sync_dt = datetime.fromtimestamp(last_sync_ts, tz=timezone.utc)
-        console.print(f"[bold blue]Incremental Sync[/bold blue] (Newer than {last_sync_dt.strftime('%Y-%m-%d %H:%M:%S')})")
+        console.print(f"[bold blue]Incremental Sync for {campaign_name}[/bold blue] (Newer than {last_sync_dt.strftime('%Y-%m-%d %H:%M:%S')})")
     else:
-        console.print("[bold blue]Full Sync Scan[/bold blue] (Checking all files...)")
+        console.print(f"[bold blue]Full Sync Scan for {campaign_name}[/bold blue] (Checking all files...)")
 
     to_download: List[Tuple[str, Path]] = []
     
@@ -71,11 +101,11 @@ def sync_companies(
 
     # 1. List & Filter
     paginator = s3.get_paginator('list_objects_v2')
-    pages = paginator.paginate(Bucket=S3_BUCKET, Prefix=prefix)
+    pages = paginator.paginate(Bucket=bucket_name, Prefix=prefix)
     
     total_scanned = 0
     
-    with console.status("[bold green]Scanning S3 and filtering...[/bold green]") as status:
+    with console.status(f"[bold green]Scanning s3://{bucket_name} and filtering...[/bold green]") as status:
         for page in pages:
             if 'Contents' in page:
                 for obj in page['Contents']:
@@ -100,7 +130,7 @@ def sync_companies(
 
                     if force:
                         should_download = True
-                    elif not full and last_sync_dt:
+                    elif not full and last_sync_ts: # Check last_sync_ts/dt existence
                         # Incremental Mode: Only check time
                         if s3_mtime > last_sync_dt:
                             should_download = True
@@ -119,7 +149,7 @@ def sync_companies(
     if not to_download:
         console.print("[green]Up to date.[/green]")
         # Update timestamp even if nothing downloaded, to mark we checked up to this point
-        state["companies_last_sync"] = sync_start_time
+        state[f"{campaign_name}_companies_last_sync"] = sync_start_time
         save_state(state)
         return
     
@@ -138,14 +168,14 @@ def sync_companies(
             futures = []
             for key, local_path in to_download:
                 futures.append(
-                    executor.submit(download_file, s3, S3_BUCKET, key, local_path, progress, task_id)
+                    executor.submit(download_file, s3, bucket_name, key, local_path, progress, task_id)
                 )
             
             for f in futures:
                 f.result()
                 
     # Save State
-    state["companies_last_sync"] = sync_start_time
+    state[f"{campaign_name}_companies_last_sync"] = sync_start_time
     save_state(state)
     console.print("[bold green]Sync Complete![/bold green]")
 
