@@ -145,14 +145,14 @@ def visualize_legacy_scrapes(
     legacy_body = "\n".join(kml_placemarks)
     with open(export_dir / "legacy_scrapes.kml", 'w') as f:
         f.write(f'''<?xml version="1.0" encoding="UTF-8"?><kml xmlns="http://www.opengis.net/kml/2.2"><Document>{legacy_body}</Document></kml>''')
-    console.print(f"[bold green]Legacy coverage KML saved.[/bold green]")
+    console.print("[bold green]Legacy coverage KML saved.[/bold green]")
 
 @app.command("publish-kml")
 def publish_kml(
     campaign_name: Annotated[Optional[str], typer.Argument(help="Name of the campaign. If not provided, uses the current campaign context.")] = None,
-    bucket_name: str = typer.Option("landing-page-turboheat-net", "--bucket", help="S3 bucket name."),
-    domain: str = typer.Option("turboheat.net", "--domain", help="Public domain name for KML URLs (required by Google Maps)."),
-    profile: str = typer.Option("bizkite-support", "--profile", help="AWS profile to use.")
+    bucket_name: str = typer.Option(None, "--bucket", help="S3 bucket name."),
+    domain: str = typer.Option(None, "--domain", help="Public domain name for KML URLs (required by Google Maps)."),
+    profile: str = typer.Option(None, "--profile", help="AWS profile to use.")
 ) -> None:
     """
     Generates all KMLs (Customers, Prospects, Coverage) and uploads them to S3.
@@ -165,6 +165,40 @@ def publish_kml(
 
     logging.getLogger("cocli").setLevel(logging.WARNING)
     campaign_dir = get_campaign_dir(campaign_name)
+
+    # Load Config for defaults
+    config_path = campaign_dir / "config.toml"
+    config = {}
+    if config_path.exists():
+        with open(config_path, "r") as f:
+            config = toml.load(f)
+
+    # Resolve Profile
+    aws_config = config.get("aws", {})
+    if not profile:
+        profile = aws_config.get("profile") or aws_config.get("aws-profile") or config.get("aws-profile")
+
+    if not profile:
+        console.print("[red]Error: AWS profile required (--profile or '[aws] profile' in config.toml).[/red]")
+        raise typer.Exit(code=1)
+
+    # Resolve Domain & Bucket
+    hosted_zone_domain = aws_config.get("hosted-zone-domain") or config.get("hosted-zone-domain")
+
+    if not domain:
+        if hosted_zone_domain:
+            domain = f"cocli.{hosted_zone_domain}"
+        else:
+            console.print("[red]Error: Domain required (--domain or config 'hosted-zone-domain').[/red]")
+            raise typer.Exit(code=1)
+
+    if not bucket_name:
+        if hosted_zone_domain:
+            bucket_slug = hosted_zone_domain.replace(".", "-")
+            bucket_name = f"cocli-web-assets-{bucket_slug}"
+        else:
+             console.print("[red]Error: Bucket required (--bucket or derived from config 'hosted-zone-domain').[/red]")
+             raise typer.Exit(code=1)
 
     # 1. Generate KMLs via subprocess
     console.print("[dim]Generating KML files...[/dim]")

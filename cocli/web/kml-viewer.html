@@ -40,20 +40,15 @@
                 if (response.ok) {
                     layers = await response.json();
                     console.log("Loaded layers from layers.json");
+                } else {
+                    console.warn("layers.json not found or invalid.");
                 }
             } catch (e) {
-                console.warn("Could not load layers.json, using defaults.", e);
+                console.warn("Could not load layers.json:", e);
             }
-
-            // Fallback to defaults if layers.json failed or was empty
+            
             if (!layers || layers.length === 0) {
-                 layers = [
-                    { name: "Target Areas", url: "https://turboheat.net/kml/turboship_targets.kml", default: true },
-                    { name: "Scraped Areas", url: "https://turboheat.net/kml/turboship_aggregated.kml", default: true },
-                    { name: "Legacy Scrapes", url: "https://turboheat.net/kml/turboship_legacy.kml", default: false },
-                    { name: "Prospects", url: "https://turboheat.net/kml/turboship_prospects.kml", default: false },
-                    { name: "Customers", url: "https://turboheat.net/kml/turboship_customers.kml", default: false }
-                ];
+                console.warn("No layers loaded. Map will be empty.");
             }
 
             const urlParams = new URLSearchParams(window.location.search);

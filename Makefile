@@ -447,5 +447,5 @@ stop-rpi-all: ## Stop all Raspberry Pi cocli worker containers
 .PHONY: deploy-rpi
 deploy-rpi: stop-rpi-all rebuild-rpi-worker start-rpi-worker start-rpi-details-worker ## Full deployment: stop all, rebuild, and restart both workers
 
-show-kmls: ## Show KML files online
-	aws s3 ls s3://landing-page-turboheat-net/kml/ --profile bizkite-support
+show-kmls: ## Show KML files online (Usage: make show-kmls [BUCKET=cocli-web-assets] [PROFILE=bizkite-support])
+	aws s3 ls s3://$(or $(BUCKET), cocli-web-assets)/kml/ --profile $(or $(PROFILE), bizkite-support)

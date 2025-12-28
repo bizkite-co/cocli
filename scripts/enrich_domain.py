@@ -15,11 +15,9 @@ if project_root not in sys.path:
 try:
     from cocli.core.config import get_enrichment_service_url
 except ImportError:
-    def get_enrichment_service_url() -> str: # Changed return type to str
-        # Fallback if cocli is not properly installed or path is not set up
-        # This is a basic heuristic, user might need to adjust
-        print("Warning: cocli.core.config could not be imported. Falling back to default enrichment URL.", file=sys.stderr)
-        return os.environ.get("COCLI_ENRICHMENT_SERVICE_URL", "https://enrich.turboheat.net")
+def get_service_url() -> str:
+    """Get the enrichment service URL from environment."""
+    return os.environ.get("COCLI_ENRICHMENT_SERVICE_URL", "http://localhost:8000")
 
 
 def main() -> None: # Added return type annotation

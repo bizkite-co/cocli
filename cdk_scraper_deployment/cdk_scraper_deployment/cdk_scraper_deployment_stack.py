@@ -22,7 +22,13 @@ from constructs import Construct
 class CdkScraperDeploymentStack(Stack):  # type: ignore[misc]
 
     def __init__(self, scope: Construct, construct_id: str, **kwargs) -> None:  # type: ignore[no-untyped-def]
+        campaign_config = kwargs.pop("campaign_config")
         super().__init__(scope, construct_id, **kwargs)
+
+        domain = campaign_config["domain"]
+        zone_id = campaign_config["zone_id"]
+        bucket_name = f"cocli-web-assets-{domain.replace('.', '-')}"
+        subdomain = f"cocli.{domain}"
 
         # Define the path to the Dockerfile (no longer needed, using pre-built image)
         # dockerfile_path = os.path.join(os.path.dirname(__file__), "..", "..")
@@ -45,6 +51,7 @@ class CdkScraperDeploymentStack(Stack):  # type: ignore[misc]
         )
 
         # --- S3 Bucket for Data (Import existing) ---
+        # TODO: Parameterize this or create per-campaign bucket in future
         data_bucket = s3.Bucket.from_bucket_name(self, "CocliDataBucket", "cocli-data-turboship")
         data_bucket.grant_read_write(task_role)
 
@@ -87,26 +94,24 @@ class CdkScraperDeploymentStack(Stack):  # type: ignore[misc]
         gm_list_item_queue.grant_send_messages(rpi_user)
         gm_list_item_queue.grant_consume_messages(rpi_user)
 
-        # --- DNS / HTTPS ---
+        # --- Single-Site Website Infrastructure ---
         zone = route53.HostedZone.from_hosted_zone_attributes(self, "HostedZone",
-            hosted_zone_id="Z0754885WA4ZOH1QH7PJ",
-            zone_name="turboheat.net"
+            hosted_zone_id=zone_id,
+            zone_name=domain
         )
-        
-        # --- Static Website Infrastructure (cocli.turboheat.net) ---
         
         # 1. Bucket for Web Assets
         web_bucket = s3.Bucket(self, "CocliWebAssets",
-            bucket_name="cocli-web-assets", # Explicit name
+            bucket_name=bucket_name,
             block_public_access=s3.BlockPublicAccess.BLOCK_ALL,
             encryption=s3.BucketEncryption.S3_MANAGED,
-            removal_policy=RemovalPolicy.DESTROY, # For dev/testing ease
+            removal_policy=RemovalPolicy.DESTROY,
             auto_delete_objects=True
         )
         
         # 2. Certificate for CloudFront
         web_cert = acm.Certificate(self, "CocliWebCert",
-            domain_name="cocli.turboheat.net",
+            domain_name=subdomain,
             validation=acm.CertificateValidation.from_dns(zone)
         )
         
@@ -115,24 +120,14 @@ class CdkScraperDeploymentStack(Stack):  # type: ignore[misc]
             default_behavior=cloudfront.BehaviorOptions(
                 origin=origins.S3Origin(web_bucket),
                 viewer_protocol_policy=cloudfront.ViewerProtocolPolicy.REDIRECT_TO_HTTPS,
-                cache_policy=cloudfront.CachePolicy.CACHING_DISABLED # Disable caching for now to see updates instantly
+                cache_policy=cloudfront.CachePolicy.CACHING_DISABLED
             ),
-            domain_names=["cocli.turboheat.net"],
+            domain_names=[subdomain],
             certificate=web_cert,
-            default_root_object="index.html", # Optional, but good practice
+            default_root_object="index.html",
             error_responses=[
-                cloudfront.ErrorResponse(
-                    http_status=403,
-                    response_http_status=200,
-                    response_page_path="/index.html", # For SPA routing if needed
-                    ttl=Duration.minutes(0)
-                ),
-                cloudfront.ErrorResponse(
-                    http_status=404,
-                    response_http_status=200,
-                    response_page_path="/index.html",
-                    ttl=Duration.minutes(0)
-                )
+                cloudfront.ErrorResponse(http_status=403, response_http_status=200, response_page_path="/index.html", ttl=Duration.minutes(0)),
+                cloudfront.ErrorResponse(http_status=404, response_http_status=200, response_page_path="/index.html", ttl=Duration.minutes(0))
             ]
         )
         
@@ -149,8 +144,7 @@ class CdkScraperDeploymentStack(Stack):  # type: ignore[misc]
         CfnOutput(self, "GmListItemQueueUrl", value=gm_list_item_queue.queue_url)
         CfnOutput(self, "BucketName", value=data_bucket.bucket_name)
         CfnOutput(self, "WebBucketName", value=web_bucket.bucket_name)
-        CfnOutput(self, "WebDistributionId", value=web_distro.distribution_id)
-        CfnOutput(self, "WebDomainName", value="cocli.turboheat.net")
+        CfnOutput(self, "WebDomainName", value=subdomain)
 
         # Application Load Balanced Fargate Service
         fargate_service = ecs_patterns.ApplicationLoadBalancedFargateService(self, "ScraperService",
@@ -159,7 +153,7 @@ class CdkScraperDeploymentStack(Stack):  # type: ignore[misc]
             cpu=1024,  # 1 vCPU (Playwright needs this)
             memory_limit_mib=3072, # 3GB RAM (Playwright needs this)
             desired_count=1,
-            domain_name="enrich.turboheat.net",
+            domain_name=f"enrich.{domain}",
             domain_zone=zone,
             protocol=elbv2.ApplicationProtocol.HTTPS, # Explicitly set HTTPS protocol
             redirect_http=True, # Redirect HTTP to HTTPS
