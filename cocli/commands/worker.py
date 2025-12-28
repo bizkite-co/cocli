@@ -1,9 +1,11 @@
 import typer
 import asyncio
 import logging
-import boto3
-import csv # Added for details worker to read CSV
-from datetime import datetime # Added for updated_at
+import boto3 # type: ignore
+import csv 
+from datetime import datetime 
+from pathlib import Path
+from typing import Optional
 from rich.console import Console
 from playwright.async_api import async_playwright
 
@@ -16,18 +18,7 @@ from cocli.models.google_maps_prospect import GoogleMapsProspect
 from cocli.models.queue import QueueMessage
 from cocli.core.prospects_csv_manager import ProspectsIndexManager
 from cocli.core.text_utils import slugify
-
-logger = logging.getLogger(__name__)
-console = Console()
-
-app = typer.Typer(no_args_is_help=True)
-
-import toml
-import os
-from pathlib import Path
-from cocli.core.config import get_campaign, load_campaign_config, get_campaign_dir
-
-from cocli.core.logging_config import setup_file_logging
+from cocli.core.config import get_campaign, load_campaign_config, get_campaigns_dir
 
 # Load Version
 VERSION_FILE = Path(__file__).parent.parent.parent / "VERSION"
@@ -58,7 +49,7 @@ def ensure_campaign_config(campaign_name: str) -> None:
     logger.warning(f"Local config for '{campaign_name}' not found at {config_path}. Attempting to fetch from S3...")
     
     bucket_name = f"cocli-data-{campaign_name}"
-    keys_to_try = [f"config.toml", f"campaigns/{campaign_name}/config.toml"]
+    keys_to_try = ["config.toml", f"campaigns/{campaign_name}/config.toml"]
     
     s3 = boto3.client("s3")
     for key in keys_to_try:
@@ -66,7 +57,7 @@ def ensure_campaign_config(campaign_name: str) -> None:
             logger.info(f"Trying s3://{bucket_name}/{key}...")
             campaign_dir.mkdir(parents=True, exist_ok=True)
             s3.download_file(bucket_name, key, str(config_path))
-            logger.info(f"Successfully fetched config from S3.")
+            logger.info("Successfully fetched config from S3.")
             return
         except Exception:
             continue
@@ -338,50 +329,49 @@ async def run_details_worker(headless: bool, debug: bool, campaign_name: str) ->
 
 @app.command()
 def scrape(
-    campaign: str = typer.Option(None, "--campaign", "-c", help="Campaign name."),
+    campaign: Optional[str] = typer.Option(None, "--campaign", "-c", help="Campaign name."),
     headed: bool = typer.Option(False, "--headed", help="Run browser in headed mode."),
     debug: bool = typer.Option(False, "--debug", help="Enable debug logging.")
 ) -> None:
     """
     Starts a worker node that polls for scrape tasks and executes them.
     """
-    if not campaign:
-        campaign = get_campaign()
+    effective_campaign = campaign
+    if not effective_campaign:
+        effective_campaign = get_campaign()
     
     # We set up logging after we might know the campaign, but worker log files are generic
     log_level = logging.DEBUG if debug else logging.INFO
     setup_file_logging("worker_scrape", console_level=log_level)
     
-    logger.info(f"Effective campaign: {campaign}")
+    logger.info(f"Effective campaign: {effective_campaign}")
     
-    if not campaign:
+    if not effective_campaign:
         logger.error("No campaign specified and no active context.")
         raise typer.Exit(1)
 
-    asyncio.run(run_worker(not headed, debug, campaign))
+    asyncio.run(run_worker(not headed, debug, effective_campaign))
 
 @app.command()
 def details(
-    campaign: str = typer.Option(None, "--campaign", "-c", help="Campaign name."),
+    campaign: Optional[str] = typer.Option(None, "--campaign", "-c", help="Campaign name."),
     headed: bool = typer.Option(False, "--headed", help="Run browser in headed mode."),
     debug: bool = typer.Option(False, "--debug", help="Enable debug logging.")
 ) -> None:
     """
     Starts a worker node that polls for details tasks (Place IDs) and scrapes them.
     """
-    if not campaign:
-        campaign = get_campaign()
+    effective_campaign = campaign
+    if not effective_campaign:
+        effective_campaign = get_campaign()
         
     log_level = logging.DEBUG if debug else logging.INFO
     setup_file_logging("worker_details", console_level=log_level)
 
-    logger.info(f"Effective campaign: {campaign}")
+    logger.info(f"Effective campaign: {effective_campaign}")
 
-    if not campaign:
+    if not effective_campaign:
         logger.error("No campaign specified and no active context.")
         raise typer.Exit(1)
 
-    asyncio.run(run_details_worker(not headed, debug, campaign))
-
-if __name__ == "__main__":
-    app()
+    asyncio.run(run_details_worker(not headed, debug, effective_campaign))

@@ -85,7 +85,8 @@ async def pipeline(
                     continue
                 
                 for msg in messages:
-                    if stop_event.is_set(): break
+                    if stop_event.is_set():
+                        break
                     console.print(f"[dim]Processing: {msg.domain}[/dim]")
                     website_data = None
                     
@@ -117,14 +118,15 @@ async def pipeline(
                         enrichment_dir = company_dir / "enrichments"
                         enrichment_dir.mkdir(parents=True, exist_ok=True)
                         with open(enrichment_dir / "website.md", "w") as f:
-                            f.write("---")
+                            f.write("---\n")
                             yaml.dump(website_data.model_dump(exclude_none=True), f)
-                            f.write("---")
+                            f.write("---\n")
                         WebsiteCompiler().compile(company_dir)
-                        if website_data.email: emails_found_count += 1
-                        if emails_found_count >= goal_emails: stop_event.set()
+                        if website_data.email:
+                            emails_found_count += 1
+                        if emails_found_count >= goal_emails:
+                            stop_event.set()
                         queue_manager.ack(msg)
-
         async def producer_task(existing_companies_map: Dict[str, str]) -> None: 
             csv_manager = ProspectsIndexManager(campaign_name)
 
@@ -142,7 +144,8 @@ async def pipeline(
                 overlap_threshold_percent=overlap_threshold_percent
             )
             async for prospect_data in prospect_generator:
-                if stop_event.is_set(): break
+                if stop_event.is_set():
+                    break
                 await process_prospect_item(prospect_data, "Grid Scan")
                 await asyncio.sleep(0.01)
 
@@ -150,20 +153,23 @@ async def pipeline(
 
 @app.command(name="queue-scrapes")
 def queue_scrapes(
-    campaign_name: Optional[str] = typer.Argument(None),
-    force: bool = typer.Option(False, "--force", "-f"),
+    campaign_name: str = typer.Argument(None),
     include_legacy: bool = typer.Option(False, "--include-legacy"),
+    force: bool = typer.Option(False, "--force"),
 ) -> None:
-    if campaign_name is None: campaign_name = get_campaign()
+    if campaign_name is None:
+        campaign_name = get_campaign()
     campaign_dir = get_campaign_dir(campaign_name)
     config_path = campaign_dir / "config.toml"
-    with open(config_path, "r") as f: config = toml.load(f)
+    with open(config_path, "r") as f:
+        config = toml.load(f)
     search_phrases = config.get("prospecting", {}).get("queries", [])
     grid_file = campaign_dir / "exports" / "target-areas.json"
     tasks_to_queue = []
     if grid_file.exists():
         scrape_index = ScrapeIndex()
-        with open(grid_file, 'r') as f: grid_tiles = json.load(f)
+        with open(grid_file, 'r') as f:
+            grid_tiles = json.load(f)
         for tile in grid_tiles:
             lat = tile.get("center_lat") or tile.get("center", {}).get("lat")
             lon = tile.get("center_lon") or tile.get("center", {}).get("lon")
@@ -177,10 +183,11 @@ def queue_scrapes(
                         if match_area:
                             continue
                             
-                        # 2. Overlap Check (Legacy and Robustness)
-                        match = scrape_index.is_area_scraped(phrase, bounds, overlap_threshold_percent=90.0)
-                        if match and (include_legacy or match[0].tile_id): continue
-                    tasks_to_queue.append(ScrapeTask(latitude=float(lat), longitude=float(lon), zoom=13, search_phrase=phrase, campaign_name=campaign_name, force_refresh=force, tile_id=tile_id))
+                # 2. Overlap Check (Legacy and Robustness)
+                match = scrape_index.is_area_scraped(phrase, bounds, overlap_threshold_percent=90.0)
+                if match and (include_legacy or match[0].tile_id):
+                    continue
+                tasks_to_queue.append(ScrapeTask(latitude=float(lat), longitude=float(lon), zoom=13, search_phrase=phrase, campaign_name=campaign_name, tile_id=tile.get("id")))
     
     if tasks_to_queue:
         # Silence verbose libraries
@@ -219,13 +226,16 @@ def achieve_goal(
     proximity_miles: float = typer.Option(10.0, "--proximity"),
     grid_mode: bool = typer.Option(False, "--grid"),
 ) -> None:
-    if campaign_name is None: campaign_name = get_campaign()
+    if campaign_name is None:
+        campaign_name = get_campaign()
     campaign_dir = get_campaign_dir(campaign_name)
-    with open(campaign_dir / "config.toml", "r") as f: config = toml.load(f)
+    with open(campaign_dir / "config.toml", "r") as f:
+        config = toml.load(f)
     search_phrases = config.get("prospecting", {}).get("queries", [])
     grid_tiles = None
     if grid_mode:
-        with open(campaign_dir / "exports" / "target-areas.json", "r") as f: grid_tiles = json.load(f)
+        with open(campaign_dir / "exports" / "target-areas.json", "r") as f:
+            grid_tiles = json.load(f)
 
     existing_companies_map = {c.domain: c.slug for c in Company.get_all() if c.domain and c.slug}
     asyncio.run(pipeline(

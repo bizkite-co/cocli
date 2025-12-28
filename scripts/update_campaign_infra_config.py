@@ -1,29 +1,30 @@
 import typer
-import boto3
+import boto3 # type: ignore
 import toml
-from pathlib import Path
+from typing import Optional
 from rich.console import Console
-from cocli.core.config import get_campaign, get_campaign_dir, load_campaign_config
+from cocli.core.config import get_campaign, load_campaign_config, get_campaigns_dir
 
 app = typer.Typer()
 console = Console()
 
 @app.command()
 def update_config(
-    campaign_name: str = typer.Argument(None, help="Campaign name"),
+    campaign_name: Optional[str] = typer.Argument(None, help="Campaign name"),
     stack_name: str = typer.Option("CdkScraperDeploymentStack", help="CloudFormation stack name")
-):
+) -> None:
     """
     Queries CloudFormation for stack outputs and updates the campaign's config.toml.
     """
-    if not campaign_name:
-        campaign_name = get_campaign()
+    effective_campaign = campaign_name
+    if not effective_campaign:
+        effective_campaign = get_campaign()
     
-    if not campaign_name:
+    if not effective_campaign:
         console.print("[bold red]No campaign specified and no active context.[/bold red]")
         raise typer.Exit(1)
 
-    campaign_dir = get_campaign_dir(campaign_name)
+    campaign_dir = get_campaigns_dir() / effective_campaign
     config_path = campaign_dir / "config.toml"
     
     if not config_path.exists():
@@ -84,7 +85,7 @@ def update_config(
     if updates_made:
         with open(config_path, "w") as f:
             toml.dump(config, f)
-        console.print(f"[bold green]✓ Config updated successfully![/bold green]")
+        console.print("[bold green]✓ Config updated successfully![/bold green]")
         
         console.print("\n[bold yellow]⚠️  IMPORTANT: Infrastructure endpoints have changed![/bold yellow]")
         console.print("1. Run [bold]cocli web deploy[/bold] to push this new config to S3.")

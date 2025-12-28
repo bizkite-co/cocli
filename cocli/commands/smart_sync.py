@@ -7,7 +7,7 @@ from datetime import datetime, timezone
 from rich.console import Console
 from rich.progress import Progress, SpinnerColumn, BarColumn, TextColumn, TimeRemainingColumn
 from concurrent.futures import ThreadPoolExecutor
-from typing import List, Tuple
+from typing import List, Tuple, Dict, Any
 
 console = Console()
 app = typer.Typer()
@@ -16,18 +16,18 @@ S3_BUCKET = "cocli-data-turboship"
 DATA_DIR = Path(os.environ.get("COCLI_DATA_HOME", Path.home() / ".local/share/cocli_data"))
 STATE_FILE = DATA_DIR / ".smart_sync_state.json"
 
-def load_state() -> dict:
+def load_state() -> Dict[str, Any]:
     if STATE_FILE.exists():
         try:
-            return json.loads(STATE_FILE.read_text())
-        except:
+            return json.loads(STATE_FILE.read_text()) # type: ignore
+        except Exception:
             return {}
     return {}
 
-def save_state(state: dict):
+def save_state(state: Dict[str, Any]) -> None:
     STATE_FILE.write_text(json.dumps(state))
 
-def download_file(s3_client, bucket: str, key: str, local_path: Path, progress, task_id) -> None:
+def download_file(s3_client: Any, bucket: str, key: str, local_path: Path, progress: Any, task_id: Any) -> None:
     try:
         local_path.parent.mkdir(parents=True, exist_ok=True)
         s3_client.download_file(bucket, key, str(local_path))
@@ -114,7 +114,8 @@ def sync_companies(
                         status.update(f"Scanning S3... ({total_scanned} objects found)")
 
                     key = obj['Key']
-                    if key.endswith("/"): continue
+                    if key.endswith("/"):
+                        continue
                     
                     s3_mtime = obj['LastModified'] # datetime with timezone
                     s3_size = obj['Size']

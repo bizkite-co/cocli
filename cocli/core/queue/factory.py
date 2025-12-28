@@ -1,10 +1,10 @@
-from typing import Any
+from typing import Any, Optional
 from .local_file_queue import LocalFileQueue
 from .sqs_queue import SQSQueue
 from .scrape_sqs_queue import ScrapeSQSQueue
 from .gm_item_sqs_queue import GmItemSQSQueue
 
-def get_queue_manager(queue_name: str, use_cloud: bool = False, queue_type: str = "enrichment", campaign_name: str = None) -> Any:
+def get_queue_manager(queue_name: str, use_cloud: bool = False, queue_type: str = "enrichment", campaign_name: Optional[str] = None) -> Any:
     """
     Factory to return the appropriate QueueManager.
     """
@@ -13,10 +13,11 @@ def get_queue_manager(queue_name: str, use_cloud: bool = False, queue_type: str 
         from ..config import get_campaign, load_campaign_config
         
         # Resolve campaign name if not provided
-        if not campaign_name:
-            campaign_name = get_campaign()
+        effective_campaign = campaign_name
+        if not effective_campaign:
+            effective_campaign = get_campaign()
             
-        config = load_campaign_config(campaign_name) if campaign_name else {}
+        config = load_campaign_config(effective_campaign) if effective_campaign else {}
         aws_config = config.get('aws', {})
         aws_profile = aws_config.get("profile") or aws_config.get("aws_profile")
         
