@@ -360,6 +360,8 @@ def scrape(
     """
     effective_campaign = campaign
     if not effective_campaign:
+        effective_campaign = os.getenv("CAMPAIGN_NAME")
+    if not effective_campaign:
         effective_campaign = get_campaign()
     
     # We set up logging after we might know the campaign, but worker log files are generic
@@ -384,6 +386,8 @@ def details(
     Starts a worker node that polls for details tasks (Place IDs) and scrapes them.
     """
     effective_campaign = campaign
+    if not effective_campaign:
+        effective_campaign = os.getenv("CAMPAIGN_NAME")
     if not effective_campaign:
         effective_campaign = get_campaign()
         
