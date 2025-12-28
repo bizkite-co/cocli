@@ -239,6 +239,25 @@ def load_scraper_settings() -> ScraperSettings:
         return ScraperSettings()
 
 
+def load_campaign_config(campaign_name: str) -> Dict[str, Any]:
+    """
+    Loads the campaign-specific configuration (campaigns/<name>/config.toml).
+    """
+    campaign_dir = get_campaign_dir(campaign_name)
+    if not campaign_dir:
+        return {}
+    
+    config_file = campaign_dir / "config.toml"
+    if not config_file.exists():
+        return {}
+    
+    try:
+        with config_file.open("rb") as f:
+            return tomli.load(f)
+    except Exception as e:
+        logger.error(f"Error loading campaign config {config_file}: {e}")
+        return {}
+
 def get_config_path() -> Path:
     config_dir = get_config_dir()
     return config_dir / "cocli_config.toml"
