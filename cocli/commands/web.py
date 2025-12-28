@@ -105,6 +105,14 @@ def deploy(
     s3.put_object(Bucket=bucket_name, Key=report_key, Body=json.dumps(stats, indent=2), ContentType="application/json")
     console.print(f"[green]Report uploaded to s3://{bucket_name}/{report_key}[/green]")
 
+    # 2b. Upload Config
+    if config_path.exists():
+        config_key = f"campaigns/{campaign_name}/config.toml"
+        s3.upload_file(str(config_path), bucket_name, config_key, ExtraArgs={"ContentType": "application/toml"})
+        console.print(f"[green]Config uploaded to s3://{bucket_name}/{config_key}[/green]")
+    else:
+        console.print(f"[yellow]Config file not found at {config_path}. Skipping upload.[/yellow]")
+
     # 3. Generate & Upload KMLs
     # We leverage the existing 'publish-kml' command in viz.py which generates and uploads.
     # We pass the --bucket argument to it.
