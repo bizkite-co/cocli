@@ -67,7 +67,8 @@ dev = [
 ]
 
 [tool.setuptools]
-packages = ["cocli"]
+package-dir = {"" = "."}
+packages = {find = {where = ["."]}}
 
 [tool.uv]
 package = true
