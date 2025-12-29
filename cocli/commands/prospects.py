@@ -413,6 +413,13 @@ def enrich_from_queue(
                 queue_manager.ack(msg)
                 return True
             
+        except httpx.HTTPStatusError as e:
+            status = e.response.status_code
+            if status == 404:
+                # ... existing logic ...
+                queue_manager.ack(msg)
+                return True
+            
             elif status == 500:
                 console.print(f"[bold red]HTTP Error 500 for {msg.domain} at {e.request.url}. Retrying.[/bold red]")
                 queue_manager.nack(msg, is_http_500=True) 
@@ -425,6 +432,8 @@ def enrich_from_queue(
             console.print(f"[bold red]Error processing {msg.domain}: {e}[/bold red]")
             queue_manager.nack(msg)
             return False
+        
+        return False
 
     async def consumer_loop_docker() -> None:
         # Skip this check if running inside the container (Fargate/Docker)

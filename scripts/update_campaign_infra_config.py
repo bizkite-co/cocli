@@ -1,5 +1,5 @@
 import typer
-import boto3 # type: ignore
+import boto3
 import toml
 from typing import Optional
 from rich.console import Console
@@ -32,7 +32,7 @@ def update_config(
         raise typer.Exit(1)
 
     # 1. Load config to get AWS profile
-    config = load_campaign_config(campaign_name)
+    config = load_campaign_config(effective_campaign)
     aws_config = config.get("aws", {})
     profile = aws_config.get("profile") or aws_config.get("aws_profile")
     

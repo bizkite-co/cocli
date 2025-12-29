@@ -63,6 +63,7 @@ dev = [
     "types-dateparser",
     "types-pytz",
     "ruff",
+    "boto3-stubs[s3,sqs]",
 ]
 
 [tool.setuptools]

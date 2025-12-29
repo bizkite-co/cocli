@@ -107,7 +107,12 @@ async def pipeline(
                     else:
                         dummy_company = Company(name=msg.domain, domain=msg.domain, slug=msg.company_slug)
                         try:
-                            website_data = await enrich_company_website(browser=consumer_context, company=dummy_company, force=msg.force_refresh, ttl_days=msg.ttl_days)
+                            if consumer_context:
+                                website_data = await enrich_company_website(browser=consumer_context, company=dummy_company, force=msg.force_refresh, ttl_days=msg.ttl_days)
+                            else:
+                                logger.error("No browser context available for consumer task")
+                                queue_manager.nack(msg)
+                                continue
                         except Exception:
                             queue_manager.nack(msg)
                             continue
@@ -153,13 +158,22 @@ async def pipeline(
 
 @app.command(name="queue-scrapes")
 def queue_scrapes(
-    campaign_name: str = typer.Argument(None),
+    campaign_name: Optional[str] = typer.Argument(None),
     include_legacy: bool = typer.Option(False, "--include-legacy"),
     force: bool = typer.Option(False, "--force"),
 ) -> None:
     if campaign_name is None:
         campaign_name = get_campaign()
+    
+    if not campaign_name:
+        console.print("[red]No campaign specified.[/red]")
+        raise typer.Exit(1)
+
     campaign_dir = get_campaign_dir(campaign_name)
+    if not campaign_dir:
+        console.print(f"[red]Campaign directory not found for {campaign_name}[/red]")
+        raise typer.Exit(1)
+
     config_path = campaign_dir / "config.toml"
     with open(config_path, "r") as f:
         config = toml.load(f)
@@ -187,7 +201,15 @@ def queue_scrapes(
                 match = scrape_index.is_area_scraped(phrase, bounds, overlap_threshold_percent=90.0)
                 if match and (include_legacy or match[0].tile_id):
                     continue
-                tasks_to_queue.append(ScrapeTask(latitude=float(lat), longitude=float(lon), zoom=13, search_phrase=phrase, campaign_name=campaign_name, tile_id=tile.get("id")))
+                tasks_to_queue.append(ScrapeTask(
+                    latitude=float(lat), 
+                    longitude=float(lon), 
+                    zoom=13, 
+                    search_phrase=phrase, 
+                    campaign_name=campaign_name, 
+                    tile_id=tile.get("id"),
+                    ack_token=None
+                ))
     
     if tasks_to_queue:
         # Silence verbose libraries
@@ -228,14 +250,25 @@ def achieve_goal(
 ) -> None:
     if campaign_name is None:
         campaign_name = get_campaign()
+    
+    if not campaign_name:
+        console.print("[red]No campaign specified.[/red]")
+        raise typer.Exit(1)
+
     campaign_dir = get_campaign_dir(campaign_name)
+    if not campaign_dir:
+        console.print(f"[red]Campaign directory not found for {campaign_name}[/red]")
+        raise typer.Exit(1)
+
     with open(campaign_dir / "config.toml", "r") as f:
         config = toml.load(f)
     search_phrases = config.get("prospecting", {}).get("queries", [])
     grid_tiles = None
     if grid_mode:
-        with open(campaign_dir / "exports" / "target-areas.json", "r") as f:
-            grid_tiles = json.load(f)
+        grid_file = campaign_dir / "exports" / "target-areas.json"
+        if grid_file.exists():
+            with open(grid_file, "r") as f:
+                grid_tiles = json.load(f)
 
     existing_companies_map = {c.domain: c.slug for c in Company.get_all() if c.domain and c.slug}
     asyncio.run(pipeline(

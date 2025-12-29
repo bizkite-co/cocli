@@ -1,7 +1,7 @@
 import os
-import boto3 # type: ignore
+import boto3 
 import logging
-from typing import Dict, Any
+from typing import Dict, Any, Literal, Sequence, cast
 from rich.console import Console
 
 from cocli.core.config import get_cocli_base_dir, get_companies_dir, load_campaign_config
@@ -11,21 +11,33 @@ from cocli.core.text_utils import slugify
 logger = logging.getLogger(__name__)
 console = Console()
 
-def get_boto3_session(campaign_config: Dict[str, Any]):
+SQSAttributeName = Literal[
+    'AWSTraceHeader', 'All', 'ApproximateFirstReceiveTimestamp', 'ApproximateNumberOfMessages', 
+    'ApproximateNumberOfMessagesDelayed', 'ApproximateNumberOfMessagesNotVisible', 
+    'ApproximateReceiveCount', 'ContentBasedDeduplication', 'CreatedTimestamp', 
+    'DeduplicationScope', 'DelaySeconds', 'FifoQueue', 'FifoThroughputLimit', 
+    'KmsDataKeyReusePeriodSeconds', 'KmsMasterKeyId', 'LastModifiedTimestamp', 
+    'MaximumMessageSize', 'MessageDeduplicationId', 'MessageGroupId', 
+    'MessageRetentionPeriod', 'Policy', 'QueueArn', 'ReceiveMessageWaitTimeSeconds', 
+    'RedriveAllowPolicy', 'RedrivePolicy', 'SenderId', 'SentTimestamp', 
+    'SequenceNumber', 'SqsManagedSseEnabled', 'VisibilityTimeout'
+]
+
+def get_boto3_session(campaign_config: Dict[str, Any]) -> boto3.Session:
     """Creates a boto3 session using the campaign's AWS profile."""
     profile = campaign_config.get('aws', {}).get('profile') or campaign_config.get('aws', {}).get('aws_profile')
     if profile:
         return boto3.Session(profile_name=profile)
     return boto3.Session()
 
-def get_sqs_attributes(session: boto3.Session, queue_url: str, attribute_names: list[str]) -> Dict[str, str]:
+def get_sqs_attributes(session: boto3.Session, queue_url: str, attribute_names: Sequence[SQSAttributeName]) -> Dict[str, str]:
     try:
         sqs = session.client("sqs")
         response = sqs.get_queue_attributes(
             QueueUrl=queue_url,
-            AttributeNames=attribute_names
+            AttributeNames=list(attribute_names)
         )
-        return response.get('Attributes', {})
+        return cast(Dict[str, str], response.get('Attributes', {}))
     except Exception as e:
         logger.warning(f"Could not fetch SQS attributes for {queue_url}: {e}")
         return {}
@@ -39,7 +51,7 @@ def get_active_fargate_tasks(session: boto3.Session, cluster_name: str = "Scrape
         response = ecs.describe_services(cluster=cluster_name, services=[service_name])
         services = response.get('services', [])
         if services:
-            return services[0].get('runningCount', 0)
+            return cast(int, services[0].get('runningCount', 0))
         return 0
     except Exception as e:
         logger.warning(f"Could not fetch ECS service status: {e}")
@@ -76,19 +88,19 @@ def get_campaign_stats(campaign_name: str) -> Dict[str, Any]:
         
         # Enrichment Queue
         attrs = get_sqs_attributes(session, enrichment_queue_url, ['ApproximateNumberOfMessages', 'ApproximateNumberOfMessagesNotVisible'])
-        stats['enrichment_pending'] = int(attrs.get('ApproximateNumberOfMessages', 0))
-        stats['enrichment_inflight'] = int(attrs.get('ApproximateNumberOfMessagesNotVisible', 0)) # Processing Now
+        stats['enrichment_pending'] = int(attrs.get('ApproximateNumberOfMessages', '0'))
+        stats['enrichment_inflight'] = int(attrs.get('ApproximateNumberOfMessagesNotVisible', '0')) # Processing Now
 
         # Other Queues (Pending & In-Flight)
         if scrape_tasks_queue_url:
             attrs = get_sqs_attributes(session, scrape_tasks_queue_url, ['ApproximateNumberOfMessages', 'ApproximateNumberOfMessagesNotVisible'])
-            stats['scrape_tasks_pending'] = int(attrs.get('ApproximateNumberOfMessages', 0))
-            stats['scrape_tasks_inflight'] = int(attrs.get('ApproximateNumberOfMessagesNotVisible', 0))
+            stats['scrape_tasks_pending'] = int(attrs.get('ApproximateNumberOfMessages', '0'))
+            stats['scrape_tasks_inflight'] = int(attrs.get('ApproximateNumberOfMessagesNotVisible', '0'))
         
         if gm_list_item_queue_url:
             attrs = get_sqs_attributes(session, gm_list_item_queue_url, ['ApproximateNumberOfMessages', 'ApproximateNumberOfMessagesNotVisible'])
-            stats['gm_list_item_pending'] = int(attrs.get('ApproximateNumberOfMessages', 0))
-            stats['gm_list_item_inflight'] = int(attrs.get('ApproximateNumberOfMessagesNotVisible', 0))
+            stats['gm_list_item_pending'] = int(attrs.get('ApproximateNumberOfMessages', '0'))
+            stats['gm_list_item_inflight'] = int(attrs.get('ApproximateNumberOfMessagesNotVisible', '0'))
             
         # Active Workers (Fargate)
         stats['active_fargate_tasks'] = get_active_fargate_tasks(session)

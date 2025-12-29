@@ -1,6 +1,6 @@
 import math
-from typing import List, Dict, Optional
-import simplekml
+from typing import List, Dict, Optional, Any
+import simplekml # type: ignore
 from datetime import datetime
 import os
 import json
@@ -20,14 +20,14 @@ def generate_global_grid(
     center_lon: float,
     radius_miles: float,
     step_deg: float = DEFAULT_GRID_STEP_DEG
-) -> List[Dict]:
+) -> List[Dict[str, Any]]:
     """
     Generates a grid of tiles aligned to a global Lat/Lon grid (0.1 degree steps).
     This ensures that tiles are consistent across different campaigns/cities.
     
     The grid covers the requested radius completely (no truncation).
     """
-    tiles = []
+    tiles: List[Dict[str, Any]] = []
 
     # Convert radius to rough degrees to find bounding box
     radius_deg = radius_miles / APPROX_MILES_PER_DEG_LAT
@@ -99,7 +99,7 @@ def generate_global_grid(
 
     return tiles
 
-def export_to_kml(tiles: List[Dict], filename: str, campaign_name: str, color: Optional[str] = None):
+def export_to_kml(tiles: List[Dict[str, Any]], filename: str, campaign_name: str, color: Optional[str] = None) -> None:
     """
     Exports the generated grid tiles to a KML file for visualization.
     """

@@ -1,7 +1,8 @@
 import typer
 import asyncio
 import logging
-import boto3 # type: ignore
+import os
+import boto3
 import csv 
 from datetime import datetime 
 from pathlib import Path

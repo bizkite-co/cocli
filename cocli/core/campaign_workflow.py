@@ -84,7 +84,7 @@ class CampaignWorkflow:
         self.start_prospecting()  # type: ignore
 
     def run_prospecting_scrape(self) -> None:
-        from ..commands.campaign import pipeline
+        from ..commands.campaign.prospecting import pipeline
         from ..core.location_prospects_index import LocationProspectsIndex
         import asyncio
         import toml

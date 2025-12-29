@@ -1,29 +1,26 @@
 import csv
 import shutil
-import os
-from pathlib import Path
+import typer
+from typing import Optional
+from cocli.core.config import get_campaign_scraped_data_dir, get_campaign
 
-# Config
-CAMPAIGN = "turboship"
-DATA_HOME_STR = os.environ.get("COCLI_DATA_HOME", "cocli_data")
-DATA_HOME = Path(DATA_HOME_STR)
+def migrate(campaign_name: str) -> None:
+    data_dir = get_campaign_scraped_data_dir(campaign_name)
+    # The original script had hardcoded paths, let's derive them from data_dir
+    prospects_dir = data_dir.parent / "indexes" / "google_maps_prospects"
+    inbox_dir = prospects_dir / "inbox"
 
-PROSPECTS_DIR = DATA_HOME / "campaigns" / CAMPAIGN / "indexes" / "google_maps_prospects"
-INBOX_DIR = PROSPECTS_DIR / "inbox"
-
-def migrate():
-    print(f"Using Data Home: {DATA_HOME}")
-    if not PROSPECTS_DIR.exists():
-        print(f"Directory not found: {PROSPECTS_DIR}")
+    if not prospects_dir.exists():
+        print(f"Directory not found: {prospects_dir}")
         return
 
-    INBOX_DIR.mkdir(parents=True, exist_ok=True)
+    inbox_dir.mkdir(parents=True, exist_ok=True)
     
     count_moved_to_inbox = 0
     count_total = 0
     
     # Scan Root
-    files = [f for f in PROSPECTS_DIR.glob("*.csv") if f.is_file()]
+    files = [f for f in prospects_dir.glob("*.csv") if f.is_file()]
     print(f"Scanning {len(files)} files in Root...")
 
     for file_path in files:
@@ -46,7 +43,7 @@ def migrate():
             continue
             
         if is_list_only:
-            dest = INBOX_DIR / file_path.name
+            dest = inbox_dir / file_path.name
             shutil.move(str(file_path), str(dest))
             count_moved_to_inbox += 1
             if count_moved_to_inbox % 100 == 0:
@@ -57,5 +54,15 @@ def migrate():
     print(f"Moved to Inbox (List Only): {count_moved_to_inbox}")
     print(f"Remaining in Root (Detailed): {count_total - count_moved_to_inbox}")
 
+def main(campaign_name: Optional[str] = typer.Argument(None)) -> None:
+    if not campaign_name:
+        campaign_name = get_campaign()
+    
+    if not campaign_name:
+        print("No campaign specified.")
+        return
+
+    migrate(campaign_name)
+
 if __name__ == "__main__":
-    migrate()
+    typer.run(main)

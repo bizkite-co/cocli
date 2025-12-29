@@ -1,38 +1,39 @@
-# Current Task: Grid Planning (Decidegree System) & Cloud Stabilization
+# Current Task: Reliability & Process Hardening
 
 ## Objective
-Stabilize the distributed scraping and enrichment pipeline by ensuring robust data persistence, improving visualization, and optimizing data synchronization.
+Ensure the distributed scraping and enrichment pipeline is 100% reliable through strict process guardrails, robust container bootstrapping, and automated infrastructure synchronization.
 
 ## Context
 *   **Status:** Distributed workers (RPi & Fargate) are active.
-*   **Coverage:** 2,289 tasks queued (Full 763-tile grid x 3 queries) to ensure a "Clean Grid" transition.
-*   **Bucket:** Live site origin is `landing-page-turboheat-net`.
-*   **Indexes:** Local scrape index synced to S3 (~3,900 items).
+*   **Architecture:** Shifted to a single-tenant, configuration-driven model where each campaign has isolated resources.
+*   **Guardrails:** Achieved Zero Mypy/Ruff errors; Docker builds and RPi deployments now enforce strict static analysis.
+*   **Pipeline:** 1,000+ GM List items queued; Details workers processing and feeding Enrichment queue.
 
 ## Todo
-- [ ] **Web Dashboard:**
-    - [ ] **Infrastructure:** Update `cdk_scraper_deployment` to create `cocli.turboheat.net` bucket & distro.
-    - [ ] **Migration:** Move `kml-viewer.html` from `turboship` to `cocli/web/`.
-    - [ ] **Reporting:** Implement `cocli report --html` (or similar) to generate `report.json` for the dashboard.
-- [ ] **RPi Stability:** Troubleshoot "Browser connection closed" errors on RPi workers.
-- [ ] **Sync Optimization:** Implement a `cocli sync` command (using Python/boto3) with a progress bar and reduced verbosity to handle large S3 syncs efficiently.
+- [ ] **Worker Monitoring:**
+    - [ ] **Centralized Logging:** Implement logic to aggregate RPi container logs into S3 or CloudWatch for unified debugging.
+    - [ ] **Health Checks:** Add a watchdog to restart workers if they fail to poll SQS for > 15 minutes.
+- [ ] **Scale-Out:**
+    - [ ] **octoprint.local:** Verify stable processing after redeployment with new `CAMPAIGN_NAME` logic.
+- [ ] **Zero Error Maintenance:** 
+    - [ ] Maintain 0 linting errors by running `make lint` before every commit.
 
 ## Done
-- [x] **Fix Queue Redundancy:** Resolved critical bug where `queue-scrapes` ignored existing grid history due to environment path mismatch and filename parsing issues.
-- [x] **Code Quality:** Decomposed `cocli/commands/campaign.py` into specialized modules (`prospecting`, `viz`, `mgmt`, `workflow`, `planning`).
-- [x] **Clean Grid Transition:** Updated `queue-scrapes` to prioritize grid-aligned tiles and ignore legacy overlaps.
-- [x] **KML Viewer Enhancements:**
-    - [x] Renamed layers for clarity.
-    - [x] Implemented single-zoom logic.
-    - [x] Fixed viewport preservation on toggle.
-    - [x] Optimized z-index/opacity for Target Areas (`08ffffff`).
-- [x] **Deployment:** Corrected bucket and CloudFront targeting for `turboheat.net`.
-- [x] **Enrichment Persistence:** Updated `cocli/commands/prospects.py` to upload enriched companies to S3 immediately after processing. Deployed to Fargate.
-- [x] **RPi Stability:** Fixed validation crashes and browser hangs (watchdog).
-- [x] **Visualization:**
-    - [x] Deployed dynamic `kml-viewer.html`.
-    - [x] Implemented `cocli campaign visualize-coverage`.
-- [x] **Smart Worker Infrastructure:**
-    - [x] Automated deployment (`make deploy-rpi`).
-    - [x] **Resolved RPi Permissions:** Fixed `AccessDenied`.
-    - [x] **Logging:** Enabled timestamped file logging.
+- [x] **Zero-Error Linting:** Resolved 120+ `mypy` and `ruff` errors to clear the noise and prevent hidden regressions.
+- [x] **Build Guardrails:** 
+    - [x] Integrated `ruff check` into `Dockerfile`.
+    - [x] Added import verification to `Dockerfile`.
+    - [x] Enforced `ruff` check in `make deploy-rpi`.
+- [x] **Config-Driven Architecture:**
+    - [x] Isolated SQS/S3 resources per campaign.
+    - [x] Created `scripts/update_campaign_infra_config.py` for automated AWS -> Local sync.
+    - [x] Implemented S3 config bootstrapping for remote RPi workers.
+- [x] **Web Dashboard:**
+    - [x] Updated `cdk_scraper_deployment` to create `cocli.turboheat.net` infrastructure.
+    - [x] Migrated `kml-viewer.html` to `cocli/web/`.
+    - [x] Implemented automated config upload in `cocli web deploy`.
+- [x] **Sync Optimization:** 
+    - [x] Implemented `cocli smart-sync` command with incremental sync logic and progress bars.
+- [x] **RPi Stability:** 
+    - [x] Fixed NameErrors (`os` missing) and ImportErrors (`get_campaigns_dir`) in `worker.py`.
+    - [x] Added `CAMPAIGN_NAME` environment variable fallback for robust Docker execution.

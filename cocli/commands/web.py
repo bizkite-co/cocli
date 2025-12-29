@@ -3,6 +3,7 @@ import json
 import subprocess
 import boto3
 import toml
+from typing import Optional, Dict, Any
 from pathlib import Path
 from rich.console import Console
 from cocli.core.config import get_campaign, get_campaign_dir
@@ -13,27 +14,29 @@ console = Console()
 
 @app.command()
 def deploy(
-    campaign_name: str = typer.Option(None, help="Campaign name. Defaults to current context."),
-    profile: str = typer.Option(None, "--profile", help="AWS profile to use. Defaults to 'aws-profile' in config.toml."),
-    bucket_name: str = typer.Option(None, "--bucket", help="S3 bucket name. Defaults to cocli-web-assets-<domain-slug>."),
-    domain: str = typer.Option(None, "--domain", help="Web domain. Defaults to cocli.<hosted-zone-domain>.")
-):
+    campaign_name: Optional[str] = typer.Option(None, help="Campaign name. Defaults to current context."),
+    profile: Optional[str] = typer.Option(None, "--profile", help="AWS profile to use. Defaults to 'aws-profile' in config.toml."),
+    bucket_name: Optional[str] = typer.Option(None, "--bucket", help="S3 bucket name. Defaults to cocli-web-assets-<domain-slug>."),
+    domain: Optional[str] = typer.Option(None, "--domain", help="Web domain. Defaults to cocli.<hosted-zone-domain>.")
+) -> None:
     """
     Deploys the web dashboard (shell) and campaign data (KMLs, Report) to S3.
     """
     if not campaign_name:
         campaign_name = get_campaign()
+    
     if not campaign_name:
         console.print("[red]No campaign specified and no context set.[/red]")
         raise typer.Exit(1)
 
     campaign_dir = get_campaign_dir(campaign_name)
     if not campaign_dir:
+        console.print(f"[red]Campaign directory not found for {campaign_name}[/red]")
         raise typer.Exit(1)
 
     # Load campaign config
     config_path = campaign_dir / "config.toml"
-    config = {}
+    config: Dict[str, Any] = {}
     if config_path.exists():
         with open(config_path, "r") as f:
             config = toml.load(f)
@@ -62,7 +65,7 @@ def deploy(
     if not bucket_name:
         # If we have a hosted_zone_domain, use it for the bucket name slug
         # If we only have a raw 'domain' passed in arg, try to use that
-        base_domain = hosted_zone_domain if hosted_zone_domain else domain
+        base_domain = str(hosted_zone_domain) if hosted_zone_domain else str(domain)
         bucket_slug = base_domain.replace(".", "-")
         bucket_name = f"cocli-web-assets-{bucket_slug}"
 
@@ -140,14 +143,15 @@ def deploy(
 
 @app.command()
 def report(
-    campaign_name: str = typer.Option(None, help="Campaign name. Defaults to current context."),
-    output: Path = typer.Option(None, help="Output file path (JSON). If not provided, prints JSON to stdout.")
-):
+    campaign_name: Optional[str] = typer.Option(None, help="Campaign name. Defaults to current context."),
+    output: Optional[Path] = typer.Option(None, help="Output file path (JSON). If not provided, prints JSON to stdout.")
+) -> None:
     """
     Generates a JSON report for the campaign.
     """
     if not campaign_name:
         campaign_name = get_campaign()
+    
     if not campaign_name:
         console.print("[red]No campaign specified.[/red]")
         raise typer.Exit(1)

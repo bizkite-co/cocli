@@ -7,7 +7,7 @@ from datetime import datetime, timezone
 from rich.console import Console
 from rich.progress import Progress, SpinnerColumn, BarColumn, TextColumn, TimeRemainingColumn
 from concurrent.futures import ThreadPoolExecutor
-from typing import List, Tuple, Dict, Any
+from typing import List, Tuple, Dict, Any, Optional
 
 console = Console()
 app = typer.Typer()
@@ -37,7 +37,7 @@ def download_file(s3_client: Any, bucket: str, key: str, local_path: Path, progr
 
 @app.command("companies")
 def sync_companies(
-    campaign_name: str = typer.Option(None, "--campaign", "-c", help="Campaign name"),
+    campaign_name: Optional[str] = typer.Option(None, "--campaign", "-c", help="Campaign name"),
     workers: int = typer.Option(20, help="Number of concurrent download threads."),
     full: bool = typer.Option(False, "--full", help="Perform a full integrity check (slower). Checks file sizes/existence locally."),
     force: bool = typer.Option(False, "--force", help="Force download all files (overwrites local)."),
@@ -54,9 +54,10 @@ def sync_companies(
     
     if not campaign_name:
         campaign_name = get_campaign()
-        if not campaign_name:
-             console.print("[bold red]No campaign specified or active context.[/bold red]")
-             raise typer.Exit(code=1)
+    
+    if not campaign_name:
+        console.print("[bold red]No campaign specified or active context.[/bold red]")
+        raise typer.Exit(code=1)
              
     config = load_campaign_config(campaign_name)
     aws_config = config.get("aws", {})

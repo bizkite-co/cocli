@@ -1,8 +1,7 @@
 import logging
+import boto3
 import yaml
-
-import boto3 # type: ignore
-from botocore.exceptions import ClientError # type: ignore
+from botocore.exceptions import ClientError
 
 from ..models.campaign import Campaign
 from ..models.company import Company # To load/save _index.md equivalent

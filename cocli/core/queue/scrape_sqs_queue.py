@@ -1,8 +1,8 @@
 import json
 import logging
 from typing import List, Optional
-import boto3 # type: ignore
-from botocore.exceptions import ClientError # type: ignore
+import boto3
+from botocore.exceptions import ClientError
 
 from ...models.scrape_task import ScrapeTask
 

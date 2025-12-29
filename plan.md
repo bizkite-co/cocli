@@ -11,7 +11,7 @@ This document outlines the roadmap for transitioning `cocli` from a purely local
 3.  **Connect Local CLI to Cloud Enricher:** Local CLI can trigger cloud enrichment.
 4.  **Decouple with SQS:** Implemented `ScrapeTasksQueue` and `EnrichmentQueue` for asynchronous task processing.
 
-## Phase 2: Cloud Native Scraping (In Progress)
+## Phase 2: Cloud Native Scraping (Completed)
 
 **Goal:** Move the Google Maps scraper to the cloud for fully automated, scheduled data gathering, leveraging distributed local workers for scraping.
 
@@ -26,43 +26,51 @@ This document outlines the roadmap for transitioning `cocli` from a purely local
     *   [x] **Observability:** Enhanced Reporting to track active workers and in-flight queue messages.
     *   [x] **Enrichment Persistence:** Fixed critical bug where Fargate workers saved data locally; implemented immediate S3 upload for enriched companies.
     *   [x] **Containerize Scraper:** Package Playwright scraper into a Docker image (completed for RPi).
-    *   [ ] **Proxy Integration:** Implement residential proxies (low priority with RPi mesh).
 
-2.  **Decidegree Grid Planning (Completed/In Use):**
+2.  **Decidegree Grid Planning (Completed):**
     *   [x] **Prototype Generator:** Created `generate_grid.py` to produce 0.1-degree aligned global grids.
     *   [x] **Campaign Integration:** Updated `queue-scrapes` to use the grid-based deduplication logic.
     *   [x] **KML Visualization:** Deployed dynamic KML viewer and S3 deployment logic for coverage maps.
     *   [x] **Clean Grid Transition:** Implemented logic to ignore legacy (non-grid) scrapes by default to ensure uniform coverage.
     *   [x] **Fix Redundant Queuing:** Corrected `Makefile` environment paths and `ScrapeIndex` parsing to properly skip existing grid tiles.
 
-3.  **Campaign-Agnostic Web Dashboard (New Focus):**
-    *   **Goal:** Decouple visualization from `turboship` repo and specific campaign data. Host a static SPA at `cocli.turboheat.net`.
-    *   **Architecture:**
-        *   **Repo:** `cocli/web/` contains static HTML/JS/CSS (the "Shell").
-        *   **Data:** Campaign-specific data (JSON/KML) resides in campaign S3 folders.
-        *   **Runtime:** The Shell fetches campaign data dynamically (e.g., `?campaign=turboship`).
-    *   **Components:**
-        *   [ ] **KML Viewer:** Migrate `kml-viewer.html` to `cocli` repo.
-        *   [ ] **HTML Report:** Create a renderer to output `make report` stats as `report.json` and a viewer page.
-        *   [ ] **Infrastructure:** Update `cdk_scraper_deployment` to provision `cocli.turboheat.net` (S3 + CloudFront).
+3.  **Campaign-Agnostic Web Dashboard (Completed):**
+    *   [x] **Infrastructure:** Updated `cdk_scraper_deployment` to provision `cocli.turboheat.net` (S3 + CloudFront).
+    *   [x] **KML Viewer:** Migrated `kml-viewer.html` to `cocli` repo.
+    *   [x] **HTML Report:** Created a renderer to output `make report` stats as `report.json` and a viewer page.
+    *   [x] **Dynamic Context:** Shell fetches campaign data dynamically (e.g., `?campaign=turboship`).
 
-4.  **Orchestration:**
-    *   [ ] Create AWS Step Functions state machine to coordinate Scrape -> Queue -> Enrich workflow.
-    *   [ ] Schedule runs via EventBridge (Cron).
-
-## Phase 3: Data Management & Optimization
+## Phase 3: Data Management & Optimization (Completed)
 
 **Goal:** robust data handling, cost optimization, and observability.
 
 1.  **Unified Data Manager:**
-    *   [x] **Completed:** Migrated prospects storage to a file-based index (`indexes/google_maps_prospects/`) to support deduplication and "Latest Wins" updates.
+    *   [x] **Migrated Prospects:** Storage moved to file-based index (`indexes/google_maps_prospects/`) to support deduplication and "Latest Wins" updates.
     *   [x] **Global Scrape Index:** Shared `scraped_areas` index on S3 to prevent cross-worker redundancy.
-    *   [ ] Implement `DataSynchronizer` (`cocli sync`) for efficient bi-directional sync.
+    *   [x] **DataSynchronizer:** Implemented `cocli smart-sync` command for efficient bi-directional sync.
 
-2.  **Optimization:**
+2.  **Infrastructure Optimization:**
     *   [x] **Fargate Spot:** Enabled for Enrichment Service.
-    *   [ ] Implement strict lifecycle policies for S3 data.
-    *   [ ] Add centralized logging and metrics (CloudWatch) for distributed workers.
+    *   [x] **Config-Driven Isolation:** Implemented `config.toml` auto-discovery for isolated campaign resources.
+    *   [x] **Auto-Configuration Loop:** Created `scripts/update_campaign_infra_config.py` to sync CloudFormation outputs to local config.
+
+## Phase 4: Reliability & Process Hardening (In Progress)
+
+**Goal:** Ensure 100% uptime for distributed workers and zero-regression deployment.
+
+1.  **Process Guardrails:**
+    *   [x] **Zero-Error Linting:** Achieved state of 0 `mypy` and `ruff` errors across the codebase.
+    *   [x] **Build-Time Verification:** Integrated `ruff` and import checks directly into the Docker build process.
+    *   [x] **Deployment Safety:** Added mandatory pre-deployment linting to `make deploy-rpi`.
+
+2.  **Worker Reliability:**
+    *   [x] **Container Resiliency:** Implemented `CAMPAIGN_NAME` environment variable fallback for Docker workers.
+    *   [x] **Remote Bootstrapping:** RPi workers automatically fetch `config.toml` from S3 on startup.
+    *   [ ] **Centralized Logging:** Aggregate distributed worker logs into CloudWatch for unified monitoring.
+
+3.  **Advanced Orchestration:**
+    *   [ ] Create AWS Step Functions state machine to coordinate Scrape -> Queue -> Enrich workflow.
+    *   [ ] Schedule runs via EventBridge (Cron).
 
 ```mermaid
 graph TD
@@ -75,9 +83,14 @@ graph TD
     B4 --> C{Phase 2: Cloud Native Scraping};
     C --> C1[Distributed Workers (RPi)];
     C --> C2[Decidegree Grid Planning];
-    C --> C3[Orchestrate with Step Functions];
+    C --> C3[Web Dashboard];
 
-    C --> D{Phase 3: Optimization};
-    D --> D1[Data Manager & Sync];
-    D --> D2[Cost & Observability];
+    C --> D{Phase 3: Data & Optimization};
+    D --> D1[Smart Sync];
+    D --> D2[Config-Driven Isolation];
+
+    D --> E{Phase 4: Reliability};
+    E --> E1[Zero-Error Linting];
+    E --> E2[Build Guardrails];
+    E --> E3[Orchestration];
 ```

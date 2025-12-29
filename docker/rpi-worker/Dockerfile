@@ -11,7 +11,17 @@ COPY . .
 # Install project dependencies into system python
 # Since base image has uv and core libs, this is fast.
 # We use --system to avoid venv overhead on the dedicated worker.
-RUN uv pip install --system -e .
+# Install playwright browsers
+RUN playwright install chromium
+
+# Install ruff for a final static analysis check
+RUN pip install ruff
+RUN ruff check cocli/
+
+# Verify that the core application can be imported (Safety check)
+RUN python3 -c "import cocli.main; import cocli.commands.worker; print('Import check passed!')"
+
+# Set the entrypoint to the wrapper script
 
 # Set COCLI_DATA_HOME to a persistent-ish location in the container
 ENV COCLI_DATA_HOME=/app/cocli_data

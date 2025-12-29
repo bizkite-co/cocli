@@ -65,7 +65,7 @@ report: ## Show the report for the current campaign (Usage: make report [CAMPAIG
 coverage-gap: ## Generate a report of unscraped target areas
 	@COCLI_DATA_HOME=$(shell pwd)/cocli_data ./.venv/bin/cocli campaign coverage-gap $(CAMPAIGN) --output coverage_gap.csv
 
-test-tui: install ## Run TUI test with names
+test-tui: install lint ## Run TUI test with names
 	source $(VENV_DIR)/bin/activate && pytest -v tests/tui
 
 textual: ## Run the app in textual
@@ -250,6 +250,8 @@ sync-prospects: ## Sync prospects from S3
 .PHONY: sync-companies
 sync-companies: install ## Sync enriched companies from S3
 	$(VENV_DIR)/bin/cocli smart-sync companies
+
+sync-all: sync-scraped-areas sync-prospects sync-companies ## Sync all S3 data to local directorys
 
 .PHONY: recent-scrapes
 recent-scrapes: sync-scraped-areas ## List the 30 most recent scraped areas (syncs first)
@@ -447,6 +449,7 @@ stop-rpi-all: ## Stop all Raspberry Pi cocli worker containers
 
 .PHONY: deploy-rpi
 deploy-rpi: stop-rpi-all rebuild-rpi-worker start-rpi-worker start-rpi-details-worker ## Full deployment: stop all, rebuild, and restart both workers
+	$(VENV_DIR)/bin/ruff check cocli/
 
 show-kmls: ## Show KML files online (Usage: make show-kmls [BUCKET=cocli-web-assets] [PROFILE=bizkite-support])
 	aws s3 ls s3://$(or $(BUCKET), cocli-web-assets)/kml/ --profile $(or $(PROFILE), bizkite-support)

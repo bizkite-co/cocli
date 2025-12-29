@@ -27,12 +27,14 @@ def visualize_coverage(
     """
     if campaign_name is None:
         campaign_name = get_campaign()
-        if campaign_name is None:
-            logger.error("Error: No campaign name provided and no campaign context is set.")
-            raise typer.Exit(code=1)
+    
+    if not campaign_name:
+        logger.error("Error: No campaign name provided and no campaign context is set.")
+        raise typer.Exit(code=1)
 
     campaign_dir = get_campaign_dir(campaign_name)
     if not campaign_dir:
+        logger.error(f"Campaign directory not found for {campaign_name}")
         raise typer.Exit(code=1)
 
     export_dir = campaign_dir / "exports"
@@ -123,6 +125,10 @@ def visualize_legacy_scrapes(
     """
     if campaign_name is None:
         campaign_name = get_campaign()
+    
+    if not campaign_name:
+        return
+
     campaign_dir = get_campaign_dir(campaign_name)
     if not campaign_dir:
         return
@@ -150,9 +156,9 @@ def visualize_legacy_scrapes(
 @app.command("publish-kml")
 def publish_kml(
     campaign_name: Annotated[Optional[str], typer.Argument(help="Name of the campaign. If not provided, uses the current campaign context.")] = None,
-    bucket_name: str = typer.Option(None, "--bucket", help="S3 bucket name."),
-    domain: str = typer.Option(None, "--domain", help="Public domain name for KML URLs (required by Google Maps)."),
-    profile: str = typer.Option(None, "--profile", help="AWS profile to use.")
+    bucket_name: Optional[str] = typer.Option(None, "--bucket", help="S3 bucket name."),
+    domain: Optional[str] = typer.Option(None, "--domain", help="Public domain name for KML URLs (required by Google Maps)."),
+    profile: Optional[str] = typer.Option(None, "--profile", help="AWS profile to use.")
 ) -> None:
     """
     Generates all KMLs (Customers, Prospects, Coverage) and uploads them to S3.
@@ -160,15 +166,20 @@ def publish_kml(
     import boto3
     if campaign_name is None:
         campaign_name = get_campaign()
-    if campaign_name is None:
+    
+    if not campaign_name:
+        console.print("[red]Error: No campaign specified.[/red]")
         raise typer.Exit(code=1)
 
     logging.getLogger("cocli").setLevel(logging.WARNING)
     campaign_dir = get_campaign_dir(campaign_name)
+    if not campaign_dir:
+        console.print(f"[red]Error: Campaign dir not found for {campaign_name}[/red]")
+        raise typer.Exit(code=1)
 
     # Load Config for defaults
     config_path = campaign_dir / "config.toml"
-    config = {}
+    config: Dict[str, Any] = {}
     if config_path.exists():
         with open(config_path, "r") as f:
             config = toml.load(f)
@@ -194,7 +205,7 @@ def publish_kml(
 
     if not bucket_name:
         if hosted_zone_domain:
-            bucket_slug = hosted_zone_domain.replace(".", "-")
+            bucket_slug = str(hosted_zone_domain).replace(".", "-")
             bucket_name = f"cocli-web-assets-{bucket_slug}"
         else:
              console.print("[red]Error: Bucket required (--bucket or derived from config 'hosted-zone-domain').[/red]")
@@ -252,6 +263,10 @@ def upload_kml_coverage_for_turboship(
     """
     resolved_exports_dir = (Path.cwd() / turboship_kml_exports_path).resolve()
     resolved_exports_dir.mkdir(parents=True, exist_ok=True)
+    
+    if not campaign_name:
+        raise typer.Exit(code=1)
+
     campaign_data_dir = get_campaign_dir(campaign_name)
     if not campaign_data_dir:
         raise typer.Exit(code=1)
