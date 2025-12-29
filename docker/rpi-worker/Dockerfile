@@ -14,8 +14,10 @@ COPY . .
 # Install playwright browsers
 RUN playwright install chromium
 
-# Install ruff for a final static analysis check
-RUN pip install ruff
+# Install the project, dependencies, and ruff for linting
+RUN pip install . ruff
+
+# Final static analysis check
 RUN ruff check cocli/
 
 # Verify that the core application can be imported (Safety check)
