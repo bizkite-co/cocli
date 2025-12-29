@@ -148,8 +148,8 @@ render-prospects-kml: install ## Render KML for turboship prospects
 	$(VENV_DIR)/bin/cocli render-prospects-kml turboship
 
 .PHONY: publish-kml
-publish-kml: install ## Generate and upload all KMLs (Coverage, Prospects, Customers) to S3
-	$(VENV_DIR)/bin/cocli campaign publish-kml $(or $(CAMPAIGN), turboship)
+publish-kml: ## Generate and upload all KMLs (Coverage, Prospects, Customers) to S3
+	@$(VENV_DIR)/bin/cocli campaign publish-kml $(or $(CAMPAIGN), turboship)
 
 .PHONY: ingest-prospects
 ingest-prospects: install ## Ingest the existing google_maps_prospects.csv for the current campaign into the cache
@@ -315,6 +315,34 @@ deploy-creds-rpi: ## Securely deploy AWS credentials to the Raspberry Pi
 	ssh $(RPI_USER)@$(RPI_HOST) "rm -rf ~/.aws && mkdir ~/.aws"
 	scp docker/rpi-worker/.rpi_credentials $(RPI_USER)@$(RPI_HOST):~/.aws/credentials
 	scp docker/rpi-worker/.rpi_config $(RPI_USER)@$(RPI_HOST):~/.aws/config
+
+# ==============================================================================
+# Web Dashboard
+# ==============================================================================
+.PHONY: web-install
+web-install: ## Install web dashboard dependencies
+	cd cocli/web && npm install
+
+.PHONY: web-build
+web-build: web-install ## Build the web dashboard using 11ty
+	cd cocli/web && npm run build
+
+.PHONY: web-serve
+web-serve: ## Run the web dashboard development server
+	cd cocli/web && npm run serve
+
+.PHONY: web-deploy
+web-deploy: web-build ## Deploy the web dashboard to S3
+	aws s3 sync build/web s3://cocli-web-assets-turboheat-net --profile bizkite-support
+	@echo "Dashboard deployed to https://cocli.turboheat.net"
+
+.PHONY: publish-report
+publish-report: ## Generate and upload report.json to S3 (Usage: make publish-report [CAMPAIGN=name])
+	@$(VENV_DIR)/bin/python scripts/campaign_report.py $(CAMPAIGN) --upload
+
+.PHONY: publish-all
+publish-all: export-emails publish-report publish-kml ## Full sync: export emails, publish report, and publish KML
+	@echo "Full campaign sync completed for $(or $(CAMPAIGN), turboship)"
 
 # ==============================================================================
 # Planning & Analysis

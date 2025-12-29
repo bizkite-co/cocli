@@ -4,6 +4,10 @@ temp
 docker/rpi-worker/.rpi_credentials
 docker/rpi-worker/.rpi_config
 
+# Web Dashboard
+cocli/web/node_modules/
+homepage
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]

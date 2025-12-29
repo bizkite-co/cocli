@@ -97,5 +97,22 @@ def main(campaign_name: Optional[str] = typer.Argument(None, help="Campaign name
         
     console.print(f"[bold green]Exported {len(results)} companies with emails to {output_file}[/bold green]")
 
+    # --- S3 Upload ---
+    from cocli.core.reporting import get_boto3_session, load_campaign_config
+    config = load_campaign_config(campaign_name)
+    s3_config = config.get("aws", {})
+    bucket_name = s3_config.get("cocli_web_bucket_name") or "cocli-web-assets-turboheat-net"
+    s3_key = f"exports/{campaign_name}-emails.csv"
+
+    try:
+        session = get_boto3_session(config)
+        s3 = session.client("s3")
+        console.print(f"Uploading to s3://{bucket_name}/{s3_key}...")
+        s3.upload_file(str(output_file), bucket_name, s3_key)
+        console.print(f"[bold green]Successfully uploaded export to S3.[/bold green]")
+        console.print(f"Download URL: https://{bucket_name}/{s3_key}")
+    except Exception as e:
+        console.print(f"[bold red]Failed to upload to S3: {e}[/bold red]")
+
 if __name__ == "__main__":
     app()

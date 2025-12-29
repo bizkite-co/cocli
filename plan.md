@@ -20,24 +20,17 @@ This document outlines the roadmap for transitioning `cocli` from a purely local
     *   [x] Implemented `cocli campaign queue-scrapes` command (Producer) to push tasks to `ScrapeTasksQueue`.
     *   [x] Implemented `cocli worker scrape` command (Consumer) to pull tasks, execute Playwright, and push results.
     *   [x] Implemented `cocli worker details` command (Consumer) for deep scraping.
-    *   [x] Created Makefile rules for `queue-scrape-tasks` and `run-worker-scrape-bg`.
     *   [x] **Deploy RPi Worker:** Successfully deployed headless worker on Raspberry Pi.
-    *   [x] **Infrastructure Hardening:** Upgraded to RPi 4, fixed IAM permissions (`AccessDenied`), and improved logging.
-    *   [x] **Observability:** Enhanced Reporting to track active workers and in-flight queue messages.
-    *   [x] **Enrichment Persistence:** Fixed critical bug where Fargate workers saved data locally; implemented immediate S3 upload for enriched companies.
-    *   [x] **Containerize Scraper:** Package Playwright scraper into a Docker image (completed for RPi).
+    *   [x] **Containerize Scraper:** Package Playwright scraper into a Docker image.
 
 2.  **Decidegree Grid Planning (Completed):**
     *   [x] **Prototype Generator:** Created `generate_grid.py` to produce 0.1-degree aligned global grids.
     *   [x] **Campaign Integration:** Updated `queue-scrapes` to use the grid-based deduplication logic.
-    *   [x] **KML Visualization:** Deployed dynamic KML viewer and S3 deployment logic for coverage maps.
-    *   [x] **Clean Grid Transition:** Implemented logic to ignore legacy (non-grid) scrapes by default to ensure uniform coverage.
-    *   [x] **Fix Redundant Queuing:** Corrected `Makefile` environment paths and `ScrapeIndex` parsing to properly skip existing grid tiles.
+    *   [x] **KML Visualization:** Deployed dynamic KML viewer and S3 deployment logic.
 
-3.  **Campaign-Agnostic Web Dashboard (Completed):**
-    *   [x] **Infrastructure:** Updated `cdk_scraper_deployment` to provision `cocli.turboheat.net` (S3 + CloudFront).
-    *   [x] **KML Viewer:** Migrated `kml-viewer.html` to `cocli` repo.
-    *   [x] **HTML Report:** Created a renderer to output `make report` stats as `report.json` and a viewer page.
+3.  **Campaign-Agnostic Web Dashboard (Initial) (Completed):**
+    *   [x] **Infrastructure:** Provisioned `cocli.turboheat.net` (S3 + CloudFront).
+    *   [x] **KML Viewer:** Migrated `kml-viewer.html` to `cocli/web/`.
     *   [x] **Dynamic Context:** Shell fetches campaign data dynamically (e.g., `?campaign=turboship`).
 
 ## Phase 3: Data Management & Optimization (Completed)
@@ -45,52 +38,63 @@ This document outlines the roadmap for transitioning `cocli` from a purely local
 **Goal:** robust data handling, cost optimization, and observability.
 
 1.  **Unified Data Manager:**
-    *   [x] **Migrated Prospects:** Storage moved to file-based index (`indexes/google_maps_prospects/`) to support deduplication and "Latest Wins" updates.
-    *   [x] **Global Scrape Index:** Shared `scraped_areas` index on S3 to prevent cross-worker redundancy.
-    *   [x] **DataSynchronizer:** Implemented `cocli smart-sync` command for efficient bi-directional sync.
+    *   [x] **Migrated Prospects:** Storage moved to file-based index.
+    *   [x] **Global Scrape Index:** Shared `scraped_areas` index on S3.
+    *   [x] **DataSynchronizer:** Implemented `cocli smart-sync`.
 
 2.  **Infrastructure Optimization:**
     *   [x] **Fargate Spot:** Enabled for Enrichment Service.
     *   [x] **Config-Driven Isolation:** Implemented `config.toml` auto-discovery for isolated campaign resources.
-    *   [x] **Auto-Configuration Loop:** Created `scripts/update_campaign_infra_config.py` to sync CloudFormation outputs to local config.
+    *   [x] **Auto-Configuration Loop:** Created `scripts/update_campaign_infra_config.py`.
 
-## Phase 4: Reliability & Process Hardening (In Progress)
+## Phase 4: Reliability & Process Hardening (Completed)
 
 **Goal:** Ensure 100% uptime for distributed workers and zero-regression deployment.
 
 1.  **Process Guardrails:**
-    *   [x] **Zero-Error Linting:** Achieved state of 0 `mypy` and `ruff` errors across the codebase.
-    *   [x] **Build-Time Verification:** Integrated `ruff` and import checks directly into the Docker build process.
-    *   [x] **Deployment Safety:** Added mandatory pre-deployment linting to `make deploy-rpi`.
+    *   [x] **Zero-Error Linting:** Achieved state of 0 `mypy` and `ruff` errors.
+    *   [x] **Build-Time Verification:** Integrated `ruff` and import checks into Docker build.
+    *   [x] **Deployment Safety:** Enforced `ruff` check in `make deploy-rpi`.
 
 2.  **Worker Reliability:**
-    *   [x] **Container Resiliency:** Implemented `CAMPAIGN_NAME` environment variable fallback for Docker workers.
-    *   [x] **Remote Bootstrapping:** RPi workers automatically fetch `config.toml` from S3 on startup.
-    *   [ ] **Centralized Logging:** Aggregate distributed worker logs into CloudWatch for unified monitoring.
+    *   [x] **Container Resiliency:** Implemented `CAMPAIGN_NAME` env var fallback.
+    *   [x] **Remote Bootstrapping:** RPi workers fetch `config.toml` from S3.
 
-3.  **Advanced Orchestration:**
-    *   [ ] Create AWS Step Functions state machine to coordinate Scrape -> Queue -> Enrich workflow.
-    *   [ ] Schedule runs via EventBridge (Cron).
+## Phase 5: Web Dashboard & Public Data Access (Completed)
+
+**Goal:** Transform the web dashboard into a functional data hub for campaign stakeholders.
+
+1.  **Modern Web Shell (11ty):**
+    *   [x] Initialize `11ty` in `cocli/web/` for minimalist, component-based rendering.
+    *   [x] Implement a shared navbar and layout (Material Design/Bootstrap).
+    *   [x] Create a proper Home Page at `cocli.{hosted-zone-domain}/`.
+
+2.  **Cached Reporting:**
+    *   [x] **Report CLI:** Update `cocli report` to output `report.json`.
+    *   [x] **S3 Statistics:** Implement S3-based counting logic for server-side reports.
+    *   [x] **Refresh Mechanism:** Provide a "Refresh Report" action that updates the `report.json` and `last_updated` timestamp on S3.
+    *   [x] **Dashboard Integration:** Render the `report.json` as a clean HTML table on the home page.
+
+3.  **Public Data Downloads:**
+    *   [x] **Automated Export Sync:** Update `make export-emails` to automatically upload the generated CSV to the campaign's S3 folder.
+    *   [x] **Download Links:** Display the latest email export link and total email count on the home page.
 
 ```mermaid
 graph TD
     A[Start] --> B{Phase 1: Hybrid Architecture};
-    B --> B1[Deploy Enricher to Fargate];
-    B --> B2[Implement S3 Object Indexing];
-    B --> B3[Connect Local CLI to Cloud Enricher];
-    B3 --> B4[Decouple with SQS];
+    B --> B4[Decouple with SQS];
 
-    B4 --> C{Phase 2: Cloud Native Scraping};
-    C --> C1[Distributed Workers (RPi)];
-    C --> C2[Decidegree Grid Planning];
-    C --> C3[Web Dashboard];
+    B4 --> C{Phase 2: Cloud Scraping};
+    C --> C3[Initial Web Dashboard];
 
-    C --> D{Phase 3: Data & Optimization};
-    D --> D1[Smart Sync];
+    C3 --> D{Phase 3: Data & Optimization};
     D --> D2[Config-Driven Isolation];
 
-    D --> E{Phase 4: Reliability};
+    D2 --> E{Phase 4: Reliability};
     E --> E1[Zero-Error Linting];
-    E --> E2[Build Guardrails];
-    E --> E3[Orchestration];
+
+    E1 --> F{Phase 5: Web Dashboard Expansion};
+    F --> F1[11ty SSG Shell];
+    F --> F2[Cached S3 Reporting];
+    F --> F3[Public Data Downloads];
 ```
