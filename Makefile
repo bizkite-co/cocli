@@ -248,6 +248,10 @@ compare-emails: ## Compare current emails to a historical CSV (Usage: make compa
 	@if [ -z "$(FILE)" ]; then echo "Error: FILE is required. Usage: make compare-emails FILE=path/to/csv"; exit 1; fi
 	@$(VENV_DIR)/bin/python scripts/compare_missing_emails.py "$(FILE)" --campaign $(or $(CAMPAIGN), turboship)
 
+.PHONY: recover-prospect-index
+recover-prospect-index: ## Reconstruct the prospect index from tagged companies (Usage: make recover-prospect-index [CAMPAIGN=name])
+	@$(VENV_DIR)/bin/python scripts/recover_prospect_index.py $(CAMPAIGN)
+
 .PHONY: sync-scraped-areas
 sync-scraped-areas: ## Sync scraped areas from S3
 	@$(VENV_DIR)/bin/cocli smart-sync scraped-areas
@@ -287,8 +291,7 @@ check-freshness: sync-scraped-areas ## Check if scraped data is fresh (warn if >
 	fi
 
 .PHONY: export-emails
-export-emails: ## Export enriched emails to CSV (Usage: make export-emails CAMPAIGN=name)
-	@if [ -z "$(CAMPAIGN)" ]; then echo "Error: CAMPAIGN variable is required."; exit 1; fi
+export-emails: ## Export enriched emails to CSV (Usage: make export-emails [CAMPAIGN=name])
 	@$(VENV_DIR)/bin/python scripts/export_enriched_emails.py $(CAMPAIGN)
 
 .PHONY: queue-missing

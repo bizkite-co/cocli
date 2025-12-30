@@ -71,7 +71,10 @@ def get_campaign_stats(campaign_name: str) -> Dict[str, Any]:
     manager = ProspectsIndexManager(campaign_name)
     total_prospects = 0
     if manager.index_dir.exists():
+        # Count root and inbox
         total_prospects = sum(1 for _ in manager.index_dir.glob("*.csv"))
+        if manager.inbox_dir.exists():
+            total_prospects += sum(1 for _ in manager.inbox_dir.glob("*.csv"))
     stats['prospects_count'] = total_prospects
 
     # 2. Queue Stats (Cloud vs Local)

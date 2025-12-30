@@ -27,68 +27,115 @@ def main(campaign_name: Optional[str] = typer.Argument(None, help="Campaign name
     export_dir.mkdir(exist_ok=True)
     output_file = export_dir / f"enriched_emails_{campaign_name}.csv"
     
-    # Load slugs from campaign prospects to filter
+    # Load slugs from campaign prospects to filter (Keep for backwards compatibility/optionality)
     from cocli.core.prospects_csv_manager import ProspectsIndexManager
     manager = ProspectsIndexManager(campaign_name)
     target_slugs = set()
     
-    console.print("Loading prospects from index...")
+    console.print("Loading prospects from index for cross-referencing...")
     for prospect in manager.read_all_prospects():
         if prospect.Domain:
             target_slugs.add(slugify(prospect.Domain))
     
-    console.print(f"Found {len(target_slugs)} targets in campaign prospects.")
+    console.print(f"Found {len(target_slugs)} targets in campaign prospects index.")
 
     results = []
     
     # Iterate all companies
-    # We list explicitly to get a count for track()
     company_paths = [p for p in companies_dir.iterdir() if p.is_dir()]
     
     for company_path in track(company_paths, description="Scanning companies..."):
-        # Filter by campaign
-        if target_slugs and company_path.name not in target_slugs:
+        # 1. Filter by campaign tag (Robust)
+        tags_path = company_path / "tags.lst"
+        has_tag = False
+        if tags_path.exists():
+            try:
+                tags = tags_path.read_text().strip().splitlines()
+                if campaign_name in tags:
+                    has_tag = True
+            except Exception:
+                pass
+        
+        # 2. Filter by prospect index slug (Fallback/Secondary)
+        in_index = company_path.name in target_slugs
+
+        if not has_tag and not in_index:
             continue
 
         website_md = company_path / "enrichments" / "website.md"
-        if not website_md.exists(): 
+        index_md = company_path / "_index.md"
+        
+        if not website_md.exists() and not index_md.exists(): 
             continue
         
-        try:
-            # Parse YAML frontmatter
-            content = website_md.read_text()
-            if content.startswith("---"):
-                parts = content.split("---")
-                if len(parts) >= 3:
-                    data = yaml.safe_load(parts[1])
-                    
-                    if not data: 
-                        continue
+        emails = set()
 
-                    email = data.get("email")
-                    personnel = data.get("personnel", [])
+        # Check _index.md (Compiled data)
+        if index_md.exists():
+            try:
+                content = index_md.read_text()
+                if content.startswith("---"):
+                    parts = content.split("---")
+                    if len(parts) >= 3:
+                        data = yaml.safe_load(parts[1])
+                        if data and data.get("email"):
+                            # Filter out placeholders
+                            e = data.get("email")
+                            if e and e not in ["null", "''", ""]:
+                                emails.add(e)
+            except Exception:
+                pass
+
+        # Check website.md (Raw enrichment data)
+        if website_md.exists():
+            try:
+                content = website_md.read_text()
+                if content.startswith("---"):
+                    parts = content.split("---")
+                    if len(parts) >= 3:
+                        data = yaml.safe_load(parts[1])
+                        if data:
+                            email = data.get("email")
+                            personnel = data.get("personnel", [])
+                            
+                            if email and email not in ["null", "''", ""]: 
+                                emails.add(email)
+                            
+                            if personnel:
+                                for p in personnel:
+                                    if isinstance(p, dict) and p.get("email"):
+                                        emails.add(p["email"])
+                                    elif isinstance(p, str) and "@" in p: 
+                                         emails.add(p)
+            except Exception:
+                pass
                     
-                    emails = set()
-                    if email: 
-                        emails.add(email)
-                    
-                    if personnel:
-                        for p in personnel:
-                            if isinstance(p, dict) and p.get("email"):
-                                emails.add(p["email"])
-                            elif isinstance(p, str) and "@" in p: # fallback
-                                 emails.add(p)
-                    
-                    if emails:
-                        results.append({
-                            "company": data.get("company_name") or company_path.name,
-                            "domain": data.get("domain") or company_path.name,
-                            "emails": "; ".join(emails),
-                            "phone": data.get("phone"),
-                            "website": data.get("url")
-                        })
-        except Exception:
-            pass
+        if emails:
+            # Get basic info from _index.md or website.md
+            company_name = company_path.name
+            domain = company_path.name
+            phone = None
+            
+            # Try to get better info from _index.md
+            if index_md.exists():
+                try:
+                    parts = index_md.read_text().split("---")
+                    if len(parts) >= 3:
+                        idx_data = yaml.safe_load(parts[1])
+                        if idx_data:
+                            company_name = idx_data.get("name") or company_name
+                            domain = idx_data.get("domain") or domain
+                            phone = idx_data.get("phone_1") or idx_data.get("phone_number")
+                except Exception:
+                    pass
+
+            results.append({
+                "company": company_name,
+                "domain": domain,
+                "emails": "; ".join(sorted(list(emails))),
+                "phone": phone,
+                "website": domain
+            })
 
     with open(output_file, "w", newline="") as f:
         writer = csv.DictWriter(f, fieldnames=["company", "domain", "emails", "phone", "website"])
