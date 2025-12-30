@@ -68,7 +68,11 @@ dev = [
 
 [tool.setuptools]
 package-dir = {"" = "."}
-packages = {find = {where = ["."]}}
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["cocli*"]
+exclude = ["cocli_data*", "tests*", "scripts*", "build*", "dist*", "temp*"]
 
 [tool.uv]
 package = true
