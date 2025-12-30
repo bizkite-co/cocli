@@ -92,7 +92,11 @@ def find_business_on_google_maps(
             return None
 
         except Exception as e:
-            logger.error(f"An error occurred during scraping {company_name}: {e}")
+            import sys
+            location_str = location_param.get("address") or location_param.get("city") or "Unknown Location"
+            msg = f"An error occurred during scraping {company_name} in {location_str}: {e}"
+            logger.error(msg)
+            print(f"\n[Scraper Error] {msg}", file=sys.stderr)
             return None
         finally:
             browser.close()
