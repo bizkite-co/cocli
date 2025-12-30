@@ -252,6 +252,13 @@ compare-emails: ## Compare current emails to a historical CSV (Usage: make compa
 recover-prospect-index: ## Reconstruct the prospect index from tagged companies (Usage: make recover-prospect-index [CAMPAIGN=name])
 	@$(VENV_DIR)/bin/python scripts/recover_prospect_index.py $(CAMPAIGN)
 
+.PHONY: enrich-place-ids
+enrich-place-ids: ## Find missing Place IDs on Google Maps for tagged companies (Usage: make enrich-place-ids [CAMPAIGN=name] [LIMIT=10])
+	@$(VENV_DIR)/bin/python scripts/enrich_place_id.py $(CAMPAIGN) --limit $(or $(LIMIT), 0)
+
+.PHONY: rebuild-index
+rebuild-index: enrich-place-ids recover-prospect-index ## Full rebuild: Enrich Place IDs then reconstruct the prospect index
+
 .PHONY: sync-scraped-areas
 sync-scraped-areas: ## Sync scraped areas from S3
 	@$(VENV_DIR)/bin/cocli smart-sync scraped-areas
