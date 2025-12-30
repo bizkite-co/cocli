@@ -2,7 +2,6 @@
 from typing import Optional, Dict, Any
 from playwright.sync_api import sync_playwright
 from .google_maps_parser import parse_business_listing_html
-from ..core.geocoding import get_coordinates_from_city_state, get_coordinates_from_zip, get_coordinates_from_address
 import logging
 
 logger = logging.getLogger(__name__)
@@ -16,24 +15,14 @@ def find_business_on_google_maps(
     Finds a single business on Google Maps and returns its data.
     """
     
-    coordinates = None
-    if "address" in location_param:
-        coordinates = get_coordinates_from_address(location_param["address"])
-    elif "zip_code" in location_param:
-        coordinates = get_coordinates_from_zip(location_param["zip_code"])
-    elif "city" in location_param:
-        coordinates = get_coordinates_from_city_state(location_param["city"])
-        
-    if not coordinates:
-        logger.error(f"Could not find coordinates for {location_param}")
-        return None
-
-    latitude = coordinates["latitude"]
-    longitude = coordinates["longitude"]
-
     base_url = "https://www.google.com/maps/search/"
-    formatted_search_string = company_name.replace(" ", "+")
-    url = f"{base_url}{formatted_search_string}/@{latitude},{longitude},15z/data=!3m2!1e3!4b1?entry=ttu"
+    
+    # Construct search query from company name and available location info
+    location_str = location_param.get("address") or location_param.get("city") or ""
+    search_query = f"{company_name} {location_str}".strip()
+    formatted_search_string = search_query.replace(" ", "+")
+    
+    url = f"{base_url}{formatted_search_string}/"
 
     with sync_playwright() as p:
         browser = p.chromium.launch(headless=True)
