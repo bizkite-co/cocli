@@ -1,11 +1,12 @@
 import typer
 import yaml
 import logging
+import csv
 from pathlib import Path
-from typing import Optional
+from typing import Optional, List, Dict, Any
 from rich.console import Console
 from rich.progress import track
-from cocli.core.config import get_companies_dir, get_campaign
+from cocli.core.config import get_companies_dir, get_campaign, get_campaigns_dir
 from cocli.models.company import Company
 from cocli.scrapers.google_maps_finder import find_business_on_google_maps
 from cocli.core.utils import create_company_files
@@ -31,6 +32,11 @@ def main(
         raise typer.Exit(1)
 
     companies_dir = get_companies_dir()
+    campaign_dir = get_campaigns_dir() / campaign_name
+    export_dir = campaign_dir / "exports"
+    export_dir.mkdir(parents=True, exist_ok=True)
+    
+    anomaly_file = export_dir / f"place_id_anomalies_{campaign_name}.csv"
     
     console.print(f"Enriching Place IDs for campaign: [bold cyan]{campaign_name}[/bold cyan]...")
 
@@ -68,6 +74,7 @@ def main(
         console.print(f"Limiting to first [bold]{limit}[/bold] companies.")
 
     enriched_count = 0
+    anomalies = []
     
     for company in track(targets, description="Searching Google Maps..."):
         # Strategy 1: Name + Address/City
@@ -78,22 +85,22 @@ def main(
             location_param["city"] = f"{company.city}, {company.state}"
         
         found = False
+        location_info = f"{company.city}, {company.state}" if company.city and company.state else (company.city or company.state or "Unknown Location")
         
         # We search Google Maps by name
         try:
             result = find_business_on_google_maps(company.name, location_param)
             if result and result.get("Place_ID"):
                 new_place_id = result["Place_ID"]
-                console.print(f"  [green]✓[/green] Found Place ID for [bold]{company.name}[/bold] ({company.slug}): {new_place_id}")
+                console.print(f"  [green]✓[/green] Found Place ID for [bold]{company.name}[/bold] ({company.slug}) in {location_info}: {new_place_id}")
                 found = True
             
             # Strategy 2: Fallback to Domain if name search failed
             if not found and company.domain:
-                # console.print(f"  [dim]Retrying with domain: {company.domain}[/dim]")
                 result = find_business_on_google_maps(company.domain, location_param)
                 if result and result.get("Place_ID"):
                     new_place_id = result["Place_ID"]
-                    console.print(f"  [green]✓[/green] Found Place ID via domain for [bold]{company.name}[/bold] ({company.slug}): {new_place_id}")
+                    console.print(f"  [green]✓[/green] Found Place ID via domain for [bold]{company.name}[/bold] ({company.slug}) in {location_info}: {new_place_id}")
                     found = True
 
             if found and result:
@@ -102,8 +109,37 @@ def main(
                     company_dir = companies_dir / company.slug
                     create_company_files(company, company_dir)
                     enriched_count += 1
+            else:
+                console.print(f"  [yellow]✗[/yellow] No Place ID found for [bold]{company.name}[/bold] ({company.slug}) in {location_info}")
+                anomalies.append({
+                    "slug": company.slug,
+                    "name": company.name,
+                    "domain": company.domain,
+                    "address": company.full_address,
+                    "city": company.city,
+                    "state": company.state,
+                    "reason": "Not found on Google Maps"
+                })
         except Exception as e:
-            console.print(f"  [red]Error searching for {company.name} ({company.slug}): {e}[/red]")
+            error_msg = str(e)
+            console.print(f"  [red]Error searching for {company.name} ({company.slug}) in {location_info}: {error_msg}[/red]")
+            anomalies.append({
+                "slug": company.slug,
+                "name": company.name,
+                "domain": company.domain,
+                "address": company.full_address,
+                "city": company.city,
+                "state": company.state,
+                "reason": f"Error: {error_msg}"
+            })
+
+    # Write anomalies to CSV
+    if anomalies:
+        with open(anomaly_file, "w", newline="", encoding="utf-8") as f:
+            writer = csv.DictWriter(f, fieldnames=["slug", "name", "domain", "address", "city", "state", "reason"])
+            writer.writeheader()
+            writer.writerows(anomalies)
+        console.print(f"\n[bold yellow]Written {len(anomalies)} anomalies to {anomaly_file}[/bold yellow]")
 
     console.print(f"\n[bold green]Enrichment Complete![/bold green]")
     console.print(f"Enriched: [bold]{enriched_count}[/bold]")
