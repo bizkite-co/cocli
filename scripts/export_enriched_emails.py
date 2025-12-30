@@ -109,7 +109,7 @@ def main(campaign_name: Optional[str] = typer.Argument(None, help="Campaign name
         s3 = session.client("s3")
         console.print(f"Uploading to s3://{bucket_name}/{s3_key}...")
         s3.upload_file(str(output_file), bucket_name, s3_key)
-        console.print(f"[bold green]Successfully uploaded export to S3.[/bold green]")
+        console.print("[bold green]Successfully uploaded export to S3.[/bold green]")
         console.print(f"Download URL: https://{bucket_name}/{s3_key}")
     except Exception as e:
         console.print(f"[bold red]Failed to upload to S3: {e}[/bold red]")

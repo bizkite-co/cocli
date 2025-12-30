@@ -49,7 +49,7 @@ logname: ## Get the latest log file name
 # Note: TUI integration tests are run separately due to terminal driver conflicts.
 # Use 'make test-tui-integration' to run them.
 test: install ## Run all non-TUI tests using pytest
-	-$(MAKE) lint
+	$(MAKE) lint
 	source $(VENV_DIR)/bin/activate && pytest -s tests/ --ignore=tests/tui/test_navigation_steps.py
 
 test-unit: install lint ## Run unit tests (excluding TUI folder)
@@ -72,7 +72,7 @@ textual: ## Run the app in textual
 	@uv tool install textual-dev
 	textual run cocli.tui.app
 
-lint: install ## Run ruff and mypy to perform static type checking
+lint: ## Run ruff and mypy to perform static type checking
 	$(VENV_DIR)/bin/ruff check . --fix
 	$(VENV_DIR)/bin/python -m mypy --config-file pyproject.toml .
 
@@ -239,17 +239,26 @@ enrich: ## Run the cloud enricher
 coverage-kml: ## Generate scrape coverage KML
 	cocli campaign visualize-coverage turboship
 
+.PHONY: analyze-emails
+analyze-emails: ## Run deep analysis on emails for the current campaign
+	@$(VENV_DIR)/bin/python scripts/debug_stats.py $(CAMPAIGN)
+
+.PHONY: compare-emails
+compare-emails: ## Compare current emails to a historical CSV (Usage: make compare-emails FILE=path/to/csv [CAMPAIGN=name])
+	@if [ -z "$(FILE)" ]; then echo "Error: FILE is required. Usage: make compare-emails FILE=path/to/csv"; exit 1; fi
+	@$(VENV_DIR)/bin/python scripts/compare_missing_emails.py "$(FILE)" --campaign $(or $(CAMPAIGN), turboship)
+
 .PHONY: sync-scraped-areas
 sync-scraped-areas: ## Sync scraped areas from S3
-	aws s3 sync s3://cocli-data-turboship/indexes/scraped_areas cocli_data/indexes/scraped_areas --profile bizkite-support
+	@$(VENV_DIR)/bin/cocli smart-sync scraped-areas
 
 .PHONY: sync-prospects
 sync-prospects: ## Sync prospects from S3
-	aws s3 sync s3://cocli-data-turboship/campaigns/$(or $(CAMPAIGN), turboship)/indexes/google_maps_prospects cocli_data/campaigns/$(or $(CAMPAIGN), turboship)/indexes/google_maps_prospects --profile bizkite-support
+	@$(VENV_DIR)/bin/cocli smart-sync prospects
 
 .PHONY: sync-companies
-sync-companies: install ## Sync enriched companies from S3
-	$(VENV_DIR)/bin/cocli smart-sync companies
+sync-companies: ## Sync enriched companies from S3
+	@$(VENV_DIR)/bin/cocli smart-sync companies
 
 sync-all: sync-scraped-areas sync-prospects sync-companies ## Sync all S3 data to local directorys
 

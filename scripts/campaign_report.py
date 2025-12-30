@@ -1,6 +1,5 @@
 import typer
 import json
-import os
 from datetime import datetime
 from typing import Optional
 from rich.console import Console

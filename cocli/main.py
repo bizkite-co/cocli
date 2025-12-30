@@ -1,6 +1,5 @@
 from .commands import companies
 
-import logging
 import typer
 
 from .commands import enrich
@@ -8,8 +7,6 @@ from .commands import query
 from rich.console import Console
 
 from .commands import register_commands
-
-logging.basicConfig(level=logging.DEBUG)
 
 console = Console()
 

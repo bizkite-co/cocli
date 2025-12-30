@@ -1,7 +1,7 @@
-import os
 import typer
 import boto3
 import json
+import logging
 from pathlib import Path
 from datetime import datetime, timezone
 from rich.console import Console
@@ -9,95 +9,85 @@ from rich.progress import Progress, SpinnerColumn, BarColumn, TextColumn, TimeRe
 from concurrent.futures import ThreadPoolExecutor
 from typing import List, Tuple, Dict, Any, Optional
 
+from ..core.logging_config import setup_file_logging
+from ..core.config import get_cocli_base_dir
+
 console = Console()
 app = typer.Typer()
 
-S3_BUCKET = "cocli-data-turboship"
-DATA_DIR = Path(os.environ.get("COCLI_DATA_HOME", Path.home() / ".local/share/cocli_data"))
+DATA_DIR = get_cocli_base_dir()
 STATE_FILE = DATA_DIR / ".smart_sync_state.json"
+
+logger = logging.getLogger(__name__)
 
 def load_state() -> Dict[str, Any]:
     if STATE_FILE.exists():
         try:
             return json.loads(STATE_FILE.read_text()) # type: ignore
-        except Exception:
+        except Exception as e:
+            logger.error(f"Failed to load state file: {e}")
             return {}
     return {}
 
 def save_state(state: Dict[str, Any]) -> None:
-    STATE_FILE.write_text(json.dumps(state))
+    try:
+        STATE_FILE.write_text(json.dumps(state))
+    except Exception as e:
+        logger.error(f"Failed to save state file: {e}")
 
 def download_file(s3_client: Any, bucket: str, key: str, local_path: Path, progress: Any, task_id: Any) -> None:
     try:
         local_path.parent.mkdir(parents=True, exist_ok=True)
         s3_client.download_file(bucket, key, str(local_path))
         progress.advance(task_id, 1)
+        logger.debug(f"Downloaded {key} to {local_path}")
     except Exception as e:
+        logger.error(f"Error downloading {key}: {e}")
         console.print(f"[red]Error downloading {key}: {e}[/red]")
 
-@app.command("companies")
-def sync_companies(
-    campaign_name: Optional[str] = typer.Option(None, "--campaign", "-c", help="Campaign name"),
-    workers: int = typer.Option(20, help="Number of concurrent download threads."),
-    full: bool = typer.Option(False, "--full", help="Perform a full integrity check (slower). Checks file sizes/existence locally."),
-    force: bool = typer.Option(False, "--force", help="Force download all files (overwrites local)."),
+def run_smart_sync(
+    target_name: str,
+    bucket_name: str,
+    prefix: str,
+    local_base: Path,
+    campaign_name: str,
+    aws_config: Dict[str, Any],
+    workers: int = 20,
+    full: bool = False,
+    force: bool = False
 ) -> None:
-    """
-    Smartly syncs the 'companies' directory from S3 to local.
-    
-    Default behavior: INCREMENTAL.
-    Only checks files modified in S3 since the last successful sync.
-    
-    Use --full to scan all files and check for missing/changed files locally.
-    """
-    from ..core.config import get_campaign, load_campaign_config
-    
-    if not campaign_name:
-        campaign_name = get_campaign()
-    
-    if not campaign_name:
-        console.print("[bold red]No campaign specified or active context.[/bold red]")
-        raise typer.Exit(code=1)
-             
-    config = load_campaign_config(campaign_name)
-    aws_config = config.get("aws", {})
+    setup_file_logging(f"smart_sync_{target_name}")
+    logger.info(f"Starting smart sync for {target_name} in campaign {campaign_name}")
+
     profile_name = aws_config.get("profile") or aws_config.get("aws_profile")
-    
-    # Bucket convention
-    bucket_name = f"cocli-data-{campaign_name}"
     
     try:
         if profile_name:
+            logger.info(f"Using AWS profile: {profile_name}")
             session = boto3.Session(profile_name=profile_name)
         else:
             session = boto3.Session()
         s3 = session.client("s3")
     except Exception as e:
+         logger.exception("Failed to create AWS session")
          console.print(f"[bold red]Failed to create AWS session: {e}[/bold red]")
          raise typer.Exit(code=1)
 
-    local_base = DATA_DIR / "companies" # Note: This might need to be campaign-specific too? 
-    # Convention seems to be all companies in one shared folder, OR campaign specific?
-    # Context says "companies are stored in folders slugified from their Name...". 
-    # If the bucket is campaign-specific, do we mix them locally?
-    # For now, keeping DATA_DIR/companies as is, assuming it's a shared local store or correct.
-    
-    prefix = "companies/"
-    
     # Load State
     state = load_state()
-    last_sync_ts = state.get(f"{campaign_name}_companies_last_sync")
+    state_key = f"{campaign_name}_{target_name}_last_sync"
+    last_sync_ts = state.get(state_key)
     
     if last_sync_ts and not full and not force:
         last_sync_dt = datetime.fromtimestamp(last_sync_ts, tz=timezone.utc)
-        console.print(f"[bold blue]Incremental Sync for {campaign_name}[/bold blue] (Newer than {last_sync_dt.strftime('%Y-%m-%d %H:%M:%S')})")
+        console.print(f"[bold blue]Incremental Sync for {target_name}[/bold blue] (Newer than {last_sync_dt.strftime('%Y-%m-%d %H:%M:%S')})")
+        logger.info(f"Incremental sync. Last sync: {last_sync_dt}")
     else:
-        console.print(f"[bold blue]Full Sync Scan for {campaign_name}[/bold blue] (Checking all files...)")
+        last_sync_dt = None
+        console.print(f"[bold blue]Full Sync Scan for {target_name}[/bold blue] (Checking all files...)")
+        logger.info("Full sync scan.")
 
     to_download: List[Tuple[str, Path]] = []
-    
-    # We record the start time to save as the new 'last_sync' only if successful
-    # Using a slightly buffered time (minus 1 min) to be safe against clock skew
     sync_start_time = datetime.now(timezone.utc).timestamp() - 60 
 
     # 1. List & Filter
@@ -106,52 +96,52 @@ def sync_companies(
     
     total_scanned = 0
     
-    with console.status(f"[bold green]Scanning s3://{bucket_name} and filtering...[/bold green]") as status:
+    with console.status(f"[bold green]Scanning s3://{bucket_name}/{prefix}...[/bold green]") as status:
         for page in pages:
             if 'Contents' in page:
                 for obj in page['Contents']:
                     total_scanned += 1
-                    if total_scanned % 1000 == 0:
-                        status.update(f"Scanning S3... ({total_scanned} objects found)")
+                    if total_scanned % 500 == 0:
+                        status.update(f"[bold green]Scanning S3... ({total_scanned} objects found)[/bold green]")
 
                     key = obj['Key']
                     if key.endswith("/"):
                         continue
                     
-                    s3_mtime = obj['LastModified'] # datetime with timezone
+                    s3_mtime = obj['LastModified'] 
                     s3_size = obj['Size']
 
                     # Determine local path
-                    if key.startswith(prefix):
-                        rel_path = key[len(prefix):]
-                    else:
-                        rel_path = key
+                    rel_path = key[len(prefix):] if key.startswith(prefix) else key
                     local_path = local_base / rel_path
 
                     should_download = False
-
                     if force:
                         should_download = True
-                    elif not full and last_sync_ts: # Check last_sync_ts/dt existence
-                        # Incremental Mode: Only check time
+                    elif last_sync_dt:
                         if s3_mtime > last_sync_dt:
-                            should_download = True
+                            # Only download if S3 is also newer than the actual local file
+                            if not local_path.exists() or s3_mtime.timestamp() > local_path.stat().st_mtime:
+                                should_download = True
+                            else:
+                                logger.info(f"Skipping {key}: Local file is newer than S3 version.")
                     else:
-                        # Full Mode: Check existence and size
-                        if not local_path.exists():
-                            should_download = True
-                        elif local_path.stat().st_size != s3_size:
-                            should_download = True
+                        if not local_path.exists() or local_path.stat().st_size != s3_size:
+                            # Even in full sync, don't overwrite newer local files unless forced
+                            if not local_path.exists() or s3_mtime.timestamp() > local_path.stat().st_mtime:
+                                should_download = True
+                            else:
+                                logger.info(f"Skipping {key}: Local file is newer than S3 version (full scan).")
                     
                     if should_download:
                         to_download.append((key, local_path))
     
     console.print(f"Scanned {total_scanned} objects. Found {len(to_download)} updates.")
+    logger.info(f"Scanned {total_scanned} objects. {len(to_download)} to download.")
 
     if not to_download:
-        console.print("[green]Up to date.[/green]")
-        # Update timestamp even if nothing downloaded, to mark we checked up to this point
-        state[f"{campaign_name}_companies_last_sync"] = sync_start_time
+        console.print(f"[green]{target_name} is up to date.[/green]")
+        state[state_key] = sync_start_time
         save_state(state)
         return
     
@@ -163,23 +153,70 @@ def sync_companies(
         TextColumn("[progress.percentage]{task.percentage:>3.0f}%"),
         TextColumn("({task.completed}/{task.total})"),
         TimeRemainingColumn(),
+        console=console,
     ) as progress:
-        task_id = progress.add_task("Downloading...", total=len(to_download))
+        task_id = progress.add_task(f"Downloading {target_name}...", total=len(to_download))
         
         with ThreadPoolExecutor(max_workers=workers) as executor:
-            futures = []
-            for key, local_path in to_download:
-                futures.append(
-                    executor.submit(download_file, s3, bucket_name, key, local_path, progress, task_id)
-                )
-            
+            futures = [executor.submit(download_file, s3, bucket_name, key, local_path, progress, task_id) for key, local_path in to_download]
             for f in futures:
-                f.result()
+                try:
+                    f.result()
+                except Exception as e:
+                    logger.error(f"Future result error: {e}")
                 
     # Save State
-    state[f"{campaign_name}_companies_last_sync"] = sync_start_time
+    state[state_key] = sync_start_time
     save_state(state)
-    console.print("[bold green]Sync Complete![/bold green]")
+    console.print(f"[bold green]{target_name} Sync Complete![/bold green]")
+    logger.info(f"{target_name} sync complete.")
+
+@app.command("companies")
+def sync_companies(
+    campaign_name: Optional[str] = typer.Option(None, "--campaign", "-c", help="Campaign name"),
+    workers: int = typer.Option(20, help="Number of concurrent download threads."),
+    full: bool = typer.Option(False, "--full", help="Perform a full integrity check (slower)."),
+    force: bool = typer.Option(False, "--force", help="Force download all files."),
+) -> None:
+    from ..core.config import get_campaign, load_campaign_config
+    campaign_name = campaign_name or get_campaign()
+    if not campaign_name:
+        console.print("[bold red]No campaign specified.[/bold red]")
+        raise typer.Exit(1)
+    config = load_campaign_config(campaign_name)
+    run_smart_sync("companies", f"cocli-data-{campaign_name}", "companies/", DATA_DIR / "companies", campaign_name, config.get("aws", {}), workers, full, force)
+
+@app.command("prospects")
+def sync_prospects(
+    campaign_name: Optional[str] = typer.Option(None, "--campaign", "-c", help="Campaign name"),
+    workers: int = typer.Option(20, help="Number of concurrent download threads."),
+    full: bool = typer.Option(False, "--full", help="Perform a full integrity check (slower)."),
+    force: bool = typer.Option(False, "--force", help="Force download all files."),
+) -> None:
+    from ..core.config import get_campaign, load_campaign_config
+    campaign_name = campaign_name or get_campaign()
+    if not campaign_name:
+        console.print("[bold red]No campaign specified.[/bold red]")
+        raise typer.Exit(1)
+    config = load_campaign_config(campaign_name)
+    prefix = f"campaigns/{campaign_name}/indexes/google_maps_prospects/"
+    local_base = DATA_DIR / "campaigns" / campaign_name / "indexes" / "google_maps_prospects"
+    run_smart_sync("prospects", f"cocli-data-{campaign_name}", prefix, local_base, campaign_name, config.get("aws", {}), workers, full, force)
+
+@app.command("scraped-areas")
+def sync_scraped_areas(
+    campaign_name: Optional[str] = typer.Option(None, "--campaign", "-c", help="Campaign name"),
+    workers: int = typer.Option(20, help="Number of concurrent download threads."),
+    full: bool = typer.Option(False, "--full", help="Perform a full integrity check (slower)."),
+    force: bool = typer.Option(False, "--force", help="Force download all files."),
+) -> None:
+    from ..core.config import get_campaign, load_campaign_config
+    campaign_name = campaign_name or get_campaign()
+    if not campaign_name:
+        console.print("[bold red]No campaign specified.[/bold red]")
+        raise typer.Exit(1)
+    config = load_campaign_config(campaign_name)
+    run_smart_sync("scraped-areas", f"cocli-data-{campaign_name}", "indexes/scraped_areas/", DATA_DIR / "indexes" / "scraped_areas", campaign_name, config.get("aws", {}), workers, full, force)
 
 if __name__ == "__main__":
     app()

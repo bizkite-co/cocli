@@ -125,43 +125,36 @@ def get_campaign_stats(campaign_name: str) -> Dict[str, Any]:
     
     companies_dir = get_companies_dir()
     
-    # Iterate prospects and try to find their company folder
-    for prospect in manager.read_all_prospects():
-        slugs_to_check = []
-        
-        # 1. Preferred: Explicit company_slug
-        if prospect.company_slug:
-            slugs_to_check.append(prospect.company_slug)
+    # We scan all companies to find those tagged with this campaign
+    # This is more robust than just checking the prospect index
+    for company_dir in companies_dir.iterdir():
+        if not company_dir.is_dir():
+            continue
             
-        # 2. Fallback: Slugify Name
-        if prospect.Name:
-            slugs_to_check.append(slugify(prospect.Name))
+        tags_path = company_dir / "tags.lst"
+        if not tags_path.exists():
+            continue
             
-        # 3. Fallback: Slugify Domain
-        if prospect.Domain:
-            slugs_to_check.append(slugify(prospect.Domain))
+        try:
+            tags = tags_path.read_text().strip().splitlines()
+            if campaign_name not in tags:
+                continue
+        except Exception:
+            continue
             
-        found_company = False
-        for slug in slugs_to_check:
-            company_path = companies_dir / slug
-            if (company_path / "enrichments" / "website.md").exists():
-                enriched_count += 1
-                found_company = True
-                
-                # Check for email
-                index_path = company_path / "_index.md"
-                if index_path.exists():
-                    try:
-                        content = index_path.read_text()
-                        if "email: " in content and "email: null" not in content and "email: ''" not in content:
-                            emails_found_count += 1
-                    except Exception:
-                        pass
-                break # Stop checking other slugs for this prospect if found
-        
-        if not found_company:
-            # Debug: maybe log missing folders for high-value prospects?
-            pass
+        # If we are here, the company is tagged for this campaign
+        if (company_dir / "enrichments" / "website.md").exists():
+            enriched_count += 1
+            
+            # Check for email
+            index_path = company_dir / "_index.md"
+            if index_path.exists():
+                try:
+                    content = index_path.read_text()
+                    if "email: " in content and "email: null" not in content and "email: ''" not in content:
+                        emails_found_count += 1
+                except Exception:
+                    pass
 
     stats['enriched_count'] = enriched_count
     stats['emails_found_count'] = emails_found_count
