@@ -30,45 +30,69 @@ def find_business_on_google_maps(
 
         try:
             page.goto(url, wait_until="domcontentloaded")
-            page.wait_for_timeout(5000) # Wait for dynamic content to load
+            # Wait for either the list (feed) or a direct business view (canvas/main layout)
+            try:
+                page.wait_for_selector('div[role="feed"], h1.DUwDvf', timeout=10000)
+            except Exception:
+                # If neither shows up quickly, it might still be loading or a different layout
+                page.wait_for_timeout(2000)
 
             scrollable_div_selector = 'div[role="feed"]'
-            page.wait_for_selector(scrollable_div_selector)
-            scrollable_div = page.locator(scrollable_div_selector)
+            direct_name_selector = 'h1.DUwDvf' # Selector for the business name in direct view
+            
+            if page.locator(scrollable_div_selector).count() > 0:
+                scrollable_div = page.locator(scrollable_div_selector)
+                listing_divs = scrollable_div.locator("> div").all()
 
-            listing_divs = scrollable_div.locator("> div").all()
+                if not listing_divs:
+                    return None
 
-            if not listing_divs:
-                return None
+                # Find the best match
+                best_match_score = 0
+                best_match_data = None
 
-            # Find the best match
-            best_match_score = 0
-            best_match_data = None
+                for listing_div in listing_divs:
+                    inner_text = listing_div.inner_text()
+                    if not inner_text.strip():
+                        continue
 
-            for listing_div in listing_divs:
-                inner_text = listing_div.inner_text()
-                if not inner_text.strip():
-                    continue
+                    html_content = listing_div.inner_html()
+                    business_data = parse_business_listing_html(
+                        html_content,
+                        company_name,
+                        debug=debug
+                    )
 
-                html_content = listing_div.inner_html()
-                business_data = parse_business_listing_html(
-                    html_content,
-                    company_name,
-                    debug=debug
-                )
+                    # Use fuzzy matching to find the best match
+                    from fuzzywuzzy import fuzz # type: ignore
+                    score = fuzz.ratio(company_name.lower(), business_data.get("Name", "").lower())
 
-                # Use fuzzy matching to find the best match
-                from fuzzywuzzy import fuzz # type: ignore
-                score = fuzz.ratio(company_name.lower(), business_data.get("Name", "").lower())
+                    if score > best_match_score:
+                        best_match_score = score
+                        best_match_data = business_data
 
-                if score > best_match_score:
-                    best_match_score = score
-                    best_match_data = business_data
-
-            return best_match_data
+                return best_match_data
+            
+            elif page.locator(direct_name_selector).count() > 0:
+                # Direct view - we need to extract Place ID from the URL or metadata
+                # For now, let's try to extract Place ID from the current URL
+                current_url = page.url
+                # Example URL: .../place/CompanyName/@lat,long,zoom/data=!3m1!4b1!4m6!3m5!1sPLACE_ID...
+                # Place ID often follows 1s in the data param
+                import re
+                place_id_match = re.search(r'!1s(ChIJ[a-zA-Z0-9_-]+)', current_url)
+                if place_id_match:
+                    place_id = place_id_match.group(1)
+                    # Return a minimal dict that matches what the caller expects
+                    return {
+                        "Name": page.locator(direct_name_selector).inner_text(),
+                        "Place_ID": place_id
+                    }
+                
+            return None
 
         except Exception as e:
-            logger.error(f"An error occurred during scraping: {e}")
+            logger.error(f"An error occurred during scraping {company_name}: {e}")
             return None
         finally:
             browser.close()

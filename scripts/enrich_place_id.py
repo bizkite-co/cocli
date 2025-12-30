@@ -70,29 +70,40 @@ def main(
     enriched_count = 0
     
     for company in track(targets, description="Searching Google Maps..."):
+        # Strategy 1: Name + Address/City
         location_param = {}
         if company.full_address:
             location_param["address"] = company.full_address
         elif company.city and company.state:
             location_param["city"] = f"{company.city}, {company.state}"
         
-        # We search Google Maps
+        found = False
+        
+        # We search Google Maps by name
         try:
             result = find_business_on_google_maps(company.name, location_param)
             if result and result.get("Place_ID"):
                 new_place_id = result["Place_ID"]
-                console.print(f"  [green]✓[/green] Found Place ID for [bold]{company.name}[/bold]: {new_place_id}")
-                
+                console.print(f"  [green]✓[/green] Found Place ID for [bold]{company.name}[/bold] ({company.slug}): {new_place_id}")
+                found = True
+            
+            # Strategy 2: Fallback to Domain if name search failed
+            if not found and company.domain:
+                # console.print(f"  [dim]Retrying with domain: {company.domain}[/dim]")
+                result = find_business_on_google_maps(company.domain, location_param)
+                if result and result.get("Place_ID"):
+                    new_place_id = result["Place_ID"]
+                    console.print(f"  [green]✓[/green] Found Place ID via domain for [bold]{company.name}[/bold] ({company.slug}): {new_place_id}")
+                    found = True
+
+            if found and result:
                 if not dry_run:
-                    company.place_id = new_place_id
+                    company.place_id = result["Place_ID"]
                     company_dir = companies_dir / company.slug
                     create_company_files(company, company_dir)
                     enriched_count += 1
-            else:
-                # console.print(f"  [yellow]✗[/yellow] No match found for {company.name}")
-                pass
         except Exception as e:
-            console.print(f"  [red]Error searching for {company.name}: {e}[/red]")
+            console.print(f"  [red]Error searching for {company.name} ({company.slug}): {e}[/red]")
 
     console.print(f"\n[bold green]Enrichment Complete![/bold green]")
     console.print(f"Enriched: [bold]{enriched_count}[/bold]")
