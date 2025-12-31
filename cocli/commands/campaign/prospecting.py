@@ -9,20 +9,20 @@ from rich.console import Console
 from playwright.async_api import async_playwright
 import yaml
 
-from ...core.config import get_companies_dir, get_campaign_dir, get_campaign, get_enrichment_service_url
-from ...core.importing import import_prospect
-from ...core.prospects_csv_manager import ProspectsIndexManager
-from ...core.scrape_index import ScrapeIndex
-from ...core.location_prospects_index import LocationProspectsIndex
-from ...core.queue.factory import get_queue_manager
-from ...models.queue import QueueMessage
-from ...models.scrape_task import ScrapeTask
-from ...models.google_maps_prospect import GoogleMapsProspect
-from ...models.company import Company
-from ...models.website import Website
-from ...scrapers.google_maps import scrape_google_maps
-from ...compilers.website_compiler import WebsiteCompiler
-from ...core.enrichment import enrich_company_website
+from cocli.core.config import get_companies_dir, get_campaign_dir, get_campaign, get_enrichment_service_url
+from cocli.core.importing import import_prospect
+from cocli.core.prospects_csv_manager import ProspectsIndexManager
+from cocli.core.scrape_index import ScrapeIndex
+from cocli.core.location_prospects_index import LocationProspectsIndex
+from cocli.core.queue.factory import get_queue_manager
+from cocli.models.queue import QueueMessage
+from cocli.models.scrape_task import ScrapeTask
+from cocli.models.google_maps_prospect import GoogleMapsProspect
+from cocli.models.company import Company
+from cocli.models.website import Website
+from cocli.scrapers.google_maps import scrape_google_maps
+from cocli.compilers.website_compiler import WebsiteCompiler
+from cocli.core.enrichment import enrich_company_website
 
 logger = logging.getLogger(__name__)
 console = Console()

@@ -1,6 +1,6 @@
 import typer
-from . import mgmt, workflow, planning, viz, prospecting
-from .. import prospects
+from cocli.commands.campaign import mgmt, workflow, planning, viz, prospecting
+from cocli.commands import prospects
 
 app = typer.Typer(no_args_is_help=True, help="Manage campaigns.")
 

@@ -9,7 +9,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Optional, Any
 from rich.console import Console
-from playwright.async_api import async_playwright, Browser
+from playwright.async_api import async_playwright
 
 from cocli.core.logging_config import setup_file_logging
 from cocli.core.queue.factory import get_queue_manager
@@ -225,8 +225,6 @@ async def run_worker(headless: bool, debug: bool, campaign_name: str) -> None:
                 logger.info("Restarting browser session in 5 seconds...")
                 await asyncio.sleep(5)
 
-import socket
-
 async def run_details_worker(headless: bool, debug: bool, campaign_name: str, once: bool = False, processed_by: Optional[str] = None, browser: Optional[Any] = None, workers: int = 1) -> None:
     if not processed_by:
         processed_by = f"local-worker-{socket.gethostname()}"
@@ -384,7 +382,8 @@ async def _run_details_task_loop(browser: Any, gm_list_item_queue: Any, enrichme
                                 enrichment_queue.push(msg)
                             
                             gm_list_item_queue.ack(task)
-                            if once: return
+                            if once:
+                                return
                             continue
 
             # 3. Proceed with Scrape

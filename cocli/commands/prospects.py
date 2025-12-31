@@ -1,35 +1,40 @@
-import typer
-import csv
 import os
 import logging
-from typing_extensions import Annotated
-from typing import Optional, Iterator
-import asyncio
 import httpx
 import yaml
+import socket
+import asyncio
+import csv
+from datetime import datetime
+from typing import Optional, Iterator
+from typing_extensions import Annotated
 from rich.console import Console
-from pydantic import ValidationError
-from playwright.async_api import async_playwright, Browser
+import typer
 import boto3
+from pydantic import ValidationError
 
-from cocli.models.company import Company
-from cocli.models.hubspot import HubspotContactCsv
-from cocli.core.config import get_campaign, get_campaigns_dir, get_companies_dir, get_enrichment_service_url
+from cocli.core.config import (
+    get_companies_dir, 
+    get_campaign, 
+    get_enrichment_service_url,
+    get_campaigns_dir
+)
 from cocli.core.queue.factory import get_queue_manager
-from cocli.models.queue import QueueMessage # Added import
+from cocli.models.queue import QueueMessage
+from cocli.models.company import Company
 from cocli.models.website import Website
+from cocli.models.hubspot import HubspotContactCsv
 from cocli.compilers.website_compiler import WebsiteCompiler
-from cocli.core.text_utils import slugify
+from cocli.core.enrichment import enrich_company_website
 from cocli.core.enrichment_service_utils import ensure_enrichment_service_ready
 from cocli.core.logging_config import setup_file_logging
-from cocli.core.enrichment import enrich_company_website
-from cocli.commands.worker import run_details_worker
+from cocli.core.text_utils import slugify
 
-
-app = typer.Typer(no_args_is_help=True)
+from playwright.async_api import async_playwright, Browser
 
 logger = logging.getLogger(__name__)
-console = Console() # Instantiate console globally
+console = Console()
+app = typer.Typer(no_args_is_help=True)
 
 
 def get_prospects(campaign: str, with_email: bool, city: Optional[str], state: Optional[str]) -> Iterator[Company]:
@@ -458,13 +463,6 @@ def enrich_from_queue(
                         console.print(f"[red]S3 Sync Failed for {msg.company_slug}: {e}[/red]")
                 # ---------------------------------------------
 
-                queue_manager.ack(msg)
-                return True
-            
-        except httpx.HTTPStatusError as e:
-            status = e.response.status_code
-            if status == 404:
-                # ... existing logic ...
                 queue_manager.ack(msg)
                 return True
             

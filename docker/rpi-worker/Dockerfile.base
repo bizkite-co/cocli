@@ -22,7 +22,7 @@ RUN pip install uv
 
 # 3. Install Playwright Browsers (Very Slow / Heavy)
 # We install playwright package first to get the CLI tool
-RUN pip install playwright==1.57.0 && \
+RUN pip install playwright==1.55.0 && \
     playwright install chromium --with-deps
 
 # 4. Install Core Python Dependencies (Slow if compiling required)

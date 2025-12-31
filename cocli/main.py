@@ -1,12 +1,12 @@
-from .commands import companies
+from cocli.commands import companies
 
 import typer
 
-from .commands import enrich
-from .commands import query
+from cocli.commands import enrich
+from cocli.commands import query
 from rich.console import Console
 
-from .commands import register_commands
+from cocli.commands import register_commands
 
 console = Console()
 
@@ -15,7 +15,7 @@ app.add_typer(enrich.app, name="enrich", help="Commands for enriching company da
 app.add_typer(query.app, name="query", help="Commands for querying company data.")
 
 try:
-    from .commands.tui import run_tui_app # New import
+    from cocli.commands.tui import run_tui_app # New import
     @app.command(name="tui", help="Launches the Textual TUI for cocli.") # New command
     def tui_command() -> None:
         run_tui_app()

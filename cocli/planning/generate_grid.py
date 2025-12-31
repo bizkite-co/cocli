@@ -1,4 +1,5 @@
 import math
+import logging
 from typing import List, Dict, Optional, Any
 import simplekml # type: ignore
 from datetime import datetime
@@ -11,6 +12,8 @@ import json
 # At 30 deg lat: ~6.9 miles (lat) x 6.0 miles (lon).
 # We will adjust browser viewport/zoom to match this grid size.
 DEFAULT_GRID_STEP_DEG = 0.1
+
+logger = logging.getLogger(__name__)
 
 # Approximate miles per degree for reporting/viz only (at equator/general)
 APPROX_MILES_PER_DEG_LAT = 69.0
@@ -54,18 +57,19 @@ def generate_global_grid(
     grid_max_lon = snap_ceil(raw_max_lon, step_deg)
 
     # Generate Tiles
-    current_lat = grid_min_lat
-    # Iterate with a small epsilon to handle float comparisons
-    epsilon = step_deg / 1000.0
+    # Use integer steps to avoid cumulative float precision issues and ensure boundary inclusion
+    num_steps_lat = int(round((grid_max_lat - grid_min_lat) / step_deg))
+    num_steps_lon = int(round((grid_max_lon - grid_min_lon) / step_deg))
     
-    while current_lat < grid_max_lat - epsilon:
-        current_lon = grid_min_lon
-        while current_lon < grid_max_lon - epsilon:
+    logger.info(f"Generating {num_steps_lat}x{num_steps_lon} grid ({num_steps_lat * num_steps_lon} potential tiles)")
+
+    for i in range(num_steps_lat):
+        for j in range(num_steps_lon):
+            sw_lat = grid_min_lat + (i * step_deg)
+            sw_lon = grid_min_lon + (j * step_deg)
             
-            sw_lat = current_lat
-            sw_lon = current_lon
-            ne_lat = current_lat + step_deg
-            ne_lon = current_lon + step_deg
+            ne_lat = sw_lat + step_deg
+            ne_lon = sw_lon + step_deg
             
             # Create a unique, consistent ID based on the South-West corner
             # e.g., "30.2_-97.7"
@@ -93,9 +97,6 @@ def generate_global_grid(
                 "est_height_miles": round(height_miles, 2),
                 "generated_at": datetime.utcnow().isoformat()
             })
-            
-            current_lon += step_deg
-        current_lat += step_deg
 
     return tiles
 
