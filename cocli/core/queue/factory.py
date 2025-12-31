@@ -19,22 +19,31 @@ def get_queue_manager(queue_name: str, use_cloud: bool = False, queue_type: str 
             
         config = load_campaign_config(effective_campaign) if effective_campaign else {}
         aws_config = config.get('aws', {})
-        aws_profile = aws_config.get("profile") or aws_config.get("aws_profile")
+        
+        # If running in Fargate, we MUST NOT use a profile name, 
+        # as it should use the IAM Task Role.
+        if os.getenv("COCLI_RUNNING_IN_FARGATE"):
+            aws_profile = None
+        else:
+            aws_profile = aws_config.get("profile") or aws_config.get("aws_profile")
         
         if queue_type == "scrape":
             queue_url = os.getenv("COCLI_SCRAPE_TASKS_QUEUE_URL") or aws_config.get("cocli_scrape_tasks_queue_url")
             if not queue_url:
                  raise ValueError("COCLI_SCRAPE_TASKS_QUEUE_URL (env) or 'cocli_scrape_tasks_queue_url' (config) must be set for cloud queue mode.")
+            print(f"DEBUG: Using Scrape Queue URL: {queue_url}")
             return ScrapeSQSQueue(queue_url=queue_url, aws_profile_name=aws_profile)
         elif queue_type == "gm_list_item":
             queue_url = os.getenv("COCLI_GM_LIST_ITEM_QUEUE_URL") or aws_config.get("cocli_gm_list_item_queue_url")
             if not queue_url:
                  raise ValueError("COCLI_GM_LIST_ITEM_QUEUE_URL (env) or 'cocli_gm_list_item_queue_url' (config) must be set for cloud queue mode.")
+            print(f"DEBUG: Using GM List Item Queue URL: {queue_url}")
             return GmItemSQSQueue(queue_url=queue_url, aws_profile_name=aws_profile)
         else:
             queue_url = os.getenv("COCLI_ENRICHMENT_QUEUE_URL") or aws_config.get("cocli_enrichment_queue_url")
             if not queue_url:
                  raise ValueError("COCLI_ENRICHMENT_QUEUE_URL (env) or 'cocli_enrichment_queue_url' (config) must be set for cloud queue mode.")
+            print(f"DEBUG: Using Enrichment Queue URL: {queue_url}")
             return SQSQueue(queue_url=queue_url, aws_profile_name=aws_profile)
     else:
         # TODO: Implement LocalFileQueue for ScrapeTasks if needed (different file structure?)

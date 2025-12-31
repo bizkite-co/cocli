@@ -4,11 +4,12 @@ import logging
 import os
 import boto3
 import csv 
+import socket
 from datetime import datetime 
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Any
 from rich.console import Console
-from playwright.async_api import async_playwright
+from playwright.async_api import async_playwright, Browser
 
 from cocli.core.logging_config import setup_file_logging
 from cocli.core.queue.factory import get_queue_manager
@@ -74,15 +75,17 @@ def ensure_campaign_config(campaign_name: str) -> None:
     bucket_name = f"cocli-data-{campaign_name}"
     keys_to_try = ["config.toml", f"campaigns/{campaign_name}/config.toml"]
     
+    logger.info(f"Attempting to download config from S3 bucket: {bucket_name}")
     s3 = boto3.client("s3")
     for key in keys_to_try:
         try:
             logger.info(f"Trying s3://{bucket_name}/{key}...")
             campaign_dir.mkdir(parents=True, exist_ok=True)
             s3.download_file(bucket_name, key, str(config_path))
-            logger.info("Successfully fetched config from S3.")
+            logger.info(f"Successfully fetched config from S3 to {config_path}")
             return
-        except Exception:
+        except Exception as e:
+            logger.warning(f"Failed to fetch s3://{bucket_name}/{key}: {e}")
             continue
             
     logger.error(f"Failed to fetch config for '{campaign_name}' from S3 bucket '{bucket_name}'.")
@@ -92,19 +95,23 @@ async def run_worker(headless: bool, debug: bool, campaign_name: str) -> None:
         ensure_campaign_config(campaign_name)
         bucket_name = f"cocli-data-{campaign_name}"
         
-        scrape_queue = get_queue_manager("scrape_tasks", use_cloud=True, queue_type="scrape", campaign_name=campaign_name)
-        gm_list_item_queue = get_queue_manager("gm_list_item", use_cloud=True, queue_type="gm_list_item", campaign_name=campaign_name)
-        
         # Determine AWS profile for S3 client
         config = load_campaign_config(campaign_name)
         aws_config = config.get("aws", {})
-        profile_name = aws_config.get("profile") or aws_config.get("aws_profile")
+        
+        if os.getenv("COCLI_RUNNING_IN_FARGATE"):
+            profile_name = None
+        else:
+            profile_name = aws_config.get("profile") or aws_config.get("aws_profile")
         
         if profile_name:
             session = boto3.Session(profile_name=profile_name)
         else:
             session = boto3.Session()
         s3_client = session.client("s3")
+
+        scrape_queue = get_queue_manager("scrape_tasks", use_cloud=True, queue_type="scrape", campaign_name=campaign_name)
+        gm_list_item_queue = get_queue_manager("gm_list_item", use_cloud=True, queue_type="gm_list_item", campaign_name=campaign_name)
         
     except Exception as e:
         logger.error(f"Configuration Error: {e}")
@@ -218,137 +225,178 @@ async def run_worker(headless: bool, debug: bool, campaign_name: str) -> None:
                 logger.info("Restarting browser session in 5 seconds...")
                 await asyncio.sleep(5)
 
-async def run_details_worker(headless: bool, debug: bool, campaign_name: str) -> None:
+import socket
+
+async def run_details_worker(headless: bool, debug: bool, campaign_name: str, once: bool = False, processed_by: Optional[str] = None, browser: Optional[Any] = None, workers: int = 1) -> None:
+    if not processed_by:
+        processed_by = f"local-worker-{socket.gethostname()}"
     try:
         ensure_campaign_config(campaign_name)
         bucket_name = f"cocli-data-{campaign_name}"
 
-        gm_list_item_queue = get_queue_manager("gm_list_item", use_cloud=True, queue_type="gm_list_item", campaign_name=campaign_name)
-        enrichment_queue = get_queue_manager("enrichment", use_cloud=True, queue_type="enrichment", campaign_name=campaign_name)
-        
         # Determine AWS profile for S3 client
         config = load_campaign_config(campaign_name)
         aws_config = config.get("aws", {})
-        profile_name = aws_config.get("profile") or aws_config.get("aws_profile")
+        
+        if os.getenv("COCLI_RUNNING_IN_FARGATE"):
+            profile_name = None
+        else:
+            profile_name = aws_config.get("profile") or aws_config.get("aws_profile")
         
         if profile_name:
             session = boto3.Session(profile_name=profile_name)
         else:
             session = boto3.Session()
         s3_client = session.client("s3")
+
+        gm_list_item_queue = get_queue_manager("gm_list_item", use_cloud=True, queue_type="gm_list_item", campaign_name=campaign_name)
+        enrichment_queue = get_queue_manager("enrichment", use_cloud=True, queue_type="enrichment", campaign_name=campaign_name)
+        
+        if hasattr(gm_list_item_queue, 'queue_url'):
+             logger.info(f"run_details_worker: Using GM List Item Queue URL: {gm_list_item_queue.queue_url}")
         
     except Exception as e:
         logger.error(f"Configuration Error: {e}")
         return
 
-    logger.info(f"Details Worker v{VERSION} started for campaign '{campaign_name}'. Polling for tasks...")
+    logger.info(f"Details Worker v{VERSION} started for campaign '{campaign_name}' with {workers} worker(s). Polling for tasks...")
 
-    async with async_playwright() as p:
-        while True: # Browser Restart Loop
-            logger.info("Launching browser...")
-            browser = None
-            try:
-                browser = await p.chromium.launch(
-                    headless=headless,
-                    args=[
-                        '--no-sandbox',
-                        '--disable-setuid-sandbox',
-                        '--disable-dev-shm-usage',
-                        '--disable-accelerated-2d-canvas',
-                        '--no-first-run',
-                        '--no-zygote',
-                        '--disable-gpu'
+    if browser:
+        # Use provided browser
+        tasks = [
+            _run_details_task_loop(browser, gm_list_item_queue, enrichment_queue, s3_client, bucket_name, debug, once, processed_by)
+            for _ in range(workers)
+        ]
+        await asyncio.gather(*tasks)
+    else:
+        async with async_playwright() as p:
+            while True: # Browser Restart Loop
+                logger.info("Launching browser...")
+                browser_instance = None
+                try:
+                    browser_instance = await p.chromium.launch(
+                        headless=headless,
+                        args=[
+                            '--no-sandbox',
+                            '--disable-setuid-sandbox',
+                            '--disable-dev-shm-usage',
+                            '--disable-accelerated-2d-canvas',
+                            '--no-first-run',
+                            '--no-zygote',
+                            '--disable-gpu'
+                        ]
+                    )
+                    tasks = [
+                        _run_details_task_loop(browser_instance, gm_list_item_queue, enrichment_queue, s3_client, bucket_name, debug, once, processed_by)
+                        for _ in range(workers)
                     ]
-                )
-            
-                while True: # Task Loop
-                    if not browser.is_connected():
-                        logger.error("Browser is disconnected. Restarting.")
+                    await asyncio.gather(*tasks)
+                    if once:
                         break
-
-                    tasks = gm_list_item_queue.poll(batch_size=1)
-                    if not tasks:
-                        await asyncio.sleep(5)
-                        continue
-                    
-                    task = tasks[0] # batch_size=1
-                    logger.info(f"Detail Task: {task.place_id}")
-                    
-                    try:
-                        csv_manager = ProspectsIndexManager(task.campaign_name)
-                        page = await browser.new_page()
+                
+                except Exception as e:
+                    logger.error(f"Worker Error: {e}")
+                
+                finally:
+                    if browser_instance:
                         try:
-                            detailed_prospect_data = await scrape_google_maps_details(
-                                page=page,
-                                place_id=task.place_id,
-                                campaign_name=task.campaign_name,
-                                debug=debug
-                            )
-                        finally:
-                            await page.close()
-                        
-                        if not detailed_prospect_data:
-                            logger.warning(f"No details scraped for {task.place_id}. Nacking task.")
-                            gm_list_item_queue.nack(task)
-                            continue
+                            await browser_instance.close()
+                        except Exception:
+                            pass
+                    if once:
+                        break
+                    logger.info("Restarting browser session in 5 seconds...")
+                    await asyncio.sleep(5)
 
-                        existing_prospect = None
-                        file_path = csv_manager.get_file_path(task.place_id)
-                        if file_path.exists():
-                            with open(file_path, 'r', encoding='utf-8') as f:
-                                reader = csv.DictReader(f)
-                                existing_data = next(reader, None)
-                                if existing_data:
-                                    existing_prospect = GoogleMapsProspect.model_validate(existing_data) 
-                        
-                        final_prospect_data = detailed_prospect_data
-                        if existing_prospect:
-                            merged_data = existing_prospect.model_dump()
-                            merged_data.update(detailed_prospect_data.model_dump(exclude_unset=True)) 
-                            final_prospect_data = GoogleMapsProspect.model_validate(merged_data)
-                        
-                        final_prospect_data.updated_at = datetime.now()
+async def _run_details_task_loop(browser: Any, gm_list_item_queue: Any, enrichment_queue: Any, s3_client: Any, bucket_name: str, debug: bool, once: bool, processed_by: str) -> None:
+    while True: # Task Loop
+        if not browser.is_connected():
+            logger.error("Browser is disconnected. Restarting.")
+            break
 
-                        if csv_manager.append_prospect(final_prospect_data):
-                            s3_key = f"campaigns/{task.campaign_name}/indexes/google_maps_prospects/{file_path.name}"
-                            try:
-                                s3_client.upload_file(str(file_path), bucket_name, s3_key)
-                                logger.info(f"Updated and uploaded {file_path.name} to S3.")
-                            except Exception as e:
-                                logger.error(f"S3 Upload Error: {e}")
-
-                        if final_prospect_data.Domain and final_prospect_data.Name:
-                            msg = QueueMessage(
-                                domain=final_prospect_data.Domain,
-                                company_slug=slugify(final_prospect_data.Name),
-                                campaign_name=task.campaign_name,
-                                force_refresh=task.force_refresh,
-                                ack_token=None
-                            )
-                            enrichment_queue.push(msg)
-                            logger.info(f"Pushed {final_prospect_data.Domain} to Enrichment Queue")
-                        
-                        logger.info(f"Detailing Complete for {task.place_id}.")
-                        gm_list_item_queue.ack(task)
-                        
-                    except Exception as e:
-                        logger.error(f"Detail Task Failed for {task.place_id}: {e}")
-                        gm_list_item_queue.nack(task)
-                        if "Target page, context or browser has been closed" in str(e) or not browser.is_connected():
-                             logger.critical("Browser fatal error detected.")
-                             break
-            
-            except Exception as e:
-                logger.error(f"Worker Error: {e}")
-            
+        tasks = gm_list_item_queue.poll(batch_size=1)
+        if not tasks:
+            if once:
+                logger.info("run_details_worker(once=True): No tasks found in GM List Item queue.")
+                return # Exit if in single-run mode and queue empty
+            await asyncio.sleep(5)
+            continue
+        
+        task = tasks[0] # batch_size=1
+        logger.info(f"Detail Task found: {task.place_id}")
+        
+        try:
+            csv_manager = ProspectsIndexManager(task.campaign_name)
+            page = await browser.new_page()
+            try:
+                detailed_prospect_data = await scrape_google_maps_details(
+                    page=page,
+                    place_id=task.place_id,
+                    campaign_name=task.campaign_name,
+                    debug=debug
+                )
             finally:
-                if browser:
-                    try:
-                        await browser.close()
-                    except Exception:
-                        pass
-                logger.info("Restarting browser session in 5 seconds...")
-                await asyncio.sleep(5)
+                await page.close()
+            
+            if not detailed_prospect_data:
+                logger.warning(f"No details scraped for {task.place_id}. Nacking task.")
+                gm_list_item_queue.nack(task)
+                if once:
+                    return
+                continue
+            
+            detailed_prospect_data.processed_by = processed_by
+
+            existing_prospect = None
+            file_path = csv_manager.get_file_path(task.place_id)
+            if file_path.exists():
+                with open(file_path, 'r', encoding='utf-8') as f:
+                    reader = csv.DictReader(f)
+                    existing_data = next(reader, None)
+                    if existing_data:
+                        existing_prospect = GoogleMapsProspect.model_validate(existing_data) 
+            
+            final_prospect_data = detailed_prospect_data
+            if existing_prospect:
+                merged_data = existing_prospect.model_dump()
+                merged_data.update(detailed_prospect_data.model_dump(exclude_unset=True)) 
+                final_prospect_data = GoogleMapsProspect.model_validate(merged_data)
+            
+            final_prospect_data.updated_at = datetime.now()
+
+            if csv_manager.append_prospect(final_prospect_data):
+                s3_key = f"campaigns/{task.campaign_name}/indexes/google_maps_prospects/{file_path.name}"
+                try:
+                    s3_client.upload_file(str(file_path), bucket_name, s3_key)
+                    logger.info(f"Updated and uploaded {file_path.name} to S3.")
+                except Exception as e:
+                    logger.error(f"S3 Upload Error: {e}")
+
+            if final_prospect_data.Domain and final_prospect_data.Name:
+                msg = QueueMessage(
+                    domain=final_prospect_data.Domain,
+                    company_slug=slugify(final_prospect_data.Name),
+                    campaign_name=task.campaign_name,
+                    force_refresh=task.force_refresh,
+                    ack_token=None
+                )
+                enrichment_queue.push(msg)
+                logger.info(f"Pushed {final_prospect_data.Domain} to Enrichment Queue")
+            
+            logger.info(f"Detailing Complete for {task.place_id}.")
+            gm_list_item_queue.ack(task)
+            
+            if once:
+                return # Success - return to main loop
+
+        except Exception as e:
+            logger.error(f"Detail Task Failed for {task.place_id}: {e}")
+            gm_list_item_queue.nack(task)
+            if once:
+                return
+            if "Target page, context or browser has been closed" in str(e) or not browser.is_connected():
+                 logger.critical("Browser fatal error detected.")
+                 break
 
 @app.command()
 def scrape(
@@ -378,27 +426,53 @@ def scrape(
     asyncio.run(run_worker(not headed, debug, effective_campaign))
 
 @app.command()
+
 def details(
+
     campaign: Optional[str] = typer.Option(None, "--campaign", "-c", help="Campaign name."),
+
     headed: bool = typer.Option(False, "--headed", help="Run browser in headed mode."),
-    debug: bool = typer.Option(False, "--debug", help="Enable debug logging.")
+
+    debug: bool = typer.Option(False, "--debug", help="Enable debug logging."),
+
+    workers: int = typer.Option(1, "--workers", "-w", help="Number of concurrent workers.")
+
 ) -> None:
+
     """
+
     Starts a worker node that polls for details tasks (Place IDs) and scrapes them.
+
     """
+
     effective_campaign = campaign
+
     if not effective_campaign:
+
         effective_campaign = os.getenv("CAMPAIGN_NAME")
+
     if not effective_campaign:
+
         effective_campaign = get_campaign()
+
         
+
     log_level = logging.DEBUG if debug else logging.INFO
+
     setup_file_logging("worker_details", console_level=log_level)
+
+
 
     logger.info(f"Effective campaign: {effective_campaign}")
 
+
+
     if not effective_campaign:
+
         logger.error("No campaign specified and no active context.")
+
         raise typer.Exit(1)
 
-    asyncio.run(run_details_worker(not headed, debug, effective_campaign))
+
+
+    asyncio.run(run_details_worker(not headed, debug, effective_campaign, workers=workers))

@@ -6,9 +6,8 @@ import csv
 from typing import Optional, List
 from rich.console import Console
 from typing_extensions import Annotated
-from pathlib import Path
 
-from ...core.config import get_campaign_dir, get_cocli_base_dir, get_all_campaign_dirs, get_editor_command, get_campaign, set_campaign, load_campaign_config
+from ...core.config import get_campaign_dir, get_cocli_base_dir, get_all_campaign_dirs, get_editor_command, get_campaign, set_campaign
 from ...models.campaign import Campaign
 from ...renderers.campaign_view import display_campaign_view
 from ...core.campaign_workflow import CampaignWorkflow
@@ -184,6 +183,10 @@ def add_query(
         raise typer.Exit(1)
 
     campaign_dir = get_campaign_dir(campaign_name)
+    if not campaign_dir:
+        console.print(f"[bold red]Error: Campaign directory not found for {campaign_name}[/bold red]")
+        raise typer.Exit(1)
+
     config_path = campaign_dir / "config.toml"
     
     with open(config_path, "r") as f:
@@ -213,6 +216,10 @@ def remove_query(
         raise typer.Exit(1)
 
     campaign_dir = get_campaign_dir(campaign_name)
+    if not campaign_dir:
+        console.print(f"[bold red]Error: Campaign directory not found for {campaign_name}[/bold red]")
+        raise typer.Exit(1)
+
     config_path = campaign_dir / "config.toml"
     
     with open(config_path, "r") as f:
@@ -241,6 +248,10 @@ def add_location(
         raise typer.Exit(1)
 
     campaign_dir = get_campaign_dir(campaign_name)
+    if not campaign_dir:
+        console.print(f"[bold red]Error: Campaign directory not found for {campaign_name}[/bold red]")
+        raise typer.Exit(1)
+
     config_path = campaign_dir / "config.toml"
     with open(config_path, "r") as f:
         config = toml.load(f)
@@ -250,12 +261,13 @@ def add_location(
         csv_path = campaign_dir / target_csv
         rows = []
         exists = False
-        fieldnames = ["name", "beds", "lat", "lon", "city", "state", "csv_name", "saturation_score", "company_slug"]
+        fieldnames: List[str] = ["name", "beds", "lat", "lon", "city", "state", "csv_name", "saturation_score", "company_slug"]
         
         if csv_path.exists():
             with open(csv_path, "r", newline="") as f:
                 reader = csv.DictReader(f)
-                fieldnames = reader.fieldnames or fieldnames
+                if reader.fieldnames:
+                    fieldnames = list(reader.fieldnames)
                 for row in reader:
                     if row.get("name") == location or row.get("city") == location:
                         exists = True
@@ -310,6 +322,10 @@ def remove_location(
         raise typer.Exit(1)
 
     campaign_dir = get_campaign_dir(campaign_name)
+    if not campaign_dir:
+        console.print(f"[bold red]Error: Campaign directory not found for {campaign_name}[/bold red]")
+        raise typer.Exit(1)
+
     config_path = campaign_dir / "config.toml"
     with open(config_path, "r") as f:
         config = toml.load(f)
@@ -323,14 +339,14 @@ def remove_location(
             rows = []
             with open(csv_path, "r", newline="") as f:
                 reader = csv.DictReader(f)
-                fieldnames = reader.fieldnames
+                fieldnames = list(reader.fieldnames) if reader.fieldnames else []
                 for row in reader:
                     if row.get("name") == location or row.get("city") == location:
                         removed = True
                         continue
                     rows.append(row)
             
-            if removed:
+            if removed and fieldnames:
                 with open(csv_path, "w", newline="") as f:
                     writer = csv.DictWriter(f, fieldnames=fieldnames)
                     writer.writeheader()
@@ -349,4 +365,3 @@ def remove_location(
             
     if not removed:
         console.print(f"[yellow]Location not found:[/yellow] {location}")
-

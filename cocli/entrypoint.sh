@@ -40,4 +40,4 @@ export COCLI_RUNNING_IN_FARGATE="true"
 # Start the SQS consumer (enrich-from-queue in consumer mode) in the foreground
 # It will use the COCLI_ENRICHMENT_QUEUE_URL and COCLI_S3_BUCKET_NAME env vars
 # And it will call the locally running API (uvicorn) for enrichment logic
-exec uv run cocli campaign prospects enrich-from-queue turboship --cloud-queue
+exec cocli campaign prospects enrich-from-queue turboship --cloud-queue --dual-purpose

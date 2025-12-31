@@ -1,21 +1,20 @@
 import typer
-from pathlib import Path
 from typing import Optional
-from cocli.core.config import get_companies_dir, get_campaign
+from rich.console import Console
+from cocli.core.config import get_campaign, get_companies_dir
 from cocli.core.prospects_csv_manager import ProspectsIndexManager
 from cocli.core.text_utils import slugify
-from rich.console import Console
 
 app = typer.Typer()
 console = Console()
 
 @app.command()
-def main(campaign_name: Optional[str] = typer.Argument(None, help="Campaign name. Defaults to current context.")):
+def main(campaign_name: Optional[str] = typer.Argument(None, help="Campaign name.")) -> None:
     if not campaign_name:
         campaign_name = get_campaign()
     
     if not campaign_name:
-        console.print("[bold red]Error: No campaign specified and no active context.[/bold red]")
+        console.print("[bold red]Error: No campaign specified.[/bold red]")
         raise typer.Exit(1)
 
     companies_dir = get_companies_dir()
@@ -38,12 +37,10 @@ def main(campaign_name: Optional[str] = typer.Argument(None, help="Campaign name
         if prospect.Domain:
             slugs_to_check.append(slugify(prospect.Domain))
             
-        found_company = False
         for slug in set(slugs_to_check):
             company_path = companies_dir / slug
             if (company_path / "enrichments" / "website.md").exists():
                 enriched_count += 1
-                found_company = True
                 
                 has_email_in_index = False
                 index_path = company_path / "_index.md"
@@ -59,9 +56,10 @@ def main(campaign_name: Optional[str] = typer.Argument(None, help="Campaign name
                 if not has_email_in_index:
                     # Check website.md
                     web_path = company_path / "enrichments" / "website.md"
-                    web_content = web_path.read_text()
-                    if "email: " in web_content and "email: null" not in web_content and "email: ''" not in web_content:
-                        not_compiled_but_has_email += 1
+                    if web_path.exists():
+                        web_content = web_path.read_text()
+                        if "email: " in web_content and "email: null" not in web_content and "email: ''" not in web_content:
+                            not_compiled_but_has_email += 1
                 break
     
     console.print(f"Total Prospects in Index: [bold]{total_prospects}[/bold]")

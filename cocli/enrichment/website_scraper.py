@@ -62,7 +62,11 @@ class WebsiteScraper:
             is_old_version = (indexed_item.scraper_version or 1) < CURRENT_SCRAPER_VERSION
             if not force_refresh and not is_stale and not is_old_version:
                 logger.info(f"Using indexed data for {domain}, converting to Website model")
-                return Website(**indexed_item.model_dump())
+                data = indexed_item.model_dump()
+                # Clean up personnel if it contains empty strings or non-dict items
+                if 'personnel' in data and isinstance(data['personnel'], list):
+                    data['personnel'] = [p for p in data['personnel'] if isinstance(p, dict)]
+                return Website(**data)
             if is_old_version:
                 logger.info(f"Re-scraping {domain} due to new scraper version.")
 

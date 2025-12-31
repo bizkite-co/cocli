@@ -77,6 +77,22 @@ The project uses `pytest` and `pytest-bdd` for testing.
     make test
     ```
 
+## Known Issues and Architectural Constraints
+
+### Google Maps Data Center IP Blocking (Conclusive)
+We have conclusively identified that Google Maps blocks or heavily throttles requests from AWS Fargate IP ranges.
+- **Evidence:** The same Place IDs (e.g., `ChIJ5X0j7DHDwogRvQgaGw0y4FM`) scrape successfully in seconds on local/residential IPs but consistently time out on `div[role="main"]` when running in Fargate.
+- **Architectural Impact:** **Fargate cannot be used for Google Maps scraping.** Browser-based "Detail" scraping MUST be delegated to residential workers (Raspberry Pi). Fargate remains useful for non-Maps tasks like general website enrichment.
+
+### Dual-Purpose Fargate Worker (Restricted)
+The enrichment service is implemented with a "dual-purpose" mode to maximize resources, but its utility is limited by IP blocking:
+- **Enrichment (Functional):** Primarily polls the **Enrichment Queue** for general website scraping. This works in Fargate.
+- **Details (Non-Functional in Fargate):** Polls the **GM List Item Queue** if Enrichment is empty. While the logic works, the scraping itself fails due to IP blocking. This mode should only be considered functional when the worker is running on a residential IP.
+
+### Build Performance
+- **Issue:** Large directories (11GB logs, massive data folders via symlinks) caused `uv sync` and `pip install` to hang during the build phase.
+- **Fix:** Explicitly exclude these directories in `pyproject.toml` AND `MANIFEST.in`. Ensure root-level symlinks to large data directories are excluded from the build context.
+
 ## Development Conventions
 
 *   **Package Management:** The project uses `uv` for managing Python packages and virtual environments.

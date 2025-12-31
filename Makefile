@@ -188,6 +188,11 @@ docker-build: ## Build the docker image
 	@echo "Building version: $(VERSION)"
 	@docker buildx build --no-cache --load --build-arg VERSION=$(VERSION) -t enrichment-service .
 
+.PHONY: docker-verify-local
+docker-verify-local: ## Run local Playwright and AWS config sanity checks inside the built Docker image
+	@docker run --rm enrichment-service python3 /app/verify_container_sanity.py
+	@docker run --rm enrichment-service python3 /app/verify_container_config.py
+
 .PHONY: start-enricher
 start-enricher: ## Start docker enrichment service
 	@docker run --rm -d -p 8000:8000 --name cocli-enrichment -e LOCAL_DEV=1 -v $(HOME)/.aws:/root/.aws:ro enrichment-service

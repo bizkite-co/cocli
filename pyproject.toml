@@ -3,7 +3,7 @@ name = "cocli"
 version = "0.2.0"
 description = "A CLI for managing a plain-text CRM."
 authors = [{ name = "Mark Stouffer", email = "mark@getbizkite.com" }]
-requires-python = ">=3.8"
+requires-python = ">=3.9"
 dependencies = [
     "typer",
     "pydantic",
@@ -12,7 +12,7 @@ dependencies = [
     "beautifulsoup4",
     "pyyaml",
     "lxml",
-    "playwright",
+    "playwright~=1.55.0",
     "html5lib",
     "lxml_html_clean",
     "fastapi",
@@ -72,7 +72,24 @@ package-dir = {"" = "."}
 [tool.setuptools.packages.find]
 where = ["."]
 include = ["cocli*"]
-exclude = ["cocli_data*", "tests*", "scripts*", "build*", "dist*", "temp*"]
+exclude = [
+    "cocli_data*", 
+    "tests*", 
+    "scripts*", 
+    "build*", 
+    "dist*", 
+    "temp*", 
+    ".logs*", 
+    ".venv*", 
+    ".mypy_cache*", 
+    ".pytest_cache*", 
+    ".ruff_cache*",
+    "quickbooks-search",
+    "homepage*",
+    "turboship*",
+    "cocli.egg-info*",
+    "cdk_scraper_deployment*"
+]
 
 [tool.uv]
 package = true

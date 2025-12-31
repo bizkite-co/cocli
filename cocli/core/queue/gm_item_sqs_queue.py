@@ -44,12 +44,18 @@ class GmItemSQSQueue:
         """
         messages: List[GmItemTask] = []
         try:
+            logger.debug(f"GmItemSQSQueue.poll: Requesting {batch_size} messages from {self.queue_url}")
             response = self.sqs.receive_message(
                 QueueUrl=self.queue_url,
                 MaxNumberOfMessages=min(batch_size, 10), # SQS max is 10
                 WaitTimeSeconds=5, # Long polling
                 AttributeNames=['ApproximateReceiveCount']
             )
+            
+            if 'Messages' not in response:
+                logger.debug("GmItemSQSQueue.poll: No messages returned from SQS.")
+            else:
+                logger.debug(f"GmItemSQSQueue.poll: Received {len(response['Messages'])} messages.")
 
             if 'Messages' in response:
                 for sqs_msg in response['Messages']:

@@ -20,6 +20,7 @@ cocli_data
 .tar
 dist
 .logs/
+logs
 .envrc
 turboship
 quickbooks-search

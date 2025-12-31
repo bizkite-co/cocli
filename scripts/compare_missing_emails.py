@@ -14,7 +14,7 @@ console = Console()
 def main(
     csv_path: Path = typer.Argument(..., help="Path to the historical email CSV to compare against."),
     campaign_name: Optional[str] = typer.Option(None, "--campaign", "-c", help="Campaign name. Defaults to current context.")
-):
+) -> None:
     if not campaign_name:
         campaign_name = get_campaign()
     

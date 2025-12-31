@@ -1,11 +1,8 @@
 import typer
-import yaml
-from pathlib import Path
 from typing import Optional
 from rich.console import Console
 from cocli.core.config import get_companies_dir, get_campaign
 from cocli.core.prospects_csv_manager import ProspectsIndexManager
-from cocli.core.text_utils import slugify
 from cocli.models.company import Company
 from cocli.models.google_maps_prospect import GoogleMapsProspect
 
@@ -13,7 +10,7 @@ app = typer.Typer()
 console = Console()
 
 @app.command()
-def main(campaign_name: Optional[str] = typer.Argument(None, help="Campaign name. Defaults to current context.")):
+def main(campaign_name: Optional[str] = typer.Argument(None, help="Campaign name. Defaults to current context.")) -> None:
     if not campaign_name:
         campaign_name = get_campaign()
     
@@ -82,7 +79,7 @@ def main(campaign_name: Optional[str] = typer.Argument(None, help="Campaign name
             if recovered_count % 100 == 0:
                  console.print(f"Recovered {recovered_count} prospects...")
 
-    console.print(f"\n[bold green]Recovery Complete![/bold green]")
+    console.print("\n[bold green]Recovery Complete![/bold green]")
     console.print(f"Recovered: [bold]{recovered_count}[/bold]")
     console.print(f"Already in Index: [bold]{already_exists}[/bold]")
     console.print(f"Skipped (No Place ID): [bold]{skipped_no_id}[/bold]")

@@ -69,6 +69,7 @@ class GoogleMapsProspect(BaseModel):
     Quotes: Optional[str] = None
     Uuid: Optional[str] = None
     company_slug: Optional[str] = None
+    processed_by: Optional[str] = "local-worker"
 
     @model_validator(mode='after')
     def populate_company_slug(self) -> 'GoogleMapsProspect':

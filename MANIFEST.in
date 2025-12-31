@@ -1,0 +1,12 @@
+recursive-exclude cocli_data *
+recursive-exclude cocli_share *
+recursive-exclude homepage *
+recursive-exclude logs *
+recursive-exclude quickbooks-search *
+recursive-exclude turboship *
+recursive-exclude .logs *
+recursive-exclude .mypy_cache *
+recursive-exclude .pytest_cache *
+recursive-exclude .ruff_cache *
+recursive-exclude cdk_scraper_deployment *
+exclude worker_scrape.log

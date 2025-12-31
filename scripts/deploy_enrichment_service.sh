@@ -51,7 +51,7 @@ aws ecs wait services-stable \
 
 echo "--- 6. Running Post-Deployment Verification ---"
 # Navigate back to project root to run Makefile targets
-cd ../..
+cd ..
 ./scripts/verify_fargate_deployment.sh
 if [ $? -ne 0 ]; then
     echo "ERROR: Basic Fargate health check failed!"

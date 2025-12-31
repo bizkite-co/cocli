@@ -186,6 +186,11 @@ uv run cocli open-company-folder "My New Company"
     make clean
     ```
 
+## Known Issues
+
+### AWS Fargate Google Maps Blocking (Conclusive)
+Google Maps conclusively blocks scraping requests from AWS Fargate IP ranges. This results in permanent timeouts while waiting for page elements to load. **Do not use Fargate for Google Maps scraping (Detail tasks).** These tasks must be run on residential workers (e.g., Raspberry Pi). Fargate remains supported for general website enrichment.
+
 ## Configuration
 
 By default, `cocli` stores your company and person data in `~/.local/share/cocli/` (adhering to the XDG Base Directory Specification). This directory contains `companies/` and `people/` subdirectories.

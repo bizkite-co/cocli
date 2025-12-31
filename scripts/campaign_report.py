@@ -89,6 +89,20 @@ def main(
         table.add_row("Emails Found (Local)", str(emails_found_count), f"{email_pct} (Yield)")
 
         console.print(table)
+
+        # Worker Source Breakdown
+        worker_stats = stats.get('worker_stats', {})
+        if worker_stats:
+            worker_table = Table(title="Processing Sources (Details)")
+            worker_table.add_column("Worker Type", style="cyan")
+            worker_table.add_column("Count", justify="right", style="magenta")
+            worker_table.add_column("Share", justify="right", style="green")
+            
+            total = sum(worker_stats.values())
+            for worker, count in sorted(worker_stats.items(), key=lambda x: x[1], reverse=True):
+                share = f"{(count / total * 100):.1f}%" if total else "0%"
+                worker_table.add_row(worker, str(count), share)
+            console.print(worker_table)
         
         failed_count = stats.get('failed_count', 0)
         if failed_count > 0:

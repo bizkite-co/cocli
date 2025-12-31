@@ -12,6 +12,8 @@ from cocli.core.text_utils import slugify
 logger = logging.getLogger(__name__)
 console = Console()
 
+__all__ = ['get_campaign_stats', 'get_boto3_session', 'load_campaign_config']
+
 SQSAttributeName = Literal[
     'AWSTraceHeader', 'All', 'ApproximateFirstReceiveTimestamp', 'ApproximateNumberOfMessages', 
     'ApproximateNumberOfMessagesDelayed', 'ApproximateNumberOfMessagesNotVisible', 
@@ -26,6 +28,9 @@ SQSAttributeName = Literal[
 
 def get_boto3_session(campaign_config: Dict[str, Any]) -> boto3.Session:
     """Creates a boto3 session using the campaign's AWS profile."""
+    if os.getenv("COCLI_RUNNING_IN_FARGATE"):
+        return boto3.Session()
+    
     profile = campaign_config.get('aws', {}).get('profile') or campaign_config.get('aws', {}).get('aws_profile')
     if profile:
         return boto3.Session(profile_name=profile)
@@ -68,15 +73,19 @@ def get_campaign_stats(campaign_name: str) -> Dict[str, Any]:
     config = load_campaign_config(campaign_name)
     aws_config = config.get('aws', {})
 
-    # 1. Local Prospects Count
+    # 1. Local Prospects Count & Sources
     manager = ProspectsIndexManager(campaign_name)
     total_prospects = 0
+    source_counts = {"local-worker": 0, "fargate-worker": 0, "unknown": 0}
+
     if manager.index_dir.exists():
-        # Count root and inbox
-        total_prospects = sum(1 for _ in manager.index_dir.glob("*.csv"))
-        if manager.inbox_dir.exists():
-            total_prospects += sum(1 for _ in manager.inbox_dir.glob("*.csv"))
+        for prospect in manager.read_all_prospects():
+            total_prospects += 1
+            source = prospect.processed_by or "unknown"
+            source_counts[source] = source_counts.get(source, 0) + 1
+            
     stats['prospects_count'] = total_prospects
+    stats['worker_stats'] = source_counts
 
     # 2. Queue Stats (Cloud vs Local)
     # Priority: Config > Env Var

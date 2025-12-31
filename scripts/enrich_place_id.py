@@ -1,9 +1,7 @@
 import typer
-import yaml
 import logging
 import csv
-from pathlib import Path
-from typing import Optional, List, Dict, Any
+from typing import Optional
 from rich.console import Console
 from rich.progress import track
 from cocli.core.config import get_companies_dir, get_campaign, get_campaigns_dir
@@ -23,7 +21,7 @@ def main(
     campaign_name: Optional[str] = typer.Argument(None, help="Campaign name. Defaults to current context."),
     limit: int = typer.Option(0, "--limit", "-l", help="Limit the number of companies to enrich (0 for no limit)."),
     dry_run: bool = typer.Option(False, "--dry-run", help="Show what would be enriched without actually doing it.")
-):
+) -> None:
     if not campaign_name:
         campaign_name = get_campaign()
     
@@ -141,7 +139,7 @@ def main(
             writer.writerows(anomalies)
         console.print(f"\n[bold yellow]Written {len(anomalies)} anomalies to {anomaly_file}[/bold yellow]")
 
-    console.print(f"\n[bold green]Enrichment Complete![/bold green]")
+    console.print("\n[bold green]Enrichment Complete![/bold green]")
     console.print(f"Enriched: [bold]{enriched_count}[/bold]")
     if dry_run:
         console.print("[yellow]Dry run: No files were actually modified.[/yellow]")

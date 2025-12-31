@@ -23,6 +23,7 @@ from cocli.core.text_utils import slugify
 from cocli.core.enrichment_service_utils import ensure_enrichment_service_ready
 from cocli.core.logging_config import setup_file_logging
 from cocli.core.enrichment import enrich_company_website
+from cocli.commands.worker import run_details_worker
 
 
 app = typer.Typer(no_args_is_help=True)
@@ -264,6 +265,7 @@ def enrich_from_queue(
     runner: Annotated[str, typer.Option(help="Choose the execution runner.")] = "docker",
     batch_size: int = typer.Option(5, help="Number of messages to poll at once."),
     cloud_queue: bool = typer.Option(False, "--cloud-queue", help="Use the cloud SQS queue instead of local file queue."),
+    dual_purpose: bool = typer.Option(False, "--dual-purpose", help="If enrichment queue is empty, poll gm-list-item queue."),
 ) -> None:
     """
     Consumes enrichment tasks from the campaign's queue.
@@ -277,6 +279,13 @@ def enrich_from_queue(
         raise typer.Exit(1)
 
     queue_manager = get_queue_manager(f"{campaign_name}_enrichment", use_cloud=cloud_queue)
+    
+    # Setup for dual purpose
+    gm_queue = None
+    if dual_purpose:
+        gm_queue = get_queue_manager("gm_list_item", use_cloud=cloud_queue, queue_type="gm_list_item", campaign_name=campaign_name)
+        console.print(f"[yellow]Dual-purpose mode enabled for campaign '{campaign_name}': Will poll gm-list-item if enrichment is empty.[/yellow]")
+
     if hasattr(queue_manager, 'queue_url'):
         console.print(f"[blue]Using Queue URL: {queue_manager.queue_url}[/blue]") # Debug logging
     console.print(f"[bold blue]Starting Enrichment Consumer for '{campaign_name}' using {runner}...[/bold blue]")
@@ -440,7 +449,24 @@ def enrich_from_queue(
         if not os.getenv("COCLI_RUNNING_IN_FARGATE"):
             ensure_enrichment_service_ready(console)
         
-        async with httpx.AsyncClient() as client:
+        async with httpx.AsyncClient() as client, async_playwright() as p:
+            # Launch shared browser for details worker if dual purpose enabled
+            browser = None
+            if dual_purpose:
+                console.print("[dim]Launching shared browser for dual-purpose mode...[/dim]")
+                browser = await p.chromium.launch(
+                    headless=True,
+                    args=[
+                        '--no-sandbox',
+                        '--disable-setuid-sandbox',
+                        '--disable-dev-shm-usage',
+                        '--disable-accelerated-2d-canvas',
+                        '--no-first-run',
+                        '--no-zygote',
+                        '--disable-gpu'
+                    ]
+                )
+
             while True:
                 if circuit_state["consecutive_errors"] >= MAX_CONSECUTIVE_ERRORS:
                     console.print(f"[bold red]Circuit Breaker Tripped! {MAX_CONSECUTIVE_ERRORS} consecutive errors. Stopping.[/bold red]")
@@ -448,8 +474,26 @@ def enrich_from_queue(
 
                 messages = queue_manager.poll(batch_size=batch_size)
                 if not messages:
-                    console.print("[dim]Queue empty. Waiting...[/dim]")
-                    await asyncio.sleep(5)
+                    if dual_purpose and gm_queue:
+                        console.print("[dim]Enrichment queue empty. Checking GM List Items...[/dim]")
+                        # We run the details worker logic once (poll 1)
+                        # This uses the same logic as 'cocli worker details'
+                        # but integrated into this loop.
+                        try:
+                            console.print("[dim]Calling run_details_worker(once=True)...[/dim]")
+                            # We call the function from worker.py
+                            # Note: run_details_worker has its own internal loop,
+                            # so we need a version that just does one batch or we handle it here.
+                            # For simplicity and safety, let's just trigger the details worker 
+                            # logic for a short burst if enabled.
+                            await run_details_worker(headless=True, debug=False, campaign_name=campaign_name, once=True, processed_by="fargate-worker", browser=browser)
+                            console.print("[dim]run_details_worker(once=True) returned.[/dim]")
+                        except Exception as e:
+                            console.print(f"[red]Dual-purpose Details Task Failed: {e}[/red]")
+                            await asyncio.sleep(5)
+                    else:
+                        console.print("[dim]Queue empty. Waiting...[/dim]")
+                        await asyncio.sleep(5)
                     continue
                 
                 console.print(f"Processing batch of {len(messages)}...")
@@ -467,6 +511,9 @@ def enrich_from_queue(
                         circuit_state["consecutive_errors"] = 0
                     else:
                         circuit_state["consecutive_errors"] += failure_count
+            
+            if browser:
+                await browser.close()
 
     if runner == "docker":
         try:

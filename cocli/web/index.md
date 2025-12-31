@@ -25,6 +25,21 @@ This dashboard provides a real-time view of the scraping and enrichment funnel.
     </tbody>
 </table>
 
+<div id="worker-stats-container" style="display:none; margin: 20px 0;">
+    <h3>Processing Sources (GM Details)</h3>
+    <table class="report-table">
+        <thead>
+            <tr>
+                <th>Worker Type</th>
+                <th>Count</th>
+                <th>Share</th>
+            </tr>
+        </thead>
+        <tbody id="worker-stats-body">
+        </tbody>
+    </table>
+</div>
+
 <p id="last-updated-text" style="font-size: 0.8em; color: #666; display:none;">
     Last Updated: <span id="last-updated-time"></span> 
     <button onclick="location.reload()">Refresh</button>
@@ -162,6 +177,23 @@ This dashboard provides a real-time view of the scraping and enrichment funnel.
         document.getElementById('last-updated-time').textContent = new Date(stats.last_updated).toLocaleString();
         document.getElementById('last-updated-text').style.display = 'block';
         
+        // Update Worker Stats
+        const workerStats = stats.worker_stats || {};
+        const workerBody = document.getElementById('worker-stats-body');
+        const workerContainer = document.getElementById('worker-stats-container');
+        workerBody.innerHTML = '';
+        const totalProcessed = Object.values(workerStats).reduce((a, b) => a + b, 0);
+        
+        if (totalProcessed > 0) {
+            Object.entries(workerStats).sort((a,b) => b[1] - a[1]).forEach(([worker, count]) => {
+                const share = ((count / totalProcessed) * 100).toFixed(1) + '%';
+                const tr = document.createElement('tr');
+                tr.innerHTML = `<td>${worker}</td><td>${count.toLocaleString()}</td><td>${share}</td>`;
+                workerBody.appendChild(tr);
+            });
+            workerContainer.style.display = 'block';
+        }
+
         // Update queries
         const queriesList = document.getElementById('queries-list');
         queriesList.innerHTML = '';
