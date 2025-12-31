@@ -513,24 +513,24 @@ def enrich_from_queue(
 
                 messages = queue_manager.poll(batch_size=batch_size)
                 if not messages:
-                                if dual_purpose and gm_queue:
-                                    tasks = gm_queue.poll(batch_size=1)
-                                    if tasks:
-                                        task = tasks[0]
-                                        console.print(f"[yellow]Enrichment empty. Falling back to Details task: {task.place_id}[/yellow]")
-                                        from cocli.commands.worker import run_details_worker
-                                        await run_details_worker(
-                                            headless=True,
-                                            debug=False,
-                                            campaign_name=campaign_name,
-                                            once=True,
-                                            processed_by=f"fargate-worker-{socket.gethostname()}",
-                                            workers=1
-                                        )
-                                        continue
-                                        else:
-                        console.print("[dim]Queue empty. Waiting...[/dim]")
-                        await asyncio.sleep(5)
+                    if dual_purpose and gm_queue:
+                        tasks = gm_queue.poll(batch_size=1)
+                        if tasks:
+                            task = tasks[0]
+                            console.print(f"[yellow]Enrichment empty. Falling back to Details task: {task.place_id}[/yellow]")
+                            from cocli.commands.worker import run_details_worker
+                            await run_details_worker(
+                                headless=True,
+                                debug=False,
+                                campaign_name=campaign_name,
+                                once=True,
+                                processed_by=f"fargate-worker-{socket.gethostname()}",
+                                workers=1
+                            )
+                            continue
+                    
+                    console.print("[dim]Queue empty. Waiting...[/dim]")
+                    await asyncio.sleep(5)
                     continue
                 
                 console.print(f"Processing batch of {len(messages)}...")
