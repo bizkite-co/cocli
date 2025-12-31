@@ -303,6 +303,45 @@ def enrich_from_queue(
     async def process_message_docker(client: httpx.AsyncClient, msg: QueueMessage) -> bool:
         """Returns True if successful (even if no email found), False if error/exception."""
         try:
+            # --- Freshness Check (S3 First) ---
+            if s3_client and s3_bucket and not msg.force_refresh:
+                s3_path = f"companies/{msg.company_slug}/enrichments/website.md"
+                local_path = get_companies_dir() / msg.company_slug / "enrichments" / "website.md"
+                
+                # Check if it exists on S3
+                try:
+                    s3_client.head_object(Bucket=s3_bucket, Key=s3_path)
+                    # It exists. Let's see if we should download it and check freshness.
+                    local_path.parent.mkdir(parents=True, exist_ok=True)
+                    s3_client.download_file(s3_bucket, s3_path, str(local_path))
+                    
+                    if local_path.exists():
+                        with open(local_path, "r") as f:
+                            content = f.read()
+                            if "---" in content:
+                                try:
+                                    fm = yaml.safe_load(content.split("---")[1])
+                                    last_enriched = fm.get("last_enriched")
+                                    if last_enriched:
+                                        if isinstance(last_enriched, str):
+                                            last_enriched = datetime.fromisoformat(last_enriched)
+                                        
+                                        # Force naive for comparison
+                                        if last_enriched.tzinfo is not None:
+                                            last_enriched = last_enriched.replace(tzinfo=None)
+                                            
+                                        age_days = (datetime.now() - last_enriched).days
+                                        if age_days < 30:
+                                            console.print(f"[dim]Skipping website enrichment for {msg.domain}. Data is fresh ({age_days} days old).[/dim]")
+                                            queue_manager.ack(msg)
+                                            return True
+                                except Exception as e:
+                                    console.print(f"[dim]Failed to parse existing enrichment for {msg.domain}: {e}[/dim]")
+                except Exception:
+                    # File doesn't exist on S3, proceed to scrape
+                    pass
+            # ---------------------------------
+
             enrichment_service_url = get_enrichment_service_url()
             target_url = f"{enrichment_service_url}/enrich"
             
@@ -474,24 +513,22 @@ def enrich_from_queue(
 
                 messages = queue_manager.poll(batch_size=batch_size)
                 if not messages:
-                    if dual_purpose and gm_queue:
-                        console.print("[dim]Enrichment queue empty. Checking GM List Items...[/dim]")
-                        # We run the details worker logic once (poll 1)
-                        # This uses the same logic as 'cocli worker details'
-                        # but integrated into this loop.
-                        try:
-                            console.print("[dim]Calling run_details_worker(once=True)...[/dim]")
-                            # We call the function from worker.py
-                            # Note: run_details_worker has its own internal loop,
-                            # so we need a version that just does one batch or we handle it here.
-                            # For simplicity and safety, let's just trigger the details worker 
-                            # logic for a short burst if enabled.
-                            await run_details_worker(headless=True, debug=False, campaign_name=campaign_name, once=True, processed_by="fargate-worker", browser=browser)
-                            console.print("[dim]run_details_worker(once=True) returned.[/dim]")
-                        except Exception as e:
-                            console.print(f"[red]Dual-purpose Details Task Failed: {e}[/red]")
-                            await asyncio.sleep(5)
-                    else:
+                                if dual_purpose and gm_queue:
+                                    tasks = gm_queue.poll(batch_size=1)
+                                    if tasks:
+                                        task = tasks[0]
+                                        console.print(f"[yellow]Enrichment empty. Falling back to Details task: {task.place_id}[/yellow]")
+                                        from cocli.commands.worker import run_details_worker
+                                        await run_details_worker(
+                                            headless=True,
+                                            debug=False,
+                                            campaign_name=campaign_name,
+                                            once=True,
+                                            processed_by=f"fargate-worker-{socket.gethostname()}",
+                                            workers=1
+                                        )
+                                        continue
+                                        else:
                         console.print("[dim]Queue empty. Waiting...[/dim]")
                         await asyncio.sleep(5)
                     continue

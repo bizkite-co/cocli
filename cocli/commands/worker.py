@@ -327,6 +327,67 @@ async def _run_details_task_loop(browser: Any, gm_list_item_queue: Any, enrichme
         
         try:
             csv_manager = ProspectsIndexManager(task.campaign_name)
+            file_path = csv_manager.get_file_path(task.place_id)
+            s3_key = f"campaigns/{task.campaign_name}/indexes/google_maps_prospects/{file_path.name}"
+            
+            # 1. Try to fetch existing data from S3 first (if not local)
+            if not file_path.exists():
+                try:
+                    s3_client.download_file(bucket_name, s3_key, str(file_path))
+                    logger.debug(f"Fetched existing data for {task.place_id} from S3.")
+                except Exception:
+                    # Not found on S3 is fine, it's a new lead
+                    pass
+
+            existing_prospect = None
+            if file_path.exists():
+                try:
+                    with open(file_path, 'r', encoding='utf-8') as f:
+                        reader = csv.DictReader(f)
+                        existing_data = next(reader, None)
+                        if existing_data:
+                            existing_prospect = GoogleMapsProspect.model_validate(existing_data) 
+                except Exception as e:
+                    logger.warning(f"Error reading local file {file_path}: {e}")
+
+            # 2. Check freshness
+            if existing_prospect and not task.force_refresh:
+                if existing_prospect.updated_at:
+                    # Convert updated_at if it's a string (from CSV)
+                    u_at = existing_prospect.updated_at
+                    if isinstance(u_at, str):
+                        try:
+                            u_at = datetime.fromisoformat(u_at)
+                        except ValueError:
+                            u_at = None
+                    
+                    if u_at:
+                        # Ensure u_at is naive for comparison
+                        if u_at.tzinfo is not None:
+                            u_at = u_at.replace(tzinfo=None)
+                        
+                        age_seconds = (datetime.now() - u_at).total_seconds()
+                        age_days = age_seconds / 86400
+                        
+                        if age_days < 30:
+                            logger.info(f"Skipping scrape for {task.place_id}. Data is fresh ({max(0, int(age_days))} days old).")
+                            
+                            # Ensure it's in the enrichment queue if it has a domain
+                            if existing_prospect.Domain and existing_prospect.Name:
+                                msg = QueueMessage(
+                                    domain=existing_prospect.Domain,
+                                    company_slug=slugify(existing_prospect.Name),
+                                    campaign_name=task.campaign_name,
+                                    force_refresh=task.force_refresh,
+                                    ack_token=None
+                                )
+                                enrichment_queue.push(msg)
+                            
+                            gm_list_item_queue.ack(task)
+                            if once: return
+                            continue
+
+            # 3. Proceed with Scrape
             page = await browser.new_page()
             try:
                 detailed_prospect_data = await scrape_google_maps_details(
@@ -347,25 +408,18 @@ async def _run_details_task_loop(browser: Any, gm_list_item_queue: Any, enrichme
             
             detailed_prospect_data.processed_by = processed_by
 
-            existing_prospect = None
-            file_path = csv_manager.get_file_path(task.place_id)
-            if file_path.exists():
-                with open(file_path, 'r', encoding='utf-8') as f:
-                    reader = csv.DictReader(f)
-                    existing_data = next(reader, None)
-                    if existing_data:
-                        existing_prospect = GoogleMapsProspect.model_validate(existing_data) 
-            
+            # Merge with existing data if we have it
             final_prospect_data = detailed_prospect_data
             if existing_prospect:
                 merged_data = existing_prospect.model_dump()
-                merged_data.update(detailed_prospect_data.model_dump(exclude_unset=True)) 
+                # Update with new data, but keep old data where new is missing
+                new_data = detailed_prospect_data.model_dump(exclude_unset=True)
+                merged_data.update({k: v for k, v in new_data.items() if v is not None}) 
                 final_prospect_data = GoogleMapsProspect.model_validate(merged_data)
             
             final_prospect_data.updated_at = datetime.now()
 
             if csv_manager.append_prospect(final_prospect_data):
-                s3_key = f"campaigns/{task.campaign_name}/indexes/google_maps_prospects/{file_path.name}"
                 try:
                     s3_client.upload_file(str(file_path), bucket_name, s3_key)
                     logger.info(f"Updated and uploaded {file_path.name} to S3.")
