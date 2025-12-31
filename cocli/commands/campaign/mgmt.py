@@ -2,11 +2,13 @@ import typer
 import subprocess
 import toml
 import logging
-from typing import Optional
+import csv
+from typing import Optional, List
 from rich.console import Console
 from typing_extensions import Annotated
+from pathlib import Path
 
-from ...core.config import get_campaign_dir, get_cocli_base_dir, get_all_campaign_dirs, get_editor_command, get_campaign, set_campaign
+from ...core.config import get_campaign_dir, get_cocli_base_dir, get_all_campaign_dirs, get_editor_command, get_campaign, set_campaign, load_campaign_config
 from ...models.campaign import Campaign
 from ...renderers.campaign_view import display_campaign_view
 from ...core.campaign_workflow import CampaignWorkflow
@@ -168,4 +170,183 @@ def status(
 
     workflow = CampaignWorkflow(effective_campaign_name)
     console.print(f"[green]Current workflow state for '{effective_campaign_name}':[/][bold]{workflow.state}[/]")
+
+@app.command()
+def add_query(
+    query: Annotated[str, typer.Argument(help="The search query to add.")],
+    campaign_name: Optional[str] = typer.Option(None, "--campaign", "-c", help="Campaign name.")
+) -> None:
+    """Adds a search query to the campaign configuration."""
+    if not campaign_name:
+        campaign_name = get_campaign()
+    if not campaign_name:
+        console.print("[bold red]Error: No campaign specified.[/bold red]")
+        raise typer.Exit(1)
+
+    campaign_dir = get_campaign_dir(campaign_name)
+    config_path = campaign_dir / "config.toml"
+    
+    with open(config_path, "r") as f:
+        config = toml.load(f)
+    
+    queries = config.setdefault("prospecting", {}).get("queries", [])
+    if query not in queries:
+        queries.append(query)
+        queries.sort()
+        config["prospecting"]["queries"] = queries
+        with open(config_path, "w") as f:
+            toml.dump(config, f)
+        console.print(f"[green]Added query:[/green] {query}")
+    else:
+        console.print(f"[yellow]Query already exists:[/yellow] {query}")
+
+@app.command()
+def remove_query(
+    query: Annotated[str, typer.Argument(help="The search query to remove.")],
+    campaign_name: Optional[str] = typer.Option(None, "--campaign", "-c", help="Campaign name.")
+) -> None:
+    """Removes a search query from the campaign configuration."""
+    if not campaign_name:
+        campaign_name = get_campaign()
+    if not campaign_name:
+        console.print("[bold red]Error: No campaign specified.[/bold red]")
+        raise typer.Exit(1)
+
+    campaign_dir = get_campaign_dir(campaign_name)
+    config_path = campaign_dir / "config.toml"
+    
+    with open(config_path, "r") as f:
+        config = toml.load(f)
+    
+    queries = config.get("prospecting", {}).get("queries", [])
+    if query in queries:
+        queries.remove(query)
+        config["prospecting"]["queries"] = queries
+        with open(config_path, "w") as f:
+            toml.dump(config, f)
+        console.print(f"[green]Removed query:[/green] {query}")
+    else:
+        console.print(f"[yellow]Query not found:[/yellow] {query}")
+
+@app.command()
+def add_location(
+    location: Annotated[str, typer.Argument(help="The location name/city to add.")],
+    campaign_name: Optional[str] = typer.Option(None, "--campaign", "-c", help="Campaign name.")
+) -> None:
+    """Adds a target location to the campaign."""
+    if not campaign_name:
+        campaign_name = get_campaign()
+    if not campaign_name:
+        console.print("[bold red]Error: No campaign specified.[/bold red]")
+        raise typer.Exit(1)
+
+    campaign_dir = get_campaign_dir(campaign_name)
+    config_path = campaign_dir / "config.toml"
+    with open(config_path, "r") as f:
+        config = toml.load(f)
+
+    target_csv = config.get("prospecting", {}).get("target-locations-csv")
+    if target_csv:
+        csv_path = campaign_dir / target_csv
+        rows = []
+        exists = False
+        fieldnames = ["name", "beds", "lat", "lon", "city", "state", "csv_name", "saturation_score", "company_slug"]
+        
+        if csv_path.exists():
+            with open(csv_path, "r", newline="") as f:
+                reader = csv.DictReader(f)
+                fieldnames = reader.fieldnames or fieldnames
+                for row in reader:
+                    if row.get("name") == location or row.get("city") == location:
+                        exists = True
+                    rows.append(row)
+        
+        if not exists:
+            new_row = {fn: "" for fn in fieldnames}
+            # Try to be smart: if it has a comma, maybe it's "City, ST"
+            if "," in location:
+                city, state = [part.strip() for part in location.split(",", 1)]
+                new_row["city"] = city
+                new_row["state"] = state
+                new_row["name"] = location
+            else:
+                new_row["name"] = location
+                new_row["city"] = location
+            
+            rows.append(new_row)
+            # Sort by name
+            rows.sort(key=lambda x: x.get("name") or x.get("city") or "")
+            
+            with open(csv_path, "w", newline="") as f:
+                writer = csv.DictWriter(f, fieldnames=fieldnames)
+                writer.writeheader()
+                writer.writerows(rows)
+            console.print(f"[green]Added location to CSV:[/green] {location}")
+        else:
+            console.print(f"[yellow]Location already exists in CSV:[/yellow] {location}")
+    else:
+        # Fallback to config.toml locations list
+        locations = config.setdefault("prospecting", {}).get("locations", [])
+        if location not in locations:
+            locations.append(location)
+            locations.sort()
+            config["prospecting"]["locations"] = locations
+            with open(config_path, "w") as f:
+                toml.dump(config, f)
+            console.print(f"[green]Added location to config:[/green] {location}")
+        else:
+            console.print(f"[yellow]Location already exists in config:[/yellow] {location}")
+
+@app.command()
+def remove_location(
+    location: Annotated[str, typer.Argument(help="The location name/city to remove.")],
+    campaign_name: Optional[str] = typer.Option(None, "--campaign", "-c", help="Campaign name.")
+) -> None:
+    """Removes a target location from the campaign."""
+    if not campaign_name:
+        campaign_name = get_campaign()
+    if not campaign_name:
+        console.print("[bold red]Error: No campaign specified.[/bold red]")
+        raise typer.Exit(1)
+
+    campaign_dir = get_campaign_dir(campaign_name)
+    config_path = campaign_dir / "config.toml"
+    with open(config_path, "r") as f:
+        config = toml.load(f)
+
+    target_csv = config.get("prospecting", {}).get("target-locations-csv")
+    removed = False
+    
+    if target_csv:
+        csv_path = campaign_dir / target_csv
+        if csv_path.exists():
+            rows = []
+            with open(csv_path, "r", newline="") as f:
+                reader = csv.DictReader(f)
+                fieldnames = reader.fieldnames
+                for row in reader:
+                    if row.get("name") == location or row.get("city") == location:
+                        removed = True
+                        continue
+                    rows.append(row)
+            
+            if removed:
+                with open(csv_path, "w", newline="") as f:
+                    writer = csv.DictWriter(f, fieldnames=fieldnames)
+                    writer.writeheader()
+                    writer.writerows(rows)
+                console.print(f"[green]Removed location from CSV:[/green] {location}")
+    
+    if not removed:
+        locations = config.get("prospecting", {}).get("locations", [])
+        if location in locations:
+            locations.remove(location)
+            config["prospecting"]["locations"] = locations
+            with open(config_path, "w") as f:
+                toml.dump(config, f)
+            console.print(f"[green]Removed location from config:[/green] {location}")
+            removed = True
+            
+    if not removed:
+        console.print(f"[yellow]Location not found:[/yellow] {location}")
 

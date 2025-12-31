@@ -1,6 +1,7 @@
 import os
 import boto3 
 import logging
+import yaml
 from typing import Dict, Any, Literal, Sequence, cast
 from rich.console import Console
 
@@ -128,38 +129,115 @@ def get_campaign_stats(campaign_name: str) -> Dict[str, Any]:
     
     companies_dir = get_companies_dir()
     
-    # We scan all companies to find those tagged with this campaign
-    # This is more robust than just checking the prospect index
+    # Load target slugs from prospects index for fallback cross-referencing
+    target_slugs = set()
+    if manager.index_dir.exists():
+        for prospect in manager.read_all_prospects():
+            if prospect.Domain:
+                target_slugs.add(slugify(prospect.Domain))
+
+    # We scan all companies to find those tagged with this campaign or in the index
     for company_dir in companies_dir.iterdir():
         if not company_dir.is_dir():
             continue
             
         tags_path = company_dir / "tags.lst"
-        if not tags_path.exists():
+        has_tag = False
+        if tags_path.exists():
+            try:
+                tags = tags_path.read_text().strip().splitlines()
+                if campaign_name in tags:
+                    has_tag = True
+            except Exception:
+                pass
+        
+        in_index = company_dir.name in target_slugs
+
+        if not has_tag and not in_index:
             continue
             
-        try:
-            tags = tags_path.read_text().strip().splitlines()
-            if campaign_name not in tags:
-                continue
-        except Exception:
-            continue
-            
-        # If we are here, the company is tagged for this campaign
-        if (company_dir / "enrichments" / "website.md").exists():
+        website_md = company_dir / "enrichments" / "website.md"
+        index_md = company_dir / "_index.md"
+
+        if website_md.exists():
             enriched_count += 1
             
-            # Check for email
-            index_path = company_dir / "_index.md"
-            if index_path.exists():
-                try:
-                    content = index_path.read_text()
-                    if "email: " in content and "email: null" not in content and "email: ''" not in content:
-                        emails_found_count += 1
-                except Exception:
-                    pass
+        if not website_md.exists() and not index_md.exists():
+            continue
+
+        emails = set()
+
+        # Check _index.md (Compiled data)
+        if index_md.exists():
+            try:
+                content = index_md.read_text()
+                if "email: " in content:
+                    # Use a more robust check if possible, or just look for the line
+                    for line in content.splitlines():
+                        if line.startswith("email:"):
+                            e = line.split(":", 1)[1].strip().strip("'").strip('"')
+                            if e and e not in ["null", "''", ""]:
+                                emails.add(e)
+                                break
+            except Exception:
+                pass
+
+        # Check website.md (Raw enrichment data)
+        if website_md.exists():
+            try:
+                content = website_md.read_text()
+                if content.startswith("---"):
+                    parts = content.split("---")
+                    if len(parts) >= 3:
+                        data = yaml.safe_load(parts[1])
+                        if data:
+                            email = data.get("email")
+                            personnel = data.get("personnel", [])
+                            
+                            if email and email not in ["null", "''", ""]: 
+                                emails.add(email)
+                            
+                            if personnel:
+                                for p in personnel:
+                                    if isinstance(p, dict) and p.get("email"):
+                                        emails.add(p["email"])
+                                    elif isinstance(p, str) and "@" in p: 
+                                         emails.add(p)
+            except Exception:
+                pass
+
+        if emails:
+            emails_found_count += 1
 
     stats['enriched_count'] = enriched_count
     stats['emails_found_count'] = emails_found_count
     
+    # 5. Configuration Data (Queries & Locations)
+    prospecting_config = config.get('prospecting', {})
+    stats['queries'] = prospecting_config.get('queries', [])
+    
+    # Locations can be in the list or in a CSV
+    locations = prospecting_config.get('locations', [])
+    target_locations_csv = prospecting_config.get('target-locations-csv')
+    
+    if target_locations_csv:
+        csv_path = get_cocli_base_dir() / "campaigns" / campaign_name / target_locations_csv
+        if csv_path.exists():
+            import csv
+            try:
+                with open(csv_path, 'r') as f:
+                    reader = csv.DictReader(f)
+                    # Just collect names/cities to keep JSON size reasonable
+                    csv_locations = []
+                    for row in reader:
+                        name = row.get('name') or row.get('city')
+                        if name:
+                            csv_locations.append(name)
+                    # Merge with explicit list if any
+                    locations = list(set(locations + csv_locations))
+            except Exception as e:
+                logger.warning(f"Could not read target locations CSV: {e}")
+
+    stats['locations'] = sorted(locations)
+
     return stats
