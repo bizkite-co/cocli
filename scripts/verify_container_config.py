@@ -2,7 +2,7 @@ import os
 import sys
 from cocli.core.queue.factory import get_queue_manager
 
-def test_queue_config():
+def test_queue_config() -> None:
     print("Checking Queue Manager configuration...")
     os.environ["COCLI_RUNNING_IN_FARGATE"] = "true"
     # Mocking environment variables that the factory expects if config file is missing

@@ -73,10 +73,13 @@
 
             let zoomed = false;
             layers.forEach((layerData, index) => {
-                const isTarget = layerData.name === "Target Areas";
-                let preserve = true;
+                // Determine if this layer should trigger an automatic zoom
+                // "Scraped Areas" can be very large/disparate, so we don't want to zoom to fit them.
+                const excludeFromZoom = ["Scraped Areas", "Legacy Scrapes"];
+                const canTriggerZoom = !excludeFromZoom.includes(layerData.name);
                 
-                if (!isTarget && !zoomed && layerData.default) {
+                let preserve = true;
+                if (canTriggerZoom && !zoomed && layerData.default) {
                     preserve = false;
                     zoomed = true;
                 }

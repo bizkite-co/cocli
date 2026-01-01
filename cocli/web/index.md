@@ -194,26 +194,54 @@ This dashboard provides a real-time view of the scraping and enrichment funnel.
             workerContainer.style.display = 'block';
         }
 
-        // Update queries
-        const queriesList = document.getElementById('queries-list');
-        queriesList.innerHTML = '';
-        (stats.queries || []).forEach(q => {
-            const li = document.createElement('li');
-            li.className = 'list-item-editable';
-            li.innerHTML = `<span>${q}</span> <button class="btn-remove" onclick="removeExisting('query', '${q}')">×</button>`;
-            queriesList.appendChild(li);
-        });
+                // Update queries
 
-        // Update locations
-        const locationsList = document.getElementById('locations-list');
-        locationsList.innerHTML = '';
-        (stats.locations || []).forEach(loc => {
-            const li = document.createElement('li');
-            li.className = 'list-item-editable';
-            li.innerHTML = `<span>${loc}</span> <button class="btn-remove" onclick="removeExisting('location', '${loc}')">×</button>`;
-            locationsList.appendChild(li);
-        });
+                const queriesList = document.getElementById('queries-list');
 
-        // Update downloads
+                queriesList.innerHTML = '';
 
-</script>
+                (stats.queries || []).forEach(q => {
+
+                    const li = document.createElement('li');
+
+                    li.className = 'list-item-editable';
+
+                    li.innerHTML = `<span>${q}</span> <button class="btn-remove" onclick="removeExisting('query', '${q}')">×</button>`;
+
+                    queriesList.appendChild(li);
+
+                });
+
+        
+
+                // Update locations
+
+                const locationsList = document.getElementById('locations-list');
+
+                locationsList.innerHTML = '';
+
+                (stats.locations || []).forEach(loc => {
+
+                    const li = document.createElement('li');
+
+                    li.className = 'list-item-editable';
+
+                    li.innerHTML = `<span>${loc}</span> <button class="btn-remove" onclick="removeExisting('location', '${loc}')">×</button>`;
+
+                    locationsList.appendChild(li);
+
+                });
+
+        
+
+                // Update downloads
+
+                document.getElementById('email-count-display').textContent = (stats.emails_found_count || 0).toLocaleString();
+
+                document.getElementById('download-link').href = `/exports/${stats.campaign_name || campaign}-emails.csv`;
+
+            }
+
+        </script>
+
+        

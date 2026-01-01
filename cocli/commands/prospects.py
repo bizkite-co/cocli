@@ -406,8 +406,8 @@ def enrich_from_queue(
                              s3_client.upload_file(str(comp_path), s3_bucket, f"companies/{msg.company_slug}/company.md")
                         
                         # console.print(f"[dim]Synced {msg.company_slug} to S3[/dim]")
-                    except Exception as e:
-                        console.print(f"[red]S3 Sync Failed for {msg.company_slug}: {e}[/red]")
+                    except Exception as se:
+                        console.print(f"[red]S3 Sync Failed for {msg.company_slug}: {se}[/red]")
                 # -------------------------------
 
                 if website_data.email:
@@ -459,8 +459,8 @@ def enrich_from_queue(
                         comp_path = company_dir / "company.md"
                         if comp_path.exists():
                              s3_client.upload_file(str(comp_path), s3_bucket, f"companies/{msg.company_slug}/company.md")
-                    except Exception as e:
-                        console.print(f"[red]S3 Sync Failed for {msg.company_slug}: {e}[/red]")
+                    except Exception as se:
+                        console.print(f"[red]S3 Sync Failed for {msg.company_slug}: {se}[/red]")
                 # ---------------------------------------------
 
                 queue_manager.ack(msg)
