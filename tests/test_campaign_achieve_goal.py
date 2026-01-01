@@ -35,14 +35,18 @@ queries = ["software company"]
 """
     config_path.write_text(config_content)
 
-    mocker.patch("cocli.commands.campaign.get_campaign", return_value=campaign_name)
-    mocker.patch("cocli.commands.campaign.get_campaign_dir", return_value=campaign_dir)
-    mocker.patch("cocli.commands.campaign.get_cocli_base_dir", return_value=tmp_path)
+    mocker.patch("cocli.core.config.get_campaign", return_value=campaign_name)
+    mocker.patch("cocli.commands.campaign.prospecting.get_campaign", return_value=campaign_name)
+    mocker.patch("cocli.core.config.get_campaign_dir", return_value=campaign_dir)
+    mocker.patch("cocli.commands.campaign.prospecting.get_campaign_dir", return_value=campaign_dir)
+    mocker.patch("cocli.core.config.get_cocli_base_dir", return_value=tmp_path)
     # Patched in the manager now
     mocker.patch("cocli.core.prospects_csv_manager.get_campaign_scraped_data_dir", return_value=tmp_path / "scraped_data")
-    mocker.patch("cocli.commands.campaign.get_companies_dir", return_value=tmp_path / "companies")
+    mocker.patch("cocli.core.config.get_companies_dir", return_value=tmp_path / "companies")
+    mocker.patch("cocli.commands.campaign.prospecting.get_companies_dir", return_value=tmp_path / "companies")
 
-    mocker.patch("cocli.commands.campaign.ensure_enrichment_service_ready", return_value=None)
+    mocker.patch("cocli.core.enrichment_service_utils.ensure_enrichment_service_ready", return_value=None)
+    mocker.patch("cocli.commands.campaign.prospecting.ensure_enrichment_service_ready", return_value=None, create=True)
 
     # Mock the entire async_playwright context manager
     mock_playwright_manager = MagicMock()
@@ -56,11 +60,13 @@ queries = ["software company"]
         )
     )
     mock_playwright_manager.__aexit__.return_value = None
-    mocker.patch("cocli.commands.campaign.async_playwright", return_value=mock_playwright_manager)
+    mocker.patch("cocli.commands.campaign.prospecting.async_playwright", return_value=mock_playwright_manager)
 
     mocker.patch("cocli.core.geocoding.get_coordinates_from_city_state", return_value={"latitude": 40.7596, "longitude": -111.8868})
-    mocker.patch("cocli.commands.campaign.scrape_google_maps", return_value=async_generator()) # Reverted
-    mocker.patch("cocli.commands.campaign.import_prospect", return_value=type('obj', (object,), {'name': 'mock_company', 'domain': 'mock.com', 'slug': 'mock-company', 'email': None}))
+    mocker.patch("cocli.scrapers.google_maps.scrape_google_maps", return_value=async_generator())
+    mocker.patch("cocli.commands.campaign.prospecting.scrape_google_maps", return_value=async_generator())
+    mocker.patch("cocli.core.importing.import_prospect", return_value=type('obj', (object,), {'name': 'mock_company', 'domain': 'mock.com', 'slug': 'mock-company', 'email': None}))
+    mocker.patch("cocli.commands.campaign.prospecting.import_prospect", return_value=type('obj', (object,), {'name': 'mock_company', 'domain': 'mock.com', 'slug': 'mock-company', 'email': None}))
 
     mock_website = MagicMock()
     mock_website.email = "test@example.com"
@@ -70,7 +76,8 @@ queries = ["software company"]
         "domain": "example.com",
         "company_name": "Test Company"
     }
-    mocker.patch("cocli.commands.campaign.enrich_company_website", new_callable=AsyncMock, return_value=mock_website)
+    mocker.patch("cocli.core.enrichment.enrich_company_website", new_callable=AsyncMock, return_value=mock_website)
+    mocker.patch("cocli.commands.campaign.prospecting.enrich_company_website", new_callable=AsyncMock, return_value=mock_website)
 
     mocker.patch("httpx.Client.get", return_value=MagicMock(raise_for_status=MagicMock()))
 

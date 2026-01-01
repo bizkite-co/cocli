@@ -3,7 +3,7 @@ from unittest.mock import MagicMock, patch
 from pathlib import Path
 
 from cocli.core.campaign_workflow import CampaignWorkflow
-from cocli.commands.campaign import next_step as campaign_next_step
+from cocli.commands.campaign.workflow import next_step as campaign_next_step
 
 class TestCampaignWorkflow:
     @pytest.fixture
@@ -30,9 +30,9 @@ class TestCampaignWorkflow:
 class TestCampaignCommands:
     @pytest.fixture
     def mock_campaign_workflow(self, tmp_path):
-        with patch('cocli.commands.campaign.get_campaign_dir') as mock_get_campaign_dir:
+        with patch('cocli.core.config.get_campaign_dir') as mock_get_campaign_dir:
             mock_get_campaign_dir.return_value = tmp_path / "campaigns" / "test_campaign"
-            with patch('cocli.commands.campaign.CampaignWorkflow') as MockCampaignWorkflow:
+            with patch('cocli.commands.campaign.workflow.CampaignWorkflow') as MockCampaignWorkflow:
                 mock_instance = MagicMock(spec=CampaignWorkflow)
                 mock_instance.state = "prospecting_enriching" # Initial state for the mock
 

@@ -2,6 +2,11 @@ import typer
 from cocli.commands.campaign import mgmt, workflow, planning, viz, prospecting
 from cocli.commands import prospects
 
+# Re-export core functions for backward compatibility and testing
+from cocli.core.config import get_campaign as get_campaign, get_campaign_dir as get_campaign_dir, get_cocli_base_dir as get_cocli_base_dir, get_editor_command as get_editor_command
+from cocli.core.utils import run_fzf as run_fzf
+from cocli.commands.campaign.workflow import next_step as next_step
+
 app = typer.Typer(no_args_is_help=True, help="Manage campaigns.")
 
 # Merge all commands into the main campaign app

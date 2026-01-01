@@ -29,7 +29,7 @@ def test_create_campaign():
 
 @given('a cocli data directory', target_fixture="cocli_data_dir")
 def cocli_data_dir(temp_cocli_data_dir, mocker):
-    mocker.patch('cocli.commands.campaign.get_cocli_base_dir', return_value=temp_cocli_data_dir)
+    mocker.patch('cocli.commands.campaign.mgmt.get_cocli_base_dir', return_value=temp_cocli_data_dir)
     return temp_cocli_data_dir
 
 @when(parsers.parse('the user runs "{command}"'), target_fixture="cli_result")
