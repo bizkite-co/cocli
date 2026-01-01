@@ -94,20 +94,65 @@ def visualize_coverage(
     # Aggregated Grid
     aggregated_tiles: Dict[str, Dict[str, Any]] = {}
     for area in scraped_areas:
-        grid_lat = math.floor(area.lat_min * 10) / 10.0
-        grid_lon = math.floor(area.lon_min * 10) / 10.0
+        # Use center point for more robust grid alignment
+        # Viewports are centered on tiles, so bottom edge might bleed into previous tile
+        center_lat = (area.lat_min + area.lat_max) / 2
+        center_lon = (area.lon_min + area.lon_max) / 2
+        
+        # Round to 0.1 degree grid
+        grid_lat = math.floor(round(center_lat, 6) * 10) / 10.0
+        grid_lon = math.floor(round(center_lon, 6) * 10) / 10.0
         tile_id = f"{grid_lat:.1f}_{grid_lon:.1f}"
+        
         if tile_id not in aggregated_tiles:
-            aggregated_tiles[tile_id] = {"lat": grid_lat, "lon": grid_lon, "total_items": 0}
+            aggregated_tiles[tile_id] = {
+                "lat": grid_lat, 
+                "lon": grid_lon, 
+                "total_items": 0,
+                "phrases": {}
+            }
+        
         aggregated_tiles[tile_id]["total_items"] += area.items_found
+        if area.phrase not in aggregated_tiles[tile_id]["phrases"]:
+            aggregated_tiles[tile_id]["phrases"][area.phrase] = 0
+        aggregated_tiles[tile_id]["phrases"][area.phrase] += area.items_found
 
     agg_placemarks = []
     for tile_id, data in aggregated_tiles.items():
         lat_min, lon_min = data["lat"], data["lon"]
         lat_max, lon_max = lat_min + 0.1, lon_min + 0.1
         coordinates = f"{lon_min},{lat_min},0 {lon_max},{lat_min},0 {lon_max},{lat_max},0 {lon_min},{lat_max},0 {lon_min},{lat_min},0"
+        
+        # Build description table
+        desc_parts = [
+            f"<b>Tile: {tile_id}</b><br><br>",
+            "<table border='1' cellspacing='0' cellpadding='3'>",
+            "<tr><th align='left'>Search Phrase</th><th align='right'>Found</th></tr>"
+        ]
+        
+        # Sort phrases by count descending
+        sorted_phrases = sorted(data["phrases"].items(), key=lambda x: x[1], reverse=True)
+        for phrase, count in sorted_phrases:
+            desc_parts.append(f"<tr><td>{phrase}</td><td align='right'>{count}</td></tr>")
+        
+        desc_parts.append(f"<tr><td><b>Total</b></td><td align='right'><b>{data['total_items']}</b></td></tr>")
+        desc_parts.append("</table>")
+        description = "".join(desc_parts)
+
+        # Color: Green if items found, Grey if zero
         color = "ff00ff00" if data["total_items"] > 0 else "ff808080"
-        placemark = f'''<Placemark><name>{tile_id}</name><Style><LineStyle><color>ffffffff</color></LineStyle><PolyStyle><color>40{color[2:]}</color></PolyStyle></Style><Polygon><outerBoundaryIs><LinearRing><coordinates>{coordinates}</coordinates></LinearRing></outerBoundaryIs></Polygon></Placemark>'''
+        
+        placemark = f'''        <Placemark>
+            <name>{tile_id}</name>
+            <description><![CDATA[{description}]]></description>
+            <Style>
+                <LineStyle><color>ffffffff</color></LineStyle>
+                <PolyStyle><color>40{color[2:]}</color></PolyStyle>
+            </Style>
+            <Polygon>
+                <outerBoundaryIs><LinearRing><coordinates>{coordinates}</coordinates></LinearRing></outerBoundaryIs>
+            </Polygon>
+        </Placemark>'''
         agg_placemarks.append(placemark)
 
     agg_body = "\n".join(agg_placemarks)

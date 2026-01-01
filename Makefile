@@ -458,6 +458,8 @@ start-rpi-worker: ## Start the Docker worker on Raspberry Pi
 	ssh $(RPI_USER)@$(RPI_HOST) "docker run -d --restart unless-stopped --name cocli-scraper-worker \
 		-e TZ=America/Los_Angeles \
 		-e CAMPAIGN_NAME='$(or $(CAMPAIGN), turboship)' \
+		-e AWS_PROFILE=bizkite-support \
+		-e COCLI_SCRAPE_TASKS_QUEUE_URL='https://sqs.us-east-1.amazonaws.com/193481341784/CdkScraperDeploymentStack-ScrapeTasksQueue9836DB1F-rbAwYTkBcQY8' \
 		-v ~/.aws:/root/.aws:ro cocli-worker-rpi:latest"
 
 .PHONY: start-rpi-details-worker
@@ -465,6 +467,8 @@ start-rpi-details-worker: ## Start the Details Worker on Raspberry Pi
 	ssh $(RPI_USER)@$(RPI_HOST) "docker run -d --restart unless-stopped --name cocli-details-worker \
 		-e TZ=America/Los_Angeles \
 		-e CAMPAIGN_NAME='$(or $(CAMPAIGN), turboship)' \
+		-e AWS_PROFILE=bizkite-support \
+		-e COCLI_GM_LIST_ITEM_QUEUE_URL='https://sqs.us-east-1.amazonaws.com/193481341784/CdkScraperDeploymentStack-GmListItemQueue739F25AE-8c8rNFvBkBps' \
 		-v ~/.aws:/root/.aws:ro cocli-worker-rpi:latest cocli worker details"
 
 .PHONY: stop-rpi-worker
