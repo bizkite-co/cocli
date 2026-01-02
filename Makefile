@@ -390,7 +390,8 @@ web-install: ## Install web dashboard dependencies
 
 .PHONY: web-build
 web-build: web-install ## Build the web dashboard using 11ty
-	cd cocli/web && npm run build
+	$(call validate_campaign)
+	cd cocli/web && CAMPAIGN=$(CAMPAIGN) npm run build
 
 .PHONY: web-serve
 web-serve: ## Run the web dashboard development server

@@ -3,7 +3,7 @@ layout: layout.njk
 title: cocli Campaign Dashboard
 ---
 
-# Campaign Overview: <span id="campaign-display">turboship</span>
+# Campaign Overview: <span id="campaign-display">{% if env.CAMPAIGN %}{{ env.CAMPAIGN }}{% else %}turboship{% endif %}</span>
 
 This dashboard provides a real-time view of the scraping and enrichment funnel.
 
@@ -91,7 +91,7 @@ This dashboard provides a real-time view of the scraping and enrichment funnel.
 <script>
     async function fetchReport() {
         const urlParams = new URLSearchParams(window.location.search);
-        const campaign = urlParams.get('campaign') || 'turboship';
+        const campaign = urlParams.get('campaign') || '{% if env.CAMPAIGN %}{{ env.CAMPAIGN }}{% else %}turboship{% endif %}';
         document.getElementById('campaign-display').textContent = campaign;
         
         try {
