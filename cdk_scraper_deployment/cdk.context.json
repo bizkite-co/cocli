@@ -6,5 +6,17 @@
     "us-east-1d",
     "us-east-1e",
     "us-east-1f"
+  ],
+  "availability-zones:account=865664998993:region=us-west-1": [
+    "us-west-1a",
+    "us-west-1c"
+  ],
+  "availability-zones:account=865664998993:region=us-east-1": [
+    "us-east-1a",
+    "us-east-1b",
+    "us-east-1c",
+    "us-east-1d",
+    "us-east-1e",
+    "us-east-1f"
   ]
 }

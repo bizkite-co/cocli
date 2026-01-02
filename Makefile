@@ -25,6 +25,29 @@ SHELL := /bin/bash
 # Define the virtual environment directory
 VENV_DIR := ./.venv
 
+# Campaign and AWS Profile Resolution
+# CAMPAIGN RESOLUTION
+# 1. Check if CAMPAIGN was passed in the command line (make CAMPAIGN=xyz)
+# 2. Fallback to default campaign in cocli_config.toml
+# 3. If neither, set to "ERROR" to trigger checks later.
+RAW_CAMPAIGN := $(shell [ -f $(VENV_DIR)/bin/python ] && $(VENV_DIR)/bin/python -c "from cocli.core.config import get_campaign; print(get_campaign() or '')" 2>/dev/null)
+CAMPAIGN ?= $(if $(RAW_CAMPAIGN),$(RAW_CAMPAIGN),ERROR)
+
+# Validation function to be called by targets that require a campaign
+define validate_campaign
+	@if [ "$(CAMPAIGN)" = "ERROR" ]; then \
+		echo "ERROR: No campaign specified."; \
+		echo "Please either:"; \
+		echo "  1. Pass it via CLI: make <target> CAMPAIGN=my-campaign"; \
+		echo "  2. Set a default:   cocli campaign set my-campaign"; \
+		exit 1; \
+	fi
+endef
+
+# Dynamically resolve AWS_PROFILE and REGION from campaign config
+AWS_PROFILE := $(shell [ -f $(VENV_DIR)/bin/python ] && [ "$(CAMPAIGN)" != "ERROR" ] && $(VENV_DIR)/bin/python -c "from cocli.core.config import load_campaign_config; print(load_campaign_config('$(CAMPAIGN)').get('aws', {}).get('profile', ''))" 2>/dev/null)
+REGION := $(shell [ -f $(VENV_DIR)/bin/python ] && [ "$(CAMPAIGN)" != "ERROR" ] && $(VENV_DIR)/bin/python -c "from cocli.core.config import load_campaign_config; print(load_campaign_config('$(CAMPAIGN)').get('aws', {}).get('region', 'us-east-1'))" 2>/dev/null)
+
 open: activate ##Activate the venv and open
 	@cocli
 
@@ -202,24 +225,34 @@ check-scraper-version: ## Check if local website_scraper.py is newer than in the
 
 .PHONY: deploy-infra
 deploy-infra: install ## Deploy AWS Infrastructure (queues, Fargate service definition) using CDK
-	@echo "Deploying infrastructure..."
-	cd cdk_scraper_deployment && uv venv && . .venv/bin/activate && uv pip install -r requirements.txt && cdk deploy --require-approval never --profile bizkite-support
-	@$(MAKE) update-infra-config
+	$(call validate_campaign)
+	@echo "Deploying infrastructure for campaign: $(CAMPAIGN)"
+	@echo "Using AWS Profile: $(AWS_PROFILE)"
+	@AWS_REGION=$$(./$(VENV_DIR)/bin/python -c "from cocli.core.config import load_campaign_config; config = load_campaign_config('$(CAMPAIGN)'); print(config.get('aws', {}).get('region', 'us-east-1'))"); \
+	aws ecr describe-repositories --repository-names cocli-enrichment-service --region $$AWS_REGION --profile $(AWS_PROFILE) > /dev/null 2>&1 || \
+	aws ecr create-repository --repository-name cocli-enrichment-service --region $$AWS_REGION --profile $(AWS_PROFILE)
+	cd cdk_scraper_deployment && uv venv && . .venv/bin/activate && uv pip install -r requirements.txt && cdk deploy --require-approval never --profile $(AWS_PROFILE) -c campaign=$(CAMPAIGN)
+	@$(MAKE) update-infra-config CAMPAIGN=$(CAMPAIGN)
 
 .PHONY: update-infra-config
-update-infra-config: ## Update campaign config.toml with latest SQS URLs from AWS
-	./.venv/bin/python scripts/update_campaign_infra_config.py $(CAMPAIGN)
+update-infra-config: install ## Update campaign config.toml with latest SQS URLs from AWS
+	$(call validate_campaign)
+	./$(VENV_DIR)/bin/python scripts/update_campaign_infra_config.py $(CAMPAIGN)
 
 .PHONY: deploy-enrichment
 deploy-enrichment: test docker-build ## Build and deploy the enrichment service to AWS Fargate
-	@./scripts/deploy_enrichment_service.sh
+	@./scripts/deploy_enrichment_service.sh $(CAMPAIGN)
 
 .PHONY: verify
 verify: ## Verify the Fargate deployment
-	@./scripts/verify_fargate_deployment.sh
+	@./scripts/verify_fargate_deployment.sh $(CAMPAIGN)
 
 force-update: ## Force Update of service
-	aws ecs update-service --cluster ScraperCluster --service EnrichmentService --force-new-deployment --profile bizkite-support
+	aws ecs update-service --cluster ScraperCluster --service EnrichmentService --force-new-deployment --profile $(AWS_PROFILE)
+
+scale: ## Scale the enrichment service (Usage: make scale COUNT=5 [CAMPAIGN=name])
+	$(call validate_campaign)
+	aws ecs update-service --cluster ScraperCluster --service EnrichmentService --desired-count $(or $(COUNT), 1) --profile $(AWS_PROFILE)
 
 .PHONY: ingest-legacy
 ingest-legacy: ## Ingest legacy google_maps_prospects.csv into the new queue system (Usage: make ingest-legacy CAMPAIGN=name)
@@ -228,20 +261,24 @@ ingest-legacy: ## Ingest legacy google_maps_prospects.csv into the new queue sys
 
 .PHONY: calc-saturation
 calc-saturation: ## Calculate saturation scores for target locations (Usage: make calc-saturation [CAMPAIGN=name])
-	@$(VENV_DIR)/bin/python scripts/calculate_saturation.py $(or $(CAMPAIGN), turboship)
+	$(call validate_campaign)
+	@$(VENV_DIR)/bin/python scripts/calculate_saturation.py $(CAMPAIGN)
 
 scrape: calc-saturation ## Run the scraper
-	cocli campaign achieve-goal turboship --emails 10000 --cloud-queue --proximity 30\
+	$(call validate_campaign)
+	cocli campaign achieve-goal $(CAMPAIGN) --emails 10000 --cloud-queue --proximity 30\
 		$(if $(DEBUG), --debug)\
 		$(if $(HEADED), --headed)\
 		$(if $(DEBUG), --devtools)\
 		$(if $(PANNING_DISTANCE), --panning-distance $(PANNING_DISTANCE))
 
 enrich: ## Run the cloud enricher
-	cocli campaign prospects enrich-from-queue turboship --batch-size 6 --cloud-queue
+	$(call validate_campaign)
+	cocli campaign prospects enrich-from-queue $(CAMPAIGN) --batch-size 6 --cloud-queue
 
 coverage-kml: ## Generate scrape coverage KML
-	cocli campaign visualize-coverage turboship
+	$(call validate_campaign)
+	cocli campaign visualize-coverage $(CAMPAIGN)
 
 .PHONY: analyze-emails
 analyze-emails: ## Run deep analysis on emails for the current campaign
@@ -249,15 +286,18 @@ analyze-emails: ## Run deep analysis on emails for the current campaign
 
 .PHONY: compare-emails
 compare-emails: ## Compare current emails to a historical CSV (Usage: make compare-emails FILE=path/to/csv [CAMPAIGN=name])
+	$(call validate_campaign)
 	@if [ -z "$(FILE)" ]; then echo "Error: FILE is required. Usage: make compare-emails FILE=path/to/csv"; exit 1; fi
-	@$(VENV_DIR)/bin/python scripts/compare_missing_emails.py "$(FILE)" --campaign $(or $(CAMPAIGN), turboship)
+	@$(VENV_DIR)/bin/python scripts/compare_missing_emails.py "$(FILE)" --campaign $(CAMPAIGN)
 
 .PHONY: recover-prospect-index
 recover-prospect-index: ## Reconstruct the prospect index from tagged companies (Usage: make recover-prospect-index [CAMPAIGN=name])
+	$(call validate_campaign)
 	@$(VENV_DIR)/bin/python scripts/recover_prospect_index.py $(CAMPAIGN)
 
 .PHONY: enrich-place-ids
 enrich-place-ids: ## Find missing Place IDs on Google Maps for tagged companies (Usage: make enrich-place-ids [CAMPAIGN=name] [LIMIT=10])
+	$(call validate_campaign)
 	@$(VENV_DIR)/bin/python scripts/enrich_place_id.py $(CAMPAIGN) --limit $(or $(LIMIT), 0)
 
 .PHONY: rebuild-index
@@ -303,11 +343,12 @@ check-freshness: sync-scraped-areas ## Check if scraped data is fresh (warn if >
 
 .PHONY: export-emails
 export-emails: ## Export enriched emails to CSV (Usage: make export-emails [CAMPAIGN=name])
+	$(call validate_campaign)
 	@$(VENV_DIR)/bin/python scripts/export_enriched_emails.py $(CAMPAIGN)
 
 .PHONY: queue-missing
 queue-missing: ## Identify and queue missing enrichments (Gap Analysis) (Usage: make queue-missing CAMPAIGN=name)
-	@if [ -z "$(CAMPAIGN)" ]; then echo "Error: CAMPAIGN variable is required."; exit 1; fi
+	$(call validate_campaign)
 	@$(VENV_DIR)/bin/python scripts/queue_missing_enrichments.py $(CAMPAIGN)
 
 .PHONY: enrich-domain
@@ -320,7 +361,8 @@ enrich-domain: ## Enrich a single domain using the Fargate service (Usage: make 
 		$(if $(DEBUG), --debug)
 
 migrate-prospects: ## Migrate google_maps_prospects.csv to file-based index (Usage: make migrate-prospects [CAMPAIGN=name])
-	$(VENV_DIR)/bin/python scripts/migrate_prospects_to_index.py $(or $(CAMPAIGN), turboship)
+	$(call validate_campaign)
+	$(VENV_DIR)/bin/python scripts/migrate_prospects_to_index.py $(CAMPAIGN)
 
 gc-campaigns: ## Commit and push all changes to campaigns and indexes
 	cd cocli_data && git add camapaigns indexes && git commit -m "Update campaigns and indexes" && git push;; cd ..
@@ -365,7 +407,8 @@ publish-report: ## Generate and upload report.json to S3 (Usage: make publish-re
 
 .PHONY: publish-all
 publish-all: export-emails publish-report publish-kml ## Full sync: export emails, publish report, and publish KML
-	@echo "Full campaign sync completed for $(or $(CAMPAIGN), turboship)"
+	$(call validate_campaign)
+	@echo "Full campaign sync completed for $(CAMPAIGN)"
 
 # ==============================================================================
 # Planning & Analysis
@@ -454,20 +497,22 @@ rebuild-rpi-worker: check-git-sync ## Pull latest code and rebuild Docker image 
 
 .PHONY: start-rpi-worker
 start-rpi-worker: ## Start the Docker worker on Raspberry Pi
+	$(eval SCRAPE_QUEUE := $(shell ./.venv/bin/python -c "from cocli.core.config import load_campaign_config; print(load_campaign_config('$(CAMPAIGN)').get('aws', {}).get('cocli_scrape_tasks_queue_url', ''))"))
 	ssh $(RPI_USER)@$(RPI_HOST) "docker run -d --restart unless-stopped --name cocli-scraper-worker \
 		-e TZ=America/Los_Angeles \
-		-e CAMPAIGN_NAME='$(or $(CAMPAIGN), turboship)' \
-		-e AWS_PROFILE=bizkite-support \
-		-e COCLI_SCRAPE_TASKS_QUEUE_URL='https://sqs.us-east-1.amazonaws.com/193481341784/CdkScraperDeploymentStack-ScrapeTasksQueue9836DB1F-rbAwYTkBcQY8' \
+		-e CAMPAIGN_NAME='$(CAMPAIGN)' \
+		-e AWS_PROFILE=$(AWS_PROFILE) \
+		-e COCLI_SCRAPE_TASKS_QUEUE_URL='$(SCRAPE_QUEUE)' \
 		-v ~/.aws:/root/.aws:ro cocli-worker-rpi:latest"
 
 .PHONY: start-rpi-details-worker
 start-rpi-details-worker: ## Start the Details Worker on Raspberry Pi
+	$(eval DETAILS_QUEUE := $(shell ./.venv/bin/python -c "from cocli.core.config import load_campaign_config; print(load_campaign_config('$(CAMPAIGN)').get('aws', {}).get('cocli_gm_list_item_queue_url', ''))"))
 	ssh $(RPI_USER)@$(RPI_HOST) "docker run -d --restart unless-stopped --name cocli-details-worker \
 		-e TZ=America/Los_Angeles \
-		-e CAMPAIGN_NAME='$(or $(CAMPAIGN), turboship)' \
-		-e AWS_PROFILE=bizkite-support \
-		-e COCLI_GM_LIST_ITEM_QUEUE_URL='https://sqs.us-east-1.amazonaws.com/193481341784/CdkScraperDeploymentStack-GmListItemQueue739F25AE-8c8rNFvBkBps' \
+		-e CAMPAIGN_NAME='$(CAMPAIGN)' \
+		-e AWS_PROFILE=$(AWS_PROFILE) \
+		-e COCLI_GM_LIST_ITEM_QUEUE_URL='$(DETAILS_QUEUE)' \
 		-v ~/.aws:/root/.aws:ro cocli-worker-rpi:latest cocli worker details"
 
 .PHONY: stop-rpi-worker

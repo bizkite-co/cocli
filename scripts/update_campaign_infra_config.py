@@ -11,7 +11,7 @@ console = Console()
 @app.command()
 def update_config(
     campaign_name: Optional[str] = typer.Argument(None, help="Campaign name"),
-    stack_name: str = typer.Option("CdkScraperDeploymentStack", help="CloudFormation stack name")
+    stack_name: Optional[str] = typer.Option(None, help="CloudFormation stack name")
 ) -> None:
     """
     Queries CloudFormation for stack outputs and updates the campaign's config.toml.
@@ -24,6 +24,11 @@ def update_config(
         console.print("[bold red]No campaign specified and no active context.[/bold red]")
         raise typer.Exit(1)
 
+    # Use the new campaign-specific stack naming convention if not provided
+    effective_stack_name = stack_name
+    if not effective_stack_name:
+        effective_stack_name = f"CdkScraperDeploymentStack-{effective_campaign}"
+
     campaign_dir = get_campaigns_dir() / effective_campaign
     config_path = campaign_dir / "config.toml"
     
@@ -31,27 +36,29 @@ def update_config(
         console.print(f"[bold red]Config file not found at {config_path}[/bold red]")
         raise typer.Exit(1)
 
-    # 1. Load config to get AWS profile
+    # 1. Load config to get AWS profile and region
     config = load_campaign_config(effective_campaign)
     aws_config = config.get("aws", {})
     profile = aws_config.get("profile") or aws_config.get("aws_profile")
+    region = aws_config.get("region")
     
     if not profile:
         console.print("[bold red]No AWS profile found in config.toml. Cannot query CloudFormation.[/bold red]")
         raise typer.Exit(1)
 
-    console.print(f"[bold blue]Updating infrastructure config for campaign: {campaign_name}[/bold blue]")
+    console.print(f"[bold blue]Updating infrastructure config for campaign: {effective_campaign}[/bold blue]")
     console.print(f"  Using AWS Profile: [cyan]{profile}[/cyan]")
-    console.print(f"  Querying Stack:    [cyan]{stack_name}[/cyan]")
+    console.print(f"  Using AWS Region:  [cyan]{region or 'default'}[/cyan]")
+    console.print(f"  Querying Stack:    [cyan]{effective_stack_name}[/cyan]")
 
     # 2. Query CloudFormation
     try:
-        session = boto3.Session(profile_name=profile)
+        session = boto3.Session(profile_name=profile, region_name=region)
         cf = session.client("cloudformation")
-        response = cf.describe_stacks(StackName=stack_name)
+        response = cf.describe_stacks(StackName=effective_stack_name)
         outputs = response['Stacks'][0].get('Outputs', [])
     except Exception as e:
-        console.print(f"[bold red]Failed to query CloudFormation: {e}[/bold red]")
+        console.print(f"[bold red]Failed to query CloudFormation stack '{effective_stack_name}': {e}[/bold red]")
         raise typer.Exit(1)
 
     output_map = {o['OutputKey']: o['OutputValue'] for o in outputs}
@@ -59,12 +66,12 @@ def update_config(
     # 3. Map Outputs to Config Keys
     # Mapping based on cdk_scraper_deployment_stack.py CfnOutput keys
     mapping = {
-        "ScrapeTasksQueueUrl": "cocli_scrape_tasks_queue_url",
         "EnrichmentQueueUrl": "cocli_enrichment_queue_url",
+        "ScrapeTasksQueueUrl": "cocli_scrape_tasks_queue_url",
         "GmListItemQueueUrl": "cocli_gm_list_item_queue_url",
-        "BucketName": "cocli_data_bucket_name",
+        "EnrichmentServiceURL": "cocli_enrichment_service_url",
         "WebBucketName": "cocli_web_bucket_name",
-        "WebDomainName": "hosted-zone-domain" # Optional, might keep user's manual entry
+        "BucketName": "cocli_data_bucket_name"
     }
 
     updates_made = False

@@ -76,12 +76,25 @@ if account:
 else:
     env = cdk.Environment(account=os.getenv('CDK_DEFAULT_ACCOUNT'), region=region)
 
-CdkScraperDeploymentStack(app, "CdkScraperDeploymentStack",
+# Determine the RPi user name (defaulting to the profile name used)
+rpi_user_name = aws_config.get("profile") or aws_config.get("aws_profile") or "bizkite-support"
+data_bucket_name = aws_config.get("cocli_data_bucket_name") or f"cocli-data-{campaign_name}"
+ou_arn = aws_config.get("organizational-unit-arn")
+worker_count = aws_config.get("worker_count", 1)
+
+# Use a unique stack name per campaign to avoid global naming conflicts and stuck stacks
+stack_name = f"CdkScraperDeploymentStack-{campaign_name}"
+
+CdkScraperDeploymentStack(app, stack_name,
     env=env,
     campaign_config={
         "name": campaign_name,
         "domain": domain,
-        "zone_id": zone_id
+        "zone_id": zone_id,
+        "data_bucket_name": data_bucket_name,
+        "rpi_user_name": rpi_user_name,
+        "ou_arn": ou_arn,
+        "worker_count": worker_count
     }
 )
 

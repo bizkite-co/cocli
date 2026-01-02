@@ -22,8 +22,18 @@ class S3DomainManager:
     def __init__(self, campaign: Campaign):
         self.campaign = campaign
         
-        # Determine S3 bucket and prefix for the campaign's domain index
-        self.s3_bucket_name = "cocli-data-turboship" # Default for domain index
+        # Determine S3 bucket: env var > campaign config > default
+        import os
+        self.s3_bucket_name = os.environ.get("COCLI_S3_BUCKET_NAME") or ""
+        
+        if not self.s3_bucket_name:
+            from .config import load_campaign_config
+            config = load_campaign_config(self.campaign.name)
+            aws_config = config.get("aws", {})
+            self.s3_bucket_name = aws_config.get("cocli_data_bucket_name") or f"cocli-data-{self.campaign.name}"
+
+        if not self.s3_bucket_name:
+            raise ValueError(f"S3 bucket name could not be resolved for campaign {self.campaign.name}")
 
         self.s3_prefix = f"campaigns/{self.campaign.company_slug}/indexes/domains/"
 

@@ -17,9 +17,18 @@ class S3CompanyManager:
     def __init__(self, campaign: Campaign):
         self.campaign = campaign
         
-        # Determine S3 bucket and prefix for the campaign's company data
-        # Now relying on Task Role for credentials, so profile_name is not needed for session creation
-        self.s3_bucket_name = "cocli-data-turboship" # Hardcode for now, or make configurable later
+        # Determine S3 bucket: env var > campaign config > default
+        import os
+        self.s3_bucket_name = os.environ.get("COCLI_S3_BUCKET_NAME") or ""
+
+        if not self.s3_bucket_name:
+            from .config import load_campaign_config
+            config = load_campaign_config(self.campaign.name)
+            aws_config = config.get("aws", {})
+            self.s3_bucket_name = aws_config.get("cocli_data_bucket_name") or f"cocli-data-{self.campaign.name}"
+        
+        if not self.s3_bucket_name:
+            raise ValueError(f"S3 bucket name could not be resolved for campaign {self.campaign.name}")
         
         # Base prefix for all companies managed by this campaign
         # e.g., "companies/" or "campaigns/turbo-heat-welding-tools/companies/"

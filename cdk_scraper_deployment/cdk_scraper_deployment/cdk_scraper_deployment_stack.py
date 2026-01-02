@@ -16,6 +16,7 @@ from aws_cdk import (
     Duration,
     CfnOutput,
     RemovalPolicy,
+    Tags,
 )
 from constructs import Construct
 
@@ -29,6 +30,12 @@ class CdkScraperDeploymentStack(Stack):  # type: ignore[misc]
         zone_id = campaign_config["zone_id"]
         bucket_name = f"cocli-web-assets-{domain.replace('.', '-')}"
         subdomain = f"cocli.{domain}"
+        data_bucket_name = campaign_config["data_bucket_name"]
+        rpi_user_name = campaign_config["rpi_user_name"]
+        ou_arn = campaign_config.get("ou_arn")
+
+        if ou_arn:
+            Tags.of(self).add("OrganizationalUnit", ou_arn)
 
         # Define the path to the Dockerfile (no longer needed, using pre-built image)
         # dockerfile_path = os.path.join(os.path.dirname(__file__), "..", "..")
@@ -50,10 +57,18 @@ class CdkScraperDeploymentStack(Stack):  # type: ignore[misc]
             assumed_by=iam.ServicePrincipal("ecs-tasks.amazonaws.com")
         )
 
-        # --- S3 Bucket for Data (Import existing) ---
-        # TODO: Parameterize this or create per-campaign bucket in future
-        data_bucket = s3.Bucket.from_bucket_name(self, "CocliDataBucket", "cocli-data-turboship")
+        # --- Grant Permissions to RPi User ---
+        rpi_user = iam.User.from_user_name(self, "RpiUser", rpi_user_name)
+
+        # --- S3 Bucket for Data ---
+        data_bucket = s3.Bucket(self, "CocliDataBucket",
+            bucket_name=data_bucket_name,
+            block_public_access=s3.BlockPublicAccess.BLOCK_ALL,
+            encryption=s3.BucketEncryption.S3_MANAGED,
+            removal_policy=RemovalPolicy.RETAIN
+        )
         data_bucket.grant_read_write(task_role)
+        data_bucket.grant_read_write(rpi_user)
 
         # --- SQS Queues ---
         
@@ -81,10 +96,7 @@ class CdkScraperDeploymentStack(Stack):  # type: ignore[misc]
         gm_list_item_queue.grant_send_messages(task_role)
         gm_list_item_queue.grant_consume_messages(task_role)
 
-        # --- Grant Permissions to RPi User (bizkite-support) ---
-        # Using the correct IAM user name for the RPi in account 193481341784
-        rpi_user = iam.User.from_user_name(self, "RpiUser", "bizkite-support")
-        
+        # --- Grant Permissions to RPi User ---
         enrichment_queue.grant_send_messages(rpi_user)
         enrichment_queue.grant_consume_messages(rpi_user)
         
@@ -152,7 +164,7 @@ class CdkScraperDeploymentStack(Stack):  # type: ignore[misc]
             service_name="EnrichmentService", # Explicitly name the service
             cpu=1024,  # 1 vCPU (Playwright needs this)
             memory_limit_mib=3072, # 3GB RAM (Playwright needs this)
-            desired_count=1,
+            desired_count=campaign_config.get("worker_count", 1),
             domain_name=f"enrich.{domain}",
             domain_zone=zone,
             protocol=elbv2.ApplicationProtocol.HTTPS, # Explicitly set HTTPS protocol
@@ -164,7 +176,10 @@ class CdkScraperDeploymentStack(Stack):  # type: ignore[misc]
                     "COCLI_ENRICHMENT_QUEUE_URL": enrichment_queue.queue_url,
                     "COCLI_SCRAPE_TASKS_QUEUE_URL": scrape_tasks_queue.queue_url,
                     "COCLI_GM_LIST_ITEM_QUEUE_URL": gm_list_item_queue.queue_url,
-                    "COCLI_S3_BUCKET_NAME": data_bucket.bucket_name
+                    "COCLI_S3_BUCKET_NAME": data_bucket.bucket_name,
+                    "CAMPAIGN_NAME": campaign_config["name"],
+                    "COCLI_DATA_HOME": "/app/cocli_data",
+                    "DEPLOY_TIMESTAMP": self.node.try_get_context("deploy_timestamp") or "initial"
                 },
                 task_role=task_role
             ),
@@ -186,3 +201,8 @@ class CdkScraperDeploymentStack(Stack):  # type: ignore[misc]
             path="/health",
             healthy_http_codes="200"
         )
+
+        CfnOutput(self, "EnrichmentServiceURL",
+            value=f"https://enrich.{domain}",
+            description="URL of the enrichment service"
+        )                                       
