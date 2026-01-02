@@ -398,8 +398,11 @@ web-serve: ## Run the web dashboard development server
 
 .PHONY: web-deploy
 web-deploy: web-build ## Deploy the web dashboard to S3
-	aws s3 sync build/web s3://cocli-web-assets-turboheat-net --profile bizkite-support
-	@echo "Dashboard deployed to https://cocli.turboheat.net"
+	$(call validate_campaign)
+	$(eval WEB_BUCKET := $(shell ./.venv/bin/python -c "from cocli.core.config import load_campaign_config; print(load_campaign_config('$(CAMPAIGN)').get('aws', {}).get('cocli_web_bucket_name', ''))"))
+	@if [ -z "$(WEB_BUCKET)" ]; then echo "Error: cocli_web_bucket_name not found in config for $(CAMPAIGN)"; exit 1; fi
+	aws s3 sync build/web s3://$(WEB_BUCKET) --profile $(AWS_PROFILE)
+	@echo "Dashboard deployed to $(WEB_BUCKET)"
 
 .PHONY: publish-report
 publish-report: ## Generate and upload report.json to S3 (Usage: make publish-report [CAMPAIGN=name])

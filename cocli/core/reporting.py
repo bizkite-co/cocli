@@ -27,14 +27,15 @@ SQSAttributeName = Literal[
 ]
 
 def get_boto3_session(campaign_config: Dict[str, Any]) -> boto3.Session:
-    """Creates a boto3 session using the campaign's AWS profile."""
+    """Creates a boto3 session using the campaign's AWS profile and region."""
     if os.getenv("COCLI_RUNNING_IN_FARGATE"):
         return boto3.Session()
     
-    profile = campaign_config.get('aws', {}).get('profile') or campaign_config.get('aws', {}).get('aws_profile')
-    if profile:
-        return boto3.Session(profile_name=profile)
-    return boto3.Session()
+    aws_config = campaign_config.get('aws', {})
+    profile = aws_config.get('profile') or aws_config.get('aws_profile')
+    region = aws_config.get('region')
+    
+    return boto3.Session(profile_name=profile, region_name=region)
 
 def get_sqs_attributes(session: boto3.Session, queue_url: str, attribute_names: Sequence[SQSAttributeName]) -> Dict[str, str]:
     try:
