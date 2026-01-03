@@ -16,10 +16,47 @@ from ..core.s3_company_manager import S3CompanyManager
 from ..models.website_domain_csv import WebsiteDomainCsv
 from ..models.campaign import Campaign
 from ..core.exceptions import NavigationError, EnrichmentError
+from ..core.email_index_manager import EmailIndexManager
+from ..models.email import EmailEntry
 
 logger = logging.getLogger(__name__)
 
 class WebsiteScraper:
+
+    def _index_emails(self, website_data: Website, campaign_name: str) -> None:
+        """Helper to record all found emails in the centralized email index."""
+        if not website_data.domain:
+            return
+
+        index_manager = EmailIndexManager(campaign_name)
+        
+        # 1. Main company email
+        if website_data.email:
+            entry = EmailEntry(
+                email=website_data.email,
+                domain=str(website_data.domain),
+                company_slug=website_data.associated_company_folder,
+                source="website_scraper",
+                tags=website_data.tags
+            )
+            index_manager.add_email(entry)
+
+        # 2. Personnel emails
+        if website_data.personnel:
+            for person in website_data.personnel:
+                email = person.get("email")
+                if email:
+                    entry = EmailEntry(
+                        email=email,
+                        domain=str(website_data.domain),
+                        company_slug=website_data.associated_company_folder,
+                        source="website_scraper_personnel",
+                        tags=website_data.tags
+                    )
+                    # Add person name/title to tags or metadata if we had more fields
+                    if person.get("name"):
+                        entry.tags.append(f"person:{person['name']}")
+                    index_manager.add_email(entry)
 
     async def run(
         self,
@@ -196,6 +233,10 @@ class WebsiteScraper:
             updated_at=datetime.utcnow(), # Ensure updated_at is always current
         )
         domain_index_manager.add_or_update(website_domain_csv_data)
+
+        # Index found emails for yield tracking
+        if campaign:
+            self._index_emails(website_data, campaign.company_slug)
 
         return website_data
 

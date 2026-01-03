@@ -288,6 +288,10 @@ compare-emails: ## Compare current emails to a historical CSV (Usage: make compa
 	@if [ -z "$(FILE)" ]; then echo "Error: FILE is required. Usage: make compare-emails FILE=path/to/csv"; exit 1; fi
 	@$(VENV_DIR)/bin/python scripts/compare_missing_emails.py "$(FILE)" --campaign $(CAMPAIGN)
 
+.PHONY: backfill-email-index
+backfill-email-index: ## Backfill the email index from existing company files (Usage: make backfill-email-index [CAMPAIGN=name])
+	@$(VENV_DIR)/bin/python scripts/backfill_email_index.py $(CAMPAIGN)
+
 .PHONY: recover-prospect-index
 recover-prospect-index: ## Reconstruct the prospect index from tagged companies (Usage: make recover-prospect-index [CAMPAIGN=name])
 	$(call validate_campaign)

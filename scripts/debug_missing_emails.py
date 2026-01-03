@@ -1,9 +1,6 @@
 import yaml
-import logging
-from pathlib import Path
-from typing import Set
 from rich.console import Console
-from cocli.core.config import get_companies_dir, get_campaign
+from cocli.core.config import get_companies_dir
 
 console = Console()
 
@@ -61,7 +58,7 @@ def debug_emails(campaign_name="turboship"):
                     "tags": tags
                 })
 
-    console.print(f"\n[bold]Data Integrity Report:[/bold]")
+    console.print("\n[bold]Data Integrity Report:[/bold]")
     console.print(f"  • Total unique emails on disk: [green]{len(all_disk_emails)}[/green]")
     console.print(f"  • Emails with '{campaign_name}' tag: [blue]{len(campaign_emails)}[/blue]")
     console.print(f"  • Potential '{campaign_name}' emails missing tag: [yellow]{len(missing_tag_emails)}[/yellow]")

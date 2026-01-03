@@ -10,6 +10,8 @@ Ensure the distributed scraping and enrichment pipeline is 100% reliable through
 *   **Pipeline:** 1,000+ GM List items queued; Details workers processing and feeding Enrichment queue.
 
 ## Todo
+- [ ] **Data Integrity & Indexing:**
+    - [x] **Centralized Email Index:** Implement a file-per-item index for emails in `campaigns/{campaign}/indexes/emails/` to prevent data loss during distributed scrapes and ensure consistent yield.
 - [ ] **Worker Monitoring:**
     - [ ] **Centralized Logging:** Implement logic to aggregate RPi container logs into S3 or CloudWatch for unified debugging.
     - [ ] **Health Checks:** Add a watchdog to restart workers if they fail to poll SQS for > 15 minutes.
@@ -19,6 +21,11 @@ Ensure the distributed scraping and enrichment pipeline is 100% reliable through
     - [ ] Maintain 0 linting errors by running `make lint` before every commit.
 
 ## Done
+- [x] **Data Integrity & Yield Protection:**
+    - [x] Implemented campaign-specific `EmailIndexManager` using a file-per-email storage strategy.
+    - [x] Integrated email indexing into `WebsiteScraper`, `add-email`, and `import-customers`.
+    - [x] Updated `campaign report` to use the index for accurate yield tracking.
+    - [x] Added `make backfill-email-index` to recover data from existing company files.
 - [x] **Web Dashboard (Phase 5):**
     - [x] Initialized `11ty` in `cocli/web/` for minimalist rendering.
     - [x] Implemented shared navbar and layout.

@@ -1,25 +1,34 @@
 import typer
 import logging
+from typing import Optional
 
-from ..core.config import get_companies_dir
+from ..core.config import get_companies_dir, get_campaign
 from ..models.company import Company
 from ..core.utils import create_company_files
+from ..core.email_index_manager import EmailIndexManager
+from ..models.email import EmailEntry
 
 logger = logging.getLogger(__name__)
 app = typer.Typer()
 
 @app.command()
 def add_email(
-    company_name: str = typer.Argument(..., help="The name of the company to add the email to."),
+    company_name: str = typer.Argument(..., help="The slug or name of the company to add the email to."),
     email: str = typer.Argument(..., help="The email address to add."),
+    campaign_name: Optional[str] = typer.Option(None, "--campaign", "-c", help="Campaign name for indexing."),
 ) -> None:
     """
-    Adds an email address to a company.
+    Adds an email address to a company and records it in the campaign index.
     """
     companies_dir = get_companies_dir()
     company_dir = companies_dir / company_name
     if not company_dir.exists():
-        logger.error(f"Company '{company_name}' not found.")
+        # Try slugified version if exact match fails
+        from cocli.core.text_utils import slugify
+        company_dir = companies_dir / slugify(company_name)
+        
+    if not company_dir.exists():
+        logger.error(f"Company folder '{company_name}' not found at {company_dir}")
         raise typer.Exit(code=1)
 
     company = Company.from_directory(company_dir)
@@ -30,3 +39,17 @@ def add_email(
     company.email = email
     create_company_files(company, company_dir)
     logger.info(f"Added email {email} to {company.name}")
+
+    # Index the email if campaign is known
+    eff_campaign = campaign_name or get_campaign()
+    if eff_campaign:
+        index_manager = EmailIndexManager(eff_campaign)
+        entry = EmailEntry(
+            email=email,
+            domain=company.domain or email.split('@')[-1],
+            company_slug=company.slug,
+            source="manual_add",
+            tags=company.tags
+        )
+        index_manager.add_email(entry)
+        logger.info(f"Indexed email for campaign: {eff_campaign}")

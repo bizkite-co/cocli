@@ -1,10 +1,8 @@
 import yaml
 import logging
 from pathlib import Path
-from typing import Optional, List, Set
 from rich.console import Console
 from rich.progress import Progress
-import toml
 
 # Setup logging and console
 logging.basicConfig(level=logging.INFO)
@@ -98,7 +96,7 @@ def audit_campaign(campaign_name: str):
     console.print(f"  • Companies with '{campaign_name}' in tags.lst: [bold]{tagged_count}[/bold]")
     console.print(f"  • Companies where YAML tags were missing and FIXED: [bold]{fixed_count}[/bold]")
     console.print(f"  • Total Enriched Emails found in these companies: [bold]{email_count}[/bold]")
-    console.print(f"\n[dim]Note: Run 'make report' now to see the updated numbers.[/dim]")
+    console.print("\n[dim]Note: Run 'make report' now to see the updated numbers.[/dim]")
 
 if __name__ == "__main__":
     import sys

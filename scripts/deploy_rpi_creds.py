@@ -1,6 +1,5 @@
 import argparse
 import configparser
-import os
 import subprocess
 import sys
 from pathlib import Path

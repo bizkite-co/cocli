@@ -203,6 +203,23 @@ def sync_prospects(
     local_base = DATA_DIR / "campaigns" / campaign_name / "indexes" / "google_maps_prospects"
     run_smart_sync("prospects", f"cocli-data-{campaign_name}", prefix, local_base, campaign_name, config.get("aws", {}), workers, full, force)
 
+@app.command("emails")
+def sync_emails(
+    campaign_name: Optional[str] = typer.Option(None, "--campaign", "-c", help="Campaign name"),
+    workers: int = typer.Option(20, help="Number of concurrent download threads."),
+    full: bool = typer.Option(False, "--full", help="Perform a full integrity check (slower)."),
+    force: bool = typer.Option(False, "--force", help="Force download all files."),
+) -> None:
+    from ..core.config import get_campaign, load_campaign_config
+    campaign_name = campaign_name or get_campaign()
+    if not campaign_name:
+        console.print("[bold red]No campaign specified.[/bold red]")
+        raise typer.Exit(1)
+    config = load_campaign_config(campaign_name)
+    prefix = f"campaigns/{campaign_name}/indexes/emails/"
+    local_base = DATA_DIR / "campaigns" / campaign_name / "indexes" / "emails"
+    run_smart_sync("emails", f"cocli-data-{campaign_name}", prefix, local_base, campaign_name, config.get("aws", {}), workers, full, force)
+
 @app.command("scraped-areas")
 def sync_scraped_areas(
     campaign_name: Optional[str] = typer.Option(None, "--campaign", "-c", help="Campaign name"),

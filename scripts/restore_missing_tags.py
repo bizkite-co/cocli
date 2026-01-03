@@ -1,10 +1,7 @@
 import csv
-import logging
 from pathlib import Path
 from rich.console import Console
 from rich.progress import track
-import toml
-from cocli.core.config import get_companies_dir, get_campaigns_dir
 from cocli.core.text_utils import slugify
 
 console = Console()
@@ -59,9 +56,9 @@ def restore_tags(campaign_name="turboship"):
                 
                 restored_count += 1
 
-    console.print(f"\n[bold green]Success![/bold green]")
+    console.print("\n[bold green]Success![/bold green]")
     console.print(f"  • Restored {campaign_name} tag to [bold]{restored_count}[/bold] companies.")
-    console.print(f"  • These companies will now appear in your next 'make report'.")
+    console.print("  • These companies will now appear in your next 'make report'.")
 
 if __name__ == "__main__":
     restore_tags()

@@ -7,6 +7,7 @@ from rich.console import Console
 
 from cocli.core.config import get_cocli_base_dir, get_companies_dir, load_campaign_config
 from cocli.core.prospects_csv_manager import ProspectsIndexManager
+from cocli.core.email_index_manager import EmailIndexManager
 from cocli.core.text_utils import slugify
 
 logger = logging.getLogger(__name__)
@@ -133,7 +134,19 @@ def get_campaign_stats(campaign_name: str) -> Dict[str, Any]:
     stats['failed_count'] = sum(1 for _ in (queue_base / "failed").iterdir() if _.is_file()) if (queue_base / "failed").exists() else 0
     stats['completed_count'] = sum(1 for _ in (queue_base / "completed").iterdir() if _.is_file()) if (queue_base / "completed").exists() else 0
 
-    # 4. Enriched & Emails (Scan companies)
+    # 4. Email Index Yield
+    email_manager = EmailIndexManager(campaign_name)
+    indexed_emails = set()
+    companies_in_email_index = set()
+    for entry in email_manager.read_all_emails():
+        indexed_emails.add(entry.email)
+        if entry.company_slug:
+            companies_in_email_index.add(entry.company_slug)
+    
+    stats['indexed_emails_count'] = len(indexed_emails)
+    stats['indexed_companies_with_emails_count'] = len(companies_in_email_index)
+
+    # 5. Enriched & Emails (Scan companies - Fallback/Legacy)
     enriched_count = 0
     emails_found_count = 0
     
@@ -220,12 +233,10 @@ def get_campaign_stats(campaign_name: str) -> Dict[str, Any]:
             emails_found_count += 1
 
     stats['enriched_count'] = enriched_count
-    stats['emails_found_count'] = emails_found_count
+    stats['companies_with_emails_count'] = max(emails_found_count, stats.get('indexed_companies_with_emails_count', 0))
+    stats['emails_found_count'] = stats.get('indexed_emails_count', 0)
     
-    # 5. Configuration Data (Queries & Locations)
-    prospecting_config = config.get('prospecting', {})
-    stats['queries'] = prospecting_config.get('queries', [])
-    
+    # 6. Configuration Data (Queries & Locations)    
     # Locations can be in the list or in a CSV
     locations = prospecting_config.get('locations', [])
     target_locations_csv = prospecting_config.get('target-locations-csv')

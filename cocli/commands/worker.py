@@ -446,6 +446,28 @@ async def _run_details_task_loop(browser_or_context: Any, gm_list_item_queue: An
                 enrichment_queue.push(msg)
                 logger.info(f"Pushed {final_prospect_data.Domain} to Enrichment Queue")
             
+            # --- Email Indexing ---
+            # If the GMB details scrape found an email, index it immediately
+            # Note: GMB Parser doesn't always find emails, but if it does, we want it.
+            if hasattr(final_prospect_data, 'Email') and final_prospect_data.Email:
+                try:
+                    from cocli.core.email_index_manager import EmailIndexManager
+                    from cocli.models.email import EmailEntry
+                    
+                    email_manager = EmailIndexManager(task.campaign_name)
+                    entry = EmailEntry(
+                        email=final_prospect_data.Email,
+                        domain=final_prospect_data.Domain or final_prospect_data.Email.split('@')[-1],
+                        company_slug=final_prospect_data.company_slug,
+                        source="gmb_details_worker",
+                        tags=[task.campaign_name]
+                    )
+                    email_manager.add_email(entry)
+                    logger.info(f"Indexed email from GMB details: {final_prospect_data.Email}")
+                except Exception as e:
+                    logger.warning(f"Failed to index email from GMB details: {e}")
+            # ----------------------
+
             end_mb = tracker.get_mb() if tracker else 0
             logger.info(f"Detailing Complete for {task.place_id}. Bandwidth: {end_mb - start_mb:.2f} MB")
             gm_list_item_queue.ack(task)

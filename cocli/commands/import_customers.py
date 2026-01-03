@@ -2,7 +2,7 @@
 import typer
 import csv
 from pathlib import Path
-from typing import List, Dict
+from typing import List, Dict, Optional
 import logging
 
 from ..core.config import get_companies_dir, get_people_dir
@@ -12,6 +12,9 @@ from ..models.person import Person
 from ..models.company import Company
 from ..models.website_domain_csv import WebsiteDomainCsv
 from ..core.website_domain_csv_manager import WebsiteDomainCsvManager
+from ..core.email_index_manager import EmailIndexManager
+from ..models.email import EmailEntry
+from ..core.config import get_campaign
 
 logger = logging.getLogger(__name__)
 
@@ -19,11 +22,15 @@ def import_customers(
     customers_csv_path: Path = typer.Argument(..., help="Path to the customers.csv file", exists=True, file_okay=True, dir_okay=False, readable=True),
     addresses_csv_path: Path = typer.Argument(..., help="Path to the customer_addresses.csv file", exists=True, file_okay=True, dir_okay=False, readable=True),
     tags: List[str] = typer.Option(..., "--tag", help="Tags to add to the companies and people."),
+    campaign_name: Optional[str] = typer.Option(None, "--campaign", "-c", help="Campaign name for indexing found emails."),
 ) -> None:
     """
     Imports customers and their addresses from CSV files, creating companies and people.
     """
     website_csv_manager = WebsiteDomainCsvManager()
+    
+    eff_campaign = campaign_name or get_campaign()
+    email_index = EmailIndexManager(eff_campaign) if eff_campaign else None
 
     # Load addresses into a dictionary for easy lookup
     addresses: Dict[str, Dict[str, str | None]] = {}
@@ -67,6 +74,16 @@ def import_customers(
                 country=address_data.get("country"),
                 slug=slugify(name), # Add slug here
             )
+            
+            # Index found email
+            if email_index:
+                domain = email.split('@')[-1]
+                email_index.add_email(EmailEntry(
+                    email=email,
+                    domain=domain,
+                    source="shopify_customer_import",
+                    tags=tags
+                ))
 
             company_name_from_address = address_data.get('company_name')
             domain = email.split('@')[1]

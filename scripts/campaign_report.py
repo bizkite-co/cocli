@@ -84,9 +84,12 @@ def main(
         table.add_row("Enriched (Local)", str(enriched_count), enriched_pct)
         
         # Email %
-        emails_found_count = stats.get('emails_found_count', 0)
-        email_pct = f"{(emails_found_count / enriched_count * 100):.1f}%" if enriched_count else "0%"
-        table.add_row("Emails Found (Local)", str(emails_found_count), f"{email_pct} (Yield)")
+        companies_with_emails = stats.get('companies_with_emails_count', 0)
+        total_emails = stats.get('emails_found_count', 0)
+        email_pct = f"{(companies_with_emails / enriched_count * 100):.1f}%" if enriched_count else "0%"
+        
+        table.add_row("Companies w/ Emails", str(companies_with_emails), f"{email_pct} (Yield)")
+        table.add_row("Total Emails Found", str(total_emails), "[bold green]Index[/bold green]")
 
         console.print(table)
 
