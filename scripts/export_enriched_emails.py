@@ -27,17 +27,20 @@ def main(campaign_name: Optional[str] = typer.Argument(None, help="Campaign name
     export_dir.mkdir(exist_ok=True)
     output_file = export_dir / f"enriched_emails_{campaign_name}.csv"
     
-    # Load slugs from campaign prospects to filter (Keep for backwards compatibility/optionality)
+    # Load Place IDs from campaign prospects to filter
     from cocli.core.prospects_csv_manager import ProspectsIndexManager
     manager = ProspectsIndexManager(campaign_name)
-    target_slugs = set()
+    target_place_ids = set()
+    target_slugs = set() # Secondary matching
     
     console.print("Loading prospects from index for cross-referencing...")
     for prospect in manager.read_all_prospects():
+        if prospect.Place_ID:
+            target_place_ids.add(prospect.Place_ID)
         if prospect.Domain:
             target_slugs.add(slugify(prospect.Domain))
     
-    console.print(f"Found {len(target_slugs)} targets in campaign prospects index.")
+    console.print(f"Found {len(target_place_ids)} unique Place IDs in campaign prospects index.")
 
     results = []
     
@@ -45,7 +48,7 @@ def main(campaign_name: Optional[str] = typer.Argument(None, help="Campaign name
     company_paths = [p for p in companies_dir.iterdir() if p.is_dir()]
     
     for company_path in track(company_paths, description="Scanning companies..."):
-        # 1. Filter by campaign tag (Robust)
+        # 1. Filter by campaign tag (Source of Truth)
         tags_path = company_path / "tags.lst"
         has_tag = False
         if tags_path.exists():
@@ -56,8 +59,20 @@ def main(campaign_name: Optional[str] = typer.Argument(None, help="Campaign name
             except Exception:
                 pass
         
-        # 2. Filter by prospect index slug (Fallback/Secondary)
-        in_index = company_path.name in target_slugs
+        # 2. Filter by Place ID or Slug (Fallback)
+        # We need the Place ID from the _index.md to check against our target list
+        index_md = company_path / "_index.md"
+        place_id = None
+        if index_md.exists():
+            try:
+                parts = index_md.read_text().split("---")
+                if len(parts) >= 3:
+                    idx_data = yaml.safe_load(parts[1])
+                    if idx_data:
+                        place_id = idx_data.get("place_id")
+            except: pass
+
+        in_index = (place_id and place_id in target_place_ids) or (company_path.name in target_slugs)
 
         if not has_tag and not in_index:
             continue

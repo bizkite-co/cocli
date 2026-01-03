@@ -21,6 +21,7 @@ from cocli.models.queue import QueueMessage
 from cocli.core.prospects_csv_manager import ProspectsIndexManager
 from cocli.core.text_utils import slugify
 from cocli.core.config import get_campaign, load_campaign_config, get_campaigns_dir
+from cocli.utils.playwright_utils import setup_optimized_context
 
 # Load Version
 def get_version() -> str:
@@ -260,7 +261,9 @@ async def run_details_worker(headless: bool, debug: bool, campaign_name: str, on
     logger.info(f"Details Worker v{VERSION} started for campaign '{campaign_name}' with {workers} worker(s). Polling for tasks...")
 
     if browser:
-        # Use provided browser
+        # We need a context to setup the tracker
+        # For simplicity in the provided browser case, we'll skip optimization
+        # unless we want to refactor the caller to provide a context.
         tasks = [
             _run_details_task_loop(browser, gm_list_item_queue, enrichment_queue, s3_client, bucket_name, debug, once, processed_by)
             for _ in range(workers)
@@ -284,8 +287,13 @@ async def run_details_worker(headless: bool, debug: bool, campaign_name: str, on
                             '--disable-gpu'
                         ]
                     )
+                    
+                    # Create context and setup optimizations
+                    context = await browser_instance.new_context()
+                    tracker = await setup_optimized_context(context)
+                    
                     tasks = [
-                        _run_details_task_loop(browser_instance, gm_list_item_queue, enrichment_queue, s3_client, bucket_name, debug, once, processed_by)
+                        _run_details_task_loop(context, gm_list_item_queue, enrichment_queue, s3_client, bucket_name, debug, once, processed_by, tracker=tracker)
                         for _ in range(workers)
                     ]
                     await asyncio.gather(*tasks)
@@ -306,9 +314,9 @@ async def run_details_worker(headless: bool, debug: bool, campaign_name: str, on
                     logger.info("Restarting browser session in 5 seconds...")
                     await asyncio.sleep(5)
 
-async def _run_details_task_loop(browser: Any, gm_list_item_queue: Any, enrichment_queue: Any, s3_client: Any, bucket_name: str, debug: bool, once: bool, processed_by: str) -> None:
+async def _run_details_task_loop(browser_or_context: Any, gm_list_item_queue: Any, enrichment_queue: Any, s3_client: Any, bucket_name: str, debug: bool, once: bool, processed_by: str, tracker: Optional[Any] = None) -> None:
     while True: # Task Loop
-        if not browser.is_connected():
+        if not browser_or_context.is_connected():
             logger.error("Browser is disconnected. Restarting.")
             break
 
@@ -322,6 +330,8 @@ async def _run_details_task_loop(browser: Any, gm_list_item_queue: Any, enrichme
         
         task = tasks[0] # batch_size=1
         logger.info(f"Detail Task found: {task.place_id}")
+        
+        start_mb = tracker.get_mb() if tracker else 0
         
         try:
             csv_manager = ProspectsIndexManager(task.campaign_name)
@@ -387,7 +397,7 @@ async def _run_details_task_loop(browser: Any, gm_list_item_queue: Any, enrichme
                             continue
 
             # 3. Proceed with Scrape
-            page = await browser.new_page()
+            page = await browser_or_context.new_page()
             try:
                 detailed_prospect_data = await scrape_google_maps_details(
                     page=page,
@@ -436,7 +446,8 @@ async def _run_details_task_loop(browser: Any, gm_list_item_queue: Any, enrichme
                 enrichment_queue.push(msg)
                 logger.info(f"Pushed {final_prospect_data.Domain} to Enrichment Queue")
             
-            logger.info(f"Detailing Complete for {task.place_id}.")
+            end_mb = tracker.get_mb() if tracker else 0
+            logger.info(f"Detailing Complete for {task.place_id}. Bandwidth: {end_mb - start_mb:.2f} MB")
             gm_list_item_queue.ack(task)
             
             if once:
@@ -447,7 +458,7 @@ async def _run_details_task_loop(browser: Any, gm_list_item_queue: Any, enrichme
             gm_list_item_queue.nack(task)
             if once:
                 return
-            if "Target page, context or browser has been closed" in str(e) or not browser.is_connected():
+            if "Target page, context or browser has been closed" in str(e) or not browser_or_context.is_connected():
                  logger.critical("Browser fatal error detected.")
                  break
 

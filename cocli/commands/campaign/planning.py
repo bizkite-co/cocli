@@ -116,8 +116,6 @@ def generate_grid(
             logger.error("Error: No campaign name provided and no campaign context is set.")
             raise typer.Exit(code=1)
 
-    console.print(f"[bold]Generating planning grids for campaign: '{campaign_name}' (Radius: {proximity_miles} mi)[/bold]")
-
     campaign_dir = get_campaign_dir(campaign_name)
     if not campaign_dir:
         console.print(f"[bold red]Campaign '{campaign_name}' not found.[/bold red]")
@@ -129,6 +127,13 @@ def generate_grid(
         config = toml.load(f)
     
     prospecting_config = config.get("prospecting", {})
+
+    # Use proximity from config if not provided on CLI
+    if proximity_miles == 10.0 and "proximity" in prospecting_config:
+        proximity_miles = float(prospecting_config["proximity"])
+
+    console.print(f"[bold]Generating planning grids for campaign: '{campaign_name}' (Radius: {proximity_miles} mi)[/bold]")
+
     target_locations_csv = prospecting_config.get("target-locations-csv")
 
     target_locations: List[Dict[str, Any]] = []

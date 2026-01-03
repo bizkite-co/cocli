@@ -40,12 +40,11 @@ def import_prospect(
     
     if existing_company:
         # Company already exists. We should update its fields but not overwrite enrichment status.
-        # This is where we define what fields are updated from new prospect data.
         logger.debug(f"Company {company_slug} already exists. Updating its metadata from prospect data.")
         
         # Update fields that might be more accurate or new from Google Maps data
         existing_company.name = prospect_data.Name or existing_company.name
-        existing_company.domain = prospect_data.Domain or existing_company.domain # Should be same as original but for safety
+        existing_company.domain = prospect_data.Domain or existing_company.domain
         existing_company.full_address = prospect_data.Full_Address or existing_company.full_address
         existing_company.street_address = prospect_data.Street_Address or existing_company.street_address
         existing_company.city = prospect_data.City or existing_company.city
@@ -63,37 +62,22 @@ def import_prospect(
         new_categories = prospect_data.First_category.split(';') if prospect_data.First_category else []
         existing_company.categories = list(set(existing_company.categories + [cat.strip() for cat in new_categories if cat.strip()]))
         
-        # Save updated company
-        company_dir = get_companies_dir() / company_slug
-        company_dir.mkdir(exist_ok=True) # Ensure directory exists
-        index_path = company_dir / "_index.md"
-
-        with open(index_path, 'w') as index_file:
-            index_file.write("---" + "\n")
-            yaml.dump(existing_company.model_dump(exclude_none=True), index_file, sort_keys=False) # Dump model directly
-            index_file.write("---" + "\n")
-        
-        # Also ensure tags are merged/updated if necessary.
-        tags_path = company_dir / "tags.lst"
-        current_tags = set()
-        if tags_path.exists():
-            current_tags.update(tags_path.read_text().strip().split('\n'))
-        
-        new_tags_to_add = ["prospect"]
+        # Add tags
+        new_tags = set(existing_company.tags)
+        new_tags.add("prospect")
         if campaign:
-            new_tags_to_add.append(campaign)
-        current_tags.update(new_tags_to_add)
+            new_tags.add(campaign)
+        existing_company.tags = list(new_tags)
 
-        with open(tags_path, 'w') as tags_file:
-            tags_file.write("\n".join(sorted(list(current_tags)))) # Write sorted unique tags
-        
+        # Use new robust save method
+        existing_company.save()
         return existing_company
     else:
         # Create new company
         company_data = {
             "name": prospect_data.Name,
             "domain": domain,
-            "type": "Prospect", # Default type for new prospects
+            "type": "Prospect",
             "slug": company_slug,
             "full_address": prospect_data.Full_Address,
             "street_address": prospect_data.Street_Address,
@@ -108,33 +92,20 @@ def import_prospect(
             "reviews_count": prospect_data.Reviews_count,
             "average_rating": prospect_data.Average_rating,
             "place_id": prospect_data.Place_ID,
-            "last_enriched": None, # New company, not yet enriched
-            "enrichment_ttl_days": Company.model_fields["enrichment_ttl_days"].default # Use model default
+            "last_enriched": None,
+            "enrichment_ttl_days": Company.model_fields["enrichment_ttl_days"].default
         }
 
-        # Filter out None values from company_data before passing to model_validate
-        # This ensures pydantic doesn't complain about Optional fields if their values are explicitly None
-        filtered_company_data = {k: v for k, v in company_data.items() if v is not None}
+        # Add initial tags
+        tags = {"prospect"}
+        if campaign:
+            tags.add(campaign)
+        company_data["tags"] = list(tags)
 
-        # Create Company object
+        # Filter out None values and validate
+        filtered_company_data = {k: v for k, v in company_data.items() if v is not None}
         new_company = Company.model_validate(filtered_company_data)
 
-        # Ensure directory exists and save
-        company_dir = get_companies_dir() / new_company.slug
-        company_dir.mkdir(exist_ok=True)
-        index_path = company_dir / "_index.md"
-
-        with open(index_path, 'w') as index_file:
-            index_file.write("---" + "\n")
-            yaml.dump(new_company.model_dump(exclude_none=True), index_file, sort_keys=False) # Dump model directly
-            index_file.write("---" + "\n")
-
-        # Add prospect and campaign tags
-        tags = ["prospect"]
-        if campaign:
-            tags.append(campaign)
-        tags_path = company_dir / "tags.lst"
-        with open(tags_path, 'w') as tags_file:
-            tags_file.write("\n".join(tags))
-        
+        # Use new robust save method
+        new_company.save()
         return new_company

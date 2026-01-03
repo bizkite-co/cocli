@@ -121,17 +121,25 @@ class Company(BaseModel):
             markdown_content = ""
 
             if content.startswith("---") and "---" in content[3:]:
-                frontmatter_str, markdown_content = content.split("---", 2)[1:]
-                try:
-                    frontmatter_data = yaml.safe_load(frontmatter_str) or {}
-                except yaml.YAMLError as e: # Catch YAML errors specifically
-                    logger.warning(f"Skipping {company_dir.name}: YAML error in _index.md: {e}")
-                    return None
+                parts = content.split("---", 2)
+                if len(parts) >= 3:
+                    frontmatter_str = parts[1]
+                    markdown_content = parts[2]
+                    try:
+                        frontmatter_data = yaml.safe_load(frontmatter_str) or {}
+                    except yaml.YAMLError as e: # Catch YAML errors specifically
+                        logger.warning(f"Skipping {company_dir.name}: YAML error in _index.md: {e}")
+                        return None
 
-            # Load tags from tags.lst
+            # Load tags from tags.lst (Source of Truth)
             tags = []
             if tags_path.exists():
-                tags = tags_path.read_text().strip().split('\n')
+                tags = [t.strip() for t in tags_path.read_text().strip().split('\n') if t.strip()]
+            
+            # If tags.lst was missing/empty, fall back to YAML tags
+            if not tags and "tags" in frontmatter_data:
+                tags = frontmatter_data["tags"]
+                if isinstance(tags, str): tags = [tags]
 
             # Prepare data for model instantiation
             model_data = frontmatter_data
@@ -155,3 +163,33 @@ class Company(BaseModel):
         except Exception as e:
             logging.error(f"Error in from_directory for {company_dir}: {e}")
             raise Exception("from_directory") from e
+
+    def save(self):
+        """Saves the company data to _index.md and tags to tags.lst."""
+        companies_dir = get_companies_dir()
+        company_dir = companies_dir / self.slug
+        company_dir.mkdir(parents=True, exist_ok=True)
+        
+        index_path = company_dir / "_index.md"
+        tags_path = company_dir / "tags.lst"
+        
+        # 1. Update tags.lst (Primary Source of Truth)
+        if self.tags:
+            unique_tags = sorted(list(set([t.strip() for t in self.tags if t.strip()])))
+            tags_path.write_text("\n".join(unique_tags) + "\n")
+            # Ensure model tags match the cleaned list
+            self.tags = unique_tags
+
+        # 2. Update YAML index (keeping tags in YAML for reporting speed)
+        # We don't want to save the description twice (YAML and Markdown body)
+        data = self.model_dump(exclude_none=True)
+        description = data.pop("description", "")
+        
+        with open(index_path, 'w') as f:
+            f.write("---\n")
+            yaml.dump(data, f, sort_keys=False)
+            f.write("---\n")
+            if description:
+                f.write(f"\n{description}\n")
+        
+        logger.debug(f"Saved company: {self.slug}")

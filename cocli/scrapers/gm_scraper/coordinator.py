@@ -9,6 +9,7 @@ from .strategy import SpiralStrategy, GridStrategy
 from .wilderness import WildernessManager
 from .scanner import SidebarScraper
 from .utils import get_viewport_bounds
+from ...utils.playwright_utils import setup_optimized_context
 
 logger = logging.getLogger(__name__)
 
@@ -33,6 +34,7 @@ class ScrapeCoordinator:
         self.viewport_height = viewport_height
         self.debug = debug
         self.wilderness = WildernessManager(s3_client=s3_client, s3_bucket=s3_bucket)
+        self.bandwidth_tracker = None
 
     async def run(
         self,
@@ -49,6 +51,10 @@ class ScrapeCoordinator:
         # Create a new context explicitly for this session
         # This fixes 'Please use browser.new_context()' errors on some environments
         context = await self.browser.new_context(viewport={'width': self.viewport_width, 'height': self.viewport_height})
+        
+        # Setup optimization (blocking images/css + tracking bandwidth)
+        self.bandwidth_tracker = await setup_optimized_context(context)
+        
         page = await context.new_page()
         
         navigator = Navigator(page)
@@ -83,24 +89,18 @@ class ScrapeCoordinator:
                 
                 logger.info(f"Processing location: {lat:.4f}, {lon:.4f} (Dist: {dist:.1f} mi)")
                 
+                # Reset bandwidth tracker for this location to see per-task usage
+                start_mb = self.bandwidth_tracker.get_mb()
+                
                 # 2. Determine Scope (Expand-Out)
                 # We attempt to define the largest effective box for this center point
                 # For now, simplistic approach: Use base size. 
-                # Future: Implement the dynamic expansion loop here.
-                
-                # Let's implement a simple "Check if we can use a bigger zoom" logic
-                # Loop through expansion factors: 1x, 2x, 4x...
-                # If we find a box that is NOT wilderness and NOT scraped, we use it.
-                # If we find a box that IS wilderness, we mark/skip.
                 
                 current_width = self.base_width_miles
                 current_height = self.base_height_miles
                 
                 # Check if this area is already covered
                 bounds = get_viewport_bounds(lat, lon, current_width, current_height)
-                
-                # If entirely wilderness, skip
-                # (WildernessManager handles the index check)
                 
                 # Scrape each query
                 for query in search_phrases:
@@ -130,6 +130,10 @@ class ScrapeCoordinator:
                         
                     # Mark Index
                     self.wilderness.mark_scraped(bounds, query, items_found, record_width, record_height, tile_id=tile_id)
+                
+                # Log bandwidth usage for this location
+                end_mb = self.bandwidth_tracker.get_mb()
+                logger.info(f"Bandwidth used for location: {end_mb - start_mb:.2f} MB (Total: {end_mb:.2f} MB)")
                     
         finally:
             await context.close()

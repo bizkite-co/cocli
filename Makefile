@@ -1,5 +1,3 @@
-
-
 PHONY: help
 help: ## Display this help screen
 	@echo "Available commands:"
@@ -369,17 +367,13 @@ gc-campaigns: ## Commit and push all changes to campaigns and indexes
 
 gc-companies: ## Commit and push all changes to companies and people
 	cd cocli_data && git add companies people && git commit -m "Update companies and people" && git push;; cd ..
+
 .PHONY: deploy-creds-rpi
-deploy-creds-rpi: ## Securely deploy AWS credentials to the Raspberry Pi
-	@if [ ! -f "docker/rpi-worker/.rpi_credentials" ] || [ ! -f "docker/rpi-worker/.rpi_config" ]; then \
-		echo "\033[0;31mError: 'docker/rpi-worker/.rpi_credentials' and 'docker/rpi-worker/.rpi_config' files not found.\033[0m"; \
-		echo "Please create them with the [bizkite-support] profile for the RPi in that directory."; \
-		exit 1; \
-	fi
-	@echo "Deploying AWS credentials to $(RPI_USER)@$(RPI_HOST)..."
-	ssh $(RPI_USER)@$(RPI_HOST) "rm -rf ~/.aws && mkdir ~/.aws"
-	scp docker/rpi-worker/.rpi_credentials $(RPI_USER)@$(RPI_HOST):~/.aws/credentials
-	scp docker/rpi-worker/.rpi_config $(RPI_USER)@$(RPI_HOST):~/.aws/config
+deploy-creds-rpi: ## Securely deploy AWS credentials to both Raspberry Pis (Usage: make deploy-creds-rpi [CAMPAIGN=name])
+	$(call validate_campaign)
+	@echo "Deploying credentials for profile: $(AWS_PROFILE)"
+	python3 scripts/deploy_rpi_creds.py --profile $(AWS_PROFILE) --host octoprint.local --user $(RPI_USER)
+	python3 scripts/deploy_rpi_creds.py --profile $(AWS_PROFILE) --host coclipi.local --user $(RPI_USER)
 
 # ==============================================================================
 # Web Dashboard
@@ -502,21 +496,25 @@ rebuild-rpi-worker: check-git-sync ## Pull latest code and rebuild Docker image 
 .PHONY: start-rpi-worker
 start-rpi-worker: ## Start the Docker worker on Raspberry Pi
 	$(eval SCRAPE_QUEUE := $(shell ./.venv/bin/python -c "from cocli.core.config import load_campaign_config; print(load_campaign_config('$(CAMPAIGN)').get('aws', {}).get('cocli_scrape_tasks_queue_url', ''))"))
+	$(eval DETAILS_QUEUE := $(shell ./.venv/bin/python -c "from cocli.core.config import load_campaign_config; print(load_campaign_config('$(CAMPAIGN)').get('aws', {}).get('cocli_gm_list_item_queue_url', ''))"))
 	ssh $(RPI_USER)@$(RPI_HOST) "docker run -d --restart unless-stopped --name cocli-scraper-worker \
 		-e TZ=America/Los_Angeles \
 		-e CAMPAIGN_NAME='$(CAMPAIGN)' \
 		-e AWS_PROFILE=$(AWS_PROFILE) \
 		-e COCLI_SCRAPE_TASKS_QUEUE_URL='$(SCRAPE_QUEUE)' \
+		-e COCLI_GM_LIST_ITEM_QUEUE_URL='$(DETAILS_QUEUE)' \
 		-v ~/.aws:/root/.aws:ro cocli-worker-rpi:latest"
 
 .PHONY: start-rpi-details-worker
 start-rpi-details-worker: ## Start the Details Worker on Raspberry Pi
 	$(eval DETAILS_QUEUE := $(shell ./.venv/bin/python -c "from cocli.core.config import load_campaign_config; print(load_campaign_config('$(CAMPAIGN)').get('aws', {}).get('cocli_gm_list_item_queue_url', ''))"))
+	$(eval ENRICHMENT_QUEUE := $(shell ./.venv/bin/python -c "from cocli.core.config import load_campaign_config; print(load_campaign_config('$(CAMPAIGN)').get('aws', {}).get('cocli_enrichment_queue_url', ''))"))
 	ssh $(RPI_USER)@$(RPI_HOST) "docker run -d --restart unless-stopped --name cocli-details-worker \
 		-e TZ=America/Los_Angeles \
 		-e CAMPAIGN_NAME='$(CAMPAIGN)' \
 		-e AWS_PROFILE=$(AWS_PROFILE) \
 		-e COCLI_GM_LIST_ITEM_QUEUE_URL='$(DETAILS_QUEUE)' \
+		-e COCLI_ENRICHMENT_QUEUE_URL='$(ENRICHMENT_QUEUE)' \
 		-v ~/.aws:/root/.aws:ro cocli-worker-rpi:latest cocli worker details"
 
 .PHONY: stop-rpi-worker
@@ -529,6 +527,13 @@ stop-rpi-details-worker: ## Stop and remove the Details worker on Raspberry Pi
 
 .PHONY: restart-rpi-worker
 restart-rpi-worker: stop-rpi-worker start-rpi-worker ## Restart the Raspberry Pi worker
+
+.PHONY: restart-rpi-all
+restart-rpi-all: ## Restart all Raspberry Pi workers (Scraper on octoprint, Details on coclipi)
+	@$(MAKE) stop-rpi-all RPI_HOST=octoprint.local
+	@$(MAKE) stop-rpi-all RPI_HOST=coclipi.local
+	@$(MAKE) start-rpi-worker RPI_HOST=octoprint.local
+	@$(MAKE) start-rpi-details-worker RPI_HOST=coclipi.local
 
 .PHONY: log-rpi-worker
 log-rpi-worker: ## Tail logs from the Raspberry Pi List Scraper worker

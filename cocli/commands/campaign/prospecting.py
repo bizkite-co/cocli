@@ -189,6 +189,7 @@ def queue_scrapes(
             lon = tile.get("center_lon") or tile.get("center", {}).get("lon")
             tile_id = tile.get("id")
             if lat and lon and tile_id:
+                # bounds for 0.1 degree tile
                 bounds = {"lat_min": float(lat)-0.05, "lat_max": float(lat)+0.05, "lon_min": float(lon)-0.05, "lon_max": float(lon)+0.05}
                 for phrase in search_phrases:
                     if not force:
@@ -197,19 +198,20 @@ def queue_scrapes(
                         if match_area:
                             continue
                             
-                # 2. Overlap Check (Legacy and Robustness)
-                match = scrape_index.is_area_scraped(phrase, bounds, overlap_threshold_percent=90.0)
-                if match and (include_legacy or match[0].tile_id):
-                    continue
-                tasks_to_queue.append(ScrapeTask(
-                    latitude=float(lat), 
-                    longitude=float(lon), 
-                    zoom=13, 
-                    search_phrase=phrase, 
-                    campaign_name=campaign_name, 
-                    tile_id=tile.get("id"),
-                    ack_token=None
-                ))
+                        # 2. Overlap Check (Legacy and Robustness)
+                        match = scrape_index.is_area_scraped(phrase, bounds, overlap_threshold_percent=90.0)
+                        if match and (include_legacy or match[0].tile_id):
+                            continue
+
+                    tasks_to_queue.append(ScrapeTask(
+                        latitude=float(lat), 
+                        longitude=float(lon), 
+                        zoom=13, 
+                        search_phrase=phrase, 
+                        campaign_name=campaign_name, 
+                        tile_id=tile.get("id"),
+                        ack_token=None
+                    ))
     
     if tasks_to_queue:
         # Silence verbose libraries
@@ -262,7 +264,13 @@ def achieve_goal(
 
     with open(campaign_dir / "config.toml", "r") as f:
         config = toml.load(f)
-    search_phrases = config.get("prospecting", {}).get("queries", [])
+    
+    prospecting_config = config.get("prospecting", {})
+    if proximity_miles == 10.0 and "proximity" in prospecting_config:
+        proximity_miles = float(prospecting_config["proximity"])
+        console.print(f"[dim]Using proximity from campaign config: {proximity_miles} mi[/dim]")
+
+    search_phrases = prospecting_config.get("queries", [])
     grid_tiles = None
     if grid_mode:
         grid_file = campaign_dir / "exports" / "target-areas.json"
