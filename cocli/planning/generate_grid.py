@@ -100,41 +100,70 @@ def generate_global_grid(
 
     return tiles
 
-def export_to_kml(tiles: List[Dict[str, Any]], filename: str, campaign_name: str, color: Optional[str] = None) -> None:
+def export_to_kml(tiles: List[Dict[str, Any]], filename: str, campaign_name: str, color: Optional[str] = None, compact: bool = True) -> None:
     """
     Exports the generated grid tiles to a KML file for visualization.
+    If compact=True (default), manually builds a tiny KML using shared styles to save space.
     """
-    kml = simplekml.Kml()
-    document = kml.newdocument(name=f"{campaign_name} Global Grid")
+    if not compact:
+        kml = simplekml.Kml()
+        document = kml.newdocument(name=f"{campaign_name} Global Grid")
 
-    for tile in tiles:
-        pol = document.newpolygon(name=tile["id"])
-        pol.outerboundaryis = [
-            (tile["south_west_lon"], tile["south_west_lat"]),
-            (tile["north_east_lon"], tile["south_west_lat"]),
-            (tile["north_east_lon"], tile["north_east_lat"]),
-            (tile["south_west_lon"], tile["north_east_lat"]),
-            (tile["south_west_lon"], tile["south_west_lat"])
-        ]
-        
-        if color:
-            # color is expected in KML AABBGGRR hex format (e.g. "08ffffff")
-            pol.style.polystyle.color = color
-        else:
-            # Transparent blue (default)
-            pol.style.polystyle.color = simplekml.Color.changealphaint(100, simplekml.Color.blue)
+        for tile in tiles:
+            pol = document.newpolygon(name=tile["id"])
+            pol.outerboundaryis = [
+                (tile["south_west_lon"], tile["south_west_lat"]),
+                (tile["north_east_lon"], tile["south_west_lat"]),
+                (tile["north_east_lon"], tile["north_east_lat"]),
+                (tile["south_west_lon"], tile["north_east_lat"]),
+                (tile["south_west_lon"], tile["south_west_lat"])
+            ]
             
-        pol.style.linestyle.width = 2
+            if color:
+                pol.style.polystyle.color = color
+            else:
+                pol.style.polystyle.color = simplekml.Color.changealphaint(100, simplekml.Color.blue)
+                
+            pol.style.linestyle.width = 2
+            
+            desc = (
+                f"ID: {tile['id']}\n"
+                f"Grid Step: {tile['step_deg']} deg\n"
+                f"Approx Size: {tile['est_width_miles']}mi (W) x {tile['est_height_miles']}mi (H)\n"
+                f"Center: {tile['center_lat']}, {tile['center_lon']}"
+            )
+            pol.description = desc
         
-        desc = (
-            f"ID: {tile['id']}\n"
-            f"Grid Step: {tile['step_deg']} deg\n"
-            f"Approx Size: {tile['est_width_miles']}mi (W) x {tile['est_height_miles']}mi (H)\n"
-            f"Center: {tile['center_lat']}, {tile['center_lon']}"
-        )
-        pol.description = desc
-    
-    kml.save(filename)
+        kml.save(filename)
+    else:
+        # Compact Manual KML Build
+        kml_color = color if color else "64ff0000" # default 40% blue
+        placemarks = []
+        for tile in tiles:
+            coords = (
+                f"{tile['south_west_lon']},{tile['south_west_lat']},0 "
+                f"{tile['north_east_lon']},{tile['south_west_lat']},0 "
+                f"{tile['north_east_lon']},{tile['north_east_lat']},0 "
+                f"{tile['south_west_lon']},{tile['north_east_lat']},0 "
+                f"{tile['south_west_lon']},{tile['south_west_lat']},0"
+            )
+            pm = f"<Placemark><name>{tile['id']}</name><styleUrl>#s</styleUrl><Polygon><outerBoundaryIs><LinearRing><coordinates>{coords}</coordinates></LinearRing></outerBoundaryIs></Polygon></Placemark>"
+            placemarks.append(pm)
+            
+        kml_content = f"""<?xml version="1.0" encoding="UTF-8"?>
+<kml xmlns="http://www.opengis.net/kml/2.2">
+<Document>
+    <name>{campaign_name} Global Grid</name>
+    Style id="s">
+        <LineStyle><color>ff00ff00</color><width>1</width></LineStyle>
+        <PolyStyle><color>{kml_color}</color></PolyStyle>
+    </Style>
+    {"".join(placemarks)}
+</Document>
+</kml>"""
+        with open(filename, 'w') as f:
+            f.write(kml_content)
+            
     print(f"Generated KML: {filename}")
 
 if __name__ == "__main__":

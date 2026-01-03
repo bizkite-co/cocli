@@ -413,7 +413,7 @@ publish-all: export-emails publish-report publish-kml ## Full sync: export email
 # ==============================================================================
 .PHONY: generate-campaign-grid
 generate-campaign-grid: install ## Generate 0.1-degree aligned grid for the current campaign
-	COCLI_DATA_HOME=$(pwd)/cocli_data uv run cocli campaign generate-grid
+	COCLI_DATA_HOME=$(shell pwd)/cocli_data uv run cocli campaign generate-grid
 
 # ==============================================================================
 # Raspberry Pi Worker Management
@@ -497,7 +497,7 @@ rebuild-rpi-worker: check-git-sync ## Pull latest code and rebuild Docker image 
 start-rpi-worker: ## Start the Docker worker on Raspberry Pi
 	$(eval SCRAPE_QUEUE := $(shell ./.venv/bin/python -c "from cocli.core.config import load_campaign_config; print(load_campaign_config('$(CAMPAIGN)').get('aws', {}).get('cocli_scrape_tasks_queue_url', ''))"))
 	$(eval DETAILS_QUEUE := $(shell ./.venv/bin/python -c "from cocli.core.config import load_campaign_config; print(load_campaign_config('$(CAMPAIGN)').get('aws', {}).get('cocli_gm_list_item_queue_url', ''))"))
-	ssh $(RPI_USER)@$(RPI_HOST) "docker run -d --restart unless-stopped --name cocli-scraper-worker \
+	ssh $(RPI_USER)@$(RPI_HOST) "docker run -d --restart always --name cocli-scraper-worker \
 		-e TZ=America/Los_Angeles \
 		-e CAMPAIGN_NAME='$(CAMPAIGN)' \
 		-e AWS_PROFILE=$(AWS_PROFILE) \
@@ -509,7 +509,7 @@ start-rpi-worker: ## Start the Docker worker on Raspberry Pi
 start-rpi-details-worker: ## Start the Details Worker on Raspberry Pi
 	$(eval DETAILS_QUEUE := $(shell ./.venv/bin/python -c "from cocli.core.config import load_campaign_config; print(load_campaign_config('$(CAMPAIGN)').get('aws', {}).get('cocli_gm_list_item_queue_url', ''))"))
 	$(eval ENRICHMENT_QUEUE := $(shell ./.venv/bin/python -c "from cocli.core.config import load_campaign_config; print(load_campaign_config('$(CAMPAIGN)').get('aws', {}).get('cocli_enrichment_queue_url', ''))"))
-	ssh $(RPI_USER)@$(RPI_HOST) "docker run -d --restart unless-stopped --name cocli-details-worker \
+	ssh $(RPI_USER)@$(RPI_HOST) "docker run -d --restart always --name cocli-details-worker \
 		-e TZ=America/Los_Angeles \
 		-e CAMPAIGN_NAME='$(CAMPAIGN)' \
 		-e AWS_PROFILE=$(AWS_PROFILE) \
@@ -530,10 +530,30 @@ restart-rpi-worker: stop-rpi-worker start-rpi-worker ## Restart the Raspberry Pi
 
 .PHONY: restart-rpi-all
 restart-rpi-all: ## Restart all Raspberry Pi workers (Scraper on octoprint, Details on coclipi)
-	@$(MAKE) stop-rpi-all RPI_HOST=octoprint.local
-	@$(MAKE) stop-rpi-all RPI_HOST=coclipi.local
-	@$(MAKE) start-rpi-worker RPI_HOST=octoprint.local
-	@$(MAKE) start-rpi-details-worker RPI_HOST=coclipi.local
+	-$(MAKE) stop-rpi-all RPI_HOST=octoprint.local
+	-$(MAKE) stop-rpi-all RPI_HOST=coclipi.local
+	$(MAKE) start-rpi-worker RPI_HOST=octoprint.local
+	$(MAKE) start-rpi-details-worker RPI_HOST=coclipi.local
+
+.PHONY: deploy-cluster
+deploy-cluster: ## Rebuild and restart the entire cluster (octoprint=scraper, coclipi=details)
+	@echo "Deploying to octoprint.local (Scraper)..."
+	$(MAKE) rebuild-rpi-worker RPI_HOST=octoprint.local
+	-$(MAKE) stop-rpi-all RPI_HOST=octoprint.local
+	$(MAKE) start-rpi-worker RPI_HOST=octoprint.local
+	@echo "Deploying to coclipi.local (Details)..."
+	$(MAKE) rebuild-rpi-worker RPI_HOST=coclipi.local
+	-$(MAKE) stop-rpi-all RPI_HOST=coclipi.local
+	$(MAKE) start-rpi-details-worker RPI_HOST=coclipi.local
+	@echo "Cluster deployment complete."
+
+.PHONY: shutdown-cluster
+shutdown-cluster: ## Safely shut down all Raspberry Pi workers
+	@echo "Shutting down octoprint.local..."
+	-$(MAKE) shutdown-rpi RPI_HOST=octoprint.local
+	@echo "Shutting down coclipi.local..."
+	-$(MAKE) shutdown-rpi RPI_HOST=coclipi.local
+	@echo "Shutdown commands sent. You can safely unplug the Pis in 30 seconds."
 
 .PHONY: log-rpi-worker
 log-rpi-worker: ## Tail logs from the Raspberry Pi List Scraper worker

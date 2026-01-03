@@ -81,7 +81,7 @@ def visualize_coverage(
             color = phrase_colors.get(phrase, 'ffffffff')
             placemark = f'''        <Placemark>
                 <name>{phrase}</name>
-                <Style><LineStyle><color>{color}</color><width>2</width></LineStyle><PolyStyle><color>80{color[2:]}</color></PolyStyle></Style>
+                <Style><LineStyle><width>0</width></LineStyle><PolyStyle><color>80{color[2:]}</color></PolyStyle></Style>
                 <Polygon><outerBoundaryIs><LinearRing><coordinates>{coordinates}</coordinates></LinearRing></outerBoundaryIs></Polygon>
             </Placemark>'''
             kml_placemarks.append(placemark)
@@ -146,7 +146,7 @@ def visualize_coverage(
             <name>{tile_id}</name>
             <description><![CDATA[{description}]]></description>
             <Style>
-                <LineStyle><color>ffffffff</color></LineStyle>
+                <LineStyle><width>0</width></LineStyle>
                 <PolyStyle><color>40{color[2:]}</color></PolyStyle>
             </Style>
             <Polygon>
