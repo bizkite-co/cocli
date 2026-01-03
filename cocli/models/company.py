@@ -139,7 +139,8 @@ class Company(BaseModel):
             # If tags.lst was missing/empty, fall back to YAML tags
             if not tags and "tags" in frontmatter_data:
                 tags = frontmatter_data["tags"]
-                if isinstance(tags, str): tags = [tags]
+                if isinstance(tags, str):
+                    tags = [tags]
 
             # Prepare data for model instantiation
             model_data = frontmatter_data

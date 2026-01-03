@@ -1,5 +1,4 @@
 import logging
-from typing import Dict, Any, Optional
 from playwright.async_api import BrowserContext, Request, Response
 
 logger = logging.getLogger(__name__)

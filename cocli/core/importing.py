@@ -1,10 +1,8 @@
-import yaml
 from typing import Optional
 import logging
 
 from ..models.company import Company
 from ..models.google_maps_prospect import GoogleMapsProspect
-from ..core.config import get_companies_dir
 
 logger = logging.getLogger(__name__)
 
