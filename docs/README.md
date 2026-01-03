@@ -6,6 +6,7 @@ High-level design, patterns, and infrastructure.
 *   [Structure](./architecture/structure.md): Application structure overview.
 *   [System Architecture Map](./architecture/system-map.md): Nomenclature for execution domains and data flows.
 *   [Infrastructure Roadmap](./architecture/infrastructure-roadmap.md): Deployment architecture (AWS CDK) and roadmap.
+*   [Worker Infrastructure](./architecture/worker-infrastructure.md): Details on Raspberry Pi cluster, Fargate, and scaling options.
 *   [Event Sourcing](./architecture/event-sourcing.md): Notes on event sourcing and logging.
 *   [Review View Command](./architecture/review-view-command.md): Architectural review of the view command.
 
