@@ -237,6 +237,9 @@ def get_campaign_stats(campaign_name: str) -> Dict[str, Any]:
     stats['emails_found_count'] = stats.get('indexed_emails_count', 0)
     
     # 6. Configuration Data (Queries & Locations)    
+    prospecting_config = config.get('prospecting', {})
+    stats['queries'] = prospecting_config.get('queries', [])
+    
     # Locations can be in the list or in a CSV
     locations = prospecting_config.get('locations', [])
     target_locations_csv = prospecting_config.get('target-locations-csv')
