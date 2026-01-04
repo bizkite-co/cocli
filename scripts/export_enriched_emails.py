@@ -85,6 +85,8 @@ def main(campaign_name: Optional[str] = typer.Argument(None, help="Campaign name
             continue
         
         emails = set()
+        categories = []
+        services = []
 
         # Check _index.md (Compiled data)
         if index_md.exists():
@@ -94,11 +96,14 @@ def main(campaign_name: Optional[str] = typer.Argument(None, help="Campaign name
                     parts = content.split("---")
                     if len(parts) >= 3:
                         data = yaml.safe_load(parts[1])
-                        if data and data.get("email"):
-                            # Filter out placeholders
-                            e = data.get("email")
-                            if e and e not in ["null", "''", ""]:
-                                emails.add(e)
+                        if data:
+                            if data.get("email"):
+                                # Filter out placeholders
+                                e = data.get("email")
+                                if e and e not in ["null", "''", ""]:
+                                    emails.add(e)
+                            if data.get("categories"):
+                                categories.extend(data["categories"])
             except Exception:
                 pass
 
@@ -123,10 +128,26 @@ def main(campaign_name: Optional[str] = typer.Argument(None, help="Campaign name
                                         emails.add(p["email"])
                                     elif isinstance(p, str) and "@" in p: 
                                          emails.add(p)
+                            
+                            if data.get("services"):
+                                services.extend(data["services"])
             except Exception:
                 pass
                     
         if emails:
+            # Cleanse emails: remove newlines, strip whitespace
+            cleaned_emails = set()
+            for e in emails:
+                if not e:
+                    continue
+                # Replace newlines and commas with spaces or empty strings to prevent CSV breakage
+                clean_e = e.replace("\n", "").replace("\r", "").strip()
+                if clean_e:
+                    cleaned_emails.add(clean_e)
+            
+            if not cleaned_emails:
+                continue
+
             # Get basic info from _index.md or website.md
             company_name = company_path.name
             domain = company_path.name
@@ -148,13 +169,15 @@ def main(campaign_name: Optional[str] = typer.Argument(None, help="Campaign name
             results.append({
                 "company": company_name,
                 "domain": domain,
-                "emails": "; ".join(sorted(list(emails))),
+                "emails": "; ".join(sorted(list(cleaned_emails))),
                 "phone": phone,
-                "website": domain
+                "website": domain,
+                "categories": "; ".join(sorted(list(set(categories)))),
+                "services": "; ".join(sorted(list(set(services))))
             })
 
     with open(output_file, "w", newline="") as f:
-        writer = csv.DictWriter(f, fieldnames=["company", "domain", "emails", "phone", "website"])
+        writer = csv.DictWriter(f, fieldnames=["company", "domain", "emails", "phone", "website", "categories", "services"])
         writer.writeheader()
         writer.writerows(results)
         

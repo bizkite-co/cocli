@@ -6,7 +6,7 @@ from datetime import datetime, UTC
 
 from ..models.email import EmailEntry
 from .config import get_campaign_dir
-from .text_utils import slugify
+from .text_utils import slugify, slugdotify
 
 logger = logging.getLogger(__name__)
 
@@ -14,7 +14,7 @@ class EmailIndexManager:
     """
     Manages a campaign-specific index of emails.
     Stored in cocli_data/campaigns/{campaign}/indexes/emails/ as individual JSON files.
-    Structure: cocli_data/campaigns/{campaign}/indexes/emails/{domain_slug}/{email_slug}.json
+    Structure: cocli_data/campaigns/{campaign}/indexes/emails/{domain_part}/{user_part}.json
     """
     def __init__(self, campaign_name: str):
         self.campaign_name = campaign_name
@@ -27,11 +27,20 @@ class EmailIndexManager:
         self.base_dir = campaign_dir / "indexes" / "emails"
         self.base_dir.mkdir(parents=True, exist_ok=True)
 
-    def _get_email_path(self, domain: str, email: str) -> Path:
-        """Returns the file path for a given domain and email."""
-        domain_slug = slugify(domain)
-        # Use slugify for email to ensure safe filename
-        email_slug = slugify(email)
+    def _get_email_path(self, email: str) -> Path:
+        """
+        Returns the file path for a given email, derived strictly from the email address itself.
+        Structure: indexes/emails/{domain_slug}/{user_slug}.json
+        """
+        if "@" in email:
+            user_part, domain_part = email.rsplit("@", 1)
+        else:
+            user_part, domain_part = email, "unknown"
+            
+        # Use slugdotify to preserve dots in domain (e.g. example.com) and user (john.doe)
+        domain_slug = slugdotify(domain_part)
+        email_slug = slugdotify(user_part)
+        
         domain_dir = self.base_dir / domain_slug
         domain_dir.mkdir(parents=True, exist_ok=True)
         return domain_dir / f"{email_slug}.json"
@@ -41,7 +50,7 @@ class EmailIndexManager:
         Adds or updates an email entry in the index.
         Thread-safe 'latest write wins' approach for distributed workers.
         """
-        path = self._get_email_path(email_entry.domain, email_entry.email)
+        path = self._get_email_path(email_entry.email)
         
         now = datetime.now(UTC)
         

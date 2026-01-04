@@ -10,8 +10,11 @@ Ensure the distributed scraping and enrichment pipeline is 100% reliable through
 *   **Pipeline:** 1,000+ GM List items queued; Details workers processing and feeding Enrichment queue.
 
 ## Todo
-- [ ] **Data Integrity & Indexing:**
-    - [x] **Centralized Email Index:** Implement a file-per-item index for emails in `campaigns/{campaign}/indexes/emails/` to prevent data loss during distributed scrapes and ensure consistent yield.
+- [ ] **Data Quality & Scraper Hardening:**
+    - [ ] **Anomalous Domain Audit:** Identify and flag email domains with concatenation errors (e.g., `domain.comyelpmerchant`) or suspicious TLDs.
+    - [ ] **Scraper Logic Fix:** Analyze HTML source of anomalous results to fix greedy regex/XPath extraction (likely missing separators).
+    - [ ] **Missed Email Investigation:** Debug why obvious `mailto:` links are sometimes missed.
+    - [ ] **Rescrape Strategy:** Purge bad index entries and re-queue them for processing with the fixed scraper.
 - [ ] **Worker Monitoring:**
     - [ ] **Centralized Logging:** Implement logic to aggregate RPi container logs into S3 or CloudWatch for unified debugging.
     - [ ] **Health Checks:** Add a watchdog to restart workers if they fail to poll SQS for > 15 minutes.
@@ -22,6 +25,7 @@ Ensure the distributed scraping and enrichment pipeline is 100% reliable through
 
 ## Done
 - [x] **Data Integrity & Yield Protection:**
+    - [x] **Centralized Email Index:** Implement a file-per-item index for emails in `campaigns/{campaign}/indexes/emails/`.
     - [x] Implemented campaign-specific `EmailIndexManager` using a file-per-email storage strategy.
     - [x] Integrated email indexing into `WebsiteScraper`, `add-email`, and `import-customers`.
     - [x] Updated `campaign report` to use the index for accurate yield tracking.
