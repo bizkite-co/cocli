@@ -83,7 +83,7 @@ class EmailIndexManager:
         """Returns all indexed emails for a given domain."""
         domain_slug = slugify(domain)
         domain_dir = self.base_dir / domain_slug
-        emails = []
+        emails: List[EmailEntry] = []
         
         if not domain_dir.exists():
             return emails

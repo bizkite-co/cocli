@@ -70,7 +70,8 @@ def main(campaign_name: Optional[str] = typer.Argument(None, help="Campaign name
                     idx_data = yaml.safe_load(parts[1])
                     if idx_data:
                         place_id = idx_data.get("place_id")
-            except: pass
+            except Exception:
+                pass
 
         in_index = (place_id and place_id in target_place_ids) or (company_path.name in target_slugs)
 

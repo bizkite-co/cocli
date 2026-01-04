@@ -27,7 +27,8 @@ def restore_tags(campaign_name="turboship"):
                     domain = row.get('Domain')
                     if domain:
                         target_slugs.add(slugify(domain))
-        except: pass
+        except Exception:
+            pass
     
     console.print(f"Found {len(target_slugs)} unique businesses in the prospect index.")
 

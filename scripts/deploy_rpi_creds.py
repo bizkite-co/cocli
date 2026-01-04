@@ -75,9 +75,12 @@ def main():
         sys.exit(1)
     finally:
         # Cleanup
-        if tmp_creds.exists(): tmp_creds.unlink()
-        if tmp_config.exists(): tmp_config.unlink()
-        if tmp_dir.exists(): tmp_dir.rmdir()
+        if tmp_creds.exists():
+            tmp_creds.unlink()
+        if tmp_config.exists():
+            tmp_config.unlink()
+        if tmp_dir.exists():
+            tmp_dir.rmdir()
 
 if __name__ == "__main__":
     main()

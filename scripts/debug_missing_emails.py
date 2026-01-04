@@ -14,7 +14,8 @@ def debug_emails(campaign_name="turboship"):
     # 1. Find every unique email on disk
     console.print("[bold]Scanning all company files for emails...[/bold]")
     for company_path in companies_dir.iterdir():
-        if not company_path.is_dir(): continue
+        if not company_path.is_dir():
+            continue
         
         email = None
         # Check _index.md
@@ -26,7 +27,8 @@ def debug_emails(campaign_name="turboship"):
                     data = yaml.safe_load(parts[1])
                     if data and data.get("email"):
                         email = data.get("email")
-            except: pass
+            except Exception:
+                pass
             
         # Check website.md if index failed
         if not email:
@@ -38,7 +40,8 @@ def debug_emails(campaign_name="turboship"):
                         data = yaml.safe_load(parts[1])
                         if data and data.get("email"):
                             email = data.get("email")
-                except: pass
+                except Exception:
+                    pass
         
         if email and "@" in str(email):
             all_disk_emails.add(email)

@@ -27,7 +27,6 @@ def audit_campaign(campaign_name: str):
     prospects_index_dir = campaign_dir / "indexes" / "google_maps_prospects"
     if not prospects_index_dir.exists():
         console.print(f"[yellow]Warning: No prospect index found at {prospects_index_dir}[/yellow]")
-        prospect_slugs = set()
     else:
         # Each file in this dir is {place_id}.csv
         # We need the slugs. For now, let's assume the company folders exist.
@@ -71,7 +70,8 @@ def audit_campaign(campaign_name: str):
                         
                     data = yaml.safe_load(parts[1]) or {}
                     yaml_tags = data.get('tags', [])
-                    if isinstance(yaml_tags, str): yaml_tags = [yaml_tags]
+                    if isinstance(yaml_tags, str):
+                        yaml_tags = [yaml_tags]
                     
                     # Update YAML if campaign tag is missing
                     if campaign_name not in yaml_tags:

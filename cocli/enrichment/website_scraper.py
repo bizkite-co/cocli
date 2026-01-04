@@ -25,7 +25,7 @@ class WebsiteScraper:
 
     def _index_emails(self, website_data: Website, campaign_name: str) -> None:
         """Helper to record all found emails in the centralized email index."""
-        if not website_data.domain:
+        if not website_data.url:
             return
 
         index_manager = EmailIndexManager(campaign_name)
@@ -34,7 +34,7 @@ class WebsiteScraper:
         if website_data.email:
             entry = EmailEntry(
                 email=website_data.email,
-                domain=str(website_data.domain),
+                domain=str(website_data.url),
                 company_slug=website_data.associated_company_folder,
                 source="website_scraper",
                 tags=website_data.tags
@@ -48,7 +48,7 @@ class WebsiteScraper:
                 if email:
                     entry = EmailEntry(
                         email=email,
-                        domain=str(website_data.domain),
+                        domain=str(website_data.url),
                         company_slug=website_data.associated_company_folder,
                         source="website_scraper_personnel",
                         tags=website_data.tags
