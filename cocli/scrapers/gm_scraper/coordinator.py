@@ -9,7 +9,7 @@ from .strategy import SpiralStrategy, GridStrategy
 from .wilderness import WildernessManager
 from .scanner import SidebarScraper
 from .utils import get_viewport_bounds
-from ...utils.playwright_utils import setup_optimized_context
+from ...utils.playwright_utils import setup_optimized_context, BandwidthTracker
 
 logger = logging.getLogger(__name__)
 
@@ -34,7 +34,7 @@ class ScrapeCoordinator:
         self.viewport_height = viewport_height
         self.debug = debug
         self.wilderness = WildernessManager(s3_client=s3_client, s3_bucket=s3_bucket)
-        self.bandwidth_tracker = None
+        self.bandwidth_tracker: Optional[BandwidthTracker] = None
 
     async def run(
         self,
@@ -90,7 +90,7 @@ class ScrapeCoordinator:
                 logger.info(f"Processing location: {lat:.4f}, {lon:.4f} (Dist: {dist:.1f} mi)")
                 
                 # Reset bandwidth tracker for this location to see per-task usage
-                start_mb = self.bandwidth_tracker.get_mb()
+                start_mb = self.bandwidth_tracker.get_mb() if self.bandwidth_tracker else 0.0
                 
                 # 2. Determine Scope (Expand-Out)
                 # We attempt to define the largest effective box for this center point
@@ -132,7 +132,7 @@ class ScrapeCoordinator:
                     self.wilderness.mark_scraped(bounds, query, items_found, record_width, record_height, tile_id=tile_id)
                 
                 # Log bandwidth usage for this location
-                end_mb = self.bandwidth_tracker.get_mb()
+                end_mb = self.bandwidth_tracker.get_mb() if self.bandwidth_tracker else 0.0
                 logger.info(f"Bandwidth used for location: {end_mb - start_mb:.2f} MB (Total: {end_mb:.2f} MB)")
                     
         finally:

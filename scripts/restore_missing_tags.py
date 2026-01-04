@@ -6,7 +6,7 @@ from cocli.core.text_utils import slugify
 
 console = Console()
 
-def restore_tags(campaign_name="turboship"):
+def restore_tags(campaign_name: str = "turboship") -> None:
     data_home = Path("/home/mstouffer/repos/company-cli/cocli_data")
     companies_dir = data_home / "companies"
     campaign_dir = data_home / "campaigns" / campaign_name

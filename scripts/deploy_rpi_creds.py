@@ -4,7 +4,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-def main():
+def main() -> None:
     parser = argparse.ArgumentParser(description="Deploy AWS credentials for a specific profile to a Raspberry Pi.")
     parser.add_argument("--profile", required=True, help="Local AWS profile name to extract.")
     parser.add_argument("--host", required=True, help="RPi hostname or IP (e.g., octoprint.local).")
