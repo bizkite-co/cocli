@@ -4,7 +4,7 @@ from cocli.core.config import get_companies_dir
 
 console = Console()
 
-def debug_emails(campaign_name="turboship"):
+def debug_emails(campaign_name: str = "turboship") -> None:
     companies_dir = get_companies_dir()
     
     all_disk_emails = set()

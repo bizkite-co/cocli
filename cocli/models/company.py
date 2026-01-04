@@ -165,7 +165,7 @@ class Company(BaseModel):
             logging.error(f"Error in from_directory for {company_dir}: {e}")
             raise Exception("from_directory") from e
 
-    def save(self):
+    def save(self) -> None:
         """Saves the company data to _index.md and tags to tags.lst."""
         companies_dir = get_companies_dir()
         company_dir = companies_dir / self.slug

@@ -1,7 +1,7 @@
 import json
 from pathlib import Path
 
-def repair_kml(campaign_name="turboship"):
+def repair_kml(campaign_name: str = "turboship") -> None:
     data_home = Path("/home/mstouffer/repos/company-cli/cocli_data")
     campaign_dir = data_home / "campaigns" / campaign_name
     json_path = campaign_dir / "exports" / "target-areas.json"
