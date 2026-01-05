@@ -212,9 +212,9 @@ class WebsiteScraper:
 
                 # Fallback to navigating and scraping (only if still no email or URLs)
                 if not website_data.about_us_url:
-                    await self._navigate_and_scrape(page, website_data, ["About Us", "About"], "About Us", self._scrape_page, context, debug, navigation_timeout_ms)
+                    await self._navigate_and_scrape(page, website_data, ["About", "About Us", "Our Story", "Company"], "About Us", self._scrape_page, context, debug, navigation_timeout_ms)
                 if not website_data.contact_url:
-                    await self._navigate_and_scrape(page, website_data, ["Contact Us", "Contact"], "Contact Us", self._scrape_contact_page, context, debug, navigation_timeout_ms)
+                    await self._navigate_and_scrape(page, website_data, ["Contact", "Contacts", "Contact Us", "Get in Touch", "Reach Us"], "Contact Us", self._scrape_contact_page, context, debug, navigation_timeout_ms)
                 if not website_data.contact_url:
                     await self._navigate_and_scrape(page, website_data, ["Our Team", "Team"], "Our Team", self._scrape_contact_page, context, debug, navigation_timeout_ms)
                 if not website_data.services:
@@ -284,23 +284,40 @@ class WebsiteScraper:
             logger.warning(f"Failed to scrape {page_type} page from sitemap: {e}")
 
     async def _get_sitemap_urls(self, domain: str) -> List[str]:
-        sitemap_url = urljoin(str(domain), "/sitemap.xml")
-        try:
-            async with httpx.AsyncClient() as client:
-                response = await client.get(sitemap_url, timeout=5)
-                if response.status_code == 200:
-                    root = ET.fromstring(response.content)
-                    urls = []
-                    for elem in root.iter():
-                        if 'url' in elem.tag:
-                            for loc in elem.iter():
-                                if 'loc' in loc.tag and loc.text is not None:
-                                    urls.append(loc.text)
-                    logger.info(f"Found {len(urls)} URLs in sitemap for {domain}")
-                    return urls
-        except Exception as e:
-            logger.info(f"Could not fetch or parse sitemap for {domain}: {e}")
-        return []
+        sitemap_locations = ["/sitemap.xml", "/sitemap_index.xml", "/sitemap.desktop.xml"]
+        all_urls = set()
+        
+        async with httpx.AsyncClient(follow_redirects=True) as client:
+            for loc in sitemap_locations:
+                sitemap_url = urljoin(str(domain), loc)
+                try:
+                    response = await client.get(sitemap_url, timeout=5)
+                    if response.status_code == 200:
+                        root = ET.fromstring(response.content)
+                        # Check for sitemapindex
+                        if 'sitemapindex' in root.tag:
+                            for sm in root.iter():
+                                if 'loc' in sm.tag and sm.text:
+                                    # Fetch sub-sitemap
+                                    try:
+                                        sub_resp = await client.get(sm.text, timeout=5)
+                                        if sub_resp.status_code == 200:
+                                            sub_root = ET.fromstring(sub_resp.content)
+                                            for elem in sub_root.iter():
+                                                if 'loc' in elem.tag and elem.text:
+                                                    all_urls.add(elem.text)
+                                    except Exception:
+                                        continue
+                        else:
+                            for elem in root.iter():
+                                if 'loc' in elem.tag and elem.text:
+                                    all_urls.add(elem.text)
+                except Exception as e:
+                    logger.debug(f"Could not fetch/parse sitemap at {sitemap_url}: {e}")
+                    
+        if all_urls:
+            logger.info(f"Found {len(all_urls)} total URLs in sitemaps for {domain}")
+        return list(all_urls)
 
     async def _scrape_services_page(self, page: Page, website_data: Website, browser: BrowserContext) -> Website:
         html_content = await page.content()
