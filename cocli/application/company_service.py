@@ -8,6 +8,52 @@ from ..models.note import Note
 from ..core.config import get_companies_dir
 from ..core.website_cache import WebsiteCache # Corrected import
 
+from ..models.website import Website
+from ..core.s3_company_manager import S3CompanyManager
+import logging
+
+logger = logging.getLogger(__name__)
+
+async def update_company_from_website_data(
+    company: Company, 
+    website_data: Website, 
+    campaign: Optional[Any] = None
+) -> bool:
+    """
+    Updates a Company record with data from a website scrape.
+    Handles redirects by updating website_url and ensures clean emails.
+    Returns True if the company was modified and saved.
+    """
+    modified = False
+    
+    # 1. Handle Redirects / Website URL
+    final_url = str(website_data.url) if website_data.url else None
+    if final_url and company.website_url != final_url:
+        logger.info(f"Updating website_url for {company.slug}: {company.website_url} -> {final_url}")
+        company.website_url = final_url
+        modified = True
+
+    # 2. Handle Email
+    if website_data.email and company.email != website_data.email:
+        logger.info(f"Updating email for {company.slug}: {company.email} -> {website_data.email}")
+        company.email = website_data.email
+        modified = True
+
+    if modified:
+        # Save Locally
+        company.save()
+        
+        # Save to S3 if campaign context is provided
+        if campaign:
+            try:
+                s3_manager = S3CompanyManager(campaign=campaign)
+                await s3_manager.save_company_index(company)
+                logger.info(f"Synced updated company {company.slug} to S3")
+            except Exception as e:
+                logger.warning(f"Failed to sync company update to S3: {e}")
+
+    return modified
+
 def get_company_details_for_view(company_slug: str) -> Optional[Dict[str, Any]]:
     """
     Retrieves all necessary data for displaying a company's detailed view.

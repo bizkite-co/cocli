@@ -2,7 +2,7 @@ import re
 import httpx
 import asyncio
 import xml.etree.ElementTree as ET
-from typing import Optional, List, Callable, Coroutine, Any, Dict
+from typing import Optional, List, Callable, Coroutine, Any, Dict, Union
 from playwright.async_api import Page, Browser, BrowserContext
 from bs4 import BeautifulSoup, Tag
 import logging
@@ -58,19 +58,36 @@ class WebsiteScraper:
                         entry.tags.append(f"person:{person['name']}")
                     index_manager.add_email(entry)
 
+    async def _resolve_canonical_url(self, domain: str) -> Optional[str]:
+        """Rapidly find the working URL for a domain, following redirects."""
+        import httpx
+        # Match wget behavior: try http first for legacy domain redirects
+        protocols = ["http://", "https://"]
+        for protocol in protocols:
+            url = f"{protocol}{domain}"
+            try:
+                async with httpx.AsyncClient(follow_redirects=True, verify=False) as client:
+                    response = await client.get(url, timeout=10.0)
+                    if response.status_code == 200:
+                        return str(response.url)
+            except Exception:
+                continue
+        return None
+
     async def run(
         self,
-        browser: Browser | BrowserContext,
+        browser: Union[Browser, BrowserContext],
         domain: str,
-        campaign: Optional[Campaign] = None,
         force_refresh: bool = False,
         ttl_days: int = 30,
         debug: bool = False,
-        navigation_timeout_ms: Optional[int] = None # New parameter
-    ) -> Optional[Website]:
-        if not domain:
-            logger.info("No domain provided. Skipping website scraping.")
-            return None
+        campaign: Optional[Campaign] = None,
+        navigation_timeout_ms: int = 30000
+    ) -> Website:
+        """
+        Scrapes a website for company information.
+        """
+        domain_index_manager = WebsiteDomainCsvManager()
 
         # S3DomainManager is used for the scrape index (lat/lon bounds), not for individual website.md files
         domain_index_manager: WebsiteDomainCsvManager | S3DomainManager
@@ -119,26 +136,38 @@ class WebsiteScraper:
 
         page = await context.new_page()
         try:
-            # Try HTTPS first, then fallback to HTTP
-            protocols = ["https", "http"]
-            navigated = False
-            last_error = None
-
-            for protocol in protocols:
-                try:
-                    url = f"{protocol}://{domain}"
-                    logger.info(f"Attempting navigation to {url}")
-                    await page.goto(url, wait_until="domcontentloaded", timeout=navigation_timeout_ms or 60000) # Increased timeout
-                    navigated = True
-                    break
-                except Exception as e:
-                    logger.warning(f"Failed to navigate to {protocol}://{domain}: {e}")
-                    last_error = e
+            # 1. Resolve canonical URL (rapidly handle redirects/broken protocols)
+            canonical_url = await self._resolve_canonical_url(domain)
+            if not canonical_url:
+                # Fallback to simple protocol logic if httpx probe failed
+                canonical_url = f"https://{domain}"
             
-            if not navigated:
-                error_msg = f"Could not navigate to {domain} with either HTTPS or HTTP. Last error: {last_error}"
-                logger.error(error_msg)
-                raise NavigationError(error_msg)
+            logger.info(f"Resolved canonical URL for {domain}: {canonical_url}")
+            
+            # 2. Navigate with Playwright
+            try:
+                response = await page.goto(canonical_url, wait_until="domcontentloaded", timeout=navigation_timeout_ms)
+                if not response or not response.ok:
+                    status = response.status if response else "No Response"
+                    raise Exception(f"Navigation failed with status {status}")
+                
+                navigated = True
+                website_data.url = page.url
+                logger.info(f"Successfully navigated to {page.url}")
+            except Exception as e:
+                logger.warning(f"Playwright navigation failed to {canonical_url}: {e}")
+                # Last resort fallback logic here if needed
+                raise Exception(f"Could not navigate to {domain}. Error: {e}")
+
+            # Update the domain if it changed significantly via redirect
+            from urllib.parse import urlparse
+            final_domain = urlparse(page.url).netloc.replace("www.", "")
+            if final_domain and final_domain != domain.replace("www.", ""):
+                logger.info(f"Detected redirect from {domain} to {final_domain}")
+                # We keep the original domain in website_data.domain for indexing purposes if it was passed,
+                # but we should probably record the final one too.
+
+
 
             if debug:
                 breakpoint()
@@ -146,50 +175,53 @@ class WebsiteScraper:
             # Scrape main page
             website_data = await self._scrape_page(page, website_data, context)
 
-            # Try to find and scrape pages from sitemap
-            sitemap_pages = await self._get_sitemap_urls(f"http://{domain}")
-            if sitemap_pages:
-                page_map = {
-                    "About Us": ["about"],
-                    "Contact Us": ["contact"],
-                    "Services": ["service"],
-                    "Products": ["product"],
-                }
-                scrape_tasks = []
-                for page_type, keywords in page_map.items():
-                    for keyword in keywords:
-                        for url in sitemap_pages:
-                            if keyword in url:
-                                scrape_function = None
-                                if page_type == "About Us":
-                                    scrape_function = self._scrape_page
-                                elif page_type == "Contact Us":
-                                    scrape_function = self._scrape_contact_page
-                                elif page_type == "Services":
-                                    scrape_function = self._scrape_services_page
-                                elif page_type == "Products":
-                                    scrape_function = self._scrape_products_page
+            if website_data.email:
+                logger.info(f"Found primary email on home page: {website_data.email}. Skipping deep crawl fallbacks.")
+            else:
+                # Try to find and scrape pages from sitemap
+                sitemap_pages = await self._get_sitemap_urls(f"http://{domain}")
+                if sitemap_pages:
+                    page_map = {
+                        "About Us": ["about"],
+                        "Contact Us": ["contact"],
+                        "Services": ["service"],
+                        "Products": ["product"],
+                    }
+                    scrape_tasks = []
+                    for page_type, keywords in page_map.items():
+                        for keyword in keywords:
+                            for url in sitemap_pages:
+                                if keyword in url:
+                                    scrape_function = None
+                                    if page_type == "About Us":
+                                        scrape_function = self._scrape_page
+                                    elif page_type == "Contact Us":
+                                        scrape_function = self._scrape_contact_page
+                                    elif page_type == "Services":
+                                        scrape_function = self._scrape_services_page
+                                    elif page_type == "Products":
+                                        scrape_function = self._scrape_products_page
 
-                                if scrape_function:
-                                    scrape_tasks.append(self._scrape_sitemap_page(url, page_type, scrape_function, website_data, context, debug))
-                                    break
-                        else:
-                            continue
-                        break
-                if scrape_tasks:
-                    await asyncio.gather(*scrape_tasks)
+                                    if scrape_function:
+                                        scrape_tasks.append(self._scrape_sitemap_page(url, page_type, scrape_function, website_data, context, debug))
+                                        break
+                            else:
+                                continue
+                            break
+                    if scrape_tasks:
+                        await asyncio.gather(*scrape_tasks)
 
-            # Fallback to navigating and scraping
-            if not website_data.about_us_url:
-                await self._navigate_and_scrape(page, website_data, ["About Us", "About"], "About Us", self._scrape_page, context, debug, navigation_timeout_ms)
-            if not website_data.contact_url:
-                await self._navigate_and_scrape(page, website_data, ["Contact Us", "Contact"], "Contact Us", self._scrape_contact_page, context, debug, navigation_timeout_ms)
-            if not website_data.contact_url:
-                await self._navigate_and_scrape(page, website_data, ["Our Team", "Team"], "Our Team", self._scrape_contact_page, context, debug, navigation_timeout_ms)
-            if not website_data.services:
-                await self._navigate_and_scrape(page, website_data, ["Services"], "Services", self._scrape_services_page, context, debug, navigation_timeout_ms)
-            if not website_data.products:
-                await self._navigate_and_scrape(page, website_data, ["Products"], "Products", self._scrape_products_page, context, debug, navigation_timeout_ms)
+                # Fallback to navigating and scraping (only if still no email or URLs)
+                if not website_data.about_us_url:
+                    await self._navigate_and_scrape(page, website_data, ["About Us", "About"], "About Us", self._scrape_page, context, debug, navigation_timeout_ms)
+                if not website_data.contact_url:
+                    await self._navigate_and_scrape(page, website_data, ["Contact Us", "Contact"], "Contact Us", self._scrape_contact_page, context, debug, navigation_timeout_ms)
+                if not website_data.contact_url:
+                    await self._navigate_and_scrape(page, website_data, ["Our Team", "Team"], "Our Team", self._scrape_contact_page, context, debug, navigation_timeout_ms)
+                if not website_data.services:
+                    await self._navigate_and_scrape(page, website_data, ["Services"], "Services", self._scrape_services_page, context, debug, navigation_timeout_ms)
+                if not website_data.products:
+                    await self._navigate_and_scrape(page, website_data, ["Products"], "Products", self._scrape_products_page, context, debug, navigation_timeout_ms)
 
         except NavigationError:
             raise # Re-raise NavigationError
@@ -236,7 +268,7 @@ class WebsiteScraper:
 
         # Index found emails for yield tracking
         if campaign:
-            self._index_emails(website_data, campaign.company_slug)
+            self._index_emails(website_data, campaign.name)
 
         return website_data
 
@@ -323,18 +355,24 @@ class WebsiteScraper:
         link_selector = ", ".join([f'a:text-matches("{text}", "i")' for text in link_texts])
         link = page.locator(link_selector).first
 
-        actual_timeout = navigation_timeout_ms if navigation_timeout_ms is not None else 60000 # Increased default timeout
+        # IMPORTANT: We only want to wait a VERY short time to see if the link exists at all.
+        # If it's not there, we shouldn't wait 30 seconds.
+        try:
+            # Check for presence quickly
+            await link.wait_for(state='attached', timeout=3000) 
+            if not await link.is_visible():
+                logger.info(f"Link for {page_type} ({link_texts}) found but not visible. Skipping.")
+                return website_data
+        except Exception:
+            logger.info(f"Link for {page_type} ({link_texts}) not found on {page.url}. Skipping.")
+            return website_data
 
         try:
-            # Wait for the page to be idle to ensure dynamic content has loaded
-            await page.wait_for_load_state('networkidle')
-            # Wait for the link to be visible, with an increased timeout.
-            await link.wait_for(state='visible', timeout=actual_timeout)
-            url = await link.get_attribute("href") # No timeout here, as visibility already checked
+            url = await link.get_attribute("href")
             if url:
                 url = urljoin(page.url, url)
                 if url and url != page.url:
-                    logger.info(f"Navigating to {page_type} page: {url}")
+                    logger.info(f"[{page_type}] Navigating from {page.url} to {url}")
                     if page_type == "About Us":
                         website_data.about_us_url = url
                     elif page_type == "Contact Us":
@@ -344,12 +382,10 @@ class WebsiteScraper:
                     elif page_type == "Products":
                         website_data.products_url = url
 
-                    await page.goto(url, wait_until="domcontentloaded", timeout=navigation_timeout_ms or 60000)
+                    await page.goto(url, wait_until="domcontentloaded", timeout=navigation_timeout_ms or 30000)
                     await scrape_function(page, website_data, browser)
-        except TimeoutError: # Catch specific Playwright timeout
-            logger.info(f"Link for {page_type} not found within timeout ({link_texts}). Skipping navigation.")
         except Exception as e:
-            logger.error(f"Error navigating to or scraping {page_type} page: {e}")
+            logger.error(f"Error navigating to or scraping {page_type} page ({url if 'url' in locals() else 'unknown'}): {e}")
         return website_data
 
     async def _scrape_page(self, page: Page, website_data: Website, browser: BrowserContext) -> Website:
@@ -382,10 +418,14 @@ class WebsiteScraper:
 
         # Extract Email
         if not website_data.email:
-            email_match = re.search(r"\b[a-zA-Z0-9._%+-]+ ?@ ?[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}\b", soup.get_text(separator=' '))
+            text_content = soup.get_text(separator=' ')
+            logger.info(f"Extracting email from text (first 500 chars): {text_content[:500]}")
+            email_match = re.search(r"\b[a-zA-Z0-9._%+-]+ ?@ ?[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}\b", text_content)
             if email_match:
                 website_data.email = str(email_match.group(0)).replace(" ", "")
-                logger.info(f"Found email: {website_data.email}")
+                logger.info(f"SUCCESS: Found email: {website_data.email}")
+            else:
+                logger.warning(f"No email found in text content of {page.url}")
 
         # Extract Social Media URLs
         if not website_data.facebook_url:
