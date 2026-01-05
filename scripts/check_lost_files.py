@@ -4,7 +4,7 @@ from rich.console import Console
 
 console = Console()
 
-def main():
+def main() -> None:
     with open("suspicious_domains.json", 'r') as f:
         entries = json.load(f)
 

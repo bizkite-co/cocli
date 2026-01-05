@@ -12,7 +12,7 @@ S3_PREFIX = "campaigns/turboship/indexes/emails"
 # Local base path to strip to find the relative path
 LOCAL_BASE = "/home/mstouffer/repos/company-cli/cocli_data/campaigns/turboship/indexes/emails"
 
-def main():
+def main() -> None:
     if not Path("lost_entries.json").exists():
         console.print("[red]lost_entries.json not found.[/red]")
         return

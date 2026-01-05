@@ -1,7 +1,7 @@
 import json
 from pathlib import Path
 
-def manage_entries(file_path: str, timeout_count: int = 2):
+def manage_entries(file_path: str, timeout_count: int = 2) -> None:
     path = Path(file_path)
     if not path.exists():
         print(f"{file_path} not found.")

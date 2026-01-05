@@ -14,8 +14,12 @@ COMMON_TLDS = {
 }
 
 @app.command()
-def main(campaign_name: str = "turboship", output_file: str = "suspicious_domains.json"):
+def main(campaign_name: str = "turboship", output_file: str = "suspicious_domains.json") -> None:
     campaign_dir = get_campaign_dir(campaign_name)
+    if not campaign_dir:
+        console.print(f"[red]Campaign directory not found for: {campaign_name}[/red]")
+        raise typer.Exit(1)
+        
     email_index_dir = campaign_dir / "indexes" / "emails"
     
     if not email_index_dir.exists():

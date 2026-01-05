@@ -38,8 +38,10 @@ RUN chmod +x /usr/local/bin/entrypoint.sh
 # Install project dependencies using uv
 # We export the requirements from uv.lock to ensure we install the exact versions
 RUN uv export --frozen --no-dev --no-hashes > requirements.txt && \
-    uv pip install -r requirements.txt --system && \
-    uv pip install -e . --system --no-deps
+    uv pip install -r requirements.txt --system
+
+# Set PYTHONPATH to include the current directory so 'import cocli' works
+ENV PYTHONPATH="/app:${PYTHONPATH}"
 
 # Expose the port the app runs on
 EXPOSE 8000

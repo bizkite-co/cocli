@@ -1,0 +1,30 @@
+[
+  {
+    "domain": "fairmont-flooring.comfairmont",
+    "reason": "Suspicious TLD (comfairmont)",
+    "email": "Vuozzo949-535-0074joe@fairmont-flooring.comFairmont",
+    "source": "backfill",
+    "file_path": "/home/mstouffer/repos/company-cli/data/campaigns/turboship/indexes/emails/fairmont-flooring.comfairmont/vuozzo949-535-0074joe.json"
+  },
+  {
+    "domain": "ccfloorservice.comhoursopen",
+    "reason": "Suspicious TLD (comhoursopen)",
+    "email": "Austin.Clemons@CCFloorService.comHoursOpen",
+    "source": "backfill",
+    "file_path": "/home/mstouffer/repos/company-cli/data/campaigns/turboship/indexes/emails/ccfloorservice.comhoursopen/austin.clemons.json"
+  },
+  {
+    "domain": "rd.homes",
+    "reason": "Suspicious TLD (homes)",
+    "email": "connect@rd.homes",
+    "source": "website_scraper",
+    "file_path": "/home/mstouffer/repos/company-cli/data/campaigns/turboship/indexes/emails/rd.homes/connect.json"
+  },
+  {
+    "domain": "jcmfloorings.comfree",
+    "reason": "Suspicious TLD (comfree)",
+    "email": "info@jcmfloorings.comFree",
+    "source": "backfill",
+    "file_path": "/home/mstouffer/repos/company-cli/data/campaigns/turboship/indexes/emails/jcmfloorings.comfree/info.json"
+  }
+]

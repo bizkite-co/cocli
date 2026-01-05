@@ -3,6 +3,9 @@ import json
 import logging
 from pathlib import Path
 
+from typing import List, Dict, Any
+from playwright.async_api import Browser
+
 import typer
 from playwright.async_api import async_playwright
 from rich.console import Console
@@ -21,8 +24,12 @@ console = Console()
 logging.basicConfig(level=logging.WARNING)
 logger = logging.getLogger(__name__)
 
-async def process_entry(scraper: WebsiteScraper, browser, entry: dict, dry_run: bool, campaign: Campaign) -> str:
-    old_file_path = Path(entry.get("file_path"))
+async def process_entry(scraper: WebsiteScraper, browser: Browser, entry: Dict[str, Any], dry_run: bool, campaign: Campaign) -> str:
+    file_path_str = entry.get("file_path")
+    if not file_path_str:
+        return "skipped_no_file_path"
+        
+    old_file_path = Path(file_path_str)
     
     # 1. Get company_slug from the email index file
     company_slug = None
@@ -114,32 +121,29 @@ async def process_entry(scraper: WebsiteScraper, browser, entry: dict, dry_run: 
         logger.error(f"Error processing {target_url}: {e}")
         return "error"
 
-async def run_fix(input_file: str, dry_run: bool, concurrency: int, campaign_name: str, limit: int = 0):
+async def run_fix(input_file: str, dry_run: bool, concurrency: int, campaign_name: str, limit: int = 0) -> None:
     try:
         config_data = load_campaign_config(campaign_name)
-        if 'campaign' in config_data:
+        if config_data and 'campaign' in config_data:
             flat_config = config_data.pop('campaign')
             flat_config.update(config_data)
         else:
-            flat_config = config_data
+            flat_config = config_data or {}
         
         campaign = Campaign.model_validate(flat_config)
-    except Exception as e:
-        console.print(f"[red]Failed to load campaign '{campaign_name}': {e}[/red]")
+    except Exception as exc:
+        console.print(f"[red]Failed to load campaign '{campaign_name}': {exc}[/red]")
         raise typer.Exit(1)
 
     with open(input_file, 'r', encoding='utf-8') as f:
-        entries = json.load(f)
+        entries: List[Dict[str, Any]] = json.load(f)
 
     # Filter out entries that match the limit
-    if limit > 0:
-        entries_to_process = entries[:limit]
-    else:
-        entries_to_process = entries
+    entries_to_process = entries[:limit] if limit > 0 else entries
 
     console.print(f"Processing {len(entries_to_process)} anomalous items with concurrency={concurrency} for campaign '{campaign_name}'...")
 
-    stats = {
+    stats: Dict[str, int] = {
         "fixed": 0,
         "fixed_recovered": 0,
         "failed_still_broken": 0,
@@ -157,9 +161,9 @@ async def run_fix(input_file: str, dry_run: bool, concurrency: int, campaign_nam
     semaphore = asyncio.Semaphore(concurrency)
     
     # Track which entries were fixed so we can remove them from the list
-    fixed_indices = set()
+    fixed_indices: set[int] = set()
 
-    async def bounded_process(scraper, browser, entry, i):
+    async def bounded_process(scraper: WebsiteScraper, browser: Browser, entry: Dict[str, Any], i: int) -> str:
         async with semaphore:
             res = await process_entry(scraper, browser, entry, dry_run, campaign)
             if res == "fixed" or res == "fixed_recovered":
@@ -174,7 +178,10 @@ async def run_fix(input_file: str, dry_run: bool, concurrency: int, campaign_nam
         
         for result in track(asyncio.as_completed(tasks), total=len(tasks), description="Rescraping anomalies..."):
             res = await result
-            stats[res] += 1
+            if res in stats:
+                stats[res] += 1
+            else:
+                stats["error"] += 1
             
         await browser.close()
 
@@ -185,18 +192,18 @@ async def run_fix(input_file: str, dry_run: bool, concurrency: int, campaign_nam
     if not dry_run and (stats["fixed"] > 0 or stats["fixed_recovered"] > 0):
         # Build set of fixed keys from the processed slice
         fixed_keys = set()
-        for i in fixed_indices:
-            e = entries_to_process[i]
-            fixed_keys.add((e.get("domain"), e.get("file_path")))
+        for idx in fixed_indices:
+            e_item = entries_to_process[idx]
+            fixed_keys.add((e_item.get("domain"), e_item.get("file_path")))
             
         # Create new list from original 'entries' to preserve order
         remaining_entries = []
-        for e in entries:
+        for e_entry in entries:
             # If it's fixed, skip it (remove)
-            if (e.get("domain"), e.get("file_path")) in fixed_keys:
+            if (e_entry.get("domain"), e_entry.get("file_path")) in fixed_keys:
                 continue
             
-            remaining_entries.append(e)
+            remaining_entries.append(e_entry)
                 
         with open(input_file, 'w', encoding='utf-8') as f:
             json.dump(remaining_entries, f, indent=2)
@@ -210,7 +217,7 @@ def main(
     concurrency: int = typer.Option(5, "--concurrency", "-c", help="Number of concurrent scrapes"),
     campaign: str = typer.Option("turboship", "--campaign", help="Campaign name"),
     limit: int = typer.Option(0, "--limit", "-l", help="Limit number of items to process (0 for all)")
-):
+) -> None:
     asyncio.run(run_fix(input_file, dry_run, concurrency, campaign, limit))
 
 if __name__ == "__main__":

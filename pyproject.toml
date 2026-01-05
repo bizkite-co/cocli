@@ -74,6 +74,12 @@ where = ["."]
 include = ["cocli*"]
 exclude = [
     "cocli_data*", 
+    "data*",
+    "cocli_share*",
+    "homepage*",
+    "logs*",
+    "turboship*",
+    "quickbooks-search*",
     "tests*", 
     "scripts*", 
     "build*", 
@@ -84,15 +90,12 @@ exclude = [
     ".mypy_cache*", 
     ".pytest_cache*", 
     ".ruff_cache*",
-    "quickbooks-search",
-    "homepage*",
-    "turboship*",
     "cocli.egg-info*",
     "cdk_scraper_deployment*"
 ]
 
 [tool.uv]
-package = true
+package = false
 
 [tool.mypy]
 strict = true

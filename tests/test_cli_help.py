@@ -7,8 +7,12 @@ def test_display_help_no_args():
 
 @when('the user runs "cocli" with no arguments', target_fixture="cli_result")
 def run_cocli_no_args():
-    # We expect an error, so we don't check for success
-    result = subprocess.run(['cocli'], capture_output=True, text=True)
+    # Use python -m cocli.main to support non-packaged environments
+    import sys
+    import os
+    env = os.environ.copy()
+    env["PYTHONPATH"] = "."
+    result = subprocess.run([sys.executable, '-m', 'cocli.main'], capture_output=True, text=True, env=env)
     return result
 
 @then('the command should exit with an error')
