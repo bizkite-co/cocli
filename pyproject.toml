@@ -104,7 +104,6 @@ exclude = [
     "dist",
     "docs",
     "features",
-    "test_data",
     "tests",
     "backup",
     "cocli_data",

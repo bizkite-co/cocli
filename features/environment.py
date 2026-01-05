@@ -3,7 +3,7 @@ from pathlib import Path
 
 def before_scenario(context, scenario):
     # Clean up test_data directory before each scenario
-    test_data_dir = Path("./test_data")
+    test_data_dir = Path("./tests/temp_data")
     if test_data_dir.exists():
         shutil.rmtree(test_data_dir)
     test_data_dir.mkdir(parents=True, exist_ok=True)

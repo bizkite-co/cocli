@@ -63,7 +63,7 @@ if __name__ == "__main__":
     if dummy_csv_path.exists():
         os.remove(dummy_csv_path)
         logger.info(f"Cleaned up dummy CSV: {dummy_csv_path}")
-    dummy_xlsx_path = Path("./test_data/dummy.xlsx")
+    dummy_xlsx_path = Path("./tests/temp_data/dummy.xlsx")
     if dummy_xlsx_path.exists():
         os.remove(dummy_xlsx_path)
         logger.info(f"Cleaned up dummy XLSX: {dummy_xlsx_path}")

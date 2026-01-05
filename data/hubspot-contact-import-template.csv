@@ -1,5 +1,0 @@
-Email <CONTACT email>,First Name <CONTACT firstname>,Last Name <CONTACT lastname>
-
-"DELETE THIS ROW BEFORE IMPORTING","To create Contact records in HubSpot, include values for at least ONE of the <CONTACT> columns listed above."
-"DELETE THIS ROW BEFORE IMPORTING","DON'T REMOVE the <text>, this is to help the import system map these columns for you."
-"DELETE THIS ROW BEFORE IMPORTING","Feel free to add more columns as needed."

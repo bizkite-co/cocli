@@ -11,6 +11,8 @@ async def main() -> None:
     parser.add_argument("--domain", type=str, required=True, help="Domain to scrape")
     parser.add_argument("--headed", action="store_true", help="Run in headed mode")
     parser.add_argument("--devtools", action="store_true", help="Open browser devtools")
+    parser.add_argument("--debug", action="store_true", help="Enable debug mode (breakpoints)")
+    parser.add_argument("--force", action="store_true", help="Force refresh (ignore cache)")
     
     args = parser.parse_args()
 
@@ -23,7 +25,8 @@ async def main() -> None:
         website_data = await scraper.run(
             browser=browser,
             domain=args.domain,
-            debug=True,
+            debug=args.debug,
+            force_refresh=args.force,
         )
         await browser.close()
 
@@ -35,5 +38,6 @@ async def main() -> None:
         logger.warning("--- No data scraped ---")
 
 if __name__ == "__main__":
+    logging.basicConfig(level=logging.INFO)
     asyncio.run(main())
 
