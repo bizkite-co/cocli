@@ -30,10 +30,10 @@ class WebsiteScraper:
 
         index_manager = EmailIndexManager(campaign_name)
         
-        # 1. Main company email
-        if website_data.email:
+        # 1. All found emails
+        for email in website_data.all_emails:
             entry = EmailEntry(
-                email=website_data.email,
+                email=email,
                 domain=str(website_data.url),
                 company_slug=website_data.associated_company_folder,
                 source="website_scraper",
@@ -44,10 +44,10 @@ class WebsiteScraper:
         # 2. Personnel emails
         if website_data.personnel:
             for person in website_data.personnel:
-                email = person.get("email")
-                if email:
+                person_email = person.get("email")
+                if person_email and isinstance(person_email, str):
                     entry = EmailEntry(
-                        email=email,
+                        email=person_email,
                         domain=str(website_data.url),
                         company_slug=website_data.associated_company_folder,
                         source="website_scraper_personnel",
@@ -87,13 +87,12 @@ class WebsiteScraper:
         """
         Scrapes a website for company information.
         """
-        domain_index_manager = WebsiteDomainCsvManager()
-
         # S3DomainManager is used for the scrape index (lat/lon bounds), not for individual website.md files
-        domain_index_manager: WebsiteDomainCsvManager | S3DomainManager
+        domain_index_manager: Union[WebsiteDomainCsvManager, S3DomainManager]
         if campaign and campaign.aws and campaign.aws.profile:
             domain_index_manager = S3DomainManager(campaign=campaign)
         else:
+            domain_index_manager = WebsiteDomainCsvManager()
             domain_index_manager = WebsiteDomainCsvManager() # Fallback to local
         
         # S3CompanyManager is for saving the actual website.md and _index.md files
@@ -146,12 +145,12 @@ class WebsiteScraper:
             
             # 2. Navigate with Playwright
             try:
-                response = await page.goto(canonical_url, wait_until="domcontentloaded", timeout=navigation_timeout_ms)
+                # Use load (wait for all assets) instead of networkidle to avoid timeouts from tracking pixels
+                response = await page.goto(canonical_url, wait_until="load", timeout=navigation_timeout_ms)
                 if not response or not response.ok:
                     status = response.status if response else "No Response"
                     raise Exception(f"Navigation failed with status {status}")
                 
-                navigated = True
                 website_data.url = page.url
                 logger.info(f"Successfully navigated to {page.url}")
             except Exception as e:
@@ -261,6 +260,9 @@ class WebsiteScraper:
             scraper_version=website_data.scraper_version,
             associated_company_folder=website_data.associated_company_folder,
             is_email_provider=website_data.is_email_provider,
+            all_emails=website_data.all_emails,
+            email_contexts=website_data.email_contexts,
+            tech_stack=website_data.tech_stack,
             created_at=website_data.created_at,
             updated_at=datetime.utcnow(), # Ensure updated_at is always current
         )
@@ -392,6 +394,20 @@ class WebsiteScraper:
         html_content = await page.content()
         soup = BeautifulSoup(html_content, "html.parser")
 
+        # 1. Detect technology
+        detected_tech = self._detect_tech(soup)
+        for t in detected_tech:
+            if t not in website_data.tech_stack:
+                website_data.tech_stack.append(t)
+
+        # 2. Extract all emails
+        email_map = self._extract_all_emails(soup, html_content)
+        for email, label in email_map.items():
+            if email not in website_data.all_emails:
+                website_data.all_emails.append(email)
+            if label and email not in website_data.email_contexts:
+                website_data.email_contexts[email] = label
+
         # Extract Company Name
         if not website_data.company_name:
             company_name = None
@@ -418,14 +434,19 @@ class WebsiteScraper:
 
         # Extract Email
         if not website_data.email:
-            text_content = soup.get_text(separator=' ')
-            logger.info(f"Extracting email from text (first 500 chars): {text_content[:500]}")
-            email_match = re.search(r"\b[a-zA-Z0-9._%+-]+ ?@ ?[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}\b", text_content)
-            if email_match:
-                website_data.email = str(email_match.group(0)).replace(" ", "")
-                logger.info(f"SUCCESS: Found email: {website_data.email}")
+            if website_data.all_emails:
+                # Prioritize emails that don't look like generic info/support if possible, 
+                # but for now just pick the first one.
+                website_data.email = website_data.all_emails[0]
+                logger.info(f"SUCCESS: Found email from all_emails: {website_data.email}")
             else:
-                logger.warning(f"No email found in text content of {page.url}")
+                text_content = soup.get_text(separator=' ')
+                email_match = re.search(r"\b[a-zA-Z0-9._%+-]+ ?@ ?[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}\b", text_content)
+                if email_match:
+                    website_data.email = str(email_match.group(0)).replace(" ", "")
+                    logger.info(f"SUCCESS: Found email: {website_data.email}")
+                else:
+                    logger.warning(f"No email found in text content of {page.url}")
 
         # Extract Social Media URLs
         if not website_data.facebook_url:
@@ -561,3 +582,76 @@ class WebsiteScraper:
         if person_data:
             return person_data
         return None
+
+    def _extract_all_emails(self, soup: BeautifulSoup, html_content: str = "") -> Dict[str, str]:
+        """Returns a dict of email -> label/context found on the page."""
+        email_to_label = {}
+        
+        # 1. From mailto: links (best source of names/labels)
+        mailto_links = soup.find_all("a", href=re.compile(r"^mailto:", re.IGNORECASE))
+        for link in mailto_links:
+            href = link.get("href", "")
+            if not isinstance(href, str):
+                continue
+            match = re.search(r"mailto:([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})", href, re.IGNORECASE)
+            if match:
+                email = match.group(1).strip().lower()
+                label = link.get_text(strip=True)
+                # If label is just the email itself or too long, ignore it
+                if label and email not in label.lower() and len(label) < 60:
+                    email_to_label[email] = label
+                elif email not in email_to_label:
+                    email_to_label[email] = ""
+
+        # 2. From text content (look for prefixes like "Contact: ", "Email: ")
+        # We search for the email and then look at the 40 characters preceding it
+        text_content = soup.get_text(separator=' ')
+        # Find all emails in text
+        text_emails = re.finditer(r"([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})", text_content)
+        for match in text_emails:
+            email = match.group(1).strip().lower()
+            if email not in email_to_label or not email_to_label[email]:
+                # Look at prefix
+                start = max(0, match.start() - 40)
+                prefix = text_content[start:match.start()].strip()
+                # Use regex to find common labels like "Contact: ", "Name - ", etc.
+                label_match = re.search(r"([a-zA-Z]{3,20}(?:\s+[a-zA-Z]{3,20})?)\s*[:\-]\s*$", prefix)
+                if label_match:
+                    email_to_label[email] = label_match.group(1).strip()
+                elif email not in email_to_label:
+                    email_to_label[email] = ""
+
+        # 3. From raw HTML (to catch emails in scripts, meta tags, etc.)
+        if html_content:
+            raw_emails = re.findall(r"\b[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}\b", html_content)
+            for email in raw_emails:
+                email = email.strip().lower()
+                if email not in email_to_label:
+                    email_to_label[email] = ""
+                
+        return email_to_label
+
+    def _detect_tech(self, soup: BeautifulSoup) -> List[str]:
+        tech = set()
+        
+        # 1. Generator meta tag
+        generator = soup.find("meta", attrs={"name": "generator"})
+        if generator:
+            content = generator.get("content")
+            if content and isinstance(content, str):
+                tech.add(content.strip())
+            
+        # 2. Common markers
+        html_str = str(soup).lower()
+        if "wp-content" in html_str:
+            tech.add("WordPress")
+        if "shopify" in html_str:
+            tech.add("Shopify")
+        if "wix.com" in html_str:
+            tech.add("Wix")
+        if "squarespace" in html_str:
+            tech.add("Squarespace")
+        if "wsimg.com" in html_str: # GoDaddy Website Builder usually uses wsimg.com for assets
+            tech.add("GoDaddy Website Builder")
+            
+        return sorted(list(tech))

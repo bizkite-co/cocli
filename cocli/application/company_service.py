@@ -39,18 +39,53 @@ async def update_company_from_website_data(
         company.email = website_data.email
         modified = True
 
+    # 3. Handle All Emails
+    if website_data.all_emails:
+        new_emails = sorted(list(set(company.all_emails + website_data.all_emails)))
+        if new_emails != company.all_emails:
+            company.all_emails = new_emails
+            modified = True
+
+    # 4. Handle Tech Stack
+    if website_data.tech_stack:
+        new_tech = sorted(list(set(company.tech_stack + website_data.tech_stack)))
+        if new_tech != company.tech_stack:
+            company.tech_stack = new_tech
+            modified = True
+
+    # 5. Handle Email Contexts
+    if website_data.email_contexts:
+        for email, label in website_data.email_contexts.items():
+            if label and company.email_contexts.get(email) != label:
+                company.email_contexts[email] = label
+                modified = True
+
+    # 6. Always save the full Website enrichment locally if we have a slug
+    if company.slug:
+        try:
+            website_data.save(company.slug)
+            # Local modification for the company index is already tracked by 'modified' flag,
+            # but we always want the enrichment file to be fresh.
+        except Exception as e:
+            logger.warning(f"Failed to save website enrichment locally for {company.slug}: {e}")
+
     if modified:
-        # Save Locally
+        # Save Company Index locally
         company.save()
         
-        # Save to S3 if campaign context is provided
+        # Sync both to S3 if campaign context is provided
         if campaign:
             try:
                 s3_manager = S3CompanyManager(campaign=campaign)
+                # Sync _index.md
                 await s3_manager.save_company_index(company)
-                logger.info(f"Synced updated company {company.slug} to S3")
+                # Sync website.md
+                await s3_manager.save_website_enrichment(company.slug, website_data)
+                logger.info(f"Synced updated company {company.slug} and enrichment to S3")
             except Exception as e:
                 logger.warning(f"Failed to sync company update to S3: {e}")
+
+    return modified
 
     return modified
 

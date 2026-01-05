@@ -34,13 +34,16 @@ class WebsiteDomainCsvManager:
                         except (ValueError, TypeError):
                             processed_row[field] = None
                 
-                # Convert list fields
-                for field in ['personnel', 'tags']:
+                # Convert list and dict fields
+                for field in ['personnel', 'tags', 'all_emails', 'tech_stack', 'email_contexts']:
                     if processed_row.get(field):
                         try:
                             processed_row[field] = ast.literal_eval(processed_row[field])
                         except (ValueError, SyntaxError):
-                            processed_row[field] = []
+                            if field == 'email_contexts':
+                                processed_row[field] = {}
+                            else:
+                                processed_row[field] = []
                 
                 # Convert boolean field
                 if processed_row.get('is_email_provider'):
@@ -79,8 +82,8 @@ class WebsiteDomainCsvManager:
             writer.writeheader()
             for item in self.data.values():
                 dump = item.model_dump()
-                # Convert lists to strings for CSV
-                for field in ['personnel', 'tags']:
+                # Convert lists and dicts to strings for CSV
+                for field in ['personnel', 'tags', 'all_emails', 'tech_stack', 'email_contexts']:
                     if dump.get(field):
                         dump[field] = str(dump[field])
                 writer.writerow(dump)

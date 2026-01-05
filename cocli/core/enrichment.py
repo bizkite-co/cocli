@@ -51,7 +51,7 @@ async def enrich_company_website(
         force_refresh=force,
         ttl_days=ttl_days,
         debug=debug,
-        navigation_timeout_ms=navigation_timeout_ms # Pass new param
+        navigation_timeout_ms=navigation_timeout_ms or 30000 # Pass new param
     )
 
     return website_data

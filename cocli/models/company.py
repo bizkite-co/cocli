@@ -1,6 +1,6 @@
 import re
 from pathlib import Path
-from typing import Optional, List, Any, Iterator
+from typing import Optional, List, Any, Iterator, Dict
 import logging
 from datetime import datetime
 
@@ -44,6 +44,9 @@ class Company(BaseModel):
     phone_from_website: Optional[str] = None
     email: Optional[str] = None
     website_url: Optional[str] = None
+    all_emails: List[str] = Field(default_factory=list)
+    email_contexts: Dict[str, str] = Field(default_factory=dict)
+    tech_stack: List[str] = Field(default_factory=list)
 
     categories: Annotated[List[str], BeforeValidator(split_categories)] = Field(default_factory=list)
 

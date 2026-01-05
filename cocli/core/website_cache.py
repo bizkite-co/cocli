@@ -38,20 +38,17 @@ class WebsiteCache:
                             processed_data[field] = None
                 
                 # Convert list fields from string representation
-                for field in ['personnel', 'services', 'products', 'tags']:
+                for field in ['personnel', 'services', 'products', 'tags', 'all_emails', 'tech_stack', 'email_contexts']:
                     if row.get(field) and isinstance(row[field], str):
                         try:
-                            # Safely evaluate string representation of list
+                            # Safely evaluate string representation of list or dict
                             evaluated_data = json.loads(row[field])
-                            if isinstance(evaluated_data, list):
-                                if field == 'personnel':
-                                    processed_data[field] = evaluated_data
-                                else:
-                                    processed_data[field] = evaluated_data
+                            processed_data[field] = evaluated_data
+                        except (json.JSONDecodeError, ValueError, SyntaxError):
+                            if field == 'email_contexts':
+                                processed_data[field] = {}
                             else:
                                 processed_data[field] = []
-                        except (json.JSONDecodeError, ValueError, SyntaxError):
-                            processed_data[field] = []
                 
                 # Convert 'url' to Domain object if it exists and is a string
                 if row.get("url") and isinstance(row["url"], str):
@@ -108,8 +105,8 @@ class WebsiteCache:
             writer.writeheader()
             for item in self.data.values():
                 dump = item.model_dump()
-                # Convert lists to JSON strings for CSV
-                for field in ['personnel', 'services', 'products', 'tags']:
-                    if dump.get(field):
+                # Convert lists and dicts to JSON strings for CSV
+                for field in ['personnel', 'services', 'products', 'tags', 'all_emails', 'tech_stack', 'email_contexts']:
+                    if dump.get(field) is not None:
                         dump[field] = json.dumps(dump[field])
                 writer.writerow(dump)

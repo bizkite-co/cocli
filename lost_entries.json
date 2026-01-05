@@ -1,0 +1,212 @@
+[
+  {
+    "domain": "aelfinc.comdesigned",
+    "reason": "Suspicious TLD (comdesigned)",
+    "email": "33126contactinfo@aelfinc.comDesigned",
+    "source": "backfill",
+    "file_path": "/home/mstouffer/repos/company-cli/data/campaigns/turboship/indexes/emails/aelfinc.comdesigned/33126contactinfo.json"
+  },
+  {
+    "domain": "crowsflooring.comcontact",
+    "reason": "Suspicious TLD (comcontact)",
+    "email": "Contact831-459-7363info@crowsflooring.comContact",
+    "source": "backfill",
+    "file_path": "/home/mstouffer/repos/company-cli/data/campaigns/turboship/indexes/emails/crowsflooring.comcontact/contact831-459-7363info.json"
+  },
+  {
+    "domain": "lessardconstruction.canavigationhomeabout",
+    "reason": "Suspicious TLD (canavigationhomeabout)",
+    "email": "info@lessardconstruction.caNavigationHomeAbout",
+    "source": "backfill",
+    "file_path": "/home/mstouffer/repos/company-cli/data/campaigns/turboship/indexes/emails/lessardconstruction.canavigationhomeabout/info.json"
+  },
+  {
+    "domain": "gusthefloorguy.comhoursopen",
+    "reason": "Suspicious TLD (comhoursopen)",
+    "email": "gus@gusthefloorguy.comHoursOpen",
+    "source": "backfill",
+    "file_path": "/home/mstouffer/repos/company-cli/data/campaigns/turboship/indexes/emails/gusthefloorguy.comhoursopen/gus.json"
+  },
+  {
+    "domain": "lana.software",
+    "reason": "Suspicious TLD (software)",
+    "email": "info@lana.software",
+    "source": "backfill",
+    "file_path": "/home/mstouffer/repos/company-cli/data/campaigns/turboship/indexes/emails/lana.software/info.json"
+  },
+  {
+    "domain": "jimsfloorcovering.comget",
+    "reason": "Suspicious TLD (comget)",
+    "email": "addressSubmitestimate@jimsfloorcovering.comGet",
+    "source": "backfill",
+    "file_path": "/home/mstouffer/repos/company-cli/data/campaigns/turboship/indexes/emails/jimsfloorcovering.comget/addresssubmitestimate.json"
+  },
+  {
+    "domain": "floorconnection.comdarrell",
+    "reason": "Suspicious TLD (comdarrell)",
+    "email": "estimating@floorconnection.comDarrell",
+    "source": "backfill",
+    "file_path": "/home/mstouffer/repos/company-cli/data/campaigns/turboship/indexes/emails/floorconnection.comdarrell/estimating.json"
+  },
+  {
+    "domain": "specialtyflooringinc.comca",
+    "reason": "Suspicious TLD (comca)",
+    "email": "951-727-8743estimating@specialtyflooringinc.comCA",
+    "source": "backfill",
+    "file_path": "/home/mstouffer/repos/company-cli/data/campaigns/turboship/indexes/emails/specialtyflooringinc.comca/951-727-8743estimating.json"
+  },
+  {
+    "domain": "flamingosflooring.comphone",
+    "reason": "Suspicious TLD (comphone)",
+    "email": "info@flamingosflooring.comPhone",
+    "source": "backfill",
+    "file_path": "/home/mstouffer/repos/company-cli/data/campaigns/turboship/indexes/emails/flamingosflooring.comphone/info.json"
+  },
+  {
+    "domain": "godaddy.commy",
+    "reason": "Suspicious TLD (commy)",
+    "email": "filler@godaddy.comMy",
+    "source": "backfill",
+    "file_path": "/home/mstouffer/repos/company-cli/data/campaigns/turboship/indexes/emails/godaddy.commy/filler.json"
+  },
+  {
+    "domain": "lumliq.comfor",
+    "reason": "Suspicious TLD (comfor)",
+    "email": "insidesales@lumliq.comFor",
+    "source": "backfill",
+    "file_path": "/home/mstouffer/repos/company-cli/data/campaigns/turboship/indexes/emails/lumliq.comfor/insidesales.json"
+  },
+  {
+    "domain": "flagfloors.comphone",
+    "reason": "Suspicious TLD (comphone)",
+    "email": "43713sales@flagfloors.comPhone",
+    "source": "backfill",
+    "file_path": "/home/mstouffer/repos/company-cli/data/campaigns/turboship/indexes/emails/flagfloors.comphone/43713sales.json"
+  },
+  {
+    "domain": "rocontracting.services",
+    "reason": "Suspicious TLD (services)",
+    "email": "gc@rocontracting.services",
+    "source": "backfill",
+    "file_path": "/home/mstouffer/repos/company-cli/data/campaigns/turboship/indexes/emails/rocontracting.services/gc.json"
+  },
+  {
+    "domain": "myflooringexpert.comaddress",
+    "reason": "Suspicious TLD (comaddress)",
+    "email": "429-4949Emailoffice@myflooringexpert.comAddress",
+    "source": "backfill",
+    "file_path": "/home/mstouffer/repos/company-cli/data/campaigns/turboship/indexes/emails/myflooringexpert.comaddress/429-4949emailoffice.json"
+  },
+  {
+    "domain": "gwcinteriors.comwebsite",
+    "reason": "Suspicious TLD (comwebsite)",
+    "email": "info@gwcinteriors.comWebsite",
+    "source": "backfill",
+    "file_path": "/home/mstouffer/repos/company-cli/data/campaigns/turboship/indexes/emails/gwcinteriors.comwebsite/info.json"
+  },
+  {
+    "domain": "godaddy.combookingsmy",
+    "reason": "Suspicious TLD (combookingsmy)",
+    "email": "filler@godaddy.comBookingsMy",
+    "source": "backfill",
+    "file_path": "/home/mstouffer/repos/company-cli/data/campaigns/turboship/indexes/emails/godaddy.combookingsmy/filler.json"
+  },
+  {
+    "domain": "flooringsg.comcontact",
+    "reason": "Suspicious TLD (comcontact)",
+    "email": "info@flooringsg.comContact",
+    "source": "backfill",
+    "file_path": "/home/mstouffer/repos/company-cli/data/campaigns/turboship/indexes/emails/flooringsg.comcontact/info.json"
+  },
+  {
+    "domain": "bigoflooring.comhourswe",
+    "reason": "Suspicious TLD (comhourswe)",
+    "email": "fernie@bigoflooring.comHoursWe",
+    "source": "backfill",
+    "file_path": "/home/mstouffer/repos/company-cli/data/campaigns/turboship/indexes/emails/bigoflooring.comhourswe/fernie.json"
+  },
+  {
+    "domain": "rtd-denver.comshareour",
+    "reason": "Suspicious TLD (comshareour)",
+    "email": "DashboardContact303-299-6000customercare@rtd-denver.comShareOur",
+    "source": "backfill",
+    "file_path": "/home/mstouffer/repos/company-cli/data/campaigns/turboship/indexes/emails/rtd-denver.comshareour/dashboardcontact303-299-6000customercare.json"
+  },
+  {
+    "domain": "staffordsurfaces.comgrand",
+    "reason": "Suspicious TLD (comgrand)",
+    "email": "Contactinfo@staffordsurfaces.comGrand",
+    "source": "backfill",
+    "file_path": "/home/mstouffer/repos/company-cli/data/campaigns/turboship/indexes/emails/staffordsurfaces.comgrand/contactinfo.json"
+  },
+  {
+    "domain": "mattisonmartinoli.combid",
+    "reason": "Suspicious TLD (combid)",
+    "email": "info@mattisonmartinoli.comBid",
+    "source": "backfill",
+    "file_path": "/home/mstouffer/repos/company-cli/data/campaigns/turboship/indexes/emails/mattisonmartinoli.combid/info.json"
+  },
+  {
+    "domain": "gmail.comsend",
+    "reason": "Suspicious TLD (comsend)",
+    "email": "PMSpecialtySurfaceSupply@gmail.comSend",
+    "source": "backfill",
+    "file_path": "/home/mstouffer/repos/company-cli/data/campaigns/turboship/indexes/emails/gmail.comsend/pmspecialtysurfacesupply.json"
+  },
+  {
+    "domain": "godaddy.combookingsordersmy",
+    "reason": "Suspicious TLD (combookingsordersmy)",
+    "email": "filler@godaddy.comBookingsOrdersMy",
+    "source": "backfill",
+    "file_path": "/home/mstouffer/repos/company-cli/data/campaigns/turboship/indexes/emails/godaddy.combookingsordersmy/filler.json"
+  },
+  {
+    "domain": "rd.homes",
+    "reason": "Suspicious TLD (homes)",
+    "email": "Email:connect@rd.homes",
+    "source": "backfill",
+    "file_path": "/home/mstouffer/repos/company-cli/data/campaigns/turboship/indexes/emails/rd.homes/email-connect.json"
+  },
+  {
+    "domain": "godaddy.comordersmy",
+    "reason": "Suspicious TLD (comordersmy)",
+    "email": "filler@godaddy.comOrdersMy",
+    "source": "backfill",
+    "file_path": "/home/mstouffer/repos/company-cli/data/campaigns/turboship/indexes/emails/godaddy.comordersmy/filler.json"
+  },
+  {
+    "domain": "maciasflooring.comhoursmonday",
+    "reason": "Suspicious TLD (comhoursmonday)",
+    "email": "info@maciasflooring.comHoursMonday",
+    "source": "backfill",
+    "file_path": "/home/mstouffer/repos/company-cli/data/campaigns/turboship/indexes/emails/maciasflooring.comhoursmonday/info.json"
+  },
+  {
+    "domain": "mattersurfaces.commedia",
+    "reason": "Suspicious TLD (commedia)",
+    "email": "Inquiriescustomercare@mattersurfaces.comMedia",
+    "source": "backfill",
+    "file_path": "/home/mstouffer/repos/company-cli/data/campaigns/turboship/indexes/emails/mattersurfaces.commedia/inquiriescustomercare.json"
+  },
+  {
+    "domain": "cabka.comcontactfollow",
+    "reason": "Suspicious TLD (comcontactfollow)",
+    "email": "110info@cabka.comContactFollow",
+    "source": "backfill",
+    "file_path": "/home/mstouffer/repos/company-cli/data/campaigns/turboship/indexes/emails/cabka.comcontactfollow/110info.json"
+  },
+  {
+    "domain": "thesparkhouse.comsubscribe",
+    "reason": "Suspicious TLD (comsubscribe)",
+    "email": "92626949-541-3511info@thesparkhouse.comSubscribe",
+    "source": "backfill",
+    "file_path": "/home/mstouffer/repos/company-cli/data/campaigns/turboship/indexes/emails/thesparkhouse.comsubscribe/92626949-541-3511info.json"
+  },
+  {
+    "domain": "msn.comthank",
+    "reason": "Suspicious TLD (comthank)",
+    "email": "floorcoveringunltd@msn.comThank",
+    "source": "backfill",
+    "file_path": "/home/mstouffer/repos/company-cli/data/campaigns/turboship/indexes/emails/msn.comthank/floorcoveringunltd.json"
+  }
+]
