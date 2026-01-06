@@ -14,6 +14,7 @@ The infrastructure follows a **Distributed Hybrid Model**:
 | :--- | :--- | :--- | :--- |
 | `octoprint.local` | Scraper | Raspberry Pi 4 | Polling `scrape_tasks` queue; Grid scanning. |
 | `coclipi.local` | Details | Raspberry Pi 4 | Polling `gm_list_item` queue; Fetching GMB metadata. |
+| `cocli5x0.local` | TBD | Raspberry Pi 5 | High-performance expansion node (8GB RAM). |
 | `AWS Fargate` | Enrichment | Virtual (10 nodes) | Polling `enrichment` queue; Scraping business websites. |
 
 ### Optimization & Resilience
@@ -29,7 +30,7 @@ The `Makefile` in the project root is the primary orchestration tool.
 *   `make deploy-cluster`: Rebuilds Docker images on all Pis and restarts workers with the latest code.
 *   `make shutdown-cluster`: Safely halts all Pis for hardware maintenance.
 *   `make restart-rpi-all`: Restarts all containers without a full rebuild.
-*   `make check-cluster-health`: Verifies voltage status, throttling history, and system load for all nodes.
+*   `make check-cluster-health`: Verifies voltage status, throttling history, and system load for all nodes (including Pi 5).
 
 ### Deployment to New Pis
 1.  **Bootstrap**: Run `make setup-rpi RPI_HOST=new-pi.local` to install Docker and Git.
@@ -40,7 +41,7 @@ The `Makefile` in the project root is the primary orchestration tool.
 ## Expansion Options
 
 ### 1. Scaling with Raspberry Pi 5
-The Raspberry Pi 5 (8GB) is the recommended hardware for expansion.
+The Raspberry Pi 5 (8GB) is the recommended hardware for expansion. `cocli5x0.local` is the first node of this type in the cluster.
 *   **Target Capacity**: 4-5 concurrent browser instances per Pi 5.
 *   **Requirements**: Official 27W USB-C PSU (mandatory for high-current peripherals) and Active Cooler.
 *   **Optimization**: Use NVMe Base for faster I/O during heavy logging or cache operations.

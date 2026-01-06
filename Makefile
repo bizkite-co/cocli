@@ -373,11 +373,12 @@ gc-companies: ## Commit and push all changes to companies and people
 	cd cocli_data && git add companies people && git commit -m "Update companies and people" && git push;; cd ..
 
 .PHONY: deploy-creds-rpi
-deploy-creds-rpi: ## Securely deploy AWS credentials to both Raspberry Pis (Usage: make deploy-creds-rpi [CAMPAIGN=name])
+deploy-creds-rpi: ## Securely deploy AWS credentials to all Raspberry Pis (Usage: make deploy-creds-rpi [CAMPAIGN=name])
 	$(call validate_campaign)
 	@echo "Deploying credentials for profile: $(AWS_PROFILE)"
 	python3 scripts/deploy_rpi_creds.py --profile $(AWS_PROFILE) --host octoprint.local --user $(RPI_USER)
 	python3 scripts/deploy_rpi_creds.py --profile $(AWS_PROFILE) --host coclipi.local --user $(RPI_USER)
+	python3 scripts/deploy_rpi_creds.py --profile $(AWS_PROFILE) --host cocli5x0.local --user $(RPI_USER)
 
 # ==============================================================================
 # Web Dashboard
@@ -465,6 +466,8 @@ check-cluster-health: ## Check health (load/voltage) of all known Raspberry Pi w
 	@$(MAKE) check-rpi-voltage RPI_HOST=octoprint.local
 	@echo "\n=== Checking coclipi.local (Details) ==="
 	@$(MAKE) check-rpi-voltage RPI_HOST=coclipi.local
+	@echo "\n=== Checking cocli5x0.local (Pi 5) ==="
+	@$(MAKE) check-rpi-voltage RPI_HOST=cocli5x0.local
 
 .PHONY: shutdown-rpi
 shutdown-rpi: ## Safely shut down the Raspberry Pi (halts system)
@@ -533,14 +536,15 @@ stop-rpi-details-worker: ## Stop and remove the Details worker on Raspberry Pi
 restart-rpi-worker: stop-rpi-worker start-rpi-worker ## Restart the Raspberry Pi worker
 
 .PHONY: restart-rpi-all
-restart-rpi-all: ## Restart all Raspberry Pi workers (Scraper on octoprint, Details on coclipi)
+restart-rpi-all: ## Restart all Raspberry Pi workers
 	-$(MAKE) stop-rpi-all RPI_HOST=octoprint.local
 	-$(MAKE) stop-rpi-all RPI_HOST=coclipi.local
+	-$(MAKE) stop-rpi-all RPI_HOST=cocli5x0.local
 	$(MAKE) start-rpi-worker RPI_HOST=octoprint.local
 	$(MAKE) start-rpi-details-worker RPI_HOST=coclipi.local
 
 .PHONY: deploy-cluster
-deploy-cluster: ## Rebuild and restart the entire cluster (octoprint=scraper, coclipi=details)
+deploy-cluster: ## Rebuild and restart the entire cluster
 	@echo "Deploying to octoprint.local (Scraper)..."
 	$(MAKE) rebuild-rpi-worker RPI_HOST=octoprint.local
 	-$(MAKE) stop-rpi-all RPI_HOST=octoprint.local
@@ -549,7 +553,10 @@ deploy-cluster: ## Rebuild and restart the entire cluster (octoprint=scraper, co
 	$(MAKE) rebuild-rpi-worker RPI_HOST=coclipi.local
 	-$(MAKE) stop-rpi-all RPI_HOST=coclipi.local
 	$(MAKE) start-rpi-details-worker RPI_HOST=coclipi.local
-	@echo "Cluster deployment complete."
+	@echo "Deploying to cocli5x0.local (Pi 5)..."
+	$(MAKE) rebuild-rpi-worker RPI_HOST=cocli5x0.local
+	-$(MAKE) stop-rpi-all RPI_HOST=cocli5x0.local
+	@echo "Cluster deployment complete (cocli5x0.local rebuild only; role unassigned)."
 
 .PHONY: shutdown-cluster
 shutdown-cluster: ## Safely shut down all Raspberry Pi workers
@@ -557,6 +564,8 @@ shutdown-cluster: ## Safely shut down all Raspberry Pi workers
 	-$(MAKE) shutdown-rpi RPI_HOST=octoprint.local
 	@echo "Shutting down coclipi.local..."
 	-$(MAKE) shutdown-rpi RPI_HOST=coclipi.local
+	@echo "Shutting down cocli5x0.local..."
+	-$(MAKE) shutdown-rpi RPI_HOST=cocli5x0.local
 	@echo "Shutdown commands sent. You can safely unplug the Pis in 30 seconds."
 
 .PHONY: log-rpi-worker
