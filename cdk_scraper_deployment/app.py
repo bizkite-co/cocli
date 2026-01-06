@@ -83,7 +83,11 @@ ou_arn = aws_config.get("organizational-unit-arn")
 worker_count = aws_config.get("worker_count", 1)
 
 # Use a unique stack name per campaign to avoid global naming conflicts and stuck stacks
-stack_name = f"CdkScraperDeploymentStack-{campaign_name}"
+# Maintaining legacy name for turboship to avoid resource duplication
+if campaign_name == "turboship":
+    stack_name = "CdkScraperDeploymentStack"
+else:
+    stack_name = f"CdkScraperDeploymentStack-{campaign_name}"
 
 CdkScraperDeploymentStack(app, stack_name,
     env=env,

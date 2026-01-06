@@ -45,4 +45,4 @@ if [ -z "$CAMPAIGN_NAME" ]; then
     exit 1
 fi
 
-exec cocli campaign prospects enrich-from-queue "$CAMPAIGN_NAME" --cloud-queue --dual-purpose
+exec python3 -m cocli.main campaign prospects enrich-from-queue "$CAMPAIGN_NAME" --cloud-queue --dual-purpose

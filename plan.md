@@ -79,6 +79,19 @@ This document outlines the roadmap for transitioning `cocli` from a purely local
     *   [x] **Automated Export Sync:** Update `make export-emails` to automatically upload the generated CSV to the campaign's S3 folder.
     *   [x] **Download Links:** Display the latest email export link and total email count on the home page.
 
+## Phase 6: Quality Engineering & Data Enrichment (Active)
+
+**Goal:** Improve data yield and accuracy through advanced scraping techniques and targeted re-processing.
+
+1.  **Scraper v6 Deployment (Done):**
+    *   [x] Implement improved email extraction logic in `WebsiteScraper`.
+    *   [x] Verify performance improvement with targeted re-scrape (verified 54% recovery on previous misses).
+
+2.  **Batch Re-scrape Tooling (Done):**
+    *   [x] Create scripts for identifying prospects missing emails (`list_prospects_missing_emails.py`).
+    *   [x] Create enqueuing tools for batch re-processing (`enqueue_batch_from_csv.py`).
+    *   [x] Implement evaluation and sync tools (`sync_results_from_s3.py`, `evaluate_batch_results.py`).
+
 ```mermaid
 graph TD
     A[Start] --> B{Phase 1: Hybrid Architecture};
@@ -97,4 +110,8 @@ graph TD
     F --> F1[11ty SSG Shell];
     F --> F2[Cached S3 Reporting];
     F --> F3[Public Data Downloads];
+    
+    F3 --> G{Phase 6: Quality Engineering};
+    G --> G1[Scraper v6 Verification];
+    G --> G2[Batch Re-scrape Tooling];
 ```

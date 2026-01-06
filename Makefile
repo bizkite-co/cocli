@@ -80,7 +80,7 @@ test-tui-integration: install ## Run only the TUI integration tests
 	cat .logs/tui.log
 
 report: ## Show the report for the current campaign (Usage: make report [CAMPAIGN=name])
-	@./.venv/bin/python scripts/campaign_report.py $(CAMPAIGN)
+	@PYTHONPATH=. ./.venv/bin/python scripts/campaign_report.py $(CAMPAIGN)
 
 coverage-gap: ## Generate a report of unscraped target areas
 	@COCLI_DATA_HOME=$(shell pwd)/cocli_data ./.venv/bin/cocli campaign coverage-gap $(CAMPAIGN) --output coverage_gap.csv

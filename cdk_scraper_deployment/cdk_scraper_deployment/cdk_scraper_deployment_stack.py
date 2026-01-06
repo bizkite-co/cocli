@@ -61,12 +61,8 @@ class CdkScraperDeploymentStack(Stack):  # type: ignore[misc]
         rpi_user = iam.User.from_user_name(self, "RpiUser", rpi_user_name)
 
         # --- S3 Bucket for Data ---
-        data_bucket = s3.Bucket(self, "CocliDataBucket",
-            bucket_name=data_bucket_name,
-            block_public_access=s3.BlockPublicAccess.BLOCK_ALL,
-            encryption=s3.BucketEncryption.S3_MANAGED,
-            removal_policy=RemovalPolicy.RETAIN
-        )
+        # Import existing bucket instead of creating a new one to avoid conflicts
+        data_bucket = s3.Bucket.from_bucket_name(self, "CocliDataBucket", data_bucket_name)
         data_bucket.grant_read_write(task_role)
         data_bucket.grant_read_write(rpi_user)
 
