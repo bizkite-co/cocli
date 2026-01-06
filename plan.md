@@ -79,7 +79,7 @@ This document outlines the roadmap for transitioning `cocli` from a purely local
     *   [x] **Automated Export Sync:** Update `make export-emails` to automatically upload the generated CSV to the campaign's S3 folder.
     *   [x] **Download Links:** Display the latest email export link and total email count on the home page.
 
-## Phase 6: Quality Engineering & Data Enrichment (Active)
+## Phase 6: Quality Engineering & Data Enrichment (Completed)
 
 **Goal:** Improve data yield and accuracy through advanced scraping techniques and targeted re-processing.
 
@@ -91,6 +91,23 @@ This document outlines the roadmap for transitioning `cocli` from a purely local
     *   [x] Create scripts for identifying prospects missing emails (`list_prospects_missing_emails.py`).
     *   [x] Create enqueuing tools for batch re-processing (`enqueue_batch_from_csv.py`).
     *   [x] Implement evaluation and sync tools (`sync_results_from_s3.py`, `evaluate_batch_results.py`).
+
+## Phase 7: Advanced Dashboard & Integrated Data Pipeline (Active)
+
+**Goal:** Modernize the web UI for stakeholder self-service and automate the full data lifecycle from scrape to dashboard.
+
+1.  **Interactive Dashboard UI:**
+    *   [x] **Prospect Search:** Implement client-side filtering using PapaParse for fast, interactive search of exported CSV data.
+    *   [x] **Multi-Tab Architecture:** Split UI into "Dashboard" (data/search) and "Config" (campaign parameters) for better UX.
+    *   [x] **Layout Navigation:** Add persistent navigation links to the 11ty layout.
+
+2.  **Deployment Automation:**
+    *   [x] **Integrated Build:** Update `cocli web deploy` to automatically run `npm run build` (11ty) before S3 synchronization.
+    *   [x] **Unified Export:** Ensure `make publish-all` captures all metadata, including the new `all_emails` fields for high-yield reporting.
+
+3.  **Data Depth & Scale:**
+    *   [x] **Full-Text Email Indexing:** Update `backfill_email_index.py` and `export_enriched_emails.py` to parse extended email lists.
+    *   [x] **Large-Scale Sync:** Successfully synchronized ~10,000 cloud-enriched company records to local storage.
 
 ```mermaid
 graph TD
@@ -114,4 +131,9 @@ graph TD
     F3 --> G{Phase 6: Quality Engineering};
     G --> G1[Scraper v6 Verification];
     G --> G2[Batch Re-scrape Tooling];
+
+    G2 --> H{Phase 7: Advanced Dashboard};
+    H --> H1[Interactive Search];
+    H --> H2[Deployment Automation];
+    H --> H3[Extended Data Sync];
 ```

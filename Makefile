@@ -346,7 +346,7 @@ check-freshness: sync-scraped-areas ## Check if scraped data is fresh (warn if >
 .PHONY: export-emails
 export-emails: ## Export enriched emails to CSV (Usage: make export-emails [CAMPAIGN=name])
 	$(call validate_campaign)
-	@$(VENV_DIR)/bin/python scripts/export_enriched_emails.py $(CAMPAIGN)
+	@PYTHONPATH=. $(VENV_DIR)/bin/python scripts/export_enriched_emails.py $(CAMPAIGN)
 
 .PHONY: queue-missing
 queue-missing: ## Identify and queue missing enrichments (Gap Analysis) (Usage: make queue-missing CAMPAIGN=name)
@@ -405,10 +405,10 @@ web-deploy: web-build ## Deploy the web dashboard to S3
 
 .PHONY: publish-report
 publish-report: ## Generate and upload report.json to S3 (Usage: make publish-report [CAMPAIGN=name])
-	@$(VENV_DIR)/bin/python scripts/campaign_report.py $(CAMPAIGN) --upload
+	@PYTHONPATH=. $(VENV_DIR)/bin/python scripts/campaign_report.py $(CAMPAIGN) --upload
 
 .PHONY: publish-all
-publish-all: export-emails publish-report publish-kml ## Full sync: export emails, publish report, and publish KML
+publish-all: sync-companies backfill-email-index export-emails publish-report publish-kml ## Full sync: export emails, publish report, and publish KML
 	$(call validate_campaign)
 	@echo "Full campaign sync completed for $(CAMPAIGN)"
 

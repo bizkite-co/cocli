@@ -70,6 +70,12 @@ def main(campaign_name: Optional[str] = typer.Argument(None, help="Campaign name
                         e = data.get("email")
                         if e and e not in ["null", "''", ""]:
                             emails.add(e)
+                        
+                        all_emails = data.get("all_emails", [])
+                        for e in all_emails:
+                            if e and e not in ["null", "''", ""]:
+                                emails.add(e)
+
                         personnel = data.get("personnel", [])
                         for p in personnel:
                             if isinstance(p, dict) and p.get("email"):

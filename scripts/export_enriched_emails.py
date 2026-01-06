@@ -1,6 +1,7 @@
 import typer
 import csv
 import yaml
+import json
 from typing import Optional
 from rich.console import Console
 from rich.progress import track
@@ -118,6 +119,7 @@ def main(campaign_name: Optional[str] = typer.Argument(None, help="Campaign name
                         if data:
                             email = data.get("email")
                             personnel = data.get("personnel", [])
+                            all_emails = data.get("all_emails", [])
                             
                             if email and email not in ["null", "''", ""]: 
                                 emails.add(email)
@@ -128,6 +130,11 @@ def main(campaign_name: Optional[str] = typer.Argument(None, help="Campaign name
                                         emails.add(p["email"])
                                     elif isinstance(p, str) and "@" in p: 
                                          emails.add(p)
+                            
+                            if all_emails:
+                                for e in all_emails:
+                                    if e and e not in ["null", "''", ""]:
+                                        emails.add(e)
                             
                             if data.get("services"):
                                 services.extend(data["services"])
@@ -183,20 +190,31 @@ def main(campaign_name: Optional[str] = typer.Argument(None, help="Campaign name
         
     console.print(f"[bold green]Exported {len(results)} companies with emails to {output_file}[/bold green]")
 
+    # Export to JSON
+    json_output_file = export_dir / f"enriched_emails_{campaign_name}.json"
+    with open(json_output_file, "w") as f:
+        json.dump(results, f, indent=2)
+    console.print(f"[bold green]Exported {len(results)} companies with emails to {json_output_file}[/bold green]")
+
     # --- S3 Upload ---
     from cocli.core.reporting import get_boto3_session, load_campaign_config
     config = load_campaign_config(campaign_name)
     s3_config = config.get("aws", {})
     bucket_name = s3_config.get("cocli_web_bucket_name") or "cocli-web-assets-turboheat-net"
-    s3_key = f"exports/{campaign_name}-emails.csv"
+    s3_key_csv = f"exports/{campaign_name}-emails.csv"
+    s3_key_json = f"exports/{campaign_name}-emails.json"
 
     try:
         session = get_boto3_session(config)
         s3 = session.client("s3")
-        console.print(f"Uploading to s3://{bucket_name}/{s3_key}...")
-        s3.upload_file(str(output_file), bucket_name, s3_key)
-        console.print("[bold green]Successfully uploaded export to S3.[/bold green]")
-        console.print(f"Download URL: https://{bucket_name}/{s3_key}")
+        
+        console.print(f"Uploading CSV to s3://{bucket_name}/{s3_key_csv}...")
+        s3.upload_file(str(output_file), bucket_name, s3_key_csv)
+        
+        console.print(f"Uploading JSON to s3://{bucket_name}/{s3_key_json}...")
+        s3.upload_file(str(json_output_file), bucket_name, s3_key_json)
+        
+        console.print("[bold green]Successfully uploaded exports to S3.[/bold green]")
     except Exception as e:
         console.print(f"[bold red]Failed to upload to S3: {e}[/bold red]")
 

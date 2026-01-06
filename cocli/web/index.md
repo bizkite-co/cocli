@@ -45,39 +45,31 @@ This dashboard provides a real-time view of the scraping and enrichment funnel.
     <button onclick="location.reload()">Refresh</button>
 </p>
 
-<div class="campaign-config-grid">
-    <div class="config-section">
-        <h3>Search Queries</h3>
-        <div class="input-group">
-            <input type="text" id="new-query" placeholder="Add new query...">
-            <button onclick="addPendingChange('query', document.getElementById('new-query').value)">Add</button>
-        </div>
-        <ul id="queries-list" class="config-list">
-            <!-- Queries will be injected here -->
-        </ul>
-        <p class="config-hint">Modify these in <code>config.toml</code> under <code>[prospecting].queries</code></p>
+## Prospect Search
+
+<div class="search-box" style="background: white; padding: 20px; border-radius: 4px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); margin: 20px 0;">
+    <div class="input-group">
+        <input type="text" id="prospect-search" placeholder="Search by name, domain, email, category..." style="flex: 2;">
+        <select id="category-filter">
+            <option value="">All Categories</option>
+        </select>
     </div>
-    <div class="config-section">
-        <h3>Target Locations</h3>
-        <div class="input-group">
-            <input type="text" id="new-location" placeholder="Add new location...">
-            <button onclick="addPendingChange('location', document.getElementById('new-location').value)">Add</button>
-        </div>
-        <div class="scroll-container">
-            <ul id="locations-list" class="config-list">
-                <!-- Locations will be injected here -->
-            </ul>
-        </div>
-        <p class="config-hint">Modify these in <code>target_locations.csv</code> or <code>config.toml</code></p>
-    </div>
+    <div id="search-results-info" style="margin-top: 10px; font-size: 0.9em; color: #666;"></div>
 </div>
 
-<div id="pending-changes-container" style="display:none;" class="pending-changes">
-    <h3>Apply Changes</h3>
-    <p>Copy and run these commands in your terminal to apply the changes:</p>
-    <pre id="pending-commands-box"></pre>
-    <button onclick="clearPendingChanges()">Clear All</button>
-</div>
+<div id="prospects-loading">Loading prospect data for search...</div>
+<table class="report-table" id="prospects-table" style="display:none;">
+    <thead>
+        <tr>
+            <th>Company</th>
+            <th>Emails</th>
+            <th>Categories</th>
+            <th>Actions</th>
+        </tr>
+    </thead>
+    <tbody id="prospects-body">
+    </tbody>
+</table>
 
 ## Downloads
 
@@ -88,7 +80,11 @@ This dashboard provides a real-time view of the scraping and enrichment funnel.
     <a href="#" id="download-link" class="button">Download CSV</a>
 </div>
 
+<script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
 <script>
+    let allProspects = [];
+    let categories = new Set();
+
     async function fetchReport() {
         const urlParams = new URLSearchParams(window.location.search);
         const campaign = urlParams.get('campaign') || '{% if env.CAMPAIGN %}{{ env.CAMPAIGN }}{% else %}turboship{% endif %}';
@@ -100,6 +96,7 @@ This dashboard provides a real-time view of the scraping and enrichment funnel.
             
             const stats = await response.json();
             renderReport(stats);
+            fetchProspects(stats.campaign_name || campaign);
         } catch (error) {
             document.getElementById('report-loading').style.display = 'none';
             const errDiv = document.getElementById('report-error');
@@ -108,46 +105,98 @@ This dashboard provides a real-time view of the scraping and enrichment funnel.
         }
     }
 
+    async function fetchProspects(campaign) {
+        try {
+            const csvUrl = `/exports/${campaign}-emails.csv?v=${Date.now()}`;
+            Papa.parse(csvUrl, {
+                download: true,
+                header: true,
+                skipEmptyLines: true,
+                complete: function(results) {
+                    allProspects = results.data;
+                    document.getElementById('prospects-loading').style.display = 'none';
+                    document.getElementById('prospects-table').style.display = 'table';
+                    
+                    // Build category list
+                    allProspects.forEach(p => {
+                        if (p.categories) {
+                            p.categories.split(';').forEach(c => {
+                                const cat = c.trim();
+                                if (cat) categories.add(cat);
+                            });
+                        }
+                    });
+                    
+                    const filter = document.getElementById('category-filter');
+                    Array.from(categories).sort().forEach(cat => {
+                        const opt = document.createElement('option');
+                        opt.value = cat;
+                        opt.textContent = cat;
+                        filter.appendChild(opt);
+                    });
+
+                    renderProspects(allProspects);
+                },
+                error: function(err) {
+                    document.getElementById('prospects-loading').textContent = 'Error loading prospects CSV.';
+                    console.error('PapaParse error:', err);
+                }
+            });
+        } catch (error) {
+            console.error('Fetch error:', error);
+        }
+    }
+
+    function renderProspects(prospects) {
+        const body = document.getElementById('prospects-body');
+        body.innerHTML = '';
+        
+        const limit = 50;
+        const displayList = prospects.slice(0, limit);
+        
+        displayList.forEach(p => {
+            const tr = document.createElement('tr');
+            tr.innerHTML = `
+                <td>
+                    <strong>${p.company}</strong><br>
+                    <small>${p.domain}</small>
+                </td>
+                <td>${p.emails.replace(/;/g, '<br>')}</td>
+                <td><small>${p.categories || ''}</small></td>
+                <td>
+                    <a href="http://${p.domain}" target="_blank" class="nav-link" style="color: #007bff; font-size: 0.8em;">Visit</a>
+                </td>
+            `;
+            body.appendChild(tr);
+        });
+
+        const info = document.getElementById('search-results-info');
+        info.textContent = `Showing ${displayList.length} of ${prospects.length} prospects.`;
+    }
+
+    document.getElementById('prospect-search').addEventListener('input', filterProspects);
+    document.getElementById('category-filter').addEventListener('change', filterProspects);
+
+    function filterProspects() {
+        const query = document.getElementById('prospect-search').value.toLowerCase();
+        const cat = document.getElementById('category-filter').value;
+        
+        const filtered = allProspects.filter(p => {
+            const matchesQuery = !query || 
+                p.company.toLowerCase().includes(query) || 
+                p.domain.toLowerCase().includes(query) || 
+                p.emails.toLowerCase().includes(query) || 
+                p.categories.toLowerCase().includes(query);
+            
+            const matchesCat = !cat || (p.categories && p.categories.includes(cat));
+            
+            return matchesQuery && matchesCat;
+        });
+        
+        renderProspects(filtered);
+    }
+
     window.addEventListener('DOMContentLoaded', fetchReport);
-
-    let pendingChanges = [];
-
-    function addPendingChange(type, value) {
-        if (!value) return;
-        const campaign = document.getElementById('campaign-display').textContent;
-        const cmd = `cocli campaign add-${type} "${value}" --campaign ${campaign}`;
-        if (!pendingChanges.includes(cmd)) {
-            pendingChanges.push(cmd);
-            updatePendingUI();
-        }
-        if (type === 'query') document.getElementById('new-query').value = '';
-        if (type === 'location') document.getElementById('new-location').value = '';
-    }
-
-    function removeExisting(type, value) {
-        const campaign = document.getElementById('campaign-display').textContent;
-        const cmd = `cocli campaign remove-${type} "${value}" --campaign ${campaign}`;
-        if (!pendingChanges.includes(cmd)) {
-            pendingChanges.push(cmd);
-            updatePendingUI();
-        }
-    }
-
-    function updatePendingUI() {
-        const container = document.getElementById('pending-changes-container');
-        const box = document.getElementById('pending-commands-box');
-        if (pendingChanges.length > 0) {
-            container.style.display = 'block';
-            box.textContent = pendingChanges.join('\n');
-        } else {
-            container.style.display = 'none';
-        }
-    }
-
-    function clearPendingChanges() {
-        pendingChanges = [];
-        updatePendingUI();
-    }
 
     function renderReport(stats) {
         const body = document.getElementById('report-body');
@@ -193,46 +242,6 @@ This dashboard provides a real-time view of the scraping and enrichment funnel.
             });
             workerContainer.style.display = 'block';
         }
-
-                // Update queries
-
-                const queriesList = document.getElementById('queries-list');
-
-                queriesList.innerHTML = '';
-
-                (stats.queries || []).forEach(q => {
-
-                    const li = document.createElement('li');
-
-                    li.className = 'list-item-editable';
-
-                    li.innerHTML = `<span>${q}</span> <button class="btn-remove" onclick="removeExisting('query', '${q}')">×</button>`;
-
-                    queriesList.appendChild(li);
-
-                });
-
-        
-
-                // Update locations
-
-                const locationsList = document.getElementById('locations-list');
-
-                locationsList.innerHTML = '';
-
-                (stats.locations || []).forEach(loc => {
-
-                    const li = document.createElement('li');
-
-                    li.className = 'list-item-editable';
-
-                    li.innerHTML = `<span>${loc}</span> <button class="btn-remove" onclick="removeExisting('location', '${loc}')">×</button>`;
-
-                    locationsList.appendChild(li);
-
-                });
-
-        
 
                 // Update downloads
 

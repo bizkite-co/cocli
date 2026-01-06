@@ -74,17 +74,30 @@ def deploy(
     console.print(f"  Domain:   [cyan]{domain}[/cyan]")
     console.print(f"  Bucket:   [cyan]{bucket_name}[/cyan]")
 
-    web_dir = Path(__file__).parent.parent.parent / "cocli" / "web" # cocli/web
+    source_web_dir = Path(__file__).parent.parent.parent / "cocli" / "web"
+    build_dir = Path(__file__).parent.parent.parent / "build" / "web"
+
+    # 0. Build Web Shell
+    console.print("[bold blue]Building web dashboard with Eleventy...[/bold blue]")
+    if source_web_dir.exists():
+        try:
+            subprocess.run(["npm", "run", "build"], cwd=source_web_dir, check=True)
+            console.print("[green]Build successful.[/green]")
+        except subprocess.CalledProcessError:
+            console.print("[red]Error: Web build failed. Aborting deployment.[/red]")
+            raise typer.Exit(1)
+    else:
+        console.print(f"[yellow]Source web directory {source_web_dir} not found. Skipping build.[/yellow]")
 
     session = boto3.Session(profile_name=profile)
     s3 = session.client("s3")
 
     # 1. Sync Static Assets (Shell)
-    console.print(f"[bold]Syncing web shell from {web_dir} to s3://{bucket_name}...[/bold]")
-    if web_dir.exists():
-        for file_path in web_dir.rglob("*"):
+    console.print(f"[bold]Syncing web shell from {build_dir} to s3://{bucket_name}...[/bold]")
+    if build_dir.exists():
+        for file_path in build_dir.rglob("*"):
             if file_path.is_file():
-                rel_path = file_path.relative_to(web_dir)
+                rel_path = file_path.relative_to(build_dir)
                 if file_path.suffix == ".css":
                     content_type = "text/css"
                 elif file_path.suffix == ".js":
@@ -99,19 +112,19 @@ def deploy(
                 s3.upload_file(str(file_path), bucket_name, str(rel_path), ExtraArgs={"ContentType": content_type})
                 console.print(f"  Uploaded {rel_path}")
     else:
-        console.print(f"[yellow]Web directory {web_dir} not found. Skipping shell sync.[/yellow]")
+        console.print(f"[yellow]Build directory {build_dir} not found. Skipping shell sync.[/yellow]")
 
     # 2. Generate & Upload Report
     console.print(f"[bold]Generating report for {campaign_name}...[/bold]")
     stats = get_campaign_stats(campaign_name)
-    report_key = f"campaigns/{campaign_name}/report.json"
+    report_key = f"reports/{campaign_name}.json"
     s3.put_object(Bucket=bucket_name, Key=report_key, Body=json.dumps(stats, indent=2), ContentType="application/json")
     console.print(f"[green]Report uploaded to s3://{bucket_name}/{report_key}[/green]")
 
     # 2b. Upload Config to both web and data buckets
     if config_path.exists():
+        # 1. Upload to Web Bucket (as config/config.toml for web viewing or as campaigns/...)
         config_key = f"campaigns/{campaign_name}/config.toml"
-        # 1. Upload to Web Bucket
         s3.upload_file(str(config_path), bucket_name, config_key, ExtraArgs={"ContentType": "application/toml"})
         console.print(f"[green]Config uploaded to s3://{bucket_name}/{config_key}[/green]")
         

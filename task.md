@@ -1,23 +1,29 @@
-# Current Task: Reliability & Process Hardening
+# Current Task: Dashboard & Deployment Automation
 
 ## Objective
-Ensure the distributed scraping and enrichment pipeline is 100% reliable through strict process guardrails, robust container bootstrapping, and automated infrastructure synchronization.
+Modernize the campaign dashboard with interactive search capabilities and automate the end-to-end deployment pipeline to ensure stakeholders always have access to the latest scraped data.
 
 ## Context
-*   **Status:** Distributed workers (RPi & Fargate) are active.
-*   **Architecture:** Shifted to a single-tenant, configuration-driven model where each campaign has isolated resources.
-*   **Dashboard:** `cocli.turboheat.net` is live with 11ty, providing dynamic reports and CSV downloads.
-*   **Pipeline:** 1,000+ GM List items queued; Details workers processing and feeding Enrichment queue.
+*   **Status:** Web UI has been refactored into Search and Config tabs.
+*   **Data:** Local email index expanded to ~6,000 unique emails after syncing 10k companies from S3.
+*   **Automation:** `cocli web deploy` now handles the 11ty build process.
 
 ## Todo
-- [ ] **Data Quality & Scraper Hardening:**
-    - [ ] **Anomalous Domain Audit:** Identify and flag email domains with concatenation errors (e.g., `domain.comyelpmerchant`) or suspicious TLDs.
 - [ ] **Worker Monitoring:**
+    - [ ] Implement health-check alerts for Fargate and RPi workers.
 - [ ] **Scale-Out:**
+    - [ ] Evaluate performance of PapaParse with >20k rows; consider server-side search if latency increases.
 - [ ] **Zero Error Maintenance:** 
     - [ ] Maintain 0 linting errors by running `make lint` before every commit.
 
 ## Done
+- [x] **Dashboard Modernization:**
+    - [x] **Search UI:** Integrated PapaParse for client-side CSV searching and filtering on the main dashboard.
+    - [x] **Tabbed Navigation:** Split configuration settings into a dedicated `/config` page.
+    - [x] **Deployment Automation:** Updated `cocli web deploy` to run `npm run build` and fixed S3 report key paths.
+- [x] **Data Pipeline & Sync:**
+    - [x] **All-Emails Support:** Updated `backfill_email_index.py` and `export_enriched_emails.py` to parse the `all_emails` field.
+    - [x] **Large Scale Sync:** Synced ~10,000 company files from S3 and re-indexed to double the local email yield.
 - [x] **Data Quality & Scraper Hardening:**
     - [x] **Scraper Logic Fix:** Deployed Scraper v6 with improved extraction regex and visibility checks.
     - [x] **Missed Email Investigation:** Debugged and resolved issues where `mailto:` links and footer emails were overlooked.
