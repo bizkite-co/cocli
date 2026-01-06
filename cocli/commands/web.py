@@ -3,6 +3,7 @@ import json
 import subprocess
 import boto3
 import toml
+from datetime import datetime
 from typing import Optional, Dict, Any
 from pathlib import Path
 from rich.console import Console
@@ -14,7 +15,7 @@ console = Console()
 
 @app.command()
 def deploy(
-    campaign_name: Optional[str] = typer.Option(None, help="Campaign name. Defaults to current context."),
+    campaign_name: Optional[str] = typer.Option(None, "--campaign-name", "--campaign", help="Campaign name. Defaults to current context."),
     profile: Optional[str] = typer.Option(None, "--profile", help="AWS profile to use. Defaults to 'aws-profile' in config.toml."),
     bucket_name: Optional[str] = typer.Option(None, "--bucket", help="S3 bucket name. Defaults to cocli-web-assets-<domain-slug>."),
     domain: Optional[str] = typer.Option(None, "--domain", help="Web domain. Defaults to cocli.<hosted-zone-domain>.")
@@ -152,11 +153,33 @@ def deploy(
         console.print("[red]Failed to publish KMLs.[/red]")
         raise typer.Exit(1)
 
-    console.print(f"[bold green]Deployment complete! Visit https://{domain}/kml-viewer.html[/bold green]")
+    # 4. Invalidate CloudFront Cache
+    try:
+        cf = session.client("cloudfront")
+        dists = cf.list_distributions().get("DistributionList", {}).get("Items", [])
+        dist_id = next((d["Id"] for d in dists if domain in d.get("Aliases", {}).get("Items", [])), None)
+        
+        if dist_id:
+            console.print(f"[bold]Invalidating CloudFront cache for {dist_id}...[/bold]")
+            cf.create_invalidation(
+                DistributionId=dist_id,
+                InvalidationBatch={
+                    'Paths': {
+                        'Quantity': 1,
+                        'Items': ['/*']
+                    },
+                    'CallerReference': str(datetime.now().timestamp())
+                }
+            )
+            console.print("[green]Invalidation request sent.[/green]")
+    except Exception as e:
+        console.print(f"[yellow]Note: Could not invalidate CloudFront cache: {e}[/yellow]")
+
+    console.print(f"[bold green]Deployment complete! Visit https://{domain}/[/bold green]")
 
 @app.command()
 def report(
-    campaign_name: Optional[str] = typer.Option(None, help="Campaign name. Defaults to current context."),
+    campaign_name: Optional[str] = typer.Option(None, "--campaign-name", "--campaign", help="Campaign name. Defaults to current context."),
     output: Optional[Path] = typer.Option(None, help="Output file path (JSON). If not provided, prints JSON to stdout.")
 ) -> None:
     """

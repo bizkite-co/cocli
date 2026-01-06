@@ -196,7 +196,10 @@ This dashboard provides a real-time view of the scraping and enrichment funnel.
         renderProspects(filtered);
     }
 
-    window.addEventListener('DOMContentLoaded', fetchReport);
+    window.addEventListener('DOMContentLoaded', () => {
+        console.log("Dashboard Page Loaded");
+        fetchReport();
+    });
 
     function renderReport(stats) {
         const body = document.getElementById('report-body');

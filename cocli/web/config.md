@@ -5,6 +5,10 @@ title: cocli Campaign Configuration
 
 # Campaign Configuration: <span id="campaign-display">{% if env.CAMPAIGN %}{{ env.CAMPAIGN }}{% else %}turboship{% endif %}</span>
 
+<p style="background: #e9ecef; padding: 10px; border-radius: 4px; display: inline-block;">
+    <strong>Global Proximity:</strong> <span id="proximity-display">...</span> miles
+</p>
+
 Modify the search queries and target locations for the current campaign.
 
 <div class="campaign-config-grid">
@@ -25,10 +29,16 @@ Modify the search queries and target locations for the current campaign.
             <input type="text" id="new-location" placeholder="Add new location...">
             <button onclick="addPendingChange('location', document.getElementById('new-location').value)">Add</button>
         </div>
-        <div class="scroll-container">
-            <ul id="locations-list" class="config-list">
-                <!-- Locations will be injected here -->
-            </ul>
+        <div style="display: flex; gap: 15px;">
+            <div class="scroll-container" style="flex: 1;">
+                <ul id="locations-list" class="config-list">
+                    <!-- Locations will be injected here -->
+                </ul>
+            </div>
+            <div id="map-preview-container" style="width: 150px; display: none;">
+                <div id="mini-map" style="width: 150px; height: 150px; border: 1px solid #ccc; background: #eee; border-radius: 4px;"></div>
+                <p id="map-tile-info" style="font-size: 0.7em; color: #666; margin-top: 5px; text-align: center;"></p>
+            </div>
         </div>
         <p class="config-hint">Modify these in <code>target_locations.csv</code> or <code>config.toml</code></p>
     </div>
@@ -41,7 +51,13 @@ Modify the search queries and target locations for the current campaign.
     <button onclick="clearPendingChanges()">Clear All</button>
 </div>
 
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
 <script>
+    let map = null;
+    let mapMarker = null;
+
     async function fetchConfig() {
         const urlParams = new URLSearchParams(window.location.search);
         const campaign = urlParams.get('campaign') || '{% if env.CAMPAIGN %}{{ env.CAMPAIGN }}{% else %}turboship{% endif %}';
@@ -58,7 +74,10 @@ Modify the search queries and target locations for the current campaign.
         }
     }
 
-    window.addEventListener('DOMContentLoaded', fetchConfig);
+    window.addEventListener('DOMContentLoaded', () => {
+        console.log("Config Page Loaded");
+        fetchConfig();
+    });
 
     let pendingChanges = [];
 
@@ -99,7 +118,27 @@ Modify the search queries and target locations for the current campaign.
         updatePendingUI();
     }
 
+    function showMap(lat, lon, tileId, name) {
+        const container = document.getElementById('map-preview-container');
+        container.style.display = 'block';
+        document.getElementById('map-tile-info').textContent = `Tile: ${tileId}`;
+
+        if (!map) {
+            map = L.map('mini-map', {
+                zoomControl: false,
+                attributionControl: false
+            }).setView([lat, lon], 11);
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
+            mapMarker = L.marker([lat, lon]).addTo(map);
+        } else {
+            map.setView([lat, lon], 11);
+            mapMarker.setLatLng([lat, lon]);
+        }
+    }
+
     function renderConfig(stats) {
+        document.getElementById('proximity-display').textContent = stats.proximity || '30';
+        
         // Update queries
         const queriesList = document.getElementById('queries-list');
         queriesList.innerHTML = '';
@@ -116,7 +155,26 @@ Modify the search queries and target locations for the current campaign.
         (stats.locations || []).forEach(loc => {
             const li = document.createElement('li');
             li.className = 'list-item-editable';
-            li.innerHTML = `<span>${loc}</span> <button class="btn-remove" onclick="removeExisting('location', '${loc}')">×</button>`;
+            
+            let statusIcon = loc.valid_geocode ? '✅' : '❓';
+            let tileAction = loc.tile_id ? 
+                `<button class="nav-link" style="padding: 2px 5px; font-size: 0.8em; border: 1px solid #ccc; border-radius: 3px; background: #fff; cursor: pointer;" 
+                         onclick="showMap(${loc.lat}, ${loc.lon}, '${loc.tile_id}', '${loc.name}')">${loc.tile_id}</button>` : 
+                '<span style="color: #999; font-size: 0.8em;">No Tile</span>';
+
+            li.innerHTML = `
+                <div style="flex: 1;">
+                    <div style="display: flex; justify-content: space-between; align-items: center;">
+                        <strong>${loc.name}</strong>
+                        <button class="btn-remove" onclick="removeExisting('location', '${loc.name}')">×</button>
+                    </div>
+                    <div style="font-size: 0.8em; color: #666; margin-top: 3px; display: flex; gap: 10px; align-items: center;">
+                        <span>Prox: ${loc.proximity}mi</span>
+                        <span>Geo: ${statusIcon}</span>
+                        ${tileAction}
+                    </div>
+                </div>
+            `;
             locationsList.appendChild(li);
         });
     }

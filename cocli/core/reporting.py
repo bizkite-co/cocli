@@ -239,11 +239,16 @@ def get_campaign_stats(campaign_name: str) -> Dict[str, Any]:
     # 6. Configuration Data (Queries & Locations)    
     prospecting_config = config.get('prospecting', {})
     stats['queries'] = prospecting_config.get('queries', [])
+    proximity = prospecting_config.get('proximity', 30)
+    stats['proximity'] = proximity
     
-    # Locations can be in the list or in a CSV
-    locations = prospecting_config.get('locations', [])
+    detailed_locations = []
+    explicit_locations = prospecting_config.get('locations', [])
+    
+    # Track which names we've seen to avoid duplicates between list and CSV
+    seen_names = set()
+
     target_locations_csv = prospecting_config.get('target-locations-csv')
-    
     if target_locations_csv:
         csv_path = get_cocli_base_dir() / "campaigns" / campaign_name / target_locations_csv
         if csv_path.exists():
@@ -251,17 +256,46 @@ def get_campaign_stats(campaign_name: str) -> Dict[str, Any]:
             try:
                 with open(csv_path, 'r') as f:
                     reader = csv.DictReader(f)
-                    # Just collect names/cities to keep JSON size reasonable
-                    csv_locations = []
                     for row in reader:
                         name = row.get('name') or row.get('city')
-                        if name:
-                            csv_locations.append(name)
-                    # Merge with explicit list if any
-                    locations = list(set(locations + csv_locations))
+                        if not name:
+                            continue
+                        
+                        lat = row.get('lat')
+                        lon = row.get('lon')
+                        
+                        loc_data = {
+                            "name": name,
+                            "lat": float(lat) if lat else None,
+                            "lon": float(lon) if lon else None,
+                            "proximity": proximity,
+                            "valid_geocode": bool(lat and lon),
+                            "tile_id": None
+                        }
+                        
+                        if loc_data["valid_geocode"]:
+                            # Tile ID is the tenth degree of the southwest corner
+                            sw_lat = (float(lat) // 0.1) * 0.1
+                            sw_lon = (float(lon) // 0.1) * 0.1
+                            loc_data["tile_id"] = f"{sw_lat:.1f}_{sw_lon:.1f}"
+                            
+                        detailed_locations.append(loc_data)
+                        seen_names.add(name)
             except Exception as e:
                 logger.warning(f"Could not read target locations CSV: {e}")
 
-    stats['locations'] = sorted(locations)
+    # Add explicit locations from config.toml if not already added from CSV
+    for loc_name in explicit_locations:
+        if loc_name not in seen_names:
+            detailed_locations.append({
+                "name": loc_name,
+                "lat": None,
+                "lon": None,
+                "proximity": proximity,
+                "valid_geocode": False,
+                "tile_id": None
+            })
+
+    stats['locations'] = detailed_locations
 
     return stats
