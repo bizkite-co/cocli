@@ -136,4 +136,25 @@ graph TD
     H --> H1[Interactive Search];
     H --> H2[Deployment Automation];
     H --> H3[Extended Data Sync];
+
+    H3 --> I{Phase 8: Cluster Orchestration};
+    I --> I1[PI Tool Consolidation];
+    I --> I2[Campaign-Driven Worker Config];
+    I --> I3[Automated Scaling];
+```
+
+## Phase 8: Cluster Orchestration & Configuration Decoupling (Proposed)
+
+**Goal:** Transition from hardcoded Makefile-based management to a dynamic, configuration-driven orchestration module.
+
+1.  **PI Tool Consolidation:**
+    *   [ ] Move standalone RPi scripts (`setup_rpi.sh`, `deploy_rpi_creds.py`, etc.) into a unified `cocli.infrastructure.rpi` module.
+    *   [ ] Expose cluster management via `cocli cluster` CLI commands.
+
+2.  **Campaign-Driven Worker Config:**
+    *   [ ] Move worker hostnames and roles (Scraper/Details) into campaign `config.toml`.
+    *   [ ] Implement automated credential rotation and config sync across the cluster based on the active campaign.
+
+3.  **Automated Load Balancing:**
+    *   [ ] Implement a basic scheduler to distribute SQS polling load based on hardware capabilities (e.g., Pi 5 handling more concurrent browsers than Pi 4).
 ```

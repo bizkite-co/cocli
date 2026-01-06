@@ -1,14 +1,19 @@
 # Current Task: Dashboard & Deployment Automation
 
 ## Objective
-Modernize the campaign dashboard with interactive search capabilities and automate the end-to-end deployment pipeline to ensure stakeholders always have access to the latest scraped data.
+Modernize the campaign dashboard and expand the residential scraper cluster with the new Raspberry Pi 5 node.
 
 ## Context
-*   **Status:** Web UI has been refactored into Search and Config tabs.
-*   **Data:** Local email index expanded to ~6,000 unique emails after syncing 10k companies from S3.
-*   **Automation:** `cocli web deploy` now handles the 11ty build process.
+*   **Status:** Web UI refactored; cocli5x0.local integrated into Makefile.
+*   **New Hardware:** Raspberry Pi 5 (8GB) added to cluster as `cocli5x0.local`.
 
 ## Todo
+- [ ] **Infrastructure Expansion:**
+    - [ ] **Setup Pi 5:** Run bootstrap and credential deployment for `cocli5x0.local`.
+    - [ ] **Deploy Workers:** Start both Scraper and Details workers on Pi 5 to leverage 8GB RAM.
+- [ ] **Code Consolidation:**
+    - [ ] Consolidate PI scripts into a unified module.
+    - [ ] Move worker hostnames to campaign `config.toml`.
 - [ ] **Worker Monitoring:**
     - [ ] Implement health-check alerts for Fargate and RPi workers.
 - [ ] **Scale-Out:**
@@ -17,6 +22,9 @@ Modernize the campaign dashboard with interactive search capabilities and automa
     - [ ] Maintain 0 linting errors by running `make lint` before every commit.
 
 ## Done
+- [x] **Cluster Integration:**
+    - [x] Added `cocli5x0.local` to Makefile management targets.
+    - [x] Updated `worker-infrastructure.md` with Pi 5 specifications.
 - [x] **Dashboard Modernization:**
     - [x] **Search UI:** Integrated PapaParse for client-side CSV searching and filtering on the main dashboard.
     - [x] **Tabbed Navigation:** Split configuration settings into a dedicated `/config` page.

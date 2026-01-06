@@ -376,9 +376,9 @@ gc-companies: ## Commit and push all changes to companies and people
 deploy-creds-rpi: ## Securely deploy AWS credentials to all Raspberry Pis (Usage: make deploy-creds-rpi [CAMPAIGN=name])
 	$(call validate_campaign)
 	@echo "Deploying credentials for profile: $(AWS_PROFILE)"
-	python3 scripts/deploy_rpi_creds.py --profile $(AWS_PROFILE) --host octoprint.local --user $(RPI_USER)
-	python3 scripts/deploy_rpi_creds.py --profile $(AWS_PROFILE) --host coclipi.local --user $(RPI_USER)
-	python3 scripts/deploy_rpi_creds.py --profile $(AWS_PROFILE) --host cocli5x0.local --user $(RPI_USER)
+	-python3 scripts/deploy_rpi_creds.py --profile $(AWS_PROFILE) --host octoprint.local --user $(RPI_USER)
+	-python3 scripts/deploy_rpi_creds.py --profile $(AWS_PROFILE) --host coclipi.local --user $(RPI_USER)
+	-python3 scripts/deploy_rpi_creds.py --profile $(AWS_PROFILE) --host cocli5x0.local --user $(RPI_USER)
 
 # ==============================================================================
 # Web Dashboard
