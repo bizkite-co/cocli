@@ -68,7 +68,7 @@ Modify the search queries and target locations for the current campaign.
             if (!response.ok) throw new Error('Report data not found for this campaign.');
             
             const stats = await response.json();
-            renderConfig(stats);
+            renderConfig(stats, campaign);
         } catch (error) {
             console.error(error);
         }
@@ -136,7 +136,7 @@ Modify the search queries and target locations for the current campaign.
         }
     }
 
-    function renderConfig(stats) {
+    function renderConfig(stats, campaign) {
         document.getElementById('proximity-display').textContent = stats.proximity || '30';
         
         // Update queries

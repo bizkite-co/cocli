@@ -1,6 +1,7 @@
 import typer
 import json
 import subprocess
+import os
 import boto3
 import toml
 from datetime import datetime
@@ -82,7 +83,10 @@ def deploy(
     console.print("[bold blue]Building web dashboard with Eleventy...[/bold blue]")
     if source_web_dir.exists():
         try:
-            subprocess.run(["npm", "run", "build"], cwd=source_web_dir, check=True)
+            # Pass CAMPAIGN env var to eleventy
+            env = os.environ.copy()
+            env["CAMPAIGN"] = campaign_name
+            subprocess.run(["npm", "run", "build"], cwd=source_web_dir, check=True, env=env)
             console.print("[green]Build successful.[/green]")
         except subprocess.CalledProcessError:
             console.print("[red]Error: Web build failed. Aborting deployment.[/red]")

@@ -95,7 +95,7 @@ This dashboard provides a real-time view of the scraping and enrichment funnel.
             if (!response.ok) throw new Error('Report data not found for this campaign.');
             
             const stats = await response.json();
-            renderReport(stats);
+            renderReport(stats, campaign);
             fetchProspects(stats.campaign_name || campaign);
         } catch (error) {
             document.getElementById('report-loading').style.display = 'none';
@@ -201,7 +201,7 @@ This dashboard provides a real-time view of the scraping and enrichment funnel.
         fetchReport();
     });
 
-    function renderReport(stats) {
+    function renderReport(stats, campaign) {
         const body = document.getElementById('report-body');
         body.innerHTML = '';
         
