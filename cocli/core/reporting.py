@@ -132,7 +132,6 @@ def get_campaign_stats(campaign_name: str) -> Dict[str, Any]:
     # 3. Enriched Companies & Emails
     # We use the email index for efficiency if it exists, otherwise scan
     from cocli.core.config import get_companies_dir
-    from cocli.models.company import Company
     import yaml
 
     enriched_count = 0

@@ -173,7 +173,7 @@ def generate_grid(
         
         for loc_name in config_locations:
             # Skip if already loaded from CSV
-            if any(l["name"] == loc_name for l in target_locations):
+            if any(loc["name"] == loc_name for loc in target_locations):
                 continue
                 
             try:
