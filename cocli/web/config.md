@@ -12,6 +12,7 @@ title: cocli Campaign Configuration
 Modify the search queries and target locations for the current campaign.
 
 <div class="campaign-config-grid">
+    <!-- Search Queries Section -->
     <div class="config-section">
         <h3>Search Queries</h3>
         <div class="input-group">
@@ -23,23 +24,20 @@ Modify the search queries and target locations for the current campaign.
         </ul>
         <p class="config-hint">Modify these in <code>config.toml</code> under <code>[prospecting].queries</code></p>
     </div>
+
+    <!-- Target Locations Section -->
     <div class="config-section">
         <h3>Target Locations</h3>
         <div class="input-group">
             <input type="text" id="new-location" placeholder="Add new location...">
             <button onclick="addPendingChange('location', document.getElementById('new-location').value)">Add</button>
         </div>
-        <div style="display: flex; gap: 15px;">
-            <div class="scroll-container" style="flex: 1;">
-                <ul id="locations-list" class="config-list">
-                    <!-- Locations will be injected here -->
-                </ul>
-            </div>
-            <div id="map-preview-container" style="width: 150px; display: none;">
-                <div id="mini-map" style="width: 150px; height: 150px; border: 1px solid #ccc; background: #eee; border-radius: 4px;"></div>
-                <p id="map-tile-info" style="font-size: 0.7em; color: #666; margin-top: 5px; text-align: center;"></p>
-            </div>
+        <div class="input-group">
+            <input type="text" id="location-search" placeholder="Search target locations..." oninput="filterLocations()">
         </div>
+        <ul id="locations-list" class="config-list">
+            <!-- Locations will be injected here -->
+        </ul>
         <p class="config-hint">Modify these in <code>target_locations.csv</code> or <code>config.toml</code></p>
     </div>
 </div>
@@ -55,8 +53,9 @@ Modify the search queries and target locations for the current campaign.
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 
 <script>
-    let map = null;
-    let mapMarker = null;
+    let activeMap = null;
+    let activeMarker = null;
+    let statsData = null;
 
     async function fetchConfig() {
         const urlParams = new URLSearchParams(window.location.search);
@@ -67,8 +66,8 @@ Modify the search queries and target locations for the current campaign.
             const response = await fetch(`/reports/${campaign}.json?v=${Date.now()}`);
             if (!response.ok) throw new Error('Report data not found for this campaign.');
             
-            const stats = await response.json();
-            renderConfig(stats, campaign);
+            statsData = await response.json();
+            renderConfig(statsData, campaign);
         } catch (error) {
             console.error(error);
         }
@@ -93,13 +92,31 @@ Modify the search queries and target locations for the current campaign.
         if (type === 'location') document.getElementById('new-location').value = '';
     }
 
-    function removeExisting(type, value) {
+    function removeExisting(type, value, elementId) {
+        const campaign = document.getElementById('campaign-display').textContent;
+        const confirmArea = document.getElementById(`confirm-${elementId}`);
+        
+        if (confirmArea) {
+            confirmArea.innerHTML = `
+                <span style="color: #dc3545; font-weight: bold; font-size: 0.9em;">Are you sure?</span>
+                <button class="btn-confirm" onclick="confirmRemove('${type}', '${value}')">Yes</button>
+                <button class="btn-cancel" onclick="cancelRemove('${elementId}')">No</button>
+            `;
+        }
+    }
+
+    function confirmRemove(type, value) {
         const campaign = document.getElementById('campaign-display').textContent;
         const cmd = `cocli campaign remove-${type} "${value}" --campaign ${campaign}`;
         if (!pendingChanges.includes(cmd)) {
             pendingChanges.push(cmd);
             updatePendingUI();
         }
+    }
+
+    function cancelRemove(elementId) {
+        const confirmArea = document.getElementById(`confirm-${elementId}`);
+        if (confirmArea) confirmArea.innerHTML = '';
     }
 
     function updatePendingUI() {
@@ -118,62 +135,125 @@ Modify the search queries and target locations for the current campaign.
         updatePendingUI();
     }
 
-    function showMap(lat, lon, tileId, name) {
-        const container = document.getElementById('map-preview-container');
-        container.style.display = 'block';
-        document.getElementById('map-tile-info').textContent = `Tile: ${tileId}`;
+    function toggleMap(element, lat, lon, tileId) {
+        // Remove active class from others
+        document.querySelectorAll('.location-item').forEach(el => el.classList.remove('active'));
+        
+        const mapContainer = element.querySelector('.location-map-bg');
+        
+        // If clicking same item, just deactivate
+        if (element.dataset.mapActive === 'true') {
+            element.dataset.mapActive = 'false';
+            return;
+        }
 
-        if (!map) {
-            map = L.map('mini-map', {
+        // Reset all others
+        document.querySelectorAll('.location-item').forEach(el => el.dataset.mapActive = 'false');
+        
+        element.classList.add('active');
+        element.dataset.mapActive = 'true';
+
+        // Move map to this element
+        const mapEl = document.getElementById('shared-map');
+        mapContainer.appendChild(mapEl);
+        mapEl.style.display = 'block';
+
+        if (!activeMap) {
+            activeMap = L.map('shared-map', {
                 zoomControl: false,
                 attributionControl: false
             }).setView([lat, lon], 11);
-            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
-            mapMarker = L.marker([lat, lon]).addTo(map);
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(activeMap);
+            activeMarker = L.marker([lat, lon]).addTo(activeMap);
         } else {
-            map.setView([lat, lon], 11);
-            mapMarker.setLatLng([lat, lon]);
+            activeMap.setView([lat, lon], 11);
+            activeMarker.setLatLng([lat, lon]);
+            activeMap.invalidateSize();
         }
     }
 
-    function renderConfig(stats, campaign) {
+    function filterLocations() {
+        const query = document.getElementById('location-search').value.toLowerCase();
+        renderConfig(statsData, document.getElementById('campaign-display').textContent, query);
+    }
+
+    function renderConfig(stats, campaign, filterQuery = '') {
         document.getElementById('proximity-display').textContent = stats.proximity || '30';
         
         // Update queries
         const queriesList = document.getElementById('queries-list');
         queriesList.innerHTML = '';
-        (stats.queries || []).forEach(q => {
+        (stats.queries || []).forEach((q, idx) => {
             const li = document.createElement('li');
             li.className = 'list-item-editable';
-            li.innerHTML = `<span>${q}</span> <button class="btn-remove" onclick="removeExisting('query', '${q}')">×</button>`;
+            const elId = `query-${idx}`;
+            li.innerHTML = `
+                <div style="display: flex; justify-content: space-between; align-items: center; width: 100%;">
+                    <span>${q}</span>
+                    <button class="btn-remove" onclick="removeExisting('query', '${q}', '${elId}')">×</button>
+                </div>
+                <div id="confirm-${elId}" class="delete-confirm-area"></div>
+            `;
             queriesList.appendChild(li);
         });
 
         // Update locations
         const locationsList = document.getElementById('locations-list');
         locationsList.innerHTML = '';
-        (stats.locations || []).forEach(loc => {
+        
+        // Add shared map element if it doesn't exist
+        if (!document.getElementById('shared-map')) {
+            const sm = document.createElement('div');
+            sm.id = 'shared-map';
+            sm.style.width = '100%';
+            sm.style.height = '100%';
+            sm.style.display = 'none';
+            document.body.appendChild(sm); // Hidden storage
+        }
+
+        const filtered = (stats.locations || []).filter(loc => 
+            !filterQuery || loc.name.toLowerCase().includes(filterQuery)
+        );
+
+        filtered.forEach((loc, idx) => {
             const li = document.createElement('li');
-            li.className = 'list-item-editable';
+            li.className = 'location-item';
+            const elId = `loc-${idx}`;
             
             let statusIcon = loc.valid_geocode ? '✅' : '❓';
-            let tileAction = loc.tile_id ? 
-                `<button class="nav-link" style="padding: 2px 5px; font-size: 0.8em; border: 1px solid #ccc; border-radius: 3px; background: #fff; cursor: pointer;" 
-                         onclick="showMap(${loc.lat}, ${loc.lon}, '${loc.tile_id}', '${loc.name}')">${loc.tile_id}</button>` : 
-                '<span style="color: #999; font-size: 0.8em;">No Tile</span>';
+            let tileDisplay = loc.tile_id ? 
+                `<span class="tile-id-badge">${loc.tile_id}</span>` : 
+                '<span style="color: #999;">No Tile</span>';
 
             li.innerHTML = `
-                <div style="flex: 1;">
-                    <div style="display: flex; justify-content: space-between; align-items: center;">
-                        <strong>${loc.name}</strong>
-                        <button class="btn-remove" onclick="removeExisting('location', '${loc.name}')">×</button>
+                <div class="location-map-bg"></div>
+                <div class="location-content" onclick="toggleMap(this.parentElement, ${loc.lat}, ${loc.lon}, '${loc.tile_id}')">
+                    <div style="display: flex; justify-content: space-between; align-items: flex-start;">
+                        <div>
+                            <strong style="font-size: 1.1em;">${loc.name}</strong><br>
+                            <span style="font-size: 0.85em; color: #555;">Geo: ${statusIcon} | Prox: ${loc.proximity}mi</span>
+                        </div>
+                        <div style="text-align: right;">
+                            ${tileDisplay}
+                        </div>
                     </div>
-                    <div style="font-size: 0.8em; color: #666; margin-top: 3px; display: flex; gap: 10px; align-items: center;">
-                        <span>Prox: ${loc.proximity}mi</span>
-                        <span>Geo: ${statusIcon}</span>
-                        ${tileAction}
+                    
+                    <div class="stats-grid">
+                        <div class="stat-box">
+                            <small>Tiles</small><br><strong>${loc.tiles_count || 0}</strong>
+                        </div>
+                        <div class="stat-box">
+                            <small>Scraped</small><br><strong>${loc.scraped_tiles_count || 0}</strong>
+                        </div>
+                        <div class="stat-box">
+                            <small>Prospects</small><br><strong>${loc.prospects_count || 0}</strong>
+                        </div>
                     </div>
+
+                    <div id="confirm-${elId}" class="delete-confirm-area"></div>
                 </div>
+                <button class="btn-remove" style="position: absolute; top: 10px; right: 10px; z-index: 10;" 
+                        onclick="event.stopPropagation(); removeExisting('location', '${loc.name}', '${elId}')">×</button>
             `;
             locationsList.appendChild(li);
         });
