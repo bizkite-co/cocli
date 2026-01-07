@@ -167,8 +167,8 @@ def generate_grid(
     # Fallback to geocoding the 'locations' list if needed
     config_locations = prospecting_config.get("locations", [])
     if config_locations:
-        from geopy.geocoders import Nominatim
-        from geopy.exc import GeocoderServiceError
+        from geopy.geocoders import Nominatim # type: ignore
+        from geopy.exc import GeocoderServiceError # type: ignore
         geolocator = Nominatim(user_agent="cocli")
         
         for loc_name in config_locations:
