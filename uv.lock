@@ -348,7 +348,7 @@ wheels = [
 [[package]]
 name = "cocli"
 version = "0.2.0"
-source = { virtual = "." }
+source = { editable = "." }
 dependencies = [
     { name = "appdirs" },
     { name = "beautifulsoup4" },

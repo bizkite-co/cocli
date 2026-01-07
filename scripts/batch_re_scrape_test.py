@@ -68,6 +68,9 @@ def main(
             company.tags.append(tag)
             company.save() # Persist tag to tags.lst
             
+        if not company.domain:
+            continue
+
         # Save selection info for reference
         selection_data.append({
             "name": company.name,
@@ -90,10 +93,10 @@ def main(
     output_path = Path("batch_test_selection.json")
     output_path.write_text(json.dumps(selection_data, indent=2))
     
-    console.print(f"\n[bold green]Success![/bold green]")
+    console.print("\n[bold green]Success![/bold green]")
     console.print(f"Tagged and enqueued {len(target_prospects)} prospects.")
     console.print(f"Selection reference saved to: [bold]{output_path}[/bold]")
-    console.print(f"Monitoring Fargate logs for processing...")
+    console.print("Monitoring Fargate logs for processing...")
 
 if __name__ == "__main__":
     app()

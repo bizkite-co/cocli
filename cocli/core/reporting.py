@@ -1,15 +1,12 @@
 import os
 import boto3 
 import logging
-import yaml
 import math
 from typing import Dict, Any, Literal, Sequence, cast
 from rich.console import Console
 
-from cocli.core.config import get_cocli_base_dir, get_companies_dir, load_campaign_config
+from cocli.core.config import get_cocli_base_dir, load_campaign_config
 from cocli.core.prospects_csv_manager import ProspectsIndexManager
-from cocli.core.email_index_manager import EmailIndexManager
-from cocli.core.text_utils import slugify
 
 logger = logging.getLogger(__name__)
 console = Console()
@@ -74,7 +71,6 @@ def get_campaign_stats(campaign_name: str) -> Dict[str, Any]:
     
     # Load Config
     config = load_campaign_config(campaign_name)
-    aws_config = config.get('aws', {})
 
     # 1. Local Prospects Count & Sources
     manager = ProspectsIndexManager(campaign_name)
@@ -101,8 +97,95 @@ def get_campaign_stats(campaign_name: str) -> Dict[str, Any]:
     stats['worker_stats'] = source_counts
 
     # 2. Queue Stats (Cloud vs Local)
-    # ... (skipping for brevity, implementation continues) ...
-    # (Note to self: ensure ScrapeIndex is initialized and used for location stats)
+    aws_config = config.get('aws', {})
+    enrich_queue_url = aws_config.get('cocli_enrichment_queue_url')
+    scrape_queue_url = aws_config.get('cocli_scrape_tasks_queue_url')
+    gm_queue_url = aws_config.get('cocli_gm_list_item_queue_url')
+
+    if enrich_queue_url:
+        stats['using_cloud_queue'] = True
+        session = get_boto3_session(config)
+        
+        # Enrichment Queue
+        enrich_attrs = get_sqs_attributes(session, enrich_queue_url, ['ApproximateNumberOfMessages', 'ApproximateNumberOfMessagesNotVisible'])
+        stats['enrichment_pending'] = int(enrich_attrs.get('ApproximateNumberOfMessages', 0))
+        stats['enrichment_inflight'] = int(enrich_attrs.get('ApproximateNumberOfMessagesNotVisible', 0))
+
+        # Scrape Tasks Queue
+        if scrape_queue_url:
+            scrape_attrs = get_sqs_attributes(session, scrape_queue_url, ['ApproximateNumberOfMessages', 'ApproximateNumberOfMessagesNotVisible'])
+            stats['scrape_tasks_pending'] = int(scrape_attrs.get('ApproximateNumberOfMessages', 0))
+            stats['scrape_tasks_inflight'] = int(scrape_attrs.get('ApproximateNumberOfMessagesNotVisible', 0))
+
+        # GM List Items Queue
+        if gm_queue_url:
+            gm_attrs = get_sqs_attributes(session, gm_queue_url, ['ApproximateNumberOfMessages', 'ApproximateNumberOfMessagesNotVisible'])
+            stats['gm_list_item_pending'] = int(gm_attrs.get('ApproximateNumberOfMessages', 0))
+            stats['gm_list_item_inflight'] = int(gm_attrs.get('ApproximateNumberOfMessagesNotVisible', 0))
+
+        # Active Workers
+        stats['active_fargate_tasks'] = get_active_fargate_tasks(session)
+    else:
+        stats['using_cloud_queue'] = False
+        # Local queue stats could be added here if implemented
+
+    # 3. Enriched Companies & Emails
+    # We use the email index for efficiency if it exists, otherwise scan
+    from cocli.core.config import get_companies_dir
+    from cocli.models.company import Company
+    import yaml
+
+    enriched_count = 0
+    companies_with_emails_count = 0
+    emails_found_count = 0
+
+    companies_dir = get_companies_dir()
+    tag = config.get('campaign', {}).get('tag') or campaign_name
+
+    # Scan companies directory
+    if companies_dir.exists():
+        for company_dir in companies_dir.iterdir():
+            if not company_dir.is_dir():
+                continue
+            
+            # Check tags.lst first (Fast)
+            tags_file = company_dir / "tags.lst"
+            has_tag = False
+            if tags_file.exists():
+                try:
+                    tags = tags_file.read_text().splitlines()
+                    if tag in [t.strip() for t in tags]:
+                        has_tag = True
+                except Exception:
+                    pass
+            
+            if has_tag:
+                # Read _index.md for email info
+                index_file = company_dir / "_index.md"
+                if index_file.exists():
+                    try:
+                        content = index_file.read_text()
+                        if "---" in content:
+                            parts = content.split("---")
+                            if len(parts) >= 3:
+                                fm = yaml.safe_load(parts[1])
+                                if fm:
+                                    enriched_count += 1
+                                    if fm.get('email'):
+                                        companies_with_emails_count += 1
+                                    all_emails = fm.get('all_emails', [])
+                                    if isinstance(all_emails, list):
+                                        emails_found_count += len(all_emails)
+                                    elif fm.get('email'):
+                                        emails_found_count += 1
+                    except Exception:
+                        continue
+
+    stats['enriched_count'] = enriched_count
+    stats['companies_with_emails_count'] = companies_with_emails_count
+    stats['emails_found_count'] = emails_found_count
+
+    # 4. Scrape Index Status
     from cocli.core.scrape_index import ScrapeIndex
     scrape_index = ScrapeIndex()
 

@@ -184,7 +184,9 @@ def sync_companies(
         console.print("[bold red]No campaign specified.[/bold red]")
         raise typer.Exit(1)
     config = load_campaign_config(campaign_name)
-    run_smart_sync("companies", f"cocli-data-{campaign_name}", "companies/", DATA_DIR / "companies", campaign_name, config.get("aws", {}), workers, full, force)
+    aws_config = config.get("aws", {})
+    bucket_name = aws_config.get("cocli_data_bucket_name") or f"cocli-data-{campaign_name}"
+    run_smart_sync("companies", bucket_name, "companies/", DATA_DIR / "companies", campaign_name, aws_config, workers, full, force)
 
 @app.command("prospects")
 def sync_prospects(
@@ -199,9 +201,11 @@ def sync_prospects(
         console.print("[bold red]No campaign specified.[/bold red]")
         raise typer.Exit(1)
     config = load_campaign_config(campaign_name)
+    aws_config = config.get("aws", {})
+    bucket_name = aws_config.get("cocli_data_bucket_name") or f"cocli-data-{campaign_name}"
     prefix = f"campaigns/{campaign_name}/indexes/google_maps_prospects/"
     local_base = DATA_DIR / "campaigns" / campaign_name / "indexes" / "google_maps_prospects"
-    run_smart_sync("prospects", f"cocli-data-{campaign_name}", prefix, local_base, campaign_name, config.get("aws", {}), workers, full, force)
+    run_smart_sync("prospects", bucket_name, prefix, local_base, campaign_name, aws_config, workers, full, force)
 
 @app.command("emails")
 def sync_emails(
@@ -216,9 +220,11 @@ def sync_emails(
         console.print("[bold red]No campaign specified.[/bold red]")
         raise typer.Exit(1)
     config = load_campaign_config(campaign_name)
+    aws_config = config.get("aws", {})
+    bucket_name = aws_config.get("cocli_data_bucket_name") or f"cocli-data-{campaign_name}"
     prefix = f"campaigns/{campaign_name}/indexes/emails/"
     local_base = DATA_DIR / "campaigns" / campaign_name / "indexes" / "emails"
-    run_smart_sync("emails", f"cocli-data-{campaign_name}", prefix, local_base, campaign_name, config.get("aws", {}), workers, full, force)
+    run_smart_sync("emails", bucket_name, prefix, local_base, campaign_name, aws_config, workers, full, force)
 
 @app.command("scraped-areas")
 def sync_scraped_areas(
@@ -233,7 +239,9 @@ def sync_scraped_areas(
         console.print("[bold red]No campaign specified.[/bold red]")
         raise typer.Exit(1)
     config = load_campaign_config(campaign_name)
-    run_smart_sync("scraped-areas", f"cocli-data-{campaign_name}", "indexes/scraped_areas/", DATA_DIR / "indexes" / "scraped_areas", campaign_name, config.get("aws", {}), workers, full, force)
+    aws_config = config.get("aws", {})
+    bucket_name = aws_config.get("cocli_data_bucket_name") or f"cocli-data-{campaign_name}"
+    run_smart_sync("scraped-areas", bucket_name, "indexes/scraped_areas/", DATA_DIR / "indexes" / "scraped_areas", campaign_name, aws_config, workers, full, force)
 
 if __name__ == "__main__":
     app()

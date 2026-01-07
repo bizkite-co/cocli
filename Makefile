@@ -235,7 +235,7 @@ deploy-infra: install ## Deploy AWS Infrastructure (queues, Fargate service defi
 .PHONY: update-infra-config
 update-infra-config: install ## Update campaign config.toml with latest SQS URLs from AWS
 	$(call validate_campaign)
-	./$(VENV_DIR)/bin/python scripts/update_campaign_infra_config.py $(CAMPAIGN)
+	PYTHONPATH=. ./$(VENV_DIR)/bin/python scripts/update_campaign_infra_config.py $(CAMPAIGN)
 
 .PHONY: deploy-enrichment
 deploy-enrichment: test docker-build ## Build and deploy the enrichment service to AWS Fargate

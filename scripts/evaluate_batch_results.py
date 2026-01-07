@@ -2,7 +2,6 @@ import typer
 import json
 from rich.console import Console
 from rich.table import Table
-from typing import Optional
 from pathlib import Path
 
 from cocli.models.company import Company
@@ -55,7 +54,7 @@ def main(
         return
 
     # Display Summary
-    console.print(f"\n[bold underline]Batch Results Summary[/bold underline]")
+    console.print("\n[bold underline]Batch Results Summary[/bold underline]")
     console.print(f"Total prospects in batch: {total_batch_count}")
     console.print(f"Prospects with new emails: [bold green]{found_email_count}[/bold green]")
     if total_batch_count > 0:
@@ -72,11 +71,13 @@ def main(
 
         for r in results:
             if r["has_email"]:
+                tech_stack = r["tech_stack"]
+                tech_stack_str = ", ".join(tech_stack) if isinstance(tech_stack, list) else ""
                 table.add_row(
-                    r["name"],
-                    r["domain"],
-                    r["email"],
-                    ", ".join(r["tech_stack"]) if r["tech_stack"] else ""
+                    str(r["name"]),
+                    str(r["domain"]),
+                    str(r["email"]),
+                    tech_stack_str
                 )
         
         console.print(table)

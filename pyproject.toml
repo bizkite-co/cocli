@@ -95,7 +95,7 @@ exclude = [
 ]
 
 [tool.uv]
-package = false
+package = true
 
 [tool.mypy]
 strict = true

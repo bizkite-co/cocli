@@ -83,7 +83,7 @@ def main(
     output_path = Path(f"enqueued_{tag}.json")
     output_path.write_text(json.dumps(enqueued_data, indent=2))
     
-    console.print(f"\n[bold green]Success![/bold green]")
+    console.print("\n[bold green]Success![/bold green]")
     console.print(f"Tagged and enqueued {len(enqueued_data)} prospects from CSV.")
     console.print(f"Enqueued reference saved to: [bold]{output_path}[/bold]")
 

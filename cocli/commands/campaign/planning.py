@@ -147,16 +147,49 @@ def generate_grid(
                 with open(csv_path, 'r', encoding='utf-8') as f:
                     reader = csv.DictReader(f)
                     for row in reader:
-                        if "name" in row and "lat" in row and "lon" in row:
+                        # Try various field names
+                        name = row.get("name") or row.get("city")
+                        lat = row.get("lat")
+                        lon = row.get("lon")
+                        
+                        if name and lat and lon and lat.strip() and lon.strip():
                             target_locations.append({
-                                "name": str(row["name"]),
-                                "lat": float(row["lat"]),
-                                "lon": float(row["lon"])
+                                "name": str(name),
+                                "lat": float(lat),
+                                "lon": float(lon)
                             })
-                console.print(f"[green]Loaded {len(target_locations)} target locations from {csv_path.name}[/green]")
+                if target_locations:
+                    console.print(f"[green]Loaded {len(target_locations)} target locations from {csv_path.name}[/green]")
             except Exception as e:
                 logger.error(f"Error reading target locations CSV: {e}")
-                raise typer.Exit(code=1)
+                # Don't raise, try fallback to 'locations' list
+
+    # Fallback to geocoding the 'locations' list if needed
+    config_locations = prospecting_config.get("locations", [])
+    if config_locations:
+        from geopy.geocoders import Nominatim
+        from geopy.exc import GeocoderServiceError
+        geolocator = Nominatim(user_agent="cocli")
+        
+        for loc_name in config_locations:
+            # Skip if already loaded from CSV
+            if any(l["name"] == loc_name for l in target_locations):
+                continue
+                
+            try:
+                console.print(f"[dim]Geocoding: {loc_name}...[/dim]")
+                location = geolocator.geocode(loc_name)
+                if location:
+                    target_locations.append({
+                        "name": loc_name,
+                        "lat": location.latitude,
+                        "lon": location.longitude
+                    })
+                    console.print(f"[green]  Found: {location.latitude}, {location.longitude}[/green]")
+                else:
+                    console.print(f"[yellow]  Could not geocode: {loc_name}[/yellow]")
+            except GeocoderServiceError as e:
+                console.print(f"[red]  Geocoding error for {loc_name}: {e}[/red]")
 
     if not target_locations:
         console.print("[yellow]No valid target locations found.[/yellow]")

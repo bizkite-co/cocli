@@ -1,7 +1,6 @@
 import typer
 import boto3
 import os
-import yaml
 from rich.console import Console
 from rich.progress import track
 from pathlib import Path
@@ -71,7 +70,7 @@ def main(
                 if not local_index_path.exists():
                     try:
                         s3_client.download_file(s3_bucket, index_key, str(local_index_path))
-                    except:
+                    except Exception:
                         pass
                 
                 # 3. Compile the result locally to update the Company model
@@ -88,7 +87,7 @@ def main(
         except Exception as e:
             console.print(f"[red]Error syncing {slug}: {e}[/red]")
 
-    console.print(f"\n[bold green]Sync Complete![/bold green]")
+    console.print("\n[bold green]Sync Complete![/bold green]")
     console.print(f"Downloaded and compiled {synced_count} results from S3.")
     console.print(f"Run `PYTHONPATH=. ./.venv/bin/python scripts/evaluate_batch_results.py {tag}` to see the results.")
 
