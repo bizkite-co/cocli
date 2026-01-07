@@ -91,6 +91,15 @@ def main(
         table.add_row("Companies w/ Emails", str(companies_with_emails), f"{email_pct} (Yield)")
         table.add_row("Total Emails Found", str(total_emails), "[bold green]Index[/bold green]")
 
+        # 4. Anomaly Monitor
+        anomaly_stats = stats.get('anomaly_stats', {})
+        if anomaly_stats:
+            risk = anomaly_stats.get('shadow_ban_risk', 'LOW')
+            risk_style = "bold red" if risk == "HIGH" else "green"
+            empty_pct = (anomaly_stats['empty_scrapes'] / anomaly_stats['total_scrapes'] * 100) if anomaly_stats['total_scrapes'] else 0
+            table.add_row("Shadow Ban Risk", risk, style=risk_style)
+            table.add_row("Empty Scrape Rate", f"{empty_pct:.1f}%", "[dim]Anomaly Indicator[/dim]")
+
         console.print(table)
 
         # Worker Source Breakdown

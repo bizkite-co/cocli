@@ -97,6 +97,10 @@ def get_campaign_stats(campaign_name: str) -> Dict[str, Any]:
     stats['worker_stats'] = source_counts
 
     # 2. Queue Stats (Cloud vs Local)
+    prospecting_config = config.get('prospecting', {})
+    queries = prospecting_config.get('queries', [])
+    stats['queries'] = queries
+    
     aws_config = config.get('aws', {})
     enrich_queue_url = aws_config.get('cocli_enrichment_queue_url')
     scrape_queue_url = aws_config.get('cocli_scrape_tasks_queue_url')
@@ -187,11 +191,29 @@ def get_campaign_stats(campaign_name: str) -> Dict[str, Any]:
     # 4. Scrape Index Status
     from cocli.core.scrape_index import ScrapeIndex
     scrape_index = ScrapeIndex()
+    
+    # 5. Anomaly Detection (Bot Detection Monitoring)
+    # Check for empty scrapes (Shadow Bans)
+    total_scraped_tiles = 0
+    empty_scraped_tiles = 0
+    
+    from cocli.core.text_utils import slugify
+    phrase_slugs = [slugify(q) for q in queries]
+    
+    all_areas = scrape_index.get_all_scraped_areas()
+    for area in all_areas:
+        if area.phrase in phrase_slugs:
+            total_scraped_tiles += 1
+            if area.items_found == 0:
+                empty_scraped_tiles += 1
+    
+    stats['anomaly_stats'] = {
+        'total_scrapes': total_scraped_tiles,
+        'empty_scrapes': empty_scraped_tiles,
+        'shadow_ban_risk': 'HIGH' if total_scraped_tiles > 10 and (empty_scraped_tiles / total_scraped_tiles) > 0.4 else 'LOW'
+    }
 
     # 6. Configuration Data (Queries & Locations)    
-    prospecting_config = config.get('prospecting', {})
-    queries = prospecting_config.get('queries', [])
-    stats['queries'] = queries
     proximity = prospecting_config.get('proximity', 30)
     stats['proximity'] = proximity
     

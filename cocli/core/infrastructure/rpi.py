@@ -6,6 +6,7 @@ from typing import Optional, Dict, List
 import configparser
 import tempfile
 import os
+from rich.console import Console
 
 logger = logging.getLogger(__name__)
 console = Console()
