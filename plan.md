@@ -155,6 +155,7 @@ graph TD
     *   [ ] Move worker hostnames and roles (Scraper/Details) into campaign `config.toml`.
     *   [ ] Implement automated credential rotation and config sync across the cluster based on the active campaign.
     *   [ ] **S3 Isolation:** Implement AWS IAM restrictions on bucket paths so that only the campaign-specific AWS profile can access its respective data (e.g., `turboship` profile restricted to `turboship` bucket paths).
+    *   [ ] **IP-Level Throttling:** Implement a distributed semaphore (e.g., via SQS or S3) to coordinate Google Maps requests across all cluster nodes sharing a single IP address.
 
 3.  **Automated Load Balancing:**
     *   [ ] Implement a basic scheduler to distribute SQS polling load based on hardware capabilities (e.g., Pi 5 handling more concurrent browsers than Pi 4).
