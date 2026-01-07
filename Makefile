@@ -246,11 +246,11 @@ verify: ## Verify the Fargate deployment
 	@./scripts/verify_fargate_deployment.sh $(CAMPAIGN)
 
 force-update: ## Force Update of service
-	aws ecs update-service --cluster ScraperCluster --service EnrichmentService --force-new-deployment --profile $(AWS_PROFILE)
+	aws ecs update-service --cluster ScraperCluster --service EnrichmentService --force-new-deployment --profile $(AWS_PROFILE) --region $(REGION)
 
 scale: ## Scale the enrichment service (Usage: make scale COUNT=5 [CAMPAIGN=name])
 	$(call validate_campaign)
-	aws ecs update-service --cluster ScraperCluster --service EnrichmentService --desired-count $(or $(COUNT), 1) --profile $(AWS_PROFILE)
+	aws ecs update-service --cluster ScraperCluster --service EnrichmentService --desired-count $(or $(COUNT), 1) --profile $(AWS_PROFILE) --region $(REGION)
 
 .PHONY: ingest-legacy
 ingest-legacy: ## Ingest legacy google_maps_prospects.csv into the new queue system (Usage: make ingest-legacy CAMPAIGN=name)

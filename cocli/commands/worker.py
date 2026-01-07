@@ -60,7 +60,7 @@ app = typer.Typer(no_args_is_help=True)
 def ensure_campaign_config(campaign_name: str) -> None:
     """
     Ensures the campaign config exists locally. 
-    If missing, attempts to fetch it from the campaign's web assets bucket.
+    If missing, attempts to fetch it from the campaign's data bucket.
     """
     # Use get_campaigns_dir() / campaign_name instead of get_campaign_dir() 
     # because get_campaign_dir() returns None if the directory doesn't exist.
@@ -73,6 +73,14 @@ def ensure_campaign_config(campaign_name: str) -> None:
 
     logger.warning(f"Local config for '{campaign_name}' not found at {config_path}. Attempting to fetch from S3...")
     
+    # Determine AWS profile for initial bootstrap
+    profile_name = os.getenv("AWS_PROFILE")
+    if profile_name:
+        session = boto3.Session(profile_name=profile_name)
+    else:
+        session = boto3.Session()
+    s3 = session.client("s3")
+
     # Try to determine the bucket name without the config file
     # Default fallback
     bucket_name = f"cocli-data-{campaign_name}"
@@ -84,7 +92,6 @@ def ensure_campaign_config(campaign_name: str) -> None:
     
     keys_to_try = ["config.toml", f"campaigns/{campaign_name}/config.toml"]
     
-    s3 = boto3.client("s3")
     for b in potential_buckets:
         for key in keys_to_try:
             try:
