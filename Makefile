@@ -375,10 +375,7 @@ gc-companies: ## Commit and push all changes to companies and people
 .PHONY: deploy-creds-rpi
 deploy-creds-rpi: ## Securely deploy AWS credentials to all Raspberry Pis (Usage: make deploy-creds-rpi [CAMPAIGN=name])
 	$(call validate_campaign)
-	@echo "Deploying credentials for profile: $(AWS_PROFILE)"
-	-python3 scripts/deploy_rpi_creds.py --profile $(AWS_PROFILE) --host octoprint.local --user $(RPI_USER)
-	-python3 scripts/deploy_rpi_creds.py --profile $(AWS_PROFILE) --host coclipi.local --user $(RPI_USER)
-	-python3 scripts/deploy_rpi_creds.py --profile $(AWS_PROFILE) --host cocli5x0.local --user $(RPI_USER)
+	./$(VENV_DIR)/bin/cocli infrastructure deploy-creds --campaign $(CAMPAIGN) --user $(RPI_USER)
 
 # ==============================================================================
 # Web Dashboard
@@ -590,7 +587,7 @@ stop-rpi-all: ## Stop all Raspberry Pi cocli worker containers
 	-ssh $(RPI_USER)@$(RPI_HOST) "if [ -n \"\$$(docker ps -q --filter name=cocli-)\" ]; then docker stop \$$(docker ps -q --filter name=cocli-); fi; if [ -n \"\$$(docker ps -a -q --filter name=cocli-)\" ]; then docker rm \$$(docker ps -a -q --filter name=cocli-); fi"
 
 .PHONY: deploy-rpi
-deploy-rpi: stop-rpi-all rebuild-rpi-worker start-rpi-worker start-rpi-details-worker ## Full deployment: stop all, rebuild, and restart both workers
+deploy-rpi: deploy-creds-rpi stop-rpi-all rebuild-rpi-worker start-rpi-worker start-rpi-details-worker ## Full deployment: stop all, rebuild, and restart both workers
 	$(VENV_DIR)/bin/ruff check cocli/
 
 show-kmls: ## Show KML files online (Usage: make show-kmls [BUCKET=cocli-web-assets] [PROFILE=bizkite-support])

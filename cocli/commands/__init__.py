@@ -30,6 +30,7 @@ def register_commands(app: typer.Typer) -> None:
     from . import view
     from . import worker
     from . import web
+    from . import infrastructure
 
 
     app.command(name="add")(add.add)
@@ -65,3 +66,4 @@ def register_commands(app: typer.Typer) -> None:
     app.add_typer(smart_sync.app, name="smart-sync")
     app.add_typer(worker.app, name="worker")
     app.add_typer(web.app, name="web")
+    app.add_typer(infrastructure.app, name="infrastructure")

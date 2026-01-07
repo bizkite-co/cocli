@@ -73,32 +73,40 @@ def ensure_campaign_config(campaign_name: str) -> None:
 
     logger.warning(f"Local config for '{campaign_name}' not found at {config_path}. Attempting to fetch from S3...")
     
+    # Try to determine the bucket name without the config file
+    # Default fallback
     bucket_name = f"cocli-data-{campaign_name}"
+    
+    # Check if we are running in a context where we can guess the bucket better
+    # or if we should try a few common patterns.
+    # For roadmap, it is roadmap-cocli-data-use1
+    potential_buckets = [bucket_name, f"{campaign_name}-cocli-data-use1"]
+    
     keys_to_try = ["config.toml", f"campaigns/{campaign_name}/config.toml"]
     
-    logger.info(f"Attempting to download config from S3 bucket: {bucket_name}")
     s3 = boto3.client("s3")
-    for key in keys_to_try:
-        try:
-            logger.info(f"Trying s3://{bucket_name}/{key}...")
-            campaign_dir.mkdir(parents=True, exist_ok=True)
-            s3.download_file(bucket_name, key, str(config_path))
-            logger.info(f"Successfully fetched config from S3 to {config_path}")
-            return
-        except Exception as e:
-            logger.warning(f"Failed to fetch s3://{bucket_name}/{key}: {e}")
-            continue
+    for b in potential_buckets:
+        for key in keys_to_try:
+            try:
+                logger.info(f"Trying s3://{b}/{key}...")
+                campaign_dir.mkdir(parents=True, exist_ok=True)
+                s3.download_file(b, key, str(config_path))
+                logger.info(f"Successfully fetched config from S3 to {config_path}")
+                return
+            except Exception as e:
+                logger.debug(f"Failed to fetch s3://{b}/{key}: {e}")
+                continue
             
-    logger.error(f"Failed to fetch config for '{campaign_name}' from S3 bucket '{bucket_name}'.")
+    logger.error(f"Failed to fetch config for '{campaign_name}' from S3.")
 
 async def run_worker(headless: bool, debug: bool, campaign_name: str) -> None:
     try:
         ensure_campaign_config(campaign_name)
-        bucket_name = f"cocli-data-{campaign_name}"
         
         # Determine AWS profile for S3 client
         config = load_campaign_config(campaign_name)
         aws_config = config.get("aws", {})
+        bucket_name = aws_config.get("cocli_data_bucket_name") or f"cocli-data-{campaign_name}"
         
         if os.getenv("COCLI_RUNNING_IN_FARGATE"):
             profile_name = None
@@ -231,11 +239,11 @@ async def run_details_worker(headless: bool, debug: bool, campaign_name: str, on
         processed_by = f"local-worker-{socket.gethostname()}"
     try:
         ensure_campaign_config(campaign_name)
-        bucket_name = f"cocli-data-{campaign_name}"
-
+        
         # Determine AWS profile for S3 client
         config = load_campaign_config(campaign_name)
         aws_config = config.get("aws", {})
+        bucket_name = aws_config.get("cocli_data_bucket_name") or f"cocli-data-{campaign_name}"
         
         if os.getenv("COCLI_RUNNING_IN_FARGATE"):
             profile_name = None
