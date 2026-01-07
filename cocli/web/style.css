@@ -1,3 +1,7 @@
+* {
+    box-sizing: border-box;
+}
+
 .top-navbar {
     background-color: #333;
     color: #fff;
@@ -6,7 +10,7 @@
 }
 
 .navbar-content {
-    max-width: 900px;
+    max-width: 1200px;
     margin: 0 auto;
     padding: 0 20px;
     display: flex;
@@ -41,19 +45,13 @@
 /* Responsive Campaign Config Grid */
 .campaign-config-grid {
     display: grid;
-    grid-template-columns: 1fr; /* Default to single column for mobile */
+    grid-template-columns: 1fr;
     gap: 30px;
     margin: 20px 0;
+    width: 100%;
 }
 
-/* Desktop layout: Queries on left (narrower), Locations on right (wider) */
-@media (min-width: 992px) {
-    .campaign-config-grid {
-        grid-template-columns: 300px 1fr;
-    }
-}
-
-/* Section styling: ensure full width of grid cell */
+/* Section styling */
 .config-section {
     background: #f9f9f9;
     padding: 20px;
@@ -62,20 +60,20 @@
     display: flex;
     flex-direction: column;
     width: 100%;
-    box-sizing: border-box;
 }
 
-/* Explicit order for mobile (Queries first) */
-.config-section:nth-child(1) {
+/* Mobile Ordering: Search Queries first, then Locations */
+.config-section.queries-section {
     order: 1;
 }
-.config-section:nth-child(2) {
+.config-section.locations-section {
     order: 2;
 }
 
-@media (max-width: 991px) {
+/* Desktop layout */
+@media (min-width: 992px) {
     .campaign-config-grid {
-        grid-template-columns: 1fr;
+        grid-template-columns: 300px 1fr;
     }
 }
 

@@ -13,7 +13,7 @@ Modify the search queries and target locations for the current campaign.
 
 <div class="campaign-config-grid">
     <!-- Search Queries Section -->
-    <div class="config-section">
+    <div class="config-section queries-section">
         <h3>Search Queries</h3>
         <div class="input-group">
             <input type="text" id="new-query" placeholder="Add new query...">
@@ -26,7 +26,7 @@ Modify the search queries and target locations for the current campaign.
     </div>
 
     <!-- Target Locations Section -->
-    <div class="config-section">
+    <div class="config-section locations-section">
         <h3>Target Locations</h3>
         <div class="input-group">
             <input type="text" id="new-location" placeholder="Add new location...">
