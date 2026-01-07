@@ -1,13 +1,22 @@
 #!/usr/bin/env python3
 import os
 import platform
+import jsii
 import aws_cdk as cdk
 import tomli
 from pathlib import Path
+from constructs import IConstruct
 
 from cdk_scraper_deployment.cdk_scraper_deployment_stack import CdkScraperDeploymentStack
 
+@jsii.implements(cdk.IAspect)
+class LogRetentionAspect:
+    def visit(self, node: IConstruct) -> None:
+        if isinstance(node, cdk.aws_logs.CfnLogGroup):
+            node.retention_in_days = 3
+
 app = cdk.App()
+cdk.Aspects.of(app).add(LogRetentionAspect())
 
 # 1. Determine COCLI_DATA_HOME
 # Try env var, then fallback to common locations or relative path

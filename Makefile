@@ -49,6 +49,9 @@ REGION := $(shell [ -f $(VENV_DIR)/bin/python ] && [ "$(CAMPAIGN)" != "ERROR" ] 
 open: activate ##Activate the venv and open
 	@cocli
 
+op-check: ## Check 1Password auth status
+	op whoami
+
 install: ## Install development dependencies using uv
 	uv sync --extra dev --extra full
 

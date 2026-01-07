@@ -13,6 +13,7 @@ from aws_cdk import (
     aws_cloudfront as cloudfront,
     aws_cloudfront_origins as origins,
     aws_certificatemanager as acm,
+    aws_logs as logs,
     Duration,
     CfnOutput,
     RemovalPolicy,
@@ -168,6 +169,10 @@ class CdkScraperDeploymentStack(Stack):  # type: ignore[misc]
             task_image_options=ecs_patterns.ApplicationLoadBalancedTaskImageOptions(
                 image=ecs.ContainerImage.from_registry(repository.repository_uri + ":latest"),
                 container_port=8000,
+                log_driver=ecs.LogDrivers.aws_logs(
+                    stream_prefix="web",
+                    log_retention=logs.RetentionDays.THREE_DAYS
+                ),
                 environment={
                     "COCLI_ENRICHMENT_QUEUE_URL": enrichment_queue.queue_url,
                     "COCLI_SCRAPE_TASKS_QUEUE_URL": scrape_tasks_queue.queue_url,

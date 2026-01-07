@@ -193,16 +193,18 @@ def get_campaign_stats(campaign_name: str) -> Dict[str, Any]:
     scrape_index = ScrapeIndex()
     
     # 5. Anomaly Detection (Bot Detection Monitoring)
-    # Check for empty scrapes (Shadow Bans)
+    # Check for empty scrapes (Shadow Bans) - ONLY RECENT ONES
     total_scraped_tiles = 0
     empty_scraped_tiles = 0
     
     from cocli.core.text_utils import slugify
+    from datetime import datetime, timedelta, UTC
     phrase_slugs = [slugify(q) for q in queries]
+    seven_days_ago = datetime.now(UTC) - timedelta(days=7)
     
     all_areas = scrape_index.get_all_scraped_areas()
     for area in all_areas:
-        if area.phrase in phrase_slugs:
+        if area.phrase in phrase_slugs and area.scrape_date > seven_days_ago:
             total_scraped_tiles += 1
             if area.items_found == 0:
                 empty_scraped_tiles += 1
