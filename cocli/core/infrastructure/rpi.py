@@ -2,11 +2,9 @@ import boto3
 import subprocess
 import logging
 from pathlib import Path
-from typing import Optional
 from rich.console import Console
 import configparser
 import tempfile
-import os
 
 logger = logging.getLogger(__name__)
 console = Console()
