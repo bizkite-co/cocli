@@ -538,56 +538,46 @@ def scrape(
         logger.error("No campaign specified and no active context.")
         raise typer.Exit(1)
 
+    # Load scraper settings from campaign config if available
+    config = load_campaign_config(effective_campaign)
+    prospecting_config = config.get("prospecting", {})
+    
+    # Optional override of global scraper settings
+    if "google_maps_delay_seconds" in prospecting_config:
+        os.environ["GOOGLE_MAPS_DELAY_SECONDS"] = str(prospecting_config["google_maps_delay_seconds"])
+
     asyncio.run(run_worker(not headed, debug, effective_campaign))
 
 @app.command()
-
 def details(
-
     campaign: Optional[str] = typer.Option(None, "--campaign", "-c", help="Campaign name."),
-
     headed: bool = typer.Option(False, "--headed", help="Run browser in headed mode."),
-
     debug: bool = typer.Option(False, "--debug", help="Enable debug logging."),
-
     workers: int = typer.Option(1, "--workers", "-w", help="Number of concurrent workers.")
-
 ) -> None:
-
     """
-
     Starts a worker node that polls for details tasks (Place IDs) and scrapes them.
-
     """
-
     effective_campaign = campaign
-
     if not effective_campaign:
-
         effective_campaign = os.getenv("CAMPAIGN_NAME")
-
     if not effective_campaign:
-
         effective_campaign = get_campaign()
-
         
-
     log_level = logging.DEBUG if debug else logging.INFO
-
     setup_file_logging("worker_details", console_level=log_level)
-
-
 
     logger.info(f"Effective campaign: {effective_campaign}")
 
-
-
     if not effective_campaign:
-
         logger.error("No campaign specified and no active context.")
-
         raise typer.Exit(1)
 
-
+    # Load scraper settings from campaign config if available
+    config = load_campaign_config(effective_campaign)
+    prospecting_config = config.get("prospecting", {})
+    
+    if "google_maps_delay_seconds" in prospecting_config:
+        os.environ["GOOGLE_MAPS_DELAY_SECONDS"] = str(prospecting_config["google_maps_delay_seconds"])
 
     asyncio.run(run_details_worker(not headed, debug, effective_campaign, workers=workers))

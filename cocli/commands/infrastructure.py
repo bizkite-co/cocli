@@ -52,7 +52,7 @@ def stop_workers(
 def start_worker(
     host: str = typer.Argument(..., help="Host to start worker on."),
     role: str = typer.Option("scrape", "--role", help="Worker role: 'scrape' or 'details'"),
-    workers: int = typer.Option(1, "--count", "-n", help="Number of concurrent worker threads."),
+    count: Optional[int] = typer.Option(None, "--count", "-n", help="Number of concurrent worker threads. If not provided, uses campaign config."),
     campaign: Optional[str] = typer.Option(None, "--campaign", "-c", help="Campaign name."),
     user: str = typer.Option("mstouffer", "--user", "-u", help="SSH user for the RPi.")
 ) -> None:
@@ -64,7 +64,12 @@ def start_worker(
 
     config = load_campaign_config(campaign_name)
     aws_config = config.get("aws", {})
+    prospecting_config = config.get("prospecting", {})
     profile = aws_config.get("profile") or aws_config.get("aws_profile") or "default"
+
+    # Concurrency resolution
+    # Priority: 1. CLI flag, 2. Config 'cluster_concurrency', 3. Default (1)
+    workers = count if count is not None else prospecting_config.get("cluster_concurrency", 1)
 
     # Resolve Queues
     queues = {
