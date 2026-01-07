@@ -41,31 +41,42 @@
 /* Responsive Campaign Config Grid */
 .campaign-config-grid {
     display: grid;
-    grid-template-columns: 1fr 2fr;
-    gap: 20px;
+    grid-template-columns: 1fr; /* Default to single column for mobile */
+    gap: 30px;
     margin: 20px 0;
 }
 
-@media (max-width: 768px) {
+/* Desktop layout: Queries on left (narrower), Locations on right (wider) */
+@media (min-width: 992px) {
     .campaign-config-grid {
-        grid-template-columns: 1fr;
-    }
-    /* Ensure Queries display first on mobile */
-    .config-section:nth-child(1) {
-        order: 1;
-    }
-    .config-section:nth-child(2) {
-        order: 2;
+        grid-template-columns: 300px 1fr;
     }
 }
 
+/* Section styling: ensure full width of grid cell */
 .config-section {
     background: #f9f9f9;
-    padding: 15px;
+    padding: 20px;
     border-radius: 8px;
     border: 1px solid #eee;
     display: flex;
     flex-direction: column;
+    width: 100%;
+    box-sizing: border-box;
+}
+
+/* Explicit order for mobile (Queries first) */
+.config-section:nth-child(1) {
+    order: 1;
+}
+.config-section:nth-child(2) {
+    order: 2;
+}
+
+@media (max-width: 991px) {
+    .campaign-config-grid {
+        grid-template-columns: 1fr;
+    }
 }
 
 .config-section h3 {
