@@ -331,7 +331,14 @@ async def run_details_worker(headless: bool, debug: bool, campaign_name: str, on
 
 async def _run_details_task_loop(browser_or_context: Any, gm_list_item_queue: Any, enrichment_queue: Any, s3_client: Any, bucket_name: str, debug: bool, once: bool, processed_by: str, tracker: Optional[Any] = None) -> None:
     while True: # Task Loop
-        if not browser_or_context.is_connected():
+        # BrowserContext doesn't have is_connected, check the browser if possible
+        connected = True
+        if hasattr(browser_or_context, 'is_connected'):
+            connected = browser_or_context.is_connected()
+        elif hasattr(browser_or_context, 'browser') and browser_or_context.browser:
+            connected = browser_or_context.browser.is_connected()
+
+        if not connected:
             logger.error("Browser is disconnected. Restarting.")
             break
 
@@ -495,7 +502,14 @@ async def _run_details_task_loop(browser_or_context: Any, gm_list_item_queue: An
             gm_list_item_queue.nack(task)
             if once:
                 return
-            if "Target page, context or browser has been closed" in str(e) or not browser_or_context.is_connected():
+            
+            connected = True
+            if hasattr(browser_or_context, 'is_connected'):
+                connected = browser_or_context.is_connected()
+            elif hasattr(browser_or_context, 'browser') and browser_or_context.browser:
+                connected = browser_or_context.browser.is_connected()
+
+            if "Target page, context or browser has been closed" in str(e) or not connected:
                  logger.critical("Browser fatal error detected.")
                  break
 
