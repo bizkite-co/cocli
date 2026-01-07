@@ -35,6 +35,9 @@ class CdkScraperDeploymentStack(Stack):  # type: ignore[misc]
         rpi_user_name = campaign_config["rpi_user_name"]
         ou_arn = campaign_config.get("ou_arn")
 
+        # Global Tagging for Isolation and Billing
+        Tags.of(self).add("Campaign", campaign_config["name"])
+
         if ou_arn:
             Tags.of(self).add("OrganizationalUnit", ou_arn)
 
@@ -92,6 +95,27 @@ class CdkScraperDeploymentStack(Stack):  # type: ignore[misc]
         )
         gm_list_item_queue.grant_send_messages(task_role)
         gm_list_item_queue.grant_consume_messages(task_role)
+
+        # Strict Isolation: Deny access to other campaign resources
+        # This ensures that even if the user has broad permissions, they are restricted
+        # to ONLY the resources tagged with this specific campaign name.
+        rpi_user.add_to_principal_policy(iam.PolicyStatement(
+            effect=iam.Effect.DENY,
+            actions=["s3:*", "sqs:*"],
+            resources=[
+                "arn:aws:s3:::cocli-data-*",
+                "arn:aws:s3:::roadmap-cocli-data-*",
+                "arn:aws:sqs:*:*:CdkScraperDeploymentStack-*"
+            ],
+            conditions={
+                "StringNotEquals": {
+                    "aws:ResourceTag/Campaign": campaign_config["name"]
+                },
+                "Null": {
+                    "aws:ResourceTag/Campaign": "false" # Only trigger deny if the tag exists and is wrong
+                }
+            }
+        ))
 
         # --- Grant Permissions to RPi User ---
         enrichment_queue.grant_send_messages(rpi_user)

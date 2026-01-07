@@ -143,20 +143,33 @@ graph TD
     I --> I3[Automated Scaling];
 ```
 
-## Phase 8: Cluster Orchestration & Configuration Decoupling (Proposed)
+## Phase 8: Cluster Orchestration & Configuration Decoupling (Completed)
 
 **Goal:** Transition from hardcoded Makefile-based management to a dynamic, configuration-driven orchestration module.
 
-1.  **PI Tool Consolidation:**
-    *   [ ] Move standalone RPi scripts (`setup_rpi.sh`, `deploy_rpi_creds.py`, etc.) into a unified `cocli.infrastructure.rpi` module.
-    *   [ ] Expose cluster management via `cocli cluster` CLI commands.
+1.  **PI Tool Consolidation (Done):**
+    *   [x] Moved standalone RPi scripts into `cocli.core.infrastructure.rpi`.
+    *   [x] Exposed cluster management via `cocli infrastructure` CLI commands (`start-worker`, `stop-workers`, `deploy-creds`).
 
-2.  **Campaign-Driven Worker Config:**
-    *   [ ] Move worker hostnames and roles (Scraper/Details) into campaign `config.toml`.
-    *   [ ] Implement automated credential rotation and config sync across the cluster based on the active campaign.
-    *   [ ] **S3 Isolation:** Implement AWS IAM restrictions on bucket paths so that only the campaign-specific AWS profile can access its respective data (e.g., `turboship` profile restricted to `turboship` bucket paths).
-    *   [ ] **IP-Level Throttling:** Implement a distributed semaphore (e.g., via SQS or S3) to coordinate Google Maps requests across all cluster nodes sharing a single IP address.
+2.  **Infrastructure Hardening (Done):**
+    *   [x] **S3 Isolation:** Implemented tag-based IAM isolation to ensure campaigns cannot access each other's data.
+    *   [x] **Log Retention:** Enforced global 3-day CloudWatch log retention via CDK Aspects.
+    *   [x] **Config-Driven Safety:** Integrated `cluster_concurrency` and `google_maps_delay_seconds` into campaign `config.toml`.
 
-3.  **Automated Load Balancing:**
-    *   [ ] Implement a basic scheduler to distribute SQS polling load based on hardware capabilities (e.g., Pi 5 handling more concurrent browsers than Pi 4).
+3.  **Automated Scaling (Done):**
+    *   [x] Implemented multi-worker support for RPi nodes (Pi 5 running 4 concurrent browsers).
+
+## Phase 9: Standardization & Distributed Coordination (Active)
+
+**Goal:** Refactor for consistency across large-scale deployments and implement inter-node coordination.
+
+1.  **Resource Naming Standardization:**
+    *   [ ] Refactor CDK and infrastructure scripts to use consistent naming: `cocli-<resource>-<campaign>` (e.g., `cocli-data-roadmap`, `cocli-sqs-details-roadmap`).
+    *   [ ] Update IAM policies to reflect the standardized naming pattern.
+
+2.  **Distributed IP Throttling:**
+    *   [ ] Implement a distributed semaphore (e.g., via SQS or Redis) to coordinate Google Maps requests across all cluster nodes sharing a single IP address.
+
+3.  **Campaign-Driven Host Discovery:**
+    *   [ ] Move worker hostnames (`octoprint.local`, etc.) into campaign `config.toml` to remove hardcoded host lists from the CLI.
 ```
