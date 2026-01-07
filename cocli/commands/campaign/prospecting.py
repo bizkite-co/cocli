@@ -161,6 +161,7 @@ def queue_scrapes(
     campaign_name: Optional[str] = typer.Argument(None),
     include_legacy: bool = typer.Option(False, "--include-legacy"),
     force: bool = typer.Option(False, "--force"),
+    dry_run: bool = typer.Option(False, "--dry-run", help="Report task count without enqueuing."),
 ) -> None:
     if campaign_name is None:
         campaign_name = get_campaign()
@@ -180,10 +181,15 @@ def queue_scrapes(
     search_phrases = config.get("prospecting", {}).get("queries", [])
     grid_file = campaign_dir / "exports" / "target-areas.json"
     tasks_to_queue = []
+    total_combinations = 0
+    
     if grid_file.exists():
         scrape_index = ScrapeIndex()
         with open(grid_file, 'r') as f:
             grid_tiles = json.load(f)
+        
+        total_combinations = len(grid_tiles) * len(search_phrases)
+        
         for tile in grid_tiles:
             lat = tile.get("center_lat") or tile.get("center", {}).get("lat")
             lon = tile.get("center_lon") or tile.get("center", {}).get("lon")
@@ -213,6 +219,15 @@ def queue_scrapes(
                         ack_token=None
                     ))
     
+    if dry_run:
+        covered = total_combinations - len(tasks_to_queue)
+        covered_pct = (covered / total_combinations * 100) if total_combinations > 0 else 0
+        console.print(f"[bold cyan]DRY RUN Summary for {campaign_name}:[/bold cyan]")
+        console.print(f"  Total Tile/Phrase Combinations: {total_combinations}")
+        console.print(f"  Already Covered:                {covered} ({covered_pct:.1f}%)")
+        console.print(f"  [bold yellow]Remaining to Scrape:            {len(tasks_to_queue)}[/bold yellow]")
+        return
+
     if tasks_to_queue:
         # Silence verbose libraries
         logging.getLogger("botocore").setLevel(logging.WARNING)
