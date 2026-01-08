@@ -338,12 +338,32 @@ class ScrapeIndex:
         """
         Recursively loads ALL areas for the given phrases.
         Usage: KML generation (infrequent).
+        Includes both legacy JSON and Phase 10 Witness (CSV) indexes.
         """
         all_areas: List[ScrapedArea] = []
+        seen_tiles: set[str] = set() # (phrase, tile_id)
+
         for phrase in phrases:
             phrase_slug = slugify(phrase)
+
+            # 1. Scan Witness Index (New Format)
+            # Structure: indexes/scraped-tiles/{lat}/{lon}/{phrase}.csv
+            if self.witness_dir.exists():
+                for lat_dir in self.witness_dir.iterdir():
+                    if not lat_dir.is_dir(): continue
+                    for lon_dir in lat_dir.iterdir():
+                        if not lon_dir.is_dir(): continue
+                        
+                        witness_file = lon_dir / f"{phrase_slug}.csv"
+                        if witness_file.exists():
+                            tile_id = f"{lat_dir.name}_{lon_dir.name}"
+                            area = self.is_tile_scraped(phrase, tile_id)
+                            if area:
+                                all_areas.append(area)
+                                seen_tiles.add(f"{phrase_slug}:{tile_id}")
+
+            # 2. Scan Legacy JSON Index
             phrase_dir = self.index_dir / phrase_slug
-            
             if not phrase_dir.exists():
                 continue
                 
@@ -352,26 +372,25 @@ class ScrapeIndex:
                     for file_path in grid_dir.glob("*.json"):
                          area = self._load_area_from_file(file_path)
                          if area:
+                             # Deduplicate if we already saw it in the witness index
+                             unique_key = f"{phrase_slug}:{area.tile_id}" if area.tile_id else None
+                             if unique_key and unique_key in seen_tiles:
+                                 continue
                              all_areas.append(area)
         return all_areas
 
     def get_all_scraped_areas(self) -> List[ScrapedArea]:
         """Loads ALL scraped areas (all phrases). Expensive."""
-        all_areas: List[ScrapedArea] = []
-        if not self.index_dir.exists():
-            return all_areas
-            
-        for phrase_dir in self.index_dir.iterdir():
-            if phrase_dir.is_dir():
-                phrase = phrase_dir.name
-                if phrase == "wilderness":
-                     continue
-                
-                # Load all grids
-                for grid_dir in phrase_dir.iterdir():
-                    if grid_dir.is_dir():
-                         for file_path in grid_dir.glob("*.json"):
-                             area = self._load_area_from_file(file_path)
-                             if area:
-                                 all_areas.append(area)
-        return all_areas
+        # Collect all unique phrases from both indexes
+        phrases = set()
+        if self.index_dir.exists():
+            phrases.update([d.name for d in self.index_dir.iterdir() if d.is_dir()])
+        
+        if self.witness_dir.exists():
+            for lat_dir in self.witness_dir.iterdir():
+                if not lat_dir.is_dir(): continue
+                for lon_dir in lat_dir.iterdir():
+                    if not lon_dir.is_dir(): continue
+                    phrases.update([f.stem for f in lon_dir.glob("*.csv")])
+
+        return self.get_all_areas_for_phrases(list(phrases))

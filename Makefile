@@ -552,14 +552,30 @@ start-rpi-supervisor: ## Start the Supervisor on Raspberry Pi for dynamic scalin
 		-e COCLI_HOSTNAME=\$$(hostname) \
 		-v ~/.aws:/root/.aws:ro cocli-worker-rpi:latest cocli worker supervisor"
 
+.PHONY: start-rpi-powerhouse
+start-rpi-powerhouse: ## Start heavy-duty workers on the Pi 5 (8 Scrapers, 4 Detailers)
+	ssh $(RPI_USER)@cocli5x0.local "docker run -d --restart always --name cocli-scraper-worker \
+		-e TZ=America/Los_Angeles \
+		-e CAMPAIGN_NAME='$(CAMPAIGN)' \
+		-e AWS_PROFILE=$(AWS_PROFILE) \
+		-e COCLI_SCRAPE_TASKS_QUEUE_URL='$(COCLI_SCRAPE_TASKS_QUEUE_URL)' \
+		-e COCLI_GM_LIST_ITEM_QUEUE_URL='$(COCLI_GM_LIST_ITEM_QUEUE_URL)' \
+		-v ~/.aws:/root/.aws:ro cocli-worker-rpi:latest cocli worker scrape --workers 8"
+	ssh $(RPI_USER)@cocli5x0.local "docker run -d --restart always --name cocli-details-worker \
+		-e TZ=America/Los_Angeles \
+		-e CAMPAIGN_NAME='$(CAMPAIGN)' \
+		-e AWS_PROFILE=$(AWS_PROFILE) \
+		-e COCLI_GM_LIST_ITEM_QUEUE_URL='$(COCLI_GM_LIST_ITEM_QUEUE_URL)' \
+		-e COCLI_ENRICHMENT_QUEUE_URL='$(COCLI_ENRICHMENT_QUEUE_URL)' \
+		-v ~/.aws:/root/.aws:ro cocli-worker-rpi:latest cocli worker details --workers 4"
+
 .PHONY: restart-rpi-all
-restart-rpi-all: ## Restart all Raspberry Pi workers using Supervisor
+restart-rpi-all: ## Restart all Raspberry Pi workers using best-fit strategy
 	-$(MAKE) stop-rpi-all RPI_HOST=octoprint.local
 	-$(MAKE) stop-rpi-all RPI_HOST=coclipi.local
 	-$(MAKE) stop-rpi-all RPI_HOST=cocli5x0.local
 	$(MAKE) start-rpi-supervisor RPI_HOST=octoprint.local
-	$(MAKE) start-rpi-supervisor RPI_HOST=coclipi.local
-	$(MAKE) start-rpi-supervisor RPI_HOST=cocli5x0.local
+	$(MAKE) start-rpi-powerhouse
 
 .PHONY: deploy-cluster
 deploy-cluster: ## Rebuild and restart the entire cluster with Supervisor

@@ -146,6 +146,10 @@ graph TD
     J --> J1[Target Tile Indexing];
     J --> J2[File-per-Object Scrape Tracking];
     J --> J3[Idempotent Dispatcher];
+    J3 --> K{Phase 11: Cluster Powerhouse};
+    K --> K1[Isolated Worker Containers];
+    K --> K2[Central Path Authority];
+    K --> K3[Global Witness Indexing];
 ```
 
 ## Phase 9: Standardization & Distributed Coordination (Active)
@@ -162,20 +166,42 @@ graph TD
 3.  **Campaign-Driven Host Discovery:**
     *   [ ] Move worker hostnames (`octoprint.local`, etc.) into campaign `config.toml` to remove hardcoded host lists from the CLI.
 
-## Phase 10: Deterministic Mission Indexes (Planned)
+## Phase 10: Deterministic Mission Indexes (Completed)
 
 **Goal:** Eliminate brittle offset-based queueing in favor of a file-per-object "Mission Index" that is S3-syncable and inherently idempotent.
 
-1.  **Campaign Target Index:**
-    *   [ ] Implement `cocli campaign build-mission-index` to generate files in `campaigns/{name}/indexes/target-tiles/{lat}/{lon}/{phrase}.csv`.
-    *   [ ] This replaces the monolithic `mission.json` and `pending_scrape_total.csv`.
+1.  **Campaign Target Index (Done):**
+    *   [x] Implemented `cocli campaign build-mission-index` to generate files in `campaigns/{name}/indexes/target-tiles/{lat}/{lon}/{phrase}.csv`.
+2.  **Global Scraped Index (Witness Files) (Done):**
+    *   [x] Update `cocli worker scrape` to write a "witness file" to `data/indexes/scraped-tiles/{lat}/{lon}/{phrase}.csv` upon completion.
+    *   [x] Enabled `smart-sync` for this global directory to share proof-of-work across the cluster.
+3.  **Idempotent Dispatcher (Done):**
+    *   [x] Refactor `queue-mission` to use a set-difference approach: `Pending = TargetIndex - GlobalScrapedIndex`.
 
-2.  **Global Scraped Index (Witness Files):**
-    *   [ ] Update `cocli worker scrape` to write a "witness file" to `data/indexes/scraped-tiles/{lat}/{lon}/{phrase}.csv` upon completion.
-    *   [ ] Each file contains a timestamp and result count.
-    *   [ ] Enable `smart-sync` for this global directory to share proof-of-work across the cluster.
+## Phase 11: Cluster Powerhouse (Completed)
 
-3.  **Idempotent Dispatcher:**
-    *   [ ] Refactor `queue-mission` to use a set-difference approach: `Pending = TargetIndex - GlobalScrapedIndex`.
-    *   [ ] Remove reliance on `mission_state.toml` and integer offsets.
+**Goal:** Harden the cluster against resource contention and path resolution errors.
+
+1.  **Powerhouse Architecture (Done):**
+    *   [x] Deprecate the single-process `supervisor` for high-load nodes.
+    *   [x] Deploy isolated `scraper` and `details` containers to maximize CPU/Memory utilization.
+2.  **Central Path Authority (ADR 009) (Done):**
+    *   [x] Standardize all data path resolution via `cocli/core/config.py`.
+    *   [x] Implement `ValidatedPath` to crash early on configuration errors.
+3.  **Witness-Based Observability (Done):**
+    *   [x] Updated KML and reporting tools to use the new `.csv` witness index for 100% accurate coverage mapping.
+
+## Phase 12: Global Cleanup & Index Migration (Active)
+
+**Goal:** Formalize the new index structure and decommission legacy JSON files.
+
+1.  **Index Archival:**
+    *   [ ] Create a migration script to move any remaining `scraped_areas/*.json` records into the `scraped-tiles/*.csv` format.
+    *   [ ] Decommission the `scraped_areas` directory to reduce S3 storage/sync overhead.
+2.  **KML Enhancement:**
+    *   [ ] Add "Heatmap" mode to KML visualization to show lead density per tile based on witness item counts.
+3.  **Cluster Auto-Start:**
+    *   [ ] Update the Pi 5 boot sequence to automatically launch the "Powerhouse" container set on restart.
+
+
 ```

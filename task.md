@@ -15,6 +15,14 @@ Standardize resource naming across campaigns and implement distributed coordinat
     - [ ] Maintain 0 linting errors by running `make lint` before every commit.
 
 ## Done
+- [x] **Deterministic Mission Indexing (Phase 10):**
+    - [x] **Witness Index:** Workers now drop `.csv` proof-of-work files.
+    - [x] **Idempotent Dispatcher:** `queue-mission` now uses set-difference (Targets - Witness) to prevent duplicates.
+    - [x] **Global Sync:** Automated `smart-sync` of witness files before every mission dispatch.
+- [x] **Cluster Powerhouse Architecture (Phase 11):**
+    - [x] **Pi 5 Saturation:** Replaced fragile single-process supervisor with isolated scraper (8) and details (4) worker containers.
+    - [x] **Central Path Authority:** Implemented `ValidatedPath` (ADR 009) to prevent relative path and symlink bugs.
+    - [x] **Observability:** Updated KML generation and reports to use the new witness index.
 - [x] **Infrastructure Hardening:**
     - [x] **Log Retention:** Enforced 3-day retention globally in CDK.
     - [x] **IAM Isolation:** Implemented tag-based Deny policy for campaign data isolation.
