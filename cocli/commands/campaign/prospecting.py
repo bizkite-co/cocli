@@ -533,20 +533,20 @@ def queue_mission(
     # 0. Auto-Sync State
     if sync:
         from cocli.commands.smart_sync import run_smart_sync
-        from cocli.core.config import load_campaign_config, get_cocli_base_dir
+        from cocli.core.config import load_campaign_config, get_scraped_tiles_index_dir
         
         console.print("[bold blue]Syncing scraped-tiles from S3...[/bold blue]")
         config = load_campaign_config(campaign_name)
         aws_config = config.get("aws", {})
         bucket_name = aws_config.get("cocli_data_bucket_name") or f"cocli-data-{campaign_name}"
-        data_dir = get_cocli_base_dir()
+        scraped_tiles_dir = get_scraped_tiles_index_dir()
         
         try:
             run_smart_sync(
                 "scraped-tiles", 
                 bucket_name, 
                 "indexes/scraped-tiles/", 
-                data_dir / "indexes" / "scraped-tiles", 
+                scraped_tiles_dir, 
                 campaign_name, 
                 aws_config
             )

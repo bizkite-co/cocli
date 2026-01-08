@@ -1,13 +1,13 @@
 import csv
-from pathlib import Path
 from rich.console import Console
 from rich.progress import track
+from cocli.core.config import get_cocli_base_dir
 from cocli.core.text_utils import slugify
 
 console = Console()
 
-def restore_tags(campaign_name: str = "turboship") -> None:
-    data_home = Path("/home/mstouffer/repos/company-cli/cocli_data")
+def restore_tags(campaign_name: str) -> None:
+    data_home = get_cocli_base_dir()
     companies_dir = data_home / "companies"
     campaign_dir = data_home / "campaigns" / campaign_name
     
@@ -62,4 +62,6 @@ def restore_tags(campaign_name: str = "turboship") -> None:
     console.print("  • These companies will now appear in your next 'make report'.")
 
 if __name__ == "__main__":
-    restore_tags()
+    import sys
+    name = sys.argv[1] if len(sys.argv) > 1 else "turboship"
+    restore_tags(name)

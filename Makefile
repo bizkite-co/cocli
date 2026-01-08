@@ -128,9 +128,12 @@ install-global: ## Install the latest version of the app using pipx
 	git pull
 	pipx install .
 
+# Default Data Home (can be overridden by environment variable)
+COCLI_DATA_HOME ?= /home/mstouffer/.local/share/cocli_data
+
 .PHONY: import-turboship
 import-turboship: install ## Import turboship customers
-	$(VENV_DIR)/bin/cocli import-turboship /home/mstouffer/.local/share/cocli_data/scraped_data/turboship/customers/customers.csv /home/mstouffer/.local/share/cocli_data/scraped_data/turboship/customers/customer_addresses.csv
+	$(VENV_DIR)/bin/cocli import-turboship $(COCLI_DATA_HOME)/scraped_data/turboship/customers/customers.csv $(COCLI_DATA_HOME)/scraped_data/turboship/customers/customer_addresses.csv
 
 .PHONY: render-kml
 render-kml: install ## Render KML for the current campaign context
@@ -166,7 +169,7 @@ import-prospects: install ## Import prospects from the current campaign
 
 .PHONY: import-customers
 import-customers: install ## Import customers from the turboship campaign
-	$(VENV_DIR)/bin/cocli import-customers /home/mstouffer/.local/share/cocli_data/scraped_data/turboship/customers/customers.csv /home/mstouffer/.local/share/cocli_data/scraped_data/turboship/customers/customer_addresses.csv --tag customer --tag turboship
+	$(VENV_DIR)/bin/cocli import-customers $(COCLI_DATA_HOME)/scraped_data/turboship/customers/customers.csv $(COCLI_DATA_HOME)/scraped_data/turboship/customers/customer_addresses.csv --tag customer --tag turboship
 
 .PHONY: render-prospects-kml
 render-prospects-kml: install ## Render KML for turboship prospects
@@ -189,7 +192,7 @@ ingest-prospects: install ## Ingest the existing google_maps_prospects.csv for t
 
 .PHONY: ingest-existing-customers
 ingest-existing-customers: install ## Ingest the existing customers.csv file into the cache
-	$(VENV_DIR)/bin/cocli ingest-google-maps-csv /home/mstouffer/.local/share/cocli_data/scraped_data/turboship/customers/customers.csv
+	$(VENV_DIR)/bin/cocli ingest-google-maps-csv $(COCLI_DATA_HOME)/scraped_data/turboship/customers/customers.csv
 
 .PHONY: queue-scrape-tasks
 queue-scrape-tasks: ## Queue scrape tasks for the 'turboship' campaign

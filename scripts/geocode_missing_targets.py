@@ -1,6 +1,5 @@
 import toml
 import csv
-from pathlib import Path
 from geopy.geocoders import Nominatim  # type: ignore
 from geopy.exc import GeocoderServiceError  # type: ignore
 from rich.console import Console
@@ -9,8 +8,11 @@ import sys
 console = Console()
 
 def geocode_missing(campaign_name: str = "turboship") -> None:
-    data_home = Path("/home/mstouffer/repos/company-cli/data")
-    campaign_dir = data_home / "campaigns" / campaign_name
+    from cocli.core.config import get_campaign_dir
+    campaign_dir = get_campaign_dir(campaign_name)
+    if not campaign_dir:
+        console.print(f"[red]Campaign directory not found for {campaign_name}[/red]")
+        return
     config_path = campaign_dir / "config.toml"
     
     if not config_path.exists():

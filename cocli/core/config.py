@@ -9,7 +9,7 @@ from pydantic import BaseModel, Field
 
 from pydantic_settings import BaseSettings
 from rich.console import Console
-from .paths import get_validated_dir, ValidatedPath
+from .paths import get_validated_dir
 
 console = Console()
 
@@ -30,8 +30,9 @@ def get_cocli_app_data_dir() -> Path:
         else: # Linux and other Unix-like
             cocli_app_data_dir = Path.home() / ".local" / "share" / "cocli"
 
-    cocli_app_data_dir.mkdir(parents=True, exist_ok=True)
-    return cocli_app_data_dir
+    v_path = get_validated_dir(cocli_app_data_dir, "App Data Root (Logs/Cache)")
+    v_path.path.mkdir(parents=True, exist_ok=True)
+    return v_path.path
 
 def get_cocli_base_dir() -> Path:
     """
@@ -58,8 +59,6 @@ def get_cocli_base_dir() -> Path:
             else: # Linux and other Unix-like
                 cocli_base_dir = Path.home() / ".local" / "share" / "cocli_data"
 
-    # We validate the BASE directory (the parent of where we expect to find companies/campaigns)
-    # acts as O(1) circuit breaker for broken symlinks
     v_path = get_validated_dir(cocli_base_dir, "User Business Data Root")
     v_path.path.mkdir(parents=True, exist_ok=True)
     return v_path.path
@@ -84,23 +83,26 @@ def get_config_dir() -> Path:
             return Path.home() / ".config" / "cocli"
 
 def get_companies_dir() -> Path:
-    companies_dir = get_cocli_base_dir() / "companies"
-    companies_dir.mkdir(parents=True, exist_ok=True)
-    return companies_dir
+    p = get_cocli_base_dir() / "companies"
+    v_dir = get_validated_dir(p, "Companies Directory")
+    v_dir.path.mkdir(parents=True, exist_ok=True)
+    return v_dir.path
 
 def get_people_dir() -> Path:
-    people_dir = get_cocli_base_dir() / "people"
-    people_dir.mkdir(parents=True, exist_ok=True)
-    return people_dir
+    p = get_cocli_base_dir() / "people"
+    v_dir = get_validated_dir(p, "People Directory")
+    v_dir.path.mkdir(parents=True, exist_ok=True)
+    return v_dir.path
 
 def get_shared_scraped_data_dir() -> Path:
     """
     Returns the shared scraped data directory (e.g., shopify_csv).
     Previously used for all scraped data.
     """
-    scraped_data_dir = get_cocli_base_dir() / "scraped_data"
-    scraped_data_dir.mkdir(parents=True, exist_ok=True)
-    return scraped_data_dir
+    p = get_cocli_base_dir() / "scraped_data"
+    v_dir = get_validated_dir(p, "Shared Scraped Data")
+    v_dir.path.mkdir(parents=True, exist_ok=True)
+    return v_dir.path
 
 def get_scraped_data_dir() -> Path:
     """
@@ -114,27 +116,30 @@ def get_indexes_dir() -> Path:
     Returns the base directory for shared indexes.
     Path: cocli_data/indexes/
     """
-    indexes_dir = get_cocli_base_dir() / "indexes"
-    indexes_dir.mkdir(parents=True, exist_ok=True)
-    return indexes_dir
+    p = get_cocli_base_dir() / "indexes"
+    v_dir = get_validated_dir(p, "Indexes Directory")
+    v_dir.path.mkdir(parents=True, exist_ok=True)
+    return v_dir.path
 
 def get_scraped_areas_index_dir() -> Path:
     """
     Returns the directory for phrase-specific scraped area indexes.
     Path: cocli_data/indexes/scraped_areas/
     """
-    scraped_areas_dir = get_indexes_dir() / "scraped_areas"
-    scraped_areas_dir.mkdir(parents=True, exist_ok=True)
-    return scraped_areas_dir
+    p = get_indexes_dir() / "scraped_areas"
+    v_dir = get_validated_dir(p, "Scraped Areas Index")
+    v_dir.path.mkdir(parents=True, exist_ok=True)
+    return v_dir.path
 
 def get_scraped_tiles_index_dir() -> Path:
     """
     Returns the directory for the Phase 10 witness file index.
     Path: cocli_data/indexes/scraped-tiles/
     """
-    scraped_tiles_dir = get_indexes_dir() / "scraped-tiles"
-    scraped_tiles_dir.mkdir(parents=True, exist_ok=True)
-    return scraped_tiles_dir
+    p = get_indexes_dir() / "scraped-tiles"
+    v_dir = get_validated_dir(p, "Scraped Tiles (Witness) Index")
+    v_dir.path.mkdir(parents=True, exist_ok=True)
+    return v_dir.path
 
 def get_campaign_scraped_data_dir(campaign_name: str) -> Path:
     """
@@ -147,14 +152,16 @@ def get_campaign_scraped_data_dir(campaign_name: str) -> Path:
         campaign_dir = get_campaigns_dir() / campaign_name
         campaign_dir.mkdir(parents=True, exist_ok=True)
     
-    scraped_data_dir = campaign_dir / "scraped_data"
-    scraped_data_dir.mkdir(parents=True, exist_ok=True)
-    return scraped_data_dir
+    p = campaign_dir / "scraped_data"
+    v_dir = get_validated_dir(p, f"Campaign Scraped Data: {campaign_name}")
+    v_dir.path.mkdir(parents=True, exist_ok=True)
+    return v_dir.path
 
 def get_campaigns_dir() -> Path:
-    campaigns_dir = get_cocli_base_dir() / "campaigns"
-    campaigns_dir.mkdir(parents=True, exist_ok=True)
-    return campaigns_dir
+    p = get_cocli_base_dir() / "campaigns"
+    v_dir = get_validated_dir(p, "Campaigns Root")
+    v_dir.path.mkdir(parents=True, exist_ok=True)
+    return v_dir.path
 
 
 def get_campaign_dir(campaign_name: str) -> Optional[Path]:
@@ -164,7 +171,9 @@ def get_campaign_dir(campaign_name: str) -> Optional[Path]:
     campaigns_dir = get_campaigns_dir()
     campaign_dir = campaigns_dir / campaign_name
     if campaign_dir.exists() and campaign_dir.is_dir():
-        return campaign_dir
+        # Validate specifically if it exists
+        v_dir = get_validated_dir(campaign_dir, f"Campaign Directory: {campaign_name}")
+        return v_dir.path
     return None
 
 def get_all_campaign_dirs() -> list[Path]:

@@ -11,6 +11,7 @@ from dateutil import tz # Import for timezone handling
 # Assuming cocli is installed or available in the Python path
 # Adjust imports if necessary based on how this script will be run
 from cocli.core.scrape_index import ScrapedArea, ScrapeIndex
+from cocli.core.config import get_cocli_base_dir
 from cocli.core.website_domain_csv_manager import WebsiteDomainCsvManager # Import manager
 from cocli.models.website_domain_csv import WebsiteDomainCsv # Import model
 
@@ -27,10 +28,10 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # Paths relative to the cocli_data directory
-COCLI_DATA_HOME = Path("/home/mstouffer/.local/share/cocli_data") # IMPORTANT: Adjust if cocli_data is elsewhere
+data_home = get_cocli_base_dir()
 
-OLD_INDEXES_DIR = COCLI_DATA_HOME / "indexes"
-PROSPECTS_CSV_PATH = COCLI_DATA_HOME / "campaigns" / "turboship" / "scraped_data" / "google_maps_prospects.csv"
+OLD_INDEXES_DIR = data_home / "indexes"
+PROSPECTS_CSV_PATH = data_home / "campaigns" / "turboship" / "scraped_data" / "google_maps_prospects.csv"
 ORIGINAL_WEBSITE_DOMAINS_CSV = OLD_INDEXES_DIR / "website-domains.csv" # The existing file we will update
 
 # --- Helper to convert datetime strings ---
