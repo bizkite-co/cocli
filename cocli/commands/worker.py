@@ -583,7 +583,7 @@ def sync_campaign_config(campaign_name: str) -> None:
                 continue
 
 async def run_supervisor(headless: bool, debug: bool, campaign_name: str, interval: int) -> None:
-    hostname = socket.gethostname().split('.')[0]
+    hostname = os.getenv("COCLI_HOSTNAME") or socket.gethostname().split('.')[0]
     logger.info(f"Supervisor started on host '{hostname}' for campaign '{campaign_name}'.")
 
     # Shared browser instance for all tasks on this host
