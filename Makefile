@@ -472,12 +472,7 @@ check-rpi-voltage: ## Check Raspberry Pi for load, undervoltage and throttling i
 
 .PHONY: check-cluster-health
 check-cluster-health: ## Check health (load/voltage) of all known Raspberry Pi workers
-	@echo "=== Checking octoprint.local (Scraper) ==="
-	@$(MAKE) check-rpi-voltage RPI_HOST=octoprint.local
-	@echo "\n=== Checking coclipi.local (Details) ==="
-	@$(MAKE) check-rpi-voltage RPI_HOST=coclipi.local
-	@echo "\n=== Checking cocli5x0.local (Pi 5) ==="
-	@$(MAKE) check-rpi-voltage RPI_HOST=cocli5x0.local
+	@$(VENV_DIR)/bin/python scripts/check_cluster_health.py
 
 .PHONY: shutdown-rpi
 shutdown-rpi: ## Safely shut down the Raspberry Pi (halts system)

@@ -184,8 +184,7 @@ def get_campaign_stats(campaign_name: str) -> Dict[str, Any]:
     from cocli.core.scrape_index import ScrapeIndex
     scrape_index = ScrapeIndex()
     
-    # 5. Anomaly Detection (Bot Detection Monitoring)
-    # Check for empty scrapes (Shadow Bans) - ONLY RECENT ONES
+    # 5. Anomaly Detection (Bot Detection Monitoring) using new Witness Index
     total_scraped_tiles = 0
     empty_scraped_tiles = 0
     
@@ -194,12 +193,26 @@ def get_campaign_stats(campaign_name: str) -> Dict[str, Any]:
     phrase_slugs = [slugify(q) for q in queries]
     seven_days_ago = datetime.now(UTC) - timedelta(days=7)
     
-    all_areas = scrape_index.get_all_scraped_areas()
-    for area in all_areas:
-        if area.phrase in phrase_slugs and area.scrape_date > seven_days_ago:
-            total_scraped_tiles += 1
-            if area.items_found == 0:
-                empty_scraped_tiles += 1
+    # Nested Witness Index Check
+    witness_root = get_cocli_base_dir() / "indexes" / "scraped-tiles"
+    if witness_root.exists():
+        for phrase_slug in phrase_slugs:
+            for phrase_file in witness_root.glob(f"**/{phrase_slug}.csv"):
+                try:
+                    with open(phrase_file, "r") as f:
+                        reader = csv.DictReader(f)
+                        row = next(reader)
+                        
+                        scrape_date = datetime.fromisoformat(row['scrape_date'])
+                        if scrape_date.tzinfo is None:
+                            scrape_date = scrape_date.replace(tzinfo=UTC)
+                            
+                        if scrape_date > seven_days_ago:
+                            total_scraped_tiles += 1
+                            if int(row.get('items_found', 0)) == 0:
+                                empty_scraped_tiles += 1
+                except Exception:
+                    continue
     
     stats['anomaly_stats'] = {
         'total_scrapes': total_scraped_tiles,
@@ -273,10 +286,13 @@ def get_campaign_stats(campaign_name: str) -> Dict[str, Any]:
                                 dist_deg = math.sqrt((t_center_lat - lat)**2 + (t_center_lon - lon)**2)
                                 if (dist_deg * 69.0) <= proximity:
                                     loc_tiles.append(t_id)
-                                    # Check if ANY query has scraped this tile
+                                    # Check if ANY query has scraped this tile using new Witness Index
                                     is_scraped = False
+                                    lat_dir, lon_dir = t_id.split('_')
+                                    tile_witness_dir = witness_root / lat_dir / lon_dir
+                                    
                                     for q in queries:
-                                        if scrape_index.is_tile_scraped(q, t_id):
+                                        if (tile_witness_dir / f"{slugify(q)}.csv").exists():
                                             is_scraped = True
                                             break
                                     if is_scraped:
