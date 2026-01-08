@@ -181,8 +181,7 @@ def get_campaign_stats(campaign_name: str) -> Dict[str, Any]:
     stats['emails_found_count'] = emails_found_count
 
     # 4. Scrape Index Status
-    from cocli.core.scrape_index import ScrapeIndex
-    scrape_index = ScrapeIndex()
+    import csv
     
     # 5. Anomaly Detection (Bot Detection Monitoring) using new Witness Index
     total_scraped_tiles = 0

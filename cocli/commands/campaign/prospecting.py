@@ -517,6 +517,7 @@ def build_mission_index(
 def queue_mission(
     campaign_name: Optional[str] = typer.Argument(None),
     limit: int = typer.Option(100, help="Number of tasks to enqueue."),
+    sync: bool = typer.Option(True, help="Automatically sync scraped-tiles from S3 before enqueuing."),
     dry_run: bool = typer.Option(False, "--dry-run"),
 ) -> None:
     """
@@ -528,6 +529,29 @@ def queue_mission(
     if not campaign_name:
         console.print("[red]No campaign specified.[/red]")
         raise typer.Exit(1)
+
+    # 0. Auto-Sync State
+    if sync:
+        from cocli.commands.smart_sync import run_smart_sync
+        from cocli.core.config import load_campaign_config, get_cocli_base_dir
+        
+        console.print("[bold blue]Syncing scraped-tiles from S3...[/bold blue]")
+        config = load_campaign_config(campaign_name)
+        aws_config = config.get("aws", {})
+        bucket_name = aws_config.get("cocli_data_bucket_name") or f"cocli-data-{campaign_name}"
+        data_dir = get_cocli_base_dir()
+        
+        try:
+            run_smart_sync(
+                "scraped-tiles", 
+                bucket_name, 
+                "indexes/scraped-tiles/", 
+                data_dir / "indexes" / "scraped-tiles", 
+                campaign_name, 
+                aws_config
+            )
+        except Exception as e:
+            console.print(f"[yellow]Warning: Auto-sync failed: {e}. Proceeding with local state.[/yellow]")
 
     campaign_dir = get_campaign_dir(campaign_name)
     if not campaign_dir:
