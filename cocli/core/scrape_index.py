@@ -203,6 +203,24 @@ class ScrapeIndex:
             with open(file_path, 'w', encoding='utf-8') as f:
                 json.dump(data, f)
             logger.debug(f"Saved scraped area index: {file_path.name}")
+            
+            # --- PHASE 10: Witness File (Nested structure) ---
+            if tile_id:
+                try:
+                    lat_str, lon_str = tile_id.split('_')
+                    # indexes/scraped-tiles/30.2/-97.7/phrase.csv
+                    witness_dir = self.index_dir.parent / "scraped-tiles" / lat_str / lon_str
+                    witness_dir.mkdir(parents=True, exist_ok=True)
+                    witness_path = witness_dir / f"{phrase_slug}.csv"
+                    
+                    with open(witness_path, 'w', encoding='utf-8') as wf:
+                        wf.write(f"scrape_date,items_found\n")
+                        wf.write(f"{data['scrape_date']},{items_found}\n")
+                    logger.debug(f"Saved witness file: {witness_path}")
+                except Exception as we:
+                    logger.error(f"Failed to save witness file for {tile_id}: {we}")
+            # ------------------------------------------------
+            
             return file_path
         except Exception as e:
             logger.error(f"Failed to save scrape index {file_path}: {e}")

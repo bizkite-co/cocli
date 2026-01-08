@@ -15,6 +15,7 @@ from cocli.core.config import get_companies_dir, get_campaign_dir, get_campaign,
 from cocli.core.importing import import_prospect
 from cocli.core.prospects_csv_manager import ProspectsIndexManager
 from cocli.core.scrape_index import ScrapeIndex
+from cocli.core.text_utils import slugify
 from cocli.core.location_prospects_index import LocationProspectsIndex
 from cocli.core.queue.factory import get_queue_manager
 from cocli.planning.generate_grid import generate_global_grid, DEFAULT_GRID_STEP_DEG
@@ -459,15 +460,12 @@ def prepare_mission(
     console.print(f"  Saved frontier to: {pending_csv_path}")
     console.print(f"[dim]Offset reset to 0.[/dim]")
 
-@app.command(name="queue-mission")
-def queue_mission(
+@app.command(name="build-mission-index")
+def build_mission_index(
     campaign_name: Optional[str] = typer.Argument(None),
-    offset: Optional[int] = typer.Option(None, help="Starting index in the pending list."),
-    limit: int = typer.Option(100, help="Number of tasks to enqueue."),
-    dry_run: bool = typer.Option(False, "--dry-run"),
 ) -> None:
     """
-    Enqueues a specific range of tasks from the pending_scrape_total.csv.
+    Explodes the mission into a nested file-per-object Target Tile index.
     """
     if campaign_name is None:
         campaign_name = get_campaign()
@@ -477,61 +475,125 @@ def queue_mission(
         raise typer.Exit(1)
 
     campaign_dir = get_campaign_dir(campaign_name)
-    pending_csv_path = campaign_dir / "indexes" / "pending_scrape_total.csv"
-    state_path = campaign_dir / "mission_state.toml"
+    mission_path = campaign_dir / "mission.json"
+    target_index_dir = campaign_dir / "indexes" / "target-tiles"
 
-    if not pending_csv_path.exists():
-        console.print(f"[red]Pending list not found at {pending_csv_path}. Run 'prepare-mission' first.[/red]")
+    if not mission_path.exists():
+        console.print(f"[red]Mission list not found. Run 'prepare-mission' first.[/red]")
         raise typer.Exit(1)
 
-    # Load Pending Tasks
+    with open(mission_path, "r") as f:
+        tasks = json.load(f)
+
+    console.print(f"Exploding {len(tasks)} tasks into {target_index_dir}...")
+    
+    count = 0
+    for t in tasks:
+        tile_id = t["tile_id"]
+        phrase = t["search_phrase"]
+        lat_str, lon_str = tile_id.split("_")
+        
+        # target-tiles/30.2/-97.7/phrase.csv
+        tile_dir = target_index_dir / lat_str / lon_str
+        tile_dir.mkdir(parents=True, exist_ok=True)
+        
+        target_path = tile_dir / f"{slugify(phrase)}.csv"
+        
+        # Write minimal metadata
+        if not target_path.exists():
+            with open(target_path, "w") as f:
+                f.write("latitude,longitude\n")
+                f.write(f"{t['latitude']},{t['longitude']}\n")
+            count += 1
+
+    console.print(f"[bold green]Mission index built![/bold green]")
+    console.print(f"  Created {count} target tile files.")
+
+@app.command(name="queue-mission")
+def queue_mission(
+    campaign_name: Optional[str] = typer.Argument(None),
+    limit: int = typer.Option(100, help="Number of tasks to enqueue."),
+    dry_run: bool = typer.Option(False, "--dry-run"),
+) -> None:
+    """
+    Idempotently enqueues unscraped tasks by comparing the Target Index and the Global Scraped Index.
+    """
+    if campaign_name is None:
+        campaign_name = get_campaign()
+    
+    if not campaign_name:
+        console.print("[red]No campaign specified.[/red]")
+        raise typer.Exit(1)
+
+    campaign_dir = get_campaign_dir(campaign_name)
+    target_index_dir = campaign_dir / "indexes" / "target-tiles"
+    global_scraped_dir = Path("data/indexes/scraped-tiles")
+
+    if not target_index_dir.exists():
+        console.print(f"[red]Target Index not found at {target_index_dir}. Run 'build-mission-index' first.[/red]")
+        raise typer.Exit(1)
+
+    # 1. Find all target tiles
+    console.print(f"Scanning target index: {target_index_dir}...")
+    target_files = list(target_index_dir.glob("**/*.csv"))
+    console.print(f"Found {len(target_files)} total targets.")
+
+    # 2. Filter for pending (Set Difference)
     pending_tasks = []
-    with open(pending_csv_path, "r", newline="") as f:
-        reader = csv.DictReader(f)
-        pending_tasks = list(reader)
+    for tf in target_files:
+        # Relative path is lat/lon/phrase.csv
+        rel_path = tf.relative_to(target_index_dir)
+        witness_path = global_scraped_dir / rel_path
+        
+        if not witness_path.exists():
+            # Extract metadata from target file
+            try:
+                with open(tf, "r") as f:
+                    reader = csv.DictReader(f)
+                    row = next(reader)
+                
+                # phrase is the filename stem
+                phrase_slug = tf.stem
+                tile_id = f"{rel_path.parent.parent.name}_{rel_path.parent.name}"
+                
+                pending_tasks.append({
+                    "tile_id": tile_id,
+                    "search_phrase": phrase_slug,
+                    "latitude": float(row["latitude"]),
+                    "longitude": float(row["longitude"])
+                })
+            except Exception as e:
+                console.print(f"[red]Error reading {tf}: {e}[/red]")
+        
+        if len(pending_tasks) >= limit:
+            break
 
-    # Load State
-    state = {}
-    if state_path.exists():
-        state = toml.load(state_path)
-    
-    current_offset = offset if offset is not None else state.get("last_offset", 0)
-    
-    end_index = min(current_offset + limit, len(pending_tasks))
-    batch = pending_tasks[current_offset:end_index]
-
-    if not batch:
-        console.print(f"[yellow]No more tasks to queue in this pending list (Offset {current_offset} >= Total {len(pending_tasks)}).[/yellow]")
-        console.print("[dim]Run 'prepare-mission' to refresh the pending list if more work was added.[/dim]")
+    if not pending_tasks:
+        console.print("[bold green]All targets in the mission index have been scraped![/bold green]")
         return
 
-    console.print(f"[bold]Dispatching pending range: {current_offset} to {end_index-1} (Size: {len(batch)})[/bold]")
+    console.print(f"[bold]Dispatching {len(pending_tasks)} pending tasks...[/bold]")
 
     if dry_run:
-        console.print(f"[blue]Dry Run: Would queue {len(batch)} tasks.[/blue]")
-        for t in batch:
+        console.print(f"[blue]Dry Run: Would queue {len(pending_tasks)} tasks.[/blue]")
+        for t in pending_tasks:
              console.print(f"  - {t['search_phrase']} @ {t['tile_id']}")
         return
 
     queue_manager = get_queue_manager("scrape_tasks", use_cloud=True, queue_type="scrape")
-    for t_dict in batch:
+    for t in pending_tasks:
         queue_manager.push(ScrapeTask(
-            latitude=float(t_dict["latitude"]),
-            longitude=float(t_dict["longitude"]),
+            latitude=t["latitude"],
+            longitude=t["longitude"],
             zoom=13,
-            search_phrase=t_dict["search_phrase"],
+            search_phrase=t["search_phrase"], # Note: this will be re-slugified by the task, which is fine
             campaign_name=campaign_name,
-            tile_id=t_dict["tile_id"],
+            tile_id=t["tile_id"],
             ack_token=None
         ))
     
-    console.print(f"[bold green]Successfully queued {len(batch)} tasks.[/bold green]")
-
-    # Update state
-    state["last_offset"] = end_index
-    with open(state_path, "w") as f:
-        toml.dump(state, f)
-    console.print(f"[dim]Next offset will be: {end_index}[/dim]")
+    console.print(f"[bold green]Successfully queued {len(pending_tasks)} tasks.[/bold green]")
+    console.print(f"[dim]Note: This command is now idempotent. No offset is needed.[/dim]")
 
 @app.command()
 def achieve_goal(
