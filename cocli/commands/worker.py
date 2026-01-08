@@ -106,7 +106,7 @@ def ensure_campaign_config(campaign_name: str) -> None:
             
     logger.error(f"Failed to fetch config for '{campaign_name}' from S3.")
 
-async def run_worker(headless: bool, debug: bool, campaign_name: str) -> None:
+async def run_worker(headless: bool, debug: bool, campaign_name: str, workers: int = 1) -> None:
     try:
         ensure_campaign_config(campaign_name)
         
@@ -133,7 +133,7 @@ async def run_worker(headless: bool, debug: bool, campaign_name: str) -> None:
         logger.error(f"Configuration Error: {e}")
         return
 
-    logger.info(f"Worker v{VERSION} started for campaign '{campaign_name}'. Polling for tasks...")
+    logger.info(f"Worker v{VERSION} started for campaign '{campaign_name}' with {workers} worker(s). Polling for tasks...")
 
     async with async_playwright() as p:
         while True:  # Browser Restart Loop
@@ -153,81 +153,11 @@ async def run_worker(headless: bool, debug: bool, campaign_name: str) -> None:
                     ]
                 )
 
-                while True:  # Task Processing Loop
-                    if not browser.is_connected():
-                        logger.error("Browser is disconnected. Breaking task loop to restart.")
-                        break
-
-                    tasks = scrape_queue.poll(batch_size=1)
-                    
-                    if not tasks:
-                        await asyncio.sleep(5)
-                        continue
-                    
-                    task = tasks[0] # batch_size=1
-                    
-                    # Identify Mode
-                    grid_tiles = None
-                    if task.tile_id:
-                        logger.info(f"Grid Task ({task.tile_id}): {task.search_phrase}")
-                        grid_tiles = [{
-                            "id": task.tile_id,
-                            "center_lat": task.latitude,
-                            "center_lon": task.longitude,
-                            "center": {"lat": task.latitude, "lon": task.longitude}
-                        }]
-                    else:
-                        logger.info(f"Point Task: {task.search_phrase} @ {task.latitude}, {task.longitude}")
-                    
-                    try:
-                        location_param = {
-                            "latitude": str(task.latitude),
-                            "longitude": str(task.longitude)
-                        }
-                        csv_manager = ProspectsIndexManager(task.campaign_name)
-                        prospect_count = 0
-                        
-                        async with asyncio.timeout(900):
-                            async for prospect in scrape_google_maps(
-                                browser=browser,
-                                location_param=location_param,
-                                search_strings=[task.search_phrase],
-                                campaign_name=task.campaign_name,
-                                debug=debug,
-                                force_refresh=task.force_refresh,
-                                ttl_days=task.ttl_days,
-                                grid_tiles=grid_tiles,
-                                s3_client=s3_client,
-                                s3_bucket=bucket_name
-                            ):
-                                prospect_count += 1
-                                if csv_manager.append_prospect(prospect):
-                                    if prospect.Place_ID:
-                                        file_path = csv_manager.get_file_path(prospect.Place_ID)
-                                        if file_path.exists():
-                                            s3_key = f"campaigns/{task.campaign_name}/indexes/google_maps_prospects/{file_path.name}"
-                                            try:
-                                                s3_client.upload_file(str(file_path), bucket_name, s3_key)
-                                            except Exception as e:
-                                                logger.error(f"S3 Upload Error: {e}")
-
-                                        details_task = GmItemTask(
-                                            place_id=prospect.Place_ID,
-                                            campaign_name=task.campaign_name,
-                                            force_refresh=task.force_refresh,
-                                            ack_token=None
-                                        )
-                                        gm_list_item_queue.push(details_task)
-                        
-                        logger.info(f"Task Complete. Found {prospect_count} prospects.")
-                        scrape_queue.ack(task)
-                        
-                    except Exception as e:
-                        logger.error(f"Task Failed: {e}")
-                        scrape_queue.nack(task)
-                        if "Target page, context or browser has been closed" in str(e) or not browser.is_connected():
-                             logger.critical("Browser fatal error detected.")
-                             break
+                tasks = [
+                    _run_scrape_task_loop(browser, scrape_queue, gm_list_item_queue, s3_client, bucket_name, debug)
+                    for _ in range(workers)
+                ]
+                await asyncio.gather(*tasks)
 
             except Exception as e:
                 logger.error(f"Worker Error: {e}")
@@ -240,6 +170,83 @@ async def run_worker(headless: bool, debug: bool, campaign_name: str) -> None:
                         pass
                 logger.info("Restarting browser session in 5 seconds...")
                 await asyncio.sleep(5)
+
+async def _run_scrape_task_loop(browser: Any, scrape_queue: Any, gm_list_item_queue: Any, s3_client: Any, bucket_name: str, debug: bool) -> None:
+    while True:  # Task Processing Loop
+        if not browser.is_connected():
+            logger.error("Browser is disconnected. Breaking task loop to restart.")
+            break
+
+        tasks = scrape_queue.poll(batch_size=1)
+        
+        if not tasks:
+            await asyncio.sleep(5)
+            continue
+        
+        task = tasks[0] # batch_size=1
+        
+        # Identify Mode
+        grid_tiles = None
+        if task.tile_id:
+            logger.info(f"Grid Task ({task.tile_id}): {task.search_phrase}")
+            grid_tiles = [{
+                "id": task.tile_id,
+                "center_lat": task.latitude,
+                "center_lon": task.longitude,
+                "center": {"lat": task.latitude, "lon": task.longitude}
+            }]
+        else:
+            logger.info(f"Point Task: {task.search_phrase} @ {task.latitude}, {task.longitude}")
+        
+        try:
+            location_param = {
+                "latitude": str(task.latitude),
+                "longitude": str(task.longitude)
+            }
+            csv_manager = ProspectsIndexManager(task.campaign_name)
+            prospect_count = 0
+            
+            async with asyncio.timeout(900):
+                async for prospect in scrape_google_maps(
+                    browser=browser,
+                    location_param=location_param,
+                    search_strings=[task.search_phrase],
+                    campaign_name=task.campaign_name,
+                    debug=debug,
+                    force_refresh=task.force_refresh,
+                    ttl_days=task.ttl_days,
+                    grid_tiles=grid_tiles,
+                    s3_client=s3_client,
+                    s3_bucket=bucket_name
+                ):
+                    prospect_count += 1
+                    if csv_manager.append_prospect(prospect):
+                        if prospect.Place_ID:
+                            file_path = csv_manager.get_file_path(prospect.Place_ID)
+                            if file_path.exists():
+                                s3_key = f"campaigns/{task.campaign_name}/indexes/google_maps_prospects/{file_path.name}"
+                                try:
+                                    s3_client.upload_file(str(file_path), bucket_name, s3_key)
+                                except Exception as e:
+                                    logger.error(f"S3 Upload Error: {e}")
+
+                            details_task = GmItemTask(
+                                place_id=prospect.Place_ID,
+                                campaign_name=task.campaign_name,
+                                force_refresh=task.force_refresh,
+                                ack_token=None
+                            )
+                            gm_list_item_queue.push(details_task)
+            
+            logger.info(f"Task Complete. Found {prospect_count} prospects.")
+            scrape_queue.ack(task)
+            
+        except Exception as e:
+            logger.error(f"Task Failed: {e}")
+            scrape_queue.nack(task)
+            if "Target page, context or browser has been closed" in str(e) or not browser.is_connected():
+                 logger.critical("Browser fatal error detected.")
+                 break
 
 async def run_details_worker(headless: bool, debug: bool, campaign_name: str, once: bool = False, processed_by: Optional[str] = None, browser: Optional[Any] = None, workers: int = 1) -> None:
     if not processed_by:
@@ -517,7 +524,8 @@ async def _run_details_task_loop(browser_or_context: Any, gm_list_item_queue: An
 def scrape(
     campaign: Optional[str] = typer.Option(None, "--campaign", "-c", help="Campaign name."),
     headed: bool = typer.Option(False, "--headed", help="Run browser in headed mode."),
-    debug: bool = typer.Option(False, "--debug", help="Enable debug logging.")
+    debug: bool = typer.Option(False, "--debug", help="Enable debug logging."),
+    workers: int = typer.Option(1, "--workers", "-w", help="Number of concurrent workers.")
 ) -> None:
     """
     Starts a worker node that polls for scrape tasks and executes them.
@@ -542,11 +550,16 @@ def scrape(
     config = load_campaign_config(effective_campaign)
     prospecting_config = config.get("prospecting", {})
     
+    # Resolve worker count: CLI > Config > Default(1)
+    final_workers = workers
+    if final_workers == 1: # Default value from Typer
+        final_workers = prospecting_config.get("scrape_workers", 1)
+
     # Optional override of global scraper settings
     if "google_maps_delay_seconds" in prospecting_config:
         os.environ["GOOGLE_MAPS_DELAY_SECONDS"] = str(prospecting_config["google_maps_delay_seconds"])
 
-    asyncio.run(run_worker(not headed, debug, effective_campaign))
+    asyncio.run(run_worker(not headed, debug, effective_campaign, workers=final_workers))
 
 @app.command()
 def details(
@@ -577,7 +590,12 @@ def details(
     config = load_campaign_config(effective_campaign)
     prospecting_config = config.get("prospecting", {})
     
+    # Resolve worker count: CLI > Config > Default(1)
+    final_workers = workers
+    if final_workers == 1: # Default value from Typer
+        final_workers = prospecting_config.get("details_workers", 1)
+
     if "google_maps_delay_seconds" in prospecting_config:
         os.environ["GOOGLE_MAPS_DELAY_SECONDS"] = str(prospecting_config["google_maps_delay_seconds"])
 
-    asyncio.run(run_details_worker(not headed, debug, effective_campaign, workers=workers))
+    asyncio.run(run_details_worker(not headed, debug, effective_campaign, workers=final_workers))

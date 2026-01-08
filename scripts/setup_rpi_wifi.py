@@ -2,11 +2,12 @@ import argparse
 import json
 import subprocess
 import sys
+from typing import Optional, Any, cast
 from rich.console import Console
 
 console = Console()
 
-def check_op_signin():
+def check_op_signin() -> bool:
     """Checks if the user is signed in to 1Password CLI."""
     try:
         subprocess.run(["op", "whoami"], check=True, capture_output=True)
@@ -14,16 +15,16 @@ def check_op_signin():
     except subprocess.CalledProcessError:
         return False
 
-def get_op_item(item_id):
+def get_op_item(item_id: str) -> Optional[dict[str, Any]]:
     """Fetches item details from 1Password."""
     try:
         result = subprocess.run(["op", "item", "get", item_id, "--format", "json"], check=True, capture_output=True, text=True)
-        return json.loads(result.stdout)
+        return cast(dict[str, Any], json.loads(result.stdout))
     except subprocess.CalledProcessError as e:
         console.print(f"[bold red]Error fetching 1Password item:[/bold red] {e.stderr}")
         return None
 
-def main():
+def main() -> None:
     parser = argparse.ArgumentParser(description="Setup WiFi on a Raspberry Pi using 1Password credentials.")
     parser.add_argument("host", help="Hostname or IP of the Raspberry Pi (e.g., coclipi.local)")
     parser.add_argument("--user", default="mstouffer", help="SSH user for the Pi.")

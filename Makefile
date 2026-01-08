@@ -145,6 +145,8 @@ deduplicate-prospects: ## Deduplicate prospects CSV (Usage: make deduplicate-pro
 	$(VENV_DIR)/bin/python scripts/deduplicate_prospects.py $(or $(CAMPAIGN), turboship)
 
 WORKERS ?= 4
+DETAILS_WORKERS ?= 1
+SCRAPE_WORKERS ?= 1
 
 .PHONY: enrich-websites
 enrich-websites: install ## Enrich all companies with website data
@@ -510,7 +512,7 @@ start-rpi-worker: ## Start the Docker worker on Raspberry Pi
 		-e AWS_PROFILE=$(AWS_PROFILE) \
 		-e COCLI_SCRAPE_TASKS_QUEUE_URL='$(SCRAPE_QUEUE)' \
 		-e COCLI_GM_LIST_ITEM_QUEUE_URL='$(DETAILS_QUEUE)' \
-		-v ~/.aws:/root/.aws:ro cocli-worker-rpi:latest"
+		-v ~/.aws:/root/.aws:ro cocli-worker-rpi:latest cocli worker scrape --workers $(SCRAPE_WORKERS)"
 
 .PHONY: start-rpi-details-worker
 start-rpi-details-worker: ## Start the Details Worker on Raspberry Pi
@@ -522,7 +524,7 @@ start-rpi-details-worker: ## Start the Details Worker on Raspberry Pi
 		-e AWS_PROFILE=$(AWS_PROFILE) \
 		-e COCLI_GM_LIST_ITEM_QUEUE_URL='$(DETAILS_QUEUE)' \
 		-e COCLI_ENRICHMENT_QUEUE_URL='$(ENRICHMENT_QUEUE)' \
-		-v ~/.aws:/root/.aws:ro cocli-worker-rpi:latest cocli worker details"
+		-v ~/.aws:/root/.aws:ro cocli-worker-rpi:latest cocli worker details --workers $(DETAILS_WORKERS)"
 
 .PHONY: stop-rpi-worker
 stop-rpi-worker: ## Stop and remove the Docker worker on Raspberry Pi
@@ -540,23 +542,27 @@ restart-rpi-all: ## Restart all Raspberry Pi workers
 	-$(MAKE) stop-rpi-all RPI_HOST=octoprint.local
 	-$(MAKE) stop-rpi-all RPI_HOST=coclipi.local
 	-$(MAKE) stop-rpi-all RPI_HOST=cocli5x0.local
-	$(MAKE) start-rpi-worker RPI_HOST=octoprint.local
-	$(MAKE) start-rpi-details-worker RPI_HOST=coclipi.local
+	$(MAKE) start-rpi-worker RPI_HOST=octoprint.local SCRAPE_WORKERS=2
+	$(MAKE) start-rpi-details-worker RPI_HOST=coclipi.local DETAILS_WORKERS=1
+	$(MAKE) start-rpi-worker RPI_HOST=cocli5x0.local SCRAPE_WORKERS=2
+	$(MAKE) start-rpi-details-worker RPI_HOST=cocli5x0.local DETAILS_WORKERS=2
 
 .PHONY: deploy-cluster
 deploy-cluster: ## Rebuild and restart the entire cluster
 	@echo "Deploying to octoprint.local (Scraper)..."
 	$(MAKE) rebuild-rpi-worker RPI_HOST=octoprint.local
 	-$(MAKE) stop-rpi-all RPI_HOST=octoprint.local
-	$(MAKE) start-rpi-worker RPI_HOST=octoprint.local
+	$(MAKE) start-rpi-worker RPI_HOST=octoprint.local SCRAPE_WORKERS=2
 	@echo "Deploying to coclipi.local (Details)..."
 	$(MAKE) rebuild-rpi-worker RPI_HOST=coclipi.local
 	-$(MAKE) stop-rpi-all RPI_HOST=coclipi.local
-	$(MAKE) start-rpi-details-worker RPI_HOST=coclipi.local
-	@echo "Deploying to cocli5x0.local (Pi 5)..."
+	$(MAKE) start-rpi-details-worker RPI_HOST=coclipi.local DETAILS_WORKERS=1
+	@echo "Deploying to cocli5x0.local (Pi 5 Dual Role)..."
 	$(MAKE) rebuild-rpi-worker RPI_HOST=cocli5x0.local
 	-$(MAKE) stop-rpi-all RPI_HOST=cocli5x0.local
-	@echo "Cluster deployment complete (cocli5x0.local rebuild only; role unassigned)."
+	$(MAKE) start-rpi-worker RPI_HOST=cocli5x0.local SCRAPE_WORKERS=2
+	$(MAKE) start-rpi-details-worker RPI_HOST=cocli5x0.local DETAILS_WORKERS=2
+	@echo "Cluster deployment complete. Balanced workload across all nodes."
 
 .PHONY: shutdown-cluster
 shutdown-cluster: ## Safely shut down all Raspberry Pi workers

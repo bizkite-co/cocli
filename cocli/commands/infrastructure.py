@@ -30,7 +30,7 @@ def deploy_creds(
         raise typer.Exit(1)
 
     # Determine hosts
-    hosts = [host] if host else ["octoprint.local", "cocli5x0.local"]
+    hosts = [host] if host else ["octoprint.local", "cocli5x0.local", "coclipi.local"]
     
     success = True
     for h in hosts:
