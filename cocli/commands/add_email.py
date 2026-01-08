@@ -7,6 +7,7 @@ from ..models.company import Company
 from ..core.utils import create_company_files
 from ..core.email_index_manager import EmailIndexManager
 from ..models.email import EmailEntry
+from ..models.email_address import EmailAddress
 
 logger = logging.getLogger(__name__)
 app = typer.Typer()
@@ -36,17 +37,23 @@ def add_email(
         logger.error(f"Could not load company data for {company_name}")
         raise typer.Exit(code=1)
 
-    company.email = email
+    try:
+        email_addr = EmailAddress(email)
+    except Exception as e:
+        logger.error(f"Invalid email: {e}")
+        raise typer.Exit(code=1)
+
+    company.email = email_addr
     create_company_files(company, company_dir)
-    logger.info(f"Added email {email} to {company.name}")
+    logger.info(f"Added email {email_addr} to {company.name}")
 
     # Index the email if campaign is known
     eff_campaign = campaign_name or get_campaign()
     if eff_campaign:
         index_manager = EmailIndexManager(eff_campaign)
         entry = EmailEntry(
-            email=email,
-            domain=company.domain or email.split('@')[-1],
+            email=email_addr,
+            domain=company.domain or str(email_addr).split('@')[-1],
             company_slug=company.slug,
             source="manual_add",
             tags=company.tags

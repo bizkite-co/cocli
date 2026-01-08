@@ -1,4 +1,3 @@
-
 import typer
 import csv
 from pathlib import Path
@@ -14,6 +13,7 @@ from ..models.website_domain_csv import WebsiteDomainCsv
 from ..core.website_domain_csv_manager import WebsiteDomainCsvManager
 from ..core.email_index_manager import EmailIndexManager
 from ..models.email import EmailEntry
+from ..models.email_address import EmailAddress
 from ..core.config import get_campaign
 
 logger = logging.getLogger(__name__)
@@ -62,9 +62,14 @@ def import_customers(
 
             address_data = addresses.get(customer_id, {})
 
+            try:
+                email_addr = EmailAddress(email)
+            except Exception:
+                email_addr = None
+
             person = Person(
                 name=name,
-                email=email,
+                email=email_addr,
                 phone=phone or address_data.get("address_phone"),
                 tags=tags,
                 full_address=address_data.get("address"),
@@ -72,18 +77,22 @@ def import_customers(
                 state=address_data.get("state"),
                 zip_code=address_data.get("zip"),
                 country=address_data.get("country"),
-                slug=slugify(name), # Add slug here
+                slug=slugify(name),
             )
             
             # Index found email
             if email_index:
                 domain = email.split('@')[-1]
-                email_index.add_email(EmailEntry(
-                    email=email,
-                    domain=domain,
-                    source="shopify_customer_import",
-                    tags=tags
-                ))
+                try:
+                    email_addr = EmailAddress(email)
+                    email_index.add_email(EmailEntry(
+                        email=email_addr,
+                        domain=domain,
+                        source="shopify_customer_import",
+                        tags=tags
+                    ))
+                except Exception:
+                    pass
 
             company_name_from_address = address_data.get('company_name')
             domain = email.split('@')[1]
@@ -110,7 +119,7 @@ def import_customers(
                     domain=website_url,
                     tags=tags,
                     phone_1=phone or address_data.get("address_phone"),
-                    slug=slugify(company_name.replace("-", " ").title()), # Add slug here
+                    slug=slugify(company_name.replace("-", " ").title()),
                 )
                 company_dir = get_companies_dir() / slugify(company.name)
                 create_company_files(company, company_dir)
@@ -130,4 +139,3 @@ def import_customers(
             create_person_files(person, person_dir)
 
             logger.info(f"Imported customer: {person.name}")
-

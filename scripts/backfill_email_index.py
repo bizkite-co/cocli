@@ -5,6 +5,7 @@ from rich.console import Console
 from rich.progress import track
 from cocli.core.config import get_companies_dir, get_campaign
 from cocli.core.email_index_manager import EmailIndexManager
+from cocli.core.text_utils import is_valid_email
 from cocli.models.email import EmailEntry
 
 app = typer.Typer()
@@ -84,6 +85,8 @@ def main(campaign_name: Optional[str] = typer.Argument(None, help="Campaign name
                 pass
 
         for email in emails:
+            if not is_valid_email(email):
+                continue
             entry = EmailEntry(
                 email=email,
                 domain=domain,

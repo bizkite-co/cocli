@@ -68,9 +68,13 @@ class WebsiteCompiler(BaseCompiler):
 
         if website_data.email and not company.email:
             # Clean the email by removing all spaces
-            cleaned_email = website_data.email.replace(' ', '')
-            company.email = cleaned_email
-            updated = True
+            from ..models.email_address import EmailAddress
+            try:
+                cleaned_email = EmailAddress(website_data.email.replace(' ', ''))
+                company.email = cleaned_email
+                updated = True
+            except Exception:
+                pass
 
         if updated:
             create_company_files(company, company_dir)

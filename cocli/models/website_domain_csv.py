@@ -2,12 +2,13 @@ from pydantic import BaseModel, Field
 from typing import Optional, List, Dict
 from datetime import datetime
 from .domain import Domain
+from .email_address import EmailAddress
 
 class WebsiteDomainCsv(BaseModel):
     domain: Domain
     company_name: Optional[str] = None
     phone: Optional[str] = None
-    email: Optional[str] = None
+    email: Optional[EmailAddress] = None
     facebook_url: Optional[str] = None
     linkedin_url: Optional[str] = None
     instagram_url: Optional[str] = None
@@ -23,7 +24,7 @@ class WebsiteDomainCsv(BaseModel):
     scraper_version: Optional[int] = 1
     associated_company_folder: Optional[str] = None
     is_email_provider: bool = False
-    all_emails: List[str] = []
+    all_emails: List[EmailAddress] = []
     email_contexts: Dict[str, str] = {}
     tech_stack: List[str] = []
     created_at: datetime = Field(default_factory=datetime.utcnow)

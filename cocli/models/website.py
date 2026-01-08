@@ -4,6 +4,7 @@ from datetime import datetime, timezone
 import yaml
 import logging
 from .domain import Domain
+from .email_address import EmailAddress
 
 logger = logging.getLogger(__name__)
 
@@ -25,7 +26,7 @@ class Website(BaseModel):
 
     company_name: Optional[str] = None
     phone: Optional[str] = None
-    email: Optional[str] = None
+    email: Optional[EmailAddress] = None
     facebook_url: Optional[str] = None
     linkedin_url: Optional[str] = None
     instagram_url: Optional[str] = None
@@ -44,7 +45,7 @@ class Website(BaseModel):
     scraper_version: Optional[int] = 1
     associated_company_folder: Optional[str] = None
     is_email_provider: bool = False
-    all_emails: List[str] = []
+    all_emails: List[EmailAddress] = []
     email_contexts: Dict[str, str] = {}
     tech_stack: List[str] = []
 

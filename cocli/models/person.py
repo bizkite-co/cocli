@@ -3,7 +3,8 @@ from typing import Any, Optional, Iterator
 import logging
 
 import yaml
-from pydantic import BaseModel, Field, ValidationError, EmailStr
+from pydantic import BaseModel, Field, ValidationError
+from .email_address import EmailAddress
 
 from ..core.config import get_people_dir
 
@@ -11,7 +12,7 @@ logger = logging.getLogger(__name__)
 
 class Person(BaseModel):
     name: str
-    email: Optional[EmailStr] = None
+    email: Optional[EmailAddress] = None
     phone: Optional[str] = Field(None, pattern=r"^\+?(?:\d{1,3})?[\s./-]*(?:\(\d{1,4}\))?[\s./-]*\d{1,14}(?:[\s./-]*\d+)*(?:\s*(?:ext|x|Ext|X|\#)\.?\s*\d{1,5})?$")
     company_name: Optional[str] = None  # Added to link person to company
     role: Optional[str] = None

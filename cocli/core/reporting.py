@@ -134,14 +134,25 @@ def get_campaign_stats(campaign_name: str) -> Dict[str, Any]:
         # Local queue stats could be added here if implemented
 
     # 3. Enriched Companies & Emails
-    # We use the email index for efficiency if it exists, otherwise scan
+    from cocli.core.email_index_manager import EmailIndexManager
+    
+    email_index = EmailIndexManager(campaign_name)
+    emails_found_count = 0
+    domains_with_emails = set()
+    
+    # We use the email index for primary counts
+    for email_entry in email_index.read_all_emails():
+        emails_found_count += 1
+        if email_entry.domain:
+            domains_with_emails.add(email_entry.domain)
+    
+    companies_with_emails_count = len(domains_with_emails)
+
     from cocli.core.config import get_companies_dir
-    import yaml
 
     enriched_count = 0
-    companies_with_emails_count = 0
-    emails_found_count = 0
-
+    # Fallback/validation counts from companies directory
+    # (We still scan to get the total enriched_count for the tag)
     companies_dir = get_companies_dir()
     tag = config.get('campaign', {}).get('tag') or campaign_name
 
@@ -163,26 +174,7 @@ def get_campaign_stats(campaign_name: str) -> Dict[str, Any]:
                     pass
             
             if has_tag:
-                # Read _index.md for email info
-                index_file = company_dir / "_index.md"
-                if index_file.exists():
-                    try:
-                        content = index_file.read_text()
-                        if "---" in content:
-                            parts = content.split("---")
-                            if len(parts) >= 3:
-                                fm = yaml.safe_load(parts[1])
-                                if fm:
-                                    enriched_count += 1
-                                    if fm.get('email'):
-                                        companies_with_emails_count += 1
-                                    all_emails = fm.get('all_emails', [])
-                                    if isinstance(all_emails, list):
-                                        emails_found_count += len(all_emails)
-                                    elif fm.get('email'):
-                                        emails_found_count += 1
-                    except Exception:
-                        continue
+                enriched_count += 1
 
     stats['enriched_count'] = enriched_count
     stats['companies_with_emails_count'] = companies_with_emails_count

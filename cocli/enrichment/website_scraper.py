@@ -18,6 +18,8 @@ from ..models.campaign import Campaign
 from ..core.exceptions import NavigationError, EnrichmentError
 from ..core.email_index_manager import EmailIndexManager
 from ..models.email import EmailEntry
+from ..models.email_address import EmailAddress
+
 
 logger = logging.getLogger(__name__)
 
@@ -434,12 +436,15 @@ class WebsiteScraper:
 
         # 2. Extract all emails
         email_map = self._extract_all_emails(soup, html_content)
-        for email, label in email_map.items():
-            if email not in website_data.all_emails:
-                website_data.all_emails.append(email)
-            if label and email not in website_data.email_contexts:
-                website_data.email_contexts[email] = label
-
+        for email_str, label in email_map.items():
+            try:
+                email_addr = EmailAddress(email_str)
+                if email_addr not in website_data.all_emails:
+                    website_data.all_emails.append(email_addr)
+                if label and email_addr not in website_data.email_contexts:
+                    website_data.email_contexts[email_addr] = label
+            except Exception:
+                continue
         # Extract Company Name
         if not website_data.company_name:
             company_name = None
@@ -475,8 +480,11 @@ class WebsiteScraper:
                 text_content = soup.get_text(separator=' ')
                 email_match = re.search(r"\b[a-zA-Z0-9._%+-]+ ?@ ?[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}\b", text_content)
                 if email_match:
-                    website_data.email = str(email_match.group(0)).replace(" ", "")
-                    logger.info(f"SUCCESS: Found email: {website_data.email}")
+                    try:
+                        website_data.email = EmailAddress(str(email_match.group(0)).replace(" ", ""))
+                        logger.info(f"SUCCESS: Found email: {website_data.email}")
+                    except Exception:
+                        logger.warning(f"Found anomalous email in text: {email_match.group(0)}")
                 else:
                     logger.warning(f"No email found in text content of {page.url}")
 
@@ -596,8 +604,11 @@ class WebsiteScraper:
         # Extract Email
         email_match = re.search(r"\b[a-zA-Z0-9._%+-]+ ?@ ?[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}\b", soup.get_text(separator=' '))
         if email_match:
-            person_data["email"] = email_match.group(0).replace(" ", "")
-            logger.info(f"Found person email: {person_data['email']}")
+            try:
+                person_data["email"] = EmailAddress(email_match.group(0).replace(" ", ""))
+                logger.info(f"Found person email: {person_data['email']}")
+            except Exception:
+                pass
 
         # Extract LinkedIn URL
         linkedin_link = soup.find("a", href=re.compile(r"linkedin\.com/in/", re.IGNORECASE))

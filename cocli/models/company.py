@@ -8,6 +8,7 @@ import yaml
 from pydantic import BaseModel, Field, BeforeValidator, ValidationError, model_validator
 from typing_extensions import Annotated
 
+from .email_address import EmailAddress
 from ..core.config import get_companies_dir
 
 logger = logging.getLogger(__name__)
@@ -42,9 +43,9 @@ class Company(BaseModel):
     phone_1: Optional[str] = None
     phone_number: Optional[str] = None
     phone_from_website: Optional[str] = None
-    email: Optional[str] = None
+    email: Optional[EmailAddress] = None
     website_url: Optional[str] = None
-    all_emails: List[str] = Field(default_factory=list)
+    all_emails: List[EmailAddress] = Field(default_factory=list)
     email_contexts: Dict[str, str] = Field(default_factory=dict)
     tech_stack: List[str] = Field(default_factory=list)
 
