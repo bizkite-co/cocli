@@ -3,6 +3,7 @@ import asyncio
 import logging
 import toml
 import json
+import csv
 import httpx
 from pathlib import Path
 from typing import Optional, List, Dict, Any, cast
@@ -16,6 +17,7 @@ from cocli.core.prospects_csv_manager import ProspectsIndexManager
 from cocli.core.scrape_index import ScrapeIndex
 from cocli.core.location_prospects_index import LocationProspectsIndex
 from cocli.core.queue.factory import get_queue_manager
+from cocli.planning.generate_grid import generate_global_grid, DEFAULT_GRID_STEP_DEG
 from cocli.models.queue import QueueMessage
 from cocli.models.scrape_task import ScrapeTask
 from cocli.models.google_maps_prospect import GoogleMapsProspect
@@ -341,6 +343,195 @@ def queue_batch(
         console.print(f"[bold green]Successfully queued {len(tasks_to_queue)} tasks.[/bold green]")
     else:
         console.print("[yellow]No tasks to queue.[/yellow]")
+
+@app.command(name="prepare-mission")
+def prepare_mission(
+    campaign_name: Optional[str] = typer.Argument(None),
+) -> None:
+    """
+    Generates a deterministic master task list (mission.json) for the campaign.
+    """
+    if campaign_name is None:
+        campaign_name = get_campaign()
+    
+    if not campaign_name:
+        console.print("[red]No campaign specified.[/red]")
+        raise typer.Exit(1)
+
+    campaign_dir = get_campaign_dir(campaign_name)
+    if not campaign_dir:
+        console.print(f"[red]Campaign directory not found for {campaign_name}[/red]")
+        raise typer.Exit(1)
+
+    # 1. Load Config
+    with open(campaign_dir / "config.toml", "r") as f:
+        config = toml.load(f)
+    
+    prospecting_config = config.get("prospecting", {})
+    proximity_miles = float(prospecting_config.get("proximity", 10.0))
+    search_phrases = prospecting_config.get("queries", [])
+    target_locations_csv = prospecting_config.get("target-locations-csv")
+
+    # 2. Load Target Locations
+    target_locations: List[Dict[str, Any]] = []
+    if target_locations_csv:
+        csv_path = campaign_dir / target_locations_csv
+        if csv_path.exists():
+            with open(csv_path, 'r', encoding='utf-8') as f:
+                reader = csv.DictReader(f)
+                for row in reader:
+                    lat, lon = row.get("lat"), row.get("lon")
+                    if lat and lon:
+                        target_locations.append({
+                            "name": row.get("name") or row.get("city"),
+                            "lat": float(lat),
+                            "lon": float(lon)
+                        })
+
+    # 3. Generate Grid
+    console.print(f"[bold]Generating grid for {len(target_locations)} locations (Radius: {proximity_miles} mi)...[/bold]")
+    all_tiles: Dict[str, Any] = {}
+    for loc in target_locations:
+        tiles = generate_global_grid(loc["lat"], loc["lon"], proximity_miles, step_deg=DEFAULT_GRID_STEP_DEG)
+        for tile in tiles:
+            if tile["id"] not in all_tiles:
+                all_tiles[tile["id"]] = tile
+
+    unique_tiles = list(all_tiles.values())
+    
+    # Save target-areas.json for compatibility
+    export_dir = campaign_dir / "exports"
+    export_dir.mkdir(parents=True, exist_ok=True)
+    with open(export_dir / "target-areas.json", "w") as f:
+        json.dump(unique_tiles, f, indent=2)
+
+    # 4. Build Deterministic Task List
+    tasks = []
+    for tile in unique_tiles:
+        lat = tile.get("center_lat") or tile.get("center", {}).get("lat")
+        lon = tile.get("center_lon") or tile.get("center", {}).get("lon")
+        tile_id = tile.get("id")
+        if lat and lon and tile_id:
+            for phrase in search_phrases:
+                tasks.append({
+                    "tile_id": tile_id,
+                    "search_phrase": phrase,
+                    "latitude": float(lat),
+                    "longitude": float(lon)
+                })
+
+    # Sort by tile_id then phrase for stability
+    tasks.sort(key=lambda x: (x["tile_id"], x["search_phrase"]))
+
+    mission_path = campaign_dir / "mission.json"
+    with open(mission_path, "w") as f:
+        json.dump(tasks, f, indent=2)
+
+    # 5. Filter for Pending Tasks (The Frontier)
+    console.print(f"[bold]Filtering against ScrapeIndex to find the frontier...[/bold]")
+    scrape_index = ScrapeIndex()
+    pending_tasks = []
+    
+    for t in tasks:
+        if not scrape_index.is_tile_scraped(t["search_phrase"], t["tile_id"], ttl_days=30):
+            # Double check with area bounds to be safe
+            lat, lon = t["latitude"], t["longitude"]
+            bounds = {"lat_min": lat-0.05, "lat_max": lat+0.05, "lon_min": lon-0.05, "lon_max": lon+0.05}
+            if not scrape_index.is_area_scraped(t["search_phrase"], bounds, overlap_threshold_percent=90.0):
+                pending_tasks.append(t)
+
+    pending_csv_path = campaign_dir / "indexes" / "pending_scrape_total.csv"
+    pending_csv_path.parent.mkdir(exist_ok=True)
+    
+    with open(pending_csv_path, "w", newline="") as f:
+        writer = csv.DictWriter(f, fieldnames=["tile_id", "search_phrase", "latitude", "longitude"])
+        writer.writeheader()
+        writer.writerows(pending_tasks)
+
+    # 6. Reset State
+    state_path = campaign_dir / "mission_state.toml"
+    with open(state_path, "w") as f:
+        toml.dump({"last_offset": 0}, f)
+
+    console.print(f"[bold green]Mission prepared![/bold green]")
+    console.print(f"  Total mission tasks: [cyan]{len(tasks)}[/cyan]")
+    console.print(f"  [bold yellow]Pending (unscraped): {len(pending_tasks)}[/bold yellow]")
+    console.print(f"  Saved frontier to: {pending_csv_path}")
+    console.print(f"[dim]Offset reset to 0.[/dim]")
+
+@app.command(name="queue-mission")
+def queue_mission(
+    campaign_name: Optional[str] = typer.Argument(None),
+    offset: Optional[int] = typer.Option(None, help="Starting index in the pending list."),
+    limit: int = typer.Option(100, help="Number of tasks to enqueue."),
+    dry_run: bool = typer.Option(False, "--dry-run"),
+) -> None:
+    """
+    Enqueues a specific range of tasks from the pending_scrape_total.csv.
+    """
+    if campaign_name is None:
+        campaign_name = get_campaign()
+    
+    if not campaign_name:
+        console.print("[red]No campaign specified.[/red]")
+        raise typer.Exit(1)
+
+    campaign_dir = get_campaign_dir(campaign_name)
+    pending_csv_path = campaign_dir / "indexes" / "pending_scrape_total.csv"
+    state_path = campaign_dir / "mission_state.toml"
+
+    if not pending_csv_path.exists():
+        console.print(f"[red]Pending list not found at {pending_csv_path}. Run 'prepare-mission' first.[/red]")
+        raise typer.Exit(1)
+
+    # Load Pending Tasks
+    pending_tasks = []
+    with open(pending_csv_path, "r", newline="") as f:
+        reader = csv.DictReader(f)
+        pending_tasks = list(reader)
+
+    # Load State
+    state = {}
+    if state_path.exists():
+        state = toml.load(state_path)
+    
+    current_offset = offset if offset is not None else state.get("last_offset", 0)
+    
+    end_index = min(current_offset + limit, len(pending_tasks))
+    batch = pending_tasks[current_offset:end_index]
+
+    if not batch:
+        console.print(f"[yellow]No more tasks to queue in this pending list (Offset {current_offset} >= Total {len(pending_tasks)}).[/yellow]")
+        console.print("[dim]Run 'prepare-mission' to refresh the pending list if more work was added.[/dim]")
+        return
+
+    console.print(f"[bold]Dispatching pending range: {current_offset} to {end_index-1} (Size: {len(batch)})[/bold]")
+
+    if dry_run:
+        console.print(f"[blue]Dry Run: Would queue {len(batch)} tasks.[/blue]")
+        for t in batch:
+             console.print(f"  - {t['search_phrase']} @ {t['tile_id']}")
+        return
+
+    queue_manager = get_queue_manager("scrape_tasks", use_cloud=True, queue_type="scrape")
+    for t_dict in batch:
+        queue_manager.push(ScrapeTask(
+            latitude=float(t_dict["latitude"]),
+            longitude=float(t_dict["longitude"]),
+            zoom=13,
+            search_phrase=t_dict["search_phrase"],
+            campaign_name=campaign_name,
+            tile_id=t_dict["tile_id"],
+            ack_token=None
+        ))
+    
+    console.print(f"[bold green]Successfully queued {len(batch)} tasks.[/bold green]")
+
+    # Update state
+    state["last_offset"] = end_index
+    with open(state_path, "w") as f:
+        toml.dump(state, f)
+    console.print(f"[dim]Next offset will be: {end_index}[/dim]")
 
 @app.command()
 def achieve_goal(

@@ -141,6 +141,11 @@ graph TD
     I --> I1[PI Tool Consolidation];
     I --> I2[Campaign-Driven Worker Config];
     I --> I3[Automated Scaling];
+
+    I3 --> J{Phase 10: Deterministic Mission Indexes};
+    J --> J1[Target Tile Indexing];
+    J --> J2[File-per-Object Scrape Tracking];
+    J --> J3[Idempotent Dispatcher];
 ```
 
 ## Phase 9: Standardization & Distributed Coordination (Active)
@@ -156,4 +161,21 @@ graph TD
 
 3.  **Campaign-Driven Host Discovery:**
     *   [ ] Move worker hostnames (`octoprint.local`, etc.) into campaign `config.toml` to remove hardcoded host lists from the CLI.
+
+## Phase 10: Deterministic Mission Indexes (Planned)
+
+**Goal:** Eliminate brittle offset-based queueing in favor of a file-per-object "Mission Index" that is S3-syncable and inherently idempotent.
+
+1.  **Campaign Target Index:**
+    *   [ ] Implement `cocli campaign build-mission-index` to generate files in `campaigns/{name}/indexes/target-tiles/{lat}/{lon}/{phrase}.csv`.
+    *   [ ] This replaces the monolithic `mission.json` and `pending_scrape_total.csv`.
+
+2.  **Global Scraped Index (Witness Files):**
+    *   [ ] Update `cocli worker scrape` to write a "witness file" to `data/indexes/scraped-tiles/{lat}/{lon}/{phrase}.csv` upon completion.
+    *   [ ] Each file contains a timestamp and result count.
+    *   [ ] Enable `smart-sync` for this global directory to share proof-of-work across the cluster.
+
+3.  **Idempotent Dispatcher:**
+    *   [ ] Refactor `queue-mission` to use a set-difference approach: `Pending = TargetIndex - GlobalScrapedIndex`.
+    *   [ ] Remove reliance on `mission_state.toml` and integer offsets.
 ```

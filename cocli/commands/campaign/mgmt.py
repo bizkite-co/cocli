@@ -8,6 +8,7 @@ from rich.console import Console
 from typing_extensions import Annotated
 
 from ...core.config import get_campaign_dir, get_cocli_base_dir, get_all_campaign_dirs, get_editor_command, get_campaign, set_campaign
+from ...core.geocoding import get_coordinates_from_city_state, get_coordinates_from_address
 from ...models.campaign import Campaign
 from ...renderers.campaign_view import display_campaign_view
 from ...core.campaign_workflow import CampaignWorkflow
@@ -281,9 +282,23 @@ def add_location(
                 new_row["city"] = city
                 new_row["state"] = state
                 new_row["name"] = location
+                
+                # Proactive geocoding
+                coords = get_coordinates_from_city_state(location)
+                if coords:
+                    new_row["lat"] = str(coords["latitude"])
+                    new_row["lon"] = str(coords["longitude"])
+                    console.print(f"[dim]Geocoded {location}: {new_row['lat']}, {new_row['lon']}[/dim]")
             else:
                 new_row["name"] = location
                 new_row["city"] = location
+                
+                # Proactive geocoding
+                coords = get_coordinates_from_address(location)
+                if coords:
+                    new_row["lat"] = str(coords["latitude"])
+                    new_row["lon"] = str(coords["longitude"])
+                    console.print(f"[dim]Geocoded {location}: {new_row['lat']}, {new_row['lon']}[/dim]")
             
             rows.append(new_row)
             # Sort by name
@@ -308,6 +323,74 @@ def add_location(
             console.print(f"[green]Added location to config:[/green] {location}")
         else:
             console.print(f"[yellow]Location already exists in config:[/yellow] {location}")
+
+@app.command()
+def geocode_locations(
+    campaign_name: Annotated[Optional[str], typer.Argument(help="The name of the campaign.")] = None
+) -> None:
+    """
+    Scans the campaign's target locations CSV and fills in missing geocoordinates.
+    """
+    if not campaign_name:
+        campaign_name = get_campaign()
+    if not campaign_name:
+        console.print("[bold red]Error: No campaign specified.[/bold red]")
+        raise typer.Exit(1)
+
+    campaign_dir = get_campaign_dir(campaign_name)
+    if not campaign_dir:
+        console.print(f"[bold red]Error: Campaign directory not found for {campaign_name}[/bold red]")
+        raise typer.Exit(1)
+
+    config_path = campaign_dir / "config.toml"
+    with open(config_path, "r") as f:
+        config = toml.load(f)
+
+    target_csv = config.get("prospecting", {}).get("target-locations-csv")
+    if not target_csv:
+        console.print("[yellow]No target-locations-csv configured for this campaign.[/yellow]")
+        return
+
+    csv_path = campaign_dir / target_csv
+    if not csv_path.exists():
+        console.print(f"[red]CSV file not found at {csv_path}[/red]")
+        return
+
+    rows = []
+    updated_count = 0
+    fieldnames = []
+    
+    with open(csv_path, "r", newline="") as f:
+        reader = csv.DictReader(f)
+        fieldnames = list(reader.fieldnames) if reader.fieldnames else []
+        for row in reader:
+            if not row.get("lat") or not row.get("lon"):
+                name = row.get("name") or row.get("city")
+                if name:
+                    console.print(f"Geocoding: [bold cyan]{name}[/bold cyan]...")
+                    coords = None
+                    if "," in name:
+                        coords = get_coordinates_from_city_state(name)
+                    else:
+                        coords = get_coordinates_from_address(name)
+                    
+                    if coords:
+                        row["lat"] = str(coords["latitude"])
+                        row["lon"] = str(coords["longitude"])
+                        updated_count += 1
+                        console.print(f"  [green]Found: {row['lat']}, {row['lon']}[/green]")
+                    else:
+                        console.print(f"  [yellow]Could not geocode.[/yellow]")
+            rows.append(row)
+
+    if updated_count > 0:
+        with open(csv_path, "w", newline="") as f:
+            writer = csv.DictWriter(f, fieldnames=fieldnames)
+            writer.writeheader()
+            writer.writerows(rows)
+        console.print(f"[bold green]Successfully updated {updated_count} locations in {target_csv}[/bold green]")
+    else:
+        console.print("[yellow]No missing geocoordinates found.[/yellow]")
 
 @app.command()
 def remove_location(
