@@ -4,6 +4,7 @@ import logging
 import toml
 import json
 import httpx
+from pathlib import Path
 from typing import Optional, List, Dict, Any, cast
 from rich.console import Console
 from playwright.async_api import async_playwright
@@ -261,9 +262,12 @@ def queue_batch(
     campaign_name: Optional[str] = typer.Argument(None),
     limit: int = typer.Option(100, "--limit", help="Number of tasks to enqueue."),
     force: bool = typer.Option(False, "--force"),
+    dry_run: bool = typer.Option(False, "--dry-run", help="Show tasks without enqueuing."),
+    output: Optional[Path] = typer.Option(None, "--output", "-o", help="Save tasks to a JSON file instead of enqueuing."),
+    no_limit: bool = typer.Option(False, "--no-limit", help="Ignore the limit and process all unscraped areas."),
 ) -> None:
     """
-    Enqueues a limited batch of scrape tasks for the campaign.
+    Enqueues or exports a batch of scrape tasks for the campaign.
     """
     if campaign_name is None:
         campaign_name = get_campaign()
@@ -302,24 +306,38 @@ def queue_batch(
                         if scrape_index.is_area_scraped(phrase, bounds, overlap_threshold_percent=90.0):
                             continue
 
-                    tasks_to_queue.append(ScrapeTask(
-                        latitude=float(lat), 
-                        longitude=float(lon), 
-                        zoom=13, 
-                        search_phrase=phrase, 
-                        campaign_name=campaign_name, 
-                        tile_id=tile.get("id"),
-                        ack_token=None
-                    ))
-                    if len(tasks_to_queue) >= limit:
+                    tasks_to_queue.append({
+                        "latitude": float(lat), 
+                        "longitude": float(lon), 
+                        "zoom": 13, 
+                        "search_phrase": phrase, 
+                        "campaign_name": campaign_name, 
+                        "tile_id": tile.get("id"),
+                        "ack_token": None
+                    })
+                    
+                    if not no_limit and len(tasks_to_queue) >= limit:
                         break
-            if len(tasks_to_queue) >= limit:
+            if not no_limit and len(tasks_to_queue) >= limit:
                 break
 
     if tasks_to_queue:
+        if output:
+            with open(output, "w") as f:
+                json.dump(tasks_to_queue, f, indent=2)
+            console.print(f"[bold green]Successfully exported {len(tasks_to_queue)} tasks to {output}[/bold green]")
+            return
+
+        if dry_run:
+            console.print(f"[bold blue]Dry Run: Would have queued {len(tasks_to_queue)} tasks:[/bold blue]")
+            for t_dict in tasks_to_queue:
+                console.print(f" - {t_dict['search_phrase']} @ {t_dict['latitude']}, {t_dict['longitude']} (Tile: {t_dict['tile_id']})")
+            return
+
         queue_manager = get_queue_manager("scrape_tasks", use_cloud=True, queue_type="scrape")
-        for task in tasks_to_queue:
-            queue_manager.push(task)
+        for t_dict in tasks_to_queue:
+            from cocli.models.scrape_task import ScrapeTask
+            queue_manager.push(ScrapeTask(**t_dict))
         console.print(f"[bold green]Successfully queued {len(tasks_to_queue)} tasks.[/bold green]")
     else:
         console.print("[yellow]No tasks to queue.[/yellow]")
