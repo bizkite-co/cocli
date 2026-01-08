@@ -48,10 +48,24 @@ class WildernessManager:
 
         if file_path and self.s3_client and self.s3_bucket:
             try:
+                # 1. Upload legacy JSON
                 # Calculate S3 Key: indexes/scraped_areas/{phrase}/{grid}/{file}
                 relative_path = file_path.relative_to(self.base_dir)
                 s3_key = f"indexes/scraped_areas/{relative_path}"
                 self.s3_client.upload_file(str(file_path), self.s3_bucket, s3_key)
                 logger.info(f"Uploaded scraped area to s3://{self.s3_bucket}/{s3_key}")
+
+                # 2. Upload Witness CSV (Phase 10)
+                if tile_id:
+                    from cocli.core.text_utils import slugify
+                    lat_str, lon_str = tile_id.split("_")
+                    phrase_slug = slugify(query)
+                    witness_rel_path = f"scraped-tiles/{lat_str}/{lon_str}/{phrase_slug}.csv"
+                    witness_local_path = self.base_dir.parent / witness_rel_path
+                    
+                    if witness_local_path.exists():
+                        witness_s3_key = f"indexes/{witness_rel_path}"
+                        self.s3_client.upload_file(str(witness_local_path), self.s3_bucket, witness_s3_key)
+                        logger.info(f"Uploaded witness file to s3://{self.s3_bucket}/{witness_s3_key}")
             except Exception as e:
                 logger.error(f"Failed to upload scraped area to S3: {e}")
