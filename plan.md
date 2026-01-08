@@ -143,22 +143,6 @@ graph TD
     I --> I3[Automated Scaling];
 ```
 
-## Phase 8: Cluster Orchestration & Configuration Decoupling (Completed)
-
-**Goal:** Transition from hardcoded Makefile-based management to a dynamic, configuration-driven orchestration module.
-
-1.  **PI Tool Consolidation (Done):**
-    *   [x] Moved standalone RPi scripts into `cocli.core.infrastructure.rpi`.
-    *   [x] Exposed cluster management via `cocli infrastructure` CLI commands (`start-worker`, `stop-workers`, `deploy-creds`).
-
-2.  **Infrastructure Hardening (Done):**
-    *   [x] **S3 Isolation:** Implemented tag-based IAM isolation to ensure campaigns cannot access each other's data.
-    *   [x] **Log Retention:** Enforced global 3-day CloudWatch log retention via CDK Aspects.
-    *   [x] **Config-Driven Safety:** Integrated `cluster_concurrency` and `google_maps_delay_seconds` into campaign `config.toml`.
-
-3.  **Automated Scaling (Done):**
-    *   [x] Implemented multi-worker support for RPi nodes (Pi 5 running 4 concurrent browsers).
-
 ## Phase 9: Standardization & Distributed Coordination (Active)
 
 **Goal:** Refactor for consistency across large-scale deployments and implement inter-node coordination.
