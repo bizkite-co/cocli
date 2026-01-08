@@ -176,6 +176,14 @@ render-prospects-kml: install ## Render KML for turboship prospects
 publish-kml: ## Generate and upload all KMLs (Coverage, Prospects, Customers) to S3
 	@$(VENV_DIR)/bin/cocli campaign publish-kml $(or $(CAMPAIGN), turboship)
 
+.PHONY: publish-config
+publish-config: ## Upload the current campaign config.toml to S3
+	$(call validate_campaign)
+	$(eval BUCKET := $(shell ./.venv/bin/python -c "from cocli.core.config import load_campaign_config; print(load_campaign_config('$(CAMPAIGN)').get('aws', {}).get('cocli_data_bucket_name', ''))"))
+	@if [ -z "$(BUCKET)" ]; then echo "Error: cocli_data_bucket_name not found in config for $(CAMPAIGN)"; exit 1; fi
+	aws s3 cp cocli_data/campaigns/$(CAMPAIGN)/config.toml s3://$(BUCKET)/config.toml --profile $(AWS_PROFILE)
+	@echo "Config uploaded to s3://$(BUCKET)/config.toml"
+
 .PHONY: ingest-prospects
 ingest-prospects: install ## Ingest the existing google_maps_prospects.csv for the current campaign into the cache
 
@@ -537,32 +545,31 @@ stop-rpi-details-worker: ## Stop and remove the Details worker on Raspberry Pi
 .PHONY: restart-rpi-worker
 restart-rpi-worker: stop-rpi-worker start-rpi-worker ## Restart the Raspberry Pi worker
 
+.PHONY: start-rpi-supervisor
+start-rpi-supervisor: ## Start the Supervisor on Raspberry Pi for dynamic scaling
+	ssh $(RPI_USER)@$(RPI_HOST) "docker run -d --restart always --name cocli-supervisor \
+		-e TZ=America/Los_Angeles \
+		-e CAMPAIGN_NAME='$(CAMPAIGN)' \
+		-e AWS_PROFILE=$(AWS_PROFILE) \
+		-v ~/.aws:/root/.aws:ro cocli-worker-rpi:latest cocli worker supervisor"
+
 .PHONY: restart-rpi-all
-restart-rpi-all: ## Restart all Raspberry Pi workers
+restart-rpi-all: ## Restart all Raspberry Pi workers using Supervisor
 	-$(MAKE) stop-rpi-all RPI_HOST=octoprint.local
 	-$(MAKE) stop-rpi-all RPI_HOST=coclipi.local
 	-$(MAKE) stop-rpi-all RPI_HOST=cocli5x0.local
-	$(MAKE) start-rpi-worker RPI_HOST=octoprint.local SCRAPE_WORKERS=2
-	$(MAKE) start-rpi-details-worker RPI_HOST=coclipi.local DETAILS_WORKERS=1
-	$(MAKE) start-rpi-worker RPI_HOST=cocli5x0.local SCRAPE_WORKERS=2
-	$(MAKE) start-rpi-details-worker RPI_HOST=cocli5x0.local DETAILS_WORKERS=2
+	$(MAKE) start-rpi-supervisor RPI_HOST=octoprint.local
+	$(MAKE) start-rpi-supervisor RPI_HOST=coclipi.local
+	$(MAKE) start-rpi-supervisor RPI_HOST=cocli5x0.local
 
 .PHONY: deploy-cluster
-deploy-cluster: ## Rebuild and restart the entire cluster
-	@echo "Deploying to octoprint.local (Scraper)..."
+deploy-cluster: ## Rebuild and restart the entire cluster with Supervisor
+	@echo "Deploying to all nodes..."
 	$(MAKE) rebuild-rpi-worker RPI_HOST=octoprint.local
-	-$(MAKE) stop-rpi-all RPI_HOST=octoprint.local
-	$(MAKE) start-rpi-worker RPI_HOST=octoprint.local SCRAPE_WORKERS=2
-	@echo "Deploying to coclipi.local (Details)..."
 	$(MAKE) rebuild-rpi-worker RPI_HOST=coclipi.local
-	-$(MAKE) stop-rpi-all RPI_HOST=coclipi.local
-	$(MAKE) start-rpi-details-worker RPI_HOST=coclipi.local DETAILS_WORKERS=1
-	@echo "Deploying to cocli5x0.local (Pi 5 Dual Role)..."
 	$(MAKE) rebuild-rpi-worker RPI_HOST=cocli5x0.local
-	-$(MAKE) stop-rpi-all RPI_HOST=cocli5x0.local
-	$(MAKE) start-rpi-worker RPI_HOST=cocli5x0.local SCRAPE_WORKERS=2
-	$(MAKE) start-rpi-details-worker RPI_HOST=cocli5x0.local DETAILS_WORKERS=2
-	@echo "Cluster deployment complete. Balanced workload across all nodes."
+	$(MAKE) restart-rpi-all
+	@echo "Cluster deployment complete. All nodes running Supervisor."
 
 .PHONY: shutdown-cluster
 shutdown-cluster: ## Safely shut down all Raspberry Pi workers

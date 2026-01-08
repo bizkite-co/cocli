@@ -360,7 +360,9 @@ async def _run_details_task_loop(browser_or_context: Any, gm_list_item_queue: An
         task = tasks[0] # batch_size=1
         logger.info(f"Detail Task found: {task.place_id}")
         
-        start_mb = tracker.get_mb() if tracker else 0
+        start_mb = 0.0
+        if tracker:
+            start_mb = tracker.get_mb()
         
         try:
             csv_manager = ProspectsIndexManager(task.campaign_name)
@@ -497,8 +499,13 @@ async def _run_details_task_loop(browser_or_context: Any, gm_list_item_queue: An
                     logger.warning(f"Failed to index email from GMB details: {e}")
             # ----------------------
 
-            end_mb = tracker.get_mb() if tracker else 0
-            logger.info(f"Detailing Complete for {task.place_id}. Bandwidth: {end_mb - start_mb:.2f} MB")
+            end_mb = 0.0
+            if tracker:
+                end_mb = tracker.get_mb()
+                logger.info(f"Detailing Complete for {task.place_id}. Bandwidth: {end_mb - start_mb:.2f} MB")
+            else:
+                logger.info(f"Detailing Complete for {task.place_id}.")
+            
             gm_list_item_queue.ack(task)
             
             if once:
@@ -519,6 +526,165 @@ async def _run_details_task_loop(browser_or_context: Any, gm_list_item_queue: An
             if "Target page, context or browser has been closed" in str(e) or not connected:
                  logger.critical("Browser fatal error detected.")
                  break
+
+@app.command()
+def supervisor(
+    campaign: Optional[str] = typer.Option(None, "--campaign", "-c", help="Campaign name."),
+    headed: bool = typer.Option(False, "--headed", help="Run browser in headed mode."),
+    debug: bool = typer.Option(False, "--debug", help="Enable debug logging."),
+    interval: int = typer.Option(60, "--interval", help="Seconds between config checks.")
+) -> None:
+    """
+    Starts a supervisor that dynamically manages scrape and details workers based on config.
+    """
+    effective_campaign = campaign
+    if not effective_campaign:
+        effective_campaign = os.getenv("CAMPAIGN_NAME")
+    if not effective_campaign:
+        effective_campaign = get_campaign()
+
+    if not effective_campaign:
+        logger.error("No campaign specified and no active context.")
+        raise typer.Exit(1)
+
+    log_level = logging.DEBUG if debug else logging.INFO
+    setup_file_logging("supervisor", console_level=log_level)
+
+    asyncio.run(run_supervisor(not headed, debug, effective_campaign, interval))
+
+def sync_campaign_config(campaign_name: str) -> None:
+    """
+    Forcefully fetches the latest config.toml from S3.
+    """
+    campaign_dir = get_campaigns_dir() / campaign_name
+    config_path = campaign_dir / "config.toml"
+    
+    # Determine AWS profile for initial bootstrap
+    profile_name = os.getenv("AWS_PROFILE")
+    if profile_name:
+        session = boto3.Session(profile_name=profile_name)
+    else:
+        session = boto3.Session()
+    s3 = session.client("s3")
+
+    # Bucket patterns
+    bucket_name = f"cocli-data-{campaign_name}"
+    potential_buckets = [bucket_name, f"{campaign_name}-cocli-data-use1"]
+    keys_to_try = ["config.toml", f"campaigns/{campaign_name}/config.toml"]
+    
+    for b in potential_buckets:
+        for key in keys_to_try:
+            try:
+                logger.debug(f"Syncing s3://{b}/{key}...")
+                s3.download_file(b, key, str(config_path))
+                logger.debug("Synced config from S3.")
+                return
+            except Exception:
+                continue
+
+async def run_supervisor(headless: bool, debug: bool, campaign_name: str, interval: int) -> None:
+    hostname = socket.gethostname().split('.')[0]
+    logger.info(f"Supervisor started on host '{hostname}' for campaign '{campaign_name}'.")
+
+    # Shared browser instance for all tasks on this host
+    async with async_playwright() as p:
+        browser = await p.chromium.launch(
+            headless=headless,
+            args=[
+                '--no-sandbox',
+                '--disable-setuid-sandbox',
+                '--disable-dev-shm-usage',
+                '--disable-accelerated-2d-canvas',
+                '--no-first-run',
+                '--no-zygote',
+                '--disable-gpu'
+            ]
+        )
+
+        scrape_tasks: dict[int, asyncio.Task[Any]] = {}
+        details_tasks: dict[int, asyncio.Task[Any]] = {}
+
+        # Setup queues and clients once
+        try:
+            ensure_campaign_config(campaign_name)
+            config = load_campaign_config(campaign_name)
+            aws_config = config.get("aws", {})
+            bucket_name = aws_config.get("cocli_data_bucket_name") or f"cocli-data-{campaign_name}"
+            
+            if os.getenv("COCLI_RUNNING_IN_FARGATE"):
+                profile_name = None
+            else:
+                profile_name = aws_config.get("profile") or aws_config.get("aws_profile")
+            
+            if profile_name:
+                session = boto3.Session(profile_name=profile_name)
+            else:
+                session = boto3.Session()
+            s3_client = session.client("s3")
+
+            scrape_queue = get_queue_manager("scrape_tasks", use_cloud=True, queue_type="scrape", campaign_name=campaign_name)
+            gm_list_item_queue = get_queue_manager("gm_list_item", use_cloud=True, queue_type="gm_list_item", campaign_name=campaign_name)
+            enrichment_queue = get_queue_manager("enrichment", use_cloud=True, queue_type="enrichment", campaign_name=campaign_name)
+            
+            processed_by = f"supervisor-{hostname}"
+        except Exception as e:
+            logger.error(f"Supervisor initialization failed: {e}")
+            await browser.close()
+            return
+
+        while True:
+            try:
+                # 0. Sync config from S3
+                sync_campaign_config(campaign_name)
+
+                # 1. Reload Config (from local file, which should be synced from S3)
+                config = load_campaign_config(campaign_name)
+                prospecting = config.get("prospecting", {})
+                scaling = prospecting.get("scaling", {}).get(hostname, {})
+                
+                target_scrape = scaling.get("scrape", 0)
+                target_details = scaling.get("details", 0)
+                
+                # Update environment for delay
+                if "google_maps_delay_seconds" in prospecting:
+                    os.environ["GOOGLE_MAPS_DELAY_SECONDS"] = str(prospecting["google_maps_delay_seconds"])
+
+                # 2. Adjust Scrape Tasks
+                while len(scrape_tasks) < target_scrape:
+                    new_id = len(scrape_tasks)
+                    logger.info(f"Scaling UP: Starting Scrape Task {new_id}")
+                    task = asyncio.create_task(_run_scrape_task_loop(browser, scrape_queue, gm_list_item_queue, s3_client, bucket_name, debug))
+                    scrape_tasks[new_id] = task
+                
+                while len(scrape_tasks) > target_scrape:
+                    old_id = max(scrape_tasks.keys())
+                    logger.info(f"Scaling DOWN: Stopping Scrape Task {old_id}")
+                    scrape_tasks[old_id].cancel()
+                    del scrape_tasks[old_id]
+
+                # 3. Adjust Details Tasks
+                while len(details_tasks) < target_details:
+                    new_id = len(details_tasks)
+                    logger.info(f"Scaling UP: Starting Details Task {new_id}")
+                    # We need a tracker for details tasks if we want bandwidth logging
+                    # For supervisor, we'll create a context per task loop or share one?
+                    # _run_details_task_loop expects a browser or context. 
+                    # If we give it a browser, it will create its own pages.
+                    task = asyncio.create_task(_run_details_task_loop(browser, gm_list_item_queue, enrichment_queue, s3_client, bucket_name, debug, False, processed_by))
+                    details_tasks[new_id] = task
+
+                while len(details_tasks) > target_details:
+                    old_id = max(details_tasks.keys())
+                    logger.info(f"Scaling DOWN: Stopping Details Task {old_id}")
+                    details_tasks[old_id].cancel()
+                    del details_tasks[old_id]
+
+                logger.info(f"Supervisor Heartbeat: {len(scrape_tasks)} Scrape, {len(details_tasks)} Details tasks active.")
+
+            except Exception as e:
+                logger.error(f"Supervisor loop error: {e}")
+
+            await asyncio.sleep(interval)
 
 @app.command()
 def scrape(
