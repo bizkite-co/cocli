@@ -262,9 +262,9 @@ def queue_batch(
     limit: int = typer.Option(100, "--limit", help="Number of tasks to enqueue."),
     force: bool = typer.Option(False, "--force"),
 ) -> None:
-    \"\"\"
+    """
     Enqueues a limited batch of scrape tasks for the campaign.
-    \"\"\"
+    """
     if campaign_name is None:
         campaign_name = get_campaign()
     
