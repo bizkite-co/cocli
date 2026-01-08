@@ -256,6 +256,74 @@ def queue_scrapes(
     else:
         console.print("[yellow]No tasks to queue (all areas covered or no targets found).[/yellow]")
 
+@app.command(name="queue-batch")
+def queue_batch(
+    campaign_name: Optional[str] = typer.Argument(None),
+    limit: int = typer.Option(100, "--limit", help="Number of tasks to enqueue."),
+    force: bool = typer.Option(False, "--force"),
+) -> None:
+    \"\"\"
+    Enqueues a limited batch of scrape tasks for the campaign.
+    \"\"\"
+    if campaign_name is None:
+        campaign_name = get_campaign()
+    
+    if not campaign_name:
+        console.print("[red]No campaign specified.[/red]")
+        raise typer.Exit(1)
+
+    campaign_dir = get_campaign_dir(campaign_name)
+    if not campaign_dir:
+        console.print(f"[red]Campaign directory not found for {campaign_name}[/red]")
+        raise typer.Exit(1)
+
+    config_path = campaign_dir / "config.toml"
+    with open(config_path, "r") as f:
+        config = toml.load(f)
+    search_phrases = config.get("prospecting", {}).get("queries", [])
+    grid_file = campaign_dir / "exports" / "target-areas.json"
+    tasks_to_queue = []
+    
+    if grid_file.exists():
+        scrape_index = ScrapeIndex()
+        with open(grid_file, 'r') as f:
+            grid_tiles = json.load(f)
+        
+        for tile in grid_tiles:
+            lat = tile.get("center_lat") or tile.get("center", {}).get("lat")
+            lon = tile.get("center_lon") or tile.get("center", {}).get("lon")
+            tile_id = tile.get("id")
+            if lat and lon and tile_id:
+                bounds = {"lat_min": float(lat)-0.05, "lat_max": float(lat)+0.05, "lon_min": float(lon)-0.05, "lon_max": float(lon)+0.05}
+                for phrase in search_phrases:
+                    if not force:
+                        if scrape_index.is_tile_scraped(phrase, tile_id, ttl_days=30):
+                            continue
+                        if scrape_index.is_area_scraped(phrase, bounds, overlap_threshold_percent=90.0):
+                            continue
+
+                    tasks_to_queue.append(ScrapeTask(
+                        latitude=float(lat), 
+                        longitude=float(lon), 
+                        zoom=13, 
+                        search_phrase=phrase, 
+                        campaign_name=campaign_name, 
+                        tile_id=tile.get("id"),
+                        ack_token=None
+                    ))
+                    if len(tasks_to_queue) >= limit:
+                        break
+            if len(tasks_to_queue) >= limit:
+                break
+
+    if tasks_to_queue:
+        queue_manager = get_queue_manager("scrape_tasks", use_cloud=True, queue_type="scrape")
+        for task in tasks_to_queue:
+            queue_manager.push(task)
+        console.print(f"[bold green]Successfully queued {len(tasks_to_queue)} tasks.[/bold green]")
+    else:
+        console.print("[yellow]No tasks to queue.[/yellow]")
+
 @app.command()
 def achieve_goal(
     goal_emails: int = typer.Option(10, "--emails"),
