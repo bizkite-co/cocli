@@ -1,14 +1,14 @@
 import toml
 import csv
 from pathlib import Path
-from geopy.geocoders import Nominatim
-from geopy.exc import GeocoderServiceError
+from geopy.geocoders import Nominatim  # type: ignore
+from geopy.exc import GeocoderServiceError  # type: ignore
 from rich.console import Console
 import sys
 
 console = Console()
 
-def geocode_missing(campaign_name: str = "turboship"):
+def geocode_missing(campaign_name: str = "turboship") -> None:
     data_home = Path("/home/mstouffer/repos/company-cli/data")
     campaign_dir = data_home / "campaigns" / campaign_name
     config_path = campaign_dir / "config.toml"

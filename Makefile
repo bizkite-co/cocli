@@ -604,7 +604,7 @@ stop-rpi-all: ## Stop all Raspberry Pi cocli worker containers
 	-ssh $(RPI_USER)@$(RPI_HOST) "if [ -n \"\$$(docker ps -q --filter name=cocli-)\" ]; then docker stop \$$(docker ps -q --filter name=cocli-); fi; if [ -n \"\$$(docker ps -a -q --filter name=cocli-)\" ]; then docker rm \$$(docker ps -a -q --filter name=cocli-); fi"
 
 .PHONY: deploy-rpi
-deploy-rpi: deploy-creds-rpi stop-rpi-all rebuild-rpi-worker start-rpi-worker start-rpi-details-worker ## Full deployment: stop all, rebuild, and restart both workers
+deploy-rpi: test deploy-creds-rpi stop-rpi-all rebuild-rpi-worker start-rpi-worker start-rpi-details-worker ## Full deployment: stop all, rebuild, and restart both workers
 	$(VENV_DIR)/bin/ruff check cocli/
 
 show-kmls: ## Show KML files online (Usage: make show-kmls [BUCKET=cocli-web-assets] [PROFILE=bizkite-support])

@@ -1,10 +1,7 @@
-import os
 import json
-import csv
-from pathlib import Path
 from cocli.core.config import get_scraped_areas_index_dir
 
-def migrate():
+def migrate() -> None:
     source_dir = get_scraped_areas_index_dir()
     target_dir = source_dir.parent / "scraped-tiles"
     
@@ -50,7 +47,7 @@ def migrate():
         except Exception as e:
             print(f"Error migrating {jf}: {e}")
 
-    print(f"\nMigration Complete!")
+    print("\nMigration Complete!")
     print(f"  Files processed: {len(json_files)}")
     print(f"  Witness files created: {migrated_count}")
 

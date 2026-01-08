@@ -380,7 +380,7 @@ def geocode_locations(
                         updated_count += 1
                         console.print(f"  [green]Found: {row['lat']}, {row['lon']}[/green]")
                     else:
-                        console.print(f"  [yellow]Could not geocode.[/yellow]")
+                        console.print("  [yellow]Could not geocode.[/yellow]")
             rows.append(row)
 
     if updated_count > 0:

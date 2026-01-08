@@ -429,7 +429,7 @@ def prepare_mission(
         json.dump(tasks, f, indent=2)
 
     # 5. Filter for Pending Tasks (The Frontier)
-    console.print(f"[bold]Filtering against ScrapeIndex to find the frontier...[/bold]")
+    console.print("[bold]Filtering against ScrapeIndex to find the frontier...[/bold]")
     scrape_index = ScrapeIndex()
     pending_tasks = []
     
@@ -454,11 +454,11 @@ def prepare_mission(
     with open(state_path, "w") as f:
         toml.dump({"last_offset": 0}, f)
 
-    console.print(f"[bold green]Mission prepared![/bold green]")
+    console.print("[bold green]Mission prepared![/bold green]")
     console.print(f"  Total mission tasks: [cyan]{len(tasks)}[/cyan]")
     console.print(f"  [bold yellow]Pending (unscraped): {len(pending_tasks)}[/bold yellow]")
     console.print(f"  Saved frontier to: {pending_csv_path}")
-    console.print(f"[dim]Offset reset to 0.[/dim]")
+    console.print("[dim]Offset reset to 0.[/dim]")
 
 @app.command(name="build-mission-index")
 def build_mission_index(
@@ -475,11 +475,15 @@ def build_mission_index(
         raise typer.Exit(1)
 
     campaign_dir = get_campaign_dir(campaign_name)
+    if not campaign_dir:
+        console.print(f"[red]Campaign directory not found for {campaign_name}.[/red]")
+        raise typer.Exit(1)
+        
     mission_path = campaign_dir / "mission.json"
     target_index_dir = campaign_dir / "indexes" / "target-tiles"
 
     if not mission_path.exists():
-        console.print(f"[red]Mission list not found. Run 'prepare-mission' first.[/red]")
+        console.print("[red]Mission list not found. Run 'prepare-mission' first.[/red]")
         raise typer.Exit(1)
 
     with open(mission_path, "r") as f:
@@ -506,7 +510,7 @@ def build_mission_index(
                 f.write(f"{t['latitude']},{t['longitude']}\n")
             count += 1
 
-    console.print(f"[bold green]Mission index built![/bold green]")
+    console.print("[bold green]Mission index built![/bold green]")
     console.print(f"  Created {count} target tile files.")
 
 @app.command(name="queue-mission")
@@ -526,6 +530,10 @@ def queue_mission(
         raise typer.Exit(1)
 
     campaign_dir = get_campaign_dir(campaign_name)
+    if not campaign_dir:
+        console.print(f"[red]Campaign directory not found for {campaign_name}.[/red]")
+        raise typer.Exit(1)
+        
     target_index_dir = campaign_dir / "indexes" / "target-tiles"
     global_scraped_dir = Path("data/indexes/scraped-tiles")
 
@@ -539,7 +547,7 @@ def queue_mission(
     console.print(f"Found {len(target_files)} total targets.")
 
     # 2. Filter for pending (Set Difference)
-    pending_tasks = []
+    pending_tasks: List[Dict[str, Any]] = []
     for tf in target_files:
         # Relative path is lat/lon/phrase.csv
         rel_path = tf.relative_to(target_index_dir)
@@ -553,7 +561,7 @@ def queue_mission(
                     row = next(reader)
                 
                 # phrase is the filename stem
-                phrase_slug = tf.stem
+                phrase_slug = str(tf.stem)
                 tile_id = f"{rel_path.parent.parent.name}_{rel_path.parent.name}"
                 
                 pending_tasks.append({
@@ -593,7 +601,7 @@ def queue_mission(
         ))
     
     console.print(f"[bold green]Successfully queued {len(pending_tasks)} tasks.[/bold green]")
-    console.print(f"[dim]Note: This command is now idempotent. No offset is needed.[/dim]")
+    console.print("[dim]Note: This command is now idempotent. No offset is needed.[/dim]")
 
 @app.command()
 def achieve_goal(

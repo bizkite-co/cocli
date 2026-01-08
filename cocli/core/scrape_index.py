@@ -214,7 +214,7 @@ class ScrapeIndex:
                     witness_path = witness_dir / f"{phrase_slug}.csv"
                     
                     with open(witness_path, 'w', encoding='utf-8') as wf:
-                        wf.write(f"scrape_date,items_found\n")
+                        wf.write("scrape_date,items_found\n")
                         wf.write(f"{data['scrape_date']},{items_found}\n")
                     logger.debug(f"Saved witness file: {witness_path}")
                 except Exception as we:
