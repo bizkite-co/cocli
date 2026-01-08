@@ -9,6 +9,7 @@ from pydantic import BaseModel, Field
 
 from pydantic_settings import BaseSettings
 from rich.console import Console
+from .paths import get_validated_dir, ValidatedPath
 
 console = Console()
 
@@ -40,31 +41,28 @@ def get_cocli_base_dir() -> Path:
     # 1. Environment variable
     if "COCLI_DATA_HOME" in os.environ:
         cocli_base_dir = Path(os.environ["COCLI_DATA_HOME"]).expanduser()
-        cocli_base_dir.mkdir(parents=True, exist_ok=True)
-        return cocli_base_dir
-
-    # 2. Config file
-    config_data_home = _read_data_home_from_config_file()
-    if config_data_home:
-        cocli_base_dir = config_data_home.expanduser()
-        cocli_base_dir.mkdir(parents=True, exist_ok=True)
-        return cocli_base_dir
-
-    # 3. XDG_DATA_HOME
-    if "XDG_DATA_HOME" in os.environ:
-        cocli_base_dir = Path(os.environ["XDG_DATA_HOME"]).expanduser() / "cocli_data"
     else:
-        # 4. Default location based on OS
-        if platform.system() == "Windows":
-            cocli_base_dir = Path(os.environ.get("LOCALAPPDATA", Path.home() / "AppData" / "Local")) / "cocli_data"
-        elif platform.system() == "Darwin": # macOS
-            cocli_base_dir = Path.home() / "Library" / "Application Support" / "cocli_data"
-        else: # Linux and other Unix-like
-            cocli_base_dir = Path.home() / ".local" / "share" / "cocli_data"
+        # 2. Config file
+        config_data_home = _read_data_home_from_config_file()
+        if config_data_home:
+            cocli_base_dir = config_data_home.expanduser()
+        elif "XDG_DATA_HOME" in os.environ:
+            # 3. XDG_DATA_HOME
+            cocli_base_dir = Path(os.environ["XDG_DATA_HOME"]).expanduser() / "cocli_data"
+        else:
+            # 4. Default location based on OS
+            if platform.system() == "Windows":
+                cocli_base_dir = Path(os.environ.get("LOCALAPPDATA", Path.home() / "AppData" / "Local")) / "cocli_data"
+            elif platform.system() == "Darwin": # macOS
+                cocli_base_dir = Path.home() / "Library" / "Application Support" / "cocli_data"
+            else: # Linux and other Unix-like
+                cocli_base_dir = Path.home() / ".local" / "share" / "cocli_data"
 
-    cocli_base_dir.mkdir(parents=True, exist_ok=True)
-
-    return cocli_base_dir
+    # We validate the BASE directory (the parent of where we expect to find companies/campaigns)
+    # acts as O(1) circuit breaker for broken symlinks
+    v_path = get_validated_dir(cocli_base_dir, "User Business Data Root")
+    v_path.path.mkdir(parents=True, exist_ok=True)
+    return v_path.path
 
 def get_config_dir() -> Path:
     """
@@ -128,6 +126,15 @@ def get_scraped_areas_index_dir() -> Path:
     scraped_areas_dir = get_indexes_dir() / "scraped_areas"
     scraped_areas_dir.mkdir(parents=True, exist_ok=True)
     return scraped_areas_dir
+
+def get_scraped_tiles_index_dir() -> Path:
+    """
+    Returns the directory for the Phase 10 witness file index.
+    Path: cocli_data/indexes/scraped-tiles/
+    """
+    scraped_tiles_dir = get_indexes_dir() / "scraped-tiles"
+    scraped_tiles_dir.mkdir(parents=True, exist_ok=True)
+    return scraped_tiles_dir
 
 def get_campaign_scraped_data_dir(campaign_name: str) -> Path:
     """

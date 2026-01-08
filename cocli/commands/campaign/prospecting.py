@@ -558,8 +558,9 @@ def queue_mission(
         console.print(f"[red]Campaign directory not found for {campaign_name}.[/red]")
         raise typer.Exit(1)
         
+    from cocli.core.config import get_scraped_tiles_index_dir
     target_index_dir = campaign_dir / "indexes" / "target-tiles"
-    global_scraped_dir = Path("data/indexes/scraped-tiles")
+    global_scraped_dir = get_scraped_tiles_index_dir()
 
     if not target_index_dir.exists():
         console.print(f"[red]Target Index not found at {target_index_dir}. Run 'build-mission-index' first.[/red]")

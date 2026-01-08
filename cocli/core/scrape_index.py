@@ -54,6 +54,8 @@ class ScrapeIndex:
 
     def __init__(self) -> None:
         self.index_dir = get_scraped_areas_index_dir()
+        from .config import get_scraped_tiles_index_dir
+        self.witness_dir = get_scraped_tiles_index_dir()
 
     def _get_grid_key(self, lat: float, lon: float) -> str:
         """Returns the grid key for spatial partitioning (1x1 degree) using floor."""
@@ -98,11 +100,45 @@ class ScrapeIndex:
     def is_tile_scraped(self, phrase: str, tile_id: str, ttl_days: Optional[int] = None) -> Optional[ScrapedArea]:
         """
         Directly checks if a specific tile ID has been scraped.
+        Prioritizes the new Phase 10 witness index.
         """
         phrase_slug = slugify(phrase)
-        # Try to parse lat/lon from tile_id to find the right bucket
         try:
             lat_str, lon_str = tile_id.split('_')
+            
+            # 1. Check Witness Index (Fast)
+            witness_path = self.witness_dir / lat_str / lon_str / f"{phrase_slug}.csv"
+            if witness_path.exists():
+                # Load minimal data from CSV
+                try:
+                    with open(witness_path, "r") as f:
+                        reader = csv.DictReader(f)
+                        row = next(reader)
+                        
+                    scrape_date = datetime.fromisoformat(row['scrape_date'])
+                    if scrape_date.tzinfo is None:
+                        scrape_date = scrape_date.replace(tzinfo=UTC)
+                        
+                    if ttl_days is not None:
+                        age = datetime.now(UTC) - scrape_date
+                        if age > timedelta(days=ttl_days):
+                            return None
+                            
+                    # We return a sparse ScrapedArea object (compatible with legacy)
+                    lat, lon = float(lat_str), float(lon_str)
+                    return ScrapedArea(
+                        phrase=phrase_slug,
+                        scrape_date=scrape_date,
+                        lat_min=lat-0.05, lat_max=lat+0.05,
+                        lon_min=lon-0.05, lon_max=lon+0.05,
+                        lat_miles=8.0, lon_miles=8.0,
+                        items_found=int(row.get('items_found', 0)),
+                        tile_id=tile_id
+                    )
+                except Exception:
+                    pass
+
+            # 2. Check Legacy JSON Index
             lat, lon = float(lat_str), float(lon_str)
             grid_dir = self._get_grid_dir(phrase_slug, lat, lon)
             file_path = grid_dir / f"{tile_id}.json"
