@@ -75,7 +75,7 @@ def ensure_campaign_config(campaign_name: str) -> None:
     
     # Determine AWS profile for initial bootstrap
     profile_name = os.getenv("AWS_PROFILE")
-    if profile_name:
+    if profile_name and profile_name.strip():
         session = boto3.Session(profile_name=profile_name)
     else:
         session = boto3.Session()

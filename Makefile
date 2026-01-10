@@ -546,10 +546,11 @@ start-rpi-details-worker: ## Start the Details Worker on Raspberry Pi
 		-v ~/.aws:/root/.aws:ro cocli-worker-rpi:latest cocli worker details --workers $(DETAILS_WORKERS)"
 
 start-rpi-enrichment-worker: ## Start the Enrichment Worker on Raspberry Pi
+	$(eval AWS_PROFILE_ENV := $(if $(AWS_PROFILE),-e AWS_PROFILE=$(AWS_PROFILE),))
 	ssh $(RPI_USER)@$(RPI_HOST) "docker run -d --restart always --name cocli-enrichment-worker \
 		-e TZ=America/Los_Angeles \
 		-e CAMPAIGN_NAME='$(CAMPAIGN)' \
-		-e AWS_PROFILE=$(AWS_PROFILE) \
+		$(AWS_PROFILE_ENV) \
 		-e COCLI_QUEUE_TYPE=filesystem \
 		-v ~/repos/cocli_data:/app/cocli_data \
 		-v ~/.aws:/root/.aws:ro cocli-worker-rpi:latest cocli worker enrichment --workers $(WORKERS)"
