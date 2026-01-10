@@ -279,5 +279,25 @@ def sync_enrichment_queue(
     local_base = DATA_DIR / "campaigns" / campaign_name / "frontier" / "enrichment"
     run_smart_sync("enrichment-queue", bucket_name, prefix, local_base, campaign_name, aws_config, workers, full, force)
 
+@app.command("campaign-config")
+def sync_campaign_config(
+    campaign_name: Optional[str] = typer.Option(None, "--campaign", "-c", help="Campaign name"),
+) -> None:
+    from ..core.config import get_campaign, load_campaign_config
+    campaign_name = campaign_name or get_campaign()
+    if not campaign_name:
+        console.print("[bold red]No campaign specified.[/bold red]")
+        raise typer.Exit(1)
+    
+    # We can't use load_campaign_config if the file doesn't exist yet!
+    # But we can assume the bucket name pattern.
+    bucket_name = f"cocli-data-{campaign_name}"
+    prefix = f"campaigns/{campaign_name}/config.toml"
+    local_base = DATA_DIR / "campaigns" / campaign_name
+    
+    # Since run_smart_sync needs aws_config, and we might not have it yet, 
+    # we'll try to use a default session.
+    run_smart_sync("campaign-config", bucket_name, prefix, local_base, campaign_name, {}, workers=1)
+
 if __name__ == "__main__":
     app()

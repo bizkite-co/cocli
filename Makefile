@@ -551,6 +551,7 @@ start-rpi-enrichment-worker: ## Start the Enrichment Worker on Raspberry Pi
 		-e CAMPAIGN_NAME='$(CAMPAIGN)' \
 		-e AWS_PROFILE=$(AWS_PROFILE) \
 		-e COCLI_QUEUE_TYPE=filesystem \
+		-v ~/repos/cocli_data:/app/cocli_data \
 		-v ~/.aws:/root/.aws:ro cocli-worker-rpi:latest cocli worker enrichment --workers $(WORKERS)"
 
 stop-rpi-enrichment-worker: ## Stop the Enrichment Worker on Raspberry Pi

@@ -586,7 +586,12 @@ async def run_enrichment_worker(headless: bool, debug: bool, campaign_name: str,
         processed_by = f"enrichment-worker-{socket.gethostname()}"
     try:
         ensure_campaign_config(campaign_name)
-        enrichment_queue = get_queue_manager("enrichment", use_cloud=True, queue_type="enrichment", campaign_name=campaign_name)
+        # Check if we should override cloud queue based on environment
+        effective_use_cloud = use_cloud
+        if os.getenv("COCLI_QUEUE_TYPE") == "filesystem":
+            effective_use_cloud = False
+            
+        enrichment_queue = get_queue_manager("enrichment", use_cloud=effective_use_cloud, queue_type="enrichment", campaign_name=campaign_name)
     except Exception as e:
         logger.error(f"Configuration Error: {e}")
         return
