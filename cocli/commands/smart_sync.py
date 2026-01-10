@@ -283,7 +283,7 @@ def sync_enrichment_queue(
 def sync_campaign_config(
     campaign_name: Optional[str] = typer.Option(None, "--campaign", "-c", help="Campaign name"),
 ) -> None:
-    from ..core.config import get_campaign, load_campaign_config
+    from ..core.config import get_campaign
     campaign_name = campaign_name or get_campaign()
     if not campaign_name:
         console.print("[bold red]No campaign specified.[/bold red]")

@@ -581,7 +581,7 @@ async def _run_details_task_loop(browser_or_context: Any, gm_list_item_queue: An
                  logger.critical("Browser fatal error detected.")
                  break
 
-async def run_enrichment_worker(headless: bool, debug: bool, campaign_name: str, once: bool = False, processed_by: Optional[str] = None, browser: Optional[Any] = None, workers: int = 1) -> None:
+async def run_enrichment_worker(headless: bool, debug: bool, campaign_name: str, once: bool = False, processed_by: Optional[str] = None, browser: Optional[Any] = None, workers: int = 1, use_cloud: bool = True) -> None:
     if not processed_by:
         processed_by = f"enrichment-worker-{socket.gethostname()}"
     try:
