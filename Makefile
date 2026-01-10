@@ -333,7 +333,11 @@ sync-prospects: ## Sync prospects from S3
 sync-companies: ## Sync enriched companies from S3
 	@$(VENV_DIR)/bin/cocli smart-sync companies
 
-sync-all: sync-scraped-areas sync-prospects sync-companies ## Sync all S3 data to local directorys
+.PHONY: sync-emails
+sync-emails: ## Sync email index from S3
+	@$(VENV_DIR)/bin/cocli smart-sync emails
+
+sync-all: sync-scraped-areas sync-prospects sync-companies sync-emails ## Sync all S3 data to local directorys
 
 .PHONY: recent-scrapes
 recent-scrapes: sync-scraped-areas ## List the 30 most recent scraped areas (syncs first)
@@ -421,8 +425,13 @@ web-deploy: web-build ## Deploy the web dashboard to S3
 publish-report: ## Generate and upload report.json to S3 (Usage: make publish-report [CAMPAIGN=name])
 	@PYTHONPATH=. $(VENV_DIR)/bin/python scripts/campaign_report.py $(CAMPAIGN) --upload
 
+.PHONY: compile-companies
+compile-companies: install ## Run batch compilation for the current campaign
+	$(call validate_campaign)
+	$(VENV_DIR)/bin/python scripts/batch_compile_companies.py $(CAMPAIGN)
+
 .PHONY: publish-all
-publish-all: sync-companies backfill-email-index export-emails publish-report publish-kml ## Full sync: export emails, publish report, and publish KML
+publish-all: sync-companies compile-companies backfill-email-index export-emails publish-report publish-kml web-deploy ## Full sync including compilation and web deployment
 	$(call validate_campaign)
 	@echo "Full campaign sync completed for $(CAMPAIGN)"
 
@@ -553,21 +562,21 @@ start-rpi-supervisor: ## Start the Supervisor on Raspberry Pi for dynamic scalin
 		-v ~/.aws:/root/.aws:ro cocli-worker-rpi:latest cocli worker supervisor"
 
 .PHONY: start-rpi-powerhouse
-start-rpi-powerhouse: ## Start heavy-duty workers on the Pi 5 (8 Scrapers, 4 Detailers)
+start-rpi-powerhouse: ## Start heavy-duty workers on the Pi 5 (9 Scrapers, 3 Detailers)
 	ssh $(RPI_USER)@cocli5x0.local "docker run -d --restart always --name cocli-scraper-worker \
 		-e TZ=America/Los_Angeles \
 		-e CAMPAIGN_NAME='$(CAMPAIGN)' \
 		-e AWS_PROFILE=$(AWS_PROFILE) \
 		-e COCLI_SCRAPE_TASKS_QUEUE_URL='$(COCLI_SCRAPE_TASKS_QUEUE_URL)' \
 		-e COCLI_GM_LIST_ITEM_QUEUE_URL='$(COCLI_GM_LIST_ITEM_QUEUE_URL)' \
-		-v ~/.aws:/root/.aws:ro cocli-worker-rpi:latest cocli worker scrape --workers 8"
+		-v ~/.aws:/root/.aws:ro cocli-worker-rpi:latest cocli worker scrape --workers 9"
 	ssh $(RPI_USER)@cocli5x0.local "docker run -d --restart always --name cocli-details-worker \
 		-e TZ=America/Los_Angeles \
 		-e CAMPAIGN_NAME='$(CAMPAIGN)' \
 		-e AWS_PROFILE=$(AWS_PROFILE) \
 		-e COCLI_GM_LIST_ITEM_QUEUE_URL='$(COCLI_GM_LIST_ITEM_QUEUE_URL)' \
 		-e COCLI_ENRICHMENT_QUEUE_URL='$(COCLI_ENRICHMENT_QUEUE_URL)' \
-		-v ~/.aws:/root/.aws:ro cocli-worker-rpi:latest cocli worker details --workers 4"
+		-v ~/.aws:/root/.aws:ro cocli-worker-rpi:latest cocli worker details --workers 3"
 
 .PHONY: restart-rpi-all
 restart-rpi-all: ## Restart all Raspberry Pi workers using best-fit strategy

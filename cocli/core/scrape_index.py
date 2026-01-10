@@ -350,9 +350,11 @@ class ScrapeIndex:
             # Structure: indexes/scraped-tiles/{lat}/{lon}/{phrase}.csv
             if self.witness_dir.exists():
                 for lat_dir in self.witness_dir.iterdir():
-                    if not lat_dir.is_dir(): continue
+                    if not lat_dir.is_dir():
+                        continue
                     for lon_dir in lat_dir.iterdir():
-                        if not lon_dir.is_dir(): continue
+                        if not lon_dir.is_dir():
+                            continue
                         
                         witness_file = lon_dir / f"{phrase_slug}.csv"
                         if witness_file.exists():
@@ -388,9 +390,11 @@ class ScrapeIndex:
         
         if self.witness_dir.exists():
             for lat_dir in self.witness_dir.iterdir():
-                if not lat_dir.is_dir(): continue
+                if not lat_dir.is_dir():
+                    continue
                 for lon_dir in lat_dir.iterdir():
-                    if not lon_dir.is_dir(): continue
+                    if not lon_dir.is_dir():
+                        continue
                     phrases.update([f.stem for f in lon_dir.glob("*.csv")])
 
         return self.get_all_areas_for_phrases(list(phrases))

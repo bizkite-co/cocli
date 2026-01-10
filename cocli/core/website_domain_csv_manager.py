@@ -56,7 +56,13 @@ class WebsiteDomainCsvManager:
                     except (ValueError, TypeError):
                         processed_row['scraper_version'] = None
 
-                model_data = {k: v for k, v in processed_row.items() if k in WebsiteDomainCsv.model_fields and v is not None}
+                # Filter out empty strings for optional fields that expect specific types
+                model_data = {}
+                for k, v in processed_row.items():
+                    if k in WebsiteDomainCsv.model_fields:
+                        if v is not None and v != "":
+                            model_data[k] = v
+                            
                 if model_data.get("domain"):
                     self.data[str(model_data["domain"])] = WebsiteDomainCsv(**model_data)
 

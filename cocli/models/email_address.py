@@ -23,8 +23,12 @@ class EmailAddress(str):
         
         # Normalize
         normalized = v.strip().lower()
-        if normalized.startswith("email:"):
-            normalized = normalized[6:].strip()
+        
+        # Remove common prefixes
+        for prefix in ["email:", "mail:", "mailto:", "e-mail:"]:
+            if normalized.startswith(prefix):
+                normalized = normalized[len(prefix):].strip()
+                break
             
         # Validate
         if not is_valid_email(normalized):

@@ -52,7 +52,7 @@ def create_company_files(company: Company, company_dir: Path) -> Path:
             logger.warning(f"Warning: No valid YAML front matter found in {index_path}. Overwriting with new data.")
 
     # Prepare new data for YAML front matter (using Pydantic field names)
-    new_company_data_for_yaml = company.model_dump(exclude={"tags", "categories"})
+    new_company_data_for_yaml = company.model_dump(exclude={"tags", "services", "products", "description"})
     # Ensure 'name' is not duplicated if it was already in the model_dump
     new_company_data_for_yaml.pop("name", None)
 
@@ -67,6 +67,13 @@ def create_company_files(company: Company, company_dir: Path) -> Path:
             merged_data[key] = new_value
 
     merged_data["name"] = company.name # Ensure name is always from the new company object
+
+    # Clean up EmailAddress objects for YAML serialization
+    if "email" in merged_data and merged_data["email"]:
+        merged_data["email"] = str(merged_data["email"])
+    
+    if "all_emails" in merged_data:
+        merged_data["all_emails"] = [str(e) for e in merged_data["all_emails"]]
 
     if company.last_enriched:
         merged_data["last_enriched"] = company.last_enriched.isoformat(timespec='seconds') + 'Z'
@@ -84,6 +91,31 @@ def create_company_files(company: Company, company_dir: Path) -> Path:
         merged_data["categories"] = merged_categories
     elif "categories" in merged_data:
         del merged_data["categories"] # Remove if empty
+
+    # Merge services
+    existing_services = set(existing_frontmatter_data.get("services", []))
+    new_services = set(company.services)
+    merged_services = sorted(list(existing_services.union(new_services)))
+    if merged_services:
+        merged_data["services"] = merged_services
+    elif "services" in merged_data:
+        del merged_data["services"]
+
+    # Merge products
+    existing_products = set(existing_frontmatter_data.get("products", []))
+    new_products = set(company.products)
+    merged_products = sorted(list(existing_products.union(new_products)))
+    if merged_products:
+        merged_data["products"] = merged_products
+    elif "products" in merged_data:
+        del merged_data["products"]
+
+    if company.description:
+        markdown_content = f"\n{company.description}\n"
+    
+    # Remove description from merged_data if it somehow snuck in
+    if "description" in merged_data:
+        del merged_data["description"]
 
     # Generate YAML front matter
     frontmatter = yaml.dump(merged_data, sort_keys=False, default_flow_style=False, allow_unicode=True)

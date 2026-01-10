@@ -206,37 +206,57 @@ async def _run_scrape_task_loop(browser: Any, scrape_queue: Any, gm_list_item_qu
             csv_manager = ProspectsIndexManager(task.campaign_name)
             prospect_count = 0
             
-            async with asyncio.timeout(900):
-                async for prospect in scrape_google_maps(
-                    browser=browser,
-                    location_param=location_param,
-                    search_strings=[task.search_phrase],
-                    campaign_name=task.campaign_name,
-                    debug=debug,
-                    force_refresh=task.force_refresh,
-                    ttl_days=task.ttl_days,
-                    grid_tiles=grid_tiles,
-                    s3_client=s3_client,
-                    s3_bucket=bucket_name
-                ):
-                    prospect_count += 1
-                    if csv_manager.append_prospect(prospect):
-                        if prospect.Place_ID:
-                            file_path = csv_manager.get_file_path(prospect.Place_ID)
-                            if file_path.exists():
-                                s3_key = f"campaigns/{task.campaign_name}/indexes/google_maps_prospects/{file_path.name}"
-                                try:
-                                    s3_client.upload_file(str(file_path), bucket_name, s3_key)
-                                except Exception as e:
-                                    logger.error(f"S3 Upload Error: {e}")
+            # Heartbeat task for FilesystemQueue
+            heartbeat_task = None
+            if hasattr(scrape_queue, "heartbeat") and task.ack_token:
+                async def _heartbeat_loop() -> None:
+                    try:
+                        while True:
+                            await asyncio.sleep(60)
+                            scrape_queue.heartbeat(task.ack_token)
+                    except asyncio.CancelledError:
+                        pass
+                heartbeat_task = asyncio.create_task(_heartbeat_loop())
 
-                            details_task = GmItemTask(
-                                place_id=prospect.Place_ID,
-                                campaign_name=task.campaign_name,
-                                force_refresh=task.force_refresh,
-                                ack_token=None
-                            )
-                            gm_list_item_queue.push(details_task)
+            try:
+                async with asyncio.timeout(900):
+                    async for prospect in scrape_google_maps(
+                        browser=browser,
+                        location_param=location_param,
+                        search_strings=[task.search_phrase],
+                        campaign_name=task.campaign_name,
+                        debug=debug,
+                        force_refresh=task.force_refresh,
+                        ttl_days=task.ttl_days,
+                        grid_tiles=grid_tiles,
+                        s3_client=s3_client,
+                        s3_bucket=bucket_name
+                    ):
+                        prospect_count += 1
+                        if csv_manager.append_prospect(prospect):
+                            if prospect.Place_ID:
+                                file_path = csv_manager.get_file_path(prospect.Place_ID)
+                                if file_path.exists():
+                                    s3_key = f"campaigns/{task.campaign_name}/indexes/google_maps_prospects/{file_path.name}"
+                                    try:
+                                        s3_client.upload_file(str(file_path), bucket_name, s3_key)
+                                    except Exception as e:
+                                        logger.error(f"S3 Upload Error: {e}")
+
+                                details_task = GmItemTask(
+                                    place_id=prospect.Place_ID,
+                                    campaign_name=task.campaign_name,
+                                    force_refresh=task.force_refresh,
+                                    ack_token=None
+                                )
+                                gm_list_item_queue.push(details_task)
+            finally:
+                if heartbeat_task:
+                    heartbeat_task.cancel()
+                    try:
+                        await asyncio.wait_for(heartbeat_task, timeout=2)
+                    except (asyncio.CancelledError, asyncio.TimeoutError):
+                        pass
             
             logger.info(f"Task Complete. Found {prospect_count} prospects.")
             scrape_queue.ack(task)
@@ -428,16 +448,36 @@ async def _run_details_task_loop(browser_or_context: Any, gm_list_item_queue: An
                             continue
 
             # 3. Proceed with Scrape
-            page = await browser_or_context.new_page()
+            # Heartbeat task for FilesystemQueue
+            heartbeat_task = None
+            if hasattr(gm_list_item_queue, "heartbeat") and task.ack_token:
+                async def _heartbeat_loop() -> None:
+                    try:
+                        while True:
+                            await asyncio.sleep(60)
+                            gm_list_item_queue.heartbeat(task.ack_token)
+                    except asyncio.CancelledError:
+                        pass
+                heartbeat_task = asyncio.create_task(_heartbeat_loop())
+
             try:
-                detailed_prospect_data = await scrape_google_maps_details(
-                    page=page,
-                    place_id=task.place_id,
-                    campaign_name=task.campaign_name,
-                    debug=debug
-                )
+                page = await browser_or_context.new_page()
+                try:
+                    detailed_prospect_data = await scrape_google_maps_details(
+                        page=page,
+                        place_id=task.place_id,
+                        campaign_name=task.campaign_name,
+                        debug=debug
+                    )
+                finally:
+                    await page.close()
             finally:
-                await page.close()
+                if heartbeat_task:
+                    heartbeat_task.cancel()
+                    try:
+                        await asyncio.wait_for(heartbeat_task, timeout=2)
+                    except (asyncio.CancelledError, asyncio.TimeoutError):
+                        pass
             
             if not detailed_prospect_data:
                 logger.warning(f"No details scraped for {task.place_id}. Nacking task.")

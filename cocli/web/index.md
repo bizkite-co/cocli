@@ -58,18 +58,9 @@ This dashboard provides a real-time view of the scraping and enrichment funnel.
 </div>
 
 <div id="prospects-loading">Loading prospect data for search...</div>
-<table class="report-table" id="prospects-table" style="display:none;">
-    <thead>
-        <tr>
-            <th>Company</th>
-            <th>Emails</th>
-            <th>Categories</th>
-            <th>Actions</th>
-        </tr>
-    </thead>
-    <tbody id="prospects-body">
-    </tbody>
-</table>
+<div id="prospects-container" class="prospect-grid" style="display:none;">
+    <!-- Cards will be injected here -->
+</div>
 
 ## Downloads
 
@@ -77,7 +68,10 @@ This dashboard provides a real-time view of the scraping and enrichment funnel.
     <h3>Latest Email Export</h3>
     <p>Download the most recent list of enriched prospects with emails.</p>
     <p><strong>Total Emails:</strong> <span id="email-count-display">...</span></p>
-    <a href="#" id="download-link" class="button">Download CSV</a>
+    <div style="display: flex; gap: 10px;">
+        <a href="#" id="download-link" class="button">Download CSV</a>
+        <a href="#" id="download-link-json" class="button" style="background: #666;">Download JSON</a>
+    </div>
 </div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
@@ -115,7 +109,7 @@ This dashboard provides a real-time view of the scraping and enrichment funnel.
                 complete: function(results) {
                     allProspects = results.data;
                     document.getElementById('prospects-loading').style.display = 'none';
-                    document.getElementById('prospects-table').style.display = 'table';
+                    document.getElementById('prospects-container').style.display = 'grid';
                     
                     // Build category list
                     allProspects.forEach(p => {
@@ -147,27 +141,67 @@ This dashboard provides a real-time view of the scraping and enrichment funnel.
         }
     }
 
+    function togglePanel(id) {
+        const panel = document.getElementById(id);
+        if (!panel) return;
+        if (panel.style.display === 'none') {
+            panel.style.display = 'block';
+        } else {
+            panel.style.display = 'none';
+        }
+    }
+
+    function createCompanyCard(p, index) {
+        const servicesHtml = p.services ? `
+            <div class="panel-section">
+                <button class="toggle-btn" onclick="togglePanel('services-${index}')">Services (+)</button>
+                <div id="services-${index}" class="panel-content" style="display:none;">
+                    ${p.services.split(';').map(s => `<span>${s.trim()}</span>`).join(', ')}
+                </div>
+            </div>` : '';
+
+        const productsHtml = p.products ? `
+            <div class="panel-section">
+                <button class="toggle-btn" onclick="togglePanel('products-${index}')">Products (+)</button>
+                <div id="products-${index}" class="panel-content" style="display:none;">
+                    ${p.products.split(';').map(s => `<span>${s.trim()}</span>`).join(', ')}
+                </div>
+            </div>` : '';
+
+        return `
+            <div class="company-card">
+                <div class="card-header">
+                    <h3>${p.company}</h3>
+                    <a href="http://${p.domain}" target="_blank" class="domain-link">${p.domain}</a>
+                </div>
+                <div class="card-body">
+                    <div class="info-row">
+                        <strong>Emails:</strong> 
+                        <div class="email-list">${p.emails.split(';').map(e => `<div>${e.trim()}</div>`).join('')}</div>
+                    </div>
+                    ${p.phone ? `<div class="info-row"><strong>Phone:</strong> ${p.phone}</div>` : ''}
+                    ${p.categories ? `<div class="info-row"><strong>Categories:</strong> <small>${p.categories}</small></div>` : ''}
+                    
+                    <div class="expandable-area">
+                        ${servicesHtml}
+                        ${productsHtml}
+                    </div>
+                </div>
+            </div>
+        `;
+    }
+
     function renderProspects(prospects) {
-        const body = document.getElementById('prospects-body');
-        body.innerHTML = '';
+        const container = document.getElementById('prospects-container');
+        container.innerHTML = '';
         
-        const limit = 50;
+        const limit = 100;
         const displayList = prospects.slice(0, limit);
         
-        displayList.forEach(p => {
-            const tr = document.createElement('tr');
-            tr.innerHTML = `
-                <td>
-                    <strong>${p.company}</strong><br>
-                    <small>${p.domain}</small>
-                </td>
-                <td>${p.emails.replace(/;/g, '<br>')}</td>
-                <td><small>${p.categories || ''}</small></td>
-                <td>
-                    <a href="http://${p.domain}" target="_blank" class="nav-link" style="color: #007bff; font-size: 0.8em;">Visit</a>
-                </td>
-            `;
-            body.appendChild(tr);
+        displayList.forEach((p, index) => {
+            const div = document.createElement('div');
+            div.innerHTML = createCompanyCard(p, index);
+            container.appendChild(div.firstElementChild);
         });
 
         const info = document.getElementById('search-results-info');
@@ -186,7 +220,9 @@ This dashboard provides a real-time view of the scraping and enrichment funnel.
                 p.company.toLowerCase().includes(query) || 
                 p.domain.toLowerCase().includes(query) || 
                 p.emails.toLowerCase().includes(query) || 
-                p.categories.toLowerCase().includes(query);
+                p.categories.toLowerCase().includes(query) ||
+                p.services.toLowerCase().includes(query) ||
+                p.products.toLowerCase().includes(query);
             
             const matchesCat = !cat || (p.categories && p.categories.includes(cat));
             
@@ -197,7 +233,6 @@ This dashboard provides a real-time view of the scraping and enrichment funnel.
     }
 
     window.addEventListener('DOMContentLoaded', () => {
-        console.log("Dashboard Page Loaded");
         fetchReport();
     });
 
@@ -246,14 +281,8 @@ This dashboard provides a real-time view of the scraping and enrichment funnel.
             workerContainer.style.display = 'block';
         }
 
-                // Update downloads
-
-                document.getElementById('email-count-display').textContent = (stats.emails_found_count || 0).toLocaleString();
-
-                document.getElementById('download-link').href = `/exports/${stats.campaign_name || campaign}-emails.csv`;
-
-            }
-
-        </script>
-
-        
+        document.getElementById('email-count-display').textContent = (stats.emails_found_count || 0).toLocaleString();
+        document.getElementById('download-link').href = `/exports/${stats.campaign_name || campaign}-emails.csv`;
+        document.getElementById('download-link-json').href = `/exports/${stats.campaign_name || campaign}-emails.json`;
+    }
+</script>

@@ -1,0 +1,34 @@
+<div class="company-card">
+    <div class="card-header">
+        <h3>${p.company}</h3>
+        <a href="http://${p.domain}" target="_blank" class="domain-link">${p.domain}</a>
+    </div>
+    <div class="card-body">
+        <div class="info-row">
+            <strong>Emails:</strong> 
+            <div class="email-list">
+                ${p.emails.split(';').map(e => `<div>${e.trim()}</div>`).join('')}
+            </div>
+        </div>
+        ${p.phone ? `<div class="info-row"><strong>Phone:</strong> ${p.phone}</div>` : ''}
+        ${p.categories ? `<div class="info-row"><strong>Categories:</strong> <small>${p.categories}</small></div>` : ''}
+        
+        <div class="expandable-area">
+            ${p.services ? `
+            <div class="panel-section">
+                <button class="toggle-btn" onclick="togglePanel('services-${index}')">Services (+)</button>
+                <div id="services-${index}" class="panel-content" style="display:none;">
+                    ${p.services.split(';').map(s => `<span>${s.trim()}</span>`).join(', ')}
+                </div>
+            </div>` : ''}
+            
+            ${p.products ? `
+            <div class="panel-section">
+                <button class="toggle-btn" onclick="togglePanel('products-${index}')">Products (+)</button>
+                <div id="products-${index}" class="panel-content" style="display:none;">
+                    ${p.products.split(';').map(s => `<span>${s.trim()}</span>`).join(', ')}
+                </div>
+            </div>` : ''}
+        </div>
+    </div>
+</div>

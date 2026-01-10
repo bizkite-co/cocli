@@ -203,5 +203,18 @@ graph TD
 3.  **Cluster Auto-Start:**
     *   [ ] Update the Pi 5 boot sequence to automatically launch the "Powerhouse" container set on restart.
 
+## Phase 13: Distributed Filesystem Queue (DFQ) (Proposed)
+
+**Goal:** Transition from SQS to a decentralized, cost-effective queue using the mission index and atomic leases ([ADR 010](docs/adr/010-distributed-filesystem-queue.md)).
+
+1.  **Lease Manager Implementation:**
+    *   [ ] Implement `cocli/core/queue/filesystem.py` with atomic `.lease` creation.
+    *   [ ] Add heartbeat support for long-running GMB scrapes.
+2.  **Provider Factory Integration:**
+    *   [ ] Update `get_queue_manager` in `factory.py` to support `queue_type="filesystem"`.
+3.  **Worker Migration:**
+    *   [ ] Test DFQ reliability on a single Pi node using the `roadmap` campaign.
+    *   [ ] Roll out to the full cluster and decommission SQS queues.
+
 
 ```

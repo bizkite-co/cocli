@@ -8,15 +8,31 @@ def get_queue_manager(queue_name: str, use_cloud: bool = False, queue_type: str 
     """
     Factory to return the appropriate QueueManager.
     """
+    import os
+    from ..config import get_campaign, load_campaign_config
+    
+    # Resolve campaign name if not provided
+    effective_campaign = campaign_name
+    if not effective_campaign:
+        effective_campaign = get_campaign()
+
+    # Determine Queue Provider (SQS or Filesystem)
+    # Priority: Env Var > Config > Default (SQS if use_cloud, else LocalFile)
+    provider = os.getenv("COCLI_QUEUE_TYPE")
+    if not provider:
+        from ..config import get_config
+        provider = get_config().queue_type
+    
+    if provider == "filesystem" and effective_campaign:
+        from .filesystem import FilesystemGmListQueue, FilesystemGmDetailsQueue, FilesystemEnrichmentQueue
+        if queue_type in ["scrape", "gm-list"]:
+            return FilesystemGmListQueue(campaign_name=effective_campaign)
+        elif queue_type == "gm_list_item":
+            return FilesystemGmDetailsQueue(campaign_name=effective_campaign)
+        elif queue_type == "enrichment":
+            return FilesystemEnrichmentQueue(campaign_name=effective_campaign)
+
     if use_cloud:
-        import os
-        from ..config import get_campaign, load_campaign_config
-        
-        # Resolve campaign name if not provided
-        effective_campaign = campaign_name
-        if not effective_campaign:
-            effective_campaign = get_campaign()
-            
         config = load_campaign_config(effective_campaign) if effective_campaign else {}
         aws_config = config.get('aws', {})
         
@@ -46,8 +62,4 @@ def get_queue_manager(queue_name: str, use_cloud: bool = False, queue_type: str 
             print(f"DEBUG: Using Enrichment Queue URL: {queue_url}")
             return SQSQueue(queue_url=queue_url, aws_profile_name=aws_profile)
     else:
-        # TODO: Implement LocalFileQueue for ScrapeTasks if needed (different file structure?)
-        # For now, LocalFileQueue is generic enough if we don't enforce strict typing inside it,
-        # but LocalFileQueue expects QueueMessage.
-        # We might need a LocalScrapeQueue later.
         return LocalFileQueue(queue_name=queue_name)

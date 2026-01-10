@@ -290,3 +290,114 @@
     text-decoration: none;
     border-radius: 4px;
 }
+
+/* Prospect Card Grid Layout */
+.prospect-grid {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 20px;
+    margin: 20px 0;
+}
+
+@media (min-width: 768px) {
+    .prospect-grid {
+        grid-template-columns: repeat(2, 1fr);
+    }
+}
+
+.company-card {
+    background: white;
+    border-radius: 8px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    padding: 20px;
+    display: flex;
+    flex-direction: column;
+    border: 1px solid #eee;
+}
+
+.card-header {
+    margin-bottom: 15px;
+    border-bottom: 1px solid #f0f0f0;
+    padding-bottom: 10px;
+}
+
+.card-header h3 {
+    margin: 0 0 5px 0;
+    color: #333;
+    font-size: 1.2em;
+    text-align: left;
+}
+
+.domain-link {
+    color: #007bff;
+    text-decoration: none;
+    font-size: 0.9em;
+}
+
+.domain-link:hover {
+    text-decoration: underline;
+}
+
+.card-body {
+    font-size: 0.95em;
+    color: #555;
+}
+
+.info-row {
+    margin-bottom: 10px;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+}
+
+.email-list {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.email-list div {
+    font-family: monospace;
+    background: #f8f9fa;
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-size: 0.9em;
+}
+
+.panel-section {
+    margin-top: 10px;
+    border-top: 1px solid #f0f0f0;
+    padding-top: 10px;
+}
+
+.toggle-btn {
+    background: #f8f9fa;
+    border: 1px solid #ddd;
+    color: #333;
+    cursor: pointer;
+    font-size: 0.85em;
+    font-weight: bold;
+    padding: 5px 10px;
+    margin-bottom: 5px;
+    display: block;
+    width: 100%;
+    text-align: left;
+    border-radius: 4px;
+    transition: background 0.2s;
+}
+
+.toggle-btn:hover {
+    background: #e9ecef;
+    color: #007bff;
+}
+
+.panel-content {
+    background: #fafafa;
+    padding: 10px;
+    border-radius: 4px;
+    font-size: 0.85em;
+    line-height: 1.4;
+    max-height: 200px;
+    overflow-y: auto;
+    border: 1px solid #f0f0f0;
+}

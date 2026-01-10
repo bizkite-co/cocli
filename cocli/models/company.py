@@ -63,7 +63,9 @@ class Company(BaseModel):
     youtube_url: Optional[str] = None
     about_us_url: Optional[str] = None
     contact_url: Optional[str] = None
-
+    
+    services: List[str] = Field(default_factory=list)
+    products: List[str] = Field(default_factory=list)
 
     meta_description: Optional[str] = None
     meta_keywords: Optional[str] = None
@@ -145,6 +147,16 @@ class Company(BaseModel):
                 tags = frontmatter_data["tags"]
                 if isinstance(tags, str):
                     tags = [tags]
+
+            # --- RESILIENCE: Filter anomalous emails from frontmatter before loading ---
+            from cocli.core.text_utils import is_valid_email
+            if "email" in frontmatter_data and frontmatter_data["email"]:
+                if not is_valid_email(str(frontmatter_data["email"])):
+                    frontmatter_data["email"] = None
+            
+            if "all_emails" in frontmatter_data and isinstance(frontmatter_data["all_emails"], list):
+                frontmatter_data["all_emails"] = [e for e in frontmatter_data["all_emails"] if is_valid_email(str(e))]
+            # --------------------------------------------------------------------------
 
             # Prepare data for model instantiation
             model_data = frontmatter_data

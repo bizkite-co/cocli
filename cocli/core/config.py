@@ -212,6 +212,7 @@ class Config(BaseModel):
     tui: Tui = Tui()
     campaign: Optional[Dict[str, Any]] = None
     context: Optional[Dict[str, Any]] = None
+    queue_type: Optional[str] = None
 
 def get_config() -> Config:
     config_path = get_config_path()

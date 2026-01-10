@@ -41,6 +41,7 @@ class Website(BaseModel):
     products_url: Optional[str] = None
     services: List[str] = []
     products: List[str] = []
+    categories: List[str] = []
     tags: List[str] = []
     scraper_version: Optional[int] = 1
     associated_company_folder: Optional[str] = None
