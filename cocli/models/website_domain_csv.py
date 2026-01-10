@@ -28,5 +28,6 @@ class WebsiteDomainCsv(BaseModel):
     all_emails: List[EmailAddress] = []
     email_contexts: Dict[str, str] = {}
     tech_stack: List[str] = []
+    found_keywords: List[str] = []
     created_at: datetime = Field(default_factory=datetime.utcnow)
     updated_at: datetime = Field(default_factory=datetime.utcnow)

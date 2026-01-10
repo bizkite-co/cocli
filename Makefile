@@ -541,6 +541,16 @@ start-rpi-details-worker: ## Start the Details Worker on Raspberry Pi
 		-e COCLI_ENRICHMENT_QUEUE_URL='$(ENRICHMENT_QUEUE)' \
 		-v ~/.aws:/root/.aws:ro cocli-worker-rpi:latest cocli worker details --workers $(DETAILS_WORKERS)"
 
+start-rpi-enrichment-worker: ## Start the Enrichment Worker on Raspberry Pi
+	ssh $(RPI_USER)@$(RPI_HOST) "docker run -d --restart always --name cocli-enrichment-worker \
+		-e TZ=America/Los_Angeles \
+		-e CAMPAIGN_NAME='$(CAMPAIGN)' \
+		-e AWS_PROFILE=$(AWS_PROFILE) \
+		-v ~/.aws:/root/.aws:ro cocli-worker-rpi:latest cocli worker enrichment --workers $(WORKERS)"
+
+stop-rpi-enrichment-worker: ## Stop the Enrichment Worker on Raspberry Pi
+	-ssh $(RPI_USER)@$(RPI_HOST) "docker stop cocli-enrichment-worker && docker rm cocli-enrichment-worker"
+
 .PHONY: stop-rpi-worker
 stop-rpi-worker: ## Stop and remove the Docker worker on Raspberry Pi
 	-ssh $(RPI_USER)@$(RPI_HOST) "docker stop cocli-scraper-worker && docker rm cocli-scraper-worker"

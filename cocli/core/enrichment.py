@@ -47,6 +47,7 @@ async def enrich_company_website(
     website_data = await scraper.run(
         browser=browser,
         domain=company.domain,
+        company_slug=company.slug,
         campaign=campaign, # Pass the campaign object
         force_refresh=force,
         ttl_days=ttl_days,

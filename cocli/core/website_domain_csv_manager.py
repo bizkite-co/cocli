@@ -35,7 +35,7 @@ class WebsiteDomainCsvManager:
                             processed_row[field] = None
                 
                 # Convert list and dict fields
-                for field in ['personnel', 'tags', 'all_emails', 'tech_stack', 'email_contexts']:
+                for field in ['personnel', 'tags', 'all_emails', 'tech_stack', 'email_contexts', 'found_keywords']:
                     if processed_row.get(field):
                         try:
                             processed_row[field] = ast.literal_eval(processed_row[field])
@@ -89,7 +89,7 @@ class WebsiteDomainCsvManager:
             for item in self.data.values():
                 dump = item.model_dump()
                 # Convert lists and dicts to strings for CSV
-                for field in ['personnel', 'tags', 'all_emails', 'tech_stack', 'email_contexts']:
-                    if dump.get(field):
+                for field in ['personnel', 'tags', 'all_emails', 'tech_stack', 'email_contexts', 'found_keywords']:
+                    if dump.get(field) is not None:
                         dump[field] = str(dump[field])
                 writer.writerow(dump)

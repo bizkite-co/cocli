@@ -50,6 +50,9 @@ class Website(BaseModel):
     all_emails: List[EmailAddress] = []
     email_contexts: Dict[str, str] = {}
     tech_stack: List[str] = []
+    found_keywords: List[str] = []
+    sitemap_xml: Optional[str] = None
+    navbar_html: Optional[str] = None
 
     def save(self, company_slug: str) -> None:
         """Saves the website enrichment data to the local company directory."""
@@ -67,10 +70,15 @@ class Website(BaseModel):
         # Ensure updated_at is refreshed on save
         self.updated_at = datetime.now(timezone.utc)
 
+        # Exclude raw large fields from the markdown frontmatter
+        save_data = self.model_dump(exclude_none=True)
+        save_data.pop("sitemap_xml", None)
+        save_data.pop("navbar_html", None)
+
         with open(website_md_path, "w") as f:
             f.write("---\n")
             yaml.safe_dump(
-                self.model_dump(exclude_none=True),
+                save_data,
                 f,
                 sort_keys=False,
                 default_flow_style=False,
@@ -78,6 +86,12 @@ class Website(BaseModel):
             )
             f.write("---\n")
         
+        # Save raw auxiliary files
+        if self.sitemap_xml:
+            (enrichment_dir / "sitemap.xml").write_text(self.sitemap_xml)
+        if self.navbar_html:
+            (enrichment_dir / "navbar.html").write_text(self.navbar_html)
+
         logger.debug(f"Saved website enrichment locally for {company_slug}")
 
         # Sync with Email Index

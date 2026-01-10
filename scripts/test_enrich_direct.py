@@ -18,12 +18,19 @@ async def run_test(domain: str, campaign_name: str, debug: bool = True) -> None:
     campaign_data.update(config) # Merge sections
     campaign = Campaign.model_validate(campaign_data)
     
-    company = Company(name=domain, domain=domain, slug=domain)
+    # Correct resolution: Find existing company or use proper slugification
+    from cocli.core.text_utils import slugify
+    company_slug = slugify(domain)
+    company = Company.get(company_slug)
+    if not company:
+        console.print(f"[yellow]No existing company found for slug '{company_slug}'. Creating temporary Company object.[/yellow]")
+        company = Company(name=domain, domain=domain, slug=company_slug)
+    
+    console.print(f"Enriching [bold]{domain}[/bold] (Slug: [cyan]{company.slug}[/cyan])...")
     
     async with async_playwright() as p:
         browser = await p.chromium.launch(headless=True)
         try:
-            console.print(f"[bold blue]Enriching {domain}...[/bold blue]")
             website_data = await enrich_company_website(
                 browser=browser,
                 company=company,
@@ -31,13 +38,13 @@ async def run_test(domain: str, campaign_name: str, debug: bool = True) -> None:
                 force=True,
                 debug=debug
             )
-            
             if website_data:
-                console.print("[bold green]Success![/bold green]")
-                console.print(website_data.model_dump(exclude_none=True))
+                # Save using the validated slug
+                website_data.save(company.slug)
+                console.print("[green]Success![/green]")
+                console.print(website_data.model_dump(exclude={'sitemap_xml'}))
             else:
-                console.print("[bold red]Failed to enrich (None returned)[/bold red]")
-                
+                console.print("[red]Enrichment failed.[/red]")
         finally:
             await browser.close()
 

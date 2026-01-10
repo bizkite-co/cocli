@@ -173,6 +173,35 @@ class FilesystemQueue:
         except Exception as e:
             logger.error(f"Error acking (deleting task/lease) for {task_id}: {e}")
 
+    def heartbeat(self, task_id: str) -> None:
+        """Updates the heartbeat timestamp of a lease."""
+        lease_path = self._get_lease_path(task_id)
+        if lease_path.exists():
+            try:
+                with open(lease_path, 'r') as f:
+                    data = json.load(f)
+                
+                data['heartbeat_at'] = datetime.utcnow().isoformat()
+                data['expires_at'] = (datetime.utcnow() + timedelta(minutes=self.lease_duration)).isoformat()
+                
+                with open(lease_path, 'w') as f:
+                    json.dump(data, f)
+                logger.debug(f"Heartbeat updated for {task_id}")
+            except Exception as e:
+                logger.error(f"Error updating heartbeat for {task_id}: {e}")
+
+    def nack(self, task_id: Optional[str]) -> None:
+        """Releases the lease without deleting the task, so it can be retried."""
+        if not task_id:
+            return
+        lease_path = self._get_lease_path(task_id)
+        try:
+            if lease_path.exists():
+                lease_path.unlink()
+                logger.debug(f"Nacked (released lease) for {task_id}")
+        except Exception as e:
+            logger.error(f"Error nacking (releasing lease) for {task_id}: {e}")
+
 class FilesystemGmListQueue(FilesystemQueue):
     """Specialized queue for Google Maps List scraping using the Mission Index."""
 
@@ -240,6 +269,9 @@ class FilesystemGmDetailsQueue(FilesystemQueue):
     def ack(self, task: GmItemTask) -> None: # type: ignore
         super().ack(task.ack_token)
 
+    def nack(self, task: GmItemTask) -> None: # type: ignore
+        super().nack(task.ack_token)
+
 class FilesystemEnrichmentQueue(FilesystemQueue):
     """Queue for Website Enrichment."""
     def __init__(self, campaign_name: str):
@@ -255,3 +287,6 @@ class FilesystemEnrichmentQueue(FilesystemQueue):
 
     def ack(self, task: QueueMessage) -> None: # type: ignore
         super().ack(task.ack_token)
+
+    def nack(self, task: QueueMessage) -> None: # type: ignore
+        super().nack(task.ack_token)
