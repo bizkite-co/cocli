@@ -178,11 +178,20 @@ def get_campaign_dir(campaign_name: str) -> Optional[Path]:
 
 def get_all_campaign_dirs() -> list[Path]:
     """
-    Returns a list of all campaign directories.
+    Returns a list of all campaign directories, deduplicated by slugified name.
     """
+    from .text_utils import slugify
     campaigns_dir = get_campaigns_dir()
     if campaigns_dir.exists() and campaigns_dir.is_dir():
-        return [d for d in campaigns_dir.iterdir() if d.is_dir()]
+        dirs = [d for d in campaigns_dir.iterdir() if d.is_dir()]
+        seen_slugs = set()
+        unique_dirs = []
+        for d in sorted(dirs):
+            slug = slugify(d.name)
+            if slug not in seen_slugs:
+                seen_slugs.add(slug)
+                unique_dirs.append(d)
+        return unique_dirs
     return []
 
 

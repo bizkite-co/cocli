@@ -12,7 +12,6 @@ from .email_address import EmailAddress
 from .phone import OptionalPhone
 from .email import EmailEntry
 from ..core.config import get_companies_dir, get_campaign
-from ..core.email_index_manager import EmailIndexManager
 
 logger = logging.getLogger(__name__)
 
@@ -262,6 +261,7 @@ class Company(BaseModel):
 
         # 3. Sync with Email Index (if a campaign is active)
         if email_sync:
+            from ..core.email_index_manager import EmailIndexManager
             campaign_name = get_campaign()
             if campaign_name:
                 try:
