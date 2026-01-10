@@ -81,6 +81,7 @@ async def pipeline(
             enrichment_url = get_enrichment_service_url()
             use_cloud_enrichment = enrichment_url != "http://localhost:8000"
             consumer_context = await browser.new_context() if not use_cloud_enrichment else None
+            compiler = WebsiteCompiler()
             
             while not stop_event.is_set():
                 messages = queue_manager.poll(batch_size=1)
@@ -130,12 +131,14 @@ async def pipeline(
                             f.write("---\n")
                             yaml.dump(website_data.model_dump(exclude_none=True), f)
                             f.write("---\n")
-                        WebsiteCompiler().compile(company_dir)
+                        compiler.compile(company_dir)
                         if website_data.email:
                             emails_found_count += 1
                         if emails_found_count >= goal_emails:
                             stop_event.set()
                         queue_manager.ack(msg)
+            
+            compiler.save_audit_report()
         async def producer_task(existing_companies_map: Dict[str, str]) -> None: 
             csv_manager = ProspectsIndexManager(campaign_name)
 

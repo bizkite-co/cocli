@@ -49,6 +49,7 @@ def batch_compile(campaign_name: str, company_slug: Optional[str] = None) -> Non
         except Exception as e:
             console.print(f"[red]Failed to compile {company_path.name}: {e}[/red]")
 
+    compiler.save_audit_report()
     console.print(f"Finished. Processed {total_count} companies.")
 
 @app.command()

@@ -1,4 +1,7 @@
+import json
 from pathlib import Path
+from datetime import datetime, UTC
+from typing import List, Any, Dict
 import yaml
 from rich.console import Console
 
@@ -6,10 +9,47 @@ from .base import BaseCompiler
 from ..models.company import Company
 from ..models.website import Website
 from ..core.utils import create_company_files
+from ..core.config import get_cocli_base_dir
 
 console = Console()
 
 class WebsiteCompiler(BaseCompiler):
+    def __init__(self) -> None:
+        self.errors: List[Dict[str, Any]] = []
+
+    def log_error(self, company_slug: str, error: str) -> None:
+        self.errors.append({
+            "company_slug": company_slug,
+            "error": error,
+            "timestamp": datetime.now(UTC).isoformat()
+        })
+
+    def save_audit_report(self) -> None:
+        if not self.errors:
+            return
+        
+        report_path = get_cocli_base_dir() / "audit_report.json"
+        
+        # Load existing if any
+        existing = []
+        if report_path.exists():
+            try:
+                with open(report_path, 'r') as f:
+                    existing = json.load(f)
+            except Exception:
+                pass
+        
+        # Append new unique ones (based on slug and error message)
+        seen = {(e["company_slug"], e["error"]) for e in existing}
+        for e in self.errors:
+            if (e["company_slug"], e["error"]) not in seen:
+                existing.append(e)
+        
+        with open(report_path, 'w') as f:
+            json.dump(existing, f, indent=2)
+        
+        console.print(f"[bold blue]Audit report saved to {report_path}[/bold blue]")
+
     def compile(self, company_dir: Path) -> None:
         website_md_path = company_dir / "enrichments" / "website.md"
         if not website_md_path.exists():

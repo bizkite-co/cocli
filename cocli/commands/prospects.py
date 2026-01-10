@@ -225,16 +225,19 @@ def enrich_prospects_command(
         if not os.getenv("COCLI_RUNNING_IN_FARGATE"):
             ensure_enrichment_service_ready(console)
         console.print(f"Enriching prospects for campaign: [bold]{campaign_name}[/bold]")
+        compiler = WebsiteCompiler()
         async with httpx.AsyncClient() as client:
             tasks = []
             for prospect in prospects:
                 if prospect.domain:
                     tasks.append(enrich_prospect_docker(client, prospect, force, ttl_days, console))
             await asyncio.gather(*tasks)
+        compiler.save_audit_report()
 
     async def main_local() -> None:
         console.print(f"Enriching prospects for campaign: [bold]{campaign_name}[/bold] with {workers} workers.")
         semaphore = asyncio.Semaphore(workers)
+        compiler = WebsiteCompiler()
         async with async_playwright() as p:
             browser = await p.chromium.launch(headless=True)
             try:
@@ -254,6 +257,7 @@ def enrich_prospects_command(
                 await asyncio.gather(*tasks)
             finally:
                 await browser.close()
+        compiler.save_audit_report()
 
     if runner == "docker":
         asyncio.run(main_docker())
@@ -304,6 +308,8 @@ def enrich_from_queue(
     # Shared state for circuit breaker
     circuit_state = {"consecutive_errors": 0}
     MAX_CONSECUTIVE_ERRORS = 10 # Allow some failures, but stop if systematic
+    
+    compiler = WebsiteCompiler()
 
     async def process_message_docker(client: httpx.AsyncClient, msg: QueueMessage) -> bool:
         """Returns True if successful (even if no email found), False if error/exception."""
@@ -549,6 +555,8 @@ def enrich_from_queue(
             
             if browser:
                 await browser.close()
+            
+            compiler.save_audit_report()
 
     if runner == "docker":
         try:

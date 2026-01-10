@@ -5,7 +5,7 @@ import yaml
 import logging
 from .domain import Domain
 from .email_address import EmailAddress
-from .phone import PhoneNumber
+from .phone import OptionalPhone
 
 logger = logging.getLogger(__name__)
 
@@ -26,7 +26,7 @@ class Website(BaseModel):
         return self.url
 
     company_name: Optional[str] = None
-    phone: Optional[PhoneNumber] = None
+    phone: OptionalPhone = None
     email: Optional[EmailAddress] = None
     facebook_url: Optional[str] = None
     linkedin_url: Optional[str] = None

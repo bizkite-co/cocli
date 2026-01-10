@@ -5,7 +5,7 @@ from datetime import datetime, UTC
 import logging
 
 from .types import AwareDatetime # Import the custom type
-from .phone import PhoneNumber
+from .phone import OptionalPhone
 from cocli.core.text_utils import slugify
 
 logger = logging.getLogger(__name__)
@@ -32,8 +32,8 @@ class GoogleMapsProspect(BaseModel):
     State: Optional[str] = None
     Country: Optional[str] = None
     Timezone: Optional[str] = None
-    Phone_1: Optional[PhoneNumber] = None
-    Phone_Standard_format: Optional[PhoneNumber] = None
+    Phone_1: OptionalPhone = None
+    Phone_Standard_format: OptionalPhone = None
     Website: Optional[str] = None
     Domain: Optional[str] = None
     First_category: Optional[str] = None
