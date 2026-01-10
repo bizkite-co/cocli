@@ -466,8 +466,12 @@ class WebsiteScraper:
         if not website_data.phone:
             phone_match = re.search(r"\b(\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4})\b", soup.get_text(separator=' '))
             if phone_match:
-                website_data.phone = str(phone_match.group(0))
-                logger.info(f"Found phone number: {website_data.phone}")
+                from cocli.models.phone import PhoneNumber
+                try:
+                    website_data.phone = PhoneNumber.model_validate(phone_match.group(0))
+                    logger.info(f"Found phone number: {website_data.phone}")
+                except Exception:
+                    logger.warning(f"Could not validate phone number: {phone_match.group(0)}")
 
         # Extract Email
         if not website_data.email:

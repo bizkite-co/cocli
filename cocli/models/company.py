@@ -2,14 +2,17 @@ import re
 from pathlib import Path
 from typing import Optional, List, Any, Iterator, Dict
 import logging
-from datetime import datetime
+from datetime import datetime, UTC
 
 import yaml
 from pydantic import BaseModel, Field, BeforeValidator, ValidationError, model_validator
 from typing_extensions import Annotated
 
 from .email_address import EmailAddress
-from ..core.config import get_companies_dir
+from .phone import OptionalPhone
+from .email import EmailEntry
+from ..core.config import get_companies_dir, get_campaign
+from ..core.email_index_manager import EmailIndexManager
 
 logger = logging.getLogger(__name__)
 
@@ -40,9 +43,9 @@ class Company(BaseModel):
     country: Optional[str] = None
     timezone: Optional[str] = None
 
-    phone_1: Optional[str] = None
-    phone_number: Optional[str] = None
-    phone_from_website: Optional[str] = None
+    phone_1: OptionalPhone = None
+    phone_number: OptionalPhone = None
+    phone_from_website: OptionalPhone = None
     email: Optional[EmailAddress] = None
     website_url: Optional[str] = None
     all_emails: List[EmailAddress] = Field(default_factory=list)
@@ -151,11 +154,23 @@ class Company(BaseModel):
             # --- RESILIENCE: Filter anomalous emails from frontmatter before loading ---
             from cocli.core.text_utils import is_valid_email
             if "email" in frontmatter_data and frontmatter_data["email"]:
-                if not is_valid_email(str(frontmatter_data["email"])):
+                email_val = str(frontmatter_data["email"]).strip()
+                if not is_valid_email(email_val) or email_val.startswith('[') or email_val == 'None' or email_val == 'null':
                     frontmatter_data["email"] = None
             
             if "all_emails" in frontmatter_data and isinstance(frontmatter_data["all_emails"], list):
-                frontmatter_data["all_emails"] = [e for e in frontmatter_data["all_emails"] if is_valid_email(str(e))]
+                cleaned_emails = []
+                for email_val in frontmatter_data["all_emails"]:
+                    if isinstance(email_val, str):
+                        e_str = email_val.strip()
+                        if is_valid_email(e_str) and not e_str.startswith('['):
+                            cleaned_emails.append(e_str)
+                    elif isinstance(email_val, list) and len(email_val) > 0 and isinstance(email_val[0], str):
+                        # Handle legacy list-in-list
+                        e_str = email_val[0].strip()
+                        if is_valid_email(e_str):
+                            cleaned_emails.append(e_str)
+                frontmatter_data["all_emails"] = cleaned_emails
             # --------------------------------------------------------------------------
 
             # Prepare data for model instantiation
@@ -181,9 +196,43 @@ class Company(BaseModel):
             logging.error(f"Error in from_directory for {company_dir}: {e}")
             raise Exception("from_directory") from e
 
-    def save(self) -> None:
+    def merge_with(self, other: 'Company') -> None:
+        """Merges data from another company instance into this one."""
+        # Simple fields: only overwrite if this one is empty or None
+        for field in [
+            "domain", "description", "visits_per_day", "keyword", "full_address", 
+            "street_address", "city", "zip_code", "state", "country", "timezone",
+            "phone_1", "phone_number", "phone_from_website", "email", "website_url",
+            "reviews_count", "average_rating", "business_status", "hours",
+            "facebook_url", "linkedin_url", "instagram_url", "twitter_url", 
+            "youtube_url", "about_us_url", "contact_url", "meta_description", 
+            "meta_keywords", "place_id", "last_enriched"
+        ]:
+            new_val = getattr(other, field)
+            current_val = getattr(self, field)
+            if new_val is not None and (current_val is None or current_val == '' or current_val == 'N/A'):
+                setattr(self, field, new_val)
+        
+        # List fields: merge unique values
+        for field in ["tags", "all_emails", "tech_stack", "categories", "services", "products"]:
+            existing = getattr(self, field) or []
+            new_vals = getattr(other, field) or []
+            # Use a list comprehension to preserve order while ensuring uniqueness
+            merged = list(existing)
+            for val in new_vals:
+                if val and val not in merged:
+                    merged.append(val)
+            setattr(self, field, merged)
+        
+        # Dict fields: merge keys
+        if other.email_contexts:
+            if self.email_contexts is None:
+                self.email_contexts = {}
+            self.email_contexts.update(other.email_contexts)
+
+    def save(self, email_sync: bool = True, base_dir: Optional[Path] = None) -> None:
         """Saves the company data to _index.md and tags to tags.lst."""
-        companies_dir = get_companies_dir()
+        companies_dir = base_dir or get_companies_dir()
         company_dir = companies_dir / self.slug
         company_dir.mkdir(parents=True, exist_ok=True)
         
@@ -204,9 +253,36 @@ class Company(BaseModel):
         
         with open(index_path, 'w') as f:
             f.write("---\n")
-            yaml.dump(data, f, sort_keys=False)
+            yaml.safe_dump(data, f, sort_keys=False)
             f.write("---\n")
             if description:
                 f.write(f"\n{description}\n")
         
         logger.debug(f"Saved company: {self.slug}")
+
+        # 3. Sync with Email Index (if a campaign is active)
+        if email_sync:
+            campaign_name = get_campaign()
+            if campaign_name:
+                try:
+                    index_manager = EmailIndexManager(campaign_name)
+                    # Collect all unique emails
+                    emails_to_sync = set()
+                    if self.email:
+                        emails_to_sync.add(self.email)
+                    if self.all_emails:
+                        for e in self.all_emails:
+                            emails_to_sync.add(e)
+                    
+                    for email_str in emails_to_sync:
+                        entry = EmailEntry(
+                            email=email_str,
+                            domain=self.domain or "unknown",
+                            company_slug=self.slug,
+                            source="company_save",
+                            found_at=datetime.now(UTC),
+                            tags=self.tags
+                        )
+                        index_manager.add_email(entry)
+                except Exception as e:
+                    logger.error(f"Error syncing emails to index for {self.slug}: {e}")

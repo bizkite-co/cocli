@@ -9,10 +9,9 @@ from cocli.core.text_utils import slugify
 from cocli.core.utils import create_company_files, create_person_files
 from ..models.person import Person
 from ..models.company import Company
+from ..models.phone import PhoneNumber
 from ..models.website_domain_csv import WebsiteDomainCsv
 from ..core.website_domain_csv_manager import WebsiteDomainCsvManager
-from ..core.email_index_manager import EmailIndexManager
-from ..models.email import EmailEntry
 from ..models.email_address import EmailAddress
 from ..core.config import get_campaign
 
@@ -29,8 +28,11 @@ def import_customers(
     """
     website_csv_manager = WebsiteDomainCsvManager()
     
+    # We set the campaign globally so Company.save() / Person.save() can find it
     eff_campaign = campaign_name or get_campaign()
-    email_index = EmailIndexManager(eff_campaign) if eff_campaign else None
+    if eff_campaign:
+        from ..core.config import set_campaign
+        set_campaign(eff_campaign)
 
     # Load addresses into a dictionary for easy lookup
     addresses: Dict[str, Dict[str, str | None]] = {}
@@ -67,10 +69,17 @@ def import_customers(
             except Exception:
                 email_addr = None
 
+            phone_val = phone or address_data.get("address_phone")
+            try:
+                phone_obj = PhoneNumber.model_validate(phone_val) if phone_val else None
+            except Exception:
+                phone_obj = None
+
+            # Prepare person
             person = Person(
                 name=name,
                 email=email_addr,
-                phone=phone or address_data.get("address_phone"),
+                phone=phone_obj,
                 tags=tags,
                 full_address=address_data.get("address"),
                 city=address_data.get("city"),
@@ -79,20 +88,6 @@ def import_customers(
                 country=address_data.get("country"),
                 slug=slugify(name),
             )
-            
-            # Index found email
-            if email_index:
-                domain = email.split('@')[-1]
-                try:
-                    email_addr = EmailAddress(email)
-                    email_index.add_email(EmailEntry(
-                        email=email_addr,
-                        domain=domain,
-                        source="shopify_customer_import",
-                        tags=tags
-                    ))
-                except Exception:
-                    pass
 
             company_name_from_address = address_data.get('company_name')
             domain = email.split('@')[1]
@@ -118,7 +113,7 @@ def import_customers(
                     name=company_name.replace("-", " ").title(),
                     domain=website_url,
                     tags=tags,
-                    phone_1=phone or address_data.get("address_phone"),
+                    phone_1=phone_obj,
                     slug=slugify(company_name.replace("-", " ").title()),
                 )
                 company_dir = get_companies_dir() / slugify(company.name)

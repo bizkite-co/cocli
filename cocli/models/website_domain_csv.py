@@ -3,11 +3,12 @@ from typing import Optional, List, Dict
 from datetime import datetime
 from .domain import Domain
 from .email_address import EmailAddress
+from .phone import PhoneNumber
 
 class WebsiteDomainCsv(BaseModel):
     domain: Domain
     company_name: Optional[str] = None
-    phone: Optional[str] = None
+    phone: Optional[PhoneNumber] = None
     email: Optional[EmailAddress] = None
     facebook_url: Optional[str] = None
     linkedin_url: Optional[str] = None

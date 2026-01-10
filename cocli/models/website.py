@@ -5,6 +5,7 @@ import yaml
 import logging
 from .domain import Domain
 from .email_address import EmailAddress
+from .phone import PhoneNumber
 
 logger = logging.getLogger(__name__)
 
@@ -25,7 +26,7 @@ class Website(BaseModel):
         return self.url
 
     company_name: Optional[str] = None
-    phone: Optional[str] = None
+    phone: Optional[PhoneNumber] = None
     email: Optional[EmailAddress] = None
     facebook_url: Optional[str] = None
     linkedin_url: Optional[str] = None
@@ -52,8 +53,11 @@ class Website(BaseModel):
 
     def save(self, company_slug: str) -> None:
         """Saves the website enrichment data to the local company directory."""
-        from ..core.config import get_companies_dir
-        
+        from ..core.config import get_companies_dir, get_campaign
+        from ..core.email_index_manager import EmailIndexManager
+        from .email import EmailEntry
+        from datetime import UTC
+
         company_dir = get_companies_dir() / company_slug
         enrichment_dir = company_dir / "enrichments"
         enrichment_dir.mkdir(parents=True, exist_ok=True)
@@ -64,14 +68,45 @@ class Website(BaseModel):
         self.updated_at = datetime.now(timezone.utc)
 
         with open(website_md_path, "w") as f:
-            f.write("---")
-            yaml.dump(
+            f.write("---\n")
+            yaml.safe_dump(
                 self.model_dump(exclude_none=True),
                 f,
                 sort_keys=False,
                 default_flow_style=False,
                 allow_unicode=True,
             )
-            f.write("---")
+            f.write("---\n")
         
         logger.debug(f"Saved website enrichment locally for {company_slug}")
+
+        # Sync with Email Index
+        campaign_name = get_campaign()
+        if campaign_name:
+            try:
+                index_manager = EmailIndexManager(campaign_name)
+                emails_to_sync = set()
+                if self.email:
+                    emails_to_sync.add(self.email)
+                for e in self.all_emails:
+                    emails_to_sync.add(e)
+                for p in self.personnel:
+                    if p.get("email"):
+                        emails_to_sync.add(p["email"])
+                
+                for email_str in emails_to_sync:
+                    try:
+                        email_addr = EmailAddress(email_str)
+                        entry = EmailEntry(
+                            email=email_addr,
+                            domain=str(self.domain),
+                            company_slug=company_slug,
+                            source="website_enrichment_save",
+                            found_at=datetime.now(UTC),
+                            tags=self.tags
+                        )
+                        index_manager.add_email(entry)
+                    except Exception:
+                        continue
+            except Exception as e:
+                logger.error(f"Error syncing emails from website enrichment to index: {e}")

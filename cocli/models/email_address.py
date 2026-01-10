@@ -1,4 +1,4 @@
-from typing import Any
+from typing import Any, Optional
 from pydantic import GetCoreSchemaHandler
 from pydantic_core import CoreSchema, core_schema
 from cocli.core.text_utils import is_valid_email
@@ -14,15 +14,23 @@ class EmailAddress(str):
         return core_schema.no_info_after_validator_function(
             cls.validate,
             core_schema.str_schema(),
+            serialization=core_schema.plain_serializer_function_ser_schema(
+                lambda x: str(x) if x else None,
+                when_used='always'
+            )
         )
 
     @classmethod
-    def validate(cls, v: str) -> "EmailAddress":
+    def validate(cls, v: str) -> Optional["EmailAddress"]:
         if not isinstance(v, str):
+            if v is None:
+                return None
             raise ValueError("Email must be a string")
         
         # Normalize
         normalized = v.strip().lower()
+        if not normalized:
+            return None
         
         # Remove common prefixes
         for prefix in ["email:", "mail:", "mailto:", "e-mail:"]:

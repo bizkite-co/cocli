@@ -1,4 +1,3 @@
-import yaml
 import uuid
 from rich.console import Console
 from pathlib import Path
@@ -10,8 +9,6 @@ import logging
 
 import shutil
 import subprocess
-
-
 
 from ..models.company import Company
 from ..models.person import Person  # Import Company and Person models
@@ -29,160 +26,29 @@ def create_company_files(company: Company, company_dir: Path) -> Path:
     (company_dir / "contacts").mkdir(exist_ok=True)
     (company_dir / "meetings").mkdir(exist_ok=True)
 
-    index_path = company_dir / "_index.md"
-    tags_path = company_dir / "tags.lst"
-
-    existing_frontmatter_data: dict[str, Any] = {}
-    markdown_content = f"\n# {company.name}\n" # Default markdown content
-
-    existing_tags = set()
-    if tags_path.exists():
-        existing_tags.update(tags_path.read_text().strip().splitlines())
-
-    if index_path.exists():
-        content = index_path.read_text()
-        if content.startswith("---") and "---" in content[3:]:
-            frontmatter_str, md_content_part = content.split("---", 2)[1:]
-            try:
-                existing_frontmatter_data = yaml.safe_load(frontmatter_str) or {}
-                markdown_content = md_content_part # Preserve existing markdown content
-            except yaml.YAMLError:
-                logger.warning(f"Warning: Could not parse YAML front matter in {index_path}. Overwriting with new data.")
-        else:
-            logger.warning(f"Warning: No valid YAML front matter found in {index_path}. Overwriting with new data.")
-
-    # Prepare new data for YAML front matter (using Pydantic field names)
-    new_company_data_for_yaml = company.model_dump(exclude={"tags", "services", "products", "description"})
-    # Ensure 'name' is not duplicated if it was already in the model_dump
-    new_company_data_for_yaml.pop("name", None)
-
-    # Merge existing data with new data (new data takes precedence only if not None/empty)
-    merged_data = existing_frontmatter_data.copy()
-    for key, new_value in new_company_data_for_yaml.items():
-        if new_value is not None and new_value != '':
-            merged_data[key] = new_value
-        # If new_value is None/empty, and key exists in merged_data, preserve existing value.
-        # If new_value is None/empty, and key does not exist in merged_data, add it as None/empty.
-        elif key not in merged_data:
-            merged_data[key] = new_value
-
-    merged_data["name"] = company.name # Ensure name is always from the new company object
-
-    # Clean up EmailAddress objects for YAML serialization
-    if "email" in merged_data and merged_data["email"]:
-        merged_data["email"] = str(merged_data["email"])
+    # 1. Load existing company if it exists
+    existing_company = Company.from_directory(company_dir)
     
-    if "all_emails" in merged_data:
-        merged_data["all_emails"] = [str(e) for e in merged_data["all_emails"]]
-
-    if company.last_enriched:
-        merged_data["last_enriched"] = company.last_enriched.isoformat(timespec='seconds') + 'Z'
-    elif "last_enriched" in merged_data:
-        del merged_data["last_enriched"]
-
-    # Merge tags
-    merged_tags = sorted(list(existing_tags.union(set(company.tags))))
-
-    # Merge categories
-    existing_categories = set(existing_frontmatter_data.get("categories", []))
-    new_categories = set(company.categories)
-    merged_categories = sorted(list(existing_categories.union(new_categories)))
-    if merged_categories:
-        merged_data["categories"] = merged_categories
-    elif "categories" in merged_data:
-        del merged_data["categories"] # Remove if empty
-
-    # Merge services
-    existing_services = set(existing_frontmatter_data.get("services", []))
-    new_services = set(company.services)
-    merged_services = sorted(list(existing_services.union(new_services)))
-    if merged_services:
-        merged_data["services"] = merged_services
-    elif "services" in merged_data:
-        del merged_data["services"]
-
-    # Merge products
-    existing_products = set(existing_frontmatter_data.get("products", []))
-    new_products = set(company.products)
-    merged_products = sorted(list(existing_products.union(new_products)))
-    if merged_products:
-        merged_data["products"] = merged_products
-    elif "products" in merged_data:
-        del merged_data["products"]
-
-    if company.description:
-        markdown_content = f"\n{company.description}\n"
-    
-    # Remove description from merged_data if it somehow snuck in
-    if "description" in merged_data:
-        del merged_data["description"]
-
-    # Generate YAML front matter
-    frontmatter = yaml.dump(merged_data, sort_keys=False, default_flow_style=False, allow_unicode=True)
-
-    # Construct _index.md content
-    index_content = f"---\n{frontmatter}---\n{markdown_content}"
-
-    index_path.write_text(index_content)
-
-    # Write merged tags to tags.lst
-    if merged_tags:
-        tags_path.write_text("\n".join(merged_tags) + "\n")
-    elif tags_path.exists():
-        tags_path.unlink() # Remove tags.lst if no tags
+    if existing_company:
+        # 2. Merge new data into existing one
+        existing_company.merge_with(company)
+        # 3. Save the merged result
+        existing_company.save(base_dir=company_dir.parent)
+    else:
+        # 2. Just save the new company
+        company.save(base_dir=company_dir.parent)
 
     return company_dir
 
 def create_person_files(person: Person, person_dir: Path) -> Path:
     """
-    Creates or updates the markdown file for a person, merging tags, and creates symlinks.
+    Creates or updates the markdown file for a person and creates symlinks.
     """
     person_dir.mkdir(parents=True, exist_ok=True)
-    # Correctly slugify the name for the filename
     person_file = person_dir / f"{slugify(person.name)}.md"
 
-    existing_frontmatter_data: dict[str, Any] = {}
-    markdown_content = f"\n# {person.name}\n"  # Default markdown content
-
-    if person_file.exists():
-        content = person_file.read_text()
-        if content.startswith("---") and "---" in content[3:]:
-            frontmatter_str, md_content_part = content.split("---", 2)[1:]
-            try:
-                existing_frontmatter_data = yaml.safe_load(frontmatter_str) or {}
-                markdown_content = md_content_part  # Preserve existing markdown content
-            except yaml.YAMLError:
-                logger.warning(f"Warning: Could not parse YAML front matter in {person_file}. Overwriting with new data.")
-        else:
-            logger.warning(f"Warning: No valid YAML front matter found in {person_file}. Overwriting with new data.")
-
-    # Prepare new data for YAML front matter
-    new_person_data_for_yaml = person.model_dump(exclude={'tags'}, exclude_none=False)
-    new_person_data_for_yaml.pop("name", None)
-
-    # Merge existing data with new data
-    merged_data = existing_frontmatter_data.copy()
-    for key, new_value in new_person_data_for_yaml.items():
-        if new_value is not None and new_value != '':
-            merged_data[key] = new_value
-        elif key not in merged_data:
-            merged_data[key] = new_value
-
-    merged_data["name"] = person.name
-
-    # Merge tags
-    existing_tags = set(existing_frontmatter_data.get('tags', []))
-    merged_tags = sorted(list(existing_tags.union(set(person.tags))))
-    if merged_tags:
-        merged_data['tags'] = merged_tags
-
-    # Generate YAML front matter
-    frontmatter = yaml.dump(merged_data, sort_keys=False, default_flow_style=False, allow_unicode=True)
-
-    # Construct file content
-    index_content = f"---\n{frontmatter}---\n{markdown_content}"
-
-    person_file.write_text(index_content)
+    # Use the model's save method which handles safe_dump and index sync
+    person.save(person_file, base_dir=person_dir.parent)
 
     # --- Create Symlinks ---
     if person.company_name:
@@ -206,7 +72,6 @@ def create_person_files(person: Person, person_dir: Path) -> Path:
 
     return person_file
 
-
 def _format_entity_for_fzf(entity_type: str, entity: Any) -> str:
     """
     Formats a company or person object into a string for fzf display.
@@ -221,9 +86,6 @@ def _format_entity_for_fzf(entity_type: str, entity: Any) -> str:
     elif entity_type == "person":
         return f"PERSON:{entity.name}:{entity.company_name if entity.company_name else ''}"
     return ""
-
-
-
 
 def generate_company_hash(data: dict[str, Any]) -> str:
     """Generates a stable hash from company data."""
@@ -254,8 +116,6 @@ def _getch() -> str:
     finally:
         termios.tcsetattr(fd, termios.TCSADRAIN, old_settings)
     return ch
-
-
 
 console = Console()
 
