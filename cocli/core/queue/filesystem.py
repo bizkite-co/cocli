@@ -278,8 +278,10 @@ class FilesystemEnrichmentQueue(FilesystemQueue):
         super().__init__(campaign_name, "enrichment")
 
     def push(self, task: QueueMessage) -> str: # type: ignore
-        # Use domain + company_slug as unique ID
-        task_id = f"{task.company_slug}_{task.domain}"
+        # Use a hash of the company_slug + domain to avoid filesystem length limits
+        import hashlib
+        raw_id = f"{task.company_slug}_{task.domain}"
+        task_id = hashlib.md5(raw_id.encode()).hexdigest()
         return super().push(task_id, task.model_dump())
 
     def poll(self, batch_size: int = 1) -> List[QueueMessage]:

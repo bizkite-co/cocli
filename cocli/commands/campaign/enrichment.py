@@ -82,8 +82,13 @@ def queue_enrichment(
         task_id = progress.add_task(f"[cyan]Pushing {len(companies_to_queue)} tasks to DFQ...[/cyan]", total=len(companies_to_queue))
         
         for company in companies_to_queue:
+            # Trim query parameters for a cleaner starting URL
+            clean_domain = company.domain
+            if clean_domain and "?" in clean_domain:
+                clean_domain = clean_domain.split("?")[0]
+
             msg = QueueMessage(
-                domain=company.domain or "unknown",
+                domain=clean_domain or "unknown",
                 company_slug=company.slug,
                 campaign_name=effective_campaign,
                 force_refresh=force,

@@ -337,7 +337,11 @@ sync-companies: ## Sync enriched companies from S3
 sync-emails: ## Sync email index from S3
 	@$(VENV_DIR)/bin/cocli smart-sync emails
 
-sync-all: sync-scraped-areas sync-prospects sync-companies sync-emails ## Sync all S3 data to local directorys
+.PHONY: sync-enrichment-queue
+sync-enrichment-queue: ## Sync enrichment queue from S3
+	@$(VENV_DIR)/bin/cocli smart-sync enrichment-queue
+
+sync-all: sync-scraped-areas sync-prospects sync-companies sync-emails sync-enrichment-queue ## Sync all S3 data to local directorys
 
 .PHONY: recent-scrapes
 recent-scrapes: sync-scraped-areas ## List the 30 most recent scraped areas (syncs first)
@@ -546,6 +550,7 @@ start-rpi-enrichment-worker: ## Start the Enrichment Worker on Raspberry Pi
 		-e TZ=America/Los_Angeles \
 		-e CAMPAIGN_NAME='$(CAMPAIGN)' \
 		-e AWS_PROFILE=$(AWS_PROFILE) \
+		-e COCLI_QUEUE_TYPE=filesystem \
 		-v ~/.aws:/root/.aws:ro cocli-worker-rpi:latest cocli worker enrichment --workers $(WORKERS)"
 
 stop-rpi-enrichment-worker: ## Stop the Enrichment Worker on Raspberry Pi
