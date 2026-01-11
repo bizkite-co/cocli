@@ -154,7 +154,6 @@ def get_campaign_stats(campaign_name: str) -> Dict[str, Any]:
             witness_dir = get_cocli_base_dir() / "indexes" / "scraped-tiles"
             if target_tiles_dir.exists():
                 total_tiles = len(list(target_tiles_dir.glob("**/*.csv")))
-                scraped_tiles = 0
                 if witness_dir.exists():
                     # This is slow for reporting, but let's do a rough count or rely on other stats
                     pass

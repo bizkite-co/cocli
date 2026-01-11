@@ -19,6 +19,7 @@ from ..core.exceptions import EnrichmentError
 from ..core.email_index_manager import EmailIndexManager
 from ..models.email import EmailEntry
 from ..models.email_address import EmailAddress
+from ..core.text_utils import is_valid_email
 
 
 logger = logging.getLogger(__name__)
@@ -215,7 +216,17 @@ class WebsiteScraper:
         if s3_company_manager and website_data.url and website_data.associated_company_folder:
              await s3_company_manager.save_website_enrichment(website_data.associated_company_folder, website_data)
 
-        # Add to domain index (for cache checking)
+        # 1. Calculate keywords first
+        found_keywords = website_data.found_keywords
+        if isinstance(found_keywords, str):
+            try:
+                # Handle possible stringified list from legacy data
+                import json
+                found_keywords = json.loads(found_keywords.replace("'", "\""))
+            except Exception:
+                found_keywords = [found_keywords] if found_keywords else []
+
+        # 2. Add to domain index (for cache checking)
         valid_all_emails = [e for e in website_data.all_emails if is_valid_email(str(e))]
         valid_email = website_data.email if website_data.email and is_valid_email(str(website_data.email)) else (valid_all_emails[0] if valid_all_emails else None)
 
