@@ -1155,6 +1155,9 @@ async def run_supervisor(
                     try:
                         # Run all sync operations concurrently in background threads
                         from ..utils.smart_sync_up import run_smart_sync_up
+                        from .smart_sync import run_smart_sync
+                        
+                        local_base = get_cocli_base_dir()
                         companies_prefix = "companies/"
                         companies_local = local_base / "companies"
                         frontier_prefix = f"campaigns/{campaign_name}/frontier/enrichment/"
