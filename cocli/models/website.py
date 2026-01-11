@@ -71,7 +71,7 @@ class Website(BaseModel):
         self.updated_at = datetime.now(timezone.utc)
 
         # Exclude raw large fields from the markdown frontmatter
-        save_data = self.model_dump(exclude_none=True)
+        save_data = self.model_dump(mode="json", exclude_none=True)
         save_data.pop("sitemap_xml", None)
         save_data.pop("navbar_html", None)
 
