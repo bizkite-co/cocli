@@ -1101,23 +1101,26 @@ async def run_supervisor(
 
             s3_client = session.client("s3")
 
+            queue_type_env = os.getenv("COCLI_QUEUE_TYPE", "sqs")
+            use_cloud = queue_type_env != "filesystem"
+
             scrape_queue = get_queue_manager(
                 "scrape_tasks",
-                use_cloud=True,
+                use_cloud=use_cloud,
                 queue_type="scrape",
                 campaign_name=campaign_name,
             )
 
             gm_list_item_queue = get_queue_manager(
                 "gm_list_item",
-                use_cloud=True,
+                use_cloud=use_cloud,
                 queue_type="gm_list_item",
                 campaign_name=campaign_name,
             )
 
             enrichment_queue = get_queue_manager(
                 "enrichment",
-                use_cloud=True,
+                use_cloud=use_cloud,
                 queue_type="enrichment",
                 campaign_name=campaign_name,
             )
