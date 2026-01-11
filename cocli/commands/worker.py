@@ -1037,7 +1037,7 @@ def sync_active_leases_to_s3(
 async def run_supervisor(
     headless: bool, debug: bool, campaign_name: str, interval: int
 ) -> None:
-    from ..core.config import get_campaigns_dir, load_campaign_config, get_cocli_base_dir
+    from ..core.config import load_campaign_config, get_cocli_base_dir
     import socket
     import asyncio
     import boto3
