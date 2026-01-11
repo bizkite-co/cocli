@@ -64,7 +64,13 @@ def main(
             # Enrichment
             enrich_pending = stats.get('enrichment_pending', 0)
             enrich_inflight = stats.get('enrichment_inflight', 0)
-            table.add_row("Enrichment Queue", f"{enrich_pending} / [blue]{enrich_inflight} Active[/blue]", "[yellow]SQS[/yellow]")
+            table.add_row("Enrichment Queue (SQS)", f"{enrich_pending} / [blue]{enrich_inflight} Active[/blue]", "[yellow]SQS[/yellow]")
+
+            # Local Enrichment (RPI Cluster)
+            local_pending = stats.get('local_enrichment_pending', 0)
+            local_inflight = stats.get('local_enrichment_inflight', 0)
+            if local_pending > 0 or local_inflight > 0:
+                table.add_row("Enrichment Queue (Local)", f"{local_pending} / [blue]{local_inflight} Active[/blue]", "[cyan]Filesystem[/cyan]")
         else:
             # Local Queues
             table.add_row("Queue Pending", str(stats.get('enrichment_pending', 0)), "[yellow]Waiting[/yellow]")
