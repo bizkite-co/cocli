@@ -37,6 +37,22 @@ class Campaign(BaseModel):
     aws: Optional[AwsSettings] = None
 
     @classmethod
+    def load(cls, name: str, data_home: Optional[Path] = None) -> 'Campaign':
+        from cocli.core.config import load_campaign_config
+        config_data = load_campaign_config(name)
+        if not config_data:
+            raise ValueError(f"Campaign config for '{name}' not found or empty.")
+        
+        # Flatten the config for validation (move [campaign] keys to top level)
+        if 'campaign' in config_data:
+            flat_config = config_data.pop('campaign')
+            flat_config.update(config_data)
+        else:
+            flat_config = config_data
+
+        return cls.model_validate(flat_config)
+
+    @classmethod
     def create(cls, name: str, company: str, data_home: Path) -> 'Campaign':
         campaign_slug = slugify(name)
         campaign_dir = data_home / "campaigns" / campaign_slug

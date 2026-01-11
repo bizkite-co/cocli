@@ -292,7 +292,7 @@ def sync_campaign_config(
     # We can't use load_campaign_config if the file doesn't exist yet!
     # But we can assume the bucket name pattern.
     bucket_name = f"cocli-data-{campaign_name}"
-    prefix = f"campaigns/{campaign_name}/config.toml"
+    prefix = f"campaigns/{campaign_name}/"
     local_base = DATA_DIR / "campaigns" / campaign_name
     
     # Since run_smart_sync needs aws_config, and we might not have it yet, 

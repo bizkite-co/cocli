@@ -2,7 +2,7 @@ import csv
 import socket
 from datetime import datetime 
 from pathlib import Path
-from typing import Optional, Any, Dict, List
+from typing import Optional, Any, Dict, List, Union
 from rich.console import Console
 from playwright.async_api import async_playwright
 
@@ -646,14 +646,14 @@ async def _run_enrichment_task_loop(browser_or_context: Any, enrichment_queue: A
     from cocli.core.enrichment import enrich_company_website
     from cocli.models.company import Company
     from cocli.models.campaign import Campaign
-    from cocli.core.config import load_campaign_config, get_campaigns_dir
     
-    config_dict = load_campaign_config(campaign_name)
-    campaign_obj: Any = None
     try:
-        campaign_obj = Campaign.create(campaign_name, config_dict['campaign']['company-slug'], get_campaigns_dir().parent)
-    except Exception:
-        campaign_obj = config_dict
+        campaign_obj = Campaign.load(campaign_name)
+    except Exception as e:
+        logger.error(f"Could not load Campaign '{campaign_name}': {e}")
+        if once: return
+        await asyncio.sleep(10)
+        return
 
     while True:
         connected = True

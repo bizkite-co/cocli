@@ -93,6 +93,7 @@ class WebsiteScraper:
         Scrapes a website for company information.
         """
         domain_index_manager: Union[WebsiteDomainCsvManager, S3DomainManager]
+        
         if campaign and campaign.aws and campaign.aws.profile:
             domain_index_manager = S3DomainManager(campaign=campaign)
         else:
@@ -156,10 +157,7 @@ class WebsiteScraper:
 
             target_keywords: List[str] = []
             if campaign:
-                if hasattr(campaign, 'prospecting') and hasattr(campaign.prospecting, 'keywords'):
-                    target_keywords = campaign.prospecting.keywords
-                elif isinstance(campaign, dict):
-                    target_keywords = campaign.get("prospecting", {}).get("keywords", [])
+                target_keywords = campaign.prospecting.queries # Campaign model uses 'queries' instead of 'keywords' based on its definition
 
             await self._scrape_page(page, website_data, context, target_keywords)
 
