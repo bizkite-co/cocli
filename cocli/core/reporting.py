@@ -133,8 +133,7 @@ def get_campaign_stats(campaign_name: str) -> Dict[str, Any]:
         stats['using_cloud_queue'] = False
 
     # Always check Local queue stats (for RPI cluster / Filesystem mode)
-    from cocli.core.config import get_campaign_dir, get_cocli_base_dir
-    data_home = get_cocli_base_dir()
+    from cocli.core.config import get_campaign_dir
     campaign_dir = get_campaign_dir(campaign_name)
     
     if campaign_dir:
