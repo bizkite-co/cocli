@@ -9,7 +9,7 @@ from pydantic import BaseModel, Field
 
 from pydantic_settings import BaseSettings
 from rich.console import Console
-from .paths import get_validated_dir
+from .paths import paths, get_validated_dir
 
 console = Console()
 
@@ -36,30 +36,11 @@ def get_cocli_app_data_dir() -> Path:
 
 def get_cocli_base_dir() -> Path:
     """
-    Determines the root data directory for cocli user business data (companies, people, campaigns).
-    Order of precedence: COCLI_DATA_HOME (env var) > data.home (config file) > XDG_DATA_HOME (env var) > default.
+    Determines the root data directory for cocli user business data.
+    Delegates to the central paths authority.
     """
-    # 1. Environment variable
-    if "COCLI_DATA_HOME" in os.environ:
-        cocli_base_dir = Path(os.environ["COCLI_DATA_HOME"]).expanduser()
-    else:
-        # 2. Config file
-        config_data_home = _read_data_home_from_config_file()
-        if config_data_home:
-            cocli_base_dir = config_data_home.expanduser()
-        elif "XDG_DATA_HOME" in os.environ:
-            # 3. XDG_DATA_HOME
-            cocli_base_dir = Path(os.environ["XDG_DATA_HOME"]).expanduser() / "cocli_data"
-        else:
-            # 4. Default location based on OS
-            if platform.system() == "Windows":
-                cocli_base_dir = Path(os.environ.get("LOCALAPPDATA", Path.home() / "AppData" / "Local")) / "cocli_data"
-            elif platform.system() == "Darwin": # macOS
-                cocli_base_dir = Path.home() / "Library" / "Application Support" / "cocli_data"
-            else: # Linux and other Unix-like
-                cocli_base_dir = Path.home() / ".local" / "share" / "cocli_data"
-
-    v_path = get_validated_dir(cocli_base_dir, "User Business Data Root")
+    p = paths.root
+    v_path = get_validated_dir(p, "User Business Data Root")
     v_path.path.mkdir(parents=True, exist_ok=True)
     return v_path.path
 
@@ -83,13 +64,13 @@ def get_config_dir() -> Path:
             return Path.home() / ".config" / "cocli"
 
 def get_companies_dir() -> Path:
-    p = get_cocli_base_dir() / "companies"
+    p = paths.companies
     v_dir = get_validated_dir(p, "Companies Directory")
     v_dir.path.mkdir(parents=True, exist_ok=True)
     return v_dir.path
 
 def get_people_dir() -> Path:
-    p = get_cocli_base_dir() / "people"
+    p = paths.people
     v_dir = get_validated_dir(p, "People Directory")
     v_dir.path.mkdir(parents=True, exist_ok=True)
     return v_dir.path
@@ -99,7 +80,7 @@ def get_shared_scraped_data_dir() -> Path:
     Returns the shared scraped data directory (e.g., shopify_csv).
     Previously used for all scraped data.
     """
-    p = get_cocli_base_dir() / "scraped_data"
+    p = paths.root / "scraped_data"
     v_dir = get_validated_dir(p, "Shared Scraped Data")
     v_dir.path.mkdir(parents=True, exist_ok=True)
     return v_dir.path
@@ -116,7 +97,7 @@ def get_indexes_dir() -> Path:
     Returns the base directory for shared indexes.
     Path: cocli_data/indexes/
     """
-    p = get_cocli_base_dir() / "indexes"
+    p = paths.indexes
     v_dir = get_validated_dir(p, "Indexes Directory")
     v_dir.path.mkdir(parents=True, exist_ok=True)
     return v_dir.path
@@ -126,7 +107,7 @@ def get_scraped_areas_index_dir() -> Path:
     Returns the directory for phrase-specific scraped area indexes.
     Path: cocli_data/indexes/scraped_areas/
     """
-    p = get_indexes_dir() / "scraped_areas"
+    p = paths.indexes / "scraped_areas"
     v_dir = get_validated_dir(p, "Scraped Areas Index")
     v_dir.path.mkdir(parents=True, exist_ok=True)
     return v_dir.path
@@ -136,7 +117,7 @@ def get_scraped_tiles_index_dir() -> Path:
     Returns the directory for the Phase 10 witness file index.
     Path: cocli_data/indexes/scraped-tiles/
     """
-    p = get_indexes_dir() / "scraped-tiles"
+    p = paths.indexes / "scraped-tiles"
     v_dir = get_validated_dir(p, "Scraped Tiles (Witness) Index")
     v_dir.path.mkdir(parents=True, exist_ok=True)
     return v_dir.path
@@ -149,7 +130,7 @@ def get_campaign_scraped_data_dir(campaign_name: str) -> Path:
     campaign_dir = get_campaign_dir(campaign_name)
     if not campaign_dir:
         # Fallback if campaign dir doesn't exist yet (though it should)
-        campaign_dir = get_campaigns_dir() / campaign_name
+        campaign_dir = paths.campaign(campaign_name)
         campaign_dir.mkdir(parents=True, exist_ok=True)
     
     p = campaign_dir / "scraped_data"
@@ -158,7 +139,7 @@ def get_campaign_scraped_data_dir(campaign_name: str) -> Path:
     return v_dir.path
 
 def get_campaigns_dir() -> Path:
-    p = get_cocli_base_dir() / "campaigns"
+    p = paths.campaigns
     v_dir = get_validated_dir(p, "Campaigns Root")
     v_dir.path.mkdir(parents=True, exist_ok=True)
     return v_dir.path
@@ -168,8 +149,7 @@ def get_campaign_dir(campaign_name: str) -> Optional[Path]:
     """
     Returns the directory for a specific campaign.
     """
-    campaigns_dir = get_campaigns_dir()
-    campaign_dir = campaigns_dir / campaign_name
+    campaign_dir = paths.campaign(campaign_name)
     if campaign_dir.exists() and campaign_dir.is_dir():
         # Validate specifically if it exists
         v_dir = get_validated_dir(campaign_dir, f"Campaign Directory: {campaign_name}")
@@ -181,7 +161,7 @@ def get_all_campaign_dirs() -> list[Path]:
     Returns a list of all campaign directories, deduplicated by slugified name.
     """
     from .text_utils import slugify
-    campaigns_dir = get_campaigns_dir()
+    campaigns_dir = paths.campaigns
     if campaigns_dir.exists() and campaigns_dir.is_dir():
         dirs = [d for d in campaigns_dir.iterdir() if d.is_dir()]
         seen_slugs = set()

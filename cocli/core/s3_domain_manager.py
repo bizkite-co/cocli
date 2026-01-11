@@ -35,7 +35,7 @@ class S3DomainManager:
         if not self.s3_bucket_name:
             raise ValueError(f"S3 bucket name could not be resolved for campaign {self.campaign.name}")
 
-        self.s3_prefix = f"campaigns/{self.campaign.company_slug}/indexes/domains/"
+        self.s3_prefix = "indexes/domains/" # Shared resource, always at root.
 
         try:
             session = boto3.Session()

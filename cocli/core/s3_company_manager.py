@@ -32,11 +32,7 @@ class S3CompanyManager:
         
         # Base prefix for all companies managed by this campaign
         # e.g., "companies/" or "campaigns/turbo-heat-welding-tools/companies/"
-        self.s3_base_prefix = "companies/" # For now, assume top-level companies. Can be refined.
-
-        # If we have a specific campaign company slug, we'll store its data under that slug
-        if self.campaign.company_slug:
-            self.s3_base_prefix = f"campaigns/{self.campaign.company_slug}/companies/"
+        self.s3_base_prefix = "companies/" # Companies are shared resources, always at root.
 
         try:
             session = boto3.Session()
