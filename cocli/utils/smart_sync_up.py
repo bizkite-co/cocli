@@ -4,7 +4,6 @@ import os
 from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor
 from typing import Dict, Any, List, Optional
-, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -29,7 +28,6 @@ def run_smart_sync_up(
     logger.info(f"Starting smart sync UP for {target_name} to s3://{bucket_name}/{prefix}")
     profile_name = aws_config.get("profile") or aws_config.get("aws_profile")
     
-    # ... session setup ...
     try:
         if profile_name:
             session = boto3.Session(profile_name=profile_name)
@@ -74,23 +72,14 @@ def run_smart_sync_up(
     else:
         logger.info(f"Skipping S3 scan (delete_remote=False)")
 
-    # 3. Determine Uploads (Local exists but remote doesn't OR local is newer)
+    # 3. Determine Uploads
     to_upload = []
-    if delete_remote:
-        for rel_path, local_path in local_files.items():
+    for rel_path, local_path in local_files.items():
+        if delete_remote:
             if rel_path not in remote_keys:
                 to_upload.append((local_path, prefix + rel_path))
-            else:
-                # Check mtime (S3 mtime is UTC)
-                # s3.head_object is expensive, so we might want to skip this in a true 'smart' sync
-                # but for frontier tasks, they never change, only get deleted.
-                pass
-    else:
-        # If we aren't deleting, just upload EVERYTHING in the local base that isn't a directory
-        # (S3 upload_file is idempotent/overwrites, but we can't easily check for existence without listing)
-        # For companies directory, this is still expensive if thousands.
-        # Let's just upload anything new we found.
-        for rel_path, local_path in local_files.items():
+        else:
+            # If not deleting, we assume anything found in local_files (after time filter) is an upload candidate
             to_upload.append((local_path, prefix + rel_path))
 
     # 4. Determine Deletions (Remote exists but local doesn't) - Only if delete_remote is True
