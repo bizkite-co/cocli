@@ -22,10 +22,13 @@ def run_smart_sync_up(
     campaign_name: str,
     aws_config: Dict[str, Any],
     workers: int = 20,
-    delete_remote: bool = False
+    delete_remote: bool = False,
+    only_modified_since_minutes: Optional[int] = None
 ) -> None:
     logger.info(f"Starting smart sync UP for {target_name} to s3://{bucket_name}/{prefix}")
     profile_name = aws_config.get("profile") or aws_config.get("aws_profile")
+    
+    # ... session setup ...
     try:
         if profile_name:
             session = boto3.Session(profile_name=profile_name)
@@ -40,8 +43,16 @@ def run_smart_sync_up(
     local_files = {}
     if local_base.exists():
         logger.info(f"Scanning local directory: {local_base}")
+        cutoff = None
+        if only_modified_since_minutes:
+            from datetime import datetime, timedelta
+            cutoff = (datetime.now() - timedelta(minutes=only_modified_since_minutes)).timestamp()
+            logger.info(f"Filtering for files modified since {only_modified_since_minutes} minutes ago")
+
         for path in local_base.rglob("*"):
             if path.is_file():
+                if cutoff and path.stat().st_mtime < cutoff:
+                    continue
                 rel_path = path.relative_to(local_base)
                 local_files[str(rel_path)] = path
     else:

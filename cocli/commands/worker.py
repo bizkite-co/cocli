@@ -1164,9 +1164,9 @@ async def run_supervisor(
                     run_smart_sync_up("enrichment-queue", bucket_name, frontier_prefix, frontier_local, campaign_name, aws_config, delete_remote=True)
 
                     # 2. Sync Companies UP (to reflect new enrichment results in S3)
-                    # companies_prefix = "companies/"
-                    # companies_local = local_base / "companies"
-                    # run_smart_sync_up("companies", bucket_name, companies_prefix, companies_local, campaign_name, aws_config, delete_remote=False)
+                    companies_prefix = "companies/"
+                    companies_local = local_base / "companies"
+                    run_smart_sync_up("companies", bucket_name, companies_prefix, companies_local, campaign_name, aws_config, delete_remote=False, only_modified_since_minutes=15)
                 except Exception as e:
                     logger.warning(f"Supervisor failed to smart-sync data: {e}")
 
