@@ -1136,39 +1136,40 @@ async def run_supervisor(
             await browser.close()
             return
 
+        # Track last sync time to avoid constant thrashing
+        last_sync_time = 0
+        sync_interval_seconds = 300 # 5 minutes
+
         while True:
             try:
                 # 0. Sync config from S3
                 sync_campaign_config(campaign_name)
 
-                # 0.1 Sync leases TO S3
+                # 0.1 Sync leases TO S3 (Frequent is fine, small files)
                 sync_active_leases_to_s3(campaign_name, s3_client, bucket_name)
 
-                # 0.2 Sync campaign data (Frontier) FROM S3
-                try:
-                    from .smart_sync import run_smart_sync
-                    from ..core.config import load_campaign_config, get_cocli_base_dir
-                    
-                    config = load_campaign_config(campaign_name)
-                    aws_config = config.get("aws", {})
-                    local_base = get_cocli_base_dir()
-                    bucket_name = aws_config.get("cocli_data_bucket_name") or f"cocli-data-{campaign_name}"
-                    
-                    # Run all sync operations concurrently in background threads
-                    from ..utils.smart_sync_up import run_smart_sync_up
-                    companies_prefix = "companies/"
-                    companies_local = local_base / "companies"
-                    frontier_prefix = f"campaigns/{campaign_name}/frontier/enrichment/"
-                    frontier_local = local_base / "campaigns" / campaign_name / "frontier" / "enrichment"
-                    
-                    await asyncio.gather(
-                        asyncio.to_thread(run_smart_sync, "enrichment-queue", bucket_name, frontier_prefix, frontier_local, campaign_name, aws_config),
-                        asyncio.to_thread(run_smart_sync_up, "companies", bucket_name, companies_prefix, companies_local, campaign_name, aws_config, delete_remote=False, only_modified_since_minutes=120),
-                        asyncio.to_thread(run_smart_sync_up, "enrichment-queue", bucket_name, frontier_prefix, frontier_local, campaign_name, aws_config, delete_remote=True)
-                    )
-
-                except Exception as e:
-                    logger.warning(f"Supervisor failed to smart-sync data: {e}")
+                # 0.2 Sync campaign data (Frontier) - throttled
+                now = time.time()
+                if now - last_sync_time > sync_interval_seconds:
+                    try:
+                        # Run all sync operations concurrently in background threads
+                        from ..utils.smart_sync_up import run_smart_sync_up
+                        companies_prefix = "companies/"
+                        companies_local = local_base / "companies"
+                        frontier_prefix = f"campaigns/{campaign_name}/frontier/enrichment/"
+                        frontier_local = local_base / "campaigns" / campaign_name / "frontier" / "enrichment"
+                        
+                        logger.info("Starting throttled background sync operations")
+                        # We still gather, but the reduced frequency helps pool exhaustion
+                        await asyncio.gather(
+                            asyncio.to_thread(run_smart_sync, "enrichment-queue", bucket_name, frontier_prefix, frontier_local, campaign_name, aws_config),
+                            asyncio.to_thread(run_smart_sync_up, "companies", bucket_name, companies_prefix, companies_local, campaign_name, aws_config, delete_remote=False, only_modified_since_minutes=15),
+                            asyncio.to_thread(run_smart_sync_up, "enrichment-queue", bucket_name, frontier_prefix, frontier_local, campaign_name, aws_config, delete_remote=True)
+                        )
+                        last_sync_time = now
+                        logger.info("Throttled background sync operations completed")
+                    except Exception as e:
+                        logger.warning(f"Supervisor failed to smart-sync data: {e}")
 
                 # 1. Reload Config (from local file, which should be synced from S3)
 
