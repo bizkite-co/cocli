@@ -47,28 +47,39 @@ def run_smart_sync_up(
     else:
         logger.warning(f"Local base directory does not exist: {local_base}")
 
-    # 2. List Remote Files
+    # 2. List Remote Files (Only if we need to delete or check for existing files)
     remote_keys = {}
-    logger.debug(f"Scanning S3 prefix: s3://{bucket_name}/{prefix}")
-    paginator = s3.get_paginator('list_objects_v2')
-    pages = paginator.paginate(Bucket=bucket_name, Prefix=prefix)
-    for page in pages:
-        if 'Contents' in page:
-            for obj in page['Contents']:
-                key = obj['Key']
-                rel_path = key[len(prefix):] if key.startswith(prefix) else key
-                remote_keys[rel_path] = key
+    if delete_remote:
+        logger.info(f"Scanning S3 prefix for deletions: s3://{bucket_name}/{prefix}")
+        paginator = s3.get_paginator('list_objects_v2')
+        pages = paginator.paginate(Bucket=bucket_name, Prefix=prefix)
+        for page in pages:
+            if 'Contents' in page:
+                for obj in page['Contents']:
+                    key = obj['Key']
+                    rel_path = key[len(prefix):] if key.startswith(prefix) else key
+                    remote_keys[rel_path] = key
+    else:
+        logger.info(f"Skipping S3 scan (delete_remote=False)")
 
     # 3. Determine Uploads (Local exists but remote doesn't OR local is newer)
     to_upload = []
-    for rel_path, local_path in local_files.items():
-        if rel_path not in remote_keys:
-            to_upload.append((local_path, prefix + rel_path))
-        else:
-            # Check mtime (S3 mtime is UTC)
-            s3_mtime = s3.head_object(Bucket=bucket_name, Key=remote_keys[rel_path])['LastModified']
-            if local_path.stat().st_mtime > s3_mtime.timestamp():
+    if delete_remote:
+        for rel_path, local_path in local_files.items():
+            if rel_path not in remote_keys:
                 to_upload.append((local_path, prefix + rel_path))
+            else:
+                # Check mtime (S3 mtime is UTC)
+                # s3.head_object is expensive, so we might want to skip this in a true 'smart' sync
+                # but for frontier tasks, they never change, only get deleted.
+                pass
+    else:
+        # If we aren't deleting, just upload EVERYTHING in the local base that isn't a directory
+        # (S3 upload_file is idempotent/overwrites, but we can't easily check for existence without listing)
+        # For companies directory, this is still expensive if thousands.
+        # Let's just upload anything new we found.
+        for rel_path, local_path in local_files.items():
+            to_upload.append((local_path, prefix + rel_path))
 
     # 4. Determine Deletions (Remote exists but local doesn't) - Only if delete_remote is True
     to_delete = []
