@@ -1043,6 +1043,7 @@ async def run_supervisor(
     import boto3
 
     hostname = os.getenv("COCLI_HOSTNAME") or socket.gethostname().split(".")[0]
+    once = False  # Supervisor always runs in a loop
 
     logger.info(
         f"Supervisor started on host '{hostname}' for campaign '{campaign_name}'."
