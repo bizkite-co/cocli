@@ -1154,25 +1154,18 @@ async def run_supervisor(
                     local_base = get_cocli_base_dir()
                     bucket_name = aws_config.get("cocli_data_bucket_name") or f"cocli-data-{campaign_name}"
                     
-                    # 1. Sync Enrichment Frontier (Bi-directional/Down)
-                    frontier_prefix = f"campaigns/{campaign_name}/frontier/enrichment/"
-                    frontier_local = local_base / "campaigns" / campaign_name / "frontier" / "enrichment"
-                    logger.info("DEBUG: Triggering async SMART-SYNC-DOWN for enrichment-queue")
-                    await asyncio.to_thread(run_smart_sync, "enrichment-queue", bucket_name, frontier_prefix, frontier_local, campaign_name, aws_config)
-                    logger.info("DEBUG: async SMART-SYNC-DOWN returned")
-                    
-                    # 2. Sync Companies UP (to reflect new enrichment results in S3)
+                    # Run all sync operations concurrently in background threads
+                    logger.info("DEBUG: Triggering concurrent sync operations")
                     from ..utils.smart_sync_up import run_smart_sync_up
                     companies_prefix = "companies/"
                     companies_local = local_base / "companies"
-                    logger.info("DEBUG: Triggering async SMART-SYNC-UP for companies")
-                    await asyncio.to_thread(run_smart_sync_up, "companies", bucket_name, companies_prefix, companies_local, campaign_name, aws_config, delete_remote=False, only_modified_since_minutes=15)
-                    logger.info("DEBUG: async SMART-SYNC-UP (companies) returned")
-
-                    # 3. Sync Enrichment Frontier UP (to reflect deletions/acks in S3)
-                    logger.info("DEBUG: Triggering async SMART-SYNC-UP for enrichment-queue")
-                    await asyncio.to_thread(run_smart_sync_up, "enrichment-queue", bucket_name, frontier_prefix, frontier_local, campaign_name, aws_config, delete_remote=True)
-                    logger.info("DEBUG: async SMART-SYNC-UP (queue) returned")
+                    
+                    await asyncio.gather(
+                        asyncio.to_thread(run_smart_sync, "enrichment-queue", bucket_name, frontier_prefix, frontier_local, campaign_name, aws_config),
+                        asyncio.to_thread(run_smart_sync_up, "companies", bucket_name, companies_prefix, companies_local, campaign_name, aws_config, delete_remote=False, only_modified_since_minutes=15),
+                        asyncio.to_thread(run_smart_sync_up, "enrichment-queue", bucket_name, frontier_prefix, frontier_local, campaign_name, aws_config, delete_remote=True)
+                    )
+                    logger.info("DEBUG: Concurrent sync operations completed")
                 except Exception as e:
                     logger.warning(f"Supervisor failed to smart-sync data: {e}")
 
