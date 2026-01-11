@@ -205,6 +205,7 @@ export COCLI_DATA_HOME="/path/to/your/custom/cocli_data"
 The design and architecture of `cocli` are guided by a set of principles that emphasize clarity, composability, and explicit data flows.
 
 *   **[ADR-001: The "From-Model-to-Model" Transformation Pattern](docs/adr/from-model-to-model.md)**: Describes the core philosophy of treating CLI commands as explicit data transformations.
+*   **[ADR-002: Docker Worker Stability and Rapid Iteration](docs/adr/docker-worker-stability.md)**: Details the hot-patching workflow, centralized anti-bot headers, and shared browser context architecture used for scaling scrapers on remote clusters.
 *   **[Index Intermediates as Model Transformations](docs/data-management/INDEX-INTERMEDIATES.md)**: Explains how search indexes are created and managed using the core transformation pattern.
 
 ## Documentation
