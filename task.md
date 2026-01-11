@@ -1,30 +1,28 @@
-# Current Task: High-Yield Website Keyword Enrichment (Turboship)
+# Current Task: Refactor Queue System to V2 (Distributed Filesystem Queue)
 
 ## Objective
-Rescrape websites for ~18,000 prospects in the `turboship` campaign to find specific keywords (sheet vinyl, vinyl, linoleum, etc.) and extract emails using the RPI Cluster and Distributed Filesystem Queue (DFQ).
+Refactor the filesystem-based queue to use a nested, atomic locking structure (`pending/{hash}/task.json` + `lease.json`) to improve robustness, observability, and data organization for the distributed RPI cluster.
 
 ## Current Status (2026-01-11)
-- **Cluster Active:** Pi 5 (`cocli5x0`) and Pi 4 (`octoprint`) are actively scraping.
-- **Shared Browser Context:** Successfully implemented shared Chromium instance on hosts, reducing RAM overhead.
-- **Bi-Directional Sync:** implemented `run_smart_sync_up` to upload local `companies/` results and reflect queue deletions in S3.
-- **Sync Throttling:** Supervisor now throttles full sync cycles to every 5 minutes to avoid S3 connection pool exhaustion (`Connection pool is full` errors).
-- **Progress:** ~7,300 items enriched. Local queue on Pi nodes holds ~300 active leases.
+- **Cluster Status:** Workers stopped to allow for architecture migration.
+- **Legacy Queue:** Currently using `frontier/` and separated `active-leases/`.
+- **Target Architecture:** V2 design documented in `docs/data-management/queue-design.md`.
+- **Primary Test Node:** `cocli5x0` (RPi 5) will be the first deployment target.
 
-## Key Architecture Decisions (Refer to ADR-002)
-- **Hot-Patching:** Use `docker cp` + `docker restart` for fast iteration on remote Pi nodes.
-- **Centralized Headers:** Use `cocli.utils.headers.ANTI_BOT_HEADERS` for all scraping.
-- **Shared Contexts:** Workers MUST use `browser.new_context()` instead of launching new browser instances.
+## Key Changes (V2)
+- **Centralized Location:** `data/queues/<campaign>/<queue>/`.
+- **Atomic Locking:** Co-located `lease.json` inside `pending/{hash}/` using `O_EXCL`.
+- **Completion:** Successful tasks move to `completed/{hash}.json` (flattened).
 
 ## Next Steps
-1. **Refactor Scrapers to use `ANTI_BOT_HEADERS`:** Update `website_scraper.py` and others to import and use the centralized headers.
-2. **Monitor Pi Uploads:** Verify that the 5-minute throttled sync is successfully clearing the local `companies` backlog to S3.
-3. **Verify Reporting Accuracy:** Ensure `make report` correctly reflects campaign-specific enrichment counts (may require checking `tags.lst` logic).
-4. **Fargate Deployment:** Once Pi cluster is stable, update the Docker image and deploy to Fargate for final scale-up.
+1.  **Refactor Code:** Update `cocli/core/queue/filesystem.py` to implement V2 logic.
+2.  **Migrate Data:** Script to move existing `frontier/` items to new `queues/.../pending/` structure.
+3.  **Update Reporting:** Point `cocli/core/reporting.py` to new paths.
+4.  **Deploy & Test:** Deploy to `cocli5x0` and verify processing.
 
 ## TODO Track
-- [x] **Refactor Models:** Add `found_keywords` to `Website`.
-- [x] **Enhance `WebsiteScraper`:** Keyword search and sitemap scanning.
-- [x] **Implement Enrichment Worker:** `enrichment` command and supervisor management.
-- [x] **Bi-Directional S3 Sync:** Concurrent UP/DOWN sync in supervisor.
-- [ ] **Standardize Headers:** (Refactor step 1 above).
-- [ ] **Distributed Scale-up:** Final Fargate deployment.
+- [x] **Update Documentation:** `task.md` and `queue-design.md`.
+- [ ] **Refactor `FilesystemQueue`:** Implement V2 class.
+- [ ] **Migration Script:** Move existing pending items.
+- [ ] **Update Reporting:** Fix stats counters.
+- [ ] **Verify:** Run on local/test environment.

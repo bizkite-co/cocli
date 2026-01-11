@@ -3,6 +3,7 @@ from pydantic import BaseModel
 import os
 import platform
 import logging
+from typing import Optional
 
 logger = logging.getLogger(__name__)
 
@@ -15,10 +16,10 @@ class ValidatedPath(BaseModel):
     def mkdir(self, parents: bool = False, exist_ok: bool = False) -> None:
         self.path.mkdir(parents=parents, exist_ok=exist_ok)
 
-    def __truediv__(self, other):
+    def __truediv__(self, other: str) -> Path:
         return self.path / other
 
-    def __str__(self):
+    def __str__(self) -> str:
         return str(self.path)
 
 def get_validated_dir(path: Path, description: str) -> ValidatedPath:
@@ -53,7 +54,7 @@ class DataPaths:
     """
     Central Authority for Data Directory Paths.
     """
-    def __init__(self, root: Path = None):
+    def __init__(self, root: Optional[Path] = None):
         self.root = root or get_cocli_data_home()
 
     @property

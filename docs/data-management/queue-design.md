@@ -46,26 +46,44 @@ class QueueMessage(BaseModel):
 
 ## Implementations
 
-### A. `LocalFileQueue` (Development)
+### A. `FilesystemQueue` (V2 - Distributed Safe)
 
-Uses the local filesystem (`cocli_data/queues/<queue_name>/`) to manage state.
+Uses the local filesystem (`cocli_data/data/queues/<campaign>/<queue_name>/`) to manage state. Designed for distributed access (e.g., NFS/EFS or synced folders).
 
 **Directory Structure:**
-*   `pending/`: New messages waiting to be picked up.
-*   `processing/`: Messages currently being worked on (locked).
-*   `failed/`: Messages that failed max retries (Dead Letter).
-*   `completed/`: Optional archive (usually deleted).
+```
+data/queues/<campaign>/<queue_name>/
+├── pending/
+│   ├── <hash_id>/
+│   │   ├── task.json      # The payload
+│   │   └── lease.json     # The lock (if active)
+├── completed/
+│   ├── <hash_id>.json     # Flattened completed archive
+├── failed/                # Dead Letter Queue (Future)
+└── dlq/                   # (Future)
+```
 
-**Lifecycle & TTL:**
-1.  **Push:** Write JSON file to `pending/`.
+**Lifecycle & Locking:**
+1.  **Push:** Create directory `pending/<hash_id>/` and write `task.json`.
 2.  **Poll:**
-    *   Scan `processing/`. If any file's `mtime` > `visibility_timeout` (e.g., 5 mins), move back to `pending/` (worker crash recovery).
-    *   Pick file from `pending/`.
-    *   Move to `processing/`.
-    *   **Touch** the file to update `mtime` (start the timer).
-    *   Return message.
-3.  **Ack:** Delete file from `processing/`.
-4.  **Nack:** Move file from `processing/` back to `pending/` (or `failed/` if retries exceeded).
+    *   Iterate `pending/` directories.
+    *   Check for `lease.json`.
+    *   **Locking:** Attempt to create `lease.json` using `O_CREAT | O_EXCL` (Atomic).
+        *   **Success:** Write Worker ID & Timestamp. Process task.
+        *   **Fail (Exists):** Check if stale (timestamp > TTL).
+            *   **Stale:** Delete `lease.json` and retry lock (or steal).
+            *   **Active:** Skip.
+3.  **Ack:**
+    *   Move `pending/<hash_id>/task.json` to `completed/<hash_id>.json`.
+    *   Remove `pending/<hash_id>/` directory (and the lease within it).
+4.  **Nack:**
+    *   Delete `pending/<hash_id>/lease.json`. Task becomes available again.
+
+**Advantages:**
+*   **Co-location:** Lock and Data are adjacent.
+*   **Atomicity:** Relies on OS-level file creation atomicity.
+*   **History:** `lease.json` contains info on *who* is processing it.
+
 
 ### B. `SQSQueue` (Production)
 

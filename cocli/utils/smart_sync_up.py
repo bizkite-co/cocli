@@ -1,9 +1,8 @@
 import boto3
 import logging
-import os
 from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor
-from typing import Dict, Any, List, Optional
+from typing import Dict, Any, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -39,7 +38,7 @@ def run_smart_sync_up(
          return
 
     # 1. List Local Files
-    local_files = {}
+    local_files: Dict[str, Path] = {}
     if local_base.exists():
         logger.info(f"Scanning local directory: {local_base}")
         cutoff = None
@@ -52,13 +51,16 @@ def run_smart_sync_up(
             if path.is_file():
                 if cutoff and path.stat().st_mtime < cutoff:
                     continue
-                rel_path = path.relative_to(local_base)
-                local_files[str(rel_path)] = path
+                try:
+                    rel_path = str(path.relative_to(local_base))
+                    local_files[rel_path] = path
+                except Exception:
+                    continue
     else:
         logger.warning(f"Local base directory does not exist: {local_base}")
 
     # 2. List Remote Files (Only if we need to delete or check for existing files)
-    remote_keys = {}
+    remote_keys: Dict[str, str] = {}
     if delete_remote:
         logger.info(f"Scanning S3 prefix for deletions: s3://{bucket_name}/{prefix}")
         paginator = s3.get_paginator('list_objects_v2')
@@ -66,11 +68,11 @@ def run_smart_sync_up(
         for page in pages:
             if 'Contents' in page:
                 for obj in page['Contents']:
-                    key = obj['Key']
+                    key = str(obj['Key'])
                     rel_path = key[len(prefix):] if key.startswith(prefix) else key
                     remote_keys[rel_path] = key
     else:
-        logger.info(f"Skipping S3 scan (delete_remote=False)")
+        logger.info("Skipping S3 scan (delete_remote=False)")
 
     # 3. Determine Uploads
     to_upload = []

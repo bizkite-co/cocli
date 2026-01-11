@@ -193,36 +193,56 @@ def get_campaign_stats(campaign_name: str) -> Dict[str, Any]:
         stats["using_cloud_queue"] = False
 
     # Always check Local queue stats (for RPI cluster / Filesystem mode)
-    from cocli.core.config import get_campaign_dir
 
-    campaign_dir = get_campaign_dir(campaign_name)
+    # V2 Queue Paths
+    queue_base = get_cocli_base_dir() / "data" / "queues" / campaign_name / "enrichment"
+    pending_dir = queue_base / "pending"
+    completed_dir = queue_base / "completed"
 
-    if campaign_dir:
-        # Enrichment stats (add to cloud stats if present, or set if not)
-        frontier_dir = campaign_dir / "frontier" / "enrichment"
-        lease_dir = campaign_dir / "active-leases" / "enrichment"
+    local_pending = 0
+    local_inflight = 0
+    local_completed = 0
+    
+    if pending_dir.exists():
+        # Count total directories (tasks)
+        # Using scandir is faster than iterdir/glob for just counting
+        try:
+            with os.scandir(pending_dir) as entries:
+                for entry in entries:
+                    if entry.is_dir():
+                        local_pending += 1
+                        # efficient check for lease? 
+                        # checking every dir for lease.json might be slow for 10k items.
+                        # For reporting, maybe just glob is fine.
+        except Exception:
+            pass
+            
+        # Count leases for inflight
+        local_inflight = len(list(pending_dir.glob("*/lease.json")))
 
-        local_pending = 0
-        local_inflight = 0
-        if frontier_dir.exists():
-            local_pending = len(list(frontier_dir.glob("*.json")))
-        if lease_dir.exists():
-            local_inflight = len(list(lease_dir.glob("*.lease")))
+    if completed_dir.exists():
+         local_completed = len(list(completed_dir.glob("*.json")))
 
-        stats["local_enrichment_pending"] = local_pending
-        stats["local_enrichment_inflight"] = local_inflight
+    stats["local_enrichment_pending"] = local_pending
+    stats["local_enrichment_inflight"] = local_inflight
+    stats["local_enrichment_completed"] = local_completed
 
-        # For simplicity in the combined report table
-        if not enrich_queue_url:
-            stats["enrichment_pending"] = local_pending
-            stats["enrichment_inflight"] = local_inflight
+    # For simplicity in the combined report table
+    if not enrich_queue_url:
+        stats["enrichment_pending"] = local_pending
+        stats["enrichment_inflight"] = local_inflight
+        stats["completed_count"] = local_completed
 
-        # GM Details stats
-        details_frontier = campaign_dir / "frontier" / "gm-details"
-        if details_frontier.exists():
-            stats["local_gm_list_item_pending"] = len(
-                list(details_frontier.glob("*.json"))
-            )
+    # Old path stats (for cleanup monitoring)
+    from .config import get_campaigns_dir
+    campaign_dir = get_campaigns_dir() / campaign_name
+    
+    # GM Details stats
+    details_frontier = campaign_dir / "frontier" / "gm-details"
+    if details_frontier.exists():
+        stats["local_gm_list_item_pending"] = len(
+            list(details_frontier.glob("*.json"))
+        )
 
     # 3. Enriched Companies & Emails
     from cocli.core.email_index_manager import EmailIndexManager
@@ -242,6 +262,7 @@ def get_campaign_stats(campaign_name: str) -> Dict[str, Any]:
     from cocli.core.config import get_companies_dir
 
     enriched_count = 0
+    deep_enriched_count = 0
     # Fallback/validation counts from companies directory
     # (We still scan to get the total enriched_count for the tag)
     companies_dir = get_companies_dir()
@@ -266,8 +287,17 @@ def get_campaign_stats(campaign_name: str) -> Dict[str, Any]:
 
             if has_tag:
                 enriched_count += 1
+                # Check for Deep Enrichment artifacts
+                enrich_dir = company_dir / "enrichments"
+                if (enrich_dir / "sitemap.xml").exists() or (enrich_dir / "navbar.html").exists():
+                    deep_enriched_count += 1
 
     stats["enriched_count"] = enriched_count
+    stats["deep_enriched_count"] = deep_enriched_count
+    # In this architecture, a completed task results in an enriched company file.
+    # So we can use enriched_count as the proxy for completed items locally.
+    stats["completed_count"] = enriched_count
+
     stats["companies_with_emails_count"] = companies_with_emails_count
     stats["emails_found_count"] = emails_found_count
 

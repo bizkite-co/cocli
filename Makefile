@@ -82,7 +82,7 @@ test-tui-integration: install ## Run only the TUI integration tests
 	source $(VENV_DIR)/bin/activate && pytest tests/tui/test_navigation_steps.py
 	cat .logs/tui.log
 
-report: sync-active-leases ## Show the report for the current campaign (Usage: make report [CAMPAIGN=name])
+report: ## Show the report for the current campaign (Usage: make report [CAMPAIGN=name])
 	@PYTHONPATH=. ./.venv/bin/python scripts/campaign_report.py $(CAMPAIGN)
 
 coverage-gap: ## Generate a report of unscraped target areas

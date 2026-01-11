@@ -1,10 +1,9 @@
 import os
 import json
 import logging
-from typing import List, Type, TypeVar, Any, cast, Optional
+from typing import List, Type, TypeVar, Any, Optional
 from pathlib import Path
 from datetime import datetime, timedelta
-
 
 from ...models.scrape_task import ScrapeTask, GmItemTask
 from ...models.queue import QueueMessage
@@ -16,8 +15,15 @@ T = TypeVar('T', ScrapeTask, GmItemTask, QueueMessage)
 
 class FilesystemQueue:
     """
-    A distributed-safe filesystem queue using atomic leases.
-    Designed to work with S3-synced directories.
+    A distributed-safe filesystem queue using atomic leases (V2).
+    Structure:
+      data/queues/<campaign>/<queue>/
+        pending/
+          <task_id>/
+            task.json
+            lease.json
+        completed/
+          <task_id>.json
     """
 
     def __init__(
@@ -32,24 +38,37 @@ class FilesystemQueue:
         self.lease_duration = lease_duration_minutes
         self.stale_heartbeat = stale_heartbeat_minutes
         
-        self.campaign_dir = get_campaign_dir(campaign_name)
-        if not self.campaign_dir:
-            raise ValueError(f"Campaign directory not found for {campaign_name}")
-            
-        self.lease_dir = self.campaign_dir / "active-leases" / queue_name
-        self.lease_dir.mkdir(parents=True, exist_ok=True)
+        # New V2 Path: data/queues/<campaign>/<queue>
+        self.queue_base = get_cocli_base_dir() / "data" / "queues" / campaign_name / queue_name
+        logger.info(f"Initialized FilesystemQueue V2 for {queue_name} at {self.queue_base}")
+        
+        self.pending_dir = self.queue_base / "pending"
+        self.completed_dir = self.queue_base / "completed"
+        self.failed_dir = self.queue_base / "failed"
+        
+        self.pending_dir.mkdir(parents=True, exist_ok=True)
+        self.completed_dir.mkdir(parents=True, exist_ok=True)
+        self.failed_dir.mkdir(parents=True, exist_ok=True)
         
         # We need a worker ID for the lease
         self.worker_id = os.getenv("HOSTNAME") or os.getenv("COMPUTERNAME") or "unknown-worker"
 
-    def _get_lease_path(self, task_id: str) -> Path:
-        # Sanitize task_id for filename
+    def _get_task_dir(self, task_id: str) -> Path:
+        # Sanitize task_id for directory name
         safe_id = task_id.replace("/", "_").replace("\\", "_")
-        return self.lease_dir / f"{safe_id}.lease"
+        return self.pending_dir / safe_id
+
+    def _get_lease_path(self, task_id: str) -> Path:
+        return self._get_task_dir(task_id) / "lease.json"
 
     def _create_lease(self, task_id: str) -> bool:
         """Attempts to create an atomic lease file."""
-        lease_path = self._get_lease_path(task_id)
+        task_dir = self._get_task_dir(task_id)
+        # Ensure the directory exists (it should for pending tasks, but for GmList we might need to make it)
+        task_dir.mkdir(parents=True, exist_ok=True)
+        
+        lease_path = task_dir / "lease.json"
+        
         logger.debug(f"Worker {self.worker_id} attempting lease for {task_id} at {lease_path}")
         try:
             # os.O_CREAT | os.O_EXCL is atomic on most filesystems (including EFS/Local)
@@ -65,7 +84,6 @@ class FilesystemQueue:
             logger.debug(f"Worker {self.worker_id} acquired lease for {task_id}")
             return True
         except FileExistsError:
-            logger.debug(f"Worker {self.worker_id} lease already exists for {task_id}")
             # Check if existing lease is stale
             return self._reclaim_stale_lease(task_id)
         except Exception as e:
@@ -89,13 +107,9 @@ class FilesystemQueue:
             if is_expired or is_stale:
                 logger.warning(f"Reclaiming stale/expired lease for {task_id} (Worker: {data.get('worker_id')})")
                 try:
-                    # To reclaim safely, we should ideally use a lock or just try to delete and re-create
-                    # but since we are already in a "FileExists" state, we delete and then the NEXT poll will get it.
-                    # Or we delete and try to create immediately.
                     lease_path.unlink()
                     return self._create_lease(task_id)
                 except FileNotFoundError:
-                    # Someone else already reclaimed it
                     return False
         except Exception as e:
             logger.error(f"Error checking stale lease for {task_id}: {e}")
@@ -103,46 +117,49 @@ class FilesystemQueue:
         return False
 
     def push(self, task_id: str, payload: dict[str, Any]) -> str:
-        """Writes a task to the frontier directory."""
-        if not self.campaign_dir:
-             raise ValueError("Campaign directory not set")
-        frontier_dir = self.campaign_dir / "frontier" / self.queue_name
-        frontier_dir.mkdir(parents=True, exist_ok=True)
-        frontier_path = frontier_dir / f"{task_id}.json"
+        """Writes a task to the pending directory."""
+        task_dir = self._get_task_dir(task_id)
+        task_dir.mkdir(parents=True, exist_ok=True)
         
-        # Only write if it doesn't exist (idempotent push)
-        if not frontier_path.exists():
-            # Use json.dumps with custom default or pydantic's dump
-            # Since we receive a dict payload here (from model_dump), 
-            # we need a custom encoder or convert back to model.
-            # But the payload might already contain non-serializable objects.
-            
+        task_path = task_dir / "task.json"
+        
+        # Idempotent push: only write if not exists
+        if not task_path.exists():
             def datetime_handler(obj: Any) -> str:
                 if isinstance(obj, datetime):
                     return obj.isoformat()
                 raise TypeError(f"Object of type {type(obj)} is not JSON serializable")
 
-            with open(frontier_path, 'w') as f:
+            with open(task_path, 'w') as f:
                 json.dump(payload, f, default=datetime_handler)
-            logger.debug(f"Pushed task {task_id} to {self.queue_name} frontier")
+            logger.debug(f"Pushed task {task_id} to {self.queue_name} pending")
         return task_id
 
     def poll_frontier(self, task_type: Type[T], batch_size: int = 1) -> List[T]:
-        """Generic poll for queues that use a 'frontier' directory for pushed tasks."""
-        if not self.campaign_dir:
-             return []
-        frontier_dir = self.campaign_dir / "frontier" / self.queue_name
-        if not frontier_dir.exists():
+        """Generic poll for queues."""
+        if not self.pending_dir.exists():
             return []
             
         tasks: List[T] = []
         count = 0
-        # Sort by mtime to act like a queue
-        for task_file in sorted(frontier_dir.glob("*.json"), key=lambda f: f.stat().st_mtime):
+        
+        # Get all directories
+        candidates = [d for d in self.pending_dir.iterdir() if d.is_dir()]
+        
+        # Shuffle to minimize collision in distributed environment (Randomized Sharding)
+        import random
+        random.shuffle(candidates)
+        
+        for task_dir in candidates:
             if count >= batch_size:
                 break
+                
+            task_file = task_dir / "task.json"
+            if not task_file.exists():
+                continue
+
+            task_id = task_dir.name
             
-            task_id = task_file.stem
             if self._create_lease(task_id):
                 try:
                     with open(task_file, 'r') as f:
@@ -153,25 +170,31 @@ class FilesystemQueue:
                     count += 1
                 except Exception as e:
                     logger.error(f"Error reading task file {task_file}: {e}")
-                    self.ack(task_id) # Remove lease if file is corrupt
+                    # If corrupt, maybe nack or move to failed? 
+                    # For now, let's just release the lease so it can be inspected or retried
+                    self.nack(task_id) 
         return tasks
 
     def ack(self, task_id: Optional[str]) -> None:
-        """Deletes the lease file AND the frontier file."""
+        """Moves task to completed and removes pending directory."""
         if not task_id:
             return
-        lease_path = self._get_lease_path(task_id)
-        if not self.campaign_dir:
-             return
-        frontier_path = self.campaign_dir / "frontier" / self.queue_name / f"{task_id}.json"
+        
+        task_dir = self._get_task_dir(task_id)
+        task_file = task_dir / "task.json"
+        completed_file = self.completed_dir / f"{task_id}.json"
         
         try:
-            if lease_path.exists():
-                lease_path.unlink()
-            if frontier_path.exists():
-                frontier_path.unlink()
+            if task_file.exists():
+                task_file.rename(completed_file)
+            
+            # Remove the lease and the directory
+            import shutil
+            if task_dir.exists():
+                shutil.rmtree(task_dir, ignore_errors=True)
+                
         except Exception as e:
-            logger.error(f"Error acking (deleting task/lease) for {task_id}: {e}")
+            logger.error(f"Error acking for {task_id}: {e}")
 
     def heartbeat(self, task_id: str) -> None:
         """Updates the heartbeat timestamp of a lease."""
@@ -186,12 +209,11 @@ class FilesystemQueue:
                 
                 with open(lease_path, 'w') as f:
                     json.dump(data, f)
-                logger.debug(f"Heartbeat updated for {task_id}")
             except Exception as e:
                 logger.error(f"Error updating heartbeat for {task_id}: {e}")
 
     def nack(self, task_id: Optional[str]) -> None:
-        """Releases the lease without deleting the task, so it can be retried."""
+        """Releases the lease."""
         if not task_id:
             return
         lease_path = self._get_lease_path(task_id)
@@ -200,18 +222,21 @@ class FilesystemQueue:
                 lease_path.unlink()
                 logger.debug(f"Nacked (released lease) for {task_id}")
         except Exception as e:
-            logger.error(f"Error nacking (releasing lease) for {task_id}: {e}")
+            logger.error(f"Error nacking for {task_id}: {e}")
 
 class FilesystemGmListQueue(FilesystemQueue):
     """Specialized queue for Google Maps List scraping using the Mission Index."""
 
     def __init__(self, campaign_name: str):
         super().__init__(campaign_name, "gm-list")
-        self.target_tiles_dir = cast(Path, self.campaign_dir) / "indexes" / "target-tiles"
+        self.campaign_dir = get_campaign_dir(campaign_name)
+        if self.campaign_dir:
+            self.target_tiles_dir = self.campaign_dir / "indexes" / "target-tiles"
+        else:
+            self.target_tiles_dir = Path("does-not-exist")
         self.witness_dir = get_cocli_base_dir() / "indexes" / "scraped-tiles"
 
     def poll(self, batch_size: int = 1) -> List[ScrapeTask]:
-        # ... (implementation remains same as before but uses ScrapeTask)
         tasks: List[ScrapeTask] = []
         if not self.target_tiles_dir.exists():
             return []
@@ -223,6 +248,7 @@ class FilesystemGmListQueue(FilesystemQueue):
             if witness_path.exists():
                 continue
                 
+            # Try to acquire lease (this will create pending/<hash>/lease.json)
             if self._create_lease(task_id):
                 parts = Path(task_id).parts
                 if len(parts) < 3:
@@ -249,14 +275,15 @@ class FilesystemGmListQueue(FilesystemQueue):
         return tasks
 
     def ack(self, task: ScrapeTask) -> None: # type: ignore
-        # Note: GmList doesn't delete the target-tiles, just the lease
+        # Note: GmList doesn't move data, just removes the lease/dir
         if task.ack_token:
-            lease_path = self._get_lease_path(task.ack_token)
-            if lease_path.exists():
-                lease_path.unlink()
+            task_dir = self._get_task_dir(task.ack_token)
+            import shutil
+            if task_dir.exists():
+                shutil.rmtree(task_dir, ignore_errors=True)
 
 class FilesystemGmDetailsQueue(FilesystemQueue):
-    """Queue for Google Maps Details (Place IDs). Hisotry: 100% functional on local/residential IPs."""
+    """Queue for Google Maps Details (Place IDs)."""
     def __init__(self, campaign_name: str):
         super().__init__(campaign_name, "gm-details")
 

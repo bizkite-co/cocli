@@ -1004,35 +1004,31 @@ def sync_active_leases_to_s3(
     campaign_name: str, s3_client: Any, bucket_name: str
 ) -> None:
     """
-
-
-
-    Pushes local lease files to S3 so they are visible in global reports.
-
-
-
+    Pushes local lease files to S3 so they are visible in global reports. (V2 structure)
     """
+    from ..core.config import get_cocli_base_dir
+    
+    queue_base = get_cocli_base_dir() / "data" / "queues" / campaign_name / "enrichment"
+    pending_dir = queue_base / "pending"
 
-    campaign_dir = get_campaigns_dir() / campaign_name
-
-    lease_root = campaign_dir / "active-leases"
-
-    if not lease_root.exists():
+    if not pending_dir.exists():
         return
 
     try:
-        # We only care about enrichment leases for now as they are the primary monitoring target
-
-        enrich_lease_dir = lease_root / "enrichment"
-
-        if enrich_lease_dir.exists():
-            for lease_file in enrich_lease_dir.glob("*.lease"):
-                s3_key = f"campaigns/{campaign_name}/active-leases/enrichment/{lease_file.name}"
-
+        # Scan for lease.json in all task directories
+        for task_dir in pending_dir.iterdir():
+            if not task_dir.is_dir():
+                continue
+            
+            lease_file = task_dir / "lease.json"
+            if lease_file.exists():
+                # S3 Key: campaigns/<campaign>/queues/enrichment/pending/<hash>/lease.json
+                task_id = task_dir.name
+                s3_key = f"campaigns/{campaign_name}/queues/enrichment/pending/{task_id}/lease.json"
                 s3_client.upload_file(str(lease_file), bucket_name, s3_key)
 
     except Exception as e:
-        logger.warning(f"Failed to sync leases to S3: {e}")
+        logger.warning(f"Failed to sync V2 leases to S3: {e}")
 
 
 async def run_supervisor(
@@ -1138,8 +1134,15 @@ async def run_supervisor(
             return
 
         # Track last sync time to avoid constant thrashing
-        last_sync_time = 0
-        sync_interval_seconds = 300 # 5 minutes
+        last_sync_time = 0.0
+        sync_interval_seconds = 300  # Sync every 5 minutes
+        
+        # Imports for sync
+        from ..utils.smart_sync_up import run_smart_sync_up
+        from .smart_sync import run_smart_sync
+        
+        local_base = get_cocli_base_dir()
+        logger.info(f"DEBUG: local_base is {local_base}")
 
         while True:
             try:
@@ -1149,27 +1152,33 @@ async def run_supervisor(
                 # 0.1 Sync leases TO S3 (Frequent is fine, small files)
                 sync_active_leases_to_s3(campaign_name, s3_client, bucket_name)
 
-                # 0.2 Sync campaign data (Frontier) - throttled
+                # 0.2 Sync campaign data (V2 Queues) - throttled
                 now = time.time()
                 if now - last_sync_time > sync_interval_seconds:
                     try:
-                        # Run all sync operations concurrently in background threads
-                        from ..utils.smart_sync_up import run_smart_sync_up
-                        from .smart_sync import run_smart_sync
-                        
-                        local_base = get_cocli_base_dir()
                         companies_prefix = "companies/"
                         companies_local = local_base / "companies"
-                        frontier_prefix = f"campaigns/{campaign_name}/frontier/enrichment/"
-                        frontier_local = local_base / "campaigns" / campaign_name / "frontier" / "enrichment"
                         
-                        logger.info("Starting throttled background sync operations")
-                        # We still gather, but the reduced frequency helps pool exhaustion
-                        await asyncio.gather(
-                            asyncio.to_thread(run_smart_sync, "enrichment-queue", bucket_name, frontier_prefix, frontier_local, campaign_name, aws_config),
-                            asyncio.to_thread(run_smart_sync_up, "companies", bucket_name, companies_prefix, companies_local, campaign_name, aws_config, delete_remote=False, only_modified_since_minutes=15),
-                            asyncio.to_thread(run_smart_sync_up, "enrichment-queue", bucket_name, frontier_prefix, frontier_local, campaign_name, aws_config, delete_remote=True)
-                        )
+                        # V2 Enrichment Queue paths
+                        queue_prefix = f"campaigns/{campaign_name}/queues/enrichment/pending/"
+                        queue_local = local_base / "data" / "queues" / campaign_name / "enrichment" / "pending"
+                        
+                        logger.info("Starting throttled background sync operations (V2)")
+                        # 1. Sync down new tasks
+                        await asyncio.to_thread(run_smart_sync, "enrichment-queue", bucket_name, queue_prefix, queue_local, campaign_name, aws_config)
+                        
+                        # 2. Sync up results and leases
+                        # We use delete_remote=True for the queue so that tasks moved to completed locally are removed from S3 pending
+                        await asyncio.to_thread(run_smart_sync_up, "enrichment-queue", bucket_name, queue_prefix, queue_local, campaign_name, aws_config, delete_remote=True)
+                        
+                        # 3. Sync up company data
+                        await asyncio.to_thread(run_smart_sync_up, "companies", bucket_name, companies_prefix, companies_local, campaign_name, aws_config, delete_remote=False, only_modified_since_minutes=15)
+                        
+                        # 4. Sync up completed tasks for tracking
+                        completed_prefix = f"campaigns/{campaign_name}/queues/enrichment/completed/"
+                        completed_local = local_base / "data" / "queues" / campaign_name / "enrichment" / "completed"
+                        await asyncio.to_thread(run_smart_sync_up, "enrichment-completed", bucket_name, completed_prefix, completed_local, campaign_name, aws_config, delete_remote=False)
+                        
                         last_sync_time = now
                         logger.info("Throttled background sync operations completed")
                     except Exception as e:

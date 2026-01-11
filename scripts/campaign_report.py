@@ -86,9 +86,13 @@ def main(
 
         # Enriched %
         enriched_count = stats.get('enriched_count', 0)
+        deep_enriched_count = stats.get('deep_enriched_count', 0)
         total_enriched_global = stats.get('total_enriched_global', 0)
         enriched_pct = f"{(enriched_count / total_prospects * 100):.1f}%" if total_prospects else "0%"
+        deep_pct = f"{(deep_enriched_count / enriched_count * 100):.1f}%" if enriched_count else "0%"
+        
         table.add_row("Enriched (Campaign)", str(enriched_count), enriched_pct)
+        table.add_row("Deep Enriched (Sitemap/Nav)", str(deep_enriched_count), f"{deep_pct} (of Enriched)")
         table.add_row("Enriched (Global Pool)", str(total_enriched_global), "[dim]Historical[/dim]")
         
         # Email %
