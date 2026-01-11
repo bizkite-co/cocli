@@ -3,7 +3,8 @@ import logging
 import os
 from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Optional
+, Optional
 
 logger = logging.getLogger(__name__)
 

@@ -1154,15 +1154,14 @@ async def run_supervisor(
                     local_base = get_cocli_base_dir()
                     bucket_name = aws_config.get("cocli_data_bucket_name") or f"cocli-data-{campaign_name}"
                     
-                    # Run all sync operations concurrently in background threads
-                    logger.info("DEBUG: Triggering concurrent sync operations")
+                    # 2. Sync Companies UP (to reflect new enrichment results in S3)
                     from ..utils.smart_sync_up import run_smart_sync_up
                     companies_prefix = "companies/"
                     companies_local = local_base / "companies"
                     
                     await asyncio.gather(
                         asyncio.to_thread(run_smart_sync, "enrichment-queue", bucket_name, frontier_prefix, frontier_local, campaign_name, aws_config),
-                        asyncio.to_thread(run_smart_sync_up, "companies", bucket_name, companies_prefix, companies_local, campaign_name, aws_config, delete_remote=False, only_modified_since_minutes=15),
+                        asyncio.to_thread(run_smart_sync_up, "companies", bucket_name, companies_prefix, companies_local, campaign_name, aws_config, delete_remote=False, only_modified_since_minutes=120),
                         asyncio.to_thread(run_smart_sync_up, "enrichment-queue", bucket_name, frontier_prefix, frontier_local, campaign_name, aws_config, delete_remote=True)
                     )
                     logger.info("DEBUG: Concurrent sync operations completed")
