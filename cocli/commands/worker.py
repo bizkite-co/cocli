@@ -1159,14 +1159,14 @@ async def run_supervisor(
                     frontier_local = local_base / "campaigns" / campaign_name / "frontier" / "enrichment"
                     run_smart_sync("enrichment-queue", bucket_name, frontier_prefix, frontier_local, campaign_name, aws_config)
                     
-                    # 1.1 Sync Enrichment Frontier UP (to reflect deletions/acks in S3)
-                    from ..utils.smart_sync_up import run_smart_sync_up
-                    run_smart_sync_up("enrichment-queue", bucket_name, frontier_prefix, frontier_local, campaign_name, aws_config, delete_remote=True)
-
                     # 2. Sync Companies UP (to reflect new enrichment results in S3)
+                    from ..utils.smart_sync_up import run_smart_sync_up
                     companies_prefix = "companies/"
                     companies_local = local_base / "companies"
                     run_smart_sync_up("companies", bucket_name, companies_prefix, companies_local, campaign_name, aws_config, delete_remote=False, only_modified_since_minutes=15)
+
+                    # 3. Sync Enrichment Frontier UP (to reflect deletions/acks in S3)
+                    run_smart_sync_up("enrichment-queue", bucket_name, frontier_prefix, frontier_local, campaign_name, aws_config, delete_remote=True)
                 except Exception as e:
                     logger.warning(f"Supervisor failed to smart-sync data: {e}")
 
