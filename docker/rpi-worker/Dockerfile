@@ -3,23 +3,9 @@ FROM mcr.microsoft.com/playwright/python:v1.55.0-noble
 
 WORKDIR /app
 
-# Install system dependencies needed for pandas/numpy on ARM and Chromium
+# Install system dependencies needed for pandas/numpy on ARM
 RUN apt-get update && apt-get install -y \
     libatlas-base-dev \
-    libgbm1 \
-    libnss3 \
-    libnspr4 \
-    libasound2 \
-    libatk1.0-0 \
-    libatk-bridge2.0-0 \
-    libcups2 \
-    libdbus-1-3 \
-    libxcomposite1 \
-    libxdamage1 \
-    libxrandr2 \
-    libxkbcommon0 \
-    libpango-1.0-0 \
-    libcairo2 \
     && rm -rf /var/lib/apt/lists/*
 
 # Install UV for fast dependency management
