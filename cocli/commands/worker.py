@@ -1139,13 +1139,22 @@ async def run_supervisor(
                 # 0.2 Sync campaign data (Frontier) FROM S3
                 try:
                     from .smart_sync import run_smart_sync
+                    from ..core.config import load_campaign_config, get_cocli_base_dir
                     
-                    aws_config = load_campaign_config(campaign_name).get("aws", {})
+                    config = load_campaign_config(campaign_name)
+                    aws_config = config.get("aws", {})
                     local_base = get_cocli_base_dir()
+                    bucket_name = aws_config.get("cocli_data_bucket_name") or f"cocli-data-{campaign_name}"
                     
-                    # We sync both the frontier and the indexes to ensure workers have everything
-                    await run_smart_sync(local_base, campaign_name, aws_config, "frontier")
-                    await run_smart_sync(local_base, campaign_name, aws_config, "indexes")
+                    # 1. Sync Enrichment Frontier
+                    frontier_prefix = f"campaigns/{campaign_name}/frontier/enrichment/"
+                    frontier_local = local_base / "campaigns" / campaign_name / "frontier" / "enrichment"
+                    run_smart_sync("enrichment-queue", bucket_name, frontier_prefix, frontier_local, campaign_name, aws_config)
+                    
+                    # 2. Sync Companies (Indexes)
+                    companies_prefix = "companies/"
+                    companies_local = local_base / "companies"
+                    run_smart_sync("companies", bucket_name, companies_prefix, companies_local, campaign_name, aws_config)
                 except Exception as e:
                     logger.warning(f"Supervisor failed to smart-sync data: {e}")
 
