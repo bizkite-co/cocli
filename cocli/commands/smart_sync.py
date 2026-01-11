@@ -54,7 +54,8 @@ def run_smart_sync(
     aws_config: Dict[str, Any],
     workers: int = 20,
     full: bool = False,
-    force: bool = False
+    force: bool = False,
+    completed_dir: Optional[Path] = None
 ) -> None:
     setup_file_logging(f"smart_sync_{target_name}")
     logger.info(f"Starting smart sync for {target_name} in campaign {campaign_name}")
@@ -133,6 +134,46 @@ def run_smart_sync(
                             else:
                                 logger.info(f"Skipping {key}: Local file is newer than S3 version (full scan).")
                     
+                    if completed_dir:
+                        # Zombie/Re-queue Check
+                        parts = Path(rel_path).parts
+                        if parts:
+                            task_id = parts[0] # The directory name is the task ID
+                            completed_file = completed_dir / f"{task_id}.json"
+                            
+                            if completed_file.exists():
+                                completed_mtime = completed_file.stat().st_mtime
+                                # s3_mtime is timezone-aware, convert to timestamp for comparison
+                                if s3_mtime.timestamp() > completed_mtime:
+                                    logger.info(f"Re-downloading {key}: S3 pending task is newer than local completion (Re-queue detected).")
+                                    should_download = True
+                                else:
+                                    # Zombie case: Completed is newer/same as pending.
+                                    # 1. Don't download.
+                                    should_download = False
+                                    
+                                    # 3. Cleanup S3 pending (The Source of the Zombie)
+                                    try:
+                                        logger.info(f"Deleting Zombie S3 Object: {key}")
+                                        s3.delete_object(Bucket=bucket_name, Key=key)
+                                    except Exception as e:
+                                        logger.error(f"Failed to delete zombie S3 key {key}: {e}")
+
+                                    # 2. Cleanup local pending if it exists (fix the "stuck" state)
+                                    if local_path.exists():
+                                        try:
+                                            local_path.unlink()
+                                            logger.info(f"Removed zombie local pending file: {local_path}")
+                                            # Try to remove the directory if it's empty
+                                            # local_path is .../pending/task_id/task.json
+                                            # local_path.parent is .../pending/task_id
+                                            try:
+                                                local_path.parent.rmdir()
+                                            except OSError:
+                                                pass # Directory not empty or other error
+                                        except Exception as e:
+                                            logger.error(f"Failed to remove zombie file {local_path}: {e}")
+
                     if should_download:
                         to_download.append((key, local_path))
     
@@ -319,15 +360,17 @@ def sync_queues(
     bucket_name = aws_config.get("cocli_data_bucket_name") or f"cocli-data-{campaign_name}"
     
     for q in ["gm-list", "gm-details", "enrichment"]:
+        # Completed Path (Used for zombie check)
+        local_base_completed = DATA_DIR / "data" / "queues" / campaign_name / q / "completed"
+
         # Pending
         prefix = f"campaigns/{campaign_name}/queues/{q}/pending/"
-        local_base = DATA_DIR / "data" / "queues" / campaign_name / q / "pending"
-        run_smart_sync(f"{q}-pending", bucket_name, prefix, local_base, campaign_name, aws_config, workers, full, force)
+        local_base_pending = DATA_DIR / "data" / "queues" / campaign_name / q / "pending"
+        run_smart_sync(f"{q}-pending", bucket_name, prefix, local_base_pending, campaign_name, aws_config, workers, full, force, completed_dir=local_base_completed)
         
         # Completed (Optional sync down if needed for reporting)
         prefix = f"campaigns/{campaign_name}/queues/{q}/completed/"
-        local_base = DATA_DIR / "data" / "queues" / campaign_name / q / "completed"
-        run_smart_sync(f"{q}-completed", bucket_name, prefix, local_base, campaign_name, aws_config, workers, full, force)
+        run_smart_sync(f"{q}-completed", bucket_name, prefix, local_base_completed, campaign_name, aws_config, workers, full, force)
 
 @app.command("campaign-config")
 def sync_campaign_config(

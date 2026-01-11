@@ -345,6 +345,11 @@ sync-enrichment-queue: ## Sync enrichment queue from S3
 sync-queues: ## Sync all local queues from S3
 	@$(VENV_DIR)/bin/cocli smart-sync queues
 
+.PHONY: push-queue
+push-queue: ## Push local queue items to S3 (Usage: make push-queue [CAMPAIGN=name] [QUEUE=enrichment])
+	$(call validate_campaign)
+	@$(VENV_DIR)/bin/python scripts/push_queue.py --campaign $(CAMPAIGN) --queue $(or $(QUEUE), enrichment)
+
 sync-all: sync-scraped-areas sync-prospects sync-companies sync-emails sync-queues ## Sync all S3 data to local directorys
 
 .PHONY: recent-scrapes
