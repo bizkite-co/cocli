@@ -437,7 +437,7 @@ async def run_details_worker(
                     )
 
                     # Create context and setup optimizations
-                    context = await browser_instance.new_context()
+                    context = await browser_instance.new_context(ignore_https_errors=True)
                     tracker = await setup_optimized_context(context)
 
                     tasks = [
@@ -769,7 +769,7 @@ async def run_enrichment_worker(
                     )
 
                     # Create context and setup optimizations
-                    context = await browser_instance.new_context()
+                    context = await browser_instance.new_context(ignore_https_errors=True)
                     tracker = await setup_optimized_context(context)
 
                     tasks = [
