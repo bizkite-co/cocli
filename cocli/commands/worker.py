@@ -1134,9 +1134,14 @@ async def run_supervisor(
                 # 0.2 Sync campaign data (Frontier) FROM S3
                 try:
                     from .smart_sync import run_smart_sync
+                    from ..core.config import load_campaign_config, get_cocli_base_dir
+                    
+                    aws_config = load_campaign_config(campaign_name).get("aws", {})
+                    local_base = get_cocli_base_dir()
+                    
                     # We sync both the frontier and the indexes to ensure workers have everything
-                    await run_smart_sync(campaign_name, "frontier", profile_name)
-                    await run_smart_sync(campaign_name, "indexes", profile_name)
+                    await run_smart_sync(local_base, campaign_name, aws_config, "frontier")
+                    await run_smart_sync(local_base, campaign_name, aws_config, "indexes")
                 except Exception as e:
                     logger.warning(f"Supervisor failed to smart-sync data: {e}")
 
