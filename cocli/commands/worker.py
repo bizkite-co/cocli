@@ -101,7 +101,7 @@ def ensure_campaign_config(campaign_name: str) -> None:
                 logger.info(f"Successfully fetched config from S3 to {config_path}")
                 return
             except Exception as e:
-                logger.debug(f"Failed to fetch s3://{b}/{key}: {e}")
+                logger.warning(f"Failed to fetch s3://{b}/{key}: {e}")
                 continue
             
     logger.error(f"Failed to fetch config for '{campaign_name}' from S3.")
