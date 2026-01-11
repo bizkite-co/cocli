@@ -271,6 +271,14 @@ def get_campaign_stats(campaign_name: str) -> Dict[str, Any]:
     stats["companies_with_emails_count"] = companies_with_emails_count
     stats["emails_found_count"] = emails_found_count
 
+    # Global Enrichment Count (Total pool)
+    total_global = 0
+    if companies_dir.exists():
+        for company_dir in companies_dir.iterdir():
+            if (company_dir / "enrichments" / "website.md").exists():
+                total_global += 1
+    stats["total_enriched_global"] = total_global
+
     # 4. Scrape Index Status
     import csv
 

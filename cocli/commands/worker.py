@@ -1154,15 +1154,19 @@ async def run_supervisor(
                     local_base = get_cocli_base_dir()
                     bucket_name = aws_config.get("cocli_data_bucket_name") or f"cocli-data-{campaign_name}"
                     
-                    # 1. Sync Enrichment Frontier
+                    # 1. Sync Enrichment Frontier (Bi-directional/Down)
                     frontier_prefix = f"campaigns/{campaign_name}/frontier/enrichment/"
                     frontier_local = local_base / "campaigns" / campaign_name / "frontier" / "enrichment"
                     run_smart_sync("enrichment-queue", bucket_name, frontier_prefix, frontier_local, campaign_name, aws_config)
                     
-                    # 2. Sync Companies (Indexes) - DISABLED TEMPORARILY TO UNBLOCK WORKERS
-                    # companies_prefix = "companies/"
-                    # companies_local = local_base / "companies"
-                    # run_smart_sync("companies", bucket_name, companies_prefix, companies_local, campaign_name, aws_config)
+                    # 1.1 Sync Enrichment Frontier UP (to reflect deletions/acks in S3)
+                    from ..utils.smart_sync_up import run_smart_sync_up
+                    run_smart_sync_up("enrichment-queue", bucket_name, frontier_prefix, frontier_local, campaign_name, aws_config, delete_remote=True)
+
+                    # 2. Sync Companies UP (to reflect new enrichment results in S3)
+                    companies_prefix = "companies/"
+                    companies_local = local_base / "companies"
+                    run_smart_sync_up("companies", bucket_name, companies_prefix, companies_local, campaign_name, aws_config, delete_remote=False)
                 except Exception as e:
                     logger.warning(f"Supervisor failed to smart-sync data: {e}")
 

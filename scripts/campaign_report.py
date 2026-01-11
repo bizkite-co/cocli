@@ -86,8 +86,10 @@ def main(
 
         # Enriched %
         enriched_count = stats.get('enriched_count', 0)
+        total_enriched_global = stats.get('total_enriched_global', 0)
         enriched_pct = f"{(enriched_count / total_prospects * 100):.1f}%" if total_prospects else "0%"
-        table.add_row("Enriched (Local)", str(enriched_count), enriched_pct)
+        table.add_row("Enriched (Campaign)", str(enriched_count), enriched_pct)
+        table.add_row("Enriched (Global Pool)", str(total_enriched_global), "[dim]Historical[/dim]")
         
         # Email %
         companies_with_emails = stats.get('companies_with_emails_count', 0)
