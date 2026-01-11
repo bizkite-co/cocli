@@ -341,7 +341,11 @@ sync-emails: ## Sync email index from S3
 sync-enrichment-queue: ## Sync enrichment queue from S3
 	@$(VENV_DIR)/bin/cocli smart-sync enrichment-queue
 
-sync-all: sync-scraped-areas sync-prospects sync-companies sync-emails sync-enrichment-queue ## Sync all S3 data to local directorys
+.PHONY: sync-active-leases
+sync-active-leases: ## Sync active enrichment leases from S3
+	@$(VENV_DIR)/bin/cocli smart-sync active-leases
+
+sync-all: sync-scraped-areas sync-prospects sync-companies sync-emails sync-enrichment-queue sync-active-leases ## Sync all S3 data to local directorys
 
 .PHONY: recent-scrapes
 recent-scrapes: sync-scraped-areas ## List the 30 most recent scraped areas (syncs first)

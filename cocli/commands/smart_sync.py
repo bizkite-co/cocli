@@ -279,6 +279,25 @@ def sync_enrichment_queue(
     local_base = DATA_DIR / "campaigns" / campaign_name / "frontier" / "enrichment"
     run_smart_sync("enrichment-queue", bucket_name, prefix, local_base, campaign_name, aws_config, workers, full, force)
 
+@app.command("active-leases")
+def sync_active_leases(
+    campaign_name: Optional[str] = typer.Option(None, "--campaign", "-c", help="Campaign name"),
+    workers: int = typer.Option(20, help="Number of concurrent download threads."),
+    full: bool = typer.Option(False, "--full", help="Perform a full integrity check (slower)."),
+    force: bool = typer.Option(False, "--force", help="Force download all files."),
+) -> None:
+    from ..core.config import get_campaign, load_campaign_config
+    campaign_name = campaign_name or get_campaign()
+    if not campaign_name:
+        console.print("[bold red]No campaign specified.[/bold red]")
+        raise typer.Exit(1)
+    config = load_campaign_config(campaign_name)
+    aws_config = config.get("aws", {})
+    bucket_name = aws_config.get("cocli_data_bucket_name") or f"cocli-data-{campaign_name}"
+    prefix = f"campaigns/{campaign_name}/active-leases/enrichment/"
+    local_base = DATA_DIR / "campaigns" / campaign_name / "active-leases" / "enrichment"
+    run_smart_sync("active-leases", bucket_name, prefix, local_base, campaign_name, aws_config, workers, full, force)
+
 @app.command("campaign-config")
 def sync_campaign_config(
     campaign_name: Optional[str] = typer.Option(None, "--campaign", "-c", help="Campaign name"),
