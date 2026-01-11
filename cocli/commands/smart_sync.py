@@ -138,8 +138,8 @@ def run_smart_sync(
                         # Zombie/Re-queue Check
                         parts = Path(rel_path).parts
                         if parts:
-                            task_id = parts[0] # The directory name is the task ID
-                            completed_file = completed_dir / f"{task_id}.json"
+                            task_dir_name = parts[0] # The directory name is the task ID
+                            completed_file = completed_dir / f"{task_dir_name}.json"
                             
                             if completed_file.exists():
                                 completed_mtime = completed_file.stat().st_mtime

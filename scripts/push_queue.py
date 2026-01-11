@@ -5,7 +5,7 @@ from pathlib import Path
 from rich.console import Console
 from rich.progress import Progress, SpinnerColumn, BarColumn, TextColumn, TimeRemainingColumn
 from concurrent.futures import ThreadPoolExecutor
-from typing import Optional, List, Tuple
+from typing import List, Tuple, Any
 from cocli.core.config import get_cocli_base_dir, load_campaign_config
 
 console = Console()
@@ -13,7 +13,7 @@ app = typer.Typer()
 
 DATA_DIR = get_cocli_base_dir()
 
-def upload_file(s3_client, bucket: str, local_path: Path, s3_key: str, progress, task_id):
+def upload_file(s3_client: Any, bucket: str, local_path: Path, s3_key: str, progress: Any, task_id: Any) -> None:
     try:
         # Check if file exists on S3 and compare size/mtime if needed?
         # For queue pushing, we generally assume we want to push what we have.
@@ -24,7 +24,7 @@ def upload_file(s3_client, bucket: str, local_path: Path, s3_key: str, progress,
             head = s3_client.head_object(Bucket=bucket, Key=s3_key)
             if head['ContentLength'] == local_path.stat().st_size:
                 should_upload = False
-        except:
+        except Exception:
             # Object doesn't exist
             pass
 
@@ -40,7 +40,7 @@ def main(
     campaign: str = typer.Option("turboship", help="Campaign name"),
     queue: str = typer.Option("enrichment", help="Queue name (e.g., enrichment, gm-list)"),
     workers: int = typer.Option(50, help="Number of concurrent upload threads"),
-):
+) -> None:
     """
     Push local queue items to S3 with a progress bar.
     """
