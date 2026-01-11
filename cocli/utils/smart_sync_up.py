@@ -42,13 +42,17 @@ def run_smart_sync_up(
     # 1. List Local Files
     local_files = {}
     if local_base.exists():
+        logger.debug(f"Scanning local directory: {local_base}")
         for path in local_base.rglob("*"):
             if path.is_file():
                 rel_path = path.relative_to(local_base)
                 local_files[str(rel_path)] = path
+    else:
+        logger.warning(f"Local base directory does not exist: {local_base}")
 
     # 2. List Remote Files
     remote_keys = {}
+    logger.debug(f"Scanning S3 prefix: s3://{bucket_name}/{prefix}")
     paginator = s3.get_paginator('list_objects_v2')
     pages = paginator.paginate(Bucket=bucket_name, Prefix=prefix)
     for page in pages:
