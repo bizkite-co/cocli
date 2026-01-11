@@ -1242,24 +1242,22 @@ async def run_supervisor(
 
                     del details_tasks[old_id]
 
-                # 4. Adjust Enrichment Tasks
-
+                # 2. Adjust Enrichment Tasks
                 while len(enrichment_tasks) < target_enrich:
                     new_id = len(enrichment_tasks)
-
                     logger.info(f"Scaling UP: Starting Enrichment Task {new_id}")
-
+                    # Use the shared context for all workers on this host
                     task = asyncio.create_task(
                         _run_enrichment_task_loop(
-                            browser,
+                            context,
                             enrichment_queue,
                             debug,
-                            False,
+                            once,
                             processed_by,
                             campaign_name,
+                            tracker=tracker,
                         )
                     )
-
                     enrichment_tasks[new_id] = task
 
                 while len(enrichment_tasks) > target_enrich:
