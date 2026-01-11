@@ -172,6 +172,7 @@ async def run_worker(
                         "--no-first-run",
                         "--no-zygote",
                         "--disable-gpu",
+                        "--disable-software-rasterizer",
                     ],
                 )
 
@@ -431,6 +432,7 @@ async def run_details_worker(
                             "--no-first-run",
                             "--no-zygote",
                             "--disable-gpu",
+                            "--disable-software-rasterizer",
                         ],
                     )
 
@@ -752,20 +754,20 @@ async def run_enrichment_worker(
             while True:
                 logger.info("Launching browser...")
                 try:
-                    browser_instance = await p.chromium.launch(
-                        headless=headless,
-                        args=[
-                            "--no-sandbox",
-                            "--disable-setuid-sandbox",
-                            "--disable-dev-shm-usage",
-                            "--disable-accelerated-2d-canvas",
-                            "--no-first-run",
-                            "--no-zygote",
-                            "--disable-gpu",
-                        ],
-                    )
-
-                    # Create context and setup optimizations
+                                    browser_instance = await p.chromium.launch(
+                                        headless=headless,
+                                        args=[
+                                            "--no-sandbox",
+                                            "--disable-setuid-sandbox",
+                                            "--disable-dev-shm-usage",
+                                            "--disable-accelerated-2d-canvas",
+                                            "--no-first-run",
+                                            "--no-zygote",
+                                            "--disable-gpu",
+                                            "--disable-software-rasterizer",
+                                        ],
+                                    )
+                                        # Create context and setup optimizations
                     context = await browser_instance.new_context()
                     tracker = await setup_optimized_context(context)
 
@@ -1053,6 +1055,7 @@ async def run_supervisor(
                 "--no-first-run",
                 "--no-zygote",
                 "--disable-gpu",
+                "--disable-software-rasterizer",
             ],
         )
 
