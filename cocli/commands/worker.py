@@ -1131,6 +1131,15 @@ async def run_supervisor(
                 # 0.1 Sync leases TO S3
                 sync_active_leases_to_s3(campaign_name, s3_client, bucket_name)
 
+                # 0.2 Sync campaign data (Frontier) FROM S3
+                try:
+                    from .smart_sync import run_smart_sync
+                    # We sync both the frontier and the indexes to ensure workers have everything
+                    await run_smart_sync(campaign_name, "frontier", profile_name)
+                    await run_smart_sync(campaign_name, "indexes", profile_name)
+                except Exception as e:
+                    logger.warning(f"Supervisor failed to smart-sync data: {e}")
+
                 # 1. Reload Config (from local file, which should be synced from S3)
 
                 config = load_campaign_config(campaign_name)
