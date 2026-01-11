@@ -66,13 +66,16 @@ def main(
             enrich_inflight = stats.get('enrichment_inflight', 0)
             table.add_row("Enrichment Queue (SQS)", f"{enrich_pending} / [blue]{enrich_inflight} Active[/blue]", "[yellow]SQS[/yellow]")
 
-            # Local Enrichment (RPI Cluster)
-            local_pending = stats.get('local_enrichment_pending', 0)
-            local_inflight = stats.get('local_enrichment_inflight', 0)
-            if local_pending > 0 or local_inflight > 0:
-                table.add_row("Enrichment Queue (Local)", f"{local_pending} / [blue]{local_inflight} Active[/blue]", "[cyan]Filesystem[/cyan]")
-        else:
-            # Local Queues
+        # Local Queues (Filesystem)
+        local_queues = stats.get('local_queues', {})
+        for q_name, q_stats in local_queues.items():
+            pending = q_stats.get('pending', 0)
+            inflight = q_stats.get('inflight', 0)
+            if pending > 0 or inflight > 0:
+                table.add_row(f"Queue: {q_name} (Local)", f"{pending} / [blue]{inflight} Active[/blue]", "[cyan]Filesystem[/cyan]")
+
+        if not using_cloud_queue and not local_queues:
+            # Fallback for old stats or if no queues found
             table.add_row("Queue Pending", str(stats.get('enrichment_pending', 0)), "[yellow]Waiting[/yellow]")
             table.add_row("Queue Processing", str(stats.get('enrichment_inflight', 0)), "[blue]In Flight[/blue]")
 

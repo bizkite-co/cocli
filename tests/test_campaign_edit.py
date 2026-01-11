@@ -21,7 +21,7 @@ def setup_test_campaign(tmp_path):
     readme_content = "# Test Campaign\n"
     (campaign_dir / "README.md").write_text(readme_content)
 
-    with patch('cocli.core.config.get_cocli_base_dir', return_value=tmp_path):
+    with patch('cocli.core.config.paths.root', tmp_path):
         yield campaign_name, campaign_dir
 
 def test_campaign_edit_with_editor_configured(setup_test_campaign):
@@ -87,7 +87,7 @@ def test_campaign_edit_no_campaign_selected(setup_test_campaign):
         assert "No campaign selected" in result.stdout
 
 def test_campaign_edit_no_campaigns_exist(tmp_path):
-    with patch('cocli.core.config.get_cocli_base_dir', return_value=tmp_path):
+    with patch('cocli.core.config.paths.root', tmp_path):
         result = runner.invoke(app, ["campaign", "edit"])
 
         assert result.exit_code == 1

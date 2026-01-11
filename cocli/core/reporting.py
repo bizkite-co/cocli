@@ -193,45 +193,49 @@ def get_campaign_stats(campaign_name: str) -> Dict[str, Any]:
         stats["using_cloud_queue"] = False
 
     # Always check Local queue stats (for RPI cluster / Filesystem mode)
+    local_stats = {}
+    for q_name in ["gm-list", "gm-details", "enrichment"]:
+        queue_base = get_cocli_base_dir() / "data" / "queues" / campaign_name / q_name
+        pending_dir = queue_base / "pending"
+        completed_dir = queue_base / "completed"
 
-    # V2 Queue Paths
-    queue_base = get_cocli_base_dir() / "data" / "queues" / campaign_name / "enrichment"
-    pending_dir = queue_base / "pending"
-    completed_dir = queue_base / "completed"
+        q_pending = 0
+        q_inflight = 0
+        q_completed = 0
 
-    local_pending = 0
-    local_inflight = 0
-    local_completed = 0
-    
-    if pending_dir.exists():
-        # Count total directories (tasks)
-        # Using scandir is faster than iterdir/glob for just counting
-        try:
-            with os.scandir(pending_dir) as entries:
-                for entry in entries:
-                    if entry.is_dir():
-                        local_pending += 1
-                        # efficient check for lease? 
-                        # checking every dir for lease.json might be slow for 10k items.
-                        # For reporting, maybe just glob is fine.
-        except Exception:
-            pass
+        if pending_dir.exists():
+            try:
+                with os.scandir(pending_dir) as entries:
+                    for entry in entries:
+                        if entry.is_dir():
+                            q_pending += 1
+            except Exception:
+                pass
             
-        # Count leases for inflight
-        local_inflight = len(list(pending_dir.glob("*/lease.json")))
+            # Count leases for inflight
+            q_inflight = len(list(pending_dir.glob("*/lease.json")))
 
-    if completed_dir.exists():
-         local_completed = len(list(completed_dir.glob("*.json")))
+        if completed_dir.exists():
+             q_completed = len(list(completed_dir.glob("*.json")))
+        
+        local_stats[q_name] = {
+            "pending": q_pending,
+            "inflight": q_inflight,
+            "completed": q_completed
+        }
 
-    stats["local_enrichment_pending"] = local_pending
-    stats["local_enrichment_inflight"] = local_inflight
-    stats["local_enrichment_completed"] = local_completed
+    stats["local_queues"] = local_stats
+    
+    # Legacy compatibility for enrichment stats
+    stats["local_enrichment_pending"] = local_stats["enrichment"]["pending"]
+    stats["local_enrichment_inflight"] = local_stats["enrichment"]["inflight"]
+    stats["local_enrichment_completed"] = local_stats["enrichment"]["completed"]
 
     # For simplicity in the combined report table
     if not enrich_queue_url:
-        stats["enrichment_pending"] = local_pending
-        stats["enrichment_inflight"] = local_inflight
-        stats["completed_count"] = local_completed
+        stats["enrichment_pending"] = local_stats["enrichment"]["pending"]
+        stats["enrichment_inflight"] = local_stats["enrichment"]["inflight"]
+        stats["completed_count"] = local_stats["enrichment"]["completed"]
 
     # Old path stats (for cleanup monitoring)
     from .config import get_campaigns_dir

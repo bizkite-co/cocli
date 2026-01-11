@@ -17,11 +17,13 @@ else
     echo "Docker already installed."
 fi
 
-# Create repos directory
+# Create repos and data directory
+# The data directory is critical as it is bind-mounted by the worker containers
 mkdir -p ~/repos
+mkdir -p ~/repos/cocli_data
 
 # Clone or update repo
-if [ -d "~/repos/cocli" ]; then
+if [ -d "$HOME/repos/cocli" ]; then
     echo "Updating cocli repo..."
     cd ~/repos/cocli
     git pull

@@ -3,7 +3,7 @@ import json
 import logging
 from typing import List, Type, TypeVar, Any, Optional
 from pathlib import Path
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, UTC
 
 from ...models.scrape_task import ScrapeTask, GmItemTask
 from ...models.queue import QueueMessage
@@ -76,9 +76,9 @@ class FilesystemQueue:
             with os.fdopen(fd, 'w') as f:
                 lease_data = {
                     "worker_id": self.worker_id,
-                    "created_at": datetime.utcnow().isoformat(),
-                    "heartbeat_at": datetime.utcnow().isoformat(),
-                    "expires_at": (datetime.utcnow() + timedelta(minutes=self.lease_duration)).isoformat()
+                    "created_at": datetime.now(UTC).isoformat(),
+                    "heartbeat_at": datetime.now(UTC).isoformat(),
+                    "expires_at": (datetime.now(UTC) + timedelta(minutes=self.lease_duration)).isoformat()
                 }
                 json.dump(lease_data, f)
             logger.debug(f"Worker {self.worker_id} acquired lease for {task_id}")
@@ -99,7 +99,14 @@ class FilesystemQueue:
             
             heartbeat_at = datetime.fromisoformat(data['heartbeat_at'])
             expires_at = datetime.fromisoformat(data['expires_at'])
-            now = datetime.utcnow()
+            
+            # Ensure they are aware
+            if heartbeat_at.tzinfo is None:
+                heartbeat_at = heartbeat_at.replace(tzinfo=UTC)
+            if expires_at.tzinfo is None:
+                expires_at = expires_at.replace(tzinfo=UTC)
+                
+            now = datetime.now(UTC)
             
             is_expired = now > expires_at
             is_stale = (now - heartbeat_at).total_seconds() > (self.stale_heartbeat * 60)
@@ -204,8 +211,8 @@ class FilesystemQueue:
                 with open(lease_path, 'r') as f:
                     data = json.load(f)
                 
-                data['heartbeat_at'] = datetime.utcnow().isoformat()
-                data['expires_at'] = (datetime.utcnow() + timedelta(minutes=self.lease_duration)).isoformat()
+                data['heartbeat_at'] = datetime.now(UTC).isoformat()
+                data['expires_at'] = (datetime.now(UTC) + timedelta(minutes=self.lease_duration)).isoformat()
                 
                 with open(lease_path, 'w') as f:
                     json.dump(data, f)
