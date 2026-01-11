@@ -37,12 +37,13 @@ export COCLI_ENRICHMENT_QUEUE_URL="${COCLI_ENRICHMENT_QUEUE_URL}"
 export COCLI_S3_BUCKET_NAME="${COCLI_S3_BUCKET_NAME}"
 export COCLI_RUNNING_IN_FARGATE="true"
 
-# Start the SQS consumer (enrich-from-queue in consumer mode) in the foreground
-# It will use the COCLI_ENRICHMENT_QUEUE_URL and COCLI_S3_BUCKET_NAME env vars
-# And it will call the locally running API (uvicorn) for enrichment logic
+# Start the Supervisor in the foreground
+# It will dynamically launch enrichment workers based on the 'fargate' key in [prospecting.scaling]
 if [ -z "$CAMPAIGN_NAME" ]; then
     echo "Error: CAMPAIGN_NAME environment variable is not set."
     exit 1
 fi
 
-exec python3 -m cocli.main campaign prospects enrich-from-queue "$CAMPAIGN_NAME" --cloud-queue
+echo "Starting cocli Supervisor for $CAMPAIGN_NAME..."
+
+exec python3 -m cocli.main worker supervisor --campaign "$CAMPAIGN_NAME" --interval 60

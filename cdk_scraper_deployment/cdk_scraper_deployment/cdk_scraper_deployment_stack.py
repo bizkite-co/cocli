@@ -183,8 +183,8 @@ class CdkScraperDeploymentStack(Stack):  # type: ignore[misc]
         fargate_service = ecs_patterns.ApplicationLoadBalancedFargateService(self, "ScraperService",
             cluster=cluster,
             service_name="EnrichmentService", # Explicitly name the service
-            cpu=1024,  # 1 vCPU (Playwright needs this)
-            memory_limit_mib=3072, # 3GB RAM (Playwright needs this)
+            cpu=1024,  # 1 vCPU
+            memory_limit_mib=3072, # 3GB RAM
             desired_count=campaign_config.get("worker_count", 1),
             domain_name=f"enrich.{domain}",
             domain_zone=zone,
@@ -204,6 +204,7 @@ class CdkScraperDeploymentStack(Stack):  # type: ignore[misc]
                     "COCLI_S3_BUCKET_NAME": data_bucket.bucket_name,
                     "CAMPAIGN_NAME": campaign_config["name"],
                     "COCLI_DATA_HOME": "/app/cocli_data",
+                    "COCLI_HOSTNAME": "fargate",
                     "DEPLOY_TIMESTAMP": self.node.try_get_context("deploy_timestamp") or "initial"
                 },
                 task_role=task_role
