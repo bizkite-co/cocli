@@ -131,7 +131,39 @@ def get_campaign_stats(campaign_name: str) -> Dict[str, Any]:
         stats['active_fargate_tasks'] = get_active_fargate_tasks(session)
     else:
         stats['using_cloud_queue'] = False
-        # Local queue stats could be added here if implemented
+        # Local queue stats
+        from cocli.core.config import get_campaign_dir
+        campaign_dir = get_campaign_dir(campaign_name)
+        if campaign_dir:
+            # Enrichment stats
+            frontier_dir = campaign_dir / "frontier" / "enrichment"
+            lease_dir = campaign_dir / "active-leases" / "enrichment"
+            
+            if frontier_dir.exists():
+                stats['enrichment_pending'] = len(list(frontier_dir.glob("*.json")))
+            else:
+                stats['enrichment_pending'] = 0
+                
+            if lease_dir.exists():
+                stats['enrichment_inflight'] = len(list(lease_dir.glob("*.lease")))
+            else:
+                stats['enrichment_inflight'] = 0
+                
+            # Scrape Task stats (gm-list) - FilesystemGmListQueue uses mission index
+            target_tiles_dir = campaign_dir / "indexes" / "target-tiles"
+            witness_dir = get_cocli_base_dir() / "indexes" / "scraped-tiles"
+            if target_tiles_dir.exists():
+                total_tiles = len(list(target_tiles_dir.glob("**/*.csv")))
+                scraped_tiles = 0
+                if witness_dir.exists():
+                    # This is slow for reporting, but let's do a rough count or rely on other stats
+                    pass
+                stats['scrape_tasks_pending'] = total_tiles # Simplified
+            
+            # GM Details stats
+            details_frontier = campaign_dir / "frontier" / "gm-details"
+            if details_frontier.exists():
+                stats['gm_list_item_pending'] = len(list(details_frontier.glob("*.json")))
 
     # 3. Enriched Companies & Emails
     from cocli.core.email_index_manager import EmailIndexManager

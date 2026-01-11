@@ -216,20 +216,14 @@ class WebsiteScraper:
              await s3_company_manager.save_website_enrichment(website_data.associated_company_folder, website_data)
 
         # Add to domain index (for cache checking)
-        found_keywords = website_data.found_keywords
-        if isinstance(found_keywords, str):
-            try:
-                # Handle possible stringified list from legacy data
-                import json
-                found_keywords = json.loads(found_keywords.replace("'", "\""))
-            except Exception:
-                found_keywords = [found_keywords] if found_keywords else []
+        valid_all_emails = [e for e in website_data.all_emails if is_valid_email(str(e))]
+        valid_email = website_data.email if website_data.email and is_valid_email(str(website_data.email)) else (valid_all_emails[0] if valid_all_emails else None)
 
         domain_index_manager.add_or_update(WebsiteDomainCsv(
             domain=website_data.url, 
             company_name=website_data.company_name, 
             phone=website_data.phone,
-            email=website_data.email, 
+            email=valid_email, 
             facebook_url=website_data.facebook_url, 
             linkedin_url=website_data.linkedin_url,
             instagram_url=website_data.instagram_url, 
@@ -245,8 +239,8 @@ class WebsiteScraper:
             scraper_version=website_data.scraper_version,
             associated_company_folder=website_data.associated_company_folder, 
             is_email_provider=website_data.is_email_provider,
-            all_emails=website_data.all_emails, 
-            email_contexts={str(k): v for k, v in website_data.email_contexts.items()}, 
+            all_emails=valid_all_emails, 
+            email_contexts={str(k): v for k, v in website_data.email_contexts.items() if is_valid_email(str(k))}, 
             tech_stack=website_data.tech_stack,
             found_keywords=found_keywords, 
             updated_at=datetime.utcnow()

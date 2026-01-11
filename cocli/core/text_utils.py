@@ -33,13 +33,13 @@ def is_valid_email(email: str) -> bool:
     if "@" not in email:
         return False
     
-    # 1. Check for common resource extensions
-    junk_extensions = {
-        '.png', '.jpg', '.jpeg', '.gif', '.svg', '.webp', '.ico',
-        '.js', '.css', '.pdf', '.zip', '.mp4', '.mp3', '.woff', '.woff2',
-        '.exe', '.dmg', '.pkg'
-    }
-    if any(email.endswith(ext) for ext in junk_extensions):
+    # 1. Check for common resource extensions (anywhere in the string to catch logo@2x.png)
+    junk_patterns = [
+        r'\.png$', r'\.jpg$', r'\.jpeg$', r'\.gif$', r'\.svg$', r'\.webp$', r'\.ico$',
+        r'\.js$', r'\.css$', r'\.pdf$', r'\.zip$', r'\.mp4$', r'\.mp3$', r'\.woff', 
+        r'\.exe$', r'\.dmg$', r'\.pkg$', r'@\d+x', r'\.png\b'
+    ]
+    if any(re.search(pattern, email) for pattern in junk_patterns):
         return False
     
     # 2. Extract parts
