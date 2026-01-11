@@ -2,7 +2,7 @@ import csv
 import socket
 from datetime import datetime 
 from pathlib import Path
-from typing import Optional, Any, Dict, List, Union
+from typing import Optional, Any, Dict, List
 from rich.console import Console
 from playwright.async_api import async_playwright
 
@@ -651,7 +651,8 @@ async def _run_enrichment_task_loop(browser_or_context: Any, enrichment_queue: A
         campaign_obj = Campaign.load(campaign_name)
     except Exception as e:
         logger.error(f"Could not load Campaign '{campaign_name}': {e}")
-        if once: return
+        if once:
+            return
         await asyncio.sleep(10)
         return
 
