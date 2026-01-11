@@ -1071,6 +1071,10 @@ async def run_supervisor(
 
         enrichment_tasks: Dict[int, asyncio.Task[Any]] = {}
 
+        # Shared context and tracker for all workers on this host
+        context = await browser.new_context(ignore_https_errors=True)
+        tracker = await setup_optimized_context(context)
+
         # Setup queues and clients once
 
         try:
