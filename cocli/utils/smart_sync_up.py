@@ -24,10 +24,7 @@ def run_smart_sync_up(
     workers: int = 20,
     delete_remote: bool = False
 ) -> None:
-    """
-    Syncs local files UP to S3.
-    If delete_remote is True, it will delete files on S3 that are no longer present locally (for queue acks).
-    """
+    logger.info(f"Starting smart sync UP for {target_name} to s3://{bucket_name}/{prefix}")
     profile_name = aws_config.get("profile") or aws_config.get("aws_profile")
     try:
         if profile_name:
@@ -42,7 +39,7 @@ def run_smart_sync_up(
     # 1. List Local Files
     local_files = {}
     if local_base.exists():
-        logger.debug(f"Scanning local directory: {local_base}")
+        logger.info(f"Scanning local directory: {local_base}")
         for path in local_base.rglob("*"):
             if path.is_file():
                 rel_path = path.relative_to(local_base)
