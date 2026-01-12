@@ -127,23 +127,18 @@ footer {
     display: flex;
     flex-direction: column;
     width: 100%;
+    margin-bottom: 20px;
 }
 
-/* Mobile Ordering: Exclusions first, then Locations, then Search Queries */
-.config-section.exclusions-section {
-    order: 1;
-}
-.config-section.locations-section {
-    order: 2;
-}
-.config-section.queries-section {
-    order: 3;
+.config-sidebar {
+    display: flex;
+    flex-direction: column;
 }
 
 /* Desktop layout */
 @media (min-width: 992px) {
     .campaign-config-grid {
-        grid-template-columns: 300px 1fr;
+        grid-template-columns: 350px 1fr;
     }
 }
 

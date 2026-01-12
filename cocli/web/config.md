@@ -14,9 +14,13 @@ Modify the search queries and target locations for the current campaign.
 {% include "components/worker_stats.njk" %}
 
 <div class="campaign-config-grid">
-    {% include "components/exclusions_config.njk" %}
-    {% include "components/queries_config.njk" %}
-    {% include "components/locations_config.njk" %}
+    <div class="config-sidebar">
+        {% include "components/exclusions_config.njk" %}
+        {% include "components/queries_config.njk" %}
+    </div>
+    <div class="config-main">
+        {% include "components/locations_config.njk" %}
+    </div>
 </div>
 
 {% include "components/pending_changes.njk" %}
