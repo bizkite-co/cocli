@@ -589,8 +589,9 @@ start-rpi-supervisor: ## Start the Supervisor on Raspberry Pi for dynamic scalin
 		-e CAMPAIGN_NAME='$(CAMPAIGN)' \
 		-e AWS_PROFILE=$(AWS_PROFILE) \
 		-e COCLI_HOSTNAME=\$$(hostname) \
+		-e COCLI_QUEUE_TYPE=filesystem \
 		-v ~/repos/cocli_data:/app/cocli_data \
-		-v ~/.aws:/root/.aws:ro cocli-worker-rpi:latest cocli worker supervisor"
+		-v ~/.aws:/root/.aws:ro cocli-worker-rpi:latest cocli worker supervisor --debug"
 
 .PHONY: restart-rpi-all
 restart-rpi-all: ## Restart all Raspberry Pi workers using supervisor on all nodes
