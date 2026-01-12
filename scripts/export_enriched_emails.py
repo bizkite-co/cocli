@@ -187,6 +187,10 @@ def main(
         categories = idx_data.get("categories", [])
         services = idx_data.get("services", [])
         products = idx_data.get("products", [])
+        
+        # Load Website data for keywords
+        website_data = get_website_data(company_path.name)
+        found_keywords = website_data.found_keywords if website_data else []
 
         def clean_list(items: list[Any]) -> list[str]:
             cleaned: list[str] = []
@@ -208,12 +212,13 @@ def main(
             "website": domain,
             "categories": "; ".join(sorted(list(set(clean_list(categories))))),
             "services": "; ".join(sorted(list(set(clean_list(services))))),
-            "products": "; ".join(sorted(list(set(clean_list(products)))))
+            "products": "; ".join(sorted(list(set(clean_list(products))))),
+            "keywords": "; ".join(sorted(list(set(found_keywords))))
         })
 
     # Write CSV
     with open(output_file, "w", newline="") as f:
-        writer = csv.DictWriter(f, fieldnames=["company", "domain", "emails", "phone", "website", "categories", "services", "products"])
+        writer = csv.DictWriter(f, fieldnames=["company", "domain", "emails", "phone", "website", "categories", "services", "products", "keywords"])
         writer.writeheader()
         writer.writerows(results)
         

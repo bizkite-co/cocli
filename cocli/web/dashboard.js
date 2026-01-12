@@ -1,0 +1,271 @@
+
+let allProspects = [];
+let categories = new Set();
+
+async function fetchReport() {
+    const urlParams = new URLSearchParams(window.location.search);
+    const campaign = urlParams.get('campaign') || window.CAMPAIGN_NAME || 'turboship';
+    document.getElementById('campaign-display').textContent = campaign;
+    
+    try {
+        const response = await fetch(`/reports/${campaign}.json?v=${Date.now()}`);
+        if (!response.ok) throw new Error('Report data not found for this campaign.');
+        
+        const stats = await response.json();
+        renderReport(stats, campaign);
+        fetchProspects(stats.campaign_name || campaign);
+    } catch (error) {
+        document.getElementById('report-loading').style.display = 'none';
+        const errDiv = document.getElementById('report-error');
+        errDiv.textContent = error.message;
+        errDiv.style.display = 'block';
+    }
+}
+
+async function fetchProspects(campaign) {
+    try {
+        const csvUrl = `/exports/${campaign}-emails.csv?v=${Date.now()}`;
+        Papa.parse(csvUrl, {
+            download: true,
+            header: true,
+            skipEmptyLines: true,
+            complete: function(results) {
+                // Dead-simple filter: only show companies that have keywords
+                allProspects = results.data.filter(p => p.keywords && p.keywords.trim() !== "");
+                
+                document.getElementById('prospects-loading').style.display = 'none';
+                document.getElementById('prospects-container').style.display = 'grid';
+                
+                // Build category list
+                allProspects.forEach(p => {
+                    if (p.categories) {
+                        p.categories.split(';').forEach(c => {
+                            const cat = c.trim();
+                            if (cat) categories.add(cat);
+                        });
+                    }
+                });
+                
+                const filter = document.getElementById('category-filter');
+                if (filter) {
+                    filter.innerHTML = '<option value="">All Categories</option>';
+                    Array.from(categories).sort().forEach(cat => {
+                        const opt = document.createElement('option');
+                        opt.value = cat;
+                        opt.textContent = cat;
+                        filter.appendChild(opt);
+                    });
+                }
+
+                renderProspects(allProspects);
+            },
+            error: function(err) {
+                document.getElementById('prospects-loading').textContent = 'Error loading prospects CSV.';
+                console.error('PapaParse error:', err);
+            }
+        });
+    } catch (error) {
+        console.error('Fetch error:', error);
+    }
+}
+
+function togglePanel(id) {
+    const panel = document.getElementById(id);
+    if (!panel) return;
+    if (panel.style.display === 'none') {
+        panel.style.display = 'block';
+    } else {
+        panel.style.display = 'none';
+    }
+}
+
+function formatPhoneNumber(phoneNumberString) {
+    if (!phoneNumberString) return '';
+    const cleaned = ('' + phoneNumberString).replace(/\D/g, '');
+    
+    // Check if it is a US number
+    if (cleaned.length === 10) {
+        const match = cleaned.match(/^(\d{3})(\d{3})(\d{4})$/);
+        return `(${match[1]}) ${match[2]}-${match[3]}`;
+    } else if (cleaned.length === 11 && cleaned[0] === '1') {
+        const match = cleaned.match(/^1(\d{3})(\d{3})(\d{4})$/);
+        return `(${match[1]}) ${match[2]}-${match[3]}`;
+    }
+    
+    return phoneNumberString;
+}
+
+function cleanDomain(domain) {
+    if (!domain) return '';
+    return domain.split('?')[0];
+}
+
+function createCompanyCard(p, index) {
+    const displayDomain = cleanDomain(p.domain);
+    const formattedPhone = formatPhoneNumber(p.phone);
+
+    const servicesHtml = p.services ? `
+        <div class="panel-section">
+            <button class="toggle-btn" onclick="togglePanel('services-${index}')">Services (+)</button>
+            <div id="services-${index}" class="panel-content" style="display:none;">
+                <span class="info-data">${p.services.split(';').map(s => s.trim()).join(', ')}</span>
+            </div>
+        </div>` : '';
+
+    const productsHtml = p.products ? `
+        <div class="panel-section">
+            <button class="toggle-btn" onclick="togglePanel('products-${index}')">Products (+)</button>
+            <div id="products-${index}" class="panel-content" style="display:none;">
+                <span class="info-data">${p.products.split(';').map(s => s.trim()).join(', ')}</span>
+            </div>
+        </div>` : '';
+
+    const keywordsHtml = p.keywords ? `
+        <div class="info-row">
+            <strong>Keywords:</strong> 
+            <div class="keyword-tags">
+                ${p.keywords.split(';').map(k => `<span class="keyword-tag">${k.trim()}</span>`).join(' ')}
+            </div>
+        </div>` : '';
+
+    return `
+        <div class="company-card">
+            <div class="card-header">
+                <h3>${p.company}</h3>
+                <a href="http://${displayDomain}" target="_blank" class="domain-link">${displayDomain}</a>
+            </div>
+            <div class="card-body">
+                <div class="info-row">
+                    <strong>Emails:</strong> 
+                    <div class="email-list">${p.emails.split(';').map(e => `<div>${e.trim()}</div>`).join('')}</div>
+                </div>
+                ${formattedPhone ? `<div class="info-row"><strong>Phone:</strong> <span class="phone-number">${formattedPhone}</span></div>` : ''}
+                ${p.categories ? `<div class="info-row"><strong>Categories:</strong> <span class="info-data"><small>${p.categories}</small></span></div>` : ''}
+                ${keywordsHtml}
+                
+                <div class="expandable-area">
+                    ${servicesHtml}
+                    ${productsHtml}
+                </div>
+            </div>
+        </div>
+    `;
+}
+
+function renderProspects(prospects) {
+    const container = document.getElementById('prospects-container');
+    if (!container) return;
+    container.innerHTML = '';
+    
+    const limit = 100;
+    const displayList = prospects.slice(0, limit);
+    
+    displayList.forEach((p, index) => {
+        const div = document.createElement('div');
+        div.innerHTML = createCompanyCard(p, index);
+        container.appendChild(div.firstElementChild);
+    });
+
+    const info = document.getElementById('search-results-info');
+    if (info) {
+        info.textContent = `Showing ${displayList.length} of ${prospects.length} prospects.`;
+    }
+}
+
+function filterProspects() {
+    const queryInput = document.getElementById('prospect-search');
+    const catFilter = document.getElementById('category-filter');
+    if (!queryInput || !catFilter) return;
+
+    const query = queryInput.value.toLowerCase();
+    const cat = catFilter.value;
+    
+    const filtered = allProspects.filter(p => {
+        const matchesQuery = !query || 
+            (p.company && p.company.toLowerCase().includes(query)) || 
+            (p.domain && p.domain.toLowerCase().includes(query)) || 
+            (p.emails && p.emails.toLowerCase().includes(query)) || 
+            (p.categories && p.categories.toLowerCase().includes(query)) ||
+            (p.services && p.services.toLowerCase().includes(query)) ||
+            (p.products && p.products.toLowerCase().includes(query)) ||
+            (p.keywords && p.keywords.toLowerCase().includes(query));
+        
+        const matchesCat = !cat || (p.categories && p.categories.includes(cat));
+        
+        return matchesQuery && matchesCat;
+    });
+    
+    renderProspects(filtered);
+}
+
+function renderReport(stats, campaign) {
+    const body = document.getElementById('report-body');
+    if (!body) return;
+    body.innerHTML = '';
+    
+    const rows = [
+        { stage: 'Active Enrichment Workers', count: stats.active_fargate_tasks || 0, details: stats.active_fargate_tasks > 0 ? 'Running (Fargate)' : 'Stopped', badge: stats.active_fargate_tasks > 0 ? 'status-running' : '' },
+        { stage: 'Scrape Tasks (gm-list)', count: `${stats.scrape_tasks_pending || 0} / ${stats.scrape_tasks_inflight || 0} Active`, details: 'SQS', badge: 'status-sqs' },
+        { stage: 'GM List Items (gm-details)', count: `${stats.gm_list_item_pending || 0} / ${stats.gm_list_item_inflight || 0} Active`, details: 'SQS', badge: 'status-sqs' },
+        { stage: 'Prospects (gm-detail)', count: (stats.prospects_count || 0).toLocaleString(), details: '100%', badge: '' },
+        { stage: 'Enriched (Local)', count: (stats.enriched_count || 0).toLocaleString(), details: `${((stats.enriched_count / stats.prospects_count) * 100).toFixed(1)}%`, badge: '' },
+        { stage: 'Emails Found', count: (stats.emails_found_count || 0).toLocaleString(), details: `${((stats.emails_found_count / stats.enriched_count) * 100).toFixed(1)}% (Yield)`, badge: '' }
+    ];
+
+    rows.forEach(row => {
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+            <td>${row.stage}</td>
+            <td>${row.count}</td>
+            <td><span class="status-badge ${row.badge}">${row.details}</span></td>
+        `;
+        body.appendChild(tr);
+    });
+
+    document.getElementById('report-loading').style.display = 'none';
+    const reportTable = document.getElementById('report-table');
+    if (reportTable) reportTable.style.display = 'table';
+    
+    const lastUpdatedTime = document.getElementById('last-updated-time');
+    if (lastUpdatedTime) lastUpdatedTime.textContent = new Date(stats.last_updated).toLocaleString();
+    
+    const lastUpdatedText = document.getElementById('last-updated-text');
+    if (lastUpdatedText) lastUpdatedText.style.display = 'block';
+    
+    // Update Worker Stats
+    const workerStats = stats.worker_stats || {};
+    const workerBody = document.getElementById('worker-stats-body');
+    const workerContainer = document.getElementById('worker-stats-container');
+    if (workerBody && workerContainer) {
+        workerBody.innerHTML = '';
+        const totalProcessed = Object.values(workerStats).reduce((a, b) => a + b, 0);
+        
+        if (totalProcessed > 0) {
+            Object.entries(workerStats).sort((a,b) => b[1] - a[1]).forEach(([worker, count]) => {
+                const share = ((count / totalProcessed) * 100).toFixed(1) + '%';
+                const tr = document.createElement('tr');
+                tr.innerHTML = `<td>${worker}</td><td>${count.toLocaleString()}</td><td>${share}</td>`;
+                workerBody.appendChild(tr);
+            });
+            workerContainer.style.display = 'block';
+        }
+    }
+
+    const emailCountDisplay = document.getElementById('email-count-display');
+    if (emailCountDisplay) emailCountDisplay.textContent = (stats.emails_found_count || 0).toLocaleString();
+    
+    const downloadLink = document.getElementById('download-link');
+    if (downloadLink) downloadLink.href = `/exports/${stats.campaign_name || campaign}-emails.csv`;
+    
+    const downloadLinkJson = document.getElementById('download-link-json');
+    if (downloadLinkJson) downloadLinkJson.href = `/exports/${stats.campaign_name || campaign}-emails.json`;
+}
+
+window.addEventListener('DOMContentLoaded', () => {
+    const searchInput = document.getElementById('prospect-search');
+    const filterSelect = document.getElementById('category-filter');
+    if (searchInput) searchInput.addEventListener('input', filterProspects);
+    if (filterSelect) filterSelect.addEventListener('change', filterProspects);
+    
+    fetchReport();
+});
