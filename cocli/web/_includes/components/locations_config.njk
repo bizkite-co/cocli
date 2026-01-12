@@ -1,0 +1,14 @@
+<div class="config-section locations-section">
+    <h3>Target Locations</h3>
+    <div class="input-group">
+        <input type="text" id="new-location" placeholder="Add new location...">
+        <button onclick="addPendingChange('location', document.getElementById('new-location').value)">Add</button>
+    </div>
+    <div class="input-group">
+        <input type="text" id="location-search" placeholder="Search target locations..." oninput="filterLocations()">
+    </div>
+    <ul id="locations-list" class="config-list">
+        <!-- Locations will be injected here -->
+    </ul>
+    <p class="config-hint">Modify these in <code>target_locations.csv</code> or <code>config.toml</code></p>
+</div>

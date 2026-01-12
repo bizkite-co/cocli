@@ -64,6 +64,9 @@ class DataPaths:
     def campaign(self, campaign_slug: str) -> Path:
         return self.campaigns / campaign_slug
 
+    def campaign_indexes(self, campaign_slug: str) -> Path:
+        return self.campaign(campaign_slug) / "indexes"
+
     @property
     def companies(self) -> Path:
         return self.root / "companies"

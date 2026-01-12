@@ -1,0 +1,12 @@
+<div class="config-section exclusions-section">
+    <h3>Excluded Companies</h3>
+    <div class="input-group">
+        <input type="text" id="new-exclude" list="slugs-datalist" placeholder="Slug or domain to exclude...">
+        <datalist id="slugs-datalist"></datalist>
+        <button onclick="addPendingChange('exclude', document.getElementById('new-exclude').value)">Add</button>
+    </div>
+    <ul id="exclusions-list" class="config-list">
+        <!-- Exclusions will be injected here -->
+    </ul>
+    <p class="config-hint">Excluded from reports and exports. Stored in <code>indexes/exclude/</code></p>
+</div>

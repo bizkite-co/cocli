@@ -1,0 +1,20 @@
+<div id="report-loading">Loading report data...</div>
+<div id="report-error" style="display:none; color: red; margin: 20px 0;"></div>
+
+<table class="report-table" id="report-table" style="display:none;">
+    <thead>
+        <tr>
+            <th>Stage</th>
+            <th>Count</th>
+            <th>Details</th>
+        </tr>
+    </thead>
+    <tbody id="report-body">
+        <!-- Data will be injected here -->
+    </tbody>
+</table>
+
+<p id="last-updated-text" style="font-size: 0.8em; color: #666; display:none;">
+    Last Updated: <span id="last-updated-time"></span> 
+    <button onclick="location.reload()">Refresh</button>
+</p>

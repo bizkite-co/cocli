@@ -1,0 +1,11 @@
+<div class="config-section queries-section">
+    <h3>Search Queries</h3>
+    <div class="input-group">
+        <input type="text" id="new-query" placeholder="Add new query...">
+        <button onclick="addPendingChange('query', document.getElementById('new-query').value)">Add</button>
+    </div>
+    <ul id="queries-list" class="config-list">
+        <!-- Queries will be injected here -->
+    </ul>
+    <p class="config-hint">Modify these in <code>config.toml</code> under <code>[prospecting].queries</code></p>
+</div>

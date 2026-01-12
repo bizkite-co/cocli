@@ -1,51 +1,93 @@
-import csv
+import json
 from pathlib import Path
-from typing import Optional, Dict
+from typing import Optional, Dict, List
 from datetime import datetime
+import logging
 
 from ..models.exclusion import Exclusion
-from .config import get_cocli_base_dir
+from .paths import paths
+
+logger = logging.getLogger(__name__)
 
 class ExclusionManager:
-    def __init__(self, campaign: str, cache_dir: Optional[Path] = None):
-        if not cache_dir:
-            cache_dir = get_cocli_base_dir() / "exclusions"
-        cache_dir.mkdir(parents=True, exist_ok=True)
+    def __init__(self, campaign: str):
         self.campaign = campaign
-        self.cache_file = cache_dir / f"{campaign}-exclusions.csv"
-        self.data: Dict[str, Exclusion] = {}
-        self._load_data()
+        self.exclude_dir = paths.campaign_indexes(campaign) / "exclude"
+        self.exclude_dir.mkdir(parents=True, exist_ok=True)
+        # In-memory cache for fast lookup
+        self._slug_map: Dict[str, Exclusion] = {}
+        self._domain_map: Dict[str, Exclusion] = {}
+        self._load_all()
 
-    def _load_data(self) -> None:
-        if not self.cache_file.exists():
+    def _load_all(self) -> None:
+        self._slug_map.clear()
+        self._domain_map.clear()
+        for file in self.exclude_dir.glob("*.json"):
+            try:
+                with open(file, "r") as f:
+                    data = json.load(f)
+                    if "created_at" in data and data["created_at"]:
+                        data["created_at"] = datetime.fromisoformat(data["created_at"])
+                    exc = Exclusion(**data)
+                    if exc.company_slug:
+                        self._slug_map[exc.company_slug] = exc
+                    if exc.domain:
+                        self._domain_map[exc.domain] = exc
+            except Exception as e:
+                logger.error(f"Error loading exclusion file {file}: {e}")
+
+    def is_excluded(self, domain: Optional[str] = None, slug: Optional[str] = None) -> bool:
+        if slug and slug in self._slug_map:
+            return True
+        if domain and domain in self._domain_map:
+            return True
+        return False
+
+    def add_exclusion(self, domain: Optional[str] = None, slug: Optional[str] = None, reason: Optional[str] = None) -> None:
+        if not domain and not slug:
+            raise ValueError("Must provide either domain or slug to exclude")
+        
+        exc = Exclusion(
+            domain=domain,
+            company_slug=slug,
+            campaign=self.campaign,
+            reason=reason
+        )
+        
+        # Save to file named after slug (preferred) or domain
+        filename = slug if slug else domain.replace(".", "_")
+        file_path = self.exclude_dir / f"{filename}.json"
+        
+        with open(file_path, "w") as f:
+            data = exc.model_dump()
+            data["created_at"] = data["created_at"].isoformat()
+            json.dump(data, f, indent=2)
+        
+        # Update cache
+        if slug:
+            self._slug_map[slug] = exc
+        if domain:
+            self._domain_map[domain] = exc
+
+    def remove_exclusion(self, domain: Optional[str] = None, slug: Optional[str] = None) -> None:
+        if slug and slug in self._slug_map:
+            filename = slug
+            del self._slug_map[slug]
+        elif domain and domain in self._domain_map:
+            filename = domain.replace(".", "_")
+            del self._domain_map[domain]
+        else:
             return
 
-        with open(self.cache_file, "r", newline="", encoding="utf-8") as csvfile:
-            reader = csv.DictReader(csvfile)
-            for row in reader:
-                if row.get("domain"):
-                    if row.get("created_at"):
-                        try:
-                            row["created_at"] = datetime.fromisoformat(row["created_at"])
-                        except (ValueError, TypeError):
-                            row["created_at"] = None
-                    exclusion_data = dict(row)
-                    if exclusion_data.get("created_at") is None:
-                        del exclusion_data["created_at"]
-                    self.data[row["domain"]] = Exclusion(**exclusion_data)
+        file_path = self.exclude_dir / f"{filename}.json"
+        if file_path.exists():
+            file_path.unlink()
 
-    def is_excluded(self, domain: str) -> bool:
-        return domain in self.data
-
-    def add_exclusion(self, domain: str, reason: Optional[str] = None) -> None:
-        exclusion = Exclusion(domain=domain, campaign=self.campaign, reason=reason)
-        self.data[domain] = exclusion
-        self.save()
-
-    def save(self) -> None:
-        with open(self.cache_file, "w", newline="", encoding="utf-8") as csvfile:
-            headers = Exclusion.model_fields.keys()
-            writer = csv.DictWriter(csvfile, fieldnames=headers)
-            writer.writeheader()
-            for item in self.data.values():
-                writer.writerow(item.model_dump())
+    def list_exclusions(self) -> List[Exclusion]:
+        # Return unique exclusions (some might have both slug and domain)
+        unique = {}
+        for exc in self._slug_map.values():
+            unique[id(exc)] = exc
+        for exc in self._domain_map.values():
+            unique[id(exc)] = exc
+        return list(unique.values())

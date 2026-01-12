@@ -9,6 +9,7 @@ from rich.progress import track
 from cocli.core.config import get_companies_dir, get_campaign, get_campaigns_dir
 from cocli.core.text_utils import slugify, is_valid_email
 from cocli.models.website import Website
+from cocli.core.exclusions import ExclusionManager
 
 app = typer.Typer()
 console = Console()
@@ -58,6 +59,7 @@ def main(
     companies_dir = get_companies_dir()
     campaign_dir = get_campaigns_dir() / campaign_name
     email_index_dir = campaign_dir / "indexes" / "emails"
+    exclusion_manager = ExclusionManager(campaign_name)
     
     export_dir = campaign_dir / "exports"
     export_dir.mkdir(exist_ok=True)
@@ -157,6 +159,10 @@ def main(
 
         domain = idx_data.get("domain") or company_path.name
         
+        # Filter by exclusions
+        if exclusion_manager.is_excluded(domain=domain, slug=company_path.name):
+            continue
+
         # SKIP if the company itself is a provider
         if domain in email_providers:
             continue

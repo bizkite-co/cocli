@@ -1,0 +1,17 @@
+<div class="search-box" style="background: white; padding: 20px; border-radius: 4px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); margin: 20px 0;">
+    <div class="input-group">
+        <div style="position: relative; flex: 2; display: flex;">
+            <input type="text" id="prospect-search" placeholder="Search by name, domain, email, category..." style="width: 100%; padding-right: 35px;">
+            <button id="clear-search" onclick="clearSearch()" style="position: absolute; right: 10px; top: 50%; transform: translateY(-50%); background: none; border: none; cursor: pointer; color: #999; display: none; font-size: 1.5em; line-height: 1;">&times;</button>
+        </div>
+        <select id="category-filter">
+            <option value="">All Categories</option>
+        </select>
+    </div>
+    <div id="search-results-info" style="margin-top: 10px; font-size: 0.9em; color: #666;"></div>
+</div>
+
+<div id="prospects-loading">Loading prospect data for search...</div>
+<div id="prospects-container" class="prospect-grid" style="display:none;">
+    <!-- Cards will be injected here -->
+</div>

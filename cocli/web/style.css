@@ -129,12 +129,15 @@ footer {
     width: 100%;
 }
 
-/* Mobile Ordering: Search Queries first, then Locations */
-.config-section.queries-section {
+/* Mobile Ordering: Exclusions first, then Locations, then Search Queries */
+.config-section.exclusions-section {
     order: 1;
 }
 .config-section.locations-section {
     order: 2;
+}
+.config-section.queries-section {
+    order: 3;
 }
 
 /* Desktop layout */
@@ -437,7 +440,7 @@ footer {
 }
 
 .email-list div {
-    font-family: 'JetBrains Mono', monospace;
+    font-family: 'JetBrains Mono', 'Fira Code', 'Source Code Pro', 'Roboto Mono', monospace;
     background: #f1f3f5;
     padding: 2px 8px;
     border-radius: 4px;
@@ -447,10 +450,14 @@ footer {
 }
 
 .phone-number {
-    font-family: 'JetBrains Mono', monospace;
+    font-family: 'JetBrains Mono', 'Fira Code', 'Source Code Pro', 'Roboto Mono', monospace;
     font-weight: 600;
     font-size: 1.05em;
     color: #1a1a1a;
+}
+
+#clear-search:hover {
+    color: #333 !important;
 }
 
 .panel-section {

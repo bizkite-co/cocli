@@ -124,7 +124,7 @@ function createCompanyCard(p, index) {
         <div class="info-row">
             <strong>Keywords:</strong> 
             <div class="keyword-tags">
-                ${p.keywords.split(';').map(k => `<span class="keyword-tag">${k.trim()}</span>`).join(' ')}
+                ${p.keywords.split(';').map(k => `<span class="keyword-tag" onclick="filterByKeyword('${k.trim()}')" style="cursor:pointer;">${k.trim()}</span>`).join(' ')}
             </div>
         </div>` : '';
 
@@ -152,6 +152,16 @@ function createCompanyCard(p, index) {
     `;
 }
 
+function filterByKeyword(keyword) {
+    const queryInput = document.getElementById('prospect-search');
+    if (queryInput) {
+        queryInput.value = keyword;
+        filterProspects();
+        // Scroll to search box
+        queryInput.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+}
+
 function renderProspects(prospects) {
     const container = document.getElementById('prospects-container');
     if (!container) return;
@@ -175,12 +185,18 @@ function renderProspects(prospects) {
 function filterProspects() {
     const queryInput = document.getElementById('prospect-search');
     const catFilter = document.getElementById('category-filter');
+    const clearBtn = document.getElementById('clear-search');
     if (!queryInput || !catFilter) return;
 
     const query = queryInput.value.toLowerCase();
     const cat = catFilter.value;
     
-    const filtered = allProspects.filter(p => {
+    // Toggle clear button
+    if (clearBtn) {
+        clearBtn.style.display = query ? 'block' : 'none';
+    }
+
+    let filtered = allProspects.filter(p => {
         const matchesQuery = !query || 
             (p.company && p.company.toLowerCase().includes(query)) || 
             (p.domain && p.domain.toLowerCase().includes(query)) || 
@@ -194,6 +210,20 @@ function filterProspects() {
         
         return matchesQuery && matchesCat;
     });
+
+    // Sort to prioritize keyword matches
+    if (query) {
+        filtered.sort((a, b) => {
+            const aKeywords = (a.keywords || '').toLowerCase();
+            const bKeywords = (b.keywords || '').toLowerCase();
+            const aHasKeyword = aKeywords.includes(query);
+            const bHasKeyword = bKeywords.includes(query);
+
+            if (aHasKeyword && !bHasKeyword) return -1;
+            if (!aHasKeyword && bHasKeyword) return 1;
+            return 0;
+        });
+    }
     
     renderProspects(filtered);
 }
@@ -269,3 +299,12 @@ window.addEventListener('DOMContentLoaded', () => {
     
     fetchReport();
 });
+
+function clearSearch() {
+    const queryInput = document.getElementById('prospect-search');
+    if (queryInput) {
+        queryInput.value = '';
+        filterProspects();
+        queryInput.focus();
+    }
+}

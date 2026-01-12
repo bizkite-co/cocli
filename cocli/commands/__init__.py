@@ -37,7 +37,6 @@ def register_commands(app: typer.Typer) -> None:
     app.command(name="add-email")(add_email.add_email)
     app.command(name="add-meeting")(add_meeting.add_meeting)
     app.command(name="context")(context.context)
-    app.command(name="exclude")(exclude.exclude)
     app.command(name="fz")(fz.fz)
     app.command(name="google-maps-cache-to-company-files")(import_companies.google_maps_cache_to_company_files)
     app.command(name="import-customers")(import_customers.import_customers)

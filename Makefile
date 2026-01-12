@@ -661,5 +661,9 @@ keywords-report: sync-companies compile-companies ## Sync, compile, and generate
 	$(VENV_DIR)/bin/python scripts/list_companies_with_keywords.py --campaign $(CAMPAIGN)
 	$(VENV_DIR)/bin/python scripts/list_companies_missing_keywords.py --campaign $(CAMPAIGN)
 
+refresh-keyword-display: sync-companies export-emails web-deploy ## Sync keyword server data and generate web report
+	@echo "Syncing data and updating web report"
+
+
 show-kmls: ## Show KML files online (Usage: make show-kmls [BUCKET=cocli-web-assets] [PROFILE=bizkite-support])
 	aws s3 ls s3://$(or $(BUCKET), cocli-web-assets)/kml/ --profile $(or $(PROFILE), bizkite-support)
