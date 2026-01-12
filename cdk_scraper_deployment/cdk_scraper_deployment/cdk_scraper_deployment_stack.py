@@ -14,6 +14,7 @@ from aws_cdk import (
     aws_cloudfront_origins as origins,
     aws_certificatemanager as acm,
     aws_logs as logs,
+    aws_cognito as cognito,
     Duration,
     CfnOutput,
     RemovalPolicy,
@@ -90,9 +91,20 @@ class CdkScraperDeploymentStack(Stack):  # type: ignore[misc]
 
         # 3. Google Maps List Item Queue (New) - For scraping details of found list items
         gm_list_item_queue = sqs.Queue(self, "GmListItemQueue",
-            visibility_timeout=Duration.minutes(5), # 5 mins should be plenty for one detail scrape
-            retention_period=Duration.days(4)
+            visibility_timeout=Duration.minutes(2),
+            retention_period=Duration.days(14),
         )
+
+        campaign_updates_queue = sqs.Queue(self, "CampaignUpdatesQueue",
+            visibility_timeout=Duration.minutes(1),
+            retention_period=Duration.days(7),
+        )
+        campaign_updates_queue.grant_send_messages(task_role)
+        campaign_updates_queue.grant_consume_messages(task_role)
+        campaign_updates_queue.grant_send_messages(rpi_user)
+        campaign_updates_queue.grant_consume_messages(rpi_user)
+
+        # Output the queue URLs for convenience
         gm_list_item_queue.grant_send_messages(task_role)
         gm_list_item_queue.grant_consume_messages(task_role)
 
@@ -175,6 +187,17 @@ class CdkScraperDeploymentStack(Stack):  # type: ignore[misc]
         CfnOutput(self, "EnrichmentQueueUrl", value=enrichment_queue.queue_url)
         CfnOutput(self, "ScrapeTasksQueueUrl", value=scrape_tasks_queue.queue_url)
         CfnOutput(self, "GmListItemQueueUrl", value=gm_list_item_queue.queue_url)
+        CfnOutput(self, "CampaignUpdatesQueueUrl", value=campaign_updates_queue.queue_url)
+
+        # Permissions for Fargate Task Role
+        task_role.add_to_policy(iam.PolicyStatement(
+            actions=["s3:*", "sqs:*"],
+            resources=[
+                f"arn:aws:s3:::{data_bucket.bucket_name}",
+                f"arn:aws:s3:::{data_bucket.bucket_name}/*",
+                "arn:aws:sqs:*:*:CdkScraperDeploymentStack-*"
+            ]
+        ))
         CfnOutput(self, "BucketName", value=data_bucket.bucket_name)
         CfnOutput(self, "WebBucketName", value=web_bucket.bucket_name)
         CfnOutput(self, "WebDomainName", value=subdomain)
@@ -231,4 +254,47 @@ class CdkScraperDeploymentStack(Stack):  # type: ignore[misc]
         CfnOutput(self, "EnrichmentServiceURL",
             value=f"https://enrich.{domain}",
             description="URL of the enrichment service"
-        )                                       
+        )
+
+        # --- Cognito Identity Pool for Web-to-SQS Command Bridge ---
+        # Note: We link to the campaign-specific User Pool
+        user_pool_id = campaign_config.get("user_pool_id")
+        client_id = campaign_config.get("user_pool_client_id")
+        provider_name = f"cognito-idp.{self.region}.amazonaws.com/{user_pool_id}"
+
+        identity_pool = cognito.CfnIdentityPool(self, "CocliDashboardIdentityPool",
+            allow_unauthenticated_identities=False,
+            cognito_identity_providers=[
+                cognito.CfnIdentityPool.CognitoIdentityProviderProperty(
+                    client_id=client_id,
+                    provider_name=provider_name
+                )
+            ]
+        )
+
+        # IAM Role for Authenticated Users
+        authenticated_role = iam.Role(self, "CocliDashboardAuthRole",
+            assumed_by=iam.FederatedPrincipal(
+                "cognito-identity.amazonaws.com",
+                {
+                    "StringEquals": { "cognito-identity.amazonaws.com:aud": identity_pool.ref },
+                    "ForAnyValue:StringLike": { "cognito-identity.amazonaws.com:amr": "authenticated" }
+                },
+                "sts:AssumeRoleWithWebIdentity"
+            )
+        )
+
+        # Grant SendMessage to the specific CampaignUpdatesQueue
+        campaign_updates_queue.grant_send_messages(authenticated_role)
+
+        # Attach roles to Identity Pool
+        cognito.CfnIdentityPoolRoleAttachment(self, "CocliDashboardIdentityPoolRoles",
+            identity_pool_id=identity_pool.ref,
+            roles={
+                "authenticated": authenticated_role.role_arn
+            }
+        )
+
+        CfnOutput(self, "IdentityPoolId", value=identity_pool.ref)
+        CfnOutput(self, "UserPoolId", value=user_pool_id)
+        CfnOutput(self, "UserPoolClientId", value=client_id)

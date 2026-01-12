@@ -1,6 +1,7 @@
 import csv
 import socket
 import time
+import subprocess
 from datetime import datetime
 from pathlib import Path
 from typing import Optional, Any, Dict, List
@@ -207,6 +208,56 @@ async def run_worker(
                 logger.info("Restarting browser session in 5 seconds...")
                 await asyncio.sleep(5)
 
+
+async def execute_cli_command(args: List[str]) -> bool:
+    """Executes a cocli command via subprocess."""
+    try:
+        # Prepend 'cocli' if it's not already there, but we usually send the full list
+        # We assume args is like ["campaign", "add-exclude", ...]
+        cmd = ["cocli"] + args
+        logger.info(f"Executing remote command: {' '.join(cmd)}")
+        
+        result = await asyncio.to_thread(
+            subprocess.run,
+            cmd,
+            capture_output=True,
+            text=True,
+            check=False
+        )
+        
+        if result.returncode == 0:
+            logger.info(f"Command succeeded: {result.stdout.strip()}")
+            return True
+        else:
+            logger.error(f"Command failed (exit {result.returncode}): {result.stderr.strip()}")
+            return False
+    except Exception as e:
+        logger.error(f"Error executing remote command: {e}")
+        return False
+
+async def _run_command_poller_loop(command_queue: Any) -> None:
+    """Polls SQS for campaign update commands and executes them."""
+    logger.info("Command Poller started.")
+    while True:
+        try:
+            commands = await asyncio.to_thread(command_queue.poll, batch_size=1)
+            for cmd in commands:
+                success = await execute_cli_command(cmd.args)
+                if success:
+                    await asyncio.to_thread(command_queue.ack, cmd)
+                else:
+                    # For now, we ack even on failure to avoid infinite loops
+                    # unless we want to implement a retry policy.
+                    await asyncio.to_thread(command_queue.ack, cmd)
+                    
+        except asyncio.CancelledError:
+            logger.info("Command Poller stopping...")
+            break
+        except Exception as e:
+            logger.error(f"Command Poller error: {e}")
+            await asyncio.sleep(10)
+        
+        await asyncio.sleep(5)
 
 async def _run_scrape_task_loop(
     browser_or_context: Any,
@@ -1035,10 +1086,9 @@ def sync_active_leases_to_s3(
 async def run_supervisor(
     headless: bool, debug: bool, campaign_name: str, interval: int
 ) -> None:
-    from ..core.config import load_campaign_config, get_cocli_base_dir
+    from ..core.config import load_campaign_config
     import socket
     import asyncio
-    import boto3
 
     hostname = os.getenv("COCLI_HOSTNAME") or socket.gethostname().split(".")[0]
     once = False  # Supervisor always runs in a loop
@@ -1070,83 +1120,43 @@ async def run_supervisor(
 
         enrichment_tasks: Dict[int, asyncio.Task[Any]] = {}
 
+        command_task: Optional[asyncio.Task[Any]] = None
+
         # Shared context and tracker for all workers on this host
         context = await browser.new_context(ignore_https_errors=True)
         tracker = await setup_optimized_context(context)
 
         # Setup queues and clients once
-
-        try:
-            ensure_campaign_config(campaign_name)
-
-            config = load_campaign_config(campaign_name)
-
-            aws_config = config.get("aws", {})
-
-            bucket_name = (
-                aws_config.get("cocli_data_bucket_name")
-                or f"cocli-data-{campaign_name}"
-            )
-
-            if os.getenv("COCLI_RUNNING_IN_FARGATE"):
-                profile_name = None
-
-            else:
-                profile_name = aws_config.get("profile") or aws_config.get(
-                    "aws_profile"
-                )
-
-            if profile_name:
-                session = boto3.Session(profile_name=profile_name)
-
-            else:
-                session = boto3.Session()
-
-            s3_client = session.client("s3")
-
-            queue_type_env = os.getenv("COCLI_QUEUE_TYPE", "sqs")
-            use_cloud = queue_type_env != "filesystem"
-
-            scrape_queue = get_queue_manager(
-                "scrape_tasks",
-                use_cloud=use_cloud,
-                queue_type="scrape",
-                campaign_name=campaign_name,
-            )
-
-            gm_list_item_queue = get_queue_manager(
-                "gm_list_item",
-                use_cloud=use_cloud,
-                queue_type="gm_list_item",
-                campaign_name=campaign_name,
-            )
-
-            enrichment_queue = get_queue_manager(
-                "enrichment",
-                use_cloud=use_cloud,
-                queue_type="enrichment",
-                campaign_name=campaign_name,
-            )
-
-            processed_by = f"supervisor-{hostname}"
-        except Exception as e:
-            logger.error(f"Supervisor initialization failed: {e}")
-            await browser.close()
-            return
-
-        # Track last sync time to avoid constant thrashing
-        last_sync_time = 0.0
-        sync_interval_seconds = 300  # Sync every 5 minutes
+        ensure_campaign_config(campaign_name)
+        config = load_campaign_config(campaign_name)
+        aws_config = config.get("aws", {})
+        bucket_name = aws_config.get("cocli_data_bucket_name")
         
-        # Imports for sync
-        from ..utils.smart_sync_up import run_smart_sync_up
-        from .smart_sync import run_smart_sync
-        
+        # Resolve AWS session/client
+        aws_profile = os.getenv("AWS_PROFILE") or aws_config.get("profile")
+        session = boto3.Session(profile_name=aws_profile)
+        s3_client = session.client("s3")
+
+        # Initialize Queues
+        scrape_queue = get_queue_manager("scrape", use_cloud=True, queue_type="scrape", campaign_name=campaign_name)
+        gm_list_item_queue = get_queue_manager("details", use_cloud=True, queue_type="gm_list_item", campaign_name=campaign_name)
+        enrichment_queue = get_queue_manager("enrichment", use_cloud=True, queue_type="enrichment", campaign_name=campaign_name)
+        command_queue = get_queue_manager("command", use_cloud=True, queue_type="command", campaign_name=campaign_name)
+
+        # Sync Throttling
+        from ..core.config import get_cocli_base_dir
+        from ..utils.smart_sync import run_smart_sync, run_smart_sync_up  # type: ignore
         local_base = get_cocli_base_dir()
-        logger.info(f"DEBUG: local_base is {local_base}")
+        last_sync_time: float = 0.0
+        sync_interval_seconds = 1800 # 15 minutes default
+        processed_by = f"{hostname}-supervisor"
 
         while True:
             try:
+                # Start command poller if not running
+                if command_task is None or command_task.done():
+                    command_task = asyncio.create_task(_run_command_poller_loop(command_queue))
+                
                 # 0. Sync config from S3
                 sync_campaign_config(campaign_name)
 
@@ -1186,9 +1196,7 @@ async def run_supervisor(
                         logger.warning(f"Supervisor failed to smart-sync data: {e}")
 
                 # 1. Reload Config (from local file, which should be synced from S3)
-
                 config = load_campaign_config(campaign_name)
-
                 prospecting = config.get("prospecting", {})
 
                 scaling = prospecting.get("scaling", {}).get(hostname, {})

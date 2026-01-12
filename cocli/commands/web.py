@@ -83,9 +83,37 @@ def deploy(
     console.print("[bold blue]Building web dashboard with Eleventy...[/bold blue]")
     if source_web_dir.exists():
         try:
-            # Pass CAMPAIGN env var to eleventy
+            # Pass CAMPAIGN and CDK outputs as env vars to eleventy
             env = os.environ.copy()
             env["CAMPAIGN"] = campaign_name
+            env["AWS_PROFILE"] = profile
+            
+            session = boto3.Session(profile_name=profile)
+            env["AWS_REGION"] = session.region_name or "us-east-1"
+
+            # Try to fetch CDK outputs from CloudFormation
+            cf = session.client("cloudformation")
+            stack_name = f"CdkScraperDeploymentStack-{campaign_name}"
+            if campaign_name == "turboship":
+                stack_name = "CdkScraperDeploymentStack"
+            
+            try:
+                response = cf.describe_stacks(StackName=stack_name)
+                outputs = response["Stacks"][0].get("Outputs", [])
+                for output in outputs:
+                    key = output["OutputKey"]
+                    val = output["OutputValue"]
+                    if key == "IdentityPoolId":
+                        env["COCLI_IDENTITY_POOL_ID"] = val
+                    elif key == "UserPoolId":
+                        env["COCLI_USER_POOL_ID"] = val
+                    elif key == "UserPoolClientId":
+                        env["COCLI_USER_POOL_CLIENT_ID"] = val
+                    elif key == "CampaignUpdatesQueueUrl":
+                        env["COCLI_COMMAND_QUEUE_URL"] = val
+            except Exception as e:
+                console.print(f"[yellow]Warning: Could not fetch CDK outputs for {stack_name}: {e}[/yellow]")
+
             subprocess.run(["npm", "run", "build"], cwd=source_web_dir, check=True, env=env)
             console.print("[green]Build successful.[/green]")
         except subprocess.CalledProcessError:

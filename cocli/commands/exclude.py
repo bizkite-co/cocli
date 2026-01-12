@@ -5,8 +5,6 @@ from rich.console import Console
 from rich.table import Table
 
 from ..core.exclusions import ExclusionManager
-from ..core.paths import paths
-from ..core.utils import slugify
 
 logger = logging.getLogger(__name__)
 console = Console()

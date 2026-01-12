@@ -19,6 +19,9 @@ async function fetchConfig() {
 }
 
 window.addEventListener('DOMContentLoaded', () => {
+    if (typeof checkAuth === 'function') {
+        if (!checkAuth()) return;
+    }
     console.log("Config Page Loaded");
     fetchConfig();
 });
@@ -73,6 +76,68 @@ function updatePendingUI() {
         box.textContent = pendingChanges.join('\n');
     } else {
         container.style.display = 'none';
+    }
+}
+
+async function submitChanges() {
+    const btn = document.querySelector('.btn-submit');
+    const originalText = btn.textContent;
+    btn.disabled = true;
+    btn.textContent = 'Submitting...';
+
+    const config = window.COCLI_CONFIG;
+    const idToken = localStorage.getItem('cocli_id_token');
+    
+    if (!idToken) {
+        alert("Session expired. Please log in again.");
+        window.location.href = '/index.html';
+        return;
+    }
+
+    try {
+        // 1. Configure AWS SDK with Identity Pool
+        AWS.config.region = config.region;
+        const loginKey = `cognito-idp.${config.region}.amazonaws.com/${config.userPoolId}`;
+        
+        AWS.config.credentials = new AWS.CognitoIdentityCredentials({
+            IdentityPoolId: config.identityPoolId,
+            Logins: {
+                [loginKey]: idToken
+            }
+        });
+
+        // 2. Refresh credentials
+        await new Promise((resolve, reject) => {
+            AWS.config.credentials.get((err) => {
+                if (err) reject(err);
+                else resolve();
+            });
+        });
+
+        const sqs = new AWS.SQS();
+        
+        // 3. Send each command as a separate message
+        for (const cmd of pendingChanges) {
+            const message = {
+                command: cmd,
+                timestamp: new Date().toISOString()
+            };
+
+            await sqs.sendMessage({
+                QueueUrl: config.commandQueueUrl,
+                MessageBody: JSON.stringify(message)
+            }).promise();
+        }
+
+        alert(`Successfully submitted ${pendingChanges.length} changes! They will be processed by the worker shortly.`);
+        pendingChanges = [];
+        updatePendingUI();
+    } catch (error) {
+        console.error("Failed to submit changes:", error);
+        alert("Error submitting changes: " + error.message);
+    } finally {
+        btn.disabled = false;
+        btn.textContent = originalText;
     }
 }
 

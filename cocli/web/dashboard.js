@@ -1,6 +1,33 @@
-
 let allProspects = [];
 let categories = new Set();
+
+function checkAuth() {
+    const idToken = localStorage.getItem('cocli_id_token');
+    if (!idToken) {
+        const config = window.COCLI_CONFIG;
+        if (!config || !config.userPoolId || !config.userPoolClientId) {
+            console.error("Cognito configuration missing.");
+            return;
+        }
+
+        // Determine Hosted UI Domain (simplified for now, matches our CDK)
+        const domainPrefix = config.campaignName === 'prod' || config.campaignName === 'turboship' ? 'turbo-auth' : `turbo-auth-${config.campaignName}`;
+        const loginUrl = `https://${domainPrefix}.auth.${config.region}.amazoncognito.com/login?client_id=${config.userPoolClientId}&response_type=token&scope=openid+email+profile&redirect_uri=${encodeURIComponent(window.location.origin + '/auth-callback')}`;
+        
+        window.location.href = loginUrl;
+        return false;
+    }
+    return true;
+}
+
+function logout() {
+    localStorage.removeItem('cocli_id_token');
+    localStorage.removeItem('cocli_access_token');
+    const config = window.COCLI_CONFIG;
+    const domainPrefix = config.campaignName === 'prod' || config.campaignName === 'turboship' ? 'turbo-auth' : `turbo-auth-${config.campaignName}`;
+    const logoutUrl = `https://${domainPrefix}.auth.${config.region}.amazoncognito.com/logout?client_id=${config.userPoolClientId}&logout_uri=${encodeURIComponent(window.location.origin + '/signout')}`;
+    window.location.href = logoutUrl;
+}
 
 async function fetchReport() {
     const urlParams = new URLSearchParams(window.location.search);
@@ -234,8 +261,9 @@ function renderReport(stats, campaign) {
     body.innerHTML = '';
     
     const rows = [
-        { stage: 'Active Enrichment Workers', count: stats.active_fargate_tasks || 0, details: stats.active_fargate_tasks > 0 ? 'Running (Fargate)' : 'Stopped', badge: stats.active_fargate_tasks > 0 ? 'status-running' : '' },
-        { stage: 'Scrape Tasks (gm-list)', count: `${stats.scrape_tasks_pending || 0} / ${stats.scrape_tasks_inflight || 0} Active`, details: 'SQS', badge: 'status-sqs' },
+        { stage: 'Active Enrichment Workers (Fargate)', count: stats.active_fargate_tasks || 0, details: (stats.active_fargate_tasks > 0 ? 'Running' : 'Stopped'), badge: (stats.active_fargate_tasks > 0 ? 'status-running' : '') },
+        { stage: 'Campaign Updates (SQS)', count: `${stats.command_tasks_pending || 0} Pending`, details: 'SQS', badge: (stats.command_tasks_pending > 0 ? 'status-sqs' : '') },
+        { stage: 'Scrape Tasks (gm-list)', count: `${stats.scrape_tasks_pending || 0} / ${stats.scrape_tasks_inflight || 0} Active`, details: 'SQS', badge: (stats.scrape_tasks_pending > 0 ? 'status-sqs' : '') },
         { stage: 'GM List Items (gm-details)', count: `${stats.gm_list_item_pending || 0} / ${stats.gm_list_item_inflight || 0} Active`, details: 'SQS', badge: 'status-sqs' },
         { stage: 'Prospects (gm-detail)', count: (stats.prospects_count || 0).toLocaleString(), details: '100%', badge: '' },
         { stage: 'Enriched (Local)', count: (stats.enriched_count || 0).toLocaleString(), details: `${((stats.enriched_count / stats.prospects_count) * 100).toFixed(1)}%`, badge: '' },
@@ -292,6 +320,8 @@ function renderReport(stats, campaign) {
 }
 
 window.addEventListener('DOMContentLoaded', () => {
+    if (!checkAuth()) return;
+
     const searchInput = document.getElementById('prospect-search');
     const filterSelect = document.getElementById('category-filter');
     if (searchInput) searchInput.addEventListener('input', filterProspects);

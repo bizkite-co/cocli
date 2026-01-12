@@ -27,7 +27,10 @@ def update_config(
     # Use the new campaign-specific stack naming convention if not provided
     effective_stack_name = stack_name
     if not effective_stack_name:
-        effective_stack_name = f"CdkScraperDeploymentStack-{effective_campaign}"
+        if effective_campaign == "turboship":
+            effective_stack_name = "CdkScraperDeploymentStack"
+        else:
+            effective_stack_name = f"CdkScraperDeploymentStack-{effective_campaign}"
 
     campaign_dir = get_campaigns_dir() / effective_campaign
     config_path = campaign_dir / "config.toml"
@@ -69,6 +72,7 @@ def update_config(
         "EnrichmentQueueUrl": "cocli_enrichment_queue_url",
         "ScrapeTasksQueueUrl": "cocli_scrape_tasks_queue_url",
         "GmListItemQueueUrl": "cocli_gm_list_item_queue_url",
+        "CampaignUpdatesQueueUrl": "cocli_command_queue_url",
         "EnrichmentServiceURL": "cocli_enrichment_service_url",
         "WebBucketName": "cocli_web_bucket_name",
         "BucketName": "cocli_data_bucket_name"

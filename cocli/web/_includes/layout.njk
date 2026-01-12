@@ -8,6 +8,18 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:ital,wght@0,100..800;1,100..800&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="/style.css">
+    <!-- AWS SDK -->
+    <script src="https://sdk.amazonaws.com/js/aws-sdk-2.1500.0.min.js"></script>
+    <script>
+        window.COCLI_CONFIG = {
+            campaignName: "{{ campaign.name }}",
+            userPoolId: "{{ campaign.userPoolId }}",
+            userPoolClientId: "{{ campaign.userPoolClientId }}",
+            identityPoolId: "{{ campaign.identityPoolId }}",
+            region: "{{ campaign.region }}",
+            commandQueueUrl: "{{ campaign.commandQueueUrl }}"
+        };
+    </script>
 </head>
 <body>
     <nav class="top-navbar">
@@ -19,6 +31,7 @@
                 <a href="/kml-viewer.html" class="nav-link">Map Viewer</a>
                 <a href="https://turboheat.net" class="nav-link">Turboship</a>
                 <a href="https://status.turboheat.net" class="nav-link">Turboheat</a>
+                <button onclick="logout()" class="nav-link btn-link" style="background:none; border:none; color:inherit; cursor:pointer; font:inherit; padding:0; margin-left:15px;">Sign Out</button>
             </div>
         </div>
     </nav>

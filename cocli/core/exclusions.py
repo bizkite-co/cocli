@@ -1,5 +1,4 @@
 import json
-from pathlib import Path
 from typing import Optional, Dict, List
 from datetime import datetime
 import logging
@@ -55,8 +54,8 @@ class ExclusionManager:
         )
         
         # Save to file named after slug (preferred) or domain
-        filename = slug if slug else domain.replace(".", "_")
-        file_path = self.exclude_dir / f"{filename}.json"
+        name = slug if slug else (domain.replace(".", "_") if domain else "unknown")
+        file_path = self.exclude_dir / f"{name}.json"
         
         with open(file_path, "w") as f:
             data = exc.model_dump()

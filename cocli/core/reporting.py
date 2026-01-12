@@ -156,23 +156,39 @@ def get_campaign_stats(campaign_name: str) -> Dict[str, Any]:
     enrich_queue_url = aws_config.get("cocli_enrichment_queue_url")
     scrape_queue_url = aws_config.get("cocli_scrape_tasks_queue_url")
     gm_queue_url = aws_config.get("cocli_gm_list_item_queue_url")
+    command_queue_url = aws_config.get("cocli_command_queue_url")
 
-    if enrich_queue_url:
+    if enrich_queue_url or command_queue_url:
         stats["using_cloud_queue"] = True
         session = get_boto3_session(config)
 
+        # Command Queue (Always cloud if exists)
+        if command_queue_url:
+            cmd_attrs = get_sqs_attributes(
+                session,
+                command_queue_url,
+                ["ApproximateNumberOfMessages", "ApproximateNumberOfMessagesNotVisible"],
+            )
+            stats["command_tasks_pending"] = int(
+                cmd_attrs.get("ApproximateNumberOfMessages", 0)
+            )
+            stats["command_tasks_inflight"] = int(
+                cmd_attrs.get("ApproximateNumberOfMessagesNotVisible", 0)
+            )
+
         # Enrichment Queue
-        enrich_attrs = get_sqs_attributes(
-            session,
-            enrich_queue_url,
-            ["ApproximateNumberOfMessages", "ApproximateNumberOfMessagesNotVisible"],
-        )
-        stats["enrichment_pending"] = int(
-            enrich_attrs.get("ApproximateNumberOfMessages", 0)
-        )
-        stats["enrichment_inflight"] = int(
-            enrich_attrs.get("ApproximateNumberOfMessagesNotVisible", 0)
-        )
+        if enrich_queue_url:
+            enrich_attrs = get_sqs_attributes(
+                session,
+                enrich_queue_url,
+                ["ApproximateNumberOfMessages", "ApproximateNumberOfMessagesNotVisible"],
+            )
+            stats["enrichment_pending"] = int(
+                enrich_attrs.get("ApproximateNumberOfMessages", 0)
+            )
+            stats["enrichment_inflight"] = int(
+                enrich_attrs.get("ApproximateNumberOfMessagesNotVisible", 0)
+            )
 
         # Scrape Tasks Queue
         if scrape_queue_url:
