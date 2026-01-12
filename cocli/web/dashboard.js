@@ -10,9 +10,8 @@ function checkAuth() {
             return;
         }
 
-        // Determine Hosted UI Domain (simplified for now, matches our CDK)
-        const domainPrefix = config.campaignName === 'prod' || config.campaignName === 'turboship' ? 'turbo-auth' : `turbo-auth-${config.campaignName}`;
-        const loginUrl = `https://${domainPrefix}.auth.${config.region}.amazoncognito.com/login?client_id=${config.userPoolClientId}&response_type=token&scope=openid+email+profile&redirect_uri=${encodeURIComponent(window.location.origin + '/auth-callback')}`;
+        // Use /oauth2/authorize endpoint
+        const loginUrl = `https://auth.turboheat.net/oauth2/authorize?client_id=${config.userPoolClientId}&response_type=token&scope=openid+email+profile&redirect_uri=${encodeURIComponent(window.location.origin + '/auth-callback')}`;
         
         window.location.href = loginUrl;
         return false;
@@ -24,8 +23,7 @@ function logout() {
     localStorage.removeItem('cocli_id_token');
     localStorage.removeItem('cocli_access_token');
     const config = window.COCLI_CONFIG;
-    const domainPrefix = config.campaignName === 'prod' || config.campaignName === 'turboship' ? 'turbo-auth' : `turbo-auth-${config.campaignName}`;
-    const logoutUrl = `https://${domainPrefix}.auth.${config.region}.amazoncognito.com/logout?client_id=${config.userPoolClientId}&logout_uri=${encodeURIComponent(window.location.origin + '/signout')}`;
+    const logoutUrl = `https://auth.turboheat.net/logout?client_id=${config.userPoolClientId}&logout_uri=${encodeURIComponent(window.location.origin + '/signout')}`;
     window.location.href = logoutUrl;
 }
 
