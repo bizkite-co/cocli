@@ -33,7 +33,7 @@ class Company(BaseModel):
 
     # New fields for enrichment
     # id: Optional[str] = None # Removed as per feedback
-    keyword: Optional[str] = None
+    keywords: List[str] = Field(default_factory=list)
     full_address: Optional[str] = None
     street_address: Optional[str] = None
     city: Optional[str] = None
@@ -199,7 +199,7 @@ class Company(BaseModel):
         """Merges data from another company instance into this one."""
         # Simple fields: only overwrite if this one is empty or None
         for field in [
-            "domain", "description", "visits_per_day", "keyword", "full_address", 
+            "domain", "description", "visits_per_day", "full_address", 
             "street_address", "city", "zip_code", "state", "country", "timezone",
             "phone_1", "phone_number", "phone_from_website", "email", "website_url",
             "reviews_count", "average_rating", "business_status", "hours",
@@ -213,7 +213,7 @@ class Company(BaseModel):
                 setattr(self, field, new_val)
         
         # List fields: merge unique values
-        for field in ["tags", "all_emails", "tech_stack", "categories", "services", "products"]:
+        for field in ["tags", "all_emails", "tech_stack", "categories", "services", "products", "keywords"]:
             existing = getattr(self, field) or []
             new_vals = getattr(other, field) or []
             # Use a list comprehension to preserve order while ensuring uniqueness

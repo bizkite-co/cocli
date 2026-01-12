@@ -8,12 +8,46 @@ from rich.console import Console
 from rich.progress import track
 from cocli.core.config import get_companies_dir, get_campaign, get_campaigns_dir
 from cocli.core.text_utils import slugify, is_valid_email
+from cocli.models.website import Website
 
 app = typer.Typer()
 console = Console()
 
+def get_website_data(company_slug: str) -> Optional[Website]:
+    """Helper to load the website.md data for a company."""
+    website_md_path = get_companies_dir() / company_slug / "enrichments" / "website.md"
+    if not website_md_path.exists():
+        return None
+    
+    try:
+        content = website_md_path.read_text()
+        # Extract YAML frontmatter
+        if content.startswith("---"):
+            parts = content.split("---")
+            if len(parts) >= 3:
+                data = yaml.safe_load(parts[1])
+                
+                # Hotfix for legacy/malformed personnel data
+                if "personnel" in data and isinstance(data["personnel"], list):
+                    sanitized_personnel = []
+                    for p in data["personnel"]:
+                        if isinstance(p, str):
+                            sanitized_personnel.append({"raw_entry": p})
+                        elif isinstance(p, dict):
+                            sanitized_personnel.append(p)
+                    data["personnel"] = sanitized_personnel
+
+                return Website.model_validate(data)
+    except Exception:
+        # logging.error(f"Error loading website data for {company_slug}: {e}")
+        pass
+    return None
+
 @app.command()
-def main(campaign_name: Optional[str] = typer.Argument(None, help="Campaign name. Defaults to current context.")) -> None:
+def main(
+    campaign_name: Optional[str] = typer.Argument(None, help="Campaign name. Defaults to current context."),
+    keywords: bool = typer.Option(False, "--keywords", help="Only export companies that have found keywords (enriched).")
+) -> None:
     if not campaign_name:
         campaign_name = get_campaign()
     
@@ -142,6 +176,12 @@ def main(campaign_name: Optional[str] = typer.Argument(None, help="Campaign name
 
         if not emails:
             continue
+
+        # Filter by Keywords if requested
+        if keywords:
+            website_data = get_website_data(company_path.name)
+            if not website_data or not website_data.found_keywords:
+                continue
 
         # Get categories and services
         categories = idx_data.get("categories", [])

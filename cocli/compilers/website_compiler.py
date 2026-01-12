@@ -130,8 +130,12 @@ class WebsiteCompiler(BaseCompiler):
             updated = True
 
         # List fields: MERGE
-        for field in ["services", "products", "categories"]:
-            website_list = getattr(website_data, field) or []
+        for field in ["services", "products", "categories", "keywords"]:
+            if field == "keywords":
+                website_list = website_data.found_keywords or []
+            else:
+                website_list = getattr(website_data, field) or []
+                
             company_list = getattr(company, field) or []
             
             existing_set = set(company_list)

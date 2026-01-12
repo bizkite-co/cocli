@@ -646,5 +646,13 @@ stop-rpi-all: ## Stop all Raspberry Pi cocli worker containers
 deploy-rpi: test deploy-creds-rpi stop-rpi-all rebuild-rpi-worker start-rpi-worker start-rpi-details-worker ## Full deployment: stop all, rebuild, and restart both workers
 	$(VENV_DIR)/bin/ruff check cocli/
 
+missing-keywords: ## List the companies that are missing keywords to CSV
+	$(VENV_DIR)/bin/python scripts/list_companies_missing_keywords.py --campaign $(CAMPAIGN)
+
+.PHONY: keywords-report
+keywords-report: sync-companies compile-companies ## Sync, compile, and generate both keyword reports
+	$(VENV_DIR)/bin/python scripts/list_companies_with_keywords.py --campaign $(CAMPAIGN)
+	$(VENV_DIR)/bin/python scripts/list_companies_missing_keywords.py --campaign $(CAMPAIGN)
+
 show-kmls: ## Show KML files online (Usage: make show-kmls [BUCKET=cocli-web-assets] [PROFILE=bizkite-support])
 	aws s3 ls s3://$(or $(BUCKET), cocli-web-assets)/kml/ --profile $(or $(PROFILE), bizkite-support)

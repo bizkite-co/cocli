@@ -754,24 +754,20 @@ async def run_enrichment_worker(
         async with async_playwright() as p:
             while True:
                 logger.info("Launching browser...")
+                browser_instance = None
                 try:
+                    logger.info(f"Attempting chromium.launch (headless={headless})...")
                     browser_instance = await p.chromium.launch(
                         headless=headless,
-                        args=[
-                            "--no-sandbox",
-                            "--disable-setuid-sandbox",
-                            "--disable-dev-shm-usage",
-                            "--disable-accelerated-2d-canvas",
-                            "--no-first-run",
-                            "--no-zygote",
-                            "--disable-gpu",
-                            "--disable-software-rasterizer",
-                        ],
+                        args=["--no-sandbox"]
                     )
+                    logger.info("Browser launched. Creating context...")
 
                     # Create context and setup optimizations
                     context = await browser_instance.new_context(ignore_https_errors=True)
+                    logger.info("Context created. Setting up optimizations...")
                     tracker = await setup_optimized_context(context)
+                    logger.info("Optimizations set up. Starting task loops...")
 
                     tasks = [
                         _run_enrichment_task_loop(
@@ -792,6 +788,11 @@ async def run_enrichment_worker(
                 except Exception as e:
                     logger.error(f"Enrichment Worker Error: {e}")
                 finally:
+                    if browser_instance:
+                        try:
+                            await browser_instance.close()
+                        except Exception:
+                            pass
                     if once:
                         break
                     logger.info("Restarting browser session in 5 seconds...")

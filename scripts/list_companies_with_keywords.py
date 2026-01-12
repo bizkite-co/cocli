@@ -1,5 +1,4 @@
 import csv
-import logging
 from typing import Optional
 import typer
 from rich.console import Console
@@ -38,17 +37,21 @@ def get_website_data(company_slug: str) -> Optional[Website]:
                     data["personnel"] = sanitized_personnel
 
                 return Website.model_validate(data)
-    except Exception as e:
-        logging.error(f"Error loading website data for {company_slug}: {e}")
+    except Exception:
+        # logging.error(f"Error loading website data for {company_slug}: {e}")
+        pass
     return None
 
 @app.command()
 def run(
     campaign: Optional[str] = typer.Option(None, "--campaign", "-c"),
-    output: str = typer.Option("companies_missing_keywords.csv", "--output", "-o")
+    output: str = typer.Option("companies_with_keywords.csv", "--output", "-o")
 ) -> None:
     """
-    Identifies companies in a campaign that have been enriched but have no found keywords.
+    Identifies companies in a campaign that have keyword data in any of the sources:
+    - Company.keywords (List)
+    - Company.meta_keywords (String)
+    - Website.found_keywords (List)
     """
     if campaign is None:
         campaign = get_campaign()
@@ -63,13 +66,13 @@ def run(
         console.print(f"[red]Campaign directory not found for: {campaign}[/red]")
         raise typer.Exit(code=1)
 
-    exports_dir = campaign_dir / "exports"
-    exports_dir.mkdir(parents=True, exist_ok=True)
-    output_path = exports_dir / output
+    export_dir = campaign_dir / "exports"
+    export_dir.mkdir(parents=True, exist_ok=True)
+    output_path = export_dir / output
 
-    missing_keywords = []
+    with_keywords = []
     
-    # We iterate through all companies. In a large dataset, we might want to filter by campaign tags.
+    # We iterate through all companies.
     all_companies = list(Company.get_all())
     
     for company in track(all_companies, description="Checking companies..."):
@@ -78,27 +81,40 @@ def run(
             continue
             
         website_data = get_website_data(company.slug)
-        if not website_data:
-            continue # Not enriched yet
+        
+        # Check all sources
+        c_keywords = company.keywords or []
+        c_meta = company.meta_keywords
+        w_found = website_data.found_keywords if website_data else []
+        
+        has_keywords = False
+        if c_keywords:
+            has_keywords = True
+        if c_meta and str(c_meta).strip() and str(c_meta).lower() != "null":
+            has_keywords = True
+        if w_found:
+            has_keywords = True
             
-        if not website_data.found_keywords:
-            missing_keywords.append({
+        if has_keywords:
+            with_keywords.append({
                 "name": company.name,
                 "slug": company.slug,
-                "domain": str(website_data.url),
-                "tech": ", ".join(website_data.tech_stack)
+                "domain": str(company.domain or ""),
+                "keywords": ", ".join(c_keywords),
+                "meta_keywords": str(c_meta or ""),
+                "found_keywords": ", ".join(w_found) if w_found else ""
             })
 
-    if missing_keywords:
+    if with_keywords:
         with open(output_path, "w", newline="") as f:
-            writer = csv.DictWriter(f, fieldnames=["name", "slug", "domain", "tech"])
+            writer = csv.DictWriter(f, fieldnames=["name", "slug", "domain", "keywords", "meta_keywords", "found_keywords"])
             writer.writeheader()
-            writer.writerows(missing_keywords)
+            writer.writerows(with_keywords)
         
-        console.print(f"[green]Done![/green] Found [bold]{len(missing_keywords)}[/bold] companies missing keywords.")
+        console.print(f"[green]Done![/green] Found [bold]{len(with_keywords)}[/bold] companies with keyword data.")
         console.print(f"Results saved to: [cyan]{output_path}[/cyan]")
     else:
-        console.print("[yellow]No companies found missing keywords (among those enriched).[/yellow]")
+        console.print("[yellow]No companies found with keyword data.[/yellow]")
 
 if __name__ == "__main__":
     app()

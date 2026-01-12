@@ -17,6 +17,7 @@ class GoogleMaps(BaseModel):
 
 class Prospecting(BaseModel):
     locations: List[str]
+    keywords: List[str] = Field(default_factory=list)
     target_locations_csv: Optional[str] = Field(None, alias="target-locations-csv")
     tools: List[str]
     queries: List[str]

@@ -23,12 +23,17 @@ from ..core.email_index_manager import EmailIndexManager
 from ..models.email import EmailEntry
 from ..models.email_address import EmailAddress
 from ..core.text_utils import is_valid_email
+from ..utils.headers import ANTI_BOT_HEADERS, USER_AGENT
 
 
 logger = logging.getLogger(__name__)
 
 
 class WebsiteScraper:
+    def __init__(self) -> None:
+        self.headers = ANTI_BOT_HEADERS
+        self.user_agent = USER_AGENT
+
     def _index_emails(self, website_data: Website, campaign_name: str) -> None:
         """Helper to record all found emails in the centralized email index."""
         if not website_data.url:
@@ -84,21 +89,6 @@ class WebsiteScraper:
                 continue
         return None
 
-        # Default headers to look more like a real browser
-        self.headers = {
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7",
-            "Accept-Language": "en-US,en;q=0.9",
-            "Accept-Encoding": "gzip, deflate, br",
-            "DNT": "1",
-            "Connection": "keep-alive",
-            "Upgrade-Insecure-Requests": "1",
-            "Sec-Fetch-Dest": "document",
-            "Sec-Fetch-Mode": "navigate",
-            "Sec-Fetch-Site": "none",
-            "Sec-Fetch-User": "?1",
-        }
-
     async def run(
         self,
         browser: Union[Browser, BrowserContext],
@@ -109,12 +99,42 @@ class WebsiteScraper:
         debug: bool = False,
         campaign: Optional[Campaign] = None,
         navigation_timeout_ms: int = 30000,
+        site_timeout_seconds: int = 120,
     ) -> Website:
         """
         Scrapes a website for company information.
         """
-        domain_index_manager: Union[WebsiteDomainCsvManager, S3DomainManager]
+        website_data = Website(url=domain, scraper_version=CURRENT_SCRAPER_VERSION)
+        if company_slug:
+            website_data.associated_company_folder = company_slug
 
+        try:
+            await asyncio.wait_for(
+                self._run_internal(
+                    browser,
+                    domain,
+                    website_data,
+                    force_refresh,
+                    ttl_days,
+                    debug,
+                    campaign,
+                    navigation_timeout_ms,
+                ),
+                timeout=site_timeout_seconds,
+            )
+        except asyncio.TimeoutError:
+            logger.error(f"Scraping timed out for {domain} after {site_timeout_seconds} seconds. Finalizing with partial data.")
+        finally:
+            await self._finalize_enrichment(website_data, campaign)
+
+        return website_data
+
+    async def _finalize_enrichment(self, website_data: Website, campaign: Optional[Campaign] = None) -> None:
+        """Saves and indexes the collected data."""
+        if not website_data.url or website_data.url == "unknown":
+            return
+
+        domain_index_manager: Union[WebsiteDomainCsvManager, S3DomainManager]
         if campaign and campaign.aws and campaign.aws.profile:
             domain_index_manager = S3DomainManager(campaign=campaign)
         else:
@@ -125,7 +145,105 @@ class WebsiteScraper:
             try:
                 s3_company_manager = S3CompanyManager(campaign=campaign)
             except Exception as e:
-                logger.warning(f"Could not initialize S3CompanyManager: {e}")
+                logger.warning(f"Could not initialize S3CompanyManager for finalization: {e}")
+
+        # 1. Save to S3 if configured
+        if (
+            s3_company_manager
+            and website_data.associated_company_folder
+        ):
+            try:
+                await s3_company_manager.save_website_enrichment(
+                    website_data.associated_company_folder, website_data
+                )
+            except Exception as e:
+                logger.error(f"Failed to save website enrichment to S3 during finalization: {e}")
+
+        # 2. Process keywords
+        found_keywords = website_data.found_keywords
+        if isinstance(found_keywords, str):
+            try:
+                import json
+                found_keywords = json.loads(found_keywords.replace("'", '"'))
+            except Exception:
+                found_keywords = [found_keywords] if found_keywords else []
+        website_data.found_keywords = found_keywords
+
+        # 3. Add to domain index (local cache)
+        valid_all_emails = [
+            e for e in website_data.all_emails if is_valid_email(str(e))
+        ]
+        valid_email = (
+            website_data.email
+            if website_data.email and is_valid_email(str(website_data.email))
+            else (valid_all_emails[0] if valid_all_emails else None)
+        )
+
+        try:
+            domain_index_manager.add_or_update(
+                WebsiteDomainCsv(
+                    domain=str(website_data.url),
+                    company_name=website_data.company_name,
+                    phone=website_data.phone,
+                    email=valid_email,
+                    facebook_url=website_data.facebook_url,
+                    linkedin_url=website_data.linkedin_url,
+                    instagram_url=website_data.instagram_url,
+                    twitter_url=website_data.twitter_url,
+                    youtube_url=website_data.youtube_url,
+                    address=website_data.address,
+                    personnel=[str(p.get("name", "")) for p in website_data.personnel]
+                    if website_data.personnel
+                    else [],
+                    about_us_url=website_data.about_us_url,
+                    contact_url=website_data.contact_url,
+                    services_url=website_data.services_url,
+                    products_url=website_data.products_url,
+                    tags=website_data.tags,
+                    scraper_version=website_data.scraper_version,
+                    associated_company_folder=website_data.associated_company_folder,
+                    is_email_provider=website_data.is_email_provider,
+                    all_emails=valid_all_emails,
+                    email_contexts={
+                        str(k): v
+                        for k, v in website_data.email_contexts.items()
+                        if is_valid_email(str(k))
+                    },
+                    tech_stack=website_data.tech_stack,
+                    found_keywords=found_keywords,
+                    updated_at=datetime.utcnow(),
+                )
+            )
+        except Exception as e:
+            logger.error(f"Failed to update domain index during finalization: {e}")
+
+        # 4. Index emails for Outreach
+        if campaign:
+            try:
+                self._index_emails(website_data, campaign.name)
+            except Exception as e:
+                logger.error(f"Failed to index emails during finalization: {e}")
+
+    async def _run_internal(
+        self,
+        browser: Union[Browser, BrowserContext],
+        domain: str,
+        website_data: Website,
+        force_refresh: bool = False,
+        ttl_days: int = 30,
+        debug: bool = False,
+        campaign: Optional[Campaign] = None,
+        navigation_timeout_ms: int = 30000,
+    ) -> Website:
+        """
+        Internal implementation of website scraping.
+        """
+        domain_index_manager: Union[WebsiteDomainCsvManager, S3DomainManager]
+
+        if campaign and campaign.aws and campaign.aws.profile:
+            domain_index_manager = S3DomainManager(campaign=campaign)
+        else:
+            domain_index_manager = WebsiteDomainCsvManager()
 
         fresh_delta = timedelta(days=ttl_days)
 
@@ -145,22 +263,14 @@ class WebsiteScraper:
                 return Website(**data)
 
         logger.info(f"Starting website scraping for {domain}")
-        website_data = Website(url=domain, scraper_version=CURRENT_SCRAPER_VERSION)
-        if company_slug:
-            website_data.associated_company_folder = company_slug
+        # website_data is already initialized by run()
 
         context: BrowserContext
         if isinstance(browser, Browser):
             context = await browser.new_context(
                 ignore_https_errors=True,
-                user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
-                extra_http_headers={
-                    "Accept-Language": "en-US,en;q=0.9",
-                    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8",
-                    "Sec-Ch-Ua": '"Chromium";v="122", "Not(A:Brand";v="24", "Google Chrome";v="122"',
-                    "Sec-Ch-Ua-Mobile": "?0",
-                    "Sec-Ch-Ua-Platform": '"Windows"',
-                },
+                user_agent=self.user_agent,
+                extra_http_headers=self.headers,
             )
         else:
             context = browser
@@ -184,7 +294,7 @@ class WebsiteScraper:
 
             target_keywords: List[str] = []
             if campaign:
-                target_keywords = campaign.prospecting.queries  # Campaign model uses 'queries' instead of 'keywords' based on its definition
+                target_keywords = campaign.prospecting.queries + campaign.prospecting.keywords
 
             await self._scrape_page(page, website_data, context, target_keywords)
 
@@ -194,60 +304,65 @@ class WebsiteScraper:
                 )
                 website_data.sitemap_xml = sitemap_xml
                 if sitemap_pages:
+                    # 1. Identify high-priority URLs
                     page_map = {
                         "About Us": ["about"],
                         "Contact Us": ["contact"],
                         "Services": ["service"],
                         "Products": ["product"],
                     }
-                    scrape_tasks = []
+                    
+                    urls_to_scrape: Dict[str, Tuple[str, Callable[..., Coroutine[Any, Any, Website]]]] = {} # url -> (type, func)
+                    
+                    # Search for standard pages
                     for page_type, keywords in page_map.items():
                         for keyword in keywords:
                             for url in sitemap_pages:
-                                if keyword in url:
-                                    scrape_func: Callable[
-                                        ..., Coroutine[Any, Any, Website]
-                                    ] = self._scrape_page
+                                if url not in urls_to_scrape and keyword in url.lower():
+                                    scrape_func: Callable[..., Coroutine[Any, Any, Website]] = self._scrape_page
                                     if page_type == "Contact Us":
                                         scrape_func = self._scrape_contact_page
                                     elif page_type == "Services":
                                         scrape_func = self._scrape_services_page
                                     elif page_type == "Products":
                                         scrape_func = self._scrape_products_page
-                                    scrape_tasks.append(
-                                        self._scrape_sitemap_page(
-                                            url,
-                                            page_type,
-                                            scrape_func,
-                                            website_data,
-                                            context,
-                                            debug,
-                                            target_keywords,
-                                        )
-                                    )
-                                    break
-                            else:
-                                continue
-                            break
+                                    
+                                    urls_to_scrape[url] = (page_type, scrape_func)
+                                    break # Found one for this type
 
+                    # Search for keyword-specific pages
                     if target_keywords:
-                        added = 0
                         for url in sitemap_pages:
-                            if added >= 15:
+                            if len(urls_to_scrape) >= 10:
                                 break
-                            if any(k.lower() in url.lower() for k in target_keywords):
-                                scrape_tasks.append(
-                                    self._scrape_sitemap_page(
-                                        url,
-                                        "Keyword Search",
-                                        self._scrape_page,
-                                        website_data,
-                                        context,
-                                        debug,
-                                        target_keywords,
-                                    )
+                            if url not in urls_to_scrape and any(k.lower() in url.lower() for k in target_keywords):
+                                urls_to_scrape[url] = ("Keyword Search", self._scrape_page)
+
+                    # Fill remaining slots with generic pages if we haven't hit 10
+                    if len(urls_to_scrape) < 10:
+                        for url in sitemap_pages:
+                            if len(urls_to_scrape) >= 10:
+                                break
+                            if url not in urls_to_scrape:
+                                urls_to_scrape[url] = ("Generic", self._scrape_page)
+
+                    # 2. Execute scraping with concurrency limit
+                    semaphore = asyncio.Semaphore(3)
+
+                    async def sem_scrape(url: str, p_type: str, s_func: Callable[..., Coroutine[Any, Any, Website]]) -> None:
+                        async with semaphore:
+                            try:
+                                await self._scrape_sitemap_page(
+                                    url, p_type, s_func, website_data, context, debug, target_keywords
                                 )
-                                added += 1
+                            except Exception:
+                                pass
+
+                    scrape_tasks = [
+                        sem_scrape(url, p_type, s_func) 
+                        for url, (p_type, s_func) in urls_to_scrape.items()
+                    ]
+                    
                     if scrape_tasks:
                         await asyncio.gather(*scrape_tasks)
 
@@ -314,72 +429,6 @@ class WebsiteScraper:
             if isinstance(browser, Browser):
                 await context.close()
 
-        if (
-            s3_company_manager
-            and website_data.url
-            and website_data.associated_company_folder
-        ):
-            await s3_company_manager.save_website_enrichment(
-                website_data.associated_company_folder, website_data
-            )
-
-        # 1. Calculate keywords first
-        found_keywords = website_data.found_keywords
-        if isinstance(found_keywords, str):
-            try:
-                # Handle possible stringified list from legacy data
-                import json
-
-                found_keywords = json.loads(found_keywords.replace("'", '"'))
-            except Exception:
-                found_keywords = [found_keywords] if found_keywords else []
-
-        # 2. Add to domain index (for cache checking)
-        valid_all_emails = [
-            e for e in website_data.all_emails if is_valid_email(str(e))
-        ]
-        valid_email = (
-            website_data.email
-            if website_data.email and is_valid_email(str(website_data.email))
-            else (valid_all_emails[0] if valid_all_emails else None)
-        )
-
-        domain_index_manager.add_or_update(
-            WebsiteDomainCsv(
-                domain=website_data.url,
-                company_name=website_data.company_name,
-                phone=website_data.phone,
-                email=valid_email,
-                facebook_url=website_data.facebook_url,
-                linkedin_url=website_data.linkedin_url,
-                instagram_url=website_data.instagram_url,
-                twitter_url=website_data.twitter_url,
-                youtube_url=website_data.youtube_url,
-                address=website_data.address,
-                personnel=[str(p.get("name", "")) for p in website_data.personnel]
-                if website_data.personnel
-                else [],
-                about_us_url=website_data.about_us_url,
-                contact_url=website_data.contact_url,
-                services_url=website_data.services_url,
-                products_url=website_data.products_url,
-                tags=website_data.tags,
-                scraper_version=website_data.scraper_version,
-                associated_company_folder=website_data.associated_company_folder,
-                is_email_provider=website_data.is_email_provider,
-                all_emails=valid_all_emails,
-                email_contexts={
-                    str(k): v
-                    for k, v in website_data.email_contexts.items()
-                    if is_valid_email(str(k))
-                },
-                tech_stack=website_data.tech_stack,
-                found_keywords=found_keywords,
-                updated_at=datetime.utcnow(),
-            )
-        )
-        if campaign:
-            self._index_emails(website_data, campaign.name)
         return website_data
 
     async def _scrape_sitemap_page(

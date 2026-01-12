@@ -62,7 +62,13 @@ def test_campaign_edit_no_editor_configured(setup_test_campaign):
         assert result.exit_code == 0
         mock_get_editor_command.assert_called_once()
         mock_typer_edit.assert_called_once_with(filename=str(config_path))
-        assert "To edit the README.md as well, please configure an editor" in result.stdout
+        import re
+        def strip_ansi(text):
+            ansi_escape = re.compile(r'\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])')
+            return ansi_escape.sub('', text)
+        clean_output = strip_ansi(result.stdout)
+        normalized_output = re.sub(r'\s+', ' ', clean_output).strip()
+        assert "To edit the README.md as well, please configure an editor" in normalized_output
 
 def test_campaign_edit_with_fzf(setup_test_campaign):
     campaign_name, campaign_dir = setup_test_campaign
