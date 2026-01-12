@@ -83,6 +83,9 @@ def main(
         table.add_row("Queue Failed (Local)", str(stats.get('failed_count', 0)), "[red]Errors/Retries[/red]")
         table.add_row("Queue Completed (Local)", str(stats.get('completed_count', 0)), "[dim]Done[/dim]") 
 
+        if stats.get('remote_enrichment_completed') is not None:
+             table.add_row("Queue Completed (S3)", str(stats.get('remote_enrichment_completed')), "[dim]Done (Cloud)[/dim]")
+
         # 3. Data Funnel
         total_prospects = stats.get('prospects_count', 0)
         table.add_row("Prospects (gm-detail)", str(total_prospects), "100%")

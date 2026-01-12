@@ -189,6 +189,21 @@ def get_campaign_stats(campaign_name: str) -> Dict[str, Any]:
 
         # Active Workers
         stats["active_fargate_tasks"] = get_active_fargate_tasks(session)
+
+        # S3 Completed count for Enrichment
+        data_bucket = aws_config.get("cocli_data_bucket_name")
+        if data_bucket:
+            try:
+                s3 = session.client("s3")
+                paginator = s3.get_paginator("list_objects_v2")
+                count = 0
+                prefix = f"campaigns/{campaign_name}/queues/enrichment/completed/"
+                for page in paginator.paginate(Bucket=data_bucket, Prefix=prefix):
+                    count += page.get("KeyCount", 0)
+                stats["remote_enrichment_completed"] = count
+            except Exception as e:
+                logger.warning(f"Could not count remote completed tasks: {e}")
+                stats["remote_enrichment_completed"] = 0
     else:
         stats["using_cloud_queue"] = False
 

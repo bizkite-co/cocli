@@ -345,6 +345,13 @@ sync-enrichment-queue: ## Sync enrichment queue from S3
 sync-queues: ## Sync all local queues from S3
 	@$(VENV_DIR)/bin/cocli smart-sync queues
 
+.PHONY: completed-count
+completed-count: ## Get the count of completed enrichment tasks on S3
+	$(call validate_campaign)
+	$(eval BUCKET := $(shell ./.venv/bin/python -c "from cocli.core.config import load_campaign_config; print(load_campaign_config('$(CAMPAIGN)').get('aws', {}).get('cocli_data_bucket_name', ''))"))
+	@echo "Counting completed tasks in s3://$(BUCKET)/campaigns/$(CAMPAIGN)/queues/enrichment/completed/ ..."
+	@aws s3 ls s3://$(BUCKET)/campaigns/$(CAMPAIGN)/queues/enrichment/completed/ --recursive --summarize --profile $(AWS_PROFILE) | grep "Total Objects"
+
 .PHONY: push-queue
 push-queue: ## Push local queue items to S3 (Usage: make push-queue [CAMPAIGN=name] [QUEUE=enrichment])
 	$(call validate_campaign)
