@@ -535,6 +535,8 @@ push-rpi-base: ## Push the base image to Docker Hub
 
 .PHONY: rebuild-rpi-worker
 rebuild-rpi-worker: test check-git-sync ## Pull latest code and rebuild Docker image on Raspberry Pi
+	@echo "Stopping existing containers on $(RPI_HOST) to free resources for build..."
+	-ssh $(RPI_USER)@$(RPI_HOST) "docker stop \$$(docker ps -q --filter name=cocli-) 2>/dev/null || true"
 	ssh $(RPI_USER)@$(RPI_HOST) "cd $(RPI_DIR) && git fetch --all && git reset --hard origin/main && docker build --no-cache -t cocli-worker-rpi -f docker/rpi-worker/Dockerfile ."
 
 .PHONY: start-rpi-worker

@@ -1152,7 +1152,10 @@ async def run_supervisor(
         f"Supervisor started on host '{hostname}' for campaign '{campaign_name}'."
     )
 
-    # Shared browser instance for all tasks on this host
+    # Suppress verbose logs from boto3 and urllib3
+    logging.getLogger("boto3").setLevel(logging.WARNING)
+    logging.getLogger("botocore").setLevel(logging.WARNING)
+    logging.getLogger("urllib3").setLevel(logging.WARNING)
 
     async with async_playwright() as p:
         browser = await p.chromium.launch(
