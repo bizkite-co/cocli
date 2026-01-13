@@ -226,6 +226,10 @@ graph TD
 3.  **Cluster Stabilization:**
     *   [ ] Optimize large-scale file synchronization for RPi nodes with slow I/O.
     *   [ ] Implement worker health heartbeats on the web dashboard.
+    *   [ ] **Rapid S3 Updates**: Transition from 60-minute safety syncs to immediate "Specific File Pushes" for all models (Company, Website, Witness) to eliminate dashboard latency.
+    *   [ ] **S3 Atomic Leases**: Explore replacing the filesystem-based `lease.json` with S3-native atomic locks.
+        *   *Note*: Use `aws s3api put-object` with the `--expected-size` option (or similar conditional mechanisms) which can be made to fail if the object is already present.
+        *   *Lease Logic*: A worker can add a TTL witness file for the lease and know that no one else was working on the file. It could first try to write the file and if it failed check the date of the existing one to see if the lease expired.
 
 
 ```
