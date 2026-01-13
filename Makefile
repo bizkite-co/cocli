@@ -375,10 +375,10 @@ check-freshness: sync-scraped-areas ## Check if scraped data is fresh (warn if >
 		age=$$((now - timestamp)); \
 		hours=$$((age / 3600)); \
 		if [ $$age -gt 14400 ]; then \
-			echo "\033[0;31m[CRITICAL] Data is stale! Last scrape was $$hours hours ago.\033[0m"; \
+			printf "\033[0;31m[CRITICAL] Data is stale! Last scrape was %s hours ago.\033[0m\n" "$$hours"; \
 			echo "File: $$filename"; \
 		else \
-			echo "\033[0;32m[OK] Data is fresh. Last scrape was $$hours hours ago.\033[0m"; \
+			printf "\033[0;32m[OK] Data is fresh. Last scrape was %s hours ago.\033[0m\n" "$$hours"; \
 			echo "File: $$filename"; \
 		fi \
 	fi
@@ -462,6 +462,31 @@ publish-all: sync-companies compile-companies backfill-email-index export-emails
 generate-campaign-grid: install ## Generate 0.1-degree aligned grid for the current campaign
 	COCLI_DATA_HOME=$(shell pwd)/cocli_data uv run cocli campaign generate-grid
 
+.PHONY: hotfix-rpi
+hotfix-rpi: ## Push code hotfix to a single RPi (Usage: make hotfix-rpi RPI_HOST=xxx.local)
+	@ts=$$(date +%H:%M:%S); echo "[$$ts] Checking connectivity to $(RPI_HOST)..."
+	@if ping -c 1 -W 10 $(RPI_HOST) > /dev/null 2>&1; then \
+		ts=$$(date +%H:%M:%S); printf "[$$ts] \033[0;32m%s is ONLINE. Pushing hotfix...\033[0m\n" "$(RPI_HOST)"; \
+		scp cocli/core/queue/factory.py $(RPI_USER)@$(RPI_HOST):/tmp/factory.py; \
+		ssh $(RPI_USER)@$(RPI_HOST) " \
+			for container in \$$(docker ps --filter name=cocli- --format '{{.Names}}'); do \
+				echo \"  [\$$(date +%H:%M:%S)] Updating \$$container...\"; \
+				docker cp /tmp/factory.py \$$container:/app/cocli/core/queue/factory.py; \
+				echo \"  [\$$(date +%H:%M:%S)] Restarting \$$container...\"; \
+				docker restart \$$container > /dev/null; \
+			done \
+		"; \
+		ts=$$(date +%H:%M:%S); printf "[$$ts] \033[0;32mHotfix applied to %s\033[0m\n" "$(RPI_HOST)"; \
+	else \
+		ts=$$(date +%H:%M:%S); printf "[$$ts] \033[0;31m%s is OFFLINE or slow (10s timeout). Skipping.\033[0m\n" "$(RPI_HOST)"; \
+	fi
+
+.PHONY: hotfix-cluster
+hotfix-cluster: ## Apply hotfix to all cluster nodes, skipping offline ones
+	@$(MAKE) hotfix-rpi RPI_HOST=cocli5x0.local
+	@$(MAKE) hotfix-rpi RPI_HOST=octoprint.local
+	@$(MAKE) hotfix-rpi RPI_HOST=coclipi.local
+
 # ==============================================================================
 # Raspberry Pi Worker Management
 # ==============================================================================
@@ -514,16 +539,16 @@ shutdown-rpi: ## Safely shut down the Raspberry Pi (halts system)
 .PHONY: check-git-sync
 check-git-sync: ## Verify that the local git repo is clean and synced with upstream
 	@if [ -n "$$(git status --porcelain)" ]; then \
-		echo "\033[0;31mError: You have uncommitted changes. Please commit them first.\033[0m"; \
+		printf "\033[0;31mError: You have uncommitted changes. Please commit them first.\033[0m\n"; \
 		git status --porcelain; \
 		exit 1; \
 	fi
 	@if [ -n "$$(git log @{u}..HEAD --oneline)" ]; then \
-		echo "\033[0;31mError: You have unpushed commits. Please push them to origin first.\033[0m"; \
+		printf "\033[0;31mError: You have unpushed commits. Please push them to origin first.\033[0m\n"; \
 		git log @{u}..HEAD --oneline; \
 		exit 1; \
 	fi
-	@echo "\033[0;32mGit status is clean and synced.\033[0m"
+	@printf "\033[0;32mGit status is clean and synced.\033[0m\n"
 
 .PHONY: build-rpi-base
 build-rpi-base: check-git-sync ## Build the heavy base Docker image on RPi (Run once/rarely)

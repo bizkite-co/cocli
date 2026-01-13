@@ -229,7 +229,33 @@ graph TD
     *   [ ] **Rapid S3 Updates**: Transition from 60-minute safety syncs to immediate "Specific File Pushes" for all models (Company, Website, Witness) to eliminate dashboard latency.
     *   [ ] **S3 Atomic Leases**: Explore replacing the filesystem-based `lease.json` with S3-native atomic locks.
         *   *Note*: Use `aws s3api put-object` with the `--expected-size` option (or similar conditional mechanisms) which can be made to fail if the object is already present.
-        *   *Lease Logic*: A worker can add a TTL witness file for the lease and know that no one else was working on the file. It could first try to write the file and if it failed check the date of the existing one to see if the lease expired.
+
+## Phase 15: Cluster Observability & Distributed Alarming
+
+**Goal:** Detect failures (like the "SQS Fallback" or "Zombie Workers") automatically before they stall the campaign.
+
+1.  **Node Heartbeats**:
+    *   Update `supervisor` to write a `heartbeat.json` to `s3://<bucket>/status/<hostname>.json` every 2 minutes.
+    *   Dashboard should flag any node with a heartbeat $>5$ minutes old as "Offline."
+2.  **Stall Detection**:
+    *   Implement a dashboard monitor that compares `Total Pending` vs. `Last 15m Completions`.
+    *   If completions = 0 while pending $>0$, trigger a "Cluster Stalled" alarm.
+3.  **Self-Healing Workers**:
+    *   Implement an internal timeout in `WorkerLoop`. If a Playwright process hangs for $>10$ minutes, the worker must force-kill the browser and restart.
+
+## Phase 16: I/O & S3 Cost Optimization
+
+**Goal:** Resolve the "Slow I/O" bottleneck on RPi nodes and reduce S3 API costs associated with mass file scanning.
+
+1.  **Specific File Pushes (Eliminate Sync Latency)**:
+    *   **Current Issue**: RPi nodes spend up to 10 minutes scanning 5,000+ files to find "deltas" for S3 sync. This is extremely slow on SD cards and incurs high S3 `LIST` costs.
+    *   **Optimization**: Implement `ImmediateUploader`. When a worker finishes a `Company` enrichment, it should call `aws s3 cp` for that *one file* immediately.
+2.  **S3-Native Atomic Leases**:
+    *   **Current Issue**: `FilesystemQueue` requires a shared disk or expensive mass-syncs to manage `lease.json` files across nodes.
+    *   **Optimization**: Use `aws s3api put-object` with `--if-none-match "*"` (or similar conditional checks) to claim tasks. 
+    *   **Benefit**: This makes the queue truly distributed without requiring nodes to "see" each other's local disks.
+3.  **Local Index Caching**:
+    *   Reduce the frequency of `smart-sync down` for indexes. Use a local SQLite or persistent hash-map to track proof-of-work instead of thousands of small `.csv` files on the SD card.
 
 
 ```
