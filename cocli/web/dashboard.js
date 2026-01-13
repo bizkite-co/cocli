@@ -3,11 +3,30 @@ let categories = new Set();
 
 function checkAuth() {
     const idToken = localStorage.getItem('cocli_id_token');
-    console.log("checkAuth: Token present =", !!idToken);
     
+    // Check if token exists and is valid (not expired)
+    let isExpired = true;
     if (idToken) {
+        try {
+            const payload = JSON.parse(atob(idToken.split('.')[1]));
+            const now = Math.floor(Date.now() / 1000);
+            if (payload.exp > now) {
+                isExpired = false;
+            } else {
+                console.warn("checkAuth: Token expired.");
+            }
+        } catch (e) {
+            console.error("checkAuth: Failed to parse token.");
+        }
+    }
+
+    if (!isExpired) {
         return true;
     }
+
+    // Token is missing or expired - redirect to login
+    localStorage.removeItem('cocli_id_token');
+    localStorage.removeItem('cocli_access_token');
 
     const config = window.COCLI_CONFIG;
     if (!config || !config.userPoolId || !config.userPoolClientId) {
@@ -41,7 +60,16 @@ async function fetchReport() {
         // Fetch base report and exclusions (needed for card filtering)
         const [stats, exclData] = await Promise.all([
             fetch(`/reports/${campaign}.json?v=${version}`).then(r => r.json()),
-            fetch(`/reports/exclusions.json?v=${version}`).then(r => r.ok ? r.json() : {exclusions: []})
+            fetch(`/reports/exclusions.json?v=${version}`).then(async r => {
+                if (!r.ok) return {exclusions: []};
+                const contentType = r.headers.get("content-type");
+                if (!contentType || !contentType.includes("application/json")) return {exclusions: []};
+                try {
+                    return await r.json();
+                } catch (e) {
+                    return {exclusions: []};
+                }
+            })
         ]);
 
         // Merge exclusions so the card rendering logic works correctly

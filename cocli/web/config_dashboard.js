@@ -18,7 +18,20 @@ async function fetchConfig() {
         ];
 
         const [baseRes, exclRes, queryRes, locRes] = await Promise.all(
-            paths.map(p => fetch(p).then(r => r.ok ? r.json() : {}))
+            paths.map(p => fetch(p).then(async r => {
+                if (!r.ok) return {};
+                const contentType = r.headers.get("content-type");
+                if (!contentType || !contentType.includes("application/json")) {
+                    console.warn(`Path ${p} did not return JSON. Content-Type: ${contentType}`);
+                    return {};
+                }
+                try {
+                    return await r.json();
+                } catch (e) {
+                    console.error(`Error parsing JSON from ${p}:`, e);
+                    return {};
+                }
+            }))
         );
 
         // Merge granular data into the main stats object
@@ -145,6 +158,11 @@ function updatePendingUI() {
 }
 
 async function submitChanges() {
+    // Proactively check auth before doing anything
+    if (typeof checkAuth === 'function') {
+        if (!checkAuth()) return;
+    }
+
     const btn = document.querySelector('.btn-submit');
     const statusMsg = document.getElementById('submission-status');
     const originalText = btn.textContent;

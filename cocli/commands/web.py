@@ -148,13 +148,27 @@ def deploy(
         console.print(f"[yellow]Build directory {build_dir} not found. Skipping shell sync.[/yellow]")
 
     # 2. Generate & Upload Report
-    console.print(f"[bold]Generating report for {campaign_name}...[/bold]")
+    console.print(f"[bold]Generating reports for {campaign_name}...[/bold]")
+    from cocli.core.reporting import get_campaign_stats, get_exclusions_data, get_queries_data, get_locations_data
+    
+    # 2a. Main Report
     stats = get_campaign_stats(campaign_name)
     report_key = f"reports/{campaign_name}.json"
     s3.put_object(Bucket=bucket_name, Key=report_key, Body=json.dumps(stats, indent=2), ContentType="application/json")
-    console.print(f"[green]Report uploaded to s3://{bucket_name}/{report_key}[/green]")
+    console.print(f"  Uploaded main report to s3://{bucket_name}/{report_key}")
 
-    # 2b. Upload Config to both web and data buckets
+    # 2b. Granular Reports (for faster worker-driven updates)
+    granular = {
+        "exclusions.json": get_exclusions_data(campaign_name),
+        "queries.json": get_queries_data(campaign_name),
+        "locations.json": get_locations_data(campaign_name)
+    }
+    for filename, data in granular.items():
+        key = f"reports/{filename}"
+        s3.put_object(Bucket=bucket_name, Key=key, Body=json.dumps(data, indent=2), ContentType="application/json")
+        console.print(f"  Uploaded {key}")
+
+    # 2c. Upload Config to both web and data buckets
     if config_path.exists():
         # 1. Upload to Web Bucket (as config/config.toml for web viewing or as campaigns/...)
         config_key = f"campaigns/{campaign_name}/config.toml"
