@@ -235,19 +235,74 @@ async def execute_cli_command(args: List[str]) -> bool:
         logger.error(f"Error executing remote command: {e}")
         return False
 
-async def _run_command_poller_loop(command_queue: Any) -> None:
+async def _run_command_poller_loop(command_queue: Any, s3_client: Any, bucket_name: str, campaign_name: str, aws_config: Dict[str, Any]) -> None:
     """Polls SQS for campaign update commands and executes them."""
     logger.info("Command Poller started.")
+    from ..core.reporting import get_exclusions_data, get_queries_data, get_locations_data
+    import json
+
     while True:
         try:
             commands = await asyncio.to_thread(command_queue.poll, batch_size=1)
             for cmd in commands:
+                logger.info(f"Executing remote command: {cmd.command}")
                 success = await execute_cli_command(cmd.args)
+                
                 if success:
+                    # Identify which granular report to update
+                    report_type = None
+                    data = {}
+                    
+                    if "add-exclude" in cmd.command or "remove-exclude" in cmd.command:
+                        report_type = "exclusions"
+                        data = get_exclusions_data(campaign_name)
+                    elif "add-query" in cmd.command or "remove-query" in cmd.command:
+                        report_type = "queries"
+                        data = get_queries_data(campaign_name)
+                    elif "add-location" in cmd.command or "remove-location" in cmd.command:
+                        report_type = "locations"
+                        data = get_locations_data(campaign_name)
+                    
+                    if report_type:
+                        web_bucket = aws_config.get("cocli_web_bucket_name")
+                        if web_bucket:
+                            # 1. Upload targeted JSON
+                            report_key = f"reports/{report_type}.json"
+                            logger.info(f"Uploading targeted report: {report_key}")
+                            s3_client.put_object(
+                                Bucket=web_bucket,
+                                Key=report_key,
+                                Body=json.dumps(data, indent=2),
+                                ContentType="application/json"
+                            )
+                            
+                            # 2. Trigger CloudFront Invalidation for this specific file
+                            try:
+                                cf = boto3.client("cloudfront")
+                                domain = aws_config.get("hosted-zone-domain")
+                                subdomain = f"cocli.{domain}"
+                                
+                                # Find distribution ID
+                                dists = cf.list_distributions().get("DistributionList", {}).get("Items", [])
+                                dist_id = next((d["Id"] for d in dists if subdomain in d.get("Aliases", {}).get("Items", [])), None)
+                                
+                                if dist_id:
+                                    logger.info(f"Invalidating CloudFront cache for /{report_key}")
+                                    cf.create_invalidation(
+                                        DistributionId=dist_id,
+                                        InvalidationBatch={
+                                            'Paths': {
+                                                'Quantity': 1,
+                                                'Items': [f"/{report_key}"]
+                                            },
+                                            'CallerReference': str(time.time())
+                                        }
+                                    )
+                            except Exception as cf_err:
+                                logger.warning(f"Could not invalidate CloudFront: {cf_err}")
+
                     await asyncio.to_thread(command_queue.ack, cmd)
                 else:
-                    # For now, we ack even on failure to avoid infinite loops
-                    # unless we want to implement a retry policy.
                     await asyncio.to_thread(command_queue.ack, cmd)
                     
         except asyncio.CancelledError:
@@ -1155,7 +1210,7 @@ async def run_supervisor(
             try:
                 # Start command poller if not running
                 if command_task is None or command_task.done():
-                    command_task = asyncio.create_task(_run_command_poller_loop(command_queue))
+                    command_task = asyncio.create_task(_run_command_poller_loop(command_queue, s3_client, bucket_name, campaign_name, aws_config))
                 
                 # 0. Sync config from S3
                 sync_campaign_config(campaign_name)
@@ -1185,11 +1240,37 @@ async def run_supervisor(
                         # 3. Sync up company data
                         await asyncio.to_thread(run_smart_sync_up, "companies", bucket_name, companies_prefix, companies_local, campaign_name, aws_config, delete_remote=False, only_modified_since_minutes=15)
                         
-                        # 4. Sync up completed tasks for tracking
+                        # 4. Sync up index data (Exclusions, Email Index)
+                        indexes_prefix = "indexes/"
+                        indexes_local = local_base / "indexes"
+                        await asyncio.to_thread(run_smart_sync_up, "indexes", bucket_name, indexes_prefix, indexes_local, campaign_name, aws_config, delete_remote=False)
+
+                        # 5. Sync up completed tasks for tracking
                         completed_prefix = f"campaigns/{campaign_name}/queues/enrichment/completed/"
                         completed_local = local_base / "data" / "queues" / campaign_name / "enrichment" / "completed"
                         await asyncio.to_thread(run_smart_sync_up, "enrichment-completed", bucket_name, completed_prefix, completed_local, campaign_name, aws_config, delete_remote=False)
                         
+                        # 6. Regenerate and Upload Campaign Report to Web Bucket
+                        # This allows the web dashboard to see the new data
+                        from ..core.reporting import get_campaign_stats
+                        import json
+                        
+                        logger.info(f"Regenerating campaign report for {campaign_name}")
+                        stats = get_campaign_stats(campaign_name)
+                        report_json = json.dumps(stats, indent=2)
+                        
+                        # Determine web bucket name
+                        web_bucket = aws_config.get("cocli_web_bucket_name")
+                        if web_bucket:
+                            report_key = f"reports/{campaign_name}.json"
+                            s3_client.put_object(
+                                Bucket=web_bucket,
+                                Key=report_key,
+                                Body=report_json,
+                                ContentType="application/json"
+                            )
+                            logger.info(f"Uploaded updated report to s3://{web_bucket}/{report_key}")
+
                         last_sync_time = now
                         logger.info("Throttled background sync operations completed")
                     except Exception as e:

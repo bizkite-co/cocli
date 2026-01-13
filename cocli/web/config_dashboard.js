@@ -8,13 +8,34 @@ async function fetchConfig() {
     document.getElementById('campaign-display').textContent = campaign;
     
     try {
-        const response = await fetch(`/reports/${campaign}.json?v=${Date.now()}`);
-        if (!response.ok) throw new Error('Report data not found for this campaign.');
+        // Fetch all parts in parallel
+        const version = Date.now();
+        const paths = [
+            `/reports/${campaign}.json?v=${version}`,
+            `/reports/exclusions.json?v=${version}`,
+            `/reports/queries.json?v=${version}`,
+            `/reports/locations.json?v=${version}`
+        ];
+
+        const [baseRes, exclRes, queryRes, locRes] = await Promise.all(
+            paths.map(p => fetch(p).then(r => r.ok ? r.json() : {}))
+        );
+
+        // Merge granular data into the main stats object
+        statsData = {
+            ...baseRes,
+            ...exclRes,
+            ...queryRes,
+            ...locRes
+        };
+
+        if (!statsData.campaign_name && !baseRes.campaign_name) {
+             console.warn('Base report data not found, some stats might be missing.');
+        }
         
-        statsData = await response.json();
         renderConfig(statsData, campaign);
     } catch (error) {
-        console.error(error);
+        console.error("Failed to fetch configuration:", error);
     }
 }
 
@@ -24,9 +45,14 @@ window.addEventListener('DOMContentLoaded', () => {
     }
     console.log("Config Page Loaded");
     fetchConfig();
+    updatePendingUI();
 });
 
-let pendingChanges = [];
+let pendingChanges = JSON.parse(localStorage.getItem('cocli_pending_changes') || '[]');
+
+function savePendingToStorage() {
+    localStorage.setItem('cocli_pending_changes', JSON.stringify(pendingChanges));
+}
 
 function addPendingChange(type, value) {
     if (!value) return;
@@ -34,11 +60,33 @@ function addPendingChange(type, value) {
     const cmd = `cocli campaign add-${type} "${value}" --campaign ${campaign}`;
     if (!pendingChanges.includes(cmd)) {
         pendingChanges.push(cmd);
+        savePendingToStorage();
         updatePendingUI();
+        
+        // Add visual feedback to the lists
+        renderDraftItem(type, value);
     }
     if (type === 'query') document.getElementById('new-query').value = '';
     if (type === 'location') document.getElementById('new-location').value = '';
     if (type === 'exclude') document.getElementById('new-exclude').value = '';
+}
+
+function renderDraftItem(type, value) {
+    if (type === 'exclude') {
+        const list = document.getElementById('exclusions-list');
+        if (!list) return;
+        const li = document.createElement('li');
+        li.className = 'list-item-editable draft';
+        li.innerHTML = `<span><strong>${value}</strong> <br><small style="color:var(--status-sqs)">Pending addition...</small></span>`;
+        list.prepend(li);
+    } else if (type === 'query') {
+        const list = document.getElementById('queries-list');
+        if (!list) return;
+        const li = document.createElement('li');
+        li.className = 'list-item-editable draft';
+        li.innerHTML = `<span>${value} <br><small style="color:var(--status-sqs)">Pending addition...</small></span>`;
+        list.prepend(li);
+    }
 }
 
 function removeExisting(type, value, elementId) {
@@ -47,20 +95,34 @@ function removeExisting(type, value, elementId) {
     
     if (confirmArea) {
         confirmArea.innerHTML = `
-            <span style="color: #dc3545; font-weight: bold; font-size: 0.9em;">Are you sure?</span>
-            <button class="btn-confirm" onclick="confirmRemove('${type}', '${value}')">Yes</button>
-            <button class="btn-cancel" onclick="cancelRemove('${elementId}')">No</button>
+            <div class="confirm-box">
+                <span>Remove this?</span>
+                <div class="confirm-buttons">
+                    <button class="btn-confirm" onclick="confirmRemove('${type}', '${value}', '${elementId}')">Yes</button>
+                    <button class="btn-cancel" onclick="cancelRemove('${elementId}')">No</button>
+                </div>
+            </div>
         `;
     }
 }
 
-function confirmRemove(type, value) {
+function confirmRemove(type, value, elementId) {
     const campaign = document.getElementById('campaign-display').textContent;
     const cmd = `cocli campaign remove-${type} "${value}" --campaign ${campaign}`;
     if (!pendingChanges.includes(cmd)) {
         pendingChanges.push(cmd);
+        savePendingToStorage();
         updatePendingUI();
+        
+        // Mark existing item as draft-remove
+        const el = document.getElementById(`confirm-${elementId}`).parentElement;
+        if (el) {
+            el.classList.add('draft-remove');
+            const label = el.querySelector('span');
+            if (label) label.style.textDecoration = 'line-through';
+        }
     }
+    cancelRemove(elementId);
 }
 
 function cancelRemove(elementId) {
@@ -71,19 +133,30 @@ function cancelRemove(elementId) {
 function updatePendingUI() {
     const container = document.getElementById('pending-changes-container');
     const box = document.getElementById('pending-commands-box');
+    const countBadge = document.getElementById('pending-count');
+    
     if (pendingChanges.length > 0) {
-        container.style.display = 'block';
-        box.textContent = pendingChanges.join('\n');
+        if (container) container.style.display = 'block';
+        if (box) box.textContent = pendingChanges.join('\n');
+        if (countBadge) countBadge.textContent = pendingChanges.length;
     } else {
-        container.style.display = 'none';
+        if (container) container.style.display = 'none';
     }
 }
 
 async function submitChanges() {
     const btn = document.querySelector('.btn-submit');
+    const statusMsg = document.getElementById('submission-status');
     const originalText = btn.textContent;
+    
     btn.disabled = true;
-    btn.textContent = 'Submitting...';
+    btn.textContent = 'Connecting...';
+    
+    if (statusMsg) {
+        statusMsg.style.display = 'block';
+        statusMsg.className = 'status-info';
+        statusMsg.textContent = 'Initializing AWS connection...';
+    }
 
     const config = window.COCLI_CONFIG;
     const idToken = localStorage.getItem('cocli_id_token');
@@ -95,18 +168,14 @@ async function submitChanges() {
     }
 
     try {
-        // 1. Configure AWS SDK with Identity Pool
         AWS.config.region = config.region;
         const loginKey = `cognito-idp.${config.region}.amazonaws.com/${config.userPoolId}`;
         
         AWS.config.credentials = new AWS.CognitoIdentityCredentials({
             IdentityPoolId: config.identityPoolId,
-            Logins: {
-                [loginKey]: idToken
-            }
+            Logins: { [loginKey]: idToken }
         });
 
-        // 2. Refresh credentials
         await new Promise((resolve, reject) => {
             AWS.config.credentials.get((err) => {
                 if (err) reject(err);
@@ -115,35 +184,61 @@ async function submitChanges() {
         });
 
         const sqs = new AWS.SQS();
+        const total = pendingChanges.length;
         
-        // 3. Send each command as a separate message
-        for (const cmd of pendingChanges) {
-            const message = {
-                command: cmd,
-                timestamp: new Date().toISOString()
-            };
-
+        for (let i = 0; i < total; i++) {
+            const cmd = pendingChanges[i];
+            if (statusMsg) statusMsg.textContent = `Submitting command ${i+1} of ${total}...`;
+            
             await sqs.sendMessage({
                 QueueUrl: config.commandQueueUrl,
-                MessageBody: JSON.stringify(message)
+                MessageBody: JSON.stringify({
+                    command: cmd,
+                    timestamp: new Date().toISOString()
+                })
             }).promise();
         }
 
-        alert(`Successfully submitted ${pendingChanges.length} changes! They will be processed by the worker shortly.`);
+        if (statusMsg) {
+            statusMsg.className = 'status-success';
+            statusMsg.textContent = `Successfully submitted ${total} changes! Workers will process them shortly.`;
+        }
+        
+        // Keep the "draft" items but maybe change their label
+        document.querySelectorAll('.draft, .draft-remove').forEach(el => {
+            const small = el.querySelector('small');
+            if (small) small.textContent = 'Submitted to queue...';
+        });
+
         pendingChanges = [];
+        savePendingToStorage();
         updatePendingUI();
+        
+        // Hide success message after 10 seconds
+        setTimeout(() => {
+            if (statusMsg) statusMsg.style.display = 'none';
+        }, 10000);
+
     } catch (error) {
         console.error("Failed to submit changes:", error);
-        alert("Error submitting changes: " + error.message);
-    } finally {
-        btn.disabled = false;
+        if (statusMsg) {
+            statusMsg.className = 'status-error';
+            statusMsg.textContent = 'Error: ' + error.message;
+        }
         btn.textContent = originalText;
+        btn.disabled = false;
+    } finally {
+        btn.textContent = originalText;
+        btn.disabled = false;
     }
 }
 
 function clearPendingChanges() {
     pendingChanges = [];
+    savePendingToStorage();
     updatePendingUI();
+    // Refresh to clear visual drafts
+    fetchConfig();
 }
 
 function toggleMap(element, lat, lon, tileId) {
@@ -228,18 +323,42 @@ function renderConfig(stats, campaign, filterQuery = '') {
     const queriesList = document.getElementById('queries-list');
     if (queriesList) {
         queriesList.innerHTML = '';
+        
+        // 1. Render actual existing queries
         (stats.queries || []).forEach((q, idx) => {
             const li = document.createElement('li');
             li.className = 'list-item-editable';
             const elId = `query-${idx}`;
+            
+            const removeCmd = `cocli campaign remove-query "${q}" --campaign ${campaign}`;
+            const isPendingRemove = pendingChanges.includes(removeCmd);
+            
+            if (isPendingRemove) {
+                li.classList.add('draft-remove');
+            }
+
             li.innerHTML = `
                 <div style="display: flex; justify-content: space-between; align-items: center; width: 100%;">
-                    <span>${q}</span>
-                    <button class="btn-remove" onclick="removeExisting('query', '${q}', '${elId}')">×</button>
+                    <span style="${isPendingRemove ? 'text-decoration: line-through;' : ''}">
+                        ${q}
+                        ${isPendingRemove ? '<br><small style="color:var(--status-error)">Pending removal...</small>' : ''}
+                    </span>
+                    ${!isPendingRemove ? `<button class="btn-remove" onclick="removeExisting('query', '${q}', '${elId}')">×</button>` : ''}
                 </div>
                 <div id="confirm-${elId}" class="delete-confirm-area"></div>
             `;
             queriesList.appendChild(li);
+        });
+
+        // 2. Render new pending queries (drafts)
+        pendingChanges.forEach(cmd => {
+            if (cmd.includes('add-query')) {
+                const match = cmd.match(/add-query "([^"]+)"/);
+                if (match) {
+                    const value = match[1];
+                    renderDraftItem('query', value);
+                }
+            }
         });
     }
 
@@ -300,19 +419,44 @@ function renderConfig(stats, campaign, filterQuery = '') {
     const exclusionsList = document.getElementById('exclusions-list');
     if (exclusionsList) {
         exclusionsList.innerHTML = '';
+        
+        // 1. Render actual existing exclusions
         (stats.exclusions || []).forEach((exc, idx) => {
             const li = document.createElement('li');
             li.className = 'list-item-editable';
             const elId = `exclude-${idx}`;
             const target = exc.company_slug || exc.domain;
+            
+            // Check if this item is marked for removal in pendingChanges
+            const removeCmd = `cocli campaign remove-exclude "${target}" --campaign ${campaign}`;
+            const isPendingRemove = pendingChanges.includes(removeCmd);
+            
+            if (isPendingRemove) {
+                li.classList.add('draft-remove');
+            }
+
             li.innerHTML = `
                 <div style="display: flex; justify-content: space-between; align-items: center; width: 100%;">
-                    <span><strong>${target}</strong> ${exc.reason ? `<br><small style="color:#666">${exc.reason}</small>` : ''}</span>
-                    <button class="btn-remove" onclick="removeExisting('exclude', '${target}', '${elId}')">×</button>
+                    <span style="${isPendingRemove ? 'text-decoration: line-through;' : ''}">
+                        <strong>${target}</strong> ${exc.reason ? `<br><small style="color:#666">${exc.reason}</small>` : ''}
+                        ${isPendingRemove ? '<br><small style="color:var(--status-error)">Pending removal...</small>' : ''}
+                    </span>
+                    ${!isPendingRemove ? `<button class="btn-remove" onclick="removeExisting('exclude', '${target}', '${elId}')">×</button>` : ''}
                 </div>
                 <div id="confirm-${elId}" class="delete-confirm-area"></div>
             `;
             exclusionsList.appendChild(li);
+        });
+
+        // 2. Render new pending exclusions (drafts)
+        pendingChanges.forEach(cmd => {
+            if (cmd.includes('add-exclude')) {
+                const match = cmd.match(/add-exclude "([^"]+)"/);
+                if (match) {
+                    const value = match[1];
+                    renderDraftItem('exclude', value);
+                }
+            }
         });
     }
 }

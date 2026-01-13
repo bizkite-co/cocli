@@ -15,6 +15,7 @@ Modify the search queries and target locations for the current campaign.
 
 <div class="campaign-config-grid">
     <div class="config-sidebar">
+        {% include "components/pending_changes.njk" %}
         {% include "components/exclusions_config.njk" %}
         {% include "components/queries_config.njk" %}
     </div>
@@ -22,8 +23,6 @@ Modify the search queries and target locations for the current campaign.
         {% include "components/locations_config.njk" %}
     </div>
 </div>
-
-{% include "components/pending_changes.njk" %}
 
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>

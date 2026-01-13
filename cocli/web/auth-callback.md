@@ -10,25 +10,31 @@ title: Authenticating...
 
 <script>
     (function() {
+        console.log("Auth callback started. Hash:", window.location.hash ? "present" : "missing");
         const hash = window.location.hash.substring(1);
         const params = new URLSearchParams(hash);
         const idToken = params.get('id_token');
         const accessToken = params.get('access_token');
 
         if (idToken) {
+            console.log("Tokens found, storing in localStorage...");
             localStorage.setItem('cocli_id_token', idToken);
             localStorage.setItem('cocli_access_token', accessToken);
+            
+            // Clear the hash to avoid it hanging around in history
+            window.history.replaceState(null, null, window.location.pathname);
+            
+            console.log("Redirecting to dashboard...");
             window.location.href = '/index.html';
         } else {
-            // Check for authorization code (not using yet but good for future)
             const urlParams = new URLSearchParams(window.location.search);
             const error = urlParams.get('error');
             if (error) {
-                document.getElementById('auth-status').innerHTML = '<span class="error">Authentication error: ' + error + '</span>';
+                console.error("Auth error:", error);
+                document.getElementById('auth-status').innerHTML = '<span class="error" style="color:red">Authentication error: ' + error + '</span>';
             } else {
-                // If we reach here without tokens and no error in URL, maybe we need to redirect to login
-                document.getElementById('auth-status').textContent = 'No tokens found. Redirecting to login...';
-                // Trigger login flow if needed
+                console.warn("No tokens and no error. Hash was:", window.location.hash);
+                document.getElementById('auth-status').textContent = 'Authentication failed. No tokens received.';
             }
         }
     })();

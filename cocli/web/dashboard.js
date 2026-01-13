@@ -3,20 +3,24 @@ let categories = new Set();
 
 function checkAuth() {
     const idToken = localStorage.getItem('cocli_id_token');
-    if (!idToken) {
-        const config = window.COCLI_CONFIG;
-        if (!config || !config.userPoolId || !config.userPoolClientId) {
-            console.error("Cognito configuration missing.");
-            return;
-        }
+    console.log("checkAuth: Token present =", !!idToken);
+    
+    if (idToken) {
+        return true;
+    }
 
-        // Use /oauth2/authorize endpoint
-        const loginUrl = `https://auth.turboheat.net/oauth2/authorize?client_id=${config.userPoolClientId}&response_type=token&scope=openid+email+profile&redirect_uri=${encodeURIComponent(window.location.origin + '/auth-callback')}`;
-        
-        window.location.href = loginUrl;
+    const config = window.COCLI_CONFIG;
+    if (!config || !config.userPoolId || !config.userPoolClientId) {
+        console.error("checkAuth: Cognito configuration missing from COCLI_CONFIG.");
         return false;
     }
-    return true;
+
+    const redirectUri = window.location.origin + '/auth-callback/index.html';
+    const loginUrl = `https://auth.turboheat.net/oauth2/authorize?client_id=${config.userPoolClientId}&response_type=token&scope=openid+email+profile&redirect_uri=${encodeURIComponent(redirectUri)}`;
+    
+    console.log("checkAuth: Redirecting to login:", loginUrl);
+    window.location.href = loginUrl;
+    return false;
 }
 
 function logout() {
@@ -33,12 +37,18 @@ async function fetchReport() {
     document.getElementById('campaign-display').textContent = campaign;
     
     try {
-        const response = await fetch(`/reports/${campaign}.json?v=${Date.now()}`);
-        if (!response.ok) throw new Error('Report data not found for this campaign.');
+        const version = Date.now();
+        // Fetch base report and exclusions (needed for card filtering)
+        const [stats, exclData] = await Promise.all([
+            fetch(`/reports/${campaign}.json?v=${version}`).then(r => r.json()),
+            fetch(`/reports/exclusions.json?v=${version}`).then(r => r.ok ? r.json() : {exclusions: []})
+        ]);
+
+        // Merge exclusions so the card rendering logic works correctly
+        const combinedStats = { ...stats, ...exclData };
         
-        const stats = await response.json();
-        renderReport(stats, campaign);
-        fetchProspects(stats.campaign_name || campaign);
+        renderReport(combinedStats, campaign);
+        fetchProspects(combinedStats.campaign_name || campaign);
     } catch (error) {
         document.getElementById('report-loading').style.display = 'none';
         const errDiv = document.getElementById('report-error');

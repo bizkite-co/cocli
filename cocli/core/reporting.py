@@ -13,7 +13,7 @@ from cocli.core.exclusions import ExclusionManager
 logger = logging.getLogger(__name__)
 console = Console()
 
-__all__ = ["get_campaign_stats", "get_boto3_session", "load_campaign_config"]
+__all__ = ["get_campaign_stats", "get_boto3_session", "load_campaign_config", "get_exclusions_data", "get_queries_data", "get_locations_data"]
 
 SQSAttributeName = Literal[
     "AWSTraceHeader",
@@ -94,6 +94,34 @@ def get_active_fargate_tasks(
         logger.warning(f"Could not fetch ECS service status: {e}")
         return 0
 
+def get_exclusions_data(campaign_name: str) -> Dict[str, Any]:
+    """Returns only the exclusions list."""
+    exclusion_manager = ExclusionManager(campaign_name)
+    exclusions = exclusion_manager.list_exclusions()
+    data = {"exclusions": [exc.model_dump() for exc in exclusions]}
+    for exc in data["exclusions"]:
+        if exc.get("created_at"):
+            exc["created_at"] = exc["created_at"].isoformat()
+    return data
+
+def get_queries_data(campaign_name: str) -> Dict[str, Any]:
+    """Returns only the search queries."""
+    config = load_campaign_config(campaign_name)
+    return {"queries": config.get("prospecting", {}).get("queries", [])}
+
+def get_locations_data(campaign_name: str) -> Dict[str, Any]:
+    """Returns only the locations and their status."""
+    config = load_campaign_config(campaign_name)
+    prospecting_config = config.get("prospecting", {})
+    proximity = prospecting_config.get("proximity", 30)
+    
+    # We'll reuse the logic from get_campaign_stats but just for locations
+    # (Extracting this to a helper function later would be cleaner)
+    stats = get_campaign_stats(campaign_name)
+    return {
+        "proximity": proximity,
+        "locations": stats.get("locations", [])
+    }
 
 def get_campaign_stats(campaign_name: str) -> Dict[str, Any]:
     """
@@ -105,13 +133,8 @@ def get_campaign_stats(campaign_name: str) -> Dict[str, Any]:
     config = load_campaign_config(campaign_name)
 
     # 0. Exclusions
+    stats.update(get_exclusions_data(campaign_name))
     exclusion_manager = ExclusionManager(campaign_name)
-    exclusions = exclusion_manager.list_exclusions()
-    stats["exclusions"] = [exc.model_dump() for exc in exclusions]
-    # Convert created_at to string for JSON serialization
-    for exc in stats["exclusions"]:
-        if exc.get("created_at"):
-            exc["created_at"] = exc["created_at"].isoformat()
 
     # 1. Local Prospects Count & Sources
     manager = ProspectsIndexManager(campaign_name)
