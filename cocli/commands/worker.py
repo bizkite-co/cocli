@@ -1098,8 +1098,9 @@ async def _run_enrichment_task_loop(
                 # 3. Save company locally and push to S3 immediately
                 company.save()
                 if s3_company_manager:
-                    logger.info(f"Pusing updated company index to S3 for {task.company_slug}")
+                    logger.info(f"Pusing updated company index and website enrichment to S3 for {task.company_slug}")
                     await s3_company_manager.save_company_index(company)
+                    await s3_company_manager.save_website_enrichment(task.company_slug, website_data)
 
                 if tracker:
                     logger.info(

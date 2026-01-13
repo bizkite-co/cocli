@@ -31,12 +31,31 @@ def get_queue_manager(queue_name: str, use_cloud: bool = False, queue_type: str 
     
     if provider == "filesystem" and effective_campaign:
         from .filesystem import FilesystemGmListQueue, FilesystemGmDetailsQueue, FilesystemEnrichmentQueue
+        
+        s3_client = None
+        bucket_name = None
+        if use_cloud:
+            config = load_campaign_config(effective_campaign)
+            aws_config = config.get('aws', {})
+            bucket_name = aws_config.get("cocli_data_bucket_name") or f"cocli-data-{effective_campaign}"
+            
+            import boto3
+            aws_profile = os.getenv("AWS_PROFILE") or aws_config.get("profile") or aws_config.get("aws_profile")
+            if os.getenv("COCLI_RUNNING_IN_FARGATE"):
+                aws_profile = None
+                
+            try:
+                session = boto3.Session(profile_name=aws_profile)
+                s3_client = session.client("s3")
+            except Exception:
+                pass # Fallback to local only
+
         if queue_type in ["scrape", "gm-list"]:
-            return FilesystemGmListQueue(campaign_name=effective_campaign)
+            return FilesystemGmListQueue(campaign_name=effective_campaign, s3_client=s3_client, bucket_name=bucket_name)
         elif queue_type == "gm_list_item":
-            return FilesystemGmDetailsQueue(campaign_name=effective_campaign)
+            return FilesystemGmDetailsQueue(campaign_name=effective_campaign, s3_client=s3_client, bucket_name=bucket_name)
         elif queue_type == "enrichment":
-            return FilesystemEnrichmentQueue(campaign_name=effective_campaign)
+            return FilesystemEnrichmentQueue(campaign_name=effective_campaign, s3_client=s3_client, bucket_name=bucket_name)
 
     if use_cloud:
         config = load_campaign_config(effective_campaign) if effective_campaign else {}
