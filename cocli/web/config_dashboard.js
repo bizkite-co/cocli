@@ -2,6 +2,21 @@ let activeMap = null;
 let activeMarker = null;
 let statsData = null;
 
+function logout() {
+    localStorage.removeItem('cocli_id_token');
+    localStorage.removeItem('cocli_access_token');
+    localStorage.removeItem('cocli_pending_changes');
+    const config = window.COCLI_CONFIG;
+    if (config && config.userPoolId) {
+        const domain = "auth.turboheat.net";
+        const clientId = config.userPoolClientId;
+        const logoutUri = window.location.origin + '/signout/index.html';
+        window.location.href = `https://${domain}/logout?client_id=${clientId}&logout_uri=${encodeURIComponent(logoutUri)}`;
+    } else {
+        window.location.href = '/signout/index.html';
+    }
+}
+
 async function fetchConfig() {
     const urlParams = new URLSearchParams(window.location.search);
     const campaign = urlParams.get('campaign') || window.CAMPAIGN_NAME || 'turboship';
@@ -69,8 +84,7 @@ function savePendingToStorage() {
 
 function addPendingChange(type, value) {
     if (!value) return;
-    const campaign = document.getElementById('campaign-display').textContent;
-    const cmd = `cocli campaign add-${type} "${value}" --campaign ${campaign}`;
+    const cmd = `add-${type} "${value}"`;
     if (!pendingChanges.includes(cmd)) {
         pendingChanges.push(cmd);
         savePendingToStorage();
@@ -103,7 +117,6 @@ function renderDraftItem(type, value) {
 }
 
 function removeExisting(type, value, elementId) {
-    const campaign = document.getElementById('campaign-display').textContent;
     const confirmArea = document.getElementById(`confirm-${elementId}`);
     
     if (confirmArea) {
@@ -120,8 +133,7 @@ function removeExisting(type, value, elementId) {
 }
 
 function confirmRemove(type, value, elementId) {
-    const campaign = document.getElementById('campaign-display').textContent;
-    const cmd = `cocli campaign remove-${type} "${value}" --campaign ${campaign}`;
+    const cmd = `remove-${type} "${value}"`;
     if (!pendingChanges.includes(cmd)) {
         pendingChanges.push(cmd);
         savePendingToStorage();

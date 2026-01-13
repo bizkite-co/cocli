@@ -209,12 +209,17 @@ async def run_worker(
                 await asyncio.sleep(5)
 
 
-async def execute_cli_command(args: List[str]) -> bool:
+async def execute_cli_command(args: Optional[List[str]]) -> bool:
     """Executes a cocli command via subprocess."""
+    if not args:
+        logger.error("No arguments provided to execute_cli_command")
+        return False
     try:
-        # Prepend 'cocli' if it's not already there, but we usually send the full list
-        # We assume args is like ["campaign", "add-exclude", ...]
-        cmd = ["cocli"] + args
+        # Avoid double 'cocli' prefix
+        cmd = list(args)
+        if cmd[0] != "cocli":
+            cmd = ["cocli"] + cmd
+        
         logger.info(f"Executing remote command: {' '.join(cmd)}")
         
         result = await asyncio.to_thread(
@@ -237,29 +242,73 @@ async def execute_cli_command(args: List[str]) -> bool:
 
 async def _run_command_poller_loop(command_queue: Any, s3_client: Any, bucket_name: str, campaign_name: str, aws_config: Dict[str, Any]) -> None:
     """Polls SQS for campaign update commands and executes them."""
-    logger.info("Command Poller started.")
+    print(f"!!! COMMAND POLLER INIT START for {campaign_name} !!!", flush=True)
     from ..core.reporting import get_exclusions_data, get_queries_data, get_locations_data
+    from ..application.campaign_service import CampaignService
     import json
+    import shlex
 
     while True:
         try:
+            # Re-init service in case of config changes
+            try:
+                campaign_service = CampaignService(campaign_name)
+            except Exception as init_err:
+                logger.error(f"Failed to init CampaignService: {init_err}")
+                await asyncio.sleep(10)
+                continue
+
             commands = await asyncio.to_thread(command_queue.poll, batch_size=1)
             for cmd in commands:
                 logger.info(f"Executing remote command: {cmd.command}")
-                success = await execute_cli_command(cmd.args)
+                
+                # We now parse the command string or use args if they look like a service call
+                # Format from JS: "add-exclude <id>", "remove-exclude <id>", etc.
+                success = False
+                parts = shlex.split(cmd.command)
+                
+                # Check for direct service commands
+                if "add-exclude" in cmd.command:
+                    # identifier is usually the next part
+                    idx = parts.index("add-exclude")
+                    if idx + 1 < len(parts):
+                        success = await asyncio.to_thread(campaign_service.add_exclude, parts[idx+1])
+                elif "remove-exclude" in cmd.command:
+                    idx = parts.index("remove-exclude")
+                    if idx + 1 < len(parts):
+                        success = await asyncio.to_thread(campaign_service.remove_exclude, parts[idx+1])
+                elif "add-query" in cmd.command:
+                    idx = parts.index("add-query")
+                    if idx + 1 < len(parts):
+                        success = await asyncio.to_thread(campaign_service.add_query, parts[idx+1])
+                elif "remove-query" in cmd.command:
+                    idx = parts.index("remove-query")
+                    if idx + 1 < len(parts):
+                        success = await asyncio.to_thread(campaign_service.remove_query, parts[idx+1])
+                elif "add-location" in cmd.command:
+                    idx = parts.index("add-location")
+                    if idx + 1 < len(parts):
+                        success = await asyncio.to_thread(campaign_service.add_location, parts[idx+1])
+                elif "remove-location" in cmd.command:
+                    idx = parts.index("remove-location")
+                    if idx + 1 < len(parts):
+                        success = await asyncio.to_thread(campaign_service.remove_location, parts[idx+1])
+                else:
+                    # Fallback to CLI for anything else
+                    success = await execute_cli_command(cmd.args or parts)
                 
                 if success:
                     # Identify which granular report to update
                     report_type = None
                     data = {}
                     
-                    if "add-exclude" in cmd.command or "remove-exclude" in cmd.command:
+                    if "exclude" in cmd.command:
                         report_type = "exclusions"
                         data = get_exclusions_data(campaign_name)
-                    elif "add-query" in cmd.command or "remove-query" in cmd.command:
+                    elif "query" in cmd.command:
                         report_type = "queries"
                         data = get_queries_data(campaign_name)
-                    elif "add-location" in cmd.command or "remove-location" in cmd.command:
+                    elif "location" in cmd.command:
                         report_type = "locations"
                         data = get_locations_data(campaign_name)
                     
@@ -1156,6 +1205,7 @@ async def run_supervisor(
     logging.getLogger("boto3").setLevel(logging.WARNING)
     logging.getLogger("botocore").setLevel(logging.WARNING)
     logging.getLogger("urllib3").setLevel(logging.WARNING)
+    logging.getLogger("s3transfer").setLevel(logging.WARNING)
 
     async with async_playwright() as p:
         browser = await p.chromium.launch(
@@ -1212,20 +1262,24 @@ async def run_supervisor(
 
         while True:
             try:
-                # Start command poller if not running
+                # Start/Restart command poller if it dies
                 if command_task is None or command_task.done():
+                    if command_task and command_task.done() and command_task.exception():
+                        logger.error(f"Command poller died with exception: {command_task.exception()}")
+                    logger.info("Starting (or restarting) command poller...")
                     command_task = asyncio.create_task(_run_command_poller_loop(command_queue, s3_client, bucket_name, campaign_name, aws_config))
                 
-                # 0. Sync config from S3
-                sync_campaign_config(campaign_name)
-
-                # 0.1 Sync leases TO S3 (Frequent is fine, small files)
-                sync_active_leases_to_s3(campaign_name, s3_client, bucket_name)
+                # 0. Sync config from S3 (Throttled or in thread)
+                await asyncio.to_thread(sync_campaign_config, campaign_name)
 
                 # 0.2 Sync campaign data (V2 Queues) - throttled
                 now = time.time()
                 if now - last_sync_time > sync_interval_seconds:
                     try:
+                        # 0.1 Sync leases TO S3 (Frequent is fine, but run in thread to avoid blocking)
+                        # Moving inside throttle to reduce noise
+                        await asyncio.to_thread(sync_active_leases_to_s3, campaign_name, s3_client, bucket_name)
+
                         companies_prefix = "companies/"
                         companies_local = local_base / "companies"
                         

@@ -60,7 +60,7 @@ def get_queue_manager(queue_name: str, use_cloud: bool = False, queue_type: str 
             queue_url = os.getenv("COCLI_COMMAND_QUEUE_URL") or aws_config.get("cocli_command_queue_url")
             if not queue_url:
                  raise ValueError("COCLI_COMMAND_QUEUE_URL (env) or 'cocli_command_queue_url' (config) must be set for cloud queue mode.")
-            print(f"DEBUG: Using Command Queue URL: {queue_url}")
+            print(f"DEBUG: Factory creating CommandSQSQueue for {queue_url}", flush=True)
             return CommandSQSQueue(queue_url=queue_url, aws_profile_name=aws_profile)
         else:
             queue_url = os.getenv("COCLI_ENRICHMENT_QUEUE_URL") or aws_config.get("cocli_enrichment_queue_url")

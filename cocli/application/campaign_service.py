@@ -1,0 +1,150 @@
+import json
+import csv
+import logging
+import toml
+from typing import Optional, List, Dict, Any
+from pathlib import Path
+
+from ..core.config import get_campaign_dir, load_campaign_config
+from ..core.exclusions import ExclusionManager
+from ..core.geocoding import get_coordinates_from_city_state, get_coordinates_from_address
+
+logger = logging.getLogger(__name__)
+
+class CampaignService:
+    def __init__(self, campaign_name: str):
+        self.campaign_name = campaign_name
+        self.campaign_dir = get_campaign_dir(campaign_name)
+        if not self.campaign_dir:
+            raise ValueError(f"Campaign directory not found for {campaign_name}")
+        self.config_path = self.campaign_dir / "config.toml"
+        self.exclusion_manager = ExclusionManager(campaign_name)
+
+    def add_exclude(self, identifier: str, reason: Optional[str] = None) -> bool:
+        """Identifier can be a slug or a domain."""
+        if "." in identifier:
+            self.exclusion_manager.add_exclusion(domain=identifier, reason=reason)
+        else:
+            self.exclusion_manager.add_exclusion(slug=identifier, reason=reason)
+        return True
+
+    def remove_exclude(self, identifier: str) -> bool:
+        if "." in identifier:
+            self.exclusion_manager.remove_exclusion(domain=identifier)
+        else:
+            self.exclusion_manager.remove_exclusion(slug=identifier)
+        return True
+
+    def add_query(self, query: str) -> bool:
+        config = load_campaign_config(self.campaign_name)
+        queries = config.setdefault("prospecting", {}).get("queries", [])
+        if query not in queries:
+            queries.append(query)
+            queries.sort()
+            config["prospecting"]["queries"] = queries
+            self._save_config(config)
+            return True
+        return False
+
+    def remove_query(self, query: str) -> bool:
+        config = load_campaign_config(self.campaign_name)
+        queries = config.get("prospecting", {}).get("queries", [])
+        if query in queries:
+            queries.remove(query)
+            config["prospecting"]["queries"] = queries
+            self._save_config(config)
+            return True
+        return False
+
+    def add_location(self, location: str) -> bool:
+        config = load_campaign_config(self.campaign_name)
+        target_csv = config.get("prospecting", {}).get("target-locations-csv")
+        
+        if target_csv:
+            csv_path = self.campaign_dir / target_csv
+            rows = []
+            exists = False
+            fieldnames = ["name", "beds", "lat", "lon", "city", "state", "csv_name", "saturation_score", "company_slug"]
+            
+            if csv_path.exists():
+                with open(csv_path, "r", newline="") as f:
+                    reader = csv.DictReader(f)
+                    if reader.fieldnames:
+                        fieldnames = list(reader.fieldnames)
+                    for row in reader:
+                        if row.get("name") == location or row.get("city") == location:
+                            exists = True
+                        rows.append(row)
+            
+            if not exists:
+                new_row = {fn: "" for fn in fieldnames}
+                if "," in location:
+                    city, state = [part.strip() for part in location.split(",", 1)]
+                    new_row["city"] = city
+                    new_row["state"] = state
+                    new_row["name"] = location
+                    coords = get_coordinates_from_city_state(location)
+                else:
+                    new_row["name"] = location
+                    new_row["city"] = location
+                    coords = get_coordinates_from_address(location)
+                
+                if coords:
+                    new_row["lat"] = str(coords["latitude"])
+                    new_row["lon"] = str(coords["longitude"])
+                
+                rows.append(new_row)
+                rows.sort(key=lambda x: x.get("name") or x.get("city") or "")
+                
+                with open(csv_path, "w", newline="") as f:
+                    writer = csv.DictWriter(f, fieldnames=fieldnames)
+                    writer.writeheader()
+                    writer.writerows(rows)
+                return True
+        else:
+            locations = config.setdefault("prospecting", {}).get("locations", [])
+            if location not in locations:
+                locations.append(location)
+                locations.sort()
+                config["prospecting"]["locations"] = locations
+                self._save_config(config)
+                return True
+        return False
+
+    def remove_location(self, location: str) -> bool:
+        config = load_campaign_config(self.campaign_name)
+        target_csv = config.get("prospecting", {}).get("target-locations-csv")
+        removed = False
+        
+        if target_csv:
+            csv_path = self.campaign_dir / target_csv
+            if csv_path.exists():
+                rows = []
+                with open(csv_path, "r", newline="") as f:
+                    reader = csv.DictReader(f)
+                    fieldnames = list(reader.fieldnames) if reader.fieldnames else []
+                    for row in reader:
+                        if row.get("name") == location or row.get("city") == location:
+                            removed = True
+                            continue
+                        rows.append(row)
+                
+                if removed:
+                    with open(csv_path, "w", newline="") as f:
+                        writer = csv.DictWriter(f, fieldnames=fieldnames)
+                        writer.writeheader()
+                        writer.writerows(rows)
+                    return True
+        
+        if not removed:
+            locations = config.get("prospecting", {}).get("locations", [])
+            if location in locations:
+                locations.remove(location)
+                config["prospecting"]["locations"] = locations
+                self._save_config(config)
+                return True
+        return False
+
+    def _save_config(self, config: Dict[str, Any]) -> None:
+        with open(self.config_path, "w") as f:
+            toml.dump(config, f)
