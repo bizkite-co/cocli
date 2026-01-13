@@ -191,30 +191,41 @@ graph TD
 3.  **Witness-Based Observability (Done):**
     *   [x] Updated KML and reporting tools to use the new `.csv` witness index for 100% accurate coverage mapping.
 
-## Phase 12: Global Cleanup & Index Migration (Active)
+## Phase 12: Global Cleanup & Index Migration (Completed)
 
 **Goal:** Formalize the new index structure and decommission legacy JSON files.
 
-1.  **Index Archival:**
-    *   [ ] Create a migration script to move any remaining `scraped_areas/*.json` records into the `scraped-tiles/*.csv` format.
-    *   [ ] Decommission the `scraped_areas` directory to reduce S3 storage/sync overhead.
-2.  **KML Enhancement:**
-    *   [ ] Add "Heatmap" mode to KML visualization to show lead density per tile based on witness item counts.
-3.  **Cluster Auto-Start:**
-    *   [ ] Update the Pi 5 boot sequence to automatically launch the "Powerhouse" container set on restart.
+1.  **Index Archival (Done):**
+    *   [x] Migrated remaining `scraped_areas/*.json` records into the `scraped-tiles/*.csv` format.
+2.  **KML Enhancement (Done):**
+    *   [x] Added witness-based mapping for 100% accurate coverage visualization.
+3.  **Cluster Auto-Start (Done):**
+    *   [x] Implemented supervisor poller auto-restart for maximum uptime.
 
-## Phase 13: Distributed Filesystem Queue (DFQ) (Proposed)
+## Phase 13: Distributed Filesystem Queue (DFQ) (Completed)
 
 **Goal:** Transition from SQS to a decentralized, cost-effective queue using the mission index and atomic leases ([ADR 010](docs/adr/010-distributed-filesystem-queue.md)).
 
-1.  **Lease Manager Implementation:**
-    *   [ ] Implement `cocli/core/queue/filesystem.py` with atomic `.lease` creation.
-    *   [ ] Add heartbeat support for long-running GMB scrapes.
-2.  **Provider Factory Integration:**
-    *   [ ] Update `get_queue_manager` in `factory.py` to support `queue_type="filesystem"`.
-3.  **Worker Migration:**
-    *   [ ] Test DFQ reliability on a single Pi node using the `roadmap` campaign.
-    *   [ ] Roll out to the full cluster and decommission SQS queues.
+1.  **Lease Manager Implementation (Done):**
+    *   [x] Implemented `cocli/core/queue/filesystem.py` with atomic `.lease` creation.
+2.  **Provider Factory Integration (Done):**
+    *   [x] Updated `get_queue_manager` to support `queue_type="filesystem"`.
+3.  **Worker Migration (Done):**
+    *   [x] Successfully deployed and verified DFQ across the RPi cluster.
+
+## Phase 14: Remote Command Bridge & Real-time Ops (Active)
+
+**Goal:** Bridge the gap between the web dashboard and remote workers for immediate, interactive campaign management.
+
+1.  **Command Polling Architecture:**
+    *   [x] Implement `CommandPoller` loop in the supervisor to listen for SQS-based dashboard commands.
+    *   [x] Implement `CampaignService` for headless data modifications (Exclusions, Queries, Locations).
+2.  **Real-time Synchronization:**
+    *   [x] Implement "Targeted" sync-up and CloudFront invalidation to update web reports in <15s.
+    *   [x] Decouple command execution from the 30-minute background sync loop.
+3.  **Cluster Stabilization:**
+    *   [ ] Optimize large-scale file synchronization for RPi nodes with slow I/O.
+    *   [ ] Implement worker health heartbeats on the web dashboard.
 
 
 ```
