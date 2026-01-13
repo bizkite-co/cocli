@@ -1,9 +1,7 @@
-import json
 import csv
 import logging
 import toml
-from typing import Optional, List, Dict, Any
-from pathlib import Path
+from typing import Optional, Dict, Any
 
 from ..core.config import get_campaign_dir, load_campaign_config
 from ..core.exclusions import ExclusionManager
