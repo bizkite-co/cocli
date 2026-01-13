@@ -352,6 +352,18 @@ completed-count: ## Get the count of completed enrichment tasks on S3
 	@echo "Counting completed tasks in s3://$(BUCKET)/campaigns/$(CAMPAIGN)/queues/enrichment/completed/ ..."
 	@aws s3 ls s3://$(BUCKET)/campaigns/$(CAMPAIGN)/queues/enrichment/completed/ --recursive --summarize --profile $(AWS_PROFILE) | grep "Total Objects"
 
+.PHONY: recent-completed
+recent-completed: ## List the 5 most recently completed enrichment tasks on S3 (efficient pagination)
+	$(call validate_campaign)
+	$(eval BUCKET := $(shell ./.venv/bin/python -c "from cocli.core.config import load_campaign_config; print(load_campaign_config('$(CAMPAIGN)').get('aws', {}).get('cocli_data_bucket_name', ''))"))
+	@aws s3api list-objects-v2 \
+		--bucket $(BUCKET) \
+		--prefix campaigns/$(CAMPAIGN)/queues/enrichment/completed/ \
+		--max-items 5 \
+		--profile $(AWS_PROFILE) \
+		--query "sort_by(Contents, &LastModified)[-5:].{Key: Key, LastModified: LastModified}" \
+		--output json
+
 .PHONY: push-queue
 push-queue: ## Push local queue items to S3 (Usage: make push-queue [CAMPAIGN=name] [QUEUE=enrichment])
 	$(call validate_campaign)
