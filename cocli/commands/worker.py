@@ -462,6 +462,8 @@ async def _run_scrape_task_loop(
                         campaign_name=task.campaign_name,
                         grid_tiles=grid_tiles,
                         debug=debug,
+                        s3_client=s3_client,
+                        s3_bucket=bucket_name,
                     ):
                         if not prospect.Place_ID:
                             continue
@@ -978,11 +980,14 @@ async def _run_enrichment_task_loop(
     once: bool,
     processed_by: str,
     campaign_name: str,
+    s3_client: Optional[Any] = None,
+    bucket_name: Optional[str] = None,
     tracker: Optional[Any] = None,
 ) -> None:
     from cocli.core.enrichment import enrich_company_website
     from cocli.models.company import Company
     from cocli.models.campaign import Campaign
+    from cocli.core.s3_company_manager import S3CompanyManager
 
     try:
         campaign_obj = Campaign.load(campaign_name)
@@ -992,6 +997,17 @@ async def _run_enrichment_task_loop(
             return
         await asyncio.sleep(10)
         return
+
+    # Initialize S3 manager for immediate pushes
+    s3_company_manager = None
+    if s3_client and bucket_name:
+        try:
+            s3_company_manager = S3CompanyManager(campaign=campaign_obj)
+            # Ensure it uses the shared client
+            s3_company_manager.s3_client = s3_client
+            s3_company_manager.s3_bucket_name = bucket_name
+        except Exception as e:
+            logger.warning(f"Could not initialize S3CompanyManager for immediate push: {e}")
 
     while True:
         connected = True
@@ -1054,7 +1070,37 @@ async def _run_enrichment_task_loop(
                         pass
 
             if website_data:
+                # 1. Save enrichment data locally (website.md)
                 website_data.save(task.company_slug)
+                
+                # 2. Update Company object with newly discovered data
+                if website_data.email and not company.email:
+                    company.email = website_data.email
+                
+                if website_data.phone and not company.phone_number:
+                    company.phone_number = website_data.phone
+                
+                for kw in website_data.found_keywords:
+                    if kw not in company.keywords:
+                        company.keywords.append(kw)
+                
+                for tech in website_data.found_keywords:
+                    if tech not in company.tech_stack:
+                        company.tech_stack.append(tech)
+                
+                # Merge social links
+                for platform in ["facebook", "linkedin", "instagram", "twitter", "youtube"]:
+                    attr = f"{platform}_url"
+                    new_val = getattr(website_data, attr)
+                    if new_val and not getattr(company, attr):
+                        setattr(company, attr, new_val)
+
+                # 3. Save company locally and push to S3 immediately
+                company.save()
+                if s3_company_manager:
+                    logger.info(f"Pusing updated company index to S3 for {task.company_slug}")
+                    await s3_company_manager.save_company_index(company)
+
                 if tracker:
                     logger.info(
                         f"Enrichment Complete for {task.domain}. Bandwidth: {tracker.get_mb() - start_mb:.2f} MB"
@@ -1064,10 +1110,7 @@ async def _run_enrichment_task_loop(
                 enrichment_queue.ack(task)
             else:
                 logger.warning(f"Enrichment failed for {task.domain}.")
-                enrichment_queue.ack(
-                    task
-                )  # Still ack to remove from queue if it failed enrichment repeatedly? Or nack?
-                # Usually enrichment failure means domain dead.
+                enrichment_queue.ack(task)
 
             if once:
                 return
@@ -1274,7 +1317,7 @@ async def run_supervisor(
         from ..utils.smart_sync_up import run_smart_sync_up
         local_base = get_cocli_base_dir()
         last_sync_time: float = 0.0
-        sync_interval_seconds = 1800 # 15 minutes default
+        sync_interval_seconds = 3600 # 60 minutes (Real-time push handles most data)
         processed_by = f"{hostname}-supervisor"
 
         while True:
@@ -1363,6 +1406,8 @@ async def run_supervisor(
                             once,
                             processed_by,
                             campaign_name,
+                            s3_client=s3_client,
+                            bucket_name=bucket_name,
                             tracker=tracker,
                         )
                     )
@@ -1395,7 +1440,7 @@ async def run_supervisor(
                         await asyncio.to_thread(run_smart_sync_up, "enrichment-queue", bucket_name, queue_prefix, queue_local, campaign_name, aws_config, delete_remote=True)
                         
                         # 3. Sync up company data
-                        await asyncio.to_thread(run_smart_sync_up, "companies", bucket_name, companies_prefix, companies_local, campaign_name, aws_config, delete_remote=False, only_modified_since_minutes=15)
+                        await asyncio.to_thread(run_smart_sync_up, "companies", bucket_name, companies_prefix, companies_local, campaign_name, aws_config, delete_remote=False, only_modified_since_minutes=60)
                         
                         # 4. Sync up index data (Exclusions, Email Index)
                         indexes_prefix = "indexes/"
