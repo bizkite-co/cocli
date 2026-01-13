@@ -1289,94 +1289,25 @@ async def run_supervisor(
                 # 0. Sync config from S3 (Throttled or in thread)
                 await asyncio.to_thread(sync_campaign_config, campaign_name)
 
-                # 0.2 Sync campaign data (V2 Queues) - throttled
-                now = time.time()
-                if now - last_sync_time > sync_interval_seconds:
-                    try:
-                        # 0.1 Sync leases TO S3 (Frequent is fine, but run in thread to avoid blocking)
-                        # Moving inside throttle to reduce noise
-                        await asyncio.to_thread(sync_active_leases_to_s3, campaign_name, s3_client, bucket_name)
-
-                        companies_prefix = "companies/"
-                        companies_local = local_base / "companies"
-                        
-                        # V2 Enrichment Queue paths
-                        queue_prefix = f"campaigns/{campaign_name}/queues/enrichment/pending/"
-                        queue_local = local_base / "data" / "queues" / campaign_name / "enrichment" / "pending"
-                        
-                        logger.info("Starting throttled background sync operations (V2)")
-                        # 1. Sync down new tasks
-                        await asyncio.to_thread(run_smart_sync, "enrichment-queue", bucket_name, queue_prefix, queue_local, campaign_name, aws_config)
-                        
-                        # 2. Sync up results and leases
-                        # We use delete_remote=True for the queue so that tasks moved to completed locally are removed from S3 pending
-                        await asyncio.to_thread(run_smart_sync_up, "enrichment-queue", bucket_name, queue_prefix, queue_local, campaign_name, aws_config, delete_remote=True)
-                        
-                        # 3. Sync up company data
-                        await asyncio.to_thread(run_smart_sync_up, "companies", bucket_name, companies_prefix, companies_local, campaign_name, aws_config, delete_remote=False, only_modified_since_minutes=15)
-                        
-                        # 4. Sync up index data (Exclusions, Email Index)
-                        indexes_prefix = "indexes/"
-                        indexes_local = local_base / "indexes"
-                        await asyncio.to_thread(run_smart_sync_up, "indexes", bucket_name, indexes_prefix, indexes_local, campaign_name, aws_config, delete_remote=False)
-
-                        # 5. Sync up completed tasks for tracking
-                        completed_prefix = f"campaigns/{campaign_name}/queues/enrichment/completed/"
-                        completed_local = local_base / "data" / "queues" / campaign_name / "enrichment" / "completed"
-                        await asyncio.to_thread(run_smart_sync_up, "enrichment-completed", bucket_name, completed_prefix, completed_local, campaign_name, aws_config, delete_remote=False)
-                        
-                        # 6. Regenerate and Upload Campaign Report to Web Bucket
-                        # This allows the web dashboard to see the new data
-                        from ..core.reporting import get_campaign_stats
-                        import json
-                        
-                        logger.info(f"Regenerating campaign report for {campaign_name}")
-                        stats = get_campaign_stats(campaign_name)
-                        report_json = json.dumps(stats, indent=2)
-                        
-                        # Determine web bucket name
-                        web_bucket = aws_config.get("cocli_web_bucket_name")
-                        if web_bucket:
-                            report_key = f"reports/{campaign_name}.json"
-                            s3_client.put_object(
-                                Bucket=web_bucket,
-                                Key=report_key,
-                                Body=report_json,
-                                ContentType="application/json"
-                            )
-                            logger.info(f"Uploaded updated report to s3://{web_bucket}/{report_key}")
-
-                        last_sync_time = now
-                        logger.info("Throttled background sync operations completed")
-                    except Exception as e:
-                        logger.warning(f"Supervisor failed to smart-sync data: {e}")
-
                 # 1. Reload Config (from local file, which should be synced from S3)
                 config = load_campaign_config(campaign_name)
                 prospecting = config.get("prospecting", {})
-
                 scaling = prospecting.get("scaling", {}).get(hostname, {})
 
                 target_scrape = scaling.get("scrape", 0)
-
                 target_details = scaling.get("details", 0)
-
                 target_enrich = scaling.get("enrichment", 0)
 
                 # Update environment for delay
-
                 if "google_maps_delay_seconds" in prospecting:
                     os.environ["GOOGLE_MAPS_DELAY_SECONDS"] = str(
                         prospecting["google_maps_delay_seconds"]
                     )
 
                 # 2. Adjust Scrape Tasks
-
                 while len(scrape_tasks) < target_scrape:
                     new_id = len(scrape_tasks)
-
                     logger.info(f"Scaling UP: Starting Scrape Task {new_id}")
-
                     task = asyncio.create_task(
                         _run_scrape_task_loop(
                             browser,
@@ -1387,25 +1318,18 @@ async def run_supervisor(
                             debug,
                         )
                     )
-
                     scrape_tasks[new_id] = task
 
                 while len(scrape_tasks) > target_scrape:
                     old_id = max(scrape_tasks.keys())
-
                     logger.info(f"Scaling DOWN: Stopping Scrape Task {old_id}")
-
                     scrape_tasks[old_id].cancel()
-
                     del scrape_tasks[old_id]
 
                 # 3. Adjust Details Tasks
-
                 while len(details_tasks) < target_details:
                     new_id = len(details_tasks)
-
                     logger.info(f"Scaling UP: Starting Details Task {new_id}")
-
                     task = asyncio.create_task(
                         _run_details_task_loop(
                             browser,
@@ -1418,19 +1342,15 @@ async def run_supervisor(
                             processed_by,
                         )
                     )
-
                     details_tasks[new_id] = task
 
                 while len(details_tasks) > target_details:
                     old_id = max(details_tasks.keys())
-
                     logger.info(f"Scaling DOWN: Stopping Details Task {old_id}")
-
                     details_tasks[old_id].cancel()
-
                     del details_tasks[old_id]
 
-                # 2. Adjust Enrichment Tasks
+                # 4. Adjust Enrichment Tasks
                 while len(enrichment_tasks) < target_enrich:
                     new_id = len(enrichment_tasks)
                     logger.info(f"Scaling UP: Starting Enrichment Task {new_id}")
@@ -1447,6 +1367,69 @@ async def run_supervisor(
                         )
                     )
                     enrichment_tasks[new_id] = task
+
+                while len(enrichment_tasks) > target_enrich:
+                    old_id = max(enrichment_tasks.keys())
+                    logger.info(f"Scaling DOWN: Stopping Enrichment Task {old_id}")
+                    enrichment_tasks[old_id].cancel()
+                    del enrichment_tasks[old_id]
+
+                # 0.2 Sync campaign data (V2 Queues) - throttled (AFTER starting workers)
+                now = time.time()
+                if now - last_sync_time > sync_interval_seconds:
+                    try:
+                        # 0.1 Sync leases TO S3 (Frequent is fine, but run in thread to avoid blocking)
+                        await asyncio.to_thread(sync_active_leases_to_s3, campaign_name, s3_client, bucket_name)
+
+                        companies_prefix = "companies/"
+                        companies_local = local_base / "companies"
+                        
+                        queue_prefix = f"campaigns/{campaign_name}/queues/enrichment/pending/"
+                        queue_local = local_base / "data" / "queues" / campaign_name / "enrichment" / "pending"
+                        
+                        logger.info("Starting throttled background sync operations (V2)")
+                        # 1. Sync down new tasks
+                        await asyncio.to_thread(run_smart_sync, "enrichment-queue", bucket_name, queue_prefix, queue_local, campaign_name, aws_config)
+                        
+                        # 2. Sync up results and leases
+                        await asyncio.to_thread(run_smart_sync_up, "enrichment-queue", bucket_name, queue_prefix, queue_local, campaign_name, aws_config, delete_remote=True)
+                        
+                        # 3. Sync up company data
+                        await asyncio.to_thread(run_smart_sync_up, "companies", bucket_name, companies_prefix, companies_local, campaign_name, aws_config, delete_remote=False, only_modified_since_minutes=15)
+                        
+                        # 4. Sync up index data (Exclusions, Email Index)
+                        indexes_prefix = "indexes/"
+                        indexes_local = local_base / "indexes"
+                        await asyncio.to_thread(run_smart_sync_up, "indexes", bucket_name, indexes_prefix, indexes_local, campaign_name, aws_config, delete_remote=False)
+
+                        # 5. Sync up completed tasks for tracking
+                        completed_prefix = f"campaigns/{campaign_name}/queues/enrichment/completed/"
+                        completed_local = local_base / "data" / "queues" / campaign_name / "enrichment" / "completed"
+                        await asyncio.to_thread(run_smart_sync_up, "enrichment-completed", bucket_name, completed_prefix, completed_local, campaign_name, aws_config, delete_remote=False)
+                        
+                        # 6. Regenerate and Upload Campaign Report to Web Bucket
+                        from ..core.reporting import get_campaign_stats
+                        import json
+                        
+                        logger.info(f"Regenerating campaign report for {campaign_name}")
+                        stats = get_campaign_stats(campaign_name)
+                        report_json = json.dumps(stats, indent=2)
+                        
+                        web_bucket = aws_config.get("cocli_web_bucket_name")
+                        if web_bucket:
+                            report_key = f"reports/{campaign_name}.json"
+                            s3_client.put_object(
+                                Bucket=web_bucket,
+                                Key=report_key,
+                                Body=report_json,
+                                ContentType="application/json"
+                            )
+                            logger.info(f"Uploaded updated report to s3://{web_bucket}/{report_key}")
+
+                        last_sync_time = now
+                        logger.info("Throttled background sync operations completed")
+                    except Exception as e:
+                        logger.warning(f"Supervisor failed to smart-sync data: {e}")
 
                 while len(enrichment_tasks) > target_enrich:
                     old_id = max(enrichment_tasks.keys())
