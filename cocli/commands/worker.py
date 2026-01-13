@@ -313,6 +313,23 @@ async def _run_command_poller_loop(command_queue: Any, s3_client: Any, bucket_na
                         data = get_locations_data(campaign_name)
                     
                     if report_type:
+                        # 1. Immediate Sync-UP of indexes to S3 (so other workers see it)
+                        from ..utils.smart_sync_up import run_smart_sync_up
+                        from ..core.config import get_cocli_base_dir
+                        
+                        logger.info(f"Performing immediate sync-up of indexes for {campaign_name}")
+                        local_base = get_cocli_base_dir()
+                        await asyncio.to_thread(
+                            run_smart_sync_up, 
+                            "indexes", 
+                            bucket_name, 
+                            "indexes/", 
+                            local_base / "indexes", 
+                            campaign_name, 
+                            aws_config, 
+                            delete_remote=False
+                        )
+
                         web_bucket = aws_config.get("cocli_web_bucket_name")
                         if web_bucket:
                             # 1. Upload targeted JSON
