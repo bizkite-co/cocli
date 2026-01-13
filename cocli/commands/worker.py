@@ -1203,7 +1203,8 @@ async def run_supervisor(
 
         # Sync Throttling
         from ..core.config import get_cocli_base_dir
-        from ..utils.smart_sync import run_smart_sync, run_smart_sync_up  # type: ignore
+        from .smart_sync import run_smart_sync
+        from ..utils.smart_sync_up import run_smart_sync_up
         local_base = get_cocli_base_dir()
         last_sync_time: float = 0.0
         sync_interval_seconds = 1800 # 15 minutes default
