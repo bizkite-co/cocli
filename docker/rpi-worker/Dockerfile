@@ -41,7 +41,7 @@ RUN echo '#!/bin/bash' > docker/rpi-worker/run_worker.sh && \
     echo 'export CAMPAIGN_NAME' >> docker/rpi-worker/run_worker.sh && \
     echo 'echo "Starting worker for campaign: $CAMPAIGN_NAME"' >> docker/rpi-worker/run_worker.sh && \
     echo 'if [ "$#" -eq 0 ]; then' >> docker/rpi-worker/run_worker.sh && \
-    echo '    cocli worker scrape' >> docker/rpi-worker/run_worker.sh && \
+    echo '    cocli worker gm-list' >> docker/rpi-worker/run_worker.sh && \
     echo 'else' >> docker/rpi-worker/run_worker.sh && \
     echo '    "$@"' >> docker/rpi-worker/run_worker.sh && \
     echo 'fi' >> docker/rpi-worker/run_worker.sh && \

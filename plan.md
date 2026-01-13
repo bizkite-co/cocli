@@ -18,8 +18,8 @@ This document outlines the roadmap for transitioning `cocli` from a purely local
 1.  **Distributed Scrape Worker Architecture (Done):**
     *   [x] Implemented `ScrapeTask` model (Pydantic).
     *   [x] Implemented `cocli campaign queue-scrapes` command (Producer) to push tasks to `ScrapeTasksQueue`.
-    *   [x] Implemented `cocli worker scrape` command (Consumer) to pull tasks, execute Playwright, and push results.
-    *   [x] Implemented `cocli worker details` command (Consumer) for deep scraping.
+    *   [x] Implemented `cocli worker gm-list` command (Consumer) to pull tasks, execute Playwright, and push results.
+    *   [x] Implemented `cocli worker gm-details` command (Consumer) for deep scraping.
     *   [x] **Deploy RPi Worker:** Successfully deployed headless worker on Raspberry Pi.
     *   [x] **Containerize Scraper:** Package Playwright scraper into a Docker image.
 
@@ -173,7 +173,7 @@ graph TD
 1.  **Campaign Target Index (Done):**
     *   [x] Implemented `cocli campaign build-mission-index` to generate files in `campaigns/{name}/indexes/target-tiles/{lat}/{lon}/{phrase}.csv`.
 2.  **Global Scraped Index (Witness Files) (Done):**
-    *   [x] Update `cocli worker scrape` to write a "witness file" to `data/indexes/scraped-tiles/{lat}/{lon}/{phrase}.csv` upon completion.
+    *   [x] Update `cocli worker gm-list` to write a "witness file" to `data/indexes/scraped-tiles/{lat}/{lon}/{phrase}.csv` upon completion.
     *   [x] Enabled `smart-sync` for this global directory to share proof-of-work across the cluster.
 3.  **Idempotent Dispatcher (Done):**
     *   [x] Refactor `queue-mission` to use a set-difference approach: `Pending = TargetIndex - GlobalScrapedIndex`.

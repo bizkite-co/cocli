@@ -1338,8 +1338,8 @@ async def run_supervisor(
                 prospecting = config.get("prospecting", {})
                 scaling = prospecting.get("scaling", {}).get(hostname, {})
 
-                target_scrape = scaling.get("scrape", 0)
-                target_details = scaling.get("details", 0)
+                target_scrape = scaling.get("gm-list", scaling.get("scrape", 0))
+                target_details = scaling.get("gm-details", scaling.get("details", 0))
                 target_enrich = scaling.get("enrichment", 0)
 
                 # Update environment for delay
@@ -1496,8 +1496,8 @@ async def run_supervisor(
             await asyncio.sleep(interval)
 
 
-@app.command()
-def scrape(
+@app.command(name="gm-list")
+def gm_list(
     campaign: Optional[str] = typer.Option(
         None, "--campaign", "-c", help="Campaign name."
     ),
@@ -1508,46 +1508,27 @@ def scrape(
     ),
 ) -> None:
     """
-
-    Starts a worker node that polls for scrape tasks and executes them.
-
+    Starts a worker node that polls for Google Maps List tasks and executes them.
     """
-
     effective_campaign = campaign
-
     if not effective_campaign:
         effective_campaign = os.getenv("CAMPAIGN_NAME")
-
     if not effective_campaign:
         effective_campaign = get_campaign()
 
-    # We set up logging after we might know the campaign, but worker log files are generic
-
     log_level = logging.DEBUG if debug else logging.INFO
-
-    setup_file_logging("worker_scrape", console_level=log_level)
-
+    setup_file_logging("worker_gm_list", console_level=log_level)
     logger.info(f"Effective campaign: {effective_campaign}")
 
     if not effective_campaign:
         logger.error("No campaign specified and no active context.")
-
         raise typer.Exit(1)
 
-    # Load scraper settings from campaign config if available
-
     config = load_campaign_config(effective_campaign)
-
     prospecting_config = config.get("prospecting", {})
-
-    # Resolve worker count: CLI > Config > Default(1)
-
     final_workers = workers
-
-    if final_workers == 1:  # Default value from Typer
+    if final_workers == 1:
         final_workers = prospecting_config.get("scrape_workers", 1)
-
-    # Optional override of global scraper settings
 
     if "google_maps_delay_seconds" in prospecting_config:
         os.environ["GOOGLE_MAPS_DELAY_SECONDS"] = str(
@@ -1559,8 +1540,8 @@ def scrape(
     )
 
 
-@app.command()
-def details(
+@app.command(name="gm-details")
+def gm_details(
     campaign: Optional[str] = typer.Option(
         None, "--campaign", "-c", help="Campaign name."
     ),
@@ -1571,41 +1552,26 @@ def details(
     ),
 ) -> None:
     """
-
-    Starts a worker node that polls for details tasks (Place IDs) and scrapes them.
-
+    Starts a worker node that polls for Google Maps Details tasks (Place IDs) and scrapes them.
     """
-
     effective_campaign = campaign
-
     if not effective_campaign:
         effective_campaign = os.getenv("CAMPAIGN_NAME")
-
     if not effective_campaign:
         effective_campaign = get_campaign()
 
     log_level = logging.DEBUG if debug else logging.INFO
-
-    setup_file_logging("worker_details", console_level=log_level)
-
+    setup_file_logging("worker_gm_details", console_level=log_level)
     logger.info(f"Effective campaign: {effective_campaign}")
 
     if not effective_campaign:
         logger.error("No campaign specified and no active context.")
-
         raise typer.Exit(1)
 
-    # Load scraper settings from campaign config if available
-
     config = load_campaign_config(effective_campaign)
-
     prospecting_config = config.get("prospecting", {})
-
-    # Resolve worker count: CLI > Config > Default(1)
-
     final_workers = workers
-
-    if final_workers == 1:  # Default value from Typer
+    if final_workers == 1:
         final_workers = prospecting_config.get("details_workers", 1)
 
     if "google_maps_delay_seconds" in prospecting_config:

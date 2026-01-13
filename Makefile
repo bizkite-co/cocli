@@ -208,11 +208,11 @@ prospects-with-emails:
 debug-google-maps-scraper: install ## Run the Google Maps scraper in headed mode with debug tools for debugging
 	source $(VENV_DIR)/bin/activate && pytest tests/debug_google_maps_scraper.py
 
-.PHONY: run-worker-scrape-bg
-run-worker-scrape-bg: ## Run the cocli worker scrape command in the background
-	@echo "Starting cocli worker scrape in the background using wrapper script..."
+.PHONY: run-worker-gm-list-bg
+run-worker-gm-list-bg: ## Run the cocli worker gm-list command in the background
+	@echo "Starting cocli worker gm-list in the background using wrapper script..."
 	@nohup ./run_worker.sh > worker_scrape.log 2>&1 & \
-	echo "cocli worker scrape started in the background. Output redirected to worker_scrape.log"
+	echo "cocli worker gm-list started in the background. Output redirected to worker_scrape.log"
 
 .PHONY: watch-report
 watch-report: ## Watch the campaign report every 5 seconds
@@ -575,7 +575,7 @@ start-rpi-worker: ## Start the Docker worker on Raspberry Pi
 		-e AWS_PROFILE=$(AWS_PROFILE) \
 		-e COCLI_SCRAPE_TASKS_QUEUE_URL='$(SCRAPE_QUEUE)' \
 		-e COCLI_GM_LIST_ITEM_QUEUE_URL='$(DETAILS_QUEUE)' \
-		-v ~/.aws:/root/.aws:ro cocli-worker-rpi:latest cocli worker scrape --workers $(SCRAPE_WORKERS)"
+		-v ~/.aws:/root/.aws:ro cocli-worker-rpi:latest cocli worker gm-list --workers $(SCRAPE_WORKERS)"
 
 .PHONY: start-rpi-details-worker
 start-rpi-details-worker: ## Start the Details Worker on Raspberry Pi
@@ -588,7 +588,7 @@ start-rpi-details-worker: ## Start the Details Worker on Raspberry Pi
 		-e AWS_PROFILE=$(AWS_PROFILE) \
 		-e COCLI_GM_LIST_ITEM_QUEUE_URL='$(DETAILS_QUEUE)' \
 		-e COCLI_ENRICHMENT_QUEUE_URL='$(ENRICHMENT_QUEUE)' \
-		-v ~/.aws:/root/.aws:ro cocli-worker-rpi:latest cocli worker details --workers $(DETAILS_WORKERS)"
+		-v ~/.aws:/root/.aws:ro cocli-worker-rpi:latest cocli worker gm-details --workers $(DETAILS_WORKERS)"
 
 start-rpi-enrichment-worker: ## Start the Enrichment Worker on Raspberry Pi
 	$(eval AWS_PROFILE_ENV := $(if $(AWS_PROFILE),-e AWS_PROFILE=$(AWS_PROFILE),))
