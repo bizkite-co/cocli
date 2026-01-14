@@ -1248,6 +1248,51 @@ def sync_active_leases_to_s3(
         logger.warning(f"Failed to sync V2 leases to S3: {e}")
 
 
+async def _push_supervisor_heartbeat(
+    hostname: str,
+    campaign_name: str,
+    s3_client: Any,
+    bucket_name: str,
+    scrape_tasks: Dict[int, asyncio.Task[Any]],
+    details_tasks: Dict[int, asyncio.Task[Any]],
+    enrichment_tasks: Dict[int, asyncio.Task[Any]],
+) -> None:
+    """Collects system stats and active task counts, then pushes to S3 as a heartbeat."""
+    import json
+    try:
+        # Collect Stats (Lazy import to keep startup fast)
+        import psutil
+        
+        stats = {
+            "timestamp": datetime.now().isoformat(),
+            "hostname": hostname,
+            "campaign": campaign_name,
+            "system": {
+                "cpu_percent": psutil.cpu_percent(),
+                "memory_percent": psutil.virtual_memory().percent,
+                "memory_available_gb": round(psutil.virtual_memory().available / (1024**3), 2),
+                "load_avg": os.getloadavg(),
+            },
+            "workers": {
+                "scrape": len(scrape_tasks),
+                "details": len(details_tasks),
+                "enrichment": len(enrichment_tasks),
+            },
+            "status": "healthy"
+        }
+        
+        # S3 Key: status/<hostname>.json
+        s3_key = f"status/{hostname}.json"
+        s3_client.put_object(
+            Bucket=bucket_name,
+            Key=s3_key,
+            Body=json.dumps(stats, indent=2),
+            ContentType="application/json"
+        )
+        logger.debug(f"Heartbeat pushed to s3://{bucket_name}/{s3_key}")
+    except Exception as e:
+        logger.warning(f"Failed to push heartbeat for {hostname}: {e}")
+
 async def run_supervisor(
     headless: bool, debug: bool, campaign_name: str, interval: int
 ) -> None:
@@ -1320,9 +1365,26 @@ async def run_supervisor(
         last_sync_time: float = 0.0
         sync_interval_seconds = 3600 # 60 minutes (Real-time push handles most data)
         processed_by = f"{hostname}-supervisor"
+        
+        last_heartbeat_time: float = 0.0
+        heartbeat_interval = 900 # 15 minutes
 
         while True:
             try:
+                # 0.0 Heartbeat (Throttled)
+                now = time.time()
+                if now - last_heartbeat_time > heartbeat_interval:
+                    await _push_supervisor_heartbeat(
+                        hostname, 
+                        campaign_name, 
+                        s3_client, 
+                        bucket_name, 
+                        scrape_tasks, 
+                        details_tasks, 
+                        enrichment_tasks
+                    )
+                    last_heartbeat_time = now
+
                 # Start/Restart command poller if it dies
                 if command_task is None or command_task.done():
                     if command_task and command_task.done() and command_task.exception():

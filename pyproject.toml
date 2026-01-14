@@ -33,6 +33,7 @@ dependencies = [
     "fuzzywuzzy",
     "simplekml",
     "python-dateutil",
+    "psutil",
 ]
 
 [project.scripts]
@@ -62,6 +63,7 @@ dev = [
     "pandas-stubs",
     "types-dateparser",
     "types-pytz",
+    "types-psutil",
     "ruff",
     "boto3-stubs[s3,sqs]",
 ]

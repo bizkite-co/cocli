@@ -479,11 +479,15 @@ hotfix-rpi: ## Push code hotfix to a single RPi (Usage: make hotfix-rpi RPI_HOST
 	@ts=$$(date +%H:%M:%S); echo "[$$ts] Checking connectivity to $(RPI_HOST)..."
 	@if ping -c 1 -W 10 $(RPI_HOST) > /dev/null 2>&1; then \
 		ts=$$(date +%H:%M:%S); printf "[$$ts] \033[0;32m%s is ONLINE. Pushing hotfix...\033[0m\n" "$(RPI_HOST)"; \
-		scp cocli/core/queue/factory.py $(RPI_USER)@$(RPI_HOST):/tmp/factory.py; \
-		ssh $(RPI_USER)@$(RPI_HOST) " \
+		scp -q -r cocli pyproject.toml $(RPI_USER)@$(RPI_HOST):/tmp/; \
+		ssh -o ConnectTimeout=10 $(RPI_USER)@$(RPI_HOST) " \
 			for container in \$$(docker ps --filter name=cocli- --format '{{.Names}}'); do \
-				echo \"  [\$$(date +%H:%M:%S)] Updating \$$container...\"; \
-				docker cp /tmp/factory.py \$$container:/app/cocli/core/queue/factory.py; \
+				echo \"  [\$$(date +%H:%M:%S)] Updating code in \$$container...\"; \
+				docker cp /tmp/cocli \$$container:/app/; \
+				docker cp /tmp/pyproject.toml \$$container:/app/; \
+				echo \"  [\$$(date +%H:%M:%S)] Installing dependencies in \$$container...\"; \
+				docker exec \$$container uv pip install psutil --system > /dev/null; \
+				docker exec \$$container uv pip install . --system --no-deps > /dev/null; \
 				echo \"  [\$$(date +%H:%M:%S)] Restarting \$$container...\"; \
 				docker restart \$$container > /dev/null; \
 			done \
