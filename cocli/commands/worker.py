@@ -1354,10 +1354,15 @@ async def run_supervisor(
         aws_config = config.get("aws", {})
         bucket_name = aws_config.get("cocli_data_bucket_name")
         
-        # Resolve AWS session/client
+        # Resolve AWS session/client with larger connection pool
+        from botocore.config import Config
         aws_profile = os.getenv("AWS_PROFILE") or aws_config.get("profile")
         session = boto3.Session(profile_name=aws_profile)
-        s3_client = session.client("s3")
+        s3_config = Config(
+            max_pool_connections=50, # Increase from default 10
+            retries={'max_attempts': 5}
+        )
+        s3_client = session.client("s3", config=s3_config)
 
         # Initialize Queues
         scrape_queue = get_queue_manager("scrape", use_cloud=True, queue_type="scrape", campaign_name=campaign_name)
@@ -1376,6 +1381,12 @@ async def run_supervisor(
         
         last_heartbeat_time: float = 0.0
         heartbeat_interval = 900 # 15 minutes
+        
+        last_lease_sync_time: float = 0.0
+        lease_sync_interval = 300 # 5 minutes
+        
+        last_report_time: float = 0.0
+        report_interval = 900 # 15 minutes
 
         while True:
             try:
@@ -1468,20 +1479,35 @@ async def run_supervisor(
                 while len(enrichment_tasks) < target_enrich:
                     new_id = len(enrichment_tasks)
                     logger.info(f"Scaling UP: Starting Enrichment Task {new_id}")
-                    # Use the shared context for all workers on this host
-                    task = asyncio.create_task(
-                        _run_enrichment_task_loop(
-                            context,
-                            enrichment_queue,
-                            debug,
-                            once,
-                            processed_by,
-                            campaign_name,
-                            s3_client=s3_client,
-                            bucket_name=bucket_name,
-                            tracker=tracker,
-                        )
-                    )
+                    
+                    # TASK WRAPPER: Create fresh context for every single task to prevent memory leaks
+                    async def _run_single_enrichment_task() -> None:
+                        # Shared context from supervisor might leak, create a fresh one
+                        # ignore_https_errors is important for broad scraping
+                        tmp_context = await browser.new_context(ignore_https_errors=True)
+                        tmp_tracker = await setup_optimized_context(tmp_context)
+                        try:
+                            await _run_enrichment_task_loop(
+                                tmp_context,
+                                enrichment_queue,
+                                debug,
+                                True, # once=True: Finish after one task
+                                processed_by,
+                                campaign_name,
+                                s3_client=s3_client,
+                                bucket_name=bucket_name,
+                                tracker=tmp_tracker,
+                            )
+                        finally:
+                            await tmp_context.close()
+
+                    # Start as a persistent loop that restarts the wrapper
+                    async def _persistent_enrichment_loop() -> None:
+                        while True:
+                            await _run_single_enrichment_task()
+                            await asyncio.sleep(1) # Small breather between tasks
+
+                    task = asyncio.create_task(_persistent_enrichment_loop())
                     enrichment_tasks[new_id] = task
 
                 while len(enrichment_tasks) > target_enrich:
@@ -1492,11 +1518,14 @@ async def run_supervisor(
 
                 # 0.2 Sync campaign data (V2 Queues) - throttled (AFTER starting workers)
                 now = time.time()
+                
+                # 0.1 Sync leases TO S3 (Throttled to 5 minutes)
+                if now - last_lease_sync_time > lease_sync_interval:
+                    await asyncio.to_thread(sync_active_leases_to_s3, campaign_name, s3_client, bucket_name)
+                    last_lease_sync_time = now
+
                 if now - last_sync_time > sync_interval_seconds:
                     try:
-                        # 0.1 Sync leases TO S3 (Frequent is fine, but run in thread to avoid blocking)
-                        await asyncio.to_thread(sync_active_leases_to_s3, campaign_name, s3_client, bucket_name)
-
                         companies_prefix = "companies/"
                         companies_local = local_base / "companies"
                         
@@ -1523,29 +1552,31 @@ async def run_supervisor(
                         completed_local = local_base / "data" / "queues" / campaign_name / "enrichment" / "completed"
                         await asyncio.to_thread(run_smart_sync_up, "enrichment-completed", bucket_name, completed_prefix, completed_local, campaign_name, aws_config, delete_remote=False)
                         
-                        # 6. Regenerate and Upload Campaign Report to Web Bucket
-                        from ..core.reporting import get_campaign_stats
-                        import json
-                        
-                        logger.info(f"Regenerating campaign report for {campaign_name}")
-                        stats = get_campaign_stats(campaign_name)
-                        report_json = json.dumps(stats, indent=2)
-                        
-                        web_bucket = aws_config.get("cocli_web_bucket_name")
-                        if web_bucket:
-                            report_key = f"reports/{campaign_name}.json"
-                            s3_client.put_object(
-                                Bucket=web_bucket,
-                                Key=report_key,
-                                Body=report_json,
-                                ContentType="application/json"
-                            )
-                            logger.info(f"Uploaded updated report to s3://{web_bucket}/{report_key}")
-
                         last_sync_time = now
                         logger.info("Throttled background sync operations completed")
                     except Exception as e:
                         logger.warning(f"Supervisor failed to smart-sync data: {e}")
+
+                # 6. Regenerate and Upload Campaign Report to Web Bucket (Throttled to 15 minutes)
+                if now - last_report_time > report_interval:
+                    from ..core.reporting import get_campaign_stats
+                    import json
+                    
+                    logger.info(f"Regenerating campaign report for {campaign_name}")
+                    stats = get_campaign_stats(campaign_name)
+                    report_json = json.dumps(stats, indent=2)
+                    
+                    web_bucket = aws_config.get("cocli_web_bucket_name")
+                    if web_bucket:
+                        report_key = f"reports/{campaign_name}.json"
+                        s3_client.put_object(
+                            Bucket=web_bucket,
+                            Key=report_key,
+                            Body=report_json,
+                            ContentType="application/json"
+                        )
+                        logger.info(f"Uploaded updated report to s3://{web_bucket}/{report_key}")
+                    last_report_time = now
 
                 while len(enrichment_tasks) > target_enrich:
                     old_id = max(enrichment_tasks.keys())

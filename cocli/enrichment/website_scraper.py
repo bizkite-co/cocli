@@ -351,12 +351,16 @@ class WebsiteScraper:
 
                     async def sem_scrape(url: str, p_type: str, s_func: Callable[..., Coroutine[Any, Any, Website]]) -> None:
                         async with semaphore:
+                            page = None
                             try:
-                                await self._scrape_sitemap_page(
-                                    url, p_type, s_func, website_data, context, debug, target_keywords
-                                )
+                                page = await context.new_page()
+                                await page.goto(url, wait_until="domcontentloaded", timeout=30000)
+                                await s_func(page, website_data, context, target_keywords)
                             except Exception:
                                 pass
+                            finally:
+                                if page:
+                                    await page.close()
 
                     scrape_tasks = [
                         sem_scrape(url, p_type, s_func) 
