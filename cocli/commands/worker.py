@@ -1054,13 +1054,21 @@ async def _run_enrichment_task_loop(
                 heartbeat_task = asyncio.create_task(_heartbeat_loop())
 
             try:
-                website_data = await enrich_company_website(
-                    browser=browser_or_context,
-                    company=company,
-                    campaign=campaign_obj,
-                    force=task.force_refresh,
-                    debug=debug,
+                # WATCHDOG: Strict 5-minute timeout for the entire enrichment operation
+                # to prevent zombie Playwright processes from locking up the Pi.
+                website_data = await asyncio.wait_for(
+                    enrich_company_website(
+                        browser=browser_or_context,
+                        company=company,
+                        campaign=campaign_obj,
+                        force=task.force_refresh,
+                        debug=debug,
+                    ),
+                    timeout=300 # 5 minutes
                 )
+            except asyncio.TimeoutError:
+                logger.error(f"WATCHDOG: Enrichment for {task.domain} timed out after 5 minutes. Force-killing task.")
+                website_data = None
             finally:
                 if heartbeat_task:
                     heartbeat_task.cancel()
