@@ -1,10 +1,10 @@
 # ADR 011: S3-Native Conditional Leases for DFQ
 
 ## Status
-Proposed
+Implemented (2026-01-13)
 
 ## Context
-Our current Distributed Filesystem Queue (DFQ) relies on local atomic file operations (`os.O_EXCL`) and periodic S3 synchronization via the `supervisor`. 
+Our initial Distributed Filesystem Queue (DFQ) design relied on local atomic file operations (`os.O_EXCL`) and periodic S3 synchronization via the `supervisor`. 
 
 As our data scales (10,000+ companies, 4,000+ queue items), this model is hitting bottlenecks:
 1. **Sync Latency**: A 60-second sync window allows for race conditions where multiple nodes claim the same task.

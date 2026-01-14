@@ -3,21 +3,31 @@
 ## Objective
 Optimize the Distributed Filesystem Queue (DFQ) to eliminate race conditions and reduce I/O bottlenecks on Raspberry Pi workers using S3-native atomic operations.
 
-## Current Status (2026-01-13)
-- **S3-Native Atomic Leases (ADR 011):** Successfully implemented. Workers now use S3 `PutObject` with `IfNoneMatch: '*'` for task leases, providing global atomicity and eliminating sync-related race conditions.
-- **Mission Index Optimization:** Refactored `GmList` polling to use `os.walk` with randomization, efficiently handling 35,000+ mission index tiles without memory exhaustion.
-- **Real-time Discovery:** Implemented S3 task discovery fallback, allowing workers to find new tasks immediately when the local queue is empty.
-- **Immediate Data Pushes:** Workers now push `website.md` enrichment data and company index updates to S3 immediately upon completion, ensuring real-time dashboard updates and data durability.
-- **Command Bridge:** Fully functional. Command polling is active and integrated with the new real-time push model.
+## Current Status (2026-01-14)
+- **Stability Achieved:** The Pi 5 powerhouse (`cocli5x0`) is stable after implementing **Fresh BrowserContexts** per task and aggressive **S3 Throttling**.
+- **S3-Native Atomic Leases (ADR 011):** Verified live. Workers use S3 `PutObject` with `IfNoneMatch: '*'` for task leases, providing global atomicity.
+- **Current Throttling (Protective):**
+    - **Pi 5 Workers:** Reduced to 2 (from 8) to mitigate connection pool exhaustion.
+    - **Lease Syncing:** Throttled to 5 minutes (Note: largely redundant now that atomic leases are live).
+    - **Reporting:** Throttled to 15 minutes.
+    - **S3 Connection Pool:** Increased to 50 to handle concurrent worker requests.
+
+## Bottlenecks & Inefficiencies
+- **Finding Work (Listing Latency):** Workers likely scan the entire `pending/` prefix (4,400+ items) to find one task, leading to long "idle" periods.
+- **Lazy Syncing (Companies Folder):** The supervisor currently performs a full `aws s3 sync` of the `companies/` folder. This is a "lazy implementation" that wastes I/O and bandwidth; workers only need the specific companies they are currently enriching.
+- **Connection Pool Exhaustion:** Even with 2 workers, the supervisor's background sync loops were saturating the S3 connection pool, indicating a need for better asynchronous management.
 
 ## Next Steps
-1.  **Verify Cluster Stability:** Monitor RPi nodes (`cocli5x0`, `octoprint`) to ensure the S3-native lease model performs well under high concurrency.
-2.  **Performance Audit:** Review S3 API costs and latency after 24 hours of operation with the new conditional lease model.
-3.  **Scale Up:** Bring `coclipi` online with the updated container image to join the enrichment batch.
+1.  **Refactor "Finding Work":** Replace broad S3 listing/syncing with a targeted `list-objects-v2` strategy using `max-items` and randomized prefix sharding.
+2.  **Eliminate Global Companies Sync:** Remove the supervisor-level `aws s3 sync` of the entire companies folder. Shift to a "Point-to-Point" model where only required data is fetched/pushed by the worker.
+3.  **Clean up Redundant Code:** Remove the supervisor's lease-sync loop now that S3-Native Atomic Leases are handling coordination at the worker level.
+4.  **Scale Up (Re-test):** Once I/O and listing are optimized, increase Pi 5 workers back to 4-6 to maximize throughput.
 
 ## TODO Track
 - [x] **ADR 011:** Implement S3-native conditional writes for leases.
-- [x] **Mission Index Polling:** Optimize for large-scale directory traversal (30k+ files).
-- [x] **Immediate Pushes:** Ensure all enrichment results are pushed to S3 instantly.
-- [ ] **Heartbeat Monitoring:** Implement dashboard visibility for node heartbeats stored in S3.
+- [x] **Fresh Contexts:** Reset Chromium memory per task to prevent Pi lockups.
+- [x] **S3 Throttling:** Immediate mitigation of connection pool exhaustion.
+- [ ] **S3 Listing Optimization:** Implement efficient pagination/sharding for task discovery.
+- [ ] **Point-to-Point Data Model:** Replace global folder sync with task-specific data fetching.
+- [ ] **Heartbeat Monitoring:** Implement dashboard visibility for node heartbeats.
 - [ ] **Stall Detection:** Add logic to detect and alert on stalled task prefixes in S3.

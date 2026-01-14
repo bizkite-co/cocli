@@ -17,7 +17,7 @@ Implement a "Filesystem-as-a-Queue" (DFQ) provider that relies on local atomic f
 2. **Lease Lifecycle**:
    The lifecycle is split into two layers to balance process-level safety with cluster-wide efficiency:
    - [Local Lifecycle](010-distributed-filesystem-queue/local-lifecycle.md): Atomic process-level locking using `O_EXCL`.
-   - [S3/Global Lifecycle](010-distributed-filesystem-queue/s3-lifecycle.md): Throttled distributed coordination via S3 sync loops.
+   - [S3/Global Lifecycle](010-distributed-filesystem-queue/s3-lifecycle.md): Globally atomic coordination via **S3-Native Conditional Leases** (Upgraded via [ADR 011](011-s3-native-conditional-leases.md)).
 
 3. **Provider Selection**:
    - Controlled by `COCLI_QUEUE_TYPE` (env).

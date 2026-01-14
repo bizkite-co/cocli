@@ -1,39 +1,34 @@
 # S3/Global Lease Lifecycle
 
-This document describes how coordination occurs across multiple nodes in the cluster (e.g., Pi-A vs Pi-B) using S3 as a shared state store.
+This document describes how coordination occurs across multiple nodes in the cluster (e.g., Pi-A vs Pi-B) using S3 as a shared state store with **Atomic Conditional Writes**.
 
-## Relaxed Consistency (Sync Loop)
-Because S3 does not natively support atomic `O_EXCL` operations across different clients without complex locking, we use a "Sync and Converge" approach managed by the **Supervisor**.
+## Atomic Global Claim (ADR 011)
+We use S3's support for `If-None-Match: "*"` to implement a globally atomic lock. This eliminates the race conditions inherent in simple sync-based coordination.
 
-1. **Sync Up (5m)**: Every 5 minutes, the Supervisor pushes all locally held `lease.json` files to S3.
-2. **Sync Down (60m)**: Every 60 minutes (or on demand), the Supervisor pulls down the state of the `pending/` directory from S3 to see which tasks other nodes have claimed.
+1. **Atomic Put**: When a worker identifies a task candidate, it attempts to write a `lease.json` directly to S3.
+2. **Precondition Check**: The S3 API will only allow the write to succeed if the file **does not already exist**.
+   - **Success (200 OK)**: Task is claimed. No other node can claim it.
+   - **Failure (412 Precondition Failed)**: Another node has already claimed the task. The worker must skip to the next candidate.
 
 ## Global Sequence Diagram
 
 ```mermaid
 sequenceDiagram
-    participant PiA as Node A (Supervisor)
+    participant PiA as Node A (Worker)
     participant S3 as AWS S3 Bucket
-    participant PiB as Node B (Supervisor)
+    participant PiB as Node B (Worker)
 
-    Note over PiA: Node A claims Task 123 locally
-    PiA->>S3: Upload lease.json (Standard PutObject)
-    Note over S3: Task 123 is now marked 'Active'
+    PiA->>S3: PutObject(lease.json, IfNoneMatch='*')
+    S3-->>PiA: 200 OK (Lock Acquired)
+    Note over PiA: Node A starts processing Task 123
     
-    Note over PiB: Node B shuffles queue
-    PiB->>S3: Download pending/ (Sync Down)
-    Note over PiB: Node B sees Task 123 has lease.json
-    Note over PiB: Node B ignores Task 123
-    
-    Note right of S3: "Last Writer Wins" logic applied if collision occurs
+    PiB->>S3: PutObject(lease.json, IfNoneMatch='*')
+    S3-->>PiB: 412 Precondition Failed
+    Note over PiB: Node B ignores Task 123 (Locked)
 ```
 
-## The "Safe Race" Window
-The **5-minute reporting interval** creates a window where Node B might claim a task before Node A's lease has been uploaded to S3. 
+## Discovery vs. Synchronization
+While the **Claim** is atomic, the **Discovery** of tasks still relies on listing the S3 `pending/` prefix.
 
-* **Consequence**: Two nodes might enrich the same website simultaneously.
-* **Mitigation**: Our tasks are **idempotent**. Both nodes will write the exact same result to the same company folder on S3. The only cost is a small amount of duplicate bandwidth and compute.
-* **Benefit**: Throttling the reporting to 5 minutes drastically reduces S3 "List" costs and prevents I/O lockups on Raspberry Pi SD cards during massive file scans.
-
-## Potential Future: S3 Conditional Writes
-We are exploring moving to S3-native atomic leases using the `--if-none-match "*"` header. This would allow a worker to claim a task globally in one atomic step without waiting for a supervisor sync loop.
+* **Immediate Uploader**: Once a node completes a task, it pushes the results and removes the S3 task/lease immediately.
+* **Sync Interval**: Throttled sync loops (every 5–15 minutes) are still used for background maintenance, but the core task distribution no longer depends on them.
