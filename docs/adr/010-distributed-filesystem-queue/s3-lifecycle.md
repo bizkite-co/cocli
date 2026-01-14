@@ -28,7 +28,8 @@ sequenceDiagram
 ```
 
 ## Discovery vs. Synchronization
-While the **Claim** is atomic, the **Discovery** of tasks still relies on listing the S3 `pending/` prefix.
+While the **Claim** is atomic, the **Discovery** of tasks still relies on listing S3 prefixes.
 
 * **Immediate Uploader**: Once a node completes a task, it pushes the results and removes the S3 task/lease immediately.
+* **Randomized Sharding**: To avoid scanning the entire `pending/` prefix, workers use [Randomized Prefix Sharding](sharding.md) to discover tasks in subsets of the keyspace.
 * **Sync Interval**: Throttled sync loops (every 5–15 minutes) are still used for background maintenance, but the core task distribution no longer depends on them.

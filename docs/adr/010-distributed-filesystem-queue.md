@@ -9,23 +9,20 @@ We are currently using AWS SQS for distributing scrape and enrichment tasks. Whi
 ## Decision
 Implement a "Filesystem-as-a-Queue" (DFQ) provider that relies on local atomic file operations combined with a high-frequency S3 synchronization loop.
 
-### Architecture (V2)
-1. **Queue Structure**:
-   - **Local Path**: `~/.local/share/cocli/data/queues/<campaign>/<queue_name>/`
-   - **S3 Path**: `s3://<bucket>/campaigns/<campaign>/queues/<queue_name>/`
+### Architecture (Current)
+The DFQ has evolved significantly. For the current technical implementation, lifecycles, and sharding strategies, see:
 
-2. **Lease Lifecycle**:
-   The lifecycle is split into two layers to balance process-level safety with cluster-wide efficiency:
-   - [Local Lifecycle](010-distributed-filesystem-queue/local-lifecycle.md): Atomic process-level locking using `O_EXCL`.
-   - [S3/Global Lifecycle](010-distributed-filesystem-queue/s3-lifecycle.md): Globally atomic coordination via **S3-Native Conditional Leases** (Upgraded via [ADR 011](011-s3-native-conditional-leases.md)).
+**[docs/adr/010-distributed-filesystem-queue/README.md](010-distributed-filesystem-queue/README.md)**
 
-3. **Provider Selection**:
-   - Controlled by `COCLI_QUEUE_TYPE` (env).
-   - Values: `sqs` (default), `filesystem`.
+### Implementation Details (V3)
+1. **[Local Lifecycle](010-distributed-filesystem-queue/local-lifecycle.md)**: Process-level locking.
+2. **[S3/Global Lifecycle](010-distributed-filesystem-queue/s3-lifecycle.md)**: Atomic coordination via ADR 011.
+3. **[Sharding Strategy](010-distributed-filesystem-queue/sharding.md)**: Optimized discovery.
+4. **[Point-to-Point Data Model](010-distributed-filesystem-queue/point-to-point.md)**: Reduced sync overhead.
 
 ## Consequences
 - **Pros**: Zero cost, works offline (with local sync), no SQS limits, simplified debugging.
 - **Cons**: 
   - **At Least Once**: Requires tasks to be idempotent.
-  - **Latency**: Task distribution speed is tied to the `smart-sync` interval.
-  - **Atomicity**: Relies on local filesystem `O_EXCL` and "Last Writer Wins" S3 logic.
+  - **Latency**: Discovery is randomized; nearly-empty queues may have slight pickup delays.
+  - **Connectivity**: Global atomicity requires active S3 access (ADR 011).

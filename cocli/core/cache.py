@@ -1,4 +1,3 @@
-import os
 import json
 import datetime
 from pathlib import Path
@@ -19,20 +18,22 @@ def get_cache_path(campaign: Optional[str] = None) -> Path:
     return get_cocli_base_dir() / CACHE_FILE_NAME
 
 def _get_most_recent_mtime(directory: Path) -> Optional[float]:
-    """Recursively gets the most recent modification time of files in a directory."""
-    max_mtime = None
+    """Gets the most recent modification time of the directory or its direct children."""
     if not directory.exists():
         return None
-    for root, _, files in os.walk(directory):
-        for file in files:
-            try:
-                mtime = (Path(root) / file).stat().st_mtime
-                if max_mtime is None or mtime > max_mtime:
-                    max_mtime = mtime
-            except FileNotFoundError:
-                # This can happen if we encounter a broken symlink.
-                # We can safely ignore it for the purpose of checking modification times.
-                pass
+    
+    # Fast approach: Just check the directory itself and its immediate entries
+    # instead of a full recursive walk which is too slow for large datasets.
+    max_mtime = directory.stat().st_mtime
+    
+    try:
+        for entry in directory.iterdir():
+            mtime = entry.stat().st_mtime
+            if mtime > max_mtime:
+                max_mtime = mtime
+    except Exception:
+        pass
+        
     return max_mtime
 
 def is_cache_valid(campaign: Optional[str] = None) -> bool:
@@ -49,11 +50,13 @@ def is_cache_valid(campaign: Optional[str] = None) -> bool:
     companies_mtime = _get_most_recent_mtime(companies_dir)
     people_mtime = _get_most_recent_mtime(people_dir)
 
-    if companies_mtime and companies_mtime > cache_mtime:
+    if companies_mtime is not None and companies_mtime > cache_mtime:
         return False
-    if people_mtime and people_mtime > cache_mtime:
+    if people_mtime is not None and people_mtime > cache_mtime:
         return False
 
+    # If directories are empty/missing but cache exists, we consider it valid 
+    # (or build_cache will find 0 items)
     return True
 
 def read_cache(campaign: Optional[str] = None) -> List[Dict[str, Any]]:

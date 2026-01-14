@@ -65,6 +65,7 @@ queries = ["software company"]
     mocker.patch("cocli.core.geocoding.get_coordinates_from_city_state", return_value={"latitude": 40.7596, "longitude": -111.8868})
     mocker.patch("cocli.scrapers.google_maps.scrape_google_maps", return_value=async_generator())
     mocker.patch("cocli.commands.campaign.prospecting.scrape_google_maps", return_value=async_generator())
+    mocker.patch("cocli.models.company.Company.get_all", return_value=[]) # <--- Added this line
     mocker.patch("cocli.core.importing.import_prospect", return_value=type('obj', (object,), {'name': 'mock_company', 'domain': 'mock.com', 'slug': 'mock-company', 'email': None}))
     mocker.patch("cocli.commands.campaign.prospecting.import_prospect", return_value=type('obj', (object,), {'name': 'mock_company', 'domain': 'mock.com', 'slug': 'mock-company', 'email': None}))
 

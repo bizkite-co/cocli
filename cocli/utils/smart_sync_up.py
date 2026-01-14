@@ -1,10 +1,35 @@
 import boto3
+import json
 import logging
+import time
 from pathlib import Path
+from datetime import datetime, timedelta, timezone
 from concurrent.futures import ThreadPoolExecutor
 from typing import Dict, Any, Optional
 
+from ..core.config import get_cocli_base_dir
+
 logger = logging.getLogger(__name__)
+
+def get_state_file() -> Path:
+    return get_cocli_base_dir() / ".smart_sync_up_state.json"
+
+def load_state() -> Dict[str, Any]:
+    state_file = get_state_file()
+    if state_file.exists():
+        try:
+            data = json.loads(state_file.read_text())
+            if isinstance(data, dict):
+                return data
+        except Exception as e:
+            logger.error(f"Failed to load state file: {e}")
+    return {}
+
+def save_state(state: Dict[str, Any]) -> None:
+    try:
+        get_state_file().write_text(json.dumps(state))
+    except Exception as e:
+        logger.error(f"Failed to save state file: {e}")
 
 def upload_file(s3_client: Any, bucket: str, local_path: Path, key: str) -> None:
     try:
@@ -25,6 +50,14 @@ def run_smart_sync_up(
     only_modified_since_minutes: Optional[int] = None
 ) -> None:
     logger.info(f"Starting smart sync UP for {target_name} to s3://{bucket_name}/{prefix}")
+    
+    # Load state
+    state = load_state()
+    state_key = f"{campaign_name}_{target_name}_last_sync_up"
+    last_sync_ts = state.get(state_key)
+    
+    sync_start_time = time.time()
+    
     profile_name = aws_config.get("profile") or aws_config.get("aws_profile")
     
     try:
@@ -41,11 +74,18 @@ def run_smart_sync_up(
     local_files: Dict[str, Path] = {}
     if local_base.exists():
         logger.info(f"Scanning local directory: {local_base}")
+        
+        # Use state-based cutoff OR explicit minutes cutoff
         cutoff = None
         if only_modified_since_minutes:
-            from datetime import datetime, timedelta
-            cutoff = (datetime.now() - timedelta(minutes=only_modified_since_minutes)).timestamp()
-            logger.info(f"Filtering for files modified since {only_modified_since_minutes} minutes ago")
+            cutoff = (datetime.now(timezone.utc) - timedelta(minutes=only_modified_since_minutes)).timestamp()
+        elif last_sync_ts:
+            # Use state with a 10-second overlap to ensure no gaps from disk latency
+            cutoff = last_sync_ts - 10
+            
+        if cutoff:
+            cutoff_dt = datetime.fromtimestamp(cutoff, tz=timezone.utc)
+            logger.info(f"Filtering for files modified since {cutoff_dt.isoformat()}")
 
         for path in local_base.rglob("*"):
             if path.is_file():
@@ -108,4 +148,7 @@ def run_smart_sync_up(
                 Delete={'Objects': [{'Key': k} for k in batch]}
             )
 
+    # Save state
+    state[state_key] = sync_start_time
+    save_state(state)
     logger.info(f"Smart sync up for {target_name} complete.")

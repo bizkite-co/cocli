@@ -46,13 +46,15 @@ def test_filesystem_queue(tmp_path):
         print("--- Testing ACK ---")
         # V2: ACK should remove the task directory in pending
         q1.ack(task1)
-        task1_dir = q1._get_task_dir(task1.ack_token)
+        # In sharded structure, the task dir is pending/<shard>/<task_id>
+        shard1 = task1.ack_token[0]
+        task1_dir = q1.pending_dir / shard1 / task1.ack_token
         assert not task1_dir.exists()
         print("ACK successful.")
         
         print("--- Testing Stale Lease Reclamation ---")
         # Manual lease creation for a fake task
-        fake_id = "29.5/-98.5/stale_task.csv"
+        fake_id = "29.5_-98.5_stale_task" # Simplified ID for testing shard
         (tile_path / "stale_task.csv").write_text("stale")
         
         # V2: Lease is inside task dir in pending

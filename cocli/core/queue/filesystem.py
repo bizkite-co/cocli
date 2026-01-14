@@ -1,7 +1,7 @@
 import os
 import json
 import logging
-from typing import List, Type, TypeVar, Any, Optional, Union
+from typing import List, Type, TypeVar, Any, Optional, Union, Dict
 from pathlib import Path
 from datetime import datetime, timedelta, UTC
 from botocore.exceptions import ClientError
@@ -20,9 +20,10 @@ class FilesystemQueue:
     Structure:
       data/queues/<campaign>/<queue>/
         pending/
-          <task_id>/
-            task.json
-            lease.json
+          <shard>/
+            <task_id>/
+              task.json
+              lease.json
         completed/
           <task_id>.json
     """
@@ -60,23 +61,31 @@ class FilesystemQueue:
 
     def _get_s3_lease_key(self, task_id: str) -> str:
         # V2 S3 Path matches the local structure under the campaign
-        return f"campaigns/{self.campaign_name}/queues/{self.queue_name}/pending/{task_id}/lease.json"
+        # Use first char as shard for better S3 performance and listing sharding
+        shard = task_id[0] if task_id else "_"
+        return f"campaigns/{self.campaign_name}/queues/{self.queue_name}/pending/{shard}/{task_id}/lease.json"
+
+    def _get_s3_task_key(self, task_id: str) -> str:
+        shard = task_id[0] if task_id else "_"
+        return f"campaigns/{self.campaign_name}/queues/{self.queue_name}/pending/{shard}/{task_id}/task.json"
 
     def _get_task_dir(self, task_id: str) -> Path:
         # Sanitize task_id for directory name
         safe_id = task_id.replace("/", "_").replace("\\", "_")
-        return self.pending_dir / safe_id
+        shard = safe_id[0] if safe_id else "_"
+        return self.pending_dir / shard / safe_id
 
     def _get_lease_path(self, task_id: str) -> Path:
         return self._get_task_dir(task_id) / "lease.json"
 
     def _create_lease(self, task_id: str) -> bool:
         """Attempts to create an atomic lease (Local O_EXCL or S3 Conditional)."""
+        now = datetime.now(UTC)
         lease_data = {
             "worker_id": self.worker_id,
-            "created_at": datetime.now(UTC).isoformat(),
-            "heartbeat_at": datetime.now(UTC).isoformat(),
-            "expires_at": (datetime.now(UTC) + timedelta(minutes=self.lease_duration)).isoformat()
+            "created_at": now.isoformat(),
+            "heartbeat_at": now.isoformat(),
+            "expires_at": (now + timedelta(minutes=self.lease_duration)).isoformat()
         }
 
         # 1. Try S3 Conditional Write (Global Atomic)
@@ -87,12 +96,17 @@ class FilesystemQueue:
                     Bucket=self.bucket_name,
                     Key=s3_key,
                     Body=json.dumps(lease_data),
-                    IfNoneMatch='*',  # This is the key for atomic creation
+                    IfNoneMatch='*',  # Atomic creation
+                    # Store owner info in metadata for fast HEAD checks
+                    Metadata={
+                        'worker-id': self.worker_id,
+                        'heartbeat-at': now.isoformat()
+                    },
                     ContentType="application/json"
                 )
                 logger.debug(f"Worker {self.worker_id} acquired S3 lease for {task_id}")
                 
-                # Also create local lease to satisfy local checks/visibility
+                # Also create local lease
                 self._create_local_lease(task_id, lease_data)
                 return True
             except ClientError as e:
@@ -102,14 +116,42 @@ class FilesystemQueue:
                 logger.error(f"S3 Lease Error for {task_id}: {e}")
                 return False
             except Exception as e:
-                # Fallback to local if S3 fails (e.g. older botocore version)
+                # Fallback
                 if "IfNoneMatch" in str(e):
-                    logger.warning("S3 Conditional Write not supported by this boto3/S3 version. Falling back to local leases.")
+                    logger.warning("S3 Conditional Write not supported. Falling back to local.")
                 else:
                     logger.error(f"Unexpected S3 error: {e}")
 
-        # 2. Fallback to Local Lease (Atomic on same node, eventually consistent via sync)
+        # 2. Fallback to Local Lease
         return self._create_local_lease(task_id, lease_data)
+
+    def _reclaim_stale_s3_lease(self, task_id: str) -> bool:
+        """Checks if S3 lease is stale and attempts to reclaim it."""
+        s3_key = self._get_s3_lease_key(task_id)
+        try:
+            # Efficiently check metadata without body
+            response = self.s3_client.head_object(Bucket=self.bucket_name, Key=s3_key)
+            metadata = response.get('Metadata', {})
+            
+            hb_str = metadata.get('heartbeat-at')
+            if not hb_str:
+                # Fallback to body if metadata missing (legacy leases)
+                response = self.s3_client.get_object(Bucket=self.bucket_name, Key=s3_key)
+                data = json.loads(response['Body'].read())
+                hb_str = data.get('heartbeat_at')
+
+            if hb_str:
+                heartbeat_at = datetime.fromisoformat(hb_str).replace(tzinfo=UTC)
+                now = datetime.now(UTC)
+                
+                if (now - heartbeat_at).total_seconds() > (self.stale_heartbeat * 60):
+                    logger.warning(f"Reclaiming stale S3 lease for {task_id} (Worker: {metadata.get('worker-id')})")
+                    # Atomic delete before reclaim
+                    self.s3_client.delete_object(Bucket=self.bucket_name, Key=s3_key)
+                    return self._create_lease(task_id)
+        except Exception as e:
+            logger.error(f"Error reclaiming S3 lease for {task_id}: {e}")
+        return False
 
     def _create_local_lease(self, task_id: str, lease_data: dict[str, Any]) -> bool:
         task_dir = self._get_task_dir(task_id)
@@ -126,26 +168,6 @@ class FilesystemQueue:
         except Exception as e:
             logger.error(f"Error creating local lease for {task_id}: {e}")
             return False
-
-    def _reclaim_stale_s3_lease(self, task_id: str) -> bool:
-        """Checks if S3 lease is stale and attempts to reclaim it."""
-        s3_key = self._get_s3_lease_key(task_id)
-        try:
-            response = self.s3_client.get_object(Bucket=self.bucket_name, Key=s3_key)
-            data = json.loads(response['Body'].read())
-            
-            heartbeat_at = datetime.fromisoformat(data['heartbeat_at']).replace(tzinfo=UTC)
-            now = datetime.now(UTC)
-            
-            if (now - heartbeat_at).total_seconds() > (self.stale_heartbeat * 60):
-                logger.warning(f"Reclaiming stale S3 lease for {task_id} (Worker: {data.get('worker_id')})")
-                # To reclaim safely, we should ideally use a conditional delete or overwrite with a version check
-                # For now, just deleting and re-creating is better than nothing
-                self.s3_client.delete_object(Bucket=self.bucket_name, Key=s3_key)
-                return self._create_lease(task_id)
-        except Exception as e:
-            logger.error(f"Error reclaiming S3 lease for {task_id}: {e}")
-        return False
 
     def _reclaim_stale_local_lease(self, task_id: str) -> bool:
         # Renamed from _reclaim_stale_lease to avoid confusion
@@ -208,13 +230,32 @@ class FilesystemQueue:
         count = 0
         
         # 1. Get local candidates
-        candidates = [d for d in self.pending_dir.iterdir() if d.is_dir()]
+        candidates = []
+        if self.pending_dir.exists():
+            for entry in self.pending_dir.iterdir():
+                if entry.is_dir():
+                    # If it's a shard (single char), look inside
+                    if len(entry.name) == 1:
+                        for sub_entry in entry.iterdir():
+                            if sub_entry.is_dir():
+                                candidates.append(sub_entry)
+                    else:
+                        # Legacy/Flat structure
+                        candidates.append(entry)
         
         # 2. If no local candidates and we have S3, try to discover some
         if not candidates and self.s3_client and self.bucket_name:
             logger.info(f"Local queue {self.queue_name} empty, discovering from S3...")
             self._discover_tasks_from_s3()
-            candidates = [d for d in self.pending_dir.iterdir() if d.is_dir()]
+            # Re-scan after discovery
+            for entry in self.pending_dir.iterdir():
+                if entry.is_dir():
+                    if len(entry.name) == 1:
+                        for sub_entry in entry.iterdir():
+                            if sub_entry.is_dir() and sub_entry not in candidates:
+                                candidates.append(sub_entry)
+                    elif entry not in candidates:
+                        candidates.append(entry)
 
         # Shuffle to minimize collision in distributed environment (Randomized Sharding)
         import random
@@ -245,40 +286,80 @@ class FilesystemQueue:
         return tasks
 
     def _discover_tasks_from_s3(self, max_discovery: int = 100) -> None:
-        """Lists S3 to find pending tasks and downloads their metadata."""
+        """Lists S3 to find pending tasks using Sharded FIFO Discovery."""
         if not self.s3_client or not self.bucket_name:
             return
 
-        prefix = f"campaigns/{self.campaign_name}/queues/{self.queue_name}/pending/"
-        try:
-            # We only list a small batch to avoid massive memory/time usage
-            response = self.s3_client.list_objects_v2(
-                Bucket=self.bucket_name,
-                Prefix=prefix,
-                Delimiter='/', # We want the directories (task IDs)
-                MaxKeys=max_discovery
-            )
-            
-            if 'CommonPrefixes' in response:
-                for cp in response['CommonPrefixes']:
-                    full_prefix = cp['Prefix'] # e.g. .../pending/<task_id>/
-                    task_id = full_prefix.split('/')[-2]
+        import random
+        shards = list("0123456789abcdef")
+        random.shuffle(shards)
+        
+        found_total = 0
+        for shard in shards[:3]: # Try 3 random shards
+            if found_total >= max_discovery:
+                break
+                
+            prefix = f"campaigns/{self.campaign_name}/queues/{self.queue_name}/pending/{shard}/"
+            try:
+                # Recursive listing to see both task.json and lease.json in one call
+                # No delimiter means we get the full keys under the prefix
+                response = self.s3_client.list_objects_v2(
+                    Bucket=self.bucket_name,
+                    Prefix=prefix,
+                    MaxKeys=500 
+                )
+                
+                if 'Contents' not in response:
+                    continue
+
+                # 1. Group objects by Task ID and extract timestamps
+                # Key structure: .../pending/<shard>/<task_id>/[task.json|lease.json]
+                tasks_in_shard: Dict[str, Dict[str, Any]] = {}
+                
+                for obj in response['Contents']:
+                    key = obj['Key']
+                    parts = key.split('/')
+                    if len(parts) < 2:
+                        continue
                     
+                    filename = parts[-1]
+                    task_id = parts[-2]
+                    
+                    if task_id not in tasks_in_shard:
+                        tasks_in_shard[task_id] = {"has_task": False, "has_lease": False, "mtime": None}
+                    
+                    if filename == "task.json":
+                        tasks_in_shard[task_id]["has_task"] = True
+                        tasks_in_shard[task_id]["mtime"] = obj['LastModified']
+                    elif filename == "lease.json":
+                        tasks_in_shard[task_id]["has_lease"] = True
+
+                # 2. Filter for Available Tasks (Has task, No lease)
+                available_tasks = [
+                    (tid, info["mtime"]) 
+                    for tid, info in tasks_in_shard.items() 
+                    if info["has_task"] and not info["has_lease"]
+                ]
+
+                # 3. Sort by mtime (FIFO: Oldest First)
+                available_tasks.sort(key=lambda x: x[1] if x[1] else datetime.min.replace(tzinfo=UTC))
+
+                # 4. Download metadata for discovery
+                for task_id, _ in available_tasks[:max_discovery - found_total]:
                     task_dir = self._get_task_dir(task_id)
                     task_file = task_dir / "task.json"
                     
                     if not task_file.exists():
-                        # Download the task.json
                         task_dir.mkdir(parents=True, exist_ok=True)
-                        s3_key = f"{full_prefix}task.json"
+                        s3_key = self._get_s3_task_key(task_id)
                         try:
                             self.s3_client.download_file(self.bucket_name, s3_key, str(task_file))
-                            logger.debug(f"Discovered and downloaded task {task_id} from S3")
+                            logger.debug(f"Discovered FIFO task {task_id} from shard {shard}")
+                            found_total += 1
                         except Exception:
-                            # Might be a lease file without a task file yet
                             pass
-        except Exception as e:
-            logger.error(f"Error discovering tasks from S3: {e}")
+            except Exception as e:
+                logger.error(f"Error discovering tasks from S3 shard {shard}: {e}")
 
     def ack(self, task_id: Optional[str]) -> None:
         """Moves task to completed and removes pending directory (Local and S3)."""
@@ -300,7 +381,7 @@ class FilesystemQueue:
             
             # 2. S3 Cleanup (Immediate)
             if self.s3_client and self.bucket_name:
-                s3_task_key = f"campaigns/{self.campaign_name}/queues/{self.queue_name}/pending/{task_id}/task.json"
+                s3_task_key = self._get_s3_task_key(task_id)
                 s3_lease_key = self._get_s3_lease_key(task_id)
                 
                 # Delete task and lease
@@ -319,36 +400,27 @@ class FilesystemQueue:
             logger.error(f"Error acking for {task_id}: {e}")
 
     def heartbeat(self, task_id: str) -> None:
-        """Updates the heartbeat timestamp of a lease (Local and S3)."""
+        """Updates the heartbeat timestamp of a lease using an efficient S3 self-copy."""
         lease_path = self._get_lease_path(task_id)
         now_dt = datetime.now(UTC)
         
-        # 1. Update S3 (Immediate)
+        # 1. Update S3 (Immediate Metadata-only Copy)
         if self.s3_client and self.bucket_name:
             s3_key = self._get_s3_lease_key(task_id)
             try:
-                # We need the full data to overwrite
-                lease_data = {
-                    "worker_id": self.worker_id,
-                    "created_at": now_dt.isoformat(), # We don't have easy access to original created_at here without reading
-                    "heartbeat_at": now_dt.isoformat(),
-                    "expires_at": (now_dt + timedelta(minutes=self.lease_duration)).isoformat()
-                }
-                # Try to preserve created_at if local exists
-                if lease_path.exists():
-                    try:
-                        with open(lease_path, 'r') as f:
-                            local_data = json.load(f)
-                        lease_data['created_at'] = local_data.get('created_at', lease_data['created_at'])
-                    except Exception:
-                        pass
-
-                self.s3_client.put_object(
+                # Refresh lease via self-copy (updates LastModified and Metadata)
+                self.s3_client.copy_object(
                     Bucket=self.bucket_name,
                     Key=s3_key,
-                    Body=json.dumps(lease_data),
+                    CopySource={'Bucket': self.bucket_name, 'Key': s3_key},
+                    Metadata={
+                        'worker-id': self.worker_id,
+                        'heartbeat-at': now_dt.isoformat()
+                    },
+                    MetadataDirective='REPLACE',
                     ContentType="application/json"
                 )
+                logger.debug(f"S3 Heartbeat for {task_id} via CopyObject")
             except Exception as e:
                 logger.error(f"Error updating S3 heartbeat for {task_id}: {e}")
 
@@ -409,7 +481,7 @@ class FilesystemGmListQueue(FilesystemQueue):
         import os
         import random
 
-        # Optimization: Use os.walk for better performance on large mission indexes (30k+ files)
+        # Optimization: Use os.walk for better performance on large mission indexes
         for root, dirs, files in os.walk(self.target_tiles_dir):
             if count >= batch_size:
                 break
@@ -430,6 +502,7 @@ class FilesystemGmListQueue(FilesystemQueue):
                     
                 # Try to acquire lease
                 if self._create_lease(task_id):
+                    # ... rest of logic remains same ...
                     parts = Path(task_id).parts
                     if len(parts) < 3:
                         continue
@@ -487,7 +560,7 @@ class FilesystemGmDetailsQueue(FilesystemQueue):
             try:
                 task_dir = self._get_task_dir(task.place_id)
                 task_file = task_dir / "task.json"
-                s3_key = f"campaigns/{self.campaign_name}/queues/gm-details/pending/{task.place_id}/task.json"
+                s3_key = self._get_s3_task_key(task.place_id)
                 self.s3_client.upload_file(str(task_file), self.bucket_name, s3_key)
             except Exception as e:
                 logger.error(f"Failed immediate S3 push for gm-details: {e}")
@@ -520,7 +593,7 @@ class FilesystemEnrichmentQueue(FilesystemQueue):
             try:
                 task_dir = self._get_task_dir(task_id)
                 task_file = task_dir / "task.json"
-                s3_key = f"campaigns/{self.campaign_name}/queues/enrichment/pending/{task_id}/task.json"
+                s3_key = self._get_s3_task_key(task_id)
                 self.s3_client.upload_file(str(task_file), self.bucket_name, s3_key)
             except Exception as e:
                 logger.error(f"Failed immediate S3 push for enrichment: {e}")

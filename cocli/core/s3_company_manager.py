@@ -2,6 +2,7 @@ import logging
 import boto3
 import yaml
 from botocore.exceptions import ClientError
+from typing import Optional
 
 from ..models.campaign import Campaign
 from ..models.company import Company # To load/save _index.md equivalent
@@ -86,3 +87,44 @@ class S3CompanyManager:
         except ClientError as e:
             logger.error(f"Error saving website enrichment to S3 {s3_key}: {e}")
             raise
+
+    async def fetch_company_index(self, company_slug: str) -> Optional[Company]:
+        """Fetches and parses a company index from S3."""
+        s3_key = self._get_s3_key_for_company_index(company_slug)
+        try:
+            response = self.s3_client.get_object(Bucket=self.s3_bucket_name, Key=s3_key)
+            content = response['Body'].read().decode('utf-8')
+            
+            # Simple YAML frontmatter parser
+            if content.startswith("---"):
+                parts = content.split("---")
+                if len(parts) >= 3:
+                    data = yaml.safe_load(parts[1])
+                    return Company.model_validate(data)
+        except ClientError as e:
+            if e.response['Error']['Code'] == 'NoSuchKey':
+                return None
+            logger.error(f"Error fetching company index from S3 {s3_key}: {e}")
+        except Exception as e:
+            logger.error(f"Error parsing company index from S3 {s3_key}: {e}")
+        return None
+
+    async def fetch_website_enrichment(self, company_slug: str) -> Optional[Website]:
+        """Fetches and parses a website enrichment from S3."""
+        s3_key = self._get_s3_key_for_website_enrichment(company_slug)
+        try:
+            response = self.s3_client.get_object(Bucket=self.s3_bucket_name, Key=s3_key)
+            content = response['Body'].read().decode('utf-8')
+            
+            if content.startswith("---"):
+                parts = content.split("---")
+                if len(parts) >= 3:
+                    data = yaml.safe_load(parts[1])
+                    return Website.model_validate(data)
+        except ClientError as e:
+            if e.response['Error']['Code'] == 'NoSuchKey':
+                return None
+            logger.error(f"Error fetching website enrichment from S3 {s3_key}: {e}")
+        except Exception as e:
+            logger.error(f"Error parsing website enrichment from S3 {s3_key}: {e}")
+        return None

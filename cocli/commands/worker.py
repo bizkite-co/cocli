@@ -1035,9 +1035,17 @@ async def _run_enrichment_task_loop(
         start_mb = tracker.get_mb() if tracker else 0.0
 
         try:
-            company = Company.get(task.company_slug) or Company(
-                name=task.company_slug, domain=task.domain, slug=task.company_slug
-            )
+            company = Company.get(task.company_slug)
+            if not company and s3_company_manager:
+                logger.info(f"Company {task.company_slug} not found locally, fetching from S3...")
+                company = await s3_company_manager.fetch_company_index(task.company_slug)
+                if company:
+                    company.save() # Cache locally
+                    
+            if not company:
+                company = Company(
+                    name=task.company_slug, domain=task.domain, slug=task.company_slug
+                )
 
             # Heartbeat task for FilesystemQueue
             heartbeat_task = None
@@ -1309,7 +1317,6 @@ async def run_supervisor(
     import asyncio
 
     hostname = os.getenv("COCLI_HOSTNAME") or socket.gethostname().split(".")[0]
-    once = False  # Supervisor always runs in a loop
 
     logger.info(
         f"Supervisor started on host '{hostname}' for campaign '{campaign_name}'."
@@ -1346,7 +1353,7 @@ async def run_supervisor(
 
         # Shared context and tracker for all workers on this host
         context = await browser.new_context(ignore_https_errors=True)
-        tracker = await setup_optimized_context(context)
+        await setup_optimized_context(context)
 
         # Setup queues and clients once
         ensure_campaign_config(campaign_name)
@@ -1372,7 +1379,6 @@ async def run_supervisor(
 
         # Sync Throttling
         from ..core.config import get_cocli_base_dir
-        from .smart_sync import run_smart_sync
         from ..utils.smart_sync_up import run_smart_sync_up
         local_base = get_cocli_base_dir()
         last_sync_time: float = 0.0
@@ -1381,9 +1387,6 @@ async def run_supervisor(
         
         last_heartbeat_time: float = 0.0
         heartbeat_interval = 900 # 15 minutes
-        
-        last_lease_sync_time: float = 0.0
-        lease_sync_interval = 300 # 5 minutes
         
         last_report_time: float = 0.0
         report_interval = 900 # 15 minutes
@@ -1519,35 +1522,17 @@ async def run_supervisor(
                 # 0.2 Sync campaign data (V2 Queues) - throttled (AFTER starting workers)
                 now = time.time()
                 
-                # 0.1 Sync leases TO S3 (Throttled to 5 minutes)
-                if now - last_lease_sync_time > lease_sync_interval:
-                    await asyncio.to_thread(sync_active_leases_to_s3, campaign_name, s3_client, bucket_name)
-                    last_lease_sync_time = now
-
                 if now - last_sync_time > sync_interval_seconds:
                     try:
-                        companies_prefix = "companies/"
-                        companies_local = local_base / "companies"
-                        
-                        queue_prefix = f"campaigns/{campaign_name}/queues/enrichment/pending/"
-                        queue_local = local_base / "data" / "queues" / campaign_name / "enrichment" / "pending"
-                        
                         logger.info("Starting throttled background sync operations (V2)")
-                        # 1. Sync down new tasks
-                        await asyncio.to_thread(run_smart_sync, "enrichment-queue", bucket_name, queue_prefix, queue_local, campaign_name, aws_config)
                         
-                        # 2. Sync up results and leases
-                        await asyncio.to_thread(run_smart_sync_up, "enrichment-queue", bucket_name, queue_prefix, queue_local, campaign_name, aws_config, delete_remote=True)
-                        
-                        # 3. Sync up company data
-                        await asyncio.to_thread(run_smart_sync_up, "companies", bucket_name, companies_prefix, companies_local, campaign_name, aws_config, delete_remote=False, only_modified_since_minutes=60)
-                        
-                        # 4. Sync up index data (Exclusions, Email Index)
+                        # Only sync things that aren't yet Point-to-Point or immediately pushed
+                        # Index data (Exclusions, Email Index) still benefit from a broad sync for now
                         indexes_prefix = "indexes/"
                         indexes_local = local_base / "indexes"
                         await asyncio.to_thread(run_smart_sync_up, "indexes", bucket_name, indexes_prefix, indexes_local, campaign_name, aws_config, delete_remote=False)
 
-                        # 5. Sync up completed tasks for tracking
+                        # We still sync completed tasks for central reporting/dashboard
                         completed_prefix = f"campaigns/{campaign_name}/queues/enrichment/completed/"
                         completed_local = local_base / "data" / "queues" / campaign_name / "enrichment" / "completed"
                         await asyncio.to_thread(run_smart_sync_up, "enrichment-completed", bucket_name, completed_prefix, completed_local, campaign_name, aws_config, delete_remote=False)

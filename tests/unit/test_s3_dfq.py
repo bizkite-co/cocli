@@ -26,7 +26,8 @@ def test_s3_conditional_lease_success(tmp_path, mock_s3):
         task_id = q.push(task)
         
         # Check S3 upload was called for task.json
-        s3_task_key = f"campaigns/{campaign}/queues/enrichment/pending/{task_id}/task.json"
+        shard = task_id[0]
+        s3_task_key = f"campaigns/{campaign}/queues/enrichment/pending/{shard}/{task_id}/task.json"
         mock_s3.upload_file.assert_called_with(
             str(q._get_task_dir(task_id) / "task.json"),
             bucket,
@@ -42,7 +43,7 @@ def test_s3_conditional_lease_success(tmp_path, mock_s3):
         assert tasks[0].company_slug == "example-co"
         
         # Check S3 put_object was called with IfNoneMatch='*'
-        s3_lease_key = f"campaigns/{campaign}/queues/enrichment/pending/{task_id}/lease.json"
+        s3_lease_key = f"campaigns/{campaign}/queues/enrichment/pending/{shard}/{task_id}/lease.json"
         mock_s3.put_object.assert_called()
         args, kwargs = mock_s3.put_object.call_args
         assert kwargs['Key'] == s3_lease_key
