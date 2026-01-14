@@ -645,9 +645,7 @@ start-rpi-supervisor: ## Start the Supervisor on Raspberry Pi for dynamic scalin
 
 .PHONY: restart-rpi-all
 restart-rpi-all: ## Restart all Raspberry Pi workers using supervisor on all nodes
-	-$(MAKE) stop-rpi-all RPI_HOST=octoprint.local
-	-$(MAKE) stop-rpi-all RPI_HOST=coclipi.local
-	-$(MAKE) stop-rpi-all RPI_HOST=cocli5x0.local
+	-$(MAKE) stop-rpi-all
 	$(MAKE) start-rpi-supervisor RPI_HOST=octoprint.local
 	$(MAKE) start-rpi-supervisor RPI_HOST=coclipi.local
 	$(MAKE) start-rpi-supervisor RPI_HOST=cocli5x0.local
@@ -688,12 +686,18 @@ clean-docker-pi: ## Remove all stopped containers, unused networks, dangling ima
 	@echo "Cleaning up Docker system on Raspberry Pi..."
 	ssh $(RPI_USER)@$(RPI_HOST) "docker system prune -f"
 
-.PHONY: stop-rpi-all
-stop-rpi-all: ## Stop all Raspberry Pi cocli worker containers
+.PHONY: stop-rpi
+stop-rpi: ## Stop all cocli worker containers on a single RPi (Usage: make stop-rpi RPI_HOST=xxx.local)
 	-ssh $(RPI_USER)@$(RPI_HOST) "if [ -n \"\$$(docker ps -q --filter name=cocli-)\" ]; then docker stop \$$(docker ps -q --filter name=cocli-); fi; if [ -n \"\$$(docker ps -a -q --filter name=cocli-)\" ]; then docker rm \$$(docker ps -a -q --filter name=cocli-); fi"
 
+.PHONY: stop-rpi-all
+stop-rpi-all: ## Stop all cocli worker containers on ALL cluster nodes
+	-$(MAKE) stop-rpi RPI_HOST=octoprint.local
+	-$(MAKE) stop-rpi RPI_HOST=coclipi.local
+	-$(MAKE) stop-rpi RPI_HOST=cocli5x0.local
+
 .PHONY: deploy-rpi
-deploy-rpi: test deploy-creds-rpi stop-rpi-all rebuild-rpi-worker start-rpi-worker start-rpi-details-worker ## Full deployment: stop all, rebuild, and restart both workers
+deploy-rpi: test deploy-creds-rpi stop-rpi rebuild-rpi-worker start-rpi-worker start-rpi-details-worker ## Full deployment: stop, rebuild, and restart both workers on a single RPi
 	$(VENV_DIR)/bin/ruff check cocli/
 
 missing-keywords: ## List the companies that are missing keywords to CSV

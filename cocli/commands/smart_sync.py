@@ -138,41 +138,51 @@ def run_smart_sync(
                         # Zombie/Re-queue Check
                         parts = Path(rel_path).parts
                         if parts:
-                            task_dir_name = parts[0] # The directory name is the task ID
-                            completed_file = completed_dir / f"{task_dir_name}.json"
-                            
-                            if completed_file.exists():
-                                completed_mtime = completed_file.stat().st_mtime
-                                # s3_mtime is timezone-aware, convert to timestamp for comparison
-                                if s3_mtime.timestamp() > completed_mtime:
-                                    logger.info(f"Re-downloading {key}: S3 pending task is newer than local completion (Re-queue detected).")
-                                    should_download = True
+                            # V2 Key structure: <shard>/<task_id>/[task.json|lease.json]
+                            # OR Legacy structure: <task_id>/[task.json|lease.json]
+                            if len(parts) >= 2:
+                                if len(parts[0]) == 1:
+                                    # Sharded: parts[0] is shard, parts[1] is task_id
+                                    task_dir_name = parts[1]
                                 else:
-                                    # Zombie case: Completed is newer/same as pending.
-                                    # 1. Don't download.
-                                    should_download = False
-                                    
-                                    # 3. Cleanup S3 pending (The Source of the Zombie)
-                                    try:
-                                        logger.info(f"Deleting Zombie S3 Object: {key}")
-                                        s3.delete_object(Bucket=bucket_name, Key=key)
-                                    except Exception as e:
-                                        logger.error(f"Failed to delete zombie S3 key {key}: {e}")
-
-                                    # 2. Cleanup local pending if it exists (fix the "stuck" state)
-                                    if local_path.exists():
+                                    # Legacy: parts[0] is task_id
+                                    task_dir_name = parts[0]
+                                
+                                completed_file = completed_dir / f"{task_dir_name}.json"
+                                
+                                if completed_file.exists():
+                                    completed_mtime = completed_file.stat().st_mtime
+                                    # s3_mtime is timezone-aware, convert to timestamp for comparison
+                                    if s3_mtime.timestamp() > completed_mtime:
+                                        logger.info(f"Re-downloading {key}: S3 pending task is newer than local completion (Re-queue detected).")
+                                        should_download = True
+                                    else:
+                                        # Zombie case: Completed is newer/same as pending.
+                                        # 1. Don't download.
+                                        should_download = False
+                                        
+                                        # 3. Cleanup S3 pending (The Source of the Zombie)
                                         try:
-                                            local_path.unlink()
-                                            logger.info(f"Removed zombie local pending file: {local_path}")
-                                            # Try to remove the directory if it's empty
-                                            # local_path is .../pending/task_id/task.json
-                                            # local_path.parent is .../pending/task_id
-                                            try:
-                                                local_path.parent.rmdir()
-                                            except OSError:
-                                                pass # Directory not empty or other error
+                                            logger.info(f"Deleting Zombie S3 Object: {key}")
+                                            s3.delete_object(Bucket=bucket_name, Key=key)
                                         except Exception as e:
-                                            logger.error(f"Failed to remove zombie file {local_path}: {e}")
+                                            logger.error(f"Failed to delete zombie S3 key {key}: {e}")
+
+                                        # 2. Cleanup local pending if it exists (fix the "stuck" state)
+                                        if local_path.exists():
+                                            try:
+                                                local_path.unlink()
+                                                logger.info(f"Removed zombie local pending file: {local_path}")
+                                                # Try to remove the directory if it's empty
+                                                try:
+                                                    local_path.parent.rmdir()
+                                                    # If sharded, also try to remove the shard dir
+                                                    if len(parts[0]) == 1:
+                                                        local_path.parent.parent.rmdir()
+                                                except OSError:
+                                                    pass # Directory not empty or other error
+                                            except Exception as e:
+                                                logger.error(f"Failed to remove zombie file {local_path}: {e}")
 
                     if should_download:
                         to_download.append((key, local_path))

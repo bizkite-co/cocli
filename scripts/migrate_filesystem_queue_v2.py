@@ -1,97 +1,89 @@
-import typer
-import shutil
-from rich.console import Console
-from rich.progress import track
-from typing import Optional
+import boto3
+import argparse
+import logging
+from typing import Any
 
-from cocli.core.config import get_campaign_dir, get_cocli_base_dir, get_campaign
+# Setup logging
+logging.basicConfig(level=logging.INFO, format='%(levelname)s: %(message)s')
+logger = logging.getLogger(__name__)
 
-app = typer.Typer()
-console = Console()
+def migrate_queue(campaign: str, queue: str, bucket: str, s3_client: Any, dry_run: bool = False) -> None:
+    base_prefix = f"campaigns/{campaign}/queues/{queue}/pending/"
+    logger.info(f"Scanning s3://{bucket}/{base_prefix}...")
 
-@app.command()
-def main(
-    campaign: Optional[str] = typer.Option(None, "--campaign", "-c"),
-    queue: str = typer.Option("enrichment", "--queue", "-q"),
-    dry_run: bool = typer.Option(False, "--dry-run", help="Simulate migration without moving files.")
-) -> None:
-    """
-    Migrates the Filesystem Queue from V1 (frontier/*.json) to V2 (queues/.../pending/{hash}/task.json).
-    """
-    if not campaign:
-        campaign = get_campaign()
+    paginator = s3_client.get_paginator('list_objects_v2')
+    pages = paginator.paginate(Bucket=bucket, Prefix=base_prefix)
+
+    total_moved = 0
     
-    if not campaign:
-        console.print("[red]No campaign specified.[/red]")
-        raise typer.Exit(1)
-
-    campaign_dir = get_campaign_dir(campaign)
-    if not campaign_dir:
-        console.print(f"[red]Campaign directory not found for {campaign}[/red]")
-        raise typer.Exit(1)
-
-    # V1 Paths
-    old_frontier = campaign_dir / "frontier" / queue
-    old_leases = campaign_dir / "active-leases" / queue
-
-    # V2 Paths
-    # data/queues/<campaign>/<queue>/pending
-    new_base = get_cocli_base_dir() / "data" / "queues" / campaign / queue
-    new_pending = new_base / "pending"
-
-    if not old_frontier.exists():
-        console.print(f"[yellow]No V1 frontier directory found at {old_frontier}. Nothing to migrate.[/yellow]")
-        return
-
-    files = list(old_frontier.glob("*.json"))
-    console.print(f"Found [bold]{len(files)}[/bold] items in V1 queue.")
-
-    if not dry_run:
-        new_pending.mkdir(parents=True, exist_ok=True)
-
-    migrated_count = 0
-    
-    for task_file in track(files, description="Migrating tasks..."):
-        task_id = task_file.stem
-        
-        # Determine V2 destination
-        # Sanitize ID just in case (though MD5 usually safe)
-        safe_id = task_id.replace("/", "_")
-        dest_dir = new_pending / safe_id
-        dest_file = dest_dir / "task.json"
-        
-        if dry_run:
-            # console.print(f"Would move {task_file} -> {dest_file}")
-            migrated_count += 1
+    for page in pages:
+        if 'Contents' not in page:
             continue
 
-        dest_dir.mkdir(parents=True, exist_ok=True)
-        
-        try:
-            # Move task file
-            shutil.move(str(task_file), str(dest_file))
-            migrated_count += 1
+        for obj in page['Contents']:
+            key = obj['Key']
+            # Relative path after .../pending/
+            rel_path = key[len(base_prefix):]
             
-            # Check for lease
-            lease_file = old_leases / f"{task_id}.lease"
-            if lease_file.exists():
-                dest_lease = dest_dir / "lease.json"
-                shutil.move(str(lease_file), str(dest_lease))
+            # parts: [task_id_dir, filename] OR [shard, task_id_dir, filename]
+            parts = rel_path.split('/')
+            
+            # If parts[0] is not a single character, it's the old flat structure
+            # (Note: task_id_dirs are hashes or coordinates, always > 1 char)
+            if len(parts[0]) > 1:
+                task_id = parts[0]
+                filename = parts[1] if len(parts) > 1 else ""
                 
-        except Exception as e:
-            console.print(f"[red]Error migrating {task_id}: {e}[/red]")
+                if not filename:
+                    continue # Skip directory markers if any
+                
+                shard = task_id[0]
+                new_key = f"{base_prefix}{shard}/{rel_path}"
+                
+                logger.info(f"{'[DRY RUN] ' if dry_run else ''}Moving {key} -> {new_key}")
+                total_moved += 1
+                
+                if not dry_run:
+                    try:
+                        # Copy to new location
+                        s3_client.copy_object(
+                            Bucket=bucket,
+                            CopySource={'Bucket': bucket, 'Key': key},
+                            Key=new_key
+                        )
+                        # Delete old location
+                        s3_client.delete_object(Bucket=bucket, Key=key)
+                    except Exception as e:
+                        logger.error(f"Failed to move {key}: {e}")
+                        total_moved -= 1
+            else:
+                logger.debug(f"Skipping already sharded key: {key}")
 
-    console.print(f"[green]Migration complete![/green] Migrated {migrated_count} items.")
-    if not dry_run:
-        console.print(f"New queue location: [bold]{new_base}[/bold]")
-        # Clean up empty old dirs if empty
-        try:
-            if not any(old_frontier.iterdir()):
-                old_frontier.rmdir()
-            if old_leases.exists() and not any(old_leases.iterdir()):
-                old_leases.rmdir()
-        except Exception:
-            pass
+    logger.info(f"Migration complete for {queue}. Total moved: {total_moved}")
+
+def main() -> None:
+    parser = argparse.ArgumentParser(description="Migrate Filesystem Queue from flat to sharded structure in S3.")
+    parser.add_argument("--campaign", required=True, help="Campaign name")
+    parser.add_argument("--bucket", help="S3 Bucket name (overrides config)")
+    parser.add_argument("--profile", help="AWS Profile")
+    parser.add_argument("--dry-run", action="store_true", help="Show what would be moved without doing it")
+    
+    args = parser.parse_args()
+
+    # Resolve bucket from config if not provided
+    bucket = args.bucket
+    if not bucket:
+        from cocli.core.config import load_campaign_config
+        config = load_campaign_config(args.campaign)
+        bucket = config.get("aws", {}).get("cocli_data_bucket_name") or f"cocli-data-{args.campaign}"
+
+    session = boto3.Session(profile_name=args.profile)
+    s3 = session.client("s3")
+
+    queues = ["gm-list", "gm-details", "enrichment"]
+    
+    for q in queues:
+        migrate_queue(args.campaign, q, bucket, s3, args.dry_run)
 
 if __name__ == "__main__":
-    app()
+    main()

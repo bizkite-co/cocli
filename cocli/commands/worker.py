@@ -1248,16 +1248,13 @@ def sync_active_leases_to_s3(
         return
 
     try:
-        # Scan for lease.json in all task directories
-        for task_dir in pending_dir.iterdir():
-            if not task_dir.is_dir():
-                continue
-            
-            lease_file = task_dir / "lease.json"
-            if lease_file.exists():
-                # S3 Key: campaigns/<campaign>/queues/enrichment/pending/<hash>/lease.json
-                task_id = task_dir.name
-                s3_key = f"campaigns/{campaign_name}/queues/enrichment/pending/{task_id}/lease.json"
+        # Scan for lease.json in all task directories (Recursive walk for sharding)
+        for root, _, files in os.walk(pending_dir):
+            if "lease.json" in files:
+                lease_file = Path(root) / "lease.json"
+                # S3 Key: campaigns/<campaign>/queues/enrichment/pending/<shard>/<hash>/lease.json
+                rel_path = lease_file.relative_to(pending_dir)
+                s3_key = f"campaigns/{campaign_name}/queues/enrichment/pending/{rel_path}"
                 s3_client.upload_file(str(lease_file), bucket_name, s3_key)
 
     except Exception as e:
