@@ -17,7 +17,11 @@ cocli_data/
 │       ├── config.toml         # Campaign configuration
 │       ├── README.md           # Campaign notes
 │       ├── scraped_data/       # Raw inputs specific to this campaign
-│       │   └── prospects.csv   # Raw scrape results
+│       │   └── prospects.csv   # Raw scrape results (Legacy/Cache)
+│       ├── indexes/            # Campaign-specific Search/Lookup Indexes
+│       │   ├── exclude/        # JSON files for excluded companies/domains
+│       │   ├── emails/         # JSON files for discovered emails
+│       │   └── google_maps_prospects/ # Split JSON files for each lead
 │       └── initiatives/        # Campaign specific scripts/definitions
 │
 ├── companies/                  # Canonical Company Records (Shared)

@@ -67,6 +67,12 @@ class DataPaths:
     def campaign_indexes(self, campaign_slug: str) -> Path:
         return self.campaign(campaign_slug) / "indexes"
 
+    def campaign_exclusions(self, campaign_slug: str) -> Path:
+        return self.campaign_indexes(campaign_slug) / "exclude"
+
+    def campaign_prospect_index(self, campaign_slug: str) -> Path:
+        return self.campaign_indexes(campaign_slug) / "google_maps_prospects"
+
     @property
     def companies(self) -> Path:
         return self.root / "companies"

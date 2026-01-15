@@ -11,7 +11,7 @@ logger = logging.getLogger(__name__)
 class ExclusionManager:
     def __init__(self, campaign: str):
         self.campaign = campaign
-        self.exclude_dir = paths.campaign_indexes(campaign) / "exclude"
+        self.exclude_dir = paths.campaign_exclusions(campaign)
         self.exclude_dir.mkdir(parents=True, exist_ok=True)
         # In-memory cache for fast lookup
         self._slug_map: Dict[str, Exclusion] = {}

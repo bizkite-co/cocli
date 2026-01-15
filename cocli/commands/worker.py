@@ -23,7 +23,7 @@ from cocli.models.scrape_task import GmItemTask, ScrapeTask
 from cocli.models.google_maps_prospect import GoogleMapsProspect
 from cocli.models.queue import QueueMessage
 from cocli.core.prospects_csv_manager import ProspectsIndexManager
-from cocli.core.config import load_campaign_config, get_campaigns_dir, get_campaign
+from cocli.core.config import load_campaign_config, get_campaigns_dir, get_campaign, get_campaign_dir
 from cocli.utils.playwright_utils import setup_optimized_context
 
 
@@ -315,20 +315,21 @@ async def _run_command_poller_loop(command_queue: Any, s3_client: Any, bucket_na
                     if report_type:
                         # 1. Immediate Sync-UP of indexes to S3 (so other workers see it)
                         from ..utils.smart_sync_up import run_smart_sync_up
-                        from ..core.config import get_cocli_base_dir
+                        from ..core.config import get_campaign_dir
                         
                         logger.info(f"Performing immediate sync-up of indexes for {campaign_name}")
-                        local_base = get_cocli_base_dir()
-                        await asyncio.to_thread(
-                            run_smart_sync_up, 
-                            "indexes", 
-                            bucket_name, 
-                            "indexes/", 
-                            local_base / "indexes", 
-                            campaign_name, 
-                            aws_config, 
-                            delete_remote=False
-                        )
+                        campaign_dir = get_campaign_dir(campaign_name)
+                        if campaign_dir:
+                            await asyncio.to_thread(
+                                run_smart_sync_up, 
+                                "indexes", 
+                                bucket_name, 
+                                f"campaigns/{campaign_name}/indexes/", 
+                                campaign_dir / "indexes", 
+                                campaign_name, 
+                                aws_config, 
+                                delete_remote=False
+                            )
 
                         web_bucket = aws_config.get("cocli_web_bucket_name")
                         if web_bucket:
@@ -1525,9 +1526,18 @@ async def run_supervisor(
                         
                         # Only sync things that aren't yet Point-to-Point or immediately pushed
                         # Index data (Exclusions, Email Index) still benefit from a broad sync for now
-                        indexes_prefix = "indexes/"
-                        indexes_local = local_base / "indexes"
-                        await asyncio.to_thread(run_smart_sync_up, "indexes", bucket_name, indexes_prefix, indexes_local, campaign_name, aws_config, delete_remote=False)
+                        campaign_dir = get_campaign_dir(campaign_name)
+                        if campaign_dir:
+                            await asyncio.to_thread(
+                                run_smart_sync_up, 
+                                "indexes", 
+                                bucket_name, 
+                                f"campaigns/{campaign_name}/indexes/", 
+                                campaign_dir / "indexes", 
+                                campaign_name, 
+                                aws_config, 
+                                delete_remote=False
+                            )
 
                         # We still sync completed tasks for central reporting/dashboard
                         completed_prefix = f"campaigns/{campaign_name}/queues/enrichment/completed/"

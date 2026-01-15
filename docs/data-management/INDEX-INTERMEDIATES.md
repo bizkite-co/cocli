@@ -9,7 +9,11 @@
 
 In accordance with the `from-model-to-model` design pattern, indexes are not a special category of data. They are simply another intermediate data product resulting from a transformation pipeline.
 
-An index is created when a command transforms one or more source models into a new, aggregated model designed to facilitate faster lookups. The resulting index is saved as a structured text file (like CSV or JSON) to the `cocli_data/indexes/` directory.
+An index is created when a command transforms one or more source models into a new, aggregated model designed to facilitate faster lookups. 
+
+The resulting index is saved to:
+- `cocli_data/indexes/` for global/shared indexes (e.g., geocoding cache).
+- `cocli_data/campaigns/<campaign>/indexes/` for campaign-specific subsets (e.g., lead exclusions, discovery queues).
 
 ## Example: Proximity Index
 

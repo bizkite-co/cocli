@@ -51,9 +51,10 @@ full = [
 ]
 dev = [
     "pytest",
-    "pytest-bdd",
     "pytest-mock",
     "pytest-asyncio",
+    "pytest-playwright",
+    "pytest-bdd",
     "behave",
     "build",
     "mypy",

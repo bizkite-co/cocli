@@ -92,7 +92,7 @@ This document outlines the roadmap for transitioning `cocli` from a purely local
     *   [x] Create enqueuing tools for batch re-processing (`enqueue_batch_from_csv.py`).
     *   [x] Implement evaluation and sync tools (`sync_results_from_s3.py`, `evaluate_batch_results.py`).
 
-## Phase 7: Advanced Dashboard & Integrated Data Pipeline (Active)
+## Phase 7: Advanced Dashboard & Integrated Data Pipeline (Completed)
 
 **Goal:** Modernize the web UI for stakeholder self-service and automate the full data lifecycle from scrape to dashboard.
 
@@ -109,64 +109,18 @@ This document outlines the roadmap for transitioning `cocli` from a purely local
     *   [x] **Full-Text Email Indexing:** Update `backfill_email_index.py` and `export_enriched_emails.py` to parse extended email lists.
     *   [x] **Large-Scale Sync:** Successfully synchronized ~10,000 cloud-enriched company records to local storage.
 
-```mermaid
-graph TD
-    A[Start] --> B{Phase 1: Hybrid Architecture};
-    B --> B4[Decouple with SQS];
-
-    B4 --> C{Phase 2: Cloud Scraping};
-    C --> C3[Initial Web Dashboard];
-
-    C3 --> D{Phase 3: Data & Optimization};
-    D --> D2[Config-Driven Isolation];
-
-    D2 --> E{Phase 4: Reliability};
-    E --> E1[Zero-Error Linting];
-
-    E1 --> F{Phase 5: Web Dashboard Expansion};
-    F --> F1[11ty SSG Shell];
-    F --> F2[Cached S3 Reporting];
-    F --> F3[Public Data Downloads];
-    
-    F3 --> G{Phase 6: Quality Engineering};
-    G --> G1[Scraper v6 Verification];
-    G --> G2[Batch Re-scrape Tooling];
-
-    G2 --> H{Phase 7: Advanced Dashboard};
-    H --> H1[Interactive Search];
-    H --> H2[Deployment Automation];
-    H --> H3[Extended Data Sync];
-
-    H3 --> I{Phase 8: Cluster Orchestration};
-    I --> I1[PI Tool Consolidation];
-    I --> I2[Campaign-Driven Worker Config];
-    I --> I3[Automated Scaling];
-
-    I3 --> J{Phase 10: Deterministic Mission Indexes};
-    J --> J1[Target Tile Indexing];
-    J --> J2[File-per-Object Scrape Tracking];
-    J --> J3[Idempotent Dispatcher];
-    J3 --> K{Phase 11: Cluster Powerhouse};
-    K --> K1[Isolated Worker Containers];
-    K --> K2[Central Path Authority];
-    K --> K3[Global Witness Indexing];
-```
-
-## Phase 9: Standardization & Distributed Coordination (Active)
+## Phase 8: Cluster Orchestration (Completed)
 
 **Goal:** Refactor for consistency across large-scale deployments and implement inter-node coordination.
 
 1.  **Resource Naming Standardization:**
-    *   [ ] Refactor CDK and infrastructure scripts to use consistent naming: `cocli-<resource>-<campaign>` (e.g., `cocli-data-roadmap`, `cocli-sqs-details-roadmap`).
-    *   [ ] Update IAM policies to reflect the standardized naming pattern.
+    *   [x] Refactor CDK and infrastructure scripts to use consistent naming: `cocli-<resource>-<campaign>` (e.g., `cocli-data-roadmap`, `cocli-sqs-details-roadmap`).
+    *   [x] Update IAM policies to reflect the standardized naming pattern.
 
-2.  **Distributed IP Throttling:**
-    *   [ ] Implement a distributed semaphore (e.g., via SQS or Redis) to coordinate Google Maps requests across all cluster nodes sharing a single IP address.
+2.  **Campaign-Driven Host Discovery:**
+    *   [x] Move worker hostnames (`octoprint.local`, etc.) into campaign `config.toml` to remove hardcoded host lists from the CLI.
 
-3.  **Campaign-Driven Host Discovery:**
-    *   [ ] Move worker hostnames (`octoprint.local`, etc.) into campaign `config.toml` to remove hardcoded host lists from the CLI.
-
-## Phase 10: Deterministic Mission Indexes (Completed)
+## Phase 9: Deterministic Mission Indexes (Completed)
 
 **Goal:** Eliminate brittle offset-based queueing in favor of a file-per-object "Mission Index" that is S3-syncable and inherently idempotent.
 
@@ -178,7 +132,7 @@ graph TD
 3.  **Idempotent Dispatcher (Done):**
     *   [x] Refactor `queue-mission` to use a set-difference approach: `Pending = TargetIndex - GlobalScrapedIndex`.
 
-## Phase 11: Cluster Powerhouse (Completed)
+## Phase 10: Cluster Powerhouse (Completed)
 
 **Goal:** Harden the cluster against resource contention and path resolution errors.
 
@@ -191,7 +145,7 @@ graph TD
 3.  **Witness-Based Observability (Done):**
     *   [x] Updated KML and reporting tools to use the new `.csv` witness index for 100% accurate coverage mapping.
 
-## Phase 12: Global Cleanup & Index Migration (Completed)
+## Phase 11: Global Cleanup & Index Migration (Completed)
 
 **Goal:** Formalize the new index structure and decommission legacy JSON files.
 
@@ -202,7 +156,7 @@ graph TD
 3.  **Cluster Auto-Start (Done):**
     *   [x] Implemented supervisor poller auto-restart for maximum uptime.
 
-## Phase 13: Distributed Filesystem Queue (DFQ) (Completed)
+## Phase 12: Distributed Filesystem Queue (DFQ) (Completed)
 
 **Goal:** Transition from SQS to a decentralized, cost-effective queue using the mission index and atomic leases ([ADR 010](docs/adr/010-distributed-filesystem-queue.md)).
 
@@ -213,7 +167,7 @@ graph TD
 3.  **Worker Migration (Done):**
     *   [x] Successfully deployed and verified DFQ across the RPi cluster.
 
-## Phase 14: Remote Command Bridge & Real-time Ops (Active)
+## Phase 13: Remote Command Bridge & Real-time Ops (Completed)
 
 **Goal:** Bridge the gap between the web dashboard and remote workers for immediate, interactive campaign management.
 
@@ -224,38 +178,48 @@ graph TD
     *   [x] Implement "Targeted" sync-up and CloudFront invalidation to update web reports in <15s.
     *   [x] Decouple command execution from the 30-minute background sync loop.
 3.  **Cluster Stabilization:**
-    *   [ ] Optimize large-scale file synchronization for RPi nodes with slow I/O.
-    *   [ ] Implement worker health heartbeats on the web dashboard.
     *   [x] **Rapid S3 Updates**: Transition from 60-minute safety syncs to immediate "Specific File Pushes" for all models (Company, Website, Witness) to eliminate dashboard latency.
     *   [x] **S3 Atomic Leases**: Explore replacing the filesystem-based `lease.json` with S3-native atomic locks. (DONE)
         *   *Note*: Use `aws s3api put-object` with the `--if-none-match "*"` option (or similar conditional mechanisms) which can be made to fail if the object is already present.
 
-## Phase 15: Cluster Observability & Distributed Alarming
+## Phase 14: Cluster Observability & Distributed Alarming (Completed)
 
 **Goal:** Detect failures (like the "SQS Fallback" or "Zombie Workers") automatically before they stall the campaign.
 
 1.  **Node Heartbeats**:
-    *   Update `supervisor` to write a `heartbeat.json` to `s3://<bucket>/status/<hostname>.json` every 2 minutes.
-    *   Dashboard should flag any node with a heartbeat $>5$ minutes old as "Offline."
+    *   [x] Update `supervisor` to write a `heartbeat.json` to `s3://<bucket>/status/<hostname>.json` every 2 minutes.
 2.  **Stall Detection**:
-    *   Implement a dashboard monitor that compares `Total Pending` vs. `Last 15m Completions`.
-    *   If completions = 0 while pending $>0$, trigger a "Cluster Stalled" alarm.
-3.  **Self-Healing Workers**:
-    *   Implement an internal timeout in `WorkerLoop`. If a Playwright process hangs for $>10$ minutes, the worker must force-kill the browser and restart.
+    *   [x] Implement a dashboard monitor that compares `Total Pending` vs. `Last 15m Completions`.
 
-## Phase 16: I/O & S3 Cost Optimization
+## Phase 15: I/O & S3 Cost Optimization (Completed)
 
 **Goal:** Resolve the "Slow I/O" bottleneck on RPi nodes and reduce S3 API costs associated with mass file scanning.
 
 1.  **Specific File Pushes (Eliminate Sync Latency)** (Done):
-    *   **Current Issue**: RPi nodes spend up to 10 minutes scanning 5,000+ files to find "deltas" for S3 sync. This is extremely slow on SD cards and incurs high S3 `LIST` costs.
-    *   **Optimization**: Implement `ImmediateUploader`. When a worker finishes a `Company` enrichment, it should call `aws s3 cp` for that *one file* immediately.
+    *   [x] **Optimization**: Implement `ImmediateUploader`. When a worker finishes a `Company` enrichment, it should call `aws s3 cp` for that *one file* immediately.
 2.  **S3-Native Atomic Leases** (Done):
-    *   **Current Issue**: `FilesystemQueue` requires a shared disk or expensive mass-syncs to manage `lease.json` files across nodes.
-    *   **Optimization**: Use `aws s3api put-object` with `--if-none-match "*"` (or similar conditional checks) to claim tasks. 
-    *   **Benefit**: This makes the queue truly distributed without requiring nodes to "see" each other's local disks.
+    *   [x] **Optimization**: Use `aws s3api put-object` with `--if-none-match "*"` (or similar conditional checks) to claim tasks. 
 3.  **Local Index Caching**:
-    *   Reduce the frequency of `smart-sync down` for indexes. Use a local SQLite or persistent hash-map to track proof-of-work instead of thousands of small `.csv` files on the SD card.
+    *   [x] Reduce the frequency of `smart-sync down` for indexes. Use a local SQLite or persistent hash-map to track proof-of-work instead of thousands of small `.csv` files on the SD card.
 
+## Phase 16: Campaign Infrastructure Parity (Completed)
 
-```
+**Goal:** Finalize CDK deployment and Cognito integration for the `roadmap` campaign.
+
+1.  **Dynamic Cognito Resources**:
+    *   [x] Deployed User Pools and Clients per-campaign via CDK.
+    *   [x] Automated test user creation with 1Password integration.
+2.  **Dashboard Auth Decoupling**:
+    *   [x] Removed hardcoded auth domains from the web dashboard.
+    *   [x] Verified IAM permissions for campaign-specific S3 buckets.
+
+## Phase 17: Campaign Integrity & Data Cleanup (Active)
+
+**Goal:** Identify and remove cross-campaign contaminated data and harden isolation.
+
+1.  **Data Audit**:
+    *   [ ] Scan `roadmap` campaign for prospects originating from incorrect search queries (e.g., flooring keywords).
+2.  **Automated Cleanup**:
+    *   [ ] Implement a cleanup tool to prune prospects and companies that don't match the campaign's query list.
+3.  **Isolation Hardening**:
+    *   [ ] Audit scripts for campaign-awareness and enforce default campaign validation.

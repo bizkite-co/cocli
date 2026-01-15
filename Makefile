@@ -77,7 +77,7 @@ logname: ## Get the latest log file name
 # Use 'make test-tui-integration' to run them.
 test: install ## Run all non-TUI tests using pytest
 	$(MAKE) lint
-	source $(VENV_DIR)/bin/activate && PYTHONPATH=. pytest -s tests/ --ignore=tests/tui/test_navigation_steps.py
+	source $(VENV_DIR)/bin/activate && PYTHONPATH=. pytest -s tests/ --ignore=tests/tui/test_navigation_steps.py --ignore=tests/e2e
 
 test-unit: install lint ## Run unit tests (excluding TUI folder)
 	source $(VENV_DIR)/bin/activate && PYTHONPATH=. pytest -s tests/ --ignore=tests/tui
@@ -89,11 +89,20 @@ test-tui-integration: install ## Run only the TUI integration tests
 report: ## Show the report for the current campaign (Usage: make report [CAMPAIGN=name])
 	@PYTHONPATH=. ./.venv/bin/python scripts/campaign_report.py $(CAMPAIGN)
 
+audit-campaign: ## Audit campaign for cross-contamination (Usage: make audit-campaign [CAMPAIGN=name] [FIX=--fix])
+	@$(VENV_DIR)/bin/python scripts/audit_campaign_integrity.py $(CAMPAIGN) $(FIX)
+
 coverage-gap: ## Generate a report of unscraped target areas
 	@COCLI_DATA_HOME=$(shell pwd)/cocli_data ./.venv/bin/cocli campaign coverage-gap $(CAMPAIGN) --output coverage_gap.csv
 
 test-tui: install lint ## Run TUI test with names
 	source $(VENV_DIR)/bin/activate && pytest -v tests/tui
+
+test-e2e: install op-check ## Run end-to-end tests (requires 1Password CLI)
+	source $(VENV_DIR)/bin/activate && PYTHONPATH=. pytest tests/e2e
+
+playwright-install: install ## Install Playwright browsers
+	source $(VENV_DIR)/bin/activate && playwright install chromium
 
 textual: ## Run the app in textual
 	@uv tool install textual-dev

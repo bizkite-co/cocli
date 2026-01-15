@@ -3,7 +3,6 @@ module.exports = function(eleventyConfig) {
   eleventyConfig.addPassthroughCopy("style.css");
   eleventyConfig.addPassthroughCopy("dashboard.js");
   eleventyConfig.addPassthroughCopy("config_dashboard.js");
-  eleventyConfig.addPassthroughCopy("kml-viewer.html");
 
   // Global data for environment variables
   eleventyConfig.addGlobalData("env", process.env);
