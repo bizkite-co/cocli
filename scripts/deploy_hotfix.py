@@ -5,6 +5,8 @@ from typing import List, Tuple
 console = Console()
 
 HOSTS: List[Tuple[str, str]] = [
+    ("mstouffer", "octoprint.local"),
+    ("mstouffer", "coclipi.local"),
     ("mstouffer", "cocli5x0.local"),
 ]
 
