@@ -343,6 +343,10 @@ class CdkScraperDeploymentStack(Stack):  # type: ignore[misc]
         # Grant SendMessage to the specific CampaignUpdatesQueue
         campaign_updates_queue.grant_send_messages(authenticated_role)
 
+        # Grant Read Access to Data and Web Buckets for the Dashboard
+        data_bucket.grant_read(authenticated_role)
+        web_bucket.grant_read(authenticated_role)
+
         # Attach roles to Identity Pool
         cognito.CfnIdentityPoolRoleAttachment(self, "CocliDashboardIdentityPoolRoles",
             identity_pool_id=identity_pool.ref,

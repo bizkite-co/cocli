@@ -52,6 +52,10 @@ open: activate ##Activate the venv and open
 op-check: ## Check 1Password auth status
 	op whoami
 
+create-cognito-user: op-check ## Create a Cognito user using credentials referenced in campaign config (Usage: make create-cognito-user CAMPAIGN=yyy)
+	@if [ "$(CAMPAIGN)" = "ERROR" ]; then echo "Error: CAMPAIGN is required"; exit 1; fi
+	./.venv/bin/python scripts/create_cognito_user.py "$(CAMPAIGN)"
+
 install: ## Install development dependencies using uv
 	uv sync --extra dev --extra full
 
