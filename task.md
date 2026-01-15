@@ -6,28 +6,27 @@ Optimize the Distributed Filesystem Queue (DFQ) to eliminate race conditions and
 ## Current Status (2026-01-14)
 - **Stability Achieved:** The Pi 5 powerhouse (`cocli5x0`) is stable after implementing **Fresh BrowserContexts** per task and aggressive **S3 Throttling**.
 - **S3-Native Atomic Leases (ADR 011):** Verified live. Workers use S3 `PutObject` with `IfNoneMatch: '*'` for task leases, providing global atomicity.
+- **Randomized Prefix Sharding:** Implemented in `FilesystemQueue` (V2). Workers now poll random shards (e.g., `pending/a/`, `pending/3/`) rather than scanning the entire prefix. This significantly reduces listing latency and S3 connection overhead.
 - **Current Throttling (Protective):**
-    - **Pi 5 Workers:** Reduced to 2 (from 8) to mitigate connection pool exhaustion.
-    - **Lease Syncing:** Throttled to 5 minutes (Note: largely redundant now that atomic leases are live).
-    - **Reporting:** Throttled to 15 minutes.
+    - **Pi 5 Workers:** Scaled to 2 active enrichment tasks.
     - **S3 Connection Pool:** Increased to 50 to handle concurrent worker requests.
+    - **Reporting:** Throttled to 15 minutes.
 
 ## Bottlenecks & Inefficiencies
-- **Finding Work (Listing Latency):** Workers likely scan the entire `pending/` prefix (4,400+ items) to find one task, leading to long "idle" periods.
-- **Lazy Syncing (Companies Folder):** The supervisor currently performs a full `aws s3 sync` of the `companies/` folder. This is a "lazy implementation" that wastes I/O and bandwidth; workers only need the specific companies they are currently enriching.
-- **Connection Pool Exhaustion:** Even with 2 workers, the supervisor's background sync loops were saturating the S3 connection pool, indicating a need for better asynchronous management.
+- **Broad Syncing (Indexes & Completed):** While `companies/` are now handled via Point-to-Point fetching, the supervisor still performs throttled `aws s3 sync` for `indexes/` and `completed/` tasks. These are targets for further optimization to eliminate broad filesystem scans.
+- **Connection Pool Management:** Background sync loops in the supervisor can still spike connection usage; further transition to Point-to-Point for all data types is preferred.
 
 ## Next Steps
-1.  **Refactor "Finding Work":** Replace broad S3 listing/syncing with a targeted `list-objects-v2` strategy using `max-items` and randomized prefix sharding.
-2.  **Eliminate Global Companies Sync:** Remove the supervisor-level `aws s3 sync` of the entire companies folder. Shift to a "Point-to-Point" model where only required data is fetched/pushed by the worker.
-3.  **Clean up Redundant Code:** Remove the supervisor's lease-sync loop now that S3-Native Atomic Leases are handling coordination at the worker level.
-4.  **Scale Up (Re-test):** Once I/O and listing are optimized, increase Pi 5 workers back to 4-6 to maximize throughput.
+1.  **Eliminate Remaining Global Syncs:** Remove the supervisor-level syncs for `indexes/` and `completed/` tasks. Shift to immediate, targeted S3 operations for these data types.
+2.  **Scale Up (Re-test):** With sharding active and listing overhead reduced, increase Pi 5 workers back to 4-6 to maximize throughput and verify cluster stability.
+3.  **Heartbeat & Stall Detection:** Improve observability to ensure shards are being processed uniformly and no tasks are "stuck" due to edge-case failures.
 
 ## TODO Track
 - [x] **ADR 011:** Implement S3-native conditional writes for leases.
 - [x] **Fresh Contexts:** Reset Chromium memory per task to prevent Pi lockups.
 - [x] **S3 Throttling:** Immediate mitigation of connection pool exhaustion.
-- [ ] **S3 Listing Optimization:** Implement efficient pagination/sharding for task discovery.
-- [ ] **Point-to-Point Data Model:** Replace global folder sync with task-specific data fetching.
+- [x] **S3 Listing Optimization:** Implement Randomized Prefix Sharding for task discovery.
+- [x] **Point-to-Point (Companies):** Implement task-specific fetching for company data.
+- [ ] **Point-to-Point (Full):** Eliminate broad syncs for indexes and completed tasks.
 - [ ] **Heartbeat Monitoring:** Implement dashboard visibility for node heartbeats.
 - [ ] **Stall Detection:** Add logic to detect and alert on stalled task prefixes in S3.
