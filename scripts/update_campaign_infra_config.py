@@ -78,7 +78,8 @@ def update_config(
         "BucketName": "cocli_data_bucket_name",
         "IdentityPoolId": "cocli_identity_pool_id",
         "UserPoolId": "cocli_user_pool_id",
-        "UserPoolClientId": "cocli_user_pool_client_id"
+        "UserPoolClientId": "cocli_user_pool_client_id",
+        "UserPoolDomain": "cocli_user_pool_domain"
     }
 
     updates_made = False

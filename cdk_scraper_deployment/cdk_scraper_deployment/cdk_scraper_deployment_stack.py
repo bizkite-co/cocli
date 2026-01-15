@@ -256,10 +256,66 @@ class CdkScraperDeploymentStack(Stack):  # type: ignore[misc]
             description="URL of the enrichment service"
         )
 
-        # --- Cognito Identity Pool for Web-to-SQS Command Bridge ---
-        # Note: We link to the campaign-specific User Pool
+        # --- Cognito User Pool and Client ---
         user_pool_id = campaign_config.get("user_pool_id")
         client_id = campaign_config.get("user_pool_client_id")
+        user_pool_domain_prefix = campaign_config.get("user_pool_domain")
+
+        if not user_pool_id:
+            user_pool = cognito.UserPool(self, "CocliUserPool",
+                user_pool_name=f"cocli-user-pool-{campaign_config['name']}",
+                self_sign_up_enabled=False,
+                sign_in_aliases=cognito.SignInAliases(email=True),
+                auto_verify=cognito.AutoVerifiedAttrs(email=True),
+                removal_policy=RemovalPolicy.RETAIN,
+                password_policy=cognito.PasswordPolicy(
+                    min_length=8,
+                    require_lowercase=True,
+                    require_uppercase=True,
+                    require_digits=True,
+                    require_symbols=True
+                )
+            )
+            user_pool_id = user_pool.user_pool_id
+            
+            # Create a Domain for Hosted UI
+            domain_prefix = user_pool_domain_prefix or f"cocli-auth-{campaign_config['name']}"
+            user_pool.add_domain("UserPoolDomain",
+                cognito_domain=cognito.CognitoDomainOptions(
+                    domain_prefix=domain_prefix
+                )
+            )
+            user_pool_domain_url = f"https://{domain_prefix}.auth.{self.region}.amazoncognito.com"
+
+            # Create a Client
+            redirect_uris = [
+                f"https://{subdomain}/auth-callback/index.html",
+                "http://localhost:8080/auth-callback/index.html"
+            ]
+            logout_uris = [
+                f"https://{subdomain}/signout",
+                "http://localhost:8080/signout"
+            ]
+            
+            client = user_pool.add_client("CocliDashboardClient",
+                user_pool_client_name=f"cocli-dashboard-{campaign_config['name']}",
+                generate_secret=False,
+                o_auth=cognito.OAuthSettings(
+                    flows=cognito.OAuthFlows(
+                        authorization_code_grant=True,
+                        implicit_code_grant=True
+                    ),
+                    scopes=[cognito.OAuthScope.OPENID, cognito.OAuthScope.EMAIL, cognito.OAuthScope.PROFILE],
+                    callback_urls=redirect_uris,
+                    logout_urls=logout_uris
+                )
+            )
+            client_id = client.user_pool_client_id
+        else:
+            # If provided, we assume the domain is either provided or follows the standard
+            user_pool_domain_url = f"https://{user_pool_domain_prefix}.auth.{self.region}.amazoncognito.com" if user_pool_domain_prefix else ""
+
+        # --- Cognito Identity Pool for Web-to-SQS Command Bridge ---
         provider_name = f"cognito-idp.{self.region}.amazonaws.com/{user_pool_id}"
 
         identity_pool = cognito.CfnIdentityPool(self, "CocliDashboardIdentityPool",
@@ -298,3 +354,5 @@ class CdkScraperDeploymentStack(Stack):  # type: ignore[misc]
         CfnOutput(self, "IdentityPoolId", value=identity_pool.ref)
         CfnOutput(self, "UserPoolId", value=user_pool_id)
         CfnOutput(self, "UserPoolClientId", value=client_id)
+        if user_pool_domain_url:
+            CfnOutput(self, "UserPoolDomain", value=user_pool_domain_url)

@@ -35,7 +35,7 @@ function checkAuth() {
     }
 
     const redirectUri = window.location.origin + '/auth-callback/index.html';
-    const loginUrl = `https://auth.turboheat.net/oauth2/authorize?client_id=${config.userPoolClientId}&response_type=token&scope=openid+email+profile&redirect_uri=${encodeURIComponent(redirectUri)}`;
+    const loginUrl = `${config.userPoolDomain}/oauth2/authorize?client_id=${config.userPoolClientId}&response_type=token&scope=openid+email+profile&redirect_uri=${encodeURIComponent(redirectUri)}`;
     
     console.log("checkAuth: Redirecting to login:", loginUrl);
     window.location.href = loginUrl;
@@ -46,7 +46,7 @@ function logout() {
     localStorage.removeItem('cocli_id_token');
     localStorage.removeItem('cocli_access_token');
     const config = window.COCLI_CONFIG;
-    const logoutUrl = `https://auth.turboheat.net/logout?client_id=${config.userPoolClientId}&logout_uri=${encodeURIComponent(window.location.origin + '/signout')}`;
+    const logoutUrl = `${config.userPoolDomain}/logout?client_id=${config.userPoolClientId}&logout_uri=${encodeURIComponent(window.location.origin + '/signout')}`;
     window.location.href = logoutUrl;
 }
 

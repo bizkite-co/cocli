@@ -38,8 +38,11 @@ class S3DomainManager:
         self.s3_prefix = "indexes/domains/" # Shared resource, always at root.
 
         try:
+            from botocore.config import Config
             session = boto3.Session()
-            self.s3_client = session.client("s3")
+            # Increase pool size to handle concurrent requests without noise
+            s3_config: Config = Config(max_pool_connections=50)
+            self.s3_client = session.client("s3", config=s3_config)
         except Exception as e:
             logger.error(f"Failed to create S3 client with default credentials: {e}")
             raise

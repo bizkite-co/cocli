@@ -91,10 +91,11 @@ data_bucket_name = aws_config.get("cocli_data_bucket_name") or f"cocli-data-{cam
 ou_arn = aws_config.get("organizational-unit-arn")
 worker_count = aws_config.get("worker_count", 1)
 
-# Cognito Auth Configuration (Optional, defaults to turboship if not provided)
+# Cognito Auth Configuration (Optional)
 cognito_config = aws_config.get("cognito", {})
-user_pool_id = cognito_config.get("user_pool_id", "us-east-1_Xdir2xSOs")
-user_pool_client_id = cognito_config.get("client_id", "49hqkiolcdv3m6gsi9cg2sqm4t")
+user_pool_id = cognito_config.get("user_pool_id")
+user_pool_client_id = cognito_config.get("client_id")
+user_pool_domain = cognito_config.get("domain")
 
 # Use a unique stack name per campaign to avoid global naming conflicts and stuck stacks
 # Maintaining legacy name for turboship to avoid resource duplication
@@ -113,6 +114,7 @@ CdkScraperDeploymentStack(app, stack_name,
         "rpi_user_name": rpi_user_name,
         "user_pool_id": user_pool_id,
         "user_pool_client_id": user_pool_client_id,
+        "user_pool_domain": user_pool_domain,
     }
 )
 

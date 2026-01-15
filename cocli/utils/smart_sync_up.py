@@ -61,11 +61,14 @@ def run_smart_sync_up(
     profile_name = aws_config.get("profile") or aws_config.get("aws_profile")
     
     try:
+        from botocore.config import Config
         if profile_name:
             session = boto3.Session(profile_name=profile_name)
         else:
             session = boto3.Session()
-        s3 = session.client("s3")
+        # Increase pool size to match or exceed the number of workers
+        config = Config(max_pool_connections=50)
+        s3 = session.client("s3", config=config)
     except Exception as e:
          logger.error(f"Failed to create AWS session for upload: {e}")
          return

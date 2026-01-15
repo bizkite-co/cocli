@@ -25,6 +25,7 @@ module.exports = () => {
     name: campaignName,
     userPoolId: process.env.COCLI_USER_POOL_ID || configFromFile.cocli_user_pool_id || '',
     userPoolClientId: process.env.COCLI_USER_POOL_CLIENT_ID || configFromFile.cocli_user_pool_client_id || '',
+    userPoolDomain: process.env.COCLI_USER_POOL_DOMAIN || configFromFile.cocli_user_pool_domain || (campaignName === 'turboship' ? 'https://auth.turboheat.net' : ''),
     identityPoolId: process.env.COCLI_IDENTITY_POOL_ID || configFromFile.cocli_identity_pool_id || '',
     region: process.env.AWS_REGION || configFromFile.region || 'us-east-1',
     commandQueueUrl: process.env.COCLI_COMMAND_QUEUE_URL || configFromFile.cocli_command_queue_url || ''

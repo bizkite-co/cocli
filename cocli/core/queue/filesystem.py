@@ -438,11 +438,15 @@ class FilesystemQueue:
             except Exception as e:
                 logger.error(f"Error updating local heartbeat for {task_id}: {e}")
 
-    def nack(self, task_id: Optional[str]) -> None:
+    def nack(self, task_or_id: Optional[Union[str, Any]]) -> None:
         """Releases the lease (Local and S3)."""
-        if not task_id:
+        if not task_or_id:
             return
             
+        task_id = task_or_id if isinstance(task_or_id, str) else getattr(task_or_id, 'ack_token', None)
+        if not task_id:
+            return
+
         # 1. Local Cleanup
         lease_path = self._get_lease_path(task_id)
         try:

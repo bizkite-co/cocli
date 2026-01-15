@@ -184,7 +184,7 @@ async def run_worker(
 
                 tasks = [
                     _run_scrape_task_loop(
-                        context,
+                        browser,
                         scrape_queue,
                         gm_list_item_queue,
                         s3_client,
