@@ -476,6 +476,45 @@ class FilesystemGmListQueue(FilesystemQueue):
             self.target_tiles_dir = Path("does-not-exist")
         self.witness_dir = get_cocli_base_dir() / "indexes" / "scraped-tiles"
 
+    def push(self, task: ScrapeTask) -> str: # type: ignore[override]
+        """
+        Ensures the task exists in the Mission Index (target_tiles_dir).
+        Since FilesystemGmListQueue polls the Mission Index directly, 
+        pushing just means ensuring the file exists.
+        """
+        # ID format: lat/lon/phrase.csv
+        from ..text_utils import slugify
+        
+        # Use consistent 1-decimal formatting for directory structure
+        lat_dir = f"{task.latitude:.1f}"
+        lon_dir = f"{task.longitude:.1f}"
+        phrase_file = f"{slugify(task.search_phrase)}.csv"
+        
+        task_id = f"{lat_dir}/{lon_dir}/{phrase_file}"
+        target_path = self.target_tiles_dir / task_id
+        
+        if not target_path.exists():
+            target_path.parent.mkdir(parents=True, exist_ok=True)
+            with open(target_path, "w") as f:
+                f.write("latitude,longitude\n")
+                f.write(f"{task.latitude},{task.longitude}\n")
+            logger.debug(f"Pushed task to Mission Index: {task_id}")
+            
+            # If we have S3, also push it there
+            if self.s3_client and self.bucket_name:
+                try:
+                    s3_key = f"campaigns/{self.campaign_name}/indexes/target-tiles/{task_id}"
+                    self.s3_client.put_object(
+                        Bucket=self.bucket_name, 
+                        Key=s3_key, 
+                        Body=f"latitude,longitude\n{task.latitude},{task.longitude}\n",
+                        ContentType="text/csv"
+                    )
+                except Exception as e:
+                    logger.warning(f"Failed to push tile to S3: {e}")
+                    
+        return task_id
+
     def poll(self, batch_size: int = 1) -> List[ScrapeTask]:
         tasks: List[ScrapeTask] = []
         if not self.target_tiles_dir.exists():

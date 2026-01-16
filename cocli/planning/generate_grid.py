@@ -100,6 +100,71 @@ def generate_global_grid(
 
     return tiles
 
+def get_campaign_grid_tiles(campaign_name: str) -> List[Dict[str, Any]]:
+    """
+    Calculates the intended grid tiles for a campaign based on its configuration.
+    This replaces the need for 'target-areas.json'.
+    """
+    import toml
+    from ..core.paths import paths
+    from pathlib import Path
+    import csv
+
+    campaign_dir = paths.campaign(campaign_name)
+    config_path = campaign_dir / "config.toml"
+    if not config_path.exists():
+        return []
+
+    with open(config_path, "r") as f:
+        config = toml.load(f)
+    
+    prospecting_config = config.get("prospecting", {})
+    proximity_miles = float(prospecting_config.get("proximity", 10.0))
+    target_locations_csv = prospecting_config.get("target-locations-csv")
+
+    target_locations: List[Dict[str, Any]] = []
+    if target_locations_csv:
+        csv_path = Path(target_locations_csv)
+        if not csv_path.is_absolute():
+            csv_path = campaign_dir / csv_path
+        
+        if csv_path.exists():
+            try:
+                with open(csv_path, 'r', encoding='utf-8') as f:
+                    reader = csv.DictReader(f)
+                    for row in reader:
+                        name = row.get("name") or row.get("city")
+                        lat = row.get("lat")
+                        lon = row.get("lon")
+                        if name and lat and lon and str(lat).strip() and str(lon).strip():
+                            target_locations.append({
+                                "name": str(name),
+                                "lat": float(lat),
+                                "lon": float(lon)
+                            })
+            except Exception as e:
+                logger.error(f"Error reading target locations CSV: {e}")
+
+    # Add explicit locations
+    config_locations = prospecting_config.get("locations", [])
+    if config_locations:
+        # Note: In-process geocoding is avoided here for speed. 
+        # We assume locations are already in target_locations.csv if they need coordinates.
+        # But we check if any are missing.
+        for loc_name in config_locations:
+            if not any(loc["name"] == loc_name for loc in target_locations):
+                # We could geocode here, but better to keep this utility fast.
+                pass
+
+    all_tiles: Dict[str, Any] = {}
+    for loc in target_locations:
+        tiles = generate_global_grid(float(loc["lat"]), float(loc["lon"]), proximity_miles, step_deg=DEFAULT_GRID_STEP_DEG)
+        for tile in tiles:
+            if tile["id"] not in all_tiles:
+                all_tiles[tile["id"]] = tile
+
+    return list(all_tiles.values())
+
 def export_to_kml(tiles: List[Dict[str, Any]], filename: str, campaign_name: str, color: Optional[str] = None, compact: bool = True) -> None:
     """
     Exports the generated grid tiles to a KML file for visualization.

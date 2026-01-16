@@ -18,7 +18,7 @@ from cocli.core.scrape_index import ScrapeIndex
 from cocli.core.text_utils import slugify
 from cocli.core.location_prospects_index import LocationProspectsIndex
 from cocli.core.queue.factory import get_queue_manager
-from cocli.planning.generate_grid import generate_global_grid, DEFAULT_GRID_STEP_DEG
+from cocli.planning.generate_grid import get_campaign_grid_tiles
 from cocli.models.queue import QueueMessage
 from cocli.models.scrape_task import ScrapeTask
 from cocli.models.google_maps_prospect import GoogleMapsProspect
@@ -186,14 +186,13 @@ def queue_scrapes(
     with open(config_path, "r") as f:
         config = toml.load(f)
     search_phrases = config.get("prospecting", {}).get("queries", [])
-    grid_file = campaign_dir / "exports" / "target-areas.json"
+    
+    grid_tiles = get_campaign_grid_tiles(campaign_name)
     tasks_to_queue = []
     total_combinations = 0
     
-    if grid_file.exists():
+    if grid_tiles:
         scrape_index = ScrapeIndex()
-        with open(grid_file, 'r') as f:
-            grid_tiles = json.load(f)
         
         total_combinations = len(grid_tiles) * len(search_phrases)
         
@@ -291,13 +290,12 @@ def queue_batch(
     with open(config_path, "r") as f:
         config = toml.load(f)
     search_phrases = config.get("prospecting", {}).get("queries", [])
-    grid_file = campaign_dir / "exports" / "target-areas.json"
+    
+    grid_tiles = get_campaign_grid_tiles(campaign_name)
     tasks_to_queue = []
     
-    if grid_file.exists():
+    if grid_tiles:
         scrape_index = ScrapeIndex()
-        with open(grid_file, 'r') as f:
-            grid_tiles = json.load(f)
         
         for tile in grid_tiles:
             lat = tile.get("center_lat") or tile.get("center", {}).get("lat")
@@ -394,20 +392,7 @@ def prepare_mission(
 
     # 3. Generate Grid
     console.print(f"[bold]Generating grid for {len(target_locations)} locations (Radius: {proximity_miles} mi)...[/bold]")
-    all_tiles: Dict[str, Any] = {}
-    for loc in target_locations:
-        tiles = generate_global_grid(loc["lat"], loc["lon"], proximity_miles, step_deg=DEFAULT_GRID_STEP_DEG)
-        for tile in tiles:
-            if tile["id"] not in all_tiles:
-                all_tiles[tile["id"]] = tile
-
-    unique_tiles = list(all_tiles.values())
-    
-    # Save target-areas.json for compatibility
-    export_dir = campaign_dir / "exports"
-    export_dir.mkdir(parents=True, exist_ok=True)
-    with open(export_dir / "target-areas.json", "w") as f:
-        json.dump(unique_tiles, f, indent=2)
+    unique_tiles = get_campaign_grid_tiles(campaign_name)
 
     # 4. Build Deterministic Task List
     tasks = []

@@ -1,6 +1,5 @@
 import typer
 import csv
-import json
 import toml
 import logging
 import yaml
@@ -15,7 +14,7 @@ from ...core.text_utils import slugify
 from ...core.importing import import_prospect
 from ...core.prospects_csv_manager import ProspectsIndexManager
 from ...core.scrape_index import ScrapeIndex
-from ...planning.generate_grid import generate_global_grid, export_to_kml, DEFAULT_GRID_STEP_DEG
+from ...planning.generate_grid import export_to_kml, DEFAULT_GRID_STEP_DEG, get_campaign_grid_tiles
 
 logger = logging.getLogger(__name__)
 console = Console()
@@ -198,21 +197,9 @@ def generate_grid(
     export_dir = campaign_dir / "exports"
     export_dir.mkdir(parents=True, exist_ok=True)
     
-    all_tiles: Dict[str, Any] = {}
-    for loc in target_locations:
-        tiles = generate_global_grid(float(loc["lat"]), float(loc["lon"]), proximity_miles, step_deg=DEFAULT_GRID_STEP_DEG)
-        for tile in tiles:
-            if tile["id"] not in all_tiles:
-                all_tiles[tile["id"]] = tile
-
-    unique_tiles = list(all_tiles.values())
-    
-    json_path = export_dir / "target-areas.json"
+    unique_tiles = get_campaign_grid_tiles(campaign_name)
     kml_path = export_dir / "target-areas.kml"
     
-    with open(json_path, "w") as f:
-        json.dump(unique_tiles, f, indent=2)
-        
     export_to_kml(unique_tiles, str(kml_path), f"{campaign_name} - All Targets", color="08ffffff")
     
     console.print("[bold green]Grid generation complete.[/bold green]")
@@ -236,15 +223,12 @@ def coverage_gap(
     campaign_dir = get_campaign_dir(campaign_name)
     if not campaign_dir:
         console.print(f"[bold red]Campaign '{campaign_name}' not found.[/bold red]")
-        raise typer.Exit(code=1)
+        raise typer.Exit(1)
 
-    grid_file = campaign_dir / "exports" / "target-areas.json"
-    if not grid_file.exists():
-         console.print(f"[bold red]Grid file not found at {grid_file}. Please run 'cocli campaign generate-grid' first.[/bold red]")
-         raise typer.Exit(code=1)
-    
-    with open(grid_file, 'r') as f:
-        target_tiles = json.load(f)
+    target_tiles = get_campaign_grid_tiles(campaign_name)
+    if not target_tiles:
+         console.print(f"[bold red]No target tiles found for campaign '{campaign_name}'.[/bold red]")
+         raise typer.Exit(1)
     
     console.print(f"[bold]Analyzing coverage for {len(target_tiles)} target tiles in '{campaign_name}'...[/bold]")
 

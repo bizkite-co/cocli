@@ -208,8 +208,8 @@ ingest-existing-customers: install ## Ingest the existing customers.csv file int
 	$(VENV_DIR)/bin/cocli ingest-google-maps-csv $(COCLI_DATA_HOME)/scraped_data/turboship/customers/customers.csv
 
 .PHONY: queue-scrape-tasks
-queue-scrape-tasks: ## Queue scrape tasks for the 'turboship' campaign
-	COCLI_DATA_HOME=$(shell pwd)/cocli_data uv run cocli campaign queue-scrapes turboship $(ARGS)
+queue-scrape-tasks: ## Queue scrape tasks for the current campaign
+	COCLI_DATA_HOME=$(shell pwd)/cocli_data uv run cocli campaign queue-scrapes $(CAMPAIGN) $(ARGS)
 
 .PHONY: prospects-with-emails
 prospects-with-emails:
