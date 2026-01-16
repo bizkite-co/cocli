@@ -27,7 +27,6 @@ from cocli.models.hubspot import HubspotContactCsv
 from cocli.compilers.website_compiler import WebsiteCompiler
 from cocli.core.enrichment import enrich_company_website
 from cocli.core.enrichment_service_utils import ensure_enrichment_service_ready
-from cocli.core.logging_config import setup_file_logging
 from cocli.core.text_utils import slugify
 
 from playwright.async_api import async_playwright, Browser
@@ -61,7 +60,7 @@ def to_hubspot_csv(
     """
     campaign = get_campaign()
     if not campaign:
-        print("No campaign set. Please set a campaign using `cocli campaign set <campaign_name>`.")
+        console.print("[red]No campaign set. Please set a campaign using `cocli campaign set <campaign_name>`.[/red]")
         raise typer.Exit(1)
 
     prospects = get_prospects(campaign, with_email, city, state)
@@ -92,7 +91,7 @@ def to_hubspot_csv(
             except ValidationError as e:
                 logger.warning(f"Skipping prospect {prospect.name} due to invalid data: {e}")
 
-    print(f"Exported {exported_count} prospects to {output_file}")
+    console.print(f"[green]Exported {exported_count} prospects to {output_file}[/green]")
 
 
 async def enrich_prospect_docker(client: httpx.AsyncClient, prospect: Company, force: bool, ttl_days: int, console: Console) -> None:
@@ -212,11 +211,8 @@ def enrich_prospects_command(
     """
     campaign_name = get_campaign()
     if not campaign_name:
-        print("No campaign set. Please set a campaign using `cocli campaign set <campaign_name>`.")
+        console.print("[red]No campaign set. Please set a campaign using `cocli campaign set <campaign_name>`.[/red]")
         raise typer.Exit(1)
-
-    console = Console()
-    setup_file_logging(f"{campaign_name}-prospects-enrich", console_level=logging.INFO, file_level=logging.DEBUG)
 
     prospects = list(get_prospects(campaign_name, with_email=False, city=None, state=None))
     console.print(f"Found {len(prospects)} prospects to enrich using {runner} runner.")
@@ -573,12 +569,12 @@ def tag_prospects_from_csv() -> None:
     Updates company tags based on the prospects.csv file for the current campaign.
     This is a recovery tool to tag prospects that were imported without a campaign tag.
     """
+    console = Console()
     campaign_name = get_campaign()
     if not campaign_name:
-        print("No campaign set. Please set a campaign using `cocli campaign set <campaign_name>`.")
+        console.print("[red]No campaign set. Please set a campaign using `cocli campaign set <campaign_name>`.[/red]")
         raise typer.Exit(1)
 
-    console = Console()
     console.print(f"Tagging prospects from CSV for campaign: [bold]{campaign_name}[/bold]")
 
     from ..core.prospects_csv_manager import ProspectsIndexManager

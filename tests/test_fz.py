@@ -75,9 +75,6 @@ def test_fz_finds_and_views_company(setup_test_environment, mocker):
         # Run the fz command
         result = runner.invoke(app, ["fz"])
 
-        print(f"STDOUT: {result.stdout}")
-        print(f"STDERR: {result.stderr}")
-
         assert result.exit_code == 0, f"STDOUT: {result.stdout}\nSTDERR: {result.stderr}"
 
         # Verify that fzf was called with the test company
@@ -106,9 +103,6 @@ def test_fz_with_none_filter_in_config(setup_test_environment, mocker):
 
         # Run the fz command
         result = runner.invoke(app, ["fz"])
-
-        print(f"STDOUT: {result.stdout}")
-        print(f"STDERR: {result.stderr}")
 
         assert result.exit_code == 0, f"STDOUT: {result.stdout}\nSTDERR: {result.stderr}"
 

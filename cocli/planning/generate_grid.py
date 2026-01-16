@@ -1,181 +1,141 @@
 import math
-import logging
-from typing import List, Dict, Optional, Any
-import simplekml # type: ignore
-from datetime import datetime
 import os
 import json
+from typing import List, Dict, Optional, Any
+from rich.console import Console
 
-# Configuration for Global Grid
-# We use degrees as the fundamental unit to ensure global alignment (Snap-to-Grid).
-# 0.1 degrees is the standard "one decimal place" grid.
-# At 30 deg lat: ~6.9 miles (lat) x 6.0 miles (lon).
-# We will adjust browser viewport/zoom to match this grid size.
-DEFAULT_GRID_STEP_DEG = 0.1
+# Optional dependency for high-quality KML generation
+try:
+    import simplekml # type: ignore
+    SIMPLEKML_AVAILABLE = True
+except ImportError:
+    SIMPLEKML_AVAILABLE = False
 
-logger = logging.getLogger(__name__)
+console = Console()
 
-# Approximate miles per degree for reporting/viz only (at equator/general)
-APPROX_MILES_PER_DEG_LAT = 69.0
+# 0.08 degrees is approximately 5.5 miles at the equator.
+# This results in tiles that are roughly 5.5 x 5.5 miles.
+DEFAULT_GRID_STEP_DEG = 0.08
 
-def generate_global_grid(
-    center_lat: float,
-    center_lon: float,
-    radius_miles: float,
-    step_deg: float = DEFAULT_GRID_STEP_DEG
-) -> List[Dict[str, Any]]:
+def generate_global_grid(center_lat: float, center_lon: float, radius_miles: float, step_deg: float = DEFAULT_GRID_STEP_DEG) -> List[Dict[str, Any]]:
     """
-    Generates a grid of tiles aligned to a global Lat/Lon grid (0.1 degree steps).
-    This ensures that tiles are consistent across different campaigns/cities.
+    Generates a grid of tiles covering a circular area defined by a center and radius.
     
-    The grid covers the requested radius completely (no truncation).
+    Args:
+        center_lat: Latitude of the center point.
+        center_lon: Longitude of the center point.
+        radius_miles: Radius of the coverage area in miles.
+        step_deg: The size of each square tile in degrees.
+        
+    Returns:
+        A list of tile dictionaries, each containing its bounds and center.
     """
-    tiles: List[Dict[str, Any]] = []
-
-    # Convert radius to rough degrees to find bounding box
-    radius_deg = radius_miles / APPROX_MILES_PER_DEG_LAT
-    cos_factor = math.cos(math.radians(center_lat))
-    radius_deg_lon = radius_miles / (APPROX_MILES_PER_DEG_LAT * cos_factor)
+    # Rough conversion: 1 degree latitude is ~69 miles
+    # 1 degree longitude varies by latitude: 69 * cos(lat)
     
-    raw_min_lat = center_lat - radius_deg
-    raw_max_lat = center_lat + radius_deg
-    raw_min_lon = center_lon - radius_deg_lon
-    raw_max_lon = center_lon + radius_deg_lon
-
-    # SNAP TO GRID (0.1 degree alignment)
-    # We use round(x, 1) logic, but floor/ceil to ensure coverage
+    lat_step = step_deg
+    lon_step = step_deg / math.cos(math.radians(center_lat))
     
-    def snap_floor(val: float, step: float) -> float:
-        return math.floor(val / step) * step
-
-    def snap_ceil(val: float, step: float) -> float:
-        return math.ceil(val / step) * step
-
-    grid_min_lat = snap_floor(raw_min_lat, step_deg)
-    grid_max_lat = snap_ceil(raw_max_lat, step_deg)
-    grid_min_lon = snap_floor(raw_min_lon, step_deg)
-    grid_max_lon = snap_ceil(raw_max_lon, step_deg)
-
-    # Generate Tiles
-    # Use integer steps to avoid cumulative float precision issues and ensure boundary inclusion
-    num_steps_lat = int(round((grid_max_lat - grid_min_lat) / step_deg))
-    num_steps_lon = int(round((grid_max_lon - grid_min_lon) / step_deg))
+    # Calculate search bounds in degrees
+    lat_buffer_deg = radius_miles / 69.0
+    lon_buffer_deg = radius_miles / (69.0 * math.cos(math.radians(center_lat)))
     
-    logger.info(f"Generating {num_steps_lat}x{num_steps_lon} grid ({num_steps_lat * num_steps_lon} potential tiles)")
-
-    for i in range(num_steps_lat):
-        for j in range(num_steps_lon):
-            sw_lat = grid_min_lat + (i * step_deg)
-            sw_lon = grid_min_lon + (j * step_deg)
+    min_lat = center_lat - lat_buffer_deg
+    max_lat = center_lat + lat_buffer_deg
+    min_lon = center_lon - lon_buffer_deg
+    max_lon = center_lon + lon_buffer_deg
+    
+    # Align grid to steps
+    start_lat = math.floor(min_lat / lat_step) * lat_step
+    start_lon = math.floor(min_lon / lon_step) * lon_step
+    
+    grid_tiles = []
+    
+    current_lat = start_lat
+    while current_lat <= max_lat:
+        current_lon = start_lon
+        while current_lon <= max_lon:
+            # Check if tile center is within radius (using Haversine or simple approximation)
+            tile_center_lat = current_lat + (lat_step / 2)
+            tile_center_lon = current_lon + (lon_step / 2)
             
-            ne_lat = sw_lat + step_deg
-            ne_lon = sw_lon + step_deg
+            # Simple Euclidean distance in miles (approximation)
+            d_lat = (tile_center_lat - center_lat) * 69.0
+            d_lon = (tile_center_lon - center_lon) * 69.0 * math.cos(math.radians(center_lat))
+            dist = math.sqrt(d_lat**2 + d_lon**2)
             
-            # Create a unique, consistent ID based on the South-West corner
-            # e.g., "30.2_-97.7"
-            # We use .1f formatting to ensure consistent strings
-            tile_id = f"{sw_lat:.1f}_{sw_lon:.1f}"
+            if dist <= radius_miles + (max(lat_step, lon_step) * 69.0): # Include partial tiles
+                tile_id = f"{current_lat:.4f}_{current_lon:.4f}"
+                grid_tiles.append({
+                    "id": tile_id,
+                    "south_west_lat": round(current_lat, 6),
+                    "south_west_lon": round(current_lon, 6),
+                    "north_east_lat": round(current_lat + lat_step, 6),
+                    "north_east_lon": round(current_lon + lon_step, 6),
+                    "center_lat": round(tile_center_lat, 6),
+                    "center_lon": round(tile_center_lon, 6),
+                    "step_deg": step_deg,
+                    "est_width_miles": round(lon_step * 69.0 * math.cos(math.radians(center_lat)), 2),
+                    "est_height_miles": round(lat_step * 69.0, 2)
+                })
             
-            center_lat_calc = (sw_lat + ne_lat) / 2
-            center_lon_calc = (sw_lon + ne_lon) / 2
-            
-            # Approximate size in miles for this specific tile (for reference)
-            height_miles = step_deg * APPROX_MILES_PER_DEG_LAT
-            width_miles = step_deg * APPROX_MILES_PER_DEG_LAT * math.cos(math.radians(center_lat_calc))
-
-            tiles.append({
-                "id": tile_id,
-                "south_west_lat": round(sw_lat, 5),
-                "south_west_lon": round(sw_lon, 5),
-                "north_east_lat": round(ne_lat, 5),
-                "north_east_lon": round(ne_lon, 5),
-                "center_lat": round(center_lat_calc, 5),
-                "center_lon": round(center_lon_calc, 5),
-                "status": "pending",
-                "step_deg": step_deg,
-                "est_width_miles": round(width_miles, 2),
-                "est_height_miles": round(height_miles, 2),
-                "generated_at": datetime.utcnow().isoformat()
-            })
-
-    return tiles
+            current_lon += lon_step
+        current_lat += lat_step
+        
+    return grid_tiles
 
 def get_campaign_grid_tiles(campaign_name: str) -> List[Dict[str, Any]]:
-    """
-    Calculates the intended grid tiles for a campaign based on its configuration.
-    This replaces the need for 'target-areas.json'.
-    """
-    import toml
-    from ..core.paths import paths
-    from pathlib import Path
-    import csv
-
-    campaign_dir = paths.campaign(campaign_name)
-    config_path = campaign_dir / "config.toml"
-    if not config_path.exists():
-        return []
-
-    with open(config_path, "r") as f:
-        config = toml.load(f)
+    """Helper to load grid tiles for a campaign from its config."""
+    from cocli.core.config import load_campaign_config
+    config = load_campaign_config(campaign_name)
     
-    prospecting_config = config.get("prospecting", {})
-    proximity_miles = float(prospecting_config.get("proximity", 10.0))
-    target_locations_csv = prospecting_config.get("target-locations-csv")
+    locations = config.get("prospecting", {}).get("target-locations", [])
+    proximity = config.get("prospecting", {}).get("proximity-miles", 10)
+    
+    all_tiles = []
+    seen_ids = set()
+    
+    # Simple Geocoder Shim if needed
+    from geopy.geocoders import Nominatim # type: ignore
+    geolocator = Nominatim(user_agent="cocli_planner")
 
-    target_locations: List[Dict[str, Any]] = []
-    if target_locations_csv:
-        csv_path = Path(target_locations_csv)
-        if not csv_path.is_absolute():
-            csv_path = campaign_dir / csv_path
-        
-        if csv_path.exists():
-            try:
-                with open(csv_path, 'r', encoding='utf-8') as f:
-                    reader = csv.DictReader(f)
-                    for row in reader:
-                        name = row.get("name") or row.get("city")
-                        lat = row.get("lat")
-                        lon = row.get("lon")
-                        if name and lat and lon and str(lat).strip() and str(lon).strip():
-                            target_locations.append({
-                                "name": str(name),
-                                "lat": float(lat),
-                                "lon": float(lon)
-                            })
-            except Exception as e:
-                logger.error(f"Error reading target locations CSV: {e}")
+    for loc in locations:
+        try:
+            # Check if loc is already coords or a string
+            if isinstance(loc, str):
+                location = geolocator.geocode(loc)
+                if not location:
+                    continue
+                lat, lon = location.latitude, location.longitude
+            else:
+                lat, lon = loc[0], loc[1]
+                
+            tiles = generate_global_grid(lat, lon, proximity)
+            for t in tiles:
+                if t["id"] not in seen_ids:
+                    all_tiles.append(t)
+                    seen_ids.add(t["id"])
+        except Exception as e:
+            console.print(f"[red]Error processing location {loc}: {e}[/red]")
+            
+    return all_tiles
 
-    # Add explicit locations
-    config_locations = prospecting_config.get("locations", [])
-    if config_locations:
-        # Note: In-process geocoding is avoided here for speed. 
-        # We assume locations are already in target_locations.csv if they need coordinates.
-        # But we check if any are missing.
-        for loc_name in config_locations:
-            if not any(loc["name"] == loc_name for loc in target_locations):
-                # We could geocode here, but better to keep this utility fast.
-                pass
-
-    all_tiles: Dict[str, Any] = {}
-    for loc in target_locations:
-        tiles = generate_global_grid(float(loc["lat"]), float(loc["lon"]), proximity_miles, step_deg=DEFAULT_GRID_STEP_DEG)
-        for tile in tiles:
-            if tile["id"] not in all_tiles:
-                all_tiles[tile["id"]] = tile
-
-    return list(all_tiles.values())
-
-def export_to_kml(tiles: List[Dict[str, Any]], filename: str, campaign_name: str, color: Optional[str] = None, compact: bool = True) -> None:
+def export_to_kml(tiles: List[Dict[str, Any]], filename: str, campaign_name: str, color: Optional[str] = None) -> None:
     """
-    Exports the generated grid tiles to a KML file for visualization.
-    If compact=True (default), manually builds a tiny KML using shared styles to save space.
+    Exports grid tiles to a KML file.
+    
+    Args:
+        tiles: List of tile dictionaries.
+        filename: Destination path for the KML file.
+        campaign_name: Name of the campaign.
+        color: Optional KML color (AABBGGRR).
     """
-    if not compact:
+    if SIMPLEKML_AVAILABLE:
         kml = simplekml.Kml()
-        document = kml.newdocument(name=f"{campaign_name} Global Grid")
-
+        kml.document.name = f"{campaign_name} - Coverage Grid"
+        
         for tile in tiles:
-            pol = document.newpolygon(name=tile["id"])
+            pol = kml.newpolygon(name=tile["id"])
             pol.outerboundaryis = [
                 (tile["south_west_lon"], tile["south_west_lat"]),
                 (tile["north_east_lon"], tile["south_west_lat"]),
@@ -215,21 +175,21 @@ def export_to_kml(tiles: List[Dict[str, Any]], filename: str, campaign_name: str
             pm = f"<Placemark><name>{tile['id']}</name><styleUrl>#s</styleUrl><Polygon><outerBoundaryIs><LinearRing><coordinates>{coords}</coordinates></LinearRing></outerBoundaryIs></Polygon></Placemark>"
             placemarks.append(pm)
             
-        kml_content = f"""<?xml version="1.0" encoding="UTF-8"?>
-<kml xmlns="http://www.opengis.net/kml/2.2">
+        kml_content = f"""<?xml version=\"1.0\" encoding=\"UTF-8\"?>
+<kml xmlns=\"http://www.opengis.net/kml/2.2\">
 <Document>
     <name>{campaign_name} - All Targets Global Grid</name>
-    <Style id="s">
+    <Style id=\"s\">
         <LineStyle><color>ff00ff00</color><width>1</width></LineStyle>
         <PolyStyle><color>{kml_color}</color></PolyStyle>
     </Style>
-    {"".join(placemarks)}
+    {"" .join(placemarks)}
 </Document>
 </kml>"""
         with open(filename, 'w') as f:
             f.write(kml_content)
             
-    print(f"Generated KML: {filename}")
+    console.print(f"[green]Generated KML: {filename}[/green]")
 
 if __name__ == "__main__":
     # Example Usage: Austin, TX
@@ -243,7 +203,7 @@ if __name__ == "__main__":
 
     # Generate the grid
     grid_tiles = generate_global_grid(CENTER_LAT, CENTER_LON, RADIUS_MILES, STEP_DEG)
-    print(f"Generated {len(grid_tiles)} global grid tiles for campaign '{CAMPAIGN_NAME}'")
+    console.print(f"Generated {len(grid_tiles)} global grid tiles for campaign '{CAMPAIGN_NAME}'")
 
     # Define output file paths in the 'exports' subdirectory
     base_dir = f"cocli_data/campaigns/{CAMPAIGN_NAME}/exports"
@@ -256,7 +216,7 @@ if __name__ == "__main__":
     # Save to JSON
     with open(output_json_file, "w") as f:
         json.dump(grid_tiles, f, indent=2)
-    print(f"Saved grid plan to JSON: {output_json_file}")
+    console.print(f"Saved grid plan to JSON: {output_json_file}")
 
     # Export to KML
     export_to_kml(grid_tiles, output_kml_file, CAMPAIGN_NAME)

@@ -93,12 +93,12 @@ def add(
     data_home = get_cocli_base_dir()
     try:
         Campaign.create(name, company, data_home)
-        print(f"Campaign '{name}' created successfully.")
+        console.print(f"[green]Campaign '{name}' created successfully.[/green]")
     except FileNotFoundError as e:
-        print(f"Error: {e}")
+        console.print(f"[red]Error: {e}[/red]")
         raise typer.Exit(code=1)
     except Exception as e:
-        print(f"An unexpected error occurred: {e}")
+        console.print(f"[red]An unexpected error occurred: {e}[/red]")
         raise typer.Exit(code=1)
 
 @app.command(name="set")

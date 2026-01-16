@@ -27,7 +27,6 @@ async def test_add_exclusion_bridge(page, auth_creds, campaign_config, visible_l
 
     # 3. Add test exclusion
     test_slug = f"e2e-bridge-test-{int(asyncio.get_event_loop().time())}.com"
-    print(f"Adding test exclusion: {test_slug}")
     await page.fill("#new-exclude", test_slug)
     await page.click("button:has-text('Add')")
 
@@ -43,20 +42,11 @@ async def test_add_exclusion_bridge(page, auth_creds, campaign_config, visible_l
     aws_config = campaign_config.get("aws", {})
     queue_url = aws_config.get("cocli_command_queue_url")
 
-    print(f"Verifying SQS bridge at {queue_url}")
     session = boto3.Session(profile_name=aws_config.get("profile") or aws_config.get("aws_profile"))
     sqs = session.client("sqs", region_name=aws_config.get("region", "us-east-1"))
 
-    # Check queue stats first
-    attrs = sqs.get_queue_attributes(
-        QueueUrl=queue_url,
-        AttributeNames=['ApproximateNumberOfMessages', 'ApproximateNumberOfMessagesNotVisible']
-    ).get('Attributes', {})
-    print(f"Initial SQS Stats: {attrs}")
-
     found = False
-    for i in range(10): # Increase to 10 attempts
-        print(f"Polling SQS attempt {i+1}...")
+    for i in range(10): # 10 attempts
         response = sqs.receive_message(
             QueueUrl=queue_url,
             MaxNumberOfMessages=10,
@@ -65,31 +55,19 @@ async def test_add_exclusion_bridge(page, auth_creds, campaign_config, visible_l
         )
 
         messages = response.get("Messages", [])
-        print(f"Found {len(messages)} messages in this batch.")
-
         for msg in messages:
             body_str = msg["Body"]
             try:
                 body = json.loads(body_str)
                 cmd_text = body.get("command", "")
-                print(f"  - Message: {cmd_text}")
                 if test_slug in cmd_text:
                     found = True
-                    print(f"SUCCESS: Found matching command for {test_slug}")
                     break
-            except Exception as e:
-                print(f"  - Failed to parse message body: {e}")
+            except Exception:
+                pass
 
         if found:
             break
         await asyncio.sleep(1)
 
-    if not found:
-        # Check stats again
-        attrs_final = sqs.get_queue_attributes(
-            QueueUrl=queue_url,
-            AttributeNames=['ApproximateNumberOfMessages', 'ApproximateNumberOfMessagesNotVisible']
-        ).get('Attributes', {})
-        print(f"Final SQS Stats: {attrs_final}")
-
-    assert found, f"Command for {test_slug} did not reach SQS queue {queue_url}. Check if a worker processed it already."
+    assert found, f"Command for {test_slug} did not reach SQS queue {queue_url}."

@@ -1,11 +1,14 @@
 
 import csv
+import logging
 from pathlib import Path
 from typing import Optional, Dict, Any
 from datetime import datetime, UTC
 
 from ..models.google_maps_prospect import GoogleMapsProspect
 from .config import get_cocli_base_dir
+
+logger = logging.getLogger(__name__)
 
 class GoogleMapsCache:
     def __init__(self, cache_dir: Optional[Path] = None):
@@ -56,7 +59,7 @@ class GoogleMapsCache:
                     try:
                         self.data[str(processed_row["Place_ID"])] = GoogleMapsProspect(**processed_row)
                     except Exception as e:
-                        print(f"Error loading GoogleMapsProspect from cache: {e} for row: {row}")
+                        logger.error(f"Error loading GoogleMapsProspect from cache: {e} for row: {row}")
 
     def get_by_place_id(self, place_id: str) -> Optional[GoogleMapsProspect]:
         return self.data.get(place_id)

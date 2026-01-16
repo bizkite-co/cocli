@@ -35,7 +35,6 @@ class CompanyList(Container):
         super().__init__(name=name, id=id, classes=classes)
         self.can_focus = True
         self.all_fz_items = get_filtered_items_from_fz(item_type="company")
-        print(f"DEBUG: CompanyList.__init__ - self.all_fz_items: {self.all_fz_items}") # Temporary debug print
         self.filtered_fz_items = self.all_fz_items
 
     def compose(self) -> ComposeResult:

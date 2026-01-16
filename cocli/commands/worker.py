@@ -242,7 +242,7 @@ async def execute_cli_command(args: Optional[List[str]]) -> bool:
 
 async def _run_command_poller_loop(command_queue: Any, s3_client: Any, bucket_name: str, campaign_name: str, aws_config: Dict[str, Any]) -> None:
     """Polls SQS for campaign update commands and executes them."""
-    print(f"!!! COMMAND POLLER INIT START for {campaign_name} !!!", flush=True)
+    logger.info(f"Command Poller initializing for {campaign_name}")
     from ..core.reporting import get_exclusions_data, get_queries_data, get_locations_data
     from ..application.campaign_service import CampaignService
     import json

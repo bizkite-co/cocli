@@ -244,5 +244,6 @@ def report(
         with open(output, "w") as f:
             json.dump(stats, f, indent=2)
         console.print(f"[green]Report saved to {output}[/green]")
-    else:
-        print(json.dumps(stats, indent=2))
+    if stats:
+        console.print(json.dumps(stats, indent=2))
+
