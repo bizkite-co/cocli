@@ -153,8 +153,8 @@ def export_to_kml(tiles: List[Dict[str, Any]], filename: str, campaign_name: str
         kml_content = f"""<?xml version="1.0" encoding="UTF-8"?>
 <kml xmlns="http://www.opengis.net/kml/2.2">
 <Document>
-    <name>{campaign_name} Global Grid</name>
-    Style id="s">
+    <name>{campaign_name} - All Targets Global Grid</name>
+    <Style id="s">
         <LineStyle><color>ff00ff00</color><width>1</width></LineStyle>
         <PolyStyle><color>{kml_color}</color></PolyStyle>
     </Style>

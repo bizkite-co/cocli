@@ -260,6 +260,7 @@ def publish_kml(
     console.print("[dim]Generating KML files...[/dim]")
     try:
         subprocess.run(["cocli", "campaign", "set", campaign_name], check=True, capture_output=True)
+        subprocess.run(["cocli", "campaign", "generate-grid"], check=True, capture_output=True)
         subprocess.run(["cocli", "campaign", "visualize-coverage", campaign_name], check=True, capture_output=True)
         subprocess.run(["cocli", "campaign", "visualize-legacy-scrapes", campaign_name], check=True, capture_output=True)
         subprocess.run(["cocli", "render-prospects-kml", campaign_name], check=True, capture_output=True)
