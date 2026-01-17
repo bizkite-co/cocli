@@ -149,6 +149,16 @@ def deploy(
 
     # 2. Generate & Upload Report
     console.print(f"[bold]Generating reports for {campaign_name}...[/bold]")
+    
+    # 2.0 Force regeneration of the export CSV to pick up name changes
+    try:
+        console.print("  Regenerating export CSV...")
+        # Use the absolute path to the script relative to project root
+        script_path = Path(__file__).parent.parent.parent / "scripts" / "export_enriched_emails.py"
+        subprocess.run(["uv", "run", str(script_path), campaign_name, "--all"], check=True)
+    except Exception as e:
+        console.print(f"[yellow]Warning: Could not regenerate export CSV: {e}[/yellow]")
+
     from cocli.core.reporting import get_campaign_stats, get_exclusions_data, get_queries_data, get_locations_data
     
     # 2a. Main Report

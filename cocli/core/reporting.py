@@ -141,15 +141,25 @@ def get_campaign_stats(campaign_name: str) -> Dict[str, Any]:
     total_prospects = 0
     source_counts = {"local-worker": 0, "fargate-worker": 0, "unknown": 0}
     all_slugs = set()
+    prospect_metadata: Dict[str, str] = {} # slug -> name
 
     # Pre-calculate tile-to-prospect mapping for efficient location stats
     tile_prospect_counts: Dict[str, int] = {}
 
+    from ..models.company import Company
     if manager.index_dir.exists():
         for prospect in manager.read_all_prospects():
             # Add to slugs list
             if prospect.company_slug:
                 all_slugs.add(prospect.company_slug)
+                
+                # Fetch clean name from Company model if not already cached
+                if prospect.company_slug not in prospect_metadata:
+                    comp = Company.get(prospect.company_slug)
+                    if comp:
+                        prospect_metadata[prospect.company_slug] = comp.name
+                    else:
+                        prospect_metadata[prospect.company_slug] = prospect.company_slug
                 
             # Skip excluded
             if exclusion_manager.is_excluded(domain=prospect.Domain, slug=prospect.company_slug):
@@ -169,6 +179,12 @@ def get_campaign_stats(campaign_name: str) -> Dict[str, Any]:
     stats["prospects_count"] = total_prospects
     stats["worker_stats"] = source_counts
     stats["all_slugs"] = sorted(list(all_slugs))
+    
+    # Create an ordered list of prospects with names for the dashboard
+    stats["prospects"] = [
+        {"slug": s, "name": prospect_metadata.get(s, s)} 
+        for s in stats["all_slugs"]
+    ]
 
     # 2. Queue Stats (Cloud vs Local)
     prospecting_config = config.get("prospecting", {})

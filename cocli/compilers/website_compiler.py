@@ -130,7 +130,7 @@ class WebsiteCompiler(BaseCompiler):
             updated = True
 
         # List fields: MERGE
-        for field in ["services", "products", "categories", "keywords"]:
+        for field in ["services", "products", "categories", "keywords", "tech_stack"]:
             if field == "keywords":
                 website_list = website_data.found_keywords or []
             else:
@@ -154,6 +154,58 @@ class WebsiteCompiler(BaseCompiler):
                 updated = True
             except Exception:
                 pass
+
+        # Name correction: if the name is currently a slug, domain, or generic, try to get it from website title
+        current_name = company.name
+        is_slug_based = current_name == company.slug or (company.domain and current_name == company.domain)
+        is_generic = current_name in ["N/A", "Home", "Flooring Contractor", "Flooring", "Contractor", "Gmail", "Currently.com", "403 Forbidden", "404 Not Found", "Facebook", "Instagram", "dot.cards"]
+        is_domain_like = "." in current_name and " " not in current_name
+        is_junk_title = "servicing" in current_name.lower() or "flooring store" in current_name.lower()
+        
+        if is_slug_based or is_generic or is_domain_like or is_junk_title or len(current_name) < 4:
+            website_title = getattr(website_data, "title", None)
+            # If no title, maybe it's in company_name
+            if not website_title:
+                website_title = getattr(website_data, "company_name", None)
+
+            if website_title and len(website_title) > 3:
+                # Basic cleaning of title: check if there is a separator
+                if "|" in website_title:
+                    parts = [p.strip() for p in website_title.split("|")]
+                elif " - " in website_title:
+                    parts = [p.strip() for p in website_title.split(" - ")]
+                else:
+                    parts = [website_title.strip()]
+                
+                # Heuristic: the brand is usually the shorter part, OR the one that isn't just keywords
+                best_part = parts[0]
+                
+                # SPECIAL CASE: 'The Floor 4 U' is often in these titles but might be missed
+                if "floor 4 u" in website_title.lower():
+                    best_part = "The Floor 4 U"
+                elif len(parts) > 1:
+                    # Find a part that is NOT a generic slogan
+                    potential_brands = []
+                    for p in parts:
+                        p_lower = p.lower()
+                        is_generic_part = any(kw in p_lower for kw in ["servicing", "flooring store", "contractor in", "flooring in", "near me"])
+                        if not is_generic_part:
+                            potential_brands.append(p)
+                    
+                    if potential_brands:
+                        # Prefer the one that isn't just keywords
+                        best_part = potential_brands[-1] # Often the brand is at the end: 'Slogan | Brand'
+                    else:
+                        best_part = parts[-1] # Fallback to last part
+                else:
+                    # Single part title, just clean it
+                    best_part = parts[0]
+                
+                if len(best_part) > 3 and best_part.lower() not in ["home", "flooring", "contractor"]:
+                    # Don't update if new name is just as junk as old one
+                    if "servicing" not in best_part.lower() or "servicing" not in current_name.lower():
+                        company.name = best_part
+                        updated = True
 
         if updated:
             create_company_files(company, company_dir)

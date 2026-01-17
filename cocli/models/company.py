@@ -183,6 +183,10 @@ class Company(BaseModel):
             if "name" not in model_data:
                 model_data["name"] = company_dir.name
 
+            # Ensure place_id is correctly mapped from frontmatter if it exists
+            if "place_id" in frontmatter_data:
+                model_data["place_id"] = frontmatter_data["place_id"]
+
             try:
                 return cls(**model_data)
             except ValidationError as e:
@@ -197,6 +201,13 @@ class Company(BaseModel):
 
     def merge_with(self, other: 'Company') -> None:
         """Merges data from another company instance into this one."""
+        # Special handling for name: only overwrite if current name looks like a slug/domain
+        # and new name looks more like a real name.
+        if other.name and other.name != self.name:
+            # If current name is just the slug/domain, and other name is different, use other name
+            if self.name == self.slug or (self.domain and self.name == self.domain):
+                self.name = other.name
+
         # Simple fields: only overwrite if this one is empty or None
         for field in [
             "domain", "description", "visits_per_day", "full_address", 
@@ -247,7 +258,7 @@ class Company(BaseModel):
 
         # 2. Update YAML index (keeping tags in YAML for reporting speed)
         # We don't want to save the description twice (YAML and Markdown body)
-        data = self.model_dump(exclude_none=True)
+        data = self.model_dump(mode="json", exclude_none=True)
         description = data.pop("description", "")
         
         with open(index_path, 'w') as f:

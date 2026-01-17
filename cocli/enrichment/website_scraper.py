@@ -584,6 +584,10 @@ class WebsiteScraper:
             if t not in website_data.tech_stack:
                 website_data.tech_stack.append(t)
 
+        # Populate title
+        if soup.title and soup.title.string:
+            website_data.title = soup.title.string.strip()
+
         if not website_data.navbar_html:
             nav = soup.find("nav") or soup.select_one("[class*=nav], [id*=nav], header")
             if nav:

@@ -25,6 +25,7 @@ class Website(BaseModel):
     def domain(self) -> Domain:
         return self.url
 
+    title: Optional[str] = None
     company_name: Optional[str] = None
     phone: OptionalPhone = None
     email: Optional[EmailAddress] = None
