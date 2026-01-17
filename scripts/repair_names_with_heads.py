@@ -11,14 +11,22 @@ from cocli.compilers.website_compiler import WebsiteCompiler
 
 console = Console()
 
-async def audit_and_fix_heads(campaign_name: str) -> None:
+async def audit_and_fix_heads(campaign_name: str, target_slug: Optional[str] = None) -> None:
     companies_dir = get_companies_dir()
     targets: List[Path] = []
     
-    # 1. Identify suspicious companies
-    console.print(f"[bold blue]Auditing companies in campaign '{campaign_name}'...[/bold blue]")
-    
-    for company_dir in track(list(companies_dir.iterdir()), description="Auditing..."):
+    if target_slug:
+        company_dir = companies_dir / target_slug
+        if company_dir.is_dir():
+            targets.append(company_dir)
+        else:
+            console.print(f"[red]Company slug {target_slug} not found.[/red]")
+            return
+    else:
+        # 1. Identify suspicious companies
+        console.print(f"[bold blue]Auditing companies in campaign '{campaign_name}'...[/bold blue]")
+        
+        for company_dir in track(list(companies_dir.iterdir()), description="Auditing..."):
         if not company_dir.is_dir():
             continue
             
@@ -99,8 +107,22 @@ async def audit_and_fix_heads(campaign_name: str) -> None:
 
 if __name__ == "__main__":
     import sys
-    campaign = sys.argv[1] if len(sys.argv) > 1 else get_campaign()
-    if not campaign:
-        print("No campaign specified.")
+    campaign = get_campaign()
+    slug = None
+    
+    if len(sys.argv) > 1:
+        # Check if first arg is a known campaign or a slug
+        arg = sys.argv[1]
+        campaign_dir = get_campaigns_dir() / arg
+        if campaign_dir.exists():
+            campaign = arg
+            if len(sys.argv) > 2:
+                slug = sys.argv[2]
+        else:
+            slug = arg
+            
+    if not campaign and not slug:
+        print("Usage: python repair_names_with_heads.py [campaign] [slug]")
         sys.exit(1)
-    asyncio.run(audit_and_fix_heads(campaign))
+        
+    asyncio.run(audit_and_fix_heads(campaign or "unknown", slug))

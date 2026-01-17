@@ -164,6 +164,12 @@ WORKERS ?= 4
 DETAILS_WORKERS ?= 1
 SCRAPE_WORKERS ?= 1
 
+.PHONY: head-scrape
+head-scrape: ## Scrape the <head> of a specific company (usage: make head-scrape SLUG=beckerarena-com)
+	@if [ -z "$(SLUG)" ]; then echo "Error: SLUG is required. Usage: make head-scrape SLUG=beckerarena-com"; exit 1; fi
+	$(VENV_DIR)/bin/python scripts/repair_names_with_heads.py $(SLUG)
+	@echo "Head saved to: data/companies/$(SLUG)/enrichments/head.html"
+
 .PHONY: enrich-websites
 enrich-websites: install ## Enrich all companies with website data
 	$(VENV_DIR)/bin/cocli enrich-websites --workers $(WORKERS)
