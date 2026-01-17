@@ -386,6 +386,11 @@ def enrich_from_queue(
                     yaml.dump(website_data.model_dump(exclude_none=True), f)
                     f.write("---")
                 
+                # Save head.html if available
+                if website_data.head_html:
+                    with open(enrichment_dir / "head.html", "w") as f:
+                        f.write(website_data.head_html)
+                
                 compiler = WebsiteCompiler()
                 compiler.compile(company_dir)
 

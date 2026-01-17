@@ -26,6 +26,7 @@ class Website(BaseModel):
         return self.url
 
     title: Optional[str] = None
+    head_html: Optional[str] = None
     company_name: Optional[str] = None
     phone: OptionalPhone = None
     email: Optional[EmailAddress] = None

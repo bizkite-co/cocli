@@ -265,6 +265,26 @@ class WebsiteScraper:
         logger.info(f"Starting website scraping for {domain}")
         # website_data is already initialized by run()
 
+        # --- High Speed Head Extraction ---
+        try:
+            from ..scrapers.head_scraper import HeadScraper
+            head_scraper = HeadScraper()
+            head_html, head_title = await head_scraper.fetch_head(domain)
+            if head_html:
+                website_data.head_html = head_html
+                if head_title and not website_data.title:
+                    website_data.title = head_title
+                
+                # Pre-detect tech from head
+                head_soup = BeautifulSoup(head_html, "html.parser")
+                detected = self._detect_tech(head_soup)
+                for t in detected:
+                    if t not in website_data.tech_stack:
+                        website_data.tech_stack.append(t)
+        except Exception as e:
+            logger.debug(f"Pre-scrape head extraction failed: {e}")
+        # ----------------------------------
+
         context: BrowserContext
         if isinstance(browser, Browser):
             context = await browser.new_context(
