@@ -1,11 +1,11 @@
 import asyncio
 import yaml
 from pathlib import Path
-from typing import List
+from typing import List, Optional, Dict, Any
 from rich.console import Console
 from rich.progress import track
 
-from cocli.core.config import get_companies_dir, get_campaign
+from cocli.core.config import get_companies_dir, get_campaign, get_campaigns_dir
 from cocli.scrapers.head_scraper import HeadScraper
 from cocli.compilers.website_compiler import WebsiteCompiler
 
@@ -27,38 +27,38 @@ async def audit_and_fix_heads(campaign_name: str, target_slug: Optional[str] = N
         console.print(f"[bold blue]Auditing companies in campaign '{campaign_name}'...[/bold blue]")
         
         for company_dir in track(list(companies_dir.iterdir()), description="Auditing..."):
-        if not company_dir.is_dir():
-            continue
-            
-        tags_file = company_dir / "tags.lst"
-        if not tags_file.exists() or campaign_name not in tags_file.read_text():
-            continue
-            
-        index_md = company_dir / "_index.md"
-        if not index_md.exists():
-            continue
-            
-        # Check for slug-based name
-        try:
-            content = index_md.read_text()
-            parts = content.split("---")
-            if len(parts) >= 3:
-                data = yaml.safe_load(parts[1])
-                name = data.get("name", "")
-                slug = company_dir.name
-                domain = data.get("domain", "")
+            if not company_dir.is_dir():
+                continue
                 
-                is_slug = name == slug or name == domain
-                is_generic = name in ["N/A", "Home", "Gmail", "Currently.com", "403 Forbidden"]
+            tags_file = company_dir / "tags.lst"
+            if not tags_file.exists() or campaign_name not in tags_file.read_text():
+                continue
                 
-                # Check for suspicious tech (contains flooring keywords)
-                tech_stack = data.get("tech_stack", [])
-                has_suspicious_tech = any("floor" in str(t).lower() for t in tech_stack)
+            index_md = company_dir / "_index.md"
+            if not index_md.exists():
+                continue
                 
-                if is_slug or is_generic or has_suspicious_tech:
-                    targets.append(company_dir)
-        except Exception:
-            continue
+            # Check for slug-based name
+            try:
+                content = index_md.read_text()
+                parts = content.split("---")
+                if len(parts) >= 3:
+                    data = yaml.safe_load(parts[1])
+                    name = data.get("name", "")
+                    slug = company_dir.name
+                    domain = data.get("domain", "")
+                    
+                    is_slug = name == slug or name == domain
+                    is_generic = name in ["N/A", "Home", "Gmail", "Currently.com", "403 Forbidden"]
+                    
+                    # Check for suspicious tech (contains flooring keywords)
+                    tech_stack = data.get("tech_stack", [])
+                    has_suspicious_tech = any("floor" in str(t).lower() for t in tech_stack)
+                    
+                    if is_slug or is_generic or has_suspicious_tech:
+                        targets.append(company_dir)
+            except Exception:
+                continue
 
     console.print(f"[green]Found {len(targets)} suspicious companies requiring head-scrape.[/green]")
     
@@ -90,10 +90,13 @@ async def audit_and_fix_heads(campaign_name: str, target_slug: Optional[str] = N
                 if title:
                     enrich_data["title"] = title
                 
+                # Ensure enrichment dir exists
+                enrich_path.parent.mkdir(parents=True, exist_ok=True)
+                
                 with open(enrich_path, "w") as f:
-                    f.write("---")
+                    f.write("---\n")
                     yaml.dump(enrich_data, f)
-                    f.write("---")
+                    f.write("---\n")
                 
                 # Save head.html
                 with open(company_dir / "enrichments" / "head.html", "w") as f:
@@ -113,8 +116,8 @@ if __name__ == "__main__":
     if len(sys.argv) > 1:
         # Check if first arg is a known campaign or a slug
         arg = sys.argv[1]
-        campaign_dir = get_campaigns_dir() / arg
-        if campaign_dir.exists():
+        c_dir = get_campaigns_dir() / arg
+        if c_dir.exists():
             campaign = arg
             if len(sys.argv) > 2:
                 slug = sys.argv[2]
