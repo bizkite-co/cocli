@@ -36,6 +36,7 @@ dependencies = [
     "psutil",
     "aiohttp>=3.13.3",
     "selectolax>=0.4.6",
+    "duckdb",
 ]
 
 [project.scripts]

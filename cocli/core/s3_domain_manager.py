@@ -1,11 +1,9 @@
-import json
 import logging
 from typing import List, Optional, Dict
 from datetime import datetime # Added import
 
 import boto3
 from botocore.exceptions import ClientError
-from pydantic import ValidationError
 
 from ..models.campaign import Campaign
 from ..models.website_domain_csv import WebsiteDomainCsv
@@ -49,44 +47,33 @@ class S3DomainManager:
             raise
 
     def _get_s3_key(self, domain: str) -> str:
-        """Constructs the S3 key for a given domain, preserving dots."""
-        # Use slugdotify to ensure it's filesystem friendly but dots are kept
-        return f"{self.s3_prefix}{slugdotify(domain)}.json"
+        """Constructs the S3 key for a given domain, preserving dots and using .usv extension."""
+        return f"{self.s3_prefix}{slugdotify(domain)}.usv"
 
     def get_by_domain(self, domain: str) -> Optional[WebsiteDomainCsv]:
         """
-        Fetches a single domain's data from S3.
+        Fetches a single domain's USV data from S3.
         """
         s3_key = self._get_s3_key(domain)
         try:
             response = self.s3_client.get_object(Bucket=self.s3_bucket_name, Key=s3_key)
             data = response["Body"].read().decode("utf-8")
-            metadata = response.get("Metadata", {}) # S3 object tags could be here, or use get_object_tagging for full tags.
-
-            # We need to reconstitute WebsiteDomainCsv from data and potentially metadata
-            json_data = json.loads(data)
             
-            # Reconstitute metadata if it's not part of the JSON payload
-            if 'scraper_version' not in json_data and 'scraper-version' in metadata:
-                json_data['scraper_version'] = int(metadata['scraper-version'])
-            if 'updated_at' not in json_data and 'updated-at' in metadata:
-                json_data['updated_at'] = datetime.fromisoformat(metadata['updated-at'])
-
-            return WebsiteDomainCsv.model_validate(json_data)
+            # Use USV parser
+            return WebsiteDomainCsv.from_usv(data)
         except ClientError as e:
             if e.response["Error"]["Code"] == "NoSuchKey":
                 logger.debug(f"Domain '{domain}' not found in S3 bucket '{self.s3_bucket_name}' under key '{s3_key}'.")
                 return None
             logger.error(f"Error fetching domain '{domain}' from S3: {e}")
             raise
-        except (json.JSONDecodeError, ValidationError) as e:
-            logger.error(f"Error parsing or validating domain data for '{domain}' from S3: {e}")
+        except Exception as e:
+            logger.error(f"Error parsing USV data for '{domain}' from S3: {e}")
             return None
 
     def add_or_update(self, data: WebsiteDomainCsv) -> None:
         """
-        Stores or updates a WebsiteDomainCsv object in S3.
-        Uses S3 object tags for metadata like scraper_version and updated_at.
+        Stores or updates a WebsiteDomainCsv object in S3 using USV format.
         """
         if not data.domain:
             logger.warning("Attempted to add/update WebsiteDomainCsv without a domain. Skipping.")
@@ -99,19 +86,19 @@ class S3DomainManager:
         if not data.scraper_version:
             data.scraper_version = CURRENT_SCRAPER_VERSION
 
-        # Extract metadata to S3 object tags to avoid reading full object just for metadata.
-        # S3 tags are key-value strings. Datetime needs to be ISO formatted.
+        # Extract metadata to S3 object tags for quick filtering/listing
         s3_tags = {
             'scraper-version': str(data.scraper_version),
-            'updated-at': data.updated_at.isoformat()
+            'updated-at': data.updated_at.isoformat(),
+            'domain': str(data.domain)
         }
         
         try:
             self.s3_client.put_object(
                 Bucket=self.s3_bucket_name,
                 Key=s3_key,
-                Body=json.dumps(data.model_dump(mode='json')),
-                ContentType="application/json",
+                Body=data.to_usv(),
+                ContentType="text/plain", # USV is text
                 Tagging=self._format_tags_for_s3(s3_tags)
             )
             logger.debug(f"Successfully added/updated domain '{data.domain}' in S3: {s3_key}")
@@ -122,7 +109,6 @@ class S3DomainManager:
     def get_all_domains_for_campaign(self) -> List[WebsiteDomainCsv]:
         """
         Lists all domain data for the current campaign from S3.
-        This can be slow for many objects and should be used cautiously.
         """
         domains: List[WebsiteDomainCsv] = []
         try:
@@ -133,30 +119,73 @@ class S3DomainManager:
                 for obj in page.get('Contents', []):
                     s3_key = str(obj['Key'])
                     try:
-                        # Fetch full object and its tags
                         response = self.s3_client.get_object(Bucket=self.s3_bucket_name, Key=s3_key)
                         data = response["Body"].read().decode("utf-8")
-                        json_data = json.loads(data)
-                        
-                        tagging_response = self.s3_client.get_object_tagging(Bucket=self.s3_bucket_name, Key=s3_key)
-                        tags = {tag['Key']: tag['Value'] for tag in tagging_response.get('TagSet', [])}
-
-                        # Reconstitute metadata that's not in the JSON payload from tags
-                        if 'scraper_version' not in json_data and 'scraper-version' in tags:
-                            json_data['scraper_version'] = int(tags['scraper-version'])
-                        if 'updated_at' not in json_data and 'updated-at' in tags:
-                            json_data['updated_at'] = datetime.fromisoformat(tags['updated-at'])
-
-                        domains.append(WebsiteDomainCsv.model_validate(json_data))
-                    except ClientError as e:
+                        domains.append(WebsiteDomainCsv.from_usv(data))
+                    except Exception as e:
                         logger.warning(f"Failed to fetch or parse object '{s3_key}' from S3: {e}")
-                    except (json.JSONDecodeError, ValidationError) as e:
-                        logger.warning(f"Error parsing or validating S3 object '{s3_key}': {e}")
         except ClientError as e:
             logger.error(f"Error listing objects in S3 bucket '{self.s3_bucket_name}' with prefix '{self.s3_prefix}': {e}")
             raise
         return domains
 
+    def query(self, sql_where: str = "") -> List[WebsiteDomainCsv]:
+        """
+        Queries the global S3 domain index using DuckDB.
+        Example: manager.query("ip_address LIKE '23.227.%'") # Shopify IPs
+        """
+        import duckdb
+        
+        # Configure DuckDB for S3 access
+        con = duckdb.connect()
+        con.execute("INSTALL httpfs; LOAD httpfs;")
+        
+        # Get credentials from boto3 session
+        session = boto3.Session()
+        creds = session.get_credentials()
+        
+        con.execute("SET s3_region='us-east-1';") # Standardize or extract from bucket
+        if creds:
+            frozen = creds.get_frozen_credentials()
+            con.execute(f"SET s3_access_key_id='{frozen.access_key}';")
+            con.execute(f"SET s3_secret_access_key='{frozen.secret_key}';")
+            if frozen.token:
+                con.execute(f"SET s3_session_token='{frozen.token}';")
+
+        usv_glob = f"s3://{self.s3_bucket_name}/{self.s3_prefix}*.usv"
+        
+        columns = {k: 'VARCHAR' for k in WebsiteDomainCsv.model_fields.keys()}
+        
+        base_query = f"""
+            SELECT * FROM read_csv('{usv_glob}', 
+                delim='\\x1f', 
+                header=False, 
+                quote='', 
+                escape='',
+                columns={columns}
+            )
+        """
+        
+        if sql_where:
+            base_query += f" WHERE {sql_where}"
+            
+        try:
+            results = con.execute(base_query).fetchall()
+            # Convert tuples back to models
+            field_names = list(WebsiteDomainCsv.model_fields.keys())
+            items = []
+            for row in results:
+                data = dict(zip(field_names, row))
+                # Basic fixup for list fields
+                if data.get('tags'):
+                    data['tags'] = data['tags'].split(';')
+                items.append(WebsiteDomainCsv.model_validate(data))
+            return items
+        except Exception as e:
+            logger.error(f"DuckDB S3 Query failed: {e}")
+            return []
+
     def _format_tags_for_s3(self, tags: Dict[str, str]) -> str:
-        """Formats a dictionary of tags into the URL-encoded string expected by boto3 for S3 object tagging."""
-        return "&".join([f"{k}={v}" for k, v in tags.items()])
+        """Formats a dictionary of tags into the URLEncoded string expected by boto3."""
+        import urllib.parse
+        return "&".join([f"{k}={urllib.parse.quote(v)}" for k, v in tags.items()])

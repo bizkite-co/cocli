@@ -29,3 +29,42 @@ Identify and remove contaminated data (e.g., flooring companies) from the `roadm
 - [x] **Cleanup Script:** Create/run a script to remove mismatched prospects.
 - [ ] **Re-index Emails:** Re-run email indexing after cleanup if necessary (Manual verification shows Email Index is now clean).
 - [ ] **Script Audit:** Check `cocli` commands for any that might still use a hardcoded or incorrect default campaign.
+
+## USV File-per-object atomic destributed index
+
+To ensure the implementation is successful and robust, we will verify
+  completion through the following four-tier test plan:
+
+  1. Model & Serialization Test
+  We will create a unit test for the WebsiteDomainCsv model to verify that:
+   * It correctly serializes a domain record into a USV string using \x1f.
+   * It correctly parses a USV string back into a Pydantic object.
+   * It handles "Schema Drift" (e.g., parsing a V1 string with fewer columns
+     into a V2 model with None defaults).
+
+  2. Migration Integrity (The "Roadmap" Baseline)
+  Since we already have 5,150 records for the roadmap campaign, we will:
+   * Run the updated migration script to convert these from the temporary
+     JSON/CSV format to Atomic USV.
+   * Verification Command: Use a shell one-liner to check field counts:
+
+       # Count Unit Separators (\x1f). Should be N-1 for N columns.
+       find data/indexes/domains/ -name "*.usv" -exec awk -F'\x1f' '{print
+   NF}' {} + | sort | uniq -c
+      Success criteria: All 5,150 files report exactly the same column
+  count.
+
+  3. CLI Ergonomics Test
+  We will verify that the index is actually usable via standard tools:
+   * Search: rg $'\x1f'Shopify$'\x1f' data/indexes/domains/ should return
+     all Shopify-hosted domains with zero "delimiter collision" errors.
+   * Export: cat data/indexes/domains/_header.usv data/indexes/domains/*.usv
+     > test_export.csv should produce a file that can be opened in any
+     CSV-compliant editor (by simply replacing the separators).
+
+  4. Convergence Test
+  We will verify the "Symmetry" of the system:
+   * Fetch a record from S3, save it locally, and ensure the local .usv file
+     exactly matches the remote one.
+   * Rebuild the "Search Cache" (domains_master.csv) from the folder of USV
+     files and verify that the record counts match exactly.
