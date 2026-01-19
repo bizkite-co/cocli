@@ -1,28 +1,30 @@
-import socket
-import asyncio
 import logging
-from cocli.core.website_domain_csv_manager import WebsiteDomainCsvManager
+import asyncio
+import socket
+from typing import Optional
 from concurrent.futures import ThreadPoolExecutor
+from cocli.core.website_domain_csv_manager import WebsiteDomainCsvManager
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-def resolve_ip(domain):
+def resolve_ip(domain: str) -> Optional[str]:
     try:
         return socket.gethostbyname(domain)
-    except Exception:
+    except socket.gaierror:
         return None
 
-async def backfill_ips(max_workers=20):
+async def backfill_ips() -> None:
     manager = WebsiteDomainCsvManager()
     domains_to_check = [item for item in manager.data.values() if not item.ip_address]
     
-    print(f"Total domains in index: {len(manager.data)}")
-    print(f"Domains needing IP backfill: {len(domains_to_check)}")
-    
     if not domains_to_check:
+        logger.info("No domains missing IP addresses.")
         return
 
+    logger.info(f"Backfilling IPs for {len(domains_to_check)} domains...")
+    
+    max_workers = 20
     loop = asyncio.get_event_loop()
     with ThreadPoolExecutor(max_workers=max_workers) as executor:
         tasks = []
@@ -35,11 +37,10 @@ async def backfill_ips(max_workers=20):
         for item, ip in zip(domains_to_check, results):
             if ip:
                 item.ip_address = ip
+                manager.add_or_update(item)
                 updated_count += 1
         
-        print(f"Successfully resolved {updated_count} IPs.")
-        manager.save()
-        print("Index saved.")
+        logger.info(f"Updated {updated_count} domains with IP addresses.")
 
 if __name__ == "__main__":
     asyncio.run(backfill_ips())

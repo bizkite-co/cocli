@@ -1,6 +1,4 @@
-import pytest
 from cocli.models.website_domain_csv import WebsiteDomainCsv
-from datetime import datetime
 
 def test_usv_serialization():
     # 1. Test basic round-trip

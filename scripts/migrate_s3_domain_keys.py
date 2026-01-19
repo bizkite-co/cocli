@@ -9,7 +9,7 @@ from cocli.core.text_utils import slugdotify
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-async def migrate_s3_keys(campaign_name: str, profile: str, source_prefix: str = "indexes/domains/"):
+async def migrate_s3_keys(campaign_name: str, profile: str, source_prefix: str = "indexes/domains/") -> None:
     """
     Migrates S3 domain index keys from old formats to new dot-format.
     Supports:

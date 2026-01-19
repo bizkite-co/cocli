@@ -1,7 +1,7 @@
 from cocli.core.website_domain_csv_manager import WebsiteDomainCsvManager
 import os
 
-def migrate():
+def migrate() -> None:
     print("Initializing WebsiteDomainCsvManager...")
     manager = WebsiteDomainCsvManager()
     

@@ -8,7 +8,7 @@ from cocli.core.config import load_campaign_config
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-async def sync_to_s3(campaign_name: str):
+async def sync_to_s3(campaign_name: str) -> None:
     config_data = load_campaign_config(campaign_name)
     
     # Merge relevant sections for the Campaign model
