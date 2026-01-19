@@ -14,15 +14,20 @@ class WebsiteDomainCsvManager:
         if not indexes_dir:
             indexes_dir = get_cocli_base_dir() / "indexes"
         indexes_dir.mkdir(parents=True, exist_ok=True)
-        self.csv_file = indexes_dir / "website-domains.csv"
+        # Primary index consolidated to domains_master.csv
+        self.csv_file = indexes_dir / "domains_master.csv"
+        self.legacy_file = indexes_dir / "website-domains.csv"
+        
         self.data: Dict[str, WebsiteDomainCsv] = {}
         self._load_data()
 
     def _load_data(self) -> None:
-        if not self.csv_file.exists():
+        # Prefer new master file, fallback to legacy if it exists
+        target_file = self.csv_file if self.csv_file.exists() else self.legacy_file
+        if not target_file.exists():
             return
 
-        with open(self.csv_file, "r", newline="", encoding="utf-8") as csvfile:
+        with open(target_file, "r", newline="", encoding="utf-8") as csvfile:
             reader = csv.DictReader(csvfile)
             for row in reader:
                 processed_row = dict(row)
@@ -34,16 +39,13 @@ class WebsiteDomainCsvManager:
                         except (ValueError, TypeError):
                             processed_row[field] = None
                 
-                # Convert list and dict fields
-                for field in ['personnel', 'tags', 'all_emails', 'tech_stack', 'email_contexts', 'found_keywords']:
+                # Convert list fields
+                for field in ['tags']:
                     if processed_row.get(field):
                         try:
                             processed_row[field] = ast.literal_eval(processed_row[field])
                         except (ValueError, SyntaxError):
-                            if field == 'email_contexts':
-                                processed_row[field] = {}
-                            else:
-                                processed_row[field] = []
+                            processed_row[field] = []
                 
                 # Convert boolean field
                 if processed_row.get('is_email_provider'):
@@ -64,14 +66,17 @@ class WebsiteDomainCsvManager:
                             model_data[k] = v
                             
                 if model_data.get("domain"):
-                    self.data[str(model_data["domain"])] = WebsiteDomainCsv(**model_data)
+                    try:
+                        self.data[str(model_data["domain"])] = WebsiteDomainCsv(**model_data)
+                    except Exception:
+                        continue # Skip malformed rows
 
     def get_by_domain(self, domain: str) -> Optional[WebsiteDomainCsv]:
         return self.data.get(domain)
 
     def add_or_update(self, item: WebsiteDomainCsv) -> None:
         item.updated_at = datetime.utcnow()
-        self.data[item.domain] = item
+        self.data[str(item.domain)] = item
         self.save()
 
     def flag_as_email_provider(self, domain: str) -> None:
@@ -88,8 +93,8 @@ class WebsiteDomainCsvManager:
             writer.writeheader()
             for item in self.data.values():
                 dump = item.model_dump()
-                # Convert lists and dicts to strings for CSV
-                for field in ['personnel', 'tags', 'all_emails', 'tech_stack', 'email_contexts', 'found_keywords']:
+                # Convert lists to strings for CSV
+                for field in ['tags']:
                     if dump.get(field) is not None:
                         dump[field] = str(dump[field])
                 writer.writerow(dump)

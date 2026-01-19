@@ -5,6 +5,25 @@ title: cocli Campaign Configuration
 
 # Campaign Configuration: <span id="campaign-display">{% if env.CAMPAIGN %}{{ env.CAMPAIGN }}{% else %}turboship{% endif %}</span>
 
+## Data Funnel Report
+
+{% include "components/report_table.njk" %}
+
+<div id="phrase-progress-container" style="display:none; margin: 20px 0;">
+    <h3>Scraping Progress by Phrase</h3>
+    <table class="report-table">
+        <thead>
+            <tr>
+                <th>Search Phrase</th>
+                <th>Tiles Scraped</th>
+                <th>% of Campaign</th>
+            </tr>
+        </thead>
+        <tbody id="phrase-progress-body">
+        </tbody>
+    </table>
+</div>
+
 <p style="background: #e9ecef; padding: 10px; border-radius: 4px; display: inline-block;">
     <strong>Global Proximity:</strong> <span id="proximity-display">...</span> miles
 </p>

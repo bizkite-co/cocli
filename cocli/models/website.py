@@ -51,6 +51,7 @@ class Website(BaseModel):
     is_email_provider: bool = False
     all_emails: List[EmailAddress] = []
     email_contexts: Dict[str, str] = {}
+    ip_address: Optional[str] = None
     tech_stack: List[str] = []
     found_keywords: List[str] = []
     sitemap_xml: Optional[str] = None

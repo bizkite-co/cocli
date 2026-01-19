@@ -8,16 +8,17 @@ from botocore.exceptions import ClientError
 from pydantic import ValidationError
 
 from ..models.campaign import Campaign
-from ..models.website_domain_csv import WebsiteDomainCsv  # Assuming this model exists
-from ..core.website_domain_csv_manager import CURRENT_SCRAPER_VERSION # For scraper_version
+from ..models.website_domain_csv import WebsiteDomainCsv
+from ..core.website_domain_csv_manager import CURRENT_SCRAPER_VERSION
+from .text_utils import slugdotify
 
 logger = logging.getLogger(__name__)
 
 class S3DomainManager:
     """
-    Manages domain index data stored in S3 for a specific campaign.
-    Each domain's data is stored as a separate JSON object in S3,
-    with additional metadata stored in S3 object tags.
+    Manages domain index data stored in S3.
+    Domain records are shared across all campaigns and stored under indexes/domains/.
+    Each domain's data is stored as a separate JSON object in S3.
     """
     def __init__(self, campaign: Campaign):
         self.campaign = campaign
@@ -35,7 +36,7 @@ class S3DomainManager:
         if not self.s3_bucket_name:
             raise ValueError(f"S3 bucket name could not be resolved for campaign {self.campaign.name}")
 
-        self.s3_prefix = "indexes/domains/" # Shared resource, always at root.
+        self.s3_prefix = "indexes/domains/" # Shared resource across all campaigns in this bucket
 
         try:
             from botocore.config import Config
@@ -48,11 +49,9 @@ class S3DomainManager:
             raise
 
     def _get_s3_key(self, domain: str) -> str:
-        """Constructs the S3 key for a given domain."""
-        # Domain names often contain characters not friendly for S3 keys or need to be consistent.
-        # Use simple slugification or URL encoding if domain can contain special characters.
-        # For now, let's assume valid domain names are fine as keys directly appended to prefix.
-        return f"{self.s3_prefix}{domain.replace('.', '-')}.json" # Replace dots for easier directory-like management if needed.
+        """Constructs the S3 key for a given domain, preserving dots."""
+        # Use slugdotify to ensure it's filesystem friendly but dots are kept
+        return f"{self.s3_prefix}{slugdotify(domain)}.json"
 
     def get_by_domain(self, domain: str) -> Optional[WebsiteDomainCsv]:
         """

@@ -1,4 +1,5 @@
 import os
+import json
 import boto3
 import logging
 import math
@@ -127,10 +128,23 @@ def get_campaign_stats(campaign_name: str) -> Dict[str, Any]:
     """
     Collects statistics for a campaign, including local file counts and cloud resource status.
     """
+    from cocli.core.text_utils import slugify
+    from datetime import datetime, timedelta, UTC
+    import csv
+
     stats: Dict[str, Any] = {}
 
     # Load Config
     config = load_campaign_config(campaign_name)
+    prospecting_config = config.get("prospecting", {})
+    queries = prospecting_config.get("queries", [])
+    stats["queries"] = queries
+
+    # Initialize Tile Stats
+    all_target_tiles: set[str] = set()
+    all_scraped_tiles: set[str] = set()
+    scraped_tiles_by_phrase: Dict[str, set[str]] = {q: set() for q in queries}
+    witness_root = get_cocli_base_dir() / "indexes" / "scraped-tiles"
 
     # 0. Exclusions
     stats.update(get_exclusions_data(campaign_name))
@@ -140,7 +154,7 @@ def get_campaign_stats(campaign_name: str) -> Dict[str, Any]:
     manager = ProspectsIndexManager(campaign_name)
     total_prospects = 0
     source_counts = {"local-worker": 0, "fargate-worker": 0, "unknown": 0}
-    all_slugs = set()
+    all_slugs: set[str] = set()
     prospect_metadata: Dict[str, str] = {} # slug -> name
 
     # Pre-calculate tile-to-prospect mapping for efficient location stats
@@ -187,10 +201,6 @@ def get_campaign_stats(campaign_name: str) -> Dict[str, Any]:
     ]
 
     # 2. Queue Stats (Cloud vs Local)
-    prospecting_config = config.get("prospecting", {})
-    queries = prospecting_config.get("queries", [])
-    stats["queries"] = queries
-
     aws_config = config.get("aws", {})
     enrich_queue_url = aws_config.get("cocli_enrichment_queue_url")
     scrape_queue_url = aws_config.get("cocli_scrape_tasks_queue_url")
@@ -266,11 +276,13 @@ def get_campaign_stats(campaign_name: str) -> Dict[str, Any]:
         # Active Workers
         stats["active_fargate_tasks"] = get_active_fargate_tasks(session)
 
-        # S3 Completed count for Enrichment
+        # S3 Counts
         data_bucket = aws_config.get("cocli_data_bucket_name")
         if data_bucket:
+            s3 = session.client("s3")
+            
+            # S3 Completed count for Enrichment
             try:
-                s3 = session.client("s3")
                 paginator = s3.get_paginator("list_objects_v2")
                 count = 0
                 prefix = f"campaigns/{campaign_name}/queues/enrichment/completed/"
@@ -280,6 +292,54 @@ def get_campaign_stats(campaign_name: str) -> Dict[str, Any]:
             except Exception as e:
                 logger.warning(f"Could not count remote completed tasks: {e}")
                 stats["remote_enrichment_completed"] = 0
+
+            # --- Heartbeats ---
+            try:
+                heartbeats = []
+                response = s3.list_objects_v2(Bucket=data_bucket, Prefix="status/")
+                for obj in response.get("Contents", []):
+                    if obj["Key"].endswith(".json"):
+                        try:
+                            hb_data = s3.get_object(Bucket=data_bucket, Key=obj["Key"])
+                            hb_json = json.loads(hb_data["Body"].read().decode("utf-8"))
+                            # Add last_seen from S3 metadata
+                            hb_json["last_seen"] = obj["LastModified"].isoformat()
+                            heartbeats.append(hb_json)
+                        except Exception as hb_err:
+                            logger.warning(f"Failed to read heartbeat {obj['Key']}: {hb_err}")
+                stats["worker_heartbeats"] = heartbeats
+            except Exception as e:
+                logger.warning(f"Could not fetch worker heartbeats: {e}")
+                stats["worker_heartbeats"] = []
+
+            # --- Global Scraped Tiles from S3 ---
+            try:
+                paginator = s3.get_paginator("list_objects_v2")
+                prefix = f"campaigns/{campaign_name}/indexes/scraped-tiles/"
+                remote_scraped_by_phrase: Dict[str, set[str]] = {slugify(q): set() for q in queries}
+                
+                for page in paginator.paginate(Bucket=data_bucket, Prefix=prefix):
+                    for obj in page.get("Contents", []):
+                        key = obj["Key"]
+                        if key.endswith(".csv"):
+                            parts = key.split("/")
+                            if len(parts) >= 3:
+                                phrase_slug = parts[-1].replace(".csv", "")
+                                lat_str = parts[-3]
+                                lon_str = parts[-2]
+                                tile_id = f"{lat_str}_{lon_str}"
+                                if phrase_slug in remote_scraped_by_phrase:
+                                    remote_scraped_by_phrase[phrase_slug].add(tile_id)
+                
+                for q in queries:
+                    q_slug = slugify(q)
+                    if q_slug in remote_scraped_by_phrase:
+                        for tid in remote_scraped_by_phrase[q_slug]:
+                            all_scraped_tiles.add(tid)
+                            scraped_tiles_by_phrase[q].add(tid)
+
+            except Exception as e:
+                logger.warning(f"Could not fetch global scraped tiles from S3: {e}")
     else:
         stats["using_cloud_queue"] = False
 
@@ -344,7 +404,7 @@ def get_campaign_stats(campaign_name: str) -> Dict[str, Any]:
 
     email_index = EmailIndexManager(campaign_name)
     emails_found_count = 0
-    domains_with_emails = set()
+    domains_with_emails: set[str] = set()
 
     # We use the email index for primary counts
     for email_entry in email_index.read_all_emails():
@@ -365,12 +425,12 @@ def get_campaign_stats(campaign_name: str) -> Dict[str, Any]:
 
     # Scan companies directory
     if companies_dir.exists():
-        for company_dir in companies_dir.iterdir():
-            if not company_dir.is_dir():
+        for company_path in companies_dir.iterdir():
+            if not company_path.is_dir():
                 continue
 
             # Check tags.lst first (Fast)
-            tags_file = company_dir / "tags.lst"
+            tags_file = company_path / "tags.lst"
             has_tag = False
             if tags_file.exists():
                 try:
@@ -383,7 +443,7 @@ def get_campaign_stats(campaign_name: str) -> Dict[str, Any]:
             if has_tag:
                 enriched_count += 1
                 # Check for Deep Enrichment artifacts
-                enrich_dir = company_dir / "enrichments"
+                enrich_dir = company_path / "enrichments"
                 if (enrich_dir / "sitemap.xml").exists() or (enrich_dir / "navbar.html").exists():
                     deep_enriched_count += 1
 
@@ -399,26 +459,19 @@ def get_campaign_stats(campaign_name: str) -> Dict[str, Any]:
     # Global Enrichment Count (Total pool)
     total_global = 0
     if companies_dir.exists():
-        for company_dir in companies_dir.iterdir():
-            if (company_dir / "enrichments" / "website.md").exists():
+        for company_path in companies_dir.iterdir():
+            if (company_path / "enrichments" / "website.md").exists():
                 total_global += 1
     stats["total_enriched_global"] = total_global
 
-    # 4. Scrape Index Status
-    import csv
-
     # 5. Anomaly Detection (Bot Detection Monitoring) using new Witness Index
-    total_scraped_tiles = 0
-    empty_scraped_tiles = 0
-
-    from cocli.core.text_utils import slugify
-    from datetime import datetime, timedelta, UTC
+    total_scraped_tiles_witness = 0
+    empty_scraped_tiles_witness = 0
 
     phrase_slugs = [slugify(q) for q in queries]
     seven_days_ago = datetime.now(UTC) - timedelta(days=7)
 
     # Nested Witness Index Check
-    witness_root = get_cocli_base_dir() / "indexes" / "scraped-tiles"
     if witness_root.exists():
         for phrase_slug in phrase_slugs:
             for phrase_file in witness_root.glob(f"**/{phrase_slug}.csv"):
@@ -427,23 +480,26 @@ def get_campaign_stats(campaign_name: str) -> Dict[str, Any]:
                         reader = csv.DictReader(f)
                         row = next(reader)
 
-                        scrape_date = datetime.fromisoformat(row["scrape_date"])
+                        scrape_date_str = row.get("scrape_date")
+                        if not scrape_date_str:
+                            continue
+                        scrape_date = datetime.fromisoformat(scrape_date_str)
                         if scrape_date.tzinfo is None:
                             scrape_date = scrape_date.replace(tzinfo=UTC)
 
                         if scrape_date > seven_days_ago:
-                            total_scraped_tiles += 1
+                            total_scraped_tiles_witness += 1
                             if int(row.get("items_found", 0)) == 0:
-                                empty_scraped_tiles += 1
+                                empty_scraped_tiles_witness += 1
                 except Exception:
                     continue
 
     stats["anomaly_stats"] = {
-        "total_scrapes": total_scraped_tiles,
-        "empty_scrapes": empty_scraped_tiles,
+        "total_scrapes": total_scraped_tiles_witness,
+        "empty_scrapes": empty_scraped_tiles_witness,
         "shadow_ban_risk": "HIGH"
-        if total_scraped_tiles > 10
-        and (empty_scraped_tiles / total_scraped_tiles) > 0.4
+        if total_scraped_tiles_witness > 10
+        and (empty_scraped_tiles_witness / total_scraped_tiles_witness) > 0.4
         else "LOW",
     }
 
@@ -453,21 +509,17 @@ def get_campaign_stats(campaign_name: str) -> Dict[str, Any]:
 
     detailed_locations = []
     explicit_locations = prospecting_config.get("locations", [])
-
+    
     # Track which names we've seen to avoid duplicates between list and CSV
-    seen_names = set()
+    seen_names: set[str] = set()
 
     # Load Grid Definition to find tiles associated with each location
-    # Tiles are associated with locations if they are within proximity.
-    # We'll use a simplified version: any tile whose center is within proximity.
     target_locations_csv = prospecting_config.get("target-locations-csv")
     if target_locations_csv:
         csv_path = (
             get_cocli_base_dir() / "campaigns" / campaign_name / target_locations_csv
         )
         if csv_path.exists():
-            import csv
-
             try:
                 with open(csv_path, "r") as f:
                     reader = csv.DictReader(f)
@@ -499,13 +551,11 @@ def get_campaign_stats(campaign_name: str) -> Dict[str, Any]:
                         lat, lon = float(lat_val), float(lon_val)
 
                         # Calculate tiles for this location (Proximity-based)
-                        # step_deg 0.1 is ~6.9 miles.
-                        # Proximity 30 miles -> roughly 4-5 tiles in each direction.
                         deg_range = (proximity / 69.0) + 0.1
                         lat_min, lat_max = lat - deg_range, lat + deg_range
                         lon_min, lon_max = lon - deg_range, lon + deg_range
 
-                        loc_tiles = []
+                        loc_tiles: list[str] = []
                         scraped_count = 0
                         loc_prospects = 0
 
@@ -515,31 +565,26 @@ def get_campaign_stats(campaign_name: str) -> Dict[str, Any]:
                             curr_lon = math.floor(lon_min * 10) / 10
                             while curr_lon <= lon_max:
                                 t_id = f"{curr_lat:.1f}_{curr_lon:.1f}"
-
-                                # Distance check from tile center to location
                                 t_center_lat = curr_lat + 0.05
                                 t_center_lon = curr_lon + 0.05
-
-                                # Simple Euclidean distance in degrees for speed (approximate)
-                                # 0.1 deg ~ 6.9 miles
-                                dist_deg = math.sqrt(
-                                    (t_center_lat - lat) ** 2
-                                    + (t_center_lon - lon) ** 2
-                                )
+                                dist_deg = math.sqrt((t_center_lat - lat) ** 2 + (t_center_lon - lon) ** 2)
+                                
                                 if (dist_deg * 69.0) <= proximity:
                                     loc_tiles.append(t_id)
-                                    # Check if ANY query has scraped this tile using new Witness Index
-                                    is_scraped = False
+                                    all_target_tiles.add(t_id)
+                                    
+                                    # Check if ANY query has scraped this tile
+                                    is_scraped_any = False
                                     lat_dir, lon_dir = t_id.split("_")
                                     tile_witness_dir = witness_root / lat_dir / lon_dir
 
                                     for q in queries:
-                                        if (
-                                            tile_witness_dir / f"{slugify(q)}.csv"
-                                        ).exists():
-                                            is_scraped = True
-                                            break
-                                    if is_scraped:
+                                        if (tile_witness_dir / f"{slugify(q)}.csv").exists():
+                                            is_scraped_any = True
+                                            all_scraped_tiles.add(t_id)
+                                            scraped_tiles_by_phrase[q].add(t_id)
+                                            
+                                    if is_scraped_any:
                                         scraped_count += 1
                                     loc_prospects += tile_prospect_counts.get(t_id, 0)
 
@@ -581,5 +626,8 @@ def get_campaign_stats(campaign_name: str) -> Dict[str, Any]:
             )
 
     stats["locations"] = detailed_locations
+    stats["total_target_tiles"] = len(all_target_tiles)
+    stats["total_scraped_tiles"] = len(all_scraped_tiles)
+    stats["scraped_per_phrase"] = {q: len(tiles) for q, tiles in scraped_tiles_by_phrase.items()}
 
     return stats

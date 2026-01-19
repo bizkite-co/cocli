@@ -46,7 +46,7 @@ def deploy(
     # Resolve Profile
     if not profile:
         aws_config = config.get("aws", {})
-        profile = aws_config.get("profile") or aws_config.get("aws-profile") or config.get("aws-profile")
+        profile = aws_config.get("profile") or aws_config.get("aws_profile") or aws_config.get("aws-profile") or config.get("aws-profile")
     
     if not profile:
         console.print("[red]Error: AWS profile not specified via --profile or '[aws] profile' in config.toml.[/red]")

@@ -324,6 +324,78 @@ function filterLocations() {
 function renderConfig(stats, campaign, filterQuery = '') {
     document.getElementById('proximity-display').textContent = stats.proximity || '30';
     
+    // Update Report Table
+    const reportBody = document.getElementById('report-body');
+    const reportTable = document.getElementById('report-table');
+    if (reportBody) {
+        reportBody.innerHTML = '';
+        const rows = [
+            { stage: 'Scrape Tasks (gm-list)', count: `${stats.scrape_tasks_pending || 0} / ${stats.scrape_tasks_inflight || 0} Active`, details: 'SQS', badge: (stats.scrape_tasks_pending > 0 ? 'status-sqs' : '') },
+            { stage: 'GM List Items (gm-details)', count: `${stats.gm_list_item_pending || 0} / ${stats.gm_list_item_inflight || 0} Active`, details: 'SQS', badge: (stats.gm_list_item_pending > 0 ? 'status-sqs' : '') },
+            { stage: 'Website Enrichment (Pending)', count: (stats.enrichment_pending || 0).toLocaleString(), details: 'Queue', badge: (stats.enrichment_pending > 0 ? 'status-sqs' : '') },
+            { stage: 'Website Enrichment (Completed)', count: (stats.remote_enrichment_completed || stats.completed_count || 0).toLocaleString(), details: 'S3', badge: '' },
+            { stage: 'Total Target Tiles', count: (stats.total_target_tiles || 0).toLocaleString(), details: 'Campaign', badge: '' },
+            { stage: 'Total Scraped Tiles', count: (stats.total_scraped_tiles || 0).toLocaleString(), details: stats.total_target_tiles ? `${((stats.total_scraped_tiles / stats.total_target_tiles) * 100).toFixed(1)}%` : '0%', badge: '' },
+            { stage: 'Prospects Found', count: (stats.prospects_count || 0).toLocaleString(), details: 'Local Index', badge: '' }
+        ];
+
+        rows.forEach(row => {
+            const tr = document.createElement('tr');
+            tr.innerHTML = `
+                <td>${row.stage}</td>
+                <td>${row.count}</td>
+                <td><span class="status-badge ${row.badge}">${row.details}</span></td>
+            `;
+            reportBody.appendChild(tr);
+        });
+        if (reportTable) reportTable.style.display = 'table';
+        const loading = document.getElementById('report-loading');
+        if (loading) loading.style.display = 'none';
+    }
+
+    // Update Phrase Progress
+    const phraseBody = document.getElementById('phrase-progress-body');
+    const phraseContainer = document.getElementById('phrase-progress-container');
+    if (phraseBody && stats.scraped_per_phrase) {
+        phraseBody.innerHTML = '';
+        Object.entries(stats.scraped_per_phrase).forEach(([phrase, count]) => {
+            const pct = stats.total_target_tiles ? ((count / stats.total_target_tiles) * 100).toFixed(1) + '%' : '0%';
+            const tr = document.createElement('tr');
+            tr.innerHTML = `<td>${phrase}</td><td>${count.toLocaleString()}</td><td>${pct}</td>`;
+            phraseBody.appendChild(tr);
+        });
+        phraseContainer.style.display = 'block';
+    }
+
+    // Update Worker Heartbeats
+    const hbBody = document.getElementById('worker-heartbeats-body');
+    const hbContainer = document.getElementById('worker-heartbeats-container');
+    if (hbBody && stats.worker_heartbeats) {
+        hbBody.innerHTML = '';
+        stats.worker_heartbeats.sort((a,b) => new Date(b.timestamp) - new Date(a.timestamp)).forEach(hb => {
+            const tr = document.createElement('tr');
+            const lastSeen = new Date(hb.timestamp).toLocaleTimeString();
+            const cpu = hb.system ? `${hb.system.cpu_percent}%` : 'N/A';
+            const mem = hb.system ? `${hb.system.memory_percent}%` : 'N/A';
+            const tasks = hb.workers ? `${hb.workers.scrape}/${hb.workers.details}/${hb.workers.enrichment}` : 'N/A';
+            
+            // Check if stale (> 30 mins)
+            const isStale = (Date.now() - new Date(hb.timestamp)) > 30 * 60 * 1000;
+            const statusClass = isStale ? 'status-error' : 'status-running';
+            const statusText = isStale ? 'Stale' : 'Active';
+
+            tr.innerHTML = `
+                <td><strong>${hb.hostname}</strong></td>
+                <td><span class="status-badge ${statusClass}">${statusText}</span></td>
+                <td>${tasks}</td>
+                <td>${cpu} / ${mem}</td>
+                <td>${lastSeen}</td>
+            `;
+            hbBody.appendChild(tr);
+        });
+        hbContainer.style.display = 'block';
+    }
+
     // Update Slugs Datalist
     const datalist = document.getElementById('slugs-datalist');
     if (datalist && stats.all_slugs) {

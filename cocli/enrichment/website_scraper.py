@@ -1,6 +1,7 @@
 import re
 import httpx
 import asyncio
+import socket
 import xml.etree.ElementTree as ET
 from typing import Optional, List, Callable, Coroutine, Any, Dict, Union, Tuple
 from playwright.async_api import Page, Browser, BrowserContext
@@ -73,6 +74,16 @@ class WebsiteScraper:
                     except Exception:
                         continue
 
+    async def _resolve_ip(self, domain: str) -> Optional[str]:
+        """Resolves the IP address for a domain."""
+        try:
+            # Use run_in_executor for blocking socket calls
+            loop = asyncio.get_event_loop()
+            return await loop.run_in_executor(None, socket.gethostbyname, domain)
+        except Exception as e:
+            logger.debug(f"IP resolution failed for {domain}: {e}")
+            return None
+
     async def _resolve_canonical_url(self, domain: str) -> Optional[str]:
         """Rapidly find the working URL for a domain, following redirects."""
         protocols = ["http://", "https://"]
@@ -107,6 +118,9 @@ class WebsiteScraper:
         website_data = Website(url=domain, scraper_version=CURRENT_SCRAPER_VERSION)
         if company_slug:
             website_data.associated_company_folder = company_slug
+
+        # Resolve IP early
+        website_data.ip_address = await self._resolve_ip(domain)
 
         try:
             await asyncio.wait_for(
@@ -186,15 +200,13 @@ class WebsiteScraper:
                     company_name=website_data.company_name,
                     phone=website_data.phone,
                     email=valid_email,
+                    ip_address=website_data.ip_address,
                     facebook_url=website_data.facebook_url,
                     linkedin_url=website_data.linkedin_url,
                     instagram_url=website_data.instagram_url,
                     twitter_url=website_data.twitter_url,
                     youtube_url=website_data.youtube_url,
                     address=website_data.address,
-                    personnel=[str(p.get("name", "")) for p in website_data.personnel]
-                    if website_data.personnel
-                    else [],
                     about_us_url=website_data.about_us_url,
                     contact_url=website_data.contact_url,
                     services_url=website_data.services_url,
@@ -203,14 +215,6 @@ class WebsiteScraper:
                     scraper_version=website_data.scraper_version,
                     associated_company_folder=website_data.associated_company_folder,
                     is_email_provider=website_data.is_email_provider,
-                    all_emails=valid_all_emails,
-                    email_contexts={
-                        str(k): v
-                        for k, v in website_data.email_contexts.items()
-                        if is_valid_email(str(k))
-                    },
-                    tech_stack=website_data.tech_stack,
-                    found_keywords=found_keywords,
                     updated_at=datetime.utcnow(),
                 )
             )

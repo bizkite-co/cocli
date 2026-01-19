@@ -7,6 +7,7 @@ To provide a unified, flexible, and robust data management layer for `cocli` tha
 ## Related Documentation
 
 *   [S3 Integration Sequence Diagram](./s3-integration-sequence.md)
+*   [ADR 012: Distributed Filesystem Index (DFI)](../adr/012-distributed-filesystem-index/README.md)
 
 ## Core Principles
 

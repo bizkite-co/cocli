@@ -1,8 +1,8 @@
 import asyncio
 import logging
-import aiohttp # type: ignore
+import aiohttp
 from typing import Optional, Tuple
-from selectolax.lexbor import LexborHTMLParser # type: ignore
+from selectolax.lexbor import LexborHTMLParser
 
 logger = logging.getLogger(__name__)
 
@@ -12,7 +12,7 @@ class HeadScraper:
     Stops downloading as soon as </head> is found.
     """
     def __init__(self, timeout_seconds: int = 10):
-        self.timeout = timeout_seconds
+        self.timeout = aiohttp.ClientTimeout(total=timeout_seconds)
         self.headers = {
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36",
             "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8",
@@ -52,6 +52,7 @@ class HeadScraper:
                     parser = LexborHTMLParser(full_content)
                     
                     head_node = parser.css_first("head")
+                    head_html: Optional[str] = None
                     if not head_node:
                         # Fallback: maybe it's malformed and doesn't have a <head> tag
                         head_html = full_content.split("<body>")[0] if "<body>" in full_content.lower() else full_content
@@ -59,7 +60,7 @@ class HeadScraper:
                         head_html = head_node.html
 
                     title_node = parser.css_first("title")
-                    title = title_node.text().strip() if title_node else None
+                    title: Optional[str] = title_node.text().strip() if title_node else None
                     
                     return head_html, title
 

@@ -7,10 +7,6 @@ title: cocli Campaign Dashboard
 
 This dashboard provides a real-time view of the scraping and enrichment funnel.
 
-## Data Funnel Report
-
-{% include "components/report_table.njk" %}
-
 ## Prospect Search
 
 {% include "components/search_box.njk" %}

@@ -38,7 +38,6 @@ def migrate() -> None:
                 twitter_url=website.twitter_url,
                 youtube_url=website.youtube_url,
                 address=website.address,
-                personnel=[p.get("name", "") for p in website.personnel] if website.personnel else [],
                 about_us_url=website.about_us_url,
                 contact_url=website.contact_url,
                 services_url=website.services_url,
