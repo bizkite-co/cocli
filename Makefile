@@ -652,6 +652,10 @@ restart-rpi-worker: stop-rpi-worker start-rpi-worker ## Restart the Raspberry Pi
 
 .PHONY: start-rpi-supervisor
 start-rpi-supervisor: ## Start the Supervisor on Raspberry Pi for dynamic scaling
+	$(eval SCRAPE_QUEUE := $(shell ./.venv/bin/python -c "from cocli.core.config import load_campaign_config; print(load_campaign_config('$(CAMPAIGN)').get('aws', {}).get('cocli_scrape_tasks_queue_url', ''))"))
+	$(eval DETAILS_QUEUE := $(shell ./.venv/bin/python -c "from cocli.core.config import load_campaign_config; print(load_campaign_config('$(CAMPAIGN)').get('aws', {}).get('cocli_gm_list_item_queue_url', ''))"))
+	$(eval ENRICHMENT_QUEUE := $(shell ./.venv/bin/python -c "from cocli.core.config import load_campaign_config; print(load_campaign_config('$(CAMPAIGN)').get('aws', {}).get('cocli_enrichment_queue_url', ''))"))
+	$(eval COMMAND_QUEUE := $(shell ./.venv/bin/python -c "from cocli.core.config import load_campaign_config; print(load_campaign_config('$(CAMPAIGN)').get('aws', {}).get('cocli_command_queue_url', ''))"))
 	ssh $(RPI_USER)@$(RPI_HOST) "docker run -d --restart always --name cocli-supervisor \
 		--shm-size=2gb \
 		-e TZ=America/Los_Angeles \
@@ -659,6 +663,10 @@ start-rpi-supervisor: ## Start the Supervisor on Raspberry Pi for dynamic scalin
 		-e AWS_PROFILE=$(AWS_PROFILE) \
 		-e COCLI_HOSTNAME=\$$(hostname) \
 		-e COCLI_QUEUE_TYPE=filesystem \
+		-e COCLI_SCRAPE_TASKS_QUEUE_URL='$(SCRAPE_QUEUE)' \
+		-e COCLI_GM_LIST_ITEM_QUEUE_URL='$(DETAILS_QUEUE)' \
+		-e COCLI_ENRICHMENT_QUEUE_URL='$(ENRICHMENT_QUEUE)' \
+		-e COCLI_COMMAND_QUEUE_URL='$(COMMAND_QUEUE)' \
 		-v ~/repos/cocli_data:/app/cocli_data \
 		-v ~/.aws:/root/.aws:ro cocli-worker-rpi:latest cocli worker supervisor --debug"
 
