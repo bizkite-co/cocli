@@ -17,25 +17,25 @@ def test_s3_round_trip(s3_manager):
         ip_address="127.0.0.1"
     )
     
-    # 1. Add
+    # 1. Add (performs CAS write and manifest swap)
     s3_manager.add_or_update(item)
     
-    # 2. Get
+    # 2. Get (via manifest)
     fetched = s3_manager.get_by_domain(test_domain)
     assert fetched is not None
     assert str(fetched.domain) == test_domain
     assert fetched.company_name == "Test USV Inc"
     assert fetched.ip_address == "127.0.0.1"
     
-    # 3. Cleanup
-    s3_manager.s3_client.delete_object(
-        Bucket=s3_manager.s3_bucket_name,
-        Key=s3_manager._get_s3_key(test_domain)
-    )
+    # 3. Verify manifest exists and is current
+    manifest = s3_manager.get_latest_manifest()
+    assert test_domain in manifest.shards
+    shard = manifest.shards[test_domain]
+    assert shard.path.startswith(s3_manager.shards_prefix)
 
 def test_duckdb_query(s3_manager):
-    # This assumes some .usv files exist in the roadmap bucket
-    results = s3_manager.query("domain = 'apple.com'")
-    # We don't assert length since apple.com might not be there, 
-    # but we ensure the query doesn't crash
+    # This uses the manifest-driven DuckDB query
+    results = s3_manager.query("domain = 'test-atomic-index.com'")
     assert isinstance(results, list)
+    if results:
+        assert results[0].domain == 'test-atomic-index.com'
