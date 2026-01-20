@@ -1,5 +1,5 @@
 from pydantic import BaseModel, Field
-from typing import Dict, List, Optional
+from typing import Dict
 from datetime import datetime
 
 class IndexShard(BaseModel):
@@ -28,7 +28,7 @@ class IndexManifest(BaseModel):
     @classmethod
     def from_usv(cls, content: str) -> "IndexManifest":
         """Parses a USV string into an IndexManifest."""
-        shards = {}
+        shards: Dict[str, IndexShard] = {}
         if not content.strip():
             return cls(shards=shards)
             

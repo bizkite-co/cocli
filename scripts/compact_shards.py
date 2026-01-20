@@ -2,21 +2,22 @@ import logging
 import asyncio
 import time
 import uuid
-import boto3
 import os
+from typing import Any, Optional
 from datetime import datetime
 from concurrent.futures import ThreadPoolExecutor
 from cocli.core.s3_domain_manager import S3DomainManager
 from cocli.models.campaign import Campaign
-from cocli.models.index_manifest import IndexManifest, IndexShard
+from cocli.models.index_manifest import IndexShard
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-def download_shard(s3_client, bucket, key):
+def download_shard(s3_client: Any, bucket: str, key: str) -> Optional[str]:
     try:
         resp = s3_client.get_object(Bucket=bucket, Key=key)
-        return resp["Body"].read().decode("utf-8")
+        content = resp["Body"].read().decode("utf-8")
+        return str(content)
     except Exception as e:
         logger.warning(f"Failed to download {key}: {e}")
         return None
@@ -25,7 +26,7 @@ async def compact(campaign_name: str) -> None:
     campaign = Campaign.load(campaign_name)
     s3_manager = S3DomainManager(campaign)
     
-    logger.info(f"Loading latest manifest for compaction...")
+    logger.info("Loading latest manifest for compaction...")
     manifest = s3_manager.get_latest_manifest()
     
     if not manifest.shards:

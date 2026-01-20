@@ -11,7 +11,6 @@ from ..models.campaign import Campaign
 from ..models.website_domain_csv import WebsiteDomainCsv
 from ..models.index_manifest import IndexManifest, IndexShard
 from ..core.website_domain_csv_manager import CURRENT_SCRAPER_VERSION
-from .text_utils import slugdotify
 
 logger = logging.getLogger(__name__)
 

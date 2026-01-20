@@ -1,7 +1,7 @@
 import typer
 import json
 from datetime import datetime, timezone
-from typing import Optional, Dict, Any
+from typing import Optional
 from rich.console import Console
 from rich.table import Table
 from rich.panel import Panel
