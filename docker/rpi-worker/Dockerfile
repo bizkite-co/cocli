@@ -3,10 +3,15 @@ FROM mcr.microsoft.com/playwright/python:v1.55.0-noble
 
 WORKDIR /app
 
-# Install system dependencies needed for pandas/numpy on ARM
+# Install system dependencies needed for pandas/numpy on ARM, plus qsv for indexing
 RUN apt-get update && apt-get install -y \
     libatlas-base-dev \
-    && rm -rf /var/lib/apt/lists/*
+    wget gpg --no-install-recommends && \
+    wget -O - https://dathere.github.io/qsv-deb-releases/qsv-deb.gpg | gpg --dearmor -o /usr/share/keyrings/qsv-deb.gpg && \
+    echo "deb [signed-by=/usr/share/keyrings/qsv-deb.gpg] https://dathere.github.io/qsv-deb-releases ./" | tee /etc/apt/sources.list.d/qsv.list && \
+    apt-get update && \
+    apt-get install -y qsv --no-install-recommends && \
+    rm -rf /var/lib/apt/lists/*
 
 # Install UV for fast dependency management
 RUN pip install uv

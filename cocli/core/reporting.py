@@ -456,13 +456,23 @@ def get_campaign_stats(campaign_name: str) -> Dict[str, Any]:
     stats["companies_with_emails_count"] = companies_with_emails_count
     stats["emails_found_count"] = emails_found_count
 
-    # Global Enrichment Count (Total pool)
-    total_global = 0
-    if companies_dir.exists():
-        for company_path in companies_dir.iterdir():
-            if (company_path / "enrichments" / "website.md").exists():
-                total_global += 1
-    stats["total_enriched_global"] = total_global
+    # Global Enrichment Count (Total pool from Manifest)
+    try:
+        from .s3_domain_manager import S3DomainManager
+        from ..models.campaign import Campaign as CampaignModel
+        s3_manager = S3DomainManager(CampaignModel.load(campaign_name))
+        # This might be slow if it has to bootstrap, but once manifest exists it is fast
+        manifest = s3_manager.get_latest_manifest()
+        stats["total_enriched_global"] = len(manifest.shards)
+    except Exception as e:
+        logger.warning(f"Could not fetch global pool count from manifest: {e}")
+        # Fallback to local count
+        total_global = 0
+        if companies_dir.exists():
+            for company_path in companies_dir.iterdir():
+                if (company_path / "enrichments" / "website.md").exists():
+                    total_global += 1
+        stats["total_enriched_global"] = total_global
 
     # 5. Anomaly Detection (Bot Detection Monitoring) using new Witness Index
     total_scraped_tiles_witness = 0

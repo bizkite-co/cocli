@@ -1281,6 +1281,7 @@ async def _push_supervisor_heartbeat(
             "timestamp": datetime.now().isoformat(),
             "hostname": hostname,
             "campaign": campaign_name,
+            "version": VERSION,
             "system": {
                 "cpu_percent": psutil.cpu_percent(),
                 "memory_percent": psutil.virtual_memory().percent,

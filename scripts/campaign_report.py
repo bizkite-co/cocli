@@ -1,14 +1,23 @@
 import typer
 import json
-from datetime import datetime
-from typing import Optional
+from datetime import datetime, timezone
+from typing import Optional, Dict, Any
 from rich.console import Console
 from rich.table import Table
+from rich.panel import Panel
 from cocli.core.config import get_campaign, load_campaign_config
 from cocli.core.reporting import get_campaign_stats, get_boto3_session
 
 app = typer.Typer()
 console = Console()
+
+def format_duration(seconds: float) -> str:
+    if seconds < 60:
+        return f"{int(seconds)}s"
+    elif seconds < 3600:
+        return f"{int(seconds // 60)}m {int(seconds % 60)}s"
+    else:
+        return f"{int(seconds // 3600)}h {int((seconds % 3600) // 60)}m"
 
 @app.command()
 def main(
@@ -26,121 +35,123 @@ def main(
         console.print("[bold red]Error: No campaign specified and no current context set.[/bold red]")
         raise typer.Exit(1)
 
-    if not as_json:
-        console.print(f"Generating report for campaign: [bold cyan]{campaign_name}[/bold cyan]...")
-    
     stats = get_campaign_stats(campaign_name)
-    stats['last_updated'] = datetime.now().isoformat()
+    stats['last_updated'] = datetime.now(timezone.utc).isoformat()
     stats['campaign_name'] = campaign_name
 
     if as_json:
         print(json.dumps(stats, indent=2))
+        return
+
+    # 1. Campaign Funnel Table
+    funnel_table = Table(title=f"Campaign Funnel: {campaign_name}", box=None)
+    funnel_table.add_column("Stage", style="cyan")
+    funnel_table.add_column("Count", justify="right", style="magenta")
+    funnel_table.add_column("Yield", justify="right", style="green")
+
+    prospects = stats.get('prospects_count', 0)
+    enriched = stats.get('enriched_count', 0)
+    w_emails = stats.get('companies_with_emails_count', 0)
+    total_emails = stats.get('emails_found_count', 0)
+    deep = stats.get('deep_enriched_count', 0)
+
+    enriched_pct = f"{(enriched/prospects*100):.1f}%" if prospects else "0%"
+    email_yield = f"{(w_emails/enriched*100):.1f}%" if enriched else "0%"
+    deep_yield = f"{(deep/enriched*100):.1f}%" if enriched else "0%"
+
+    funnel_table.add_row("Scraped Prospects", str(prospects), "100%")
+    funnel_table.add_row("Enriched Companies", str(enriched), enriched_pct)
+    funnel_table.add_row("Deep Enrichment", str(deep), deep_yield)
+    funnel_table.add_row("Companies w/ Emails", str(w_emails), email_yield)
+    funnel_table.add_row("Total Global Pool", str(stats.get('total_enriched_global', 0)), "[dim]Index[/dim]")
+
+    # 2. Queue Status Table
+    queue_table = Table(title="Queue Management", box=None)
+    queue_table.add_column("Queue Name", style="cyan")
+    queue_table.add_column("Provider", style="yellow")
+    queue_table.add_column("Pending", justify="right", style="magenta")
+    queue_table.add_column("In-Flight", justify="right", style="blue")
+
+    using_cloud = stats.get('using_cloud_queue', False)
+    
+    # SQS Queues
+    if using_cloud:
+        queue_table.add_row("Scrape Tasks", "SQS", str(stats.get('scrape_tasks_pending', 0)), str(stats.get('scrape_tasks_inflight', 0)))
+        queue_table.add_row("GM Details", "SQS", str(stats.get('gm_list_item_pending', 0)), str(stats.get('gm_list_item_inflight', 0)))
+        queue_table.add_row("Enrichment", "SQS", str(stats.get('enrichment_pending', 0)), str(stats.get('enrichment_inflight', 0)))
+
+    # Local Queues
+    local_queues = stats.get('local_queues', {})
+    for q_name, q_stats in local_queues.items():
+        pending = q_stats.get('pending', 0)
+        inflight = q_stats.get('inflight', 0)
+        if pending > 0 or inflight > 0:
+            queue_table.add_row(q_name, "Local", str(pending), str(inflight))
+
+    # 3. Cluster Health Table
+    cluster_table = Table(title="Cluster Health & Heartbeats", box=None)
+    cluster_table.add_column("Host", style="cyan")
+    cluster_table.add_column("Status", style="green")
+    cluster_table.add_column("Version", style="white")
+    cluster_table.add_column("Last Seen", style="yellow")
+    cluster_table.add_column("Load/Mem", style="magenta")
+    cluster_table.add_column("Active Workers", style="blue")
+
+    heartbeats = stats.get('worker_heartbeats', [])
+    now = datetime.now(timezone.utc)
+
+    if not heartbeats:
+        cluster_table.add_row("[dim]No heartbeats recorded[/dim]", "-", "-", "-", "-", "-")
     else:
-        # Display Table
-        table = Table(title=f"Campaign Report: {campaign_name}")
-        table.add_column("Stage", style="cyan")
-        table.add_column("Count", justify="right", style="magenta")
-        table.add_column("Percentage/Details", justify="right", style="green")
-
-        using_cloud_queue = stats.get('using_cloud_queue', False)
-
-        # 1. Pipeline Status (Workers & Queues)
-        if using_cloud_queue:
-            # Worker Status
-            active_fargate = stats.get('active_fargate_tasks', 0)
-            table.add_row("Active Enrichment Workers (Fargate)", str(active_fargate), "[bold green]Running[/bold green]" if active_fargate > 0 else "[dim]Stopped[/dim]")
-
-            # Queues & Processing
-            # Scrape Tasks (gm-list)
-            scrape_pending = stats.get('scrape_tasks_pending', 0)
-            scrape_inflight = stats.get('scrape_tasks_inflight', 0)
-            table.add_row("Scrape Tasks (gm-list)", f"{scrape_pending} / [blue]{scrape_inflight} Active[/blue]", "[yellow]SQS[/yellow]")
-
-            # GM List Items (gm-details)
-            gm_pending = stats.get('gm_list_item_pending', 0)
-            gm_inflight = stats.get('gm_list_item_inflight', 0)
-            table.add_row("GM List Items (gm-details)", f"{gm_pending} / [blue]{gm_inflight} Active[/blue]", "[yellow]SQS[/yellow]")
-
-            # Enrichment
-            enrich_pending = stats.get('enrichment_pending', 0)
-            enrich_inflight = stats.get('enrichment_inflight', 0)
-            table.add_row("Enrichment Queue (SQS)", f"{enrich_pending} / [blue]{enrich_inflight} Active[/blue]", "[yellow]SQS[/yellow]")
-
-        # Local Queues (Filesystem)
-        local_queues = stats.get('local_queues', {})
-        for q_name, q_stats in local_queues.items():
-            pending = q_stats.get('pending', 0)
-            inflight = q_stats.get('inflight', 0)
-            if pending > 0 or inflight > 0:
-                table.add_row(f"Queue: {q_name} (Local)", f"{pending} / [blue]{inflight} Active[/blue]", "[cyan]Filesystem[/cyan]")
-
-        if not using_cloud_queue and not local_queues:
-            # Fallback for old stats or if no queues found
-            table.add_row("Queue Pending", str(stats.get('enrichment_pending', 0)), "[yellow]Waiting[/yellow]")
-            table.add_row("Queue Processing", str(stats.get('enrichment_inflight', 0)), "[blue]In Flight[/blue]")
-
-        # 2. Local Queue Status
-        table.add_row("Queue Failed (Local)", str(stats.get('failed_count', 0)), "[red]Errors/Retries[/red]")
-        table.add_row("Queue Completed (Local)", str(stats.get('completed_count', 0)), "[dim]Done[/dim]") 
-
-        if stats.get('remote_enrichment_completed') is not None:
-             table.add_row("Queue Completed (S3)", str(stats.get('remote_enrichment_completed')), "[dim]Done (Cloud)[/dim]")
-
-        # 3. Data Funnel
-        total_prospects = stats.get('prospects_count', 0)
-        table.add_row("Prospects (gm-detail)", str(total_prospects), "100%")
-
-        # Enriched %
-        enriched_count = stats.get('enriched_count', 0)
-        deep_enriched_count = stats.get('deep_enriched_count', 0)
-        total_enriched_global = stats.get('total_enriched_global', 0)
-        enriched_pct = f"{(enriched_count / total_prospects * 100):.1f}%" if total_prospects else "0%"
-        deep_pct = f"{(deep_enriched_count / enriched_count * 100):.1f}%" if enriched_count else "0%"
-        
-        table.add_row("Enriched (Campaign)", str(enriched_count), enriched_pct)
-        table.add_row("Deep Enriched (Sitemap/Nav)", str(deep_enriched_count), f"{deep_pct} (of Enriched)")
-        table.add_row("Enriched (Global Pool)", str(total_enriched_global), "[dim]Historical[/dim]")
-        
-        # Email %
-        companies_with_emails = stats.get('companies_with_emails_count', 0)
-        total_emails = stats.get('emails_found_count', 0)
-        email_pct = f"{(companies_with_emails / enriched_count * 100):.1f}%" if enriched_count else "0%"
-        
-        table.add_row("Companies w/ Emails", str(companies_with_emails), f"{email_pct} (Yield)")
-        table.add_row("Total Emails Found", str(total_emails), "[bold green]Index[/bold green]")
-
-        # 4. Anomaly Monitor
-        anomaly_stats = stats.get('anomaly_stats', {})
-        if anomaly_stats:
-            risk = anomaly_stats.get('shadow_ban_risk', 'LOW')
-            risk_style = "bold red" if risk == "HIGH" else "green"
-            empty_pct = (anomaly_stats['empty_scrapes'] / anomaly_stats['total_scrapes'] * 100) if anomaly_stats['total_scrapes'] else 0
-            table.add_row("Shadow Ban Risk", risk, style=risk_style)
-            table.add_row("Empty Scrape Rate", f"{empty_pct:.1f}%", "[dim]Anomaly Indicator[/dim]")
-
-        console.print(table)
-
-        # Worker Source Breakdown
-        worker_stats = stats.get('worker_stats', {})
-        if worker_stats:
-            worker_table = Table(title="Processing Sources (Details)")
-            worker_table.add_column("Worker Type", style="cyan")
-            worker_table.add_column("Count", justify="right", style="magenta")
-            worker_table.add_column("Share", justify="right", style="green")
+        for hb in sorted(heartbeats, key=lambda x: x.get('last_seen', ''), reverse=True):
+            last_seen_dt = datetime.fromisoformat(hb['last_seen'].replace("Z", "+00:00"))
+            if last_seen_dt.tzinfo is None:
+                last_seen_dt = last_seen_dt.replace(tzinfo=timezone.utc)
             
-            total = sum(worker_stats.values())
-            for worker, count in sorted(worker_stats.items(), key=lambda x: x[1], reverse=True):
-                share = f"{(count / total * 100):.1f}%" if total else "0%"
-                worker_table.add_row(worker, str(count), share)
-            console.print(worker_table)
-        
-        failed_count = stats.get('failed_count', 0)
-        if failed_count > 0:
-            console.print(f"\n[bold red]Warning:[/bold red] {failed_count} tasks failed locally. Check logs or move them back to pending to retry.")
-        
-        if using_cloud_queue:
-            pending = stats.get('enrichment_pending', 0)
-            console.print(f"[dim]Note: Report shows local data. SQS has {pending} pending items.[/dim]")
+            staleness = (now - last_seen_dt).total_seconds()
+            
+            status = "[bold green]Online[/bold green]"
+            if staleness > 300: # 5 minutes
+                status = "[bold red]Stale[/bold red]"
+            if staleness > 3600: # 1 hour
+                status = "[dim red]Offline[/dim red]"
+
+            sys = hb.get('system', {})
+            load = f"{sys.get('cpu_percent', 0)}% / {sys.get('memory_percent', 0)}%"
+            
+            workers = hb.get('workers', {})
+            worker_str = f"S:{workers.get('scrape', 0)} D:{workers.get('details', 0)} E:{workers.get('enrichment', 0)}"
+
+            cluster_table.add_row(
+                hb.get('hostname', 'unknown'),
+                status,
+                hb.get('version', '[dim]unknown[/dim]'),
+                format_duration(staleness) + " ago",
+                load,
+                worker_str
+            )
+
+    # 4. Anomaly & Quality
+    anomaly_table = Table(title="Quality Metrics", box=None)
+    anomaly_table.add_column("Metric", style="cyan")
+    anomaly_table.add_column("Value", style="magenta")
+    anomaly_table.add_column("Risk", style="green")
+
+    anomaly_stats = stats.get('anomaly_stats', {})
+    risk = anomaly_stats.get('shadow_ban_risk', 'LOW')
+    risk_style = "bold red" if risk == "HIGH" else "green"
+    empty_pct = (anomaly_stats['empty_scrapes'] / anomaly_stats['total_scrapes'] * 100) if anomaly_stats.get('total_scrapes') else 0
+    
+    anomaly_table.add_row("Shadow Ban Risk", risk, f"[{risk_style}]{risk}[/{risk_style}]")
+    anomaly_table.add_row("Empty Scrape Rate", f"{empty_pct:.1f}%", "[dim]Warning > 30%[/dim]")
+    anomaly_table.add_row("Total Emails", str(total_emails), "[bold green]Healthy[/bold green]")
+
+    # Print All
+    console.print(Panel(f"Campaign: [bold cyan]{campaign_name}[/bold cyan] | Updated: {stats['last_updated']}"))
+    console.print(funnel_table)
+    console.print(queue_table)
+    console.print(cluster_table)
+    console.print(anomaly_table)
 
     if upload:
         config = load_campaign_config(campaign_name)

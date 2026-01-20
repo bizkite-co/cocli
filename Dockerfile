@@ -23,8 +23,14 @@ RUN pip install --upgrade pip --root-user-action=ignore
 # Install 1Password CLI
 COPY --from=1password/op:2 /usr/local/bin/op /usr/local/bin/op
 
-# Install jq for JSON parsing in entrypoint.sh
-RUN apt-get update && apt-get install -y jq --no-install-recommends && rm -rf /var/lib/apt/lists/*
+# Install jq for JSON parsing in entrypoint.sh and qsv for high-performance data indexing
+RUN apt-get update && \
+    apt-get install -y jq wget gpg --no-install-recommends && \
+    wget -O - https://dathere.github.io/qsv-deb-releases/qsv-deb.gpg | gpg --dearmor -o /usr/share/keyrings/qsv-deb.gpg && \
+    echo "deb [signed-by=/usr/share/keyrings/qsv-deb.gpg] https://dathere.github.io/qsv-deb-releases ./" | tee /etc/apt/sources.list.d/qsv.list && \
+    apt-get update && \
+    apt-get install -y qsv --no-install-recommends && \
+    rm -rf /var/lib/apt/lists/*
 
 # Copy the dependency files and application code
 COPY pyproject.toml uv.lock* ./
