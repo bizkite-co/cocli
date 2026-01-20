@@ -25,11 +25,12 @@ COPY --from=1password/op:2 /usr/local/bin/op /usr/local/bin/op
 
 # Install jq for JSON parsing in entrypoint.sh and qsv for high-performance data indexing
 RUN apt-get update && \
-    apt-get install -y jq wget gpg --no-install-recommends && \
-    wget -O - https://dathere.github.io/qsv-deb-releases/qsv-deb.gpg | gpg --dearmor -o /usr/share/keyrings/qsv-deb.gpg && \
-    echo "deb [signed-by=/usr/share/keyrings/qsv-deb.gpg] https://dathere.github.io/qsv-deb-releases ./" | tee /etc/apt/sources.list.d/qsv.list && \
-    apt-get update && \
-    apt-get install -y qsv --no-install-recommends && \
+    apt-get install -y jq wget unzip --no-install-recommends && \
+    export ARCH=$(uname -m) && \
+    if [ "$ARCH" = "x86_64" ]; then QSV_ARCH="x86_64-unknown-linux-gnu"; elif [ "$ARCH" = "aarch64" ]; then QSV_ARCH="aarch64-unknown-linux-gnu"; fi && \
+    wget https://github.com/jqnatividad/qsv/releases/download/0.134.0/qsv-0.134.0-$QSV_ARCH.zip && \
+    unzip qsv-0.134.0-$QSV_ARCH.zip -d /usr/local/bin && \
+    rm qsv-0.134.0-$QSV_ARCH.zip && \
     rm -rf /var/lib/apt/lists/*
 
 # Copy the dependency files and application code
