@@ -1362,8 +1362,12 @@ async def run_supervisor(
         
         # Resolve AWS session/client with larger connection pool
         from botocore.config import Config
-        aws_profile = os.getenv("AWS_PROFILE") or aws_config.get("profile")
-        session = boto3.Session(profile_name=aws_profile)
+        if os.getenv("COCLI_RUNNING_IN_FARGATE"):
+            session = boto3.Session()
+        else:
+            aws_profile = os.getenv("AWS_PROFILE") or aws_config.get("profile")
+            session = boto3.Session(profile_name=aws_profile)
+            
         s3_config = Config(
             max_pool_connections=50, # Increase from default 10
             retries={'max_attempts': 5}
