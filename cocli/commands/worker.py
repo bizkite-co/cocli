@@ -1389,7 +1389,7 @@ async def run_supervisor(
         processed_by = f"{hostname}-supervisor"
         
         last_heartbeat_time: float = 0.0
-        heartbeat_interval = 60 # 60 seconds
+        heartbeat_interval = 900 # 15 minutes
         
         last_report_time: float = 0.0
         report_interval = 900 # 15 minutes
