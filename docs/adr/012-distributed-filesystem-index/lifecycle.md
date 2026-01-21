@@ -3,22 +3,25 @@
 The DFI ensures that distributed workers can record their findings immediately while CLI users enjoy a high-performance local view.
 
 ## Distributed Update Lifecycle
-When a worker (e.g., a Raspberry Pi) completes a website scrape, it follows a decentralized update pattern.
+When a worker completes a scrape, it follows an "Atomic Swap" pattern to ensure consistency.
 
 ```mermaid
 sequenceDiagram
     participant W as Worker
-    participant S3 as S3 Coordination Index
-    participant C as Company Store (Point-to-Point)
+    participant S3 as S3 (CAS Shards)
+    participant M as S3 (Manifests)
+    participant P as S3 (LATEST Pointer)
     
-    W->>W: Resolve IP Address
-    W->>W: Extract Metadata (Title, Phone, Email)
+    W->>W: Generate USV Record
+    W->>S3: PutObject(indexes/shards/{hash}.usv)
+    Note right of S3: Immutable Shard written
     
-    W->>S3: PutObject(indexes/domains/{domain}.usv)
-    Note right of S3: Global metadata updated (USV format)
+    W->>M: Get Latest Manifest
+    W->>W: Update domain-to-shard mapping
+    W->>M: PutObject(indexes/manifests/{new_uuid}.usv)
     
-    W->>C: PutObject(companies/{slug}/enrichments/website.md)
-    Note right of C: Rich data (tech stack, personnel) saved to company record
+    W->>P: PutObject(indexes/LATEST)
+    Note right of P: Atomic Swap: Database now points to new Manifest
 ```
 
 ## Local Search Index Reconciliation

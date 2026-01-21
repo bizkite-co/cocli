@@ -149,8 +149,11 @@ flowchart TD
 *   **Concrete Implementations:**
     *   **`LocalIndexManager`:** Manages indexes stored on the local filesystem (e.g., CSVs in `cocli_data/indexes/`).
     *   **`S3IndexManager` (New - e.g., `S3DomainManager`):** Manages indexes stored in S3.
-        *   **Strategy 1 (Aggregated File):** Store index data as a single aggregated file (e.g., CSV or JSON) in S3 (e.g., `s3://bucket/campaigns/turboship/indexes/domains.csv`). This is simpler but can lead to concurrency issues with frequent updates.
-        *   **Strategy 2 (Object-per-Entry):** Store each index entry as an individual S3 object (e.g., `s3://bucket/campaigns/turboship/indexes/domains/{domain_slug}.json`). Metadata (like `updated_at`, `scraper_version`) can be stored as S3 object tags. This is more robust for concurrent updates and partial reads/writes. This strategy aligns well with the user's preference for directory-like structures and `aws s3 sync`.
+        *   **Strategy: Manifest-Pointer (Distributed Snapshot):**
+            *   **CAS Shards:** Data is stored in immutable shards at `indexes/shards/`.
+            *   **Manifests:** A versioned map at `indexes/manifests/` tracks which shard contains which domain.
+            *   **Atomic Swaps:** A `LATEST` pointer is updated to commit batches of changes.
+            *   **Benefits:** Zero S3 `LIST` calls required; DuckDB can query the entire index in seconds by reading the manifest.
 
 ### 4. `DataSynchronizer` (New Utility)
 
@@ -167,13 +170,13 @@ flowchart TD
 To balance the need for massive write concurrency (cloud workers) with fast read access (CLI search), we employ two distinct index types:
 
 *   **Coordination Index (Write-Optimized):**
-    *   **Format:** Object-per-record (Individual JSON objects in S3).
-    *   **Location:** `s3://bucket/campaigns/<slug>/indexes/domains/<domain>.json`.
-    *   **Purpose:** Allows thousands of distributed workers to check status and update progress simultaneously without locking or race conditions.
-    *   **Primary User:** Fargate/EC2 workers.
+    *   **Format:** Content-Addressable USV Shards + Atomic Manifest.
+    *   **Location:** `s3://bucket/indexes/shards/` and `s3://bucket/indexes/manifests/`.
+    *   **Purpose:** Massive write concurrency with instant read-consistency via Manifest Swaps.
+    *   **Primary User:** Fargate/RPi workers, DuckDB Query Engine.
 
 *   **Search Index (Read-Optimized):**
-    *   **Format:** Aggregated CSV (e.g., `website-domains.csv`).
+    *   **Format:** Local DuckDB Cache / `domains_master.csv`.
     *   **Location:** S3 (synced to local cache).
     *   **Purpose:** Extremely fast local searching (`cocli fz`, `rg`) and bulk reporting.
     *   **Primary User:** CLI users, analysts.

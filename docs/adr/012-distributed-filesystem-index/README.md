@@ -14,8 +14,9 @@ The DFI employs two distinct index formats to balance write-speed and read-perfo
 
 | Index Type | Format | Location | Primary Use |
 | :--- | :--- | :--- | :--- |
-| **Atomic** | Object-per-Domain (USV) | `indexes/domains/{domain}.usv` | Distributed writes, atomic updates, `rg` search. |
-| **Search Cache** | Aggregated CSV | `data/indexes/domains_master.csv` | Legacy exports, bulk reporting (Materialized View). |
+| **Atomic (CAS)** | Content-Addressable Shards (USV) | `indexes/shards/{sha256}.usv` | Immutable data storage, deduplication. |
+| **Manifest** | Versioned Map (USV) | `indexes/manifests/{uuid}.usv` | Atomic snapshots, shard-to-domain mapping. |
+| **Search Cache** | Aggregated CSV | `data/indexes/domains_master.csv` | Local CLI searches (Materialized View). |
 
 ## Documentation Components
 - **[Lifecycle & Synchronization](lifecycle.md)**: Sequence diagrams for how workers and CLI users update the index.
