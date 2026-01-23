@@ -264,7 +264,7 @@ deploy-infra: install ## Deploy AWS Infrastructure (queues, Fargate service defi
 	@AWS_REGION=$$(./$(VENV_DIR)/bin/python -c "from cocli.core.config import load_campaign_config; config = load_campaign_config('$(CAMPAIGN)'); print(config.get('aws', {}).get('region', 'us-east-1'))"); \
 	aws ecr describe-repositories --repository-names cocli-enrichment-service --region $$AWS_REGION --profile $(AWS_PROFILE) > /dev/null 2>&1 || \
 	aws ecr create-repository --repository-name cocli-enrichment-service --region $$AWS_REGION --profile $(AWS_PROFILE)
-	cd cdk_scraper_deployment && uv venv && . .venv/bin/activate && uv pip install -r requirements.txt && cdk deploy --require-approval never --profile $(AWS_PROFILE) -c campaign=$(CAMPAIGN)
+	cd cdk_scraper_deployment && uv venv --allow-existing && . .venv/bin/activate && uv pip install -r requirements.txt && cdk deploy --require-approval never --profile $(AWS_PROFILE) -c campaign=$(CAMPAIGN)
 	@$(MAKE) update-infra-config CAMPAIGN=$(CAMPAIGN)
 
 .PHONY: update-infra-config
