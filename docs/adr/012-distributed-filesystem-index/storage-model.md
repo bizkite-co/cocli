@@ -20,15 +20,13 @@ Files are named using `slugdotify` and the `.usv` extension:
 - `indexes/domains/example.com.usv`
 
 ## 3. Directory Structure (Self-Documenting)
-The index directory is a versioned, manifest-driven database:
+The index directory is a versioned, manifest-driven database with an active inbox:
 ```text
 data/indexes/
 ├── LATEST           # Text file containing the key of the current manifest
 ├── manifests/       # Snapshot files mapping domains to shards
-│   └── {uuid}.usv   
-├── shards/          # Content-addressable data files
-│   ├── {sha256}.usv
-│   └── compacted-{uuid}.usv
+├── shards/          # Compacted data files
+├── domains/         # The "Inbox": atomic per-domain writes from workers
 └── _header.usv      # Canonical schema definition
 ```
 

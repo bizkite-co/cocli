@@ -14,7 +14,7 @@ FILES_TO_PATCH: List[str] = [
     "cocli/core/paths.py",
     "cocli/core/config.py",
     "cocli/core/s3_company_manager.py",
-    "cocli/core/s3_domain_manager.py",
+    "cocli/core/domain_index_manager.py",
     "cocli/core/queue/filesystem.py",
     "cocli/core/queue/factory.py",
     "cocli/core/queue/command_sqs_queue.py",

@@ -458,11 +458,11 @@ def get_campaign_stats(campaign_name: str) -> Dict[str, Any]:
 
     # Global Enrichment Count (Total pool from Manifest)
     try:
-        from .s3_domain_manager import S3DomainManager
+        from .domain_index_manager import DomainIndexManager
         from ..models.campaign import Campaign as CampaignModel
-        s3_manager = S3DomainManager(CampaignModel.load(campaign_name))
+        idx_manager = DomainIndexManager(CampaignModel.load(campaign_name))
         # This might be slow if it has to bootstrap, but once manifest exists it is fast
-        manifest = s3_manager.get_latest_manifest()
+        manifest = idx_manager.get_latest_manifest()
         stats["total_enriched_global"] = len(manifest.shards)
     except Exception as e:
         logger.warning(f"Could not fetch global pool count from manifest: {e}")

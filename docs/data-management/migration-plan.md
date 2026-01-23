@@ -5,7 +5,7 @@ This document outlines the steps required to migrate the domain index from the l
 ## Context
 - **Code Changes**: 
     - `WebsiteDomainCsv` model is now "thin" (bloat fields moved to `website.md`).
-    - `S3DomainManager` now uses `slugdotify` (dots preserved) for S3 keys.
+    - `DomainIndexManager` now uses `slugdotify` (dots preserved) for S3 keys.
     - Primary local index renamed to `domains_master.csv`.
     - Added `ip_address` field to tracking.
 

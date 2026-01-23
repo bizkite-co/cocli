@@ -67,7 +67,7 @@ To ensure resilience against spot instance interruptions and allow for scalable 
     mkdir -p /mnt/cocli_data
     ```
 3.  **Implement S3-backed Domain Manager:**
-    *   As outlined in `task.md`, implement the `S3DomainManager` for the website enrichment service. This manager will directly interact with S3 for domain indexing and status, using S3 object tags for metadata.
+    *   As outlined in `task.md`, implement the `DomainIndexManager` for the website enrichment service. This manager will directly interact with S3 for domain indexing and status, using S3 object tags for metadata.
     *   The Google Maps scraper will continue to write its raw output (e.g., `prospects.csv`) to the local `COCLI_DATA_HOME` directory.
 4.  **S3 Synchronization:**
     *   **Initial Sync:** Copy existing local data to S3.

@@ -1,14 +1,14 @@
 import json
 import logging
 import asyncio
-from cocli.core.s3_domain_manager import S3DomainManager
+from cocli.core.domain_index_manager import DomainIndexManager
 from cocli.models.website_domain_csv import WebsiteDomainCsv
 from cocli.models.campaign import Campaign
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-async def migrate_item(s3_manager: S3DomainManager, bucket_name: str, old_key: str, semaphore: asyncio.Semaphore) -> None:
+async def migrate_item(s3_manager: DomainIndexManager, bucket_name: str, old_key: str, semaphore: asyncio.Semaphore) -> None:
     async with semaphore:
         try:
             # We use threading for boto3 since it's not async-native, 
@@ -47,9 +47,9 @@ async def migrate_to_usv(campaign_name: str, source_prefix: str) -> None:
     Migrates S3 domain index objects from JSON to USV format with parallelism.
     """
     campaign = Campaign.load(campaign_name)
-    s3_manager = S3DomainManager(campaign)
+    s3_manager = DomainIndexManager(campaign)
     
-    bucket_name = s3_manager.s3_bucket_name
+    bucket_name = s3_manager.bucket_name
     
     logger.info(f"Scanning {source_prefix} in bucket: {bucket_name}")
 

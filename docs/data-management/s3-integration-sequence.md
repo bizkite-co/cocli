@@ -21,7 +21,7 @@ sequenceDiagram
         
         activate Docker
         Docker->>Docker: Load Campaign Config
-        Docker->>Docker: Initialize S3DomainManager
+        Docker->>Docker: Initialize DomainIndexManager
         
         Docker->>S3: get_object (Check Index)
         alt Index Found & Fresh

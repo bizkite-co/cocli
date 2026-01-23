@@ -18,7 +18,7 @@ def main() -> None:
     # AND potentially the old path if some workers are still using it? 
     # But I patched the code to use indexes/domains/.
     
-    # Wait, check cocli/core/s3_domain_manager.py again.
+    # Wait, check cocli/core/domain_index_manager.py again.
     # It uses "indexes/domains/" as prefix.
     
     prefix = "indexes/domains/"

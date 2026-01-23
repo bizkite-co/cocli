@@ -1,6 +1,6 @@
 import logging
 import asyncio
-from cocli.core.s3_domain_manager import S3DomainManager
+from cocli.core.domain_index_manager import DomainIndexManager
 from cocli.models.campaign import Campaign
 
 logging.basicConfig(level=logging.INFO)
@@ -11,7 +11,7 @@ async def clean_sweep(campaign_name: str) -> None:
     Sweeps the Manifest index to ensure all domains and tags are clean.
     """
     campaign = Campaign.load(campaign_name)
-    s3_manager = S3DomainManager(campaign)
+    s3_manager = DomainIndexManager(campaign)
     
     logger.info(f"Scanning Manifest index for campaign: {campaign_name}")
 
@@ -30,11 +30,11 @@ async def clean_sweep(campaign_name: str) -> None:
 
     for path, domains in paths_to_domains.items():
         try:
-            resp = s3_manager.s3_client.get_object(Bucket=s3_manager.s3_bucket_name, Key=path)
+            resp = s3_manager.s3_client.get_object(Bucket=s3_manager.bucket_name, Key=path)
             content = resp['Body'].read().decode('utf-8')
             
             # Since a shard can contain multiple records (if compacted), we need to handle it.
-            # But S3DomainManager.add_or_update currently handles single records.
+            # But DomainIndexManager.add_or_update currently handles single records.
             # For a clean sweep, we can just re-process each domain in the shard.
             from cocli.models.website_domain_csv import WebsiteDomainCsv
             

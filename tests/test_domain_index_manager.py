@@ -1,5 +1,5 @@
 import pytest
-from cocli.core.s3_domain_manager import S3DomainManager
+from cocli.core.domain_index_manager import DomainIndexManager
 from cocli.models.campaign import Campaign
 from cocli.models.website_domain_csv import WebsiteDomainCsv
 
@@ -7,7 +7,7 @@ from cocli.models.website_domain_csv import WebsiteDomainCsv
 def s3_manager():
     # Load roadmap campaign for testing against real bucket (if creds available)
     campaign = Campaign.load("roadmap")
-    return S3DomainManager(campaign)
+    return DomainIndexManager(campaign)
 
 def test_s3_round_trip(s3_manager):
     test_domain = "test-atomic-index.com"

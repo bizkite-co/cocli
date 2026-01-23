@@ -6,7 +6,7 @@ import os
 from typing import Any, Optional
 from datetime import datetime
 from concurrent.futures import ThreadPoolExecutor
-from cocli.core.s3_domain_manager import S3DomainManager
+from cocli.core.domain_index_manager import DomainIndexManager
 from cocli.models.campaign import Campaign
 from cocli.models.index_manifest import IndexShard
 
@@ -24,7 +24,7 @@ def download_shard(s3_client: Any, bucket: str, key: str) -> Optional[str]:
 
 async def compact(campaign_name: str) -> None:
     campaign = Campaign.load(campaign_name)
-    s3_manager = S3DomainManager(campaign)
+    s3_manager = DomainIndexManager(campaign)
     
     logger.info("Loading latest manifest for compaction...")
     manifest = s3_manager.get_latest_manifest()
@@ -50,7 +50,7 @@ async def compact(campaign_name: str) -> None:
             batch_size = 500
             for i in range(0, len(keys), batch_size):
                 batch = keys[i:i+batch_size]
-                results = list(executor.map(lambda k: download_shard(s3_manager.s3_client, s3_manager.s3_bucket_name, k), batch))
+                results = list(executor.map(lambda k: download_shard(s3_manager.s3_client, s3_manager.bucket_name, k), batch))
                 
                 for content in results:
                     if content:
@@ -62,7 +62,7 @@ async def compact(campaign_name: str) -> None:
                 logger.info(f"Processed {min(i+batch_size, len(keys))}/{len(keys)} shards...")
 
     logger.info(f"Uploading compacted file ({os.path.getsize(local_temp) / 1024:.2f} KB) to S3...")
-    s3_manager.s3_client.upload_file(local_temp, s3_manager.s3_bucket_name, compacted_key)
+    s3_manager.s3_client.upload_file(local_temp, s3_manager.bucket_name, compacted_key)
     
     logger.info("Updating manifest pointers...")
     new_shard = IndexShard(
@@ -76,13 +76,13 @@ async def compact(campaign_name: str) -> None:
         
     manifest_key = f"{s3_manager.manifests_prefix}{uuid.uuid4()}.usv"
     s3_manager.s3_client.put_object(
-        Bucket=s3_manager.s3_bucket_name,
+        Bucket=s3_manager.bucket_name,
         Key=manifest_key,
         Body=manifest.to_usv()
     )
     
     s3_manager.s3_client.put_object(
-        Bucket=s3_manager.s3_bucket_name,
+        Bucket=s3_manager.bucket_name,
         Key=s3_manager.latest_pointer_key,
         Body=manifest_key
     )

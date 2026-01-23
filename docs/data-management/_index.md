@@ -60,7 +60,7 @@ classDiagram
         +update_index()
     }
 
-    class S3DomainManager {
+    class DomainIndexManager {
         +get_by_domain(domain: str) WebsiteDomainCsv
         +add_or_update(data: WebsiteDomainCsv)
     }
@@ -76,7 +76,7 @@ classDiagram
     StorageAdapter <|-- LocalFilesystemAdapter
     StorageAdapter <|-- S3Adapter
     IndexManager <|-- LocalIndexManager
-    IndexManager <|-- S3DomainManager
+    IndexManager <|-- DomainIndexManager
 ```
 
 ### Data Flow Diagram (Mermaid)
@@ -105,8 +105,8 @@ flowchart TD
     CLI -->|3. Enrich| Enricher
     
     %% S3 Integration (Enrichment)
-    Enricher -->|4. Check/Update Index| S3DomainManager
-    S3DomainManager -->|5. Get/Put Object| S3Index
+    Enricher -->|4. Check/Update Index| DomainIndexManager
+    DomainIndexManager -->|5. Get/Put Object| S3Index
 
     %% Synchronization
     CLI -->|6. Sync (Push/Pull)| DataSynchronizer
@@ -148,7 +148,7 @@ flowchart TD
     *   `list_entries(campaign: Campaign) -> List[Any]`
 *   **Concrete Implementations:**
     *   **`LocalIndexManager`:** Manages indexes stored on the local filesystem (e.g., CSVs in `cocli_data/indexes/`).
-    *   **`S3IndexManager` (New - e.g., `S3DomainManager`):** Manages indexes stored in S3.
+    *   **`S3IndexManager` (New - e.g., `DomainIndexManager`):** Manages indexes stored in S3.
         *   **Strategy: Manifest-Pointer (Distributed Snapshot):**
             *   **CAS Shards:** Data is stored in immutable shards at `indexes/shards/`.
             *   **Manifests:** A versioned map at `indexes/manifests/` tracks which shard contains which domain.
@@ -204,7 +204,7 @@ To balance the need for massive write concurrency (cloud workers) with fast read
 1.  `cocli` application instances (e.g., enrichment service on Fargate, Google Maps scraper on EC2) are configured with `COCLI_DATA_HOME` pointing to a local mount point (e.g., `/mnt/cocli_data`).
 2.  The `DataManager` on these instances is configured to use `S3Adapter` and `S3IndexManager` as the primary storage for critical data and indexes.
 3.  A `cron` job or similar mechanism on EC2 instances (or within Fargate tasks) periodically runs `aws s3 sync` to keep the local mount point synchronized with the S3 bucket for bulk data (e.g., company Markdown files).
-4.  The `S3IndexManager` (e.g., `S3DomainManager`) directly interacts with S3 for its index operations, ensuring consistency across distributed services.
+4.  The `S3IndexManager` (e.g., `DomainIndexManager`) directly interacts with S3 for its index operations, ensuring consistency across distributed services.
 
 ## Example: `achieve-goal` with S3 Integration
 

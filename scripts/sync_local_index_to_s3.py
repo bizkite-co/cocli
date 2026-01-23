@@ -1,7 +1,7 @@
 import asyncio
 import logging
 from cocli.core.website_domain_csv_manager import WebsiteDomainCsvManager
-from cocli.core.s3_domain_manager import S3DomainManager
+from cocli.core.domain_index_manager import DomainIndexManager
 from cocli.models.campaign import Campaign
 from cocli.core.config import load_campaign_config
 
@@ -27,10 +27,10 @@ async def sync_to_s3(campaign_name: str) -> None:
         
     campaign = Campaign(**full_campaign_data)
     
-    s3_manager = S3DomainManager(campaign=campaign)
+    s3_manager = DomainIndexManager(campaign=campaign)
     local_manager = WebsiteDomainCsvManager()
     
-    print(f"Syncing {len(local_manager.data)} domains to S3 bucket: {s3_manager.s3_bucket_name}")
+    print(f"Syncing {len(local_manager.data)} domains to S3 bucket: {s3_manager.bucket_name}")
     
     count = 0
     for domain, item in local_manager.data.items():

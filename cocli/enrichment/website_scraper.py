@@ -2,6 +2,7 @@ import re
 import httpx
 import asyncio
 import socket
+import os
 import xml.etree.ElementTree as ET
 from typing import Optional, List, Callable, Coroutine, Any, Dict, Union, Tuple
 from playwright.async_api import Page, Browser, BrowserContext
@@ -15,7 +16,7 @@ from ..core.website_domain_csv_manager import (
     WebsiteDomainCsvManager,
     CURRENT_SCRAPER_VERSION,
 )
-from ..core.s3_domain_manager import S3DomainManager
+from ..core.domain_index_manager import DomainIndexManager
 from ..core.s3_company_manager import S3CompanyManager
 from ..models.website_domain_csv import WebsiteDomainCsv
 from ..models.campaign import Campaign
@@ -124,7 +125,7 @@ class WebsiteScraper:
 
         try:
             await asyncio.wait_for(
-                self._run_internal(
+                self.scrape_website_internal(
                     browser,
                     domain,
                     website_data,
@@ -148,9 +149,13 @@ class WebsiteScraper:
         if not website_data.url or website_data.url == "unknown":
             return
 
-        domain_index_manager: Union[WebsiteDomainCsvManager, S3DomainManager]
-        if campaign and campaign.aws and campaign.aws.profile:
-            domain_index_manager = S3DomainManager(campaign=campaign)
+        use_cloud_index = False
+        if campaign and campaign.aws and (os.getenv("COCLI_S3_BUCKET_NAME") or campaign.aws.hosted_zone_id):
+             use_cloud_index = True
+
+        domain_index_manager: Union[WebsiteDomainCsvManager, DomainIndexManager]
+        if use_cloud_index and campaign:
+            domain_index_manager = DomainIndexManager(campaign=campaign)
         else:
             domain_index_manager = WebsiteDomainCsvManager()
 
@@ -228,7 +233,7 @@ class WebsiteScraper:
             except Exception as e:
                 logger.error(f"Failed to index emails during finalization: {e}")
 
-    async def _run_internal(
+    async def scrape_website_internal(
         self,
         browser: Union[Browser, BrowserContext],
         domain: str,
@@ -242,10 +247,13 @@ class WebsiteScraper:
         """
         Internal implementation of website scraping.
         """
-        domain_index_manager: Union[WebsiteDomainCsvManager, S3DomainManager]
+        use_cloud_index = False
+        if campaign and campaign.aws and (os.getenv("COCLI_S3_BUCKET_NAME") or campaign.aws.hosted_zone_id):
+             use_cloud_index = True
 
-        if campaign and campaign.aws and campaign.aws.profile:
-            domain_index_manager = S3DomainManager(campaign=campaign)
+        domain_index_manager: Union[WebsiteDomainCsvManager, DomainIndexManager]
+        if use_cloud_index and campaign:
+            domain_index_manager = DomainIndexManager(campaign=campaign)
         else:
             domain_index_manager = WebsiteDomainCsvManager()
 
