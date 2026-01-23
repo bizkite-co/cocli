@@ -48,16 +48,33 @@ class CdkScraperDeploymentStack(Stack):  # type: ignore[misc]
         # ECR Repository (Import existing to grant permissions)
         repository = ecr.Repository.from_repository_name(self, "ImportedRepo", "cocli-enrichment-service")
 
-        # VPC for Fargate
-        vpc = ec2.Vpc(self, "ScraperVpc", max_azs=2)
+        # --- Conditional Fargate Infrastructure ---
+        worker_count = campaign_config.get("worker_count", 0)
+        vpc = None
+        cluster = None
 
-        # ECS Cluster
-        cluster = ecs.Cluster(self, "ScraperCluster", vpc=vpc, cluster_name="ScraperCluster")
+        if worker_count > 0:
+            # VPC for Fargate - Set nat_gateways to 0 to save costs ($100/mo)
+            # Fargate tasks will run in public subnets with public IPs assigned
+            vpc = ec2.Vpc(self, "ScraperVpc", 
+                max_azs=2,
+                nat_gateways=0,
+                subnet_configuration=[
+                    ec2.SubnetConfiguration(
+                        name="Public",
+                        subnet_type=ec2.SubnetType.PUBLIC,
+                        cidr_mask=24
+                    )
+                ]
+            )
 
-        # Enable Fargate Capacity Providers (including FARGATE_SPOT)
-        cluster.enable_fargate_capacity_providers()
+            # ECS Cluster
+            cluster = ecs.Cluster(self, "ScraperCluster", vpc=vpc, cluster_name="ScraperCluster")
 
-        # IAM Role for Fargate Task
+            # Enable Fargate Capacity Providers (including FARGATE_SPOT)
+            cluster.enable_fargate_capacity_providers()
+
+        # IAM Role for Fargate Task (Keep as it's free and used for permissions)
         task_role = iam.Role(self, "ScraperTaskRole",
             assumed_by=iam.ServicePrincipal("ecs-tasks.amazonaws.com")
         )
@@ -202,59 +219,61 @@ class CdkScraperDeploymentStack(Stack):  # type: ignore[misc]
         CfnOutput(self, "WebBucketName", value=web_bucket.bucket_name)
         CfnOutput(self, "WebDomainName", value=subdomain)
 
-        # Application Load Balanced Fargate Service
-        fargate_service = ecs_patterns.ApplicationLoadBalancedFargateService(self, "ScraperService",
-            cluster=cluster,
-            service_name="EnrichmentService", # Explicitly name the service
-            cpu=1024,  # 1 vCPU
-            memory_limit_mib=3072, # 3GB RAM
-            desired_count=campaign_config.get("worker_count", 1),
-            domain_name=f"enrich.{domain}",
-            domain_zone=zone,
-            protocol=elbv2.ApplicationProtocol.HTTPS, # Explicitly set HTTPS protocol
-            redirect_http=True, # Redirect HTTP to HTTPS
-            task_image_options=ecs_patterns.ApplicationLoadBalancedTaskImageOptions(
-                image=ecs.ContainerImage.from_registry(repository.repository_uri + ":latest"),
-                container_port=8000,
-                log_driver=ecs.LogDrivers.aws_logs(
-                    stream_prefix="web",
-                    log_retention=logs.RetentionDays.THREE_DAYS
+        if cluster:
+            # Application Load Balanced Fargate Service
+            fargate_service = ecs_patterns.ApplicationLoadBalancedFargateService(self, "ScraperService",
+                cluster=cluster,
+                service_name="EnrichmentService", # Explicitly name the service
+                cpu=1024,  # 1 vCPU
+                memory_limit_mib=3072, # 3GB RAM
+                desired_count=worker_count,
+                domain_name=f"enrich.{domain}",
+                domain_zone=zone,
+                protocol=elbv2.ApplicationProtocol.HTTPS, # Explicitly set HTTPS protocol
+                redirect_http=True, # Redirect HTTP to HTTPS
+                task_image_options=ecs_patterns.ApplicationLoadBalancedTaskImageOptions(
+                    image=ecs.ContainerImage.from_registry(repository.repository_uri + ":latest"),
+                    container_port=8000,
+                    log_driver=ecs.LogDrivers.aws_logs(
+                        stream_prefix="web",
+                        log_retention=logs.RetentionDays.THREE_DAYS
+                    ),
+                    environment={
+                        "COCLI_ENRICHMENT_QUEUE_URL": enrichment_queue.queue_url,
+                        "COCLI_SCRAPE_TASKS_QUEUE_URL": scrape_tasks_queue.queue_url,
+                        "COCLI_GM_LIST_ITEM_QUEUE_URL": gm_list_item_queue.queue_url,
+                        "COCLI_S3_BUCKET_NAME": data_bucket.bucket_name,
+                        "CAMPAIGN_NAME": campaign_config["name"],
+                        "COCLI_DATA_HOME": "/app/cocli_data",
+                        "COCLI_HOSTNAME": "fargate",
+                        "DEPLOY_TIMESTAMP": self.node.try_get_context("deploy_timestamp") or "initial"
+                    },
+                    task_role=task_role
                 ),
-                environment={
-                    "COCLI_ENRICHMENT_QUEUE_URL": enrichment_queue.queue_url,
-                    "COCLI_SCRAPE_TASKS_QUEUE_URL": scrape_tasks_queue.queue_url,
-                    "COCLI_GM_LIST_ITEM_QUEUE_URL": gm_list_item_queue.queue_url,
-                    "COCLI_S3_BUCKET_NAME": data_bucket.bucket_name,
-                    "CAMPAIGN_NAME": campaign_config["name"],
-                    "COCLI_DATA_HOME": "/app/cocli_data",
-                    "COCLI_HOSTNAME": "fargate",
-                    "DEPLOY_TIMESTAMP": self.node.try_get_context("deploy_timestamp") or "initial"
-                },
-                task_role=task_role
-            ),
-            public_load_balancer=True,
-            assign_public_ip=True,
-            capacity_provider_strategies=[
-                ecs.CapacityProviderStrategy(
-                    capacity_provider="FARGATE_SPOT",
-                    weight=1
-                )
-            ]
-        )
-        
-        # Grant permissions to pull image from ECR
-        repository.grant_pull(fargate_service.task_definition.obtain_execution_role())
+                public_load_balancer=True,
+                assign_public_ip=True,
+                task_subnets=ec2.SubnetSelection(subnet_type=ec2.SubnetType.PUBLIC),
+                capacity_provider_strategies=[
+                    ecs.CapacityProviderStrategy(
+                        capacity_provider="FARGATE_SPOT",
+                        weight=1
+                    )
+                ]
+            )
+            
+            # Grant permissions to pull image from ECR
+            repository.grant_pull(fargate_service.task_definition.obtain_execution_role())
 
-        # Configure Health Check
-        fargate_service.target_group.configure_health_check(
-            path="/health",
-            healthy_http_codes="200"
-        )
+            # Configure Health Check
+            fargate_service.target_group.configure_health_check(
+                path="/health",
+                healthy_http_codes="200"
+            )
 
-        CfnOutput(self, "EnrichmentServiceURL",
-            value=f"https://enrich.{domain}",
-            description="URL of the enrichment service"
-        )
+            CfnOutput(self, "EnrichmentServiceURL",
+                value=f"https://enrich.{domain}",
+                description="URL of the enrichment service"
+            )
 
         # --- Cognito User Pool and Client ---
         user_pool_id = campaign_config.get("user_pool_id")

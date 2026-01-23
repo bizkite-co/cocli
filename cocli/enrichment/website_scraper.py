@@ -149,15 +149,19 @@ class WebsiteScraper:
         if not website_data.url or website_data.url == "unknown":
             return
 
-        use_cloud_index = False
-        if campaign and campaign.aws and (os.getenv("COCLI_S3_BUCKET_NAME") or campaign.aws.hosted_zone_id):
-             use_cloud_index = True
-
-        domain_index_manager: Union[WebsiteDomainCsvManager, DomainIndexManager]
-        if use_cloud_index and campaign:
+        # Always use the Unified DomainIndexManager
+        if campaign:
             domain_index_manager = DomainIndexManager(campaign=campaign)
         else:
-            domain_index_manager = WebsiteDomainCsvManager()
+            # Fallback to a default local campaign if none provided
+            from ..models.campaign import Campaign
+            try:
+                default_campaign = Campaign.load("default")
+            except Exception:
+                from unittest.mock import MagicMock
+                default_campaign = MagicMock()
+                default_campaign.name = "default"
+            domain_index_manager = DomainIndexManager(campaign=default_campaign)
 
         s3_company_manager: Optional[S3CompanyManager] = None
         if campaign:

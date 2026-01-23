@@ -115,6 +115,8 @@ CdkScraperDeploymentStack(app, stack_name,
         "user_pool_id": user_pool_id,
         "user_pool_client_id": user_pool_client_id,
         "user_pool_domain": user_pool_domain,
+        "ou_arn": ou_arn,
+        "worker_count": worker_count,
     }
 )
 

@@ -2,7 +2,7 @@ import logging
 import os
 import boto3
 from typing import List, Optional, Dict, Any
-from datetime import datetime
+from datetime import datetime, timezone
 from botocore.config import Config
 
 from ..models.campaign import Campaign
@@ -111,7 +111,7 @@ class DomainIndexManager:
                         if not key.endswith(".usv") or key.split('/')[-1].startswith("_"):
                             continue
                         domain = key.split('/')[-1].replace(".usv", "")
-                        manifest.shards[domain] = IndexShard(path=key, updated_at=obj.get('LastModified', datetime.utcnow()))
+                        manifest.shards[domain] = IndexShard(path=key, updated_at=obj.get('LastModified', datetime.now(timezone.utc)))
             else:
                 inbox_dir = get_cocli_base_dir() / self.inbox_prefix
                 if inbox_dir.exists():
@@ -132,21 +132,35 @@ class DomainIndexManager:
         s3_key = f"{self.inbox_prefix}{slugdotify(str(data.domain))}.usv"
         self._write_object(s3_key, data.to_usv())
 
-    def query(self, sql_where: str = "") -> List[WebsiteDomainCsv]:
-        """Queries the global index using DuckDB (Manifest + Inbox)."""
+    def query(self, sql_where: Optional[str] = None, include_shards: bool = True, include_inbox: bool = True) -> List[WebsiteDomainCsv]:
+        """
+        Queries the unified index using DuckDB.
+        Performs a UNION ALL of shards and inbox, then deduplicates by domain.
+        """
         import duckdb
-        manifest = self.get_latest_manifest()
-        con = duckdb.connect()
-        con.execute("INSTALL httpfs; LOAD httpfs;")
+        con = duckdb.connect(database=':memory:')
         
+        manifest = self.get_latest_manifest()
+        
+        # S3 Setup for DuckDB
         if self.is_cloud:
+            con.execute("INSTALL httpfs;")
+            con.execute("LOAD httpfs;")
+            
+            # Use credentials from campaign if available
+            from .config import load_campaign_config
+            config = load_campaign_config(self.campaign.name)
+            aws_config = config.get("aws", {})
+            region = aws_config.get("region_name", "us-east-1")
+            con.execute(f"SET s3_region='{region}';")
+            
+            # Pass through current credentials
             session = boto3.Session()
             creds = session.get_credentials()
-            con.execute("SET s3_region='us-east-1';")
-            con.execute("SET s3_url_style='vhost';")
             if creds:
                 frozen = creds.get_frozen_credentials()
-                con.execute(f"SET s3_access_key_id='{frozen.access_key}'; SET s3_secret_access_key='{frozen.secret_key}';")
+                con.execute(f"SET s3_access_key_id='{frozen.access_key}';")
+                con.execute(f"SET s3_secret_access_key='{frozen.secret_key}';")
                 if frozen.token:
                     con.execute(f"SET s3_session_token='{frozen.token}';")
 
@@ -155,12 +169,12 @@ class DomainIndexManager:
         sub_queries = []
 
         # 1. Manifest Shards
-        if manifest.shards:
+        if include_shards and manifest.shards:
             paths = sorted(list(set([self._get_path(s.path) for s in manifest.shards.values()] )))
             path_list = "', '".join(paths)
             sub_queries.append(f"""
                 SELECT * FROM read_csv(['{path_list}'], 
-                    delim='\\x1f', 
+                    delim=CHR(31), 
                     header=False, 
                     quote='', 
                     escape='', 
@@ -173,38 +187,39 @@ class DomainIndexManager:
             """)
 
         # 2. Inbox (Directly list files to avoid glob issues on S3)
-        inbox_paths = []
-        try:
-            if self.is_cloud:
-                paginator = self.s3_client.get_paginator('list_objects_v2')
-                pages = paginator.paginate(Bucket=self.bucket_name, Prefix=self.inbox_prefix)
-                for page in pages:
-                    for obj in page.get('Contents', []):
-                        key = obj['Key']
-                        if key.endswith(".usv") and not key.split('/')[-1].startswith("_"):
-                            inbox_paths.append(self._get_path(key))
-            else:
-                inbox_dir = get_cocli_base_dir() / self.inbox_prefix
-                if inbox_dir.exists():
-                    inbox_paths = [str(f) for f in inbox_dir.glob("*.usv") if not f.name.startswith("_")]
-        except Exception:
-            pass
+        if include_inbox:
+            inbox_paths = []
+            try:
+                if self.is_cloud:
+                    paginator = self.s3_client.get_paginator('list_objects_v2')
+                    pages = paginator.paginate(Bucket=self.bucket_name, Prefix=self.inbox_prefix)
+                    for page in pages:
+                        for obj in page.get('Contents', []):
+                            key = obj['Key']
+                            if key.endswith(".usv") and not key.split('/')[-1].startswith("_"):
+                                inbox_paths.append(self._get_path(key))
+                else:
+                    inbox_dir = get_cocli_base_dir() / self.inbox_prefix
+                    if inbox_dir.exists():
+                        inbox_paths = [str(f) for f in inbox_dir.glob("*.usv") if not f.name.startswith("_")]
+            except Exception:
+                pass
 
-        if inbox_paths:
-            path_list = "', '".join(inbox_paths)
-            sub_queries.append(f"""
-                SELECT * FROM read_csv(['{path_list}'], 
-                    delim='\\x1f', 
-                    header=False, 
-                    quote='', 
-                    escape='', 
-                    columns={columns}, 
-                    auto_detect=False, 
-                    all_varchar=True,
-                    null_padding=True,
-                    strict_mode=False
-                )
-            """)
+            if inbox_paths:
+                path_list = "', '".join(inbox_paths)
+                sub_queries.append(f"""
+                    SELECT * FROM read_csv(['{path_list}'], 
+                        delim=CHR(31), 
+                        header=False, 
+                        quote='', 
+                        escape='', 
+                        columns={columns}, 
+                        auto_detect=False, 
+                        all_varchar=True,
+                        null_padding=True,
+                        strict_mode=False
+                    )
+                """)
 
         try:
             base_query = " UNION ALL ".join(sub_queries)
@@ -236,3 +251,53 @@ class DomainIndexManager:
     def get_by_domain(self, domain: str) -> Optional[WebsiteDomainCsv]:
         results = self.query(f"domain = '{domain}'")
         return results[0] if results else None
+
+    def compact_inbox(self) -> None:
+        """
+        Merges all items currently in the inbox into a single new shard.
+        Updates the manifest to point these domains to the new shard.
+        """
+        logger.info(f"Starting inbox compaction for {self.campaign.name}...")
+        
+        # 1. Collect all items from Inbox
+        inbox_items = self.query(include_shards=False)
+        if not inbox_items:
+            logger.info("Inbox is empty, nothing to compact.")
+            return
+
+        # 2. Group by domain (latest wins)
+        latest_items: Dict[str, WebsiteDomainCsv] = {}
+        for item in inbox_items:
+            if item.domain not in latest_items or item.updated_at > latest_items[item.domain].updated_at:
+                latest_items[item.domain] = item
+
+        # 3. Write new Shard
+        import uuid
+        shard_id = str(uuid.uuid4())
+        shard_key = f"{self.shards_prefix}{shard_id}.usv"
+        
+        shard_content = "\n".join([item.to_usv() for item in latest_items.values()]) + "\n"
+        self._write_object(shard_key, shard_content)
+        
+        # 4. Update Manifest
+        manifest = self.get_latest_manifest()
+        new_shard_ptr = IndexShard(
+            path=shard_key,
+            schema_version=6,
+            updated_at=datetime.now(timezone.utc)
+        )
+        
+        for domain in latest_items.keys():
+            manifest.shards[domain] = new_shard_ptr
+            
+        # 5. Save Manifest
+        manifest_key = f"{self.manifests_prefix}{uuid.uuid4()}.usv"
+        self._write_object(manifest_key, manifest.to_usv())
+        
+        # 6. Swap Pointer
+        self._write_object(self.latest_pointer_key, manifest_key)
+        
+        logger.info(f"Compacted {len(latest_items)} domains into {shard_key}")
+        
+        # 7. (Optional) Cleanup Inbox - We'll leave this for now to be safe, 
+        # or implement a 'cleanup' that deletes files older than the manifest update.
