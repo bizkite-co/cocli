@@ -13,7 +13,7 @@ High-level design, patterns, and infrastructure.
 ## Data Management
 Data structures, storage, ETL pipelines, and S3 integration.
 
-*   [Directory Data Structure](./data-management/DIRECTORY-DATA-STRUCTURE.md): Layout of `cocli_data`, including **Global Indexes** (`indexes/`) and **Campaign Indexes** (`campaigns/<name>/indexes/`).
+*   [Directory Data Structure](./data-management/DIRECTORY-DATA-STRUCTURE.md): Layout of `data`, including **Global Indexes** (`indexes/`) and **Campaign Indexes** (`campaigns/<name>/indexes/`).
 *   [Campaign Primitive](./data-management/CAMPAIGN.md): Campaign structure and lifecycle.
 *   [Data Manager Design](./data-management/_index.md): Core design for the Data Manager component.
 *   [ETL Scenarios](./data-management/ETL_SCENARIO.md): Local vs. Cloud ETL architectures.

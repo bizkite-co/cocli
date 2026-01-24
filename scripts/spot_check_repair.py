@@ -5,9 +5,9 @@ from rich.console import Console
 console = Console()
 
 files = [
-    "/home/mstouffer/.local/share/cocli_data/companies/myflooringspecialist-com/",
-    "/home/mstouffer/.local/share/cocli_data/companies/scoutfloors-com/",
-    "/home/mstouffer/.local/share/cocli_data/companies/comflors-com/"
+    "/home/mstouffer/.local/share/data/companies/myflooringspecialist-com/",
+    "/home/mstouffer/.local/share/data/companies/scoutfloors-com/",
+    "/home/mstouffer/.local/share/data/companies/comflors-com/"
 ]
 
 for f in files:

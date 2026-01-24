@@ -75,7 +75,7 @@ def update_config(
         "CampaignUpdatesQueueUrl": "cocli_command_queue_url",
         "EnrichmentServiceURL": "cocli_enrichment_service_url",
         "WebBucketName": "cocli_web_bucket_name",
-        "BucketName": "cocli_data_bucket_name",
+        "BucketName": "data_bucket_name",
         "IdentityPoolId": "cocli_identity_pool_id",
         "UserPoolId": "cocli_user_pool_id",
         "UserPoolClientId": "cocli_user_pool_client_id",

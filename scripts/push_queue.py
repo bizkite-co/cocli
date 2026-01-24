@@ -46,7 +46,7 @@ def main(
     """
     config = load_campaign_config(campaign)
     aws_config = config.get("aws", {})
-    bucket_name = aws_config.get("cocli_data_bucket_name") or f"cocli-data-{campaign}"
+    bucket_name = aws_config.get("data_bucket_name") or f"cocli-data-{campaign}"
     profile_name = aws_config.get("profile") or aws_config.get("aws_profile")
 
     session = boto3.Session(profile_name=profile_name)

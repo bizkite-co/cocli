@@ -277,7 +277,7 @@ def get_campaign_stats(campaign_name: str) -> Dict[str, Any]:
         stats["active_fargate_tasks"] = get_active_fargate_tasks(session)
 
         # S3 Counts
-        data_bucket = aws_config.get("cocli_data_bucket_name")
+        data_bucket = aws_config.get("data_bucket_name")
         if data_bucket:
             s3 = session.client("s3")
             

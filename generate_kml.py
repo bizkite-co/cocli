@@ -10,7 +10,7 @@ def main() -> None:
     Generates a KML file with placemarks for each company tagged with "turboship".
     """
     
-    data_dir = "/home/mstouffer/.local/share/cocli_data/companies"
+    data_dir = "/home/mstouffer/.local/share/data/companies"
     output_dir = "/home/mstouffer/repos/company-cli/campaigns/2025/turboship"
     kml_file_path = os.path.join(output_dir, "turboship_customers.kml")
     

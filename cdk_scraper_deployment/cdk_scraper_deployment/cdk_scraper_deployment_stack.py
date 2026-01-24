@@ -244,7 +244,7 @@ class CdkScraperDeploymentStack(Stack):  # type: ignore[misc]
                         "COCLI_GM_LIST_ITEM_QUEUE_URL": gm_list_item_queue.queue_url,
                         "COCLI_S3_BUCKET_NAME": data_bucket.bucket_name,
                         "CAMPAIGN_NAME": campaign_config["name"],
-                        "COCLI_DATA_HOME": "/app/cocli_data",
+                        "COCLI_DATA_HOME": "/app/data",
                         "COCLI_HOSTNAME": "fargate",
                         "DEPLOY_TIMESTAMP": self.node.try_get_context("deploy_timestamp") or "initial"
                     },

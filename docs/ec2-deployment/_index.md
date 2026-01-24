@@ -56,15 +56,15 @@ To deploy the `cocli` application, including its Google Maps scraper and website
     playwright install chromium # or other browsers as needed
     ```
 
-### 4. Data Storage Migration (`cocli_data/` to S3)
+### 4. Data Storage Migration (`data/` to S3)
 
-To ensure resilience against spot instance interruptions and allow for scalable storage, the `cocli_data/` directory will be moved to S3.
+To ensure resilience against spot instance interruptions and allow for scalable storage, the `data/` directory will be moved to S3.
 
 1.  **Create S3 Bucket:** Create a dedicated S3 bucket (e.g., `cocli-data-bucket`) in your AWS account.
 2.  **Configure `COCLI_DATA_HOME`:** On the EC2 instance, set the `COCLI_DATA_HOME` environment variable to point to a local directory that will be synchronized with S3.
     ```bash
-    export COCLI_DATA_HOME=/mnt/cocli_data # Or any preferred local path
-    mkdir -p /mnt/cocli_data
+    export COCLI_DATA_HOME=/mnt/data # Or any preferred local path
+    mkdir -p /mnt/data
     ```
 3.  **Implement S3-backed Domain Manager:**
     *   As outlined in `task.md`, implement the `DomainIndexManager` for the website enrichment service. This manager will directly interact with S3 for domain indexing and status, using S3 object tags for metadata.
@@ -72,12 +72,12 @@ To ensure resilience against spot instance interruptions and allow for scalable 
 4.  **S3 Synchronization:**
     *   **Initial Sync:** Copy existing local data to S3.
         ```bash
-        aws s3 sync /mnt/cocli_data s3://cocli-data-bucket --delete
+        aws s3 sync /mnt/data s3://cocli-data-bucket --delete
         ```
     *   **Continuous Sync:** Implement a `cron` job on the EC2 instance to periodically synchronize the local `COCLI_DATA_HOME` with the S3 bucket. This ensures data written locally by the Google Maps scraper is persisted to S3.
         ```bash
         # Example cron entry (run every 5 minutes)
-        */5 * * * * /usr/bin/aws s3 sync /mnt/cocli_data s3://cocli-data-bucket
+        */5 * * * * /usr/bin/aws s3 sync /mnt/data s3://cocli-data-bucket
         ```
     *   **IAM Role:** Attach an IAM role to the EC2 instance with permissions to read/write to the S3 bucket.
 
@@ -96,7 +96,7 @@ We will use `systemd` to manage the `cocli` application components as background
 
         [Service]
         ExecStartPre=-/usr/bin/docker rm -f cocli-enrichment
-        ExecStart=/usr/bin/docker run --name cocli-enrichment -p 8000:8000 -e COCLI_DATA_HOME=/mnt/cocli_data enrichment-service:latest
+        ExecStart=/usr/bin/docker run --name cocli-enrichment -p 8000:8000 -e COCLI_DATA_HOME=/mnt/data enrichment-service:latest
         ExecStop=/usr/bin/docker stop cocli-enrichment
         Restart=on-failure
         RestartSec=10

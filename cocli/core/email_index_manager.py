@@ -13,8 +13,8 @@ logger = logging.getLogger(__name__)
 class EmailIndexManager:
     """
     Manages a campaign-specific index of emails.
-    Stored in cocli_data/campaigns/{campaign}/indexes/emails/ as individual JSON files.
-    Structure: cocli_data/campaigns/{campaign}/indexes/emails/{domain_part}/{user_part}.json
+    Stored in data/campaigns/{campaign}/indexes/emails/ as individual JSON files.
+    Structure: data/campaigns/{campaign}/indexes/emails/{domain_part}/{user_part}.json
     """
     def __init__(self, campaign_name: str):
         self.campaign_name = campaign_name

@@ -22,7 +22,7 @@ This document outlines the "Source Monitoring" policy for managing enriched data
 
 To improve efficiency and reduce the operational cost of scraping external data sources, `cocli` employs a "cache-first" strategy.
 
-1.  **Global Caches:** For each expensive-to-acquire data source (like Google Maps), a global cache is maintained in the `cocli_data/cache` directory. This cache serves as the local, persistent copy of all data scraped from that source.
+1.  **Global Caches:** For each expensive-to-acquire data source (like Google Maps), a global cache is maintained in the `data/cache` directory. This cache serves as the local, persistent copy of all data scraped from that source.
 2.  **Timestamps for Freshness:** All cached data models include `created_at` and `updated_at` timestamps. The `updated_at` timestamp is used to determine the "freshness" of the data.
 3.  **Time-To-Live (TTL):** When fetching data, the system first checks the cache. If a record exists and its `updated_at` timestamp is within a configurable Time-To-Live (TTL) period (e.g., 30 days), the cached data is used immediately, avoiding a redundant scrape.
 4.  **Cache-First Principle:** If the data is not in the cache, or if it is "stale" (i.e., older than the TTL), the system will proceed to fetch the data from the external source. The new data is then used to update the cache, refreshing the `updated_at` timestamp.

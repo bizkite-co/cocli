@@ -197,7 +197,7 @@ By default, `cocli` stores your company and person data in `~/.local/share/cocli
 
 You can override this default location by setting the `COCLI_DATA_HOME` environment variable. For example, in your `~/.bashrc` or `~/.zshrc`:
 ```bash
-export COCLI_DATA_HOME="/path/to/your/custom/cocli_data"
+export COCLI_DATA_HOME="/path/to/your/custom/data"
 ```
 
 ## Architecture

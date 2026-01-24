@@ -21,7 +21,7 @@ This document outlines key principles and strategies for effective logging and d
 3.  **Distinction Between Application Data and User Business Data:**
     *   **Principle:** Application-specific logs and caches should be stored separately from user-specific business data.
     *   **Observation:** Mixing these can clutter user backups and make application debugging harder.
-    *   **Solution:** Utilize distinct directory structures (e.g., `~/.local/share/cocli/` for application internals like logs/caches, and `~/.local/share/cocli_data/` for user business data). Ensure configuration functions (`get_cocli_app_data_dir`, `get_cocli_base_dir`) correctly reflect this separation.
+    *   **Solution:** Utilize distinct directory structures (e.g., `~/.local/share/cocli/` for application internals like logs/caches, and `~/.local/share/data/` for user business data). Ensure configuration functions (`get_cocli_app_data_dir`, `get_cocli_base_dir`) correctly reflect this separation.
 
 ## Debugging UI Interactions with Tests
 

@@ -17,7 +17,7 @@ def main(
     """
     console.print("[bold blue]Starting prospects.csv file movement...[/bold blue]")
 
-    legacy_base_dir = get_scraped_data_dir() # This is ~/.local/share/cocli_data/scraped_data
+    legacy_base_dir = get_scraped_data_dir() # This is ~/.local/share/data/scraped_data
 
     for campaign_dir in get_all_campaign_dirs():
         campaign_name = campaign_dir.name # campaign_dir is already the new campaigns/<slug> path

@@ -6,7 +6,7 @@ from rich.console import Console
 console = Console()
 
 def test_becker() -> None:
-    becker_path = Path("/home/mstouffer/.local/share/cocli_data/companies/beckerarena-com")
+    becker_path = Path("/home/mstouffer/.local/share/data/companies/beckerarena-com")
     console.print(f"Testing compilation for: {becker_path}")
     
     compiler = WebsiteCompiler()

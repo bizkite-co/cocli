@@ -9,12 +9,12 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("audit")
 console = Console()
 
-def get_cocli_data_home():
+def get_data_home():
     import os
-    return Path(os.getenv("COCLI_DATA_HOME", str(Path.home() / ".local" / "share" / "cocli")))
+    return Path(os.getenv("COCLI_DATA_HOME", str(Path.home() / ".local" / "share" / "data")))
 
 def audit_campaign(campaign_name: str):
-    data_home = get_cocli_data_home()
+    data_home = get_data_home()
     companies_dir = data_home / "companies"
     campaign_dir = data_home / "campaigns" / campaign_name
     

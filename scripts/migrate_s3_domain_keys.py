@@ -18,7 +18,7 @@ async def migrate_s3_keys(campaign_name: str, profile: str, source_prefix: str =
     """
     config_data = load_campaign_config(campaign_name)
     aws_config = config_data.get("aws", {})
-    bucket_name = aws_config.get("cocli_data_bucket_name") or f"cocli-data-{campaign_name}"
+    bucket_name = aws_config.get("data_bucket_name") or f"cocli-data-{campaign_name}"
     target_prefix = "indexes/domains/"
 
     session = boto3.Session(profile_name=profile)

@@ -56,7 +56,7 @@ When analyzing report numbers (e.g., 5704 Prospects vs 2156 Queued), understand 
 
 *   **Total Prospects:** The raw count of rows in `prospects.csv`.
 *   **Queue Ingestion:** The migration script (`ingest_legacy_csv.py`) performs a **Deduplication Check**.
-    *   It checks if `cocli_data/companies/<slug>` already exists.
+    *   It checks if `data/companies/<slug>` already exists.
     *   If it exists, it **skips** queueing (assuming previous runs handled it).
 *   **Cloud Queue:** `make report` queries SQS directly for "Pending" counts.
 

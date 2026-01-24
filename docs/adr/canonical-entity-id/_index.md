@@ -2,7 +2,7 @@
 
 ## 1. Context and Problem Statement
 
-The "Hierarchical Entity Data with Symlinks" ADR proposes storing canonical entity data (companies and people) in unique directories under `~/.local/share/cocli_data/.entities/`. The naming strategy for these canonical directories is critical to ensure data integrity, prevent accidental duplication, and handle real-world complexities such as entities with similar names, multiple branches/roles, or name changes.
+The "Hierarchical Entity Data with Symlinks" ADR proposes storing canonical entity data (companies and people) in unique directories under `~/.local/share/data/.entities/`. The naming strategy for these canonical directories is critical to ensure data integrity, prevent accidental duplication, and handle real-world complexities such as entities with similar names, multiple branches/roles, or name changes.
 
 The challenge is to define a robust and flexible identification strategy that:
 *   Provides a stable, unique identifier for each entity (company or person).

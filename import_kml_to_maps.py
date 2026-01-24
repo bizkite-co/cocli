@@ -15,13 +15,13 @@ def main(campaign_name: str = typer.Argument(..., help="The name of the campaign
     Automates the process of importing a KML file to Google My Maps.
     """
     
-    # Construct the path to the cocli data directory
+    # Construct the path to the data directory
     if "COCLI_DATA_HOME" in os.environ:
-        cocli_base_dir = Path(os.environ["COCLI_DATA_HOME"]).expanduser()
+        base_dir = Path(os.environ["COCLI_DATA_HOME"]).expanduser()
     else:
-        cocli_base_dir = Path.home() / ".local" / "share" / "cocli"
+        base_dir = Path.home() / ".local" / "share" / "data"
     
-    campaign_dir = cocli_base_dir / "campaigns" / campaign_name
+    campaign_dir = base_dir / "campaigns" / campaign_name
     config_path = campaign_dir / "config.toml"
     kml_file_path = campaign_dir / f"{campaign_name}_customers.kml"
 

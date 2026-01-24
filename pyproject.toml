@@ -79,7 +79,7 @@ package-dir = {"" = "."}
 where = ["."]
 include = ["cocli*"]
 exclude = [
-    "cocli_data*", 
+    "data*", 
     "data*",
     "cocli_share*",
     "homepage*",
@@ -115,7 +115,7 @@ exclude = [
     "features",
     "tests",
     "backup",
-    "cocli_data",
+    "data",
     "cocli.egg-info",
     "data",
     "cdk_scraper_deployment",

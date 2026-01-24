@@ -12,7 +12,7 @@ def main() -> None:
     
     config = load_campaign_config(campaign_name)
     aws_config = config.get("aws", {})
-    bucket_name = aws_config.get("cocli_data_bucket_name") or f"cocli-data-{campaign_name}"
+    bucket_name = aws_config.get("data_bucket_name") or f"cocli-data-{campaign_name}"
     
     # We need to look at indexes/domains/ (which is the new shared path)
     # AND potentially the old path if some workers are still using it? 

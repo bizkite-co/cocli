@@ -21,7 +21,7 @@ When a setting is defined in multiple places, `cocli` resolves the value using t
 | Setting | Source(s) | Usage |
 | :--- | :--- | :--- |
 | **Queue Type** | `COCLI_QUEUE_TYPE`, `cocli_config.toml` | Determines if workers use `sqs` or `filesystem`. |
-| **Data Home** | `COCLI_DATA_HOME`, `cocli_config.toml` | The root directory for all business data (`cocli_data/`). |
+| **Data Home** | `COCLI_DATA_HOME`, `cocli_config.toml` | The root directory for all business data (`data/`). |
 | **Hostname** | `COCLI_HOSTNAME`, `socket.gethostname()` | Used by the supervisor to identify which scaling config to use. |
 | **AWS Profile** | `AWS_PROFILE`, `config.toml [aws]` | The profile used for S3 uploads and SQS polling. |
 | **Data Bucket** | `config.toml [aws]` | The S3 bucket where campaign and company data is stored. |
@@ -63,7 +63,7 @@ sequenceDiagram
     participant Worker as Async Worker Loop
 
     User->>Sup: cocli worker supervisor --campaign turboship
-    Sup->>Config: get_cocli_data_home()
+    Sup->>Config: get_data_home()
     Config-->>Sup: Returns path (from COCLI_DATA_HOME or default)
     
     Sup->>S3: Sync latest config.toml

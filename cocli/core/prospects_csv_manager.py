@@ -11,7 +11,7 @@ logger = logging.getLogger(__name__)
 class ProspectsIndexManager:
     """
     Manages Google Maps prospects stored as individual CSV files in a file-based index.
-    Directory: cocli_data/campaigns/{campaign}/indexes/google_maps_prospects/
+    Directory: data/campaigns/{campaign}/indexes/google_maps_prospects/
     Each file is named {Place_ID}.csv and contains a single row with header.
     """
     def __init__(self, campaign_name: str):

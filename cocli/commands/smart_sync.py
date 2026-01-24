@@ -236,7 +236,7 @@ def sync_companies(
         raise typer.Exit(1)
     config = load_campaign_config(campaign_name)
     aws_config = config.get("aws", {})
-    bucket_name = aws_config.get("cocli_data_bucket_name") or f"cocli-data-{campaign_name}"
+    bucket_name = aws_config.get("data_bucket_name") or f"cocli-data-{campaign_name}"
     run_smart_sync("companies", bucket_name, "companies/", DATA_DIR / "companies", campaign_name, aws_config, workers, full, force)
 
 @app.command("prospects")
@@ -253,7 +253,7 @@ def sync_prospects(
         raise typer.Exit(1)
     config = load_campaign_config(campaign_name)
     aws_config = config.get("aws", {})
-    bucket_name = aws_config.get("cocli_data_bucket_name") or f"cocli-data-{campaign_name}"
+    bucket_name = aws_config.get("data_bucket_name") or f"cocli-data-{campaign_name}"
     prefix = f"campaigns/{campaign_name}/indexes/google_maps_prospects/"
     local_base = DATA_DIR / "campaigns" / campaign_name / "indexes" / "google_maps_prospects"
     run_smart_sync("prospects", bucket_name, prefix, local_base, campaign_name, aws_config, workers, full, force)
@@ -272,7 +272,7 @@ def sync_emails(
         raise typer.Exit(1)
     config = load_campaign_config(campaign_name)
     aws_config = config.get("aws", {})
-    bucket_name = aws_config.get("cocli_data_bucket_name") or f"cocli-data-{campaign_name}"
+    bucket_name = aws_config.get("data_bucket_name") or f"cocli-data-{campaign_name}"
     prefix = f"campaigns/{campaign_name}/indexes/emails/"
     local_base = DATA_DIR / "campaigns" / campaign_name / "indexes" / "emails"
     run_smart_sync("emails", bucket_name, prefix, local_base, campaign_name, aws_config, workers, full, force)
@@ -291,7 +291,7 @@ def sync_scraped_areas(
         raise typer.Exit(1)
     config = load_campaign_config(campaign_name)
     aws_config = config.get("aws", {})
-    bucket_name = aws_config.get("cocli_data_bucket_name") or f"cocli-data-{campaign_name}"
+    bucket_name = aws_config.get("data_bucket_name") or f"cocli-data-{campaign_name}"
     run_smart_sync("scraped-areas", bucket_name, "indexes/scraped_areas/", DATA_DIR / "indexes" / "scraped_areas", campaign_name, aws_config, workers, full, force)
 
 @app.command("scraped-tiles")
@@ -308,7 +308,7 @@ def sync_scraped_tiles(
         raise typer.Exit(1)
     config = load_campaign_config(campaign_name)
     aws_config = config.get("aws", {})
-    bucket_name = aws_config.get("cocli_data_bucket_name") or f"cocli-data-{campaign_name}"
+    bucket_name = aws_config.get("data_bucket_name") or f"cocli-data-{campaign_name}"
     run_smart_sync("scraped-tiles", bucket_name, "indexes/scraped-tiles/", DATA_DIR / "indexes" / "scraped-tiles", campaign_name, aws_config, workers, full, force)
 
 @app.command("enrichment-queue")
@@ -325,7 +325,7 @@ def sync_enrichment_queue(
         raise typer.Exit(1)
     config = load_campaign_config(campaign_name)
     aws_config = config.get("aws", {})
-    bucket_name = aws_config.get("cocli_data_bucket_name") or f"cocli-data-{campaign_name}"
+    bucket_name = aws_config.get("data_bucket_name") or f"cocli-data-{campaign_name}"
     
     # V2 Path
     prefix = f"campaigns/{campaign_name}/queues/enrichment/pending/"
@@ -346,7 +346,7 @@ def sync_active_leases(
         raise typer.Exit(1)
     config = load_campaign_config(campaign_name)
     aws_config = config.get("aws", {})
-    bucket_name = aws_config.get("cocli_data_bucket_name") or f"cocli-data-{campaign_name}"
+    bucket_name = aws_config.get("data_bucket_name") or f"cocli-data-{campaign_name}"
     
     # V2 Path - In V2, leases are mixed in with pending tasks
     prefix = f"campaigns/{campaign_name}/queues/enrichment/pending/"
@@ -367,7 +367,7 @@ def sync_queues(
         raise typer.Exit(1)
     config = load_campaign_config(campaign_name)
     aws_config = config.get("aws", {})
-    bucket_name = aws_config.get("cocli_data_bucket_name") or f"cocli-data-{campaign_name}"
+    bucket_name = aws_config.get("data_bucket_name") or f"cocli-data-{campaign_name}"
     
     for q in ["gm-list", "gm-details", "enrichment"]:
         # Completed Path (Used for zombie check)

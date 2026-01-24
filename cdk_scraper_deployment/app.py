@@ -26,7 +26,7 @@ if env_data_home:
 else:
     # Fallback: Assume we are in repo/cdk_scraper_deployment/
     repo_root = Path(__file__).parent.parent
-    data_home = (repo_root / "cocli_data").resolve()
+    data_home = (repo_root / "data").resolve()
 
 # 2. Determine Campaign Name
 # Priority: 1. CDK Context (-c campaign=NAME)  2. Current Active Campaign (cocli_config.toml)
@@ -87,7 +87,7 @@ else:
 
 # Determine the RPi user name (defaulting to the profile name used)
 rpi_user_name = aws_config.get("profile") or aws_config.get("aws_profile") or "bizkite-support"
-data_bucket_name = aws_config.get("cocli_data_bucket_name") or f"cocli-data-{campaign_name}"
+data_bucket_name = aws_config.get("data_bucket_name") or f"cocli-data-{campaign_name}"
 ou_arn = aws_config.get("organizational-unit-arn")
 worker_count = aws_config.get("worker_count", 1)
 

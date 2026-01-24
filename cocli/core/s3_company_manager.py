@@ -12,7 +12,7 @@ logger = logging.getLogger(__name__)
 
 class S3CompanyManager:
     """
-    Manages Company and Website data directly in S3, mirroring the local cocli_data structure.
+    Manages Company and Website data directly in S3, mirroring the local data structure.
     Data is stored in YAML format (similar to local _index.md and website.md).
     """
     def __init__(self, campaign: Campaign):
@@ -26,7 +26,7 @@ class S3CompanyManager:
             from .config import load_campaign_config
             config = load_campaign_config(self.campaign.name)
             aws_config = config.get("aws", {})
-            self.s3_bucket_name = aws_config.get("cocli_data_bucket_name") or f"cocli-data-{self.campaign.name}"
+            self.s3_bucket_name = aws_config.get("data_bucket_name") or f"cocli-data-{self.campaign.name}"
         
         if not self.s3_bucket_name:
             raise ValueError(f"S3 bucket name could not be resolved for campaign {self.campaign.name}")

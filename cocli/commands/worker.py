@@ -125,7 +125,7 @@ async def run_worker(
         config = load_campaign_config(campaign_name)
         aws_config = config.get("aws", {})
         bucket_name = (
-            aws_config.get("cocli_data_bucket_name") or f"cocli-data-{campaign_name}"
+            aws_config.get("data_bucket_name") or f"cocli-data-{campaign_name}"
         )
 
         if os.getenv("COCLI_RUNNING_IN_FARGATE"):
@@ -534,7 +534,7 @@ async def run_details_worker(
         config = load_campaign_config(campaign_name)
         aws_config = config.get("aws", {})
         bucket_name = (
-            aws_config.get("cocli_data_bucket_name") or f"cocli-data-{campaign_name}"
+            aws_config.get("data_bucket_name") or f"cocli-data-{campaign_name}"
         )
 
         if os.getenv("COCLI_RUNNING_IN_FARGATE"):
@@ -1358,7 +1358,7 @@ async def run_supervisor(
         ensure_campaign_config(campaign_name)
         config = load_campaign_config(campaign_name)
         aws_config = config.get("aws", {})
-        bucket_name = aws_config.get("cocli_data_bucket_name")
+        bucket_name = aws_config.get("data_bucket_name")
         
         # Resolve AWS session/client with larger connection pool
         from botocore.config import Config

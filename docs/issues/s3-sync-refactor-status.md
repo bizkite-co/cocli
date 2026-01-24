@@ -5,12 +5,12 @@
 **Status:** Paused / Reverted in Main
 
 ## Objective
-The goal of this refactor was to align the local `cocli_data` directory structure with the planned S3 bucket structure to facilitate easy synchronization (`cocli sync`).
+The goal of this refactor was to align the local `data` directory structure with the planned S3 bucket structure to facilitate easy synchronization (`cocli sync`).
 
 ### Target Data Structure
-*   **Campaigns:** `cocli_data/campaigns/<slug>/` containing config and raw scraped inputs (`scraped_data/prospects.csv`).
-*   **Shared Indexes:** `cocli_data/indexes/<phrase-slug>.csv` (phrase-specific scraped area logs) instead of campaign-specific monolithic indexes.
-*   **Shared Entities:** `cocli_data/companies/` and `cocli_data/people/` remain shared.
+*   **Campaigns:** `data/campaigns/<slug>/` containing config and raw scraped inputs (`scraped_data/prospects.csv`).
+*   **Shared Indexes:** `data/indexes/<phrase-slug>.csv` (phrase-specific scraped area logs) instead of campaign-specific monolithic indexes.
+*   **Shared Entities:** `data/companies/` and `data/people/` remain shared.
 
 ## Changes Implemented (in `s3-sync`)
 1.  **Documentation:** Comprehensive refactor of `docs/` into subdirectories (`architecture`, `data-management`, etc.) and created `docs/README.md`.

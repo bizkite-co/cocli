@@ -1,6 +1,6 @@
 # Directory Data Structure (Target State)
 
-This document outlines the target directory structure for `cocli_data`. We are transitioning to this structure to align local development with our S3 cloud storage strategy.
+This document outlines the target directory structure for `data`. We are transitioning to this structure to align local development with our S3 cloud storage strategy.
 
 ## Core Principles
 
@@ -8,10 +8,10 @@ This document outlines the target directory structure for `cocli_data`. We are t
 2.  **Shared Resources:** Core entities (`companies`, `people`) and reusable indexes (`indexes`) reside at the root to allow composition across campaigns.
 3.  **Cloud Alignment:** The local structure mirrors the S3 bucket structure for easier synchronization.
 
-## Directory Layout (`~/.local/share/cocli_data/` or `COCLI_DATA_HOME`)
+## Directory Layout (`~/.local/share/data/` or `COCLI_DATA_HOME`)
 
 ```text
-cocli_data/
+data/
 ├── campaigns/                  # Campaign-specific data
 │   └── <campaign_slug>/
 │       ├── config.toml         # Campaign configuration
@@ -49,15 +49,15 @@ cocli_data/
 
 ## Changes from Legacy Structure
 
-1.  **Moved `scraped_data`:** Previously `cocli_data/scraped_data/<campaign>/` -> Now `cocli_data/campaigns/<campaign>/scraped_data/`.
+1.  **Moved `scraped_data`:** Previously `data/scraped_data/<campaign>/` -> Now `data/campaigns/<campaign>/scraped_data/`.
     *   *Reason:* Scraped data is a raw input specific to a campaign's targeting parameters.
-2.  **Refactored `indexes`:** Previously `cocli_data/indexes/<campaign>/scraped_areas.csv` -> Now `cocli_data/indexes/<phrase>.csv` (and shared).
+2.  **Refactored `indexes`:** Previously `data/indexes/<campaign>/scraped_areas.csv` -> Now `data/indexes/<phrase>.csv` (and shared).
     *   *Reason:* A search for "plumbers in denver" yields the same results regardless of which campaign asks for it. Indexes should be shared to avoid redundant scraping.
 3.  **Retained Shared `companies/`:**
     *   *Reason:* A single company (e.g., a potential partner) might be relevant to multiple campaigns. Keeping them shared avoids duplication and divergence.
 
 ## S3 Synchronization Strategy
 
-*   **Campaign Sync:** Sync `cocli_data/campaigns/<current_campaign>/` to `s3://bucket/campaigns/<current_campaign>/`.
-*   **Shared Sync:** Sync `cocli_data/companies/` and `cocli_data/indexes/` to `s3://bucket/companies/` and `s3://bucket/indexes/`.
+*   **Campaign Sync:** Sync `data/campaigns/<current_campaign>/` to `s3://bucket/campaigns/<current_campaign>/`.
+*   **Shared Sync:** Sync `data/companies/` and `data/indexes/` to `s3://bucket/companies/` and `s3://bucket/indexes/`.
 *   **Exclusions:** Local `queues/` are not synced (S3 uses SQS).

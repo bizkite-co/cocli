@@ -52,7 +52,7 @@ sequenceDiagram
 
 ## Data Persistence
 
-*   **Raw Data:** Stored in `cocli_data/scraped_data/<campaign>/prospects/prospects.csv`.
-*   **Enriched Data:** Stored as Markdown files in `cocli_data/companies/<slug>/enrichments/website.md`.
+*   **Raw Data:** Stored in `data/scraped_data/<campaign>/prospects/prospects.csv`.
+*   **Enriched Data:** Stored as Markdown files in `data/companies/<slug>/enrichments/website.md`.
 *   **Indexes:** Local CSV files (`website-domains.csv`) are used to track status and avoid re-work.
 *   **S3 Role:** S3 acts as a backup/sync target. Data is pushed to S3 *after* processing for safe keeping or sharing.

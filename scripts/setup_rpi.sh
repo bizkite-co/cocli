@@ -20,7 +20,7 @@ fi
 # Create repos and data directory
 # The data directory is critical as it is bind-mounted by the worker containers
 mkdir -p ~/repos
-mkdir -p ~/repos/cocli_data
+mkdir -p ~/repos/data
 
 # Clone or update repo
 if [ -d "$HOME/repos/cocli" ]; then

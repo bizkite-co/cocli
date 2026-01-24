@@ -65,7 +65,7 @@ def cleanup_directory(base_dir: str) -> None:
     logger.info(f"Finished. Fixed {fixed} files in {base_dir}.")
 
 if __name__ == "__main__":
-    data_home = "/home/mstouffer/.local/share/cocli_data"
+    data_home = "/home/mstouffer/.local/share/data"
     
     cleanup_directory(os.path.join(data_home, "companies"))
     cleanup_directory(os.path.join(data_home, "people"))

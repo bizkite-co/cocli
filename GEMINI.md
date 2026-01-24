@@ -99,4 +99,4 @@ The enrichment service is implemented with a "dual-purpose" mode to maximize res
 *   **CLI:** The CLI is built with `typer`. Commands are defined in the `cocli/commands` directory and registered in `cocli/main.py`.
 *   **Data Models:** Data models for companies, people, and meetings are defined in the `cocli/models` directory using `pydantic`.
 *   **Testing:** Tests are written using `pytest` and `pytest-bdd`. Feature files are located in the `features/` directory, and step definitions are in the `tests/` directory.
-*   **Configuration:** The application's data directory is configured via the `COCLI_DATA_HOME` environment variable, with a default of `~/.local/share/cocli/`.
+*   **Configuration:** The application's data directory is configured via the `COCLI_DATA_HOME` environment variable, with a default of `~/.local/share/cocli/`. Business data is accessed via the `data/` symlink in the repository root.

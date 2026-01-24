@@ -75,7 +75,7 @@ def main() -> None:
     if not bucket:
         from cocli.core.config import load_campaign_config
         config = load_campaign_config(args.campaign)
-        bucket = config.get("aws", {}).get("cocli_data_bucket_name") or f"cocli-data-{args.campaign}"
+        bucket = config.get("aws", {}).get("data_bucket_name") or f"cocli-data-{args.campaign}"
 
     session = boto3.Session(profile_name=args.profile)
     s3 = session.client("s3")

@@ -6,9 +6,9 @@ module.exports = () => {
   const campaignName = process.env.CAMPAIGN || 'turboship';
   
   // Try to find the local config.toml for this campaign to pull defaults
-  // Assuming we are in cocli/web/_data/ and config is in cocli_data/campaigns/<name>/config.toml
+  // Assuming we are in cocli/web/_data/ and config is in data/campaigns/<name>/config.toml
   let configFromFile = {};
-  const dataHome = process.env.COCLI_DATA_HOME || path.join(process.env.HOME, '.local/share/cocli_data');
+  const dataHome = process.env.COCLI_DATA_HOME || path.join(process.env.HOME, '.local/share/data');
   const configPath = path.join(dataHome, 'campaigns', campaignName, 'config.toml');
 
   if (fs.existsSync(configPath)) {

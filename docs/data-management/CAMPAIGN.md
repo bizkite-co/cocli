@@ -24,13 +24,13 @@ Campaigns now follow a state machine-driven lifecycle, ensuring a structured and
 2.  **`import_customers`**: (Corresponds to your 'import' phase)
     *   **Goal:** ETL of existing customer data into the `cocli` data store.
     *   **Input:** External customer data (e.g., CSV, Shopify).
-    *   **Output:** `Company` and `Person` models persisted in `cocli_data/companies` and `cocli_data/people`.
+    *   **Output:** `Company` and `Person` models persisted in `data/companies` and `data/people`.
     *   **Commands:** Triggered by `cocli campaign start-workflow` (if in `idle` state).
 
 3.  **`prospecting`**: (Corresponds to your 'prospecting' phase)
     *   **Goal:** Discover untapped markets, scrape prospects, and enrich their data.
     *   **Input:** Campaign configuration (locations, queries, tools).
-    *   **Output:** `Company` models (for prospects) in `cocli_data/companies`, with associated enrichment.
+    *   **Output:** `Company` models (for prospects) in `data/companies`, with associated enrichment.
     *   **Sub-phases (Nested States):
         *   **`prospecting_scraping`**: Scrapes raw prospect data (e.g., from Google Maps).
             *   **Transformation:** `CampaignConfig -> GoogleMapsScrapeData` (CSV).

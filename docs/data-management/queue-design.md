@@ -48,7 +48,7 @@ class QueueMessage(BaseModel):
 
 ### A. `FilesystemQueue` (V2 - Distributed Safe)
 
-Uses the local filesystem (`cocli_data/data/queues/<campaign>/<queue_name>/`) to manage state. Designed for distributed access (e.g., NFS/EFS or synced folders).
+Uses the local filesystem (`data/data/queues/<campaign>/<queue_name>/`) to manage state. Designed for distributed access (e.g., NFS/EFS or synced folders).
 
 **Directory Structure:**
 ```

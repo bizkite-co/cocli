@@ -15,9 +15,9 @@ def main(campaign_name: str = typer.Argument(..., help="The campaign name to mer
     Merges the legacy prospects.csv into the new campaign-specific location.
     """
     # Define paths
-    # Old: cocli_data/scraped_data/<campaign>/prospects/prospects.csv
+    # Old: data/scraped_data/<campaign>/prospects/prospects.csv
     old_csv_path = get_scraped_data_dir() / campaign_name / "prospects" / "prospects.csv"
-    # New: cocli_data/campaigns/<campaign>/scraped_data/prospects.csv
+    # New: data/campaigns/<campaign>/scraped_data/prospects.csv
     new_csv_path = get_campaign_scraped_data_dir(campaign_name) / "google_maps_prospects.csv"
 
     if not old_csv_path.exists():

@@ -27,7 +27,7 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# Paths relative to the cocli_data directory
+# Paths relative to the data directory
 data_home = get_cocli_base_dir()
 
 OLD_INDEXES_DIR = data_home / "indexes"

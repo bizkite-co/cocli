@@ -2,7 +2,7 @@
 
 ## 1. Context and Problem Statement
 
-Currently, all company data is stored in a flat directory structure under `~/.local/share/cocli_data/companies/`. Each company resides in its own directory directly within this top-level `companies/` folder. Similarly, person data is likely stored in a flat `people/` directory. While simple, this approach becomes unmanageable as the number of entities (companies and people) grows and as the need for categorization and flexible relationships arises.
+Currently, all company data is stored in a flat directory structure under `~/.local/share/data/companies/`. Each company resides in its own directory directly within this top-level `companies/` folder. Similarly, person data is likely stored in a flat `people/` directory. While simple, this approach becomes unmanageable as the number of entities (companies and people) grows and as the need for categorization and flexible relationships arises.
 
 The primary issues are:
 *   **Lack of Categorization:** No inherent way to group entities by industry, type, or any other criteria.
@@ -15,28 +15,28 @@ The goal is to introduce a flexible, hierarchical categorization system that avo
 
 ## 2. Proposed Solution: Canonical Storage with Symlinked Categories
 
-The proposed solution involves a two-tiered file system structure directly under the `cocli_data/` directory:
+The proposed solution involves a two-tiered file system structure directly under the `data/` directory:
 
-1.  **Canonical Storage (`.entities/`):** Each entity (company or person) will be stored in a unique, stable directory under a hidden `.entities/` directory, which is a direct child of the `cocli_data/` path. The directory name will be a unique identifier for the entity. This directory will be the single source of truth for all entity-related files.
+1.  **Canonical Storage (`.entities/`):** Each entity (company or person) will be stored in a unique, stable directory under a hidden `.entities/` directory, which is a direct child of the `data/` path. The directory name will be a unique identifier for the entity. This directory will be the single source of truth for all entity-related files.
 
-    *   **Example Path:** `~/.local/share/cocli_data/.entities/company-a-unique-id/`
-    *   **Example Path:** `~/.local/share/cocli_data/.entities/person-x-unique-id/`
+    *   **Example Path:** `~/.local/share/data/.entities/company-a-unique-id/`
+    *   **Example Path:** `~/.local/share/data/.entities/person-x-unique-id/`
     *   The specific strategy for generating these unique identifiers (e.g., slug-based, hash-based, or a combination) will be detailed in a separate ADR: "Canonical Entity Identification".
 
 2.  **Categorization Layer (`companies/` and `people/`):** The `companies/` and `people/` directories will now house the arbitrary hierarchical folder structures for categorization. Within these structures, symbolic links (symlinks) will point to the canonical entity directories in `.entities/`. An entity can be part of multiple categories by having multiple symlinks pointing to its canonical directory.
 
     *   **Example Company Paths:**
-        *   `~/.local/share/cocli_data/companies/photographers/symlink-to-company-a/`
-        *   `~/.local/share/cocli_data/companies/software/developers/website/symlink-to-company-b/`
+        *   `~/.local/share/data/companies/photographers/symlink-to-company-a/`
+        *   `~/.local/share/data/companies/software/developers/website/symlink-to-company-b/`
     *   **Example Person Paths:**
-        *   `~/.local/share/cocli_data/people/freelancers/symlink-to-person-x/`
-        *   `~/.local/share/cocli_data/companies/photographers/ai-photography-studio/.people/symlink-to-person-y/` (linking a person to a company)
+        *   `~/.local/share/data/people/freelancers/symlink-to-person-x/`
+        *   `~/.local/share/data/companies/photographers/ai-photography-studio/.people/symlink-to-person-y/` (linking a person to a company)
 
 ### Visual Representation of Proposed Structure:
 
 ```mermaid
 graph TD
-    A[cocli_data/] --> B[.entities/]
+    A[data/] --> B[.entities/]
     B --> C[company-a-id/]
     B --> D[company-b-id/]
     B --> E[person-x-id/]

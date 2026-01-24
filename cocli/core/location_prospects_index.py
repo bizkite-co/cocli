@@ -9,7 +9,7 @@ except ImportError:
     pd = None # type: ignore
 
 class LocationProspectsIndex:
-    def __init__(self, campaign_name: str, data_home: str = "~/.local/share/cocli_data"):
+    def __init__(self, campaign_name: str, data_home: str = "~/.local/share/data"):
         if pd is None:
             raise ImportError("pandas is required for LocationProspectsIndex. Please install it with 'uv pip install pandas'.")
             

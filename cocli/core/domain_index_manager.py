@@ -27,7 +27,7 @@ class DomainIndexManager:
         from .config import load_campaign_config
         config = load_campaign_config(self.campaign.name)
         aws_config = config.get("aws", {})
-        self.bucket_name = os.environ.get("COCLI_S3_BUCKET_NAME") or aws_config.get("cocli_data_bucket_name")
+        self.bucket_name = os.environ.get("COCLI_S3_BUCKET_NAME") or aws_config.get("data_bucket_name")
         
         if self.bucket_name:
             self.is_cloud = True

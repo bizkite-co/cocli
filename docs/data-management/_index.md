@@ -85,7 +85,7 @@ classDiagram
 flowchart TD
     subgraph "Local Environment"
         CLI[cocli CLI]
-        LocalFS["Local Filesystem (cocli_data)"]
+        LocalFS["Local Filesystem (data)"]
         LocalIndex["Local Index (CSVs)"]
     end
 
@@ -147,7 +147,7 @@ flowchart TD
     *   `get_entry(campaign: Campaign, key: str) -> Optional[Any]`
     *   `list_entries(campaign: Campaign) -> List[Any]`
 *   **Concrete Implementations:**
-    *   **`LocalIndexManager`:** Manages indexes stored on the local filesystem (e.g., CSVs in `cocli_data/indexes/`).
+    *   **`LocalIndexManager`:** Manages indexes stored on the local filesystem (e.g., CSVs in `data/indexes/`).
     *   **`S3IndexManager` (New - e.g., `DomainIndexManager`):** Manages indexes stored in S3.
         *   **Strategy: Manifest-Pointer (Distributed Snapshot):**
             *   **CAS Shards:** Data is stored in immutable shards at `indexes/shards/`.
@@ -197,11 +197,11 @@ To balance the need for massive write concurrency (cloud workers) with fast read
 1.  `cocli` commands (e.g., `achieve-goal`) interact with the `DataManager`.
 2.  `DataManager` primarily uses `LocalFilesystemAdapter` and `LocalIndexManager` for fast local access.
 3.  When a campaign is configured with `aws_profile_name` and an S3 bucket, the `DataManager` can be configured to use `S3Adapter` and `S3IndexManager` for specific operations or for synchronization.
-4.  A `cocli sync` command (powered by `DataSynchronizer`) is used to explicitly push local `cocli_data/` changes to S3 or pull remote changes.
+4.  A `cocli sync` command (powered by `DataSynchronizer`) is used to explicitly push local `data/` changes to S3 or pull remote changes.
 
 ### Cloud Deployment Workflow (EC2/Fargate)
 
-1.  `cocli` application instances (e.g., enrichment service on Fargate, Google Maps scraper on EC2) are configured with `COCLI_DATA_HOME` pointing to a local mount point (e.g., `/mnt/cocli_data`).
+1.  `cocli` application instances (e.g., enrichment service on Fargate, Google Maps scraper on EC2) are configured with `COCLI_DATA_HOME` pointing to a local mount point (e.g., `/mnt/data`).
 2.  The `DataManager` on these instances is configured to use `S3Adapter` and `S3IndexManager` as the primary storage for critical data and indexes.
 3.  A `cron` job or similar mechanism on EC2 instances (or within Fargate tasks) periodically runs `aws s3 sync` to keep the local mount point synchronized with the S3 bucket for bulk data (e.g., company Markdown files).
 4.  The `S3IndexManager` (e.g., `DomainIndexManager`) directly interacts with S3 for its index operations, ensuring consistency across distributed services.
@@ -211,7 +211,7 @@ To balance the need for massive write concurrency (cloud workers) with fast read
 1.  `cocli campaign achieve-goal turboship --emails 10`
 2.  `DataManager` is initialized. It detects `aws_profile_name` in the `turboship` campaign config and initializes an `S3Adapter` and `S3IndexManager` for domain indexing.
 3.  **Pre-Scrape Sync (Optional but Recommended):** `DataSynchronizer` pulls relevant campaign data (e.g., existing company files) and indexes from S3 to the local `COCLI_DATA_HOME` to ensure the local environment is up-to-date.
-4.  Google Maps scraper runs, writing new prospects to local `cocli_data/scraped_data/turboship/prospects.csv`.
+4.  Google Maps scraper runs, writing new prospects to local `data/scraped_data/turboship/prospects.csv`.
 5.  For each prospect, the website enrichment service (running locally in Docker) uses the `S3IndexManager` to check/update domain status directly in S3. This ensures that the global domain index is immediately updated and visible to other potential services.
 6.  After `achieve-goal` completes, `DataSynchronizer` pushes all local changes (new prospects CSV, updated company Markdown files) to S3.
 

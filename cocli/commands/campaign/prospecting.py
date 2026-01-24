@@ -526,7 +526,7 @@ def queue_mission(
         console.print("[bold blue]Syncing scraped-tiles from S3...[/bold blue]")
         config = load_campaign_config(campaign_name)
         aws_config = config.get("aws", {})
-        bucket_name = aws_config.get("cocli_data_bucket_name") or f"cocli-data-{campaign_name}"
+        bucket_name = aws_config.get("data_bucket_name") or f"cocli-data-{campaign_name}"
         scraped_tiles_dir = get_scraped_tiles_index_dir()
         
         try:

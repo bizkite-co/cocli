@@ -93,7 +93,7 @@ audit-campaign: ## Audit campaign for cross-contamination (Usage: make audit-cam
 	@$(VENV_DIR)/bin/python scripts/audit_campaign_integrity.py $(CAMPAIGN) $(FIX)
 
 coverage-gap: ## Generate a report of unscraped target areas
-	@COCLI_DATA_HOME=$(shell pwd)/cocli_data ./.venv/bin/cocli campaign coverage-gap $(CAMPAIGN) --output coverage_gap.csv
+	@COCLI_DATA_HOME=$(shell pwd)/data ./.venv/bin/cocli campaign coverage-gap $(CAMPAIGN) --output coverage_gap.csv
 
 test-tui: install lint ## Run TUI test with names
 	source $(VENV_DIR)/bin/activate && pytest -v tests/tui
@@ -142,7 +142,7 @@ install-global: ## Install the latest version of the app using pipx
 	pipx install .
 
 # Default Data Home (can be overridden by environment variable)
-COCLI_DATA_HOME ?= /home/mstouffer/.local/share/cocli_data
+COCLI_DATA_HOME ?= /home/mstouffer/.local/share/data
 
 .PHONY: import-turboship
 import-turboship: install ## Import turboship customers
@@ -201,9 +201,9 @@ publish-kml: ## Generate and upload all KMLs (Coverage, Prospects, Customers) to
 .PHONY: publish-config
 publish-config: ## Upload the current campaign config.toml to S3
 	$(call validate_campaign)
-	$(eval BUCKET := $(shell ./.venv/bin/python -c "from cocli.core.config import load_campaign_config; print(load_campaign_config('$(CAMPAIGN)').get('aws', {}).get('cocli_data_bucket_name', ''))"))
-	@if [ -z "$(BUCKET)" ]; then echo "Error: cocli_data_bucket_name not found in config for $(CAMPAIGN)"; exit 1; fi
-	aws s3 cp cocli_data/campaigns/$(CAMPAIGN)/config.toml s3://$(BUCKET)/config.toml --profile $(AWS_PROFILE)
+	$(eval BUCKET := $(shell ./.venv/bin/python -c "from cocli.core.config import load_campaign_config; print(load_campaign_config('$(CAMPAIGN)').get('aws', {}).get('data_bucket_name', ''))"))
+	@if [ -z "$(BUCKET)" ]; then echo "Error: data_bucket_name not found in config for $(CAMPAIGN)"; exit 1; fi
+	aws s3 cp data/campaigns/$(CAMPAIGN)/config.toml s3://$(BUCKET)/config.toml --profile $(AWS_PROFILE)
 	@echo "Config uploaded to s3://$(BUCKET)/config.toml"
 
 .PHONY: ingest-prospects
@@ -215,13 +215,13 @@ ingest-existing-customers: install ## Ingest the existing customers.csv file int
 
 .PHONY: queue-scrape-tasks
 queue-scrape-tasks: ## Queue scrape tasks for the current campaign
-	COCLI_DATA_HOME=$(shell pwd)/cocli_data uv run cocli campaign queue-scrapes $(CAMPAIGN) $(ARGS)
+	COCLI_DATA_HOME=$(shell pwd)/data uv run cocli campaign queue-scrapes $(CAMPAIGN) $(ARGS)
 
 .PHONY: prospects-with-emails
 prospects-with-emails:
 	rg '[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}' \
-		cocli_data/scraped_data/turboship/prospects/google_maps_prospects.csv >> \
-		cocli_data/scraped_data/turboship/prospects/prospects_with_emails.csv
+		data/scraped_data/turboship/prospects/google_maps_prospects.csv >> \
+		data/scraped_data/turboship/prospects/prospects_with_emails.csv
 
 .PHONY: debug-google-maps-scraper
 debug-google-maps-scraper: install ## Run the Google Maps scraper in headed mode with debug tools for debugging
@@ -367,14 +367,14 @@ sync-queues: ## Sync all local queues from S3
 .PHONY: completed-count
 completed-count: ## Get the count of completed enrichment tasks on S3
 	$(call validate_campaign)
-	$(eval BUCKET := $(shell ./.venv/bin/python -c "from cocli.core.config import load_campaign_config; print(load_campaign_config('$(CAMPAIGN)').get('aws', {}).get('cocli_data_bucket_name', ''))"))
+	$(eval BUCKET := $(shell ./.venv/bin/python -c "from cocli.core.config import load_campaign_config; print(load_campaign_config('$(CAMPAIGN)').get('aws', {}).get('data_bucket_name', ''))"))
 	@echo "Counting completed tasks in s3://$(BUCKET)/campaigns/$(CAMPAIGN)/queues/enrichment/completed/ ..."
 	@aws s3 ls s3://$(BUCKET)/campaigns/$(CAMPAIGN)/queues/enrichment/completed/ --recursive --summarize --profile $(AWS_PROFILE) | grep "Total Objects"
 
 .PHONY: recent-completed
 recent-completed: ## List the 5 most recently completed enrichment tasks on S3 (efficient pagination)
 	$(call validate_campaign)
-	$(eval BUCKET := $(shell ./.venv/bin/python -c "from cocli.core.config import load_campaign_config; print(load_campaign_config('$(CAMPAIGN)').get('aws', {}).get('cocli_data_bucket_name', ''))"))
+	$(eval BUCKET := $(shell ./.venv/bin/python -c "from cocli.core.config import load_campaign_config; print(load_campaign_config('$(CAMPAIGN)').get('aws', {}).get('data_bucket_name', ''))"))
 	@aws s3api list-objects-v2 \
 		--bucket $(BUCKET) \
 		--prefix campaigns/$(CAMPAIGN)/queues/enrichment/completed/ \
@@ -392,11 +392,11 @@ sync-all: sync-scraped-areas sync-prospects sync-companies sync-emails sync-queu
 
 .PHONY: recent-scrapes
 recent-scrapes: sync-scraped-areas ## List the 30 most recent scraped areas (syncs first)
-	@find cocli_data/indexes/scraped_areas/ -name "*.json" -printf "%TY-%Tm-%Td %TT %p\n" | sort -r | head -n 30
+	@find data/indexes/scraped_areas/ -name "*.json" -printf "%TY-%Tm-%Td %TT %p\n" | sort -r | head -n 30
 
 .PHONY: check-freshness
 check-freshness: sync-scraped-areas ## Check if scraped data is fresh (warn if > 4 hours old)
-	@latest=$$(find cocli_data/indexes/scraped_areas/ -name "*.json" -printf "%T@ %p\n" | sort -n | tail -1); \
+	@latest=$$(find data/indexes/scraped_areas/ -name "*.json" -printf "%T@ %p\n" | sort -n | tail -1); \
 	if [ -z "$$latest" ]; then \
 		echo "Warning: No scraped areas found."; \
 	else \
@@ -438,10 +438,10 @@ migrate-prospects: ## Migrate google_maps_prospects.csv to file-based index (Usa
 	$(VENV_DIR)/bin/python scripts/migrate_prospects_to_index.py $(CAMPAIGN)
 
 gc-campaigns: ## Commit and push all changes to campaigns and indexes
-	cd cocli_data && git add camapaigns indexes && git commit -m "Update campaigns and indexes" && git push;; cd ..
+	cd data && git add camapaigns indexes && git commit -m "Update campaigns and indexes" && git push;; cd ..
 
 gc-companies: ## Commit and push all changes to companies and people
-	cd cocli_data && git add companies people && git commit -m "Update companies and people" && git push;; cd ..
+	cd data && git add companies people && git commit -m "Update companies and people" && git push;; cd ..
 
 .PHONY: deploy-creds-rpi
 deploy-creds-rpi: ## Securely deploy AWS credentials to all Raspberry Pis (Usage: make deploy-creds-rpi [CAMPAIGN=name])
@@ -491,7 +491,7 @@ publish-all: sync-companies compile-companies backfill-email-index export-emails
 # ==============================================================================
 .PHONY: generate-campaign-grid
 generate-campaign-grid: install ## Generate 0.1-degree aligned grid for the current campaign
-	COCLI_DATA_HOME=$(shell pwd)/cocli_data uv run cocli campaign generate-grid
+	COCLI_DATA_HOME=$(shell pwd)/data uv run cocli campaign generate-grid
 
 .PHONY: hotfix-rpi
 hotfix-rpi: ## Push code hotfix to a single RPi (Usage: make hotfix-rpi RPI_HOST=xxx.local)
@@ -633,7 +633,7 @@ start-rpi-enrichment-worker: ## Start the Enrichment Worker on Raspberry Pi
 		-e CAMPAIGN_NAME='$(CAMPAIGN)' \
 		$(AWS_PROFILE_ENV) \
 		-e COCLI_QUEUE_TYPE=filesystem \
-		-v ~/repos/cocli_data:/app/cocli_data \
+		-v ~/repos/data:/app/data \
 		-v ~/.aws:/root/.aws:ro cocli-worker-rpi:latest cocli worker enrichment --workers $(WORKERS)"
 
 stop-rpi-enrichment-worker: ## Stop the Enrichment Worker on Raspberry Pi
@@ -667,7 +667,7 @@ start-rpi-supervisor: ## Start the Supervisor on Raspberry Pi for dynamic scalin
 		-e COCLI_GM_LIST_ITEM_QUEUE_URL='$(DETAILS_QUEUE)' \
 		-e COCLI_ENRICHMENT_QUEUE_URL='$(ENRICHMENT_QUEUE)' \
 		-e COCLI_COMMAND_QUEUE_URL='$(COMMAND_QUEUE)' \
-		-v ~/repos/cocli_data:/app/cocli_data \
+		-v ~/repos/data:/app/data \
 		-v ~/.aws:/root/.aws:ro cocli-worker-rpi:latest cocli worker supervisor --debug"
 
 .PHONY: restart-rpi-all

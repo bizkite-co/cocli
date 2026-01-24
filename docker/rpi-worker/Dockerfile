@@ -39,7 +39,7 @@ RUN ruff check cocli/
 RUN cd /tmp && python3 -c "import cocli.main; import cocli.commands.worker; print('Import check passed!')"
 
 # Set COCLI_DATA_HOME to a persistent-ish location in the container
-ENV COCLI_DATA_HOME=/app/cocli_data
+ENV COCLI_DATA_HOME=/app/data
 
 # Create the run_worker.sh script directly in the Dockerfile
 RUN echo '#!/bin/bash' > docker/rpi-worker/run_worker.sh && \

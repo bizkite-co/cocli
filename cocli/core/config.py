@@ -95,7 +95,7 @@ def get_scraped_data_dir() -> Path:
 def get_indexes_dir() -> Path:
     """
     Returns the base directory for shared indexes.
-    Path: cocli_data/indexes/
+    Path: data/indexes/
     """
     p = paths.indexes
     v_dir = get_validated_dir(p, "Indexes Directory")
@@ -105,7 +105,7 @@ def get_indexes_dir() -> Path:
 def get_scraped_areas_index_dir() -> Path:
     """
     Returns the directory for phrase-specific scraped area indexes.
-    Path: cocli_data/indexes/scraped_areas/
+    Path: data/indexes/scraped_areas/
     """
     p = paths.indexes / "scraped_areas"
     v_dir = get_validated_dir(p, "Scraped Areas Index")
@@ -115,7 +115,7 @@ def get_scraped_areas_index_dir() -> Path:
 def get_scraped_tiles_index_dir() -> Path:
     """
     Returns the directory for the Phase 10 witness file index.
-    Path: cocli_data/indexes/scraped-tiles/
+    Path: data/indexes/scraped-tiles/
     """
     p = paths.indexes / "scraped-tiles"
     v_dir = get_validated_dir(p, "Scraped Tiles (Witness) Index")
@@ -125,7 +125,7 @@ def get_scraped_tiles_index_dir() -> Path:
 def get_campaign_scraped_data_dir(campaign_name: str) -> Path:
     """
     Returns the scraped data directory for a specific campaign.
-    Path: cocli_data/campaigns/<campaign>/scraped_data/
+    Path: data/campaigns/<campaign>/scraped_data/
     """
     campaign_dir = get_campaign_dir(campaign_name)
     if not campaign_dir:

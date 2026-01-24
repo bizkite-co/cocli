@@ -115,7 +115,7 @@
             "args": [
                 "import-data",
                 "lead-sniper",
-                "/home/mstouffer/.local/share/cocli_data/scraped_data/lead-sniper-photographer-20250823225603.csv",
+                "${workspaceFolder}/data/scraped_data/lead-sniper-photographer-20250823225603.csv",
                 "--debug"
             ],
             "console": "integratedTerminal",

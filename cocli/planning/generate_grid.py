@@ -206,7 +206,7 @@ if __name__ == "__main__":
     console.print(f"Generated {len(grid_tiles)} global grid tiles for campaign '{CAMPAIGN_NAME}'")
 
     # Define output file paths in the 'exports' subdirectory
-    base_dir = f"cocli_data/campaigns/{CAMPAIGN_NAME}/exports"
+    base_dir = f"data/campaigns/{CAMPAIGN_NAME}/exports"
     output_json_file = os.path.join(base_dir, "grid_plan.json")
     output_kml_file = os.path.join(base_dir, "grid_plan.kml")
 

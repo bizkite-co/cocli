@@ -33,7 +33,7 @@ def get_validated_dir(path: Path, description: str) -> ValidatedPath:
         # So we just return the absolute path.
         return ValidatedPath(path=path.absolute())
 
-def get_cocli_data_home() -> Path:
+def get_data_home() -> Path:
     """
     Determines the root data directory.
     """
@@ -48,14 +48,14 @@ def get_cocli_data_home() -> Path:
     else:
         base = Path.home() / ".local" / "share"
         
-    return (base / "cocli_data").resolve()
+    return (base / "data").resolve()
 
 class DataPaths:
     """
     Central Authority for Data Directory Paths.
     """
     def __init__(self, root: Optional[Path] = None):
-        self.root = root or get_cocli_data_home()
+        self.root = root or get_data_home()
 
     @property
     def campaigns(self) -> Path:

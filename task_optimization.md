@@ -33,7 +33,7 @@ Refactor `scrape_google_maps` to extracting data from the **List View** in batch
 
 1.  **Script:** `scripts/ingest_legacy_csv.py` (Created)
     *   Reads CSV.
-    *   Creates local company files (`cocli_data/companies/`).
+    *   Creates local company files (`data/companies/`).
     *   Pushes `enrichment` tasks to `LocalFileQueue`.
     *   *Note:* Data from `prospects.csv` was recently used to enrich `website-domains.csv` as part of local data recovery efforts.
 2.  **Command:** `cocli prospects enrich-from-queue` (Created)

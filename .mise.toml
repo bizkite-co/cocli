@@ -13,7 +13,7 @@ clean = "rm -rf ./.venv uv.lock"
 mypy-daemon-start = { run = "mypy --daemon run --config-file pyproject.toml", depends = ["install"] }
 mypy-daemon-stop = { run = "mypy --daemon stop" }
 mypy-daemon-status = { run = "mypy --daemon status" }
-import-turboship = { run = "./.venv/bin/cocli import-turboship /home/mstouffer/.local/share/cocli_data/scraped_data/turboship/customers/customers.csv /home/mstouffer/.local/share/cocli_data/scraped_data/turboship/customers/customer_addresses.csv", depends = ["install"] }
+import-turboship = { run = "./.venv/bin/cocli import-turboship /home/mstouffer/.local/share/data/scraped_data/turboship/customers/customers.csv /home/mstouffer/.local/share/data/scraped_data/turboship/customers/customer_addresses.csv", depends = ["install"] }
 render-kml = { run = "./.venv/bin/cocli render kml", depends = ["install"] }
 scrape-prospects = { run = "./.venv/bin/cocli campaign scrape-prospects", depends = ["install"] }
 deduplicate-prospects = { run = "./.venv/bin/cocli deduplicate prospects turboship", depends = ["install"] }
@@ -21,12 +21,12 @@ enrich-websites = { run = "./.venv/bin/cocli enrich-websites --workers 4", depen
 enrich-websites-force = { run = "./.venv/bin/cocli enrich-websites --force --workers 4", depends = ["install"] }
 enrich-customers = { run = "./.venv/bin/cocli enrich-customers turboship", depends = ["install"] }
 import-prospects = { run = "./.venv/bin/cocli google-maps-cache to-company-files", depends = ["install"] }
-import-customers = { run = "./.venv/bin/cocli import-customers /home/mstouffer/.local/share/cocli_data/scraped_data/turboship/customers/customers.csv /home/mstouffer/.local/share/cocli_data/scraped_data/turboship/customers/customer_addresses.csv --tag customer --tag turboship", depends = ["install"] }
+import-customers = { run = "./.venv/bin/cocli import-customers /home/mstouffer/.local/share/data/scraped_data/turboship/customers/customers.csv /home/mstouffer/.local/share/data/scraped_data/turboship/customers/customer_addresses.csv --tag customer --tag turboship", depends = ["install"] }
 render-prospects-kml = { run = "./.venv/bin/cocli render-prospects-kml turboship", depends = ["install"] }
 populate-email-providers = { run = "./.venv/bin/cocli flag-email-providers gmail.com yahoo.com hotmail.com outlook.com aol.com icloud.com live.com msn.com yandex.ru mail.ru", depends = ["install"] }
 ingest-prospects = { run = "./.venv/bin/cocli google-maps-csv to-google-maps-cache", depends = ["install"] }
-ingest-existing-customers = { run = "./.venv/bin/cocli ingest-google-maps-csv /home/mstouffer/.local/share/cocli_data/scraped_data/turboship/customers/customers.csv", depends = ["install"] }
-prospects-with-emails = '''rg '[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}' cocli_data/scraped_data/turboship/prospects/prospects.csv >> cocli_data/scraped_data/turboship/prospects/prospects_with_emails.csv'''
+ingest-existing-customers = { run = "./.venv/bin/cocli ingest-google-maps-csv /home/mstouffer/.local/share/data/scraped_data/turboship/customers/customers.csv", depends = ["install"] }
+prospects-with-emails = '''rg '[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}' data/scraped_data/turboship/prospects/prospects.csv >> data/scraped_data/turboship/prospects/prospects_with_emails.csv'''
 debug-google-maps-scraper = { run = "pytest tests/debug_google_maps_scraper.py", depends = ["install"] }
 docker-build = "docker build -t enrichment-service ."
 docker-run-enrichment = "docker run -d -p 8000:8000 --name cocli-enrichment enrichment-service"

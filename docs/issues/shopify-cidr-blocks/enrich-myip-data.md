@@ -1,4 +1,4 @@
-We have a @cocli/scrapers/myip_ms.py that scrapes a bunch of Shopify websites by their CIDR blocks because they are domains hosted on Shopfiy servers. It puts the domain names, IP addresses, popularity, and scraped date into a file like `/home/mstouffer/.local/share/cocli_data/scraped_data/shopify_csv/shopify-myip-ms-23-227-38-32-20250921184518.csv.
+We have a @cocli/scrapers/myip_ms.py that scrapes a bunch of Shopify websites by their CIDR blocks because they are domains hosted on Shopfiy servers. It puts the domain names, IP addresses, popularity, and scraped date into a file like `/home/mstouffer/.local/share/data/scraped_data/shopify_csv/shopify-myip-ms-23-227-38-32-20250921184518.csv.
 
 
 ```
@@ -14,7 +14,7 @@ d9d36e06-4408-4d62-821d-196b979dd6b4,/view/sites/20817850/snitch.co.in,23.227.38
 
 That data needs to be compiled into a useful `index.csv` in the same directory. The domain name should be cleaned up, and we only need the domain, visits_per_day, and scraped date. The compiler should search through all files in the directory that aren't the `index.csv` and dedupe output that gets put into the `index.csv`.
 
-At that point we will have a deduped list of Shopify sites. Then, we need to enrich the data and put it into the company data in `$HOME/.local/share/cocli_data/companies`
+At that point we will have a deduped list of Shopify sites. Then, we need to enrich the data and put it into the company data in `$HOME/.local/share/data/companies`
 
 The company folders in that directory can look like this:
 

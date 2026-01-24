@@ -35,8 +35,8 @@ def main() -> None:
     git pull && \
     source .venv/bin/activate && \
     pip install duckdb && \
-    rm -f ~/repos/cocli_data/indexes/*.csv && \
-    export COCLI_DATA_HOME=~/repos/cocli_data && \
+    rm -f ~/repos/data/indexes/*.csv && \
+    export COCLI_DATA_HOME=~/repos/data && \
     python3 -c \"from cocli.core.website_domain_csv_manager import WebsiteDomainCsvManager; manager = WebsiteDomainCsvManager(); manager.rebuild_cache()\" && \
     echo \"Update Success\"
     """

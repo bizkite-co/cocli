@@ -8,14 +8,14 @@ from rich.console import Console
 console = Console()
 
 # Define the data directory (centralized logic)
-DATA_DIR = Path(os.environ.get("COCLI_DATA_HOME", Path.home() / ".local/share/cocli_data"))
+DATA_DIR = Path(os.environ.get("COCLI_DATA_HOME", Path.home() / ".local/share/data"))
 
 def get_bucket_for_campaign(campaign_name: str) -> str:
     """Resolves the S3 bucket name for a given campaign."""
     from cocli.core.config import load_campaign_config
     config = load_campaign_config(campaign_name)
     aws_config = config.get("aws", {})
-    return aws_config.get("cocli_data_bucket_name") or f"cocli-data-{campaign_name}"
+    return aws_config.get("data_bucket_name") or f"cocli-data-{campaign_name}"
 
 def run_s3_sync(source: str, dest: str, dry_run: bool = False, exclude: List[str] = []) -> None:
     """Helper to run aws s3 sync command."""
