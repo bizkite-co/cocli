@@ -92,5 +92,8 @@ class DataPaths:
     def queues(self) -> Path:
         return self.root / "queues"
 
+    def queue(self, campaign_slug: str, queue_name: str) -> Path:
+        return self.queues / campaign_slug / queue_name
+
 # Global instance
 paths = DataPaths()

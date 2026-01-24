@@ -1240,9 +1240,9 @@ def sync_active_leases_to_s3(
     """
     Pushes local lease files to S3 so they are visible in global reports. (V2 structure)
     """
-    from ..core.config import get_cocli_base_dir
+    from ..core.paths import paths
     
-    queue_base = get_cocli_base_dir() / "data" / "queues" / campaign_name / "enrichment"
+    queue_base = paths.queue(campaign_name, "enrichment")
     pending_dir = queue_base / "pending"
 
     if not pending_dir.exists():
@@ -1381,9 +1381,7 @@ async def run_supervisor(
         command_queue = get_queue_manager("command", use_cloud=True, queue_type="command", campaign_name=campaign_name)
 
         # Sync Throttling
-        from ..core.config import get_cocli_base_dir
         from ..utils.smart_sync_up import run_smart_sync_up
-        local_base = get_cocli_base_dir()
         last_sync_time: float = 0.0
         sync_interval_seconds = 3600 # 60 minutes (Real-time push handles most data)
         processed_by = f"{hostname}-supervisor"
@@ -1545,8 +1543,9 @@ async def run_supervisor(
                             )
 
                         # We still sync completed tasks for central reporting/dashboard
+                        from ..core.paths import paths
                         completed_prefix = f"campaigns/{campaign_name}/queues/enrichment/completed/"
-                        completed_local = local_base / "data" / "queues" / campaign_name / "enrichment" / "completed"
+                        completed_local = paths.queue(campaign_name, "enrichment") / "completed"
                         await asyncio.to_thread(run_smart_sync_up, "enrichment-completed", bucket_name, completed_prefix, completed_local, campaign_name, aws_config, delete_remote=False)
                         
                         last_sync_time = now

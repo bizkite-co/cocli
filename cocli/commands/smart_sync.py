@@ -328,8 +328,9 @@ def sync_enrichment_queue(
     bucket_name = aws_config.get("data_bucket_name") or f"cocli-data-{campaign_name}"
     
     # V2 Path
+    from ..core.paths import paths
     prefix = f"campaigns/{campaign_name}/queues/enrichment/pending/"
-    local_base = DATA_DIR / "data" / "queues" / campaign_name / "enrichment" / "pending"
+    local_base = paths.queue(campaign_name, "enrichment") / "pending"
     run_smart_sync("enrichment-queue", bucket_name, prefix, local_base, campaign_name, aws_config, workers, full, force)
 
 @app.command("active-leases")
@@ -349,8 +350,9 @@ def sync_active_leases(
     bucket_name = aws_config.get("data_bucket_name") or f"cocli-data-{campaign_name}"
     
     # V2 Path - In V2, leases are mixed in with pending tasks
+    from ..core.paths import paths
     prefix = f"campaigns/{campaign_name}/queues/enrichment/pending/"
-    local_base = DATA_DIR / "data" / "queues" / campaign_name / "enrichment" / "pending"
+    local_base = paths.queue(campaign_name, "enrichment") / "pending"
     run_smart_sync("active-leases", bucket_name, prefix, local_base, campaign_name, aws_config, workers, full, force)
 
 @app.command("queues")
@@ -369,13 +371,14 @@ def sync_queues(
     aws_config = config.get("aws", {})
     bucket_name = aws_config.get("data_bucket_name") or f"cocli-data-{campaign_name}"
     
+    from ..core.paths import paths
     for q in ["gm-list", "gm-details", "enrichment"]:
         # Completed Path (Used for zombie check)
-        local_base_completed = DATA_DIR / "data" / "queues" / campaign_name / q / "completed"
+        local_base_completed = paths.queue(campaign_name, q) / "completed"
 
         # Pending
         prefix = f"campaigns/{campaign_name}/queues/{q}/pending/"
-        local_base_pending = DATA_DIR / "data" / "queues" / campaign_name / q / "pending"
+        local_base_pending = paths.queue(campaign_name, q) / "pending"
         run_smart_sync(f"{q}-pending", bucket_name, prefix, local_base_pending, campaign_name, aws_config, workers, full, force, completed_dir=local_base_completed)
         
         # Completed (Optional sync down if needed for reporting)

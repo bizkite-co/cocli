@@ -9,6 +9,7 @@ from botocore.exceptions import ClientError
 from ...models.scrape_task import ScrapeTask, GmItemTask
 from ...models.queue import QueueMessage
 from ...core.config import get_cocli_base_dir, get_campaign_dir
+from ...core.paths import paths
 
 logger = logging.getLogger(__name__)
 
@@ -18,7 +19,7 @@ class FilesystemQueue:
     """
     A distributed-safe filesystem queue using atomic leases (V2).
     Structure:
-      data/queues/<campaign>/<queue>/
+      queues/<campaign>/<queue>/
         pending/
           <shard>/
             <task_id>/
@@ -44,8 +45,8 @@ class FilesystemQueue:
         self.s3_client = s3_client
         self.bucket_name = bucket_name
         
-        # New V2 Path: data/queues/<campaign>/<queue>
-        self.queue_base = get_cocli_base_dir() / "data" / "queues" / campaign_name / queue_name
+        # New V2 Path: queues/<campaign>/<queue>
+        self.queue_base = paths.queue(campaign_name, queue_name)
         logger.info(f"Initialized FilesystemQueue V2 for {queue_name} at {self.queue_base} (S3 Atomic: {s3_client is not None})")
         
         self.pending_dir = self.queue_base / "pending"
