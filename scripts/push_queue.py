@@ -53,9 +53,8 @@ def main(
     s3 = session.client("s3")
 
     # Local Path
-    # Support both V1 and V2 structures? 
-    # V2: data/queues/<campaign>/<queue>/pending/
-    local_queue_dir = DATA_DIR / "data" / "queues" / campaign / queue / "pending"
+    from cocli.core.paths import paths
+    local_queue_dir = paths.queue(campaign, queue) / "pending"
     
     if not local_queue_dir.exists():
         console.print(f"[red]Queue directory not found: {local_queue_dir}[/red]")
