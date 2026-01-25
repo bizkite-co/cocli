@@ -102,6 +102,18 @@ def generate_company_hash(data: dict[str, Any]) -> str:
     # Generate the hash
     return str(uuid.uuid5(uuid.NAMESPACE_DNS, hash_string))
 
+def deep_merge(base: dict[str, Any], overrides: dict[str, Any]) -> dict[str, Any]:
+    """
+    Recursively merges 'overrides' into 'base'.
+    Nested dictionaries are merged, other values are overwritten.
+    """
+    for key, value in overrides.items():
+        if isinstance(value, dict) and key in base and isinstance(base[key], dict):
+            deep_merge(base[key], value)
+        else:
+            base[key] = value
+    return base
+
 def _getch() -> str:
     """
     Reads a single character from stdin without echoing it to the console

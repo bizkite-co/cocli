@@ -257,22 +257,44 @@ def load_scraper_settings() -> ScraperSettings:
 
 def load_campaign_config(campaign_name: str) -> Dict[str, Any]:
     """
-    Loads the campaign-specific configuration (campaigns/<name>/config.toml).
+    Loads the campaign-specific configuration, inheriting from parent namespace config files.
+    Walks from the campaigns root down to the specific campaign directory.
     """
-    campaign_dir = get_campaign_dir(campaign_name)
-    if not campaign_dir:
-        return {}
+    from .utils import deep_merge
+    campaigns_root = paths.campaigns
+    campaign_dir = paths.campaign(campaign_name)
     
-    config_file = campaign_dir / "config.toml"
-    if not config_file.exists():
-        return {}
+    # 1. Identify all possible config files in the hierarchy
+    # e.g. for 'test/sub/my-campaign':
+    # - data/campaigns/config.toml (if exists, though usually template)
+    # - data/campaigns/test/config.toml
+    # - data/campaigns/test/sub/config.toml
+    # - data/campaigns/test/sub/my-campaign/config.toml
     
-    try:
-        with config_file.open("rb") as f:
-            return tomli.load(f)
-    except Exception as e:
-        logger.error(f"Error loading campaign config {config_file}: {e}")
-        return {}
+    config_hierarchy: list[Path] = []
+    
+    # Walk up from campaign_dir to campaigns_root
+    current = campaign_dir
+    while True:
+        config_file = current / "config.toml"
+        if config_file.exists():
+            config_hierarchy.insert(0, config_file) # Parents first
+        
+        if current == campaigns_root or current == current.parent:
+            break
+        current = current.parent
+
+    # 2. Merge them in order (top-down)
+    merged_config: Dict[str, Any] = {}
+    for config_file in config_hierarchy:
+        try:
+            with config_file.open("rb") as f:
+                overrides = tomli.load(f)
+                merged_config = deep_merge(merged_config, overrides)
+        except Exception as e:
+            logger.error(f"Error loading config layer {config_file}: {e}")
+
+    return merged_config
 
 def get_config_path() -> Path:
     config_dir = get_config_dir()
