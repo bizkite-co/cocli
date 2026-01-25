@@ -380,12 +380,17 @@ class FilesystemQueue:
             if task_dir.exists():
                 shutil.rmtree(task_dir, ignore_errors=True)
             
-            # 2. S3 Cleanup (Immediate)
+            # 2. S3 Cleanup & Completion (Immediate)
             if self.s3_client and self.bucket_name:
                 s3_task_key = self._get_s3_task_key(task_id)
                 s3_lease_key = self._get_s3_lease_key(task_id)
+                s3_completed_key = f"campaigns/{self.campaign_name}/queues/{self.queue_name}/completed/{task_id}.json"
                 
-                # Delete task and lease
+                # Upload completed file first
+                if completed_file.exists():
+                    self.s3_client.upload_file(str(completed_file), self.bucket_name, s3_completed_key)
+
+                # Delete task and lease from pending
                 self.s3_client.delete_objects(
                     Bucket=self.bucket_name,
                     Delete={

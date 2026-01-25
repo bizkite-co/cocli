@@ -72,13 +72,24 @@ def main(
     queue_table.add_column("Pending", justify="right", style="magenta")
     queue_table.add_column("In-Flight", justify="right", style="blue")
 
-    using_cloud = stats.get('using_cloud_queue', False)
+    config = load_campaign_config(campaign_name)
+    aws_cfg = config.get("aws", {})
+    worker_count = aws_cfg.get("worker_count", 0)
     
-    # SQS Queues
-    if using_cloud:
+    # SQS Queues - Only show if workers are enabled
+    if worker_count > 0:
         queue_table.add_row("Scrape Tasks", "SQS", str(stats.get('scrape_tasks_pending', 0)), str(stats.get('scrape_tasks_inflight', 0)))
         queue_table.add_row("GM Details", "SQS", str(stats.get('gm_list_item_pending', 0)), str(stats.get('gm_list_item_inflight', 0)))
         queue_table.add_row("Enrichment", "SQS", str(stats.get('enrichment_pending', 0)), str(stats.get('enrichment_inflight', 0)))
+
+    # S3 Queues (Filesystem V2 Remote State)
+    s3_queues = stats.get('s3_queues', {})
+    for q_name, q_stats in s3_queues.items():
+        pending = q_stats.get('pending', 0)
+        inflight = q_stats.get('inflight', 0)
+        completed = q_stats.get('completed', 0)
+        if pending > 0 or inflight > 0 or completed > 0:
+            queue_table.add_row(f"{q_name} (Global)", "S3", str(pending), f"{inflight} [dim]({completed} done)[/dim]")
 
     # Local Queues
     local_queues = stats.get('local_queues', {})
@@ -96,6 +107,29 @@ def main(
     cluster_table.add_column("Last Seen", style="yellow")
     cluster_table.add_column("Load/Mem", style="magenta")
     cluster_table.add_column("Active Workers", style="blue")
+
+    # 3.1 Work Distribution (DuckDB Analytics)
+    dist_table = Table(title="Cluster Work Distribution (Actual Results)", box=None)
+    dist_table.add_column("Host", style="cyan")
+    dist_table.add_column("Detailed Leads", justify="right", style="magenta")
+    dist_table.add_column("Enrichments", justify="right", style="blue")
+    dist_table.add_column("Share", justify="right", style="green")
+
+    capacity = stats.get('cluster_capacity', {})
+    by_machine_det = capacity.get('by_machine_detailed', {})
+    by_machine_enr = capacity.get('by_machine_enriched', {})
+    total_detailed = capacity.get('total_detailed', 0)
+    total_enriched = capacity.get('total_enriched_sampled', 0)
+
+    # Combine machine sets
+    all_machines = set(by_machine_det.keys()) | set(by_machine_enr.keys())
+    total_work = total_detailed + total_enriched
+
+    for machine in sorted(all_machines):
+        count_det = by_machine_det.get(machine, 0)
+        count_enr = by_machine_enr.get(machine, 0)
+        share = f"{((count_det + count_enr) / total_work * 100):.1f}%" if total_work > 0 else "0%"
+        dist_table.add_row(machine, str(count_det), str(count_enr), share)
 
     heartbeats = stats.get('worker_heartbeats', [])
     now = datetime.now(timezone.utc)
@@ -151,6 +185,7 @@ def main(
     console.print(funnel_table)
     console.print(queue_table)
     console.print(cluster_table)
+    console.print(dist_table)
     console.print(anomaly_table)
 
     if upload:

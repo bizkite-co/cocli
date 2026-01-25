@@ -47,6 +47,7 @@ class Website(BaseModel):
     categories: List[str] = []
     tags: List[str] = []
     scraper_version: Optional[int] = 1
+    processed_by: Optional[str] = None
     associated_company_folder: Optional[str] = None
     is_email_provider: bool = False
     all_emails: List[EmailAddress] = []

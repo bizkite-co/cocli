@@ -4,13 +4,14 @@ import time
 import subprocess
 from datetime import datetime
 from pathlib import Path
-from typing import Optional, Any, Dict, List
+import asyncio
+import json
+import logging
+import os
+from typing import Any, Dict, List, Optional, cast
 from rich.console import Console
 from playwright.async_api import async_playwright
 
-import os
-import asyncio
-import logging
 import typer
 import boto3
 from cocli.core.text_utils import slugify
@@ -117,7 +118,7 @@ def ensure_campaign_config(campaign_name: str) -> None:
 
 async def run_worker(
     headless: bool, debug: bool, campaign_name: str, workers: int = 1
-) -> None:
+    ) -> None:
     try:
         ensure_campaign_config(campaign_name)
 
@@ -125,20 +126,12 @@ async def run_worker(
         config = load_campaign_config(campaign_name)
         aws_config = config.get("aws", {})
         bucket_name = (
-            aws_config.get("data_bucket_name") or f"cocli-data-{campaign_name}"
+            aws_config.get("data_bucket_name") or aws_config.get("cocli_data_bucket_name") or f"cocli-data-{campaign_name}"
         )
 
-        if os.getenv("COCLI_RUNNING_IN_FARGATE"):
-            profile_name = None
-        else:
-            profile_name = aws_config.get("profile") or aws_config.get("aws_profile")
-
-        if profile_name:
-            session = boto3.Session(profile_name=profile_name)
-        else:
-            session = boto3.Session()
+        from ..core.reporting import get_boto3_session
+        session = get_boto3_session(config)
         s3_client = session.client("s3")
-
         scrape_queue = get_queue_manager(
             "scrape_tasks",
             use_cloud=True,
@@ -245,7 +238,6 @@ async def _run_command_poller_loop(command_queue: Any, s3_client: Any, bucket_na
     logger.info(f"Command Poller initializing for {campaign_name}")
     from ..core.reporting import get_exclusions_data, get_queries_data, get_locations_data
     from ..application.campaign_service import CampaignService
-    import json
     import shlex
 
     while True:
@@ -526,7 +518,8 @@ async def run_details_worker(
     workers: int = 1,
 ) -> None:
     if not processed_by:
-        processed_by = f"local-worker-{socket.gethostname()}"
+        hostname = os.getenv("COCLI_HOSTNAME") or socket.gethostname().split(".")[0]
+        processed_by = hostname
     try:
         ensure_campaign_config(campaign_name)
 
@@ -534,18 +527,11 @@ async def run_details_worker(
         config = load_campaign_config(campaign_name)
         aws_config = config.get("aws", {})
         bucket_name = (
-            aws_config.get("data_bucket_name") or f"cocli-data-{campaign_name}"
+            aws_config.get("data_bucket_name") or aws_config.get("cocli_data_bucket_name") or f"cocli-data-{campaign_name}"
         )
 
-        if os.getenv("COCLI_RUNNING_IN_FARGATE"):
-            profile_name = None
-        else:
-            profile_name = aws_config.get("profile") or aws_config.get("aws_profile")
-
-        if profile_name:
-            session = boto3.Session(profile_name=profile_name)
-        else:
-            session = boto3.Session()
+        from ..core.reporting import get_boto3_session
+        session = get_boto3_session(config)
         s3_client = session.client("s3")
 
         gm_list_item_queue = get_queue_manager(
@@ -895,7 +881,8 @@ async def run_enrichment_worker(
     use_cloud: bool = True,
 ) -> None:
     if not processed_by:
-        processed_by = f"enrichment-worker-{socket.gethostname()}"
+        hostname = os.getenv("COCLI_HOSTNAME") or socket.gethostname().split(".")[0]
+        processed_by = hostname
     try:
         ensure_campaign_config(campaign_name)
         # Check if we should override cloud queue based on environment
@@ -1088,6 +1075,7 @@ async def _run_enrichment_task_loop(
 
             if website_data:
                 # 1. Save enrichment data locally (website.md)
+                website_data.processed_by = processed_by
                 website_data.save(task.company_slug)
                 
                 # 2. Update Company object with newly discovered data
@@ -1184,52 +1172,37 @@ def supervisor(
     asyncio.run(run_supervisor(not headed, debug, effective_campaign, interval))
 
 
-def sync_campaign_config(campaign_name: str) -> None:
+def sync_campaign_config(campaign_name: str, aws_config: Optional[Dict[str, Any]] = None) -> None:
     """
-
-
-
     Forcefully fetches the latest config.toml from S3.
-
-
-
     """
-
     campaign_dir = get_campaigns_dir() / campaign_name
-
     config_path = campaign_dir / "config.toml"
 
     # Determine AWS profile for initial bootstrap
-
     profile_name = os.getenv("AWS_PROFILE")
-
     if profile_name:
         session = boto3.Session(profile_name=profile_name)
-
     else:
         session = boto3.Session()
-
     s3 = session.client("s3")
 
     # Bucket patterns
-
-    bucket_name = f"cocli-data-{campaign_name}"
+    if aws_config:
+        bucket_name = aws_config.get("data_bucket_name") or aws_config.get("cocli_data_bucket_name") or f"cocli-data-{campaign_name}"
+    else:
+        bucket_name = f"cocli-data-{campaign_name}"
 
     potential_buckets = [bucket_name, f"{campaign_name}-cocli-data-use1"]
-
     keys_to_try = ["config.toml", f"campaigns/{campaign_name}/config.toml"]
 
     for b in potential_buckets:
         for key in keys_to_try:
             try:
                 logger.debug(f"Syncing s3://{b}/{key}...")
-
                 s3.download_file(b, key, str(config_path))
-
                 logger.debug("Synced config from S3.")
-
                 return
-
             except Exception:
                 continue
 
@@ -1272,7 +1245,6 @@ async def _push_supervisor_heartbeat(
     enrichment_tasks: Dict[int, asyncio.Task[Any]],
 ) -> None:
     """Collects system stats and active task counts, then pushes to S3 as a heartbeat."""
-    import json
     try:
         # Collect Stats (Lazy import to keep startup fast)
         import psutil
@@ -1315,6 +1287,7 @@ async def run_supervisor(
     import socket
     import asyncio
 
+    aws_config: Dict[str, Any] = {}
     hostname = os.getenv("COCLI_HOSTNAME") or socket.gethostname().split(".")[0]
 
     logger.info(
@@ -1358,15 +1331,15 @@ async def run_supervisor(
         ensure_campaign_config(campaign_name)
         config = load_campaign_config(campaign_name)
         aws_config = config.get("aws", {})
-        bucket_name = aws_config.get("data_bucket_name")
+        bucket_name = aws_config.get("data_bucket_name") or aws_config.get("cocli_data_bucket_name")
+        if not bucket_name:
+            logger.error("No data bucket name configured for campaign.")
+            raise typer.Exit(code=1)
         
         # Resolve AWS session/client with larger connection pool
         from botocore.config import Config
-        if os.getenv("COCLI_RUNNING_IN_FARGATE"):
-            session = boto3.Session()
-        else:
-            aws_profile = os.getenv("AWS_PROFILE") or aws_config.get("profile")
-            session = boto3.Session(profile_name=aws_profile)
+        from ..core.reporting import get_boto3_session
+        session = get_boto3_session(config)
             
         s3_config = Config(
             max_pool_connections=50, # Increase from default 10
@@ -1384,16 +1357,20 @@ async def run_supervisor(
         from ..utils.smart_sync_up import run_smart_sync_up
         last_sync_time: float = 0.0
         sync_interval_seconds = 3600 # 60 minutes (Real-time push handles most data)
-        processed_by = f"{hostname}-supervisor"
+        processed_by = hostname # Just the hostname for clean machine attribution
         
         last_heartbeat_time: float = 0.0
-        heartbeat_interval = 900 # 15 minutes
+        heartbeat_interval = 60 # 1 minute
         
         last_report_time: float = 0.0
-        report_interval = 900 # 15 minutes
+        report_interval = 300 # 5 minutes
 
         while True:
             try:
+                # 0. Sync config from S3 (Throttled or in thread)
+                await asyncio.to_thread(sync_campaign_config, campaign_name, aws_config)
+                config = load_campaign_config(campaign_name)
+
                 # 0.0 Heartbeat (Throttled)
                 now = time.time()
                 if now - last_heartbeat_time > heartbeat_interval:
@@ -1401,7 +1378,7 @@ async def run_supervisor(
                         hostname, 
                         campaign_name, 
                         s3_client, 
-                        bucket_name, 
+                        cast(str, bucket_name), 
                         scrape_tasks, 
                         details_tasks, 
                         enrichment_tasks
@@ -1413,13 +1390,9 @@ async def run_supervisor(
                     if command_task and command_task.done() and command_task.exception():
                         logger.error(f"Command poller died with exception: {command_task.exception()}")
                     logger.info("Starting (or restarting) command poller...")
-                    command_task = asyncio.create_task(_run_command_poller_loop(command_queue, s3_client, bucket_name, campaign_name, aws_config))
+                    command_task = asyncio.create_task(_run_command_poller_loop(command_queue, s3_client, cast(str, bucket_name), campaign_name, config.get("aws", {})))
                 
-                # 0. Sync config from S3 (Throttled or in thread)
-                await asyncio.to_thread(sync_campaign_config, campaign_name)
-
                 # 1. Reload Config (from local file, which should be synced from S3)
-                config = load_campaign_config(campaign_name)
                 prospecting = config.get("prospecting", {})
                 scaling = prospecting.get("scaling", {}).get(hostname, {})
 
@@ -1443,7 +1416,7 @@ async def run_supervisor(
                             scrape_queue,
                             gm_list_item_queue,
                             s3_client,
-                            bucket_name,
+                            cast(str, bucket_name),
                             debug,
                         )
                     )
@@ -1465,7 +1438,7 @@ async def run_supervisor(
                             gm_list_item_queue,
                             enrichment_queue,
                             s3_client,
-                            bucket_name,
+                            cast(str, bucket_name),
                             debug,
                             False,
                             processed_by,
@@ -1485,12 +1458,16 @@ async def run_supervisor(
                     logger.info(f"Scaling UP: Starting Enrichment Task {new_id}")
                     
                     # TASK WRAPPER: Create fresh context for every single task to prevent memory leaks
-                    async def _run_single_enrichment_task() -> None:
+                    async def _run_single_enrichment_task() -> bool:
                         # Shared context from supervisor might leak, create a fresh one
                         # ignore_https_errors is important for broad scraping
                         tmp_context = await browser.new_context(ignore_https_errors=True)
                         tmp_tracker = await setup_optimized_context(tmp_context)
+                        found_task = False
                         try:
+                            # Modify _run_enrichment_task_loop to return if it found a task
+                            # For now, we'll just check if it returns quickly
+                            start = time.time()
                             await _run_enrichment_task_loop(
                                 tmp_context,
                                 enrichment_queue,
@@ -1499,17 +1476,24 @@ async def run_supervisor(
                                 processed_by,
                                 campaign_name,
                                 s3_client=s3_client,
-                                bucket_name=bucket_name,
+                                bucket_name=cast(str, bucket_name),
                                 tracker=tmp_tracker,
                             )
+                            # If it took more than a second, it probably processed something
+                            if time.time() - start > 1.0:
+                                found_task = True
                         finally:
                             await tmp_context.close()
+                        return found_task
 
                     # Start as a persistent loop that restarts the wrapper
                     async def _persistent_enrichment_loop() -> None:
                         while True:
-                            await _run_single_enrichment_task()
-                            await asyncio.sleep(1) # Small breather between tasks
+                            processed = await _run_single_enrichment_task()
+                            if not processed:
+                                await asyncio.sleep(10) # Heavy breather when queue empty
+                            else:
+                                await asyncio.sleep(1) # Small breather between tasks
 
                     task = asyncio.create_task(_persistent_enrichment_loop())
                     enrichment_tasks[new_id] = task
@@ -1538,7 +1522,7 @@ async def run_supervisor(
                                 f"campaigns/{campaign_name}/indexes/", 
                                 campaign_dir / "indexes", 
                                 campaign_name, 
-                                aws_config, 
+                                config.get("aws", {}), 
                                 delete_remote=False
                             )
 
@@ -1546,7 +1530,7 @@ async def run_supervisor(
                         from ..core.paths import paths
                         completed_prefix = f"campaigns/{campaign_name}/queues/enrichment/completed/"
                         completed_local = paths.queue(campaign_name, "enrichment") / "completed"
-                        await asyncio.to_thread(run_smart_sync_up, "enrichment-completed", bucket_name, completed_prefix, completed_local, campaign_name, aws_config, delete_remote=False)
+                        await asyncio.to_thread(run_smart_sync_up, "enrichment-completed", bucket_name, completed_prefix, completed_local, campaign_name, config.get("aws", {}), delete_remote=False)
                         
                         last_sync_time = now
                         logger.info("Throttled background sync operations completed")

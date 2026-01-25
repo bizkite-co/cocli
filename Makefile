@@ -446,7 +446,7 @@ gc-companies: ## Commit and push all changes to companies and people
 .PHONY: deploy-creds-rpi
 deploy-creds-rpi: ## Securely deploy AWS credentials to all Raspberry Pis (Usage: make deploy-creds-rpi [CAMPAIGN=name])
 	$(call validate_campaign)
-	./$(VENV_DIR)/bin/cocli infrastructure deploy-creds --campaign $(CAMPAIGN) --user $(RPI_USER)
+	./$(VENV_DIR)/bin/python scripts/deploy_rpi_creds.py --profile $(AWS_PROFILE) --host $(RPI_HOST) --user $(RPI_USER) --campaign $(CAMPAIGN)
 
 # ==============================================================================
 # Web Dashboard

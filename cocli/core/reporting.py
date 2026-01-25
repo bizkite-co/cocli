@@ -51,15 +51,48 @@ SQSAttributeName = Literal[
 
 
 def get_boto3_session(campaign_config: Dict[str, Any]) -> boto3.Session:
-    """Creates a boto3 session using the campaign's AWS profile and region."""
+    """
+    Creates a boto3 session with robust profile resolution.
+    Priority:
+    1. Campaign Slug Profile (e.g., 'roadmap')
+    2. Explicit 'aws.profile' from config
+    3. Environment variables / Default
+    """
     if os.getenv("COCLI_RUNNING_IN_FARGATE"):
         return boto3.Session()
 
     aws_config = campaign_config.get("aws", {})
-    profile = aws_config.get("profile") or aws_config.get("aws_profile")
-    region = aws_config.get("region")
+    region = aws_config.get("region", "us-east-1")
+    campaign_slug = campaign_config.get("campaign", {}).get("name")
+    
+    # Try multiple profile candidates
+    potential_profiles = []
+    if campaign_slug:
+        potential_profiles.append(campaign_slug)
+    
+    explicit_profile = aws_config.get("profile") or aws_config.get("aws_profile")
+    if explicit_profile and explicit_profile not in potential_profiles:
+        potential_profiles.append(explicit_profile)
 
-    return boto3.Session(profile_name=profile, region_name=region)
+    # Attempt to create session with the best available profile
+    session = None
+    
+    for profile in potential_profiles:
+        try:
+            temp_session = boto3.Session(profile_name=profile, region_name=region)
+            # Verify the profile exists by checking identity (lightweight)
+            temp_session.client("sts").get_caller_identity()
+            session = temp_session
+            logger.debug(f"Using AWS profile: {profile}")
+            break
+        except Exception:
+            continue
+            
+    if not session:
+        logger.debug("No valid named profile found. Using default session.")
+        session = boto3.Session(region_name=region)
+
+    return session
 
 
 def get_sqs_attributes(
@@ -276,22 +309,49 @@ def get_campaign_stats(campaign_name: str) -> Dict[str, Any]:
         # Active Workers
         stats["active_fargate_tasks"] = get_active_fargate_tasks(session)
 
+        # Cluster Capacity (DuckDB Live Analytics)
+        from .analytics import get_cluster_capacity_stats
+        try:
+            stats["cluster_capacity"] = get_cluster_capacity_stats(campaign_name)
+        except Exception as e:
+            logger.warning(f"Failed to fetch live capacity stats: {e}")
+            stats["cluster_capacity"] = {}
+
         # S3 Counts
-        data_bucket = aws_config.get("data_bucket_name")
+        data_bucket = aws_config.get("data_bucket_name") or aws_config.get("cocli_data_bucket_name")
         if data_bucket:
             s3 = session.client("s3")
             
-            # S3 Completed count for Enrichment
-            try:
-                paginator = s3.get_paginator("list_objects_v2")
-                count = 0
-                prefix = f"campaigns/{campaign_name}/queues/enrichment/completed/"
-                for page in paginator.paginate(Bucket=data_bucket, Prefix=prefix):
-                    count += page.get("KeyCount", 0)
-                stats["remote_enrichment_completed"] = count
-            except Exception as e:
-                logger.warning(f"Could not count remote completed tasks: {e}")
-                stats["remote_enrichment_completed"] = 0
+            # --- S3 Queue Progress (V2 Filesystem) ---
+            s3_queues = {}
+            for q in ["gm-list", "gm-details", "enrichment"]:
+                try:
+                    paginator = s3.get_paginator("list_objects_v2")
+                    pending_count = 0
+                    inflight_count = 0
+                    prefix_pending = f"campaigns/{campaign_name}/queues/{q}/pending/"
+                    for page in paginator.paginate(Bucket=data_bucket, Prefix=prefix_pending):
+                        for obj in page.get("Contents", []):
+                            if obj["Key"].endswith("task.json"):
+                                pending_count += 1
+                            elif obj["Key"].endswith("lease.json"):
+                                inflight_count += 1
+                    
+                    completed_count = 0
+                    prefix_completed = f"campaigns/{campaign_name}/queues/{q}/completed/"
+                    for page in paginator.paginate(Bucket=data_bucket, Prefix=prefix_completed):
+                        completed_count += len(page.get("Contents", []))
+                    
+                    s3_queues[q] = {
+                        "pending": pending_count,
+                        "inflight": inflight_count,
+                        "completed": completed_count
+                    }
+                except Exception as e:
+                    logger.warning(f"Could not count S3 queue tasks for {q}: {e}")
+            
+            stats["s3_queues"] = s3_queues
+            # ----------------------------------------
 
             # --- Heartbeats ---
             try:
