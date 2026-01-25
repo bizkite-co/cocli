@@ -5,7 +5,6 @@ import typer
 from pathlib import Path
 from rich.console import Console
 from rich.progress import track
-from fuzzywuzzy import fuzz # type: ignore
 from typing import List, Dict, Any # Added missing imports
 
 # Setup
@@ -41,6 +40,7 @@ def main(
     """
     Merges Hospital CSV with Bed counts and converts coordinates to Lat/Lon.
     """
+    from fuzzywuzzy import fuzz # type: ignore
     if not csv_path.exists() or not md_path.exists():
         console.print("[bold red]Input files not found.[/bold red]")
         raise typer.Exit(1)

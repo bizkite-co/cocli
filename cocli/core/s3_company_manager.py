@@ -1,5 +1,4 @@
 import logging
-import boto3
 import yaml
 from botocore.exceptions import ClientError
 from typing import Optional
@@ -20,29 +19,35 @@ class S3CompanyManager:
         
         # Determine S3 bucket: env var > campaign config > default
         import os
+        from .config import load_campaign_config
+        from .reporting import get_boto3_session
+
         self.s3_bucket_name = os.environ.get("COCLI_S3_BUCKET_NAME") or ""
+        config = load_campaign_config(self.campaign.name)
 
         if not self.s3_bucket_name:
-            from .config import load_campaign_config
-            config = load_campaign_config(self.campaign.name)
             aws_config = config.get("aws", {})
-            self.s3_bucket_name = aws_config.get("data_bucket_name") or f"cocli-data-{self.campaign.name}"
+            self.s3_bucket_name = (
+                aws_config.get("data_bucket_name") or 
+                aws_config.get("cocli_data_bucket_name") or 
+                f"cocli-data-{self.campaign.name}"
+            )
         
         if not self.s3_bucket_name:
             raise ValueError(f"S3 bucket name could not be resolved for campaign {self.campaign.name}")
         
         # Base prefix for all companies managed by this campaign
-        # e.g., "companies/" or "campaigns/turbo-heat-welding-tools/companies/"
-        self.s3_base_prefix = "companies/" # Companies are shared resources, always at root.
+        # e.g., "campaigns/roadmap/companies/"
+        self.s3_base_prefix = f"campaigns/{self.campaign.name}/companies/"
 
         try:
             from botocore.config import Config
-            session = boto3.Session()
+            session = get_boto3_session(config)
             # Increase pool size to handle concurrent requests without noise
             s3_config: Config = Config(max_pool_connections=50)
             self.s3_client = session.client("s3", config=s3_config)
         except Exception as e:
-            logger.error(f"Failed to create S3 client with default credentials: {e}")
+            logger.error(f"Failed to create S3 client: {e}")
             raise
 
     def _get_s3_key_for_company_index(self, company_slug: str) -> str:

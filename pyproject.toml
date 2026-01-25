@@ -31,6 +31,7 @@ dependencies = [
     "httpx",
     "transitions",
     "fuzzywuzzy",
+    "python-Levenshtein",
     "simplekml",
     "python-dateutil",
     "psutil",

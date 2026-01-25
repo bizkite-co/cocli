@@ -99,3 +99,35 @@ async def wait_for_campaign_detail_update(detail_widget, timeout: float = 60.0):
             return
         await asyncio.sleep(0.01)
     raise TimeoutError(f"CampaignDetail widget did not update its campaign within {timeout} seconds")
+
+@pytest.fixture
+def mock_cocli_env(tmp_path, mocker):
+    """
+    Sets up a completely isolated cocli environment in a temporary directory.
+    Redirects global paths and mocks campaign configuration.
+    """
+    # 1. Create Directory Structure
+    cocli_base_dir = tmp_path / "cocli"
+    cocli_base_dir.mkdir()
+    
+    (cocli_base_dir / "companies").mkdir()
+    (cocli_base_dir / "people").mkdir()
+    (cocli_base_dir / "campaigns").mkdir()
+
+    # 2. Redirect Global Paths
+    # We patch the 'root' property of the 'paths' singleton
+    from cocli.core.paths import paths
+    mocker.patch.object(paths, 'root', cocli_base_dir)
+    
+    # 3. Mock Configuration
+    # Ensure get_campaign returns a predictable value ('test')
+    # We patch it in the places it's most commonly used/imported
+    mocker.patch('cocli.core.config.get_campaign', return_value="test")
+    mocker.patch('cocli.application.search_service.get_campaign', return_value="test")
+    
+    # Also patch cache getters to ensure they use our temp dir logic (via paths)
+    # Since we patched paths.root, the default implementations in config/cache 
+    # should essentially work, but explicit patching adds safety.
+    mocker.patch('cocli.core.cache.get_cocli_base_dir', return_value=cocli_base_dir)
+    
+    return cocli_base_dir

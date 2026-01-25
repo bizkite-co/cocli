@@ -10,7 +10,6 @@ from cocli.core.utils import create_company_files
 from cocli.models.company import Company
 from cocli.models.website_domain_csv import WebsiteDomainCsv
 from cocli.core.website_domain_csv_manager import WebsiteDomainCsvManager
-from fuzzywuzzy import process # type: ignore
 from cocli.core.config import get_campaign, get_companies_dir
 
 logger = logging.getLogger(__name__)
@@ -24,6 +23,7 @@ def core_import_logic(
     match_threshold: int = 80,
 ) -> None:
     """Core logic for importing prospects from a list of dictionaries."""
+    from fuzzywuzzy import process # type: ignore
     website_csv_manager = WebsiteDomainCsvManager()
 
     company_dirs = {d.name: d for d in companies_dir.iterdir() if d.is_dir()}
