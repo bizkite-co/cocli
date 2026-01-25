@@ -120,14 +120,15 @@ def mock_cocli_env(tmp_path, mocker):
     mocker.patch.object(paths, 'root', cocli_base_dir)
     
     # 3. Mock Configuration
-    # Ensure get_campaign returns a predictable value ('test')
-    # We patch it in the places it's most commonly used/imported
-    mocker.patch('cocli.core.config.get_campaign', return_value="test")
-    mocker.patch('cocli.application.search_service.get_campaign', return_value="test")
+    # Ensure get_campaign returns a predictable value ('test/default')
+    # We use a nested name to verify namespace awareness in tests
+    test_campaign_name = "test/default"
+    mocker.patch('cocli.core.config.get_campaign', return_value=test_campaign_name)
+    mocker.patch('cocli.application.search_service.get_campaign', return_value=test_campaign_name)
     
     # Also patch cache getters to ensure they use our temp dir logic (via paths)
-    # Since we patched paths.root, the default implementations in config/cache 
-    # should essentially work, but explicit patching adds safety.
     mocker.patch('cocli.core.cache.get_cocli_base_dir', return_value=cocli_base_dir)
+    
+    return cocli_base_dir
     
     return cocli_base_dir

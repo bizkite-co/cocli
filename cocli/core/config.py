@@ -127,11 +127,8 @@ def get_campaign_scraped_data_dir(campaign_name: str) -> Path:
     Returns the scraped data directory for a specific campaign.
     Path: data/campaigns/<campaign>/scraped_data/
     """
-    campaign_dir = get_campaign_dir(campaign_name)
-    if not campaign_dir:
-        # Fallback if campaign dir doesn't exist yet (though it should)
-        campaign_dir = paths.campaign(campaign_name)
-        campaign_dir.mkdir(parents=True, exist_ok=True)
+    campaign_dir = paths.campaign(campaign_name)
+    campaign_dir.mkdir(parents=True, exist_ok=True)
     
     p = campaign_dir / "scraped_data"
     v_dir = get_validated_dir(p, f"Campaign Scraped Data: {campaign_name}")
@@ -154,6 +151,9 @@ def get_campaign_dir(campaign_name: str) -> Optional[Path]:
         # Validate specifically if it exists
         v_dir = get_validated_dir(campaign_dir, f"Campaign Directory: {campaign_name}")
         return v_dir.path
+    
+    # If it doesn't exist yet, we don't return it here to maintain current contract
+    # of 'Optional' return, but we allow it to be created by other functions.
     return None
 
 def get_all_campaign_dirs() -> list[Path]:

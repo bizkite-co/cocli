@@ -14,7 +14,9 @@ CACHE_FILE_NAME = "fz_cache.json"
 def get_cache_path(campaign: Optional[str] = None) -> Path:
     """Returns the path to the fz cache file."""
     if campaign:
-        return get_cocli_base_dir() / f"fz_cache_{campaign}.json"
+        # Sanitize campaign name for filename (test/sub -> test_sub)
+        safe_name = campaign.replace("/", "_").replace("\\", "_")
+        return get_cocli_base_dir() / f"fz_cache_{safe_name}.json"
     return get_cocli_base_dir() / CACHE_FILE_NAME
 
 def _get_most_recent_mtime(directory: Path) -> Optional[float]:

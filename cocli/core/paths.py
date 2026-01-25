@@ -62,6 +62,12 @@ class DataPaths:
         return self.root / "campaigns"
 
     def campaign(self, campaign_slug: str) -> Path:
+        """
+        Returns the path to a specific campaign.
+        Supports namespaced campaigns (e.g. 'test/my-campaign') by allowing slashes.
+        """
+        # Ensure we don't accidentally escape the campaigns root
+        # campaign_slug can be 'test/my-campaign' or 'clients/acme/project-x'
         return self.campaigns / campaign_slug
 
     def campaign_indexes(self, campaign_slug: str) -> Path:
