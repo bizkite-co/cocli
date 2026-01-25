@@ -7,7 +7,7 @@ from cocli.core.queue.filesystem import FilesystemGmListQueue
 def test_filesystem_queue(tmp_path):
     # Patch paths.root to use tmp_path
     with patch('cocli.core.paths.paths.root', tmp_path):
-        campaign = "test_dfq_campaign"
+        campaign = "test/test_dfq_campaign"
         base_dir = tmp_path
         campaign_dir = base_dir / "campaigns" / campaign
         

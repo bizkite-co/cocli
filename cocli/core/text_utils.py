@@ -1,9 +1,17 @@
 import re
 
 def slugify(text: str) -> str:
-    """Converts text to a filesystem-friendly slug (aggressive, replaces dots with dashes)."""
-    text = text.lower()
-    text = re.sub(r'[\s\W]+', '-', text)
+    """
+    Converts text to a filesystem-friendly slug.
+    Preserves forward slashes (/) to support namespacing.
+    Replaces other non-alphanumeric characters with dashes.
+    """
+    text = text.lower().strip()
+    # Replace any character that is NOT alphanumeric, underscore, or forward slash with a dash
+    text = re.sub(r'[^a-z0-9/_]+', '-', text)
+    # Ensure we don't have multiple dashes or dashes next to slashes
+    text = re.sub(r'-+', '-', text)
+    text = re.sub(r'-?/-?', '/', text)
     return text.strip('-')
 
 def slugdotify(text: str) -> str:

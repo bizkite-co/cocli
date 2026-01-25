@@ -158,21 +158,31 @@ def get_campaign_dir(campaign_name: str) -> Optional[Path]:
 
 def get_all_campaign_dirs() -> list[Path]:
     """
-    Returns a list of all campaign directories, deduplicated by slugified name.
+    Returns a list of all campaign directories, recursively finding those
+    with a config.toml file.
     """
-    from .text_utils import slugify
-    campaigns_dir = paths.campaigns
-    if campaigns_dir.exists() and campaigns_dir.is_dir():
-        dirs = [d for d in campaigns_dir.iterdir() if d.is_dir()]
-        seen_slugs = set()
-        unique_dirs = []
-        for d in sorted(dirs):
-            slug = slugify(d.name)
-            if slug not in seen_slugs:
-                seen_slugs.add(slug)
-                unique_dirs.append(d)
-        return unique_dirs
-    return []
+    campaigns_root = paths.campaigns
+    if not (campaigns_root.exists() and campaigns_root.is_dir()):
+        return []
+
+    unique_dirs = []
+    seen_slugs = set()
+
+    # Find all config.toml files and use their parent directories
+    for config_file in sorted(campaigns_root.glob("**/config.toml")):
+        campaign_dir = config_file.parent
+        # Calculate the relative path from the campaigns root to use as the name
+        try:
+            rel_path = campaign_dir.relative_to(campaigns_root)
+            campaign_name = str(rel_path)
+            # Use the full relative path as the unique key
+            if campaign_name not in seen_slugs:
+                seen_slugs.add(campaign_name)
+                unique_dirs.append(campaign_dir)
+        except ValueError:
+            continue
+
+    return unique_dirs
 
 
 def _read_data_home_from_config_file() -> Optional[Path]:

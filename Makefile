@@ -77,7 +77,7 @@ logname: ## Get the latest log file name
 # Use 'make test-tui-integration' to run them.
 test: install ## Run all non-TUI tests using pytest
 	$(MAKE) lint
-	source $(VENV_DIR)/bin/activate && PYTHONPATH=. pytest -s tests/ --ignore=tests/tui/test_navigation_steps.py --ignore=tests/e2e
+	source $(VENV_DIR)/bin/activate && PYTHONPATH=. pytest -s tests/ --quiet --ignore=tests/tui/test_navigation_steps.py --ignore=tests/e2e
 
 test-unit: install lint ## Run unit tests (excluding TUI folder)
 	source $(VENV_DIR)/bin/activate && PYTHONPATH=. pytest -s tests/ --ignore=tests/tui

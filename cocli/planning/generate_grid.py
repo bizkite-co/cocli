@@ -193,7 +193,7 @@ def export_to_kml(tiles: List[Dict[str, Any]], filename: str, campaign_name: str
 
 if __name__ == "__main__":
     # Example Usage: Austin, TX
-    CAMPAIGN_NAME = "austin_test_campaign"
+    CAMPAIGN_NAME = "test/austin_test_campaign"
     CENTER_LAT = 30.2672  # Austin, TX
     CENTER_LON = -97.7431 # Austin, TX
     RADIUS_MILES = 10     # 10 miles radius
