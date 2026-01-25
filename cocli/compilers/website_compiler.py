@@ -209,4 +209,5 @@ class WebsiteCompiler(BaseCompiler):
 
         if updated:
             create_company_files(company, company_dir)
-            console.print(f"Updated -> {company.name}")
+            company.save()
+            return

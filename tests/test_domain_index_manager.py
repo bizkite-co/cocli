@@ -1,5 +1,5 @@
 import pytest
-from datetime import datetime
+from datetime import datetime, UTC
 from unittest.mock import MagicMock
 from cocli.core.domain_index_manager import DomainIndexManager
 from cocli.models.campaign import Campaign
@@ -33,7 +33,7 @@ def test_duckdb_query(s3_manager):
     item = WebsiteDomainCsv(
         domain="duckdb-test.com",
         company_name="DuckDB Test Corp",
-        updated_at=datetime.utcnow()
+        updated_at=datetime.now(UTC)
     )
     s3_manager.add_or_update(item)
     
@@ -58,7 +58,7 @@ def test_local_round_trip(tmp_path, monkeypatch):
     item = WebsiteDomainCsv(
         domain="local-test.com",
         company_name="Local Success",
-        updated_at=datetime.utcnow()
+        updated_at=datetime.now(UTC)
     )
     manager.add_or_update(item)
     
@@ -72,7 +72,7 @@ def test_local_round_trip(tmp_path, monkeypatch):
     item2 = WebsiteDomainCsv(
         domain="local-test2.com",
         company_name="Pending Local",
-        updated_at=datetime.utcnow()
+        updated_at=datetime.now(UTC)
     )
     manager.add_or_update(item2)
     

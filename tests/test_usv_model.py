@@ -10,8 +10,6 @@ def test_usv_serialization():
     )
     
     usv = item.to_usv()
-    usv_display = usv.replace('\x1f', '[US]')
-    print(f"Serialized USV: {usv_display}")
     
     # Verify delimiter count (N-1)
     fields_count = len(WebsiteDomainCsv.model_fields)

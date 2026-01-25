@@ -1,6 +1,6 @@
 from pydantic import BaseModel, Field
 from typing import Optional, List, Dict, Any
-from datetime import datetime
+from datetime import datetime, UTC
 from .domain import Domain
 from .email_address import EmailAddress
 from .phone import OptionalPhone
@@ -25,8 +25,8 @@ class WebsiteDomainCsv(BaseModel):
     scraper_version: Optional[int] = 1
     associated_company_folder: Optional[str] = None
     is_email_provider: bool = False
-    created_at: datetime = Field(default_factory=datetime.utcnow)
-    updated_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
+    updated_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
     @classmethod
     def get_header(cls) -> str:
@@ -37,7 +37,7 @@ class WebsiteDomainCsv(BaseModel):
         """Serializes the model to a single-line USV string."""
         values = []
         dump = self.model_dump()
-        for field in self.model_fields.keys():
+        for field in self.__class__.model_fields.keys():
             val = dump.get(field)
             if val is None:
                 values.append("")
@@ -70,7 +70,7 @@ class WebsiteDomainCsv(BaseModel):
                     elif field_name == "is_email_provider":
                         data[field_name] = False
                     elif field_name in ["created_at", "updated_at"]:
-                        data[field_name] = datetime.utcnow()
+                        data[field_name] = datetime.now(UTC)
                     else:
                         data[field_name] = None
                 else:
@@ -85,7 +85,7 @@ class WebsiteDomainCsv(BaseModel):
                         try:
                             data[field_name] = datetime.fromisoformat(val)
                         except ValueError:
-                            data[field_name] = datetime.utcnow()
+                            data[field_name] = datetime.now(UTC)
                     else:
                         data[field_name] = val
             else:
@@ -95,8 +95,9 @@ class WebsiteDomainCsv(BaseModel):
                 elif field_name == "is_email_provider":
                     data[field_name] = False
                 elif field_name in ["created_at", "updated_at"]:
-                    data[field_name] = datetime.utcnow()
+                    data[field_name] = datetime.now(UTC)
                 else:
                     data[field_name] = None
         
         return cls(**data)
+

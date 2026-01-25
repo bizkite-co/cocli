@@ -5,6 +5,7 @@ import os
 from playwright.async_api import async_playwright
 import toml 
 from typing import Optional, Dict, Any, cast
+from contextlib import asynccontextmanager
 
 # Adjust imports to be absolute from the project root
 from cocli.core.enrichment import enrich_company_website
@@ -21,12 +22,13 @@ import httpx
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-app = FastAPI()
-
-@app.on_event("startup")
-async def startup_event() -> None:
+@asynccontextmanager
+async def lifespan(app: FastAPI) -> Any:
     version = os.getenv("COCLI_VERSION", "unknown")
     logger.info(f"Starting Enrichment Service v{version}")
+    yield
+
+app = FastAPI(lifespan=lifespan)
 
 class EnrichmentRequest(BaseModel):
     domain: str
