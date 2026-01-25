@@ -393,58 +393,183 @@ def geocode_locations(
         console.print("[yellow]No missing geocoordinates found.[/yellow]")
 
 @app.command()
+
 def remove_location(
+
     location: Annotated[str, typer.Argument(help="The location name/city to remove.")],
+
     campaign_name: Optional[str] = typer.Option(None, "--campaign", "-c", help="Campaign name.")
+
 ) -> None:
+
     """Removes a target location from the campaign."""
+
     if not campaign_name:
+
         campaign_name = get_campaign()
+
     if not campaign_name:
+
         console.print("[bold red]Error: No campaign specified.[/bold red]")
+
         raise typer.Exit(1)
+
+
 
     campaign_dir = get_campaign_dir(campaign_name)
+
     if not campaign_dir:
+
         console.print(f"[bold red]Error: Campaign directory not found for {campaign_name}[/bold red]")
+
         raise typer.Exit(1)
 
+
+
     config_path = campaign_dir / "config.toml"
+
     with open(config_path, "r") as f:
+
         config = toml.load(f)
 
+
+
     target_csv = config.get("prospecting", {}).get("target-locations-csv")
+
     removed = False
+
     
+
     if target_csv:
+
         csv_path = campaign_dir / target_csv
+
         if csv_path.exists():
+
             rows = []
+
             with open(csv_path, "r", newline="") as f:
+
                 reader = csv.DictReader(f)
+
                 fieldnames = list(reader.fieldnames) if reader.fieldnames else []
+
                 for row in reader:
+
                     if row.get("name") == location or row.get("city") == location:
+
                         removed = True
+
                         continue
+
                     rows.append(row)
+
             
+
             if removed and fieldnames:
+
                 with open(csv_path, "w", newline="") as f:
+
                     writer = csv.DictWriter(f, fieldnames=fieldnames)
+
                     writer.writeheader()
+
                     writer.writerows(rows)
+
                 console.print(f"[green]Removed location from CSV:[/green] {location}")
+
     
+
     if not removed:
+
         locations = config.get("prospecting", {}).get("locations", [])
+
         if location in locations:
+
             locations.remove(location)
+
             config["prospecting"]["locations"] = locations
+
             with open(config_path, "w") as f:
+
                 toml.dump(config, f)
+
             console.print(f"[green]Removed location from config:[/green] {location}")
+
             removed = True
+
             
+
     if not removed:
+
         console.print(f"[yellow]Location not found:[/yellow] {location}")
+
+
+
+@app.command()
+
+def bucket(
+
+    campaign_name: Optional[str] = typer.Option(None, "--campaign", "-c", help="Campaign name.")
+
+) -> None:
+
+    """
+
+    Displays the S3 bucket root and campaign path.
+
+    """
+
+    if not campaign_name:
+
+        campaign_name = get_campaign()
+
+    if not campaign_name:
+
+        console.print("[bold red]Error: No campaign specified.[/bold red]")
+
+        raise typer.Exit(1)
+
+
+
+    campaign_dir = get_campaign_dir(campaign_name)
+
+    if not campaign_dir:
+
+        console.print(f"[bold red]Error: Campaign directory not found for {campaign_name}[/bold red]")
+
+        raise typer.Exit(1)
+
+
+
+    config_path = campaign_dir / "config.toml"
+
+    if not config_path.exists():
+
+        console.print(f"[bold red]Error: config.toml not found for {campaign_name}[/bold red]")
+
+        raise typer.Exit(1)
+
+        
+
+    with open(config_path, "r") as f:
+
+        config = toml.load(f)
+
+    
+
+    aws_config = config.get("aws", {})
+
+    bucket_name = aws_config.get("data_bucket_name") or aws_config.get("cocli_data_bucket_name")
+
+    
+
+    if bucket_name:
+
+        console.print(f"s3://{bucket_name}/campaigns/{campaign_name}/")
+
+    else:
+
+        # Fallback to default pattern
+
+        console.print(f"s3://cocli-data-{campaign_name}/campaigns/{campaign_name}/")
