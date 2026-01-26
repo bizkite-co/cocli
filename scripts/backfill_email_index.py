@@ -47,9 +47,10 @@ def main(campaign_name: Optional[str] = typer.Argument(None, help="Campaign name
         if index_md.exists():
             try:
                 content = index_md.read_text()
-                if content.startswith("---"):
-                    parts = content.split("---")
-                    data = yaml.safe_load(parts[1])
+                from cocli.core.text_utils import parse_frontmatter
+                frontmatter_str = parse_frontmatter(content)
+                if frontmatter_str:
+                    data = yaml.safe_load(frontmatter_str)
                     if data:
                         domain = data.get("domain") or domain
                         e = data.get("email")
@@ -63,9 +64,10 @@ def main(campaign_name: Optional[str] = typer.Argument(None, help="Campaign name
         if website_md.exists():
             try:
                 content = website_md.read_text()
-                if content.startswith("---"):
-                    parts = content.split("---")
-                    data = yaml.safe_load(parts[1])
+                from cocli.core.text_utils import parse_frontmatter
+                frontmatter_str = parse_frontmatter(content)
+                if frontmatter_str:
+                    data = yaml.safe_load(frontmatter_str)
                     if data:
                         domain = data.get("domain") or domain
                         e = data.get("email")

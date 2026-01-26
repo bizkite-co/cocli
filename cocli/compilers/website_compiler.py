@@ -64,16 +64,13 @@ class WebsiteCompiler(BaseCompiler):
             content = f.read().strip()
             
             # Robust split even if header is malformed like ---key: val
-            if content.startswith("---"):
-                parts = content.split("---")
-                # parts[0] is empty, parts[1] is frontmatter
-                if len(parts) >= 2:
-                    frontmatter_str = parts[1]
-                else:
-                    return
-                
+            from ..core.text_utils import parse_frontmatter
+            frontmatter_str = parse_frontmatter(content)
+            
+            if frontmatter_str:
                 try:
-                    website_data_dict = yaml.safe_load(frontmatter_str) or {}
+                    from ..utils.yaml_utils import resilient_safe_load
+                    website_data_dict = resilient_safe_load(frontmatter_str) or {}
                     
                     # Resilience: Pre-filter junk data before model validation
                     from ..core.text_utils import is_valid_email

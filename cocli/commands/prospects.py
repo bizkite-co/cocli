@@ -325,9 +325,11 @@ def enrich_from_queue(
                     if local_path.exists():
                         with open(local_path, "r") as f:
                             content = f.read()
-                            if "---" in content:
+                            from cocli.core.text_utils import parse_frontmatter
+                            frontmatter_str = parse_frontmatter(content)
+                            if frontmatter_str:
                                 try:
-                                    fm = yaml.safe_load(content.split("---")[1])
+                                    fm = yaml.safe_load(frontmatter_str)
                                     last_enriched = fm.get("last_enriched")
                                     if last_enriched:
                                         if isinstance(last_enriched, str):

@@ -45,8 +45,10 @@ def core_import_logic(
                         with open(enrichment_file, 'r', encoding='utf-8') as ef:
                             try:
                                 content = ef.read()
-                                if content.startswith("---"):
-                                    frontmatter = yaml.safe_load(content.split("---")[1])
+                                from cocli.core.text_utils import parse_frontmatter
+                                frontmatter_str = parse_frontmatter(content)
+                                if frontmatter_str:
+                                    frontmatter = yaml.safe_load(frontmatter_str)
                                     if frontmatter.get('Place_ID') == place_id:
                                         company_dir = d
                                         break

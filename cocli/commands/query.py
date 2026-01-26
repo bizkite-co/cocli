@@ -28,8 +28,10 @@ def get_enriched_emails(domain_to_slug_map: dict[str, str], domain: str) -> List
     if index_file.exists():
         try:
             content = index_file.read_text()
-            if content.startswith("---"):
-                frontmatter = yaml.safe_load(content.split("---")[1])
+            from ..core.text_utils import parse_frontmatter
+            frontmatter_str = parse_frontmatter(content)
+            if frontmatter_str:
+                frontmatter = yaml.safe_load(frontmatter_str)
                 company_email = frontmatter.get("email")
                 if company_email:
                     emails.add(company_email)
@@ -59,8 +61,10 @@ def build_domain_to_slug_map() -> dict[str, str]:
         if index_file.exists():
             try:
                 content = index_file.read_text()
-                if content.startswith("---"):
-                    frontmatter = yaml.safe_load(content.split("---")[1])
+                from ..core.text_utils import parse_frontmatter
+                frontmatter_str = parse_frontmatter(content)
+                if frontmatter_str:
+                    frontmatter = yaml.safe_load(frontmatter_str)
                     domain = frontmatter.get("domain")
                     if domain:
                         domain_map[domain] = company_dir.name
@@ -86,8 +90,10 @@ def build_domain_to_tags_map() -> dict[str, List[str]]:
         if index_file.exists():
             try:
                 content = index_file.read_text()
-                if content.startswith("---"):
-                    frontmatter = yaml.safe_load(content.split("---")[1])
+                from ..core.text_utils import parse_frontmatter
+                frontmatter_str = parse_frontmatter(content)
+                if frontmatter_str:
+                    frontmatter = yaml.safe_load(frontmatter_str)
                     domain = frontmatter.get("domain")
             except (yaml.YAMLError, IndexError):
                 continue # Skip malformed files

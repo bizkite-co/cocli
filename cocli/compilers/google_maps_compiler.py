@@ -84,9 +84,10 @@ class GoogleMapsCompiler(BaseCompiler):
             try:
                 with open(gm_enrich_path, "r") as f:
                     content = f.read()
-                    parts = content.split("---")
-                    if len(parts) >= 3:
-                        data = yaml.safe_load(parts[1])
+                    from ..core.text_utils import parse_frontmatter
+                    frontmatter_str = parse_frontmatter(content)
+                    if frontmatter_str:
+                        data = yaml.safe_load(frontmatter_str)
                         return cast(dict[str, Any], data)
             except Exception:
                 pass

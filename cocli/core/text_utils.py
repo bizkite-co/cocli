@@ -1,4 +1,5 @@
 import re
+from typing import Optional
 
 def slugify(text: str) -> str:
     """
@@ -79,3 +80,29 @@ def is_valid_email(email: str) -> bool:
             return False
 
     return True
+
+def parse_frontmatter(content: str) -> Optional[str]:
+    """
+    Extracts YAML frontmatter from a markdown string.
+    Returns the YAML string if found, otherwise None.
+    Handles '---' inside YAML values correctly by only splitting on line-start delimiters.
+    Supports malformed start headers like ---key: val
+    """
+    if not content.startswith("---"):
+        return None
+        
+    # Standard case: starts with ---\n
+    if content.startswith("---\n") or content.startswith("---\r\n"):
+        parts = re.split(r'^---\s*$', content, maxsplit=2, flags=re.MULTILINE)
+        if len(parts) >= 2:
+            return parts[1]
+    
+    # Malformed case: starts with ---key: val
+    # We find the NEXT occurrence of ^---$
+    match = re.search(r'^---\s*$', content, re.MULTILINE)
+    if match:
+        end_idx = match.start()
+        # Frontmatter is everything between the first 3 chars and the start of the next ---
+        return content[3:end_idx]
+        
+    return None

@@ -23,21 +23,22 @@ def get_website_data(company_slug: str) -> Optional[Website]:
     try:
         content = website_md_path.read_text()
         # Extract YAML frontmatter
-        if content.startswith("---"):
-            parts = content.split("---")
-            if len(parts) >= 3:
-                data = yaml.safe_load(parts[1])
-                
-                # Hotfix for legacy/malformed personnel data
-                if "personnel" in data and isinstance(data["personnel"], list):
-                    sanitized_personnel = []
-                    for p in data["personnel"]:
-                        if isinstance(p, str):
-                            sanitized_personnel.append({"raw_entry": p})
-                        elif isinstance(p, dict):
-                            sanitized_personnel.append(p)
-                    data["personnel"] = sanitized_personnel
+        from cocli.core.text_utils import parse_frontmatter
+        frontmatter_str = parse_frontmatter(content)
+        if frontmatter_str:
+            data = yaml.safe_load(frontmatter_str)
+            
+            # Hotfix for legacy/malformed personnel data
+            if data and "personnel" in data and isinstance(data["personnel"], list):
+                sanitized_personnel = []
+                for p in data["personnel"]:
+                    if isinstance(p, str):
+                        sanitized_personnel.append({"raw_entry": p})
+                    elif isinstance(p, dict):
+                        sanitized_personnel.append(p)
+                data["personnel"] = sanitized_personnel
 
+            if data:
                 return Website.model_validate(data)
     except Exception:
         pass
@@ -139,10 +140,10 @@ def main(
         if index_md.exists():
             try:
                 content = index_md.read_text()
-                if "---" in content:
-                    parts = content.split("---")
-                    if len(parts) >= 3:
-                        idx_data = yaml.safe_load(parts[1]) or {}
+                from cocli.core.text_utils import parse_frontmatter
+                frontmatter_str = parse_frontmatter(content)
+                if frontmatter_str:
+                    idx_data = yaml.safe_load(frontmatter_str) or {}
             except Exception:
                 pass
 
