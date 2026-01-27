@@ -32,7 +32,12 @@ def main(
     console.print(f"[bold]Syncing results from S3 bucket: {s3_bucket}[/bold]")
     
     # Load enqueued reference to know which ones to check
-    ref_path = Path(f"enqueued_{tag}.json")
+    from cocli.core.config import get_temp_dir
+    ref_path = get_temp_dir() / f"enqueued_{tag}.json"
+    if not ref_path.exists():
+        # Fallback to root
+        ref_path = Path(f"enqueued_{tag}.json")
+
     if not ref_path.exists():
         console.print(f"[bold red]Error: Reference file {ref_path} not found.[/bold red]")
         raise typer.Exit(1)

@@ -221,10 +221,15 @@ def coverage_gap(
             raise typer.Exit(code=1)
 
     campaign_dir = get_campaign_dir(campaign_name)
-    if not campaign_dir:
+    if campaign_dir:
+        if output_csv is None:
+            from ...core.config import get_campaign_exports_dir
+            exports_dir = get_campaign_exports_dir(campaign_name)
+            output_csv = exports_dir / "coverage_gap.csv"
+    else:
         console.print(f"[bold red]Campaign '{campaign_name}' not found.[/bold red]")
         raise typer.Exit(1)
-
+    
     target_tiles = get_campaign_grid_tiles(campaign_name)
     if not target_tiles:
          console.print(f"[bold red]No target tiles found for campaign '{campaign_name}'.[/bold red]")

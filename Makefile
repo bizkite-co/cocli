@@ -93,7 +93,7 @@ audit-campaign: ## Audit campaign for cross-contamination (Usage: make audit-cam
 	@$(VENV_DIR)/bin/python scripts/audit_campaign_integrity.py $(CAMPAIGN) $(FIX)
 
 coverage-gap: ## Generate a report of unscraped target areas
-	@COCLI_DATA_HOME=$(shell pwd)/data ./.venv/bin/cocli campaign coverage-gap $(CAMPAIGN) --output coverage_gap.csv
+	@COCLI_DATA_HOME=$(shell pwd)/data ./.venv/bin/cocli campaign coverage-gap $(CAMPAIGN)
 
 test-tui: install lint ## Run TUI test with names
 	source $(VENV_DIR)/bin/activate && pytest -v tests/tui
@@ -230,8 +230,9 @@ debug-google-maps-scraper: install ## Run the Google Maps scraper in headed mode
 .PHONY: run-worker-gm-list-bg
 run-worker-gm-list-bg: ## Run the cocli worker gm-list command in the background
 	@echo "Starting cocli worker gm-list in the background using wrapper script..."
-	@nohup ./run_worker.sh > worker_scrape.log 2>&1 & \
-	echo "cocli worker gm-list started in the background. Output redirected to worker_scrape.log"
+	@mkdir -p .logs
+	@nohup ./run_worker.sh > .logs/worker_scrape.log 2>&1 & \
+	echo "cocli worker gm-list started in the background. Output redirected to .logs/worker_scrape.log"
 
 .PHONY: watch-report
 watch-report: ## Watch the campaign report every 5 seconds
@@ -513,7 +514,8 @@ hotfix-rpi: ## Push code hotfix to a single RPi (Usage: make hotfix-rpi RPI_HOST
 			done \
 		"; \
 		ts=$$(date +%H:%M:%S); printf "[$$ts] \033[0;32mHotfix applied to %s\033[0m\n" "$(RPI_HOST)"; \
-	else \		ts=$$(date +%H:%M:%S); printf "[$$ts] \033[0;31m%s is OFFLINE or slow (10s timeout). Skipping.\033[0m\n" "$(RPI_HOST)"; \
+	else \
+		ts=$$(date +%H:%M:%S); printf "[$$ts] \033[0;31m%s is OFFLINE or slow (10s timeout). Skipping.\033[0m\n" "$(RPI_HOST)"; \
 	fi
 
 .PHONY: hotfix-cluster

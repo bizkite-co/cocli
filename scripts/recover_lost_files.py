@@ -4,6 +4,8 @@ from pathlib import Path
 from rich.console import Console
 from rich.progress import track
 
+from cocli.core.config import get_temp_dir
+
 console = Console()
 
 BUCKET = "cocli-data-turboship"
@@ -13,11 +15,16 @@ S3_PREFIX = "campaigns/turboship/indexes/emails"
 LOCAL_BASE = "/home/mstouffer/repos/company-cli/data/campaigns/turboship/indexes/emails"
 
 def main() -> None:
-    if not Path("lost_entries.json").exists():
-        console.print("[red]lost_entries.json not found.[/red]")
+    lost_entries_file = get_temp_dir() / "lost_entries.json"
+    if not lost_entries_file.exists():
+        # Fallback to root
+        lost_entries_file = Path("lost_entries.json")
+
+    if not lost_entries_file.exists():
+        console.print(f"[red]{lost_entries_file} not found.[/red]")
         return
 
-    with open("lost_entries.json", 'r') as f:
+    with open(lost_entries_file, 'r') as f:
         entries = json.load(f)
 
     console.print(f"Recovering {len(entries)} files from S3...")

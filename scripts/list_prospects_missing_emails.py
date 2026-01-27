@@ -5,7 +5,7 @@ from rich.progress import track
 from typing import Optional
 from pathlib import Path
 
-from cocli.core.config import get_campaign
+from cocli.core.config import get_campaign, get_campaign_exports_dir
 from cocli.models.company import Company
 
 app = typer.Typer()
@@ -14,7 +14,7 @@ console = Console()
 @app.command()
 def main(
     campaign_name: Optional[str] = typer.Argument(None, help="Campaign name. Defaults to current context."),
-    output: Path = typer.Option("prospects_missing_emails.csv", "--output", "-o", help="Path to output CSV file."),
+    output: Optional[Path] = typer.Option(None, "--output", "-o", help="Path to output CSV file. Defaults to campaign exports."),
 ) -> None:
     """
     Lists all prospects in a campaign that are missing emails and saves them to a CSV.
@@ -25,6 +25,10 @@ def main(
     if not campaign_name:
         console.print("[bold red]Error: No campaign specified and no active context.[/bold red]")
         raise typer.Exit(1)
+
+    if output is None:
+        exports_dir = get_campaign_exports_dir(campaign_name)
+        output = exports_dir / "prospects_missing_emails.csv"
 
     console.print(f"[bold]Finding prospects missing emails for campaign: {campaign_name}[/bold]")
     

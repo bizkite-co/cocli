@@ -1,83 +1,69 @@
-import json
+import boto3
+import csv
+import io
 import logging
-import asyncio
-from cocli.core.domain_index_manager import DomainIndexManager
-from cocli.models.website_domain_csv import WebsiteDomainCsv
-from cocli.models.campaign import Campaign
+import typer
+from typing import Any
+from concurrent.futures import ThreadPoolExecutor
+from cocli.utils.usv_utils import USVWriter
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-async def migrate_item(s3_manager: DomainIndexManager, bucket_name: str, old_key: str, semaphore: asyncio.Semaphore) -> None:
-    async with semaphore:
-        try:
-            # We use threading for boto3 since it's not async-native, 
-            # but semaphore limits the concurrency
-            loop = asyncio.get_event_loop()
-            
-            def process() -> str:
-                resp = s3_manager.s3_client.get_object(Bucket=bucket_name, Key=old_key)
-                content = resp['Body'].read().decode('utf-8')
-                data = json.loads(content)
-                
-                # Reconstitute model (Skip strict validation for anomalous emails during migration)
-                try:
-                    item = WebsiteDomainCsv.model_validate(data)
-                except Exception:
-                    # Fallback: manually construct model to bypass email validation if it fails
-                    # but keep most data
-                    data['email'] = None 
-                    item = WebsiteDomainCsv.model_construct(**data)
-                
-                # add_or_update now uses USV and the .usv extension
-                s3_manager.add_or_update(item)
-                
-                # Delete old JSON key
-                s3_manager.s3_client.delete_object(Bucket=bucket_name, Key=old_key)
-                return str(item.domain)
+app = typer.Typer()
 
-            domain = await loop.run_in_executor(None, process)
-            logger.info(f"Migrated: {domain}")
-
-        except Exception as e:
-            logger.error(f"Failed to migrate {old_key}: {e}")
-
-async def migrate_to_usv(campaign_name: str, source_prefix: str) -> None:
-    """
-    Migrates S3 domain index objects from JSON to USV format with parallelism.
-    """
-    campaign = Campaign.load(campaign_name)
-    s3_manager = DomainIndexManager(campaign)
+def convert_csv_to_usv_bytes(csv_bytes: bytes) -> bytes:
+    f_in = io.StringIO(csv_bytes.decode('utf-8'))
+    reader = csv.reader(f_in)
     
-    bucket_name = s3_manager.bucket_name
+    f_out = io.StringIO()
+    writer = USVWriter(f_out)
+    for row in reader:
+        writer.writerow(row)
     
-    logger.info(f"Scanning {source_prefix} in bucket: {bucket_name}")
+    return f_out.getvalue().encode('utf-8')
 
-    paginator = s3_manager.s3_client.get_paginator('list_objects_v2')
-    pages = paginator.paginate(Bucket=bucket_name, Prefix=source_prefix)
-
-    tasks = []
-    semaphore = asyncio.Semaphore(50) # Process 50 files at once
-
-    for page in pages:
-        for obj in page.get('Contents', []):
-            old_key = obj['Key']
-            if old_key.endswith(".json"):
-                tasks.append(migrate_item(s3_manager, bucket_name, old_key, semaphore))
-
-    if not tasks:
-        logger.info("No JSON files found to migrate.")
+def migrate_object(s3_client: Any, bucket: str, key: str, delete_old: bool = False) -> None:
+    if not key.endswith(".csv"):
         return
 
-    logger.info(f"Starting parallel migration of {len(tasks)} items...")
-    await asyncio.gather(*tasks)
-    logger.info("S3 Migration to Atomic USV complete.")
+    usv_key = key[:-4] + ".usv"
+    
+    try:
+        logger.info(f"Migrating s3://{bucket}/{key}")
+        response = s3_client.get_object(Bucket=bucket, Key=key)
+        csv_bytes = response['Body'].read()
+        
+        usv_bytes = convert_csv_to_usv_bytes(csv_bytes)
+        
+        s3_client.put_object(Bucket=bucket, Key=usv_key, Body=usv_bytes)
+        logger.info(f"Created s3://{bucket}/{usv_key}")
+        
+        if delete_old:
+            s3_client.delete_object(Bucket=bucket, Key=key)
+            logger.info(f"Deleted s3://{bucket}/{key}")
+            
+    except Exception as e:
+        logger.error(f"Failed to migrate {key}: {e}")
+
+@app.command()
+def main(
+    bucket: str = typer.Argument(..., help="S3 Bucket name"),
+    prefix: str = typer.Argument("", help="S3 Prefix"),
+    workers: int = typer.Option(10, "--workers", "-w"),
+    delete_old: bool = typer.Option(False, "--delete-old", help="Delete the original CSV files after conversion.")
+) -> None:
+    s3 = boto3.client('s3')
+    paginator = s3.get_paginator('list_objects_v2')
+    pages = paginator.paginate(Bucket=bucket, Prefix=prefix)
+    
+    with ThreadPoolExecutor(max_workers=workers) as executor:
+        for page in pages:
+            if 'Contents' in page:
+                for obj in page['Contents']:
+                    key = obj['Key']
+                    if key.endswith(".csv"):
+                        executor.submit(migrate_object, s3, bucket, key, delete_old)
 
 if __name__ == "__main__":
-    import argparse
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--campaign", required=True)
-    parser.add_argument("--source-prefix", default="indexes/domains/")
-    args = parser.parse_args()
-
-    asyncio.run(migrate_to_usv(args.campaign, args.source_prefix))
+    app()

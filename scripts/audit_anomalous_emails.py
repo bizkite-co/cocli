@@ -2,8 +2,10 @@ import json
 import csv
 from pathlib import Path
 
+from cocli.core.config import get_campaign_exports_dir
+
 base_dir = Path("data/campaigns/turboship/indexes/emails")
-output_file = "anomalous_emails.csv"
+output_file = get_campaign_exports_dir("turboship") / "anomalous_emails.csv"
 
 def is_anomalous(email: str) -> bool:
     # Standard common domains

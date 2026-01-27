@@ -19,7 +19,12 @@ def main(
     console.print(f"[bold]Evaluating results for batch tag: {tag}[/bold]")
     
     # Load enqueued reference if it exists
-    ref_path = Path(f"enqueued_{tag}.json")
+    from cocli.core.config import get_temp_dir
+    ref_path = get_temp_dir() / f"enqueued_{tag}.json"
+    if not ref_path.exists():
+        # Fallback to root
+        ref_path = Path(f"enqueued_{tag}.json")
+
     enqueued_slugs = set()
     if ref_path.exists():
         enqueued_data = json.loads(ref_path.read_text())

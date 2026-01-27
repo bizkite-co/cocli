@@ -73,6 +73,9 @@ class DataPaths:
     def campaign_indexes(self, campaign_slug: str) -> Path:
         return self.campaign(campaign_slug) / "indexes"
 
+    def campaign_exports(self, campaign_slug: str) -> Path:
+        return self.campaign(campaign_slug) / "exports"
+
     def campaign_exclusions(self, campaign_slug: str) -> Path:
         return self.campaign_indexes(campaign_slug) / "exclude"
 

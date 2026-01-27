@@ -1,13 +1,14 @@
 import json
 from pathlib import Path
 
-def manage_entries(file_path: str, timeout_count: int = 2) -> None:
-    path = Path(file_path)
-    if not path.exists():
+from cocli.core.config import get_temp_dir
+
+def manage_entries(file_path: Path, timeout_count: int = 2) -> None:
+    if not file_path.exists():
         print(f"{file_path} not found.")
         return
 
-    with open(path, 'r', encoding='utf-8') as f:
+    with open(file_path, 'r', encoding='utf-8') as f:
         data = json.load(f)
     
     # Increment timeouts for the first N items (assuming they were the ones processed)
@@ -18,10 +19,14 @@ def manage_entries(file_path: str, timeout_count: int = 2) -> None:
     # Sort by recent_timeouts (ascending), keeping stable order for equal values
     data.sort(key=lambda x: x.get('recent_timeouts', 0))
     
-    with open(path, 'w', encoding='utf-8') as f:
+    with open(file_path, 'w', encoding='utf-8') as f:
         json.dump(data, f, indent=2)
     
     print(f"Updated and reordered {file_path}")
 
 if __name__ == "__main__":
-    manage_entries("lost_entries.json")
+    lost_entries_file = get_temp_dir() / "lost_entries.json"
+    if not lost_entries_file.exists():
+        lost_entries_file = Path("lost_entries.json")
+    
+    manage_entries(lost_entries_file)

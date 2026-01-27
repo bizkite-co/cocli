@@ -2,11 +2,12 @@
 import csv
 import logging
 from pathlib import Path
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, Iterable
 from datetime import datetime, UTC
 
 from ..models.google_maps_prospect import GoogleMapsProspect
 from .config import get_cocli_base_dir
+from ..utils.usv_utils import USVDictReader, USVDictWriter
 
 logger = logging.getLogger(__name__)
 
@@ -15,16 +16,29 @@ class GoogleMapsCache:
         if not cache_dir:
             cache_dir = get_cocli_base_dir() / "cache"
         cache_dir.mkdir(parents=True, exist_ok=True)
-        self.cache_file = cache_dir / "google_maps_cache.csv"
+        self.cache_file_usv = cache_dir / "google_maps_cache.usv"
+        self.cache_file_csv = cache_dir / "google_maps_cache.csv"
         self.data: Dict[str, GoogleMapsProspect] = {}
         self._load_data()
 
     def _load_data(self) -> None:
-        if not self.cache_file.exists():
+        # Prefer USV
+        if self.cache_file_usv.exists():
+            active_file = self.cache_file_usv
+            is_usv = True
+        elif self.cache_file_csv.exists():
+            active_file = self.cache_file_csv
+            is_usv = False
+        else:
             return
 
-        with open(self.cache_file, "r", newline="", encoding="utf-8") as csvfile:
-            reader = csv.DictReader(csvfile)
+        with open(active_file, "r", encoding="utf-8") as f:
+            reader: Iterable[Dict[str, Any]]
+            if is_usv:
+                reader = USVDictReader(f)
+            else:
+                reader = csv.DictReader(f)
+
             for row in reader:
                 processed_row: Dict[str, Any] = {}
                 for k, v in row.items():
@@ -70,9 +84,16 @@ class GoogleMapsCache:
             self.data[item.Place_ID] = item
 
     def save(self) -> None:
-        with open(self.cache_file, "w", newline="", encoding="utf-8") as csvfile:
-            headers = GoogleMapsProspect.model_fields.keys()
-            writer = csv.DictWriter(csvfile, fieldnames=headers)
+        with open(self.cache_file_usv, "w", encoding="utf-8") as f:
+            headers = list(GoogleMapsProspect.model_fields.keys())
+            writer = USVDictWriter(f, fieldnames=headers)
             writer.writeheader()
             for item in self.data.values():
                 writer.writerow(item.model_dump())
+        
+        # If we successfully saved USV, and a legacy CSV exists, we can remove it
+        if self.cache_file_csv.exists():
+            try:
+                self.cache_file_csv.unlink()
+            except Exception:
+                pass

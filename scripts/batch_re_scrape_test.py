@@ -3,7 +3,6 @@ import json
 from rich.console import Console
 from rich.progress import track
 from typing import Optional
-from pathlib import Path
 
 from cocli.core.config import get_campaign
 from cocli.core.queue.factory import get_queue_manager
@@ -90,7 +89,8 @@ def main(
         queue_manager.push(msg)
 
     # 4. Save reference file
-    output_path = Path("batch_test_selection.json")
+    from cocli.core.config import get_temp_dir
+    output_path = get_temp_dir() / "batch_test_selection.json"
     output_path.write_text(json.dumps(selection_data, indent=2))
     
     console.print("\n[bold green]Success![/bold green]")

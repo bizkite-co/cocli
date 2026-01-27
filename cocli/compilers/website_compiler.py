@@ -9,7 +9,6 @@ from .base import BaseCompiler
 from ..models.company import Company
 from ..models.website import Website
 from ..core.utils import create_company_files
-from ..core.config import get_cocli_base_dir
 
 console = Console()
 
@@ -28,7 +27,8 @@ class WebsiteCompiler(BaseCompiler):
         if not self.errors:
             return
         
-        report_path = get_cocli_base_dir() / "audit_report.json"
+        from ..core.config import get_temp_dir
+        report_path = get_temp_dir() / "audit_report.json"
         
         # Load existing if any
         existing = []

@@ -1,6 +1,6 @@
 import csv
 from pathlib import Path
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, Iterable
 from datetime import datetime, timezone
 import json
 import logging
@@ -8,6 +8,7 @@ import logging
 from cocli.models.domain import Domain
 from cocli.models.website import Website
 from .config import get_cocli_app_data_dir
+from ..utils.usv_utils import USVDictReader, USVDictWriter
 
 logger = logging.getLogger(__name__)
 
@@ -16,16 +17,29 @@ class WebsiteCache:
         if not cache_dir:
             cache_dir = get_cocli_app_data_dir() / "cache"
         cache_dir.mkdir(parents=True, exist_ok=True)
-        self.cache_file = cache_dir / "website_data_cache.csv"
+        self.cache_file_usv = cache_dir / "website_data_cache.usv"
+        self.cache_file_csv = cache_dir / "website_data_cache.csv"
         self.data: Dict[str, Website] = {}
         self._load_data()
 
     def _load_data(self) -> None:
-        if not self.cache_file.exists():
+        # Prefer USV
+        if self.cache_file_usv.exists():
+            active_file = self.cache_file_usv
+            is_usv = True
+        elif self.cache_file_csv.exists():
+            active_file = self.cache_file_csv
+            is_usv = False
+        else:
             return
 
-        with open(self.cache_file, "r", newline="", encoding="utf-8") as csvfile:
-            reader = csv.DictReader(csvfile)
+        with open(active_file, "r", encoding="utf-8") as f:
+            reader: Iterable[Dict[str, Any]]
+            if is_usv:
+                reader = USVDictReader(f)
+            else:
+                reader = csv.DictReader(f)
+
             for row in reader:
                 processed_data: Dict[str, Any] = {}
 
@@ -99,14 +113,21 @@ class WebsiteCache:
         self.add_or_update(item)
 
     def save(self) -> None:
-        with open(self.cache_file, "w", newline="", encoding="utf-8") as csvfile:
-            headers = Website.model_fields.keys()
-            writer = csv.DictWriter(csvfile, fieldnames=headers)
+        with open(self.cache_file_usv, "w", encoding="utf-8") as f:
+            headers = list(Website.model_fields.keys())
+            writer = USVDictWriter(f, fieldnames=headers)
             writer.writeheader()
             for item in self.data.values():
                 dump = item.model_dump()
-                # Convert lists and dicts to JSON strings for CSV
+                # Convert lists and dicts to JSON strings for CSV/USV
                 for field in ['personnel', 'services', 'products', 'tags', 'all_emails', 'tech_stack', 'email_contexts']:
                     if dump.get(field) is not None:
                         dump[field] = json.dumps(dump[field])
                 writer.writerow(dump)
+        
+        # Cleanup legacy CSV if it exists
+        if self.cache_file_csv.exists():
+            try:
+                self.cache_file_csv.unlink()
+            except Exception:
+                pass

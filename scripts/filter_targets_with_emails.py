@@ -2,6 +2,7 @@ import csv
 import sys
 import os
 from pathlib import Path
+from typing import Optional
 from rich.console import Console
 from rich.progress import track
 
@@ -10,13 +11,23 @@ sys.path.append(os.getcwd())
 
 from cocli.models.company import Company
 from cocli.core.text_utils import is_valid_email
+from cocli.core.config import get_campaign, get_campaign_exports_dir
 
 console = Console()
 
-def main() -> None:
-    input_csv = Path("companies_missing_keywords.csv")
-    output_csv = Path("enqueuable_targets.csv")
+def main(campaign_name: Optional[str] = None) -> None:
+    if not campaign_name:
+        campaign_name = get_campaign() or "turboship"
+        
+    exports_dir = get_campaign_exports_dir(campaign_name)
+    input_csv = exports_dir / "companies_missing_keywords.csv"
+    output_csv = exports_dir / "enqueuable_targets.csv"
     
+    if not input_csv.exists():
+        # Fallback to root
+        input_csv = Path("companies_missing_keywords.csv")
+        output_csv = Path("enqueuable_targets.csv")
+
     if not input_csv.exists():
         console.print(f"[red]Error: {input_csv} not found.[/red]")
         sys.exit(1)
@@ -67,4 +78,5 @@ def main() -> None:
     console.print(f"Saved to: [bold]{output_csv}[/bold]")
 
 if __name__ == "__main__":
-    main()
+    campaign = sys.argv[1] if len(sys.argv) > 1 else None
+    main(campaign)

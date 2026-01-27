@@ -1,8 +1,10 @@
 import typer
 import json
+from pathlib import Path
+from typing import Optional
 from rich.console import Console
 from rich.progress import track
-from cocli.core.config import get_campaign_dir
+from cocli.core.config import get_campaign_dir, get_campaign_exports_dir
 
 app = typer.Typer()
 console = Console()
@@ -14,11 +16,17 @@ COMMON_TLDS = {
 }
 
 @app.command()
-def main(campaign_name: str = "turboship", output_file: str = "suspicious_domains.json") -> None:
+def main(
+    campaign_name: str = "turboship", 
+    output_file: Optional[Path] = typer.Option(None, "--output", "-o", help="Path to output file.")
+) -> None:
     campaign_dir = get_campaign_dir(campaign_name)
     if not campaign_dir:
         console.print(f"[red]Campaign directory not found for: {campaign_name}[/red]")
         raise typer.Exit(1)
+        
+    if output_file is None:
+        output_file = get_campaign_exports_dir(campaign_name) / "suspicious_domains.json"
         
     email_index_dir = campaign_dir / "indexes" / "emails"
     

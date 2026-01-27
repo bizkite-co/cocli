@@ -2,9 +2,16 @@ import csv
 import os
 from pathlib import Path
 
-csv_file = "anomalous_emails.csv"
+from cocli.core.config import get_campaign_exports_dir
 
-if not Path(csv_file).exists():
+campaign_name = "turboship"
+csv_file = get_campaign_exports_dir(campaign_name) / "anomalous_emails.csv"
+
+if not csv_file.exists():
+    # Fallback to root
+    csv_file = Path("anomalous_emails.csv")
+
+if not csv_file.exists():
     print(f"Error: {csv_file} not found. Run the audit script first.")
     exit(1)
 

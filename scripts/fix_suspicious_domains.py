@@ -3,7 +3,7 @@ import json
 import logging
 from pathlib import Path
 
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
 from playwright.async_api import Browser
 
 import typer
@@ -14,7 +14,7 @@ from rich.progress import track
 from cocli.enrichment.website_scraper import WebsiteScraper
 from cocli.models.campaign import Campaign
 from cocli.models.company import Company
-from cocli.core.config import load_campaign_config
+from cocli.core.config import load_campaign_config, get_campaign_exports_dir
 from cocli.application.company_service import update_company_from_website_data
 
 app = typer.Typer()
@@ -212,13 +212,24 @@ async def run_fix(input_file: str, dry_run: bool, concurrency: int, campaign_nam
 
 @app.command()
 def main(
-    input_file: str = "suspicious_domains.json", 
+    input_file: Optional[Path] = typer.Option(None, "--input", "-i", help="Path to input file."),
     dry_run: bool = typer.Option(False, "--dry-run", help="Simulate without scraping or deleting"),
     concurrency: int = typer.Option(5, "--concurrency", "-c", help="Number of concurrent scrapes"),
     campaign: str = typer.Option("turboship", "--campaign", help="Campaign name"),
     limit: int = typer.Option(0, "--limit", "-l", help="Limit number of items to process (0 for all)")
 ) -> None:
-    asyncio.run(run_fix(input_file, dry_run, concurrency, campaign, limit))
+    if input_file is None:
+        input_file = get_campaign_exports_dir(campaign) / "suspicious_domains.json"
+        
+    if not input_file.exists():
+        # Fallback to root
+        input_file = Path("suspicious_domains.json")
+
+    if not input_file.exists():
+        console.print(f"[red]Error: {input_file} not found.[/red]")
+        raise typer.Exit(1)
+
+    asyncio.run(run_fix(str(input_file), dry_run, concurrency, campaign, limit))
 
 if __name__ == "__main__":
     app()

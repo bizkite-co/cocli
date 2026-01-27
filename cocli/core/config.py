@@ -102,6 +102,16 @@ def get_indexes_dir() -> Path:
     v_dir.path.mkdir(parents=True, exist_ok=True)
     return v_dir.path
 
+def get_temp_dir() -> Path:
+    """
+    Returns the temporary directory for cocli.
+    Path: data/temp/
+    """
+    p = paths.root / "temp"
+    v_dir = get_validated_dir(p, "Temp Directory")
+    v_dir.path.mkdir(parents=True, exist_ok=True)
+    return v_dir.path
+
 def get_scraped_areas_index_dir() -> Path:
     """
     Returns the directory for phrase-specific scraped area indexes.
@@ -132,6 +142,16 @@ def get_campaign_scraped_data_dir(campaign_name: str) -> Path:
     
     p = campaign_dir / "scraped_data"
     v_dir = get_validated_dir(p, f"Campaign Scraped Data: {campaign_name}")
+    v_dir.path.mkdir(parents=True, exist_ok=True)
+    return v_dir.path
+
+def get_campaign_exports_dir(campaign_name: str) -> Path:
+    """
+    Returns the exports directory for a specific campaign.
+    Path: data/campaigns/<campaign>/exports/
+    """
+    p = paths.campaign_exports(campaign_name)
+    v_dir = get_validated_dir(p, f"Campaign Exports: {campaign_name}")
     v_dir.path.mkdir(parents=True, exist_ok=True)
     return v_dir.path
 
