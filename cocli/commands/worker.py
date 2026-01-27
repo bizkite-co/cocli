@@ -26,6 +26,7 @@ from cocli.models.queue import QueueMessage
 from cocli.core.prospects_csv_manager import ProspectsIndexManager
 from cocli.core.config import load_campaign_config, get_campaigns_dir, get_campaign, get_campaign_dir
 from cocli.utils.playwright_utils import setup_optimized_context
+from cocli.utils.headers import ANTI_BOT_HEADERS, USER_AGENT
 
 
 # Load Version
@@ -172,7 +173,11 @@ async def run_worker(
                 )
 
                 # Create context and setup optimizations for bandwidth tracking
-                context = await browser.new_context()
+                context = await browser.new_context(
+                    ignore_https_errors=True,
+                    user_agent=USER_AGENT,
+                    extra_http_headers=ANTI_BOT_HEADERS,
+                )
                 tracker = await setup_optimized_context(context)
 
                 tasks = [
@@ -599,7 +604,11 @@ async def run_details_worker(
                     )
 
                     # Create context and setup optimizations
-                    context = await browser_instance.new_context(ignore_https_errors=True)
+                    context = await browser_instance.new_context(
+                        ignore_https_errors=True,
+                        user_agent=USER_AGENT,
+                        extra_http_headers=ANTI_BOT_HEADERS,
+                    )
                     tracker = await setup_optimized_context(context)
 
                     tasks = [
@@ -926,7 +935,11 @@ async def run_enrichment_worker(
                     logger.info("Browser launched. Creating context...")
 
                     # Create context and setup optimizations
-                    context = await browser_instance.new_context(ignore_https_errors=True)
+                    context = await browser_instance.new_context(
+                        ignore_https_errors=True,
+                        user_agent=USER_AGENT,
+                        extra_http_headers=ANTI_BOT_HEADERS,
+                    )
                     logger.info("Context created. Setting up optimizations...")
                     tracker = await setup_optimized_context(context)
                     logger.info("Optimizations set up. Starting task loops...")
@@ -1324,7 +1337,11 @@ async def run_supervisor(
         command_task: Optional[asyncio.Task[Any]] = None
 
         # Shared context and tracker for all workers on this host
-        context = await browser.new_context(ignore_https_errors=True)
+        context = await browser.new_context(
+            ignore_https_errors=True,
+            user_agent=USER_AGENT,
+            extra_http_headers=ANTI_BOT_HEADERS,
+        )
         await setup_optimized_context(context)
 
         # Setup queues and clients once
@@ -1461,7 +1478,11 @@ async def run_supervisor(
                     async def _run_single_enrichment_task() -> bool:
                         # Shared context from supervisor might leak, create a fresh one
                         # ignore_https_errors is important for broad scraping
-                        tmp_context = await browser.new_context(ignore_https_errors=True)
+                        tmp_context = await browser.new_context(
+                            ignore_https_errors=True,
+                            user_agent=USER_AGENT,
+                            extra_http_headers=ANTI_BOT_HEADERS,
+                        )
                         tmp_tracker = await setup_optimized_context(tmp_context)
                         found_task = False
                         try:

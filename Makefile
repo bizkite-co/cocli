@@ -498,12 +498,13 @@ hotfix-rpi: ## Push code hotfix to a single RPi (Usage: make hotfix-rpi RPI_HOST
 	@ts=$$(date +%H:%M:%S); echo "[$$ts] Checking connectivity to $(RPI_HOST)..."
 	@if ping -c 1 -W 10 $(RPI_HOST) > /dev/null 2>&1; then \
 		ts=$$(date +%H:%M:%S); printf "[$$ts] \033[0;32m%s is ONLINE. Pushing hotfix...\033[0m\n" "$(RPI_HOST)"; \
-		scp -q -r cocli pyproject.toml $(RPI_USER)@$(RPI_HOST):/tmp/; \
+		scp -q -r cocli pyproject.toml VERSION $(RPI_USER)@$(RPI_HOST):/tmp/; \
 		ssh -o ConnectTimeout=10 $(RPI_USER)@$(RPI_HOST) " \
 			for container in \$$(docker ps --filter name=cocli- --format '{{.Names}}'); do \
 				echo \"  [\$$(date +%H:%M:%S)] Updating code in \$$container...\"; \
 				docker cp /tmp/cocli \$$container:/app/; \
 				docker cp /tmp/pyproject.toml \$$container:/app/; \
+				docker cp /tmp/VERSION \$$container:/app/; \
 				echo \"  [\$$(date +%H:%M:%S)] Installing dependencies in \$$container...\"; \
 				docker exec \$$container uv pip install psutil --system > /dev/null; \
 				docker exec \$$container uv pip install . --system --no-deps > /dev/null; \
@@ -512,8 +513,7 @@ hotfix-rpi: ## Push code hotfix to a single RPi (Usage: make hotfix-rpi RPI_HOST
 			done \
 		"; \
 		ts=$$(date +%H:%M:%S); printf "[$$ts] \033[0;32mHotfix applied to %s\033[0m\n" "$(RPI_HOST)"; \
-	else \
-		ts=$$(date +%H:%M:%S); printf "[$$ts] \033[0;31m%s is OFFLINE or slow (10s timeout). Skipping.\033[0m\n" "$(RPI_HOST)"; \
+	else \		ts=$$(date +%H:%M:%S); printf "[$$ts] \033[0;31m%s is OFFLINE or slow (10s timeout). Skipping.\033[0m\n" "$(RPI_HOST)"; \
 	fi
 
 .PHONY: hotfix-cluster

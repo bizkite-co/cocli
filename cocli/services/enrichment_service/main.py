@@ -15,6 +15,7 @@ from cocli.models.campaign import Campaign
 from cocli.core.config import get_campaign_dir
 from cocli.core.exceptions import EnrichmentError, NavigationError
 from cocli.core.text_utils import slugify
+from cocli.utils.headers import ANTI_BOT_HEADERS, USER_AGENT
 import socket
 import httpx
 
@@ -53,7 +54,7 @@ async def debug_network() -> Dict[str, Any]:
 
     # 2. HTTP Check (to google)
     try:
-        async with httpx.AsyncClient() as client:
+        async with httpx.AsyncClient(headers={**ANTI_BOT_HEADERS, "User-Agent": USER_AGENT}) as client:
             resp = await client.get("https://www.google.com", timeout=5.0)
             results["http_google"] = f"OK: {resp.status_code}"
     except Exception as e:
@@ -61,7 +62,7 @@ async def debug_network() -> Dict[str, Any]:
 
     # 3. HTTP Check (to a target that failed, e.g. softroc.com)
     try:
-        async with httpx.AsyncClient(verify=False) as client: # verify=False to mimic scraper
+        async with httpx.AsyncClient(verify=False, headers={**ANTI_BOT_HEADERS, "User-Agent": USER_AGENT}) as client: # verify=False to mimic scraper
              resp = await client.get("https://softroc.com", timeout=5.0)
              results["http_softroc"] = f"OK: {resp.status_code}"
     except Exception as e:

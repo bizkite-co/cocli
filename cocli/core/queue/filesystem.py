@@ -291,12 +291,29 @@ class FilesystemQueue:
         if not self.s3_client or not self.bucket_name:
             return
 
+        # 1. Discover which shards actually exist in S3
+        pending_prefix = f"campaigns/{self.campaign_name}/queues/{self.queue_name}/pending/"
+        shards = []
+        try:
+            paginator = self.s3_client.get_paginator('list_objects_v2')
+            for page in paginator.paginate(Bucket=self.bucket_name, Prefix=pending_prefix, Delimiter='/'):
+                for prefix in page.get('CommonPrefixes', []):
+                    shard = prefix.get('Prefix').split('/')[-2]
+                    if shard:
+                        shards.append(shard)
+        except Exception as e:
+            logger.error(f"Error listing shards from S3: {e}")
+            return
+
+        if not shards:
+            return
+
         import random
-        shards = list("0123456789abcdef")
         random.shuffle(shards)
         
         found_total = 0
-        for shard in shards[:3]: # Try 3 random shards
+        # Try a few active shards
+        for shard in shards[:5]: 
             if found_total >= max_discovery:
                 break
                 

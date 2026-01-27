@@ -392,7 +392,7 @@ def prepare_mission(
 
     # 3. Generate Grid
     console.print(f"[bold]Generating grid for {len(target_locations)} locations (Radius: {proximity_miles} mi)...[/bold]")
-    unique_tiles = get_campaign_grid_tiles(campaign_name)
+    unique_tiles = get_campaign_grid_tiles(campaign_name, target_locations=target_locations)
 
     # 4. Build Deterministic Task List
     tasks = []
@@ -507,6 +507,7 @@ def queue_mission(
     limit: int = typer.Option(100, help="Number of tasks to enqueue."),
     sync: bool = typer.Option(True, help="Automatically sync scraped-tiles from S3 before enqueuing."),
     dry_run: bool = typer.Option(False, "--dry-run"),
+    no_limit: bool = typer.Option(False, "--no-limit", help="Ignore the limit and process all unscraped areas."),
 ) -> None:
     """
     Idempotently enqueues unscraped tasks by comparing the Target Index and the Global Scraped Index.
@@ -586,7 +587,7 @@ def queue_mission(
             except Exception as e:
                 console.print(f"[red]Error reading {tf}: {e}[/red]")
         
-        if len(pending_tasks) >= limit:
+        if not no_limit and len(pending_tasks) >= limit:
             break
 
     if not pending_tasks:

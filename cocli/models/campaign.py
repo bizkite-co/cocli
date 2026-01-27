@@ -15,16 +15,48 @@ class GoogleMaps(BaseModel):
     email: str
     one_password_path: str
 
+from pydantic import BaseModel, Field, model_validator
+from typing import List, Optional, Any, Dict
+import toml
+from pathlib import Path
+from cocli.core.text_utils import slugify
+
+class CampaignImport(BaseModel):
+    format: str
+
+class AwsSettings(BaseModel):
+    profile: str
+    hosted_zone_id: Optional[str] = Field(None, alias="hosted-zone-id")
+
+class GoogleMaps(BaseModel):
+    email: str
+    one_password_path: str
+
 class Prospecting(BaseModel):
-    locations: List[str]
+    locations: List[str] = Field(default_factory=list, alias="target-locations")
     keywords: List[str] = Field(default_factory=list)
     target_locations_csv: Optional[str] = Field(None, alias="target-locations-csv")
-    tools: List[str]
-    queries: List[str]
+    tools: List[str] = Field(default_factory=list)
+    queries: List[str] = Field(default_factory=list)
     zoom_out_button_selector: str = Field("div#zoomOutButton", alias="zoom-out-button-selector")
     panning_distance_miles: int = Field(8, alias="panning-distance-miles")
     initial_zoom_out_level: int = Field(3, alias="initial-zoom-out-level")
     omit_zoom_feature: bool = Field(False, alias="omit-zoom-feature")
+
+    @model_validator(mode='before')
+    @classmethod
+    def handle_legacy_locations(cls, data: Any) -> Any:
+        if isinstance(data, dict):
+            # If 'target-locations' is missing but 'locations' is present, use 'locations'
+            if 'target-locations' not in data and 'locations' in data:
+                data['target-locations'] = data.pop('locations')
+            
+            # Ensure queries and tools are lists even if missing
+            if 'queries' not in data:
+                data['queries'] = []
+            if 'tools' not in data:
+                data['tools'] = []
+        return data
 
 class Campaign(BaseModel):
     name: str

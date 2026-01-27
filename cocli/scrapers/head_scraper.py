@@ -3,6 +3,7 @@ import logging
 import aiohttp
 from typing import Optional, Tuple
 from selectolax.lexbor import LexborHTMLParser
+from ..utils.headers import ANTI_BOT_HEADERS, USER_AGENT
 
 logger = logging.getLogger(__name__)
 
@@ -13,11 +14,7 @@ class HeadScraper:
     """
     def __init__(self, timeout_seconds: int = 10):
         self.timeout = aiohttp.ClientTimeout(total=timeout_seconds)
-        self.headers = {
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36",
-            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8",
-            "Accept-Language": "en-US,en;q=0.9",
-        }
+        self.headers = {**ANTI_BOT_HEADERS, "User-Agent": USER_AGENT}
 
     async def fetch_head(self, url: str) -> Tuple[Optional[str], Optional[str]]:
         """

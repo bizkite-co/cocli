@@ -197,7 +197,7 @@ def generate_grid(
     export_dir = campaign_dir / "exports"
     export_dir.mkdir(parents=True, exist_ok=True)
     
-    unique_tiles = get_campaign_grid_tiles(campaign_name)
+    unique_tiles = get_campaign_grid_tiles(campaign_name, target_locations=target_locations)
     kml_path = export_dir / "target-areas.kml"
     
     export_to_kml(unique_tiles, str(kml_path), f"{campaign_name} - All Targets", color="08ffffff")

@@ -1,6 +1,6 @@
 [project]
 name = "cocli"
-version = "0.2.0"
+dynamic = ["version"]
 description = "A CLI for managing a plain-text CRM."
 authors = [{ name = "Mark Stouffer", email = "mark@getbizkite.com" }]
 requires-python = ">=3.9"
@@ -100,6 +100,9 @@ exclude = [
     "cocli.egg-info*",
     "cdk_scraper_deployment*"
 ]
+
+[tool.setuptools.dynamic]
+version = {file = "VERSION"}
 
 [tool.uv]
 package = true

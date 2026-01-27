@@ -84,39 +84,87 @@ def generate_global_grid(center_lat: float, center_lon: float, radius_miles: flo
         
     return grid_tiles
 
-def get_campaign_grid_tiles(campaign_name: str) -> List[Dict[str, Any]]:
-    """Helper to load grid tiles for a campaign from its config."""
-    from cocli.core.config import load_campaign_config
+def get_campaign_grid_tiles(campaign_name: str, target_locations: Optional[List[Dict[str, Any]]] = None) -> List[Dict[str, Any]]:
+    """Helper to load grid tiles for a campaign from its config or provided locations."""
+    from cocli.core.config import load_campaign_config, get_campaign_dir
     config = load_campaign_config(campaign_name)
+    campaign_dir = get_campaign_dir(campaign_name)
     
-    locations = config.get("prospecting", {}).get("target-locations", [])
     proximity = config.get("prospecting", {}).get("proximity-miles", 10)
+    
+    if target_locations is None:
+        target_locations = []
+        prospecting_config = config.get("prospecting", {})
+        target_locations_csv = prospecting_config.get("target-locations-csv")
+
+        # 1. Try to load from CSV first
+        if target_locations_csv and campaign_dir:
+            import csv
+            csv_path = Path(target_locations_csv)
+            if not csv_path.is_absolute():
+                csv_path = campaign_dir / csv_path
+            
+            if csv_path.exists():
+                try:
+                    with open(csv_path, 'r', encoding='utf-8') as f:
+                        reader = csv.DictReader(f)
+                        for row in reader:
+                            name = row.get("name") or row.get("city")
+                            lat = row.get("lat")
+                            lon = row.get("lon")
+                            if name and lat and lon and lat.strip() and lon.strip():
+                                target_locations.append({
+                                    "name": str(name),
+                                    "lat": float(lat),
+                                    "lon": float(lon)
+                                })
+                    if target_locations:
+                        console.print(f"[dim]Loaded {len(target_locations)} target locations from {csv_path.name}[/dim]")
+                except Exception as e:
+                    console.print(f"[red]Error reading target locations CSV: {e}[/red]")
+
+        # 2. Fallback to geocoding 'target-locations' list if still empty
+        if not target_locations:
+            locations = prospecting_config.get("target-locations", [])
+            if not locations:
+                # Legacy check for 'locations'
+                locations = prospecting_config.get("locations", [])
+            
+            if locations:
+                from geopy.geocoders import Nominatim # type: ignore
+                geolocator = Nominatim(user_agent="cocli_planner")
+
+                for loc in locations:
+                    try:
+                        if isinstance(loc, str):
+                            console.print(f"[dim]Geocoding {loc}...[/dim]")
+                            location = geolocator.geocode(loc)
+                            if not location:
+                                continue
+                            lat, lon = location.latitude, location.longitude
+                        else:
+                            lat, lon = loc[0], loc[1]
+                        
+                        target_locations.append({
+                            "name": str(loc),
+                            "lat": lat,
+                            "lon": lon
+                        })
+                    except Exception as e:
+                        console.print(f"[red]Error geocoding {loc}: {e}[/red]")
     
     all_tiles = []
     seen_ids = set()
-    
-    # Simple Geocoder Shim if needed
-    from geopy.geocoders import Nominatim # type: ignore
-    geolocator = Nominatim(user_agent="cocli_planner")
 
-    for loc in locations:
+    for loc in target_locations:
         try:
-            # Check if loc is already coords or a string
-            if isinstance(loc, str):
-                location = geolocator.geocode(loc)
-                if not location:
-                    continue
-                lat, lon = location.latitude, location.longitude
-            else:
-                lat, lon = loc[0], loc[1]
-                
-            tiles = generate_global_grid(lat, lon, proximity)
+            tiles = generate_global_grid(loc["lat"], loc["lon"], proximity)
             for t in tiles:
                 if t["id"] not in seen_ids:
                     all_tiles.append(t)
                     seen_ids.add(t["id"])
         except Exception as e:
-            console.print(f"[red]Error processing location {loc}: {e}[/red]")
+            console.print(f"[red]Error processing location {loc.get('name')}: {e}[/red]")
             
     return all_tiles
 

@@ -438,6 +438,25 @@ def get_campaign_stats(campaign_name: str) -> Dict[str, Any]:
 
     stats["local_queues"] = local_stats
     
+    # --- Mission Index Awareness for gm-list ---
+    # If the virtual queue (target-tiles) has items, count them as pending
+    # unless they are already in the witness index.
+    campaign_dir = paths.campaign(campaign_name)
+    target_tiles_dir = campaign_dir / "indexes" / "target-tiles"
+    if target_tiles_dir.exists():
+        mission_pending = 0
+        for tf in target_tiles_dir.glob("**/*.csv"):
+            rel_path = tf.relative_to(target_tiles_dir)
+            if not (witness_root / rel_path).exists():
+                mission_pending += 1
+        
+        # Merge mission pending into the gm-list pending count
+        if "gm-list" in local_stats:
+            local_stats["gm-list"]["pending"] += mission_pending
+        else:
+            local_stats["gm-list"] = {"pending": mission_pending, "inflight": 0, "completed": 0}
+    # --------------------------------------------
+
     # Legacy compatibility for enrichment stats
     stats["local_enrichment_pending"] = local_stats["enrichment"]["pending"]
     stats["local_enrichment_inflight"] = local_stats["enrichment"]["inflight"]

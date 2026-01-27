@@ -92,7 +92,8 @@ class WebsiteScraper:
             url = f"{protocol}{domain}"
             try:
                 async with httpx.AsyncClient(
-                    follow_redirects=True, verify=False
+                    follow_redirects=True, verify=False,
+                    headers={**self.headers, "User-Agent": self.user_agent}
                 ) as client:
                     response = await client.get(url, timeout=10.0)
                     if response.status_code == 200:
@@ -492,7 +493,10 @@ class WebsiteScraper:
     async def _get_sitemap_urls(self, domain: str) -> Tuple[List[str], Optional[str]]:
         all_urls = set()
         raw_xml = None
-        async with httpx.AsyncClient(follow_redirects=True) as client:
+        async with httpx.AsyncClient(
+            follow_redirects=True,
+            headers={**self.headers, "User-Agent": self.user_agent}
+        ) as client:
             for loc in ["/sitemap.xml", "/sitemap_index.xml", "/sitemap.desktop.xml"]:
                 try:
                     resp = await client.get(urljoin(domain, loc), timeout=5)
