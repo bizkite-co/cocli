@@ -746,3 +746,12 @@ refresh-keyword-display: ## Sync keyword server data and generate web report
 
 show-kmls: ## Show KML files online (Usage: make show-kmls [BUCKET=cocli-web-assets] [PROFILE=bizkite-support])
 	aws s3 ls s3://$(or $(BUCKET), cocli-web-assets)/kml/ --profile $(or $(PROFILE), bizkite-support)
+
+# ==============================================================================
+# Documentation
+# ==============================================================================
+.PHONY: clean-html
+
+clean-html: ## Convert HTML source to clean Markdown (Usage: make clean-html FILE=docs/ref.html)
+	@if [ -z "$(FILE)" ]; then echo "ERROR: FILE parameter is required."; exit 1; fi
+	$(VENV_DIR)/bin/python scripts/clean_html_docs.py $(FILE) $(FILE:.html=.md)
