@@ -802,6 +802,7 @@ async def _run_details_task_loop(
                 merged_data.update({k: v for k, v in new_data.items() if v is not None})
                 final_prospect_data = GoogleMapsProspect.model_validate(merged_data)
 
+            final_prospect_data.processed_by = processed_by
             final_prospect_data.updated_at = datetime.now()
 
             if csv_manager.append_prospect(final_prospect_data):
@@ -1114,6 +1115,7 @@ async def _run_enrichment_task_loop(
                         setattr(company, attr, new_val)
 
                 # 3. Save company locally and push to S3 immediately
+                company.processed_by = processed_by
                 company.save()
                 if s3_company_manager:
                     logger.info(f"Pusing updated company index and website enrichment to S3 for {task.company_slug}")

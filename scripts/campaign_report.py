@@ -71,6 +71,7 @@ def main(
     queue_table.add_column("Provider", style="yellow")
     queue_table.add_column("Pending", justify="right", style="magenta")
     queue_table.add_column("In-Flight", justify="right", style="blue")
+    queue_table.add_column("Completed", justify="right", style="green")
 
     config = load_campaign_config(campaign_name)
     aws_cfg = config.get("aws", {})
@@ -78,9 +79,9 @@ def main(
     
     # SQS Queues - Only show if workers are enabled
     if worker_count > 0:
-        queue_table.add_row("Scrape Tasks", "SQS", str(stats.get('scrape_tasks_pending', 0)), str(stats.get('scrape_tasks_inflight', 0)))
-        queue_table.add_row("GM Details", "SQS", str(stats.get('gm_list_item_pending', 0)), str(stats.get('gm_list_item_inflight', 0)))
-        queue_table.add_row("Enrichment", "SQS", str(stats.get('enrichment_pending', 0)), str(stats.get('enrichment_inflight', 0)))
+        queue_table.add_row("Scrape Tasks", "SQS", str(stats.get('scrape_tasks_pending', 0)), str(stats.get('scrape_tasks_inflight', 0)), "-")
+        queue_table.add_row("GM Details", "SQS", str(stats.get('gm_list_item_pending', 0)), str(stats.get('gm_list_item_inflight', 0)), "-")
+        queue_table.add_row("Enrichment", "SQS", str(stats.get('enrichment_pending', 0)), str(stats.get('enrichment_inflight', 0)), "-")
 
     # S3 Queues (Filesystem V2 Remote State)
     s3_queues = stats.get('s3_queues', {})
@@ -89,7 +90,7 @@ def main(
         inflight = q_stats.get('inflight', 0)
         completed = q_stats.get('completed', 0)
         if pending > 0 or inflight > 0 or completed > 0:
-            queue_table.add_row(f"{q_name} (Global)", "S3", str(pending), f"{inflight} [dim]({completed} done)[/dim]")
+            queue_table.add_row(f"{q_name} (Global)", "S3", str(pending), str(inflight), str(completed))
 
     # Local Queues
     local_queues = stats.get('local_queues', {})
@@ -97,7 +98,7 @@ def main(
         pending = q_stats.get('pending', 0)
         inflight = q_stats.get('inflight', 0)
         if pending > 0 or inflight > 0:
-            queue_table.add_row(q_name, "Local", str(pending), str(inflight))
+            queue_table.add_row(q_name, "Local", str(pending), str(inflight), "-")
 
     # 3. Cluster Health Table
     cluster_table = Table(title="Cluster Health & Heartbeats", box=None)

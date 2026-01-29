@@ -74,6 +74,7 @@ class Company(BaseModel):
     place_id: Optional[str] = None
     last_enriched: Optional[datetime] = None
     enrichment_ttl_days: int = 30
+    processed_by: Optional[str] = "local-worker"
 
     @model_validator(mode='after')
     def parse_full_address(self) -> 'Company':
@@ -216,7 +217,7 @@ class Company(BaseModel):
             "reviews_count", "average_rating", "business_status", "hours",
             "facebook_url", "linkedin_url", "instagram_url", "twitter_url", 
             "youtube_url", "about_us_url", "contact_url", "meta_description", 
-            "meta_keywords", "place_id", "last_enriched"
+            "meta_keywords", "place_id", "last_enriched", "processed_by"
         ]:
             new_val = getattr(other, field)
             current_val = getattr(self, field)
