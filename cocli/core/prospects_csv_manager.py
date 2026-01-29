@@ -121,7 +121,9 @@ class ProspectsIndexManager:
                 fieldnames = list(GoogleMapsProspect.model_fields.keys())
                 writer = USVDictWriter(f, fieldnames=fieldnames)
                 writer.writeheader()
-                writer.writerow(prospect_data.model_dump(by_alias=False))
+                data = prospect_data.model_dump(by_alias=False)
+                logger.info(f"WRITING PROSPECT: {prospect_data.Place_ID} | processed_by: {data.get('processed_by')}")
+                writer.writerow(data)
             
             # Clean up old CSV if we migrated
             if old_path and old_path.exists():
