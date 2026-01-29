@@ -530,6 +530,7 @@ hotfix-cluster: ## Apply hotfix to all cluster nodes, skipping offline ones
 RPI_HOST ?= octoprint.local
 RPI_USER ?= mstouffer
 RPI_DIR ?= ~/repos/cocli
+CLUSTER_NODES ?= cocli5x0.local,octoprint.local,coclipi.local
 
 .PHONY: setup-rpi
 setup-rpi: ## Bootstap the Raspberry Pi with Docker and Git
@@ -595,11 +596,14 @@ build-rpi-base: check-git-sync ## Build the heavy base Docker image on RPi (Run 
 push-rpi-base: ## Push the base image to Docker Hub
 	ssh $(RPI_USER)@$(RPI_HOST) "docker push integrator/cocli-rpi-base:latest"
 
-.PHONY: rebuild-rpi-worker
-rebuild-rpi-worker: test check-git-sync ## Pull latest code and rebuild Docker image on Raspberry Pi
+.PHONY: _rebuild-rpi-worker-internal
+_rebuild-rpi-worker-internal: check-git-sync ## Pull latest code and rebuild Docker image on Raspberry Pi (Internal)
 	@echo "Stopping existing containers on $(RPI_HOST) to free resources for build..."
 	-ssh $(RPI_USER)@$(RPI_HOST) "docker stop \$$(docker ps -q --filter name=cocli-) 2>/dev/null || true"
 	ssh $(RPI_USER)@$(RPI_HOST) "cd $(RPI_DIR) && git fetch --all && git reset --hard origin/main && docker build --no-cache -t cocli-worker-rpi -f docker/rpi-worker/Dockerfile ."
+
+.PHONY: rebuild-rpi-worker
+rebuild-rpi-worker: test _rebuild-rpi-worker-internal ## Pull latest code and rebuild Docker image on Raspberry Pi
 
 .PHONY: start-rpi-worker
 start-rpi-worker: ## Start the Docker worker on Raspberry Pi
@@ -680,12 +684,8 @@ restart-rpi-all: ## Restart all Raspberry Pi workers using supervisor on all nod
 	$(MAKE) start-rpi-supervisor RPI_HOST=cocli5x0.local
 
 .PHONY: deploy-cluster
-deploy-cluster: ## Rebuild and restart the entire cluster with Supervisor
-	@echo "Deploying to all nodes..."
-	$(MAKE) rebuild-rpi-worker RPI_HOST=octoprint.local
-	$(MAKE) rebuild-rpi-worker RPI_HOST=coclipi.local
-	$(MAKE) rebuild-rpi-worker RPI_HOST=cocli5x0.local
-	$(MAKE) restart-rpi-all
+deploy-cluster: ## Rebuild and restart the entire cluster with Supervisor (optimized)
+	$(MAKE) deploy-rpi RPI_HOST=$(CLUSTER_NODES)
 	@echo "Cluster deployment complete. All nodes running Supervisor."
 
 .PHONY: shutdown-cluster
@@ -725,8 +725,19 @@ stop-rpi-all: ## Stop all cocli worker containers on ALL cluster nodes
 	-$(MAKE) stop-rpi RPI_HOST=coclipi.local
 	-$(MAKE) stop-rpi RPI_HOST=cocli5x0.local
 
+.PHONY: _deploy-single-node
+_deploy-single-node: ## Deploy to a single RPi node (Internal)
+	@echo "Deploying to node: $(RPI_HOST)"
+	$(MAKE) deploy-creds-rpi RPI_HOST=$(RPI_HOST)
+	$(MAKE) stop-rpi RPI_HOST=$(RPI_HOST)
+	$(MAKE) _rebuild-rpi-worker-internal RPI_HOST=$(RPI_HOST)
+	$(MAKE) start-rpi-supervisor RPI_HOST=$(RPI_HOST)
+
 .PHONY: deploy-rpi
-deploy-rpi: test deploy-creds-rpi stop-rpi rebuild-rpi-worker start-rpi-worker start-rpi-details-worker ## Full deployment: stop, rebuild, and restart both workers on a single RPi
+deploy-rpi: test ## Full deployment: stop, rebuild, and restart with Supervisor on one or more RPis (Usage: make deploy-rpi RPI_HOST=node1,node2)
+	@IFS=','; for host in $(RPI_HOST); do \
+		$(MAKE) _deploy-single-node RPI_HOST=$$host; \
+	done
 	$(VENV_DIR)/bin/ruff check cocli/
 
 missing-keywords: ## List the companies that are missing keywords to CSV
