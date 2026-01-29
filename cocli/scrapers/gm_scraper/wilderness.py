@@ -55,17 +55,22 @@ class WildernessManager:
                 self.s3_client.upload_file(str(file_path), self.s3_bucket, s3_key)
                 logger.info(f"Uploaded scraped area to s3://{self.s3_bucket}/{s3_key}")
 
-                # 2. Upload Witness CSV (Phase 10)
+                # 2. Upload Witness CSV/USV (Phase 10)
                 if tile_id:
                     from cocli.core.text_utils import slugify
-                    lat_str, lon_str = tile_id.split("_")
+                    parts = tile_id.split("_")
+                    lat_str, lon_str = parts[0], parts[1]
                     phrase_slug = slugify(query)
-                    witness_rel_path = f"scraped-tiles/{lat_str}/{lon_str}/{phrase_slug}.csv"
-                    witness_local_path = self.base_dir.parent / witness_rel_path
                     
-                    if witness_local_path.exists():
-                        witness_s3_key = f"indexes/{witness_rel_path}"
-                        self.s3_client.upload_file(str(witness_local_path), self.s3_bucket, witness_s3_key)
-                        logger.info(f"Uploaded witness file to s3://{self.s3_bucket}/{witness_s3_key}")
+                    # Try both USV and CSV
+                    for ext in [".usv", ".csv"]:
+                        witness_rel_path = f"scraped-tiles/{lat_str}/{lon_str}/{phrase_slug}{ext}"
+                        witness_local_path = self.base_dir.parent / witness_rel_path
+                        
+                        if witness_local_path.exists():
+                            witness_s3_key = f"indexes/{witness_rel_path}"
+                            self.s3_client.upload_file(str(witness_local_path), self.s3_bucket, witness_s3_key)
+                            logger.info(f"Uploaded witness file to s3://{self.s3_bucket}/{witness_s3_key}")
+                            break
             except Exception as e:
                 logger.error(f"Failed to upload scraped area to S3: {e}")

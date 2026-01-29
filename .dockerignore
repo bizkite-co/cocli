@@ -59,24 +59,15 @@ docs/
 features/
 # scripts/    <--- REMOVED THIS LINE
 tests/
-Makefile
-.envrc
-.mise.toml
-.python-version
-GEMINI.md
-HELP.md
-PROMPT.md
-plan.md
-task_optimization.md
-task.md
-VERSION
+# VERSION
+# Makefile
+# README.md
 ecs-trust-policy.json
 generate_kml.py
 import_kml_to_maps.py
 install.sh
 mypy.ini
 pytest.ini
-README.md
 run_fz.py
 task-definition.json
 debug_website_scraper.py
