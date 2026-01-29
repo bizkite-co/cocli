@@ -67,7 +67,7 @@ hotfix_node() {
     ssh $RPI_USER@$host "docker cp /tmp/cocli_hotfix/. cocli-supervisor:/app/"
     
     # FORCED SYMLINK: Make dist-packages point directly to our hotfixed code
-    ssh $RPI_USER@$host "docker exec cocli-supervisor ln -s /app/cocli /usr/local/lib/python3.12/dist-packages/cocli"
+    ssh $RPI_USER@$host "docker exec cocli-supervisor bash -c 'rm -rf /usr/local/lib/python3.12/dist-packages/cocli && ln -s /app/cocli /usr/local/lib/python3.12/dist-packages/cocli'"
     
     # 4. Restore Real Entrypoint
     ssh $RPI_USER@$host "docker stop cocli-supervisor && docker rm cocli-supervisor" >/dev/null
