@@ -15,8 +15,9 @@ class USVReader:
         self.f = f
         self._buffer = ""
         self._iterator = iter(f)
+        self._gen = self._get_gen()
 
-    def __iter__(self) -> Iterator[List[str]]:
+    def _get_gen(self) -> Iterator[List[str]]:
         for chunk in self._iterator:
             self._buffer += chunk
             while RECORD_SEPARATOR in self._buffer:
@@ -28,6 +29,12 @@ class USVReader:
         if self._buffer.strip("\n"):
             yield self._buffer.strip("\n").split(UNIT_SEPARATOR)
 
+    def __iter__(self) -> Iterator[List[str]]:
+        return self
+
+    def __next__(self) -> List[str]:
+        return next(self._gen)
+
 class USVDictReader:
     """
     A DictReader for USV.
@@ -36,8 +43,9 @@ class USVDictReader:
         self.reader = USVReader(f)
         self.fieldnames = fieldnames
         self._first_row_read = False
+        self._gen = self._get_gen()
 
-    def __iter__(self) -> Iterator[Dict[str, str]]:
+    def _get_gen(self) -> Iterator[Dict[str, str]]:
         for row in self.reader:
             if not self._first_row_read:
                 if self.fieldnames is None:
@@ -48,6 +56,12 @@ class USVDictReader:
             
             if self.fieldnames is not None:
                 yield dict(zip(self.fieldnames, row))
+
+    def __iter__(self) -> Iterator[Dict[str, str]]:
+        return self
+
+    def __next__(self) -> Dict[str, str]:
+        return next(self._gen)
 
 class USVWriter:
     """

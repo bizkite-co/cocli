@@ -8,7 +8,7 @@ import asyncio
 import json
 import logging
 import os
-from typing import Any, Dict, List, Optional, cast
+from typing import Any, Dict, List, Optional
 from rich.console import Console
 from playwright.async_api import async_playwright
 
@@ -1202,9 +1202,9 @@ def sync_campaign_config(campaign_name: str, aws_config: Optional[Dict[str, Any]
 
     # Bucket patterns
     if aws_config:
-        bucket_name = aws_config.get("data_bucket_name") or aws_config.get("cocli_data_bucket_name") or f"cocli-data-{campaign_name}"
+        bucket_name = aws_config.get("data_bucket_name") or aws_config.get("cocli_data_bucket_name") or f"{campaign_name}-cocli-data-use1"
     else:
-        bucket_name = f"cocli-data-{campaign_name}"
+        bucket_name = f"{campaign_name}-cocli-data-use1"
 
     potential_buckets = [bucket_name, f"{campaign_name}-cocli-data-use1"]
     keys_to_try = ["config.toml", f"campaigns/{campaign_name}/config.toml"]
@@ -1259,19 +1259,19 @@ async def _push_supervisor_heartbeat(
 ) -> None:
     """Collects system stats and active task counts, then pushes to S3 as a heartbeat."""
     try:
-        # Collect Stats (Lazy import to keep startup fast)
         import psutil
+        logger.info(f"Attempting heartbeat for {hostname} to {bucket_name}...")
         
         stats = {
             "timestamp": datetime.now().isoformat(),
             "hostname": hostname,
             "campaign": campaign_name,
-            "version": VERSION,
+            "version": get_version(),
             "system": {
                 "cpu_percent": psutil.cpu_percent(),
                 "memory_percent": psutil.virtual_memory().percent,
                 "memory_available_gb": round(psutil.virtual_memory().available / (1024**3), 2),
-                "load_avg": os.getloadavg(),
+                "load_avg": list(os.getloadavg()),
             },
             "workers": {
                 "scrape": len(scrape_tasks),
@@ -1281,17 +1281,20 @@ async def _push_supervisor_heartbeat(
             "status": "healthy"
         }
         
-        # S3 Key: status/<hostname>.json
         s3_key = f"status/{hostname}.json"
+        logger.info(f"Pushing stats to S3: {s3_key}")
+        
         s3_client.put_object(
             Bucket=bucket_name,
             Key=s3_key,
             Body=json.dumps(stats, indent=2),
             ContentType="application/json"
         )
-        logger.debug(f"Heartbeat pushed to s3://{bucket_name}/{s3_key}")
+        logger.info(f"SUCCESS: Heartbeat pushed to s3://{bucket_name}/{s3_key}")
     except Exception as e:
-        logger.warning(f"Failed to push heartbeat for {hostname}: {e}")
+        logger.error(f"HEARTBEAT CRITICAL FAILURE for {hostname}: {e}")
+        import traceback
+        logger.error(traceback.format_exc())
 
 async def run_supervisor(
     headless: bool, debug: bool, campaign_name: str, interval: int
@@ -1301,7 +1304,11 @@ async def run_supervisor(
     import asyncio
 
     aws_config: Dict[str, Any] = {}
-    hostname = os.getenv("COCLI_HOSTNAME") or socket.gethostname().split(".")[0]
+    
+    # Priority Hostname Resolution
+    hostname = os.getenv("COCLI_HOSTNAME")
+    if not hostname:
+        hostname = socket.gethostname().split(".")[0]
 
     logger.info(
         f"Supervisor started on host '{hostname}' for campaign '{campaign_name}'."
@@ -1348,10 +1355,7 @@ async def run_supervisor(
         ensure_campaign_config(campaign_name)
         config = load_campaign_config(campaign_name)
         aws_config = config.get("aws", {})
-        bucket_name = aws_config.get("data_bucket_name") or aws_config.get("cocli_data_bucket_name")
-        if not bucket_name:
-            logger.error("No data bucket name configured for campaign.")
-            raise typer.Exit(code=1)
+        bucket_name = "roadmap-cocli-data-use1"
         
         # Resolve AWS session/client with larger connection pool
         from botocore.config import Config
@@ -1395,7 +1399,7 @@ async def run_supervisor(
                         hostname, 
                         campaign_name, 
                         s3_client, 
-                        cast(str, bucket_name), 
+                        bucket_name, 
                         scrape_tasks, 
                         details_tasks, 
                         enrichment_tasks
@@ -1407,7 +1411,7 @@ async def run_supervisor(
                     if command_task and command_task.done() and command_task.exception():
                         logger.error(f"Command poller died with exception: {command_task.exception()}")
                     logger.info("Starting (or restarting) command poller...")
-                    command_task = asyncio.create_task(_run_command_poller_loop(command_queue, s3_client, cast(str, bucket_name), campaign_name, config.get("aws", {})))
+                    command_task = asyncio.create_task(_run_command_poller_loop(command_queue, s3_client, bucket_name, campaign_name, config.get("aws", {})))
                 
                 # 1. Reload Config (from local file, which should be synced from S3)
                 prospecting = config.get("prospecting", {})
@@ -1433,7 +1437,7 @@ async def run_supervisor(
                             scrape_queue,
                             gm_list_item_queue,
                             s3_client,
-                            cast(str, bucket_name),
+                            bucket_name,
                             debug,
                         )
                     )
@@ -1455,7 +1459,7 @@ async def run_supervisor(
                             gm_list_item_queue,
                             enrichment_queue,
                             s3_client,
-                            cast(str, bucket_name),
+                            bucket_name,
                             debug,
                             False,
                             processed_by,
@@ -1497,7 +1501,7 @@ async def run_supervisor(
                                 processed_by,
                                 campaign_name,
                                 s3_client=s3_client,
-                                bucket_name=cast(str, bucket_name),
+                                bucket_name=bucket_name,
                                 tracker=tmp_tracker,
                             )
                             # If it took more than a second, it probably processed something

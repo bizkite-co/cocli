@@ -62,8 +62,8 @@ def main(
     email_index_dir = campaign_dir / "indexes" / "emails"
     exclusion_manager = ExclusionManager(campaign_name)
     
-    export_dir = campaign_dir / "exports"
-    export_dir.mkdir(exist_ok=True)
+    from cocli.core.config import get_campaign_exports_dir
+    export_dir = get_campaign_exports_dir(campaign_name)
     output_file = export_dir / f"enriched_emails_{campaign_name}.csv"
     
     # 1. Load Email Providers

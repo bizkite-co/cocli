@@ -6,7 +6,7 @@ import json
 import csv
 import httpx
 from pathlib import Path
-from typing import Optional, List, Dict, Any, cast
+from typing import Optional, List, Dict, Any, cast, Union
 from rich.console import Console
 from playwright.async_api import async_playwright
 import yaml
@@ -557,21 +557,29 @@ def queue_mission(
 
     # 1. Find all target tiles
     console.print(f"Scanning target index: {target_index_dir}...")
-    target_files = list(target_index_dir.glob("**/*.csv"))
+    target_files = list(target_index_dir.glob("**/*.csv")) + list(target_index_dir.glob("**/*.usv"))
     console.print(f"Found {len(target_files)} total targets.")
 
     # 2. Filter for pending (Set Difference)
     pending_tasks: List[Dict[str, Any]] = []
     for tf in target_files:
-        # Relative path is lat/lon/phrase.csv
+        # Relative path is lat/lon/phrase.ext
         rel_path = tf.relative_to(target_index_dir)
-        witness_path = global_scraped_dir / rel_path
         
-        if not witness_path.exists():
+        # Check both .csv and .usv in witness index
+        witness_csv = global_scraped_dir / rel_path.with_suffix(".csv")
+        witness_usv = global_scraped_dir / rel_path.with_suffix(".usv")
+        
+        if not witness_csv.exists() and not witness_usv.exists():
             # Extract metadata from target file
             try:
-                with open(tf, "r") as f:
-                    reader = csv.DictReader(f)
+                with open(tf, "r", encoding="utf-8") as f:
+                    from ...utils.usv_utils import USVDictReader
+                    reader: Union[USVDictReader, csv.DictReader[Any]]
+                    if tf.suffix == ".usv":
+                        reader = USVDictReader(f)
+                    else:
+                        reader = csv.DictReader(f)
                     row = next(reader)
                 
                 # phrase is the filename stem

@@ -3,7 +3,7 @@ import json
 import boto3
 import logging
 import math
-from typing import Dict, Any, Literal, Sequence, cast
+from typing import Dict, Any, Literal, Sequence, cast, Union
 from rich.console import Console
 
 from cocli.core.config import get_cocli_base_dir, load_campaign_config
@@ -89,7 +89,7 @@ def get_boto3_session(campaign_config: Dict[str, Any]) -> boto3.Session:
             continue
             
     if not session:
-        logger.debug("No valid named profile found. Using default session.")
+        logger.debug("No valid named profile found. Using default session from environment.")
         session = boto3.Session(region_name=region)
 
     return session
@@ -381,10 +381,10 @@ def get_campaign_stats(campaign_name: str) -> Dict[str, Any]:
                 for page in paginator.paginate(Bucket=data_bucket, Prefix=prefix):
                     for obj in page.get("Contents", []):
                         key = obj["Key"]
-                        if key.endswith(".csv"):
+                        if key.endswith(".csv") or key.endswith(".usv"):
                             parts = key.split("/")
                             if len(parts) >= 3:
-                                phrase_slug = parts[-1].replace(".csv", "")
+                                phrase_slug = parts[-1].replace(".csv", "").replace(".usv", "")
                                 lat_str = parts[-3]
                                 lon_str = parts[-2]
                                 tile_id = f"{lat_str}_{lon_str}"
@@ -445,9 +445,11 @@ def get_campaign_stats(campaign_name: str) -> Dict[str, Any]:
     target_tiles_dir = campaign_dir / "indexes" / "target-tiles"
     if target_tiles_dir.exists():
         mission_pending = 0
-        for tf in target_tiles_dir.glob("**/*.csv"):
+        for tf in list(target_tiles_dir.glob("**/*.csv")) + list(target_tiles_dir.glob("**/*.usv")):
             rel_path = tf.relative_to(target_tiles_dir)
-            if not (witness_root / rel_path).exists():
+            witness_csv = witness_root / rel_path.with_suffix(".csv")
+            witness_usv = witness_root / rel_path.with_suffix(".usv")
+            if not witness_csv.exists() and not witness_usv.exists():
                 mission_pending += 1
         
         # Merge mission pending into the gm-list pending count
@@ -564,10 +566,16 @@ def get_campaign_stats(campaign_name: str) -> Dict[str, Any]:
     # Nested Witness Index Check
     if witness_root.exists():
         for phrase_slug in phrase_slugs:
-            for phrase_file in witness_root.glob(f"**/{phrase_slug}.csv"):
+            witness_files = list(witness_root.glob(f"**/{phrase_slug}.csv")) + list(witness_root.glob(f"**/{phrase_slug}.usv"))
+            for phrase_file in witness_files:
                 try:
-                    with open(phrase_file, "r") as f:
-                        reader = csv.DictReader(f)
+                    with open(phrase_file, "r", encoding="utf-8") as f:
+                        from ..utils.usv_utils import USVDictReader
+                        reader: Union[USVDictReader, csv.DictReader[Any]]
+                        if phrase_file.suffix == ".usv":
+                            reader = USVDictReader(f)
+                        else:
+                            reader = csv.DictReader(f)
                         row = next(reader)
 
                         scrape_date_str = row.get("scrape_date")
@@ -612,8 +620,8 @@ def get_campaign_stats(campaign_name: str) -> Dict[str, Any]:
         if csv_path.exists():
             try:
                 with open(csv_path, "r") as f:
-                    reader = csv.DictReader(f)
-                    for row in reader:
+                    grid_reader: csv.DictReader[Any] = csv.DictReader(f)
+                    for row in grid_reader:
                         name = row.get("name") or row.get("city")
                         if not name:
                             continue
@@ -669,7 +677,8 @@ def get_campaign_stats(campaign_name: str) -> Dict[str, Any]:
                                     tile_witness_dir = witness_root / lat_dir / lon_dir
 
                                     for q in queries:
-                                        if (tile_witness_dir / f"{slugify(q)}.csv").exists():
+                                        q_slug = slugify(q)
+                                        if (tile_witness_dir / f"{q_slug}.csv").exists() or (tile_witness_dir / f"{q_slug}.usv").exists():
                                             is_scraped_any = True
                                             all_scraped_tiles.add(t_id)
                                             scraped_tiles_by_phrase[q].add(t_id)

@@ -540,6 +540,12 @@ class FilesystemGmListQueue(FilesystemQueue):
 
     def poll(self, batch_size: int = 1) -> List[ScrapeTask]:
         tasks: List[ScrapeTask] = []
+        
+        # 1. Discover tasks from S3 if local is empty or we have S3 capability
+        if self.s3_client and self.bucket_name:
+            # We use a similar discovery logic but for the target-tiles index
+            self._discover_mission_from_s3()
+
         if not self.target_tiles_dir.exists():
             return []
 
@@ -557,18 +563,20 @@ class FilesystemGmListQueue(FilesystemQueue):
             random.shuffle(files)
 
             for file in files:
-                if not file.endswith(".csv"):
+                if not file.endswith(".csv") and not file.endswith(".usv"):
                     continue
                 
                 csv_path = Path(root) / file
                 task_id = str(csv_path.relative_to(self.target_tiles_dir))
-                witness_path = self.witness_dir / task_id
-                if witness_path.exists():
+                
+                # Check witness (both .csv and .usv)
+                witness_csv = self.witness_dir / Path(task_id).with_suffix(".csv")
+                witness_usv = self.witness_dir / Path(task_id).with_suffix(".usv")
+                if witness_csv.exists() or witness_usv.exists():
                     continue
                     
                 # Try to acquire lease
                 if self._create_lease(task_id):
-                    # ... rest of logic remains same ...
                     parts = Path(task_id).parts
                     if len(parts) < 3:
                         continue
@@ -576,7 +584,8 @@ class FilesystemGmListQueue(FilesystemQueue):
                     try:
                         lat = float(parts[0])
                         lon = float(parts[1])
-                        phrase = parts[2].replace(".csv", "")
+                        # Handle both .csv and .usv
+                        phrase = parts[2].replace(".csv", "").replace(".usv", "")
                         
                         task = ScrapeTask(
                             latitude=lat,
@@ -596,6 +605,45 @@ class FilesystemGmListQueue(FilesystemQueue):
                 if count >= batch_size:
                     break
         return tasks
+
+    def _discover_mission_from_s3(self, max_discovery: int = 50) -> None:
+        """Discovers unscraped tiles directly from the S3 Mission Index."""
+        if not self.s3_client or not self.bucket_name:
+            return
+
+        prefix = f"campaigns/{self.campaign_name}/indexes/target-tiles/"
+        try:
+            # We list a small sample of the mission index on S3
+            paginator = self.s3_client.get_paginator('list_objects_v2')
+            found_count = 0
+            
+            # Since mission index is large, we pick a random starting point if possible,
+            # or just take the first few pages.
+            for page in paginator.paginate(Bucket=self.bucket_name, Prefix=prefix):
+                for obj in page.get('Contents', []):
+                    key = obj['Key']
+                    if not key.endswith(".csv") and not key.endswith(".usv"):
+                        continue
+                        
+                    rel_path = key.replace(prefix, "")
+                    local_path = self.target_tiles_dir / rel_path
+                    
+                    if not local_path.exists():
+                        # Check if already scraped (Witness Index)
+                        witness_csv = self.witness_dir / Path(rel_path).with_suffix(".csv")
+                        witness_usv = self.witness_dir / Path(rel_path).with_suffix(".usv")
+                        
+                        if not witness_csv.exists() and not witness_usv.exists():
+                            # Check if currently leased on S3 (Optional optimization)
+                            # For now, we'll just download it and let _create_lease handle the atomicity
+                            local_path.parent.mkdir(parents=True, exist_ok=True)
+                            self.s3_client.download_file(self.bucket_name, key, str(local_path))
+                            found_count += 1
+                            
+                    if found_count >= max_discovery:
+                        return
+        except Exception as e:
+            logger.error(f"Error discovering mission from S3: {e}")
 
     def ack(self, task: ScrapeTask) -> None: # type: ignore
         # Note: GmList doesn't move data, just removes the lease/dir

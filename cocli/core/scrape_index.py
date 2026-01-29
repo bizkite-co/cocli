@@ -105,17 +105,29 @@ class ScrapeIndex:
         """
         phrase_slug = slugify(phrase)
         try:
-            lat_str, lon_str = tile_id.split('_')
+            # Robust split: handle tile_ids with attached phrases (lat_lon_phrase)
+            parts = tile_id.split('_')
+            lat_str, lon_str = parts[0], parts[1]
             
             # 1. Check Witness Index (Fast)
-            witness_path = self.witness_dir / lat_str / lon_str / f"{phrase_slug}.csv"
-            if witness_path.exists():
-                # Load minimal data from CSV
+            # Check both .usv and .csv
+            witness_path_usv = self.witness_dir / lat_str / lon_str / f"{phrase_slug}.usv"
+            witness_path_csv = self.witness_dir / lat_str / lon_str / f"{phrase_slug}.csv"
+            
+            witness_path = witness_path_usv if witness_path_usv.exists() else (witness_path_csv if witness_path_csv.exists() else None)
+            
+            if witness_path:
+                # Load minimal data from CSV/USV
                 try:
-                    with open(witness_path, "r") as f:
-                        reader = csv.DictReader(f)
+                    with open(witness_path, "r", encoding="utf-8") as f:
+                        from cocli.utils.usv_utils import USVDictReader
+                        from typing import Union
+                        reader: Union[USVDictReader, csv.DictReader[Any]]
+                        if witness_path.suffix == ".usv":
+                            reader = USVDictReader(f)
+                        else:
+                            reader = csv.DictReader(f)
                         row = next(reader)
-                        
                     scrape_date = datetime.fromisoformat(row['scrape_date'])
                     if scrape_date.tzinfo is None:
                         scrape_date = scrape_date.replace(tzinfo=UTC)
@@ -142,16 +154,19 @@ class ScrapeIndex:
             # 2. Check Legacy JSON Index
             lat, lon = float(lat_str), float(lon_str)
             grid_dir = self._get_grid_dir(phrase_slug, lat, lon)
-            file_path = grid_dir / f"{tile_id}.json"
             
-            if file_path.exists():
-                area = self._load_area_from_file(file_path)
-                if area:
-                    if ttl_days is not None:
-                        age = datetime.now(UTC) - area.scrape_date
-                        if age > timedelta(days=ttl_days):
-                            return None
-                    return area
+            # Try both raw tile_id and the truncated lat_lon version
+            potential_filenames = [f"{tile_id}.json", f"{lat_str}_{lon_str}.json"]
+            for filename in potential_filenames:
+                file_path = grid_dir / filename
+                if file_path.exists():
+                    area = self._load_area_from_file(file_path)
+                    if area:
+                        if ttl_days is not None:
+                            age = datetime.now(UTC) - area.scrape_date
+                            if age > timedelta(days=ttl_days):
+                                return None
+                        return area
         except Exception:
             pass
         return None
@@ -244,16 +259,19 @@ class ScrapeIndex:
             # --- PHASE 10: Witness File (Nested structure) ---
             if tile_id:
                 try:
-                    lat_str, lon_str = tile_id.split('_')
-                    # indexes/scraped-tiles/30.2/-97.7/phrase.csv
+                    parts = tile_id.split('_')
+                    lat_str, lon_str = parts[0], parts[1]
+                    # indexes/scraped-tiles/30.2/-97.7/phrase.usv
                     witness_dir = self.index_dir.parent / "scraped-tiles" / lat_str / lon_str
                     witness_dir.mkdir(parents=True, exist_ok=True)
-                    witness_path = witness_dir / f"{phrase_slug}.csv"
+                    witness_path = witness_dir / f"{phrase_slug}.usv"
                     
+                    from cocli.utils.usv_utils import USVWriter
                     with open(witness_path, 'w', encoding='utf-8') as wf:
-                        wf.write("scrape_date,items_found\n")
-                        wf.write(f"{data['scrape_date']},{items_found}\n")
-                    logger.debug(f"Saved witness file: {witness_path}")
+                        writer = USVWriter(wf)
+                        writer.writerow(["scrape_date", "items_found"])
+                        writer.writerow([data['scrape_date'], str(items_found)])
+                    logger.debug(f"Saved witness file (USV): {witness_path}")
                 except Exception as we:
                     logger.error(f"Failed to save witness file for {tile_id}: {we}")
             # ------------------------------------------------
@@ -356,8 +374,10 @@ class ScrapeIndex:
                         if not lon_dir.is_dir():
                             continue
                         
-                        witness_file = lon_dir / f"{phrase_slug}.csv"
-                        if witness_file.exists():
+                        # Check for both .usv and .csv
+                        witness_usv = lon_dir / f"{phrase_slug}.usv"
+                        witness_csv = lon_dir / f"{phrase_slug}.csv"
+                        if witness_usv.exists() or witness_csv.exists():
                             tile_id = f"{lat_dir.name}_{lon_dir.name}"
                             area = self.is_tile_scraped(phrase, tile_id)
                             if area:
@@ -395,6 +415,8 @@ class ScrapeIndex:
                 for lon_dir in lat_dir.iterdir():
                     if not lon_dir.is_dir():
                         continue
+                    # Collect phrases from both .csv and .usv
                     phrases.update([f.stem for f in lon_dir.glob("*.csv")])
+                    phrases.update([f.stem for f in lon_dir.glob("*.usv")])
 
         return self.get_all_areas_for_phrases(list(phrases))

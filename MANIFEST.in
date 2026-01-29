@@ -1,4 +1,5 @@
 recursive-exclude data *
+recursive-exclude cocli_data *
 recursive-exclude cocli_share *
 recursive-exclude homepage *
 recursive-exclude logs *

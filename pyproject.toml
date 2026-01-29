@@ -81,7 +81,7 @@ where = ["."]
 include = ["cocli*"]
 exclude = [
     "data*", 
-    "data*",
+    "cocli_data*",
     "cocli_share*",
     "homepage*",
     "logs*",

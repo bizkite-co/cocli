@@ -5,18 +5,22 @@ from pathlib import Path
 from cocli.core.text_utils import slugify
 
 class CampaignImport(BaseModel):
+    model_config = {"extra": "ignore"}
     format: str
 
 class AwsSettings(BaseModel):
-    profile: str
+    model_config = {"extra": "ignore"}
+    profile: Optional[str] = None
     hosted_zone_id: Optional[str] = Field(None, alias="hosted-zone-id")
 
 class GoogleMaps(BaseModel):
+    model_config = {"extra": "ignore"}
     email: str
     one_password_path: str
 
 class Prospecting(BaseModel):
-    locations: List[str] = Field(default_factory=list, alias="target-locations")
+    model_config = {"extra": "ignore"}
+    locations: Optional[List[str]] = Field(default_factory=list, alias="target-locations")
     keywords: List[str] = Field(default_factory=list)
     target_locations_csv: Optional[str] = Field(None, alias="target-locations-csv")
     tools: List[str] = Field(default_factory=list)
