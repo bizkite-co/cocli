@@ -520,17 +520,17 @@ hotfix-rpi: ## Push code hotfix to a single RPi (Usage: make hotfix-rpi RPI_HOST
 
 .PHONY: hotfix-cluster
 hotfix-cluster: ## Apply hotfix to all cluster nodes, skipping offline ones
-	@$(MAKE) hotfix-rpi RPI_HOST=cocli5x0.local
-	@$(MAKE) hotfix-rpi RPI_HOST=octoprint.local
-	@$(MAKE) hotfix-rpi RPI_HOST=coclipi.local
+	@$(MAKE) hotfix-rpi RPI_HOST=cocli5x0.pi
+	@$(MAKE) hotfix-rpi RPI_HOST=octoprint.pi
+	@$(MAKE) hotfix-rpi RPI_HOST=coclipi.pi
 
 # ==============================================================================
 # Raspberry Pi Worker Management
 # ==============================================================================
-RPI_HOST ?= octoprint.local
+RPI_HOST ?= octoprint.pi
 RPI_USER ?= mstouffer
 RPI_DIR ?= ~/repos/cocli
-CLUSTER_NODES ?= cocli5x0.local,octoprint.local,coclipi.local
+CLUSTER_NODES ?= cocli5x0.pi,octoprint.pi,coclipi.pi
 
 .PHONY: setup-rpi
 setup-rpi: ## Bootstap the Raspberry Pi with Docker and Git
@@ -679,9 +679,9 @@ start-rpi-supervisor: ## Start the Supervisor on Raspberry Pi for dynamic scalin
 .PHONY: restart-rpi-all
 restart-rpi-all: ## Restart all Raspberry Pi workers using supervisor on all nodes
 	-$(MAKE) stop-rpi-all
-	$(MAKE) start-rpi-supervisor RPI_HOST=octoprint.local
-	$(MAKE) start-rpi-supervisor RPI_HOST=coclipi.local
-	$(MAKE) start-rpi-supervisor RPI_HOST=cocli5x0.local
+	$(MAKE) start-rpi-supervisor RPI_HOST=octoprint.pi
+	$(MAKE) start-rpi-supervisor RPI_HOST=coclipi.pi
+	$(MAKE) start-rpi-supervisor RPI_HOST=cocli5x0.pi
 
 .PHONY: deploy-cluster
 deploy-cluster: ## Rebuild and restart the entire cluster with Supervisor (optimized)
@@ -690,12 +690,12 @@ deploy-cluster: ## Rebuild and restart the entire cluster with Supervisor (optim
 
 .PHONY: shutdown-cluster
 shutdown-cluster: ## Safely shut down all Raspberry Pi workers
-	@echo "Shutting down octoprint.local..."
-	-$(MAKE) shutdown-rpi RPI_HOST=octoprint.local
-	@echo "Shutting down coclipi.local..."
-	-$(MAKE) shutdown-rpi RPI_HOST=coclipi.local
-	@echo "Shutting down cocli5x0.local..."
-	-$(MAKE) shutdown-rpi RPI_HOST=cocli5x0.local
+	@echo "Shutting down octoprint.pi..."
+	-$(MAKE) shutdown-rpi RPI_HOST=octoprint.pi
+	@echo "Shutting down coclipi.pi..."
+	-$(MAKE) shutdown-rpi RPI_HOST=coclipi.pi
+	@echo "Shutting down cocli5x0.pi..."
+	-$(MAKE) shutdown-rpi RPI_HOST=cocli5x0.pi
 	@echo "Shutdown commands sent. You can safely unplug the Pis in 30 seconds."
 
 .PHONY: log-rpi-worker
@@ -721,9 +721,9 @@ stop-rpi: ## Stop all cocli worker containers on a single RPi (Usage: make stop-
 
 .PHONY: stop-rpi-all
 stop-rpi-all: ## Stop all cocli worker containers on ALL cluster nodes
-	-$(MAKE) stop-rpi RPI_HOST=octoprint.local
-	-$(MAKE) stop-rpi RPI_HOST=coclipi.local
-	-$(MAKE) stop-rpi RPI_HOST=cocli5x0.local
+	-$(MAKE) stop-rpi RPI_HOST=octoprint.pi
+	-$(MAKE) stop-rpi RPI_HOST=coclipi.pi
+	-$(MAKE) stop-rpi RPI_HOST=cocli5x0.pi
 
 .PHONY: _deploy-single-node
 _deploy-single-node: ## Deploy to a single RPi node (Internal)
