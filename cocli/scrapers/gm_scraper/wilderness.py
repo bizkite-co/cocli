@@ -33,7 +33,7 @@ class WildernessManager:
             
         return True
 
-    def mark_scraped(self, bounds: Dict[str, float], query: str, items_found: int, width_miles: float, height_miles: float, tile_id: Optional[str] = None) -> None:
+    def mark_scraped(self, bounds: Dict[str, float], query: str, items_found: int, width_miles: float, height_miles: float, tile_id: Optional[str] = None, processed_by: Optional[str] = None) -> None:
         """Updates the index with the results."""
         # Always mark as scraped for the specific query, even if 0 items found.
         # We no longer mark "Wilderness" (global empty).
@@ -43,7 +43,8 @@ class WildernessManager:
             lat_miles=height_miles,
             lon_miles=width_miles,
             items_found=items_found,
-            tile_id=tile_id
+            tile_id=tile_id,
+            processed_by=processed_by
         )
 
         if file_path and self.s3_client and self.s3_bucket:

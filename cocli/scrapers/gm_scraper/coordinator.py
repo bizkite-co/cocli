@@ -45,7 +45,8 @@ class ScrapeCoordinator:
         panning_distance_miles: int = 5,
         force_refresh: bool = False,
         ttl_days: int = 30,
-        grid_tiles: Optional[List[Dict[str, Any]]] = None
+        grid_tiles: Optional[List[Dict[str, Any]]] = None,
+        processed_by: Optional[str] = None
     ) -> AsyncIterator[GoogleMapsProspect]:
         
         # Create a new context explicitly for this session
@@ -129,7 +130,7 @@ class ScrapeCoordinator:
                         items_found += 1
                         
                     # Mark Index
-                    self.wilderness.mark_scraped(bounds, query, items_found, record_width, record_height, tile_id=tile_id)
+                    self.wilderness.mark_scraped(bounds, query, items_found, record_width, record_height, tile_id=tile_id, processed_by=processed_by)
                 
                 # Log bandwidth usage for this location
                 end_mb = self.bandwidth_tracker.get_mb() if self.bandwidth_tracker else 0.0

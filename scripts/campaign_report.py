@@ -112,25 +112,29 @@ def main(
     # 3.1 Work Distribution (DuckDB Analytics)
     dist_table = Table(title="Cluster Work Distribution (Actual Results)", box=None)
     dist_table.add_column("Host", style="cyan")
+    dist_table.add_column("Scrapes", justify="right", style="green")
     dist_table.add_column("Detailed Leads", justify="right", style="magenta")
     dist_table.add_column("Enrichments", justify="right", style="blue")
-    dist_table.add_column("Share", justify="right", style="green")
+    dist_table.add_column("Share", justify="right", style="white")
 
     capacity = stats.get('cluster_capacity', {})
+    by_machine_scr = capacity.get('by_machine_scraped', {})
     by_machine_det = capacity.get('by_machine_detailed', {})
     by_machine_enr = capacity.get('by_machine_enriched', {})
+    total_scraped = capacity.get('total_scraped', 0)
     total_detailed = capacity.get('total_detailed', 0)
     total_enriched = capacity.get('total_enriched_sampled', 0)
 
     # Combine machine sets
-    all_machines = set(by_machine_det.keys()) | set(by_machine_enr.keys())
-    total_work = total_detailed + total_enriched
+    all_machines = set(by_machine_scr.keys()) | set(by_machine_det.keys()) | set(by_machine_enr.keys())
+    total_work = total_scraped + total_detailed + total_enriched
 
     for machine in sorted(all_machines):
+        count_scr = by_machine_scr.get(machine, 0)
         count_det = by_machine_det.get(machine, 0)
         count_enr = by_machine_enr.get(machine, 0)
-        share = f"{((count_det + count_enr) / total_work * 100):.1f}%" if total_work > 0 else "0%"
-        dist_table.add_row(machine, str(count_det), str(count_enr), share)
+        share = f"{((count_scr + count_det + count_enr) / total_work * 100):.1f}%" if total_work > 0 else "0%"
+        dist_table.add_row(machine, str(count_scr), str(count_det), str(count_enr), share)
 
     heartbeats = stats.get('worker_heartbeats', [])
     now = datetime.now(timezone.utc)

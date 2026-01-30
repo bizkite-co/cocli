@@ -337,6 +337,13 @@ def get_campaign_stats(campaign_name: str) -> Dict[str, Any]:
                             elif obj["Key"].endswith("lease.json"):
                                 inflight_count += 1
                     
+                    # Special Case for gm-list pending: Use Mission vs Witness if pending is 0
+                    if q == "gm-list" and pending_count == 0:
+                        # This is an approximation. Real count is (target - witness)
+                        # We use the counts we might already have or just leave it for now
+                        # but at least we explain why it might be 0.
+                        pass
+
                     completed_count = 0
                     prefix_completed = f"campaigns/{campaign_name}/queues/{q}/completed/"
                     for page in paginator.paginate(Bucket=data_bucket, Prefix=prefix_completed):
@@ -349,6 +356,14 @@ def get_campaign_stats(campaign_name: str) -> Dict[str, Any]:
                     }
                 except Exception as e:
                     logger.warning(f"Could not count S3 queue tasks for {q}: {e}")
+            
+            # --- Better gm-list (Global) Pending count ---
+            # If we already scanned scraped tiles from S3, we can use that.
+            if "gm-list" in s3_queues:
+                # We can use total_target_tiles and total_scraped_tiles calculated below
+                # But those are calculated AFTER this loop.
+                pass
+            # ---------------------------------------------
             
             stats["s3_queues"] = s3_queues
             # ----------------------------------------
@@ -728,5 +743,12 @@ def get_campaign_stats(campaign_name: str) -> Dict[str, Any]:
     stats["total_target_tiles"] = len(all_target_tiles)
     stats["total_scraped_tiles"] = len(all_scraped_tiles)
     stats["scraped_per_phrase"] = {q: len(tiles) for q, tiles in scraped_tiles_by_phrase.items()}
+
+    # Update S3 Queue Pending count for gm-list if using cloud
+    if stats.get("using_cloud_queue") and "gm-list" in stats.get("s3_queues", {}):
+        # Pending = Target - Scraped - Inflight
+        inflight = stats["s3_queues"]["gm-list"]["inflight"]
+        pending = max(0, len(all_target_tiles) - len(all_scraped_tiles) - inflight)
+        stats["s3_queues"]["gm-list"]["pending"] = pending
 
     return stats

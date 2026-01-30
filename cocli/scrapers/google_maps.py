@@ -29,7 +29,8 @@ async def scrape_google_maps(
     max_initial_expansion_attempts: int = 3,
     grid_tiles: Optional[List[Dict[str, Any]]] = None,
     s3_client: Any = None,
-    s3_bucket: Optional[str] = None
+    s3_bucket: Optional[str] = None,
+    processed_by: Optional[str] = None
 ) -> AsyncIterator[GoogleMapsProspect]:
     """
     Scrapes business information from Google Maps using the modular ScrapeCoordinator.
@@ -97,7 +98,8 @@ async def scrape_google_maps(
         panning_distance_miles=panning_distance_miles,
         force_refresh=force_refresh,
         ttl_days=ttl_days,
-        grid_tiles=grid_tiles
+        grid_tiles=grid_tiles,
+        processed_by=processed_by
     ):
         yield item
 

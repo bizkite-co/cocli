@@ -658,6 +658,25 @@ class FilesystemGmListQueue(FilesystemQueue):
             if self.s3_client and self.bucket_name:
                 try:
                     s3_lease_key = self._get_s3_lease_key(task.ack_token)
+                    
+                    # Upload a completion marker to S3 so reports can count it
+                    # Sanitize task_id for S3 key (remove slashes)
+                    safe_id = task.ack_token.replace("/", "_").replace("\\", "_")
+                    s3_completed_key = f"campaigns/{self.campaign_name}/queues/{self.queue_name}/completed/{safe_id}.json"
+                    
+                    completion_data = {
+                        "task_id": task.ack_token,
+                        "completed_at": datetime.now(UTC).isoformat(),
+                        "worker_id": self.worker_id
+                    }
+                    
+                    self.s3_client.put_object(
+                        Bucket=self.bucket_name,
+                        Key=s3_completed_key,
+                        Body=json.dumps(completion_data),
+                        ContentType="application/json"
+                    )
+
                     self.s3_client.delete_object(Bucket=self.bucket_name, Key=s3_lease_key)
                     logger.debug(f"Immediate S3 Ack for GmList {task.ack_token} completed.")
                 except Exception as e:

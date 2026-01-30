@@ -39,32 +39,84 @@ def get_cluster_capacity_stats(campaign_name: str) -> Dict[str, Any]:
     stats: Dict[str, Any] = {
         "by_machine_detailed": {},
         "by_machine_enriched": {},
+        "by_machine_scraped": {},
         "total_detailed": 0,
         "total_enriched": 0,
+        "total_scraped": 0,
         "mode": "sampled"
     }
 
     try:
-        # 1. Sample GM Details Results (google_maps_prospects/*.csv)
+        # 1. Sample GM Details Results (google_maps_prospects/*.csv and *.usv)
         s3 = session.client("s3")
         prefix_det = f"campaigns/{campaign_name}/indexes/google_maps_prospects/"
         res_det = s3.list_objects_v2(Bucket=bucket_name, Prefix=prefix_det, MaxKeys=100)
-        files_det = [f"s3://{bucket_name}/{obj['Key']}" for obj in res_det.get("Contents", []) if obj["Key"].endswith(".csv")]
+        all_det_objs = res_det.get("Contents", [])
         
-        if files_det:
-            path_list = "', '".join(files_det)
-            query = f"""
+        files_csv = [f"s3://{bucket_name}/{obj['Key']}" for obj in all_det_objs if obj["Key"].endswith(".csv")]
+        files_usv = [f"s3://{bucket_name}/{obj['Key']}" for obj in all_det_objs if obj["Key"].endswith(".usv")]
+        
+        # Helper to process a set of files
+        def process_files(files: list[str], delimiter: str = ',') -> None:
+            if not files:
+                return
+            path_list = "', '".join(files)
+            delim_str = delimiter if delimiter != '\x1f' else '\\x1f'
+            # We use a subquery with a dummy UNION to ensure processed_by exists in the schema
+            q = f"""
+                WITH raw_data AS (
+                    SELECT * FROM read_csv_auto(['{path_list}'], delim='{delim_str}', union_by_name=True, sample_size=5, ignore_errors=True)
+                    UNION ALL SELECT NULL as processed_by WHERE 1=0
+                )
                 SELECT processed_by, COUNT(*) as count 
-                FROM read_csv_auto(['{path_list}'], union_by_name=True, sample_size=5) 
-                WHERE processed_by IS NOT NULL
+                FROM raw_data
+                WHERE processed_by IS NOT NULL AND processed_by != ''
                 GROUP BY processed_by
             """
-            results = con.execute(query).fetchall()
-            for machine, count in results:
-                stats["by_machine_detailed"][machine] = count
-                stats["total_detailed"] += count
+            try:
+                for machine, count in con.execute(q).fetchall():
+                    stats["by_machine_detailed"][machine] = stats["by_machine_detailed"].get(machine, 0) + count
+                    stats["total_detailed"] += count
+            except Exception as e:
+                logger.debug(f"DuckDB Details query failed for {delim_str}: {e}")
 
-        # 2. Sample Enrichment Results (enrichments/website.md)
+        process_files(files_csv, ',')
+        process_files(files_usv, '\x1f')
+
+        # 2. Sample Scrapes (scraped-tiles/**/*.usv and *.csv)
+        prefix_scr = f"campaigns/{campaign_name}/indexes/scraped-tiles/"
+        res_scr = s3.list_objects_v2(Bucket=bucket_name, Prefix=prefix_scr, MaxKeys=100)
+        all_scr_objs = res_scr.get("Contents", [])
+        
+        scr_csv = [f"s3://{bucket_name}/{obj['Key']}" for obj in all_scr_objs if obj["Key"].endswith(".csv")]
+        scr_usv = [f"s3://{bucket_name}/{obj['Key']}" for obj in all_scr_objs if obj["Key"].endswith(".usv")]
+
+        def process_scrapes(files: list[str], delimiter: str = ',') -> None:
+            if not files:
+                return
+            path_list = "', '".join(files)
+            delim_str = delimiter if delimiter != '\x1f' else '\\x1f'
+            q = f"""
+                WITH raw_data AS (
+                    SELECT * FROM read_csv_auto(['{path_list}'], delim='{delim_str}', union_by_name=True, ignore_errors=True)
+                    UNION ALL SELECT NULL as processed_by WHERE 1=0
+                )
+                SELECT processed_by, COUNT(*) as count 
+                FROM raw_data
+                WHERE processed_by IS NOT NULL AND processed_by != ''
+                GROUP BY processed_by
+            """
+            try:
+                for machine, count in con.execute(q).fetchall():
+                    stats["by_machine_scraped"][machine] = stats["by_machine_scraped"].get(machine, 0) + count
+                    stats["total_scraped"] += count
+            except Exception as e:
+                logger.debug(f"DuckDB Scrapes query failed for {delim_str}: {e}")
+
+        process_scrapes(scr_csv, ',')
+        process_scrapes(scr_usv, '\x1f')
+
+        # 3. Sample Enrichment Results (enrichments/website.md)
         # website.md files are YAML-frontmatter Markdown. DuckDB can parse these if treated as text,
         # but it's easier to just list them for a count, or if we want attribution, 
         # we'd need to parse the frontmatter. 

@@ -118,8 +118,11 @@ def ensure_campaign_config(campaign_name: str) -> None:
 
 
 async def run_worker(
-    headless: bool, debug: bool, campaign_name: str, workers: int = 1
+    headless: bool, debug: bool, campaign_name: str, workers: int = 1, processed_by: Optional[str] = None
     ) -> None:
+    if not processed_by:
+        hostname = os.getenv("COCLI_HOSTNAME") or socket.gethostname().split(".")[0]
+        processed_by = hostname
     try:
         ensure_campaign_config(campaign_name)
 
@@ -188,6 +191,7 @@ async def run_worker(
                         s3_client,
                         bucket_name,
                         debug,
+                        processed_by=processed_by,
                         tracker=tracker,
                     )
                     for _ in range(workers)
@@ -385,6 +389,7 @@ async def _run_scrape_task_loop(
     s3_client: Any,
     bucket_name: str,
     debug: bool,
+    processed_by: Optional[str] = None,
     tracker: Optional[Any] = None,
 ) -> None:
     while True:  # Task Processing Loop
@@ -462,11 +467,13 @@ async def _run_scrape_task_loop(
                         debug=debug,
                         s3_client=s3_client,
                         s3_bucket=bucket_name,
+                        processed_by=processed_by,
                     ):
                         if not prospect.Place_ID:
                             continue
 
                         prospect_count += 1
+                        prospect.processed_by = processed_by
                         if csv_manager.append_prospect(prospect):
                             if s3_client:
                                 file_path = csv_manager.get_file_path(prospect.Place_ID)
@@ -1441,6 +1448,7 @@ async def run_supervisor(
                             s3_client,
                             bucket_name,
                             debug,
+                            processed_by=processed_by,
                         )
                     )
                     scrape_tasks[new_id] = task
@@ -1643,8 +1651,10 @@ def gm_list(
             prospecting_config["google_maps_delay_seconds"]
         )
 
+    hostname = os.getenv("COCLI_HOSTNAME") or socket.gethostname().split(".")[0]
+
     asyncio.run(
-        run_worker(not headed, debug, effective_campaign, workers=final_workers)
+        run_worker(not headed, debug, effective_campaign, workers=final_workers, processed_by=hostname)
     )
 
 

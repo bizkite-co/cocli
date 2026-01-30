@@ -24,6 +24,7 @@ class ScrapedArea(NamedTuple):
     lon_miles: float
     items_found: int
     tile_id: Optional[str] = None
+    processed_by: Optional[str] = None
 
 def _calculate_overlap_area(bounds1: dict[str, float], bounds2: dict[str, float]) -> float:
     """
@@ -146,7 +147,8 @@ class ScrapeIndex:
                         lon_min=lon-0.05, lon_max=lon+0.05,
                         lat_miles=8.0, lon_miles=8.0,
                         items_found=int(row.get('items_found', 0)),
-                        tile_id=tile_id
+                        tile_id=tile_id,
+                        processed_by=row.get('processed_by')
                     )
                 except Exception:
                     pass
@@ -210,13 +212,14 @@ class ScrapeIndex:
                 lat_miles=data['lat_miles'],
                 lon_miles=data['lon_miles'],
                 items_found=data.get('items_found', 0),
-                tile_id=data.get('tile_id')
+                tile_id=data.get('tile_id'),
+                processed_by=data.get('processed_by')
             )
         except Exception as e:
             logger.error(f"Error loading area from {file_path}: {e}")
             return None
 
-    def add_area(self, phrase: str, bounds: dict[str, float], lat_miles: float, lon_miles: float, items_found: int = 0, scrape_date: Optional[datetime] = None, tile_id: Optional[str] = None) -> Optional[Path]:
+    def add_area(self, phrase: str, bounds: dict[str, float], lat_miles: float, lon_miles: float, items_found: int = 0, scrape_date: Optional[datetime] = None, tile_id: Optional[str] = None, processed_by: Optional[str] = None) -> Optional[Path]:
         """Adds a new scraped area to the index."""
         if not all(key in bounds for key in ['lat_min', 'lat_max', 'lon_min', 'lon_max']):
             logger.warning("Attempted to add area with incomplete bounds.")
@@ -245,7 +248,8 @@ class ScrapeIndex:
             "lon_max": bounds['lon_max'],
             "lat_miles": lat_miles,
             "lon_miles": lon_miles,
-            "items_found": items_found
+            "items_found": items_found,
+            "processed_by": processed_by
         }
         
         if tile_id:
@@ -269,8 +273,8 @@ class ScrapeIndex:
                     from cocli.utils.usv_utils import USVWriter
                     with open(witness_path, 'w', encoding='utf-8') as wf:
                         writer = USVWriter(wf)
-                        writer.writerow(["scrape_date", "items_found"])
-                        writer.writerow([data['scrape_date'], str(items_found)])
+                        writer.writerow(["scrape_date", "items_found", "processed_by"])
+                        writer.writerow([data['scrape_date'], str(items_found), processed_by or ""])
                     logger.debug(f"Saved witness file (USV): {witness_path}")
                 except Exception as we:
                     logger.error(f"Failed to save witness file for {tile_id}: {we}")
