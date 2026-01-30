@@ -1,6 +1,7 @@
 import logging
 import os
 import boto3
+import hashlib
 from typing import List, Optional, Dict, Any
 from datetime import datetime, timezone
 from botocore.config import Config
@@ -87,6 +88,10 @@ class DomainIndexManager:
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_text(content, encoding="utf-8")
 
+    def get_shard_id(self, domain: str) -> str:
+        """Calculates a deterministic shard ID (00-ff) based on domain hash."""
+        return hashlib.sha256(domain.encode()).hexdigest()[:2]
+
     def get_latest_manifest(self) -> IndexManifest:
         """Fetches the latest manifest using the LATEST pointer."""
         try:
@@ -99,27 +104,27 @@ class DomainIndexManager:
             return self.bootstrap_manifest()
 
     def bootstrap_manifest(self) -> IndexManifest:
-        """Creates an initial manifest by scanning the inbox."""
+        """Creates an initial manifest by scanning the shards directory."""
         manifest = IndexManifest()
         try:
             if self.is_cloud:
                 paginator = self.s3_client.get_paginator('list_objects_v2')
-                pages = paginator.paginate(Bucket=self.bucket_name, Prefix=self.inbox_prefix)
+                pages = paginator.paginate(Bucket=self.bucket_name, Prefix=self.shards_prefix)
                 for page in pages:
                     for obj in page.get('Contents', []):
                         key = str(obj['Key'])
                         if not key.endswith(".usv") or key.split('/')[-1].startswith("_"):
                             continue
-                        domain = key.split('/')[-1].replace(".usv", "")
-                        manifest.shards[domain] = IndexShard(path=key, updated_at=obj.get('LastModified', datetime.now(timezone.utc)))
+                        shard_id = key.split('/')[-1].replace(".usv", "")
+                        manifest.shards[shard_id] = IndexShard(path=key, updated_at=obj.get('LastModified', datetime.now(timezone.utc)))
             else:
-                inbox_dir = get_cocli_base_dir() / self.inbox_prefix
-                if inbox_dir.exists():
-                    for f in inbox_dir.glob("*.usv"):
+                shards_dir = get_cocli_base_dir() / self.shards_prefix
+                if shards_dir.exists():
+                    for f in shards_dir.glob("*.usv"):
                         if f.name.startswith("_"):
                             continue
-                        domain = f.stem
-                        manifest.shards[domain] = IndexShard(path=f"{self.inbox_prefix}{f.name}", updated_at=datetime.fromtimestamp(f.stat().st_mtime))
+                        shard_id = f.stem
+                        manifest.shards[shard_id] = IndexShard(path=f"{self.shards_prefix}{f.name}", updated_at=datetime.fromtimestamp(f.stat().st_mtime))
             return manifest
         except Exception as e:
             logger.error(f"Manifest bootstrap failed: {e}")
@@ -132,7 +137,7 @@ class DomainIndexManager:
         s3_key = f"{self.inbox_prefix}{slugdotify(str(data.domain))}.usv"
         self._write_object(s3_key, data.to_usv())
 
-    def query(self, sql_where: Optional[str] = None, include_shards: bool = True, include_inbox: bool = True) -> List[WebsiteDomainCsv]:
+    def query(self, sql_where: Optional[str] = None, include_shards: bool = True, include_inbox: bool = True, shard_paths: Optional[List[str]] = None) -> List[WebsiteDomainCsv]:
         """
         Queries the unified index using DuckDB.
         Performs a UNION ALL of shards and inbox, then deduplicates by domain.
@@ -169,22 +174,25 @@ class DomainIndexManager:
         sub_queries = []
 
         # 1. Manifest Shards
-        if include_shards and manifest.shards:
-            paths = sorted(list(set([self._get_path(s.path) for s in manifest.shards.values()] )))
-            path_list = "', '".join(paths)
-            sub_queries.append(f"""
-                SELECT * FROM read_csv(['{path_list}'], 
-                    delim=CHR(31), 
-                    header=False, 
-                    quote='', 
-                    escape='', 
-                    columns={columns}, 
-                    auto_detect=False, 
-                    all_varchar=True,
-                    null_padding=True,
-                    strict_mode=False
-                )
-            """)
+        if include_shards or shard_paths:
+            if not shard_paths and manifest.shards:
+                shard_paths = sorted(list(set([self._get_path(s.path) for s in manifest.shards.values()] )))
+            
+            if shard_paths:
+                path_list = "', '".join(shard_paths)
+                sub_queries.append(f"""
+                    SELECT * FROM read_csv(['{path_list}'], 
+                        delim=CHR(31), 
+                        header=False, 
+                        quote='', 
+                        escape='', 
+                        columns={columns}, 
+                        auto_detect=False, 
+                        all_varchar=True,
+                        null_padding=True,
+                        strict_mode=False
+                    )
+                """)
 
         # 2. Inbox (Directly list files to avoid glob issues on S3)
         if include_inbox:
@@ -249,15 +257,30 @@ class DomainIndexManager:
             return []
 
     def get_by_domain(self, domain: str) -> Optional[WebsiteDomainCsv]:
-        results = self.query(f"domain = '{domain}'")
-        return results[0] if results else None
+        # 1. Check Inbox first (fastest, atomic source of truth)
+        s3_key = f"{self.inbox_prefix}{slugdotify(domain)}.usv"
+        try:
+            content = self._read_object(s3_key)
+            return WebsiteDomainCsv.from_usv(content)
+        except Exception:
+            pass
+            
+        # 2. Check the specific Shard
+        shard_id = self.get_shard_id(domain)
+        manifest = self.get_latest_manifest()
+        if shard_id in manifest.shards:
+            shard_path = self._get_path(manifest.shards[shard_id].path)
+            results = self.query(f"domain = '{domain}'", include_inbox=False, include_shards=False, shard_paths=[shard_path])
+            return results[0] if results else None
+        
+        return None
 
     def compact_inbox(self) -> None:
         """
-        Merges all items currently in the inbox into a single new shard.
-        Updates the manifest to point these domains to the new shard.
+        Merges all items currently in the inbox into their respective deterministic shards (00-ff).
+        Updates the manifest to point to the new shard versions.
         """
-        logger.info(f"Starting inbox compaction for {self.campaign.name}...")
+        logger.info(f"Starting deterministic inbox compaction for {self.campaign.name}...")
         
         # 1. Collect all items from Inbox
         inbox_items = self.query(include_shards=False)
@@ -265,31 +288,53 @@ class DomainIndexManager:
             logger.info("Inbox is empty, nothing to compact.")
             return
 
-        # 2. Group by domain (latest wins)
-        latest_items: Dict[str, WebsiteDomainCsv] = {}
+        # 2. Group by shard ID (latest wins)
+        shard_groups: Dict[str, Dict[str, WebsiteDomainCsv]] = {}
         for item in inbox_items:
-            if item.domain not in latest_items or item.updated_at > latest_items[item.domain].updated_at:
-                latest_items[item.domain] = item
-
-        # 3. Write new Shard
-        import uuid
-        shard_id = str(uuid.uuid4())
-        shard_key = f"{self.shards_prefix}{shard_id}.usv"
-        
-        shard_content = "\n".join([item.to_usv() for item in latest_items.values()]) + "\n"
-        self._write_object(shard_key, shard_content)
-        
-        # 4. Update Manifest
-        manifest = self.get_latest_manifest()
-        new_shard_ptr = IndexShard(
-            path=shard_key,
-            schema_version=6,
-            updated_at=datetime.now(timezone.utc)
-        )
-        
-        for domain in latest_items.keys():
-            manifest.shards[domain] = new_shard_ptr
+            shard_id = self.get_shard_id(str(item.domain))
+            if shard_id not in shard_groups:
+                shard_groups[shard_id] = {}
             
+            if item.domain not in shard_groups[shard_id] or item.updated_at > shard_groups[shard_id][item.domain].updated_at:
+                shard_groups[shard_id][str(item.domain)] = item
+
+        # 3. Update Manifest
+        manifest = self.get_latest_manifest()
+        import uuid
+
+        # 4. Process each shard
+        for shard_id, new_items in shard_groups.items():
+            logger.info(f"Processing shard {shard_id} with {len(new_items)} new/updated items...")
+            
+            # 4a. Load existing items from this shard if it exists
+            existing_items: Dict[str, WebsiteDomainCsv] = {}
+            if shard_id in manifest.shards:
+                try:
+                    shard_content = self._read_object(manifest.shards[shard_id].path)
+                    for line in shard_content.strip("\n").split("\n"):
+                        if not line.strip():
+                            continue
+                        item = WebsiteDomainCsv.from_usv(line)
+                        existing_items[str(item.domain)] = item
+                except Exception as e:
+                    logger.warning(f"Could not read existing shard {shard_id}: {e}")
+
+            # 4b. Merge
+            existing_items.update(new_items)
+            
+            # 4c. Write new Shard Version
+            new_shard_key = f"{self.shards_prefix}{shard_id}.usv"
+            shard_content = "\n".join([item.to_usv() for item in existing_items.values()]) + "\n"
+            self._write_object(new_shard_key, shard_content)
+            
+            # 4d. Update Manifest Entry
+            manifest.shards[shard_id] = IndexShard(
+                path=new_shard_key,
+                record_count=len(existing_items),
+                schema_version=6,
+                updated_at=datetime.now(timezone.utc)
+            )
+
         # 5. Save Manifest
         manifest_key = f"{self.manifests_prefix}{uuid.uuid4()}.usv"
         self._write_object(manifest_key, manifest.to_usv())
@@ -297,7 +342,7 @@ class DomainIndexManager:
         # 6. Swap Pointer
         self._write_object(self.latest_pointer_key, manifest_key)
         
-        logger.info(f"Compacted {len(latest_items)} domains into {shard_key}")
+        logger.info(f"Compaction complete. Processed {len(shard_groups)} shards.")
         
-        # 7. (Optional) Cleanup Inbox - We'll leave this for now to be safe, 
+        # 7. Cleanup Inbox - We'll leave this for now to be safe, 
         # or implement a 'cleanup' that deletes files older than the manifest update.

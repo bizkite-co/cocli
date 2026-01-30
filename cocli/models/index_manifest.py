@@ -11,17 +11,17 @@ class IndexShard(BaseModel):
 class IndexManifest(BaseModel):
     version: int = 1
     generated_at: datetime = Field(default_factory=datetime.utcnow)
-    shards: Dict[str, IndexShard] = {} # domain -> IndexShard
+    shards: Dict[str, IndexShard] = {} # shard_id -> IndexShard
 
     @classmethod
     def get_header(cls) -> str:
-        return "domain\x1fpath\x1frecord_count\x1fschema_version\x1fupdated_at"
+        return "shard_id\x1fpath\x1frecord_count\x1fschema_version\x1fupdated_at"
 
     def to_usv(self) -> str:
         """Serializes the manifest to a USV string for storage in S3."""
         lines = []
-        for domain, shard in self.shards.items():
-            line = f"{domain}\x1f{shard.path}\x1f{shard.record_count}\x1f{shard.schema_version}\x1f{shard.updated_at.isoformat()}"
+        for shard_id, shard in self.shards.items():
+            line = f"{shard_id}\x1f{shard.path}\x1f{shard.record_count}\x1f{shard.schema_version}\x1f{shard.updated_at.isoformat()}"
             lines.append(line)
         return "\x1e".join(lines)
 
@@ -36,8 +36,8 @@ class IndexManifest(BaseModel):
         for line in lines:
             parts = line.split("\x1f")
             if len(parts) >= 5:
-                domain, path, count, ver, updated = parts
-                shards[domain] = IndexShard(
+                shard_id, path, count, ver, updated = parts
+                shards[shard_id] = IndexShard(
                     path=path,
                     record_count=int(count),
                     schema_version=int(ver),
