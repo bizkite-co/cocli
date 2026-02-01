@@ -32,10 +32,10 @@ def main(campaign_name: Optional[str] = typer.Argument(None, help="Campaign name
         slugs_to_check = []
         if prospect.company_slug:
             slugs_to_check.append(prospect.company_slug)
-        if prospect.Name:
-            slugs_to_check.append(slugify(prospect.Name))
-        if prospect.Domain:
-            slugs_to_check.append(slugify(prospect.Domain))
+        if prospect.name:
+            slugs_to_check.append(slugify(prospect.name))
+        if prospect.domain:
+            slugs_to_check.append(slugify(prospect.domain))
             
         for slug in set(slugs_to_check):
             company_path = companies_dir / slug

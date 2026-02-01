@@ -28,6 +28,7 @@ class Company(BaseModel):
     type: str = "N/A"
     tags: list[str] = Field(default_factory=list)
     slug: str # Changed from Optional[str] to str
+    company_hash: Optional[str] = None
     description: Optional[str] = None
     visits_per_day: Optional[int] = None
 
@@ -75,6 +76,13 @@ class Company(BaseModel):
     last_enriched: Optional[datetime] = None
     enrichment_ttl_days: int = 30
     processed_by: Optional[str] = "local-worker"
+
+    @model_validator(mode='after')
+    def populate_identifiers(self) -> 'Company':
+        if not self.company_hash and self.name:
+            from cocli.core.text_utils import calculate_company_hash
+            self.company_hash = calculate_company_hash(self.name, self.street_address, self.zip_code)
+        return self
 
     @model_validator(mode='after')
     def parse_full_address(self) -> 'Company':

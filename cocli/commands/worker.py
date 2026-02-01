@@ -469,14 +469,14 @@ async def _run_scrape_task_loop(
                         s3_bucket=bucket_name,
                         processed_by=processed_by,
                     ):
-                        if not prospect.Place_ID:
+                        if not prospect.place_id:
                             continue
 
                         prospect_count += 1
                         prospect.processed_by = processed_by
                         if csv_manager.append_prospect(prospect):
                             if s3_client:
-                                file_path = csv_manager.get_file_path(prospect.Place_ID)
+                                file_path = csv_manager.get_file_path(prospect.place_id)
                                 s3_key = f"campaigns/{task.campaign_name}/indexes/google_maps_prospects/{file_path.name}"
                                 try:
                                     s3_client.upload_file(
@@ -486,7 +486,7 @@ async def _run_scrape_task_loop(
                                     pass
 
                             details_task = GmItemTask(
-                                place_id=prospect.Place_ID,
+                                place_id=prospect.place_id,
                                 campaign_name=task.campaign_name,
                                 force_refresh=False,
                                 ack_token=None,
@@ -742,10 +742,10 @@ async def _run_details_task_loop(
                             )
 
                             # Ensure it's in the enrichment queue if it has a domain
-                            if existing_prospect.Domain and existing_prospect.Name:
+                            if existing_prospect.domain and existing_prospect.name:
                                 msg = QueueMessage(
-                                    domain=existing_prospect.Domain,
-                                    company_slug=slugify(existing_prospect.Name),
+                                    domain=existing_prospect.domain,
+                                    company_slug=slugify(existing_prospect.name),
                                     campaign_name=task.campaign_name,
                                     force_refresh=task.force_refresh,
                                     ack_token=None,
@@ -819,37 +819,37 @@ async def _run_details_task_loop(
                 except Exception as e:
                     logger.error(f"S3 Upload Error: {e}")
 
-            if final_prospect_data.Domain and final_prospect_data.Name:
+            if final_prospect_data.domain and final_prospect_data.name:
                 msg = QueueMessage(
-                    domain=final_prospect_data.Domain,
-                    company_slug=slugify(final_prospect_data.Name),
+                    domain=final_prospect_data.domain,
+                    company_slug=slugify(final_prospect_data.name),
                     campaign_name=task.campaign_name,
                     force_refresh=task.force_refresh,
                     ack_token=None,
                 )
                 enrichment_queue.push(msg)
-                logger.info(f"Pushed {final_prospect_data.Domain} to Enrichment Queue")
+                logger.info(f"Pushed {final_prospect_data.domain} to Enrichment Queue")
 
             # --- Email Indexing ---
             # If the GMB details scrape found an email, index it immediately
             # Note: GMB Parser doesn't always find emails, but if it does, we want it.
-            if hasattr(final_prospect_data, "Email") and final_prospect_data.Email:
+            if hasattr(final_prospect_data, "email") and final_prospect_data.email:
                 try:
                     from cocli.core.email_index_manager import EmailIndexManager
                     from cocli.models.email import EmailEntry
 
                     email_manager = EmailIndexManager(task.campaign_name)
                     entry = EmailEntry(
-                        email=final_prospect_data.Email,
-                        domain=final_prospect_data.Domain
-                        or final_prospect_data.Email.split("@")[-1],
+                        email=final_prospect_data.email,
+                        domain=final_prospect_data.domain
+                        or final_prospect_data.email.split("@")[-1],
                         company_slug=final_prospect_data.company_slug,
                         source="gmb_details_worker",
                         tags=[task.campaign_name],
                     )
                     email_manager.add_email(entry)
                     logger.info(
-                        f"Indexed email from GMB details: {final_prospect_data.Email}"
+                        f"Indexed email from GMB details: {final_prospect_data.email}"
                     )
                 except Exception as e:
                     logger.warning(f"Failed to index email from GMB details: {e}")

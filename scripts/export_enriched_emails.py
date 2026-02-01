@@ -2,12 +2,12 @@ import typer
 import csv
 import yaml
 import json
-from typing import Optional, Any
+from typing import Optional
 
 from rich.console import Console
 from rich.progress import track
 from cocli.core.config import get_companies_dir, get_campaign, get_campaigns_dir
-from cocli.core.text_utils import slugify, is_valid_email
+from cocli.core.text_utils import is_valid_email
 from cocli.models.website import Website
 from cocli.core.exclusions import ExclusionManager
 
@@ -57,19 +57,25 @@ def main(
         console.print("[bold red]Error: No campaign specified and no active context.[/bold red]")
         raise typer.Exit(1)
 
-    companies_dir = get_companies_dir()
     campaign_dir = get_campaigns_dir() / campaign_name
     email_index_dir = campaign_dir / "indexes" / "emails"
     exclusion_manager = ExclusionManager(campaign_name)
     
     from cocli.core.config import get_campaign_exports_dir
+    from cocli.models.company import Company
     export_dir = get_campaign_exports_dir(campaign_name)
     output_file = export_dir / f"enriched_emails_{campaign_name}.csv"
     
-    # 1. Load Email Providers
-    from cocli.core.website_domain_csv_manager import WebsiteDomainCsvManager
-    domain_manager = WebsiteDomainCsvManager()
-    email_providers = {d.domain for d in domain_manager.data.values() if d.is_email_provider}
+    # 1. Load Email Providers and Enriched Domains via DomainIndexManager
+    from cocli.core.domain_index_manager import DomainIndexManager
+    from cocli.models.campaign import Campaign
+    campaign = Campaign.load(campaign_name)
+    domain_manager = DomainIndexManager(campaign)
+    
+    # Query all domains to identify providers and get enriched metadata
+    all_domains = domain_manager.query()
+    
+    email_providers = {d.domain for d in all_domains if d.is_email_provider}
     email_providers.update({"gmail.com", "hotmail.com", "yahoo.com", "outlook.com", "aol.com", "icloud.com", "msn.com", "me.com", "live.com", "googlemail.com"})
 
     # 2. Load Emails from Index
@@ -112,57 +118,41 @@ def main(
     manager = ProspectsIndexManager(campaign_name)
     target_place_ids = set()
     target_slugs = set()
+    target_hashes = set()
     
     for prospect in manager.read_all_prospects():
-        if prospect.Place_ID:
-            target_place_ids.add(prospect.Place_ID)
-        if prospect.Domain:
-            target_slugs.add(slugify(prospect.Domain))
+        if prospect.place_id:
+            target_place_ids.add(prospect.place_id)
+        if prospect.company_slug:
+            target_slugs.add(prospect.company_slug)
+        if prospect.company_hash:
+            target_hashes.add(prospect.company_hash)
 
     results = []
     
     # 4. Iterate all companies
-    company_paths = [p for p in companies_dir.iterdir() if p.is_dir()]
-    
-    for company_path in track(company_paths, description="Scanning companies..."):
-        tags_path = company_path / "tags.lst"
-        has_tag = False
-        if tags_path.exists():
-            try:
-                tags = tags_path.read_text().strip().splitlines()
-                if campaign_name in [t.strip() for t in tags]:
-                    has_tag = True
-            except Exception:
-                pass
-        
-        index_md = company_path / "_index.md"
-        idx_data: dict[str, Any] = {}
-        if index_md.exists():
-            try:
-                content = index_md.read_text()
-                from cocli.core.text_utils import parse_frontmatter
-                frontmatter_str = parse_frontmatter(content)
-                if frontmatter_str:
-                    idx_data = yaml.safe_load(frontmatter_str) or {}
-            except Exception:
-                pass
+    for company_obj in track(Company.get_all(), description="Scanning companies..."):
+        # Check if company belongs to this campaign via tags or index match
+        in_campaign = campaign_name in company_obj.tags
+        in_index = (
+            (company_obj.place_id and company_obj.place_id in target_place_ids) or 
+            (company_obj.slug in target_slugs) or
+            (company_obj.company_hash and company_obj.company_hash in target_hashes)
+        )
 
-        place_id = idx_data.get("place_id")
-        in_index = (place_id and place_id in target_place_ids) or (company_path.name in target_slugs)
-
-        if not has_tag and not in_index:
+        if not in_campaign and not in_index:
             continue
 
-        domain = idx_data.get("domain") or company_path.name
-        if exclusion_manager.is_excluded(domain=domain, slug=company_path.name):
+        domain = company_obj.domain or company_obj.slug
+        if exclusion_manager.is_excluded(domain=domain, slug=company_obj.slug):
             continue
 
         if domain in email_providers:
             continue
 
         emails = domain_emails.get(domain, [])
-        if not emails and idx_data.get("email"):
-            e = str(idx_data["email"]).strip()
+        if not emails and company_obj.email:
+            e = str(company_obj.email).strip()
             if is_valid_email(e):
                 emails = [e]
 
@@ -170,20 +160,20 @@ def main(
             continue
 
         if keywords:
-            website_data = get_website_data(company_path.name)
+            website_data = get_website_data(company_obj.slug)
             if not website_data or not website_data.found_keywords:
                 continue
 
         results.append({
-            "company": idx_data.get("name") or company_path.name,
+            "company": company_obj.name,
             "domain": domain,
             "emails": "; ".join(emails),
-            "phone": idx_data.get("phone_1") or idx_data.get("phone_number") or "",
+            "phone": company_obj.phone_number or company_obj.phone_1 or "",
             "website": domain,
-            "categories": "; ".join(sorted(list(set(idx_data.get("categories", []))))),
-            "services": "; ".join(sorted(list(set(idx_data.get("services", []))))),
-            "products": "; ".join(sorted(list(set(idx_data.get("products", []))))),
-            "keywords": "; ".join(sorted(list(set(idx_data.get("keywords", [])))))
+            "categories": "; ".join(sorted(list(set(company_obj.categories)))),
+            "services": "; ".join(sorted(list(set(company_obj.services)))),
+            "products": "; ".join(sorted(list(set(company_obj.products)))),
+            "keywords": "; ".join(sorted(list(set(company_obj.keywords))))
         })
 
     with open(output_file, "w", newline="") as f:

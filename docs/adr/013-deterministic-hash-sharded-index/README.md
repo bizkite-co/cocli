@@ -28,6 +28,13 @@ Shard locations are calculated using a stable hash of the domain name.
 ### 3. Schema Enforcement
 Each shard directory will include a Frictionless Data `datapackage.json`. This sidecar allows tools like `DuckDB` and `qsv` to enforce strict typing (integers, datetimes) without binary conversion.
 
+### 4. Robust Identification (The Identity Tripod)
+To ensure reliable linking between prospects, index records, and company files, we utilize a `company_hash` based on the "Identity Tripod": **Name**, **Street Address**, and **City**.
+
+- **Algorithm**: `SHA-256` (first 16 characters)
+- **Input**: `slugify(name)|slugify(street_address)|slugify(city)`
+- **Benefit**: Immune to minor typo corrections in non-tripod fields and ensures uniqueness for multi-location brands.
+
 ## Data Model
 
 ### Shard Calculation (Python)
@@ -65,7 +72,8 @@ sequenceDiagram
     participant S3 as S3 (Inbox)
     
     W->>W: Generate USV Record
-    W->>S3: PutObject(indexes/domains/{domain}.usv)
+    W->>W: Calculate Shard ID (e.g. 5e)
+    W->>S3: PutObject(indexes/domains/inbox/5e/{domain}.usv)
 ```
 
 ### Compaction (The Compiler)
@@ -77,10 +85,11 @@ sequenceDiagram
     participant I as S3 (Inbox)
     participant S as S3 (Shards)
     
-    C->>I: ListObjects(indexes/domains/)
-    C->>C: Group by Hash Prefix
+    C->>I: ListObjects(indexes/domains/inbox/)
+    C->>C: Select random shard ID (e.g. 5e)
     Loop for each Shard
         C->>S: Read existing Shard (indexes/domains/shards/{id}.usv)
+        C->>I: Read Inbox items (indexes/domains/inbox/{id}/*.usv)
         C->>C: Merge Inbox items (Latest wins)
         C->>S: Write updated Shard
     End

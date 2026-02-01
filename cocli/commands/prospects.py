@@ -597,7 +597,7 @@ def tag_prospects_from_csv() -> None:
     prospects = manager.read_all_prospects()
     
     for prospect in prospects:
-        domain = prospect.Domain
+        domain = prospect.domain
         if not domain:
             continue
 

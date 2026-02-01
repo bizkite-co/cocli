@@ -69,9 +69,9 @@ class GoogleMapsCache:
                     else:
                         processed_row[k] = v
 
-                if processed_row.get("Place_ID"):
+                if processed_row.get("place_id"):
                     try:
-                        self.data[str(processed_row["Place_ID"])] = GoogleMapsProspect(**processed_row)
+                        self.data[str(processed_row["place_id"])] = GoogleMapsProspect(**processed_row)
                     except Exception as e:
                         logger.error(f"Error loading GoogleMapsProspect from cache: {e} for row: {row}")
 
@@ -79,9 +79,9 @@ class GoogleMapsCache:
         return self.data.get(place_id)
 
     def add_or_update(self, item: GoogleMapsProspect) -> None:
-        if item.Place_ID:
+        if item.place_id:
             item.updated_at = datetime.now(UTC)
-            self.data[item.Place_ID] = item
+            self.data[item.place_id] = item
 
     def save(self) -> None:
         with open(self.cache_file_usv, "w", encoding="utf-8") as f:

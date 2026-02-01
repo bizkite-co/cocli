@@ -57,20 +57,20 @@ def main(campaign_name: Optional[str] = typer.Argument(None, help="Campaign name
         # Reconstruct prospect
         # We try to map Company fields back to GoogleMapsProspect
         prospect = GoogleMapsProspect(
-            Place_ID=company.place_id,
-            Name=company.name,
-            Domain=company.domain,
-            Website=company.website_url,
-            Full_Address=company.full_address,
-            Street_Address=company.street_address,
-            City=company.city,
-            State=company.state,
-            Zip=company.zip_code,
-            Country=company.country,
-            Phone_1=company.phone_1,
-            Phone_Standard_format=company.phone_number,
-            Average_rating=company.average_rating,
-            Reviews_count=company.reviews_count,
+            place_id=company.place_id,
+            name=company.name,
+            domain=company.domain,
+            website=company.website_url,
+            full_address=company.full_address,
+            street_address=company.street_address,
+            city=company.city,
+            state=company.state,
+            zip=company.zip_code,
+            country=company.country,
+            phone_1=company.phone_1,
+            phone_standard_format=company.phone_number,
+            average_rating=company.average_rating,
+            reviews_count=company.reviews_count,
             company_slug=company.slug
         )
         

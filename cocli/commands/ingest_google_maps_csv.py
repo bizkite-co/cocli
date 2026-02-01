@@ -38,9 +38,9 @@ def google_maps_csv_to_google_maps_cache(
         count = 0
         for item in prospects:
              count += 1
-             if item.Place_ID:
+             if item.place_id:
                 cache.add_or_update(item)
-                logger.info(f"Added/Updated {item.Name} in cache.")
+                logger.info(f"Added/Updated {item.name} in cache.")
         
         if count == 0:
              logger.warning(f"No prospects found in index for campaign '{campaign_name}'.")
@@ -71,7 +71,7 @@ def google_maps_csv_to_google_maps_cache(
                     try:
                         item = GoogleMapsProspect.model_validate(model_data)
                         cache.add_or_update(item)
-                        logger.info(f"Added/Updated {item.Name} in cache.")
+                        logger.info(f"Added/Updated {item.name} in cache.")
                     except Exception as e:
                         logger.error(f"Error validating row: {e}")
 

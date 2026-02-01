@@ -150,10 +150,10 @@ def query_prospects_location(
     prospects = manager.read_all_prospects()
 
     for prospect in prospects:
-        if prospect.Latitude is None or prospect.Longitude is None:
+        if prospect.latitude is None or prospect.longitude is None:
             continue
             
-        point = (prospect.Latitude, prospect.Longitude)
+        point = (prospect.latitude, prospect.longitude)
         distance = geodesic(origin_point, point).miles
         
         if distance <= radius:
@@ -175,11 +175,11 @@ def query_prospects_location(
     print("-" * 120)
     
     for prospect, dist_val in matches:
-        name = (prospect.Name or "")[:38]
-        city_state = f"{prospect.City or ''}, {prospect.State or ''}"
+        name = (prospect.name or "")[:38]
+        city_state = f"{prospect.city or ''}, {prospect.state or ''}"
         dist = f"{dist_val} mi"
-        phone = prospect.Phone_1 or ""
-        website = prospect.Website or ""
+        phone = prospect.phone_1 or ""
+        website = prospect.website or ""
         print(f"{name:<40} | {city_state:<30} | {dist:<10} | {phone:<15} | {website}")
 
 if __name__ == "__main__":

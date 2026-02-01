@@ -112,6 +112,18 @@ lint: ## Run ruff and mypy to perform static type checking
 	$(VENV_DIR)/bin/ruff check . --fix
 	$(VENV_DIR)/bin/python -m mypy --config-file pyproject.toml .
 
+# Data Management Targets
+commit-campaigns:
+	cd data && git add campaigns && git commit -m "chore: snapshot campaigns data" || echo "No changes to commit" ; cd -
+
+commit-companies:
+	cd data && git add companies && git commit -m "chore: snapshot companies data" || echo "No changes to commit" ; cd -
+
+commit-indexes:
+	cd data && git add campaigns/turboship/indexes && git commit -m "chore: snapshot indexes data" || echo "No changes to commit" ; cd -
+
+commit-data: commit-campaigns commit-companies commit-indexes
+
 test-file: install ## Run a specific test file, e.g., make test-file FILE=tests/test_google_maps_scraper.py
 	source $(VENV_DIR)/bin/activate && pytest $(FILE)
 

@@ -1,19 +1,13 @@
 from cocli.core.website_domain_csv_manager import WebsiteDomainCsvManager
-import os
 
 def migrate() -> None:
     print("Initializing WebsiteDomainCsvManager...")
     manager = WebsiteDomainCsvManager()
     
-    print(f"Index file: {manager.csv_file}")
-    print(f"Loaded {len(manager.data)} domains.")
-    
-    print("Saving to domains_master.csv (optimized)...")
+    print("Saving to optimized sharded index...")
     manager.save()
     
-    if os.path.exists(manager.csv_file):
-        size = os.path.getsize(manager.csv_file)
-        print(f"New domains_master.csv size: {size} bytes")
+    print("Migration complete.")
 
 if __name__ == "__main__":
     migrate()

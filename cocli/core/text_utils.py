@@ -7,13 +7,31 @@ def slugify(text: str) -> str:
     Preserves forward slashes (/) to support namespacing.
     Replaces other non-alphanumeric characters with dashes.
     """
-    text = text.lower().strip()
+    if not text:
+        return ""
+    text = str(text).lower().strip()
     # Replace any character that is NOT alphanumeric, underscore, or forward slash with a dash
     text = re.sub(r'[^a-z0-9/_]+', '-', text)
     # Ensure we don't have multiple dashes or dashes next to slashes
     text = re.sub(r'-+', '-', text)
     text = re.sub(r'-?/-?', '/', text)
     return text.strip('-')
+
+def calculate_company_hash(name: str, street: Optional[str], zip_code: Optional[str]) -> str:
+    """
+    Generates a human-readable unique identifier for a company location.
+    Format: slug(name)[:8]-slug(street)[:8]-zip[:5]
+    """
+    n = slugify(name or "unknown")[:8]
+    s = slugify(street or "none")[:8]
+    # Extract first 5 digits of zip
+    z = "00000"
+    if zip_code:
+        z_match = re.search(r'\d{5}', str(zip_code))
+        if z_match:
+            z = z_match.group(0)
+    
+    return f"{n}-{s}-{z}"
 
 def slugdotify(text: str) -> str:
     """

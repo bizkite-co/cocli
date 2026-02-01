@@ -12,9 +12,9 @@ We will implement a locking mechanism using S3 objects as semaphores, combined w
 
 ### 1. Shard Selection (Stochastic)
 To prevent workers from clumping on the same shard:
-1.  List a random page of objects in `indexes/domains/`.
-2.  Select a random file (e.g., `example.com.usv`).
-3.  Calculate the Shard ID (e.g., `5e`) for that domain.
+1.  List the `indexes/domains/inbox/` directory.
+2.  Select a random sub-directory (e.g., `5e`). Each sub-directory represents a shard with pending updates.
+3.  Proceed to lock and process Shard `5e`.
 
 ### 2. The Lock (Advisory)
 Before processing Shard `5e`, the worker must acquire an advisory lock.
@@ -26,16 +26,15 @@ Before processing Shard `5e`, the worker must acquire an advisory lock.
 
 ### 3. Compaction Process
 Once the lock is held:
-1.  **Scan**: List all inbox files in `indexes/domains/` that hash to `5e`.
-2.  **Read**: Download the current shard `indexes/domains/shards/5e.usv` (if it exists) and record its **ETag**.
-3.  **Merge**: Combine shard items with inbox items. For duplicate domains, the record with the latest `updated_at` wins.
+1.  **Read**: Download the current shard `indexes/domains/shards/5e.usv` (if it exists) and record its **ETag**.
+2.  **Scan Inbox**: List all files in `indexes/domains/inbox/5e/`.
+3.  **Merge**: Combine shard items with these inbox items. For duplicate domains, the record with the latest `updated_at` wins.
 4.  **Write (Optimistic)**: Upload the new shard USV to `indexes/domains/shards/5e.usv` using the `If-Match: [ETag]` header.
     - If the write fails (HTTP 412), another worker updated the shard first. The current worker aborts and releases the lock.
 
 ### 4. Cleanup & Release
-1.  **Inbox Cleanup**: Delete the specific inbox files that were successfully merged into the shard.
-2.  **Manifest Update**: The manifest only needs to be updated if record counts or schema versions changed significantly. (Note: In DHSI, the shard path is deterministic, so the manifest is less critical for discovery but still useful for statistics).
-3.  **Release**: Delete the lock file.
+1.  **Inbox Cleanup**: Delete the specific inbox files in `indexes/domains/inbox/5e/` that were successfully merged.
+2.  **Release**: Delete the lock file `indexes/domains/shards/5e.lock`.
 
 ## Sequence Diagram: Locking & Compaction
 

@@ -209,7 +209,7 @@ def get_campaign_stats(campaign_name: str) -> Dict[str, Any]:
                         prospect_metadata[prospect.company_slug] = prospect.company_slug
                 
             # Skip excluded
-            if exclusion_manager.is_excluded(domain=prospect.Domain, slug=prospect.company_slug):
+            if exclusion_manager.is_excluded(domain=prospect.domain, slug=prospect.company_slug):
                 continue
                 
             total_prospects += 1
@@ -217,9 +217,9 @@ def get_campaign_stats(campaign_name: str) -> Dict[str, Any]:
             source_counts[source] = source_counts.get(source, 0) + 1
 
             # Map prospect to its grid tile
-            if prospect.Latitude and prospect.Longitude:
-                sw_lat = (float(prospect.Latitude) // 0.1) * 0.1
-                sw_lon = (float(prospect.Longitude) // 0.1) * 0.1
+            if prospect.latitude and prospect.longitude:
+                sw_lat = (float(prospect.latitude) // 0.1) * 0.1
+                sw_lon = (float(prospect.longitude) // 0.1) * 0.1
                 tile_id = f"{sw_lat:.1f}_{sw_lon:.1f}"
                 tile_prospect_counts[tile_id] = tile_prospect_counts.get(tile_id, 0) + 1
 

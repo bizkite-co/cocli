@@ -100,12 +100,12 @@ class ProspectsIndexManager:
         Writes a single GoogleMapsProspect object to its individual file in the index.
         Always writes in USV format.
         """
-        if not prospect_data.Place_ID:
-            logger.warning(f"Prospect data missing Place_ID, cannot save to index. Skipping: {prospect_data.Name or prospect_data.Domain}")
+        if not prospect_data.place_id:
+            logger.warning(f"Prospect data missing place_id, cannot save to index. Skipping: {prospect_data.name or prospect_data.domain}")
             return False
         
         # Get path (will default to .usv if new, or return existing .csv/.usv)
-        file_path = self.get_file_path(prospect_data.Place_ID)
+        file_path = self.get_file_path(prospect_data.place_id)
         
         # If it was a .csv, we should migrate it to .usv
         if file_path.suffix == ".csv":
@@ -122,7 +122,7 @@ class ProspectsIndexManager:
                 writer = USVDictWriter(f, fieldnames=fieldnames)
                 writer.writeheader()
                 data = prospect_data.model_dump(by_alias=False)
-                logger.info(f"WRITING PROSPECT: {prospect_data.Place_ID} | processed_by: {data.get('processed_by')}")
+                logger.info(f"WRITING PROSPECT: {prospect_data.place_id} | processed_by: {data.get('processed_by')}")
                 writer.writerow(data)
             
             # Clean up old CSV if we migrated
@@ -132,7 +132,7 @@ class ProspectsIndexManager:
             logger.debug(f"Saved prospect to index (USV): {file_path.name}")
             return True
         except Exception as e:
-            logger.error(f"Error writing prospect to index (Place_ID: {prospect_data.Place_ID}): {e}")
+            logger.error(f"Error writing prospect to index (place_id: {prospect_data.place_id}): {e}")
             return False
 
     def has_place_id(self, place_id: str) -> bool:

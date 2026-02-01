@@ -8,12 +8,12 @@ runner = CliRunner()
 
 async def async_generator():
     mock_google_maps_data = GoogleMapsProspect(
-        Name="Mock Company",
-        Place_ID="mock_place_id",
-        Website="mock.com",
-        Latitude=0.0,
-        Longitude=0.0,
-        GMB_URL="mock.gmb.url"
+        name="Mock Company",
+        place_id="mock_place_id",
+        website="mock.com",
+        latitude=0.0,
+        longitude=0.0,
+        gmb_url="mock.gmb.url"
     )
     yield mock_google_maps_data
 

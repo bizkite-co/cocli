@@ -55,8 +55,7 @@ def migrate() -> None:
         # Save once at the end
         new_manager.save()
 
-        print(f"Successfully migrated {len(new_manager.data)} items to the new index.")
-        print(f"New index file created at: {new_manager.csv_file}")
+        print(f"Successfully migrated {len(old_cache.data)} items to the new index.")
 
     except Exception as e:
         print(f"An error occurred during migration: {e}")

@@ -68,7 +68,7 @@ def main(
                 # Note: import_prospect returns None if domain is in existing_domains
                 company = import_prospect(prospect_data, campaign=campaign_name)
                 
-                domain = prospect_data.Domain
+                domain = prospect_data.domain
                 assert domain is not None # Ensure domain is not None for mypy
                 # Calculate slug manually if company object is not returned
                 from cocli.core.text_utils import slugify

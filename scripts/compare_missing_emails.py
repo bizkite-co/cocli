@@ -30,10 +30,10 @@ def main(
     for prospect in manager.read_all_prospects():
         if prospect.company_slug:
             current_prospect_slugs.add(prospect.company_slug)
-        if prospect.Name:
-            current_prospect_slugs.add(slugify(prospect.Name))
-        if prospect.Domain:
-            current_prospect_slugs.add(slugify(prospect.Domain))
+        if prospect.name:
+            current_prospect_slugs.add(slugify(prospect.name))
+        if prospect.domain:
+            current_prospect_slugs.add(slugify(prospect.domain))
             
     missing_count = 0
     folder_missing = 0

@@ -41,11 +41,11 @@ class DomainIndexManager:
             self.root_dir.mkdir(parents=True, exist_ok=True)
             self.protocol = "" # Local paths are absolute or relative to CWD
             
-        # Common Path Components
-        self.inbox_prefix = "indexes/domains/"
-        self.shards_prefix = "indexes/shards/"
-        self.manifests_prefix = "indexes/manifests/"
-        self.latest_pointer_key = "indexes/LATEST"
+        # Common Path Components (Nested within domains/)
+        self.inbox_root = "indexes/domains/inbox/"
+        self.shards_prefix = "indexes/domains/shards/"
+        self.manifests_prefix = "indexes/domains/manifests/"
+        self.latest_pointer_key = "indexes/domains/LATEST"
 
     def _init_s3_client(self, aws_config: Dict[str, Any]) -> None:
         try:
@@ -88,6 +88,24 @@ class DomainIndexManager:
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_text(content, encoding="utf-8")
 
+    def _delete_object(self, key: str) -> None:
+        if self.is_cloud:
+            self.s3_client.delete_object(Bucket=self.bucket_name, Key=key)
+        else:
+            path = get_cocli_base_dir() / key
+            if path.exists():
+                path.unlink()
+
+    def _exists(self, key: str) -> bool:
+        if self.is_cloud:
+            try:
+                self.s3_client.head_object(Bucket=self.bucket_name, Key=key)
+                return True
+            except Exception:
+                return False
+        else:
+            return (get_cocli_base_dir() / key).exists()
+
     def get_shard_id(self, domain: str) -> str:
         """Calculates a deterministic shard ID (00-ff) based on domain hash."""
         return hashlib.sha256(domain.encode()).hexdigest()[:2]
@@ -113,9 +131,10 @@ class DomainIndexManager:
                 for page in pages:
                     for obj in page.get('Contents', []):
                         key = str(obj['Key'])
-                        if not key.endswith(".usv") or key.split('/')[-1].startswith("_"):
+                        filename = key.split('/')[-1]
+                        if not filename.endswith(".usv") or filename.startswith("_"):
                             continue
-                        shard_id = key.split('/')[-1].replace(".usv", "")
+                        shard_id = filename.replace(".usv", "")
                         manifest.shards[shard_id] = IndexShard(path=key, updated_at=obj.get('LastModified', datetime.now(timezone.utc)))
             else:
                 shards_dir = get_cocli_base_dir() / self.shards_prefix
@@ -124,18 +143,26 @@ class DomainIndexManager:
                         if f.name.startswith("_"):
                             continue
                         shard_id = f.stem
-                        manifest.shards[shard_id] = IndexShard(path=f"{self.shards_prefix}{f.name}", updated_at=datetime.fromtimestamp(f.stat().st_mtime))
+                        # Ensure path is relative to base
+                        rel_path = f"{self.shards_prefix}{f.name}"
+                        manifest.shards[shard_id] = IndexShard(
+                            path=rel_path, 
+                            updated_at=datetime.fromtimestamp(f.stat().st_mtime, tz=timezone.utc)
+                        )
             return manifest
         except Exception as e:
             logger.error(f"Manifest bootstrap failed: {e}")
             return manifest
 
     def add_or_update(self, data: WebsiteDomainCsv) -> None:
-        """Writes to inbox for eventual compaction."""
+        """Writes to sharded inbox for eventual compaction."""
         if not data.domain:
             return
-        s3_key = f"{self.inbox_prefix}{slugdotify(str(data.domain))}.usv"
-        self._write_object(s3_key, data.to_usv())
+        shard_id = self.get_shard_id(str(data.domain))
+        s3_key = f"{self.inbox_root}{shard_id}/{slugdotify(str(data.domain))}.usv"
+        # Sanitize any legacy RS characters
+        usv_line = data.to_usv().replace("\x1e", "")
+        self._write_object(s3_key, usv_line)
 
     def query(self, sql_where: Optional[str] = None, include_shards: bool = True, include_inbox: bool = True, shard_paths: Optional[List[str]] = None) -> List[WebsiteDomainCsv]:
         """
@@ -170,6 +197,8 @@ class DomainIndexManager:
                     con.execute(f"SET s3_session_token='{frozen.token}';")
 
         field_names = list(WebsiteDomainCsv.model_fields.keys())
+        # Wrap each field in trim and replace CHR(30) (\x1e) to remove any hidden separators
+        trim_cols = ", ".join([f"trim(replace({col}, CHR(30), '')) as {col}" for col in field_names])
         columns = {k: 'VARCHAR' for k in field_names}
         sub_queries = []
 
@@ -181,11 +210,9 @@ class DomainIndexManager:
             if shard_paths:
                 path_list = "', '".join(shard_paths)
                 sub_queries.append(f"""
-                    SELECT * FROM read_csv(['{path_list}'], 
-                        delim=CHR(31), 
+                    SELECT {trim_cols} FROM read_csv(['{path_list}'], 
+                        delim='\x1f',
                         header=False, 
-                        quote='', 
-                        escape='', 
                         columns={columns}, 
                         auto_detect=False, 
                         all_varchar=True,
@@ -200,27 +227,25 @@ class DomainIndexManager:
             try:
                 if self.is_cloud:
                     paginator = self.s3_client.get_paginator('list_objects_v2')
-                    pages = paginator.paginate(Bucket=self.bucket_name, Prefix=self.inbox_prefix)
+                    pages = paginator.paginate(Bucket=self.bucket_name, Prefix=self.inbox_root)
                     for page in pages:
                         for obj in page.get('Contents', []):
                             key = obj['Key']
                             if key.endswith(".usv") and not key.split('/')[-1].startswith("_"):
                                 inbox_paths.append(self._get_path(key))
                 else:
-                    inbox_dir = get_cocli_base_dir() / self.inbox_prefix
+                    inbox_dir = get_cocli_base_dir() / self.inbox_root
                     if inbox_dir.exists():
-                        inbox_paths = [str(f) for f in inbox_dir.glob("*.usv") if not f.name.startswith("_")]
+                        inbox_paths = [str(f) for f in inbox_dir.rglob("*.usv") if not f.name.startswith("_")]
             except Exception:
                 pass
 
             if inbox_paths:
                 path_list = "', '".join(inbox_paths)
                 sub_queries.append(f"""
-                    SELECT * FROM read_csv(['{path_list}'], 
-                        delim=CHR(31), 
+                    SELECT {trim_cols} FROM read_csv(['{path_list}'], 
+                        delim='\x1f',
                         header=False, 
-                        quote='', 
-                        escape='', 
                         columns={columns}, 
                         auto_detect=False, 
                         all_varchar=True,
@@ -258,7 +283,8 @@ class DomainIndexManager:
 
     def get_by_domain(self, domain: str) -> Optional[WebsiteDomainCsv]:
         # 1. Check Inbox first (fastest, atomic source of truth)
-        s3_key = f"{self.inbox_prefix}{slugdotify(domain)}.usv"
+        shard_id = self.get_shard_id(domain)
+        s3_key = f"{self.inbox_root}{shard_id}/{slugdotify(domain)}.usv"
         try:
             content = self._read_object(s3_key)
             return WebsiteDomainCsv.from_usv(content)
@@ -266,7 +292,6 @@ class DomainIndexManager:
             pass
             
         # 2. Check the specific Shard
-        shard_id = self.get_shard_id(domain)
         manifest = self.get_latest_manifest()
         if shard_id in manifest.shards:
             shard_path = self._get_path(manifest.shards[shard_id].path)
@@ -324,7 +349,8 @@ class DomainIndexManager:
             
             # 4c. Write new Shard Version
             new_shard_key = f"{self.shards_prefix}{shard_id}.usv"
-            shard_content = "\n".join([item.to_usv() for item in existing_items.values()]) + "\n"
+            # Join items (each has its own trailing newline)
+            shard_content = "".join([item.to_usv().replace("\x1e", "") for item in existing_items.values()])
             self._write_object(new_shard_key, shard_content)
             
             # 4d. Update Manifest Entry
@@ -344,5 +370,12 @@ class DomainIndexManager:
         
         logger.info(f"Compaction complete. Processed {len(shard_groups)} shards.")
         
-        # 7. Cleanup Inbox - We'll leave this for now to be safe, 
-        # or implement a 'cleanup' that deletes files older than the manifest update.
+        # 7. Cleanup Inbox
+        logger.info("Cleaning up processed inbox files...")
+        for item in inbox_items:
+            shard_id = self.get_shard_id(str(item.domain))
+            inbox_key = f"{self.inbox_root}{shard_id}/{slugdotify(str(item.domain))}.usv"
+            try:
+                self._delete_object(inbox_key)
+            except Exception as e:
+                logger.error(f"Failed to delete inbox file {inbox_key}: {e}")
