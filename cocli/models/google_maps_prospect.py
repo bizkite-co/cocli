@@ -30,7 +30,7 @@ class GoogleMapsProspect(BaseModel):
     version: int = 1
     # Redundant GUID id removed. place_id is the anchor.
     keyword: Optional[str] = None
-    name: Optional[str] = None
+    name: str = Field(..., description="Business name is required for a Prospect")
     full_address: Optional[str] = None
     street_address: Optional[str] = None
     city: Optional[str] = None
@@ -76,8 +76,8 @@ class GoogleMapsProspect(BaseModel):
     reviews: Optional[str] = None
     quotes: Optional[str] = None
     uuid: Optional[str] = None
-    company_slug: Optional[str] = None
-    company_hash: Optional[str] = None
+    company_slug: str = Field(..., description="Identity slug is required")
+    company_hash: str = Field(..., description="Identity hash is required")
     processed_by: Optional[str] = "local-worker"
 
     @classmethod

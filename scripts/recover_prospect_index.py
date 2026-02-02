@@ -56,6 +56,11 @@ def main(campaign_name: Optional[str] = typer.Argument(None, help="Campaign name
             
         # Reconstruct prospect
         # We try to map Company fields back to GoogleMapsProspect
+        if not company.name or not company.slug:
+            continue
+            
+        from cocli.core.text_utils import calculate_company_hash
+        
         prospect = GoogleMapsProspect(
             place_id=company.place_id,
             name=company.name,
@@ -71,7 +76,12 @@ def main(campaign_name: Optional[str] = typer.Argument(None, help="Campaign name
             phone_standard_format=company.phone_number,
             average_rating=company.average_rating,
             reviews_count=company.reviews_count,
-            company_slug=company.slug
+            company_slug=company.slug,
+            company_hash=calculate_company_hash(
+                str(company.name), 
+                str(company.street_address) if company.street_address else None,
+                str(company.zip_code) if company.zip_code else None
+            )
         )
         
         if manager.append_prospect(prospect):

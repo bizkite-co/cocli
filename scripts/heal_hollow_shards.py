@@ -52,14 +52,23 @@ def heal_shards(data_path: Path) -> None:
             
             # Create a new prospect object
             # Many companies have full_address instead of street_address
+            name = metadata.get("name")
+            if not name:
+                continue
+                
             street = metadata.get("street_address") or metadata.get("full_address")
+            zip_code = metadata.get("zip_code")
+            
+            from cocli.core.text_utils import slugify, calculate_company_hash
             
             prospect = GoogleMapsProspect(
                 place_id=shard_pid,
-                name=metadata.get("name"),
+                name=name,
+                company_slug=slugify(name),
+                company_hash=calculate_company_hash(name, street, zip_code),
                 street_address=street,
                 city=metadata.get("city"),
-                zip=metadata.get("zip_code"),
+                zip=zip_code,
                 website=metadata.get("website_url"),
                 domain=metadata.get("domain")
             )

@@ -13,7 +13,9 @@ async def async_generator():
         website="mock.com",
         latitude=0.0,
         longitude=0.0,
-        gmb_url="mock.gmb.url"
+        gmb_url="mock.gmb.url",
+        company_slug="mock-company",
+        company_hash="mock-hash"
     )
     yield mock_google_maps_data
 
