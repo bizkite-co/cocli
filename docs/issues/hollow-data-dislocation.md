@@ -60,3 +60,22 @@ We are currently in a multi-phase recovery:
 - **Status**: Structural fix is complete. 8,538 shards healed.
 - **Standard**: USV files use `\x1f` (unit separator) and `\n` (record separator).
 - **DuckDB**: Queries must use `trim(replace(col, CHR(30), ''))` to handle legacy `\x1e` characters found in older data files.
+
+## Possible Improvements (Future Roadmap)
+
+While structural guardrails are in place, the following broader policy enforcement strategies should be considered:
+
+### 1. Automated "Anti-Hollow" Integrity Tests
+Implement a test suite that specifically simulates "mapping drift." These tests should attempt to load a model using legacy or malformed key names (e.g., `Name` vs `name`) and verify that the system raises a validation error rather than allowing a "hollow" save. This ensures that any new models added to the system adhere to the safety policy.
+
+### 2. Cross-Model Linker Protocol (DRI Validation)
+Establish a formal `Linker` protocol where every model explicitly defines its foreign anchors. For example:
+- `Person` -> `Company` (via `company_slug`)
+- `GoogleMapsProspect` -> `Company` (via `place_id`)
+This would allow a "Global Orphan Audit" tool to traverse the entire data tree and flag broken links or data that exists without a canonical parent.
+
+### 3. Structural Type-Checking for Identifiers
+Use Pydantic's `Annotated` types to create unique "identity types" (e.g., `CompanySlug`, `PlaceID`). By using these instead of raw `str` types in function signatures, `mypy` can catch "Identity Collisions" (accidentally passing a slug where a PlaceID is expected) during static analysis.
+
+### 4. Dynamic Model Tree Rendering
+Develop a tool to render the data model relationship tree on the fly (e.g., Mermaid or Graphviz). This provides a "living map" of the Data Record Integrity (DRI), making it easy for developers and agents to understand how entities are linked and where structural gaps might exist.

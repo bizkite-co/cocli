@@ -1,8 +1,8 @@
 # Cluster Management & Deployment
 
-RPI_HOST ?= cocli5x0.local
+RPI_HOST ?= cocli5x0.pi
 RPI_USER ?= mstouffer
-CLUSTER_NODES = cocli5x0.local octoprint.local coclipi.local
+CLUSTER_NODES = cocli5x0.pi octoprint.pi coclipi.pi cocli5x1.pi
 
 .PHONY: hotfix-cluster-safe log-rpi-all cluster-status
 

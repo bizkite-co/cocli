@@ -2,7 +2,7 @@
 # Verifiable Cluster Hotfix Script (Symlink Bypass Edition)
 
 RPI_USER="mstouffer"
-CLUSTER_NODES=("cocli5x0.local" "octoprint.local" "coclipi.local")
+CLUSTER_NODES=("cocli5x0.pi" "octoprint.pi" "coclipi.pi" "cocli5x1.pi")
 
 # Colors
 RED='\033[0;31m'

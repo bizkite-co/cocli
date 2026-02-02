@@ -120,9 +120,10 @@ commit-companies:
 	cd data && git add companies && git commit -m "chore: snapshot companies data" || echo "No changes to commit" ; cd -
 
 commit-indexes:
-	cd data && git add campaigns/turboship/indexes && git commit -m "chore: snapshot indexes data" || echo "No changes to commit" ; cd -
+	cd data && git add indexes && git commit -m "chore: snapshot indexes data" || echo "No changes to commit" ; cd -
 
 commit-data: commit-campaigns commit-companies commit-indexes
+	cd data && git add . && git commit -m "chore: snapshot data directory" || echo "No changes to commit" ; cd -
 
 test-file: install ## Run a specific test file, e.g., make test-file FILE=tests/test_google_maps_scraper.py
 	source $(VENV_DIR)/bin/activate && pytest $(FILE)

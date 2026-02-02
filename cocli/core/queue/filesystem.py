@@ -10,6 +10,7 @@ from ...models.scrape_task import ScrapeTask, GmItemTask
 from ...models.queue import QueueMessage
 from ...core.config import get_cocli_base_dir, get_campaign_dir
 from ...core.paths import paths
+from ...core.sharding import get_shard_id
 
 logger = logging.getLogger(__name__)
 
@@ -62,18 +63,17 @@ class FilesystemQueue:
 
     def _get_s3_lease_key(self, task_id: str) -> str:
         # V2 S3 Path matches the local structure under the campaign
-        # Use first char as shard for better S3 performance and listing sharding
-        shard = task_id[0] if task_id else "_"
+        shard = get_shard_id(task_id)
         return f"campaigns/{self.campaign_name}/queues/{self.queue_name}/pending/{shard}/{task_id}/lease.json"
 
     def _get_s3_task_key(self, task_id: str) -> str:
-        shard = task_id[0] if task_id else "_"
+        shard = get_shard_id(task_id)
         return f"campaigns/{self.campaign_name}/queues/{self.queue_name}/pending/{shard}/{task_id}/task.json"
 
     def _get_task_dir(self, task_id: str) -> Path:
         # Sanitize task_id for directory name
         safe_id = task_id.replace("/", "_").replace("\\", "_")
-        shard = safe_id[0] if safe_id else "_"
+        shard = get_shard_id(safe_id)
         return self.pending_dir / shard / safe_id
 
     def _get_lease_path(self, task_id: str) -> Path:

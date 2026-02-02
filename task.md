@@ -1,36 +1,41 @@
-# Current Task: Output Standardization & USV Migration
+# Task: Roadmap Campaign Data Migration & Identity Restoration
 
 ## Objective
-1. Redirect all script and command outputs from the project root to standardized locations (`data/campaigns/{campaign}/exports/`, `temp/`, etc.).
-2. Migrate all CSV-based data stores (local, S3, RPi) to USV (Unit Separated Values) using `\x1f` (unit separator) and `\x1e` (record separator) to eliminate quoting/escaping issues and improve performance.
+Standardize the `roadmap` campaign data to the new USV architecture and recover any metadata lost during the "Silent Hollow Save" incident (documented in [docs/issues/hollow-data-dislocation.md](docs/issues/hollow-data-dislocation.md)).
 
-## Track 1: Output Path Standardization
-- [x] **Audit Root-Writing Scripts:** Identified major scripts and commands.
-- [x] **Define Standards:**
-    - Campaign Exports: `data/campaigns/{campaign}/exports/`
-    - Temporary/Intermediate Files: `temp/`
-    - Logs: `.logs/`
-- [x] **Update File Paths:** Refactored `list_prospects_missing_emails.py`, `audit_anomalous_emails.py`, `filter_targets_with_emails.py`, `WebsiteCompiler`, and `Makefile`.
+## Context & Current State
+- **Campaign**: `roadmap`
+- **Bucket**: `s3://roadmap-cocli-data-use1/`
+- **AWS Profile**: `westmonroe-support`
+- **Data Integrity**: 
+    - The `roadmap` data is in a "Partially Dislocated" state. Place IDs and websites are intact, but key metadata (Name, City, Zip) is missing in several records.
+    - Legacy headers (PascalCase) are still present in S3 USV files.
+- **Worker Status**: 
+    - Raspberry Pi workers (`cocli5x0`, `coclipi`, `octoprint`) were running v0.2.89 (buggy models).
+    - **CRITICAL**: Workers have been remotely "paused" by setting scaling to 0 in `config.toml`. Do not resume until they are updated to v0.26.0+.
+- **Queue System**: 
+    - Campaign uses **Distributed Filesystem Queue (DFQ)** based in S3 (`campaigns/roadmap/queues/`).
+    - Legacy SQS queues should be decommissioned after migration.
 
-## Track 2: USV Migration (The "Big Scan")
-- [x] **USV Utility Implementation:** Created `cocli/utils/usv_utils.py` with `UNIT_SEPARATOR` (`\x1f`) and `RECORD_SEPARATOR` (`\x1e`).
-- [x] **Catalog CSV Data Stores:** Identified local caches and campaign indexes.
-- [x] **Migration Scripts:**
-    - [x] `scripts/migrate_csv_to_usv.py`: Local recursive scan tool implemented and run.
-    - [x] `scripts/migrate_s3_to_usv.py`: S3 migration tool implemented.
-- [x] **Code Refactoring:**
-    - [x] Updated `ProspectsIndexManager` to support USV and migrate on-the-fly.
-    - [x] Updated `GoogleMapsCache` and `WebsiteCache` to support USV.
-    - [x] Updated `ScrapeIndex` (witness files) to support USV.
+## Technical Standards (The "Shield")
+- **Field Separator**: `\x1f` (Unit Separator)
+- **Record Separator**: `\n` (Standard Newline)
+- **DuckDB Integration**: Queries must surgically strip legacy `\x1e` (CHR 30) characters:
+  ```sql
+  SELECT trim(replace(col, CHR(30), '')) FROM read_csv(...) 
+  ```
+- **Mandatory Identifiers**: `place_id` (Type: `PlaceID`) is non-optional. The "Identity Tripod" (8-8-5 Hash) is used for secondary linking.
 
-## TODO Track
-- [ ] **Create `usv_utils.py`:** Standardize the I/O layer.
-- [ ] **Refactor `ProspectsIndexManager`:** Move it to USV as the first major pilot.
-- [ ] **Audit `scripts/`:** Start moving output paths for commonly used scripts.
-- [ ] **Implement "Big Scan" script:** For local data migration.
+## Safety Protocol (The "1-3-10" Rule)
+1. **READ-ONLY First**: Perform extensive `aws s3 ls` and `cat -A` investigations before writing any migration scripts.
+2. **Sampling**: When attempting a migration or repair, run it on a small sample first:
+    - Test on **1** record.
+    - Test on **3** records.
+    - Test on **10** records.
+3. **Dry Runs**: All migration scripts **MUST** implement a `--dry-run` flag to review the transformed data in the console before applying it to S3.
 
-## Success Criteria
-- [ ] Root directory is clean of transient JSON/CSV/LOG files.
-- [ ] All internal data stores use `\x1f` delimiters.
-- [ ] Data integrity verified after migration (row counts match).
-- [ ] Standard tools (like `rg`) can search USV files using `$`'\x1f'`.
+## Immediate Next Steps
+1.  **Audit Identity Gap**: Run an audit on `roadmap` prospects to count how many records are "hollow" (missing Name/City).
+2.  **Verify Linkage**: Check if the missing metadata exists in the `companies/` markdown files in the `roadmap` bucket.
+3.  **Heal Shards**: Implement a healing process using the sampling rule above to restore metadata from companies/markdown to the prospect index.
+4.  **Standardize Formats**: Migrate legacy `\x1e` files to the clean `\n` newline standard.

@@ -4,6 +4,7 @@ from unittest.mock import MagicMock, patch
 from datetime import datetime, UTC, timedelta
 from cocli.core.queue.filesystem import FilesystemEnrichmentQueue
 from cocli.models.queue import QueueMessage
+from cocli.core.sharding import get_shard_id
 
 @pytest.fixture
 def mock_s3():
@@ -26,7 +27,7 @@ def test_s3_conditional_lease_success(tmp_path, mock_s3):
         task_id = q.push(task)
         
         # Check S3 upload was called for task.json
-        shard = task_id[0]
+        shard = get_shard_id(task_id)
         s3_task_key = f"campaigns/{campaign}/queues/enrichment/pending/{shard}/{task_id}/task.json"
         mock_s3.upload_file.assert_called_with(
             str(q._get_task_dir(task_id) / "task.json"),

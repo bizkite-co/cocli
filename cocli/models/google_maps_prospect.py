@@ -1,13 +1,17 @@
-from typing import Optional, Dict, Any
 from pydantic import BaseModel, Field, model_validator
+from typing import Optional, Dict, Any, Annotated
 from datetime import datetime, UTC
 import logging
 
-from .types import AwareDatetime, PlaceID # Import the custom types
+from .google_maps_raw import GoogleMapsRawResult
 from .phone import OptionalPhone
-from cocli.core.text_utils import slugify
+from ..core.text_utils import slugify
 
 logger = logging.getLogger(__name__)
+
+# Custom Types for validation and clarity
+AwareDatetime = Annotated[datetime, "A datetime with timezone info"]
+PlaceID = str
 
 class GoogleMapsProspect(BaseModel):
     """
@@ -75,6 +79,74 @@ class GoogleMapsProspect(BaseModel):
     company_slug: Optional[str] = None
     company_hash: Optional[str] = None
     processed_by: Optional[str] = "local-worker"
+
+    @classmethod
+    def from_raw(cls, raw: GoogleMapsRawResult) -> "GoogleMapsProspect":
+        """
+        EXPLICIT transformation from Raw Google Maps result to Internal Prospect.
+        This is the ONLY place where mapping between PascalCase and snake_case should happen.
+        """
+        from cocli.core.text_utils import slugify, calculate_company_hash
+        
+        data = {
+            "keyword": raw.Keyword,
+            "name": raw.Name,
+            "full_address": raw.Full_Address,
+            "street_address": raw.Street_Address,
+            "city": raw.City,
+            "zip": raw.Zip,
+            "municipality": raw.Municipality,
+            "state": raw.State,
+            "country": raw.Country,
+            "timezone": raw.Timezone,
+            "phone_1": raw.Phone_1,
+            "phone_standard_format": raw.Phone_Standard_format,
+            "website": raw.Website,
+            "domain": raw.Domain,
+            "first_category": raw.First_category,
+            "second_category": raw.Second_category,
+            "claimed_google_my_business": raw.Claimed_google_my_business,
+            "reviews_count": raw.Reviews_count,
+            "average_rating": raw.Average_rating,
+            "hours": raw.Hours,
+            "saturday": raw.Saturday,
+            "sunday": raw.Sunday,
+            "monday": raw.Monday,
+            "tuesday": raw.Tuesday,
+            "wednesday": raw.Wednesday,
+            "thursday": raw.Thursday,
+            "friday": raw.Friday,
+            "latitude": raw.Latitude,
+            "longitude": raw.Longitude,
+            "coordinates": raw.Coordinates,
+            "plus_code": raw.Plus_Code,
+            "place_id": raw.Place_ID,
+            "gmb_url": raw.GMB_URL,
+            "cid": raw.CID,
+            "image_url": raw.Image_URL,
+            "favicon": raw.Favicon,
+            "review_url": raw.Review_URL,
+            "facebook_url": raw.Facebook_URL,
+            "linkedin_url": raw.Linkedin_URL,
+            "instagram_url": raw.Instagram_URL,
+            "thumbnail_url": raw.Thumbnail_URL,
+            "reviews": raw.Reviews,
+            "quotes": raw.Quotes,
+            "processed_by": raw.processed_by or "local-worker"
+        }
+        
+        # Identity Logic
+        if data["name"]:
+            name_str = str(data["name"])
+            data["company_slug"] = slugify(name_str)
+            data["company_hash"] = calculate_company_hash(
+                name_str, 
+                str(data["street_address"]) if data["street_address"] else None,
+                str(data["zip"]) if data["zip"] else None
+            )
+            
+        final_data: Dict[str, Any] = data
+        return cls(**final_data)
 
     @model_validator(mode='after')
     def validate_identity_tripod(self) -> 'GoogleMapsProspect':
