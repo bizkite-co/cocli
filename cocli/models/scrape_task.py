@@ -28,6 +28,8 @@ class GmItemTask(BaseModel):
     """
     place_id: str
     campaign_name: str
+    name: Optional[str] = None
+    company_slug: Optional[str] = None
     force_refresh: bool = False
     
     # Queue mechanics

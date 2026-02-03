@@ -779,6 +779,8 @@ async def _run_details_task_loop(
                         page=page,
                         place_id=task.place_id,
                         campaign_name=task.campaign_name,
+                        name=getattr(task, "name", None),
+                        company_slug=getattr(task, "company_slug", None),
                         debug=debug,
                     )
                 finally:
