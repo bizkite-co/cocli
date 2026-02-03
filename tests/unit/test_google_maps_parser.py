@@ -15,7 +15,8 @@ def get_golden_data():
     test_cases = []
     with open(GOLDEN_SET_PATH, "r", encoding="utf-8") as f:
         for line in f:
-            if not line.strip(): continue
+            if not line.strip():
+                continue
             parts = line.strip().split("\x1f")
             if len(parts) >= 8:
                 test_cases.append({
@@ -74,7 +75,8 @@ def test_list_parser_against_snapshots(expected):
     for div in listing_divs:
         div_html = str(div)
         # Only parse if it looks like a business (contains a link)
-        if "href" not in div_html: continue
+        if "href" not in div_html:
+            continue
         
         parsed = parse_business_listing_html(div_html, expected["search_phrase"])
         
