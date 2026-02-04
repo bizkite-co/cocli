@@ -21,6 +21,7 @@ from cocli.models.scrape_task import ScrapeTask
 from cocli.models.company import Company
 from cocli.models.website import Website
 from cocli.scrapers.google_maps import scrape_google_maps
+from cocli.scrapers.google_maps_details import scrape_google_maps_details
 from cocli.compilers.website_compiler import WebsiteCompiler
 from cocli.core.enrichment import enrich_company_website
 
@@ -80,7 +81,7 @@ async def pipeline(
             compiler = WebsiteCompiler()
             
             while not stop_event.is_set():
-                messages = queue_manager.poll(batch_size=1)
+                messages = await asyncio.to_thread(queue_manager.poll, batch_size=1)
                 if not messages:
                     await asyncio.sleep(1)
                     continue
@@ -137,12 +138,11 @@ async def pipeline(
             compiler.save_audit_report()
         async def producer_task(existing_companies_map: Dict[str, str]) -> None: 
             # Discovery-only in producer task
-            from ...core.queue.factory import get_queue_manager
-            gm_list_item_queue = get_queue_manager(
-                "gm_list_item", 
-                use_cloud=True, 
-                queue_type="gm_list_item", 
-                campaign_name=campaign_name
+            from ...models.queue import QueueMessage
+            
+            enrichment_queue = get_queue_manager(
+                f"{campaign_name}_enrichment", 
+                use_cloud=use_cloud_queue
             )
 
             prospect_generator = scrape_google_maps(
@@ -155,13 +155,39 @@ async def pipeline(
                 if stop_event.is_set():
                     break
                 
-                # Transform discovery to task for details worker
-                details_task = list_item.to_task(campaign_name)
-                gm_list_item_queue.push(details_task)
+                # In-process Detailing for achieve-goal
+                page = await browser.new_page()
+                try:
+                    detailed_data = await scrape_google_maps_details(
+                        page=page,
+                        place_id=list_item.place_id,
+                        campaign_name=campaign_name,
+                        name=list_item.name,
+                        company_slug=list_item.company_slug,
+                        debug=debug
+                    )
+                    
+                    if detailed_data and detailed_data.domain:
+                        msg = QueueMessage(
+                            domain=detailed_data.domain,
+                            company_slug=detailed_data.company_slug or list_item.company_slug,
+                            campaign_name=campaign_name,
+                            force_refresh=force,
+                            ack_token=None
+                        )
+                        enrichment_queue.push(msg)
+                finally:
+                    await page.close()
                 
                 await asyncio.sleep(0.01)
 
-        await asyncio.gather(producer_task(existing_companies_map), consumer_task())
+        try:
+            async with asyncio.timeout(300): # 5-minute watchdog
+                await asyncio.gather(producer_task(existing_companies_map), consumer_task())
+        except asyncio.TimeoutError:
+            console.print("[yellow]Pipeline timed out after 5 minutes.[/yellow]")
+        finally:
+            stop_event.set()
 
 @app.command(name="queue-scrapes")
 def queue_scrapes(

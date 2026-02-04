@@ -63,6 +63,12 @@ queries = ["software company"]
     mocker.patch("cocli.core.geocoding.get_coordinates_from_city_state", return_value={"latitude": 40.7596, "longitude": -111.8868})
     mocker.patch("cocli.scrapers.google_maps.scrape_google_maps", return_value=async_generator())
     mocker.patch("cocli.commands.campaign.prospecting.scrape_google_maps", return_value=async_generator())
+    
+    mock_prospect = MagicMock()
+    mock_prospect.domain = "example.com"
+    mock_prospect.company_slug = "mock-company"
+    mocker.patch("cocli.commands.campaign.prospecting.scrape_google_maps_details", new_callable=AsyncMock, return_value=mock_prospect)
+
     mocker.patch("cocli.models.company.Company.get_all", return_value=[]) # <--- Added this line
     mock_website = MagicMock()
     mock_website.email = "test@example.com"
