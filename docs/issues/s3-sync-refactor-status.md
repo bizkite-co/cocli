@@ -59,3 +59,4 @@ Attempts to fix the scraper in-flight resulted in:
 ### 3. Code Stability
 *   **Unit Tests:** Add tests specifically for the `ScrapeIndex` phrase loading and the `get_campaign_scraped_data_dir` logic to ensure the refactor didn't break paths.
 *   **Linting:** Ensure all scraper changes pass `ruff` and `mypy` before committing.
+
