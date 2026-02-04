@@ -20,9 +20,10 @@ from cocli.core.logging_config import setup_file_logging
 from cocli.core.queue.factory import get_queue_manager
 from cocli.scrapers.google_maps import scrape_google_maps
 from cocli.scrapers.google_maps_details import scrape_google_maps_details
-from cocli.models.scrape_task import GmItemTask, ScrapeTask
-from cocli.models.google_maps_prospect import GoogleMapsProspect
-from cocli.models.queue import QueueMessage
+from ..models.scrape_task import ScrapeTask
+from ..models.google_maps_prospect import GoogleMapsProspect
+from ..models.gm_item_task import GmItemTask
+from ..models.queue import QueueMessage
 from cocli.core.prospects_csv_manager import ProspectsIndexManager
 from cocli.core.config import load_campaign_config, get_campaigns_dir, get_campaign, get_campaign_dir
 from cocli.utils.playwright_utils import setup_optimized_context
@@ -404,7 +405,7 @@ async def _run_scrape_task_loop(
             logger.error("Browser is disconnected. Breaking task loop to restart.")
             break
 
-        tasks: List[ScrapeTask] = scrape_queue.poll(batch_size=1)
+        tasks: List[ScrapeTask] = await asyncio.to_thread(scrape_queue.poll, batch_size=1)
 
         if not tasks:
             await asyncio.sleep(5)
@@ -436,7 +437,6 @@ async def _run_scrape_task_loop(
                 "latitude": str(task.latitude),
                 "longitude": str(task.longitude),
             }
-            csv_manager = ProspectsIndexManager(task.campaign_name)
             prospect_count = 0
 
             # Heartbeat task for FilesystemQueue
@@ -458,7 +458,7 @@ async def _run_scrape_task_loop(
                     # For point-based or tile-based scrapes, we can pass context here if needed,
                     # but scrape_google_maps currently takes page/browser? No, it takes context/browser.
                     # Note: scrape_google_maps creates its own pages from the browser instance.
-                    async for prospect in scrape_google_maps(
+                    async for list_item in scrape_google_maps(
                         browser=browser_or_context,
                         location_param=location_param,
                         search_strings=[task.search_phrase],
@@ -469,29 +469,18 @@ async def _run_scrape_task_loop(
                         s3_bucket=bucket_name,
                         processed_by=processed_by,
                     ):
-                        if not prospect.place_id:
+                        if not list_item.place_id:
                             continue
 
                         prospect_count += 1
-                        prospect.processed_by = processed_by
-                        if csv_manager.append_prospect(prospect):
-                            if s3_client:
-                                file_path = csv_manager.get_file_path(prospect.place_id)
-                                s3_key = f"campaigns/{task.campaign_name}/indexes/google_maps_prospects/{file_path.name}"
-                                try:
-                                    s3_client.upload_file(
-                                        str(file_path), bucket_name, s3_key
-                                    )
-                                except Exception:
-                                    pass
-
-                            details_task = GmItemTask(
-                                place_id=prospect.place_id,
-                                campaign_name=task.campaign_name,
-                                force_refresh=False,
-                                ack_token=None,
-                            )
-                            gm_list_item_queue.push(details_task)
+                        
+                        # PRESERVE DISCOVERY: Create a task from the list item
+                        details_task = list_item.to_task(task.campaign_name, force_refresh=False)
+                        gm_list_item_queue.push(details_task)
+                        
+                        # Note: We don't save the full Prospect file here anymore.
+                        # The 'gm-details' worker will do that once it has full metadata.
+                        # This PREVENTS hollow records in the main index.
             finally:
                 if heartbeat_task:
                     heartbeat_task.cancel()
@@ -675,7 +664,7 @@ async def _run_details_task_loop(
             logger.error("Browser is disconnected. Restarting.")
             break
 
-        tasks: List[GmItemTask] = gm_list_item_queue.poll(batch_size=1)
+        tasks: List[GmItemTask] = await asyncio.to_thread(gm_list_item_queue.poll, batch_size=1)
         if not tasks:
             if once:
                 logger.info(
@@ -1031,7 +1020,7 @@ async def _run_enrichment_task_loop(
             logger.error("Browser is disconnected. Breaking task loop to restart.")
             break
 
-        tasks: List[QueueMessage] = enrichment_queue.poll(batch_size=1)
+        tasks: List[QueueMessage] = await asyncio.to_thread(enrichment_queue.poll, batch_size=1)
         if not tasks:
             if once:
                 logger.info(
@@ -1271,7 +1260,8 @@ async def _push_supervisor_heartbeat(
     """Collects system stats and active task counts, then pushes to S3 as a heartbeat."""
     try:
         import psutil
-        logger.info(f"Attempting heartbeat for {hostname} to {bucket_name}...")
+        from ..core.paths import paths
+        logger.debug(f"Attempting heartbeat for {hostname} to {bucket_name}...")
         
         stats = {
             "timestamp": datetime.now().isoformat(),
@@ -1292,8 +1282,8 @@ async def _push_supervisor_heartbeat(
             "status": "healthy"
         }
         
-        s3_key = f"status/{hostname}.json"
-        logger.info(f"Pushing stats to S3: {s3_key}")
+        s3_key = paths.s3_heartbeat(hostname)
+        logger.debug(f"Pushing stats to S3: {s3_key}")
         
         s3_client.put_object(
             Bucket=bucket_name,
@@ -1301,11 +1291,9 @@ async def _push_supervisor_heartbeat(
             Body=json.dumps(stats, indent=2),
             ContentType="application/json"
         )
-        logger.info(f"SUCCESS: Heartbeat pushed to s3://{bucket_name}/{s3_key}")
+        logger.debug(f"SUCCESS: Heartbeat pushed to s3://{bucket_name}/{s3_key}")
     except Exception as e:
         logger.error(f"HEARTBEAT CRITICAL FAILURE for {hostname}: {e}")
-        import traceback
-        logger.error(traceback.format_exc())
 
 async def run_supervisor(
     headless: bool, debug: bool, campaign_name: str, interval: int
@@ -1362,48 +1350,57 @@ async def run_supervisor(
         )
         await setup_optimized_context(context)
 
-        # Setup queues and clients once
-        ensure_campaign_config(campaign_name)
-        config = load_campaign_config(campaign_name)
-        aws_config = config.get("aws", {})
-        bucket_name = "roadmap-cocli-data-use1"
-        
-        # Resolve AWS session/client with larger connection pool
-        from botocore.config import Config
-        from ..core.reporting import get_boto3_session
-        session = get_boto3_session(config)
-            
-        s3_config = Config(
-            max_pool_connections=50, # Increase from default 10
-            retries={'max_attempts': 5}
-        )
-        s3_client = session.client("s3", config=s3_config)
-
-        # Initialize Queues
-        scrape_queue = get_queue_manager("scrape", use_cloud=True, queue_type="scrape", campaign_name=campaign_name)
-        gm_list_item_queue = get_queue_manager("details", use_cloud=True, queue_type="gm_list_item", campaign_name=campaign_name)
-        enrichment_queue = get_queue_manager("enrichment", use_cloud=True, queue_type="enrichment", campaign_name=campaign_name)
-        command_queue = get_queue_manager("command", use_cloud=True, queue_type="command", campaign_name=campaign_name)
-
         # Sync Throttling
         from ..utils.smart_sync_up import run_smart_sync_up
-        last_sync_time: float = 0.0
-        sync_interval_seconds = 3600 # 60 minutes (Real-time push handles most data)
-        processed_by = hostname # Just the hostname for clean machine attribution
-        
+        from ..core.paths import paths
+        now = time.time()
+        last_sync_time: float = now
+        last_report_time: float = now + 10**9 # Delay initial report by a long time for debugging
         last_heartbeat_time: float = 0.0
-        heartbeat_interval = 60 # 1 minute
-        
-        last_report_time: float = 0.0
+        last_client_refresh: float = 0.0
+        client_refresh_interval = 1800 # 30 minutes
         report_interval = 300 # 5 minutes
+        heartbeat_interval = 60 # 1 minute
+        sync_interval_seconds = 300 # 5 minutes
+        processed_by = hostname
+
+        s3_client = None
+        command_queue = None
+        scrape_queue = None
+        gm_list_item_queue = None
+        enrichment_queue = None
 
         while True:
             try:
                 # 0. Sync config from S3 (Throttled or in thread)
                 await asyncio.to_thread(sync_campaign_config, campaign_name, aws_config)
                 config = load_campaign_config(campaign_name)
+                aws_config = config.get("aws", {})
+                bucket_name = aws_config.get("data_bucket_name") or "roadmap-cocli-data-use1"
 
-                # 0.0 Heartbeat (Throttled)
+                # 0.1 Refresh Clients (Throttled to 30 mins)
+                now = time.time()
+                if s3_client is None or now - last_client_refresh > client_refresh_interval:
+                    logger.info("Refreshing AWS clients and session...")
+                    from ..core.reporting import get_boto3_session
+                    session = get_boto3_session(config)
+                    
+                    from botocore.config import Config
+                    s3_config = Config(
+                        max_pool_connections=50,
+                        retries={'max_attempts': 5}
+                    )
+                    s3_client = session.client("s3", config=s3_config)
+                    
+                    # Re-init Queues
+                    scrape_queue = get_queue_manager("scrape", use_cloud=True, queue_type="scrape", campaign_name=campaign_name, s3_client=s3_client)
+                    gm_list_item_queue = get_queue_manager("details", use_cloud=True, queue_type="gm_list_item", campaign_name=campaign_name, s3_client=s3_client)
+                    enrichment_queue = get_queue_manager("enrichment", use_cloud=True, queue_type="enrichment", campaign_name=campaign_name, s3_client=s3_client)
+                    command_queue = get_queue_manager("command", use_cloud=True, queue_type="command", campaign_name=campaign_name)
+                    
+                    last_client_refresh = now
+
+                # 0.2 Heartbeat (Throttled)
                 now = time.time()
                 if now - last_heartbeat_time > heartbeat_interval:
                     await _push_supervisor_heartbeat(
@@ -1575,6 +1572,7 @@ async def run_supervisor(
                         logger.warning(f"Supervisor failed to smart-sync data: {e}")
 
                 # 6. Regenerate and Upload Campaign Report to Web Bucket (Throttled to 15 minutes)
+                now = time.time()
                 if now - last_report_time > report_interval:
                     from ..core.reporting import get_campaign_stats
                     import json

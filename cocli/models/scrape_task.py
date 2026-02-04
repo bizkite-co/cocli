@@ -21,17 +21,4 @@ class ScrapeTask(BaseModel):
     # Queue mechanics (Transient)
     ack_token: Optional[str] = Field(None, exclude=True)
     attempts: int = 0
-
-class GmItemTask(BaseModel):
-    """
-    Represents a task to scrape details for a specific Google Maps item (Place ID).
-    """
-    place_id: str
-    campaign_name: str
-    name: Optional[str] = None
-    company_slug: Optional[str] = None
-    force_refresh: bool = False
     
-    # Queue mechanics
-    ack_token: Optional[str] = Field(None, exclude=True)
-    attempts: int = 0

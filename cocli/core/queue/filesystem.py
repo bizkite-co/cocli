@@ -6,7 +6,8 @@ from pathlib import Path
 from datetime import datetime, timedelta, UTC
 from botocore.exceptions import ClientError
 
-from ...models.scrape_task import ScrapeTask, GmItemTask
+from ...models.scrape_task import ScrapeTask
+from ...models.gm_item_task import GmItemTask
 from ...models.queue import QueueMessage
 from ...core.config import get_cocli_base_dir, get_campaign_dir
 from ...core.paths import paths
@@ -45,6 +46,11 @@ class FilesystemQueue:
         self.stale_heartbeat = stale_heartbeat_minutes
         self.s3_client = s3_client
         self.bucket_name = bucket_name
+        
+        if s3_client:
+            logger.info(f"FilesystemQueue {queue_name} initialized WITH S3 client for bucket {bucket_name}")
+        else:
+            logger.warning(f"FilesystemQueue {queue_name} initialized WITHOUT S3 client (Local-only mode)")
         
         # New V2 Path: queues/<campaign>/<queue>
         self.queue_base = paths.queue(campaign_name, queue_name)
@@ -224,6 +230,7 @@ class FilesystemQueue:
 
     def poll_frontier(self, task_type: Type[T], batch_size: int = 1) -> List[T]:
         """Generic poll for queues with S3 discovery fallback."""
+        logger.info(f"Polling {self.queue_name} for tasks...")
         if not self.pending_dir.exists():
             self.pending_dir.mkdir(parents=True, exist_ok=True)
             
@@ -244,9 +251,11 @@ class FilesystemQueue:
                         # Legacy/Flat structure
                         candidates.append(entry)
         
+        logger.debug(f"Queue {self.queue_name}: Found {len(candidates)} local candidates.")
         # 2. If no local candidates and we have S3, try to discover some
         if not candidates and self.s3_client and self.bucket_name:
-            logger.info(f"Local queue {self.queue_name} empty, discovering from S3...")
+            # We don't log 'Local queue empty' every time to avoid spam
+            # but we do need to try discovery
             self._discover_tasks_from_s3()
             # Re-scan after discovery
             for entry in self.pending_dir.iterdir():
@@ -289,18 +298,22 @@ class FilesystemQueue:
     def _discover_tasks_from_s3(self, max_discovery: int = 100) -> None:
         """Lists S3 to find pending tasks using Sharded FIFO Discovery."""
         if not self.s3_client or not self.bucket_name:
+            logger.warning(f"S3 Discovery for {self.queue_name} skipped: Missing S3 client ({self.s3_client is not None}) or Bucket ({self.bucket_name})")
             return
 
         # 1. Discover which shards actually exist in S3
         pending_prefix = f"campaigns/{self.campaign_name}/queues/{self.queue_name}/pending/"
+        logger.info(f"S3 Discovery: Listing {self.bucket_name} with prefix {pending_prefix}")
         shards = []
         try:
             paginator = self.s3_client.get_paginator('list_objects_v2')
             for page in paginator.paginate(Bucket=self.bucket_name, Prefix=pending_prefix, Delimiter='/'):
                 for prefix in page.get('CommonPrefixes', []):
-                    shard = prefix.get('Prefix').split('/')[-2]
+                    shard_prefix = prefix.get('Prefix')
+                    shard = shard_prefix.split('/')[-2]
                     if shard:
                         shards.append(shard)
+            logger.info(f"Discovered {len(shards)} shards on S3 for {self.queue_name}: {shards}")
         except Exception as e:
             logger.error(f"Error listing shards from S3: {e}")
             return
@@ -358,6 +371,7 @@ class FilesystemQueue:
                     for tid, info in tasks_in_shard.items() 
                     if info["has_task"] and not info["has_lease"]
                 ]
+                logger.info(f"Shard {shard}: Found {len(tasks_in_shard)} total task dirs, {len(available_tasks)} available (unleased).")
 
                 # 3. Sort by mtime (FIFO: Oldest First)
                 available_tasks.sort(key=lambda x: x[1] if x[1] else datetime.min.replace(tzinfo=UTC))

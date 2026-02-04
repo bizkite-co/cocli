@@ -101,13 +101,40 @@ def add(
         console.print(f"[red]An unexpected error occurred: {e}[/red]")
         raise typer.Exit(code=1)
 
-@app.command(name="set")
 def set_default_campaign(campaign_name: str = typer.Argument(..., help="The name of the campaign to set as the current context.")) -> None:
-    """
-    Sets the current campaign context.
-    """
+    """Sets the current campaign context."""
     set_campaign(campaign_name)
     workflow = CampaignWorkflow(campaign_name)
+    
+    # Update .envrc to match the campaign's admin profile
+    try:
+        from pathlib import Path
+        import tomllib
+        config_path = Path("data/campaigns") / campaign_name / "config.toml"
+        if config_path.exists():
+            with open(config_path, "rb") as cf:
+                config_data = tomllib.load(cf)
+                admin_profile = config_data.get("aws", {}).get("profile")
+                if admin_profile:
+                    envrc_path = Path(".envrc")
+                    if envrc_path.exists():
+                        lines = []
+                        found = False
+                        with open(envrc_path, "r") as ef:
+                            for line in ef:
+                                if line.strip().startswith("export AWS_PROFILE="):
+                                    lines.append(f'export AWS_PROFILE="{admin_profile}"\n')
+                                    found = True
+                                else:
+                                    lines.append(line)
+                        if not found:
+                            lines.append(f'export AWS_PROFILE="{admin_profile}"\n')
+                        with open(envrc_path, "w") as ef:
+                            ef.writelines(lines)
+                        console.print(f"[dim]Updated .envrc with AWS_PROFILE={admin_profile}[/dim]")
+    except Exception as e:
+        console.print(f"[yellow]Warning: Could not update .envrc: {e}[/yellow]")
+
     console.print(f"[green]Campaign context set to:[/][bold]{campaign_name}[/]")
     console.print(f"[green]Current workflow state for '{campaign_name}':[/][bold]{workflow.state}[/]")
 

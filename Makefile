@@ -679,7 +679,7 @@ start-rpi-supervisor: ## Start the Supervisor on Raspberry Pi for dynamic scalin
 		--shm-size=2gb \
 		-e TZ=America/Los_Angeles \
 		-e CAMPAIGN_NAME='$(CAMPAIGN)' \
-		-e AWS_PROFILE=$(AWS_PROFILE) \
+		-e AWS_PROFILE=$(CAMPAIGN)-iot \
 		-e COCLI_HOSTNAME=\$$(hostname) \
 		-e COCLI_QUEUE_TYPE=filesystem \
 		-e COCLI_SCRAPE_TASKS_QUEUE_URL='$(SCRAPE_QUEUE)' \
@@ -687,7 +687,12 @@ start-rpi-supervisor: ## Start the Supervisor on Raspberry Pi for dynamic scalin
 		-e COCLI_ENRICHMENT_QUEUE_URL='$(ENRICHMENT_QUEUE)' \
 		-e COCLI_COMMAND_QUEUE_URL='$(COMMAND_QUEUE)' \
 		-v ~/repos/data:/app/data \
-		-v ~/.aws:/root/.aws:ro cocli-worker-rpi:latest cocli worker supervisor --debug"
+		-e COCLI_ENRICHMENT_QUEUE_URL='$(ENRICHMENT_QUEUE)' \
+		-e COCLI_COMMAND_QUEUE_URL='$(COMMAND_QUEUE)' \
+		-v ~/repos/data:/app/data \
+		-v ~/.aws:/root/.aws:ro \
+		-v ~/.cocli:/root/.cocli:ro \
+		cocli-worker-rpi:latest cocli worker supervisor --debug"
 
 .PHONY: restart-rpi-all
 restart-rpi-all: ## Restart all Raspberry Pi workers using supervisor on all nodes
@@ -771,6 +776,18 @@ refresh-keyword-display: ## Sync keyword server data and generate web report
 show-kmls: ## Show KML files online (Usage: make show-kmls [BUCKET=cocli-web-assets] [PROFILE=bizkite-support])
 	aws s3 ls s3://$(or $(BUCKET), cocli-web-assets)/kml/ --profile $(or $(PROFILE), bizkite-support)
 
+.PHONY: deploy-iot-cdk
+deploy-iot-cdk: install ## Deploy IoT Core Credential Provider infrastructure (Usage: make deploy-iot-cdk CAMPAIGN=roadmap)
+	@$(call validate_campaign)
+	@echo "Deploying IoT infrastructure for $(CAMPAIGN)..."
+	cd cdk_scraper_deployment && uv pip install -r requirements.txt && cdk deploy --require-approval never --profile westmonroe-support -c campaign=$(CAMPAIGN)
+
+.PHONY: provision-pi-iot
+provision-pi-iot: ## Provision a Pi with unique IoT certificate (Usage: make provision-pi-iot HOST=xxx.pi CAMPAIGN=roadmap)
+	@$(call validate_campaign)
+	@if [ -z "$(HOST)" ]; then echo "Error: HOST is required. Usage: make provision-pi-iot HOST=cocli5x0.pi CAMPAIGN=roadmap"; exit 1; fi
+	./scripts/provision_pi_iot.py --host $(HOST) --campaign $(CAMPAIGN) --profile westmonroe-support
+
 # ==============================================================================
 # Documentation
 # ==============================================================================
@@ -779,3 +796,4 @@ show-kmls: ## Show KML files online (Usage: make show-kmls [BUCKET=cocli-web-ass
 clean-html: ## Convert HTML source to clean Markdown (Usage: make clean-html FILE=docs/ref.html)
 	@if [ -z "$(FILE)" ]; then echo "ERROR: FILE parameter is required."; exit 1; fi
 	$(VENV_DIR)/bin/python scripts/clean_html_docs.py $(FILE) $(FILE:.html=.md)
+include mk/cluster.mk

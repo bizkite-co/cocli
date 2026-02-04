@@ -1,31 +1,37 @@
 # Task: Roadmap Campaign Identity Recovery & Shielding
 
 ## Objective
-Recover 18,451 hollow `roadmap` prospect records and implement an "Identification Shield" to prevent future metadata loss using data-driven regression testing and semantic selectors.
+Recover 9,605 unique hollow roadmap records and enforce a "Model-to-Model" architecture to permanently prevent incomplete data saves.
 
-## Phase 1: Infrastructure & Integrity (COMPLETED)
-- [x] **Centralized Sharding**: Implemented 16-way index-5 sharding (`identifier[5]`) to avoid "ChIJ-" prefix collisions.
-- [x] **Model Standardization**: Restored `AwareDatetime` and `PhoneNumber` types in `GoogleMapsProspect`.
-- [x] **Queue Re-sharding**: Verified S3 DFQ paths match the new index-5 logic.
-- [x] **Cluster Readiness**: Provisioned `cocli5x0.pi`, `coclipi.pi`, and `cocli5x1.pi`.
+## Phase 2: Identification Shield & Validation (COMPLETE)
+- [x] **Strict Identity Model**: Update `GoogleMapsProspect` to make `name`, `place_id`, `company_slug`, and `company_hash` **REQUIRED**.
+- [x] **Model-to-Model Pipeline**: Implemented transformation flow: `ListItem` (Discovery) -> `Task` (Queue) -> `Prospect` (Index).
+- [x] **Gold Standard Identity**: Implemented AWS IoT Core X.509 authentication with automatic token refresh in supervisor.
+- [x] **Explicit S3 Namespace**: Defined and implemented `DataPaths.s3_*` methods to ensure deterministic pathing.
+- [x] **Async Stability**: Wrapped synchronous queue polling in threads to prevent supervisor event-loop stalls.
+- [x] **Test ID Verification**: Confirmed hydration of test ID `ChIJrWcEWr8B2YgR7Sw1Y_d7GUw` in S3 (Shard `W`).
 
-## Phase 2: Identification Shield & Regression Testing (CURRENT)
-- [x] **Golden Set Definition**: Created `tests/data/maps.google.com/golden_set.usv` with diverse, stable ground-truth data.
-- [x] **Snapshot Pipeline**: Implemented `scripts/capture_maps_snapshot.py` to simulate Search -> List -> Detail workflow and generate fresh HTML for testing.
-- [x] **Semantic Selectors**: Refactored `parse_gmb_page` to prioritize ARIA labels and semantic roles over brittle CSS classes (e.g., `hfpxzc`, `qBF1Pd`).
-- [ ] **Strict Identity Model**: Update `GoogleMapsProspect` to make `name` and `company_slug` **REQUIRED**.
-    - *Goal*: Pydantic `ValidationError` must trigger on any record missing identity, preventing the save of hollow USV files.
-- [ ] **Identity Preservation**: Update `GmItemTask` to carry `name` and `company_slug` from the `gm-list` phase to ensure identity is preserved even if the detail parser fails.
-- [ ] **Shield Verification**: Ensure the `gm-details` worker handles model validation errors by `nack`-ing the task (triggering a retry) instead of failing silently.
-
-## Phase 3: Recovery Execution
-- [ ] **Enqueuing**: Populate the `gm-details` queue with the 18,451 hollow Place IDs from `hollow_place_ids.usv`.
+## Phase 3: Recovery Execution (CURRENT)
+- [ ] **Index Cleanup**: Mass-sideline existing hollow S3 USV index files (< 1.5KB) to clear the path for fresh scrapes.
+- [ ] **Enqueuing**: Populate the `gm-details` queue with the ~9,359 remaining hollow Place IDs using `scripts/enqueue_hollow_recovery.py`.
 - [ ] **Cluster Processing**: Monitor RPI nodes as they re-scrape metadata and populate the sharded index.
-- [ ] **Verification**: Run a post-recovery audit to ensure the number of hollow records has dropped to near-zero.
+- [ ] **Verification**: Run a post-recovery audit to ensure hollow records are replaced by valid, hydrated USVs (> 2KB).
 
-## Technical Standards (Updated)
-- **Scraping Integrity**: Mandatory use of `USER_AGENT` and `ANTI_BOT_HEADERS` from `cocli.utils.headers`.
-- **Selector Policy**: Avoid all obfuscated/auto-generated CSS classes. Use ARIA labels, roles, and data-attributes (e.g., `data-item-id="authority"`).
-- **Test-Driven**: All parser changes must be verified against the `Golden Set` snapshots (`pytest tests/unit/test_google_maps_parser.py`).
-- **Field Separator**: `\x1f` (Unit Separator)
-- **Identity Anchor**: `place_id` (Primary) + `company_slug` (Required for Prospect status).
+## Technical Standards
+- **Model Architecture**: Prohibit model reuse across phases.
+    - `GoogleMapsListItem`: Discovery results (`name`, `slug`, `place_id`).
+    - `GmItemTask`: Worker instructions (S3 Queue).
+    - `GoogleMapsProspect`: Final hydrated data (S3 Index).
+- **Deduplication**: Use `place_id.usv` as the filename in the index to ensure one record per location.
+- **Data Format**: USV with `\x1f` (Unit Separator). Handle internal newlines by ensuring the model captures them in specific fields.
+- **Operational Safety (1-3-10 Rule)**:
+    - 1 item: Local test.
+    - 3 items: S3 pilot run.
+    - 10 items: Small batch verification.
+    - **NEVER** enqueue thousands without a successful 10-item pilot.
+- **S3 Safety**: Always use `--dry-run` before `aws s3 rm` or `aws s3 mv` on large buckets.
+- **Log Management**:
+    - Use `timeout 10s` for SSH log tails.
+    - Use `grep -E` to target specific IDs or patterns.
+    - Use `tail -n 50` or `--tail 50` to limit initial context.
+    - Use `sudo truncate -s 0 <path>` to clear bloated RPI container logs.

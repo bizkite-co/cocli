@@ -50,49 +50,35 @@ SQSAttributeName = Literal[
 ]
 
 
-def get_boto3_session(campaign_config: Dict[str, Any]) -> boto3.Session:
-    """
-    Creates a boto3 session with robust profile resolution.
-    Priority:
-    1. Campaign Slug Profile (e.g., 'roadmap')
-    2. Explicit 'aws.profile' from config
-    3. Environment variables / Default
-    """
-    if os.getenv("COCLI_RUNNING_IN_FARGATE"):
+def get_boto3_session(config: Dict[str, Any]) -> boto3.Session:
+    """Creates a boto3 session, prioritizing IoT profiles for automatic refresh."""
+    # 1. Try roadmap-iot profile (The Gold Standard with credential_process)
+    try:
+        session = boto3.Session(profile_name="roadmap-iot")
+        # Test if it works
+        session.client("sts").get_caller_identity()
+        return session
+    except Exception:
+        pass
+
+    # 2. Fallback to IoT script directly (Legacy/One-off)
+    from ..utils.aws_iot_auth import get_iot_sts_credentials
+    iot_creds = get_iot_sts_credentials()
+    if iot_creds:
+        return boto3.Session(
+            aws_access_key_id=iot_creds["access_key"],
+            aws_secret_access_key=iot_creds["secret_key"],
+            aws_session_token=iot_creds["token"]
+        )
+
+    # 3. Fallback to Profile in config or Default
+    aws_config = config.get("aws", {})
+    profile_name = aws_config.get("profile") or aws_config.get("aws_profile")
+    
+    if profile_name:
+        return boto3.Session(profile_name=profile_name)
+    else:
         return boto3.Session()
-
-    aws_config = campaign_config.get("aws", {})
-    region = aws_config.get("region", "us-east-1")
-    campaign_slug = campaign_config.get("campaign", {}).get("name")
-    
-    # Try multiple profile candidates
-    potential_profiles = []
-    if campaign_slug:
-        potential_profiles.append(campaign_slug)
-    
-    explicit_profile = aws_config.get("profile") or aws_config.get("aws_profile")
-    if explicit_profile and explicit_profile not in potential_profiles:
-        potential_profiles.append(explicit_profile)
-
-    # Attempt to create session with the best available profile
-    session = None
-    
-    for profile in potential_profiles:
-        try:
-            temp_session = boto3.Session(profile_name=profile, region_name=region)
-            # Verify the profile exists by checking identity (lightweight)
-            temp_session.client("sts").get_caller_identity()
-            session = temp_session
-            logger.debug(f"Using AWS profile: {profile}")
-            break
-        except Exception:
-            continue
-            
-    if not session:
-        logger.debug("No valid named profile found. Using default session from environment.")
-        session = boto3.Session(region_name=region)
-
-    return session
 
 
 def get_sqs_attributes(

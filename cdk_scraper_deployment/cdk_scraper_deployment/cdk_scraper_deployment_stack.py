@@ -275,6 +275,83 @@ class CdkScraperDeploymentStack(Stack):  # type: ignore[misc]
                 description="URL of the enrichment service"
             )
 
+        # --- IoT Core Credential Provider (The Gold Standard) ---
+        
+        # 1. IAM Role for PIs to assume
+        iot_role = iam.Role(self, "CocliIoTScraperRole",
+            assumed_by=iam.ServicePrincipal("credentials.iot.amazonaws.com"),
+            description=f"Role assumed by Raspberry Pi workers for campaign {campaign_config['name']}"
+        )
+
+        # Import the user's managed policy and attach it
+        worker_policy = iam.ManagedPolicy.from_managed_policy_arn(self, "ImportedWorkerPolicy", 
+            "arn:aws:iam::865664998993:policy/CocliIoTScraperWorkerPolicy"
+        )
+        iot_role.add_managed_policy(worker_policy)
+
+        # Add explicit self-discovery and logging permissions
+        iot_role.add_to_policy(iam.PolicyStatement(
+            actions=[
+                "iot:DescribeEndpoint",
+                "logs:CreateLogGroup",
+                "logs:CreateLogStream",
+                "logs:PutLogEvents",
+                "logs:DescribeLogStreams"
+            ],
+            resources=["*"]
+        ))
+        
+        data_bucket.grant_read_write(iot_role)
+        web_bucket.grant_read_write(iot_role)
+        enrichment_queue.grant_send_messages(iot_role)
+        enrichment_queue.grant_consume_messages(iot_role)
+        scrape_tasks_queue.grant_send_messages(iot_role)
+        scrape_tasks_queue.grant_consume_messages(iot_role)
+        gm_list_item_queue.grant_send_messages(iot_role)
+        gm_list_item_queue.grant_consume_messages(iot_role)
+        campaign_updates_queue.grant_send_messages(iot_role)
+        campaign_updates_queue.grant_consume_messages(iot_role)
+
+        # 2. IoT Role Alias
+        from aws_cdk import aws_iot as iot
+        role_alias = iot.CfnRoleAlias(self, "CocliScraperRoleAlias",
+            role_arn=iot_role.role_arn,
+            role_alias=f"CocliScraperAlias-{campaign_config['name']}",
+            credential_duration_seconds=3600
+        )
+
+        # 3. IoT Policy to allow AssumeRoleWithCertificate
+        iot_policy = iot.CfnPolicy(self, "CocliIoTAssumeRolePolicy",
+            policy_name=f"CocliIoTAssumeRolePolicy-{campaign_config['name']}",
+            policy_document={
+                "Version": "2012-10-17",
+                "Statement": [
+                    {
+                        "Effect": "Allow",
+                        "Action": "iot:AssumeRoleWithCertificate",
+                        "Resource": role_alias.attr_role_alias_arn
+                    }
+                ]
+            }
+        )
+
+        # 4. IAM User for local development / Gemini Agent
+        # This user will be used to generate the credentials for the roadmap-iot profile
+        agent_user = iam.User(self, "CocliAgentUser",
+            user_name=f"cocli-agent-{campaign_config['name']}"
+        )
+        # Grant the agent user permission to use the IoT Role Alias via a certificate if needed,
+        # or just give it direct AssumeRole if we want a shortcut, but let's stick to the IoT path.
+        agent_user.add_to_policy(iam.PolicyStatement(
+            actions=["iot:AssumeRoleWithCertificate"],
+            resources=[role_alias.attr_role_alias_arn]
+        ))
+
+        CfnOutput(self, "IoTRoleAlias", value=role_alias.role_alias)
+        CfnOutput(self, "IoTPolicyName", value=iot_policy.policy_name)
+        CfnOutput(self, "IoTRoleArn", value=iot_role.role_arn)
+        CfnOutput(self, "AgentUserName", value=agent_user.user_name)
+
         # --- Cognito User Pool and Client ---
         user_pool_id = campaign_config.get("user_pool_id")
         client_id = campaign_config.get("user_pool_client_id")

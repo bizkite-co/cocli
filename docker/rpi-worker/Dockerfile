@@ -6,7 +6,7 @@ WORKDIR /app
 # Install system dependencies needed for pandas/numpy on ARM, plus qsv for indexing
 RUN apt-get update && apt-get install -y \
     libatlas-base-dev \
-    wget unzip --no-install-recommends && \
+    wget unzip jq --no-install-recommends && \
     export ARCH=$(uname -m) && \
     if [ "$ARCH" = "x86_64" ]; then QSV_ARCH="x86_64-unknown-linux-gnu"; elif [ "$ARCH" = "aarch64" ]; then QSV_ARCH="aarch64-unknown-linux-gnu"; fi && \
     wget https://github.com/jqnatividad/qsv/releases/download/0.134.0/qsv-0.134.0-$QSV_ARCH.zip && \
@@ -23,7 +23,7 @@ COPY pyproject.toml uv.lock* ./
 # Export requirements (including 'full' for pandas/numpy) and install them
 RUN uv export --frozen --no-dev --no-hashes --extra full > requirements.txt && \
     uv pip install -r requirements.txt --system && \
-    uv pip install ruff --system
+    uv pip install ruff awscli --system
 
 # Copy the application code
 COPY . .

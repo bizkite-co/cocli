@@ -40,8 +40,10 @@ def setup_file_logging(command_name: str, console_level: int = logging.INFO, fil
     root_logger.addHandler(file_handler)
 
     if not disable_console:
-        # Create console handler for less verbose output
-        console_handler = logging.StreamHandler(sys.stderr)
+        # For workers and supervisors, log to stdout to make docker logs easier to grep/tail
+        # For other CLI commands, log to stderr to avoid polluting data output (stdout)
+        stream = sys.stdout if command_name in ["worker", "supervisor"] else sys.stderr
+        console_handler = logging.StreamHandler(stream)
         console_handler.setLevel(console_level)
         console_formatter = logging.Formatter('[%(asctime)s] %(message)s', datefmt='%Y-%m-%d %H:%M:%S %z') # Keep console output clean
         console_handler.setFormatter(console_formatter)

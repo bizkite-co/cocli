@@ -1,13 +1,10 @@
 import logging
-from datetime import datetime, timedelta, UTC
-from typing import AsyncIterator, Set, Dict, Any
+from typing import AsyncIterator, Set
 from playwright.async_api import Page
 
 from ...core.config import load_scraper_settings
-from ...core.google_maps_cache import GoogleMapsCache
-from ...models.google_maps_prospect import GoogleMapsProspect
+from ...models.google_maps_list_item import GoogleMapsListItem
 from ..google_maps_parser import parse_business_listing_html
-from ..google_maps_gmb_parser import parse_gmb_page
 
 logger = logging.getLogger(__name__)
 
@@ -16,7 +13,6 @@ class SidebarScraper:
         self.page = page
         self.debug = debug
         self.settings = load_scraper_settings()
-        self.cache = GoogleMapsCache()
 
     async def scrape(
         self,
@@ -24,12 +20,12 @@ class SidebarScraper:
         processed_place_ids: Set[str],
         force_refresh: bool,
         ttl_days: int
-    ) -> AsyncIterator[GoogleMapsProspect]:
+    ) -> AsyncIterator[GoogleMapsListItem]:
         """
         Scrapes the sidebar results for the current map view.
+        Yields GoogleMapsListItem for each found business.
         """
         delay_seconds = self.settings.google_maps_delay_seconds
-        fresh_delta = timedelta(days=ttl_days)
 
         logger.info(f"Scanning sidebar for: '{search_string}'")
 
@@ -97,21 +93,13 @@ class SidebarScraper:
 
                 processed_place_ids.add(place_id)
 
-                # Cache Check
-                cached_item = self.cache.get_by_place_id(place_id)
-                if cached_item and not force_refresh and (datetime.now(UTC) - cached_item.updated_at < fresh_delta):
-                    yield cached_item
-                    continue
-
-                # GMB Detail Check (if missing crucial info)
-                gmb_url = business_data_dict.get("GMB_URL")
-                if gmb_url and (not business_data_dict.get("Website") or not business_data_dict.get("Full_Address")):
-                     await self._fetch_gmb_details(gmb_url, business_data_dict)
-
-                # Yield
-                business_data = GoogleMapsProspect(**business_data_dict)
-                self.cache.add_or_update(business_data)
-                yield business_data
+                # Yield Discovery Item
+                yield GoogleMapsListItem(
+                    place_id=place_id,
+                    name=business_data_dict.get("Name", "Unknown"),
+                    company_slug=business_data_dict.get("id", ""), # Slug is in 'id' from parser
+                    gmb_url=business_data_dict.get("GMB_URL")
+                )
 
             last_processed_div_count = len(listing_divs)
 
@@ -119,28 +107,9 @@ class SidebarScraper:
             if await self.page.get_by_text("You've reached the end of the list").is_visible():
                 break
 
-            # Scroll
             try:
                 await scrollable_div.hover()
                 await self.page.mouse.wheel(0, 5000)
                 await self.page.wait_for_timeout(delay_seconds * 1000)
             except Exception:
                 break
-                
-    async def _fetch_gmb_details(self, url: str, data_dict: Dict[str, Any]) -> None:
-        try:
-            # Open new page/context to not disrupt main flow?
-            # Or just use current page? 
-            # Using current page disrupts the list state. 
-            # Must use a new page.
-            context = self.page.context
-            page = await context.new_page()
-            try:
-                await page.goto(url, timeout=60000)
-                html = await page.content()
-                details = parse_gmb_page(html)
-                data_dict.update(details)
-            finally:
-                await page.close()
-        except Exception as e:
-            logger.warning(f"GMB detail fetch failed: {e}")

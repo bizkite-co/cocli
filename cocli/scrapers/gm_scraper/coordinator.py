@@ -3,7 +3,7 @@ from typing import List, AsyncIterator, Optional, Dict, Any, Union
 from playwright.async_api import Browser
 from geopy.distance import geodesic # type: ignore
 
-from ...models.google_maps_prospect import GoogleMapsProspect
+from ...models.google_maps_list_item import GoogleMapsListItem
 from .navigator import Navigator
 from .strategy import SpiralStrategy, GridStrategy
 from .wilderness import WildernessManager
@@ -47,7 +47,7 @@ class ScrapeCoordinator:
         ttl_days: int = 30,
         grid_tiles: Optional[List[Dict[str, Any]]] = None,
         processed_by: Optional[str] = None
-    ) -> AsyncIterator[GoogleMapsProspect]:
+    ) -> AsyncIterator[GoogleMapsListItem]:
         
         # Create a new context explicitly for this session
         # This fixes 'Please use browser.new_context()' errors on some environments

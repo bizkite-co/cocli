@@ -8,40 +8,63 @@ import boto3
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Deploy AWS credentials for a specific profile to a Raspberry Pi.")
-    parser.add_argument("--profile", required=True, help="Local AWS profile name to extract.")
+    parser.add_argument("--profile", help="Local AWS profile name to extract.")
     parser.add_argument("--host", required=True, help="RPi hostname or IP (e.g., octoprint.local).")
     parser.add_argument("--user", default="mstouffer", help="SSH user for the RPi.")
-    parser.add_argument("--campaign", help="Campaign slug to use as the profile name on the RPi.")
+    parser.add_argument("--campaign", required=True, help="Campaign slug to use as the profile name and secret ID.")
+    parser.add_argument("--from-secret", action="store_true", help="Fetch credentials from AWS Secrets Manager instead of local profile.")
     
     args = parser.parse_args()
+
+    if not args.from_secret and not args.profile:
+        print("Error: Either --profile or --from-secret must be specified.")
+        sys.exit(1)
     
-    # Use boto3 to get credentials - this handles SSO, MFA, credentials file, etc.
+    # Use boto3 to get credentials
     try:
-        session = boto3.Session(profile_name=args.profile)
-        raw_creds = session.get_credentials()
-        if not raw_creds:
-            print(f"Error: No credentials found for profile '{args.profile}'")
-            sys.exit(1)
-        creds = raw_creds.get_frozen_credentials()
-        region = session.region_name or "us-east-1"
+        if args.from_secret:
+            print(f"Fetching credentials from Secrets Manager for campaign '{args.campaign}'...")
+            # Use default session to fetch the secret
+            sm_client = boto3.client("secretsmanager")
+            secret_id = f"cocli/campaign/{args.campaign}"
+            response = sm_client.get_secret_value(SecretId=secret_id)
+            import json
+            secret_data = json.loads(response["SecretString"])
+            
+            access_key = secret_data["aws_access_key_id"]
+            secret_key = secret_data["aws_secret_access_key"]
+            region = secret_data.get("region", "us-east-1")
+            token = secret_data.get("aws_session_token")
+        else:
+            session = boto3.Session(profile_name=args.profile)
+            raw_creds = session.get_credentials()
+            if not raw_creds:
+                print(f"Error: No credentials found for profile '{args.profile}'")
+                sys.exit(1)
+            creds = raw_creds.get_frozen_credentials()
+            access_key = creds.access_key
+            secret_key = creds.secret_key
+            token = creds.token
+            region = session.region_name or "us-east-1"
+            
     except Exception as e:
-        print(f"Error: Could not get credentials for profile '{args.profile}': {e}")
+        print(f"Error fetching credentials: {e}")
         sys.exit(1)
         
-    target_profile = args.campaign or args.profile
-    print(f"Extracted credentials for '{args.profile}' -> target profile '{target_profile}'")
+    target_profile = args.campaign
+    print(f"Targeting profile '{target_profile}' on {args.host}")
 
     # Create temporary credentials content
     new_creds = configparser.ConfigParser()
     new_creds[target_profile] = {
-        "aws_access_key_id": str(creds.access_key),
-        "aws_secret_access_key": str(creds.secret_key)
+        "aws_access_key_id": str(access_key),
+        "aws_secret_access_key": str(secret_key)
     }
-    if creds.token:
-        new_creds[target_profile]["aws_session_token"] = str(creds.token)
+    if token:
+        new_creds[target_profile]["aws_session_token"] = str(token)
     
-    if not args.campaign:
-        new_creds["default"] = dict(new_creds[target_profile])
+    # Mirror to [default]
+    new_creds["default"] = dict(new_creds[target_profile])
     
     new_config = configparser.ConfigParser()
     target_config_section = f"profile {target_profile}"
@@ -49,8 +72,11 @@ def main() -> None:
         "region": region,
         "output": "json"
     }
-    if not args.campaign:
-        new_config["default"] = dict(new_config[target_config_section])
+    # Mirror to [default]
+    new_config["default"] = {
+        "region": region,
+        "output": "json"
+    }
 
     # Write to temporary files
     tmp_dir = Path("/tmp/cocli_rpi_aws")

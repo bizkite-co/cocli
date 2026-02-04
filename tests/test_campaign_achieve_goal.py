@@ -1,4 +1,4 @@
-from cocli.models.google_maps_prospect import GoogleMapsProspect
+from cocli.models.google_maps_list_item import GoogleMapsListItem
 from typer.testing import CliRunner
 from cocli.main import app
 import pytest
@@ -7,17 +7,13 @@ from unittest.mock import AsyncMock, MagicMock
 runner = CliRunner()
 
 async def async_generator():
-    mock_google_maps_data = GoogleMapsProspect(
+    mock_item = GoogleMapsListItem(
         name="Mock Company",
         place_id="mock_place_id",
-        website="mock.com",
-        latitude=0.0,
-        longitude=0.0,
-        gmb_url="mock.gmb.url",
         company_slug="mock-company",
-        company_hash="mock-hash"
+        gmb_url="https://google.com/maps/mock"
     )
-    yield mock_google_maps_data
+    yield mock_item
 
 @pytest.fixture
 def mock_achieve_goal_dependencies(mocker, tmp_path):
@@ -68,9 +64,6 @@ queries = ["software company"]
     mocker.patch("cocli.scrapers.google_maps.scrape_google_maps", return_value=async_generator())
     mocker.patch("cocli.commands.campaign.prospecting.scrape_google_maps", return_value=async_generator())
     mocker.patch("cocli.models.company.Company.get_all", return_value=[]) # <--- Added this line
-    mocker.patch("cocli.core.importing.import_prospect", return_value=type('obj', (object,), {'name': 'mock_company', 'domain': 'mock.com', 'slug': 'mock-company', 'email': None}))
-    mocker.patch("cocli.commands.campaign.prospecting.import_prospect", return_value=type('obj', (object,), {'name': 'mock_company', 'domain': 'mock.com', 'slug': 'mock-company', 'email': None}))
-
     mock_website = MagicMock()
     mock_website.email = "test@example.com"
     mock_website.model_dump.return_value = {

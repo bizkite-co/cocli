@@ -50,16 +50,18 @@ We are currently in a multi-phase recovery:
 2. **Heal**: `scripts/heal_hollow_shards.py` attempts to restore metadata from legacy `companies/` markdown files.
 3. **Re-Fetch**: For records where no legacy data exists, a fast-fetch scraper is used to re-populate metadata from Google Maps using the `place_id`.
 
+## Current State (Feb 4, 2026)
+- **Status**: Recovery Phase Active. 
+- **Identity Model**: Successfully implemented AWS IoT Core "Gold Standard" authentication. Workers now use short-lived STS tokens, preventing long-term credential leakage.
+- **Namespace Control**: Established an explicit S3 Path Specification (see `docs/architecture/s3-namespace-specification.md` and `docs/.schema/`).
+- **Pipeline Integrity**: Verified the Model-to-Model flow (`ListItem` -> `Task` -> `Prospect`) by recovering test ID `ChIJrWcEWr8B2YgR7Sw1Y_d7GUw`.
+- **Async Stability**: Added `asyncio.to_thread` to queue polling to ensure supervisor heartbeats and command processing are never blocked by S3 I/O.
+
 ## Prevention for Future LLMs / Developers
+- **CONSULT** the `docs/.schema/` directory before adding new filesystem or S3 nodes.
 - **NEVER** remove `alias_generator` from models that interact with the filesystem.
 - **ALWAYS** check `make lint` and `make test` after model changes.
 - **NEVER** allow a model to save if primary identifiers are null.
-- **USE** the `PlaceID` type for all Google Maps related IDs to trigger validation errors early.
-
-## Current State (Jan 31, 2026)
-- **Status**: Structural fix is complete. 8,538 shards healed.
-- **Standard**: USV files use `\x1f` (unit separator) and `\n` (record separator).
-- **DuckDB**: Queries must use `trim(replace(col, CHR(30), ''))` to handle legacy `\x1e` characters found in older data files.
 
 ## Possible Improvements (Future Roadmap)
 

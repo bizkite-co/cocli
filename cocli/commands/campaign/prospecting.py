@@ -12,16 +12,12 @@ from playwright.async_api import async_playwright
 import yaml
 
 from cocli.core.config import get_companies_dir, get_campaign_dir, get_campaign, get_enrichment_service_url
-from cocli.core.importing import import_prospect
-from cocli.core.prospects_csv_manager import ProspectsIndexManager
 from cocli.core.scrape_index import ScrapeIndex
 from cocli.core.text_utils import slugify
 from cocli.core.location_prospects_index import LocationProspectsIndex
 from cocli.core.queue.factory import get_queue_manager
 from cocli.planning.generate_grid import get_campaign_grid_tiles
-from cocli.models.queue import QueueMessage
 from cocli.models.scrape_task import ScrapeTask
-from cocli.models.google_maps_prospect import GoogleMapsProspect
 from cocli.models.company import Company
 from cocli.models.website import Website
 from cocli.scrapers.google_maps import scrape_google_maps
@@ -140,14 +136,14 @@ async def pipeline(
             
             compiler.save_audit_report()
         async def producer_task(existing_companies_map: Dict[str, str]) -> None: 
-            csv_manager = ProspectsIndexManager(campaign_name)
-
-            async def process_prospect_item(prospect_data: GoogleMapsProspect, location_name: str) -> None: 
-                csv_manager.append_prospect(prospect_data)
-                company = import_prospect(prospect_data, campaign=campaign_name)
-                if company and company.domain and not company.email:
-                    msg = QueueMessage(domain=company.domain, company_slug=company.slug, campaign_name=campaign_name, force_refresh=force, ttl_days=ttl_days, ack_token=None)
-                    queue_manager.push(msg)
+            # Discovery-only in producer task
+            from ...core.queue.factory import get_queue_manager
+            gm_list_item_queue = get_queue_manager(
+                "gm_list_item", 
+                use_cloud=True, 
+                queue_type="gm_list_item", 
+                campaign_name=campaign_name
+            )
 
             prospect_generator = scrape_google_maps(
                 browser=browser, location_param={"latitude": "0", "longitude": "0"},
@@ -155,10 +151,14 @@ async def pipeline(
                 force_refresh=force, ttl_days=ttl_days, debug=debug, max_proximity_miles=max_proximity_miles,
                 overlap_threshold_percent=overlap_threshold_percent
             )
-            async for prospect_data in prospect_generator:
+            async for list_item in prospect_generator:
                 if stop_event.is_set():
                     break
-                await process_prospect_item(prospect_data, "Grid Scan")
+                
+                # Transform discovery to task for details worker
+                details_task = list_item.to_task(campaign_name)
+                gm_list_item_queue.push(details_task)
+                
                 await asyncio.sleep(0.01)
 
         await asyncio.gather(producer_task(existing_companies_map), consumer_task())

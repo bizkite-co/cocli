@@ -2,15 +2,11 @@ To address your question, using long-lived Admin-level keys on edge devices
   (Raspberry Pis) is a major security risk. AWS provides several better patterns
   for this:
 
-  1. AWS IoT Core "Credential Provider" (The Recommended Way)
+  1. AWS IoT Core "Credential Provider" (IMPLEMENTED - Feb 4, 2026)
   This is the gold standard for Raspberry Pis.
-   * How it works: You install a unique X.509 certificate on each Pi. The Pi uses
-     this cert to talk to an AWS IoT endpoint, which then returns temporary,
-     short-lived IAM credentials (STS tokens).
-   * Benefit: No secret keys are stored on the disk. If a Pi is stolen, you just
-     revoke its certificate in the AWS Console.
-   * Integration: You would point boto3 to use the IoT Credential Provider instead
-     of a static profile.
+   * How it works: Each Pi uses a unique X.509 certificate to exchange for temporary STS tokens via the IoT endpoint.
+   * Implementation: See `cocli/core/reporting.py:get_boto3_session` and the RPi schema in `docs/.schema/rpi-worker/`.
+   * Benefit: No long-lived secret keys on disk; granular revocation per device.
 
   2. IAM Roles Anywhere
   This is a newer, similar service for "non-AWS" workloads (on-prem servers, RPs).

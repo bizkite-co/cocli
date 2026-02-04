@@ -104,5 +104,39 @@ class DataPaths:
     def queue(self, campaign_slug: str, queue_name: str) -> Path:
         return self.queues / campaign_slug / queue_name
 
+    # --- S3 Namespace Methods ---
+    def s3_campaign_root(self, campaign_slug: str) -> str:
+        return f"campaigns/{campaign_slug}/"
+
+    def s3_queue_root(self, campaign_slug: str, queue_name: str) -> str:
+        return f"{self.s3_campaign_root(campaign_slug)}queues/{queue_name}/"
+
+    def s3_queue_pending(self, campaign_slug: str, queue_name: str, shard: str = "", task_id: str = "") -> str:
+        base = f"{self.s3_queue_root(campaign_slug, queue_name)}pending/"
+        if shard and task_id:
+            return f"{base}{shard}/{task_id}/"
+        return base
+
+    def s3_queue_completed(self, campaign_slug: str, queue_name: str, task_id: str = "") -> str:
+        base = f"{self.s3_queue_root(campaign_slug, queue_name)}completed/"
+        if task_id:
+            return f"{base}{task_id}"
+        return base
+
+    def s3_queue_sideline(self, campaign_slug: str, queue_name: str, category: str = "C_BACKUP", shard: str = "", task_id: str = "") -> str:
+        base = f"{self.s3_queue_root(campaign_slug, queue_name)}sideline/{category}/"
+        if shard and task_id:
+            return f"{base}{shard}/{task_id}/"
+        return base
+
+    def s3_index_root(self, campaign_slug: str, index_name: str) -> str:
+        return f"{self.s3_campaign_root(campaign_slug)}indexes/{index_name}/"
+
+    def s3_status_root(self) -> str:
+        return "status/"
+
+    def s3_heartbeat(self, hostname: str) -> str:
+        return f"{self.s3_status_root()}{hostname}.json"
+
 # Global instance
 paths = DataPaths()

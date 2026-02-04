@@ -4,7 +4,7 @@ from typing import List, Optional
 import boto3
 from botocore.exceptions import ClientError
 
-from ...models.scrape_task import GmItemTask
+from ...models.gm_item_task import GmItemTask
 
 logger = logging.getLogger(__name__)
 
