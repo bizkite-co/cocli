@@ -1,6 +1,5 @@
 import sys
 import os
-import boto3
 import argparse
 from typing import Dict, Any, Optional
 from pathlib import Path
@@ -79,19 +78,28 @@ def main():
     parser = argparse.ArgumentParser(description="Repopulate roadmap metadata from local cache.")
     parser.add_argument("--limit", type=int, default=10, help="Number of records to process (1, 3, 10 rule).")
     parser.add_argument("--dry-run", action="store_true", help="Preview changes without writing.")
-    parser.add_argument("--bucket", default="roadmap-cocli-data-use1", help="S3 bucket name.")
+    parser.add_argument("--campaign", default="roadmap", help="Campaign name.")
     args = parser.parse_args()
 
-    # Use specified profile for WM bucket
-    s3 = boto3.Session(profile_name="westmonroe-support").client("s3")
+    from cocli.core.reporting import get_boto3_session
+    from cocli.core.config import load_campaign_config
+    
+    config = load_campaign_config(args.campaign)
+    aws_config = config.get("aws", {})
+    bucket = aws_config.get("data_bucket_name") or f"{args.campaign}-cocli-data-use1"
+
+    # Use robust session resolution
+    session = get_boto3_session(config)
+    s3 = session.client("s3")
+    
     cache_path = Path("/home/mstouffer/.local/share/cocli_data/cache/google_maps_cache.usv")
     cache = load_google_maps_usv_cache(cache_path)
 
-    prefix = "campaigns/roadmap/indexes/google_maps_prospects/"
+    prefix = f"campaigns/{args.campaign}/indexes/google_maps_prospects/"
     paginator = s3.get_paginator("list_objects_v2")
     
     files_to_check = []
-    for page in paginator.paginate(Bucket=args.bucket, Prefix=prefix):
+    for page in paginator.paginate(Bucket=bucket, Prefix=prefix):
         for obj in page.get("Contents", []):
             if obj["Key"].endswith(".usv") or obj["Key"].endswith(".csv"):
                 files_to_check.append(obj["Key"])
@@ -100,11 +108,11 @@ def main():
         if len(files_to_check) >= args.limit:
             break
 
-    print(f"Auditing {len(files_to_check)} files for missing metadata...")
+    print(f"Auditing {len(files_to_check)} files for missing metadata in {bucket}...")
     
     repopulated_count = 0
     for key in files_to_check:
-        response = s3.get_object(Bucket=args.bucket, Key=key)
+        response = s3.get_object(Bucket=bucket, Key=key)
         content = response["Body"].read().decode("utf-8")
         
         reader = USVDictReader(StringIO(content))
@@ -128,7 +136,7 @@ def main():
                 
                 if not args.dry_run:
                     new_content = repopulated.to_usv()
-                    s3.put_object(Bucket=args.bucket, Key=key, Body=new_content.encode("utf-8"))
+                    s3.put_object(Bucket=bucket, Key=key, Body=new_content.encode("utf-8"))
             else:
                 print(f"  [STILL HOLLOW] No cache entry for {pid}")
 

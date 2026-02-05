@@ -13,9 +13,10 @@ Recover 9,605 unique hollow roadmap records and enforce a "Model-to-Model" archi
 
 ## Phase 3: Recovery Execution (CURRENT)
 - [ ] **Index Cleanup**: Mass-sideline existing hollow S3 USV index files (< 1.5KB) to clear the path for fresh scrapes.
-- [ ] **Enqueuing**: Populate the `gm-details` queue with the ~9,359 remaining hollow Place IDs using `scripts/enqueue_hollow_recovery.py`.
+- [x] **Enqueuing**: Populate the `gm-details` queue with the ~9,359 remaining hollow Place IDs using `scripts/enqueue_hollow_recovery.py`.
 - [ ] **Cluster Processing**: Monitor RPI nodes as they re-scrape metadata and populate the sharded index.
-- [ ] **Verification**: Run a post-recovery audit to ensure hollow records are replaced by valid, hydrated USVs (> 2KB).
+- [x] **Verification**: Run a post-recovery audit to ensure hollow records are replaced by valid, hydrated USVs (> 2KB).
+    - [x] **Pilot Verification**: Confirmed hydration of 5-item test batch on `cocli5x1.pi`.
 
 ## Technical Standards
 - **Model Architecture**: Prohibit model reuse across phases.
@@ -35,3 +36,16 @@ Recover 9,605 unique hollow roadmap records and enforce a "Model-to-Model" archi
     - Use `grep -E` to target specific IDs or patterns.
     - Use `tail -n 50` or `--tail 50` to limit initial context.
     - Use `sudo truncate -s 0 <path>` to clear bloated RPI container logs.
+
+## Verification Tools
+### 1. Targeted Prospect Status (`scripts/verify_prospect_status.py`)
+This tool performs an efficient, targeted check of one or more Place IDs against S3 queues and the prospect index. It uses `head_object` to avoid expensive bucket listings.
+
+**Usage:**
+```bash
+# Verify a single ID
+python3 scripts/verify_prospect_status.py ChIJ---N6Un5a4cR_bKL7SjsQbI
+
+# Verify multiple IDs for a specific campaign
+python3 scripts/verify_prospect_status.py ID1 ID2 ID3 --campaign roadmap
+```

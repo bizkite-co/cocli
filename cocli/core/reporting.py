@@ -52,33 +52,54 @@ SQSAttributeName = Literal[
 
 def get_boto3_session(config: Dict[str, Any]) -> boto3.Session:
     """Creates a boto3 session, prioritizing IoT profiles for automatic refresh."""
-    # 1. Try roadmap-iot profile (The Gold Standard with credential_process)
-    try:
-        session = boto3.Session(profile_name="roadmap-iot")
-        # Test if it works
-        session.client("sts").get_caller_identity()
-        return session
-    except Exception:
-        pass
+    aws_config = config.get("aws", {})
+    
+    # 1. Try explicit iot_profiles from config
+    iot_profiles = aws_config.get("iot_profiles", [])
+    if isinstance(iot_profiles, str):
+        iot_profiles = [iot_profiles]
+    
+    for p in iot_profiles:
+        try:
+            session = boto3.Session(profile_name=p)
+            # Test if it works
+            session.client("sts").get_caller_identity()
+            logger.info(f"Using AWS IoT profile: {p}")
+            return session
+        except Exception as e:
+            logger.debug(f"get_boto3_session: IoT profile {p} failed: {e}")
+            continue
 
     # 2. Fallback to IoT script directly (Legacy/One-off)
-    from ..utils.aws_iot_auth import get_iot_sts_credentials
-    iot_creds = get_iot_sts_credentials()
-    if iot_creds:
-        return boto3.Session(
-            aws_access_key_id=iot_creds["access_key"],
-            aws_secret_access_key=iot_creds["secret_key"],
-            aws_session_token=iot_creds["token"]
-        )
+    try:
+        from ..utils.aws_iot_auth import get_iot_sts_credentials
+        iot_creds = get_iot_sts_credentials()
+        if iot_creds:
+            logger.info("Using AWS IoT STS credentials via script fallback")
+            return boto3.Session(
+                aws_access_key_id=iot_creds["access_key"],
+                aws_secret_access_key=iot_creds["secret_key"],
+                aws_session_token=iot_creds["token"]
+            )
+    except Exception as e:
+        logger.debug(f"get_boto3_session: IoT script fallback failed: {e}")
 
-    # 3. Fallback to Profile in config or Default
-    aws_config = config.get("aws", {})
+    # 3. Fallback to Profile in config (ONLY if it exists)
     profile_name = aws_config.get("profile") or aws_config.get("aws_profile")
     
     if profile_name:
-        return boto3.Session(profile_name=profile_name)
-    else:
-        return boto3.Session()
+        try:
+            session = boto3.Session(profile_name=profile_name)
+            session.client("sts").get_caller_identity()
+            logger.info(f"Using AWS profile from config: {profile_name}")
+            return session
+        except Exception as e:
+            logger.debug(f"get_boto3_session: profile from config {profile_name} failed: {e}")
+            pass
+
+    # Final fallback: Default session (uses env vars like AWS_PROFILE or IAM roles)
+    logger.info("Using default AWS session")
+    return boto3.Session()
 
 
 def get_sqs_attributes(

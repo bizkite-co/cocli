@@ -1,4 +1,3 @@
-import boto3
 import sys
 import os
 import csv
@@ -8,8 +7,13 @@ from io import StringIO
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 from cocli.utils.usv_utils import USVDictReader
 
-def list_hollow_prospects(bucket: str, prefix: str, output_path: str) -> None:
-    s3 = boto3.Session(profile_name="westmonroe-support").client("s3")
+def list_hollow_prospects(campaign_name: str, bucket: str, prefix: str, output_path: str) -> None:
+    from cocli.core.reporting import get_boto3_session
+    from cocli.core.config import load_campaign_config
+    
+    config = load_campaign_config(campaign_name)
+    session = get_boto3_session(config)
+    s3 = session.client("s3")
     paginator = s3.get_paginator("list_objects_v2")
     
     hollow_pids = []
@@ -62,7 +66,12 @@ def list_hollow_prospects(bucket: str, prefix: str, output_path: str) -> None:
     print(f"List saved to {output_path}")
 
 if __name__ == "__main__":
-    BUCKET = "roadmap-cocli-data-use1"
-    PREFIX = "campaigns/roadmap/indexes/google_maps_prospects/"
-    OUTPUT = "/home/mstouffer/.local/share/cocli_data/campaigns/roadmap/recovery/hollow_place_ids.csv"
-    list_hollow_prospects(BUCKET, PREFIX, OUTPUT)
+    import sys
+    from cocli.core.config import load_campaign_config
+    CAMPAIGN = sys.argv[1] if len(sys.argv) > 1 else "roadmap"
+    config = load_campaign_config(CAMPAIGN)
+    aws_config = config.get("aws", {})
+    BUCKET = aws_config.get("data_bucket_name") or aws_config.get("cocli_data_bucket_name") or f"{CAMPAIGN}-cocli-data-use1"
+    PREFIX = f"campaigns/{CAMPAIGN}/indexes/google_maps_prospects/"
+    OUTPUT = f"/home/mstouffer/.local/share/cocli_data/campaigns/{CAMPAIGN}/recovery/hollow_place_ids.csv"
+    list_hollow_prospects(CAMPAIGN, BUCKET, PREFIX, OUTPUT)

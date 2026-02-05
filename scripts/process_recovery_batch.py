@@ -1,5 +1,4 @@
 import asyncio
-import boto3
 import argparse
 import sys
 import os
@@ -69,12 +68,17 @@ async def fetch_metadata_via_playwright(page: Any, place_id: str) -> Optional[Go
         
     return None
 
-async def process_batch(place_ids: List[str], bucket: str, recovery_dir: str, dry_run: bool = False) -> None:
+async def process_batch(place_ids: List[str], campaign_name: str, bucket: str, recovery_dir: str, dry_run: bool = False) -> None:
     batch_start = time.time()
     print(f"Processing batch of {len(place_ids)} Place IDs with rate-limiting...")
     
-    s3 = boto3.Session(profile_name="westmonroe-support").client("s3")
-    prefix = "campaigns/roadmap/indexes/google_maps_prospects/"
+    from cocli.core.reporting import get_boto3_session
+    from cocli.core.config import load_campaign_config
+    
+    config = load_campaign_config(campaign_name)
+    session = get_boto3_session(config)
+    s3 = session.client("s3")
+    prefix = f"campaigns/{campaign_name}/indexes/google_maps_prospects/"
     healed_index_path = os.path.join(recovery_dir, "healed_prospects_index.usv")
     
     success_count = 0
@@ -133,11 +137,17 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--limit", type=int, default=10, help="Number of items from the hollow list to process.")
     parser.add_argument("--dry-run", action="store_true")
+    parser.add_argument("--campaign", default="roadmap", help="Campaign name.")
     args = parser.parse_args()
     
-    RECOVERY_DIR = "/home/mstouffer/.local/share/cocli_data/campaigns/roadmap/recovery"
+    from cocli.core.config import load_campaign_config
+    CAMPAIGN = args.campaign
+    config = load_campaign_config(CAMPAIGN)
+    RECOVERY_DIR = f"/home/mstouffer/.local/share/cocli_data/campaigns/{CAMPAIGN}/recovery"
     HOLLOW_LIST = os.path.join(RECOVERY_DIR, "hollow_place_ids.usv")
-    BUCKET = "roadmap-cocli-data-use1"
+    
+    aws_config = config.get("aws", {})
+    BUCKET = aws_config.get("data_bucket_name") or aws_config.get("cocli_data_bucket_name") or f"{CAMPAIGN}-cocli-data-use1"
     
     if not os.path.exists(HOLLOW_LIST):
         print(f"Error: {HOLLOW_LIST} not found.")

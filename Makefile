@@ -45,6 +45,7 @@ endef
 # Dynamically resolve AWS_PROFILE and REGION from campaign config
 AWS_PROFILE := $(shell [ -f $(VENV_DIR)/bin/python ] && [ "$(CAMPAIGN)" != "ERROR" ] && $(VENV_DIR)/bin/python -c "from cocli.core.config import load_campaign_config; print(load_campaign_config('$(CAMPAIGN)').get('aws', {}).get('profile', ''))" 2>/dev/null)
 REGION := $(shell [ -f $(VENV_DIR)/bin/python ] && [ "$(CAMPAIGN)" != "ERROR" ] && $(VENV_DIR)/bin/python -c "from cocli.core.config import load_campaign_config; print(load_campaign_config('$(CAMPAIGN)').get('aws', {}).get('region', 'us-east-1'))" 2>/dev/null)
+IOT_PROFILE := $(shell [ -f $(VENV_DIR)/bin/python ] && [ "$(CAMPAIGN)" != "ERROR" ] && $(VENV_DIR)/bin/python -c "from cocli.core.config import load_campaign_config; c = load_campaign_config('$(CAMPAIGN)'); profiles = c.get('aws', {}).get('iot_profiles', []); print(profiles[0] if profiles else '')" 2>/dev/null)
 
 open: activate ##Activate the venv and open
 	@cocli
@@ -458,9 +459,7 @@ gc-companies: ## Commit and push all changes to companies and people
 	cd data && git add companies people && git commit -m "Update companies and people" && git push;; cd ..
 
 .PHONY: deploy-creds-rpi
-deploy-creds-rpi: ## Securely deploy AWS credentials to all Raspberry Pis (Usage: make deploy-creds-rpi [CAMPAIGN=name])
-	$(call validate_campaign)
-	./$(VENV_DIR)/bin/python scripts/deploy_rpi_creds.py --profile $(AWS_PROFILE) --host $(RPI_HOST) --user $(RPI_USER) --campaign $(CAMPAIGN)
+# deploy-creds-rpi is deprecated. Use provision-pi-iot instead.
 
 # ==============================================================================
 # Web Dashboard
@@ -534,6 +533,7 @@ hotfix-rpi: ## Push code hotfix to a single RPi (Usage: make hotfix-rpi RPI_HOST
 .PHONY: hotfix-cluster
 hotfix-cluster: ## Apply hotfix to all cluster nodes, skipping offline ones
 	@$(MAKE) hotfix-rpi RPI_HOST=cocli5x0.pi
+	@$(MAKE) hotfix-rpi RPI_HOST=cocli5x1.pi
 	@$(MAKE) hotfix-rpi RPI_HOST=octoprint.pi
 	@$(MAKE) hotfix-rpi RPI_HOST=coclipi.pi
 
@@ -675,18 +675,16 @@ start-rpi-supervisor: ## Start the Supervisor on Raspberry Pi for dynamic scalin
 	$(eval DETAILS_QUEUE := $(shell ./.venv/bin/python -c "from cocli.core.config import load_campaign_config; print(load_campaign_config('$(CAMPAIGN)').get('aws', {}).get('cocli_gm_list_item_queue_url', ''))"))
 	$(eval ENRICHMENT_QUEUE := $(shell ./.venv/bin/python -c "from cocli.core.config import load_campaign_config; print(load_campaign_config('$(CAMPAIGN)').get('aws', {}).get('cocli_enrichment_queue_url', ''))"))
 	$(eval COMMAND_QUEUE := $(shell ./.venv/bin/python -c "from cocli.core.config import load_campaign_config; print(load_campaign_config('$(CAMPAIGN)').get('aws', {}).get('cocli_command_queue_url', ''))"))
+	@if [ -z "$(IOT_PROFILE)" ]; then echo "Error: IOT_PROFILE not found in config for $(CAMPAIGN)"; exit 1; fi
 	ssh $(RPI_USER)@$(RPI_HOST) "docker run -d --restart always --name cocli-supervisor \
 		--shm-size=2gb \
 		-e TZ=America/Los_Angeles \
 		-e CAMPAIGN_NAME='$(CAMPAIGN)' \
-		-e AWS_PROFILE=$(CAMPAIGN)-iot \
+		-e AWS_PROFILE=$(IOT_PROFILE) \
 		-e COCLI_HOSTNAME=\$$(hostname) \
 		-e COCLI_QUEUE_TYPE=filesystem \
 		-e COCLI_SCRAPE_TASKS_QUEUE_URL='$(SCRAPE_QUEUE)' \
 		-e COCLI_GM_LIST_ITEM_QUEUE_URL='$(DETAILS_QUEUE)' \
-		-e COCLI_ENRICHMENT_QUEUE_URL='$(ENRICHMENT_QUEUE)' \
-		-e COCLI_COMMAND_QUEUE_URL='$(COMMAND_QUEUE)' \
-		-v ~/repos/data:/app/data \
 		-e COCLI_ENRICHMENT_QUEUE_URL='$(ENRICHMENT_QUEUE)' \
 		-e COCLI_COMMAND_QUEUE_URL='$(COMMAND_QUEUE)' \
 		-v ~/repos/data:/app/data \
@@ -746,7 +744,6 @@ stop-rpi-all: ## Stop all cocli worker containers on ALL cluster nodes
 .PHONY: _deploy-single-node
 _deploy-single-node: ## Deploy to a single RPi node (Internal)
 	@echo "Deploying to node: $(RPI_HOST)"
-	$(MAKE) deploy-creds-rpi RPI_HOST=$(RPI_HOST)
 	$(MAKE) stop-rpi RPI_HOST=$(RPI_HOST)
 	$(MAKE) _rebuild-rpi-worker-internal RPI_HOST=$(RPI_HOST)
 	$(MAKE) start-rpi-supervisor RPI_HOST=$(RPI_HOST)

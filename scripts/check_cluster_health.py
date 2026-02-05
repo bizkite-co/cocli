@@ -91,9 +91,10 @@ def check_host(host: str, name: str) -> None:
 
 def main() -> None:
     hosts = [
-        ("octoprint.local", "Scraper (Pi 4)"),
-        ("coclipi.local", "Details (Pi 3/4)"),
-        ("cocli5x0.local", "Pi 5 Powerhouse")
+        ("octoprint.pi", "Scraper (Pi 4)"),
+        ("coclipi.pi", "Details (Pi 3/4)"),
+        ("cocli5x0.pi", "Pi 5 Powerhouse"),
+        ("cocli5x1.pi", "Pi 5 Powerhouse")
     ]
     
     console.print(Panel("[bold green]Cluster Health Overview[/bold green]", expand=False))

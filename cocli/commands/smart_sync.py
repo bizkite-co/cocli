@@ -1,5 +1,4 @@
 import typer
-import boto3
 import json
 import logging
 from pathlib import Path
@@ -60,14 +59,11 @@ def run_smart_sync(
     setup_file_logging(f"smart_sync_{target_name}")
     logger.info(f"Starting smart sync for {target_name} in campaign {campaign_name}")
 
-    profile_name = aws_config.get("profile") or aws_config.get("aws_profile")
-    
     try:
-        if profile_name:
-            logger.info(f"Using AWS profile: {profile_name}")
-            session = boto3.Session(profile_name=profile_name)
-        else:
-            session = boto3.Session()
+        from ..core.reporting import get_boto3_session
+        # Prepare a config object for get_boto3_session
+        config_obj = {"aws": aws_config, "campaign": {"name": campaign_name}}
+        session = get_boto3_session(config_obj)
         s3 = session.client("s3")
     except Exception as e:
          logger.exception("Failed to create AWS session")

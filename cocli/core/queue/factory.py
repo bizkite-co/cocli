@@ -67,7 +67,11 @@ def get_queue_manager(queue_name: str, use_cloud: bool = False, queue_type: str 
         if os.getenv("COCLI_RUNNING_IN_FARGATE"):
             aws_profile = None
         else:
-            aws_profile = aws_config.get("profile") or aws_config.get("aws_profile")
+            from ..reporting import get_boto3_session
+            # Prepare config for get_boto3_session
+            config_obj = {"aws": aws_config, "campaign": {"name": effective_campaign}}
+            session = get_boto3_session(config_obj)
+            aws_profile = session.profile_name if session.profile_name != "default" else None
         
         if queue_type == "scrape":
             queue_url = os.getenv("COCLI_SCRAPE_TASKS_QUEUE_URL") or aws_config.get("cocli_scrape_tasks_queue_url")

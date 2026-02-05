@@ -6,10 +6,23 @@ import logging
 
 logger = logging.getLogger(__name__)
 
-def get_iot_sts_credentials(iot_config_path: Path = Path("/root/.cocli/iot/iot_config.json")) -> Optional[Dict[str, str]]:
+def get_iot_sts_credentials(iot_config_path: Optional[Path] = None) -> Optional[Dict[str, str]]:
     """
     Exchanges an IoT certificate for temporary AWS STS credentials using the helper script.
     """
+    if iot_config_path is None:
+        # 1. Try RPI/Container default
+        path = Path("/root/.cocli/iot/iot_config.json")
+        try:
+            exists = path.exists()
+        except PermissionError:
+            exists = False
+
+        if not exists:
+            # 2. Try User home fallback
+            path = Path.home() / ".cocli" / "iot" / "iot_config.json"
+        iot_config_path = path
+
     if not iot_config_path.exists():
         return None
 

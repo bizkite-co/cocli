@@ -85,11 +85,8 @@ def ensure_campaign_config(campaign_name: str) -> None:
     )
 
     # Determine AWS profile for initial bootstrap
-    profile_name = os.getenv("AWS_PROFILE")
-    if profile_name and profile_name.strip():
-        session = boto3.Session(profile_name=profile_name)
-    else:
-        session = boto3.Session()
+    from ..core.reporting import get_boto3_session
+    session = get_boto3_session({"campaign": {"name": campaign_name}})
     s3 = session.client("s3")
 
     # Try to determine the bucket name without the config file
@@ -1189,15 +1186,13 @@ def sync_campaign_config(campaign_name: str, aws_config: Optional[Dict[str, Any]
     """
     Forcefully fetches the latest config.toml from S3.
     """
+    from ..core.reporting import get_boto3_session
     campaign_dir = get_campaigns_dir() / campaign_name
     config_path = campaign_dir / "config.toml"
 
-    # Determine AWS profile for initial bootstrap
-    profile_name = os.getenv("AWS_PROFILE")
-    if profile_name:
-        session = boto3.Session(profile_name=profile_name)
-    else:
-        session = boto3.Session()
+    # Use robust session resolution
+    config = load_campaign_config(campaign_name) if not aws_config else {"aws": aws_config, "campaign": {"name": campaign_name}}
+    session = get_boto3_session(config)
     s3 = session.client("s3")
 
     # Bucket patterns

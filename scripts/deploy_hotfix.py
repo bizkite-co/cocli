@@ -5,9 +5,10 @@ from typing import List, Tuple
 console = Console()
 
 HOSTS: List[Tuple[str, str]] = [
-    ("mstouffer", "octoprint.local"),
-    ("mstouffer", "coclipi.local"),
-    ("mstouffer", "cocli5x0.local"),
+    ("mstouffer", "octoprint.pi"),
+    ("mstouffer", "coclipi.pi"),
+    ("mstouffer", "cocli5x0.pi"),
+    ("mstouffer", "cocli5x1.pi"),
 ]
 
 FILES_TO_PATCH: List[str] = [

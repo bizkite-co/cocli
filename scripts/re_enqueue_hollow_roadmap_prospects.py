@@ -1,4 +1,3 @@
-import boto3
 import json
 import os
 
@@ -9,7 +8,12 @@ def get_shard_id(identifier: str) -> str:
     return identifier[5]
 
 def bulk_re_enqueue(hollow_ids_file: str, bucket: str, campaign: str) -> None:
-    s3 = boto3.Session(profile_name="westmonroe-support").client("s3")
+    from cocli.core.reporting import get_boto3_session
+    from cocli.core.config import load_campaign_config
+    
+    config = load_campaign_config(campaign)
+    session = get_boto3_session(config)
+    s3 = session.client("s3")
     
     if not os.path.exists(hollow_ids_file):
         print(f"Error: {hollow_ids_file} not found.")
@@ -53,7 +57,11 @@ def bulk_re_enqueue(hollow_ids_file: str, bucket: str, campaign: str) -> None:
     print(f"Finished. Enqueued {count} tasks to s3://{bucket}/...")
 
 if __name__ == "__main__":
-    HOLLOW_FILE = "/home/mstouffer/.local/share/cocli_data/campaigns/roadmap/recovery/hollow_place_ids.usv"
-    BUCKET = "roadmap-cocli-data-use1"
-    CAMPAIGN = "roadmap"
+    import sys
+    from cocli.core.config import load_campaign_config
+    CAMPAIGN = sys.argv[1] if len(sys.argv) > 1 else "roadmap"
+    config = load_campaign_config(CAMPAIGN)
+    aws_config = config.get("aws", {})
+    BUCKET = aws_config.get("data_bucket_name") or aws_config.get("cocli_data_bucket_name") or f"{CAMPAIGN}-cocli-data-use1"
+    HOLLOW_FILE = f"/home/mstouffer/.local/share/cocli_data/campaigns/{CAMPAIGN}/recovery/hollow_place_ids.usv"
     bulk_re_enqueue(HOLLOW_FILE, BUCKET, CAMPAIGN)

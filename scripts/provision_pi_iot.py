@@ -64,10 +64,81 @@ def main() -> None:
             "endpoint": iot.describe_endpoint(endpointType='iot:CredentialProvider')['endpointAddress']
         }
         (tmp_dir / "iot_config.json").write_text(json.dumps(metadata, indent=2))
+        
+        # 3.2 Create get_tokens.sh helper
+        get_tokens_content = """#!/bin/bash
+CURL=$(which curl 2>/dev/null || echo curl)
+# Try both host and container paths
+if [ -d "$HOME/.cocli/iot" ]; then
+    IOT_DIR="$HOME/.cocli/iot"
+else
+    IOT_DIR="/root/.cocli/iot"
+fi
+
+CERT="$IOT_DIR/cert.pem"
+KEY="$IOT_DIR/private.key"
+ROOT_CA="$IOT_DIR/root-CA.crt"
+CONFIG="$IOT_DIR/iot_config.json"
+
+if [ ! -f "$CONFIG" ]; then
+    echo "Error: Config not found at $CONFIG" >&2
+    exit 1
+fi
+
+ENDPOINT=$(python3 -c "import json; print(json.load(open('$CONFIG'))['endpoint'])")
+ALIAS=$(python3 -c "import json; print(json.load(open('$CONFIG'))['role_alias'])")
+
+$CURL -s --cert "$CERT" --key "$KEY" --cacert "$ROOT_CA" \\
+    "https://$ENDPOINT/role-aliases/$ALIAS/credentials" \\
+    | python3 -c '
+import json, sys
+try:
+    d = json.load(sys.stdin)
+    out = {
+        "Version": 1,
+        "AccessKeyId": d["credentials"]["accessKeyId"],
+        "SecretAccessKey": d["credentials"]["secretAccessKey"],
+        "SessionToken": d["credentials"]["sessionToken"],
+        "Expiration": d["credentials"]["expiration"]
+    }
+    print(json.dumps(out))
+except Exception as e:
+    print(f"Error parsing IoT credentials: {e}", file=sys.stderr)
+    sys.exit(1)
+'
+"""
+        (tmp_dir / "get_tokens.sh").write_text(get_tokens_content)
+
         subprocess.run(["scp", str(tmp_dir / "iot_config.json"), f"{args.user}@{args.host}:{remote_dir}/"], check=True)
+        subprocess.run(["scp", str(tmp_dir / "get_tokens.sh"), f"{args.user}@{args.host}:{remote_dir}/"], check=True)
+        subprocess.run(["ssh", f"{args.user}@{args.host}", f"chmod +x {remote_dir}/get_tokens.sh"], check=True)
+
+        # 5. Configure AWS Profile for automatic refresh
+        print(f"Configuring AWS profile '{args.campaign}-iot' on {args.host}...")
+        
+        # Let's use a simpler approach for the profile in the AWS config
+        setup_profile_cmd = f"""
+        python3 -c '
+import configparser, os
+p = os.path.expanduser("~/.aws/config")
+c = configparser.ConfigParser()
+c.read(p)
+sections = ["profile {args.campaign}-iot", "profile roadmap-iot"]
+for s in sections:
+    if not c.has_section(s): c.add_section(s)
+    c.set(s, "credential_process", "/root/.cocli/iot/get_tokens.sh")
+    c.set(s, "region", "us-east-1")
+with open(p, "w") as f: c.write(f)
+'
+        """
+        # We use /root/.cocli/iot/ because that's where it's mounted in the container.
+        # But we also want it to work on the host. 
+        # Actually, the supervisor in the container uses AWS_PROFILE=roadmap-iot.
+        
+        subprocess.run(["ssh", f"{args.user}@{args.host}", setup_profile_cmd], check=True)
         
         print("\n[SUCCESS] Pi is now uniquely identified via IoT Core.")
-        print("It can now fetch short-lived STS tokens using its certificate.")
+        print(f"AWS profiles '{args.campaign}-iot' and 'roadmap-iot' configured for automatic refresh.")
         
     except Exception as e:
         print(f"Error: {e}")

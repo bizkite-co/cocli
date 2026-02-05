@@ -1,5 +1,4 @@
 import asyncio
-import boto3
 import argparse
 import sys
 import os
@@ -72,18 +71,26 @@ async def main():
     parser = argparse.ArgumentParser(description="Repopulate roadmap metadata using Playwright for hollow prospects.")
     parser.add_argument("--limit", type=int, default=1, help="Number of records to process.")
     parser.add_argument("--dry-run", action="store_true", help="Preview changes.")
-    parser.add_argument("--bucket", default="roadmap-cocli-data-use1", help="S3 bucket.")
+    parser.add_argument("--campaign", default="roadmap", help="Campaign name.")
     args = parser.parse_args()
 
-    s3 = boto3.Session(profile_name="westmonroe-support").client("s3")
-    prefix = "campaigns/roadmap/indexes/google_maps_prospects/"
+    from cocli.core.reporting import get_boto3_session
+    from cocli.core.config import load_campaign_config
+    
+    config = load_campaign_config(args.campaign)
+    aws_config = config.get("aws", {})
+    bucket = aws_config.get("data_bucket_name") or f"{args.campaign}-cocli-data-use1"
+
+    session = get_boto3_session(config)
+    s3 = session.client("s3")
+    prefix = f"campaigns/{args.campaign}/indexes/google_maps_prospects/"
     
     # 1. Identify Hollow Files
-    print("Searching for hollow prospects in S3...")
+    print(f"Searching for hollow prospects in S3 (bucket: {bucket})...")
     paginator = s3.get_paginator("list_objects_v2")
     hollow_keys = []
     
-    for page in paginator.paginate(Bucket=args.bucket, Prefix=prefix):
+    for page in paginator.paginate(Bucket=bucket, Prefix=prefix):
         for obj in page.get("Contents", []):
             if obj["Key"].endswith(".usv"):
                 # Fast check: Size? Hollow files are usually small (~500 bytes)
@@ -108,7 +115,7 @@ async def main():
         page = await context.new_page()
 
         for key in hollow_keys:
-            response = s3.get_object(Bucket=args.bucket, Key=key)
+            response = s3.get_object(Bucket=bucket, Key=key)
             content = response["Body"].read().decode("utf-8")
             reader = USVDictReader(StringIO(content))
             rows = list(reader)
@@ -128,7 +135,7 @@ async def main():
                     prospect = GoogleMapsProspect.from_raw(raw_result)
                     
                     if not args.dry_run:
-                        s3.put_object(Bucket=args.bucket, Key=key, Body=prospect.to_usv().encode("utf-8"))
+                        s3.put_object(Bucket=bucket, Key=key, Body=prospect.to_usv().encode("utf-8"))
                 else:
                     print(f"  [FAILED] Could not find metadata for {pid}")
 

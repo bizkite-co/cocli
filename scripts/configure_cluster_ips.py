@@ -32,8 +32,8 @@ def main() -> None:
         
         print(f"--- Configuring {hostname} to IP {ip} ---")
         
-        # Check if host is reachable via .local first
-        local_host = f"{hostname}.local"
+        # Check if host is reachable via .pi first
+        local_host = f"{hostname}.pi"
         
         # Command to set static IP using nmcli (Assuming Ethernet 'Wired connection 1')
         setup_cmd = f"""

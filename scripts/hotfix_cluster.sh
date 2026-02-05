@@ -3,6 +3,8 @@
 
 RPI_USER="mstouffer"
 CLUSTER_NODES=("cocli5x0.pi" "octoprint.pi" "coclipi.pi" "cocli5x1.pi")
+CAMPAIGN="${2:-roadmap}"
+BUCKET="${CAMPAIGN}-cocli-data-use1"
 
 # Colors
 RED='\033[0;31m'
@@ -15,6 +17,13 @@ verify_node() {
     local host=$1
     local short_name=$(echo $host | cut -d'.' -f1)
     
+    # Resolve IOT_PROFILE from config
+    local iot_profile=$(python3 -c "from cocli.core.config import load_campaign_config; c = load_campaign_config('$CAMPAIGN'); profiles = c.get('aws', {}).get('iot_profiles', []); print(profiles[0] if profiles else '')")
+    if [ -z "$iot_profile" ]; then
+        printf "[${RED}ERROR${NC}] IOT_PROFILE not found in config for $CAMPAIGN\n"
+        return 1
+    fi
+
     printf "[${BLUE}VERIFY${NC}] Checking $host stability and heartbeats...\n"
     sleep 15
     
@@ -24,7 +33,7 @@ verify_node() {
         
         # 2. DEEP VERIFY: Check S3
         now=$(date -u +%s)
-        last_mod_str=$(aws s3api head-object --bucket roadmap-cocli-data-use1 --key status/$short_name.json --profile westmonroe-support --query 'LastModified' --output text 2>/dev/null)
+        last_mod_str=$(aws s3api head-object --bucket $BUCKET --key status/$short_name.json --profile $iot_profile --query 'LastModified' --output text 2>/dev/null)
         
         if [ -n "$last_mod_str" ]; then
             last_mod=$(date -d "$last_mod_str" -u +%s)
@@ -52,11 +61,19 @@ verify_node() {
 hotfix_node() {
     local host=$1
     local short_name=$(echo $host | cut -d'.' -f1)
+    
+    # Resolve IOT_PROFILE from config
+    local iot_profile=$(python3 -c "from cocli.core.config import load_campaign_config; c = load_campaign_config('$CAMPAIGN'); profiles = c.get('aws', {}).get('iot_profiles', []); print(profiles[0] if profiles else '')")
+    if [ -z "$iot_profile" ]; then
+        printf "[${RED}ERROR${NC}] IOT_PROFILE not found in config for $CAMPAIGN\n"
+        return 1
+    fi
+
     printf "[${BLUE}HOTFIX${NC}] Deploying to $host...\n"
     
     # 1. Stop and Maintenance
     ssh $RPI_USER@$host "docker stop cocli-supervisor && docker rm cocli-supervisor" >/dev/null 2>&1
-    ssh $RPI_USER@$host "docker run -d --name cocli-supervisor --shm-size=2gb -e TZ=America/Los_Angeles -e CAMPAIGN_NAME='roadmap' -e AWS_PROFILE=westmonroe-support -e COCLI_QUEUE_TYPE=filesystem -v ~/repos/data:/app/data -v ~/.aws:/root/.aws:ro --entrypoint sleep cocli-worker-rpi:latest infinity" >/dev/null
+    ssh $RPI_USER@$host "docker run -d --name cocli-supervisor --shm-size=2gb -e TZ=America/Los_Angeles -e CAMPAIGN_NAME='$CAMPAIGN' -e AWS_PROFILE=$iot_profile -e COCLI_QUEUE_TYPE=filesystem -v ~/repos/data:/app/data -v ~/.aws:/root/.aws:ro -v ~/.cocli:/root/.cocli:ro --entrypoint sleep cocli-worker-rpi:latest infinity" >/dev/null
     
     # 2. Wipe dist-packages and /app
     ssh $RPI_USER@$host "docker exec cocli-supervisor bash -c 'rm -rf /usr/local/lib/python3.12/dist-packages/cocli /app/cocli /app/build'" >/dev/null 2>&1
@@ -71,7 +88,7 @@ hotfix_node() {
     
     # 4. Restore Real Entrypoint
     ssh $RPI_USER@$host "docker stop cocli-supervisor && docker rm cocli-supervisor" >/dev/null
-    ssh $RPI_USER@$host "docker run -d --restart always --name cocli-supervisor --shm-size=2gb -e TZ=America/Los_Angeles -e CAMPAIGN_NAME='roadmap' -e AWS_PROFILE=westmonroe-support -e COCLI_HOSTNAME=$short_name -e COCLI_QUEUE_TYPE=filesystem -v ~/repos/data:/app/data -v ~/.aws:/root/.aws:ro cocli-worker-rpi:latest cocli worker supervisor --debug" >/dev/null
+    ssh $RPI_USER@$host "docker run -d --restart always --name cocli-supervisor --shm-size=2gb -e TZ=America/Los_Angeles -e CAMPAIGN_NAME='$CAMPAIGN' -e AWS_PROFILE=$iot_profile -e COCLI_HOSTNAME=$short_name -e COCLI_QUEUE_TYPE=filesystem -v ~/repos/data:/app/data -v ~/.aws:/root/.aws:ro -v ~/.cocli:/root/.cocli:ro cocli-worker-rpi:latest cocli worker supervisor --debug" >/dev/null
     
     # 5. Verify
     verify_node $host

@@ -42,7 +42,7 @@ def main() -> None:
     """
 
     for hostname in nodes.keys():
-        local_host = f"{hostname}.local"
+        local_host = f"{hostname}.pi"
         logger.info(f"=== Updating Node: {hostname} ===")
         output = run_ssh(local_host, update_cmd)
         logger.info(f"[{hostname}] Result: {output}")
