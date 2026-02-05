@@ -8,8 +8,8 @@ class GmItemTask(BaseModel):
     """
     place_id: str
     campaign_name: str
-    name: Optional[str] = None
-    company_slug: Optional[str] = None
+    name: str
+    company_slug: str
     force_refresh: bool = False
     
     # Queue mechanics (Transient)

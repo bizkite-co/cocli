@@ -23,7 +23,7 @@ def check_status(campaign_name: str = "roadmap") -> None:
         shard = pid[5] if len(pid) > 5 else "unknown"
         
         # 1. Check Local Pending
-        local_pending = local_base / "queues" / campaign_name / "gm-details" / "pending" / shard / pid / "task.json"
+        local_pending = local_base / "campaigns" / campaign_name / "queues" / "gm-details" / "pending" / shard / pid / "task.json"
         is_local_pending = local_pending.exists()
         
         # 2. Check S3 Pending

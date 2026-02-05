@@ -47,9 +47,11 @@ def check_prospect(place_id: str, campaign: str, bucket: str, s3: Any) -> Dict[s
         resp = s3.head_object(Bucket=bucket, Key=index_key)
         size = resp['ContentLength']
         status = "EXISTS"
-        if size > 1500:
+        if size > 800:
             status = "HYDRATED"
-        elif size > 0:
+        elif size > 552:
+            status = "PARTIAL"
+        else:
             status = "HOLLOW"
         results["index"] = f"{status} ({size}b)"
     except ClientError:

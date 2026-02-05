@@ -99,10 +99,19 @@ class DataPaths:
 
     @property
     def queues(self) -> Path:
+        """
+        Root directory for campaign queues.
+        Note: New campaign-aware structure is <root>/campaigns/<slug>/queues
+        This property returns the legacy root for backward compatibility checks.
+        """
         return self.root / "queues"
 
     def queue(self, campaign_slug: str, queue_name: str) -> Path:
-        return self.queues / campaign_slug / queue_name
+        """
+        Returns the path to a campaign-specific queue.
+        Mirrors S3 structure: campaigns/<campaign>/queues/<queue_name>/
+        """
+        return self.campaign(campaign_slug) / "queues" / queue_name
 
     # --- S3 Namespace Methods ---
     def s3_campaign_root(self, campaign_slug: str) -> str:

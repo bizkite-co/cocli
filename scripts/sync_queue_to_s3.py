@@ -16,7 +16,7 @@ def sync_to_s3(campaign_name: str = "roadmap") -> None:
     
     for pid in TARGET_IDS:
         shard = pid[5] if len(pid) > 5 else "unknown"
-        local_path = local_base / "queues" / campaign_name / "gm-details" / "pending" / shard / pid / "task.json"
+        local_path = local_base / "campaigns" / campaign_name / "queues" / "gm-details" / "pending" / shard / pid / "task.json"
         
         if local_path.exists():
             s3_key = f"queues/gm-details/pending/{shard}/{pid}/task.json"
