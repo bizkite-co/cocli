@@ -1,51 +1,43 @@
 # Task: Roadmap Campaign Identity Recovery & Shielding
 
 ## Objective
-Recover 9,605 unique hollow roadmap records and enforce a "Model-to-Model" architecture to permanently prevent incomplete data saves.
+Recover ~17,000 unique hollow roadmap records and enforce a "Model-to-Model" architecture with full discovery lineage to permanently prevent data loss and improve attribution.
 
 ## Phase 2: Identification Shield & Validation (COMPLETE)
-- [x] **Strict Identity Model**: Update `GoogleMapsProspect` to make `name`, `place_id`, `company_slug`, and `company_hash` **REQUIRED**.
+- [x] **Strict Identity Model**: Updated `GoogleMapsProspect` and `GmItemTask` to enforce `min_length=3` for `name`, `company_slug`, and `company_hash`.
 - [x] **Model-to-Model Pipeline**: Implemented transformation flow: `ListItem` (Discovery) -> `Task` (Queue) -> `Prospect` (Index).
+- [x] **Discovery Lineage**: Added `discovery_phrase` and `discovery_tile_id` to all models to ensure attribution from search to hydration.
 - [x] **Gold Standard Identity**: Implemented AWS IoT Core X.509 authentication with automatic token refresh in supervisor.
-- [x] **Explicit S3 Namespace**: Defined and implemented `DataPaths.s3_*` methods to ensure deterministic pathing.
-- [x] **Async Stability**: Wrapped synchronous queue polling in threads to prevent supervisor event-loop stalls.
-- [x] **Test ID Verification**: Confirmed hydration of test ID `ChIJrWcEWr8B2YgR7Sw1Y_d7GUw` in S3 (Shard `W`).
+- [x] **Explicit S3 Namespace**: Migrated to campaign-namespaced pathing: `campaigns/{campaign}/queues/`.
+- [x] **High-Speed Deployment**: Upgraded hotfix system to use `rsync` for near-instant cluster updates.
 
 ## Phase 3: Recovery Execution (CURRENT)
-- [ ] **Index Cleanup**: Mass-sideline existing hollow S3 USV index files (< 1.5KB) to clear the path for fresh scrapes.
-- [x] **Enqueuing**: Populate the `gm-details` queue with the ~9,359 remaining hollow Place IDs using `scripts/enqueue_hollow_recovery.py`.
-- [ ] **Cluster Processing**: Monitor RPI nodes as they re-scrape metadata and populate the sharded index.
-- [x] **Verification**: Run a post-recovery audit to ensure hollow records are replaced by valid, hydrated USVs (> 2KB).
-    - [x] **Pilot Verification**: Confirmed hydration of 5-item test batch on `cocli5x1.pi`.
+- [x] **Queue Purge**: Successfully deleted 15,520 hollow "completed" markers from S3 using `aws s3 sync --delete --size-only`.
+- [x] **Actionable Target Compilation**: Generated validated list of 17,253 TRULY hollow IDs using Pydantic model validation.
+- [x] **Consolidated Identity Map**: Compiled 1,568 proven Name/PID mappings to ensure high-quality re-enqueuing.
+- [x] **Batch Logging**: Updated `gm-list` to produce co-located `results.usv` (PID, Name, Phone, Slug) for every discovery task.
+- [x] **Pilot Recovery**: Enqueued first 500 items from the actionable list with `RECOVERY` lineage tags.
+- [ ] **Continuous Hydration**: Monitor and process the remaining ~16,700 items in 500-1000 item batches.
+- [ ] **Index Cleanup**: Perform final audit of S3 index to move/delete remaining header-only USV files.
 
 ## Technical Standards
 - **Model Architecture**: Prohibit model reuse across phases.
-    - `GoogleMapsListItem`: Discovery results (`name`, `slug`, `place_id`).
-    - `GmItemTask`: Worker instructions (S3 Queue).
-    - `GoogleMapsProspect`: Final hydrated data (S3 Index).
-- **Deduplication**: Use `place_id.usv` as the filename in the index to ensure one record per location.
-- **Data Format**: USV with `\x1f` (Unit Separator). Handle internal newlines by ensuring the model captures them in specific fields.
-- **Operational Safety (1-3-10 Rule)**:
-    - 1 item: Local test.
-    - 3 items: S3 pilot run.
-    - 10 items: Small batch verification.
-    - **NEVER** enqueue thousands without a successful 10-item pilot.
-- **S3 Safety**: Always use `--dry-run` before `aws s3 rm` or `aws s3 mv` on large buckets.
-- **Log Management**:
-    - Use `timeout 10s` for SSH log tails.
-    - Use `grep -E` to target specific IDs or patterns.
-    - Use `tail -n 50` or `--tail 50` to limit initial context.
-    - Use `sudo truncate -s 0 <path>` to clear bloated RPI container logs.
+    - `GoogleMapsListItem`: Discovery results with Name, Slug, Phone, and Place ID.
+    - `GmItemTask`: Worker instructions with full discovery lineage metadata.
+    - `GoogleMapsProspect`: Final hydrated data with enforced identity tripod.
+- **Lineage Preservation**: Every task MUST carry its `discovery_phrase` and `discovery_tile_id` from discovery through to the final index record.
+- **Batch Results**: `gm-list` workers MUST write a `results.usv` file into the task directory before completion to provide a write-ahead log of found items.
+- **Deployment**: Use `make hotfix-cluster` (rsync-based) to ensure all nodes are perfectly mirrored from the local `cocli/` package.
+- **Operational Safety**: 
+    - Use `scripts/compile_recovery_list.py` to validate local/S3 state before enqueuing.
+    - Maintain "Sent Batch" logs in `recovery/` to prevent duplicate enqueuing.
 
 ## Verification Tools
 ### 1. Targeted Prospect Status (`scripts/verify_prospect_status.py`)
-This tool performs an efficient, targeted check of one or more Place IDs against S3 queues and the prospect index. It uses `head_object` to avoid expensive bucket listings.
+Performs targeted `head_object` checks against S3 queues and index.
 
-**Usage:**
-```bash
-# Verify a single ID
-python3 scripts/verify_prospect_status.py ChIJ---N6Un5a4cR_bKL7SjsQbI
+### 2. Recovery Compiler (`scripts/compile_recovery_list.py`)
+Uses Pydantic validation to identify truly hollow records in the local index vs. what has already been enqueued.
 
-# Verify multiple IDs for a specific campaign
-python3 scripts/verify_prospect_status.py ID1 ID2 ID3 --campaign roadmap
-```
+### 3. Cluster Health (`scripts/check_cluster_health.py`)
+Polls RPI nodes for supervisor status and recent container logs.

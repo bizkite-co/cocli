@@ -50,8 +50,10 @@ SQSAttributeName = Literal[
 ]
 
 
-def get_boto3_session(config: Dict[str, Any]) -> boto3.Session:
+def get_boto3_session(config: Dict[str, Any], max_pool_connections: int = 10) -> boto3.Session:
     """Creates a boto3 session, prioritizing IoT profiles for automatic refresh."""
+    from botocore.config import Config
+    boto_config = Config(max_pool_connections=max_pool_connections)
     aws_config = config.get("aws", {})
     
     # 1. Try explicit iot_profiles from config
@@ -63,7 +65,7 @@ def get_boto3_session(config: Dict[str, Any]) -> boto3.Session:
         try:
             session = boto3.Session(profile_name=p)
             # Test if it works
-            session.client("sts").get_caller_identity()
+            session.client("sts", config=boto_config).get_caller_identity()
             logger.info(f"Using AWS IoT profile: {p}")
             return session
         except Exception as e:
@@ -90,7 +92,7 @@ def get_boto3_session(config: Dict[str, Any]) -> boto3.Session:
     if profile_name:
         try:
             session = boto3.Session(profile_name=profile_name)
-            session.client("sts").get_caller_identity()
+            session.client("sts", config=boto_config).get_caller_identity()
             logger.info(f"Using AWS profile from config: {profile_name}")
             return session
         except Exception as e:

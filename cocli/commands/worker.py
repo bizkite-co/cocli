@@ -29,6 +29,7 @@ from cocli.core.config import load_campaign_config, get_campaigns_dir, get_campa
 from cocli.utils.playwright_utils import setup_optimized_context
 from cocli.utils.headers import ANTI_BOT_HEADERS, USER_AGENT
 
+US = "\x1f"
 
 # Load Version
 def get_version() -> str:
@@ -451,6 +452,7 @@ async def _run_scrape_task_loop(
                 heartbeat_task = asyncio.create_task(_heartbeat_loop())
 
             try:
+                discovered_items: List[GoogleMapsListItem] = []
                 async with asyncio.timeout(900):
                     # For point-based or tile-based scrapes, we can pass context here if needed,
                     # but scrape_google_maps currently takes page/browser? No, it takes context/browser.
@@ -470,14 +472,36 @@ async def _run_scrape_task_loop(
                             continue
 
                         prospect_count += 1
+                        discovered_items.append(list_item)
                         
                         # PRESERVE DISCOVERY: Create a task from the list item
                         details_task = list_item.to_task(task.campaign_name, force_refresh=False)
                         gm_list_item_queue.push(details_task)
                         
-                        # Note: We don't save the full Prospect file here anymore.
-                        # The 'gm-details' worker will do that once it has full metadata.
-                        # This PREVENTS hollow records in the main index.
+                # --- Write Batch Result Log (USV) ---
+                if discovered_items:
+                    try:
+                        # Use the same sharded structure as the task itself
+                        task_id = task.id if hasattr(task, "id") else f"{slugify(task.search_phrase)}_{task.tile_id or 'point'}"
+                        shard = task_id[-2:] if len(task_id) > 2 else "0"
+                        
+                        from ..core.paths import paths
+                        local_results_dir = paths.queue(task.campaign_name, "gm-list") / "completed" / shard / task_id
+                        local_results_dir.mkdir(parents=True, exist_ok=True)
+                        
+                        result_file = local_results_dir / "results.usv"
+                        with open(result_file, "w") as rf:
+                            for item in discovered_items:
+                                # PID | Name | Phone | Slug
+                                rf.write(f"{item.place_id}{US}{item.name}{US}{item.phone or ''}{US}{item.company_slug}\n")
+                        
+                        # Push to S3 immediately
+                        s3_key = f"campaigns/{task.campaign_name}/queues/gm-list/completed/{shard}/{task_id}/results.usv"
+                        s3_client.upload_file(str(result_file), bucket_name, s3_key)
+                        logger.info(f"Uploaded batch results to S3: {s3_key}")
+                    except Exception as res_err:
+                        logger.warning(f"Failed to write batch result log: {res_err}")
+                # ------------------------------------
             finally:
                 if heartbeat_task:
                     heartbeat_task.cancel()
@@ -787,6 +811,8 @@ async def _run_details_task_loop(
                 continue
 
             detailed_prospect_data.processed_by = processed_by
+            detailed_prospect_data.discovery_phrase = task.discovery_phrase
+            detailed_prospect_data.discovery_tile_id = task.discovery_tile_id
 
             # Merge with existing data if we have it
             final_prospect_data = detailed_prospect_data

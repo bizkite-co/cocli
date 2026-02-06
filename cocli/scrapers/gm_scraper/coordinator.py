@@ -125,7 +125,7 @@ class ScrapeCoordinator:
                         
                     # Scrape
                     items_found = 0
-                    async for item in scanner.scrape(query, processed_ids, force_refresh, ttl_days):
+                    async for item in scanner.scrape(query, processed_ids, force_refresh, ttl_days, tile_id=tile_id):
                         yield item
                         items_found += 1
                         

@@ -531,11 +531,8 @@ hotfix-rpi: ## Push code hotfix to a single RPi (Usage: make hotfix-rpi RPI_HOST
 	fi
 
 .PHONY: hotfix-cluster
-hotfix-cluster: ## Apply hotfix to all cluster nodes, skipping offline ones
-	@$(MAKE) hotfix-rpi RPI_HOST=cocli5x0.pi
-	@$(MAKE) hotfix-rpi RPI_HOST=cocli5x1.pi
-	@$(MAKE) hotfix-rpi RPI_HOST=octoprint.pi
-	@$(MAKE) hotfix-rpi RPI_HOST=coclipi.pi
+hotfix-cluster: ## Apply high-speed rsync hotfix to all cluster nodes
+	@python3 scripts/deploy_hotfix.py
 
 # ==============================================================================
 # Raspberry Pi Worker Management

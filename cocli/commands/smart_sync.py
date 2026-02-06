@@ -35,11 +35,20 @@ def save_state(state: Dict[str, Any]) -> None:
         logger.error(f"Failed to save state file: {e}")
 
 def download_file(s3_client: Any, bucket: str, key: str, local_path: Path, progress: Any, task_id: Any) -> None:
+    from botocore.exceptions import ClientError
     try:
         local_path.parent.mkdir(parents=True, exist_ok=True)
         s3_client.download_file(bucket, key, str(local_path))
         progress.advance(task_id, 1)
         logger.debug(f"Downloaded {key} to {local_path}")
+    except ClientError as e:
+        if e.response['Error']['Code'] == "404":
+            # Silently ignore 404s - the file was likely moved or deleted by a worker
+            progress.advance(task_id, 1)
+            logger.debug(f"Skipped missing file (404): {key}")
+        else:
+            logger.error(f"Error downloading {key}: {e}")
+            console.print(f"[red]Error downloading {key}: {e}[/red]")
     except Exception as e:
         logger.error(f"Error downloading {key}: {e}")
         console.print(f"[red]Error downloading {key}: {e}[/red]")
@@ -63,7 +72,7 @@ def run_smart_sync(
         from ..core.reporting import get_boto3_session
         # Prepare a config object for get_boto3_session
         config_obj = {"aws": aws_config, "campaign": {"name": campaign_name}}
-        session = get_boto3_session(config_obj)
+        session = get_boto3_session(config_obj, max_pool_connections=workers)
         s3 = session.client("s3")
     except Exception as e:
          logger.exception("Failed to create AWS session")
@@ -400,6 +409,36 @@ def sync_campaign_config(
     # Since run_smart_sync needs aws_config, and we might not have it yet, 
     # we'll try to use a default session.
     run_smart_sync("campaign-config", bucket_name, prefix, local_base, campaign_name, {}, workers=1)
+
+@app.command("all")
+def sync_all(
+    campaign_name: Optional[str] = typer.Option(None, "--campaign", "-c", help="Campaign name"),
+    workers: int = typer.Option(20, help="Number of concurrent download threads."),
+    full: bool = typer.Option(False, "--full", help="Perform a full integrity check."),
+    force: bool = typer.Option(False, "--force", help="Force download all files."),
+) -> None:
+    """Syncs everything for a campaign (Config, Prospects, Emails, and Queues)."""
+    from ..core.config import get_campaign
+    campaign_name = campaign_name or get_campaign()
+    if not campaign_name:
+        console.print("[bold red]No campaign specified.[/bold red]")
+        raise typer.Exit(1)
+
+    console.print(f"[bold cyan]Starting FULL sync for campaign: {campaign_name}[/bold cyan]")
+    
+    # 1. Config
+    sync_campaign_config(campaign_name)
+    
+    # 2. Prospects
+    sync_prospects(campaign_name, workers, full, force)
+    
+    # 3. Emails
+    sync_emails(campaign_name, workers, full, force)
+    
+    # 4. Queues
+    sync_queues(campaign_name, workers, full, force)
+    
+    console.print(f"[bold green]FULL campaign sync complete for {campaign_name}![/bold green]")
 
 if __name__ == "__main__":
     app()

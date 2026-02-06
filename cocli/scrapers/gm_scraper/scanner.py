@@ -1,5 +1,5 @@
 import logging
-from typing import AsyncIterator, Set
+from typing import AsyncIterator, Set, Optional
 from playwright.async_api import Page
 
 from ...core.config import load_scraper_settings
@@ -19,7 +19,8 @@ class SidebarScraper:
         search_string: str,
         processed_place_ids: Set[str],
         force_refresh: bool,
-        ttl_days: int
+        ttl_days: int,
+        tile_id: Optional[str] = None
     ) -> AsyncIterator[GoogleMapsListItem]:
         """
         Scrapes the sidebar results for the current map view.
@@ -88,17 +89,22 @@ class SidebarScraper:
                     continue
 
                 place_id = business_data_dict.get("Place_ID")
-                if not place_id or place_id in processed_place_ids:
+                name = business_data_dict.get("Name")
+                if not place_id or not name or name == "Unknown" or len(name) < 3 or place_id in processed_place_ids:
                     continue
 
+                from ...core.text_utils import slugify
                 processed_place_ids.add(place_id)
 
                 # Yield Discovery Item
                 yield GoogleMapsListItem(
                     place_id=place_id,
-                    name=business_data_dict.get("Name", "Unknown"),
-                    company_slug=business_data_dict.get("id", ""), # Slug is in 'id' from parser
-                    gmb_url=business_data_dict.get("GMB_URL")
+                    name=name,
+                    company_slug=slugify(name),
+                    phone=business_data_dict.get("Phone_1"),
+                    gmb_url=business_data_dict.get("GMB_URL"),
+                    discovery_phrase=search_string,
+                    discovery_tile_id=tile_id
                 )
 
             last_processed_div_count = len(listing_divs)

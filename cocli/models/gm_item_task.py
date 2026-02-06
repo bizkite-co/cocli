@@ -8,9 +8,11 @@ class GmItemTask(BaseModel):
     """
     place_id: str
     campaign_name: str
-    name: str
-    company_slug: str
+    name: str = Field(..., min_length=3)
+    company_slug: str = Field(..., min_length=3)
     force_refresh: bool = False
+    discovery_phrase: Optional[str] = None
+    discovery_tile_id: Optional[str] = None
     
     # Queue mechanics (Transient)
     ack_token: Optional[str] = Field(default=None, exclude=True)
