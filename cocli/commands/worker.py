@@ -29,7 +29,7 @@ from cocli.core.config import load_campaign_config, get_campaigns_dir, get_campa
 from cocli.utils.playwright_utils import setup_optimized_context
 from cocli.utils.headers import ANTI_BOT_HEADERS, USER_AGENT
 
-US = "\x1f"
+from cocli.core.utils import UNIT_SEP
 
 # Load Version
 def get_version() -> str:
@@ -481,22 +481,27 @@ async def _run_scrape_task_loop(
                 # --- Write Batch Result Log (USV) ---
                 if discovered_items:
                     try:
-                        # Use the same sharded structure as the task itself
-                        task_id = task.id if hasattr(task, "id") else f"{slugify(task.search_phrase)}_{task.tile_id or 'point'}"
-                        shard = task_id[-2:] if len(task_id) > 2 else "0"
-                        
                         from ..core.paths import paths
-                        local_results_dir = paths.queue(task.campaign_name, "gm-list") / "completed" / shard / task_id
+                        from ..core.sharding import get_geo_shard
+                        
+                        # Use same logic as ack() for path consistency
+                        shard = get_geo_shard(task.latitude)
+                        # task.ack_token is like "37.5/-123.3/financial-advisor.csv"
+                        base_id = task.ack_token.replace(".csv", "").replace(".usv", "")
+                        
+                        local_results_dir = paths.queue(task.campaign_name, "gm-list") / "completed" / "results" / shard / os.path.dirname(base_id)
                         local_results_dir.mkdir(parents=True, exist_ok=True)
                         
-                        result_file = local_results_dir / "results.usv"
+                        phrase_slug = os.path.basename(base_id)
+                        result_file = local_results_dir / f"{phrase_slug}.usv"
+                        
                         with open(result_file, "w") as rf:
                             for item in discovered_items:
-                                # PID | Name | Phone | Slug
-                                rf.write(f"{item.place_id}{US}{item.name}{US}{item.phone or ''}{US}{item.company_slug}\n")
+                                # Identifiers Adjacent: PlaceID | Slug | Name | Phone
+                                rf.write(f"{item.place_id}{UNIT_SEP}{item.company_slug}{UNIT_SEP}{item.name}{UNIT_SEP}{item.phone or ''}\n")
                         
                         # Push to S3 immediately
-                        s3_key = f"campaigns/{task.campaign_name}/queues/gm-list/completed/{shard}/{task_id}/results.usv"
+                        s3_key = f"campaigns/{task.campaign_name}/queues/gm-list/completed/results/{shard}/{base_id}.usv"
                         s3_client.upload_file(str(result_file), bucket_name, s3_key)
                         logger.info(f"Uploaded batch results to S3: {s3_key}")
                     except Exception as res_err:

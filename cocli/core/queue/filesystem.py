@@ -513,6 +513,24 @@ class FilesystemGmListQueue(FilesystemQueue):
             self.target_tiles_dir = Path("does-not-exist")
         self.witness_dir = get_cocli_base_dir() / "indexes" / "scraped-tiles"
 
+    def _get_shard(self, task_id: str) -> str:
+        """Extracts geo shard (first digit of latitude) from the task_id (lat/lon/phrase)."""
+        from ..sharding import get_geo_shard
+        lat = task_id.split("/")[0]
+        return get_geo_shard(lat)
+
+    def _get_s3_lease_key(self, task_id: str) -> str:
+        shard = self._get_shard(task_id)
+        return f"campaigns/{self.campaign_name}/queues/{self.queue_name}/pending/{shard}/{task_id}/lease.json"
+
+    def _get_s3_task_key(self, task_id: str) -> str:
+        shard = self._get_shard(task_id)
+        return f"campaigns/{self.campaign_name}/queues/{self.queue_name}/pending/{shard}/{task_id}/task.json"
+
+    def _get_task_dir(self, task_id: str) -> Path:
+        shard = self._get_shard(task_id)
+        return self.pending_dir / shard / task_id
+
     def push(self, task: ScrapeTask) -> str: # type: ignore[override]
         """
         Ensures the task exists in the Mission Index (target_tiles_dir).
@@ -662,32 +680,49 @@ class FilesystemGmListQueue(FilesystemQueue):
     def ack(self, task: ScrapeTask) -> None: # type: ignore
         # Note: GmList doesn't move data, just removes the lease/dir
         if task.ack_token:
-            # 1. Local Cleanup
+            # 1. Capture Lease Metadata before deletion
+            lease_data = {}
+            lease_path = self._get_lease_path(task.ack_token)
+            if lease_path.exists():
+                try:
+                    with open(lease_path, 'r') as f:
+                        lease_data = json.load(f)
+                except Exception:
+                    pass
+
+            # 2. Local Cleanup
             task_dir = self._get_task_dir(task.ack_token)
             import shutil
             if task_dir.exists():
                 shutil.rmtree(task_dir, ignore_errors=True)
             
-            # 2. S3 Cleanup (Immediate)
+            # 3. S3 Cleanup & Completion (Immediate)
             if self.s3_client and self.bucket_name:
                 try:
                     s3_lease_key = self._get_s3_lease_key(task.ack_token)
                     
-                    # Upload a completion marker to S3 so reports can count it
-                    # Sanitize task_id for S3 key (remove slashes)
-                    safe_id = task.ack_token.replace("/", "_").replace("\\", "_")
-                    s3_completed_key = f"campaigns/{self.campaign_name}/queues/{self.queue_name}/completed/{safe_id}.json"
+                    # Mirror pending structure in completed/results
+                    # Pending: pending/{shard}/{lat}/{lon}/{phrase}.csv/task.json
+                    # Completed: completed/results/{shard}/{lat}/{lon}/{phrase}.json
+                    from ..sharding import get_geo_shard
+                    shard = get_geo_shard(task.latitude)
+                    base_id = task.ack_token.replace(".csv", "").replace(".usv", "")
+                    s3_completed_key = f"campaigns/{self.campaign_name}/queues/{self.queue_name}/completed/results/{shard}/{base_id}.json"
                     
                     completion_data = {
                         "task_id": task.ack_token,
                         "completed_at": datetime.now(UTC).isoformat(),
-                        "worker_id": self.worker_id
+                        "worker_id": lease_data.get("worker_id", self.worker_id),
+                        "lease_created_at": lease_data.get("created_at"),
+                        "search_phrase": task.search_phrase,
+                        "latitude": task.latitude,
+                        "longitude": task.longitude
                     }
                     
                     self.s3_client.put_object(
                         Bucket=self.bucket_name,
                         Key=s3_completed_key,
-                        Body=json.dumps(completion_data),
+                        Body=json.dumps(completion_data, indent=2),
                         ContentType="application/json"
                     )
 

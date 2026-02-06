@@ -179,10 +179,25 @@ class GoogleMapsProspect(BaseModel):
         return values
 
     def to_usv(self) -> str:
-        """Serializes the model to a single-line unit-separated string."""
+        """Serializes the model to a single-line unit-separated string (no header)."""
+        from ..core.utils import UNIT_SEP
+        
+        # Explicit order to match datapackage.json: place_id | company_slug | name | phone | ...rest
+        ordered_fields = [
+            "place_id",
+            "company_slug",
+            "name",
+            "phone_1"
+        ]
+        
+        # Get remaining fields
+        all_fields = list(self.__class__.model_fields.keys())
+        remaining = [f for f in all_fields if f not in ordered_fields]
+        final_field_list = ordered_fields + remaining
+        
         values = []
         dump = self.model_dump(by_alias=False)
-        for field in self.__class__.model_fields.keys():
+        for field in final_field_list:
             val = dump.get(field)
             if val is None:
                 values.append("")
@@ -193,21 +208,28 @@ class GoogleMapsProspect(BaseModel):
                 values.append(val.isoformat())
             else:
                 values.append(str(val).replace("\r\n", "<br>").replace("\n", "<br>").replace("\r", "<br>"))
-        return "\x1f".join(values) + "\n"
+        
+        return UNIT_SEP.join(values) + "\n"
 
     @classmethod
     def from_usv(cls, usv_str: str) -> "GoogleMapsProspect":
         """Parses a unit-separated line into a GoogleMapsProspect object."""
+        from ..core.utils import UNIT_SEP
         # Strip both Record Separator and Newline
         line = usv_str.strip("\x1e\n")
         if not line:
             raise ValueError("Empty unit-separated line")
             
-        parts = line.split("\x1f")
-        fields = list(cls.model_fields.keys())
+        parts = line.split(UNIT_SEP)
+        
+        # Must match the order in to_usv
+        ordered_fields = ["place_id", "company_slug", "name", "phone_1"]
+        all_fields = list(cls.model_fields.keys())
+        remaining = [f for f in all_fields if f not in ordered_fields]
+        final_field_list = ordered_fields + remaining
         
         data: Dict[str, Any] = {}
-        for i, field_name in enumerate(fields):
+        for i, field_name in enumerate(final_field_list):
             if i < len(parts):
                 val = parts[i]
                 if val == "":

@@ -9,32 +9,21 @@ RECORD_SEPARATOR = "\n"
 class USVReader:
     """
     A reader for Unit Separated Values (USV).
-    Uses \x1f for fields and \x1e\n for records.
+    Uses \x1f for fields and \n for records.
     """
     def __init__(self, f: Iterable[str]):
         self.f = f
-        self._buffer = ""
         self._iterator = iter(f)
-        self._gen = self._get_gen()
-
-    def _get_gen(self) -> Iterator[List[str]]:
-        for chunk in self._iterator:
-            self._buffer += chunk
-            # Split by \x1e (Record Separator)
-            while "\x1e" in self._buffer:
-                record, self._buffer = self._buffer.split("\x1e", 1)
-                # Clean up any \n that might follow \x1e or be in the record
-                yield record.strip("\n").split(UNIT_SEPARATOR)
-        
-        # Handle trailing record without RS if any
-        if self._buffer.strip("\x1e\n"):
-            yield self._buffer.strip("\x1e\n").split(UNIT_SEPARATOR)
 
     def __iter__(self) -> Iterator[List[str]]:
-        return self
+        for line in self._iterator:
+            # Strip RS and Newline
+            clean_line = line.strip("\x1e\n")
+            if clean_line:
+                yield clean_line.split(UNIT_SEPARATOR)
 
     def __next__(self) -> List[str]:
-        return next(self._gen)
+        return next(iter(self))
 
 class USVDictReader:
     """

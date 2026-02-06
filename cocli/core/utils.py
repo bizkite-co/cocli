@@ -17,6 +17,8 @@ from .text_utils import slugify
 
 logger = logging.getLogger(__name__)
 
+UNIT_SEP = "\x1f" # ASCII Unit Separator
+
 def create_company_files(company: Company, company_dir: Path) -> Path:
     """
     Creates the directory and files for a new company, including its _index.md and tags.lst.

@@ -81,7 +81,12 @@ class ProspectsIndexManager:
                 with open(file_path, 'r', encoding='utf-8') as f:
                     reader: Iterable[Dict[str, Any]]
                     if file_path.suffix == ".usv":
-                        reader = USVDictReader(f)
+                        # Headerless USV: Provide explicit field order
+                        ordered_fields = ["place_id", "company_slug", "name", "phone_1"]
+                        all_fields = list(GoogleMapsProspect.model_fields.keys())
+                        remaining = [f for f in all_fields if f not in ordered_fields]
+                        fieldnames = ordered_fields + remaining
+                        reader = USVDictReader(f, fieldnames=fieldnames)
                     else:
                         reader = csv.DictReader(f)
                         
@@ -118,12 +123,8 @@ class ProspectsIndexManager:
         
         try:
             with open(file_path, 'w', encoding='utf-8') as f:
-                fieldnames = list(GoogleMapsProspect.model_fields.keys())
-                writer = USVDictWriter(f, fieldnames=fieldnames)
-                writer.writeheader()
-                data = prospect_data.model_dump(by_alias=False)
-                logger.info(f"WRITING PROSPECT: {prospect_data.place_id} | processed_by: {data.get('processed_by')}")
-                writer.writerow(data)
+                logger.info(f"WRITING PROSPECT: {prospect_data.place_id} | processed_by: {prospect_data.processed_by}")
+                f.write(prospect_data.to_usv())
             
             # Clean up old CSV if we migrated
             if old_path and old_path.exists():

@@ -1,0 +1,23 @@
+{
+  "name": "google-maps-prospects",
+  "title": "Google Maps Prospect Index",
+  "resources": [
+    {
+      "name": "prospects",
+      "path": "**/*.usv",
+      "format": "csv",
+      "dialect": {
+        "delimiter": "\u001f",
+        "header": false
+      },
+      "schema": {
+        "fields": [
+          { "name": "place_id", "type": "string" },
+          { "name": "company_slug", "type": "string" },
+          { "name": "name", "type": "string" },
+          { "name": "phone", "type": "string" }
+        ]
+      }
+    }
+  ]
+}
