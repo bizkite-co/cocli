@@ -49,6 +49,8 @@ def main(campaign_name: Optional[str] = typer.Argument(None, help="Campaign name
             task = GmItemTask(
                 place_id=place_id,
                 campaign_name=campaign_name,
+                name=f"Backfill {place_id}",
+                company_slug=f"backfill-{place_id.lower()}",
                 ack_token=None
             )
             

@@ -53,7 +53,7 @@ def audit_campaign(campaign_name: str, fix: bool = False, output_csv: Optional[s
 
     # 1. Audit Prospects
     logger.info("Auditing prospects...")
-    for file_path in list(manager.index_dir.glob("*.csv")) + list(manager.inbox_dir.glob("*.csv")):
+    for file_path in list(manager.index_dir.rglob("*.csv")):
         if not file_path.is_file():
             continue
             

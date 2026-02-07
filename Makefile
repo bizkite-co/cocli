@@ -356,6 +356,21 @@ enrich-place-ids: ## Find missing Place IDs on Google Maps for tagged companies 
 rebuild-index: enrich-place-ids recover-prospect-index ## Full rebuild: Enrich Place IDs then reconstruct the prospect index
 
 .PHONY: sync-scraped-areas
+.PHONY: audit-queue
+audit-queue: ## Audit completion markers against Pydantic models and index (Usage: make audit-queue [CAMPAIGN=name])
+	$(call validate_campaign)
+	@$(VENV_DIR)/bin/python scripts/audit_queue_completion.py $(CAMPAIGN)
+
+.PHONY: audit-queue-fix
+audit-queue-fix: ## Audit and automatically move invalid markers to recovery (Usage: make audit-queue-fix [CAMPAIGN=name])
+	$(call validate_campaign)
+	@$(VENV_DIR)/bin/python scripts/audit_queue_completion.py $(CAMPAIGN) --execute
+
+.PHONY: cleanup-pending
+cleanup-pending: ## Purge expired leases and normalize pending queue paths (Usage: make cleanup-pending [CAMPAIGN=name])
+	$(call validate_campaign)
+	@$(VENV_DIR)/bin/python scripts/cleanup_gm_list_pending.py $(CAMPAIGN) --execute
+
 sync-scraped-areas: ## Sync scraped areas from S3
 	@$(VENV_DIR)/bin/cocli smart-sync scraped-areas
 

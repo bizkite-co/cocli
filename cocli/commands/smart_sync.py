@@ -103,7 +103,7 @@ def run_smart_sync(
     # 1. List & Filter
     paginator = s3.get_paginator('list_objects_v2')
     # If we are syncing config, don't recurse into subdirectories
-    kwargs = {'Bucket': bucket_name, 'Prefix': prefix}
+    kwargs: Dict[str, Any] = {'Bucket': bucket_name, 'Prefix': prefix}
     if target_name == "campaign-config":
         kwargs['Delimiter'] = '/'
         kwargs['PaginationConfig'] = {'MaxItems': 1000}

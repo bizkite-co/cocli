@@ -1,22 +1,19 @@
-import os
 import sys
 import json
 import shutil
 import logging
 from pathlib import Path
-from datetime import datetime, UTC
 
 # Add project root to path
 sys.path.append(str(Path(__file__).parent.parent))
 
 from cocli.models.gm_item_task import GmItemTask
 from cocli.core.config import get_campaign_dir
-from cocli.core.prospects_csv_manager import ProspectsIndexManager
 
 logging.basicConfig(level=logging.INFO, format='%(levelname)s: %(message)s')
 logger = logging.getLogger(__name__)
 
-def audit_queue(campaign_name: str, execute: bool = False):
+def audit_queue(campaign_name: str, execute: bool = False) -> None:
     campaign_dir = get_campaign_dir(campaign_name)
     if not campaign_dir:
         logger.error(f"Campaign {campaign_name} not found.")
@@ -31,15 +28,13 @@ def audit_queue(campaign_name: str, execute: bool = False):
 
     logger.info(f"Auditing gm-details completion markers for {campaign_name} (Execute: {execute})")
     
-    prospect_mgr = ProspectsIndexManager(campaign_name)
-    
     # Pre-cache existing Place IDs for fast lookup
     logger.info("Pre-caching prospect index...")
     existing_pids = set()
-    for f in campaign_dir.rglob("google_maps_prospects/**/*.usv"):
-        existing_pids.add(f.stem)
-    for f in campaign_dir.rglob("google_maps_prospects/**/*.csv"):
-        existing_pids.add(f.stem)
+    for f_idx in campaign_dir.rglob("google_maps_prospects/**/*.usv"):
+        existing_pids.add(f_idx.stem)
+    for f_idx in campaign_dir.rglob("google_maps_prospects/**/*.csv"):
+        existing_pids.add(f_idx.stem)
     logger.info(f"Cached {len(existing_pids)} prospect IDs.")
     
     stats = {
@@ -98,8 +93,9 @@ def audit_queue(campaign_name: str, execute: bool = False):
 
 if __name__ == "__main__":
     import argparse
+    from cocli.core.config import get_campaign
     parser = argparse.ArgumentParser(description="Audit completion markers against models and index.")
-    parser.add_argument("campaign", help="Campaign name")
+    parser.add_argument("campaign", nargs="?", default=get_campaign(), help="Campaign name (defaults to active campaign)")
     parser.add_argument("--execute", action="store_true", help="Actually move invalid markers to recovery")
     
     args = parser.parse_args()

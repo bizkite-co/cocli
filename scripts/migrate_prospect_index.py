@@ -1,7 +1,5 @@
-import os
 import sys
 from pathlib import Path
-from typing import Dict, Any, List, Optional
 import logging
 import argparse
 from datetime import datetime, UTC
@@ -20,8 +18,12 @@ logger = logging.getLogger(__name__)
 
 REC_SEP = "\x1e"
 
-def migrate_from_plan(campaign_name: str, plan_path: Path):
+def migrate_from_plan(campaign_name: str, plan_path: Path) -> None:
     campaign_dir = get_campaign_dir(campaign_name)
+    if not campaign_dir:
+        logger.error(f"Campaign {campaign_name} not found.")
+        return
+        
     prospect_dir = campaign_dir / "indexes" / "google_maps_prospects"
     audit_log_path = campaign_dir / "migration_audit.log"
     hollow_log_path = campaign_dir / "hollow_prospects.log"
@@ -45,7 +47,8 @@ def migrate_from_plan(campaign_name: str, plan_path: Path):
                 try:
                     with open(file_path, 'r', encoding='utf-8') as f:
                         content = f.read()
-                    if not content: continue
+                    if not content:
+                        continue
                     
                     # Robust Parsing
                     if REC_SEP in content:
@@ -56,7 +59,8 @@ def migrate_from_plan(campaign_name: str, plan_path: Path):
                         else:
                             records = [content.strip()]
 
-                    if not records: continue
+                    if not records:
+                        continue
 
                     if records[0].startswith("created_at") or "place_id" in records[0]:
                         header = [h.strip() for h in records[0].split(UNIT_SEP)]
@@ -100,7 +104,8 @@ def migrate_from_plan(campaign_name: str, plan_path: Path):
                         file_path.unlink()
                         count += 1
                         af.write(f"{datetime.now(UTC).isoformat()} | {prospect.place_id}\n")
-                        if count % 100 == 0: logger.info(f"Progress: {count} migrated...")
+                        if count % 100 == 0:
+                            logger.info(f"Progress: {count} migrated...")
                     else:
                         raise IOError("Verification failed")
                         
@@ -113,8 +118,9 @@ def migrate_from_plan(campaign_name: str, plan_path: Path):
     logger.info(f"Batch complete. Migrated: {count}, Errors: {errors}, Skipped (Hollow): {skipped}")
 
 if __name__ == "__main__":
+    from cocli.core.config import get_campaign
     parser = argparse.ArgumentParser(description="Migrate prospect index from a plan file.")
-    parser.add_argument("campaign", help="Campaign name")
+    parser.add_argument("campaign", nargs="?", default=get_campaign(), help="Campaign name")
     parser.add_argument("plan", help="Path to migration plan text file")
     
     args = parser.parse_args()

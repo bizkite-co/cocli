@@ -2,7 +2,6 @@
 import subprocess
 from rich.console import Console
 from typing import List, Tuple
-import os
 
 console = Console()
 
@@ -24,7 +23,7 @@ def deploy_to_host(user: str, host: str) -> None:
     
     # 1. Sync the entire cocli directory to the host's temp dir
     rsync_cmd = f"rsync -avz --delete cocli/ {user}@{host}:{REMOTE_TMP_DIR}/cocli/"
-    console.print(f"  Syncing cocli/ package...")
+    console.print("  Syncing cocli/ package...")
     res = subprocess.run(rsync_cmd, shell=True, capture_output=True, text=True)
     if res.returncode != 0:
         console.print(f"  [red]Rsync failed: {res.stderr}[/red]")

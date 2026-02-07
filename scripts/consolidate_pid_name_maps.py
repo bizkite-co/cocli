@@ -1,84 +1,56 @@
 #!/usr/bin/env python3
 import os
-import re
 import sys
-from pathlib import Path
+import logging
+from typing import Dict
 
 # Add project root to path
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
+from cocli.core.config import get_campaign, get_campaign_dir
+
+logging.basicConfig(level=logging.INFO, format='%(levelname)s: %(message)s')
+logger = logging.getLogger(__name__)
+
 # Unit separator is \x1f
 US = "\x1f"
 
-def consolidate():
-    campaign = "roadmap"
-    recovery_dir = Path(f"/home/mstouffer/.local/share/cocli_data/campaigns/{campaign}/recovery")
-    output_file = recovery_dir / "consolidated_pid_name_map.usv"
-    
-    pid_name_map = {}
-    
-    # Files to check specifically for PID/Name mappings
-    files_to_check = [
-        "master_pid_name_map.usv",
-        "hollow_hydrated_master.usv",
-        "hollow_hydrated.usv",
-        "healed_prospects_index.usv"
-    ]
-    
-    pid_pattern = re.compile(r'(ChIJ[a-zA-Z0-9_-]{10,})')
-
-    for fname in files_to_check:
-        f_path = recovery_dir / fname
-        if not f_path.exists():
-            continue
-            
-        print(f"Processing {fname}...")
-        try:
-            lines = f_path.read_text().splitlines()
-            for line in lines:
-                # 1. Try USV Split
-                parts = line.split(US)
-                if len(parts) >= 2:
-                    pid = parts[0].strip()
-                    name = parts[1].strip()
-                    if pid.startswith("ChIJ") and len(name) >= 3:
-                        pid_name_map[pid] = name
-                        continue
-                
-                # 2. Try Regex + Remaining line
-                match = pid_pattern.search(line)
-                if match:
-                    pid = match.group(1)
-                    remaining = line.replace(pid, "").strip()
-                    if len(remaining) >= 3:
-                        pid_name_map[pid] = remaining
-
-        except Exception as e:
-            print(f"Error processing {fname}: {e}")
-
-    if not pid_name_map:
-        print("No PID/Name mappings found.")
+def consolidate(campaign_name: str) -> None:
+    campaign_dir = get_campaign_dir(campaign_name)
+    if not campaign_dir:
+        logger.error(f"Campaign {campaign_name} not found.")
         return
 
-    print(f"Found {len(pid_name_map)} unique Place ID to Name mappings.")
-
-    # Save to consolidated file
-    from cocli.core.text_utils import slugify
+    recovery_dir = campaign_dir / "recovery"
+    output_file = recovery_dir / "consolidated_pid_name_map.usv"
     
-    with open(output_file, 'w') as f:
+    pid_name_map: Dict[str, str] = {}
+    
+    # Files to check specifically for PID/Name mappings
+    source_files = list(recovery_dir.glob("pid_name_map_*.usv"))
+    logger.info(f"Consolidating {len(source_files)} map files...")
+
+    for f_path in source_files:
+        try:
+            with open(f_path, 'r', encoding='utf-8') as f:
+                for line in f:
+                    parts = line.strip().split(US)
+                    if len(parts) >= 2:
+                        pid, name = parts[0], parts[1]
+                        if pid.startswith("ChIJ") and len(name) > 2:
+                            pid_name_map[pid] = name
+        except Exception as e:
+            logger.error(f"Error reading {f_path.name}: {e}")
+
+    # Save consolidated map
+    recovery_dir.mkdir(parents=True, exist_ok=True)
+    with open(output_file, 'w', encoding='utf-8') as f_out:
         for pid, name in sorted(pid_name_map.items()):
-            slug = slugify(name)
-            f.write(f"{pid}{US}{name}{US}{slug}\n")
+            f_out.write(f"{pid}{US}{name}\n")
 
-    print("-" * 40)
-    print(f"Saved consolidated map to: {output_file}")
-    
-    # 3. VERIFY
-    if output_file.exists() and output_file.stat().st_size > 0:
-        print("Consolidation successful. You can now remove the source files:")
-        for fname in files_to_check:
-            if (recovery_dir / fname).exists():
-                print(f"  rm data/campaigns/roadmap/recovery/{fname}")
+    logger.info(f"Consolidation complete. Total unique mappings: {len(pid_name_map)}")
+    logger.info(f"Saved to: {output_file}")
 
 if __name__ == "__main__":
-    consolidate()
+    from cocli.core.config import get_campaign
+    consolidate(get_campaign() or "roadmap")

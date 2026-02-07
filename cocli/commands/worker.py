@@ -22,6 +22,7 @@ from cocli.scrapers.google_maps import scrape_google_maps
 from cocli.scrapers.google_maps_details import scrape_google_maps_details
 from ..models.scrape_task import ScrapeTask
 from ..models.google_maps_prospect import GoogleMapsProspect
+from ..models.google_maps_list_item import GoogleMapsListItem
 from ..models.gm_item_task import GmItemTask
 from ..models.queue import QueueMessage
 from cocli.core.prospects_csv_manager import ProspectsIndexManager
@@ -486,8 +487,10 @@ async def _run_scrape_task_loop(
                         
                         # Use same logic as ack() for path consistency
                         shard = get_geo_shard(task.latitude)
+                        
                         # task.ack_token is like "37.5/-123.3/financial-advisor.csv"
-                        base_id = task.ack_token.replace(".csv", "").replace(".usv", "")
+                        token = task.ack_token or f"{task.latitude}/{task.longitude}/{task.search_phrase}"
+                        base_id = token.replace(".csv", "").replace(".usv", "")
                         
                         local_results_dir = paths.queue(task.campaign_name, "gm-list") / "completed" / "results" / shard / os.path.dirname(base_id)
                         local_results_dir.mkdir(parents=True, exist_ok=True)

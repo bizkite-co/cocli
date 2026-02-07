@@ -1,64 +1,57 @@
 #!/usr/bin/env python3
 import os
 import sys
-import json
-from pathlib import Path
+import logging
 
 # Add project root to path
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
+from cocli.core.config import get_campaign, get_campaign_dir
+from cocli.core.queue.factory import get_queue_manager
 from cocli.models.gm_item_task import GmItemTask
 from cocli.core.text_utils import slugify
 
-# Unit separator is \x1f
-US = "\x1f"
+logging.basicConfig(level=logging.INFO, format='%(levelname)s: %(message)s')
+logger = logging.getLogger(__name__)
 
-def enqueue_pilot():
-    campaign = "roadmap"
-    recovery_map = Path(f"/home/mstouffer/.local/share/cocli_data/campaigns/{campaign}/recovery/consolidated_pid_name_map.usv")
-    pending_dir = Path(f"/home/mstouffer/.local/share/cocli_data/campaigns/{campaign}/queues/gm-details/pending")
-    
-    if not recovery_map.exists():
-        print(f"Error: {recovery_map} not found.")
+def enqueue_pilot(campaign_name: str) -> None:
+    campaign_dir = get_campaign_dir(campaign_name)
+    if not campaign_dir:
+        logger.error(f"Campaign {campaign_name} not found.")
         return
 
-    print(f"Reading pilot targets from {recovery_map.name}...")
-    with open(recovery_map, 'r') as f:
-        lines = [next(f) for _ in range(10)]
+    recovery_dir = campaign_dir / "recovery"
+    plan_file = recovery_dir / "still_hollow_deduped.txt"
+    
+    if not plan_file.exists():
+        logger.error(f"Recovery plan not found: {plan_file}")
+        return
 
-    for line in lines:
-        parts = line.strip().split(US)
-        if len(parts) < 2:
-            continue
-            
-        place_id = parts[0]
-        name = parts[1]
-        slug = slugify(name)
-        
-        # Create Task
+    # Load first 500
+    with open(plan_file, 'r') as f:
+        all_pids = [line.strip() for line in f if line.strip()]
+    
+    batch = all_pids[:500]
+    logger.info(f"Enqueuing pilot batch of {len(batch)} items...")
+
+    queue_manager = get_queue_manager("gm-details", queue_type="details", campaign_name=campaign_name)
+    
+    count = 0
+    for pid in batch:
         task = GmItemTask(
-            place_id=place_id,
-            campaign_name=campaign,
-            name=name,
-            company_slug=slug,
+            place_id=pid,
+            campaign_name=campaign_name,
+            name=f"Pilot Recovery {pid}",
+            company_slug=slugify(f"pilot-recovery-{pid}"),
             force_refresh=True,
-            discovery_phrase="RECOVERY",
-            discovery_tile_id="RECOVERY_BATCH_20260205"
+            discovery_phrase="PILOT_RECOVERY",
+            discovery_tile_id="BATCH_20260206_1200"
         )
-        
-        # Save to sharded pending queue
-        # Path: pending/<shard>/<place_id>/task.json
-        shard = place_id[-2:]
-        task_dir = pending_dir / shard / place_id
-        task_dir.mkdir(parents=True, exist_ok=True)
-        
-        task_file = task_dir / "task.json"
-        task_file.write_text(task.model_dump_json(indent=2))
-        
-        print(f"  Enqueued: {place_id} ({name})")
+        queue_manager.push(task)
+        count += 1
 
-    print("-" * 40)
-    print("Pilot enqueue complete. PIs should pick these up shortly.")
+    logger.info(f"Successfully enqueued {count} pilot recovery tasks.")
 
 if __name__ == "__main__":
-    enqueue_pilot()
+    from cocli.core.config import get_campaign
+    enqueue_pilot(get_campaign() or "roadmap")

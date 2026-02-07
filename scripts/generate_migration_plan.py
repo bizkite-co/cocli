@@ -1,9 +1,7 @@
-import os
 import sys
-from pathlib import Path
 from cocli.core.config import get_campaign_dir
 
-def generate_plan(campaign_name: str):
+def generate_plan(campaign_name: str) -> None:
     campaign_dir = get_campaign_dir(campaign_name)
     if not campaign_dir:
         print(f"Error: Campaign {campaign_name} not found.")

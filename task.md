@@ -1,7 +1,7 @@
-# Task: Roadmap Campaign Identity Recovery & Shielding
+# Task: Campaign Identity Recovery & Shielding
 
 ## Objective
-Recover ~17,000 unique hollow roadmap records and enforce a "Model-to-Model" architecture with full discovery lineage and a Universal Data Namespace to permanently prevent data loss.
+Recover unique hollow records for a targeted campaign and enforce a "Model-to-Model" architecture with full discovery lineage and a Universal Data Namespace to permanently prevent data loss.
 
 ## Phase 2: Identification Shield & Validation (COMPLETE)
 - [x] **Strict Identity Model**: Updated `GoogleMapsProspect` and `GmItemTask` to enforce `min_length=3` for `name`, `company_slug`, and `company_hash`.

@@ -6,7 +6,6 @@ import logging
 import argparse
 from pathlib import Path
 from datetime import datetime, UTC, timedelta
-from typing import Dict, Any
 
 # Add project root to path
 sys.path.append(str(Path(__file__).parent.parent))
@@ -18,7 +17,7 @@ from cocli.core.text_utils import slugify
 logging.basicConfig(level=logging.INFO, format='%(levelname)s: %(message)s')
 logger = logging.getLogger(__name__)
 
-def cleanup_pending_queue(campaign_name: str, dry_run: bool = True):
+def cleanup_pending_queue(campaign_name: str, dry_run: bool = True) -> None:
     campaign_dir = get_campaign_dir(campaign_name)
     if not campaign_dir:
         logger.error(f"Campaign {campaign_name} not found.")
@@ -97,7 +96,8 @@ def cleanup_pending_queue(campaign_name: str, dry_run: bool = True):
 
             if is_expired:
                 logger.info(f"Purging EXPIRED lease: {lease_path.relative_to(pending_dir)}")
-                if not dry_run: lease_path.unlink()
+                if not dry_run:
+                    lease_path.unlink()
                 deleted_leases += 1
             else:
                 # Active lease: Move to new standard path
@@ -135,8 +135,9 @@ def cleanup_pending_queue(campaign_name: str, dry_run: bool = True):
         logger.info(f"Empty directories removed: {removed_dirs}")
 
 if __name__ == "__main__":
+    from cocli.core.config import get_campaign
     parser = argparse.ArgumentParser(description="Normalize gm-list pending queue and purge expired leases.")
-    parser.add_argument("campaign", help="Campaign name")
+    parser.add_argument("campaign", nargs="?", default=get_campaign(), help="Campaign name (defaults to active campaign)")
     parser.add_argument("--execute", action="store_true", help="Actually perform the moves and deletes")
     
     args = parser.parse_args()

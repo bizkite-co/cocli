@@ -1,26 +1,36 @@
 #!/usr/bin/env python3
-import os
 import shutil
-import glob
-from pathlib import Path
+import json
+import logging
 
-def cleanup():
-    campaign = "roadmap"
-    base_dir = Path("/home/mstouffer/.local/share/cocli_data/campaigns") / campaign
-    completed_dir = base_dir / "queues" / "gm-details" / "completed"
-    recovery_dir = base_dir / "recovery" / "completed"
+from cocli.core.config import get_campaign, get_campaign_dir
+
+logging.basicConfig(level=logging.INFO, format='%(levelname)s: %(message)s')
+logger = logging.getLogger(__name__)
+
+def cleanup(campaign_name: str) -> None:
+    campaign_dir = get_campaign_dir(campaign_name)
+    if not campaign_dir:
+        logger.error(f"Campaign {campaign_name} not found.")
+        return
+
+    completed_dir = campaign_dir / "queues" / "gm-details" / "completed"
+    recovery_dir = campaign_dir / "recovery" / "completed"
     
     # 1. Ensure recovery dir exists
     recovery_dir.mkdir(parents=True, exist_ok=True)
     
-    print(f"Scanning {completed_dir}...")
-    all_files = glob.glob(str(completed_dir / "*.json"))
+    if not completed_dir.exists():
+        logger.warning(f"Completed directory not found: {completed_dir}")
+        return
+
+    logger.info(f"Scanning {completed_dir}...")
+    all_files = list(completed_dir.glob("*.json"))
     total_found = len(all_files)
     
     hollow_count = 0
     valid_count = 0
     
-    import json
     for f_path in all_files:
         try:
             with open(f_path, 'r') as f:
@@ -30,18 +40,19 @@ def cleanup():
             slug = data.get("company_slug", "")
             
             # Criteria for "Hollow": name or slug < 3 chars
-            if not name or not slug or len(name) < 3 or len(slug) < 3:
-                shutil.move(f_path, recovery_dir / os.path.basename(f_path))
+            if not name or not slug or len(str(name)) < 3 or len(str(slug)) < 3:
+                shutil.move(str(f_path), str(recovery_dir / f_path.name))
                 hollow_count += 1
             else:
                 valid_count += 1
         except Exception as e:
-            print(f"Error processing {f_path}: {e}")
+            logger.error(f"Error processing {f_path}: {e}")
 
-    print("-" * 40)
-    print(f"Total processed: {total_found}")
-    print(f"Moved to recovery (Hollow): {hollow_count}")
-    print(f"Remaining in completed (Valid): {valid_count}")
+    logger.info("-" * 40)
+    logger.info(f"Total processed: {total_found}")
+    logger.info(f"Moved to recovery (Hollow): {hollow_count}")
+    logger.info(f"Remaining in completed (Valid): {valid_count}")
 
 if __name__ == "__main__":
-    cleanup()
+    from cocli.core.config import get_campaign
+    cleanup(get_campaign() or "roadmap")
