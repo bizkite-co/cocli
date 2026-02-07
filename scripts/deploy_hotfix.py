@@ -23,9 +23,6 @@ def deploy_to_host(user: str, host: str) -> None:
     console.print(f"\n[bold blue]Deploying hotfix to {host} using RSYNC...[/bold blue]")
     
     # 1. Sync the entire cocli directory to the host's temp dir
-    # -a: archive mode (preserves permissions, recursive)
-    # -z: compress
-    # --delete: mirror exactly (remove files on remote that are gone locally)
     rsync_cmd = f"rsync -avz --delete cocli/ {user}@{host}:{REMOTE_TMP_DIR}/cocli/"
     console.print(f"  Syncing cocli/ package...")
     res = subprocess.run(rsync_cmd, shell=True, capture_output=True, text=True)
@@ -40,17 +37,21 @@ def deploy_to_host(user: str, host: str) -> None:
     for container in containers:
         console.print(f"  Patching container: [cyan]{container}[/cyan]")
         
-        # Determine the site-packages path inside the container
-        # We assume python 3.12 based on previous logs, but could be dynamic.
+        # Site-packages path
         lib_path = "/usr/local/lib/python3.12/dist-packages/cocli"
+        app_path = "/app/cocli"
         
-        # Use docker cp to update the entire package at once
-        # Note: docker cp replaces the directory if it exists
-        cmd = f"docker cp {REMOTE_TMP_DIR}/cocli/. {container}:{lib_path}/"
+        # 1. Ensure /app/cocli directory exists inside container
+        run_ssh(user, host, f"docker exec {container} mkdir -p {app_path}")
+        
+        # 2. Copy code to /app/cocli
+        cmd = f"docker cp {REMOTE_TMP_DIR}/cocli/. {container}:{app_path}/"
         run_ssh(user, host, cmd)
         
-        # Also update /app mount if it exists (for dev-mode consistency)
-        run_ssh(user, host, f"docker exec {container} [ -d /app/cocli ] && docker cp {REMOTE_TMP_DIR}/cocli/. {container}:/app/cocli/ || true")
+        # 3. Ensure symlink exists from site-packages to /app/cocli
+        # This guarantees 'cocli' command uses the hotfixed code
+        link_cmd = f"docker exec {container} bash -c 'rm -rf {lib_path} && ln -s {app_path} {lib_path}'"
+        run_ssh(user, host, link_cmd)
 
         console.print(f"  Restarting {container}...")
         run_ssh(user, host, f"docker restart {container}")

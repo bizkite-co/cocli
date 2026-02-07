@@ -70,10 +70,14 @@ def run_smart_sync(
 
     try:
         from ..core.reporting import get_boto3_session
+        from botocore.config import Config
         # Prepare a config object for get_boto3_session
         config_obj = {"aws": aws_config, "campaign": {"name": campaign_name}}
         session = get_boto3_session(config_obj, max_pool_connections=workers)
-        s3 = session.client("s3")
+        
+        # MUST pass Config to the client to actually use the larger pool!
+        s3_config = Config(max_pool_connections=workers)
+        s3 = session.client("s3", config=s3_config)
     except Exception as e:
          logger.exception("Failed to create AWS session")
          console.print(f"[bold red]Failed to create AWS session: {e}[/bold red]")
@@ -98,7 +102,13 @@ def run_smart_sync(
 
     # 1. List & Filter
     paginator = s3.get_paginator('list_objects_v2')
-    pages = paginator.paginate(Bucket=bucket_name, Prefix=prefix)
+    # If we are syncing config, don't recurse into subdirectories
+    kwargs = {'Bucket': bucket_name, 'Prefix': prefix}
+    if target_name == "campaign-config":
+        kwargs['Delimiter'] = '/'
+        kwargs['PaginationConfig'] = {'MaxItems': 1000}
+        
+    pages = paginator.paginate(**kwargs)
     
     total_scanned = 0
     
@@ -126,18 +136,18 @@ def run_smart_sync(
                         should_download = True
                     elif last_sync_dt:
                         if s3_mtime > last_sync_dt:
-                            # Only download if S3 is also newer than the actual local file
-                            if not local_path.exists() or s3_mtime.timestamp() > local_path.stat().st_mtime:
+                            # Only download if S3 is also newer AND size changed
+                            if not local_path.exists() or (s3_mtime.timestamp() > local_path.stat().st_mtime and s3_size != local_path.stat().st_size):
                                 should_download = True
                             else:
-                                logger.info(f"Skipping {key}: Local file is newer than S3 version.")
+                                logger.debug(f"Skipping {key}: Local file is newer or same size.")
                     else:
                         if not local_path.exists() or local_path.stat().st_size != s3_size:
-                            # Even in full sync, don't overwrite newer local files unless forced
-                            if not local_path.exists() or s3_mtime.timestamp() > local_path.stat().st_mtime:
+                            # Even in full sync, don't overwrite newer local files unless size changed
+                            if not local_path.exists() or (s3_mtime.timestamp() > local_path.stat().st_mtime and s3_size != local_path.stat().st_size):
                                 should_download = True
                             else:
-                                logger.info(f"Skipping {key}: Local file is newer than S3 version (full scan).")
+                                logger.debug(f"Skipping {key}: Local file is newer or same size.")
                     
                     if completed_dir:
                         # Zombie/Re-queue Check
@@ -159,7 +169,7 @@ def run_smart_sync(
                                     completed_mtime = completed_file.stat().st_mtime
                                     # s3_mtime is timezone-aware, convert to timestamp for comparison
                                     if s3_mtime.timestamp() > completed_mtime:
-                                        logger.info(f"Re-downloading {key}: S3 pending task is newer than local completion (Re-queue detected).")
+                                        logger.debug(f"Re-downloading {key}: S3 pending task is newer than local completion (Re-queue detected).")
                                         should_download = True
                                     else:
                                         # Zombie case: Completed is newer/same as pending.
@@ -168,7 +178,7 @@ def run_smart_sync(
                                         
                                         # 3. Cleanup S3 pending (The Source of the Zombie)
                                         try:
-                                            logger.info(f"Deleting Zombie S3 Object: {key}")
+                                            logger.debug(f"Deleting Zombie S3 Object: {key}")
                                             s3.delete_object(Bucket=bucket_name, Key=key)
                                         except Exception as e:
                                             logger.error(f"Failed to delete zombie S3 key {key}: {e}")
@@ -177,7 +187,7 @@ def run_smart_sync(
                                         if local_path.exists():
                                             try:
                                                 local_path.unlink()
-                                                logger.info(f"Removed zombie local pending file: {local_path}")
+                                                logger.debug(f"Removed zombie local pending file: {local_path}")
                                                 # Try to remove the directory if it's empty
                                                 try:
                                                     local_path.parent.rmdir()
@@ -394,21 +404,21 @@ def sync_queues(
 def sync_campaign_config(
     campaign_name: Optional[str] = typer.Option(None, "--campaign", "-c", help="Campaign name"),
 ) -> None:
-    from ..core.config import get_campaign
+    from ..core.config import get_campaign, load_campaign_config
     campaign_name = campaign_name or get_campaign()
     if not campaign_name:
         console.print("[bold red]No campaign specified.[/bold red]")
         raise typer.Exit(1)
     
-    # We can't use load_campaign_config if the file doesn't exist yet!
-    # But we can assume the bucket name pattern.
-    bucket_name = f"cocli-data-{campaign_name}"
+    # Try to load existing config to get the correct bucket name
+    config = load_campaign_config(campaign_name)
+    aws_config = config.get("aws", {})
+    bucket_name = aws_config.get("data_bucket_name") or f"cocli-data-{campaign_name}"
+    
     prefix = f"campaigns/{campaign_name}/"
     local_base = DATA_DIR / "campaigns" / campaign_name
     
-    # Since run_smart_sync needs aws_config, and we might not have it yet, 
-    # we'll try to use a default session.
-    run_smart_sync("campaign-config", bucket_name, prefix, local_base, campaign_name, {}, workers=1)
+    run_smart_sync("campaign-config", bucket_name, prefix, local_base, campaign_name, aws_config, workers=1)
 
 @app.command("all")
 def sync_all(

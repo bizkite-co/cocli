@@ -11,7 +11,7 @@ logger = logging.getLogger(__name__)
 
 class ProspectsIndexManager:
     """
-    Manages Google Maps prospects stored as individual files in a file-based index.
+    Manages Google Maps prospects stored as individual files in a sharded index.
     Supports both legacy CSV (.csv) and modern USV (.usv) formats.
     Directory: data/campaigns/{campaign}/indexes/google_maps_prospects/
     """
@@ -22,18 +22,25 @@ class ProspectsIndexManager:
         self.index_dir = scraped_dir.parent / "indexes" / "google_maps_prospects"
         self.index_dir.mkdir(parents=True, exist_ok=True)
         
-        # Inbox for new/untriaged prospects
+        # Inbox for legacy compatibility (new writes go to shards)
         self.inbox_dir = self.index_dir / "inbox"
         self.inbox_dir.mkdir(parents=True, exist_ok=True)
 
     def get_file_path(self, place_id: str) -> Path:
         """
-        Returns the existing file path for a given Place_ID, or the default new path.
-        Checks for .usv first, then .csv.
+        Returns the existing file path for a given Place_ID, or the default new path (sharded).
+        Checks for sharded .usv first, then legacy flat .usv/.csv.
         """
         safe_filename = place_id.replace("/", "_").replace("\\", "_")
+        from ..core.sharding import get_place_id_shard
+        shard = get_place_id_shard(place_id)
+        sharded_path = self.index_dir / shard / f"{safe_filename}.usv"
         
-        # Try finding existing file
+        # 1. Prefer sharded path (Gold Standard)
+        if sharded_path.exists():
+            return sharded_path
+            
+        # 2. Check legacy locations (root and inbox)
         for ext in [".usv", ".csv"]:
             filename = f"{safe_filename}{ext}"
             inbox_path = self.inbox_dir / filename
@@ -44,12 +51,13 @@ class ProspectsIndexManager:
             if root_path.exists():
                 return root_path
             
-        # Default for new files (always .usv)
-        return self.inbox_dir / f"{safe_filename}.usv"
+        # 3. Default for new files: ALWAYS SHARDED
+        sharded_path.parent.mkdir(parents=True, exist_ok=True)
+        return sharded_path
 
     def read_all_prospects(self) -> Iterator[GoogleMapsProspect]:
         """
-        Yields prospects from the file index (both root and inbox).
+        Yields prospects from the file index (shards, root, and inbox).
         Handles both .csv and .usv files.
         """
         if not self.index_dir.exists():
@@ -57,18 +65,16 @@ class ProspectsIndexManager:
 
         import itertools
         
-        # Scan root and inbox for both extensions
-        root_files = list(self.index_dir.glob("*.usv")) + list(self.index_dir.glob("*.csv"))
-        inbox_files = list(self.inbox_dir.glob("*.usv")) + list(self.inbox_dir.glob("*.csv"))
+        # Recursive scan for all USV/CSV files
+        all_files = list(self.index_dir.rglob("*.usv")) + list(self.index_dir.rglob("*.csv"))
         
         # Remove duplicates (if both .csv and .usv exist for same place_id)
-        # We prefer .usv
         seen_place_ids = set()
         
-        # Sort so .usv comes before .csv
-        all_files = sorted(itertools.chain(root_files, inbox_files), key=lambda p: (p.stem, p.suffix == ".csv"))
+        # Sort: .usv before .csv, and sharded (more parts) before flat
+        sorted_files = sorted(all_files, key=lambda p: (p.stem, p.suffix == ".csv", -len(p.parts)))
         
-        for file_path in all_files:
+        for file_path in sorted_files:
             if not file_path.is_file():
                 continue
                 
@@ -92,7 +98,6 @@ class ProspectsIndexManager:
                         
                     for row in reader:
                         try:
-                            # Only include fields that are part of the GoogleMapsProspect model
                             model_data = {k: v for k, v in row.items() if k in GoogleMapsProspect.model_fields}
                             yield GoogleMapsProspect.model_validate(model_data)
                         except Exception as e:
@@ -102,26 +107,28 @@ class ProspectsIndexManager:
 
     def append_prospect(self, prospect_data: GoogleMapsProspect) -> bool:
         """
-        Writes a single GoogleMapsProspect object to its individual file in the index.
-        Always writes in USV format.
+        Writes a single GoogleMapsProspect object to its sharded file in the index.
+        Always writes in headerless USV format.
         """
         if not prospect_data.place_id:
             logger.warning(f"Prospect data missing place_id, cannot save to index. Skipping: {prospect_data.name or prospect_data.domain}")
             return False
         
-        # Get path (will default to .usv if new, or return existing .csv/.usv)
+        # Get path (will default to sharded .usv)
         file_path = self.get_file_path(prospect_data.place_id)
         
-        # If it was a .csv, we should migrate it to .usv
+        # If it was a .csv, we migrate it to .usv
         if file_path.suffix == ".csv":
             old_path = file_path
             file_path = file_path.with_suffix(".usv")
             logger.info(f"Migrating {old_path.name} to USV")
-            # We'll delete the old one after successful write
         else:
             old_path = None
         
         try:
+            # Ensure shard directory exists
+            file_path.parent.mkdir(parents=True, exist_ok=True)
+            
             with open(file_path, 'w', encoding='utf-8') as f:
                 logger.info(f"WRITING PROSPECT: {prospect_data.place_id} | processed_by: {prospect_data.processed_by}")
                 f.write(prospect_data.to_usv())
@@ -137,15 +144,13 @@ class ProspectsIndexManager:
             return False
 
     def has_place_id(self, place_id: str) -> bool:
-        """Checks if a given Place_ID already exists in the index (.csv or .usv)."""
+        """Checks if a given Place_ID already exists in the index (anywhere)."""
         if not place_id:
             return False
+        
         safe_filename = place_id.replace("/", "_").replace("\\", "_")
+        # Check shards, root, and inbox recursively
         for ext in [".usv", ".csv"]:
-            if (self.index_dir / f"{safe_filename}{ext}").exists():
-                return True
-            if (self.inbox_dir / f"{safe_filename}{ext}").exists():
+            if list(self.index_dir.rglob(f"{safe_filename}{ext}")):
                 return True
         return False
-
-

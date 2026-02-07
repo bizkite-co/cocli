@@ -1,63 +1,62 @@
-# Directory Data Structure (Target State)
+# Universal Data Namespace (Gold Standard)
 
-This document outlines the target directory structure for `data`. We are transitioning to this structure to align local development with our S3 cloud storage strategy.
+This document defines the strictly enforced directory structure used across Local, S3, and Raspberry Pi environments.
 
 ## Core Principles
 
-1.  **Campaign Encapsulation:** Data specific to a campaign (inputs, configs, scratchpads) resides within the campaign directory.
-2.  **Shared Resources:** Core entities (`companies`, `people`) and reusable indexes (`indexes`) reside at the root to allow composition across campaigns.
-3.  **Cloud Alignment:** The local structure mirrors the S3 bucket structure for easier synchronization.
+1.  **1:1 Mirroring**: Paths are identical in all environments. `/home/mstouffer/repos/data` on a Pi matches `s3://bucket/` matches `~/.local/share/cocli_data/`.
+2.  **Sharding for Performance**: Large datasets (Prospects, Results) are sharded to prevent directory exhaustion and improve sync speed.
+3.  **Frictionless USV**: Tabular data is stored as headerless `.usv` files with `UNIT_SEP` (\x1f). Schemas are defined in `datapackage.json`.
+4.  **Identity Lineage**: Results are co-located with their geographic and keyword origins.
 
-## Directory Layout (`~/.local/share/data/` or `COCLI_DATA_HOME`)
+## Directory Layout
 
 ```text
 data/
-├── campaigns/                  # Campaign-specific data
-│   └── <campaign_slug>/
-│       ├── config.toml         # Campaign configuration
-│       ├── README.md           # Campaign notes
-│       ├── scraped_data/       # Raw inputs specific to this campaign
-│       │   └── prospects.csv   # Raw scrape results (Legacy/Cache)
-│       ├── indexes/            # Campaign-specific Search/Lookup Indexes
-│       │   ├── exclude/        # JSON files for excluded companies/domains
-│       │   ├── emails/         # JSON files for discovered emails
-│       │   └── google_maps_prospects/ # Split JSON files for each lead
-│       └── initiatives/        # Campaign specific scripts/definitions
-│
-├── companies/                  # Canonical Company Records (Shared)
-│   └── <company_slug>/
-│       ├── _index.md           # Core Company Data (YAML Frontmatter)
-│       ├── enrichments/        # Enrichment data sources
-│       │   └── website.md
-│       └── meetings/           # Meeting notes
-│
-├── people/                     # Canonical Person Records (Shared)
-│   └── <person_slug>/
-│       └── _index.md
-│
-├── indexes/                    # Search and Lookup Indexes (Shared)
-│   ├── <phrase_slug>.csv       # E.g., 'photography-studios-in-brea-ca.csv'
-│   ├── scraped_areas.csv       # Aggregated coverage map
-│   └── website_data_cache.csv  # Cache for rapid lookup
-│
-└── queues/                     # Local Queue State (Producer/Consumer)
-    └── <queue_name>/
-        ├── pending/
-        ├── processing/
-        └── failed/
+├── campaigns/
+│   └── <campaign_name>/
+│       ├── indexes/
+│       │   ├── google_maps_prospects/  # Sharded by Place ID [shard_idx 5]
+│       │   │   ├── A/
+│       │   │   │   └── ChIJA...usv     # Headerless: place_id | slug | ...
+│       │   │   └── ...
+│       │   └── emails/                 # Sharded by Domain [shard_idx 0]
+│       │
+│       ├── queues/
+│       │   ├── gm-list/
+│       │   │   ├── pending/            # Geographic Sharding [lat 1-dec]
+│       │   │   │   └── 3/34.1/-84.5/   # shard=lat[0]
+│       │   │   │       ├── task.json
+│       │   │   │       └── lease.json
+│       │   │   └── completed/          # Witness Index
+│       │   │       └── 3/34.1/-84.5/   # shard=lat[0]
+│       │   │           └── <phrase>.usv # Result summary
+│       │   │
+│       │   └── gm-details/
+│       │       ├── pending/            # Same sharding as gm-list
+│       │       └── completed/          # Witness Index [Receipts]
+│       │           └── <place_id>.json
+│       │
+│       └── datapackage.json            # Frictionless Schemas for all USVs
 ```
 
-## Changes from Legacy Structure
+## Data Formats
 
-1.  **Moved `scraped_data`:** Previously `data/scraped_data/<campaign>/` -> Now `data/campaigns/<campaign>/scraped_data/`.
-    *   *Reason:* Scraped data is a raw input specific to a campaign's targeting parameters.
-2.  **Refactored `indexes`:** Previously `data/indexes/<campaign>/scraped_areas.csv` -> Now `data/indexes/<phrase>.csv` (and shared).
-    *   *Reason:* A search for "plumbers in denver" yields the same results regardless of which campaign asks for it. Indexes should be shared to avoid redundant scraping.
-3.  **Retained Shared `companies/`:**
-    *   *Reason:* A single company (e.g., a potential partner) might be relevant to multiple campaigns. Keeping them shared avoids duplication and divergence.
+### USV (Unit Separated Values)
+- **Field Separator**: `UNIT_SEP` (`\x1f`)
+- **Record Separator**: `\n` (Newline)
+- **Headers**: OMITTED.
+- **Identifiers**: The first two columns MUST be `place_id` and `company_slug`.
 
-## S3 Synchronization Strategy
+### JSON
+- **Tasks**: `task.json` contains the model-validated instructions for a worker.
+- **Markers**: `completed/<id>.json` contains the verified receipt of work.
 
-*   **Campaign Sync:** Sync `data/campaigns/<current_campaign>/` to `s3://bucket/campaigns/<current_campaign>/`.
-*   **Shared Sync:** Sync `data/companies/` and `data/indexes/` to `s3://bucket/companies/` and `s3://bucket/indexes/`.
-*   **Exclusions:** Local `queues/` are not synced (S3 uses SQS).
+## Synchronization (The "Smart-Sync" Standard)
+
+- **Local -> S3**: Use `cocli smart-sync all`.
+- **S3 -> Local**: `cocli smart-sync` pulls only updates based on `.smart_sync_state.json`.
+- **Atomic Deletions**: Use `aws s3 sync --delete` ONLY on specific leaf folders (e.g., `completed/`) after local auditing.
+
+---
+*See `docs/.schema/traceability.md` for how identities move through this structure.*

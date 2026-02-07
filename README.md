@@ -191,6 +191,18 @@ uv run cocli open-company-folder "My New Company"
 ### AWS Fargate Google Maps Blocking (Conclusive)
 Google Maps conclusively blocks scraping requests from AWS Fargate IP ranges. This results in permanent timeouts while waiting for page elements to load. **Do not use Fargate for Google Maps scraping (Detail tasks).** These tasks must be run on residential workers (e.g., Raspberry Pi). Fargate remains supported for general website enrichment.
 
+## Data Integrity and Traceability
+
+The `cocli` ecosystem employs a strictly defined **Universal Data Namespace** and **Frictionless Data** standards to ensure consistency across local, cloud (S3), and edge (Raspberry Pi) environments.
+
+*   **Universal Data Namespace**: All data paths (Prospects, Emails, Queues) are mirrored 1:1 across all environments, defined in `docs/.schema/data-root/`.
+*   **Sharded Headerless USV**: Business data is stored in sharded `.usv` files using the `UNIT_SEP` (\x1f) delimiter. These files omit headers to reduce storage overhead and simplify ingestion, with schemas defined in `datapackage.json`.
+*   **Identity Traceability**: Every record is traced from Discovery (Tile/Phrase) to Enrichment (Emails) using a verified hand-off matrix. See `docs/.schema/traceability.md` for details.
+*   **Verification Tooling**:
+    *   `cocli smart-sync`: Stateful, multi-threaded synchronization between Local and S3.
+    *   `scripts/audit_queue_completion.py`: Pydantic-based validation of scraper "receipts" against the final index.
+    *   `scripts/cleanup_gm_list_pending.py`: Geographic normalization and lease management for the discovery queue.
+
 ## Configuration
 
 By default, `cocli` stores your company and person data in `~/.local/share/cocli/` (adhering to the XDG Base Directory Specification). This directory contains `companies/` and `people/` subdirectories.

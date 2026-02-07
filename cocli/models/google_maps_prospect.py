@@ -76,8 +76,8 @@ class GoogleMapsProspect(BaseModel):
     reviews: Optional[str] = None
     quotes: Optional[str] = None
     uuid: Optional[str] = None
-    company_slug: str = Field(..., min_length=3, description="Identity slug is required")
-    company_hash: str = Field(..., min_length=3, description="Identity hash is required")
+    company_slug: Optional[str] = Field(None, description="Identity slug")
+    company_hash: Optional[str] = Field(None, description="Identity hash")
     discovery_phrase: Optional[str] = None
     discovery_tile_id: Optional[str] = None
     processed_by: Optional[str] = "local-worker"
@@ -159,6 +159,12 @@ class GoogleMapsProspect(BaseModel):
         if not self.company_hash and self.name:
             from cocli.core.text_utils import calculate_company_hash
             self.company_hash = calculate_company_hash(self.name, self.street_address, self.zip)
+            
+        # Strict enforcement after calculation
+        if not self.company_slug or len(self.company_slug) < 3:
+            raise ValueError(f"Invalid company_slug: {self.company_slug}")
+        if not self.company_hash or len(self.company_hash) < 3:
+            raise ValueError(f"Invalid company_hash: {self.company_hash}")
             
         return self
 
