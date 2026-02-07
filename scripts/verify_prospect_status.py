@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-import boto3
 import sys
 import os
 import argparse
@@ -59,7 +58,7 @@ def check_prospect(place_id: str, campaign: str, bucket: str, s3: Any) -> Dict[s
 
     return results
 
-def main():
+def main() -> None:
     parser = argparse.ArgumentParser(description="Targeted S3 status verification for Place IDs.")
     parser.add_argument("place_ids", nargs="+", help="One or more Google Place IDs.")
     parser.add_argument("--campaign", "-c", default="roadmap", help="Campaign name.")
