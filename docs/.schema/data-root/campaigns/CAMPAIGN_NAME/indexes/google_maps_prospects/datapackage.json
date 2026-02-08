@@ -1,22 +1,43 @@
 {
-  "name": "google-maps-prospects",
-  "title": "Google Maps Prospect Index",
+  "name": "google_maps_prospects",
+  "profile": "tabular-data-package",
   "resources": [
     {
       "name": "prospects",
-      "path": "**/*.usv",
-      "format": "csv",
+      "path": "wal/*/*.usv",
+      "profile": "tabular-data-resource",
+      "schema": {
+        "fields": [
+          {"name": "place_id", "type": "string"},
+          {"name": "company_slug", "type": "string"},
+          {"name": "name", "type": "string"},
+          {"name": "phone_1", "type": "string"},
+          {"name": "domain", "type": "string"},
+          {"name": "full_address", "type": "string"},
+          {"name": "average_rating", "type": "number"},
+          {"name": "reviews_count", "type": "integer"},
+          {"name": "first_category", "type": "string"},
+          {"name": "second_category", "type": "string"},
+          {"name": "gmb_url", "type": "string"},
+          {"name": "latitude", "type": "number"},
+          {"name": "longitude", "type": "number"},
+          {"name": "business_status", "type": "string"},
+          {"name": "monday_hours", "type": "string"},
+          {"name": "tuesday_hours", "type": "string"},
+          {"name": "wednesday_hours", "type": "string"},
+          {"name": "thursday_hours", "type": "string"},
+          {"name": "friday_hours", "type": "string"},
+          {"name": "saturday_hours", "type": "string"},
+          {"name": "sunday_hours", "type": "string"},
+          {"name": "created_at", "type": "datetime"},
+          {"name": "processed_by", "type": "string"},
+          {"name": "discovery_phrase", "type": "string"},
+          {"name": "discovery_tile_id", "type": "string"}
+        ]
+      },
       "dialect": {
         "delimiter": "\u001f",
         "header": false
-      },
-      "schema": {
-        "fields": [
-          { "name": "place_id", "type": "string" },
-          { "name": "company_slug", "type": "string" },
-          { "name": "name", "type": "string" },
-          { "name": "phone", "type": "string" }
-        ]
       }
     }
   ]

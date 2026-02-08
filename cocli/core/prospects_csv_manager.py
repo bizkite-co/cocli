@@ -31,15 +31,15 @@ class ProspectsIndexManager:
         Returns the path to a prospect file, prioritizing sharded .usv
         but falling back to legacy locations for reads.
         """
-        # 1. Check for new sharded path (.usv)
+        # 1. Check for new sharded path (.usv) in the WAL
         shard = get_place_id_shard(place_id)
-        sharded_path = self.index_dir / shard / f"{place_id}.usv"
+        sharded_path = self.index_dir / "wal" / shard / f"{place_id}.usv"
         if sharded_path.exists():
             return sharded_path
             
-        # 2. Check for legacy paths
-        # Recursive check would be slow for get_file_path, so we check common spots
+        # 2. Check for legacy paths (root-level shards, inbox, or flat root)
         legacy_paths = [
+            self.index_dir / shard / f"{place_id}.usv",
             self.index_dir / f"{place_id}.usv",
             self.index_dir / f"{place_id}.csv",
             self.index_dir / "inbox" / f"{place_id}.usv",

@@ -24,6 +24,13 @@ Recover unique hollow records for a targeted campaign and enforce a "Model-to-Mo
 - [ ] **Continuous Hydration**: Monitor and process the remaining ~15,000 items in 500-1000 item batches (Currently letting PIs process naturally).
 - [ ] **Cleanup Finish**: Complete the purge of the 15k local "hollows" from S3 via the last `--delete` sync.
 
+## Phase 4: Index Robustness & Lifecycle (PROPOSED)
+- [ ] **Formal Compactor**: Implement the `cocli index compact` command using the Freeze-Ingest-Merge-Commit (FIMC) pattern.
+- [ ] **Tiered Read Logic**: Update `ProspectsIndexManager` to perform hybrid reads (Checkpoint + Processing + WAL).
+- [ ] **S3 Object Lifecycle**: Implement specific deletion of processed WAL files on S3 after successful compaction.
+- [ ] **Compliance Enforcement**: Integrate `scripts/check_schema_compliance.py` into the CI/CD or pre-deployment checks.
+- [ ] **Content-Based Checkpoints**: Implement a "Latest Checkpoint" pointer/manifest on S3 to optimize cross-environment sync.
+
 ## Technical Standards
 - **Universal Namespace**: All data paths must be identical across Local, S3, and RPi.
 - **Headerless USV**: Sharded index files (.usv) MUST NOT contain headers. Schemas are defined in the root `datapackage.json`.

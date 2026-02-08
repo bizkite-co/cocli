@@ -1,0 +1,11 @@
+sequenceDiagram
+    participant W as RPi Worker
+    participant L as Local WAL (wal/)
+    participant S3 as S3 Bucket (indexes/...)
+
+    W->>W: Scrape Lead (place_id)
+    W->>L: Write <place_id>.usv (Headerless)
+    L-->>W: Confirm Write
+    W->>S3: PutObject (Point-to-Point Push)
+    S3-->>W: 200 OK
+    W->>W: Done (Transience Rule: Local file can be purged after compaction sync)

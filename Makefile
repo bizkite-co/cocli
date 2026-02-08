@@ -555,7 +555,7 @@ hotfix-cluster: ## Apply high-speed rsync hotfix to all cluster nodes
 RPI_HOST ?= octoprint.pi
 RPI_USER ?= mstouffer
 RPI_DIR ?= ~/repos/cocli
-CLUSTER_NODES ?= cocli5x0.pi,octoprint.pi,coclipi.pi
+CLUSTER_NODES ?= cocli5x0.pi,cocli5x1.pi,octoprint.pi,coclipi.pi
 
 .PHONY: setup-rpi
 setup-rpi: ## Bootstap the Raspberry Pi with Docker and Git
@@ -710,6 +710,7 @@ restart-rpi-all: ## Restart all Raspberry Pi workers using supervisor on all nod
 	$(MAKE) start-rpi-supervisor RPI_HOST=octoprint.pi
 	$(MAKE) start-rpi-supervisor RPI_HOST=coclipi.pi
 	$(MAKE) start-rpi-supervisor RPI_HOST=cocli5x0.pi
+	$(MAKE) start-rpi-supervisor RPI_HOST=cocli5x1.pi
 
 .PHONY: deploy-cluster
 deploy-cluster: ## Rebuild and restart the entire cluster with Supervisor (optimized)
@@ -724,6 +725,8 @@ shutdown-cluster: ## Safely shut down all Raspberry Pi workers
 	-$(MAKE) shutdown-rpi RPI_HOST=coclipi.pi
 	@echo "Shutting down cocli5x0.pi..."
 	-$(MAKE) shutdown-rpi RPI_HOST=cocli5x0.pi
+	@echo "Shutting down cocli5x1.pi..."
+	-$(MAKE) shutdown-rpi RPI_HOST=cocli5x1.pi
 	@echo "Shutdown commands sent. You can safely unplug the Pis in 30 seconds."
 
 .PHONY: log-rpi-worker

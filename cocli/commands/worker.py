@@ -711,7 +711,8 @@ async def _run_details_task_loop(
         try:
             csv_manager = ProspectsIndexManager(task.campaign_name)
             file_path = csv_manager.get_file_path(task.place_id)
-            s3_key = f"campaigns/{task.campaign_name}/indexes/google_maps_prospects/{file_path.name}"
+            rel_path = file_path.relative_to(csv_manager.index_dir)
+            s3_key = f"campaigns/{task.campaign_name}/indexes/google_maps_prospects/{rel_path}"
 
             # 1. Try to fetch existing data from S3 first (if not local)
             if not file_path.exists():
