@@ -9,16 +9,20 @@ RECORD_SEPARATOR = "\n"
 class USVReader:
     """
     A reader for Unit Separated Values (USV).
-    Uses \x1f for fields and \n for records.
+    Uses \x1f for fields and \n or \x1e for records.
     """
-    def __init__(self, f: Iterable[str]):
+    def __init__(self, f: Any):
         self.f = f
-        self._iterator = iter(f)
+        # Read content and normalize record separators
+        self.content = f.read()
+        # Handle \x1e\n, then \x1e, then \n
+        normalized = self.content.replace("\x1e\n", "\n").replace("\x1e", "\n")
+        self.records = [r for r in normalized.split("\n") if r.strip()]
+        self._iterator = iter(self.records)
 
     def __iter__(self) -> Iterator[List[str]]:
         for line in self._iterator:
-            # Strip RS and Newline
-            clean_line = line.strip("\x1e\n")
+            clean_line = line.strip()
             if clean_line:
                 yield clean_line.split(UNIT_SEPARATOR)
 

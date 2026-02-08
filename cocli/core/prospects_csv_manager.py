@@ -65,10 +65,18 @@ class ProspectsIndexManager:
         seen_pids = set()
         checkpoint_path = self._get_checkpoint_path().resolve()
         
-        # 1. Read WAL (Hot Layer) - Files in shards, root, or inbox
-        all_files = list(self.index_dir.rglob("*.usv")) + list(self.index_dir.rglob("*.csv"))
+        # 1. Read WAL (Hot Layer) - Files in wal/ shards
+        # We also check root and inbox for compatibility during migrations
+        wal_dir = self.index_dir / "wal"
+        search_dirs = [wal_dir, self.index_dir / "inbox", self.index_dir]
         
-        # Sort: .usv before .csv, and sharded (more parts) before flat
+        all_files = []
+        for d in search_dirs:
+            if d.exists():
+                all_files.extend(list(d.rglob("*.usv")))
+                all_files.extend(list(d.rglob("*.csv")))
+        
+        # Sort: .usv before .csv, and sharded (deeper path) before flat
         sorted_files = sorted(all_files, key=lambda p: (p.stem, p.suffix == ".csv", -len(p.parts)))
         
         for file_path in sorted_files:
@@ -84,22 +92,53 @@ class ProspectsIndexManager:
             try:
                 with open(file_path, 'r', encoding='utf-8') as f:
                     if file_path.suffix == ".usv":
-                        # Headerless USV: Provide explicit field order
-                        ordered_fields = ["place_id", "company_slug", "name", "phone_1"]
-                        all_fields = list(GoogleMapsProspect.model_fields.keys())
-                        remaining = [f for f in all_fields if f not in ordered_fields]
-                        fieldnames = ordered_fields + remaining
-                        reader = USVDictReader(f, fieldnames=fieldnames)
+                        # Header Detection: If first line contains "created_at", it's a header
+                        first_line = f.readline()
+                        if "created_at" in first_line:
+                            # It's a headered USV
+                            f.seek(0)
+                            reader = USVDictReader(f) # Uses headers from file
+                        else:
+                            # Headerless USV: Provide explicit field order
+                            f.seek(0)
+                            ordered_fields = ["place_id", "company_slug", "name", "phone_1"]
+                            all_fields = list(GoogleMapsProspect.model_fields.keys())
+                            remaining = [f for f in all_fields if f not in ordered_fields]
+                            fieldnames = ordered_fields + remaining
+                            reader = USVDictReader(f, fieldnames=fieldnames)
                     else:
                         reader = csv.DictReader(f) # type: ignore
                         
                     for row in reader:
                         try:
-                            model_data = {k: v for k, v in row.items() if k in GoogleMapsProspect.model_fields}
-                            p = GoogleMapsProspect.model_validate(model_data)
-                            if p.place_id:
-                                seen_pids.add(p.place_id)
-                                yield p
+                            # Normalize keys: lowercase and map common variations
+                            normalized_row = {}
+                            for k, v in row.items():
+                                if not k: continue
+                                key = k.lower().replace(" ", "_")
+                                if key == "place_id": key = "place_id" # already matches
+                                if key == "id" and not normalized_row.get("place_id"):
+                                    # If 'id' is present but 'place_id' isn't, use 'id'
+                                    key = "place_id"
+                                normalized_row[key] = v
+
+                            model_data = {k: v for k, v in normalized_row.items() if k in GoogleMapsProspect.model_fields}
+                            try:
+                                p = GoogleMapsProspect.model_validate(model_data)
+                                if p.place_id:
+                                    seen_pids.add(p.place_id)
+                                    yield p
+                            except Exception as ve:
+                                # Log to a dedicated error file for later re-scraping/re-queueing
+                                error_file = self.index_dir / "validation_errors.usv"
+                                try:
+                                    with open(error_file, 'a', encoding='utf-8') as ef:
+                                        # Write place_id, file source, and error message
+                                        pid = normalized_row.get('place_id') or file_path.stem
+                                        ef.write(f"{pid}\x1f{file_path.name}\x1f{str(ve).replace('\\n', ' ')}\n")
+                                except Exception:
+                                    pass
+                                logger.warning(f"Skipping invalid prospect row in {file_path.name}: {ve}")
                         except Exception as e:
                             logger.error(f"Error validating prospect in {file_path.name}: {e}")
             except Exception as e:

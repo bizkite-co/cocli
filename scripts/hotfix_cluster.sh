@@ -100,5 +100,7 @@ target=$1
 if [ -n "$target" ]; then
     hotfix_node $target
 else
-    hotfix_node ${CLUSTER_NODES[0]}
+    for node in "${CLUSTER_NODES[@]}"; do
+        hotfix_node $node
+    done
 fi
