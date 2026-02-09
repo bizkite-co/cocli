@@ -1,6 +1,7 @@
 import sys
 from pathlib import Path
 import logging
+from typing import Any
 import pydantic
 
 # Add project root to path
@@ -52,7 +53,7 @@ def migrate_dirty_files(campaign_name: str) -> None:
                     first_line = f.readline()
                     f.seek(0)
                     if "created_at" in first_line or "place_id" in first_line:
-                        reader = USVDictReader(f)
+                        reader: Any = USVDictReader(f)
                     else:
                         # Headerless: map to model fields
                         ordered_fields = ["place_id", "company_slug", "name", "phone_1"]
@@ -66,7 +67,7 @@ def migrate_dirty_files(campaign_name: str) -> None:
 
                 for row in reader:
                     # Normalize keys
-                    normalized_row = {}
+                    normalized_row: dict[str, Any] = {}
                     for k, v in row.items():
                         if not k:
                             continue

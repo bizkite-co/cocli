@@ -1,8 +1,9 @@
+from typing import Any
 from pathlib import Path
 from cocli.models.google_maps_prospect import GoogleMapsProspect
 from cocli.utils.usv_utils import USVDictReader
 
-def test_single_file_isolated(file_path: Path):
+def test_single_file_isolated(file_path: Path) -> bool:
     print(f"Testing isolated parse of: {file_path}")
     
     with open(file_path, 'r', encoding='utf-8') as f:
@@ -24,7 +25,7 @@ def test_single_file_isolated(file_path: Path):
         
         for row in reader:
             # The normalization logic we just added to the manager:
-            normalized_row = {}
+            normalized_row: dict[str, Any] = {}
             for k, v in row.items():
                 if not k:
                     continue
@@ -43,6 +44,7 @@ def test_single_file_isolated(file_path: Path):
             except Exception as e:
                 print(f"VALIDATION ERROR: {e}")
                 return False
+        return False
 
 if __name__ == "__main__":
     target = Path("data/campaigns/roadmap/indexes/google_maps_prospects/wal/5/ChIJj5vRbBl_a4cR3SgY4OXAuWE.usv")

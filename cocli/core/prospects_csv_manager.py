@@ -1,7 +1,7 @@
 import csv
 import logging
 from pathlib import Path
-from typing import Iterator
+from typing import Iterator, Any
 
 from ..models.google_maps_prospect import GoogleMapsProspect
 from ..core.config import get_campaign_scraped_data_dir, get_campaign_dir
@@ -121,7 +121,7 @@ class ProspectsIndexManager:
                     for row in reader:
                         try:
                             # Normalize keys: lowercase and map common variations
-                            normalized_row = {}
+                            normalized_row: dict[str, Any] = {}
                             for k, v in row.items():
                                 if not k:
                                     continue

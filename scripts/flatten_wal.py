@@ -1,7 +1,7 @@
 import os
 from pathlib import Path
 
-def flatten():
+def flatten() -> None:
     base_dir = Path("data/campaigns/roadmap/indexes/google_maps_prospects")
     wal_dir = base_dir / "wal"
     

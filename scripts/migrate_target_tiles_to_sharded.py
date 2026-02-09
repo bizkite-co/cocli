@@ -15,7 +15,7 @@ from cocli.core.sharding import get_geo_shard
 logging.basicConfig(level=logging.INFO, format='%(levelname)s: %(message)s')
 logger = logging.getLogger(__name__)
 
-def migrate_target_tiles(campaign_name: str, execute: bool = False, push: bool = False):
+def migrate_target_tiles(campaign_name: str, execute: bool = False, push: bool = False) -> None:
     campaign_dir = get_campaign_dir(campaign_name)
     if not campaign_dir:
         logger.error(f"Campaign {campaign_name} not found.")

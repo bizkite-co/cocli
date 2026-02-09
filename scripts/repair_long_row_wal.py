@@ -1,5 +1,6 @@
 import sys
 from pathlib import Path
+from typing import Optional, Any
 from pydantic import ValidationError
 
 # Add project root to path
@@ -42,21 +43,21 @@ def repair_file(path: Path, execute: bool = False) -> bool:
             
         print(f"  Sample keys: {list(row_dict.keys())[:10]}")
 
-        def to_float(val):
+        def to_float(val: str) -> Optional[float]:
             try:
                 return float(val) if val else None
             except Exception:
                 return None
 
-        mapped_data = {
+        mapped_data: dict[str, Any] = {
             "place_id": row_dict.get("Place_ID") or row_dict.get("place_id") or row_dict.get("id"),
             "name": row_dict.get("Name") or row_dict.get("name"),
             "company_slug": row_dict.get("company_slug"),
             "phone_1": row_dict.get("Phone_1") or row_dict.get("phone_1"),
             "website": row_dict.get("Website") or row_dict.get("website"),
             "full_address": row_dict.get("Full_Address") or row_dict.get("full_address"),
-            "latitude": to_float(row_dict.get("Latitude") or row_dict.get("latitude")),
-            "longitude": to_float(row_dict.get("Longitude") or row_dict.get("longitude")),
+            "latitude": to_float(str(row_dict.get("Latitude") or row_dict.get("latitude") or "")),
+            "longitude": to_float(str(row_dict.get("Longitude") or row_dict.get("longitude") or "")),
             "processed_by": row_dict.get("processed_by"),
             "discovery_phrase": row_dict.get("discovery_phrase"),
             "discovery_tile_id": row_dict.get("discovery_tile_id")
@@ -78,8 +79,8 @@ def repair_file(path: Path, execute: bool = False) -> bool:
             return False
         
         if execute:
-            with open(path, 'w', encoding='utf-8') as f:
-                f.write(prospect.to_usv())
+            with open(path, 'wb') as bf:
+                bf.write(prospect.to_usv().encode('utf-8'))
             print("  SUCCESS: File overwritten.")
             return True
         return True
@@ -88,7 +89,7 @@ def repair_file(path: Path, execute: bool = False) -> bool:
         print(f"  ERROR: {e}")
         return False
 
-def main():
+def main() -> None:
     execute = "--execute" in sys.argv
     broken_log = Path("broken_wal_files.log")
     if not broken_log.exists():

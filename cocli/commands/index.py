@@ -12,7 +12,7 @@ def compact(
     campaign: str = typer.Option("roadmap", help="Campaign name"),
     index: str = typer.Option("google_maps_prospects", help="Index name to compact"),
     debug: bool = typer.Option(False, help="Enable debug logging")
-):
+) -> None:
     """
     Compact the Write-Ahead Log (WAL) into the main Checkpoint.
     Uses S3-Native isolation to prevent race conditions.

@@ -30,7 +30,7 @@ def is_non_conforming(name: str) -> bool:
         
     return False
 
-def cleanup_queue(campaign_name: str, queue_rel_path: str, execute: bool = False, push: bool = False):
+def cleanup_queue(campaign_name: str, queue_rel_path: str, execute: bool = False, push: bool = False) -> None:
     campaign_dir = get_campaign_dir(campaign_name)
     if not campaign_dir:
         logger.error(f"Campaign {campaign_name} not found.")

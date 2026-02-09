@@ -11,7 +11,7 @@ from cocli.models.google_maps_raw import GoogleMapsRawResult
 from cocli.core.utils import UNIT_SEP
 from cocli.utils.usv_utils import USVDictReader
 
-def repair_wal(execute: bool = False):
+def repair_wal(execute: bool = False) -> None:
     broken_log = Path("broken_wal_files.log")
     if not broken_log.exists():
         print("broken_wal_files.log not found. Run audit first.")

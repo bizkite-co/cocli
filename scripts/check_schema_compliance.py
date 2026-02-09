@@ -7,7 +7,7 @@ from pathlib import Path
 sys.path.append(str(Path(__file__).parent.parent))
 from cocli.models.schema_placeholders import SchemaPlaceholders
 
-def check_compliance(campaign_name: str):
+def check_compliance(campaign_name: str) -> None:
     schema_root = Path("docs/_schema/data-root/campaigns/{campaign_name}")
     
     # Use the current working directory 'data' symlink if it exists, otherwise fallback
@@ -24,7 +24,7 @@ def check_compliance(campaign_name: str):
     print(f"--- Schema Compliance Report: {campaign_name} ---")
     print(f"Data Root: {campaign_dir}\n")
 
-    def walk_schema(schema_path: Path, local_path: Path, indent: int = 0):
+    def walk_schema(schema_path: Path, local_path: Path, indent: int = 0) -> None:
         if schema_path.suffix in [".md", ".mmd"]:
             return
 
@@ -45,7 +45,7 @@ def check_compliance(campaign_name: str):
                         walk_schema(child, local_path / child.name, indent + 1)
             else:
                 print(f"{prefix}⚠️ {name}")
-        else:
+        elif placeholder_match:
             # Placeholder validation
             var_name = placeholder_match.group(1).upper()
             

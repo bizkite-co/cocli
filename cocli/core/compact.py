@@ -3,6 +3,7 @@ import json
 import logging
 import time
 from datetime import datetime, UTC
+from typing import Any
 
 import boto3
 from botocore.exceptions import ClientError
@@ -36,11 +37,11 @@ class CompactManager:
         self.s3_lock_key = self.s3_index_prefix + "compact.lock"
         
         # S3 Client (Lazy loaded)
-        self._s3 = None
+        self._s3: Any = None
         self._bucket = "roadmap-cocli-data-use1" # TODO: Load from config
 
     @property
-    def s3(self):
+    def s3(self) -> Any:
         if self._s3 is None:
             # We assume local machine has proper creds/profile for compaction
             session = boto3.Session() 
@@ -71,7 +72,7 @@ class CompactManager:
                 logger.error(f"Failed to acquire lock: {e}")
             return False
 
-    def release_lock(self):
+    def release_lock(self) -> None:
         """Removes the compaction lock from S3."""
         try:
             self.s3.delete_object(Bucket=self._bucket, Key=self.s3_lock_key)
@@ -123,7 +124,7 @@ class CompactManager:
         logger.info(f"Isolated {moved_count} files.")
         return moved_count
 
-    def acquire_staging(self):
+    def acquire_staging(self) -> None:
         """Syncs the processing/run_id/ folder from S3 to local disk."""
         logger.info(f"Acquiring staging data to {self.local_proc_dir}...")
         
@@ -146,7 +147,7 @@ class CompactManager:
         
         logger.info("Staging data acquired.")
 
-    def merge(self):
+    def merge(self) -> None:
         """Merges checkpoint and staging using DuckDB."""
         import duckdb
         logger.info("Starting DuckDB merge...")
@@ -253,14 +254,14 @@ class CompactManager:
             os.replace(tmp_checkpoint, self.checkpoint_path)
             logger.info(f"Merged checkpoint saved to {self.checkpoint_path}")
         
-    def commit_remote(self):
+    def commit_remote(self) -> None:
         """Uploads the new checkpoint to S3."""
         logger.info("Uploading updated checkpoint to S3...")
         s3_key = self.s3_index_prefix + "prospects.checkpoint.usv"
         self.s3.upload_file(str(self.checkpoint_path), self._bucket, s3_key)
         logger.info("S3 Checkpoint updated.")
 
-    def cleanup(self):
+    def cleanup(self) -> None:
         """Purges staging data from local and remote."""
         logger.info("Cleaning up staging layers...")
         
@@ -285,7 +286,7 @@ class CompactManager:
             
         logger.info("Cleanup complete.")
 
-    def run(self):
+    def run(self) -> None:
         """Executes the full compaction lifecycle."""
         if not self.acquire_lock():
             return

@@ -26,7 +26,7 @@ def is_non_conforming(name: str) -> bool:
         pass
     return False
 
-def cleanup_target_tiles(campaign_name: str, execute: bool = False, push: bool = False):
+def cleanup_target_tiles(campaign_name: str, execute: bool = False, push: bool = False) -> None:
     campaign_dir = get_campaign_dir(campaign_name)
     if not campaign_dir:
         logger.error(f"Campaign {campaign_name} not found.")
@@ -40,18 +40,18 @@ def cleanup_target_tiles(campaign_name: str, execute: bool = False, push: bool =
     logger.info(f"--- Recursive Target Tiles Cleanup: {campaign_name} ---")
     
     # 1. Recursive Scan for non-conforming directories
-    non_conforming = []
-    for root, dirs, files in os.walk(tiles_dir, topdown=False):
-        for d in dirs:
-            if is_non_conforming(d):
-                non_conforming.append(Path(root) / d)
+    non_conforming: list[Path] = []
+    for root_dir, dirs, files in os.walk(tiles_dir, topdown=False):
+        for d_name in dirs:
+            if is_non_conforming(d_name):
+                non_conforming.append(Path(root_dir) / d_name)
 
     logger.info(f"Found {len(non_conforming)} non-conforming directories at various depths.")
     
     if not execute:
         logger.info("DRY RUN: No files will be moved or deleted.")
-        for d in non_conforming[:10]:
-            print(f"  [STALE] {d.relative_to(tiles_dir)}")
+        for d_item in non_conforming[:10]:
+            print(f"  [STALE] {d_item.relative_to(tiles_dir)}")
         if len(non_conforming) > 10:
             print(f"  ... and {len(non_conforming) - 10} more")
         return
@@ -64,19 +64,19 @@ def cleanup_target_tiles(campaign_name: str, execute: bool = False, push: bool =
     for stale_dir in non_conforming:
         try:
             val = round(float(stale_dir.name), 1)
-            gold_dir = stale_dir.parent / f"{val}"
+            gold_dir: Path = stale_dir.parent / f"{val}"
             
             if gold_dir != stale_dir:
                 # Merge logic
-                for file in stale_dir.iterdir():
-                    if file.is_file():
+                for file_node in stale_dir.iterdir():
+                    if file_node.is_file():
                         gold_dir.mkdir(parents=True, exist_ok=True)
-                        target = gold_dir / file.name
+                        target_node = gold_dir / file_node.name
                         # Preference: Keep existing USV over CSV, or Newer over Older
-                        if not target.exists() or (file.suffix == ".usv" and target.suffix == ".csv"):
-                            if target.exists():
-                                target.unlink()
-                            shutil.move(str(file), str(target))
+                        if not target_node.exists() or (file_node.suffix == ".usv" and target_node.suffix == ".csv"):
+                            if target_node.exists():
+                                target_node.unlink()
+                            shutil.move(str(file_node), str(target_node))
                             merged_count += 1
             
             # Delete the stale directory if it still exists (might be empty now)
@@ -87,12 +87,12 @@ def cleanup_target_tiles(campaign_name: str, execute: bool = False, push: bool =
             logger.error(f"Failed to process {stale_dir}: {e}")
 
     # Final cleanup of empty parents that might have been left behind
-    for root, dirs, files in os.walk(tiles_dir, topdown=False):
-        for d in dirs:
-            dir_path = Path(root) / d
+    for root_path, sub_dirs, file_names in os.walk(tiles_dir, topdown=False):
+        for sub_d in sub_dirs:
+            dir_node: Path = Path(root_path) / sub_d
             try:
-                if not any(dir_path.iterdir()):
-                    dir_path.rmdir()
+                if not any(dir_node.iterdir()):
+                    dir_node.rmdir()
             except OSError:
                 pass
 

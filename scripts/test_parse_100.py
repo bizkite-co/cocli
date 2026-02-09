@@ -4,7 +4,7 @@ from itertools import islice
 
 logging.basicConfig(level=logging.INFO)
 
-def test_100():
+def test_100() -> None:
     manager = ProspectsIndexManager("roadmap")
     print("Attempting to parse first 100 prospects from index...")
     

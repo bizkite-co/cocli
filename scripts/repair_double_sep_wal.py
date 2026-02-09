@@ -1,5 +1,6 @@
 import sys
 from pathlib import Path
+from typing import Optional, Any
 
 # Add project root to path
 sys.path.append(str(Path(__file__).parent.parent))
@@ -25,22 +26,22 @@ def repair_file(path: Path, execute: bool = False) -> bool:
             if h:
                 row_dict[h] = v
             
-        def to_float(val):
+        def to_float(val: str) -> Optional[float]:
             try:
                 return float(val) if val else None
             except Exception:
                 return None
 
         # Build clean Prospect
-        mapped_data = {
+        mapped_data: dict[str, Any] = {
             "place_id": row_dict.get("Place_ID") or row_dict.get("id"),
             "name": row_dict.get("Name"),
             "company_slug": row_dict.get("company_slug"),
             "phone_1": row_dict.get("Phone_1"),
             "website": row_dict.get("Website"),
             "full_address": row_dict.get("Full_Address"),
-            "latitude": to_float(row_dict.get("Latitude")),
-            "longitude": to_float(row_dict.get("Longitude")),
+            "latitude": to_float(str(row_dict.get("Latitude") or "")),
+            "longitude": to_float(str(row_dict.get("Longitude") or "")),
             "processed_by": row_dict.get("processed_by"),
             "discovery_phrase": row_dict.get("discovery_phrase"),
             "discovery_tile_id": row_dict.get("discovery_tile_id")
@@ -62,7 +63,7 @@ def repair_file(path: Path, execute: bool = False) -> bool:
     except Exception:
         return False
 
-def main():
+def main() -> None:
     execute = "--execute" in sys.argv
     wal_dir = Path("data/campaigns/roadmap/indexes/google_maps_prospects/wal")
     

@@ -2,18 +2,19 @@ import os
 import shutil
 from pathlib import Path
 import logging
+from typing import Dict, Any
 
 logging.basicConfig(level=logging.INFO, format='%(levelname)s: %(message)s')
 logger = logging.getLogger(__name__)
 
-def consolidate():
+def consolidate() -> None:
     base_dir = Path("data/campaigns/roadmap/indexes/google_maps_prospects")
     target_wal_dir = base_dir / "wal"
     target_wal_dir.mkdir(exist_ok=True)
 
     # Dictionary to track the "Winner" for each place_id
     # winners[place_id] = { 'path': Path, 'ext': '.usv', 'mtime': float }
-    winners = {}
+    winners: Dict[str, Dict[str, Any]] = {}
     all_files = []
 
     # 1. Collect all files from all subdirectories
@@ -64,9 +65,10 @@ def consolidate():
         target_path = shard_dir / f"{place_id}{winner['ext']}"
         
         # If the winner is already at the target path, skip the move
-        if winner['path'].resolve() != target_path.resolve():
+        win_path = winner['path']
+        if win_path.resolve() != target_path.resolve():
             # Use copy2 to preserve metadata, then we'll clean up all sources later
-            shutil.copy2(winner['path'], target_path)
+            shutil.copy2(win_path, target_path)
         
         processed_count += 1
         if processed_count % 5000 == 0:
@@ -77,15 +79,15 @@ def consolidate():
     
     # We'll just delete the root level shards and inbox, and re-create a clean wal
     # To be extremely safe, we'll delete files we know we processed or that are losers
-    for f in all_files:
+    for f_item in all_files:
         # Resolve path to handle symlinks correctly if any
-        resolved_f = f.resolve()
+        resolved_f: Path = f_item.resolve()
         # Keep it if it's inside the new wal structure AND it's a winner
         is_winner_at_target = False
-        place_id = f.stem
-        if place_id in winners:
-            shard = place_id[5]
-            expected_target = (target_wal_dir / shard / f"{place_id}{winners[place_id]['ext']}").resolve()
+        pid_val = f_item.stem
+        if pid_val in winners:
+            shard_val = pid_val[5]
+            expected_target: Path = (target_wal_dir / shard_val / f"{pid_val}{winners[pid_val]['ext']}").resolve()
             if resolved_f == expected_target:
                 is_winner_at_target = True
         

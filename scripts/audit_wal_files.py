@@ -6,7 +6,7 @@ sys.path.append(str(Path(__file__).parent.parent))
 
 from cocli.core.utils import UNIT_SEP
 
-def audit_wal():
+def audit_wal() -> None:
     wal_dir = Path("data/campaigns/roadmap/indexes/google_maps_prospects/wal")
     if not wal_dir.exists():
         print(f"WAL directory not found: {wal_dir}")

@@ -3,7 +3,7 @@ import duckdb
 from typing import Dict, Any
 from .reporting import get_boto3_session
 from .config import load_campaign_config
-from ..utils.usv_utils import UNIT_SEPARATOR
+from .utils import UNIT_SEP
 
 logger = logging.getLogger(__name__)
 
@@ -62,7 +62,7 @@ def get_cluster_capacity_stats(campaign_name: str) -> Dict[str, Any]:
             if not files:
                 return
             path_list = "', '".join(files)
-            delim_str = delimiter if delimiter != UNIT_SEPARATOR else '\\x1f'
+            delim_str = delimiter if delimiter != UNIT_SEP else '\\x1f'
             # Select only processed_by (column 54) to ensure UNION ALL column count matches
             # Using read_csv with explicit column names because files are headerless
             q = f"""
@@ -84,7 +84,7 @@ def get_cluster_capacity_stats(campaign_name: str) -> Dict[str, Any]:
                 logger.debug(f"DuckDB Details query failed for {delim_str}: {e}")
 
         process_files(files_csv, ',')
-        process_files(files_usv, UNIT_SEPARATOR)
+        process_files(files_usv, UNIT_SEP)
 
         # 2. Sample Scrapes (scraped-tiles/**/*.usv and *.csv)
         prefix_scr = f"campaigns/{campaign_name}/indexes/scraped-tiles/"
@@ -98,7 +98,7 @@ def get_cluster_capacity_stats(campaign_name: str) -> Dict[str, Any]:
             if not files:
                 return
             path_list = "', '".join(files)
-            delim_str = delimiter if delimiter != UNIT_SEPARATOR else '\\x1f'
+            delim_str = delimiter if delimiter != UNIT_SEP else '\\x1f'
             # Select only processed_by to ensure UNION ALL column count matches
             q = f"""
                 WITH raw_data AS (
@@ -118,7 +118,7 @@ def get_cluster_capacity_stats(campaign_name: str) -> Dict[str, Any]:
                 logger.debug(f"DuckDB Scrapes query failed for {delim_str}: {e}")
 
         process_scrapes(scr_csv, ',')
-        process_scrapes(scr_usv, UNIT_SEPARATOR)
+        process_scrapes(scr_usv, UNIT_SEP)
 
 
         # 3. Sample Enrichment Results (enrichments/website.md)

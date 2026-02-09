@@ -1,7 +1,7 @@
 import duckdb
 from pathlib import Path
 
-def query_tiered_index(index_dir: Path):
+def query_tiered_index(index_dir: Path) -> None:
     con = duckdb.connect(database=':memory:')
     
     # Define the FULL schema (55 columns)
@@ -64,10 +64,12 @@ def query_tiered_index(index_dir: Path):
     """)
     
     res = con.execute("SELECT count(*) FROM prospects").fetchone()
-    print(f"Total Unified Prospects: {res[0]}")
+    if res:
+        print(f"Total Unified Prospects: {res[0]}")
     
     wal_hits = con.execute("SELECT count(*) FROM prospects WHERE tier = 1").fetchone()
-    print(f"Updated by WAL: {wal_hits[0]}")
+    if wal_hits:
+        print(f"Updated by WAL: {wal_hits[0]}")
 
 if __name__ == "__main__":
     idx = Path("data/campaigns/roadmap/indexes/google_maps_prospects")
