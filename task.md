@@ -21,6 +21,7 @@ Recover unique hollow records for a targeted campaign and enforce a "Model-to-Mo
 - [x] **Consolidated Identity Map**: Compiled 1,568 proven Name/PID mappings to ensure high-quality re-enqueuing.
 - [x] **Batch Logging**: Updated `gm-list` to produce co-located `results.usv` in a geographic directory tree (`{shard}/{lat}/{lon}/{phrase}.usv`).
 - [x] **Cluster Alignment**: Hotfixed all 4 nodes to read/write the Universal Namespace structure.
+- [x] **Grid Precision Normalization**: Recursively cleaned up high-precision (4-decimal) coordinate folders in `target-tiles` and `gm-list` to enforce 1-decimal grid standard.
 - [ ] **Continuous Hydration**: Monitor and process the remaining ~15,000 items in 500-1000 item batches (Currently letting PIs process naturally).
 - [ ] **Cleanup Finish**: Complete the purge of the 15k local "hollows" from S3 via the last `--delete` sync.
 
@@ -28,12 +29,13 @@ Recover unique hollow records for a targeted campaign and enforce a "Model-to-Mo
 - [ ] **Formal Compactor**: Implement the `cocli index compact` command using the Freeze-Ingest-Merge-Commit (FIMC) pattern.
 - [ ] **Tiered Read Logic**: Update `ProspectsIndexManager` to perform hybrid reads (Checkpoint + Processing + WAL).
 - [ ] **S3 Object Lifecycle**: Implement specific deletion of processed WAL files on S3 after successful compaction.
-- [ ] **Compliance Enforcement**: Integrate `scripts/check_schema_compliance.py` into the CI/CD or pre-deployment checks.
+- [x] **Compliance Enforcement**: Integrated `scripts/check_schema_compliance.py` for automated data root audits.
 - [ ] **Content-Based Checkpoints**: Implement a "Latest Checkpoint" pointer/manifest on S3 to optimize cross-environment sync.
 
 ## Technical Standards
 - **Universal Namespace**: All data paths must be identical across Local, S3, and RPi.
 - **Headerless USV**: Sharded index files (.usv) MUST NOT contain headers. Schemas are defined in the root `datapackage.json`.
+- **Coordinate Precision**: All geographic shard and directory names MUST be rounded to 1 decimal place (tenth-degree grid).
 - **Adjacent Identifiers**: The first two columns of any prospect/result USV MUST be `place_id` and `company_slug`.
 - **Global Constants**: Use `UNIT_SEP` (\x1f) from `cocli.core.utils` for all field separation.
 - **Lineage Preservation**: Every task MUST carry its `discovery_phrase` and `discovery_tile_id` from discovery through to the final index record.
@@ -45,7 +47,10 @@ Validates completion markers against Pydantic models and the Prospect Index to e
 ### 2. Queue Normalization (`scripts/cleanup_gm_list_pending.py`)
 Purges expired leases and normalizes coordinate paths to 1-decimal precision.
 
-### 3. Prospect Migration (`scripts/migrate_prospect_index.py`)
+### 3. Grid Cleanup (`scripts/cleanup_target_tiles.py`)
+Recursively merges and purges high-precision coordinate directories in `target-tiles` to maintain grid integrity.
+
+### 4. Prospect Migration (`scripts/migrate_prospect_index.py`)
 Bulk migrates legacy data to the new sharded, headerless format with mandatory validation.
 
 ### 4. Cluster Health (`scripts/check_cluster_health.py`)
