@@ -5,7 +5,7 @@ class SchemaPlaceholders(BaseModel):
     CAMPAIGN_NAME: str = Field(..., min_length=2, pattern=r"^[a-z0-9-]+$")
     SHARD_CHAR: str = Field(..., min_length=1, max_length=1, pattern=r"^[A-Za-z0-9]$")
     PLACE_ID: str = Field(..., min_length=10, pattern=r"^ChIJ[A-Za-z0-9_-]+$")
-    LAT_SHARD: str = Field(..., pattern=r"^-?\d+$")
+    LAT_SHARD: str = Field(..., pattern=r"^-?\d$")
     LAT_TENTH_DEGREE: str = Field(..., pattern=r"^-?\d+(\.\d)?$")
     LON_TENTH_DEGREE: str = Field(..., pattern=r"^-?\d+(\.\d)?$")
     SEARCH_SLUG: str = Field(..., pattern=r"^[a-z0-9-]+$")

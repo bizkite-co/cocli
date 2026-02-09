@@ -22,8 +22,8 @@ Recover unique hollow records for a targeted campaign and enforce a "Model-to-Mo
 - [x] **Batch Logging**: Updated `gm-list` to produce co-located `results.usv` in a geographic directory tree (`{shard}/{lat}/{lon}/{phrase}.usv`).
 - [x] **Cluster Alignment**: Hotfixed all 4 nodes to read/write the Universal Namespace structure.
 - [x] **Grid Precision Normalization**: Recursively cleaned up high-precision (4-decimal) coordinate folders in `target-tiles` and `gm-list` to enforce 1-decimal grid standard.
-- [ ] **Continuous Hydration**: Monitor and process the remaining ~15,000 items in 500-1000 item batches (Currently letting PIs process naturally).
-- [ ] **Cleanup Finish**: Complete the purge of the 15k local "hollows" from S3 via the last `--delete` sync.
+- [x] **Continuous Hydration**: Added 4,614 new tasks to `gm-details/pending` and normalized all shards to 1-character format.
+- [x] **Cleanup Finish**: Successfully purged the 21k redundant WAL files and the 4.6k hollow WAL files from S3 via targeted sync.
 
 ## Phase 4: Index Robustness & Lifecycle (PROPOSED)
 - [ ] **Formal Compactor**: Implement the `cocli index compact` command using the Freeze-Ingest-Merge-Commit (FIMC) pattern.
