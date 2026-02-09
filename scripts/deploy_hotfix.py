@@ -29,31 +29,53 @@ def deploy_to_host(user: str, host: str) -> None:
         console.print(f"  [red]Rsync failed: {res.stderr}[/red]")
         return
 
-    # 2. Find running cocli containers
-    res = run_ssh(user, host, "docker ps --format '{{.Names}}' | grep cocli")
+    # 2. Find all cocli containers (including stopped ones)
+    res = run_ssh(user, host, "docker ps -a --format '{{.Names}}' | grep cocli")
     containers = [c for c in res.stdout.splitlines() if c.strip()]
     
     for container in containers:
+        # Check if container is running
+        status_res = run_ssh(user, host, f"docker inspect -f '{{{{.State.Running}}}}' {container}")
+        is_running = status_res.stdout.strip() == "true"
+        
+        if not is_running:
+            console.print(f"  Starting stopped container: [cyan]{container}[/cyan]")
+            run_ssh(user, host, f"docker start {container}")
+            # Give it a second to initialize
+            time.sleep(1)
+
         console.print(f"  Patching container: [cyan]{container}[/cyan]")
         
-        # Site-packages path
-        lib_path = "/usr/local/lib/python3.12/dist-packages/cocli"
-        app_path = "/app/cocli"
+        # 1. Dynamically find the cocli installation path
+        res = run_ssh(user, host, f"docker exec {container} python3 -c 'import cocli; print(cocli.__path__[0])'")
+        if res.returncode != 0:
+            console.print(f"  [red]Could not find cocli path in {container}: {res.stderr}[/red]")
+            continue
+            
+        lib_path = res.stdout.strip()
+        app_path = "/app/hotfix_cocli"
         
-        # 1. Ensure /app/cocli directory exists inside container
+        # 2. Ensure /app/hotfix_cocli directory exists inside container
         run_ssh(user, host, f"docker exec {container} mkdir -p {app_path}")
         
-        # 2. Copy code to /app/cocli
+        # 3. Copy code to /app/hotfix_cocli
         cmd = f"docker cp {REMOTE_TMP_DIR}/cocli/. {container}:{app_path}/"
         run_ssh(user, host, cmd)
         
-        # 3. Ensure symlink exists from site-packages to /app/cocli
-        # This guarantees 'cocli' command uses the hotfixed code
-        link_cmd = f"docker exec {container} bash -c 'rm -rf {lib_path} && ln -s {app_path} {lib_path}'"
-        run_ssh(user, host, link_cmd)
+        # 4. Use a bind-mount style replacement or direct overwrite if symlink is risky
+        # Direct overwrite is safer for site-packages if we want to be sure
+        console.print(f"  Overwriting {lib_path} with hotfixed code...")
+        run_ssh(user, host, f"docker exec {container} cp -r {app_path}/. {lib_path}/")
 
         console.print(f"  Restarting {container}...")
         run_ssh(user, host, f"docker restart {container}")
+        
+        # 5. Verify the patch (check for a recent change, e.g., the presence of UNIT_SEP in utils)
+        verify_res = run_ssh(user, host, f"docker exec {container} grep 'UNIT_SEP =' {lib_path}/core/utils.py")
+        if verify_res.returncode == 0:
+            console.print(f"  [green]Verification PASSED for {container}[/green]")
+        else:
+            console.print(f"  [red]Verification FAILED for {container}[/red]")
 
     console.print(f"  [green]Host {host} updated successfully.[/green]")
 

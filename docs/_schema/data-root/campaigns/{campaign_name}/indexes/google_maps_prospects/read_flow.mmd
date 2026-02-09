@@ -1,0 +1,10 @@
+sequenceDiagram
+    participant A as Auditor/Client
+    participant CP as Checkpoint (Cold)
+    participant P as Staging (Warm)
+    participant W as WAL (Hot)
+
+    A->>CP: Read prospects.checkpoint.usv (Base State)
+    A->>P: Scan processing/ (Overlay intermediate updates)
+    A->>W: Scan wal/ (Overlay most recent updates)
+    A->>A: Yield Merged Record (Hot Layer Wins)

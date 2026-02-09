@@ -1,0 +1,22 @@
+sequenceDiagram
+    participant DIS as GM-List (Discovery)
+    participant HYD as GM-Details (Hydration)
+    participant Q as S3: gm-details/pending
+    participant WAL as S3: WAL (wal/)
+    participant RES as S3: gm-list/results
+
+    Note over DIS,Q: 1. DISCOVERY PHASE
+    DIS->>DIS: Scrape Map List
+    DIS->>Q: Push Hydration Task (place_id)
+    DIS->>RES: Write Batch Result Log (USV)
+    Note right of DIS: Discovery does NOT write to WAL
+
+    Note over HYD,WAL: 2. HYDRATION PHASE
+    HYD->>Q: Acquire Task
+    HYD->>HYD: Scrape Full Details
+    
+    Note over HYD,WAL: 3. RECORD CREATION (Atomic)
+    HYD->>WAL: Write detailed {place_id}.usv
+    Note right of HYD: Record is created ONLY upon successful hydration
+    
+    HYD->>HYD: Ack Queue Task

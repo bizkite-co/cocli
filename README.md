@@ -195,9 +195,9 @@ Google Maps conclusively blocks scraping requests from AWS Fargate IP ranges. Th
 
 The `cocli` ecosystem employs a strictly defined **Universal Data Namespace** and **Frictionless Data** standards to ensure consistency across local, cloud (S3), and edge (Raspberry Pi) environments.
 
-*   **Universal Data Namespace**: All data paths (Prospects, Emails, Queues) are mirrored 1:1 across all environments, defined in `docs/.schema/data-root/`.
+*   **Universal Data Namespace**: All data paths (Prospects, Emails, Queues) are mirrored 1:1 across all environments, defined in `docs/_schema/data-root/`.
 *   **Sharded Headerless USV**: Business data is stored in sharded `.usv` files using the `UNIT_SEP` (\x1f) delimiter. These files omit headers to reduce storage overhead and simplify ingestion, with schemas defined in `datapackage.json`.
-*   **Identity Traceability**: Every record is traced from Discovery (Tile/Phrase) to Enrichment (Emails) using a verified hand-off matrix. See `docs/.schema/traceability.md` for details.
+*   **Identity Traceability**: Every record is traced from Discovery (Tile/Phrase) to Enrichment (Emails) using a verified hand-off matrix. See `docs/_schema/traceability.md` for details.
 *   **Verification Tooling**:
     *   `cocli smart-sync`: Stateful, multi-threaded synchronization between Local and S3.
     *   `scripts/audit_queue_completion.py`: Pydantic-based validation of scraper "receipts" against the final index.

@@ -1,0 +1,45 @@
+{
+  "name": "gm-list-results",
+  "title": "Google Maps Discovery Audit Log",
+  "description": "Consolidated batch logs of businesses found during search tile discovery.",
+  "resources": [
+    {
+      "name": "discovery-batch",
+      "path": "**/*.usv",
+      "format": "csv",
+      "mediatype": "text/csv",
+      "encoding": "utf-8",
+      "dialect": {
+        "delimiter": "\u001f",
+        "header": false
+      },
+      "schema": {
+        "fields": [
+          {
+            "name": "place_id",
+            "type": "string",
+            "description": "Google Place ID",
+            "constraints": { "required": true }
+          },
+          {
+            "name": "company_slug",
+            "type": "string",
+            "description": "URL-friendly business identifier",
+            "constraints": { "required": true }
+          },
+          {
+            "name": "name",
+            "type": "string",
+            "description": "Human-readable business name"
+          },
+          {
+            "name": "phone",
+            "type": "string",
+            "description": "Business phone number from list view"
+          }
+        ],
+        "primaryKey": "place_id"
+      }
+    }
+  ]
+}

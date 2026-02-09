@@ -8,11 +8,11 @@ Recover unique hollow records for a targeted campaign and enforce a "Model-to-Mo
 - [x] **Model-to-Model Pipeline**: Implemented transformation flow: `ListItem` (Discovery) -> `Task` (Queue) -> `Prospect` (Index).
 - [x] **Discovery Lineage**: Added `discovery_phrase` and `discovery_tile_id` to all models to ensure attribution from search to hydration.
 - [x] **Gold Standard Identity**: Implemented AWS IoT Core X.509 authentication with automatic token refresh in supervisor.
-- [x] **Universal Data Namespace**: Standardized `data-root` mirroring between Local, S3, and RPi environments (Defined in `docs/.schema/data-root/`).
+- [x] **Universal Data Namespace**: Standardized `data-root` mirroring between Local, S3, and RPi environments (Defined in `docs/_schema/data-root/`).
 - [x] **Frictionless Data Standards**: Implemented `datapackage.json` for sharded indexes to enable headerless USVs with typed schemas.
 - [x] **Specialized Sharding**: Introduced `get_geo_shard` (latitudinal) and `get_place_id_shard` to remove primitive obsession.
 - [x] **Headerless & Adjacent Identifiers**: Reordered USV columns to `place_id | company_slug` next to each other and removed redundant headers.
-- [x] **Identity Traceability**: Formalized the "Identity Status Map" and verification hand-offs (Defined in `docs/.schema/traceability.md`).
+- [x] **Identity Traceability**: Formalized the "Identity Status Map" and verification hand-offs (Defined in `docs/_schema/traceability.md`).
 
 ## Phase 3: Recovery Execution (CURRENT)
 - [x] **Queue Purge**: Successfully deleted 15,520 hollow "completed" markers from S3.

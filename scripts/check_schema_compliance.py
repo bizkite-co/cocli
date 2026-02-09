@@ -8,7 +8,7 @@ sys.path.append(str(Path(__file__).parent.parent))
 from cocli.models.schema_placeholders import SchemaPlaceholders
 
 def check_compliance(campaign_name: str):
-    schema_root = Path("docs/.schema/data-root/campaigns/{campaign_name}")
+    schema_root = Path("docs/_schema/data-root/campaigns/{campaign_name}")
     
     # Use the current working directory 'data' symlink if it exists, otherwise fallback
     data_dir = Path("data").resolve()

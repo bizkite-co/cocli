@@ -73,14 +73,23 @@ class ProspectsIndexManager:
         all_files = []
         for d in search_dirs:
             if d.exists():
-                all_files.extend(list(d.rglob("*.usv")))
-                all_files.extend(list(d.rglob("*.csv")))
+                # Explicitly exclude the error log and the checkpoint itself
+                all_files.extend([
+                    p for p in d.rglob("*.usv") 
+                    if p.name != "validation_errors.usv" and p.resolve() != checkpoint_path
+                ])
+                all_files.extend([
+                    p for p in d.rglob("*.csv") 
+                    if p.name != "validation_errors.csv"
+                ])
         
         # Sort: .usv before .csv, and sharded (deeper path) before flat
         sorted_files = sorted(all_files, key=lambda p: (p.stem, p.suffix == ".csv", -len(p.parts)))
         
         for file_path in sorted_files:
             if file_path.resolve() == checkpoint_path:
+                continue
+            if file_path.name == "validation_errors.usv":
                 continue
             if not file_path.is_file():
                 continue

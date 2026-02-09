@@ -1,8 +1,8 @@
 import csv
 from typing import List, Iterable, Iterator, Any, Dict, Optional
 
-# Unit Separator (US) - used for fields
-UNIT_SEPARATOR = "\x1f"
+from ..core.utils import UNIT_SEP
+
 # Record Separator - using standard newline for broad tool compatibility
 RECORD_SEPARATOR = "\n"
 
@@ -24,7 +24,7 @@ class USVReader:
         for line in self._iterator:
             clean_line = line.strip()
             if clean_line:
-                yield clean_line.split(UNIT_SEPARATOR)
+                yield clean_line.split(UNIT_SEP)
 
     def __next__(self) -> List[str]:
         return next(iter(self))
@@ -65,7 +65,7 @@ class USVWriter:
         self.f = f
 
     def writerow(self, row: Iterable[Any]) -> None:
-        line = UNIT_SEPARATOR.join(str(item) if item is not None else "" for item in row)
+        line = UNIT_SEP.join(str(item) if item is not None else "" for item in row)
         self.f.write(line + RECORD_SEPARATOR)
 
 class USVDictWriter:
