@@ -30,9 +30,9 @@ def test_append_prospect(temp_campaign_dir, monkeypatch):
     success = manager.append_prospect(prospect)
     assert success
     
-    # Check if file exists in sharded path
+    # Check if file exists in sharded path inside wal/
     # ChIJtest123 -> shard is 'e' (index 5)
-    expected_path = temp_campaign_dir / "indexes" / "google_maps_prospects" / "e" / "ChIJtest123.usv"
+    expected_path = temp_campaign_dir / "indexes" / "google_maps_prospects" / "wal" / "e" / "ChIJtest123.usv"
     assert expected_path.exists()
     assert prospect.place_id in expected_path.read_text()
 
@@ -41,9 +41,9 @@ def test_has_place_id_wal(temp_campaign_dir, monkeypatch):
     manager = ProspectsIndexManager("test_campaign")
     
     place_id = "ChIJwal123"
-    # Manual write to WAL
+    # Manual write to WAL (new sharded structure)
     shard = "a" 
-    shard_dir = manager.index_dir / shard
+    shard_dir = manager.index_dir / "wal" / shard
     shard_dir.mkdir(parents=True)
     (shard_dir / f"{place_id}.usv").write_text("dummy data")
     

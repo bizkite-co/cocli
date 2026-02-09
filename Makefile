@@ -80,8 +80,8 @@ test: install ## Run all non-TUI tests using pytest
 	$(MAKE) lint
 	source $(VENV_DIR)/bin/activate && PYTHONPATH=. pytest -s tests/ --quiet --ignore=tests/tui/test_navigation_steps.py --ignore=tests/e2e
 
-test-unit: install lint ## Run unit tests (excluding TUI folder)
-	source $(VENV_DIR)/bin/activate && PYTHONPATH=. pytest -s tests/ --ignore=tests/tui
+test-unit: install lint ## Run unit tests (excluding TUI and E2E folders)
+	source $(VENV_DIR)/bin/activate && PYTHONPATH=. pytest -s tests/ --ignore=tests/tui --ignore=tests/e2e
 
 test-tui-integration: install ## Run only the TUI integration tests
 	source $(VENV_DIR)/bin/activate && pytest tests/tui/test_navigation_steps.py
