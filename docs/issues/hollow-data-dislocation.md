@@ -53,12 +53,12 @@ We are currently in a multi-phase recovery:
 ## Current State (Feb 4, 2026)
 - **Status**: Recovery Phase Active. 
 - **Identity Model**: Successfully implemented AWS IoT Core "Gold Standard" authentication. Workers now use short-lived STS tokens, preventing long-term credential leakage.
-- **Namespace Control**: Established an explicit S3 Path Specification (see `docs/architecture/s3-namespace-specification.md` and `docs/.schema/`).
+- **Namespace Control**: Established an explicit S3 Path Specification (see `docs/architecture/s3-namespace-specification.md` and `docs/_schema/`).
 - **Pipeline Integrity**: Verified the Model-to-Model flow (`ListItem` -> `Task` -> `Prospect`) by recovering test ID `ChIJrWcEWr8B2YgR7Sw1Y_d7GUw`.
 - **Async Stability**: Added `asyncio.to_thread` to queue polling to ensure supervisor heartbeats and command processing are never blocked by S3 I/O.
 
 ## Prevention for Future LLMs / Developers
-- **CONSULT** the `docs/.schema/` directory before adding new filesystem or S3 nodes.
+- **CONSULT** the `docs/_schema/` directory before adding new filesystem or S3 nodes.
 - **NEVER** remove `alias_generator` from models that interact with the filesystem.
 - **ALWAYS** check `make lint` and `make test` after model changes.
 - **NEVER** allow a model to save if primary identifiers are null.

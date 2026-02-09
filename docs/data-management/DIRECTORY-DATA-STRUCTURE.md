@@ -59,4 +59,4 @@ data/
 - **Atomic Deletions**: Use `aws s3 sync --delete` ONLY on specific leaf folders (e.g., `completed/`) after local auditing.
 
 ---
-*See `docs/.schema/traceability.md` for how identities move through this structure.*
+*See `docs/_schema/traceability.md` for how identities move through this structure.*

@@ -1,6 +1,4 @@
 import duckdb
-import json
-import os
 from pathlib import Path
 
 def query_tiered_index(index_dir: Path):
@@ -52,7 +50,7 @@ def query_tiered_index(index_dir: Path):
     except Exception as e:
         print(f"WAL Load failed: {e}")
         # Create empty table if WAL fails
-        con.execute(f"CREATE TABLE wal AS SELECT * FROM checkpoint WHERE 1=0")
+        con.execute("CREATE TABLE wal AS SELECT * FROM checkpoint WHERE 1=0")
 
     # 3. Unified View (Latest Wins)
     con.execute("""

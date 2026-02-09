@@ -1,6 +1,4 @@
-import os
 import sys
-import shutil
 from pathlib import Path
 from datetime import datetime, UTC
 from pydantic import ValidationError
@@ -103,7 +101,7 @@ def repair_wal(execute: bool = False):
             print(f"Critical System Error processing {path.name}: {e}")
             error_count += 1
 
-    print(f"\nProcessing Complete.")
+    print("\nProcessing Complete.")
     print(f"Successfully Validated/Mapped: {repaired_count}")
     print(f"Failed Validation: {error_count}")
     if error_count > 0:

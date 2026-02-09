@@ -1,4 +1,3 @@
-import os
 import sys
 from pathlib import Path
 
@@ -45,9 +44,15 @@ def audit_wal():
                 is_valid_pid = first_col.startswith("ChIJ")
                 
                 issues = []
-                if has_header: issues.append("Has Header")
-                if col_count != EXPECTED_COLS: issues.append(f"Col Count Mismatch: {col_count} (expected {EXPECTED_COLS})")
-                if not is_valid_pid and not has_header: issues.append(f"Invalid Place ID in col 1: {first_col[:20]}...")
+                
+                if has_header:
+                    issues.append("HAS_HEADER")
+                
+                if col_count != EXPECTED_COLS:
+                    issues.append(f"Col Count Mismatch: {col_count} (expected {EXPECTED_COLS})")
+                
+                if not is_valid_pid and not has_header:
+                    issues.append(f"Invalid Place ID in col 1: {first_col[:20]}...")
                 
                 if issues:
                     broken_files.append((usv_file, "; ".join(issues)))
@@ -61,7 +66,7 @@ def audit_wal():
     
     if broken_files:
         with open(broken_log, "w") as f:
-            f.write(f"--- Broken WAL Files Report ---\n")
+            f.write("--- Broken WAL Files Report ---\n")
             f.write(f"Total: {len(broken_files)} / {total_files}\n\n")
             for path, issue in broken_files:
                 f.write(f"{path}: {issue}\n")

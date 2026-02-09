@@ -1,7 +1,5 @@
-import os
 import sys
 import json
-import shutil
 from pathlib import Path
 from datetime import datetime, UTC
 
@@ -9,10 +7,8 @@ from datetime import datetime, UTC
 sys.path.append(str(Path(__file__).parent.parent))
 
 from cocli.core.sharding import get_place_id_shard
-from cocli.core.utils import UNIT_SEP
 
 def enqueue_hollow(execute: bool = False):
-    wal_dir = Path("data/campaigns/roadmap/indexes/google_maps_prospects/wal")
     pending_dir = Path("data/campaigns/roadmap/queues/gm-details/pending")
     
     # We use the audit log to target only the broken files
@@ -31,7 +27,8 @@ def enqueue_hollow(execute: bool = False):
     errors = 0
 
     for i, path in enumerate(file_paths):
-        if not path.exists(): continue
+        if not path.exists():
+            continue
         
         try:
             # The filename itself is usually the place_id
@@ -70,7 +67,7 @@ def enqueue_hollow(execute: bool = False):
             print(f"Error processing {path.name}: {e}")
             errors += 1
 
-    print(f"\nProcessing Complete.")
+    print("\nProcessing Complete.")
     print(f"Tasks Enqueued: {enqueued}")
     print(f"WAL Files Deleted: {deleted}")
     print(f"Errors: {errors}")

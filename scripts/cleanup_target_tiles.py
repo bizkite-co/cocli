@@ -10,7 +10,6 @@ from pathlib import Path
 sys.path.append(str(Path(__file__).parent.parent))
 
 from cocli.core.config import get_campaign_dir, load_campaign_config
-from cocli.core.reporting import get_boto3_session
 
 logging.basicConfig(level=logging.INFO, format='%(levelname)s: %(message)s')
 logger = logging.getLogger(__name__)
@@ -103,7 +102,7 @@ def cleanup_target_tiles(campaign_name: str, execute: bool = False, push: bool =
     if deleted_count > 0 or push:
         do_push = push
         if not push and os.isatty(sys.stdin.fileno()):
-            confirm = input(f"Would you like to PUSH-DELETE these changes to S3 now to prevent regression? (y/N): ")
+            confirm = input("Would you like to PUSH-DELETE these changes to S3 now to prevent regression? (y/N): ")
             do_push = confirm.lower() == 'y'
             
         if do_push:

@@ -1,7 +1,6 @@
 import typer
 import logging
 from rich.console import Console
-from typing import Optional
 
 console = Console()
 logger = logging.getLogger(__name__)

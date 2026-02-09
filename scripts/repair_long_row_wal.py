@@ -1,9 +1,6 @@
-import os
 import sys
 from pathlib import Path
-from datetime import datetime, UTC
-from typing import Optional, Dict, Any
-from pydantic import BaseModel, Field, ValidationError
+from pydantic import ValidationError
 
 # Add project root to path
 sys.path.append(str(Path(__file__).parent.parent))
@@ -22,10 +19,10 @@ def repair_file(path: Path, execute: bool = False) -> bool:
         while "\n\n" in content:
             content = content.replace("\n\n", "\n")
             
-        lines = [l for l in content.split("\n") if l.strip()]
+        lines = [line for line in content.split("\n") if line.strip()]
         print(f"  Line count: {len(lines)}")
         if len(lines) < 2:
-            print(f"  FAILED: Less than 2 lines found.")
+            print("  FAILED: Less than 2 lines found.")
             return False
             
         header = lines[0].split(UNIT_SEP)
@@ -40,13 +37,16 @@ def repair_file(path: Path, execute: bool = False) -> bool:
         
         row_dict = {}
         for h, v in zip(header, data):
-            if h: row_dict[h] = v
+            if h:
+                row_dict[h] = v
             
         print(f"  Sample keys: {list(row_dict.keys())[:10]}")
 
         def to_float(val):
-            try: return float(val) if val else None
-            except: return None
+            try:
+                return float(val) if val else None
+            except Exception:
+                return None
 
         mapped_data = {
             "place_id": row_dict.get("Place_ID") or row_dict.get("place_id") or row_dict.get("id"),
@@ -66,13 +66,13 @@ def repair_file(path: Path, execute: bool = False) -> bool:
         print(f"  Mapped Name: {mapped_data['name']}")
         
         if not mapped_data["place_id"] or not mapped_data["name"]:
-            print(f"  FAILED: Missing required identity fields.")
+            print("  FAILED: Missing required identity fields.")
             return False
 
         # Instantiate real model
         try:
             prospect = GoogleMapsProspect(**{k: v for k, v in mapped_data.items() if v is not None})
-            print(f"  SUCCESS: Model instantiated.")
+            print("  SUCCESS: Model instantiated.")
         except ValidationError as ve:
             print(f"  FAILED: Pydantic Validation Error: {ve}")
             return False
@@ -80,7 +80,7 @@ def repair_file(path: Path, execute: bool = False) -> bool:
         if execute:
             with open(path, 'w', encoding='utf-8') as f:
                 f.write(prospect.to_usv())
-            print(f"  SUCCESS: File overwritten.")
+            print("  SUCCESS: File overwritten.")
             return True
         return True
 
@@ -104,13 +104,14 @@ def main():
     failed = 0
     
     for usv_file in file_paths[:10]: # ONLY 10 FILES
-        if not usv_file.exists(): continue
+        if not usv_file.exists():
+            continue
         if repair_file(usv_file, execute=execute):
             success += 1
         else:
             failed += 1
 
-    print(f"\nDebug Complete.")
+    print("\nDebug Complete.")
     print(f"Successfully processed: {success}")
     print(f"Failed/Skipped: {failed}")
 

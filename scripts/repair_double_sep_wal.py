@@ -1,9 +1,5 @@
-import os
 import sys
 from pathlib import Path
-from datetime import datetime, UTC
-from typing import Optional, Dict, Any
-from pydantic import BaseModel, Field, ValidationError
 
 # Add project root to path
 sys.path.append(str(Path(__file__).parent.parent))
@@ -26,11 +22,14 @@ def repair_file(path: Path, execute: bool = False) -> bool:
         # We handle any length, but zip them to match header to data
         row_dict = {}
         for h, v in zip(header, data):
-            if h: row_dict[h] = v
+            if h:
+                row_dict[h] = v
             
         def to_float(val):
-            try: return float(val) if val else None
-            except: return None
+            try:
+                return float(val) if val else None
+            except Exception:
+                return None
 
         # Build clean Prospect
         mapped_data = {
@@ -83,7 +82,7 @@ def main():
         if total % 1000 == 0:
             print(f"Processed {total}...")
 
-    print(f"\nRepair Complete.")
+    print("\nRepair Complete.")
     print(f"Successfully processed: {success}")
     print(f"Failed/Skipped: {failed}")
 

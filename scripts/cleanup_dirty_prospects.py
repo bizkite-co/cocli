@@ -1,15 +1,12 @@
 import sys
 from pathlib import Path
 import logging
-from datetime import datetime, UTC
 import pydantic
-import os
 
 # Add project root to path
 sys.path.append(str(Path(__file__).parent.parent))
 
 from cocli.models.google_maps_prospect import GoogleMapsProspect
-from cocli.core.utils import UNIT_SEP
 from cocli.core.sharding import get_place_id_shard
 from cocli.core.config import get_campaign_dir
 from cocli.utils.usv_utils import USVDictReader
@@ -71,9 +68,11 @@ def migrate_dirty_files(campaign_name: str) -> None:
                     # Normalize keys
                     normalized_row = {}
                     for k, v in row.items():
-                        if not k: continue
+                        if not k:
+                            continue
                         key = k.lower().replace(" ", "_")
-                        if key == "place_id": key = "place_id"
+                        if key == "place_id":
+                            key = "place_id"
                         if key == "id" and not normalized_row.get("place_id"):
                             key = "place_id"
                         normalized_row[key] = v

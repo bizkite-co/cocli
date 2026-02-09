@@ -1,7 +1,7 @@
 ## Recent Progress (Feb 4, 2026)
 
 1. **Async Bottleneck Resolution**: Identified that synchronous queue polling was blocking the supervisor event loop. Implemented `asyncio.to_thread` for all `poll()` operations, ensuring heartbeats and command poller responsiveness.
-2. **Namespace Standardization**: Created a filesystem-based schema in `docs/.schema/` to define the "Gold Standard" for paths. This allows us to write "Path Validation" tests that compare real environments against the template.
+2. **Namespace Standardization**: Created a filesystem-based schema in `docs/_schema/` to define the "Gold Standard" for paths. This allows us to write "Path Validation" tests that compare real environments against the template.
 3. **LocalStack Opportunity**: The next step is to integrate LocalStack into our `make test` suite to specifically validate the S3 Discovery logic without requiring a physical Pi or real S3 bucket.
 
 1. Why isn't this part of our tests?

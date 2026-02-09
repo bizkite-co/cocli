@@ -1,4 +1,3 @@
-import csv
 from pathlib import Path
 from cocli.models.google_maps_prospect import GoogleMapsProspect
 from cocli.utils.usv_utils import USVDictReader
@@ -27,9 +26,11 @@ def test_single_file_isolated(file_path: Path):
             # The normalization logic we just added to the manager:
             normalized_row = {}
             for k, v in row.items():
-                if not k: continue
+                if not k:
+                    continue
                 key = k.lower().replace(" ", "_")
-                if key == "place_id": key = "place_id"
+                if key == "place_id":
+                    key = "place_id"
                 if key == "id" and not normalized_row.get("place_id"):
                     key = "place_id"
                 normalized_row[key] = v

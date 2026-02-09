@@ -25,15 +25,16 @@ google_maps_prospects/
 
 ### 1. Writing (Workers)
 - Workers **ONLY** write to `wal/`.
-- If a shard directory is missing (because the compactor moved it), the worker's filesystem handler re-creates it.
+- Workers are unaware of the compaction lock and never wait for it.
 
 ### 2. Compacting (The "Locking" Phase)
-To ensure no record is edited during compaction, we use a **Rename-Based Lock**:
-1.  **Freeze**: Compactor renames `wal/<shard>/` to `processing/<timestamp>/<shard>/`. (Atomic operation).
-2.  **Ingest**: Compactor reads files from `processing/`.
-3.  **Merge**: Compactor writes a new `checkpoint/prospects.<shard>.usv.tmp` merging the old checkpoint and the new processing data.
-4.  **Commit**: Atomic `os.replace` of the checkpoint file.
-5.  **Clean**: Move `processing/<timestamp>/` to `archive/`.
+To ensure no record is edited during compaction, we use an **S3-Native Conditional Lock**:
+1.  **Lock**: Compactor creates `compact.lock` on S3 using `If-None-Match: "*"`.
+2.  **Isolate**: Compactor moves files from `wal/` to `processing/run_id/` on S3.
+3.  **Acquire**: Compactor syncs `processing/run_id/` to Local disk.
+4.  **Merge**: Compactor merges local Checkpoint and local Staging using DuckDB.
+5.  **Commit**: Upload new `prospects.checkpoint.usv` to S3.
+6.  **Release**: Delete `processing/run_id/` and `compact.lock` on S3.
 
 ### 3. Reading (Auditors / Clients)
 To ensure **zero-downtime visibility**, readers MUST aggregate data from the tiers in this specific order:
@@ -44,6 +45,6 @@ To ensure **zero-downtime visibility**, readers MUST aggregate data from the tie
 **Integrity Rule**: If the same `place_id` exists in multiple tiers, the "Hotter" tier wins (`wal` > `processing` > `checkpoint`). This guarantees the client always sees the latest version, even if a compaction is halfway finished.
 
 ### 4. Interruption Recovery (Self-Healing)
-- If the compactor is interrupted during Step 1 (Freeze), the data is safe in `wal/`.
-- If interrupted during Step 2-4, the data is safe in `processing/<timestamp>/`.
-- **Protocol**: On every startup, the compactor MUST check for directories in `processing/`. If found, it MUST complete the ingestion of those directories before taking a new snapshot from `wal/`.
+- If the compactor is interrupted during Step 1 (Lock), the lock file remains on S3.
+- If interrupted during Step 2-5, data is isolated in `processing/run_id/`.
+- **Protocol**: On every startup, the compactor MUST check for folders in `processing/` on S3. If found, it MUST complete the ingestion of those specific folders before initiating a new scan of `wal/`. This ensures that even in failure, no snapshot is ever lost or double-processed.

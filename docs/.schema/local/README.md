@@ -1,1 +1,0 @@
-# Local Environment Schema

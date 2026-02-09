@@ -1,5 +1,5 @@
 import re
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field
 
 class SchemaPlaceholders(BaseModel):
     CAMPAIGN_NAME: str = Field(..., min_length=2, pattern=r"^[a-z0-9-]+$")
@@ -15,8 +15,6 @@ class SchemaPlaceholders(BaseModel):
         if placeholder_name not in cls.model_fields:
             return False
         try:
-            # Create a dynamic instance for validation
-            data = {placeholder_name: value}
             # We bypass full model validation to check just one field
             field = cls.model_fields[placeholder_name]
             # Since Pydantic doesn't have a simple 'validate_field' without an instance,

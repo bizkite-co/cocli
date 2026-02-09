@@ -77,7 +77,7 @@ def migrate_target_tiles(campaign_name: str, execute: bool = False, push: bool =
     if (moved_count > 0 or push) and execute:
         do_push = push
         if not push and os.isatty(sys.stdin.fileno()):
-            confirm = input(f"Would you like to PUSH-DELETE these changes to S3 now? (y/N): ")
+            confirm = input("Would you like to PUSH-DELETE these changes to S3 now? (y/N): ")
             do_push = confirm.lower() == 'y'
             
         if do_push:

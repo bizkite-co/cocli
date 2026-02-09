@@ -1,18 +1,13 @@
 import os
 import json
 import logging
-import uuid
 import time
-from pathlib import Path
 from datetime import datetime, UTC
-from typing import Dict, Any, List, Optional
 
 import boto3
 from botocore.exceptions import ClientError
 
 from .config import get_cocli_base_dir
-from .reporting import get_boto3_session
-from .sharding import get_place_id_shard
 
 logger = logging.getLogger(__name__)
 

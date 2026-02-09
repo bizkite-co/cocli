@@ -1,4 +1,3 @@
-import os
 import sys
 import shutil
 from pathlib import Path
@@ -61,12 +60,12 @@ def normalize_shards(execute: bool = False):
                 except Exception as e:
                     print(f"Failed to remove {item.name}: {e}")
 
-    print(f"\nNormalization Complete.")
+    print("\nNormalization Complete.")
     print(f"Tasks moved to correct shards: {moved_count}")
     if execute:
         print(f"Non-conforming shard directories removed: {removed_dirs}")
     else:
-        print(f"Run with --execute to perform the moves.")
+        print("Run with --execute to perform the moves.")
 
 if __name__ == "__main__":
     execute = "--execute" in sys.argv

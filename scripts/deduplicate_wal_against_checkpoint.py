@@ -1,4 +1,3 @@
-import os
 import sys
 from pathlib import Path
 
@@ -23,7 +22,8 @@ def deduplicate_wal(execute: bool = False):
     try:
         with open(checkpoint_path, 'r', encoding='utf-8') as f:
             for line in f:
-                if not line.strip(): continue
+                if not line.strip():
+                    continue
                 parts = line.split(UNIT_SEP)
                 if parts:
                     checkpoint_pids.add(parts[0])
@@ -50,7 +50,7 @@ def deduplicate_wal(execute: bool = False):
         if total_wal % 5000 == 0:
             print(f"Scanned {total_wal} WAL files...")
 
-    print(f"\nScan Complete.")
+    print("\nScan Complete.")
     print(f"Total WAL files: {total_wal}")
     print(f"Redundant files identified: {purged_count}")
     

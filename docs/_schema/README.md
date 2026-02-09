@@ -18,7 +18,7 @@ This schema is designed to be machine-verifiable.
 
 ## Maintenance
 When implementing a new feature that adds a new index, queue, or configuration node:
-1. Create the corresponding directory in `docs/.schema/`.
+1. Create the corresponding directory in `docs/_schema/`.
 2. Add a `README.md` explaining why it exists.
 3. (Optional) Add a schema or example if the format is new.
 

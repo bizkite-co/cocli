@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 import subprocess
+import time
 from rich.console import Console
 from typing import List, Tuple
 

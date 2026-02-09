@@ -5,7 +5,7 @@ To address your question, using long-lived Admin-level keys on edge devices
   1. AWS IoT Core "Credential Provider" (IMPLEMENTED - Feb 4, 2026)
   This is the gold standard for Raspberry Pis.
    * How it works: Each Pi uses a unique X.509 certificate to exchange for temporary STS tokens via the IoT endpoint.
-   * Implementation: See `cocli/core/reporting.py:get_boto3_session` and the RPi schema in `docs/.schema/rpi-worker/`.
+   * Implementation: See `cocli/core/reporting.py:get_boto3_session` and the RPi schema in `docs/_schema/rpi-worker/`.
    * Benefit: No long-lived secret keys on disk; granular revocation per device.
 
   2. IAM Roles Anywhere

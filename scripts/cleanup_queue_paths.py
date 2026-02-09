@@ -4,6 +4,7 @@ import shutil
 import logging
 import argparse
 import subprocess
+import re
 from pathlib import Path
 
 # Add project root to path
@@ -17,16 +18,6 @@ logger = logging.getLogger(__name__)
 
 def is_non_conforming(name: str) -> bool:
     """Checks if a name (file or dir) violates precision or flatness rules."""
-    # Rule 1: High Precision (more than 1 decimal)
-    # Check if any segment of the name looks like a high-precision float
-    segments = name.replace("_", ".").split(".")
-    for seg in segments:
-        if seg.isdigit() and len(seg) > 1 and name.find("." + seg) != -1:
-             # This is a bit naive, let's use a better approach
-             pass
-
-    # Re-evaluating: Just check for the patterns directly in the full name
-    import re
     # Pattern for > 1 decimal place: a dot followed by 2 or more digits, 
     # but we must ensure it's part of a number, not an extension
     if re.search(r"\d+\.\d{2,}", name):
@@ -112,7 +103,8 @@ def cleanup_queue(campaign_name: str, queue_rel_path: str, execute: bool = False
                                 gold_dir.mkdir(parents=True, exist_ok=True)
                                 target = gold_dir / sub.name
                                 if not target.exists() or (sub.suffix == ".usv" and target.suffix == ".csv"):
-                                    if target.exists(): target.unlink()
+                                    if target.exists():
+                                        target.unlink()
                                     shutil.move(str(sub), str(target))
                                     merged_count += 1
                                     log.write(f"MERGED DIR CONTENT: {sub.relative_to(base_dir)}\n")
@@ -146,7 +138,7 @@ def cleanup_queue(campaign_name: str, queue_rel_path: str, execute: bool = False
     if (deleted_count > 0 or push) and execute:
         do_push = push
         if not push and os.isatty(sys.stdin.fileno()):
-            confirm = input(f"Would you like to PUSH-DELETE these changes to S3 now? (y/N): ")
+            confirm = input("Would you like to PUSH-DELETE these changes to S3 now? (y/N): ")
             do_push = confirm.lower() == 'y'
             
         if do_push:

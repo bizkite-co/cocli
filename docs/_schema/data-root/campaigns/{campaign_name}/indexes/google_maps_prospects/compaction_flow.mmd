@@ -1,0 +1,35 @@
+sequenceDiagram
+    participant W as PI_Worker
+    participant C as Compactor
+    participant S3 as S3_Storage
+    participant WAL as S3_WAL
+    participant PROC as S3_Staging
+
+    Note over C,S3: 1. LOCK PHASE
+    C->>S3: Create compact.lock with If-None-Match star
+    S3-->>C: Lock Acquired - Other compactors blocked
+
+    Note over C,S3: 2. ISOLATION PHASE
+    C->>S3: List all files currently in WAL - Snapshot T0
+    
+    %% The Race Condition Scenario
+    W->>WAL: Write new result for place_id - T1
+    
+    C->>S3: Move files from T0 list to processing/run_id/
+    Note right of WAL: The Worker write from T1 remains in WAL
+    
+    Note over C,S3: 3. ACQUISITION AND MERGE
+    C->>S3: Sync processing/run_id/ to Local
+    C->>C: Merge local Checkpoint and Local Staging
+    
+    %% Another Write during merge
+    W->>WAL: Write another result - T2
+    Note right of WAL: WAL now contains two new records - T1 and T2
+
+    Note over C,S3: 4. COMMIT AND RELEASE
+    C->>S3: Upload new prospects.checkpoint.usv
+    C->>S3: Delete processing/run_id/
+    C->>S3: Delete compact.lock
+    
+    Note over W,WAL: Final State - Checkpoint is updated
+    Note over W,WAL: WAL contains T1 and T2 records for the next run

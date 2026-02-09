@@ -1,1 +1,0 @@
-# RPi Worker Internal Structure

@@ -123,9 +123,11 @@ class ProspectsIndexManager:
                             # Normalize keys: lowercase and map common variations
                             normalized_row = {}
                             for k, v in row.items():
-                                if not k: continue
+                                if not k:
+                                    continue
                                 key = k.lower().replace(" ", "_")
-                                if key == "place_id": key = "place_id" # already matches
+                                if key == "place_id":
+                                    key = "place_id" # already matches
                                 if key == "id" and not normalized_row.get("place_id"):
                                     # If 'id' is present but 'place_id' isn't, use 'id'
                                     key = "place_id"
@@ -144,7 +146,8 @@ class ProspectsIndexManager:
                                     with open(error_file, 'a', encoding='utf-8') as ef:
                                         # Write place_id, file source, and error message
                                         pid = normalized_row.get('place_id') or file_path.stem
-                                        ef.write(f"{pid}\x1f{file_path.name}\x1f{str(ve).replace('\\n', ' ')}\n")
+                                        msg = str(ve).replace('\n', ' ')
+                                        ef.write(f"{pid}{UNIT_SEP}{file_path.name}{UNIT_SEP}{msg}\n")
                                 except Exception:
                                     pass
                                 logger.warning(f"Skipping invalid prospect row in {file_path.name}: {ve}")
