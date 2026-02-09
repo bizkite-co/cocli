@@ -79,6 +79,12 @@ The project uses `pytest` and `pytest-bdd` for testing.
 
 ## Known Issues and Architectural Constraints
 
+### AWS S3 Sync
+
+* **FOCUSSED SYNC ONLY***: Only run S3 sync on the smallest path branch folder that you have made changes on. 
+* **SYNC INDEX/QUEUE SCHEMAS AFTER CHANGES**: Change the code and deploy it, then change the schemas locally, AND THEN PUSH CHANGES.
+* **SYNC PUSH DELETE**: If you cleanup a data migration locally, push that cleanup to S3 ASAP. The could should already be updated to handle the change, and deployed.
+
 ### Google Maps Data Center IP Blocking (Conclusive)
 We have conclusively identified that Google Maps blocks or heavily throttles requests from AWS Fargate IP ranges.
 - **Evidence:** The same Place IDs (e.g., `ChIJ5X0j7DHDwogRvQgaGw0y4FM`) scrape successfully in seconds on local/residential IPs but consistently time out on `div[role="main"]` when running in Fargate.

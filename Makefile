@@ -755,6 +755,7 @@ stop-rpi-all: ## Stop all cocli worker containers on ALL cluster nodes
 	-$(MAKE) stop-rpi RPI_HOST=octoprint.pi
 	-$(MAKE) stop-rpi RPI_HOST=coclipi.pi
 	-$(MAKE) stop-rpi RPI_HOST=cocli5x0.pi
+	-$(MAKE) stop-rpi RPI_HOST=cocli5x1.pi
 
 .PHONY: _deploy-single-node
 _deploy-single-node: ## Deploy to a single RPi node (Internal)

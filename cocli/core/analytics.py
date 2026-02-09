@@ -61,11 +61,12 @@ def get_cluster_capacity_stats(campaign_name: str) -> Dict[str, Any]:
             if not files:
                 return
             path_list = "', '".join(files)
-            delim_str = delimiter if delimiter != '\x1f' else '\\x1f'
-            # Select only processed_by to ensure UNION ALL column count matches
+            # Select only processed_by (column 55) to ensure UNION ALL column count matches
+            # Using read_csv with explicit column names because files are headerless
             q = f"""
                 WITH raw_data AS (
-                    SELECT processed_by FROM read_csv_auto(['{path_list}'], delim='{delim_str}', union_by_name=True, sample_size=5, ignore_errors=True)
+                    SELECT column54 as processed_by 
+                    FROM read_csv(['{path_list}'], delim='{delim_str}', header=False, auto_detect=False, columns={{'column54': 'VARCHAR'}}, ignore_errors=True)
                     UNION ALL SELECT NULL as processed_by WHERE 1=0
                 )
                 SELECT processed_by, COUNT(*) as count 

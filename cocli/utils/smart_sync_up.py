@@ -66,8 +66,10 @@ def run_smart_sync_up(
         session = get_boto3_session(config_obj)
         
         # Increase pool size to match or exceed the number of workers
+        # Force region from config to prevent SignatureDoesNotMatch on RPi
+        region = aws_config.get("region") or aws_config.get("aws_region")
         botocore_config = Config(max_pool_connections=50)
-        s3 = session.client("s3", config=botocore_config)
+        s3 = session.client("s3", config=botocore_config, region_name=region)
     except Exception as e:
          logger.error(f"Failed to create AWS session for upload: {e}")
          return
