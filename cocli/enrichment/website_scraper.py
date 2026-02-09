@@ -9,7 +9,7 @@ from playwright.async_api import Page, Browser, BrowserContext
 from bs4 import BeautifulSoup
 import logging
 from urllib.parse import urljoin
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, UTC
 
 from ..models.website import Website
 from ..core.website_domain_csv_manager import (
@@ -225,7 +225,7 @@ class WebsiteScraper:
                     scraper_version=website_data.scraper_version,
                     associated_company_folder=website_data.associated_company_folder,
                     is_email_provider=website_data.is_email_provider,
-                    updated_at=datetime.utcnow(),
+                    updated_at=datetime.now(UTC),
                 )
             )
         except Exception as e:
@@ -266,7 +266,7 @@ class WebsiteScraper:
 
         indexed_item = domain_index_manager.get_by_domain(domain)
         if indexed_item:
-            is_stale = (datetime.utcnow() - indexed_item.updated_at) >= fresh_delta
+            is_stale = (datetime.now(UTC) - indexed_item.updated_at) >= fresh_delta
             is_old_version = (
                 indexed_item.scraper_version or 1
             ) < CURRENT_SCRAPER_VERSION

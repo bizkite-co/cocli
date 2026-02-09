@@ -1,7 +1,7 @@
 import csv
 from pathlib import Path
 from typing import Optional, Dict, Any, Iterable
-from datetime import datetime, timezone
+from datetime import datetime, UTC, timezone
 import json
 import logging
 
@@ -102,7 +102,7 @@ class WebsiteCache:
         return self.data.get(url)
 
     def add_or_update(self, item: Website) -> None:
-        item.updated_at = datetime.utcnow()
+        item.updated_at = datetime.now(UTC)
         self.data[item.url] = item
 
     def flag_as_email_provider(self, url: str) -> None:

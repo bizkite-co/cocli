@@ -1,6 +1,6 @@
 from typing import Optional, Union, Any
 from pydantic import BaseModel, Field, field_validator
-from datetime import datetime
+from datetime import datetime, UTC
 from .email_address import EmailAddress
 
 class EmailEntry(BaseModel):
@@ -11,9 +11,9 @@ class EmailEntry(BaseModel):
     domain: str
     company_slug: Optional[str] = None
     source: str  # e.g., "website_scraper", "shopify_import", "manual"
-    found_at: datetime = Field(default_factory=datetime.utcnow)
-    first_seen: datetime = Field(default_factory=datetime.utcnow)
-    last_seen: datetime = Field(default_factory=datetime.utcnow)
+    found_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
+    first_seen: datetime = Field(default_factory=lambda: datetime.now(UTC))
+    last_seen: datetime = Field(default_factory=lambda: datetime.now(UTC))
     verification_status: str = "unknown"
     tags: list[str] = Field(default_factory=list)
 

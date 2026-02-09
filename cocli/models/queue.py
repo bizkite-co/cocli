@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, UTC
 from typing import Optional
 from pydantic import BaseModel, Field
 import uuid
@@ -20,8 +20,8 @@ class QueueMessage(BaseModel):
     # Lifecycle Metadata
     attempts: int = 0
     http_500_attempts: int = 0 # New field to track 500 errors specifically
-    created_at: datetime = Field(default_factory=datetime.utcnow)
-    updated_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
+    updated_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
     
     # Transient field for queue adapters (e.g. SQS ReceiptHandle)
     ack_token: Optional[str] = Field(None, exclude=True)

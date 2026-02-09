@@ -1,5 +1,5 @@
 from pathlib import Path
-from datetime import datetime
+from datetime import datetime, UTC
 from typing import Optional, Any
 import yaml
 from pydantic import BaseModel, Field, ValidationError
@@ -8,7 +8,7 @@ import logging
 logger = logging.getLogger(__name__)
 
 class Note(BaseModel):
-    timestamp: datetime = Field(default_factory=datetime.utcnow)
+    timestamp: datetime = Field(default_factory=lambda: datetime.now(UTC))
     title: str
     content: str
 

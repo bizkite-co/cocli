@@ -3,7 +3,7 @@ import logging
 import shutil
 import time
 from typing import List
-from datetime import datetime
+from datetime import datetime, UTC
 
 from ...models.queue import QueueMessage
 from . import QueueManager
@@ -98,7 +98,7 @@ class LocalFileQueue(QueueManager):
             message.attempts += 1
             if is_http_500:
                 message.http_500_attempts += 1
-            message.updated_at = datetime.utcnow()
+            message.updated_at = datetime.now(UTC)
             
             # Write updated metadata back to file
             with open(processing_path, "w") as f:
