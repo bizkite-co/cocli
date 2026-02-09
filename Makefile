@@ -699,6 +699,7 @@ start-rpi-supervisor: ## Start the Supervisor on Raspberry Pi for dynamic scalin
 		-e COCLI_GM_LIST_ITEM_QUEUE_URL='$(DETAILS_QUEUE)' \
 		-e COCLI_ENRICHMENT_QUEUE_URL='$(ENRICHMENT_QUEUE)' \
 		-e COCLI_COMMAND_QUEUE_URL='$(COMMAND_QUEUE)' \
+		$(if $(BIND_MOUNT),-v $(RPI_DIR):/app -e PYTHONPATH=/app,) \
 		-v ~/repos/data:/app/data \
 		-v ~/.aws:/root/.aws:ro \
 		-v ~/.cocli:/root/.cocli:ro \
@@ -707,26 +708,30 @@ start-rpi-supervisor: ## Start the Supervisor on Raspberry Pi for dynamic scalin
 .PHONY: restart-rpi-all
 restart-rpi-all: ## Restart all Raspberry Pi workers using supervisor on all nodes
 	-$(MAKE) stop-rpi-all
-	$(MAKE) start-rpi-supervisor RPI_HOST=octoprint.pi
-	$(MAKE) start-rpi-supervisor RPI_HOST=coclipi.pi
-	$(MAKE) start-rpi-supervisor RPI_HOST=cocli5x0.pi
-	$(MAKE) start-rpi-supervisor RPI_HOST=cocli5x1.pi
+	@for host in $$(echo $(CLUSTER_NODES) | tr ',' ' '); do \
+		$(MAKE) start-rpi-supervisor RPI_HOST=$$host; \
+	done
 
 .PHONY: deploy-cluster
 deploy-cluster: ## Rebuild and restart the entire cluster with Supervisor (optimized)
 	$(MAKE) deploy-rpi RPI_HOST=$(CLUSTER_NODES)
 	@echo "Cluster deployment complete. All nodes running Supervisor."
 
+.PHONY: fast-deploy-cluster
+fast-deploy-cluster: test-unit ## High-speed deployment using rsync and bind-mount restarts (No Docker build)
+	@for host in $$(echo $(CLUSTER_NODES) | tr ',' ' '); do \
+		echo "Fast-deploying to $$host..."; \
+		rsync -az --exclude '.venv' --exclude '.git' --exclude 'data' --exclude '.logs' ./ $(RPI_USER)@$$host:$(RPI_DIR)/; \
+		$(MAKE) stop-rpi RPI_HOST=$$host; \
+		$(MAKE) start-rpi-supervisor RPI_HOST=$$host BIND_MOUNT=1; \
+	done
+
 .PHONY: shutdown-cluster
 shutdown-cluster: ## Safely shut down all Raspberry Pi workers
-	@echo "Shutting down octoprint.pi..."
-	-$(MAKE) shutdown-rpi RPI_HOST=octoprint.pi
-	@echo "Shutting down coclipi.pi..."
-	-$(MAKE) shutdown-rpi RPI_HOST=coclipi.pi
-	@echo "Shutting down cocli5x0.pi..."
-	-$(MAKE) shutdown-rpi RPI_HOST=cocli5x0.pi
-	@echo "Shutting down cocli5x1.pi..."
-	-$(MAKE) shutdown-rpi RPI_HOST=cocli5x1.pi
+	@for host in $$(echo $(CLUSTER_NODES) | tr ',' ' '); do \
+		echo "Shutting down $$host..."; \
+		$(MAKE) shutdown-rpi RPI_HOST=$$host; \
+	done
 	@echo "Shutdown commands sent. You can safely unplug the Pis in 30 seconds."
 
 .PHONY: log-rpi-worker
@@ -752,10 +757,9 @@ stop-rpi: ## Stop all cocli worker containers on a single RPi (Usage: make stop-
 
 .PHONY: stop-rpi-all
 stop-rpi-all: ## Stop all cocli worker containers on ALL cluster nodes
-	-$(MAKE) stop-rpi RPI_HOST=octoprint.pi
-	-$(MAKE) stop-rpi RPI_HOST=coclipi.pi
-	-$(MAKE) stop-rpi RPI_HOST=cocli5x0.pi
-	-$(MAKE) stop-rpi RPI_HOST=cocli5x1.pi
+	@for host in $$(echo $(CLUSTER_NODES) | tr ',' ' '); do \
+		$(MAKE) stop-rpi RPI_HOST=$$host; \
+	done
 
 .PHONY: _deploy-single-node
 _deploy-single-node: ## Deploy to a single RPi node (Internal)
@@ -766,7 +770,7 @@ _deploy-single-node: ## Deploy to a single RPi node (Internal)
 
 .PHONY: deploy-rpi
 deploy-rpi: test ## Full deployment: stop, rebuild, and restart with Supervisor on one or more RPis (Usage: make deploy-rpi RPI_HOST=node1,node2)
-	@IFS=','; for host in $(RPI_HOST); do \
+	@for host in $$(echo $(RPI_HOST) | tr ',' ' '); do \
 		$(MAKE) _deploy-single-node RPI_HOST=$$host; \
 	done
 	$(VENV_DIR)/bin/ruff check cocli/
