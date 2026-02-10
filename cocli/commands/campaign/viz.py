@@ -257,14 +257,21 @@ def publish_kml(
              raise typer.Exit(code=1)
 
     # 1. Generate KMLs via subprocess
+    import sys
     console.print("[dim]Generating KML files...[/dim]")
     try:
-        subprocess.run(["cocli", "campaign", "set", campaign_name], check=True, capture_output=True)
-        subprocess.run(["cocli", "campaign", "generate-grid"], check=True, capture_output=True)
-        subprocess.run(["cocli", "campaign", "visualize-coverage", campaign_name], check=True, capture_output=True)
-        subprocess.run(["cocli", "campaign", "visualize-legacy-scrapes", campaign_name], check=True, capture_output=True)
-        subprocess.run(["cocli", "render-prospects-kml", campaign_name], check=True, capture_output=True)
-        subprocess.run(["cocli", "render", "kml", campaign_name], check=True, capture_output=True)
+        # Use sys.executable -m cocli.main or similar to ensure we use the same environment
+        # But cocli is an installed entry point. 
+        # Better: find the path to the cocli script or just use python -m cocli.main
+        # Given how it's installed, let's try to be resilient.
+        base_cmd = [sys.executable, "-m", "cocli.main"]
+        
+        subprocess.run(base_cmd + ["campaign", "set", campaign_name], check=True, capture_output=True)
+        subprocess.run(base_cmd + ["campaign", "generate-grid"], check=True, capture_output=True)
+        subprocess.run(base_cmd + ["campaign", "visualize-coverage", campaign_name], check=True, capture_output=True)
+        subprocess.run(base_cmd + ["campaign", "visualize-legacy-scrapes", campaign_name], check=True, capture_output=True)
+        subprocess.run(base_cmd + ["render-prospects-kml", campaign_name], check=True, capture_output=True)
+        subprocess.run(base_cmd + ["render", "kml", campaign_name], check=True, capture_output=True)
     except subprocess.CalledProcessError as e:
         console.print(f"[bold red]Error generating KMLs: {e}[/bold red]")
         raise typer.Exit(code=1)

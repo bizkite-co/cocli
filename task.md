@@ -1,57 +1,40 @@
 # Task: Campaign Identity Recovery & Shielding
 
 ## Objective
-Recover unique hollow records for a targeted campaign and enforce a "Model-to-Model" architecture with full discovery lineage and a Universal Data Namespace to permanently prevent data loss.
+Recover unique records for targeted campaigns and enforce a "Model-to-Model" architecture with full discovery lineage and a Universal Data Namespace to permanently prevent data loss and cross-campaign contamination.
 
-## Phase 2: Identification Shield & Validation (COMPLETE)
-- [x] **Strict Identity Model**: Updated `GoogleMapsProspect` and `GmItemTask` to enforce `min_length=3` for `name`, `company_slug`, and `company_hash`.
-- [x] **Model-to-Model Pipeline**: Implemented transformation flow: `ListItem` (Discovery) -> `Task` (Queue) -> `Prospect` (Index).
-- [x] **Discovery Lineage**: Added `discovery_phrase` and `discovery_tile_id` to all models to ensure attribution from search to hydration.
-- [x] **Gold Standard Identity**: Implemented AWS IoT Core X.509 authentication with automatic token refresh in supervisor.
-- [x] **Universal Data Namespace**: Standardized `data-root` mirroring between Local, S3, and RPi environments (Defined in `docs/_schema/data-root/`).
-- [x] **Frictionless Data Standards**: Implemented `datapackage.json` for sharded indexes to enable headerless USVs with typed schemas.
-- [x] **Specialized Sharding**: Introduced `get_geo_shard` (latitudinal) and `get_place_id_shard` to remove primitive obsession.
-- [x] **Headerless & Adjacent Identifiers**: Reordered USV columns to `place_id | company_slug` next to each other and removed redundant headers.
-- [x] **Identity Traceability**: Formalized the "Identity Status Map" and verification hand-offs (Defined in `docs/_schema/traceability.md`).
+## Phase 4: Index Robustness & Lifecycle (COMPLETE)
+- [x] **Modular Identity foundation**: Created `GoogleMapsIdx` as a lightweight base model to enforce mandatory anchors (`place_id`, `company_slug`, `name`) at the head of every record.
+- [x] **Single Source of Truth (SSoT) Serialization**: Established the Pydantic model as the absolute authority for USV column ordering, eliminating manual field lists and preventing data drift.
+- [x] **Frictionless Metadata DRI**: Implemented automatic `datapackage.json` generation directly from model field definitions, ensuring metadata and data stay perfectly synced.
+- [x] **Robust Address Component Recovery**: Integrated a regex-based parser into the transformation layer to salvage Street, City, State, and ZIP data from legacy unstructured strings.
+- [x] **Clean Hashing Logic**: Rebuilt `calculate_company_hash` to use recovered address components, eliminating the "none-00000" collision bug.
+- [x] **High-Speed "Fast-Path" Deployment**: Implemented Docker bind-mount infrastructure and `rsync` deployment, enabling near-instant code updates across the Pi cluster.
+- [x] **Quarantined Legacy Ingestion**: Created a dedicated `quarantine` model space to safely ingest "dirty" data formats and transform them into the Gold Standard.
+- [x] **Zero-Warning Compliance**: Fixed 22+ `utcnow()` deprecations and resolved all Mypy/Ruff errors to achieve a 100% clean lint pass across the entire codebase.
 
-## Phase 3: Recovery Execution (CURRENT)
-- [x] **Queue Purge**: Successfully deleted 15,520 hollow "completed" markers from S3.
-- [x] **Mass Migration**: Successfully migrated 27,584 valid records to the new sharded, headerless structure.
-- [x] **Hollow Identification**: Identified 15,351 truly hollow records using Pydantic validation (Moved to `recovery/`).
-- [x] **Consolidated Identity Map**: Compiled 1,568 proven Name/PID mappings to ensure high-quality re-enqueuing.
-- [x] **Batch Logging**: Updated `gm-list` to produce co-located `results.usv` in a geographic directory tree (`{shard}/{lat}/{lon}/{phrase}.usv`).
-- [x] **Cluster Alignment**: Hotfixed all 4 nodes to read/write the Universal Namespace structure.
-- [x] **Grid Precision Normalization**: Recursively cleaned up high-precision (4-decimal) coordinate folders in `target-tiles` and `gm-list` to enforce 1-decimal grid standard.
-- [x] **Continuous Hydration**: Added 4,614 new tasks to `gm-details/pending` and normalized all shards to 1-character format.
-- [x] **Cleanup Finish**: Successfully purged the 21k redundant WAL files and the 4.6k hollow WAL files from S3 via targeted sync.
-
-## Phase 4: Index Robustness & Lifecycle (PROPOSED)
-- [ ] **Formal Compactor**: Implement the `cocli index compact` command using the Freeze-Ingest-Merge-Commit (FIMC) pattern.
-- [ ] **Tiered Read Logic**: Update `ProspectsIndexManager` to perform hybrid reads (Checkpoint + Processing + WAL).
-- [ ] **S3 Object Lifecycle**: Implement specific deletion of processed WAL files on S3 after successful compaction.
-- [x] **Compliance Enforcement**: Integrated `scripts/check_schema_compliance.py` for automated data root audits.
-- [ ] **Content-Based Checkpoints**: Implement a "Latest Checkpoint" pointer/manifest on S3 to optimize cross-environment sync.
+## Phase 5: Production Stabilization (CURRENT)
+- [ ] **In-Place Index Restoration**: Deploy 22,097 recovered Gold Standard records from the recovery folder back into the sharded WAL.
+- [ ] **Checkpoint Consolidation**: Compact the new standardized WAL shards into a fresh, validated `prospects.checkpoint.usv`.
+- [ ] **Pi Cluster Validation**: Verify that the workers correctly append new records to the `wal/` subdirectories using the updated SSoT model.
+- [ ] **Full Data Purge**: Perform a final cleanup of legacy root-level shards and orphaned CSV files from S3 to ensure a pristine Universal Namespace.
 
 ## Technical Standards
-- **Universal Namespace**: All data paths must be identical across Local, S3, and RPi.
-- **Headerless USV**: Sharded index files (.usv) MUST NOT contain headers. Schemas are defined in the root `datapackage.json`.
-- **Coordinate Precision**: All geographic shard and directory names MUST be rounded to 1 decimal place (tenth-degree grid).
-- **Adjacent Identifiers**: The first two columns of any prospect/result USV MUST be `place_id` and `company_slug`.
-- **Global Constants**: Use `UNIT_SEP` (\x1f) from `cocli.core.utils` for all field separation.
-- **Lineage Preservation**: Every task MUST carry its `discovery_phrase` and `discovery_tile_id` from discovery through to the final index record.
+- **Model-Driven Storage**: The Pydantic model definition *is* the storage schema. No manual column lists are permitted in serialization methods.
+- **Identity-First Sequence**: All USV files MUST start with `place_id | company_slug | name` followed by the model's metadata and data fields.
+- **Unit-Separated (USV)**: All sharded data files use `UNIT_SEP` (\x1f) and MUST be headerless. Schema is defined in the co-located `datapackage.json`.
+- **Fast Deployment**: All RPi nodes use bind mounts to `~/repos/cocli` to ensure zero-latency updates and eliminate image-code staleness.
+- **Address Integrity**: All prospect records must attempt to populate structured `street_address`, `city`, `state`, and `zip` fields to support unique hashing.
 
 ## Verification Tools
-### 1. Queue Audit (`scripts/audit_queue_completion.py`)
-Validates completion markers against Pydantic models and the Prospect Index to ensure "The Truth" between discovery and results.
+### 1. Hash Diagnostic (`scripts/debug_hashes.py`)
+Inspects the identity tripod (Name, Street, Zip) and hash for every record in the index to identify collisions or data loss.
 
-### 2. Queue Normalization (`scripts/cleanup_gm_list_pending.py`)
-Purges expired leases and normalizes coordinate paths to 1-decimal precision.
+### 2. Index Repair (`scripts/repair_index_schema.py`)
+Uses the Quarantined Legacy Model to ingest malformed data, extract address components, and transform them into Gold Standard USVs.
 
-### 3. Grid Cleanup (`scripts/cleanup_target_tiles.py`)
-Recursively merges and purges high-precision coordinate directories in `target-tiles` to maintain grid integrity.
+### 3. Metadata Generator (`scripts/generate_datapackage.py`)
+Dynamically generates Frictionless `datapackage.json` sidecars by inspecting the current Pydantic model fields.
 
-### 4. Prospect Migration (`scripts/migrate_prospect_index.py`)
-Bulk migrates legacy data to the new sharded, headerless format with mandatory validation.
-
-### 4. Cluster Health (`scripts/check_cluster_health.py`)
-Polls RPI nodes for supervisor status and recent container logs.
+### 4. Cluster Rebuild (`make fast-deploy-cluster`)
+Automates the high-speed rsync and bind-mount restart sequence for all 4 cluster nodes.

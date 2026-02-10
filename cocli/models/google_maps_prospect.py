@@ -1,8 +1,9 @@
 from pydantic import BaseModel, Field, model_validator
-from typing import Optional, Dict, Any, Annotated
+from typing import Optional, Dict, Any, Annotated, List, ClassVar
 from datetime import datetime, UTC
 import logging
 
+from .google_maps_idx import GoogleMapsIdx
 from .google_maps_raw import GoogleMapsRawResult
 from .phone import OptionalPhone
 from ..core.text_utils import slugify
@@ -11,26 +12,39 @@ logger = logging.getLogger(__name__)
 
 # Custom Types for validation and clarity
 AwareDatetime = Annotated[datetime, "A datetime with timezone info"]
-PlaceID = str
 
-class GoogleMapsProspect(BaseModel):
+class GoogleMapsProspect(GoogleMapsIdx):
     """
-    Standardized model for Google Maps prospects.
-    Internal fields are strictly snake_case.
-    The place_id is the primary unique identifier.
+    GOLD STANDARD MODEL: Standardized model for Google Maps prospects.
+    
+    SINGLE SOURCE OF TRUTH:
+    1. Field definition order == USV Column Order.
+    2. Model metadata == datapackage.json schema.
     """
+    # Increment this when columns are added, removed, or reordered
+    SCHEMA_VERSION: ClassVar[str] = "1.0.0"
+
     model_config = {
         "populate_by_name": True,
         "alias_generator": lambda s: "".join(word.capitalize() for word in s.split("_")),
         "extra": "ignore"
     }
 
+    # --- THE FIXED USV SEQUENCE (Identity first) ---
+    # place_id (inherited)
+    # company_slug (inherited)
+    # name (inherited)
+    phone: OptionalPhone = Field(None, alias="phone_1")
+    
+    # --- Metadata / Lifecycle ---
     created_at: AwareDatetime = Field(default_factory=lambda: datetime.now(UTC))
     updated_at: AwareDatetime = Field(default_factory=lambda: datetime.now(UTC))
     version: int = 1
-    # Redundant GUID id removed. place_id is the anchor.
+    processed_by: Optional[str] = "local-worker"
+    company_hash: Optional[str] = Field(None, description="Identity hash")
+    
+    # --- Enrichment Data ---
     keyword: Optional[str] = None
-    name: str = Field(..., min_length=3, description="Business name is required for a Prospect")
     full_address: Optional[str] = None
     street_address: Optional[str] = None
     city: Optional[str] = None
@@ -39,7 +53,6 @@ class GoogleMapsProspect(BaseModel):
     state: Optional[str] = None
     country: Optional[str] = None
     timezone: Optional[str] = None
-    phone_1: OptionalPhone = None
     phone_standard_format: OptionalPhone = None
     website: Optional[str] = None
     domain: Optional[str] = None
@@ -60,7 +73,8 @@ class GoogleMapsProspect(BaseModel):
     longitude: Optional[float] = None
     coordinates: Optional[str] = None
     plus_code: Optional[str] = None
-    place_id: PlaceID = Field(..., description="Google Maps Place ID is the primary anchor")
+    
+    # --- Extended Metadata ---
     menu_link: Optional[str] = None
     gmb_url: Optional[str] = None
     cid: Optional[str] = None
@@ -76,23 +90,39 @@ class GoogleMapsProspect(BaseModel):
     reviews: Optional[str] = None
     quotes: Optional[str] = None
     uuid: Optional[str] = None
-    company_slug: Optional[str] = Field(None, description="Identity slug")
-    company_hash: Optional[str] = Field(None, description="Identity hash")
     discovery_phrase: Optional[str] = None
     discovery_tile_id: Optional[str] = None
-    processed_by: Optional[str] = "local-worker"
+
+    @classmethod
+    def get_datapackage_fields(cls) -> List[Dict[str, str]]:
+        """Generates Frictionless Data field definitions from the model."""
+        fields = []
+        for name, field in cls.model_fields.items():
+            # Map Python types to JSON Schema/Frictionless types
+            raw_type = field.annotation
+            field_type = "string" # default
+            
+            if raw_type == int or raw_type == Optional[int]:
+                field_type = "integer"
+            elif raw_type == float or raw_type == Optional[float]:
+                field_type = "number"
+            elif "datetime" in str(raw_type):
+                field_type = "datetime"
+                
+            fields.append({
+                "name": name,
+                "type": field_type,
+                "description": field.description or ""
+            })
+        return fields
 
     @classmethod
     def from_raw(cls, raw: GoogleMapsRawResult) -> "GoogleMapsProspect":
-        """
-        EXPLICIT transformation from Raw Google Maps result to Internal Prospect.
-        This is the ONLY place where mapping between PascalCase and snake_case should happen.
-        """
         from cocli.core.text_utils import slugify, calculate_company_hash
-        
         data = {
-            "keyword": raw.Keyword,
+            "place_id": raw.Place_ID,
             "name": raw.Name,
+            "keyword": raw.Keyword,
             "full_address": raw.Full_Address,
             "street_address": raw.Street_Address,
             "city": raw.City,
@@ -101,7 +131,7 @@ class GoogleMapsProspect(BaseModel):
             "state": raw.State,
             "country": raw.Country,
             "timezone": raw.Timezone,
-            "phone_1": raw.Phone_1,
+            "phone": raw.Phone_1,
             "phone_standard_format": raw.Phone_Standard_format,
             "website": raw.Website,
             "domain": raw.Domain,
@@ -122,7 +152,6 @@ class GoogleMapsProspect(BaseModel):
             "longitude": raw.Longitude,
             "coordinates": raw.Coordinates,
             "plus_code": raw.Plus_Code,
-            "place_id": raw.Place_ID,
             "gmb_url": raw.GMB_URL,
             "cid": raw.CID,
             "image_url": raw.Image_URL,
@@ -137,7 +166,6 @@ class GoogleMapsProspect(BaseModel):
             "processed_by": raw.processed_by or "local-worker"
         }
         
-        # Identity Logic
         if data["name"]:
             name_str = str(data["name"])
             data["company_slug"] = slugify(name_str)
@@ -147,31 +175,17 @@ class GoogleMapsProspect(BaseModel):
                 str(data["zip"]) if data["zip"] else None
             )
             
-        final_data: Dict[str, Any] = data
-        return cls(**final_data)
+        return cls(**data)
 
     @model_validator(mode='after')
     def validate_identity_tripod(self) -> 'GoogleMapsProspect':
-        """Ensures the identity tripod and linking IDs are populated."""
         if not self.company_slug and self.name:
             self.company_slug = slugify(self.name)
-        
-        if not self.company_hash and self.name:
-            from cocli.core.text_utils import calculate_company_hash
-            self.company_hash = calculate_company_hash(self.name, self.street_address, self.zip)
-            
-        # Strict enforcement after calculation
-        if not self.company_slug or len(self.company_slug) < 3:
-            raise ValueError(f"Invalid company_slug: {self.company_slug}")
-        if not self.company_hash or len(self.company_hash) < 3:
-            raise ValueError(f"Invalid company_hash: {self.company_hash}")
-            
         return self
 
     @model_validator(mode='before')
     @classmethod
     def clean_empty_values(cls, values: Dict[str, Any]) -> Dict[str, Any]:
-        """Convert empty strings to None for numeric and optional fields to handle CSV/USV input."""
         if not isinstance(values, dict):
             return values
             
@@ -185,25 +199,13 @@ class GoogleMapsProspect(BaseModel):
         return values
 
     def to_usv(self) -> str:
-        """Serializes the model to a single-line unit-separated string (no header)."""
+        """Serializes based on architectural sequence."""
         from ..core.utils import UNIT_SEP
-        
-        # Explicit order to match datapackage.json: place_id | company_slug | name | phone | ...rest
-        ordered_fields = [
-            "place_id",
-            "company_slug",
-            "name",
-            "phone_1"
-        ]
-        
-        # Get remaining fields
-        all_fields = list(self.__class__.model_fields.keys())
-        remaining = [f for f in all_fields if f not in ordered_fields]
-        final_field_list = ordered_fields + remaining
+        field_names = list(self.model_fields.keys())
         
         values = []
         dump = self.model_dump(by_alias=False)
-        for field in final_field_list:
+        for field in field_names:
             val = dump.get(field)
             if val is None:
                 values.append("")
@@ -219,30 +221,21 @@ class GoogleMapsProspect(BaseModel):
 
     @classmethod
     def from_usv(cls, usv_str: str) -> "GoogleMapsProspect":
-        """Parses a unit-separated line into a GoogleMapsProspect object."""
+        """Parses based on architectural sequence."""
         from ..core.utils import UNIT_SEP
-        # Strip both Record Separator and Newline
         line = usv_str.strip("\x1e\n")
         if not line:
             raise ValueError("Empty unit-separated line")
             
         parts = line.split(UNIT_SEP)
-        
-        # Must match the order in to_usv
-        ordered_fields = ["place_id", "company_slug", "name", "phone_1"]
-        all_fields = list(cls.model_fields.keys())
-        remaining = [f for f in all_fields if f not in ordered_fields]
-        final_field_list = ordered_fields + remaining
+        field_names = list(cls.model_fields.keys())
         
         data: Dict[str, Any] = {}
-        for i, field_name in enumerate(final_field_list):
+        for i, field_name in enumerate(field_names):
             if i < len(parts):
                 val = parts[i]
                 if val == "":
-                    if field_name in ["created_at", "updated_at"]:
-                        data[field_name] = datetime.now(UTC)
-                    else:
-                        data[field_name] = None
+                    data[field_name] = None
                 else:
                     if field_name in ["created_at", "updated_at"]:
                         try:
@@ -252,10 +245,6 @@ class GoogleMapsProspect(BaseModel):
                     else:
                         data[field_name] = val
             else:
-                # Schema drift
-                if field_name in ["created_at", "updated_at"]:
-                    data[field_name] = datetime.now(UTC)
-                else:
-                    data[field_name] = None
+                data[field_name] = None
         
         return cls.model_validate(data)

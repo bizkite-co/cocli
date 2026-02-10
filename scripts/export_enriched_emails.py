@@ -134,10 +134,11 @@ def main(
     for company_obj in track(Company.get_all(), description="Scanning companies..."):
         # Check if company belongs to this campaign via tags or index match
         in_campaign = campaign_name in company_obj.tags
+        
+        # Primary matching via Place ID or Slug
         in_index = (
             (company_obj.place_id and company_obj.place_id in target_place_ids) or 
-            (company_obj.slug in target_slugs) or
-            (company_obj.company_hash and company_obj.company_hash in target_hashes)
+            (company_obj.slug in target_slugs)
         )
 
         if not in_campaign and not in_index:
@@ -168,7 +169,7 @@ def main(
             "company": company_obj.name,
             "domain": domain,
             "emails": "; ".join(emails),
-            "phone": company_obj.phone_number or company_obj.phone_1 or "",
+            "phone": str(company_obj.phone_number or company_obj.phone_1 or ""),
             "website": domain,
             "categories": "; ".join(sorted(list(set(company_obj.categories)))),
             "services": "; ".join(sorted(list(set(company_obj.services)))),

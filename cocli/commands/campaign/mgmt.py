@@ -101,6 +101,7 @@ def add(
         console.print(f"[red]An unexpected error occurred: {e}[/red]")
         raise typer.Exit(code=1)
 
+@app.command(name="set")
 def set_default_campaign(campaign_name: str = typer.Argument(..., help="The name of the campaign to set as the current context.")) -> None:
     """Sets the current campaign context."""
     set_campaign(campaign_name)

@@ -207,15 +207,23 @@ def get_campaign_stats(campaign_name: str) -> Dict[str, Any]:
         for prospect in manager.read_all_prospects():
             # Add to slugs list
             if prospect.company_slug:
-                all_slugs.add(prospect.company_slug)
+                # Filter out raw Place IDs that might have leaked into slugs in old/malformed files
+                if prospect.company_slug.startswith("ChIJ") and len(prospect.company_slug) > 20:
+                    # Attempt to re-slugify from name if it's clearly a Place ID
+                    from .text_utils import slugify
+                    slug = slugify(prospect.name)
+                else:
+                    slug = prospect.company_slug
+                
+                all_slugs.add(slug)
                 
                 # Fetch clean name from Company model if not already cached
-                if prospect.company_slug not in prospect_metadata:
-                    comp = Company.get(prospect.company_slug)
+                if slug not in prospect_metadata:
+                    comp = Company.get(slug)
                     if comp:
-                        prospect_metadata[prospect.company_slug] = comp.name
+                        prospect_metadata[slug] = comp.name
                     else:
-                        prospect_metadata[prospect.company_slug] = prospect.company_slug
+                        prospect_metadata[slug] = prospect.name or slug
                 
             # Skip excluded
             if exclusion_manager.is_excluded(domain=prospect.domain, slug=prospect.company_slug):
@@ -600,7 +608,11 @@ def get_campaign_stats(campaign_name: str) -> Dict[str, Any]:
                             reader = USVDictReader(f)
                         else:
                             reader = csv.DictReader(f)
-                        row = next(reader)
+                        
+                        try:
+                            row = next(reader)
+                        except (StopIteration, Exception):
+                            continue
 
                         scrape_date_str = row.get("scrape_date")
                         if not scrape_date_str:

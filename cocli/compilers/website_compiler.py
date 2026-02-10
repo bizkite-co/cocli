@@ -177,10 +177,7 @@ class WebsiteCompiler(BaseCompiler):
                 # Heuristic: the brand is usually the shorter part, OR the one that isn't just keywords
                 best_part = parts[0]
                 
-                # SPECIAL CASE: 'The Floor 4 U' is often in these titles but might be missed
-                if "floor 4 u" in website_title.lower():
-                    best_part = "The Floor 4 U"
-                elif len(parts) > 1:
+                if len(parts) > 1:
                     # Find a part that is NOT a generic slogan
                     potential_brands = []
                     for p in parts:

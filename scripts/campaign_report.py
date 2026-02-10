@@ -194,6 +194,12 @@ def main(
     console.print(anomaly_table)
 
     if upload:
+        # Save local copy for debugging/inspection
+        report_path = f"{campaign_name}.json"
+        with open(report_path, "w") as f:
+            json.dump(stats, f, indent=2)
+        console.print(f"[dim]Saved local report to {report_path}[/dim]")
+
         config = load_campaign_config(campaign_name)
         s3_config = config.get("aws", {})
         bucket_name = s3_config.get("cocli_web_bucket_name") or "cocli-web-assets-turboheat-net"

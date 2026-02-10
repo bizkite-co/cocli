@@ -48,9 +48,9 @@ def get_cluster_capacity_stats(campaign_name: str) -> Dict[str, Any]:
     }
 
     try:
-        # 1. Sample GM Details Results (google_maps_prospects/*.csv and *.usv)
+        # 1. Sample GM Details Results (google_maps_prospects/wal/**/*.usv)
         s3 = session.client("s3")
-        prefix_det = f"campaigns/{campaign_name}/indexes/google_maps_prospects/"
+        prefix_det = f"campaigns/{campaign_name}/indexes/google_maps_prospects/wal/"
         res_det = s3.list_objects_v2(Bucket=bucket_name, Prefix=prefix_det, MaxKeys=100)
         all_det_objs = res_det.get("Contents", [])
         
@@ -68,7 +68,7 @@ def get_cluster_capacity_stats(campaign_name: str) -> Dict[str, Any]:
             q = f"""
                 WITH raw_data AS (
                     SELECT column54 as processed_by 
-                    FROM read_csv(['{path_list}'], delim='{delim_str}', header=False, auto_detect=False, columns={{'column54': 'VARCHAR'}}, ignore_errors=True)
+                    FROM read_csv(['{path_list}'], delim='{delim_str}', header=False, auto_detect=False, columns={{'column54': 'VARCHAR'}}, ignore_errors=True, reject_errors=False)
                     UNION ALL SELECT NULL as processed_by WHERE 1=0
                 )
                 SELECT processed_by, COUNT(*) as count 
@@ -102,7 +102,7 @@ def get_cluster_capacity_stats(campaign_name: str) -> Dict[str, Any]:
             # Select only processed_by to ensure UNION ALL column count matches
             q = f"""
                 WITH raw_data AS (
-                    SELECT processed_by FROM read_csv_auto(['{path_list}'], delim='{delim_str}', union_by_name=True, ignore_errors=True)
+                    SELECT CAST(processed_by AS VARCHAR) as processed_by FROM read_csv_auto(['{path_list}'], delim='{delim_str}', union_by_name=True, ignore_errors=True, reject_errors=False)
                     UNION ALL SELECT NULL as processed_by WHERE 1=0
                 )
                 SELECT processed_by, COUNT(*) as count 

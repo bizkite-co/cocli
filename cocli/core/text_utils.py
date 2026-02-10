@@ -1,5 +1,5 @@
 import re
-from typing import Optional
+from typing import Optional, Dict
 
 def slugify(text: str) -> str:
     """
@@ -17,13 +17,56 @@ def slugify(text: str) -> str:
     text = re.sub(r'-?/-?', '/', text)
     return text.strip('-')
 
-def calculate_company_hash(name: str, street: Optional[str], zip_code: Optional[str]) -> str:
+def parse_address_components(full_address: Optional[str]) -> Dict[str, Optional[str]]:
+    """
+    Conservatively extracts street, city, state, and zip from a full address string.
+    Format: '123 Main St, City, ST 12345'
+    """
+    components = {
+        "street_address": None,
+        "city": None,
+        "state": None,
+        "zip": None
+    }
+    
+    if not full_address or "," not in full_address:
+        return components
+        
+    parts = [p.strip() for p in full_address.split(",")]
+    
+    # Heuristic for US Addresses:
+    # Last part usually contains State and ZIP: 'TX 75094'
+    if len(parts) >= 2:
+        last_part = parts[-1]
+        zip_match = re.search(r'(\d{5})', last_part)
+        if zip_match:
+            components["zip"] = zip_match.group(1)
+            # State is usually the word before the zip
+            state_match = re.search(r'([A-Z]{2})', last_part)
+            if state_match:
+                components["state"] = state_match.group(1)
+        
+        # If we have 3 parts: [Street, City, State Zip]
+        if len(parts) >= 3:
+            components["street_address"] = parts[0]
+            components["city"] = parts[1]
+        # If we only have 2 parts: [Street/City Mix, State Zip]
+        elif len(parts) == 2:
+            components["street_address"] = parts[0]
+
+    return components
+
+def calculate_company_hash(name: Optional[str], street: Optional[str], zip_code: Optional[str]) -> Optional[str]:
     """
     Generates a human-readable unique identifier for a company location.
     Format: slug(name)[:8]-slug(street)[:8]-zip[:5]
     """
-    n = slugify(name or "unknown")[:8]
+    if not name:
+        return None
+        
+    n = slugify(name)[:8]
     s = slugify(street or "none")[:8]
+    
     # Extract first 5 digits of zip
     z = "00000"
     if zip_code:
@@ -83,7 +126,6 @@ def is_valid_email(email: str) -> bool:
         return False
         
     # 4. Filter out versioned strings (e.g. react@16.14.0.js)
-    # If the domain part looks like a version number (3 parts with dots)
     if re.match(r"^\d+\.\d+\.\d+", domain_part):
         return False
         
@@ -93,7 +135,6 @@ def is_valid_email(email: str) -> bool:
         
     # 6. Check for common junk in user part (e.g. 'image@2x')
     if user_part in ['image', 'img', 'logo', 'icon', 'bg', 'banner']:
-        # This might be too aggressive, but in our context it's usually junk if it has a weird domain
         if not domain_part.endswith(('.com', '.net', '.org')):
             return False
 
@@ -103,8 +144,6 @@ def parse_frontmatter(content: str) -> Optional[str]:
     """
     Extracts YAML frontmatter from a markdown string.
     Returns the YAML string if found, otherwise None.
-    Handles '---' inside YAML values correctly by only splitting on line-start delimiters.
-    Supports malformed start headers like ---key: val
     """
     if not content.startswith("---"):
         return None
@@ -116,11 +155,9 @@ def parse_frontmatter(content: str) -> Optional[str]:
             return parts[1]
     
     # Malformed case: starts with ---key: val
-    # We find the NEXT occurrence of ^---$
     match = re.search(r'^---\s*$', content, re.MULTILINE)
     if match:
         end_idx = match.start()
-        # Frontmatter is everything between the first 3 chars and the start of the next ---
         return content[3:end_idx]
         
     return None
