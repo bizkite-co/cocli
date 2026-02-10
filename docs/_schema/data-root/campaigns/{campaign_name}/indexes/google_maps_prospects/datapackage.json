@@ -11,7 +11,7 @@
           {"name": "place_id", "type": "string"},
           {"name": "company_slug", "type": "string"},
           {"name": "name", "type": "string"},
-          {"name": "phone_1", "type": "string"},
+          {"name": "phone", "type": "string"},
           {"name": "domain", "type": "string"},
           {"name": "full_address", "type": "string"},
           {"name": "average_rating", "type": "number"},

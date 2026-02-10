@@ -1,5 +1,5 @@
 from pydantic import Field
-from typing import Optional, ClassVar
+from typing import ClassVar
 from .base_index import BaseIndexModel
 
 class GoogleMapsIdx(BaseIndexModel):

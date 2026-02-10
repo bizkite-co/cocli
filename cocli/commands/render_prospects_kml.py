@@ -122,8 +122,8 @@ def render_prospects_kml(
         phone_number = None
         if company.phone_number or company.phone_1:
             phone_number = company.phone_number or company.phone_1
-        elif prospect.phone_1:
-            phone_number = prospect.phone_1
+        elif prospect.phone:
+            phone_number = prospect.phone
         if phone_number:
             description_parts.append(f'<b>Phone:</b> {phone_number}<br>')
 

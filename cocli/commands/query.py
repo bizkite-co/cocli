@@ -178,7 +178,7 @@ def query_prospects_location(
         name = (prospect.name or "")[:38]
         city_state = f"{prospect.city or ''}, {prospect.state or ''}"
         dist = f"{dist_val} mi"
-        phone = prospect.phone_1 or ""
+        phone = prospect.phone or ""
         website = prospect.website or ""
         print(f"{name:<40} | {city_state:<30} | {dist:<10} | {phone:<15} | {website}")
 

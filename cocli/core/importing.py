@@ -50,7 +50,7 @@ def import_prospect(
         existing_company.state = prospect_data.state or existing_company.state
         existing_company.country = prospect_data.country or existing_company.country
         existing_company.timezone = prospect_data.timezone or existing_company.timezone
-        existing_company.phone_1 = prospect_data.phone_1 or existing_company.phone_1
+        existing_company.phone_1 = prospect_data.phone or existing_company.phone_1
         existing_company.website_url = prospect_data.website or existing_company.website_url
         existing_company.place_id = prospect_data.place_id or existing_company.place_id
         existing_company.reviews_count = prospect_data.reviews_count if prospect_data.reviews_count is not None else existing_company.reviews_count
@@ -84,7 +84,7 @@ def import_prospect(
             "state": prospect_data.state,
             "country": prospect_data.country,
             "timezone": prospect_data.timezone,
-            "phone_1": prospect_data.phone_1,
+            "phone_1": prospect_data.phone,
             "website_url": prospect_data.website,
             "categories": prospect_data.first_category.split(';') if prospect_data.first_category else [],
             "reviews_count": prospect_data.reviews_count,

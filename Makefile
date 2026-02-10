@@ -76,12 +76,19 @@ logname: ## Get the latest log file name
 
 # Note: TUI integration tests are run separately due to terminal driver conflicts.
 # Use 'make test-tui-integration' to run them.
-test: install ## Run all non-TUI tests using pytest
-	$(MAKE) lint
-	source $(VENV_DIR)/bin/activate && PYTHONPATH=. pytest -s tests/ --quiet --ignore=tests/tui/test_navigation_steps.py --ignore=tests/e2e
+test: install lint ## Run all non-TUI tests using pytest (incremental)
+	@if python3 scripts/check_code_signature.py --check; then \
+		echo "Code signature matches. Skipping tests."; \
+	else \
+		source $(VENV_DIR)/bin/activate && PYTHONPATH=. pytest -s tests/ --quiet --ignore=tests/tui/test_navigation_steps.py --ignore=tests/e2e; \
+	fi
 
-test-unit: install lint ## Run unit tests (excluding TUI and E2E folders)
-	source $(VENV_DIR)/bin/activate && PYTHONPATH=. pytest -s tests/ --ignore=tests/tui --ignore=tests/e2e
+test-unit: install lint ## Run unit tests (incremental)
+	@if python3 scripts/check_code_signature.py --check; then \
+		echo "Code signature matches. Skipping unit tests."; \
+	else \
+		source $(VENV_DIR)/bin/activate && PYTHONPATH=. pytest -s tests/ --ignore=tests/tui --ignore=tests/e2e; \
+	fi
 
 test-tui-integration: install ## Run only the TUI integration tests
 	source $(VENV_DIR)/bin/activate && pytest tests/tui/test_navigation_steps.py
@@ -109,9 +116,15 @@ textual: ## Run the app in textual
 	@uv tool install textual-dev
 	textual run cocli.tui.app
 
-lint: ## Run ruff and mypy to perform static type checking
-	$(VENV_DIR)/bin/ruff check . --fix
-	$(VENV_DIR)/bin/python -m mypy --config-file pyproject.toml .
+lint: ## Run ruff and mypy to perform static type checking (incremental)
+	@if python3 scripts/check_code_signature.py --check; then \
+		echo "Code signature matches. Skipping lint."; \
+	else \
+		echo "Code changed. Running lint..."; \
+		$(VENV_DIR)/bin/ruff check . --fix && \
+		$(VENV_DIR)/bin/python -m mypy --config-file pyproject.toml . && \
+		python3 scripts/check_code_signature.py --update; \
+	fi
 
 # Data Management Targets
 commit-campaigns:

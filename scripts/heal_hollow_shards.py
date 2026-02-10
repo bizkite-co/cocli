@@ -70,7 +70,8 @@ def heal_shards(data_path: Path) -> None:
                 city=metadata.get("city"),
                 zip=zip_code,
                 website=metadata.get("website_url"),
-                domain=metadata.get("domain")
+                domain=metadata.get("domain"),
+                phone_1=None
             )
             
             # Save the healed shard

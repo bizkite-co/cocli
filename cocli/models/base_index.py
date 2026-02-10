@@ -1,6 +1,6 @@
 import json
 from pathlib import Path
-from typing import List, Dict, Any, Optional, ClassVar
+from typing import List, Dict, Optional, ClassVar
 from pydantic import BaseModel
 from cocli.core.config import get_campaign_dir
 
@@ -18,7 +18,7 @@ class BaseIndexModel(BaseModel):
         """Returns the absolute path to this index for a specific campaign."""
         campaign_dir = get_campaign_dir(campaign_name)
         if not campaign_dir:
-            from .config import get_campaigns_dir
+            from ..core.config import get_campaigns_dir
             campaign_dir = get_campaigns_dir() / campaign_name
         return campaign_dir / "indexes" / cls.INDEX_NAME
 

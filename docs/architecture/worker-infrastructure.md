@@ -22,6 +22,26 @@ The infrastructure follows a **Distributed Hybrid Model**:
 *   **Resource Blocking**: To save bandwidth and improve speed, workers automatically block `images`, `fonts`, and `stylesheets`.
 *   **Bandwidth Tracking**: Real-time bandwidth logging is implemented to monitor data usage and estimate proxy costs.
 
+## Deployment Strategies
+
+The cluster supports two primary deployment paths:
+
+### 1. Fast-Path Deployment (Standard)
+This is the recommended method for rapid iteration. It uses `rsync` to sync the local code to the Pi's host filesystem and then restarts the Docker containers with a **bind-mount** to that directory.
+
+- **Command**: `make fast-deploy-cluster`
+- **Advantages**: Near-instant (3-5 seconds); Zero Docker build latency; Guaranteed code parity.
+- **How it works**:
+  1. `rsync` pushes the `cocli/`, `scripts/`, and `tests/` directories to `~/repos/cocli` on the Pi.
+  2. The `docker run` command uses `-v ~/repos/cocli:/app` and sets `PYTHONPATH=/app`.
+  3. The worker runs the *live code* from the host directory rather than the baked-in image code.
+
+### 2. Full Image Build (rarely)
+Used only when system-level dependencies (in `pyproject.toml` or `Dockerfile`) have changed.
+
+- **Command**: `make deploy-cluster`
+- **Disadvantages**: Slow (5-10 minutes per node); High CPU load on Pis during build.
+
 ## Operational Commands
 
 The `Makefile` in the project root is the primary orchestration tool.

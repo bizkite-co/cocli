@@ -1,15 +1,12 @@
 import sys
-import os
 from pathlib import Path
-from typing import Optional, Any
-import logging
+from typing import Optional
 
 # Add project root to path
 sys.path.append(str(Path(__file__).parent.parent))
 
 from cocli.models.google_maps_prospect import GoogleMapsProspect
 from cocli.models.quarantine.legacy_prospect import LegacyProspectUSV
-from cocli.core.utils import UNIT_SEP
 
 def repair_record(line: str) -> Optional[GoogleMapsProspect]:
     if not line.strip():
@@ -21,7 +18,7 @@ def repair_record(line: str) -> Optional[GoogleMapsProspect]:
         
         # 2. Transform to Gold Standard Model
         return legacy.to_ideal()
-    except Exception as e:
+    except Exception:
         return None
 
 def main() -> None:
@@ -51,7 +48,8 @@ def main() -> None:
     if wal_dir.exists():
         print("Scanning WAL shards...")
         for usv_file in wal_dir.rglob("*.usv"):
-            if usv_file.name == "validation_errors.usv": continue
+            if usv_file.name == "validation_errors.usv":
+                continue
             total_wal += 1
             content = usv_file.read_text(encoding='utf-8').strip()
             prospect = repair_record(content)
@@ -65,7 +63,7 @@ def main() -> None:
     # 2. Process Checkpoint
     total_checkpoint = 0
     if checkpoint.exists():
-        print(f"Scanning Checkpoint lines...")
+        print("Scanning Checkpoint lines...")
         with open(checkpoint, 'r', encoding='utf-8') as f:
             for line in f:
                 total_checkpoint += 1
@@ -79,7 +77,7 @@ def main() -> None:
                 if total_checkpoint % 5000 == 0:
                     print(f"Processed {total_checkpoint} checkpoint lines...")
 
-    print(f"\nRecovery Complete.")
+    print("\nRecovery Complete.")
     print(f"Total Unique Records Recovered: {success}")
 
 if __name__ == "__main__":

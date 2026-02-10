@@ -19,6 +19,29 @@ logger = logging.getLogger(__name__)
 
 UNIT_SEP = "\x1f" # ASCII Unit Separator
 
+def get_place_id_shard(place_id: str) -> str:
+    """
+    Returns a deterministic shard for a Place ID.
+    Uses the last character for 1-level sharding.
+    """
+    if not place_id:
+        return "_"
+    char = place_id[-1]
+    # Filter to only alphanumeric or underscores for clean filesystem
+    if char.isalnum():
+        return char
+    return "_"
+
+def get_geo_shard(lat: float, lon: float) -> str:
+    """
+    Returns a geographic shard string for a coordinate pair.
+    Rounds to 1 decimal place (tenth-degree grid).
+    Format: 'lat_{lat}/lon_{lon}'
+    """
+    l1 = round(float(lat), 1)
+    o1 = round(float(lon), 1)
+    return f"lat_{l1}/lon_{o1}"
+
 def create_company_files(company: Company, company_dir: Path) -> Path:
     """
     Creates the directory and files for a new company, including its _index.md and tags.lst.

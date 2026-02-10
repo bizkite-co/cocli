@@ -1,7 +1,7 @@
 import csv
 import logging
 from pathlib import Path
-from typing import Iterator, Any
+from typing import Iterator
 
 from ..models.google_maps_prospect import GoogleMapsProspect
 from ..core.config import get_campaign_scraped_data_dir, get_campaign_dir
@@ -110,28 +110,29 @@ class ProspectsIndexManager:
                             reader = USVDictReader(f)
                             for row in reader:
                                 normalized_row = {k.lower().replace(" ", "_"): v for k, v in row.items() if k}
-                                p = GoogleMapsProspect.model_validate(normalized_row)
-                                if p.place_id:
-                                    seen_pids.add(p.place_id)
-                                    yield p
+                                prospect = GoogleMapsProspect.model_validate(normalized_row)
+                                if prospect.place_id:
+                                    seen_pids.add(prospect.place_id)
+                                    yield prospect
                         else:
                             # Headerless: Use the model's own robust parser
                             f.seek(0)
                             for line in f:
-                                if not line.strip(): continue
-                                p = GoogleMapsProspect.from_usv(line)
-                                if p.place_id:
-                                    seen_pids.add(p.place_id)
-                                    yield p
+                                if not line.strip():
+                                    continue
+                                prospect = GoogleMapsProspect.from_usv(line)
+                                if prospect.place_id:
+                                    seen_pids.add(prospect.place_id)
+                                    yield prospect
                     else:
                         # Legacy CSV
-                        reader = csv.DictReader(f)
+                        reader = csv.DictReader(f) # type: ignore
                         for row in reader:
                             normalized_row = {k.lower().replace(" ", "_"): v for k, v in row.items() if k}
-                            p = GoogleMapsProspect.model_validate(normalized_row)
-                            if p.place_id:
-                                seen_pids.add(p.place_id)
-                                yield p
+                            prospect = GoogleMapsProspect.model_validate(normalized_row)
+                            if prospect.place_id:
+                                seen_pids.add(prospect.place_id)
+                                yield prospect
             except Exception as e:
                 logger.error(f"Error reading prospect in {file_path.name}: {e}")
 
@@ -140,12 +141,13 @@ class ProspectsIndexManager:
             try:
                 with open(checkpoint_path, 'r', encoding='utf-8') as f:
                     for line in f:
-                        if not line.strip(): continue
+                        if not line.strip():
+                            continue
                         try:
-                            p = GoogleMapsProspect.from_usv(line)
-                            if p.place_id and p.place_id not in seen_pids:
-                                seen_pids.add(p.place_id)
-                                yield p
+                            prospect = GoogleMapsProspect.from_usv(line)
+                            if prospect.place_id and prospect.place_id not in seen_pids:
+                                seen_pids.add(prospect.place_id)
+                                yield prospect
                         except Exception:
                             continue
             except Exception as e:

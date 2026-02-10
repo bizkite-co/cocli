@@ -2,7 +2,7 @@ from cocli.core.prospects_csv_manager import ProspectsIndexManager
 from rich.console import Console
 from rich.table import Table
 
-def debug_hashes(campaign_name: str):
+def debug_hashes(campaign_name: str) -> None:
     manager = ProspectsIndexManager(campaign_name)
     console = Console()
     

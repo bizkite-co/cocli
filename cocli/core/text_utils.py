@@ -22,7 +22,7 @@ def parse_address_components(full_address: Optional[str]) -> Dict[str, Optional[
     Conservatively extracts street, city, state, and zip from a full address string.
     Format: '123 Main St, City, ST 12345'
     """
-    components = {
+    components: Dict[str, Optional[str]] = {
         "street_address": None,
         "city": None,
         "state": None,

@@ -1,4 +1,4 @@
-from pydantic import BaseModel, Field, model_validator
+from pydantic import Field, model_validator
 from typing import Optional, Dict, Any, Annotated, List, ClassVar
 from datetime import datetime, UTC
 import logging
@@ -102,11 +102,12 @@ class GoogleMapsProspect(GoogleMapsIdx):
             raw_type = field.annotation
             field_type = "string" # default
             
-            if raw_type == int or raw_type == Optional[int]:
+            type_str = str(raw_type)
+            if "int" in type_str:
                 field_type = "integer"
-            elif raw_type == float or raw_type == Optional[float]:
+            elif "float" in type_str:
                 field_type = "number"
-            elif "datetime" in str(raw_type):
+            elif "datetime" in type_str:
                 field_type = "datetime"
                 
             fields.append({
@@ -175,7 +176,7 @@ class GoogleMapsProspect(GoogleMapsIdx):
                 str(data["zip"]) if data["zip"] else None
             )
             
-        return cls(**data)
+        return cls(**data) # type: ignore
 
     @model_validator(mode='after')
     def validate_identity_tripod(self) -> 'GoogleMapsProspect':
