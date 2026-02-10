@@ -699,7 +699,7 @@ start-rpi-supervisor: ## Start the Supervisor on Raspberry Pi for dynamic scalin
 		-e COCLI_GM_LIST_ITEM_QUEUE_URL='$(DETAILS_QUEUE)' \
 		-e COCLI_ENRICHMENT_QUEUE_URL='$(ENRICHMENT_QUEUE)' \
 		-e COCLI_COMMAND_QUEUE_URL='$(COMMAND_QUEUE)' \
-		$(if $(BIND_MOUNT),-v $(RPI_DIR):/app -e PYTHONPATH=/app,) \
+		-v $(RPI_DIR):/app -e PYTHONPATH=/app \
 		-v ~/repos/data:/app/data \
 		-v ~/.aws:/root/.aws:ro \
 		-v ~/.cocli:/root/.cocli:ro \
