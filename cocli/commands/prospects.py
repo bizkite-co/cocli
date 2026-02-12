@@ -525,13 +525,12 @@ def enrich_from_queue(
                         if tasks:
                             task = tasks[0]
                             console.print(f"[yellow]Enrichment empty. Falling back to Details task: {task.place_id}[/yellow]")
-                            from cocli.commands.worker import run_details_worker
-                            await run_details_worker(
+                            from cocli.application.worker_service import WorkerService
+                            service = WorkerService(campaign_name, processed_by=f"fargate-worker-{socket.gethostname()}")
+                            await service.run_details_worker(
                                 headless=True,
                                 debug=False,
-                                campaign_name=campaign_name,
                                 once=True,
-                                processed_by=f"fargate-worker-{socket.gethostname()}",
                                 workers=1
                             )
                             continue

@@ -6,7 +6,7 @@ from textual.message import Message
 
 # from cocli.models.person import Person # No longer needed for direct Person.get_all()
 from cocli.utils.textual_utils import sanitize_id # Re-added
-from cocli.tui.fz_utils import get_filtered_items_from_fz # New import
+from cocli.application.search_service import get_fuzzy_search_results # New import
 
 class PersonList(Screen[None]):
     """A screen to display a list of people."""
@@ -19,7 +19,7 @@ class PersonList(Screen[None]):
 
     def __init__(self, name: str | None = None, id: str | None = None, classes: str | None = None):
         super().__init__(name, id, classes)
-        self.all_fz_items = get_filtered_items_from_fz(item_type="person") # Get initial items from fz
+        self.all_fz_items = get_fuzzy_search_results(item_type="person") # Get initial items from fz
         self.filtered_fz_items = self.all_fz_items # Initialize filtered list
 
     def compose(self) -> ComposeResult:
@@ -37,7 +37,7 @@ class PersonList(Screen[None]):
     async def on_input_changed(self, event: Input.Changed) -> None:
         """Called when the search input changes."""
         search_query = event.value
-        self.filtered_fz_items = get_filtered_items_from_fz(search_query=search_query, item_type="person")
+        self.filtered_fz_items = get_fuzzy_search_results(search_query=search_query, item_type="person")
         await self.update_person_list_view()
 
     async def update_person_list_view(self) -> None:

@@ -231,17 +231,28 @@ This document outlines the roadmap for transitioning `cocli` from a purely local
 
     *   [x] Implemented incremental linting/testing via code signatures to optimize deployment.
 
-## Phase 18: Turboship Restoration & Index Hardening (Active)
+## Phase 18: Turboship Restoration & Index Hardening (Completed)
 
 **Goal:** Extend the "Gold Standard" architecture to the `turboship` campaign and generalize WAL strategies to all secondary indexes.
 
-1.  **Turboship Migration:**
+1.  **Turboship Migration (Done):**
+    *   [x] Audit `data/campaigns/turboship/` for legacy USV formats.
+    *   [x] Migrate `google_maps_prospects` to the sharded, modular format.
+    *   [x] Standardize secondary indexes (domains, emails) to use the same "Gold" Pydantic logic.
 
-    *   [ ] Audit `data/campaigns/turboship/` for legacy USV formats.
-    *   [ ] Migrate `google_maps_prospects` to the sharded, modular format.
-    *   [ ] Standardize secondary indexes (domains, emails) to use the same "Gold" Pydantic logic.
+2.  **Generalized WAL Strategy (Done):**
+    *   [x] Implement WAL/Compaction patterns for `emails` and `domains` indexes.
+    *   [x] Explore WAL-based "Completed" folders for SQS/DFQ queues to improve observability.
 
-2.  **Generalized WAL Strategy:**
+## Phase 19: UI/Service Layer Decoupling & API Formalization (Active)
 
-    *   [ ] Implement WAL/Compaction patterns for `emails` and `domains` indexes.
-    *   [ ] Explore WAL-based "Completed" folders for SQS/DFQ queues to improve observability.
+**Goal:** Formalize the API between 'core' functionality and UIs (CLI, TUI, Web) and decouple scraper orchestration.
+
+1.  **Campaign Service Parity:**
+    *   [ ] Move context-switching logic (S3 sync, .envrc updates) from `cocli/commands/campaign/mgmt.py` to `CampaignService`.
+    *   [ ] Refactor `cocli/tui/campaign_app.py` to use `CampaignService` for all state changes, removing direct TOML/file manipulation.
+2.  **Worker Orchestration Decoupling:**
+    *   [ ] Extract `run_worker`, `run_supervisor`, and `run_details_worker` from `cocli/commands/worker.py` into `cocli/application/worker_service.py`.
+    *   [ ] Standardize worker heartbeats and status reports as Pydantic models.
+3.  **Distributed Command API:**
+    *   [ ] Refactor the SQS `CommandPoller` to use the same `CampaignService` methods as the local UIs.

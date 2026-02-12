@@ -14,9 +14,50 @@ class CampaignService:
         self.campaign_name = campaign_name
         self.campaign_dir = get_campaign_dir(campaign_name)
         if not self.campaign_dir:
-            raise ValueError(f"Campaign directory not found for {campaign_name}")
+            # Fallback for bootstrapping: check if the directory exists in data/campaigns
+            from ..core.config import get_campaigns_dir
+            self.campaign_dir = get_campaigns_dir() / campaign_name
+            
         self.config_path = self.campaign_dir / "config.toml"
         self.exclusion_manager = ExclusionManager(campaign_name)
+
+    def get_config(self) -> Dict[str, Any]:
+        """Returns the raw configuration dictionary."""
+        return load_campaign_config(self.campaign_name)
+
+    def activate(self) -> None:
+        """
+        Sets this campaign as the active context and performs side effects 
+        like updating .envrc with the campaign's AWS profile.
+        """
+        from ..core.config import set_campaign
+        from pathlib import Path
+        
+        set_campaign(self.campaign_name)
+        
+        config = self.get_config()
+        admin_profile = config.get("aws", {}).get("profile")
+        
+        if admin_profile:
+            envrc_path = Path(".envrc")
+            if envrc_path.exists():
+                try:
+                    lines = []
+                    found = False
+                    with open(envrc_path, "r") as ef:
+                        for line in ef:
+                            if line.strip().startswith("export AWS_PROFILE="):
+                                lines.append(f'export AWS_PROFILE="{admin_profile}"\n')
+                                found = True
+                            else:
+                                lines.append(line)
+                    if not found:
+                        lines.append(f'export AWS_PROFILE="{admin_profile}"\n')
+                    with open(envrc_path, "w") as ef:
+                        ef.writelines(lines)
+                    logger.info(f"Updated .envrc with AWS_PROFILE={admin_profile}")
+                except Exception as e:
+                    logger.warning(f"Could not update .envrc: {e}")
 
     def add_exclude(self, identifier: str, reason: Optional[str] = None) -> bool:
         """Identifier can be a slug or a domain."""
@@ -143,6 +184,69 @@ class CampaignService:
                 return True
         return False
 
+    def geocode_locations(self) -> int:
+        """
+        Scans the campaign's target locations CSV and fills in missing geocoordinates.
+        Returns the number of updated locations.
+        """
+        config = self.get_config()
+        target_csv = config.get("prospecting", {}).get("target-locations-csv")
+        if not target_csv:
+            return 0
+
+        csv_path = self.campaign_dir / target_csv
+        if not csv_path.exists():
+            return 0
+
+        rows = []
+        updated_count = 0
+        fieldnames = []
+        
+        with open(csv_path, "r", newline="") as f:
+            reader = csv.DictReader(f)
+            fieldnames = list(reader.fieldnames) if reader.fieldnames else []
+            for row in reader:
+                if not row.get("lat") or not row.get("lon"):
+                    name = row.get("name") or row.get("city")
+                    if name:
+                        coords = None
+                        if "," in name:
+                            coords = get_coordinates_from_city_state(name)
+                        else:
+                            coords = get_coordinates_from_address(name)
+                        
+                        if coords:
+                            row["lat"] = str(coords["latitude"])
+                            row["lon"] = str(coords["longitude"])
+                            updated_count += 1
+                rows.append(row)
+
+        if updated_count > 0:
+            with open(csv_path, "w", newline="") as f:
+                writer = csv.DictWriter(f, fieldnames=fieldnames)
+                writer.writeheader()
+                writer.writerows(rows)
+        
+        return updated_count
+
+    def save_config(self, config: Any) -> None:
+        """
+        Saves the campaign configuration.
+        Accepts either a dictionary or a Campaign Pydantic model.
+        """
+        if hasattr(config, "model_dump"):
+            # If it's a Pydantic model (like Campaign)
+            data = config.model_dump(by_alias=True, exclude_none=True)
+            
+            # The Campaign model might be flattened, we need to ensure 
+            # proper TOML structure if possible, but for now we'll 
+            # match what the TUI was doing.
+            with open(self.config_path, "w") as f:
+                toml.dump(data, f)
+        else:
+            with open(self.config_path, "w") as f:
+                toml.dump(config, f)
+        logger.info(f"Saved configuration to {self.config_path}")
+
     def _save_config(self, config: Dict[str, Any]) -> None:
-        with open(self.config_path, "w") as f:
-            toml.dump(config, f)
+        self.save_config(config)

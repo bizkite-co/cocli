@@ -9,8 +9,7 @@ from typing import Any
 
 from ..models.campaign import Campaign, CampaignImport, GoogleMaps, Prospecting
 
-import toml
-from cocli.core.config import get_campaign_dir
+from ..application.campaign_service import CampaignService
 
 import logging
 
@@ -115,10 +114,7 @@ class CampaignScreen(Screen[None]): # Changed from App to Screen
     def __init__(self, campaign: Campaign, name: str | None = None, id: str | None = None, classes: str | None = None):
         super().__init__(name=name, id=id, classes=classes)
         self.campaign = campaign
-        original_campaign_path = get_campaign_dir(campaign.name)
-        if original_campaign_path is None:
-            raise ValueError(f"Campaign directory for {campaign.name} not found.")
-        self._original_campaign_path = original_campaign_path
+        self.service = CampaignService(campaign.name)
 
     def compose(self) -> ComposeResult:
         """Create child widgets for the screen."""
@@ -144,9 +140,7 @@ class CampaignScreen(Screen[None]): # Changed from App to Screen
         table.action_cursor_up()
 
     def _save_campaign(self) -> None:
-        full_campaign_path = self._original_campaign_path / "config.toml"
-        with open(full_campaign_path, "w") as f:
-            toml.dump(self.campaign.model_dump(by_alias=True), f)
+        self.service.save_config(self.campaign)
 
     def refresh_table(self) -> None:
         table: DataTable[Any] = self.query_one(DataTable)

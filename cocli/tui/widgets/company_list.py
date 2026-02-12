@@ -9,7 +9,7 @@ from textual.message import Message
 from textual import events
 
 from cocli.utils.textual_utils import sanitize_id
-from cocli.tui.fz_utils import get_filtered_items_from_fz
+from cocli.application.search_service import get_fuzzy_search_results
 from cocli.models.company import Company
 
 from textual import on
@@ -34,7 +34,7 @@ class CompanyList(Container):
     def __init__(self, name: str | None = None, id: str | None = None, classes: str | None = None):
         super().__init__(name=name, id=id, classes=classes)
         self.can_focus = True
-        self.all_fz_items = get_filtered_items_from_fz(item_type="company")
+        self.all_fz_items = get_fuzzy_search_results(item_type="company")
         self.filtered_fz_items = self.all_fz_items
 
     def compose(self) -> ComposeResult:
@@ -72,7 +72,7 @@ class CompanyList(Container):
         """Called when the search input changes."""
         search_query = event.value
         logger.debug(f"Search input changed: {search_query}")
-        self.filtered_fz_items = get_filtered_items_from_fz(search_query=search_query, item_type="company")
+        self.filtered_fz_items = get_fuzzy_search_results(search_query=search_query, item_type="company")
         await self.update_company_list_view()
         list_view = self.query_one("#company_list_view", ListView)
         if len(list_view.children) > 0:
