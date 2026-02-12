@@ -1,5 +1,4 @@
 import logging
-import toml
 from typing import Any
 
 from textual.app import App, ComposeResult
@@ -20,8 +19,7 @@ from .widgets.company_detail import CompanyDetail
 from .widgets.campaign_detail import CampaignDetail
 from ..application.company_service import get_company_details_for_view
 from ..models.campaign import Campaign
-from pydantic import ValidationError
-from ..core.config import get_campaign_dir, create_default_config_file, get_config
+from ..core.config import create_default_config_file, get_config
 
 logger = logging.getLogger(__name__)
 
@@ -108,13 +106,18 @@ class CocliApp(App[None]):
     def on_company_list_company_selected(self, message: CompanyList.CompanySelected) -> None:
         logger.debug(f"on_company_list_company_selected called with slug: {message.company_slug}")
         company_slug = message.company_slug
-        company_data = get_company_details_for_view(company_slug)
-        if company_data:
-            self.query_one("#app_content").remove_children()
-            company_detail = CompanyDetail(company_data)
-            self.query_one("#app_content").mount(company_detail)
-            company_detail.styles.display = "block"
-        else:
+        try:
+            company_data = get_company_details_for_view(company_slug)
+            if company_data:
+                self.query_one("#app_content").remove_children()
+                company_detail = CompanyDetail(company_data)
+                self.query_one("#app_content").mount(company_detail)
+                company_detail.styles.display = "block"
+            else:
+                logger.warning(f"Company data not found for slug: {company_slug}")
+                self.bell()
+        except Exception as e:
+            logger.error(f"Error loading company details for {company_slug}: {e}", exc_info=True)
             self.bell()
 
 
@@ -154,27 +157,10 @@ class CocliApp(App[None]):
         detail = self.query_one("#campaign-detail", CampaignDetail)
         logger.debug(f"Found detail widget: {detail}")
 
-        campaign_dir = get_campaign_dir(campaign_name)
-        if not campaign_dir:
-            detail.display_error(f"Campaign Not Found: {campaign_name}", f"Campaign '{campaign_name}' not found.")
-            return
-
-        config_path = campaign_dir / "config.toml"
-        if not config_path.exists():
-            detail.display_error(f"Configuration Not Found: {campaign_name}", f"Configuration file not found for campaign '{campaign_name}'.")
-            return
-
-        with open(config_path, "r") as f:
-            config_data = toml.load(f)
-        
-        flat_config = config_data.pop('campaign')
-        flat_config.update(config_data)
-
         try:
-            campaign = Campaign.model_validate(flat_config)
-        except ValidationError as e:
-            error_message = "\n".join([f"- {err['loc'][0]}: {err['msg']}" for err in e.errors()])
-            detail.display_error(f"Invalid Campaign: {campaign_name}", error_message)
+            campaign = Campaign.load(campaign_name)
+        except Exception as e:
+            detail.display_error(f"Error Loading Campaign: {campaign_name}", str(e))
             return
 
         detail.update_detail(campaign)
@@ -188,7 +174,10 @@ class CocliApp(App[None]):
     def action_select_item(self) -> None:
         """Selects the currently focused item, if the focused widget supports it."""
         focused_widget = self.focused
-        if focused_widget and hasattr(focused_widget, "action_select_item"):
+        if not focused_widget:
+            return
+
+        if hasattr(focused_widget, "action_select_item"):
             focused_widget.action_select_item()
         elif isinstance(focused_widget, ListView):
             focused_widget.action_select_cursor()

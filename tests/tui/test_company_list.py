@@ -18,7 +18,7 @@ mock_detail_data = {
 
 @pytest.mark.asyncio
 @patch('cocli.tui.app.get_company_details_for_view')
-@patch('cocli.tui.widgets.company_list.get_filtered_items_from_fz')
+@patch('cocli.tui.widgets.company_list.get_fuzzy_search_results')
 async def test_company_selection_integration(mock_get_fz_items, mock_get_company_details):
     """Test full company selection flow from main menu to detail screen."""
     # Arrange

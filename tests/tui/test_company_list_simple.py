@@ -9,7 +9,7 @@ from textual.widgets import ListView
 from conftest import wait_for_widget
 
 @pytest.mark.asyncio
-@patch('cocli.tui.widgets.company_list.get_filtered_items_from_fz')
+@patch('cocli.tui.widgets.company_list.get_fuzzy_search_results')
 async def test_company_list_mounts(mock_get_fz_items):
     app = CocliApp()
     async with app.run_test() as driver:
@@ -20,7 +20,7 @@ async def test_company_list_mounts(mock_get_fz_items):
 
 
 @pytest.mark.asyncio
-@patch('cocli.tui.widgets.company_list.get_filtered_items_from_fz')
+@patch('cocli.tui.widgets.company_list.get_fuzzy_search_results')
 async def test_company_list_populates(mock_get_fz_items):
     mock_get_fz_items.return_value = [
         SearchResult(name="Test Company 1", slug="test-company-1", domain="test1.com", type="company", unique_id="test-company-1", tags=[], display=""),
@@ -37,7 +37,7 @@ async def test_company_list_populates(mock_get_fz_items):
 
 
 @pytest.mark.asyncio
-@patch('cocli.tui.widgets.company_list.get_filtered_items_from_fz')
+@patch('cocli.tui.widgets.company_list.get_fuzzy_search_results')
 async def test_company_list_selection_posts_message(mock_get_fz_items, mocker: MockerFixture):
     """Test that selecting a company posts a CompanySelected message."""
     mock_get_fz_items.return_value = [

@@ -7,7 +7,7 @@ from cocli.tui.widgets.person_list import PersonList
 from cocli.utils.textual_utils import sanitize_id # Re-added for sanitizing expected IDs
 from cocli.models.search import SearchResult
 
-# Mock data that get_filtered_items_from_fz would return for persons
+# Mock data that get_fuzzy_search_results would return for persons
 mock_fz_person_items = [
     SearchResult(name="Person One", slug="person-one", type="person", unique_id="person-one", tags=[], display=""),
     SearchResult(name="Person Two", slug="person-two", type="person", unique_id="person-two", tags=[], display=""),
@@ -26,7 +26,7 @@ class PersonListTestApp(App[None]):
         self.push_screen("person_list")
 
 @pytest.mark.asyncio
-@patch('cocli.tui.widgets.person_list.get_filtered_items_from_fz')
+@patch('cocli.tui.widgets.person_list.get_fuzzy_search_results')
 async def test_person_list_display_people(mock_get_fz_items):
     mock_get_fz_items.return_value = mock_fz_person_items # Return all mock items
     app = PersonListTestApp()
@@ -46,10 +46,10 @@ async def test_person_list_display_people(mock_get_fz_items):
         assert sorted(displayed_items) == sorted(expected_unique_ids)
 
 @pytest.mark.asyncio
-@patch('cocli.tui.widgets.person_list.get_filtered_items_from_fz')
+@patch('cocli.tui.widgets.person_list.get_fuzzy_search_results')
 async def test_person_list_search_duplicate_slugs(mock_get_fz_items):
-    # Mock get_filtered_items_from_fz to simulate search results
-    def mock_get_filtered_items_from_fz_side_effect(*args, **kwargs):
+    # Mock get_fuzzy_search_results to simulate search results
+    def mock_get_fuzzy_search_results_side_effect(*args, **kwargs):
         search_query = kwargs.get("search_query", "").lower()
         if "duplicate" in search_query:
             # Return only the items matching 'duplicate' when search query is 'duplicate'
@@ -59,7 +59,7 @@ async def test_person_list_search_duplicate_slugs(mock_get_fz_items):
             ]
         return mock_fz_person_items # Default case for initial load
 
-    mock_get_fz_items.side_effect = mock_get_filtered_items_from_fz_side_effect
+    mock_get_fz_items.side_effect = mock_get_fuzzy_search_results_side_effect
 
     app = PersonListTestApp()
     async with app.run_test() as driver:

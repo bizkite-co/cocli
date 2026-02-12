@@ -20,8 +20,10 @@ def test_append_prospect(temp_campaign_dir, monkeypatch):
     monkeypatch.setattr("cocli.core.prospects_csv_manager.get_campaign_dir", lambda c: temp_campaign_dir)
     
     manager = ProspectsIndexManager("test_campaign")
+    # place_id must be at least 20 characters
+    place_id = "ChIJtest1234567890123" 
     prospect = GoogleMapsProspect(
-        place_id="ChIJtest123",
+        place_id=place_id,
         company_slug="test-company",
         name="Test Company",
         campaign_name="test_campaign"
@@ -31,8 +33,8 @@ def test_append_prospect(temp_campaign_dir, monkeypatch):
     assert success
     
     # Check if file exists in sharded path inside wal/
-    # ChIJtest123 -> shard is 'e' (index 5)
-    expected_path = temp_campaign_dir / "indexes" / "google_maps_prospects" / "wal" / "e" / "ChIJtest123.usv"
+    # ChIJtest1234567890123 -> shard is 'e' (index 5)
+    expected_path = temp_campaign_dir / "indexes" / "google_maps_prospects" / "wal" / "e" / f"{place_id}.usv"
     assert expected_path.exists()
     assert prospect.place_id in expected_path.read_text()
 
@@ -40,21 +42,21 @@ def test_has_place_id_wal(temp_campaign_dir, monkeypatch):
     monkeypatch.setattr("cocli.core.prospects_csv_manager.get_campaign_dir", lambda c: temp_campaign_dir)
     manager = ProspectsIndexManager("test_campaign")
     
-    place_id = "ChIJwal123"
+    place_id = "ChIJwal12345678901234"
     # Manual write to WAL (new sharded structure)
-    shard = "a" 
+    shard = "l" 
     shard_dir = manager.index_dir / "wal" / shard
     shard_dir.mkdir(parents=True)
     (shard_dir / f"{place_id}.usv").write_text("dummy data")
     
     assert manager.has_place_id(place_id)
-    assert not manager.has_place_id("nonexistent")
+    assert not manager.has_place_id("nonexistent_place_id_long_enough")
 
 def test_has_place_id_checkpoint(temp_campaign_dir, monkeypatch):
     monkeypatch.setattr("cocli.core.prospects_csv_manager.get_campaign_dir", lambda c: temp_campaign_dir)
     manager = ProspectsIndexManager("test_campaign")
     
-    place_id = "ChIJcheckpoint123"
+    place_id = "ChIJcheckpoint1234567"
     checkpoint_file = manager._get_checkpoint_path()
     checkpoint_file.write_text(f"{place_id}{UNIT_SEP}some-slug{UNIT_SEP}Some Name\n")
     
@@ -65,14 +67,14 @@ def test_read_all_prospects_merged(temp_campaign_dir, monkeypatch):
     manager = ProspectsIndexManager("test_campaign")
     
     # 1. Add to Checkpoint
-    p1 = GoogleMapsProspect(place_id="PID1", company_slug="slug1", name="Name 1", campaign_name="test_campaign")
-    p2 = GoogleMapsProspect(place_id="PID2", company_slug="slug2", name="Name 2", campaign_name="test_campaign")
+    p1 = GoogleMapsProspect(place_id="PLACE_ID_00000000001", company_slug="slug1", name="Name 1", campaign_name="test_campaign")
+    p2 = GoogleMapsProspect(place_id="PLACE_ID_00000000002", company_slug="slug2", name="Name 2", campaign_name="test_campaign")
     checkpoint_file = manager._get_checkpoint_path()
     checkpoint_file.write_text(p1.to_usv() + p2.to_usv())
     
     # 2. Add to WAL (Overwrite p2, add p3)
-    p2_new = GoogleMapsProspect(place_id="PID2", company_slug="slug2", name="Updated Name 2", campaign_name="test_campaign")
-    p3 = GoogleMapsProspect(place_id="PID3", company_slug="slug3", name="Name 3", campaign_name="test_campaign")
+    p2_new = GoogleMapsProspect(place_id="PLACE_ID_00000000002", company_slug="slug2", name="Updated Name 2", campaign_name="test_campaign")
+    p3 = GoogleMapsProspect(place_id="PLACE_ID_00000000003", company_slug="slug3", name="Name 3", campaign_name="test_campaign")
     manager.append_prospect(p2_new)
     manager.append_prospect(p3)
     
@@ -81,6 +83,6 @@ def test_read_all_prospects_merged(temp_campaign_dir, monkeypatch):
     
     # Check if p2 is the updated one
     pid_to_name = {p.place_id: p.name for p in prospects}
-    assert pid_to_name["PID1"] == "Name 1"
-    assert pid_to_name["PID2"] == "Updated Name 2"
-    assert pid_to_name["PID3"] == "Name 3"
+    assert pid_to_name["PLACE_ID_00000000001"] == "Name 1"
+    assert pid_to_name["PLACE_ID_00000000002"] == "Updated Name 2"
+    assert pid_to_name["PLACE_ID_00000000003"] == "Name 3"

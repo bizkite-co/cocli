@@ -48,4 +48,4 @@ class PersonDetail(Screen[None]):
         if self.person.tags:
             description_parts.append(f"**Tags:** {', '.join(self.person.tags)}")
         
-        return "\\n".join(description_parts)
+        return "\n".join(description_parts)

@@ -1,6 +1,7 @@
 from textual.containers import VerticalScroll
 from textual.widgets import Static
 from rich.panel import Panel
+from rich.markup import escape
 from cocli.models.campaign import Campaign
 import logging
 
@@ -23,7 +24,7 @@ class CampaignDetail(VerticalScroll):
         self.campaign = campaign
         self.remove_children()
         # Create a string representation of the campaign data for the panel
-        campaign_data_str = "\n".join([f"[b]{key.replace('_', ' ').title()}:[/b] {value}" for key, value in self.campaign.model_dump().items()])
+        campaign_data_str = "\n".join([f"[b]{key.replace('_', ' ').title()}:[/b] {escape(str(value))}" for key, value in self.campaign.model_dump().items()])
         self.mount(Static(Panel(campaign_data_str, title=self.campaign.name, border_style="green")))
 
     def display_error(self, title: str, message: str) -> None:

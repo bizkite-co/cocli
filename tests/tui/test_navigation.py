@@ -15,7 +15,7 @@ mock_detail_data = {
 
 @pytest.mark.asyncio
 @patch('cocli.tui.app.get_company_details_for_view')
-@patch('cocli.tui.widgets.company_list.get_filtered_items_from_fz')
+@patch('cocli.tui.widgets.company_list.get_fuzzy_search_results')
 async def test_l_key_selects_item(mock_get_fz_items, mock_get_company_details):
     """
     Tests that pressing 'l' on a ListView item triggers the selection of that item.
@@ -41,7 +41,7 @@ async def test_l_key_selects_item(mock_get_fz_items, mock_get_company_details):
 
 
 @pytest.mark.asyncio
-@patch('cocli.tui.widgets.company_list.get_filtered_items_from_fz')
+@patch('cocli.tui.widgets.company_list.get_fuzzy_search_results')
 async def test_down_arrow_moves_highlight_in_company_list(mock_get_fz_items):
     """
     Tests that pressing 'down' moves the highlight in the ListView, even when the Input is focused.
@@ -66,7 +66,7 @@ async def test_down_arrow_moves_highlight_in_company_list(mock_get_fz_items):
 
 @pytest.mark.asyncio
 @patch('cocli.tui.app.get_company_details_for_view')
-@patch('cocli.tui.widgets.company_list.get_filtered_items_from_fz')
+@patch('cocli.tui.widgets.company_list.get_fuzzy_search_results')
 async def test_enter_key_selects_item_in_company_list(mock_get_fz_items, mock_get_company_details):
     """
     Tests that pressing 'enter' on a ListView item triggers the selection of that item.

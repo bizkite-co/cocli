@@ -77,17 +77,19 @@ logname: ## Get the latest log file name
 # Note: TUI integration tests are run separately due to terminal driver conflicts.
 # Use 'make test-tui-integration' to run them.
 test: install lint ## Run all non-TUI tests using pytest (incremental)
-	@if python3 scripts/check_code_signature.py --check; then \
-		echo "Code signature matches. Skipping tests."; \
+	@if python3 scripts/check_code_signature.py --check --task test; then \
+		echo "Code signature matches for task 'test'. Skipping tests."; \
 	else \
-		source $(VENV_DIR)/bin/activate && PYTHONPATH=. pytest -s tests/ --quiet --ignore=tests/tui/test_navigation_steps.py --ignore=tests/e2e; \
+		source $(VENV_DIR)/bin/activate && PYTHONPATH=. pytest -s tests/ --quiet --ignore=tests/tui/test_navigation_steps.py --ignore=tests/e2e && \
+		python3 scripts/check_code_signature.py --update --task test; \
 	fi
 
 test-unit: install lint ## Run unit tests (incremental)
-	@if python3 scripts/check_code_signature.py --check; then \
-		echo "Code signature matches. Skipping unit tests."; \
+	@if python3 scripts/check_code_signature.py --check --task test-unit; then \
+		echo "Code signature matches for task 'test-unit'. Skipping unit tests."; \
 	else \
-		source $(VENV_DIR)/bin/activate && PYTHONPATH=. pytest -s tests/ --ignore=tests/tui --ignore=tests/e2e; \
+		source $(VENV_DIR)/bin/activate && PYTHONPATH=. pytest -s tests/ --ignore=tests/tui --ignore=tests/e2e && \
+		python3 scripts/check_code_signature.py --update --task test-unit; \
 	fi
 
 test-tui-integration: install ## Run only the TUI integration tests
@@ -117,13 +119,13 @@ textual: ## Run the app in textual
 	textual run cocli.tui.app
 
 lint: ## Run ruff and mypy to perform static type checking (incremental)
-	@if python3 scripts/check_code_signature.py --check; then \
-		echo "Code signature matches. Skipping lint."; \
+	@if python3 scripts/check_code_signature.py --check --task lint; then \
+		echo "Code signature matches for task 'lint'. Skipping lint."; \
 	else \
 		echo "Code changed. Running lint..."; \
 		$(VENV_DIR)/bin/ruff check . --fix && \
 		$(VENV_DIR)/bin/python -m mypy --config-file pyproject.toml . && \
-		python3 scripts/check_code_signature.py --update; \
+		python3 scripts/check_code_signature.py --update --task lint; \
 	fi
 
 # Data Management Targets

@@ -238,11 +238,19 @@ class CampaignService:
             # If it's a Pydantic model (like Campaign)
             data = config.model_dump(by_alias=True, exclude_none=True)
             
-            # The Campaign model might be flattened, we need to ensure 
-            # proper TOML structure if possible, but for now we'll 
-            # match what the TUI was doing.
+            # The Campaign model is flattened. We need to move campaign-specific 
+            # fields back into a [campaign] section to match the established format.
+            campaign_fields = ["name", "tag", "domain", "company-slug", "workflows", "queue_type", "timezone"]
+            structured_data: Dict[str, Any] = {"campaign": {}}
+            
+            for k, v in data.items():
+                if k in campaign_fields:
+                    structured_data["campaign"][k] = v
+                else:
+                    structured_data[k] = v
+            
             with open(self.config_path, "w") as f:
-                toml.dump(data, f)
+                toml.dump(structured_data, f)
         else:
             with open(self.config_path, "w") as f:
                 toml.dump(config, f)

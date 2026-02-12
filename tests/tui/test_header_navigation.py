@@ -37,7 +37,7 @@ async def test_leader_p_shows_people():
         assert isinstance(person_list, PersonList)
 
 @pytest.mark.asyncio
-@patch('cocli.tui.widgets.company_list.get_filtered_items_from_fz')
+@patch('cocli.tui.widgets.company_list.get_fuzzy_search_results')
 async def test_leader_c_shows_companies(mock_get_fz_items):
     """Test that Leader+c shows the CompanyList widget."""
     mock_get_fz_items.return_value = [] # Provide an empty list or a mock SearchResult

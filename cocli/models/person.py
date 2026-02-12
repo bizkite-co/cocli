@@ -50,9 +50,10 @@ class Person(BaseModel):
 
     @classmethod
     def from_directory(cls, person_dir: Path) -> Optional["Person"]:
-        # This method needs to be updated to pass the slug to from_file
+        """Loads a person from a directory by looking for the first .md file."""
         for person_file in person_dir.glob("*.md"):
-            return cls.from_file(person_file, person_dir.name) # Pass slug here
+            # Use the directory name as the slug
+            return cls.from_file(person_file, person_dir.name)
         return None
 
     @classmethod
