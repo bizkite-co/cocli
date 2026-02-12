@@ -213,13 +213,35 @@ This document outlines the roadmap for transitioning `cocli` from a purely local
     *   [x] Removed hardcoded auth domains from the web dashboard.
     *   [x] Verified IAM permissions for campaign-specific S3 buckets.
 
-## Phase 17: Campaign Integrity & Data Cleanup (Active)
+## Phase 17: Campaign Integrity & Data Cleanup (Completed)
 
-**Goal:** Identify and remove cross-campaign contaminated data and harden isolation.
+**Goal:** Identify and remove cross-campaign contaminated data and harden isolation for the `roadmap` campaign.
 
-1.  **Data Audit**:
-    *   [ ] Scan `roadmap` campaign for prospects originating from incorrect search queries (e.g., flooring keywords).
-2.  **Automated Cleanup**:
-    *   [ ] Implement a cleanup tool to prune prospects and companies that don't match the campaign's query list.
-3.  **Isolation Hardening**:
-    *   [ ] Audit scripts for campaign-awareness and enforce default campaign validation.
+1.  **Modular Identity Foundation (Done):**
+
+    *   [x] Standardized `GoogleMapsProspect` as the SSoT for all index serialization.
+    *   [x] Implemented deterministic sharding based on `place_id`.
+
+2.  **Restoration & Cleanup (Done):**
+
+    *   [x] Successfully recovered 25,126 records for the `roadmap` campaign.
+    *   [x] Purged contaminated S3 data and standardized local WAL to "Gold" format.
+
+3.  **Performance Hardening (Done):**
+
+    *   [x] Implemented incremental linting/testing via code signatures to optimize deployment.
+
+## Phase 18: Turboship Restoration & Index Hardening (Active)
+
+**Goal:** Extend the "Gold Standard" architecture to the `turboship` campaign and generalize WAL strategies to all secondary indexes.
+
+1.  **Turboship Migration:**
+
+    *   [ ] Audit `data/campaigns/turboship/` for legacy USV formats.
+    *   [ ] Migrate `google_maps_prospects` to the sharded, modular format.
+    *   [ ] Standardize secondary indexes (domains, emails) to use the same "Gold" Pydantic logic.
+
+2.  **Generalized WAL Strategy:**
+
+    *   [ ] Implement WAL/Compaction patterns for `emails` and `domains` indexes.
+    *   [ ] Explore WAL-based "Completed" folders for SQS/DFQ queues to improve observability.

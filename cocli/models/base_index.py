@@ -55,6 +55,7 @@ class BaseIndexModel(BaseModel):
         schema = {
             "profile": "tabular-data-package",
             "name": cls.INDEX_NAME,
+            "model": cls.__name__,
             "version": cls.SCHEMA_VERSION,
             "resources": [
                 {

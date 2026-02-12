@@ -4,8 +4,8 @@ This schema defines the shared structure used across all Cocli environments. The
 
 ## Environment Mapping
 - **S3**: `s3://cocli-data-{campaign}/`
-- **Local (Ubuntu)**: `/home/mstouffer/repos/company-cli/data/` (via symlink)
-- **Local (Data Home)**: `/home/mstouffer/.local/share/cocli_data/`
+- **Local (Ubuntu)**: `/home/{username}/repos/company-cli/data/` (via symlink)
+- **Local (Data Home)**: `/home/{username}/.local/share/cocli_data/`
 - **RPi Cluster**: `/app/data/`
 
 ## Conventions

@@ -22,15 +22,11 @@ UNIT_SEP = "\x1f" # ASCII Unit Separator
 def get_place_id_shard(place_id: str) -> str:
     """
     Returns a deterministic shard for a Place ID.
-    Uses the last character for 1-level sharding.
+    Uses the 6th character (index 5) for 1-level sharding.
     """
-    if not place_id:
+    if not place_id or len(place_id) < 6:
         return "_"
-    char = place_id[-1]
-    # Filter to only alphanumeric or underscores for clean filesystem
-    if char.isalnum():
-        return char
-    return "_"
+    return place_id[5]
 
 def get_geo_shard(lat: float, lon: float) -> str:
     """

@@ -170,19 +170,38 @@ class GoogleMapsProspect(GoogleMapsIdx):
         if data["name"]:
             name_str = str(data["name"])
             data["company_slug"] = slugify(name_str)
-            data["company_hash"] = calculate_company_hash(
-                name_str, 
-                str(data["street_address"]) if data["street_address"] else None,
-                str(data["zip"]) if data["zip"] else None
-            )
             
         return cls(**data) # type: ignore
 
     @model_validator(mode='after')
     def validate_identity_tripod(self) -> 'GoogleMapsProspect':
+        from cocli.core.text_utils import slugify, calculate_company_hash
+        
         if not self.company_slug and self.name:
             self.company_slug = slugify(self.name)
+            
+        if self.name and not self.company_hash:
+            self.company_hash = calculate_company_hash(
+                self.name,
+                self.street_address,
+                self.zip
+            )
         return self
+
+    @model_validator(mode='before')
+    @classmethod
+    def hydrate_address_components(cls, values: Dict[str, Any]) -> Dict[str, Any]:
+        if not isinstance(values, dict):
+            return values
+            
+        full_addr = values.get("full_address")
+        if full_addr and not values.get("street_address"):
+            from ..core.text_utils import parse_address_components
+            addr_data = parse_address_components(full_addr)
+            for key, val in addr_data.items():
+                if val and not values.get(key):
+                    values[key] = val
+        return values
 
     @model_validator(mode='before')
     @classmethod

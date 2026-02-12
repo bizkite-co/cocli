@@ -3,13 +3,15 @@ from typing import Union
 def get_place_id_shard(place_id: str) -> str:
     """
     Returns a deterministic 1-character shard ID for a Google Place ID.
-    Uses the 6th character (index 5) which is one character after the 
-    common 'ChIJ-' prefix, providing high variability.
+    Uses the last character for 1-level sharding.
     """
-    if not place_id or len(place_id) < 6:
+    if not place_id:
         return "_"
     
-    return place_id[5]
+    char = place_id[-1]
+    if char.isalnum():
+        return char
+    return "_"
 
 def get_geo_shard(latitude: Union[float, str]) -> str:
     """

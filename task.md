@@ -1,40 +1,40 @@
-# Task: Campaign Identity Recovery & Shielding
+# Task: Turboship Campaign Migration to Gold Standard
 
 ## Objective
-Recover unique records for targeted campaigns and enforce a "Model-to-Model" architecture with full discovery lineage and a Universal Data Namespace to permanently prevent data loss and cross-campaign contamination.
+Migrate the `turboship` campaign data from legacy formats to the "Gold Standard" architecture used by the `roadmap` campaign. This ensures architectural parity, idempotent processing, and robust data integrity across the cluster.
 
-## Phase 4: Index Robustness & Lifecycle (COMPLETE)
-- [x] **Modular Identity foundation**: Created `GoogleMapsIdx` as a lightweight base model to enforce mandatory anchors (`place_id`, `company_slug`, `name`) at the head of every record.
-- [x] **Single Source of Truth (SSoT) Serialization**: Established the Pydantic model as the absolute authority for USV column ordering, eliminating manual field lists and preventing data drift.
-- [x] **Frictionless Metadata DRI**: Implemented automatic `datapackage.json` generation directly from model field definitions, ensuring metadata and data stay perfectly synced.
-- [x] **Robust Address Component Recovery**: Integrated a regex-based parser into the transformation layer to salvage Street, City, State, and ZIP data from legacy unstructured strings.
-- [x] **Clean Hashing Logic**: Rebuilt `calculate_company_hash` to use recovered address components, eliminating the "none-00000" collision bug.
-- [x] **High-Speed "Fast-Path" Deployment**: Implemented Docker bind-mount infrastructure and `rsync` deployment, enabling near-instant code updates across the Pi cluster.
-- [x] **Quarantined Legacy Ingestion**: Created a dedicated `quarantine` model space to safely ingest "dirty" data formats and transform them into the Gold Standard.
-- [x] **Zero-Warning Compliance**: Fixed 22+ `utcnow()` deprecations and resolved all Mypy/Ruff errors to achieve a 100% clean lint pass across the entire codebase.
+## Phase 1: Google Maps Prospect Index Migration (ACTIVE)
+- [ ] **Define Legacy Model**: Create `TurboshipLegacyProspect` in `cocli/models/quarantine/` to handle the headered USV format (52 fields, index-based mapping).
+- [ ] **Migration Script**: Create `scripts/migrate_turboship_indexes.py` to:
+    - Ingest legacy `indexes/google_maps_prospects/*.usv` files.
+    - Standardize `place_id` (maintain CID if necessary, but validate).
+    - Map fields to the `GoogleMapsProspect` Pydantic model.
+    - Populate `company_slug` and `company_hash` using the Identity Tripod (Name, Address, Zip).
+    - Write to sharded WAL: `indexes/google_maps_prospects/wal/{last_char}/{place_id}.usv`.
+- [ ] **Consolidation**: Run `cocli campaign consolidate-prospects --campaign turboship` to generate the `prospects.checkpoint.usv`.
+- [ ] **Metadata Generation**: Generate `datapackage.json` for the new index.
 
-## Phase 5: Production Stabilization (CURRENT)
-- [ ] **In-Place Index Restoration**: Deploy 22,097 recovered Gold Standard records from the recovery folder back into the sharded WAL.
-- [ ] **Checkpoint Consolidation**: Compact the new standardized WAL shards into a fresh, validated `prospects.checkpoint.usv`.
-- [ ] **Pi Cluster Validation**: Verify that the workers correctly append new records to the `wal/` subdirectories using the updated SSoT model.
-- [ ] **Full Data Purge**: Perform a final cleanup of legacy root-level shards and orphaned CSV files from S3 to ensure a pristine Universal Namespace.
+## Phase 2: Mission Index & Witness Migration
+- [ ] **Target Tile Migration**: Convert `indexes/target-tiles/*.csv` to the hierarchical `{lat}/{lon}/{phrase}.csv` format.
+- [ ] **Witness Files**: Ensure `scraped-tiles` witnesses are correctly placed to prevent re-scraping of already completed areas.
 
-## Technical Standards
-- **Model-Driven Storage**: The Pydantic model definition *is* the storage schema. No manual column lists are permitted in serialization methods.
-- **Identity-First Sequence**: All USV files MUST start with `place_id | company_slug | name` followed by the model's metadata and data fields.
-- **Unit-Separated (USV)**: All sharded data files use `UNIT_SEP` (\x1f) and MUST be headerless. Schema is defined in the co-located `datapackage.json`.
-- **Fast Deployment**: All RPi nodes use bind mounts to `~/repos/cocli` to ensure zero-latency updates and eliminate image-code staleness.
-- **Address Integrity**: All prospect records must attempt to populate structured `street_address`, `city`, `state`, and `zip` fields to support unique hashing.
+## Phase 3: Secondary Index Parity
+- [ ] **Email Index**: Standardize `indexes/emails/` to use the same sharding and USV format as `roadmap`.
+- [ ] **Domain Index**: Ensure domain-to-place_id mapping is preserved and migrated to the new schema.
+
+## Phase 4: Verification & S3 Sync
+- [ ] **Schema Validation**: Run `cocli campaign validate-index --campaign turboship`.
+- [ ] **Hash Audit**: Run `scripts/debug_hashes.py --campaign turboship` to ensure zero collisions.
+- [ ] **S3 Push**: Push the new standardized structure to S3 and verify the Web Dashboard reflects the migrated data.
+
+## Technical Standards (Parity with Roadmap)
+- **Format**: Unit-Separated Values (USV) using `\x1f`.
+- **Headers**: No headers in data files; schema defined in `datapackage.json`.
+- **Sharding**: Google Maps prospects sharded by the *last character* of the `place_id`.
+- **Identity First**: All records must start with `place_id | company_slug | name`.
+- **Atomic WAL**: New writes go to the `wal/` directory before being compacted into the checkpoint.
 
 ## Verification Tools
-### 1. Hash Diagnostic (`scripts/debug_hashes.py`)
-Inspects the identity tripod (Name, Street, Zip) and hash for every record in the index to identify collisions or data loss.
-
-### 2. Index Repair (`scripts/repair_index_schema.py`)
-Uses the Quarantined Legacy Model to ingest malformed data, extract address components, and transform them into Gold Standard USVs.
-
-### 3. Metadata Generator (`scripts/generate_datapackage.py`)
-Dynamically generates Frictionless `datapackage.json` sidecars by inspecting the current Pydantic model fields.
-
-### 4. Cluster Rebuild (`make fast-deploy-cluster`)
-Automates the high-speed rsync and bind-mount restart sequence for all 4 cluster nodes.
+- `scripts/migrate_turboship_indexes.py` (New)
+- `scripts/debug_hashes.py`
+- `cocli campaign consolidate-prospects`

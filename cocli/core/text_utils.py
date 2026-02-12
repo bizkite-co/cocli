@@ -1,11 +1,12 @@
 import re
 from typing import Optional, Dict
 
-def slugify(text: str) -> str:
+def slugify(text: str, max_length: Optional[int] = None) -> str:
     """
     Converts text to a filesystem-friendly slug.
     Preserves forward slashes (/) to support namespacing.
     Replaces other non-alphanumeric characters with dashes.
+    Truncates to max_length if provided.
     """
     if not text:
         return ""
@@ -15,7 +16,11 @@ def slugify(text: str) -> str:
     # Ensure we don't have multiple dashes or dashes next to slashes
     text = re.sub(r'-+', '-', text)
     text = re.sub(r'-?/-?', '/', text)
-    return text.strip('-')
+    s = text.strip('-')
+    
+    if max_length:
+        s = s[:max_length]
+    return s
 
 def parse_address_components(full_address: Optional[str]) -> Dict[str, Optional[str]]:
     """
@@ -60,19 +65,19 @@ def calculate_company_hash(name: Optional[str], street: Optional[str], zip_code:
     """
     Generates a human-readable unique identifier for a company location.
     Format: slug(name)[:8]-slug(street)[:8]-zip[:5]
+    Returns None if street or zip is missing to prevent toxic collisions.
     """
-    if not name:
+    if not name or not street or not zip_code:
         return None
         
     n = slugify(name)[:8]
-    s = slugify(street or "none")[:8]
+    s = slugify(street)[:8]
     
     # Extract first 5 digits of zip
-    z = "00000"
-    if zip_code:
-        z_match = re.search(r'\d{5}', str(zip_code))
-        if z_match:
-            z = z_match.group(0)
+    z_match = re.search(r'\d{5}', str(zip_code))
+    if not z_match:
+        return None
+    z = z_match.group(0)
     
     return f"{n}-{s}-{z}"
 
