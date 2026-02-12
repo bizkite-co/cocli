@@ -460,7 +460,7 @@ check-freshness: sync-scraped-areas ## Check if scraped data is fresh (warn if >
 .PHONY: export-emails
 export-emails: ## Export enriched emails to CSV (Usage: make export-emails [CAMPAIGN=name])
 	$(call validate_campaign)
-	@PYTHONPATH=. $(VENV_DIR)/bin/python scripts/export_enriched_emails.py $(CAMPAIGN)
+	@PYTHONPATH=. $(VENV_DIR)/bin/python scripts/export_enriched_emails.py $(CAMPAIGN) --all
 
 .PHONY: queue-missing
 queue-missing: ## Identify and queue missing enrichments (Gap Analysis) (Usage: make queue-missing CAMPAIGN=name)
@@ -568,7 +568,7 @@ hotfix-cluster: ## Apply high-speed rsync hotfix to all cluster nodes
 RPI_HOST ?= octoprint.pi
 RPI_USER ?= mstouffer
 RPI_DIR ?= ~/repos/cocli
-CLUSTER_NODES ?= cocli5x0.pi,cocli5x1.pi,octoprint.pi,coclipi.pi
+CLUSTER_NODES ?= cocli5x1.pi,octoprint.pi,coclipi.pi
 
 .PHONY: setup-rpi
 setup-rpi: ## Bootstap the Raspberry Pi with Docker and Git
@@ -809,14 +809,16 @@ show-kmls: ## Show KML files online (Usage: make show-kmls [BUCKET=cocli-web-ass
 .PHONY: deploy-iot-cdk
 deploy-iot-cdk: install ## Deploy IoT Core Credential Provider infrastructure (Usage: make deploy-iot-cdk CAMPAIGN=roadmap)
 	@$(call validate_campaign)
-	@echo "Deploying IoT infrastructure for $(CAMPAIGN)..."
-	cd cdk_scraper_deployment && uv pip install -r requirements.txt && cdk deploy --require-approval never --profile westmonroe-support -c campaign=$(CAMPAIGN)
+	@$(eval PROFILE := $(shell python3 -c "from cocli.core.config import load_campaign_config; print(load_campaign_config('$(CAMPAIGN)').get('aws', {}).get('aws_profile', 'default'))"))
+	@echo "Deploying IoT infrastructure for $(CAMPAIGN) using profile $(PROFILE)..."
+	cd cdk_scraper_deployment && uv pip install -r requirements.txt && cdk deploy --require-approval never --profile $(PROFILE) -c campaign=$(CAMPAIGN)
 
 .PHONY: provision-pi-iot
 provision-pi-iot: ## Provision a Pi with unique IoT certificate (Usage: make provision-pi-iot HOST=xxx.pi CAMPAIGN=roadmap)
 	@$(call validate_campaign)
 	@if [ -z "$(HOST)" ]; then echo "Error: HOST is required. Usage: make provision-pi-iot HOST=cocli5x0.pi CAMPAIGN=roadmap"; exit 1; fi
-	./scripts/provision_pi_iot.py --host $(HOST) --campaign $(CAMPAIGN) --profile westmonroe-support
+	@$(eval PROFILE := $(shell python3 -c "from cocli.core.config import load_campaign_config; print(load_campaign_config('$(CAMPAIGN)').get('aws', {}).get('aws_profile', 'default'))"))
+	./scripts/provision_pi_iot.py --host $(HOST) --campaign $(CAMPAIGN) --profile $(PROFILE)
 
 # ==============================================================================
 # Documentation

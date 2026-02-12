@@ -132,10 +132,10 @@ def main(
     
     # 4. Iterate all companies
     for company_obj in track(Company.get_all(), description="Scanning companies..."):
-        # Check if company belongs to this campaign via tags or index match
+        # Check if company belongs to this campaign via tags (hydration target)
         in_campaign = campaign_name in company_obj.tags
         
-        # Primary matching via Place ID or Slug
+        # Primary matching via Place ID or Slug (index target)
         in_index = (
             (company_obj.place_id and company_obj.place_id in target_place_ids) or 
             (company_obj.slug in target_slugs)
@@ -160,10 +160,15 @@ def main(
         if not emails and not include_all:
             continue
 
+        website_data = get_website_data(company_obj.slug)
         if keywords:
-            website_data = get_website_data(company_obj.slug)
             if not website_data or not website_data.found_keywords:
                 continue
+
+        # Get keywords from website data if available
+        found_keywords = []
+        if website_data and website_data.found_keywords:
+            found_keywords = website_data.found_keywords
 
         results.append({
             "company": company_obj.name,
@@ -174,7 +179,7 @@ def main(
             "categories": "; ".join(sorted(list(set(company_obj.categories)))),
             "services": "; ".join(sorted(list(set(company_obj.services)))),
             "products": "; ".join(sorted(list(set(company_obj.products)))),
-            "keywords": "; ".join(sorted(list(set(company_obj.keywords))))
+            "keywords": "; ".join(sorted(list(set(found_keywords))))
         })
 
     with open(output_file, "w", newline="") as f:

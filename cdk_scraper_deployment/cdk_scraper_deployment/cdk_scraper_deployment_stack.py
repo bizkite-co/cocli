@@ -283,9 +283,38 @@ class CdkScraperDeploymentStack(Stack):  # type: ignore[misc]
             description=f"Role assumed by Raspberry Pi workers for campaign {campaign_config['name']}"
         )
 
-        # Import the user's managed policy and attach it
-        worker_policy = iam.ManagedPolicy.from_managed_policy_arn(self, "ImportedWorkerPolicy", 
-            "arn:aws:iam::865664998993:policy/CocliIoTScraperWorkerPolicy"
+        # Create the Gold Standard Worker Policy
+        worker_policy = iam.ManagedPolicy(self, "CocliIoTScraperWorkerPolicy",
+            managed_policy_name="CocliIoTScraperWorkerPolicy",
+            statements=[
+                iam.PolicyStatement(
+                    effect=iam.Effect.ALLOW,
+                    actions=[
+                        "s3:PutObject",
+                        "s3:GetObject",
+                        "s3:ListBucket",
+                        "s3:DeleteObject",
+                        "s3:GetBucketLocation"
+                    ],
+                    resources=[
+                        f"arn:aws:s3:::{data_bucket_name}",
+                        f"arn:aws:s3:::{data_bucket_name}/*"
+                    ]
+                ),
+                iam.PolicyStatement(
+                    effect=iam.Effect.ALLOW,
+                    actions=[
+                        "sqs:SendMessage",
+                        "sqs:ReceiveMessage",
+                        "sqs:DeleteMessage",
+                        "sqs:GetQueueAttributes",
+                        "sqs:ChangeMessageVisibility"
+                    ],
+                    resources=[
+                        f"arn:aws:sqs:{self.region}:{self.account}:CdkScraperDeploymentStack-*"
+                    ]
+                )
+            ]
         )
         iot_role.add_managed_policy(worker_policy)
 

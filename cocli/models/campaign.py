@@ -29,6 +29,7 @@ class Prospecting(BaseModel):
     panning_distance_miles: int = Field(8, alias="panning-distance-miles")
     initial_zoom_out_level: int = Field(3, alias="initial-zoom-out-level")
     omit_zoom_feature: bool = Field(False, alias="omit-zoom-feature")
+    strict_keyword_filter: bool = Field(False, alias="strict-keyword-filter")
 
     @model_validator(mode='before')
     @classmethod

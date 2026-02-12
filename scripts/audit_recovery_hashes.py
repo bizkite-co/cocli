@@ -9,7 +9,7 @@ sys.path.append(str(Path(__file__).parent.parent))
 
 from cocli.models.google_maps_prospect import GoogleMapsProspect
 
-def audit_recovery(campaign_name: str):
+def audit_recovery(campaign_name: str) -> None:
     data_home = Path(os.environ.get("COCLI_DATA_HOME", Path.home() / ".local/share/cocli_data"))
     checkpoint = data_home / "campaigns" / campaign_name / "recovery" / "indexes" / "google_maps_prospects" / "prospects.checkpoint.usv"
     
@@ -26,7 +26,7 @@ def audit_recovery(campaign_name: str):
     table.add_column("Zip")
     table.add_column("Status")
 
-    collisions = {}
+    collisions: dict[str, list[str]] = {}
     total = 0
     missing_hash = 0
     
@@ -61,7 +61,7 @@ def audit_recovery(campaign_name: str):
     unique_hashes = len(collisions)
     collision_count = sum(len(v) for v in collisions.values() if len(v) > 1)
     
-    console.print(f"\n[bold]Audit Summary:[/bold]")
+    console.print("\n[bold]Audit Summary:[/bold]")
     console.print(f"Total Records: {total}")
     console.print(f"Unique Hashes: {unique_hashes}")
     console.print(f"Missing Hashes: {missing_hash}")

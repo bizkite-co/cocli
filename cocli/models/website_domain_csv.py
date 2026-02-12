@@ -1,11 +1,15 @@
-from pydantic import BaseModel, Field
-from typing import Optional, List, Dict, Any
+from pydantic import Field
+from typing import Optional, List, Dict, Any, ClassVar
 from datetime import datetime, UTC
 from .domain import Domain
 from .email_address import EmailAddress
 from .phone import OptionalPhone
+from .base_index import BaseIndexModel
 
-class WebsiteDomainCsv(BaseModel):
+class WebsiteDomainCsv(BaseIndexModel):
+    INDEX_NAME: ClassVar[str] = "domains"
+    SCHEMA_VERSION: ClassVar[str] = "1.0.0"
+
     domain: Domain
     company_name: Optional[str] = None
     phone: OptionalPhone = None

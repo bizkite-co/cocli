@@ -23,7 +23,7 @@ def migrate_record(line: str) -> Optional[GoogleMapsProspect]:
         
         # 2. Transform to Gold Standard Model
         return legacy.to_ideal()
-    except Exception as e:
+    except Exception:
         # print(f"Error migrating record: {e}")
         return None
 
@@ -46,7 +46,7 @@ def main() -> None:
     recovery_dir.mkdir(parents=True, exist_ok=True)
     wal_dir.mkdir(parents=True, exist_ok=True)
     
-    print(f"--- Turboship Index Migration ---")
+    print("--- Turboship Index Migration ---")
     print(f"Source: {legacy_index_dir}")
     print(f"Destination: {wal_dir}")
     

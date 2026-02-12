@@ -19,6 +19,9 @@ module.exports = () => {
       // Also look in google_maps section
       const gmConfig = parsed.google_maps || {};
       configFromFile.google_maps_js_api_key = configFromFile.google_maps_js_api_key || gmConfig.js_api_key || gmConfig.google_maps_js_api_key;
+      
+      const prospectingConfig = parsed.prospecting || {};
+      configFromFile.strict_keyword_filter = prospectingConfig['strict-keyword-filter'] || false;
     } catch (e) {
       console.error(`Error reading config.toml at ${configPath}:`, e);
     }
@@ -32,6 +35,7 @@ module.exports = () => {
     identityPoolId: process.env.COCLI_IDENTITY_POOL_ID || configFromFile.cocli_identity_pool_id || '',
     region: process.env.AWS_REGION || configFromFile.region || 'us-east-1',
     commandQueueUrl: process.env.COCLI_COMMAND_QUEUE_URL || configFromFile.cocli_command_queue_url || '',
-    googleMapsApiKey: process.env.GOOGLE_MAPS_JS_API_KEY || configFromFile.google_maps_js_api_key || ''
+    googleMapsApiKey: process.env.GOOGLE_MAPS_JS_API_KEY || configFromFile.google_maps_js_api_key || '',
+    strictKeywordFilter: process.env.COCLI_STRICT_KEYWORD_FILTER === 'true' || configFromFile.strict_keyword_filter || false
   };
 };

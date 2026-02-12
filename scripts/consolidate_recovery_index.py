@@ -7,13 +7,12 @@ from pathlib import Path
 # Add project root to path
 sys.path.append(str(Path(__file__).parent.parent))
 
-from cocli.core.config import get_cocli_base_dir
 from cocli.models.google_maps_prospect import GoogleMapsProspect
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-def consolidate(campaign_name: str):
+def consolidate(campaign_name: str) -> None:
     data_home = Path(os.environ.get("COCLI_DATA_HOME", Path.home() / ".local/share/cocli_data"))
     recovery_dir = data_home / "campaigns" / campaign_name / "recovery" / "indexes" / "google_maps_prospects"
     wal_dir = recovery_dir / "wal"
@@ -66,19 +65,21 @@ def consolidate(campaign_name: str):
         columns = con.execute("PRAGMA table_info('all_records')").fetchall()
         logger.info(f"Detected columns: {[c[1] for c in columns]}")
         
-        count = con.execute("SELECT count(*) FROM all_records").fetchone()[0]
+        res = con.execute("SELECT count(*) FROM all_records").fetchone()
+        count = res[0] if res else 0
         logger.info(f"Loaded {count} total records from WAL.")
 
         # 4. Deduplicate: Take the latest record for each place_id
         # We use the index of the columns if names are still failing, 
         # but let's try the names first now that we simplified.
-        con.execute(f"""
+        con.execute("""
             CREATE TABLE deduped AS
             SELECT * FROM all_records
             QUALIFY ROW_NUMBER() OVER(PARTITION BY place_id ORDER BY updated_at DESC, created_at DESC) = 1
         """)
         
-        final_count = con.execute("SELECT count(*) FROM deduped").fetchone()[0]
+        res_deduped = con.execute("SELECT count(*) FROM deduped").fetchone()
+        final_count = res_deduped[0] if res_deduped else 0
         logger.info(f"Deduplicated to {final_count} unique records.")
 
         # 5. Export to checkpoint

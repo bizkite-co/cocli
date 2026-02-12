@@ -1,4 +1,3 @@
-import os
 import yaml
 from pathlib import Path
 from cocli.core.utils import UNIT_SEP

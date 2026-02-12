@@ -1,6 +1,6 @@
-from pydantic import BaseModel, Field
-from typing import Optional, List, Dict, Any
-from datetime import datetime, UTC
+from pydantic import BaseModel
+from typing import Optional
+from datetime import datetime
 from ..google_maps_prospect import GoogleMapsProspect
 
 class TurboshipLegacyProspect(BaseModel):
@@ -182,17 +182,23 @@ class TurboshipLegacyProspect(BaseModel):
 
         # Handle numeric fields
         try:
-            if self.reviews_count: data["reviews_count"] = int(self.reviews_count)
-            if self.average_rating: data["average_rating"] = float(self.average_rating)
-            if self.latitude: data["latitude"] = float(self.latitude)
-            if self.longitude: data["longitude"] = float(self.longitude)
+            if self.reviews_count:
+                data["reviews_count"] = int(self.reviews_count)
+            if self.average_rating:
+                data["average_rating"] = float(self.average_rating)
+            if self.latitude:
+                data["latitude"] = float(self.latitude)
+            if self.longitude:
+                data["longitude"] = float(self.longitude)
         except (ValueError, TypeError):
             pass
 
         # Handle datetimes
         try:
-            if self.created_at: data["created_at"] = datetime.fromisoformat(self.created_at)
-            if self.updated_at: data["updated_at"] = datetime.fromisoformat(self.updated_at)
+            if self.created_at:
+                data["created_at"] = datetime.fromisoformat(self.created_at)
+            if self.updated_at:
+                data["updated_at"] = datetime.fromisoformat(self.updated_at)
         except (ValueError, TypeError):
             pass
 

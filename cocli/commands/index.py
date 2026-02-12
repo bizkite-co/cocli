@@ -36,5 +36,33 @@ def compact(
             console.print(traceback.format_exc())
         raise typer.Exit(code=1)
 
+@app.command(name="write-datapackage")
+def write_datapackage(
+    campaign: str = typer.Option("roadmap", help="Campaign name"),
+    index_model: str = typer.Option("google_maps_prospects", help="Index model to use (google_maps_prospects, domains)")
+) -> None:
+    """
+    Generates Frictionless Data 'datapackage.json' for the specified index.
+    """
+    from typing import Type, Union
+    model_cls: Union[Type['GoogleMapsProspect'], Type['WebsiteDomainCsv']]
+
+    if index_model == "google_maps_prospects":
+        from ..models.google_maps_prospect import GoogleMapsProspect
+        model_cls = GoogleMapsProspect
+    elif index_model == "domains":
+        from ..models.website_domain_csv import WebsiteDomainCsv
+        model_cls = WebsiteDomainCsv
+    else:
+        console.print(f"[bold red]Unknown index model: {index_model}[/bold red]")
+        raise typer.Exit(code=1)
+
+    try:
+        path = model_cls.write_datapackage(campaign)
+        console.print(f"[bold green]Successfully wrote datapackage.json to: {path}[/bold green]")
+    except Exception as e:
+        console.print(f"[bold red]Failed to write datapackage: {e}[/bold red]")
+        raise typer.Exit(code=1)
+
 if __name__ == "__main__":
     app()

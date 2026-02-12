@@ -93,12 +93,28 @@ async function fetchProspects(campaign) {
             header: true,
             skipEmptyLines: true,
             complete: function(results) {
-                // Dead-simple filter: only show companies that have keywords
-                allProspects = results.data.filter(p => p.keywords && p.keywords.trim() !== "");
+                const config = window.COCLI_CONFIG || {};
+                const isStrict = config.strictKeywordFilter === true;
+                
+                // If strictKeywordFilter is enabled, only show those with keywords
+                if (isStrict) {
+                    allProspects = results.data.filter(p => p.keywords && p.keywords.trim() !== "");
+                } else {
+                    allProspects = results.data;
+                }
                 
                 document.getElementById('prospects-loading').style.display = 'none';
                 document.getElementById('prospects-container').style.display = 'grid';
                 
+                // Update email count display from current data length if it hasn't been set by the report
+                // or if we are in strict mode (to show only the filtered count)
+                const emailCountDisplay = document.getElementById('email-count-display');
+                if (emailCountDisplay) {
+                    if (isStrict || emailCountDisplay.textContent === '...' || emailCountDisplay.textContent === '0') {
+                        emailCountDisplay.textContent = allProspects.length.toLocaleString();
+                    }
+                }
+
                 // Build category list
                 allProspects.forEach(p => {
                     if (p.categories) {

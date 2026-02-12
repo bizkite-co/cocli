@@ -19,7 +19,8 @@
             identityPoolId: "{{ campaign.identityPoolId }}",
             region: "{{ campaign.region }}",
             commandQueueUrl: "{{ campaign.commandQueueUrl }}",
-            googleMapsApiKey: "{{ campaign.googleMapsApiKey }}"
+            googleMapsApiKey: "{{ campaign.googleMapsApiKey }}",
+            strictKeywordFilter: {{ campaign.strictKeywordFilter | dump }}
         };
     </script>
 </head>

@@ -1,8 +1,6 @@
 import typer
 from rich.console import Console
 from rich.progress import track
-from pathlib import Path
-import os
 
 from cocli.core.config import get_campaign_dir
 from cocli.core.queue.factory import get_queue_manager
@@ -16,6 +14,7 @@ def main(
     campaign_name: str = typer.Option("turboship", "--campaign", "-c", help="Campaign name."),
     limit: int = typer.Option(0, "--limit", "-l", help="Number of prospects to enqueue. 0 for all."),
     force: bool = typer.Option(True, "--force", help="Force refresh even if data exists."),
+    cloud: bool = typer.Option(False, "--cloud", help="Sync queue to S3."),
 ) -> None:
     campaign_dir = get_campaign_dir(campaign_name)
     usv_input = campaign_dir / "recovery" / "hollow_place_ids.usv"
@@ -57,7 +56,7 @@ def main(
 
     # 3. Get Queue Manager (Filesystem mode)
     # Using queue_type="details" maps to FilesystemGmDetailsQueue in the factory
-    queue_manager = get_queue_manager("gm-details", use_cloud=False, queue_type="details", campaign_name=campaign_name)
+    queue_manager = get_queue_manager("gm-details", use_cloud=cloud, queue_type="details", campaign_name=campaign_name)
     
     # We need to ensure the queue manager uses our Gold Standard path 'gm-details'
     # The default factory might use 'gm_list_item' or 'google_maps_details'

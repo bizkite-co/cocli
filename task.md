@@ -4,15 +4,16 @@
 Migrate the `turboship` campaign data from legacy formats to the "Gold Standard" architecture used by the `roadmap` campaign. This ensures architectural parity, idempotent processing, and robust data integrity across the cluster.
 
 ## Phase 1: Google Maps Prospect Index Migration (ACTIVE)
-- [ ] **Define Legacy Model**: Create `TurboshipLegacyProspect` in `cocli/models/quarantine/` to handle the headered USV format (52 fields, index-based mapping).
-- [ ] **Migration Script**: Create `scripts/migrate_turboship_indexes.py` to:
+- [x] **Define Legacy Model**: Create `TurboshipLegacyProspect` in `cocli/models/quarantine/` to handle the headered USV format (52 fields, index-based mapping).
+- [x] **Migration Script**: Create `scripts/migrate_turboship_indexes.py` to:
     - Ingest legacy `indexes/google_maps_prospects/*.usv` files.
     - Standardize `place_id` (maintain CID if necessary, but validate).
     - Map fields to the `GoogleMapsProspect` Pydantic model.
     - Populate `company_slug` and `company_hash` using the Identity Tripod (Name, Address, Zip).
     - Write to sharded WAL: `indexes/google_maps_prospects/wal/{last_char}/{place_id}.usv`.
 - [ ] **Consolidation**: Run `cocli campaign consolidate-prospects --campaign turboship` to generate the `prospects.checkpoint.usv`.
-- [ ] **Metadata Generation**: Generate `datapackage.json` for the new index.
+- [x] **Metadata Generation**: Generate `datapackage.json` for the new index.
+- [ ] **Discovery Query Capture**: Ensure the search query that produced each lead is preserved and added to the company's data (e.g., merged into the `keywords` field) for improved traceability and dashboard filtering.
 
 ## Phase 2: Mission Index & Witness Migration
 - [ ] **Target Tile Migration**: Convert `indexes/target-tiles/*.csv` to the hierarchical `{lat}/{lon}/{phrase}.csv` format.

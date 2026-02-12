@@ -6,7 +6,6 @@ import logging
 from .google_maps_idx import GoogleMapsIdx
 from .google_maps_raw import GoogleMapsRawResult
 from .phone import OptionalPhone
-from ..core.text_utils import slugify
 
 logger = logging.getLogger(__name__)
 
@@ -119,7 +118,7 @@ class GoogleMapsProspect(GoogleMapsIdx):
 
     @classmethod
     def from_raw(cls, raw: GoogleMapsRawResult) -> "GoogleMapsProspect":
-        from cocli.core.text_utils import slugify, calculate_company_hash
+        from cocli.core.text_utils import slugify
         data = {
             "place_id": raw.Place_ID,
             "name": raw.Name,
@@ -187,6 +186,19 @@ class GoogleMapsProspect(GoogleMapsIdx):
                 self.zip
             )
         return self
+
+    @model_validator(mode='before')
+    @classmethod
+    def sanitize_identity(cls, values: Dict[str, Any]) -> Dict[str, Any]:
+        if not isinstance(values, dict):
+            return values
+            
+        # Cleanup leading slashes in company_hash (found in legacy-recovery data)
+        company_hash = values.get("company_hash")
+        if company_hash and isinstance(company_hash, str) and company_hash.startswith("/"):
+            values["company_hash"] = company_hash.lstrip("/")
+            
+        return values
 
     @model_validator(mode='before')
     @classmethod

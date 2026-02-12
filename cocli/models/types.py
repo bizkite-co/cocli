@@ -1,8 +1,6 @@
-import re
 from datetime import datetime, UTC
 from typing import Annotated
 from pydantic import PlainSerializer, AfterValidator
-from .place_id import PlaceID
 
 def validate_aware_datetime(v: datetime) -> datetime:
     """

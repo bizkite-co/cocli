@@ -242,14 +242,7 @@ def get_campaign_stats(campaign_name: str) -> Dict[str, Any]:
 
     stats["prospects_count"] = total_prospects
     stats["worker_stats"] = source_counts
-    stats["all_slugs"] = sorted(list(all_slugs))
     
-    # Create an ordered list of prospects with names for the dashboard
-    stats["prospects"] = [
-        {"slug": s, "name": prospect_metadata.get(s, s)} 
-        for s in stats["all_slugs"]
-    ]
-
     # 2. Queue Stats (Cloud vs Local)
     aws_config = config.get("aws", {})
     enrich_queue_url = aws_config.get("cocli_enrichment_queue_url")

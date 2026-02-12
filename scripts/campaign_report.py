@@ -194,8 +194,9 @@ def main(
     console.print(anomaly_table)
 
     if upload:
-        # Save local copy for debugging/inspection
-        report_path = f"{campaign_name}.json"
+        # Save local copy for debugging/inspection in temp dir
+        from cocli.core.config import get_temp_dir
+        report_path = get_temp_dir() / f"{campaign_name}.json"
         with open(report_path, "w") as f:
             json.dump(stats, f, indent=2)
         console.print(f"[dim]Saved local report to {report_path}[/dim]")
