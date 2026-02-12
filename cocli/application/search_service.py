@@ -1,6 +1,7 @@
 import duckdb
 import os
 import logging
+import time
 from typing import List, Optional, Any
 from cocli.core.cache import get_cached_items, get_cache_path
 from cocli.core.config import get_campaign
@@ -26,74 +27,53 @@ def get_fuzzy_search_results(
     """
     global _con, _last_cache_mtime, _last_campaign
     
-    import time
     start_total = time.perf_counter()
-    
     campaign = campaign_name or get_campaign()
-    
-    # Check if cache needs rebuild (this also handles file mtime check)
-    t0 = time.perf_counter()
-    items = get_cached_items(
-        filter_str=None,
-        campaign=campaign,
-        force_rebuild=force_rebuild_cache
-    )
-    t_cache = time.perf_counter() - t0
-
-    if not items:
-        return []
-
-    # Detect if we need to rebuild the DuckDB table based on cache file mtime or campaign change
     cache_path = get_cache_path(campaign=campaign)
-    current_mtime = os.path.getmtime(cache_path) if cache_path.exists() else 0.0
+    
+    # 1. Check if the JSON cache file itself exists
+    if not cache_path.exists() or force_rebuild_cache:
+        # Trigger rebuild of the JSON cache if it doesn't exist or forced
+        get_cached_items(campaign=campaign, force_rebuild=True)
+        if not cache_path.exists():
+            return []
+
+    current_mtime = os.path.getmtime(cache_path)
 
     try:
         if _con is None:
             _con = duckdb.connect(database=':memory:')
             _last_cache_mtime = -1.0
 
+        # 2. Rebuild DuckDB table only if cache file changed or campaign switched
         if _last_cache_mtime != current_mtime or _last_campaign != campaign:
             t0 = time.perf_counter()
-            # Rebuild the table
             _con.execute("DROP TABLE IF EXISTS items")
-            _con.execute("""
-                CREATE TABLE items (
-                    type VARCHAR,
-                    name VARCHAR,
-                    slug VARCHAR,
-                    domain VARCHAR,
-                    email VARCHAR,
-                    tags VARCHAR[],
-                    display VARCHAR
+            
+            # The JSON cache file nests items under an "items" key.
+            # We use unnest() to flatten the objects into rows.
+            _con.execute(f"""
+                CREATE TABLE items AS 
+                SELECT 
+                    COALESCE(CAST(i.type AS VARCHAR), 'unknown') as type,
+                    COALESCE(CAST(i.name AS VARCHAR), 'Unknown') as name,
+                    CAST(i.slug AS VARCHAR) as slug,
+                    CAST(i.domain AS VARCHAR) as domain,
+                    CAST(i.email AS VARCHAR) as email,
+                    CAST(i.tags AS VARCHAR[]) as tags,
+                    COALESCE(CAST(i.display AS VARCHAR), CAST(i.name AS VARCHAR), 'Unknown') as display
+                FROM (
+                    SELECT unnest(items) as i 
+                    FROM read_json_auto('{cache_path}')
                 )
             """)
-            
-            rows = []
-            for item in items:
-                tags = item.get('tags', [])
-                if not isinstance(tags, list):
-                    tags = []
-                else:
-                    tags = [str(t) for t in tags if t]
-                
-                rows.append((
-                    item.get('type'),
-                    item.get('name'),
-                    item.get('slug'),
-                    item.get('domain'),
-                    item.get('email'),
-                    tags,
-                    item.get('display')
-                ))
-                
-            _con.executemany("INSERT INTO items VALUES (?, ?, ?, ?, ?, ?, ?)", rows)
             _last_cache_mtime = current_mtime
             _last_campaign = campaign
-            logger.debug(f"Rebuilt DuckDB search table in {time.perf_counter() - t0:.4f}s")
+            logger.debug(f"Rebuilt DuckDB search table from JSON in {time.perf_counter() - t0:.4f}s")
         
-        # Base query
+        # 3. Build Query
         t0 = time.perf_counter()
-        sql = "SELECT * FROM items WHERE 1=1"
+        sql = "SELECT type, name, slug, domain, email, tags, display FROM items WHERE 1=1"
         params: List[Any] = []
 
         if item_type:
@@ -127,30 +107,26 @@ def get_fuzzy_search_results(
             )"""
             params.extend([query_pattern] * 6)
 
+        # Limit results for performance if query is empty
+        if not search_query:
+            sql += " LIMIT 100"
+
         results = _con.execute(sql, params).fetchall()
         t_query = time.perf_counter() - t0
     except Exception as e:
-        logger.error(f"DuckDB search failed: {e}")
+        logger.error(f"DuckDB search failed: {e}", exc_info=True)
         return []
 
-    seen_ids = set()
+    # 4. Transform results to Pydantic models
     final_items = []
-    for r in results:
+    for r in results[:100]:
         tags_list = r[5] if r[5] is not None else []
         item_dict = {
             "type": r[0], "name": r[1], "slug": r[2], "domain": r[3],
-            "email": r[4], "tags": tags_list, "display": r[6]
+            "email": r[4], "tags": tags_list, "display": r[6],
+            "unique_id": r[2] or r[1] or "unknown"
         }
-        
-        unique_id = item_dict.get("slug") or "unknown"
-        original_slug = unique_id
-        counter = 1
-        while unique_id in seen_ids:
-            unique_id = f"{original_slug}-{counter}"
-            counter += 1
-        seen_ids.add(unique_id)
-        item_dict["unique_id"] = unique_id
         final_items.append(SearchResult(**item_dict))
 
-    logger.debug(f"Fuzzy search '{search_query}' (type={item_type}) took {time.perf_counter() - start_total:.4f}s (cache={t_cache:.4f}s, query={t_query:.4f}s)")
+    logger.debug(f"Fuzzy search '{search_query}' (type={item_type}) took {time.perf_counter() - start_total:.4f}s (query={t_query:.4f}s)")
     return final_items

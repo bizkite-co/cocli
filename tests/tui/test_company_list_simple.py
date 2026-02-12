@@ -1,17 +1,22 @@
 import pytest
-from unittest.mock import patch
+from unittest.mock import MagicMock
 from cocli.tui.app import CocliApp
-
+from cocli.application.services import ServiceContainer
 from cocli.models.search import SearchResult
 from pytest_mock import MockerFixture
 from cocli.tui.widgets.company_list import CompanyList
 from textual.widgets import ListView
 from conftest import wait_for_widget
 
+def create_mock_services(results=None):
+    mock_search = MagicMock()
+    mock_search.return_value = results or []
+    return ServiceContainer(search_service=mock_search), mock_search
+
 @pytest.mark.asyncio
-@patch('cocli.tui.widgets.company_list.get_fuzzy_search_results')
-async def test_company_list_mounts(mock_get_fz_items):
-    app = CocliApp()
+async def test_company_list_mounts():
+    services, _ = create_mock_services()
+    app = CocliApp(services=services)
     async with app.run_test() as driver:
         # Select 'Companies' using the hotkey
         await driver.press("space", "c")
@@ -20,13 +25,13 @@ async def test_company_list_mounts(mock_get_fz_items):
 
 
 @pytest.mark.asyncio
-@patch('cocli.tui.widgets.company_list.get_fuzzy_search_results')
-async def test_company_list_populates(mock_get_fz_items):
-    mock_get_fz_items.return_value = [
+async def test_company_list_populates():
+    results = [
         SearchResult(name="Test Company 1", slug="test-company-1", domain="test1.com", type="company", unique_id="test-company-1", tags=[], display=""),
         SearchResult(name="Test Company 2", slug="test-company-2", domain="test2.com", type="company", unique_id="test-company-2", tags=[], display=""),
     ]
-    app = CocliApp()
+    services, _ = create_mock_services(results)
+    app = CocliApp(services=services)
     async with app.run_test() as driver:
         # Select 'Companies' using the hotkey
         await driver.press("space", "c")
@@ -37,13 +42,13 @@ async def test_company_list_populates(mock_get_fz_items):
 
 
 @pytest.mark.asyncio
-@patch('cocli.tui.widgets.company_list.get_fuzzy_search_results')
-async def test_company_list_selection_posts_message(mock_get_fz_items, mocker: MockerFixture):
+async def test_company_list_selection_posts_message(mocker: MockerFixture):
     """Test that selecting a company posts a CompanySelected message."""
-    mock_get_fz_items.return_value = [
+    results = [
         SearchResult(name="Test Company", slug="test-company", domain="test.com", type="company", unique_id="test-company", tags=[], display=""),
     ]
-    app = CocliApp()
+    services, _ = create_mock_services(results)
+    app = CocliApp(services=services)
     async with app.run_test() as driver:
         # Select 'Companies' using the hotkey
         await driver.press("space", "c")

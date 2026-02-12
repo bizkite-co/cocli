@@ -1,5 +1,5 @@
 import logging
-from typing import Any
+from typing import Any, Optional
 
 from textual.app import App, ComposeResult
 from textual.binding import Binding
@@ -17,7 +17,7 @@ from .widgets.person_detail import PersonDetail
 from .widgets.prospect_menu import ProspectMenu
 from .widgets.company_detail import CompanyDetail
 from .widgets.campaign_detail import CampaignDetail
-from ..application.company_service import get_company_details_for_view
+from ..application.services import ServiceContainer
 from ..models.campaign import Campaign
 from ..core.config import create_default_config_file, get_config
 
@@ -47,8 +47,9 @@ class CocliApp(App[None]):
         yield Static(f"[b]Campaigns[/b] ({LEADER_KEY.upper()}+A) | [b]People[/b] ({LEADER_KEY.upper()}+P) | [b]Companies[/b] ({LEADER_KEY.upper()}+C) | [b]Prospect[/b] ({LEADER_KEY.upper()}+S)", id="menu_bar")
         yield Container(id="app_content")
 
-    def __init__(self, *args: Any, **kwargs: Any) -> None:
+    def __init__(self, services: Optional[ServiceContainer] = None, *args: Any, **kwargs: Any) -> None:
         super().__init__(*args, **kwargs)
+        self.services = services or ServiceContainer()
 
     def on_mount(self) -> None:
         self.main_content = self.query_one("#app_content", Container)
@@ -107,7 +108,7 @@ class CocliApp(App[None]):
         logger.debug(f"on_company_list_company_selected called with slug: {message.company_slug}")
         company_slug = message.company_slug
         try:
-            company_data = get_company_details_for_view(company_slug)
+            company_data = self.services.get_company_details(company_slug)
             if company_data:
                 self.query_one("#app_content").remove_children()
                 company_detail = CompanyDetail(company_data)
