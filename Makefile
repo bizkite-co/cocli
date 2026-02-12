@@ -77,7 +77,7 @@ logname: ## Get the latest log file name
 # Note: TUI integration tests are run separately due to terminal driver conflicts.
 # Use 'make test-tui-integration' to run them.
 test: install lint ## Run all non-TUI tests using pytest (incremental)
-	@if python3 scripts/check_code_signature.py --check --task test; then \
+	@if python3 scripts/check_code_signature.py --check --task test $(if $(FORCE),--force); then \
 		echo "Code signature matches for task 'test'. Skipping tests."; \
 	else \
 		source $(VENV_DIR)/bin/activate && PYTHONPATH=. pytest -s tests/ --quiet --ignore=tests/tui/test_navigation_steps.py --ignore=tests/e2e && \
@@ -85,7 +85,7 @@ test: install lint ## Run all non-TUI tests using pytest (incremental)
 	fi
 
 test-unit: install lint ## Run unit tests (incremental)
-	@if python3 scripts/check_code_signature.py --check --task test-unit; then \
+	@if python3 scripts/check_code_signature.py --check --task test-unit $(if $(FORCE),--force); then \
 		echo "Code signature matches for task 'test-unit'. Skipping unit tests."; \
 	else \
 		source $(VENV_DIR)/bin/activate && PYTHONPATH=. pytest -s tests/ --ignore=tests/tui --ignore=tests/e2e && \
@@ -119,7 +119,7 @@ textual: ## Run the app in textual
 	textual run cocli.tui.app
 
 lint: ## Run ruff and mypy to perform static type checking (incremental)
-	@if python3 scripts/check_code_signature.py --check --task lint; then \
+	@if python3 scripts/check_code_signature.py --check --task lint $(if $(FORCE),--force); then \
 		echo "Code signature matches for task 'lint'. Skipping lint."; \
 	else \
 		echo "Code changed. Running lint..."; \

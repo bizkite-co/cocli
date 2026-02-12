@@ -64,6 +64,9 @@ if __name__ == "__main__":
     signatures = load_signatures()
     
     if "--check" in sys.argv:
+        if "--force" in sys.argv:
+            # Force failure to trigger the task
+            sys.exit(1)
         if signatures.get(task) == current_sig:
             # Match found
             sys.exit(0)
