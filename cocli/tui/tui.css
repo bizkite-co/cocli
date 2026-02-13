@@ -9,8 +9,8 @@ Screen {
 }
 
 #menu_bar {
-    background: #1a1a1a; /* Dark grey background for the bar itself to ensure visibility */
-    color: #aaaaaa; /* Bright grey inactive text */
+    background: #1a1a1a; 
+    color: #aaaaaa; 
     dock: top;
     height: 1;
     width: 100%;
@@ -69,6 +69,17 @@ MasterDetailView {
     border: none;
 }
 
+/* High-level Panel Focus (Quadrant Selection) */
+.panel:focus {
+    background: rgba(255, 255, 255, 0.05);
+}
+
+.panel:focus .panel-header {
+    color: #ffffff;
+    border-left: solid #ffffff;
+}
+
+/* Inner Widget Focus (Navigating inside quadrant) */
 .panel:focus-within {
     background: rgba(255, 255, 255, 0.02);
 }
@@ -102,7 +113,6 @@ DataTable > .datatable--header {
 }
 
 DataTable > .datatable--cursor {
-    /* 10% opaque green as requested */
     background: rgba(0, 255, 0, 0.1); 
     color: #ffffff;
     text-style: bold;
@@ -110,6 +120,11 @@ DataTable > .datatable--cursor {
 
 #info-table {
     height: auto;
+}
+
+/* Specialized Display Styles */
+.phone-number {
+    color: #009900;
 }
 
 /* Search List Styling */
