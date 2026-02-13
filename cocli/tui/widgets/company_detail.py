@@ -37,7 +37,7 @@ class CompanyDetail(Container):
     BINDINGS = [
         ("escape", "app.action_escape", "Back"),
         ("q", "app.action_escape", "Back"),
-        # VIM Navigation between panels
+        # Use Ctrl+hjkl for quadrant jumping (VIM window standard)
         ("ctrl+k", "focus_up", "Focus Up"),
         ("ctrl+j", "focus_down", "Focus Down"),
         ("ctrl+h", "focus_left", "Focus Left"),

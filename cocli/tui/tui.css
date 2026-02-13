@@ -1,31 +1,49 @@
+/* Global Theme */
+Screen {
+    background: black;
+    color: #cccccc; /* Light grey text by default */
+}
+
 #menu_bar {
-    background: $accent;
-    color: $text;
+    background: black;
+    color: #888888; /* Grey inactive text */
     padding: 0 1;
     dock: top;
     height: 1;
+    border-bottom: solid #333333;
+}
+
+/* #menu_bar Label { */
+/*     padding: 0 1; */
+/* } */
+/**/
+#menu_bar .active-menu-item {
+    background: rgba(255, 255, 0, 0.1); /* 10% transparent yellow */
+    color: #00ff00; /* Green active text */
+    text-style: bold;
 }
 
 #app_content {
     width: 100%;
     height: 1fr;
+    background: black;
 }
 
 /* Master-Detail Layout */
 MasterDetailView {
     layout: grid;
     grid-size: 2 1;
-    grid-columns: 1fr 3fr;
+    grid-columns: 1fr 4fr;
+    background: black;
 }
 
 .master-pane {
-    border-right: solid $primary;
+    border-right: tall #222222;
     height: 100%;
 }
 
 .detail-pane {
     height: 100%;
-    overflow-y: scroll;
 }
 
 /* Company Detail Grid */
@@ -36,32 +54,64 @@ MasterDetailView {
     grid-rows: 1fr 1fr;
     height: 100%;
     width: 100%;
+    background: black;
 }
 
 .panel {
-    border: round $primary;
-    margin: 0 1;
-    padding: 0 1;
+    margin: 0;
+    padding: 1 1;
     height: 100%;
+    border: none;
 }
 
 .panel:focus-within {
-    border: round $accent;
+    background: rgba(255, 255, 255, 0.03);
 }
 
 .panel-header {
-    background: $primary;
-    color: $text;
-    text-align: center;
+    color: #666666; /* Muted header by default */
+    text-align: left;
     text-style: bold;
     width: 100%;
+    margin-bottom: 0;
+    padding-left: 1;
+    border-left: solid #444444;
+}
+
+.panel:focus-within .panel-header {
+    color: #00ff00; /* Highlighted green when active */
+    border-left: solid #00ff00;
 }
 
 DataTable {
     height: 1fr;
+    background: black;
+    color: #bbbbbb;
     border: none;
 }
 
-#company-info-table {
+DataTable > .datatable--header {
+    background: black;
+    color: #666666;
+    text-style: italic;
+}
+
+DataTable > .datatable--cursor {
+    background: rgba(0, 255, 0, 0.1);
+    color: #ffffff;
+}
+
+#info-table {
     height: auto;
+}
+
+/* Search List Styling */
+#company_list_view {
+    background: black;
+    color: #aaaaaa;
+}
+
+#company_list_view > .listview--highlight {
+    background: rgba(0, 255, 0, 0.1);
+    color: #00ff00;
 }

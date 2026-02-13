@@ -27,7 +27,7 @@ async def test_search_with_injected_service():
     services = ServiceContainer(search_service=mock_search, sync_search=True)
     
     # 3. Pass the container to the App
-    app = CocliApp(services=services)
+    app = CocliApp(services=services, auto_show=False)
     
     async with app.run_test() as driver:
         # Show companies

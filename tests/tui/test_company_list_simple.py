@@ -16,7 +16,7 @@ def create_mock_services(results=None):
 @pytest.mark.asyncio
 async def test_company_list_mounts():
     services, _ = create_mock_services()
-    app = CocliApp(services=services)
+    app = CocliApp(services=services, auto_show=False)
     async with app.run_test() as driver:
         # Select 'Companies' using the hotkey
         await driver.press("space")
@@ -34,7 +34,7 @@ async def test_company_list_populates():
         SearchResult(name="Test Company 2", slug="test-company-2", domain="test2.com", type="company", unique_id="test-company-2", tags=[], display=""),
     ]
     services, _ = create_mock_services(results)
-    app = CocliApp(services=services)
+    app = CocliApp(services=services, auto_show=False)
     async with app.run_test() as driver:
         # Select 'Companies' using the hotkey
         await driver.press("space")
@@ -54,7 +54,7 @@ async def test_company_list_selection_posts_message(mocker: MockerFixture):
         SearchResult(name="Test Company", slug="test-company", domain="test.com", type="company", unique_id="test-company", tags=[], display=""),
     ]
     services, _ = create_mock_services(results)
-    app = CocliApp(services=services)
+    app = CocliApp(services=services, auto_show=False)
     async with app.run_test() as driver:
         # Select 'Companies' using the hotkey
         await driver.press("space")

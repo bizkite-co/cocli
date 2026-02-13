@@ -3,8 +3,8 @@ from typing import Any, Optional
 
 from textual.app import App, ComposeResult
 from textual.binding import Binding
-from textual.widgets import Header, Static, ListView, Input
-from textual.containers import Container
+from textual.widgets import Static, ListView, Input, Label
+from textual.containers import Container, Horizontal
 from textual import events # Import events for on_key
 
 
@@ -25,6 +25,28 @@ logger = logging.getLogger(__name__)
 
 LEADER_KEY = "space"
 
+class MenuBar(Horizontal):
+    """A custom menu bar that highlights the active section."""
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
+        super().__init__(id="menu_bar", *args, **kwargs)
+        self.active_section: str = ""
+
+    def compose(self) -> ComposeResult:
+        yield Label("Campaigns ( A)", id="menu-campaigns")
+        yield Label("People ( P)", id="menu-people")
+        yield Label("Companies ( C)", id="menu-companies")
+        yield Label("Prospects ( S)", id="menu-prospects")
+
+    def set_active(self, section: str) -> None:
+        for label in self.query(Label):
+            label.remove_class("active-menu-item")
+        
+        target_id = f"menu-{section}"
+        try:
+            self.query_one(f"#{target_id}", Label).add_class("active-menu-item")
+        except Exception:
+            pass
+
 class CocliApp(App[None]):
     """A Textual app to manage cocli."""
 
@@ -43,31 +65,32 @@ class CocliApp(App[None]):
 
     def compose(self) -> ComposeResult:
         """Create child widgets for the app."""
-        yield Header()
-        yield Static(f"[b]Campaigns[/b] ({LEADER_KEY.upper()}+A) | [b]People[/b] ({LEADER_KEY.upper()}+P) | [b]Companies[/b] ({LEADER_KEY.upper()}+C) | [b]Prospect[/b] ({LEADER_KEY.upper()}+S)", id="menu_bar")
+        yield MenuBar()
         yield Container(id="app_content")
 
-    def __init__(self, services: Optional[ServiceContainer] = None, *args: Any, **kwargs: Any) -> None:
+    def __init__(self, services: Optional[ServiceContainer] = None, auto_show: bool = True, *args: Any, **kwargs: Any) -> None:
         super().__init__(*args, **kwargs)
         self.services = services or ServiceContainer()
+        self.auto_show = auto_show
 
     def on_mount(self) -> None:
         self.main_content = self.query_one("#app_content", Container)
+        self.menu_bar = self.query_one(MenuBar)
         create_default_config_file()
+        if self.auto_show:
+            self.action_show_companies()
 
     async def on_key(self, event: events.Key) -> None:
         logger.debug(f"Key pressed: {event.key}")
         if event.key == LEADER_KEY:
             self.leader_mode = True
             self.leader_key_buffer = LEADER_KEY
-            event.prevent_default() # Prevent the space key from being processed further
+            event.prevent_default()
             return
 
         if self.leader_mode:
             self.leader_key_buffer += event.key
-            logger.debug(f"Leader key buffer: {self.leader_key_buffer}")
             
-            # Check for leader key combinations
             if self.leader_key_buffer == LEADER_KEY + "c":
                 self.call_later(self.action_show_companies)
             elif self.leader_key_buffer == LEADER_KEY + "p":
@@ -76,36 +99,21 @@ class CocliApp(App[None]):
                 self.call_later(self.action_show_prospects)
             elif self.leader_key_buffer == LEADER_KEY + "a":
                 self.call_later(self.action_show_campaigns)
-            else:
-                logger.warning(f"Unknown leader key combination: {self.leader_key_buffer}")
             
             self.reset_leader_mode()
-            event.prevent_default() # Prevent the key from being processed further
+            event.prevent_default()
             return
-        
-        # If not in leader mode, let Textual handle other bindings
-        # The default Textual binding handler will be called after this method
-        # if event.prevent_default() is not called.
 
     def reset_leader_mode(self) -> None:
         self.leader_mode = False
         self.leader_key_buffer = ""
 
-
-
-
-
-
-
-
     def on_person_list_person_selected(self, message: PersonList.PersonSelected) -> None:
         """Handle PersonSelected message from PersonList."""
-        logger.debug(f"on_person_list_person_selected called with slug: {message.person_slug}")
         self.query_one("#app_content").remove_children()
         self.query_one("#app_content").mount(PersonDetail(person_slug=message.person_slug))
 
     def on_company_list_company_selected(self, message: CompanyList.CompanySelected) -> None:
-        logger.debug(f"on_company_list_company_selected called with slug: {message.company_slug}")
         company_slug = message.company_slug
         try:
             company_data = self.services.get_company_details(company_slug)
@@ -115,16 +123,13 @@ class CocliApp(App[None]):
                 self.query_one("#app_content").mount(company_detail)
                 company_detail.styles.display = "block"
             else:
-                logger.warning(f"Company data not found for slug: {company_slug}")
                 self.bell()
-        except Exception as e:
-            logger.error(f"Error loading company details for {company_slug}: {e}", exc_info=True)
+        except Exception:
             self.bell()
-
-
 
     def action_show_companies(self) -> None:
         """Show the company list view."""
+        self.menu_bar.set_active("companies")
         self.main_content.remove_children()
         company_list = CompanyList()
         company_preview = CompanyPreview(Static("Select a company to see details."), id="company-preview")
@@ -132,11 +137,13 @@ class CocliApp(App[None]):
 
     def action_show_people(self) -> None:
         """Show the person list view."""
+        self.menu_bar.set_active("people")
         self.main_content.remove_children()
         self.main_content.mount(PersonList())
 
     def action_show_campaigns(self) -> None:
         """Show the campaign selection view."""
+        self.menu_bar.set_active("campaigns")
         config = get_config()
         master_width = config.tui.master_width
         self.main_content.remove_children()
@@ -150,26 +157,17 @@ class CocliApp(App[None]):
         preview.update_preview(message.company)
 
     def on_campaign_selection_campaign_selected(self, message: CampaignSelection.CampaignSelected) -> None:
-        """Handle CampaignSelected message from CampaignSelection screen."""
-        logger.debug(f"on_campaign_selection_campaign_selected called with campaign: {message.campaign_name}")
         campaign_name = message.campaign_name
-        assert campaign_name is not None
-
         detail = self.query_one("#campaign-detail", CampaignDetail)
-        logger.debug(f"Found detail widget: {detail}")
-
         try:
             campaign = Campaign.load(campaign_name)
+            detail.update_detail(campaign)
         except Exception as e:
             detail.display_error(f"Error Loading Campaign: {campaign_name}", str(e))
-            return
-
-        detail.update_detail(campaign)
-        logger.debug(f"Updated detail widget with campaign: {campaign.name}")
 
     async def action_show_prospects(self) -> None:
         """Show the prospect menu screen."""
-        logger.debug("action_show_prospects invoked")
+        self.menu_bar.set_active("prospects")
         self.push_screen(ProspectMenu())
 
     def action_select_item(self) -> None:
@@ -182,8 +180,6 @@ class CocliApp(App[None]):
             focused_widget.action_select_item()
         elif isinstance(focused_widget, ListView):
             focused_widget.action_select_cursor()
-        else:
-            logger.warning(f"No select_item action found for focused widget: {focused_widget}")
 
     def action_toggle_dark(self) -> None:
         """An action to toggle dark mode."""
@@ -195,7 +191,6 @@ class CocliApp(App[None]):
             self.pop_screen()
             return
 
-        # Check if we are currently viewing company/person details and want to go back
         content = self.query_one("#app_content", Container)
         if content.query("CompanyDetail") or content.query("PersonDetail"):
             self.action_show_companies()
@@ -204,14 +199,12 @@ class CocliApp(App[None]):
         focused_widget = self.focused
         if isinstance(focused_widget, Input):
             focused_widget.value = ""
-            logger.debug("Cleared focused input field.")
         else:
-            logger.debug("Escape pressed, but no screen to pop and no input to clear.")
+            pass
 
     async def on_message(self, message: object) -> None:
         """Log all messages in debug mode."""
         if logger.isEnabledFor(logging.DEBUG):
-            # Attempt to get more details from the message object
             message_details = {
                 "type": message.__class__.__name__,
                 "sender": getattr(message, "sender", "N/A"),
@@ -220,9 +213,9 @@ class CocliApp(App[None]):
                 "value": getattr(message, "value", "N/A"),
                 "event_id": getattr(message, "event_id", "N/A"),
                 "name": getattr(message, "name", "N/A"),
-                "item_id": getattr(message, "item_id", "N/A"), # For ListView.Selected
-                "company_slug": getattr(message, "company_slug", "N/A"), # For CompanySelected
-                "campaign_name": getattr(message, "campaign_name", "N/A"), # For CampaignSelected
+                "item_id": getattr(message, "item_id", "N/A"), 
+                "company_slug": getattr(message, "company_slug", "N/A"), 
+                "campaign_name": getattr(message, "campaign_name", "N/A"), 
             }
             logger.debug(f"MESSAGE: {message_details}")
 

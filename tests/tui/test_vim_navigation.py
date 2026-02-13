@@ -19,10 +19,13 @@ async def test_j_moves_down_in_campaign_list(mock_get_all_campaign_dirs):
     mock_campaign_b.name = 'campaign_b'
     mock_get_all_campaign_dirs.return_value = [mock_campaign_b, mock_campaign_a]
 
-    app = CocliApp()
+    app = CocliApp(auto_show=False)
     async with app.run_test() as driver:
         # Act
-        await driver.press("space", "a")
+        await driver.pause(0.5)
+        await driver.press("space")
+        await driver.pause(0.1)
+        await driver.press("a")
         campaign_screen = await wait_for_widget(driver, CampaignSelection)
         list_view = campaign_screen.query_one(ListView)
         list_view.focus()
@@ -48,10 +51,13 @@ async def test_k_moves_up_in_campaign_list(mock_get_all_campaign_dirs):
     mock_campaign_b.name = 'campaign_b'
     mock_get_all_campaign_dirs.return_value = [mock_campaign_b, mock_campaign_a]
 
-    app = CocliApp()
+    app = CocliApp(auto_show=False)
     async with app.run_test() as driver:
         # Act
-        await driver.press("space", "a")
+        await driver.pause(0.5)
+        await driver.press("space")
+        await driver.pause(0.1)
+        await driver.press("a")
         campaign_screen = await wait_for_widget(driver, CampaignSelection)
         list_view = campaign_screen.query_one(ListView)
         list_view.focus()
@@ -76,10 +82,13 @@ async def test_l_selects_item_in_campaign_list(mock_get_all_campaign_dirs, mocke
     mock_campaign_a.name = 'campaign_a'
     mock_get_all_campaign_dirs.return_value = [mock_campaign_a]
 
-    app = CocliApp()
+    app = CocliApp(auto_show=False)
     async with app.run_test() as driver:
         # Act
-        await driver.press("space", "a")
+        await driver.pause(0.5)
+        await driver.press("space")
+        await driver.pause(0.1)
+        await driver.press("a")
         campaign_screen = await wait_for_widget(driver, CampaignSelection)
         list_view = campaign_screen.query_one(ListView)
         list_view.focus()
@@ -107,10 +116,13 @@ async def test_enter_selects_item_in_campaign_list(mock_get_all_campaign_dirs, m
     mock_campaign_a.name = 'campaign_a'
     mock_get_all_campaign_dirs.return_value = [mock_campaign_a]
 
-    app = CocliApp()
+    app = CocliApp(auto_show=False)
     async with app.run_test() as driver:
         # Act
-        await driver.press("space", "a")
+        await driver.pause(0.5)
+        await driver.press("space")
+        await driver.pause(0.1)
+        await driver.press("a")
         campaign_screen = await wait_for_widget(driver, CampaignSelection)
         list_view = campaign_screen.query_one(ListView)
         list_view.focus()
@@ -144,13 +156,16 @@ async def test_j_moves_down_in_prospect_menu():
     """Test that 'j' moves the highlight down in the ProspectMenu ListView."""
 
 
-    app = CocliApp()
+    app = CocliApp(auto_show=False)
 
 
     async with app.run_test() as driver:
 
 
-        await driver.press("space", "s")
+        await driver.pause(0.5)
+        await driver.press("space")
+        await driver.pause(0.1)
+        await driver.press("s")
 
 
         prospect_screen = await wait_for_screen(driver, ProspectMenu)
@@ -186,13 +201,16 @@ async def test_k_moves_up_in_prospect_menu():
     """Test that 'k' moves the highlight up in the ProspectMenu ListView."""
 
 
-    app = CocliApp()
+    app = CocliApp(auto_show=False)
 
 
     async with app.run_test() as driver:
 
 
-        await driver.press("space", "s")
+        await driver.pause(0.5)
+        await driver.press("space")
+        await driver.pause(0.1)
+        await driver.press("s")
 
 
         prospect_screen = await wait_for_screen(driver, ProspectMenu)

@@ -1,7 +1,6 @@
 import pytest
 from unittest.mock import MagicMock
-from textual.widgets import Header
-from cocli.tui.app import CocliApp
+from cocli.tui.app import CocliApp, MenuBar
 from cocli.application.services import ServiceContainer
 from cocli.tui.widgets.prospect_menu import ProspectMenu
 from cocli.tui.widgets.company_list import CompanyList
@@ -16,18 +15,20 @@ def create_mock_services():
 
 @pytest.mark.asyncio
 async def test_header_is_visible():
-    """Test that the Header widget is visible on app startup."""
-    app = CocliApp(services=create_mock_services())
+    """Test that the MenuBar widget is visible on app startup."""
+    app = CocliApp(services=create_mock_services(), auto_show=False)
     async with app.run_test() as driver:
-        header = await wait_for_widget(driver, Header)
-        assert isinstance(header, Header)
-        assert header.visible
+        await driver.pause(0.5)
+        menu_bar = await wait_for_widget(driver, MenuBar)
+        assert isinstance(menu_bar, MenuBar)
+        assert menu_bar.visible
 
 @pytest.mark.asyncio
 async def test_leader_a_shows_campaigns():
     """Test that Leader+a shows the CampaignSelection widget."""
-    app = CocliApp(services=create_mock_services())
+    app = CocliApp(services=create_mock_services(), auto_show=False)
     async with app.run_test() as driver:
+        await driver.pause(0.5)
         await driver.press("space")
         await driver.pause(0.1)
         await driver.press("a")
@@ -38,8 +39,9 @@ async def test_leader_a_shows_campaigns():
 @pytest.mark.asyncio
 async def test_leader_p_shows_people():
     """Test that Leader+p shows the PersonList widget."""
-    app = CocliApp(services=create_mock_services())
+    app = CocliApp(services=create_mock_services(), auto_show=False)
     async with app.run_test() as driver:
+        await driver.pause(0.5)
         await driver.press("space")
         await driver.pause(0.1)
         await driver.press("p")
@@ -50,8 +52,10 @@ async def test_leader_p_shows_people():
 @pytest.mark.asyncio
 async def test_leader_c_shows_companies():
     """Test that Leader+c shows the CompanyList widget."""
-    app = CocliApp(services=create_mock_services())
+    app = CocliApp(services=create_mock_services(), auto_show=False)
     async with app.run_test() as driver:
+        await driver.pause(0.5)
+        # Already there, but let's press anyway to verify the binding
         await driver.press("space")
         await driver.pause(0.1)
         await driver.press("c")
@@ -62,8 +66,9 @@ async def test_leader_c_shows_companies():
 @pytest.mark.asyncio
 async def test_leader_s_shows_prospects():
     """Test that Leader+s shows the ProspectMenu widget."""
-    app = CocliApp(services=create_mock_services())
+    app = CocliApp(services=create_mock_services(), auto_show=False)
     async with app.run_test() as driver:
+        await driver.pause(0.5)
         await driver.press("space")
         await driver.pause(0.1)
         await driver.press("s")

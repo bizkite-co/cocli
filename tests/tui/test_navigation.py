@@ -30,8 +30,9 @@ async def test_l_key_selects_item():
     ]
     services, _, mock_company_service = create_mock_services(search_results, mock_detail_data)
 
-    app = CocliApp(services=services)
+    app = CocliApp(services=services, auto_show=False)
     async with app.run_test() as driver:
+        await driver.pause(0.5)
         await driver.press("space")
         await driver.pause(0.1)
         await driver.press("c")
@@ -66,8 +67,9 @@ async def test_down_arrow_moves_highlight_in_company_list():
     ]
     services, _, _ = create_mock_services(search_results)
 
-    app = CocliApp(services=services)
+    app = CocliApp(services=services, auto_show=False)
     async with app.run_test() as driver:
+        await driver.pause(0.5)
         await driver.press("space")
         await driver.pause(0.1)
         await driver.press("c")
@@ -95,8 +97,9 @@ async def test_enter_key_selects_item_in_company_list():
     ]
     services, _, mock_company_service = create_mock_services(search_results, mock_detail_data)
 
-    app = CocliApp(services=services)
+    app = CocliApp(services=services, auto_show=False)
     async with app.run_test() as driver:
+        await driver.pause(0.5)
         await driver.press("space")
         await driver.pause(0.1)
         await driver.press("c")

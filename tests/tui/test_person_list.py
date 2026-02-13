@@ -25,6 +25,7 @@ class PersonListTestApp(App[None]):
     def __init__(self, services=None, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.services = services or ServiceContainer()
+        self.auto_show = False
 
     def on_mount(self) -> None:
         self.push_screen("person_list")

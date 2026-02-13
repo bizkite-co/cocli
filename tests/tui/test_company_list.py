@@ -34,13 +34,13 @@ async def test_company_selection_integration():
         sync_search=True
     )
 
-    app = CocliApp(services=services)
+    app = CocliApp(services=services, auto_show=False)
 
     # Act & Assert
     async with app.run_test() as driver:
         driver.app.action_show_companies()
-        company_list_screen = await wait_for_widget(driver, CompanyList)
         await driver.pause(0.5)
+        company_list_screen = await wait_for_widget(driver, CompanyList)
         # --- Direct Message Capture ---
         posted_messages = []
         original_post_message = company_list_screen.post_message
