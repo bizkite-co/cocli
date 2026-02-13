@@ -8,6 +8,8 @@ class MasterDetailView(Container):
     BINDINGS = [
         ("[", "focus_master", "Focus List"),
         ("]", "focus_detail", "Focus Detail"),
+        ("alt+h", "focus_master", "Focus List"),
+        ("alt+l", "focus_detail", "Focus Detail"),
     ]
 
     def __init__(self, master: Widget, detail: Widget, master_width: int = 30, name: str | None = None, id: str | None = None, classes: str | None = None):

@@ -9,10 +9,7 @@ from textual import events
 from rich.text import Text
 from rich.markup import escape
 
-from ...models.company import Company
 from ...models.website import Website
-from ...models.person import Person
-from ...models.note import Note
 
 logger = logging.getLogger(__name__)
 
@@ -29,7 +26,7 @@ class DetailPanel(Container):
 
 class CompanyDetail(Container):
     """
-    Highly dense company detail view with sequential and boundary-based navigation.
+    Highly dense company detail view with VIM-like panel navigation.
     Layout: 2x2 Grid
     [ Info ] [ Contacts ]
     [ Meetings ] [ Notes ]
@@ -43,11 +40,11 @@ class CompanyDetail(Container):
         # Sequential Jumping
         ("]", "next_panel", "Next Panel"),
         ("[", "prev_panel", "Prev Panel"),
-        # Direct Quadrant Navigation
-        ("ctrl+k", "focus_up", "Focus Up"),
-        ("ctrl+j", "focus_down", "Focus Down"),
-        ("ctrl+h", "focus_left", "Focus Left"),
-        ("ctrl+l", "focus_right", "Focus Right"),
+        # Quadrant jumping (VIM window style)
+        ("alt+h", "focus_left", "Focus Left"),
+        ("alt+l", "focus_right", "Focus Right"),
+        ("alt+j", "focus_down", "Focus Down"),
+        ("alt+k", "focus_up", "Focus Up"),
     ]
 
     def __init__(self, company_data: Dict[str, Any], name: Optional[str] = None, id: Optional[str] = None, classes: Optional[str] = None):
@@ -93,21 +90,29 @@ class CompanyDetail(Container):
                 break
 
     def on_key(self, event: events.Key) -> None:
-        """Implement boundary-aware j/k navigation."""
+        """Implement boundary-aware j/k/h/l navigation."""
+        focused = self.app.focused
+        if not isinstance(focused, DataTable):
+            return
+
         if event.key == "j":
-            focused = self.app.focused
-            if isinstance(focused, DataTable):
-                # If we are at the last row, jump down
-                if focused.cursor_row == len(focused.rows) - 1 or len(focused.rows) == 0:
-                    self.action_focus_down()
-                    event.prevent_default()
+            # If we are at the last row, jump to quadrant below
+            if focused.cursor_row == len(focused.rows) - 1 or len(focused.rows) == 0:
+                self.action_focus_down()
+                event.prevent_default()
         elif event.key == "k":
-            focused = self.app.focused
-            if isinstance(focused, DataTable):
-                # If we are at the first row, jump up
-                if focused.cursor_row == 0 or len(focused.rows) == 0:
-                    self.action_focus_up()
-                    event.prevent_default()
+            # If we are at the first row, jump to quadrant above
+            if focused.cursor_row == 0 or len(focused.rows) == 0:
+                self.action_focus_up()
+                event.prevent_default()
+        elif event.key == "h":
+            # Direct horizontal jump
+            self.action_focus_left()
+            event.prevent_default()
+        elif event.key == "l":
+            # Direct horizontal jump
+            self.action_focus_right()
+            event.prevent_default()
 
     def action_focus_up(self) -> None:
         if self.meetings_table.has_focus:
@@ -137,44 +142,42 @@ class CompanyDetail(Container):
         """Enters edit mode for the currently focused row."""
         focused = self.app.focused
         if isinstance(focused, DataTable):
-            # For now, just show a notification or change style to indicate 'edit mode'
             self.app.notify(f"Edit Mode: {focused.id}", title="Feature Coming Soon")
-            # We will implement actual inline editing in the next step
 
     def _create_info_table(self) -> DataTable[Any]:
         table: DataTable[Any] = DataTable(id="info-table")
         table.add_column("Attribute", width=15)
         table.add_column("Value")
         
-        company = Company.model_validate(self.company_data["company"])
+        company_data = self.company_data["company"]
         tags = self.company_data["tags"]
         website_data = Website.model_validate(self.company_data["website_data"]) if self.company_data["website_data"] else None
 
-        table.add_row("Name", escape(company.name))
+        table.add_row("Name", escape(company_data.get("name", "Unknown")))
         
         # Address Group
-        addr_parts = [company.street_address, company.city, company.state, company.zip_code]
-        full_addr = ", ".join([p for p in addr_parts if p])
+        addr_parts = [company_data.get("street_address"), company_data.get("city"), company_data.get("state"), company_data.get("zip_code")]
+        full_addr = ", ".join([str(p) for p in addr_parts if p])
         if full_addr:
             table.add_row("Address", escape(full_addr))
         
-        if company.domain:
-            table.add_row("Domain", Text(company.domain, style="link"))
-        if company.email:
-            table.add_row("Email", str(company.email))
-        if company.phone_number:
-            table.add_row("Phone", str(company.phone_number))
+        if company_data.get("domain"):
+            table.add_row("Domain", Text(str(company_data.get("domain")), style="link"))
+        if company_data.get("email"):
+            table.add_row("Email", str(company_data.get("email")))
+        if company_data.get("phone_number"):
+            table.add_row("Phone", str(company_data.get("phone_number")))
         if tags:
             table.add_row("Tags", ", ".join(tags))
         
         # Website Socials
         if website_data:
             socials = []
-            if website_data.linkedin_url: 
+            if website_data.linkedin_url:
                 socials.append("LinkedIn")
-            if website_data.facebook_url: 
+            if website_data.facebook_url:
                 socials.append("FB")
-            if website_data.instagram_url: 
+            if website_data.instagram_url:
                 socials.append("IG")
             if socials:
                 table.add_row("Socials", " | ".join(socials))
@@ -194,8 +197,7 @@ class CompanyDetail(Container):
 
         contacts = self.company_data.get("contacts", [])
         for c in contacts:
-            p = Person.model_validate(c)
-            table.add_row(escape(p.name), escape(p.role or ""), str(p.email or ""))
+            table.add_row(escape(c.get("name", "Unknown")), escape(c.get("role", "")), str(c.get("email", "")))
         return table
 
     def _create_meetings_table(self) -> DataTable[Any]:
@@ -216,8 +218,7 @@ class CompanyDetail(Container):
 
         notes = self.company_data.get("notes", [])
         for n in notes:
-            note = Note.model_validate(n)
-            date_str = note.timestamp.strftime("%Y-%m-%d")
-            content_preview = escape(note.content[:100].replace("\n", " "))
+            date_str = n.get("timestamp", "")[:10] if isinstance(n.get("timestamp"), str) else "N/A"
+            content_preview = escape(n.get("content", "")[:100].replace("\n", " "))
             table.add_row(date_str, content_preview)
         return table

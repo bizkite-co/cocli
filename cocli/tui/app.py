@@ -32,10 +32,10 @@ class MenuBar(Horizontal):
         self.active_section: str = ""
 
     def compose(self) -> ComposeResult:
-        yield Label("Campaigns ( A)", id="menu-campaigns")
-        yield Label("People ( P)", id="menu-people")
-        yield Label("Companies ( C)", id="menu-companies")
-        yield Label("Prospects ( S)", id="menu-prospects")
+        yield Label("Campaigns ( A)", id="menu-campaigns", classes="menu-item")
+        yield Label("People ( P)", id="menu-people", classes="menu-item")
+        yield Label("Companies ( C)", id="menu-companies", classes="menu-item")
+        yield Label("Prospects ( S)", id="menu-prospects", classes="menu-item")
 
     def set_active(self, section: str) -> None:
         for label in self.query(Label):
