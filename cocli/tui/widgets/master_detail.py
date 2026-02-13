@@ -6,8 +6,8 @@ class MasterDetailView(Container):
     """A container that displays a master list and a detail view."""
 
     BINDINGS = [
-        ("h", "focus_master", "Focus List"),
-        ("l", "focus_detail", "Focus Detail"),
+        ("[", "focus_master", "Focus List"),
+        ("]", "focus_detail", "Focus Detail"),
     ]
 
     def __init__(self, master: Widget, detail: Widget, master_width: int = 30, name: str | None = None, id: str | None = None, classes: str | None = None):

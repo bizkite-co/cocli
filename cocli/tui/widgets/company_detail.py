@@ -4,6 +4,7 @@ from typing import Dict, Optional, Any
 from textual.widgets import DataTable, Label
 from textual.containers import Container
 from textual.app import ComposeResult
+from textual import events
 
 from rich.text import Text
 from rich.markup import escape
@@ -28,7 +29,7 @@ class DetailPanel(Container):
 
 class CompanyDetail(Container):
     """
-    Highly dense company detail view with VIM-like panel navigation.
+    Highly dense company detail view with sequential and boundary-based navigation.
     Layout: 2x2 Grid
     [ Info ] [ Contacts ]
     [ Meetings ] [ Notes ]
@@ -37,7 +38,12 @@ class CompanyDetail(Container):
     BINDINGS = [
         ("escape", "app.action_escape", "Back"),
         ("q", "app.action_escape", "Back"),
-        # Use Ctrl+hjkl for quadrant jumping (VIM window standard)
+        ("i", "edit_item", "Edit"),
+        ("enter", "edit_item", "Edit"),
+        # Sequential Jumping
+        ("]", "next_panel", "Next Panel"),
+        ("[", "prev_panel", "Prev Panel"),
+        # Direct Quadrant Navigation
         ("ctrl+k", "focus_up", "Focus Up"),
         ("ctrl+j", "focus_down", "Focus Down"),
         ("ctrl+h", "focus_left", "Focus Left"),
@@ -53,6 +59,9 @@ class CompanyDetail(Container):
         self.contacts_table = self._create_contacts_table()
         self.meetings_table = self._create_meetings_table()
         self.notes_table = self._create_notes_table()
+        
+        # Define panel order for sequential navigation
+        self.panels = [self.info_table, self.contacts_table, self.meetings_table, self.notes_table]
 
     def compose(self) -> ComposeResult:
         with Container(classes="detail-grid"):
@@ -64,6 +73,41 @@ class CompanyDetail(Container):
     def on_mount(self) -> None:
         # Default focus to info table
         self.info_table.focus()
+
+    def action_next_panel(self) -> None:
+        """Jump to next panel in the grid."""
+        current = self.app.focused
+        for i, panel in enumerate(self.panels):
+            if current == panel:
+                next_idx = (i + 1) % len(self.panels)
+                self.panels[next_idx].focus()
+                break
+
+    def action_prev_panel(self) -> None:
+        """Jump to previous panel in the grid."""
+        current = self.app.focused
+        for i, panel in enumerate(self.panels):
+            if current == panel:
+                prev_idx = (i - 1) % len(self.panels)
+                self.panels[prev_idx].focus()
+                break
+
+    def on_key(self, event: events.Key) -> None:
+        """Implement boundary-aware j/k navigation."""
+        if event.key == "j":
+            focused = self.app.focused
+            if isinstance(focused, DataTable):
+                # If we are at the last row, jump down
+                if focused.cursor_row == len(focused.rows) - 1 or len(focused.rows) == 0:
+                    self.action_focus_down()
+                    event.prevent_default()
+        elif event.key == "k":
+            focused = self.app.focused
+            if isinstance(focused, DataTable):
+                # If we are at the first row, jump up
+                if focused.cursor_row == 0 or len(focused.rows) == 0:
+                    self.action_focus_up()
+                    event.prevent_default()
 
     def action_focus_up(self) -> None:
         if self.meetings_table.has_focus:
@@ -88,6 +132,14 @@ class CompanyDetail(Container):
             self.contacts_table.focus()
         elif self.meetings_table.has_focus:
             self.notes_table.focus()
+
+    def action_edit_item(self) -> None:
+        """Enters edit mode for the currently focused row."""
+        focused = self.app.focused
+        if isinstance(focused, DataTable):
+            # For now, just show a notification or change style to indicate 'edit mode'
+            self.app.notify(f"Edit Mode: {focused.id}", title="Feature Coming Soon")
+            # We will implement actual inline editing in the next step
 
     def _create_info_table(self) -> DataTable[Any]:
         table: DataTable[Any] = DataTable(id="info-table")
@@ -118,11 +170,11 @@ class CompanyDetail(Container):
         # Website Socials
         if website_data:
             socials = []
-            if website_data.linkedin_url:
+            if website_data.linkedin_url: 
                 socials.append("LinkedIn")
-            if website_data.facebook_url:
+            if website_data.facebook_url: 
                 socials.append("FB")
-            if website_data.instagram_url:
+            if website_data.instagram_url: 
                 socials.append("IG")
             if socials:
                 table.add_row("Socials", " | ".join(socials))
@@ -153,7 +205,6 @@ class CompanyDetail(Container):
 
         meetings = self.company_data.get("meetings", [])
         for m in meetings:
-            # meetings data might be raw dicts
             dt = m.get("datetime_utc", "")[:10]
             table.add_row(dt, escape(m.get("title", "Untitled")))
         return table

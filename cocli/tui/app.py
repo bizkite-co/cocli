@@ -3,7 +3,7 @@ from typing import Any, Optional
 
 from textual.app import App, ComposeResult
 from textual.binding import Binding
-from textual.widgets import Static, ListView, Input, Label
+from textual.widgets import Static, ListView, Input, Label, Footer
 from textual.containers import Container, Horizontal
 from textual import events # Import events for on_key
 
@@ -67,6 +67,7 @@ class CocliApp(App[None]):
         """Create child widgets for the app."""
         yield MenuBar()
         yield Container(id="app_content")
+        yield Footer()
 
     def __init__(self, services: Optional[ServiceContainer] = None, auto_show: bool = True, *args: Any, **kwargs: Any) -> None:
         super().__init__(*args, **kwargs)

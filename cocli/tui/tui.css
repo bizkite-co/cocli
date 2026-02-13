@@ -1,25 +1,26 @@
 /* Global Theme */
 Screen {
     background: black;
-    color: #cccccc; /* Light grey text by default */
+    color: #cccccc;
 }
 
 #menu_bar {
-    background: black;
-    color: #888888; /* Grey inactive text */
+    background: #111111; /* Dark grey bar */
+    color: #aaaaaa; /* Bright grey inactive text */
     padding: 0 1;
-    dock: top;
     height: 1;
+    width: 100%;
     border-bottom: solid #333333;
 }
 
-/* #menu_bar Label { */
-/*     padding: 0 1; */
-/* } */
-/**/
+#menu_bar Label {
+    padding: 0 2;
+    width: auto;
+}
+
 #menu_bar .active-menu-item {
-    background: rgba(255, 255, 0, 0.1); /* 10% transparent yellow */
-    color: #00ff00; /* Green active text */
+    background: #444400; /* Darker yellow for better contrast */
+    color: #00ff00; /* Vibrant green active text */
     text-style: bold;
 }
 
@@ -65,11 +66,11 @@ MasterDetailView {
 }
 
 .panel:focus-within {
-    background: rgba(255, 255, 255, 0.03);
+    background: #080808; /* Very subtle highlight */
 }
 
 .panel-header {
-    color: #666666; /* Muted header by default */
+    color: #666666; 
     text-align: left;
     text-style: bold;
     width: 100%;
@@ -79,7 +80,7 @@ MasterDetailView {
 }
 
 .panel:focus-within .panel-header {
-    color: #00ff00; /* Highlighted green when active */
+    color: #00ff00;
     border-left: solid #00ff00;
 }
 
@@ -97,12 +98,27 @@ DataTable > .datatable--header {
 }
 
 DataTable > .datatable--cursor {
-    background: rgba(0, 255, 0, 0.1);
+    background: rgba(0, 255, 0, 0.2);
     color: #ffffff;
 }
 
 #info-table {
     height: auto;
+}
+
+Footer {
+    background: black;
+    color: #666666;
+}
+
+Footer > .footer--highlight {
+    background: #444400;
+    color: #00ff00;
+}
+
+Footer > .footer--key {
+    color: #00ff00;
+    text-style: bold;
 }
 
 /* Search List Styling */
