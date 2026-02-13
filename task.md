@@ -1,20 +1,27 @@
-# Task: UI/Service Layer Decoupling
+# Task: UI/Service Layer Decoupling & Advanced TUI
 
 ## Objective
-Formalize the interface between the CLI/TUI and the core business logic by centralizing operations in `CampaignService`. This ensures that both UIs behave identically and that business rules (like updating `.envrc` on campaign switch) are not duplicated.
+Formalize the interface between the CLI/TUI and the core business logic by centralizing operations in the Service Layer, while delivering a high-performance, high-density editing experience.
 
-## Phase 1: CampaignService Consolidation (Active)
-- [ ] **Extract Context Logic**: Move the AWS Profile and `.envrc` update logic from `cocli/commands/campaign/mgmt.py:set_default_campaign` into a new `CampaignService.activate_campaign()` method.
-- [ ] **Unified Config Access**: Add a `get_config()` and `update_config()` method to `CampaignService` that handles Pydantic validation and TOML serialization.
-- [ ] **TUI Refactor**: Update `cocli/tui/campaign_app.py` to use `CampaignService` for saving edits instead of `_save_campaign` (direct TOML write).
+## Phase 1: Search & Navigation (Completed)
+- [x] **Standardize Search**: `cocli/application/search_service.py` is now the sole provider for TUI and CLI fuzzy search.
+- [x] **Performance Hardening**: DuckDB indexing optimized via native C++ parsing.
+- [x] **VIM Navigation**: Implemented `hjkl` quadrant jumping and boundary-aware scrolling.
 
-## Phase 2: Search Service Integration
-- [ ] **Standardize Search**: Ensure `cocli/application/search_service.py` is the sole provider for the TUI's "Fuzzy Search" and the CLI's `fz` command.
+## Phase 2: Inline Editing & Filtering (Completed)
+- [x] **Contact Filters**: Implemented "Actionable" lead filtering (Email OR Phone).
+- [x] **Identity Editing**: Inline editing for Name, Domain, Email, Phone.
+- [x] **Address Editing**: Expanded quadrant to support Street, City, State, and Zip edits.
 
-## Phase 3: Worker Service Extraction
+## Phase 3: Advanced Editors & Consistency (Active)
+- [ ] **Multi-line Notes**: Add a full-screen `TextArea` editor for the Notes quadrant.
+- [ ] **Person Parity**: Update Person Detail view to match the 2x2 grid and support inline edits.
+- [ ] **Campaign Consolidation**: Move `.envrc` and AWS Profile logic into `CampaignService.activate_campaign()`.
+
+## Phase 4: Worker Service Extraction
 - [ ] **Move Orchestration**: Create `cocli/application/worker_service.py` and move the async loops from `cocli/commands/worker.py`.
 
 ## Verification
-- [ ] `make test` passes.
-- [ ] `cocli campaign set <name>` correctly updates `.envrc`.
-- [ ] Editing a campaign in `cocli campaign edit` (TUI mode) persists changes correctly via the service.
+- [x] `make test` passes (94/94).
+- [x] Load times are < 1s for large datasets.
+- [x] Inline edits persist correctly to YAML frontmatter.

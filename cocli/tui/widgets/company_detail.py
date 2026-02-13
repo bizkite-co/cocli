@@ -6,11 +6,9 @@ from textual.containers import Container
 from textual.app import ComposeResult
 from textual import events, on
 
-from rich.text import Text
 from rich.markup import escape
 
 from ...models.company import Company
-from ...models.website import Website
 
 logger = logging.getLogger(__name__)
 
@@ -160,13 +158,19 @@ class CompanyDetail(Container):
         if focused.id == "info-table":
             field_name = str(row_data[0])
             current_value = str(row_data[1])
+            if current_value == "None" or current_value == "N/A":
+                current_value = ""
             
             # Map display name to actual model field
             field_map = {
                 "Email": "email",
                 "Phone": "phone_number",
                 "Domain": "domain",
-                "Name": "name"
+                "Name": "name",
+                "Street": "street_address",
+                "City": "city",
+                "State": "state",
+                "Zip": "zip_code"
             }
             
             model_field = field_map.get(field_name)
@@ -217,46 +221,43 @@ class CompanyDetail(Container):
 
     def _create_info_table(self) -> DataTable[Any]:
         table: DataTable[Any] = DataTable(id="info-table")
-        table.add_column("Attribute", width=15)
+        table.add_column("Attribute", width=10)
         table.add_column("Value")
         
-        company_data = self.company_data["company"]
+        c = self.company_data["company"]
         tags = self.company_data.get("tags", [])
-        website_data = Website.model_validate(self.company_data["website_data"]) if self.company_data.get("website_data") else None
+        website_data = self.company_data.get("website_data")
 
-        table.add_row("Name", escape(company_data.get("name", "Unknown")))
+        # Identity
+        table.add_row("Name", escape(str(c.get("name", "Unknown"))))
+        table.add_row("Domain", escape(str(c.get("domain") or "")))
+        table.add_row("Email", escape(str(c.get("email") or "")))
+        table.add_row("Phone", escape(str(c.get("phone_number") or "")))
         
-        # Address Group
-        addr_parts = [company_data.get("street_address"), company_data.get("city"), company_data.get("state"), company_data.get("zip_code")]
-        full_addr = ", ".join([str(p) for p in addr_parts if p])
-        if full_addr:
-            table.add_row("Address", escape(full_addr))
-        
-        if company_data.get("domain"):
-            table.add_row("Domain", Text(str(company_data.get("domain")), style="link"))
-        if company_data.get("email"):
-            table.add_row("Email", str(company_data.get("email")))
-        if company_data.get("phone_number"):
-            table.add_row("Phone", str(company_data.get("phone_number")))
+        # Address - Individual Editable Fields
+        table.add_row("Street", escape(str(c.get("street_address") or "")))
+        table.add_row("City", escape(str(c.get("city") or "")))
+        table.add_row("State", escape(str(c.get("state") or "")))
+        table.add_row("Zip", escape(str(c.get("zip_code") or "")))
+
         if tags:
             table.add_row("Tags", ", ".join(tags))
         
         # Website Socials
         if website_data:
             socials = []
-            if website_data.linkedin_url:
+            if website_data.get("linkedin_url"):
                 socials.append("LinkedIn")
-            if website_data.facebook_url:
+            if website_data.get("facebook_url"):
                 socials.append("FB")
-            if website_data.instagram_url:
+            if website_data.get("instagram_url"):
                 socials.append("IG")
             if socials:
                 table.add_row("Socials", " | ".join(socials))
             
-            if website_data.description:
-                table.add_row("Description", escape(website_data.description[:200] + "..."))
-            if website_data.services:
-                table.add_row("Services", ", ".join(website_data.services[:10]))
+            desc = website_data.get("description")
+            if desc:
+                table.add_row("Desc", escape(desc[:100] + "..."))
 
         return table
 
