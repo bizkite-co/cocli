@@ -1,3 +1,67 @@
-#main_menu {
-    width: 30;
+#menu_bar {
+    background: $accent;
+    color: $text;
+    padding: 0 1;
+    dock: top;
+    height: 1;
+}
+
+#app_content {
+    width: 100%;
+    height: 1fr;
+}
+
+/* Master-Detail Layout */
+MasterDetailView {
+    layout: grid;
+    grid-size: 2 1;
+    grid-columns: 1fr 3fr;
+}
+
+.master-pane {
+    border-right: solid $primary;
+    height: 100%;
+}
+
+.detail-pane {
+    height: 100%;
+    overflow-y: scroll;
+}
+
+/* Company Detail Grid */
+.detail-grid {
+    layout: grid;
+    grid-size: 2 2;
+    grid-columns: 1fr 1fr;
+    grid-rows: 1fr 1fr;
+    height: 100%;
+    width: 100%;
+}
+
+.panel {
+    border: round $primary;
+    margin: 0 1;
+    padding: 0 1;
+    height: 100%;
+}
+
+.panel:focus-within {
+    border: round $accent;
+}
+
+.panel-header {
+    background: $primary;
+    color: $text;
+    text-align: center;
+    text-style: bold;
+    width: 100%;
+}
+
+DataTable {
+    height: 1fr;
+    border: none;
+}
+
+#company-info-table {
+    height: auto;
 }

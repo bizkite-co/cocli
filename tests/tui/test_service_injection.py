@@ -24,7 +24,7 @@ async def test_search_with_injected_service():
     ]
     
     # 2. Create the container with the mock
-    services = ServiceContainer(search_service=mock_search)
+    services = ServiceContainer(search_service=mock_search, sync_search=True)
     
     # 3. Pass the container to the App
     app = CocliApp(services=services)

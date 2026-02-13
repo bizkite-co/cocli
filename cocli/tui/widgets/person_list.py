@@ -1,6 +1,6 @@
 import logging
 import asyncio
-from typing import List
+from typing import List, TYPE_CHECKING, cast
 
 from textual.screen import Screen
 from textual.widgets import ListView, ListItem, Label, Input
@@ -9,6 +9,8 @@ from textual.containers import VerticalScroll
 from textual.message import Message
 from textual import on, work
 
+if TYPE_CHECKING:
+    from ..app import CocliApp
 from cocli.models.search import SearchResult
 
 logger = logging.getLogger(__name__)
@@ -37,13 +39,25 @@ class PersonList(Screen[None]):
 
     async def on_mount(self) -> None:
         """Called when the screen is mounted."""
-        self.run_search("")
+        app = cast("CocliApp", self.app)
+        if app.services.sync_search:
+            results = app.services.fuzzy_search(search_query="", item_type="person")
+            self.filtered_fz_items = results
+            self.update_person_list_view()
+        else:
+            self.run_search("")
         self.query_one(Input).focus()
 
     @on(Input.Changed)
     async def on_input_changed(self, event: Input.Changed) -> None:
         """Called when the search input changes."""
-        self.run_search(event.value)
+        app = cast("CocliApp", self.app)
+        if app.services.sync_search:
+            results = app.services.fuzzy_search(search_query=event.value, item_type="person")
+            self.filtered_fz_items = results
+            self.update_person_list_view()
+        else:
+            self.run_search(event.value)
 
     @work(exclusive=True, thread=True)
     async def run_search(self, query: str) -> None:
@@ -54,10 +68,14 @@ class PersonList(Screen[None]):
         await asyncio.sleep(0.1)
         
         try:
-            if not self.is_running or not self.app or not hasattr(self.app, 'services'):
+            if not self.is_running or not self.app:
+                return
+            
+            app = cast("CocliApp", self.app)
+            if not hasattr(app, 'services'):
                 return
 
-            results = self.app.services.fuzzy_search(search_query=query, item_type="person")
+            results = app.services.fuzzy_search(search_query=query, item_type="person")
             
             if not self.is_running:
                 return
@@ -80,6 +98,7 @@ class PersonList(Screen[None]):
         except Exception as e:
             logger.error(f"Error updating person list view: {e}")
 
+    @on(ListView.Selected)
     def on_list_view_selected(self, event: ListView.Selected) -> None:
         """Called when a person is selected from the list."""
         list_view = self.query_one("#person_list_view", ListView)

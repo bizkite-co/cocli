@@ -33,7 +33,7 @@ class PersonListTestApp(App[None]):
 async def test_person_list_display_people():
     mock_search = MagicMock()
     mock_search.return_value = mock_fz_person_items
-    services = ServiceContainer(search_service=mock_search)
+    services = ServiceContainer(search_service=mock_search, sync_search=True)
     
     app = PersonListTestApp(services=services)
     async with app.run_test() as driver:
@@ -69,7 +69,7 @@ async def test_person_list_search_duplicate_slugs():
 
     mock_search = MagicMock()
     mock_search.side_effect = mock_search_side_effect
-    services = ServiceContainer(search_service=mock_search)
+    services = ServiceContainer(search_service=mock_search, sync_search=True)
 
     app = PersonListTestApp(services=services)
     async with app.run_test() as driver:

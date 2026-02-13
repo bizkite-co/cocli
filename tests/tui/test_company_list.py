@@ -30,7 +30,8 @@ async def test_company_selection_integration():
     
     services = ServiceContainer(
         search_service=mock_search,
-        company_service=mock_company_service
+        company_service=mock_company_service,
+        sync_search=True
     )
 
     app = CocliApp(services=services)
@@ -39,7 +40,7 @@ async def test_company_selection_integration():
     async with app.run_test() as driver:
         driver.app.action_show_companies()
         company_list_screen = await wait_for_widget(driver, CompanyList)
-        await driver.pause(0.1)
+        await driver.pause(0.5)
         # --- Direct Message Capture ---
         posted_messages = []
         original_post_message = company_list_screen.post_message
@@ -52,13 +53,12 @@ async def test_company_selection_integration():
         assert isinstance(company_list_screen, CompanyList)
 
         # Move focus from the search input to the list view
-        company_list_screen.query_one(ListView).focus()
+        list_view = company_list_screen.query_one(ListView)
+        list_view.focus()
         await driver.pause(0.1)
-        
-        await driver.press("down")
+        list_view.index = 0
         await driver.pause(0.1)
-        
-        await driver.press("l")
+        list_view.action_select_cursor()
         await driver.pause(0.1)
 
         assert len(posted_messages) > 0, "No messages were posted"

@@ -190,16 +190,23 @@ class CocliApp(App[None]):
         self.dark = not self.dark
 
     def action_escape(self) -> None:
-        """Escape the current context (pop screen or clear input)."""
+        """Escape the current context (pop screen or return to company list)."""
         if len(self.screen_stack) > 1:
             self.pop_screen()
+            return
+
+        # Check if we are currently viewing company/person details and want to go back
+        content = self.query_one("#app_content", Container)
+        if content.query("CompanyDetail") or content.query("PersonDetail"):
+            self.action_show_companies()
+            return
+
+        focused_widget = self.focused
+        if isinstance(focused_widget, Input):
+            focused_widget.value = ""
+            logger.debug("Cleared focused input field.")
         else:
-            focused_widget = self.focused
-            if isinstance(focused_widget, Input):
-                focused_widget.value = ""
-                logger.debug("Cleared focused input field.")
-            else:
-                logger.debug("Escape pressed, but no screen to pop and no input to clear.")
+            logger.debug("Escape pressed, but no screen to pop and no input to clear.")
 
     async def on_message(self, message: object) -> None:
         """Log all messages in debug mode."""

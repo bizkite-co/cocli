@@ -65,7 +65,7 @@ def visible_locator():
         return loc.first
     return _locator
 
-async def wait_for_screen(driver, screen_type: type[Screen], timeout: float = 60.0) -> Screen:
+async def wait_for_screen(driver, screen_type: type[Screen], timeout: float = 5.0) -> Screen:
     """Waits for a screen of the given type to become the active screen."""
     expires = asyncio.get_event_loop().time() + timeout
     while asyncio.get_event_loop().time() < expires:
@@ -74,7 +74,7 @@ async def wait_for_screen(driver, screen_type: type[Screen], timeout: float = 60
         await asyncio.sleep(0.01) # Give Textual a chance to update the screen stack
     raise TimeoutError(f"Screen of type {screen_type.__name__} did not become active within {timeout} seconds")
 
-async def wait_for_widget(driver, widget_type: type[Widget], selector: str | None = None, parent_widget: Widget | None = None, timeout: float = 60.0) -> Widget:
+async def wait_for_widget(driver, widget_type: type[Widget], selector: str | None = None, parent_widget: Widget | None = None, timeout: float = 5.0) -> Widget:
     """Waits for a widget of the given type to appear in the DOM or be the active screen."""
     expires = asyncio.get_event_loop().time() + timeout
     while asyncio.get_event_loop().time() < expires:
@@ -91,7 +91,7 @@ async def wait_for_widget(driver, widget_type: type[Widget], selector: str | Non
             await asyncio.sleep(0.01) # Give Textual a chance to update the DOM
     raise TimeoutError(f"Widget of type {widget_type.__name__} with selector '{selector}' did not appear within {timeout} seconds")
 
-async def wait_for_campaign_detail_update(detail_widget, timeout: float = 60.0):
+async def wait_for_campaign_detail_update(detail_widget, timeout: float = 5.0):
     """Waits for the CampaignDetail widget to have its campaign attribute set."""
     expires = asyncio.get_event_loop().time() + timeout
     while asyncio.get_event_loop().time() < expires:

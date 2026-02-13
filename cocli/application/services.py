@@ -23,6 +23,9 @@ class ServiceContainer(BaseModel):
     campaign_service: Any = Field(default_factory=lambda: CampaignService(campaign_name=get_campaign() or "default"))
     worker_service: Any = Field(default_factory=lambda: WorkerService(campaign_name=get_campaign() or "default"))
 
+    # If True, the TUI will perform searches synchronously (useful for tests)
+    sync_search: bool = False
+
     def fuzzy_search(
         self,
         search_query: str = "",

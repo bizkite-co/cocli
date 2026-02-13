@@ -1,11 +1,12 @@
 import logging
 from typing import Dict, Optional, Any
 
-from textual.widgets import DataTable, Static
-from textual.containers import VerticalScroll, Container
+from textual.widgets import DataTable, Label
+from textual.containers import Container
 from textual.app import ComposeResult
 
 from rich.text import Text
+from rich.markup import escape
 
 from ...models.company import Company
 from ...models.website import Website
@@ -14,115 +15,158 @@ from ...models.note import Note
 
 logger = logging.getLogger(__name__)
 
+class DetailPanel(Container):
+    """A focusable panel containing a title and a widget."""
+    def __init__(self, title: str, child: Any, id: str):
+        super().__init__(id=id, classes="panel")
+        self.title = title
+        self.child = child
+
+    def compose(self) -> ComposeResult:
+        yield Label(self.title, classes="panel-header")
+        yield self.child
+
 class CompanyDetail(Container):
+    """
+    Highly dense company detail view with VIM-like panel navigation.
+    Layout: 2x2 Grid
+    [ Info ] [ Contacts ]
+    [ Meetings ] [ Notes ]
+    """
+    
     BINDINGS = [
-        ("escape", "app.go_back", "Back to list"),
-        ("q", "app.go_back", "Back to list"),
+        ("escape", "app.action_escape", "Back"),
+        ("q", "app.action_escape", "Back"),
+        # VIM Navigation between panels
+        ("ctrl+k", "focus_up", "Focus Up"),
+        ("ctrl+j", "focus_down", "Focus Down"),
+        ("ctrl+h", "focus_left", "Focus Left"),
+        ("ctrl+l", "focus_right", "Focus Right"),
     ]
 
     def __init__(self, company_data: Dict[str, Any], name: Optional[str] = None, id: Optional[str] = None, classes: Optional[str] = None):
         super().__init__(name=name, id=id, classes=classes)
         self.company_data = company_data
-        logger.debug(f"CompanyDetailScreen initialized with data for: {company_data.get('company', {}).get('name')}")
+        
+        # Initialize tables
+        self.info_table = self._create_info_table()
+        self.contacts_table = self._create_contacts_table()
+        self.meetings_table = self._create_meetings_table()
+        self.notes_table = self._create_notes_table()
 
     def compose(self) -> ComposeResult:
-        logger.debug("CompanyDetailScreen compose called")
-        with VerticalScroll():
-            yield Static("Company Details", classes="header")
-            yield self._render_company_details()
-
-            yield Static("Contacts", classes="header")
-            yield self._render_contacts()
-
-            yield Static("Meetings", classes="header")
-            yield self._render_meetings()
-
-            yield Static("Recent Notes", classes="header")
-            yield self._render_notes()
+        with Container(classes="detail-grid"):
+            yield DetailPanel("COMPANY INFO", self.info_table, id="panel-info")
+            yield DetailPanel("CONTACTS", self.contacts_table, id="panel-contacts")
+            yield DetailPanel("MEETINGS", self.meetings_table, id="panel-meetings")
+            yield DetailPanel("NOTES", self.notes_table, id="panel-notes")
 
     def on_mount(self) -> None:
-        logger.debug("CompanyDetailScreen on_mount called")
-        self.focus()
+        # Default focus to info table
+        self.info_table.focus()
 
-    def _render_company_details(self) -> DataTable[Any]:
-        table: DataTable[Any] = DataTable()
-        table.add_column("Attribute")
+    def action_focus_up(self) -> None:
+        if self.meetings_table.has_focus:
+            self.info_table.focus()
+        elif self.notes_table.has_focus:
+            self.contacts_table.focus()
+
+    def action_focus_down(self) -> None:
+        if self.info_table.has_focus:
+            self.meetings_table.focus()
+        elif self.contacts_table.has_focus:
+            self.notes_table.focus()
+
+    def action_focus_left(self) -> None:
+        if self.contacts_table.has_focus:
+            self.info_table.focus()
+        elif self.notes_table.has_focus:
+            self.meetings_table.focus()
+
+    def action_focus_right(self) -> None:
+        if self.info_table.has_focus:
+            self.contacts_table.focus()
+        elif self.meetings_table.has_focus:
+            self.notes_table.focus()
+
+    def _create_info_table(self) -> DataTable[Any]:
+        table: DataTable[Any] = DataTable(id="info-table")
+        table.add_column("Attribute", width=15)
         table.add_column("Value")
-
+        
         company = Company.model_validate(self.company_data["company"])
         tags = self.company_data["tags"]
-        content = self.company_data["content"]
         website_data = Website.model_validate(self.company_data["website_data"]) if self.company_data["website_data"] else None
 
-        if content.strip():
-            table.add_row("Content", content.strip())
-
-        for key, value in company.model_dump().items():
-            if value is None or key == "name":
-                continue
-
-            key_str = key.replace('_', ' ').title()
-            if key == "domain" and isinstance(value, str):
-                table.add_row(key_str, Text(value, style=f"link http://{value}"))
-            elif key == "phone_number" and isinstance(value, str):
-                table.add_row(key_str, f"{value} (p to call)")
-            else:
-                table.add_row(key_str, str(value))
-
+        table.add_row("Name", escape(company.name))
+        
+        # Address Group
+        addr_parts = [company.street_address, company.city, company.state, company.zip_code]
+        full_addr = ", ".join([p for p in addr_parts if p])
+        if full_addr:
+            table.add_row("Address", escape(full_addr))
+        
+        if company.domain:
+            table.add_row("Domain", Text(company.domain, style="link"))
+        if company.email:
+            table.add_row("Email", str(company.email))
+        if company.phone_number:
+            table.add_row("Phone", str(company.phone_number))
         if tags:
             table.add_row("Tags", ", ".join(tags))
-
-        if website_data and website_data.services:
-            table.add_row("Services", ", ".join(website_data.services))
+        
+        # Website Socials
+        if website_data:
+            socials = []
+            if website_data.linkedin_url:
+                socials.append("LinkedIn")
+            if website_data.facebook_url:
+                socials.append("FB")
+            if website_data.instagram_url:
+                socials.append("IG")
+            if socials:
+                table.add_row("Socials", " | ".join(socials))
+            
+            if website_data.description:
+                table.add_row("Description", escape(website_data.description[:200] + "..."))
+            if website_data.services:
+                table.add_row("Services", ", ".join(website_data.services[:10]))
 
         return table
 
-    def _render_contacts(self) -> DataTable[Any]:
-        table: DataTable[Any] = DataTable()
+    def _create_contacts_table(self) -> DataTable[Any]:
+        table: DataTable[Any] = DataTable(id="contacts-table")
         table.add_column("Name")
         table.add_column("Role")
         table.add_column("Email")
-        table.add_column("Phone")
 
-        contacts_data = self.company_data["contacts"]
-        if not contacts_data:
-            return DataTable()
-
-        for contact_dict in contacts_data:
-            person = Person.model_validate(contact_dict)
-            table.add_row(person.name, person.role, person.email, person.phone)
-
+        contacts = self.company_data.get("contacts", [])
+        for c in contacts:
+            p = Person.model_validate(c)
+            table.add_row(escape(p.name), escape(p.role or ""), str(p.email or ""))
         return table
 
-    def _render_meetings(self) -> DataTable[Any]:
-        table: DataTable[Any] = DataTable()
-        table.add_column("Date")
-        table.add_column("Time")
+    def _create_meetings_table(self) -> DataTable[Any]:
+        table: DataTable[Any] = DataTable(id="meetings-table")
+        table.add_column("Date", width=12)
         table.add_column("Title")
 
-        meetings_data = self.company_data["meetings"]
-        if not meetings_data:
-            return DataTable()
-
-        for meeting_dict in meetings_data:
-            table.add_row(meeting_dict["datetime_utc"], "", meeting_dict["title"])
-
+        meetings = self.company_data.get("meetings", [])
+        for m in meetings:
+            # meetings data might be raw dicts
+            dt = m.get("datetime_utc", "")[:10]
+            table.add_row(dt, escape(m.get("title", "Untitled")))
         return table
 
-    def _render_notes(self) -> DataTable[Any]:
-        table: DataTable[Any] = DataTable()
-        table.add_column("Date")
-        table.add_column("Title")
-        table.add_column("Content")
+    def _create_notes_table(self) -> DataTable[Any]:
+        table: DataTable[Any] = DataTable(id="notes-table")
+        table.add_column("Date", width=12)
+        table.add_column("Preview")
 
-        notes_data = self.company_data["notes"]
-        if not notes_data:
-            return DataTable()
-
-        for note_dict in notes_data:
-            note = Note.model_validate(note_dict)
-            table.add_row(note.timestamp.strftime("%Y-%m-%d %H:%M"), note.title, note.content)
-
+        notes = self.company_data.get("notes", [])
+        for n in notes:
+            note = Note.model_validate(n)
+            date_str = note.timestamp.strftime("%Y-%m-%d")
+            content_preview = escape(note.content[:100].replace("\n", " "))
+            table.add_row(date_str, content_preview)
         return table
-
-

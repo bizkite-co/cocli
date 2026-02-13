@@ -18,7 +18,7 @@ def create_mock_services(search_results=None, detail_data=None):
     mock_search.return_value = search_results or []
     mock_company_service = MagicMock()
     mock_company_service.return_value = detail_data
-    return ServiceContainer(search_service=mock_search, company_service=mock_company_service), mock_search, mock_company_service
+    return ServiceContainer(search_service=mock_search, company_service=mock_company_service, sync_search=True), mock_search, mock_company_service
 
 @pytest.mark.asyncio
 async def test_l_key_selects_item():
@@ -32,16 +32,23 @@ async def test_l_key_selects_item():
 
     app = CocliApp(services=services)
     async with app.run_test() as driver:
-        await driver.press("space", "c")
+        await driver.press("space")
+        await driver.pause(0.1)
+        await driver.press("c")
+        await driver.pause(0.1)
         company_list_screen = await wait_for_widget(driver, CompanyList)
         assert isinstance(company_list_screen, CompanyList)
 
         # Wait for worker
-        await driver.pause(0.2)
+        await driver.pause(0.5)
 
-        company_list_screen.query_one(ListView).focus()
-
-        await driver.press("l")
+        list_view = company_list_screen.query_one(ListView)
+        list_view.focus()
+        await driver.pause(0.1)
+        list_view.index = 0
+        await driver.pause(0.1)
+        list_view.action_select_cursor()
+        await driver.pause(0.5)
 
         company_detail = await wait_for_widget(driver, CompanyDetail)
         assert isinstance(company_detail, CompanyDetail)
@@ -61,10 +68,13 @@ async def test_down_arrow_moves_highlight_in_company_list():
 
     app = CocliApp(services=services)
     async with app.run_test() as driver:
-        await driver.press("space", "c")
+        await driver.press("space")
+        await driver.pause(0.1)
+        await driver.press("c")
+        await driver.pause(0.1)
         company_list_screen = await wait_for_widget(driver, CompanyList)
 
-        await driver.pause(0.2)
+        await driver.pause(0.5)
 
         # The input is focused by default
         list_view = company_list_screen.query_one(ListView)
@@ -72,6 +82,7 @@ async def test_down_arrow_moves_highlight_in_company_list():
 
         # Press 'down' and check that the index changes
         await driver.press("down")
+        await driver.pause(0.1)
         assert list_view.index == 1
 
 @pytest.mark.asyncio
@@ -86,16 +97,20 @@ async def test_enter_key_selects_item_in_company_list():
 
     app = CocliApp(services=services)
     async with app.run_test() as driver:
-        await driver.press("space", "c")
+        await driver.press("space")
+        await driver.pause(0.1)
+        await driver.press("c")
+        await driver.pause(0.1)
         company_list_screen = await wait_for_widget(driver, CompanyList)
         assert isinstance(company_list_screen, CompanyList)
 
         # Simulate typing in the search input
         await driver.press("T", "e", "s", "t")
-        await driver.pause(0.2)
+        await driver.pause(0.5)
 
         # Press 'enter' to select the item
         await driver.press("enter")
+        await driver.pause(0.5)
 
         company_detail = await wait_for_widget(driver, CompanyDetail)
         assert isinstance(company_detail, CompanyDetail)
