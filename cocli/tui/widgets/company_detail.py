@@ -6,13 +6,12 @@ from typing import Dict, Optional, Any, Union, cast
 from datetime import datetime
 from pathlib import Path
 
-from textual.widgets import DataTable, Label, Input, TextArea, Button
-from textual.containers import Container, Vertical, Horizontal
+from textual.widgets import DataTable, Label, Input
+from textual.containers import Container
 from textual.app import ComposeResult
 from textual import events, on
 from textual.widget import Widget
 from textual.binding import Binding
-from textual.screen import ModalScreen
 
 from rich.text import Text
 from rich.markup import escape
@@ -20,7 +19,7 @@ from rich.markup import escape
 from ...models.company import Company
 from ...models.note import Note
 from ...models.phone import PhoneNumber
-from ...core.config import get_companies_dir
+from ...core.config import get_companies_dir, get_editor_command
 
 logger = logging.getLogger(__name__)
 
@@ -35,54 +34,6 @@ def format_phone_display(value: Any) -> Union[Text, str]:
     except Exception:
         pass
     return str(value)
-
-class NoteEditor(ModalScreen[Optional[Note]]):
-    """A full-screen modal for editing a multi-line note."""
-    
-    BINDINGS = [
-        ("ctrl+s", "save_note", "Save"),
-        ("escape", "cancel", "Cancel"),
-    ]
-
-    def __init__(self, note: Optional[Note] = None):
-        super().__init__()
-        self.note = note or Note(title="", content="")
-        self.title_input = Input(value=self.note.title, placeholder="Note Title...")
-        self.content_area = TextArea(self.note.content)
-
-    def compose(self) -> ComposeResult:
-        with Vertical(id="note-editor-container"):
-            yield Label("EDIT NOTE" if self.note.title else "NEW NOTE", classes="panel-header")
-            yield self.title_input
-            yield self.content_area
-            with Horizontal(classes="editor-buttons"):
-                yield Button("Save (Ctrl+S)", variant="success", id="save-btn")
-                yield Button("Cancel (ESC)", variant="error", id="cancel-btn")
-
-    def on_mount(self) -> None:
-        if not self.note.title:
-            self.title_input.focus()
-        else:
-            self.content_area.focus()
-
-    def action_save_note(self) -> None:
-        self.note.title = self.title_input.value
-        self.note.content = self.content_area.text
-        if not self.note.title:
-            self.app.notify("Title is required", severity="error")
-            return
-        self.dismiss(self.note)
-
-    def action_cancel(self) -> None:
-        self.dismiss(None)
-
-    @on(Button.Pressed, "#save-btn")
-    def on_save_click(self) -> None:
-        self.action_save_note()
-
-    @on(Button.Pressed, "#cancel-btn")
-    def on_cancel_click(self) -> None:
-        self.dismiss(None)
 
 class QuadrantTable(DataTable[Any]):
     """
@@ -156,6 +107,7 @@ class CompanyDetail(Container):
         ("q", "app.action_escape", "Back"),
         ("i", "enter_quadrant", "Enter Quadrant"),
         ("enter", "enter_quadrant", "Enter Quadrant"),
+        ("a", "add_item", "Add Item"),
         # Sequential Jumping
         ("]", "next_panel", "Next Panel"),
         ("[", "prev_panel", "Prev Panel"),
@@ -192,22 +144,17 @@ class CompanyDetail(Container):
             yield self.panel_notes
 
     def on_mount(self) -> None:
-        # Default focus to the Info panel (High level)
         self.panel_info.focus()
 
     def action_next_panel(self) -> None:
-        """Jump to next panel in the grid."""
         current = self.app.focused
         if current is None:
             return
-
-        # If focused on a child, focus the parent panel first
         child_widgets = [p.child for p in self.panels]
         if current in child_widgets:
             parent = current.parent
             if parent and isinstance(parent, DetailPanel):
                 current = parent
-            
         for i, panel in enumerate(self.panels):
             if current == panel:
                 next_idx = (i + 1) % len(self.panels)
@@ -215,17 +162,14 @@ class CompanyDetail(Container):
                 break
 
     def action_prev_panel(self) -> None:
-        """Jump to previous panel in the grid."""
         current = self.app.focused
         if current is None:
             return
-
         child_widgets = [p.child for p in self.panels]
         if current in child_widgets:
             parent = current.parent
             if parent and isinstance(parent, DetailPanel):
                 current = parent
-
         for i, panel in enumerate(self.panels):
             if current == panel:
                 prev_idx = (i - 1) % len(self.panels)
@@ -233,16 +177,22 @@ class CompanyDetail(Container):
                 break
 
     def action_enter_quadrant(self) -> None:
-        """Move focus from the Panel to the inner content."""
         focused = self.app.focused
         if isinstance(focused, DetailPanel):
             focused.child.focus()
 
-    def on_key(self, event: events.Key) -> None:
-        """Implement layered navigation logic."""
+    def action_add_item(self) -> None:
+        """Route 'a' key based on the focused quadrant."""
         focused = self.app.focused
-        
-        # Handle Navigation at Panel Level (hjkl switches quadrants)
+        if focused == self.panel_notes or self.notes_table.has_focus:
+            self.action_add_note()
+        elif focused == self.panel_contacts or self.contacts_table.has_focus:
+            self.app.notify("Add Contact coming soon")
+        elif focused == self.panel_meetings or self.meetings_table.has_focus:
+            self.app.notify("Add Meeting coming soon")
+
+    def on_key(self, event: events.Key) -> None:
+        focused = self.app.focused
         if isinstance(focused, DetailPanel):
             if event.key == "h":
                 if focused == self.panel_contacts:
@@ -270,10 +220,8 @@ class CompanyDetail(Container):
                 event.prevent_default()
             return
 
-        # Handle Navigation inside Quadrant (DataTable)
         if isinstance(focused, DataTable):
             if event.key == "escape":
-                # Exit back to panel level
                 parent = focused.parent
                 if parent and hasattr(parent, "focus"):
                     parent.focus()
@@ -311,6 +259,78 @@ class CompanyDetail(Container):
         else:
             self.app.notify("No slug found", severity="error")
 
+    def action_add_note(self) -> None:
+        """Create a new note using NVim."""
+        slug = self.company_data["company"].get("slug")
+        if not slug:
+            return
+
+        new_note = Note(title="New Note", content="")
+        notes_dir = get_companies_dir() / slug / "notes"
+        notes_dir.mkdir(parents=True, exist_ok=True)
+        
+        timestamp_str = new_note.timestamp.strftime("%Y-%m-%dT%H-%M-%SZ")
+        temp_path = notes_dir / f"{timestamp_str}-new-note.md"
+        
+        new_note.to_file(notes_dir)
+        self._edit_with_nvim(temp_path)
+
+    def action_edit_note(self) -> None:
+        """Edit an existing note using NVim."""
+        row_idx = self.notes_table.cursor_row
+        if row_idx is None or row_idx >= len(self.notes_table.rows):
+            return
+        
+        note_data = self.company_data["notes"][row_idx]
+        file_path = note_data.get("file_path")
+        if file_path:
+            self._edit_with_nvim(Path(file_path))
+
+    def _edit_with_nvim(self, path: Path) -> None:
+        """Suspend the TUI and open NVim."""
+        editor = get_editor_command() or "nvim"
+        
+        try:
+            with self.app.suspend():
+                subprocess.run([editor, str(path)], check=False)
+            
+            self.app.notify("Note saved")
+            # Reload notes from disk
+            self.refresh_notes_data()
+        except Exception as e:
+            logger.error(f"NVim editor session failed: {e}")
+            self.app.notify(f"Editor failed: {e}", severity="error")
+
+    def refresh_notes_data(self) -> None:
+        """Reload notes from the filesystem and refresh the table."""
+        slug = self.company_data["company"].get("slug")
+        if not slug:
+            return
+            
+        try:
+            from ...application.company_service import get_company_details_for_view
+            reloaded = get_company_details_for_view(slug)
+            if reloaded:
+                self.company_data["notes"] = reloaded["notes"]
+                self.refresh_notes_table()
+        except Exception as e:
+            logger.error(f"Failed to refresh notes: {e}")
+
+    def refresh_notes_table(self) -> None:
+        """Repopulate the existing table rather than replacing it for stability."""
+        self.notes_table.clear()
+        notes = self.company_data.get("notes", [])
+        for n in notes:
+            ts = n.get("timestamp")
+            if isinstance(ts, datetime):
+                ts_str = ts.strftime("%Y-%m-%d")
+            else:
+                ts_str = str(ts)[:10]
+            content_preview = escape(n.get("content", "")[:100].replace("\n", " "))
+            self.notes_table.add_row(ts_str, content_preview)
+        
+        self.notes_table.focus()
+
     @on(DataTable.RowSelected)
     def handle_row_selected(self, event: DataTable.RowSelected) -> None:
         if event.data_table.id == "info-table":
@@ -319,37 +339,23 @@ class CompanyDetail(Container):
             self.action_edit_note()
 
     def trigger_row_edit(self, table: InfoTable) -> None:
-        """Core logic for entering edit mode on a row."""
         row_idx = table.cursor_row
         if row_idx is None or row_idx >= len(table.rows):
             return
-
         row_data = table.get_row_at(row_idx)
         field_name = str(row_data[0])
         current_value = str(row_data[1])
         if current_value == "None" or current_value == "N/A":
             current_value = ""
-        
-        # Map display name to actual model field
         field_map = {
-            "Email": "email",
-            "Phone": "phone_number",
-            "Domain": "domain",
-            "Name": "name",
-            "Street": "street_address",
-            "City": "city",
-            "State": "state",
-            "Zip": "zip_code"
+            "Email": "email", "Phone": "phone_number", "Domain": "domain", "Name": "name",
+            "Street": "street_address", "City": "city", "State": "state", "Zip": "zip_code"
         }
-        
         model_field = field_map.get(field_name)
         if not model_field:
             self.app.notify(f"Cannot edit {field_name} yet.", severity="warning")
             return
-
-        # Replace table with Input
         input_widget = EditInput(field_name=model_field, value=current_value, id=f"edit-{model_field}")
-        
         panel = self.query_one("#panel-info", DetailPanel)
         self.info_table.display = False
         panel.mount(input_widget)
@@ -357,106 +363,45 @@ class CompanyDetail(Container):
 
     @on(Input.Submitted)
     async def handle_edit_submitted(self, event: Input.Submitted) -> None:
-        """Save the edited value back to the company model."""
         if not isinstance(event.input, EditInput):
             return
-            
         field_name = event.input.field_name
         new_value = event.value
         company_slug = self.company_data["company"].get("slug")
-        
         if company_slug:
             try:
-                # Load, update, and save
                 company = Company.get(company_slug)
                 if company:
                     setattr(company, field_name, new_value)
                     company.save()
                     self.app.notify(f"Updated {field_name}")
-                    
-                    # Refresh the local data and UI
                     self.company_data["company"][field_name] = new_value
-                    
-                    # Clean up
                     event.input.remove()
-                    self.info_table = self._create_info_table() 
-                    
-                    panel = self.query_one("#panel-info", DetailPanel)
-                    panel.query(DataTable).remove()
-                    panel.mount(self.info_table)
+                    # Re-render info table content (identity/address)
+                    self._refresh_info_table()
+                    self.info_table.display = True
                     self.info_table.focus()
             except Exception as e:
                 self.app.notify(f"Save failed: {e}", severity="error")
 
-    def action_add_note(self) -> None:
-        self.app.push_screen(NoteEditor(), self.save_new_note)
-
-    def save_new_note(self, note: Optional[Note]) -> None:
-        if note:
-            slug = self.company_data["company"].get("slug")
-            if slug:
-                notes_dir = get_companies_dir() / slug / "notes"
-                note.to_file(notes_dir)
-                self.app.notify("Note saved")
-                # Refresh notes table
-                self.company_data["notes"].append(note.model_dump())
-                self.refresh_notes_table()
-
-    def action_edit_note(self) -> None:
-        row_idx = self.notes_table.cursor_row
-        if row_idx is None or row_idx >= len(self.notes_table.rows):
-            return
-        
-        note_data = self.company_data["notes"][row_idx]
-        try:
-            if "file_path" in note_data:
-                note = Note.from_file(Path(note_data["file_path"]))
-            else:
-                note = Note.model_validate(note_data)
-            
-            if note:
-                self.app.push_screen(NoteEditor(note), lambda n: self.update_existing_note(n, row_idx))
-        except Exception as e:
-            self.app.notify(f"Could not load note: {e}", severity="error")
-
-    def update_existing_note(self, note: Optional[Note], index: int) -> None:
-        if note:
-            slug = self.company_data["company"].get("slug")
-            if slug:
-                notes_dir = get_companies_dir() / slug / "notes"
-                note.to_file(notes_dir)
-                self.app.notify("Note updated")
-                self.company_data["notes"][index] = note.model_dump()
-                self.refresh_notes_table()
-
-    def refresh_notes_table(self) -> None:
-        new_table = self._create_notes_table()
-        panel = self.query_one("#panel-notes", DetailPanel)
-        panel.query(DataTable).remove()
-        panel.mount(new_table)
-        self.notes_table = new_table
-        self.notes_table.focus()
-
-    def _create_info_table(self) -> InfoTable:
-        table = InfoTable(id="info-table")
-        table.add_column("Attribute", width=10)
-        table.add_column("Value")
-        
+    def _refresh_info_table(self) -> None:
+        """Repopulate info table content."""
+        self.info_table.clear()
         c = self.company_data["company"]
         tags = self.company_data.get("tags", [])
         website_data = self.company_data.get("website_data")
 
-        table.add_row("Name", escape(str(c.get("name", "Unknown"))))
-        table.add_row("Domain", escape(str(c.get("domain") or "")))
-        table.add_row("Email", escape(str(c.get("email") or "")))
-        table.add_row("Phone", format_phone_display(c.get("phone_number")))
-        table.add_row("Street", escape(str(c.get("street_address") or "")))
-        table.add_row("City", escape(str(c.get("city") or "")))
-        table.add_row("State", escape(str(c.get("state") or "")))
-        table.add_row("Zip", escape(str(c.get("zip_code") or "")))
+        self.info_table.add_row("Name", escape(str(c.get("name", "Unknown"))))
+        self.info_table.add_row("Domain", escape(str(c.get("domain") or "")))
+        self.info_table.add_row("Email", escape(str(c.get("email") or "")))
+        self.info_table.add_row("Phone", format_phone_display(c.get("phone_number")))
+        self.info_table.add_row("Street", escape(str(c.get("street_address") or "")))
+        self.info_table.add_row("City", escape(str(c.get("city") or "")))
+        self.info_table.add_row("State", escape(str(c.get("state") or "")))
+        self.info_table.add_row("Zip", escape(str(c.get("zip_code") or "")))
 
         if tags:
-            table.add_row("Tags", ", ".join(tags))
+            self.info_table.add_row("Tags", ", ".join(tags))
         
         if website_data:
             socials = []
@@ -467,12 +412,19 @@ class CompanyDetail(Container):
             if website_data.get("instagram_url"):
                 socials.append("IG")
             if socials:
-                table.add_row("Socials", " | ".join(socials))
+                self.info_table.add_row("Socials", " | ".join(socials))
             
             desc = website_data.get("description")
             if desc:
-                table.add_row("Desc", escape(desc[:100] + "..."))
+                self.info_table.add_row("Desc", escape(desc[:100] + "..."))
 
+    def _create_info_table(self) -> InfoTable:
+        table = InfoTable(id="info-table")
+        table.add_column("Attribute", width=10)
+        table.add_column("Value")
+        # Initialize content
+        self.info_table = table # Temporarily assign so _refresh works
+        self._refresh_info_table()
         return table
 
     def _create_contacts_table(self) -> ContactsTable:
@@ -480,7 +432,6 @@ class CompanyDetail(Container):
         table.add_column("Name")
         table.add_column("Role")
         table.add_column("Email")
-
         contacts = self.company_data.get("contacts", [])
         for c in contacts:
             table.add_row(escape(c.get("name", "Unknown")), escape(c.get("role", "")), str(c.get("email", "")))
@@ -490,7 +441,6 @@ class CompanyDetail(Container):
         table = MeetingsTable(id="meetings-table")
         table.add_column("Date", width=12)
         table.add_column("Title")
-
         meetings = self.company_data.get("meetings", [])
         for m in meetings:
             dt = m.get("datetime_utc", "")[:10]
@@ -501,7 +451,6 @@ class CompanyDetail(Container):
         table = NotesTable(id="notes-table")
         table.add_column("Date", width=12)
         table.add_column("Preview")
-
         notes = self.company_data.get("notes", [])
         for n in notes:
             ts = n.get("timestamp")

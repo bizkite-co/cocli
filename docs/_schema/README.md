@@ -1,34 +1,31 @@
-# Cocli Filesystem & S3 Schema Specification
+# Cocli Data Ordinance & Synchronization Policy
 
-This directory uses the filesystem itself to document the expected structure of data across different environments (Local, S3, RPi). 
+This document defines the "Gold Standard" for how data is addressed, accessed, and propagated across the `cocli` ecosystem.
 
-## The Unified Coordinate Policy (UCP)
-`cocli` adheres to a strict 1:1 mapping between **Data Identity**, **Storage Path**, and **UI Navigation**. Every actionable element in the system is addressed by a "Unified Coordinate" (or Ordinant).
+## 1. The Unified Coordinate Policy (UCP)
+Every data element in `cocli` has a deterministic **Ordinant** (a universal-namespace path). 
+`{COLLECTION} / {SLUG} / {QUADRANT} / {LEAF}`
 
-### 1. The Hierarchy of Ordinants
-A coordinate is composed of segments that define its location across all layers:
-`{CAMPAIGN} / {COLLECTION} / {ENTITY} / {QUADRANT} / {FIELD}`
+### Verifiable Rules:
+1.  **Identity is Path**: An object's `slug` must be the directory name.
+2.  **Code-First Mapping**: Pydantic models must reflect the directory structure. 
+    *   A `Company` model should contain a `notes: List[Note]` field.
+    *   Saving the `Company` model should automatically distribute data to `{slug}/_index.md` and `{slug}/notes/*.md`.
+3.  **Role-Based Access (RBA)**:
+    *   `Collector`: Can write to `prospects/` and `scraped_data/`.
+    *   `Enricher`: Can update `info/` and `website_data/`.
+    *   `Editor`: Can update `notes/`, `meetings/`, and `contacts/`.
+    *   `Admin`: Can modify `tags/` and `exclusions/`.
 
-*   **Example Path**: `roadmap / companies / auctus-advisors / info / phone_number`
-*   **TUI Mapping**: `CompanyDetail(slug="auctus-advisors")` -> `InfoTable` -> `Row("Phone")`
-*   **Storage Mapping**: `~/.local/share/cocli_data/companies/auctus-advisors/_index.md` -> `yaml["phone_number"]`
-*   **S3 Mapping**: `s3://cocli-data-roadmap/companies/auctus-advisors/_index.md`
+## 2. Propagation Strategy: "Leaf-First Sync"
+Instead of bulk-syncing directories, `cocli` aims for **Atomic Delta Propagation**.
 
-### 2. Policy Requirements
-- **Path-as-Identity**: No data should exist without a deterministic path. We do not use auto-incrementing IDs; we use slugs and coordinates.
-- **TUI-to-Path Transparency**: Every widget in the TUI should be able to resolve its "Origin Path." When you press `Enter` to edit, the widget knows exactly which file and key it is modifying because they share the same coordinate.
-- **Targeted Propagation**: Sync operations (via S3, FreeNet, or IPFS) should prioritize the smallest possible leaf node defined by the coordinate to minimize collision and bandwidth.
+### Implementation Idioms:
+*   **SyncThing / FreeNet Style**: Because every note is a unique file (`{timestamp}.md`), we avoid merge conflicts. New files are simply "announced" to the network.
+*   **S3 Content-Addressing**: When a leaf node (e.g., a phone number) changes, only that specific ordinant's file is invalidated and re-uploaded.
+*   **Wormhole Updates**: For TUI-to-Cloud propagation, we should prioritize **Immediate S3 Pushes** for user-generated content (Notes/Edits) to ensure other workers see the update in < 5 seconds.
 
-## Structure
-- `local/`: Standard structure for local development and campaign data.
-- `s3-bucket/`: Standard namespace for the campaign S3 data bucket.
-- `rpi-worker/`: Structure inside the Raspberry Pi Docker containers.
-
-## Validation & Testing
-1. **Ordinant Checks**: Test suites (including BDD features) should use coordinates to set up and verify state (e.g., "Given the coordinate `X` has value `Y`").
-2. **Environment Audit**: A script can walk an environment and flag any paths that do not exist in this schema tree.
-
-## Legend
-- `README.md`: Describes the purpose of a directory or node.
-- `*.schema.json`: JSON Schema defining the file format.
-- `example.*`: A valid example file.
+## 3. Validation (Tests as Documentation)
+Our documentation is validated via BDD features in `features/schema/`.
+*   `Feature: Ordinant Resolution`: Asserts that `Note(company="actus").path` always equals `data/companies/actus/notes/...`.
+*   `Feature: Role Enforcement`: Asserts that a `worker` role cannot overwrite a `note` file.
