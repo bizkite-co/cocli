@@ -31,14 +31,16 @@ class ServiceContainer(BaseModel):
         search_query: str = "",
         item_type: Optional[str] = None,
         campaign_name: Optional[str] = None,
-        force_rebuild_cache: bool = False
+        force_rebuild_cache: bool = False,
+        filters: Optional[Dict[str, Any]] = None
     ) -> List[SearchResult]:
         # Wrap the function call to match the expected signature
         results = self.search_service(
             search_query=search_query,
             item_type=item_type,
             campaign_name=campaign_name,
-            force_rebuild_cache=force_rebuild_cache
+            force_rebuild_cache=force_rebuild_cache,
+            filters=filters
         )
         return cast(List[SearchResult], results)
 

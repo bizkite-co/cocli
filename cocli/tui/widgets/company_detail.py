@@ -1,17 +1,24 @@
 import logging
 from typing import Dict, Optional, Any
 
-from textual.widgets import DataTable, Label
+from textual.widgets import DataTable, Label, Input
 from textual.containers import Container
 from textual.app import ComposeResult
-from textual import events
+from textual import events, on
 
 from rich.text import Text
 from rich.markup import escape
 
+from ...models.company import Company
 from ...models.website import Website
 
 logger = logging.getLogger(__name__)
+
+class EditInput(Input):
+    """Custom Input widget that carries field metadata."""
+    def __init__(self, field_name: str, *args: Any, **kwargs: Any):
+        super().__init__(*args, **kwargs)
+        self.field_name = field_name
 
 class DetailPanel(Container):
     """A focusable panel containing a title and a widget."""
@@ -40,11 +47,6 @@ class CompanyDetail(Container):
         # Sequential Jumping
         ("]", "next_panel", "Next Panel"),
         ("[", "prev_panel", "Prev Panel"),
-        # Quadrant jumping (VIM window style)
-        ("alt+h", "focus_left", "Focus Left"),
-        ("alt+l", "focus_right", "Focus Right"),
-        ("alt+j", "focus_down", "Focus Down"),
-        ("alt+k", "focus_up", "Focus Up"),
     ]
 
     def __init__(self, company_data: Dict[str, Any], name: Optional[str] = None, id: Optional[str] = None, classes: Optional[str] = None):
@@ -92,6 +94,11 @@ class CompanyDetail(Container):
     def on_key(self, event: events.Key) -> None:
         """Implement boundary-aware j/k/h/l navigation."""
         focused = self.app.focused
+        
+        # Don't hijack j/k if an Input is focused
+        if isinstance(focused, Input):
+            return
+
         if not isinstance(focused, DataTable):
             return
 
@@ -141,8 +148,72 @@ class CompanyDetail(Container):
     def action_edit_item(self) -> None:
         """Enters edit mode for the currently focused row."""
         focused = self.app.focused
-        if isinstance(focused, DataTable):
-            self.app.notify(f"Edit Mode: {focused.id}", title="Feature Coming Soon")
+        if not isinstance(focused, DataTable):
+            return
+
+        row_idx = focused.cursor_row
+        if row_idx is None or row_idx >= len(focused.rows):
+            return
+
+        row_data = focused.get_row_at(row_idx)
+        
+        if focused.id == "info-table":
+            field_name = str(row_data[0])
+            current_value = str(row_data[1])
+            
+            # Map display name to actual model field
+            field_map = {
+                "Email": "email",
+                "Phone": "phone_number",
+                "Domain": "domain",
+                "Name": "name"
+            }
+            
+            model_field = field_map.get(field_name)
+            if not model_field:
+                self.app.notify(f"Cannot edit {field_name} yet.", severity="warning")
+                return
+
+            # Replace table with Input
+            input_widget = EditInput(field_name=model_field, value=current_value, id=f"edit-{model_field}")
+            
+            panel = self.query_one("#panel-info", DetailPanel)
+            self.info_table.display = False
+            panel.mount(input_widget)
+            input_widget.focus()
+
+    @on(Input.Submitted)
+    async def handle_edit_submitted(self, event: Input.Submitted) -> None:
+        """Save the edited value back to the company model."""
+        if not isinstance(event.input, EditInput):
+            return
+            
+        field_name = event.input.field_name
+        new_value = event.value
+        company_slug = self.company_data["company"].get("slug")
+        
+        if company_slug:
+            try:
+                # Load, update, and save
+                company = Company.get(company_slug)
+                if company:
+                    setattr(company, field_name, new_value)
+                    company.save()
+                    self.app.notify(f"Updated {field_name}")
+                    
+                    # Refresh the local data and UI
+                    self.company_data["company"][field_name] = new_value
+                    
+                    # Clean up
+                    event.input.remove()
+                    self.info_table = self._create_info_table() # Re-render table
+                    
+                    panel = self.query_one("#panel-info", DetailPanel)
+                    panel.query(DataTable).remove()
+                    panel.mount(self.info_table)
+                    self.info_table.focus()
+            except Exception as e:
+                self.app.notify(f"Save failed: {e}", severity="error")
 
     def _create_info_table(self) -> DataTable[Any]:
         table: DataTable[Any] = DataTable(id="info-table")
@@ -150,8 +221,8 @@ class CompanyDetail(Container):
         table.add_column("Value")
         
         company_data = self.company_data["company"]
-        tags = self.company_data["tags"]
-        website_data = Website.model_validate(self.company_data["website_data"]) if self.company_data["website_data"] else None
+        tags = self.company_data.get("tags", [])
+        website_data = Website.model_validate(self.company_data["website_data"]) if self.company_data.get("website_data") else None
 
         table.add_row("Name", escape(company_data.get("name", "Unknown")))
         

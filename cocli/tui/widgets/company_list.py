@@ -29,30 +29,36 @@ class CompanyList(Container):
             super().__init__()
             self.company_slug = company_slug
 
+    BINDINGS = [
+        ("f", "toggle_filter", "Toggle Contact Info"),
+    ]
+
     def __init__(self, name: str | None = None, id: str | None = None, classes: str | None = None):
         super().__init__(name=name, id=id, classes=classes)
         self.can_focus = True
-        self.all_fz_items: List[SearchResult] = []
         self.filtered_fz_items: List[SearchResult] = []
+        self.filter_contact: bool = True
 
     async def on_mount(self) -> None:
         """Initialize the list on mount."""
-        app = cast("CocliApp", self.app)
-        if app.services.sync_search:
-            results = app.services.fuzzy_search(search_query="", item_type="company")
-            self.filtered_fz_items = results
-            self.update_company_list_view()
-        else:
-            # Initial load of companies
-            self.run_search("")
+        await self.perform_search("")
         self.query_one(Input).focus()
 
     def compose(self) -> ComposeResult:
-        yield Label("Companies")
+        filter_status = " [Actionable]" if self.filter_contact else ""
+        yield Label(f"Companies{filter_status}", id="list_title")
         yield Input(placeholder="Search companies...", id="company_search_input")
         yield ListView(
             id="company_list_view"
         )
+
+    def action_toggle_filter(self) -> None:
+        """Toggle the 'Actionable Leads' filter (has email OR phone)."""
+        self.filter_contact = not self.filter_contact
+        status = " [Actionable]" if self.filter_contact else ""
+        self.query_one("#list_title", Label).update(f"Companies{status}")
+        query = self.query_one("#company_search_input", Input).value
+        self.run_search(query)
 
     @on(Input.Submitted)
     def on_input_submitted(self, event: Input.Submitted) -> None:
@@ -73,38 +79,55 @@ class CompanyList(Container):
 
     async def on_input_changed(self, event: Input.Changed) -> None:
         """Called when the search input changes."""
+        self.run_search(event.value)
+
+    def run_search(self, query: str) -> None:
         app = cast("CocliApp", self.app)
         if app.services.sync_search:
-            results = app.services.fuzzy_search(search_query=event.value, item_type="company")
+            # Synchronous search for tests
+            results = app.services.fuzzy_search(
+                search_query=query, 
+                item_type="company",
+                filters={"has_contact_info": self.filter_contact}
+            )
             self.filtered_fz_items = results
             self.update_company_list_view()
         else:
-            self.run_search(event.value)
+            self.trigger_async_search(query)
+
+    async def perform_search(self, query: str) -> None:
+        """Helper for on_mount and other direct calls."""
+        app = cast("CocliApp", self.app)
+        results = app.services.fuzzy_search(
+            search_query=query, 
+            item_type="company",
+            filters={"has_contact_info": self.filter_contact}
+        )
+        self.filtered_fz_items = results
+        self.update_company_list_view()
 
     @work(exclusive=True, thread=True)
-    async def run_search(self, query: str) -> None:
+    async def trigger_async_search(self, query: str) -> None:
         """
         Runs the fuzzy search in a background thread to avoid blocking the UI.
         Exclusive=True ensures only the latest search task runs.
         """
-        # Small debounce
         await asyncio.sleep(0.1)
         
         try:
-            # We use the app's service container
             if not self.is_running or not self.app:
                 return
             
             app = cast("CocliApp", self.app)
-            if not hasattr(app, 'services'):
-                return
-
-            results = app.services.fuzzy_search(search_query=query, item_type="company")
+            results = app.services.fuzzy_search(
+                search_query=query, 
+                item_type="company",
+                filters={"has_contact_info": self.filter_contact}
+            )
             
             if not self.is_running:
                 return
 
-            # Update the UI state safely
             self.filtered_fz_items = results
             self.call_after_refresh(self.update_company_list_view)
         except Exception as e:
@@ -118,7 +141,6 @@ class CompanyList(Container):
             
             new_items = []
             for i, item in enumerate(self.filtered_fz_items[:20]):
-                # Remove manual ID to prevent DuplicateIds. Textual will handle it.
                 new_items.append(ListItem(Label(item.name), name=item.name))
             
             list_view.extend(new_items)
@@ -129,7 +151,6 @@ class CompanyList(Container):
 
     @on(ListView.Selected)
     def on_list_view_selected(self, event: ListView.Selected) -> None:
-        # Try to find by name first (most robust)
         if event.item and hasattr(event.item, "name"):
             name = getattr(event.item, "name")
             selected_item = next((item for item in self.filtered_fz_items if item.name == name), None)
@@ -137,17 +158,15 @@ class CompanyList(Container):
                 self.post_message(self.CompanySelected(selected_item.slug))
                 return
 
-        # Fallback to index
         list_view = self.query_one("#company_list_view", ListView)
         idx = list_view.index
         if idx is not None and idx < len(self.filtered_fz_items):
             selected_item = self.filtered_fz_items[idx]
-            if selected_item.slug:
+            if selected_item and selected_item.slug:
                 self.post_message(self.CompanySelected(selected_item.slug))
 
     @on(ListView.Highlighted)
     def on_list_view_highlighted(self, event: ListView.Highlighted) -> None:
-        # Try to find by name first
         if event.item and hasattr(event.item, "name"):
             name = getattr(event.item, "name")
             highlighted_item = next((item for item in self.filtered_fz_items if item.name == name), None)
@@ -157,12 +176,11 @@ class CompanyList(Container):
                     self.post_message(self.CompanyHighlighted(company))
                 return
 
-        # Fallback to index
         list_view = self.query_one("#company_list_view", ListView)
         idx = list_view.index
         if idx is not None and idx < len(self.filtered_fz_items):
             highlighted_item = self.filtered_fz_items[idx]
-            if highlighted_item.slug:
+            if highlighted_item and highlighted_item.slug:
                 company = Company.get(highlighted_item.slug)
                 if company:
                     self.post_message(self.CompanyHighlighted(company))
