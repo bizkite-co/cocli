@@ -48,17 +48,24 @@ class QuadrantTable(DataTable[Any]):
         Binding("alt+s", "exit_quadrant", "Exit Quadrant"),
     ]
 
-    def _on_key(self, event: events.Key) -> None:
+    async def _on_key(self, event: events.Key) -> None:
         if event.key == "i":
-            self.action_edit_note()
-            event.stop()
-            event.prevent_default()
+            # Some quadrants might use 'i' for inline editing, others for full editor
+            if hasattr(self, "action_edit_row"):
+                self.action_edit_row()
+                event.stop()
+                event.prevent_default()
+            elif hasattr(self, "action_edit_item"):
+                self.action_edit_item()
+                event.stop()
+                event.prevent_default()
         elif event.key == "d":
-            self.action_delete_note()
-            event.stop()
-            event.prevent_default()
+            if hasattr(self, "action_delete_item"):
+                self.action_delete_item()
+                event.stop()
+                event.prevent_default()
         else:
-            super()._on_key(event)
+            await super()._on_key(event)
 
     def action_exit_quadrant(self) -> None:
         """Move focus back up to the DetailPanel."""
@@ -71,6 +78,11 @@ class InfoTable(QuadrantTable):
         Binding("i", "edit_row", "Edit Field"),
         Binding("enter", "edit_row", "Edit Field"),
     ]
+
+    def action_edit_row(self) -> None:
+        detail_view = next((a for a in self.ancestors if isinstance(a, CompanyDetail)), None)
+        if detail_view:
+            detail_view.trigger_row_edit(self)
 
 class ContactsTable(QuadrantTable):
     """Specific bindings for the Contacts quadrant."""
@@ -88,12 +100,12 @@ class NotesTable(QuadrantTable):
     """Specific bindings for the Notes quadrant."""
     BINDINGS = QuadrantTable.BINDINGS + [
         Binding("a", "add_note", "Add Note"),
-        Binding("i", "edit_note", "Edit Note"),
-        Binding("enter", "edit_note", "Edit Note"),
-        Binding("d", "delete_note", "Delete Note"),
+        Binding("i", "edit_item", "Edit Note"),
+        Binding("enter", "edit_item", "Edit Note"),
+        Binding("d", "delete_item", "Delete Note"),
     ]
 
-    def action_edit_note(self) -> None:
+    def action_edit_item(self) -> None:
         detail_view = next((a for a in self.ancestors if isinstance(a, CompanyDetail)), None)
         if detail_view:
              detail_view.action_edit_note()
@@ -103,7 +115,7 @@ class NotesTable(QuadrantTable):
         if detail_view:
              detail_view.action_add_note()
 
-    def action_delete_note(self) -> None:
+    def action_delete_item(self) -> None:
         detail_view = next((a for a in self.ancestors if isinstance(a, CompanyDetail)), None)
         if detail_view:
              detail_view.app.run_worker(detail_view.action_delete_note())
@@ -113,6 +125,14 @@ class EditInput(Input):
     def __init__(self, field_name: str, *args: Any, **kwargs: Any):
         super().__init__(*args, **kwargs)
         self.field_name = field_name
+
+    def on_key(self, event: events.Key) -> None:
+        if event.key == "escape" or event.key == "alt+s":
+            detail_view = next((a for a in self.ancestors if isinstance(a, CompanyDetail)), None)
+            if detail_view:
+                detail_view.action_cancel_edit()
+            event.stop()
+            event.prevent_default()
 
 class DetailPanel(Container):
     """A focusable panel containing a title and a widget."""
@@ -318,26 +338,40 @@ class CompanyDetail(Container):
     def action_edit_note(self) -> None:
         """Edit an existing note using NVim."""
         row_idx = self.notes_table.cursor_row
-        if row_idx is None or row_idx >= len(self.notes_table.rows):
+        num_notes = len(self.company_data.get("notes", []))
+        logger.debug(f"action_edit_note: row_idx={row_idx}, num_notes={num_notes}")
+        
+        if row_idx is None or row_idx >= num_notes:
+            self.app.notify("No note selected", severity="warning")
             return
         
         note_data = self.company_data["notes"][row_idx]
         file_path = note_data.get("file_path")
+        logger.debug(f"action_edit_note: selected note file_path={file_path}")
+        
         if file_path:
             self._edit_with_nvim(Path(file_path))
 
     async def action_delete_note(self) -> None:
         """Delete an existing note with confirmation."""
         row_idx = self.notes_table.cursor_row
-        if row_idx is None or row_idx >= len(self.notes_table.rows):
+        num_notes = len(self.company_data.get("notes", []))
+        logger.debug(f"action_delete_note: row_idx={row_idx}, num_notes={num_notes}")
+        
+        if row_idx is None or row_idx >= num_notes:
+            self.app.notify("No note selected", severity="warning")
             return
         
         note_data = self.company_data["notes"][row_idx]
         file_path = note_data.get("file_path")
+        logger.debug(f"action_delete_note: selected note file_path={file_path}")
+        
         if not file_path:
             return
             
         confirm = await self.app.push_screen(ConfirmScreen("Are you sure you want to delete this note?"))
+        logger.debug(f"action_delete_note: confirmation result={confirm}")
+        
         if confirm:
             try:
                 Path(file_path).unlink()
@@ -421,6 +455,16 @@ class CompanyDetail(Container):
         self.info_table.display = False
         panel.mount(input_widget)
         input_widget.focus()
+
+    def action_cancel_edit(self) -> None:
+        """Cancel the current inline edit and restore the table."""
+        panel = self.query_one("#panel-info", DetailPanel)
+        edit_inputs = panel.query(EditInput)
+        if edit_inputs:
+            for edit_input in edit_inputs:
+                edit_input.remove()
+            self.info_table.display = True
+            self.info_table.focus()
 
     @on(Input.Submitted)
     async def handle_edit_submitted(self, event: Input.Submitted) -> None:

@@ -1,12 +1,10 @@
 import pytest
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch
 from pathlib import Path
 from datetime import datetime
 
 from cocli.tui.app import CocliApp
 from cocli.tui.widgets.company_detail import CompanyDetail, NotesTable
-from cocli.models.note import Note
-from conftest import wait_for_widget
 
 @pytest.fixture
 def mock_company_data():
