@@ -1,8 +1,10 @@
 # Cluster Management & Deployment
 
-RPI_HOST ?= cocli5x0.pi
+RPI_HOST ?= coclipi.pi
 RPI_USER ?= mstouffer
-CLUSTER_NODES = cocli5x0.pi octoprint.pi coclipi.pi cocli5x1.pi
+
+# Resolve authorized nodes from campaign config
+CLUSTER_NODES = $(shell python3 -c "from cocli.core.config import load_campaign_config; c = load_campaign_config('$(CAMPAIGN)'); scaling = c.get('prospecting', {}).get('scaling', {}); print(' '.join([ (k if k.endswith('.pi') else k+'.pi') for k in scaling.keys() if k != 'fargate']))" 2>/dev/null)
 
 .PHONY: hotfix-cluster-safe log-rpi-all cluster-status
 
