@@ -19,7 +19,11 @@ function logout() {
 
 async function fetchConfig() {
     const urlParams = new URLSearchParams(window.location.search);
-    const campaign = urlParams.get('campaign') || window.CAMPAIGN_NAME || 'turboship';
+    const campaign = urlParams.get('campaign') || window.CAMPAIGN_NAME;
+    if (!campaign) {
+        console.error("No campaign name found.");
+        return;
+    }
     document.getElementById('campaign-display').textContent = campaign;
     
     try {
@@ -330,8 +334,6 @@ function renderConfig(stats, campaign, filterQuery = '') {
     if (reportBody) {
         reportBody.innerHTML = '';
         const rows = [
-            { stage: 'Scrape Tasks (gm-list)', count: `${stats.scrape_tasks_pending || 0} / ${stats.scrape_tasks_inflight || 0} Active`, details: 'SQS', badge: (stats.scrape_tasks_pending > 0 ? 'status-sqs' : '') },
-            { stage: 'GM List Items (gm-details)', count: `${stats.gm_list_item_pending || 0} / ${stats.gm_list_item_inflight || 0} Active`, details: 'SQS', badge: (stats.gm_list_item_pending > 0 ? 'status-sqs' : '') },
             { stage: 'Website Enrichment (Pending)', count: (stats.enrichment_pending || 0).toLocaleString(), details: 'Queue', badge: (stats.enrichment_pending > 0 ? 'status-sqs' : '') },
             { stage: 'Website Enrichment (Completed)', count: (stats.remote_enrichment_completed || stats.completed_count || 0).toLocaleString(), details: 'S3', badge: '' },
             { stage: 'Total Target Tiles', count: (stats.total_target_tiles || 0).toLocaleString(), details: 'Campaign', badge: '' },

@@ -3,7 +3,7 @@ layout: layout.njk
 title: cocli Campaign Configuration
 ---
 
-# Campaign Configuration: <span id="campaign-display">{% if env.CAMPAIGN %}{{ env.CAMPAIGN }}{% else %}turboship{% endif %}</span>
+# Campaign Configuration: <span id="campaign-display">{{ campaign.name }}</span>
 
 ## Data Funnel Report
 
@@ -45,4 +45,7 @@ Modify the search queries and target locations for the current campaign.
 
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+    window.CAMPAIGN_NAME = '{{ campaign.name }}';
+</script>
 <script src="/config_dashboard.js"></script>

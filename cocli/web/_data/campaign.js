@@ -3,7 +3,11 @@ const path = require('path');
 const toml = require('@iarna/toml');
 
 module.exports = () => {
-  const campaignName = process.env.CAMPAIGN || 'turboship';
+  const campaignName = process.env.CAMPAIGN;
+  if (!campaignName) {
+      throw new Error("CAMPAIGN environment variable must be set during build");
+  }
+  console.log(`Eleventy Data: Resolved campaignName to '${campaignName}'`);
   
   // Try to find the local config.toml for this campaign to pull defaults
   // Assuming we are in cocli/web/_data/ and config is in data/campaigns/<name>/config.toml
@@ -22,6 +26,10 @@ module.exports = () => {
       
       const prospectingConfig = parsed.prospecting || {};
       configFromFile.strict_keyword_filter = prospectingConfig['strict-keyword-filter'] || false;
+
+      const webConfig = parsed.web || {};
+      const navConfig = webConfig.nav || {};
+      configFromFile.nav_items = navConfig.items || [];
     } catch (e) {
       console.error(`Error reading config.toml at ${configPath}:`, e);
     }
@@ -36,6 +44,7 @@ module.exports = () => {
     region: process.env.AWS_REGION || configFromFile.region || 'us-east-1',
     commandQueueUrl: process.env.COCLI_COMMAND_QUEUE_URL || configFromFile.cocli_command_queue_url || '',
     googleMapsApiKey: process.env.GOOGLE_MAPS_JS_API_KEY || configFromFile.google_maps_js_api_key || '',
-    strictKeywordFilter: process.env.COCLI_STRICT_KEYWORD_FILTER === 'true' || configFromFile.strict_keyword_filter || false
+    strictKeywordFilter: process.env.COCLI_STRICT_KEYWORD_FILTER === 'true' || configFromFile.strict_keyword_filter || false,
+    navItems: configFromFile.nav_items || []
   };
 };

@@ -90,28 +90,7 @@ class CdkScraperDeploymentStack(Stack):  # type: ignore[misc]
 
         # --- SQS Queues ---
         
-        # 1. Enrichment Queue (Existing) - For website enrichment tasks
-        enrichment_queue = sqs.Queue(self, "EnrichmentQueue",
-            visibility_timeout=Duration.minutes(5), # 5 mins for enrichment task
-            retention_period=Duration.days(4)
-        )
-        enrichment_queue.grant_send_messages(task_role)
-        enrichment_queue.grant_consume_messages(task_role)
-        
-        # 2. Scrape Tasks Queue (New) - For Google Maps scraping tasks (lat/lon/query)
-        scrape_tasks_queue = sqs.Queue(self, "ScrapeTasksQueue",
-            visibility_timeout=Duration.minutes(15), # 15 mins (scraping a grid cell takes time)
-            retention_period=Duration.days(4)
-        )
-        scrape_tasks_queue.grant_send_messages(task_role)
-        scrape_tasks_queue.grant_consume_messages(task_role)
-
-        # 3. Google Maps List Item Queue (New) - For scraping details of found list items
-        gm_list_item_queue = sqs.Queue(self, "GmListItemQueue",
-            visibility_timeout=Duration.minutes(2),
-            retention_period=Duration.days(14),
-        )
-
+        # Campaign Updates Queue - Still used for remote commands via SQS
         campaign_updates_queue = sqs.Queue(self, "CampaignUpdatesQueue",
             visibility_timeout=Duration.minutes(1),
             retention_period=Duration.days(7),
@@ -120,10 +99,6 @@ class CdkScraperDeploymentStack(Stack):  # type: ignore[misc]
         campaign_updates_queue.grant_consume_messages(task_role)
         campaign_updates_queue.grant_send_messages(rpi_user)
         campaign_updates_queue.grant_consume_messages(rpi_user)
-
-        # Output the queue URLs for convenience
-        gm_list_item_queue.grant_send_messages(task_role)
-        gm_list_item_queue.grant_consume_messages(task_role)
 
         # Strict Isolation: Deny access to other campaign resources
         # This ensures that even if the user has broad permissions, they are restricted
@@ -145,16 +120,6 @@ class CdkScraperDeploymentStack(Stack):  # type: ignore[misc]
                 }
             }
         ))
-
-        # --- Grant Permissions to RPi User ---
-        enrichment_queue.grant_send_messages(rpi_user)
-        enrichment_queue.grant_consume_messages(rpi_user)
-        
-        scrape_tasks_queue.grant_send_messages(rpi_user)
-        scrape_tasks_queue.grant_consume_messages(rpi_user)
-        
-        gm_list_item_queue.grant_send_messages(rpi_user)
-        gm_list_item_queue.grant_consume_messages(rpi_user)
 
         # --- Single-Site Website Infrastructure ---
         zone = route53.HostedZone.from_hosted_zone_attributes(self, "HostedZone",
@@ -201,9 +166,6 @@ class CdkScraperDeploymentStack(Stack):  # type: ignore[misc]
         )
 
         # Outputs
-        CfnOutput(self, "EnrichmentQueueUrl", value=enrichment_queue.queue_url)
-        CfnOutput(self, "ScrapeTasksQueueUrl", value=scrape_tasks_queue.queue_url)
-        CfnOutput(self, "GmListItemQueueUrl", value=gm_list_item_queue.queue_url)
         CfnOutput(self, "CampaignUpdatesQueueUrl", value=campaign_updates_queue.queue_url)
 
         # Permissions for Fargate Task Role
@@ -239,9 +201,7 @@ class CdkScraperDeploymentStack(Stack):  # type: ignore[misc]
                         log_retention=logs.RetentionDays.THREE_DAYS
                     ),
                     environment={
-                        "COCLI_ENRICHMENT_QUEUE_URL": enrichment_queue.queue_url,
-                        "COCLI_SCRAPE_TASKS_QUEUE_URL": scrape_tasks_queue.queue_url,
-                        "COCLI_GM_LIST_ITEM_QUEUE_URL": gm_list_item_queue.queue_url,
+                        "COCLI_COMMAND_QUEUE_URL": campaign_updates_queue.queue_url,
                         "COCLI_S3_BUCKET_NAME": data_bucket.bucket_name,
                         "CAMPAIGN_NAME": campaign_config["name"],
                         "COCLI_DATA_HOME": "/app/data",
@@ -285,7 +245,7 @@ class CdkScraperDeploymentStack(Stack):  # type: ignore[misc]
 
         # Create the Gold Standard Worker Policy
         worker_policy = iam.ManagedPolicy(self, "CocliIoTScraperWorkerPolicy",
-            managed_policy_name="CocliIoTScraperWorkerPolicy",
+            managed_policy_name=f"CocliIoTScraperWorkerPolicy-{campaign_config['name']}",
             statements=[
                 iam.PolicyStatement(
                     effect=iam.Effect.ALLOW,
@@ -332,12 +292,6 @@ class CdkScraperDeploymentStack(Stack):  # type: ignore[misc]
         
         data_bucket.grant_read_write(iot_role)
         web_bucket.grant_read_write(iot_role)
-        enrichment_queue.grant_send_messages(iot_role)
-        enrichment_queue.grant_consume_messages(iot_role)
-        scrape_tasks_queue.grant_send_messages(iot_role)
-        scrape_tasks_queue.grant_consume_messages(iot_role)
-        gm_list_item_queue.grant_send_messages(iot_role)
-        gm_list_item_queue.grant_consume_messages(iot_role)
         campaign_updates_queue.grant_send_messages(iot_role)
         campaign_updates_queue.grant_consume_messages(iot_role)
 

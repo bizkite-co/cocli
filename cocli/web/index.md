@@ -3,7 +3,7 @@ layout: layout.njk
 title: cocli Campaign Dashboard
 ---
 
-# Campaign Overview: <span id="campaign-display">{% if env.CAMPAIGN %}{{ env.CAMPAIGN }}{% else %}turboship{% endif %}</span>
+# Campaign Overview: <span id="campaign-display">{{ campaign.name }}</span>
 
 This dashboard provides a real-time view of the scraping and enrichment funnel.
 
@@ -17,6 +17,6 @@ This dashboard provides a real-time view of the scraping and enrichment funnel.
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
 <script>
-    window.CAMPAIGN_NAME = '{% if env.CAMPAIGN %}{{ env.CAMPAIGN }}{% else %}turboship{% endif %}';
+    window.CAMPAIGN_NAME = '{{ campaign.name }}';
 </script>
 <script src="/dashboard.js"></script>

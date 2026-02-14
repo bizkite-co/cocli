@@ -29,6 +29,11 @@ Achieve full feature and data parity between the legacy CLI Company View and the
 - [ ] **Campaign Consolidation**: Move `.envrc` and AWS Profile logic into `CampaignService.activate_campaign()`.
 - [ ] **Worker Orchestration**: Create `cocli/application/worker_service.py` and move async loops from `cocli/commands/worker.py`.
 
+## Phase 6: Data Hygiene & Company Merging
+- [ ] **Deduplication Tool**: Build a utility to find and merge duplicate companies (e.g., `a4-wealth-advisors` vs `a4wealth-com`).
+- [ ] **Smart Merging**: Implement logic to prefer real names over slug-based names and ensure `place_id` and contact info are preserved during merge.
+- [ ] **Bulk Cleanup**: Add scripts to automatically identify and flag companies with generic names (like "Home") for manual review or automated renaming.
+
 ## Verification
 - [x] `make test` passes.
 - [x] Inline edits for Identity and Address persist correctly.

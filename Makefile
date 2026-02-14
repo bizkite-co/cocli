@@ -501,6 +501,7 @@ web-install: ## Install web dashboard dependencies
 .PHONY: web-build
 web-build: web-install ## Build the web dashboard using 11ty
 	$(call validate_campaign)
+	rm -rf build/web/*
 	cd cocli/web && CAMPAIGN=$(CAMPAIGN) npm run build
 
 .PHONY: web-serve
@@ -757,9 +758,9 @@ log-rpi-worker: ## Tail logs from the Raspberry Pi List Scraper worker
 log-rpi-details-worker: ## Tail logs from the Raspberry Pi Details Scraper worker
 	ssh $(RPI_USER)@$(RPI_HOST) "docker logs -n 100 cocli-details-worker"
 
-.PHONY: log-rpi-all
-log-rpi-all: ## Tail logs from all Raspberry Pi cocli worker containers
-	ssh $(RPI_USER)@$(RPI_HOST) "docker ps --filter name=cocli- --format '{{.Names}}' | xargs -I {} docker logs -n 100 {}"
+# .PHONY: log-rpi-all
+# log-rpi-all: ## Tail logs from all Raspberry Pi cocli worker containers
+# 	ssh $(RPI_USER)@$(RPI_HOST) "docker ps --filter name=cocli- --format '{{.Names}}' | xargs -I {} docker logs -n 100 {}"
 
 .PHONY: clean-docker-pi
 clean-docker-pi: ## Remove all stopped containers, unused networks, dangling images, and build cache on Raspberry Pi

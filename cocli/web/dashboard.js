@@ -52,7 +52,11 @@ function logout() {
 
 async function fetchReport() {
     const urlParams = new URLSearchParams(window.location.search);
-    const campaign = urlParams.get('campaign') || window.CAMPAIGN_NAME || 'turboship';
+    const campaign = urlParams.get('campaign') || window.CAMPAIGN_NAME;
+    if (!campaign) {
+        console.error("No campaign name found.");
+        return;
+    }
     document.getElementById('campaign-display').textContent = campaign;
     
     try {
@@ -315,8 +319,6 @@ function renderReport(stats, campaign) {
     const rows = [
         { stage: 'Active Enrichment Workers (Fargate)', count: stats.active_fargate_tasks || 0, details: (stats.active_fargate_tasks > 0 ? 'Running' : 'Stopped'), badge: (stats.active_fargate_tasks > 0 ? 'status-running' : '') },
         { stage: 'Campaign Updates (SQS)', count: `${stats.command_tasks_pending || 0} Pending`, details: 'SQS', badge: (stats.command_tasks_pending > 0 ? 'status-sqs' : '') },
-        { stage: 'Scrape Tasks (gm-list)', count: `${stats.scrape_tasks_pending || 0} / ${stats.scrape_tasks_inflight || 0} Active`, details: 'SQS', badge: (stats.scrape_tasks_pending > 0 ? 'status-sqs' : '') },
-        { stage: 'GM List Items (gm-details)', count: `${stats.gm_list_item_pending || 0} / ${stats.gm_list_item_inflight || 0} Active`, details: 'SQS', badge: 'status-sqs' },
         { stage: 'Prospects (gm-detail)', count: (stats.prospects_count || 0).toLocaleString(), details: '100%', badge: '' },
         { stage: 'Enriched (Local)', count: (stats.enriched_count || 0).toLocaleString(), details: `${((stats.enriched_count / stats.prospects_count) * 100).toFixed(1)}%`, badge: '' },
         { stage: 'Emails Found', count: (stats.emails_found_count || 0).toLocaleString(), details: `${((stats.emails_found_count / stats.enriched_count) * 100).toFixed(1)}% (Yield)`, badge: '' }

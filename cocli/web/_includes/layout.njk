@@ -32,8 +32,9 @@
                 <a href="/index.html" class="nav-link">Dashboard</a>
                 <a href="/config/index.html" class="nav-link">Config</a>
                 <a href="/kml-viewer.html" class="nav-link">Map Viewer</a>
-                <a href="https://turboheat.net" class="nav-link">Turboship</a>
-                <a href="https://status.turboheat.net" class="nav-link">Turboheat</a>
+                {% for item in campaign.navItems %}
+                <a href="{{ item.link }}" class="nav-link">{{ item.label }}</a>
+                {% endfor %}
                 <button onclick="logout()" class="nav-link btn-link" style="background:none; border:none; color:inherit; cursor:pointer; font:inherit; padding:0; margin-left:15px;">Sign Out</button>
             </div>
         </div>

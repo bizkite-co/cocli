@@ -157,7 +157,10 @@ def main(
             if is_valid_email(e):
                 emails = [e]
 
-        if not emails and not include_all:
+        # REQUIREMENT: Domain, Phone, and Email must all be present
+        phone = str(company_obj.phone_number or company_obj.phone_1 or "").strip()
+        
+        if not domain or not phone or not emails:
             continue
 
         website_data = get_website_data(company_obj.slug)
@@ -174,7 +177,7 @@ def main(
             "company": company_obj.name,
             "domain": domain,
             "emails": "; ".join(emails),
-            "phone": str(company_obj.phone_number or company_obj.phone_1 or ""),
+            "phone": phone,
             "website": domain,
             "categories": "; ".join(sorted(list(set(company_obj.categories)))),
             "services": "; ".join(sorted(list(set(company_obj.services)))),

@@ -73,16 +73,6 @@ def main(
     queue_table.add_column("In-Flight", justify="right", style="blue")
     queue_table.add_column("Completed", justify="right", style="green")
 
-    config = load_campaign_config(campaign_name)
-    aws_cfg = config.get("aws", {})
-    worker_count = aws_cfg.get("worker_count", 0)
-    
-    # SQS Queues - Only show if workers are enabled
-    if worker_count > 0:
-        queue_table.add_row("Scrape Tasks", "SQS", str(stats.get('scrape_tasks_pending', 0)), str(stats.get('scrape_tasks_inflight', 0)), "-")
-        queue_table.add_row("GM Details", "SQS", str(stats.get('gm_list_item_pending', 0)), str(stats.get('gm_list_item_inflight', 0)), "-")
-        queue_table.add_row("Enrichment", "SQS", str(stats.get('enrichment_pending', 0)), str(stats.get('enrichment_inflight', 0)), "-")
-
     # S3 Queues (Filesystem V2 Remote State)
     s3_queues = stats.get('s3_queues', {})
     for q_name, q_stats in s3_queues.items():

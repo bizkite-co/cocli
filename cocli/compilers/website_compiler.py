@@ -155,7 +155,8 @@ class WebsiteCompiler(BaseCompiler):
         # Name correction: if the name is currently a slug, domain, or generic, try to get it from website title
         current_name = company.name
         is_slug_based = current_name == company.slug or (company.domain and current_name == company.domain)
-        is_generic = current_name in ["N/A", "Home", "Flooring Contractor", "Flooring", "Contractor", "Gmail", "Currently.com", "403 Forbidden", "404 Not Found", "Facebook", "Instagram", "dot.cards"]
+        generic_names = {"N/A", "Home", "Flooring Contractor", "Flooring", "Contractor", "Gmail", "Currently.com", "403 Forbidden", "404 Not Found", "Facebook", "Instagram", "dot.cards"}
+        is_generic = current_name in generic_names
         is_domain_like = "." in current_name and " " not in current_name
         is_junk_title = "servicing" in current_name.lower() or "flooring store" in current_name.lower()
         
@@ -167,35 +168,29 @@ class WebsiteCompiler(BaseCompiler):
 
             if website_title and len(website_title) > 3:
                 # Basic cleaning of title: check if there is a separator
-                if "|" in website_title:
-                    parts = [p.strip() for p in website_title.split("|")]
+                if " | " in website_title:
+                    parts = [p.strip() for p in website_title.split(" | ")]
                 elif " - " in website_title:
                     parts = [p.strip() for p in website_title.split(" - ")]
                 else:
                     parts = [website_title.strip()]
                 
-                # Heuristic: the brand is usually the shorter part, OR the one that isn't just keywords
-                best_part = parts[0]
+                # Heuristic: find a part that is NOT a generic slogan and NOT a generic name
+                potential_brands = []
+                for p in parts:
+                    p_lower = p.lower()
+                    is_junk_part = any(kw in p_lower for kw in ["servicing", "flooring store", "contractor in", "flooring in", "near me"])
+                    is_generic_name = p.strip() in generic_names
+                    if not is_junk_part and not is_generic_name:
+                        potential_brands.append(p)
                 
-                if len(parts) > 1:
-                    # Find a part that is NOT a generic slogan
-                    potential_brands = []
-                    for p in parts:
-                        p_lower = p.lower()
-                        is_generic_part = any(kw in p_lower for kw in ["servicing", "flooring store", "contractor in", "flooring in", "near me"])
-                        if not is_generic_part:
-                            potential_brands.append(p)
-                    
-                    if potential_brands:
-                        # Prefer the one that isn't just keywords
-                        best_part = potential_brands[-1] # Often the brand is at the end: 'Slogan | Brand'
-                    else:
-                        best_part = parts[-1] # Fallback to last part
+                if potential_brands:
+                    # Prefer the one that isn't just keywords
+                    best_part = potential_brands[-1] # Often the brand is at the end: 'Slogan | Brand'
                 else:
-                    # Single part title, just clean it
-                    best_part = parts[0]
+                    best_part = parts[-1] # Fallback to last part
                 
-                if len(best_part) > 3 and best_part.lower() not in ["home", "flooring", "contractor"]:
+                if len(best_part) > 3 and best_part not in generic_names:
                     # Don't update if new name is just as junk as old one
                     if "servicing" not in best_part.lower() or "servicing" not in current_name.lower():
                         company.name = best_part

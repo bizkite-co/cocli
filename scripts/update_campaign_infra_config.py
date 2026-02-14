@@ -69,9 +69,6 @@ def update_config(
     # 3. Map Outputs to Config Keys
     # Mapping based on cdk_scraper_deployment_stack.py CfnOutput keys
     mapping = {
-        "EnrichmentQueueUrl": "cocli_enrichment_queue_url",
-        "ScrapeTasksQueueUrl": "cocli_scrape_tasks_queue_url",
-        "GmListItemQueueUrl": "cocli_gm_list_item_queue_url",
         "CampaignUpdatesQueueUrl": "cocli_command_queue_url",
         "EnrichmentServiceURL": "cocli_enrichment_service_url",
         "WebBucketName": "cocli_web_bucket_name",

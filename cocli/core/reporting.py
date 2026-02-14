@@ -3,7 +3,7 @@ import json
 import boto3
 import logging
 import math
-from typing import Dict, Any, Literal, Sequence, cast, Union
+from typing import Dict, Any, cast, Union
 from rich.console import Console
 
 from cocli.core.config import get_cocli_base_dir, load_campaign_config
@@ -15,39 +15,6 @@ logger = logging.getLogger(__name__)
 console = Console()
 
 __all__ = ["get_campaign_stats", "get_boto3_session", "load_campaign_config", "get_exclusions_data", "get_queries_data", "get_locations_data"]
-
-SQSAttributeName = Literal[
-    "AWSTraceHeader",
-    "All",
-    "ApproximateFirstReceiveTimestamp",
-    "ApproximateNumberOfMessages",
-    "ApproximateNumberOfMessagesDelayed",
-    "ApproximateNumberOfMessagesNotVisible",
-    "ApproximateReceiveCount",
-    "ContentBasedDeduplication",
-    "CreatedTimestamp",
-    "DeduplicationScope",
-    "DelaySeconds",
-    "FifoQueue",
-    "FifoThroughputLimit",
-    "KmsDataKeyReusePeriodSeconds",
-    "KmsMasterKeyId",
-    "LastModifiedTimestamp",
-    "MaximumMessageSize",
-    "MessageDeduplicationId",
-    "MessageGroupId",
-    "MessageRetentionPeriod",
-    "Policy",
-    "QueueArn",
-    "ReceiveMessageWaitTimeSeconds",
-    "RedriveAllowPolicy",
-    "RedrivePolicy",
-    "SenderId",
-    "SentTimestamp",
-    "SequenceNumber",
-    "SqsManagedSseEnabled",
-    "VisibilityTimeout",
-]
 
 
 def get_boto3_session(config: Dict[str, Any], max_pool_connections: int = 10) -> boto3.Session:
@@ -102,20 +69,6 @@ def get_boto3_session(config: Dict[str, Any], max_pool_connections: int = 10) ->
     # Final fallback: Default session (uses env vars like AWS_PROFILE or IAM roles)
     logger.info("Using default AWS session")
     return boto3.Session()
-
-
-def get_sqs_attributes(
-    session: boto3.Session, queue_url: str, attribute_names: Sequence[SQSAttributeName]
-) -> Dict[str, str]:
-    try:
-        sqs = session.client("sqs")
-        response = sqs.get_queue_attributes(
-            QueueUrl=queue_url, AttributeNames=list(attribute_names)
-        )
-        return cast(Dict[str, str], response.get("Attributes", {}))
-    except Exception as e:
-        logger.warning(f"Could not fetch SQS attributes for {queue_url}: {e}")
-        return {}
 
 
 def get_active_fargate_tasks(
@@ -245,76 +198,24 @@ def get_campaign_stats(campaign_name: str) -> Dict[str, Any]:
     
     # 2. Queue Stats (Cloud vs Local)
     aws_config = config.get("aws", {})
-    enrich_queue_url = aws_config.get("cocli_enrichment_queue_url")
-    scrape_queue_url = aws_config.get("cocli_scrape_tasks_queue_url")
-    gm_queue_url = aws_config.get("cocli_gm_list_item_queue_url")
     command_queue_url = aws_config.get("cocli_command_queue_url")
 
-    if enrich_queue_url or command_queue_url:
+    if aws_config.get("data_bucket_name") or aws_config.get("cocli_data_bucket_name"):
         stats["using_cloud_queue"] = True
         session = get_boto3_session(config)
 
-        # Command Queue (Always cloud if exists)
+        # Command Queue (Still used for remote commands via SQS for now)
         if command_queue_url:
-            cmd_attrs = get_sqs_attributes(
-                session,
-                command_queue_url,
-                ["ApproximateNumberOfMessages", "ApproximateNumberOfMessagesNotVisible"],
-            )
-            stats["command_tasks_pending"] = int(
-                cmd_attrs.get("ApproximateNumberOfMessages", 0)
-            )
-            stats["command_tasks_inflight"] = int(
-                cmd_attrs.get("ApproximateNumberOfMessagesNotVisible", 0)
-            )
-
-        # Enrichment Queue
-        if enrich_queue_url:
-            enrich_attrs = get_sqs_attributes(
-                session,
-                enrich_queue_url,
-                ["ApproximateNumberOfMessages", "ApproximateNumberOfMessagesNotVisible"],
-            )
-            stats["enrichment_pending"] = int(
-                enrich_attrs.get("ApproximateNumberOfMessages", 0)
-            )
-            stats["enrichment_inflight"] = int(
-                enrich_attrs.get("ApproximateNumberOfMessagesNotVisible", 0)
-            )
-
-        # Scrape Tasks Queue
-        if scrape_queue_url:
-            scrape_attrs = get_sqs_attributes(
-                session,
-                scrape_queue_url,
-                [
-                    "ApproximateNumberOfMessages",
-                    "ApproximateNumberOfMessagesNotVisible",
-                ],
-            )
-            stats["scrape_tasks_pending"] = int(
-                scrape_attrs.get("ApproximateNumberOfMessages", 0)
-            )
-            stats["scrape_tasks_inflight"] = int(
-                scrape_attrs.get("ApproximateNumberOfMessagesNotVisible", 0)
-            )
-
-        # GM List Items Queue
-        if gm_queue_url:
-            gm_attrs = get_sqs_attributes(
-                session,
-                gm_queue_url,
-                [
-                    "ApproximateNumberOfMessages",
-                    "ApproximateNumberOfMessagesNotVisible",
-                ],
-            )
-            stats["gm_list_item_pending"] = int(
-                gm_attrs.get("ApproximateNumberOfMessages", 0)
-            )
-            stats["gm_list_item_inflight"] = int(
-                gm_attrs.get("ApproximateNumberOfMessagesNotVisible", 0)
-            )
+            try:
+                sqs = session.client("sqs")
+                cmd_attrs = sqs.get_queue_attributes(
+                    QueueUrl=command_queue_url, 
+                    AttributeNames=["ApproximateNumberOfMessages", "ApproximateNumberOfMessagesNotVisible"]
+                ).get("Attributes", {})
+                stats["command_tasks_pending"] = int(cmd_attrs.get("ApproximateNumberOfMessages", 0))
+                stats["command_tasks_inflight"] = int(cmd_attrs.get("ApproximateNumberOfMessagesNotVisible", 0))
+            except Exception:
+                pass
 
         # Active Workers
         stats["active_fargate_tasks"] = get_active_fargate_tasks(session)
@@ -489,8 +390,14 @@ def get_campaign_stats(campaign_name: str) -> Dict[str, Any]:
     stats["local_enrichment_inflight"] = local_stats["enrichment"]["inflight"]
     stats["local_enrichment_completed"] = local_stats["enrichment"]["completed"]
 
-    # For simplicity in the combined report table
-    if not enrich_queue_url:
+    # For simplicity in the combined report table, prefer S3 (Global) stats if available
+    s3_stats = stats.get("s3_queues", {}).get("enrichment", {})
+    if stats.get("using_cloud_queue") and s3_stats:
+        stats["enrichment_pending"] = s3_stats.get("pending", 0)
+        stats["enrichment_inflight"] = s3_stats.get("inflight", 0)
+        stats["completed_count"] = s3_stats.get("completed", 0)
+        stats["remote_enrichment_completed"] = s3_stats.get("completed", 0)
+    else:
         stats["enrichment_pending"] = local_stats["enrichment"]["pending"]
         stats["enrichment_inflight"] = local_stats["enrichment"]["inflight"]
         stats["completed_count"] = local_stats["enrichment"]["completed"]
@@ -758,7 +665,19 @@ def get_campaign_stats(campaign_name: str) -> Dict[str, Any]:
     stats["total_scraped_tiles"] = len(all_scraped_tiles)
     stats["scraped_per_phrase"] = {q: len(tiles) for q, tiles in scraped_tiles_by_phrase.items()}
 
-    # Update S3 Queue Pending count for gm-list if using cloud
+    # Update summary keys for gm-list and gm-details if using cloud
+    if stats.get("using_cloud_queue") and "s3_queues" in stats:
+        s3_list = stats["s3_queues"].get("gm-list", {})
+        s3_details = stats["s3_queues"].get("gm-details", {})
+        
+        # We keep the 'scrape_tasks' naming for dashboard compatibility
+        stats["scrape_tasks_pending"] = s3_list.get("pending", 0)
+        stats["scrape_tasks_inflight"] = s3_list.get("inflight", 0)
+        
+        stats["gm_list_item_pending"] = s3_details.get("pending", 0)
+        stats["gm_list_item_inflight"] = s3_details.get("inflight", 0)
+
+    # Update S3 Queue Pending count for gm-list if using cloud (re-calculate based on tiles)
     if stats.get("using_cloud_queue") and "gm-list" in stats.get("s3_queues", {}):
         # Pending = Target - Scraped - Inflight
         inflight = stats["s3_queues"]["gm-list"]["inflight"]
