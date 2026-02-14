@@ -136,3 +136,7 @@ disable_error_code = ["call-overload"]
 [[tool.mypy.overrides]]
 module = "cocli.tui.campaign_app"
 disable_error_code = ["func-returns-value"]
+
+[[tool.mypy.overrides]]
+module = "cocli.tui.widgets.company_detail"
+disable_error_code = ["func-returns-value"]

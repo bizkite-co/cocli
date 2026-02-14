@@ -20,6 +20,7 @@ from ...models.company import Company
 from ...models.note import Note
 from ...models.phone import PhoneNumber
 from ...core.config import get_companies_dir, get_editor_command
+from .confirm_screen import ConfirmScreen
 
 logger = logging.getLogger(__name__)
 
@@ -46,6 +47,18 @@ class QuadrantTable(DataTable[Any]):
         Binding("escape", "exit_quadrant", "Exit Quadrant"),
         Binding("alt+s", "exit_quadrant", "Exit Quadrant"),
     ]
+
+    def _on_key(self, event: events.Key) -> None:
+        if event.key == "i":
+            self.action_edit_note()
+            event.stop()
+            event.prevent_default()
+        elif event.key == "d":
+            self.action_delete_note()
+            event.stop()
+            event.prevent_default()
+        else:
+            super()._on_key(event)
 
     def action_exit_quadrant(self) -> None:
         """Move focus back up to the DetailPanel."""
@@ -77,7 +90,23 @@ class NotesTable(QuadrantTable):
         Binding("a", "add_note", "Add Note"),
         Binding("i", "edit_note", "Edit Note"),
         Binding("enter", "edit_note", "Edit Note"),
+        Binding("d", "delete_note", "Delete Note"),
     ]
+
+    def action_edit_note(self) -> None:
+        detail_view = next((a for a in self.ancestors if isinstance(a, CompanyDetail)), None)
+        if detail_view:
+             detail_view.action_edit_note()
+
+    def action_add_note(self) -> None:
+        detail_view = next((a for a in self.ancestors if isinstance(a, CompanyDetail)), None)
+        if detail_view:
+             detail_view.action_add_note()
+
+    def action_delete_note(self) -> None:
+        detail_view = next((a for a in self.ancestors if isinstance(a, CompanyDetail)), None)
+        if detail_view:
+             detail_view.app.run_worker(detail_view.action_delete_note())
 
 class EditInput(Input):
     """Custom Input widget that carries field metadata."""
@@ -108,6 +137,7 @@ class CompanyDetail(Container):
         ("i", "enter_quadrant", "Enter Quadrant"),
         ("enter", "enter_quadrant", "Enter Quadrant"),
         ("a", "add_item", "Add Item"),
+        ("d", "delete_item", "Delete Item"),
         # Sequential Jumping
         ("]", "next_panel", "Next Panel"),
         ("[", "prev_panel", "Prev Panel"),
@@ -190,6 +220,16 @@ class CompanyDetail(Container):
             self.app.notify("Add Contact coming soon")
         elif focused == self.panel_meetings or self.meetings_table.has_focus:
             self.app.notify("Add Meeting coming soon")
+
+    def action_delete_item(self) -> None:
+        """Route 'd' key based on the focused quadrant."""
+        focused = self.app.focused
+        if focused == self.panel_notes or self.notes_table.has_focus:
+            self.app.run_worker(self.action_delete_note())
+        elif focused == self.panel_contacts or self.contacts_table.has_focus:
+            self.app.notify("Delete Contact coming soon")
+        elif focused == self.panel_meetings or self.meetings_table.has_focus:
+            self.app.notify("Delete Meeting coming soon")
 
     def on_key(self, event: events.Key) -> None:
         focused = self.app.focused
@@ -285,6 +325,27 @@ class CompanyDetail(Container):
         file_path = note_data.get("file_path")
         if file_path:
             self._edit_with_nvim(Path(file_path))
+
+    async def action_delete_note(self) -> None:
+        """Delete an existing note with confirmation."""
+        row_idx = self.notes_table.cursor_row
+        if row_idx is None or row_idx >= len(self.notes_table.rows):
+            return
+        
+        note_data = self.company_data["notes"][row_idx]
+        file_path = note_data.get("file_path")
+        if not file_path:
+            return
+            
+        confirm = await self.app.push_screen(ConfirmScreen("Are you sure you want to delete this note?"))
+        if confirm:
+            try:
+                Path(file_path).unlink()
+                self.app.notify("Note deleted")
+                self.refresh_notes_data()
+            except Exception as e:
+                logger.error(f"Failed to delete note: {e}")
+                self.app.notify(f"Delete failed: {e}", severity="error")
 
     def _edit_with_nvim(self, path: Path) -> None:
         """Suspend the TUI and open NVim."""
