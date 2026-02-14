@@ -66,10 +66,14 @@ class ProspectsIndexManager:
         checkpoint_path = self._get_checkpoint_path().resolve()
         
         # 1. Read WAL (Hot Layer) - Files in wal/ shards
-        # We also check root and inbox for compatibility during migrations
+        # We also check root, inbox, and the 'prospects/' folder for compatibility
         wal_dir = self.index_dir / "wal"
         search_dirs = [wal_dir, self.index_dir / "inbox"]
         
+        campaign_dir = get_campaign_dir(self.campaign_name)
+        if campaign_dir:
+            search_dirs.append(campaign_dir / "prospects")
+
         all_files = []
         for d in search_dirs:
             if d.exists():

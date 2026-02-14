@@ -120,6 +120,37 @@ class WorkerService:
                             discovered_items.append(list_item)
                             details_task = list_item.to_task(task.campaign_name, force_refresh=False)
                             gm_list_item_queue.push(details_task)
+
+                            # DISCOVERY LINKAGE: Create/Update the hollow company record immediately
+                            try:
+                                from ..models.company import Company
+                                company_obj = Company.get(list_item.company_slug)
+                                if not company_obj:
+                                    company_obj = Company(
+                                        name=list_item.name or list_item.company_slug,
+                                        slug=list_item.company_slug,
+                                        tags=[task.campaign_name, task.search_phrase]
+                                    )
+                                
+                                # Merge identifiers
+                                if not company_obj.place_id:
+                                    company_obj.place_id = list_item.place_id
+                                
+                                if company_obj.latitude is None and task.latitude:
+                                    company_obj.latitude = task.latitude
+                                
+                                if company_obj.longitude is None and task.longitude:
+                                    company_obj.longitude = task.longitude
+                                
+                                if task.campaign_name not in company_obj.tags:
+                                    company_obj.tags.append(task.campaign_name)
+                                
+                                if task.search_phrase not in company_obj.tags:
+                                    company_obj.tags.append(task.search_phrase)
+                                    
+                                company_obj.save(email_sync=False)
+                            except Exception as e:
+                                logger.error(f"Failed to create discovery linkage for {list_item.company_slug}: {e}")
                     
                     if discovered_items:
                         try:
@@ -293,6 +324,38 @@ class WorkerService:
                         s3_client.upload_file(str(file_path), self.bucket_name, s3_key)
                     except Exception as e:
                         logger.error(f"S3 Upload Error: {e}")
+                    
+                    # LINKAGE: Create/Update the company record immediately
+                    try:
+                        from ..models.company import Company
+                        company_obj = Company.get(final_prospect_data.company_slug)
+                        if not company_obj:
+                            company_obj = Company(
+                                name=final_prospect_data.name or final_prospect_data.company_slug,
+                                slug=final_prospect_data.company_slug,
+                                tags=[task.campaign_name]
+                            )
+                        
+                        # Merge identifiers
+                        if not company_obj.place_id:
+                            company_obj.place_id = final_prospect_data.place_id
+                        
+                        if company_obj.latitude is None and final_prospect_data.latitude:
+                            company_obj.latitude = final_prospect_data.latitude
+                        
+                        if company_obj.longitude is None and final_prospect_data.longitude:
+                            company_obj.longitude = final_prospect_data.longitude
+                        
+                        if task.campaign_name not in company_obj.tags:
+                            company_obj.tags.append(task.campaign_name)
+                        
+                        if final_prospect_data.keyword and final_prospect_data.keyword not in company_obj.tags:
+                            company_obj.tags.append(final_prospect_data.keyword)
+                            
+                        # Save identity baseline
+                        company_obj.save(email_sync=False)
+                    except Exception as e:
+                        logger.error(f"Failed to create company linkage for {final_prospect_data.company_slug}: {e}")
 
                 if final_prospect_data.domain and final_prospect_data.name:
                     enrichment_queue.push(QueueMessage(

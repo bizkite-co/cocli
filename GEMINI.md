@@ -49,6 +49,8 @@ The project is built using `typer` for the CLI, `pydantic` for data modeling, an
 
 ### Running Commands
 
+#### CoCli CLI
+
 Once the virtual environment is activated, you can run `cocli` commands directly.
 
 *   **Get help:**
@@ -63,6 +65,17 @@ Once the virtual environment is activated, you can run `cocli` commands directly
     ```bash
     cocli add --company "My New Company;newcompany.com;Client"
     ```
+#### Makefile rules
+
+* Often-used DevOps type of commands can be quickly created in the Makefile.
+* Try to move the commands into the CoCli core utilities or the appropriate code location, when appropriate.
+* Make the rules campaign-aware.
+
+#### Scripts
+
+* Create ad hoc scripts for temporary cleanup operations that might have to be applied a few times.
+* Avoid verbose output to the terminal, which can bog down and choke the chat.
+* Make the scripts write to a named log in the `.logs/`, and put a progress bar and the log name in the terminal output.
 
 ### Testing
 

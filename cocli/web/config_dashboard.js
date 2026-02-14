@@ -8,10 +8,10 @@ function logout() {
     localStorage.removeItem('cocli_pending_changes');
     const config = window.COCLI_CONFIG;
     if (config && config.userPoolId) {
-        const domain = "auth.turboheat.net";
+        const domain = config.userPoolDomain;
         const clientId = config.userPoolClientId;
         const logoutUri = window.location.origin + '/signout/index.html';
-        window.location.href = `https://${domain}/logout?client_id=${clientId}&logout_uri=${encodeURIComponent(logoutUri)}`;
+        window.location.href = `${domain}/logout?client_id=${clientId}&logout_uri=${encodeURIComponent(logoutUri)}`;
     } else {
         window.location.href = '/signout/index.html';
     }

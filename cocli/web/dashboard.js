@@ -46,7 +46,7 @@ function logout() {
     localStorage.removeItem('cocli_id_token');
     localStorage.removeItem('cocli_access_token');
     const config = window.COCLI_CONFIG;
-    const logoutUrl = `${config.userPoolDomain}/logout?client_id=${config.userPoolClientId}&logout_uri=${encodeURIComponent(window.location.origin + '/signout')}`;
+    const logoutUrl = `${config.userPoolDomain}/logout?client_id=${config.userPoolClientId}&logout_uri=${encodeURIComponent(window.location.origin + '/signout/index.html')}`;
     window.location.href = logoutUrl;
 }
 
@@ -211,6 +211,22 @@ function createCompanyCard(p, index) {
             </div>
         </div>` : '';
 
+    const ratingHtml = p.rating ? `
+        <div class="info-row">
+            <strong>Rating:</strong> 
+            <span class="rating-value">${p.rating} ⭐ (${p.reviews})</span>
+            ${p.gmb_url ? `
+                <a href="${p.gmb_url}" target="_blank" class="gmb-icon-link" title="View on Google Maps">
+                    <i class="fa-solid fa-map-location-dot"></i>
+                </a>` : ''}
+        </div>` : (p.gmb_url ? `
+        <div class="info-row">
+            <strong>Maps:</strong>
+            <a href="${p.gmb_url}" target="_blank" class="gmb-icon-link" title="View on Google Maps">
+                <i class="fa-solid fa-map-location-dot"></i>
+            </a>
+        </div>` : '');
+
     return `
         <div class="company-card">
             <div class="card-header">
@@ -223,6 +239,7 @@ function createCompanyCard(p, index) {
                     <div class="email-list">${p.emails.split(';').map(e => `<div>${e.trim()}</div>`).join('')}</div>
                 </div>
                 ${formattedPhone ? `<div class="info-row"><strong>Phone:</strong> <span class="phone-number">${formattedPhone}</span></div>` : ''}
+                ${ratingHtml}
                 ${p.categories ? `<div class="info-row"><strong>Categories:</strong> <span class="info-data"><small>${p.categories}</small></span></div>` : ''}
                 ${keywordsHtml}
                 

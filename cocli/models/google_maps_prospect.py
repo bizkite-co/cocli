@@ -189,6 +189,26 @@ class GoogleMapsProspect(GoogleMapsIdx):
 
     @model_validator(mode='before')
     @classmethod
+    def recover_lat_lon_from_tile_id(cls, values: Dict[str, Any]) -> Dict[str, Any]:
+        if not isinstance(values, dict):
+            return values
+            
+        lat = values.get("latitude")
+        tile_id = values.get("discovery_tile_id")
+        
+        # If lat/lon missing but tile_id present (format: lat_lon_phrase)
+        if (lat is None or lat == "") and tile_id:
+            try:
+                parts = str(tile_id).split("_")
+                if len(parts) >= 2:
+                    values["latitude"] = float(parts[0])
+                    values["longitude"] = float(parts[1])
+            except (ValueError, TypeError):
+                pass
+        return values
+
+    @model_validator(mode='before')
+    @classmethod
     def sanitize_identity(cls, values: Dict[str, Any]) -> Dict[str, Any]:
         if not isinstance(values, dict):
             return values

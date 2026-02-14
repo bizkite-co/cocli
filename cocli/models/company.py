@@ -11,6 +11,8 @@ from typing_extensions import Annotated
 from .email_address import EmailAddress
 from .phone import OptionalPhone
 from .email import EmailEntry
+from .place_id import PlaceID
+from .company_slug import CompanySlug
 from ..core.config import get_companies_dir, get_campaign
 
 logger = logging.getLogger(__name__)
@@ -27,7 +29,7 @@ class Company(BaseModel):
     domain: Optional[str] = None
     type: str = "N/A"
     tags: list[str] = Field(default_factory=list)
-    slug: str # Changed from Optional[str] to str
+    slug: CompanySlug 
     company_hash: Optional[str] = None
     description: Optional[str] = None
     visits_per_day: Optional[int] = None
@@ -58,6 +60,8 @@ class Company(BaseModel):
     average_rating: Optional[float] = None
     business_status: Optional[str] = None
     hours: Optional[str] = None
+    latitude: Optional[float] = None
+    longitude: Optional[float] = None
 
     facebook_url: Optional[str] = None
     linkedin_url: Optional[str] = None
@@ -72,10 +76,17 @@ class Company(BaseModel):
 
     meta_description: Optional[str] = None
     meta_keywords: Optional[str] = None
-    place_id: Optional[str] = None
+    place_id: Optional[PlaceID] = None
     last_enriched: Optional[datetime] = None
     enrichment_ttl_days: int = 30
     processed_by: Optional[str] = "local-worker"
+
+    @property
+    def gmb_url(self) -> Optional[str]:
+        """Constructs a Google Maps search URL from the place_id."""
+        if self.place_id:
+            return f"https://www.google.com/maps/search/?api=1&query=google&query_place_id={self.place_id}"
+        return None
 
     @model_validator(mode='after')
     def populate_identifiers(self) -> 'Company':
@@ -223,6 +234,7 @@ class Company(BaseModel):
             "street_address", "city", "zip_code", "state", "country", "timezone",
             "phone_1", "phone_number", "phone_from_website", "email", "website_url",
             "reviews_count", "average_rating", "business_status", "hours",
+            "latitude", "longitude",
             "facebook_url", "linkedin_url", "instagram_url", "twitter_url", 
             "youtube_url", "about_us_url", "contact_url", "meta_description", 
             "meta_keywords", "place_id", "last_enriched", "processed_by"

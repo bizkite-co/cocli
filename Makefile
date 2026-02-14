@@ -494,6 +494,36 @@ gc-companies: ## Commit and push all changes to companies and people
 # ==============================================================================
 # Web Dashboard
 # ==============================================================================
+.PHONY: sync-index
+sync-index: ## Sync Google Maps index to company folders (Index-to-Folder)
+	$(call validate_campaign)
+	uv run scripts/sync_campaign_data.py index-to-folders $(CAMPAIGN)
+
+.PHONY: sync-folders
+sync-folders: ## Verify tagged company folders against index (Folder-to-Index)
+	$(call validate_campaign)
+	uv run scripts/sync_campaign_data.py folders-to-index $(CAMPAIGN)
+
+.PHONY: dedupe
+dedupe: ## Propose company merges for duplicates (Shared Domain/PlaceID/Hash)
+	$(call validate_campaign)
+	uv run scripts/deduplicate_companies.py propose $(CAMPAIGN)
+
+.PHONY: apply-merges
+apply-merges: ## Apply proposed company merges from recovery/proposed_company_merges.usv
+	$(call validate_campaign)
+	uv run scripts/deduplicate_companies.py apply data/campaigns/$(CAMPAIGN)/recovery/proposed_company_merges.usv
+
+.PHONY: name-cleanup
+name-cleanup: ## Propose name fixes for generic/junk company names
+	$(call validate_campaign)
+	uv run scripts/cleanup_company_names.py $(CAMPAIGN) --all
+
+.PHONY: apply-name-fixes
+apply-name-fixes: ## Apply proposed name fixes from recovery/proposed_name_fixes.usv
+	$(call validate_campaign)
+	uv run scripts/apply_name_fixes.py data/campaigns/$(CAMPAIGN)/recovery/proposed_name_fixes.usv
+
 .PHONY: web-install
 web-install: ## Install web dashboard dependencies
 	cd cocli/web && npm install

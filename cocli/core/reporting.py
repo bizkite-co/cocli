@@ -415,35 +415,34 @@ def get_campaign_stats(campaign_name: str) -> Dict[str, Any]:
 
     # 3. Enriched Companies & Emails
     from cocli.core.email_index_manager import EmailIndexManager
-
-    email_index = EmailIndexManager(campaign_name)
-    emails_found_count = 0
-    domains_with_emails: set[str] = set()
-
-    # We use the email index for primary counts
-    for email_entry in email_index.read_all_emails():
-        emails_found_count += 1
-        if email_entry.domain:
-            domains_with_emails.add(email_entry.domain)
-
-    companies_with_emails_count = len(domains_with_emails)
-
     from cocli.core.config import get_companies_dir
 
-    enriched_count = 0
-    deep_enriched_count = 0
-    # Fallback/validation counts from companies directory
-    # (We still scan to get the total enriched_count for the tag)
+    email_index = EmailIndexManager(campaign_name)
+    domains_with_emails: set[str] = set()
+    
+    # Track unique emails globally
+    all_emails_found: set[str] = set()
+
+    # 1. Count from email index
+    for email_entry in email_index.read_all_emails():
+        if email_entry.email:
+            all_emails_found.add(email_entry.email.lower())
+            if email_entry.domain:
+                domains_with_emails.add(email_entry.domain.lower())
+
+    # 2. Also scan company objects for emails (Hydration check)
     companies_dir = get_companies_dir()
     tag = config.get("campaign", {}).get("tag") or campaign_name
+    
+    enriched_count = 0
+    deep_enriched_count = 0
 
-    # Scan companies directory
     if companies_dir.exists():
         for company_path in companies_dir.iterdir():
             if not company_path.is_dir():
                 continue
 
-            # Check tags.lst first (Fast)
+            # Fast tag check
             tags_file = company_path / "tags.lst"
             has_tag = False
             if tags_file.exists():
@@ -456,6 +455,24 @@ def get_campaign_stats(campaign_name: str) -> Dict[str, Any]:
 
             if has_tag:
                 enriched_count += 1
+                
+                # Check for emails in the company model directly
+                company_obj = Company.get(company_path.name)
+                if company_obj:
+                    # Check primary email
+                    if company_obj.email:
+                        e_str = str(company_obj.email).lower()
+                        all_emails_found.add(e_str)
+                        if company_obj.domain:
+                            domains_with_emails.add(company_obj.domain.lower())
+                    
+                    # Check all_emails list
+                    for email_addr in company_obj.all_emails:
+                        e_str = str(email_addr).lower()
+                        all_emails_found.add(e_str)
+                        if company_obj.domain:
+                            domains_with_emails.add(company_obj.domain.lower())
+
                 # Check for Deep Enrichment artifacts
                 enrich_dir = company_path / "enrichments"
                 if (enrich_dir / "sitemap.xml").exists() or (enrich_dir / "navbar.html").exists():
@@ -463,12 +480,8 @@ def get_campaign_stats(campaign_name: str) -> Dict[str, Any]:
 
     stats["enriched_count"] = enriched_count
     stats["deep_enriched_count"] = deep_enriched_count
-    # In this architecture, a completed task results in an enriched company file.
-    # So we can use enriched_count as the proxy for completed items locally.
-    stats["completed_count"] = enriched_count
-
-    stats["companies_with_emails_count"] = companies_with_emails_count
-    stats["emails_found_count"] = emails_found_count
+    stats["companies_with_emails_count"] = len(domains_with_emails)
+    stats["emails_found_count"] = len(all_emails_found)
 
     # Global Enrichment Count (Total pool from Manifest)
     try:

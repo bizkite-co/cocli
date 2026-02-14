@@ -22,7 +22,7 @@ def get_queue_manager(queue_name: str, use_cloud: bool = False, queue_type: str 
         effective_campaign = get_campaign()
 
     # Determine Queue Provider (SQS or Filesystem)
-    # Priority: Env Var > Campaign Config > Global Config > Default (SQS if use_cloud, else LocalFile)
+    # Priority: Env Var > Campaign Config > Global Config > Default (Filesystem)
     provider = os.getenv("COCLI_QUEUE_TYPE")
     
     if not provider and effective_campaign:
@@ -31,7 +31,7 @@ def get_queue_manager(queue_name: str, use_cloud: bool = False, queue_type: str 
 
     if not provider:
         from ..config import get_config
-        provider = get_config().queue_type
+        provider = get_config().queue_type or "filesystem"
     
     if provider == "filesystem" and effective_campaign:
         from .filesystem import FilesystemGmListQueue, FilesystemGmDetailsQueue, FilesystemEnrichmentQueue

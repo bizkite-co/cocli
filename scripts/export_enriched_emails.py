@@ -118,15 +118,18 @@ def main(
     manager = ProspectsIndexManager(campaign_name)
     target_place_ids = set()
     target_slugs = set()
-    target_hashes = set()
+    
+    # Map for enrichment lookup
+    prospect_data_map = {} # slug -> prospect_obj
     
     for prospect in manager.read_all_prospects():
         if prospect.place_id:
             target_place_ids.add(prospect.place_id)
         if prospect.company_slug:
             target_slugs.add(prospect.company_slug)
-        if prospect.company_hash:
-            target_hashes.add(prospect.company_hash)
+            # Prioritize prospects with more data
+            if prospect.company_slug not in prospect_data_map or prospect.average_rating:
+                prospect_data_map[prospect.company_slug] = prospect
 
     results = []
     
@@ -173,6 +176,21 @@ def main(
         if website_data and website_data.found_keywords:
             found_keywords = website_data.found_keywords
 
+        # ENRICHMENT: Pull from index map if missing in company object
+        idx_prospect = prospect_data_map.get(company_obj.slug)
+        
+        gmb_url = company_obj.gmb_url
+        if not gmb_url and idx_prospect:
+            gmb_url = idx_prospect.gmb_url
+            
+        rating = str(company_obj.average_rating or "")
+        if (not rating or rating == "0.0") and idx_prospect:
+            rating = str(idx_prospect.average_rating or "")
+            
+        reviews = str(company_obj.reviews_count or "0")
+        if reviews == "0" and idx_prospect:
+            reviews = str(idx_prospect.reviews_count or "0")
+
         results.append({
             "company": company_obj.name,
             "domain": domain,
@@ -182,11 +200,14 @@ def main(
             "categories": "; ".join(sorted(list(set(company_obj.categories)))),
             "services": "; ".join(sorted(list(set(company_obj.services)))),
             "products": "; ".join(sorted(list(set(company_obj.products)))),
-            "keywords": "; ".join(sorted(list(set(found_keywords))))
+            "keywords": "; ".join(sorted(list(set(found_keywords)))),
+            "gmb_url": gmb_url or "",
+            "rating": rating,
+            "reviews": reviews
         })
 
     with open(output_file, "w", newline="") as f:
-        writer = csv.DictWriter(f, fieldnames=["company", "domain", "emails", "phone", "website", "categories", "services", "products", "keywords"])
+        writer = csv.DictWriter(f, fieldnames=["company", "domain", "emails", "phone", "website", "categories", "services", "products", "keywords", "gmb_url", "rating", "reviews"])
         writer.writeheader()
         writer.writerows(results)
         

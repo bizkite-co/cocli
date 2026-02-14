@@ -557,3 +557,23 @@ footer {
     border: 1px solid #b3e5fc;
     text-transform: capitalize;
 }
+
+.gmb-icon-link {
+    color: #4285F4;
+    font-size: 1.2em;
+    transition: color 0.2s, transform 0.2s;
+    margin-left: 8px;
+    display: inline-flex;
+    align-items: center;
+    text-decoration: none;
+}
+
+.gmb-icon-link:hover {
+    color: #357ae8;
+    transform: scale(1.1);
+}
+
+.rating-value {
+    color: #f4b400;
+    font-weight: bold;
+}
