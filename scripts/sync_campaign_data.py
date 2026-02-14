@@ -57,6 +57,8 @@ def index_to_folders(
     prospects = list(manager.read_all_prospects())
     logger.info(f"Loaded {len(prospects)} prospects from index.")
 
+    from cocli.models.google_maps_prospect import GoogleMapsProspect
+
     for prospect in track(prospects, description="Syncing Index -> Folders"):
         if not prospect.company_slug:
             logger.warning(f"Skipping prospect with missing slug: {prospect.place_id}")
@@ -129,6 +131,19 @@ def index_to_folders(
             company_obj.save(email_sync=False)
             if not is_new:
                 updated_count += 1
+
+        # 6. Provenance: Save the original Maps data as an enrichment source
+        if not dry_run:
+            enrich_dir = company_dir / "enrichments"
+            enrich_dir.mkdir(exist_ok=True)
+            maps_usv = enrich_dir / "google_maps.usv"
+            
+            # Always update the receipt to match the latest index state
+            with open(maps_usv, 'w', encoding='utf-8') as f:
+                fieldnames = list(GoogleMapsProspect.model_fields.keys())
+                writer = USVDictWriter(f, fieldnames=fieldnames)
+                writer.writeheader()
+                writer.writerow(prospect.model_dump(mode="json"))
 
     console.print("\n[bold green]Sync Complete![/bold green]")
     console.print(f"Folders Created: {created_count}")
