@@ -190,7 +190,14 @@ class Company(BaseModel):
                         if is_valid_email(e_str):
                             cleaned_emails.append(e_str)
                 frontmatter_data["all_emails"] = cleaned_emails
-            # --------------------------------------------------------------------------
+            
+            # --- RESILIENCE: Filter legacy PlaceIDs ---
+            if "place_id" in frontmatter_data and frontmatter_data["place_id"]:
+                pid = str(frontmatter_data["place_id"]).strip()
+                if pid.startswith("0x") or ":" in pid:
+                    # Clear it so it doesn't fail the strict PlaceID type check
+                    frontmatter_data["place_id"] = None
+            # ------------------------------------------
 
             # Prepare data for model instantiation
             model_data = frontmatter_data

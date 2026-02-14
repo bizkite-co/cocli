@@ -3,6 +3,9 @@ import csv
 import yaml
 import json
 from typing import Optional
+from datetime import datetime
+from pathlib import Path
+import logging
 
 from rich.console import Console
 from rich.progress import track
@@ -13,6 +16,27 @@ from cocli.core.exclusions import ExclusionManager
 
 app = typer.Typer()
 console = Console()
+
+def setup_export_logging(campaign_name: str) -> Path:
+    logs_dir = Path(".logs")
+    logs_dir.mkdir(exist_ok=True)
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    log_file = logs_dir / f"export_emails_{campaign_name}_{timestamp}.log"
+    
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s [%(levelname)s] %(message)s",
+        handlers=[logging.FileHandler(log_file)],
+        force=True
+    )
+    # Also silence the standard cocli logger to terminal
+    for name in ["cocli.models.company", "root"]:
+        l = logging.getLogger(name)
+        l.setLevel(logging.ERROR)
+        l.propagate = False
+        l.addHandler(logging.FileHandler(log_file))
+        
+    return log_file
 
 def get_website_data(company_slug: str) -> Optional[Website]:
     """Helper to load the website.md data for a company."""
@@ -56,6 +80,11 @@ def main(
     if not campaign_name:
         console.print("[bold red]Error: No campaign specified and no active context.[/bold red]")
         raise typer.Exit(1)
+
+    log_file = setup_export_logging(campaign_name)
+    logger = logging.getLogger("export")
+    console.print(f"Exporting leads for [bold]{campaign_name}[/bold]")
+    console.print(f"Detailed logs: [cyan]{log_file}[/cyan]")
 
     campaign_dir = get_campaigns_dir() / campaign_name
     email_index_dir = campaign_dir / "indexes" / "emails"
@@ -132,9 +161,14 @@ def main(
                 prospect_data_map[prospect.company_slug] = prospect
 
     results = []
+    skipped_count = 0
     
     # 4. Iterate all companies
     for company_obj in track(Company.get_all(), description="Scanning companies..."):
+        if not company_obj:
+            skipped_count += 1
+            continue
+
         # Check if company belongs to this campaign via tags (hydration target)
         in_campaign = campaign_name in company_obj.tags
         
@@ -211,7 +245,11 @@ def main(
         writer.writeheader()
         writer.writerows(results)
         
-    console.print(f"[bold green]Exported {len(results)} companies to {output_file}[/bold green]")
+    console.print(f"\n[bold green]Success![/bold green]")
+    console.print(f"Exported: [bold]{len(results)}[/bold] companies")
+    if skipped_count:
+        console.print(f"Skipped: [bold red]{skipped_count}[/bold red] malformed records (check log)")
+    console.print(f"Output: [cyan]{output_file}[/cyan]")
 
     json_output_file = export_dir / f"enriched_emails_{campaign_name}.json"
     with open(json_output_file, "w") as f:
