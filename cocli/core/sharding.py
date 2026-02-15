@@ -38,6 +38,18 @@ def get_geo_shard(latitude: Union[float, str]) -> str:
     
     return lat_str[0]
 
+def get_grid_tile_id(latitude: float, longitude: float) -> str:
+    """
+    Returns a standardized 0.1-degree grid tile ID (southwest corner).
+    Example: (32.99, -117.99) -> "32.9_-118.0"
+    Note: Using math.floor / 10 to ensure we get the southwest corner correctly.
+    """
+    import math
+    # tenth-of-a-degree precision
+    lat_tile = math.floor(latitude * 10) / 10.0
+    lon_tile = math.floor(longitude * 10) / 10.0
+    return f"{lat_tile:.1f}_{lon_tile:.1f}"
+
 # Legacy Alias
 def get_shard_id(identifier: str) -> str:
     """Legacy generic sharding. Defaults to Place ID logic."""

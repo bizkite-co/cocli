@@ -5,9 +5,11 @@ from rich.progress import track
 from cocli.core.config import get_companies_dir, get_campaigns_dir
 from cocli.models.company import Company
 from cocli.core.prospects_csv_manager import ProspectsIndexManager
+from cocli.core.queue.factory import get_queue_manager
+from cocli.models.queue import QueueMessage
 from cocli.utils.usv_utils import USVDictWriter
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Dict, Set
 from datetime import datetime
 
 app = typer.Typer()
@@ -32,6 +34,38 @@ def setup_file_logging(script_name: str) -> Path:
     )
     return log_file
 
+def get_discovery_map(campaign_name: str) -> Dict[str, Set[str]]:
+    """Scans all gm-list results to map place_id -> set of search phrases."""
+    discovery_map: Dict[str, Set[str]] = {}
+    campaign_dir = get_campaigns_dir() / campaign_name
+    results_dir = campaign_dir / "queues" / "gm-list" / "completed" / "results"
+    
+    if not results_dir.exists():
+        return discovery_map
+        
+    from cocli.core.utils import UNIT_SEP
+    
+    # Results are in shards like results/4/40.08/-104.97/phrase.usv
+    # OR results/4/40.1_-105.0/phrase.usv
+    for usv_file in results_dir.rglob("*.usv"):
+        phrase = usv_file.stem # The filename is the search phrase slug
+        
+        # Provenance sanity check: if the filename is 'google_maps', skip it 
+        # (those are our new enrichment receipts, not batch results)
+        if phrase == "google_maps":
+            continue
+            
+        try:
+            content = usv_file.read_text()
+            for line in content.splitlines():
+                parts = line.split(UNIT_SEP)
+                if parts and parts[0]:
+                    pid = parts[0]
+                    discovery_map.setdefault(pid, set()).add(phrase)
+        except Exception:
+            continue
+    return discovery_map
+
 @app.command()
 def index_to_folders(
     campaign_name: str = typer.Argument(..., help="Campaign name to sync."),
@@ -46,6 +80,13 @@ def index_to_folders(
     
     console.print(f"Starting sync for [bold]{campaign_name}[/bold]")
     console.print(f"Detailed logs: [cyan]{log_file}[/cyan]")
+
+    # 1. Build the Discovery Map (Multi-phrase recovery)
+    discovery_map = get_discovery_map(campaign_name)
+    logger.info(f"Discovery Map built: {len(discovery_map)} IDs indexed.")
+
+    # 2. Initialize Enrichment Queue
+    enrichment_queue = get_queue_manager("enrichment", queue_type="enrichment", campaign_name=campaign_name, use_cloud=True)
 
     manager = ProspectsIndexManager(campaign_name)
     companies_dir = get_companies_dir()
@@ -79,12 +120,20 @@ def index_to_folders(
         is_new = False
         if not company_obj:
             logger.info(f"Creating NEW company record: {slug}")
+            # Ensure name is valid for pydantic (min 3 chars)
+            safe_name = prospect.name or slug
+            if len(safe_name) < 3:
+                safe_name = slug
+                
             company_obj = Company(
-                name=prospect.name or slug,
+                name=safe_name,
                 slug=slug,
                 tags=[campaign_name]
             )
             is_new = True
+            # IMMEDIATELY save to establish _index.md
+            if not dry_run:
+                company_obj.save()
         
         updated = False
         
@@ -109,6 +158,62 @@ def index_to_folders(
             company_obj.name = prospect.name
             updated = True
 
+        # NEW: Exhaustive Sync via Field Mirroring
+        # We sync everything from the prospect model to the company model if the field names match
+        prospect_data = prospect.model_dump()
+        for field, value in prospect_data.items():
+            if value is None or value == "" or value == 0:
+                continue
+                
+            # Handle special field name mappings (Prospect -> Company)
+            target_field = field
+            if field == "phone":
+                target_field = "phone_number"
+            if field == "zip":
+                target_field = "zip_code"
+            if field == "website":
+                target_field = "website_url"
+            
+            if hasattr(company_obj, target_field):
+                current_val = getattr(company_obj, target_field)
+                
+                # Update if current is empty or if it's a high-priority identity field
+                if current_val is None or current_val == "" or current_val == 0 or field in ["place_id", "name"]:
+                    # Coerce value if necessary
+                    if target_field == "phone_number":
+                        value = str(value)
+                    
+                    if current_val != value:
+                        logger.info(f"Syncing {target_field} for {slug}: {value}")
+                        setattr(company_obj, target_field, value)
+                        updated = True
+
+        # Merge Categories (Google Maps categories are high quality)
+        new_cats = [c for c in [prospect.first_category, prospect.second_category] if c]
+        for cat in new_cats:
+            if cat and cat not in company_obj.categories:
+                company_obj.categories.append(cat)
+                updated = True
+
+        # 4. Ensure campaign tag
+        if campaign_name not in company_obj.tags:
+            logger.info(f"Adding campaign tag '{campaign_name}' to {slug}")
+            company_obj.tags.append(campaign_name)
+            updated = True
+            tagged_count += 1
+            
+        # 5. Recovery: Discovery Phrase & Keyword Linkage
+        discovery_tags = set([prospect.discovery_phrase, prospect.keyword])
+        # Add all phrases from the discovery map (gm-list results)
+        if prospect.place_id in discovery_map:
+            discovery_tags.update(discovery_map[prospect.place_id])
+            
+        for dt in discovery_tags:
+            if dt and dt not in company_obj.tags:
+                logger.info(f"Adding discovery tag '{dt}' to {slug}")
+                company_obj.tags.append(dt)
+                updated = True
+
         if is_new:
             logger.info(f"Company {slug} is NEW")
         elif updated:
@@ -126,6 +231,20 @@ def index_to_folders(
             logger.info(f"Adding discovery tag '{prospect.keyword}' to {slug}")
             company_obj.tags.append(prospect.keyword)
             updated = True
+
+        # 6. ENQUEUE FOR ENRICHMENT (The "Pipe")
+        if prospect.domain and prospect.name:
+            try:
+                # We use the same QueueMessage pattern as the worker service
+                enrichment_queue.push(QueueMessage(
+                    domain=prospect.domain,
+                    company_slug=slug,
+                    campaign_name=campaign_name,
+                    force_refresh=False
+                ))
+                logger.debug(f"Enqueued {slug} for enrichment")
+            except Exception as e:
+                logger.error(f"Failed to enqueue {slug}: {e}")
 
         if (updated or is_new) and not dry_run:
             company_obj.save(email_sync=False)

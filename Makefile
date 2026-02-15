@@ -494,6 +494,11 @@ gc-companies: ## Commit and push all changes to companies and people
 # ==============================================================================
 # Web Dashboard
 # ==============================================================================
+.PHONY: consolidate-results
+consolidate-results: ## Consolidate high-precision batch results into 0.1-degree tiles
+	$(call validate_campaign)
+	uv run scripts/consolidate_gm_results.py $(CAMPAIGN)
+
 .PHONY: sync-index
 sync-index: ## Sync Google Maps index to company folders (Index-to-Folder)
 	$(call validate_campaign)

@@ -204,11 +204,6 @@ def main(
             if not website_data or not website_data.found_keywords:
                 continue
 
-        # Get keywords from website data if available
-        found_keywords = []
-        if website_data and website_data.found_keywords:
-            found_keywords = website_data.found_keywords
-
         # ENRICHMENT: Pull from index map if missing in company object
         idx_prospect = prospect_data_map.get(company_obj.slug)
         

@@ -94,7 +94,7 @@ hotfix_node() {
     
     # 1. Stop and Maintenance
     ssh $RPI_USER@$host "docker stop cocli-supervisor && docker rm cocli-supervisor" >/dev/null 2>&1
-    ssh $RPI_USER@$host "docker run -d --name cocli-supervisor --shm-size=2gb -e TZ=America/Los_Angeles -e CAMPAIGN_NAME='$node_campaign' -e AWS_PROFILE=$iot_profile -e COCLI_QUEUE_TYPE=filesystem -v ~/repos/data:/app/data -v ~/.aws:/root/.aws:ro -v ~/.cocli:/root/.cocli:ro --entrypoint sleep cocli-worker-rpi:latest infinity" >/dev/null
+    ssh $RPI_USER@$host "docker run -d --name cocli-supervisor --shm-size=2gb -e TZ=America/Los_Angeles -e CAMPAIGN_NAME='$node_campaign' -e COCLI_QUEUE_TYPE=filesystem -v ~/repos/data:/app/data -v ~/.aws:/root/.aws:ro -v ~/.cocli:/root/.cocli:ro --entrypoint sleep cocli-worker-rpi:latest infinity" >/dev/null
     
     # 2. Wipe dist-packages and /app
     ssh $RPI_USER@$host "docker exec cocli-supervisor bash -c 'rm -rf /usr/local/lib/python3.12/dist-packages/cocli /app/cocli /app/build'" >/dev/null 2>&1
@@ -109,7 +109,7 @@ hotfix_node() {
     
     # 4. Restore Real Entrypoint
     ssh $RPI_USER@$host "docker stop cocli-supervisor && docker rm cocli-supervisor" >/dev/null
-    ssh $RPI_USER@$host "docker run -d --restart always --name cocli-supervisor --shm-size=2gb -e TZ=America/Los_Angeles -e CAMPAIGN_NAME='$node_campaign' -e AWS_PROFILE=$iot_profile -e COCLI_HOSTNAME=$short_name -e COCLI_QUEUE_TYPE=filesystem -v ~/repos/data:/app/data -v ~/.aws:/root/.aws:ro -v ~/.cocli:/root/.cocli:ro cocli-worker-rpi:latest cocli worker supervisor --debug" >/dev/null
+    ssh $RPI_USER@$host "docker run -d --restart always --name cocli-supervisor --shm-size=2gb -e TZ=America/Los_Angeles -e CAMPAIGN_NAME='$node_campaign' -e COCLI_HOSTNAME=$short_name -e COCLI_QUEUE_TYPE=filesystem -v ~/repos/data:/app/data -v ~/.aws:/root/.aws:ro -v ~/.cocli:/root/.cocli:ro cocli-worker-rpi:latest cocli worker supervisor --debug" >/dev/null
     
     # 5. Verify
     verify_node $host

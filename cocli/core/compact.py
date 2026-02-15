@@ -2,13 +2,15 @@ import os
 import json
 import logging
 import time
+import subprocess
+from pathlib import Path
 from datetime import datetime, UTC
-from typing import Any
+from typing import Any, Optional
 
 import boto3
 from botocore.exceptions import ClientError
 
-from .config import get_cocli_base_dir
+from .config import get_cocli_base_dir, get_campaign_dir
 
 logger = logging.getLogger(__name__)
 
@@ -18,10 +20,11 @@ class CompactManager:
     Uses S3-Native isolation to prevent race conditions with workers.
     """
     
-    def __init__(self, campaign_name: str, index_name: str = "google_maps_prospects"):
+    def __init__(self, campaign_name: str, index_name: str = "google_maps_prospects", log_file: Optional[Path] = None):
         self.campaign_name = campaign_name
         self.index_name = index_name
         self.run_id = f"run_{int(time.time())}"
+        self.log_file = log_file
         
         # Local Paths
         self.data_root = get_cocli_base_dir() / "campaigns" / campaign_name
@@ -30,22 +33,33 @@ class CompactManager:
         self.local_proc_dir = self.index_dir / "processing" / self.run_id
         
         # S3 Paths
-        # prefix should not have leading slash for boto3
         self.s3_index_prefix = f"campaigns/{campaign_name}/indexes/{index_name}/"
         self.s3_wal_prefix = self.s3_index_prefix + "wal/"
         self.s3_proc_prefix = self.s3_index_prefix + f"processing/{self.run_id}/"
         self.s3_lock_key = self.s3_index_prefix + "compact.lock"
         
-        # S3 Client (Lazy loaded)
+        # S3 Client
         self._s3: Any = None
-        self._bucket = "roadmap-cocli-data-use1" # TODO: Load from config
+        self._bucket = self._load_bucket_name()
+
+    def _load_bucket_name(self) -> str:
+        """Loads bucket name from campaign config.toml"""
+        import tomllib
+        camp_dir = get_campaign_dir(self.campaign_name)
+        if camp_dir:
+            config_path = camp_dir / "config.toml"
+            if config_path.exists():
+                with open(config_path, "rb") as f:
+                    data = tomllib.load(f)
+                    bucket = data.get("aws", {}).get("data_bucket_name") or data.get("data_bucket_name")
+                    if bucket:
+                        return str(bucket)
+        return "roadmap-cocli-data-use1"
 
     @property
     def s3(self) -> Any:
         if self._s3 is None:
-            # We assume local machine has proper creds/profile for compaction
-            session = boto3.Session() 
-            self._s3 = session.client("s3")
+            self._s3 = boto3.client("s3")
         return self._s3
 
     def acquire_lock(self) -> bool:
@@ -81,71 +95,47 @@ class CompactManager:
             logger.error(f"Failed to release lock: {e}")
 
     def isolate_wal(self) -> int:
-        """Moves files from wal/ to processing/run_id/ on S3."""
+        """Moves files from wal/ to processing/run_id/ on S3 using AWS CLI for speed."""
         logger.info(f"Isolating WAL files to {self.s3_proc_prefix}...")
         
-        # 1. List current WAL
-        paginator = self.s3.get_paginator('list_objects_v2')
-        pages = paginator.paginate(Bucket=self._bucket, Prefix=self.s3_wal_prefix)
+        src = f"s3://{self._bucket}/{self.s3_wal_prefix}"
+        dest = f"s3://{self._bucket}/{self.s3_proc_prefix}"
         
-        to_move = []
-        for page in pages:
-            if 'Contents' in page:
-                for obj in page['Contents']:
-                    key = obj['Key']
-                    if key.endswith(".usv") or key.endswith(".csv"):
-                        to_move.append(key)
-        
-        if not to_move:
-            logger.info("No WAL files found to isolate.")
+        try:
+            # We use shell mv because it is multi-threaded and much faster than Boto3
+            # All shell output is redirected to the log file
+            from contextlib import nullcontext
+            with open(self.log_file, "a") if self.log_file else nullcontext() as f:
+                result = subprocess.run(
+                    ["aws", "s3", "mv", src, dest, "--recursive", "--quiet"],
+                    stdout=f, stderr=f, text=True
+                )
+            
+            if result.returncode == 0:
+                logger.info("Isolation complete.")
+                return 1 # Indicate progress was made
+            else:
+                return 0
+        except Exception as e:
+            logger.error(f"Failed to isolate WAL: {e}")
             return 0
 
-        # 2. Atomic Move (Copy + Delete)
-        # S3 doesn't have a native 'move', so we must copy then delete
-        # We do this one by one or in small batches to ensure consistency
-        moved_count = 0
-        for old_key in to_move:
-            rel_path = old_key[len(self.s3_wal_prefix):]
-            new_key = self.s3_proc_prefix + rel_path
-            
-            try:
-                # Copy
-                self.s3.copy_object(
-                    Bucket=self._bucket,
-                    CopySource={'Bucket': self._bucket, 'Key': old_key},
-                    Key=new_key
-                )
-                # Delete original
-                self.s3.delete_object(Bucket=self._bucket, Key=old_key)
-                moved_count += 1
-            except Exception as e:
-                logger.error(f"Failed to move {old_key}: {e}")
-
-        logger.info(f"Isolated {moved_count} files.")
-        return moved_count
-
     def acquire_staging(self) -> None:
-        """Syncs the processing/run_id/ folder from S3 to local disk."""
+        """Syncs the processing/run_id/ folder from S3 to local disk using AWS CLI."""
         logger.info(f"Acquiring staging data to {self.local_proc_dir}...")
-        
-        # Ensure local dir exists
         self.local_proc_dir.mkdir(parents=True, exist_ok=True)
         
-        # We use a simple sync logic here since we only care about this specific run_id
-        paginator = self.s3.get_paginator('list_objects_v2')
-        pages = paginator.paginate(Bucket=self._bucket, Prefix=self.s3_proc_prefix)
-        
-        for page in pages:
-            if 'Contents' in page:
-                for obj in page['Contents']:
-                    key = obj['Key']
-                    rel_path = key[len(self.s3_proc_prefix):]
-                    dest_path = self.local_proc_dir / rel_path
-                    dest_path.parent.mkdir(parents=True, exist_ok=True)
-                    
-                    self.s3.download_file(self._bucket, key, str(dest_path))
-        
-        logger.info("Staging data acquired.")
+        src = f"s3://{self._bucket}/{self.s3_proc_prefix}"
+        try:
+            from contextlib import nullcontext
+            with open(self.log_file, "a") if self.log_file else nullcontext() as f:
+                subprocess.run(
+                    ["aws", "s3", "sync", src, str(self.local_proc_dir), "--quiet"],
+                    stdout=f, stderr=f, check=True
+                )
+            logger.info("Staging data acquired.")
+        except Exception as e:
+            logger.error(f"Failed to sync staging data: {e}")
 
     def merge(self) -> None:
         """Merges checkpoint and staging using DuckDB."""
@@ -154,8 +144,7 @@ class CompactManager:
         
         con = duckdb.connect(database=':memory:')
         
-        # Use our standard 55-column schema from GoogleMapsProspect
-        # We define it here explicitly to ensure the DuckDB binder is happy
+        # Standard schema
         columns = {
             "place_id": "VARCHAR",
             "company_slug": "VARCHAR",
@@ -216,22 +205,23 @@ class CompactManager:
 
         tmp_checkpoint = self.checkpoint_path.with_suffix(".tmp")
         
-        # 1. Gather all paths
+        # Gather paths
         paths = []
         if self.checkpoint_path.exists():
             paths.append(str(self.checkpoint_path))
         
         # Add all staged USVs
-        paths.extend([str(p) for p in self.local_proc_dir.rglob("*.usv")])
+        staged_files = [str(p) for p in self.local_proc_dir.rglob("*.usv")]
+        paths.extend(staged_files)
         
         if not paths:
             logger.info("No data found to merge.")
             return
 
+        # DuckDB can handle thousands of files in one read_csv call
         path_list = "', '".join(paths)
         
-        # 2. Run the Deduplication Query
-        # We sort by updated_at DESC and take the first one (latest)
+        # Deduplication Query
         q = f"""
             COPY (
                 SELECT * EXCLUDE (row_num) FROM (
@@ -249,7 +239,6 @@ class CompactManager:
         
         con.execute(q)
         
-        # 3. Commit Local
         if tmp_checkpoint.exists():
             os.replace(tmp_checkpoint, self.checkpoint_path)
             logger.info(f"Merged checkpoint saved to {self.checkpoint_path}")
@@ -265,21 +254,16 @@ class CompactManager:
         """Purges staging data from local and remote."""
         logger.info("Cleaning up staging layers...")
         
-        # 1. Remote Processing Dir
-        paginator = self.s3.get_paginator('list_objects_v2')
-        pages = paginator.paginate(Bucket=self._bucket, Prefix=self.s3_proc_prefix)
+        # Remote Cleanup using AWS CLI
+        src = f"s3://{self._bucket}/{self.s3_proc_prefix}"
+        try:
+            from contextlib import nullcontext
+            with open(self.log_file, "a") if self.log_file else nullcontext() as f:
+                subprocess.run(["aws", "s3", "rm", src, "--recursive", "--quiet"], stdout=f, stderr=f, check=True)
+        except Exception as e:
+            logger.error(f"Failed to cleanup S3 staging: {e}")
         
-        to_delete = []
-        for page in pages:
-            if 'Contents' in page:
-                for obj in page['Contents']:
-                    to_delete.append({'Key': obj['Key']})
-        
-        if to_delete:
-            for i in range(0, len(to_delete), 1000):
-                self.s3.delete_objects(Bucket=self._bucket, Delete={'Objects': to_delete[i:i+1000]})
-        
-        # 2. Local Processing Dir
+        # Local Cleanup
         import shutil
         if self.local_proc_dir.exists():
             shutil.rmtree(self.local_proc_dir)

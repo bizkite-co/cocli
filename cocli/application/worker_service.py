@@ -155,18 +155,29 @@ class WorkerService:
                     if discovered_items:
                         try:
                             from ..core.paths import paths
-                            from ..core.sharding import get_geo_shard
+                            from ..core.sharding import get_geo_shard, get_grid_tile_id
                             shard = get_geo_shard(task.latitude)
-                            token = task.ack_token or f"{task.latitude}/{task.longitude}/{task.search_phrase}"
-                            base_id = token.replace(".csv", "").replace(".usv", "")
-                            local_results_dir = paths.queue(task.campaign_name, "gm-list") / "completed" / "results" / shard / os.path.dirname(base_id)
+                            
+                            # Standardized 0.1 degree tile ID
+                            tile_id = task.tile_id
+                            if not tile_id:
+                                tile_id = get_grid_tile_id(task.latitude, task.longitude)
+                            
+                            # Clean ID for path construction (removes any phrase suffix if present in task.tile_id)
+                            # Actually, we want the path to be {shard}/{tile_id}/{phrase}.usv
+                            base_tile = tile_id.split("_")[0] + "_" + tile_id.split("_")[1]
+                            
+                            local_results_dir = paths.queue(task.campaign_name, "gm-list") / "completed" / "results" / shard / base_tile
                             local_results_dir.mkdir(parents=True, exist_ok=True)
-                            phrase_slug = os.path.basename(base_id)
+                            
+                            phrase_slug = slugify(task.search_phrase)
                             result_file = local_results_dir / f"{phrase_slug}.usv"
+                            
                             with open(result_file, "w") as rf:
                                 for item in discovered_items:
                                     rf.write(f"{item.place_id}{UNIT_SEP}{item.company_slug}{UNIT_SEP}{item.name}{UNIT_SEP}{item.phone or ''}\n")
-                            s3_key = f"campaigns/{task.campaign_name}/queues/gm-list/completed/results/{shard}/{base_id}.usv"
+                            
+                            s3_key = f"campaigns/{task.campaign_name}/queues/gm-list/completed/results/{shard}/{base_tile}/{phrase_slug}.usv"
                             s3_client.upload_file(str(result_file), self.bucket_name, s3_key)
                         except Exception as res_err:
                             logger.warning(f"Failed to write batch result log: {res_err}")
