@@ -52,7 +52,7 @@ def register_commands(app: typer.Typer) -> None:
     app.command(name="render-prospects-kml")(render_prospects_kml.render_prospects_kml)
     app.command(name="scrape-shopify-myip")(scrape_shopify.scrape_shopify_myip)
     app.command(name="status")(status.status)
-    app.command(name="sync")(sync.sync)
+    app.add_typer(sync.app, name="sync")
     app.command(name="view-company")(view.view_company)
     app.command(name="view-meetings")(view.view_meetings)
     app.command(name="enrich-customers")(enrich_customers.enrich_customers)

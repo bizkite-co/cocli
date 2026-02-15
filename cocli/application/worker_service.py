@@ -759,6 +759,7 @@ class WorkerService:
                 "workers": {"scrape": len(scrape_tasks), "details": len(details_tasks), "enrichment": len(enrichment_tasks)},
                 "status": "healthy"
             }
+            # USE self.bucket_name which is resolved in __init__ from campaign config
             s3_client.put_object(Bucket=self.bucket_name, Key=paths.s3_heartbeat(self.processed_by), Body=json.dumps(stats, indent=2), ContentType="application/json")
         except Exception as e:
             logger.error(f"HEARTBEAT CRITICAL FAILURE: {e}")
