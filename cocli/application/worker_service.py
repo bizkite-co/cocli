@@ -709,24 +709,63 @@ class WorkerService:
                         details_tasks[old_id].cancel()
                         del details_tasks[old_id]
 
+                    # 4. Adjust Enrichment Tasks
                     while len(enrichment_tasks) < target_enrich:
                         new_id = len(enrichment_tasks)
+                        logger.info(f"Scaling UP: Starting Enrichment Task {new_id}")
+                        
+                        # TASK WRAPPER: Create fresh context for every single task to prevent memory leaks
+                        async def _run_single_enrichment_task() -> bool:
+                            # Shared context from supervisor might leak, create a fresh one
+                            # ignore_https_errors is important for broad scraping
+                            tmp_context = await browser.new_context(
+                                ignore_https_errors=True,
+                                user_agent=USER_AGENT,
+                                extra_http_headers=ANTI_BOT_HEADERS,
+                            )
+                            tmp_tracker = await setup_optimized_context(tmp_context)
+                            found_task = False
+                            try:
+                                # Modify _run_enrichment_task_loop to return if it found a task
+                                # For now, we'll just check if it returns quickly
+                                start = time.time()
+                                await self._run_enrichment_task_loop(
+                                    tmp_context,
+                                    enrichment_queue,
+                                    debug,
+                                    True, # once=True: Finish after one task
+                                    self.processed_by,
+                                    self.campaign_name,
+                                    s3_client=s3_client,
+                                    bucket_name=self.bucket_name,
+                                    tracker=tmp_tracker,
+                                )
+                                # If it took more than a second, it probably processed something
+                                if time.time() - start > 1.0:
+                                    found_task = True
+                            finally:
+                                await tmp_context.close()
+                            return found_task
+
+                        # Start as a persistent loop that restarts the wrapper
                         async def _persistent_enrichment_loop() -> None:
                             while True:
-                                tmp_context = await browser.new_context(ignore_https_errors=True, user_agent=USER_AGENT, extra_http_headers=ANTI_BOT_HEADERS)
-                                tmp_tracker = await setup_optimized_context(tmp_context)
                                 try:
-                                    start = time.time()
-                                    await self._run_enrichment_task_loop(tmp_context, enrichment_queue, debug, True, s3_client=s3_client, tracker=tmp_tracker)
-                                    if time.time() - start < 1.0:
-                                        await asyncio.sleep(10)
+                                    processed = await _run_single_enrichment_task()
+                                    if not processed:
+                                        await asyncio.sleep(10) # Heavy breather when queue empty
                                     else:
-                                        await asyncio.sleep(1)
-                                finally:
-                                    await tmp_context.close()
-                        enrichment_tasks[new_id] = asyncio.create_task(_persistent_enrichment_loop())
+                                        await asyncio.sleep(1) # Small breather between tasks
+                                except Exception as e:
+                                    logger.error(f"Enrichment task wrapper error: {e}")
+                                    await asyncio.sleep(10)
+
+                        task = asyncio.create_task(_persistent_enrichment_loop())
+                        enrichment_tasks[new_id] = task
+
                     while len(enrichment_tasks) > target_enrich:
                         old_id = max(enrichment_tasks.keys())
+                        logger.info(f"Scaling DOWN: Stopping Enrichment Task {old_id}")
                         enrichment_tasks[old_id].cancel()
                         del enrichment_tasks[old_id]
 
