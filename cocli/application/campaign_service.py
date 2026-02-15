@@ -184,6 +184,44 @@ class CampaignService:
                 return True
         return False
 
+    def add_node(self, hostname: str, label: Optional[str] = None) -> bool:
+        """Adds a worker node to the cluster configuration."""
+        config = self.get_config()
+        cluster = config.setdefault("cluster", {})
+        nodes = cluster.setdefault("nodes", [])
+        
+        # Check if already exists
+        for node in nodes:
+            if node.get("host") == hostname:
+                return False
+                
+        nodes.append({"host": hostname, "label": label or hostname})
+        self.save_config(config)
+        return True
+
+    def remove_node(self, hostname: str) -> bool:
+        """Removes a worker node from the cluster configuration."""
+        config = self.get_config()
+        cluster = config.get("cluster", {})
+        nodes = cluster.get("nodes", [])
+        
+        initial_len = len(nodes)
+        cluster["nodes"] = [n for n in nodes if n.get("host") != hostname]
+        
+        if len(cluster["nodes"]) < initial_len:
+            self.save_config(config)
+            return True
+        return False
+
+    def set_scaling(self, host: str, worker_type: str, count: int) -> bool:
+        """Sets the worker count for a specific host and task type."""
+        config = self.get_config()
+        scaling = config.setdefault("prospecting", {}).setdefault("scaling", {})
+        host_scaling = scaling.setdefault(host, {})
+        host_scaling[worker_type] = count
+        self.save_config(config)
+        return True
+
     def geocode_locations(self) -> int:
         """
         Scans the campaign's target locations CSV and fills in missing geocoordinates.

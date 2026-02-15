@@ -2,16 +2,8 @@
 import subprocess
 import time
 from rich.console import Console
-from typing import List, Tuple
 
 console = Console()
-
-HOSTS: List[Tuple[str, str]] = [
-    ("mstouffer", "octoprint.pi"),
-    ("mstouffer", "coclipi.pi"),
-    ("mstouffer", "cocli5x0.pi"),
-    ("mstouffer", "cocli5x1.pi"),
-]
 
 REMOTE_TMP_DIR = "/tmp/cocli_hotfix"
 
@@ -81,7 +73,28 @@ def deploy_to_host(user: str, host: str) -> None:
     console.print(f"  [green]Host {host} updated successfully.[/green]")
 
 def main() -> None: 
-    for user, host in HOSTS:
+    from cocli.core.config import get_campaign, load_campaign_config
+    campaign_name = get_campaign() or "turboship"
+    config = load_campaign_config(campaign_name)
+    
+    scaling = config.get("prospecting", {}).get("scaling", {})
+    cluster_config = config.get("cluster", {})
+    
+    nodes = cluster_config.get("nodes", [])
+    if not nodes:
+        for host_key in scaling.keys():
+            if host_key == "fargate":
+                continue
+            host = host_key if "." in host_key else f"{host_key}.pi"
+            nodes.append({"host": host, "label": host_key.capitalize()})
+
+    if not nodes:
+        console.print("[yellow]No worker nodes configured for this campaign.[/yellow]")
+        return
+
+    for node in nodes:
+        host = node["host"]
+        user = "mstouffer" # Default user
         try:
             deploy_to_host(user, host)
         except Exception as e:

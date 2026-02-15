@@ -90,17 +90,29 @@ def check_host(host: str, name: str) -> None:
         console.print("[dim]No active cocli containers.[/dim]")
 
 def main() -> None:
-    hosts = [
-        ("octoprint.pi", "Scraper (Pi 4)"),
-        ("coclipi.pi", "Details (Pi 3/4)"),
-        ("cocli5x0.pi", "Pi 5 Powerhouse"),
-        ("cocli5x1.pi", "Pi 5 Powerhouse")
-    ]
+    from cocli.core.config import get_campaign, load_campaign_config
+    campaign_name = get_campaign() or "turboship"
+    config = load_campaign_config(campaign_name)
     
-    console.print(Panel("[bold green]Cluster Health Overview[/bold green]", expand=False))
+    scaling = config.get("prospecting", {}).get("scaling", {})
+    cluster_config = config.get("cluster", {})
     
-    for host, label in hosts:
-        check_host(host, label)
+    nodes = cluster_config.get("nodes", [])
+    if not nodes:
+        for host_key in scaling.keys():
+            if host_key == "fargate":
+                continue
+            host = host_key if "." in host_key else f"{host_key}.pi"
+            nodes.append({"host": host, "label": host_key.capitalize()})
+
+    console.print(Panel(f"[bold green]Cluster Health Overview: {campaign_name}[/bold green]", expand=False))
+    
+    if not nodes:
+        console.print("[yellow]No worker nodes configured for this campaign.[/yellow]")
+        return
+
+    for node in nodes:
+        check_host(node["host"], node.get("label", node["host"]))
 
 if __name__ == "__main__":
     main()

@@ -177,13 +177,13 @@ async def test_j_moves_down_in_prospect_menu():
 
 
 
-        assert list_view.index == 0
+        assert list_view.index == 1
 
 
         await driver.press("j")
 
 
-        assert list_view.index == 1
+        assert list_view.index == 2
 
 
 
@@ -219,19 +219,19 @@ async def test_k_moves_up_in_prospect_menu():
         list_view = prospect_screen.query_one(ListView)
 
 
-        list_view.index = 1
+        list_view.index = 2
 
 
 
 
 
-        assert list_view.index == 1
+        assert list_view.index == 2
 
 
         await driver.press("k")
 
 
-        assert list_view.index == 0
+        assert list_view.index == 1
 
 
 

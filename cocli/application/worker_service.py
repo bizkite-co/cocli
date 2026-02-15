@@ -763,6 +763,64 @@ class WorkerService:
         except Exception as e:
             logger.error(f"HEARTBEAT CRITICAL FAILURE: {e}")
 
+    async def get_cluster_health(self) -> List[Dict[str, Any]]:
+        """
+        Checks health of all Raspberry Pi workers defined in the campaign configuration.
+        """
+        import subprocess
+        
+        # 1. Resolve hosts from config
+        scaling = self.config.get("prospecting", {}).get("scaling", {})
+        cluster_config = self.config.get("cluster", {})
+        
+        # Nodes can be explicitly defined in [cluster.nodes] 
+        # as a list of {"host": "...", "label": "..."}
+        # Or we fall back to the keys in prospecting.scaling
+        nodes = cluster_config.get("nodes", [])
+        
+        if not nodes:
+            for host_key in scaling.keys():
+                if host_key == "fargate":
+                    continue
+                # Default convention: host_key + .pi
+                host = host_key if "." in host_key else f"{host_key}.pi"
+                nodes.append({"host": host, "label": host_key.capitalize()})
+        
+        if not nodes:
+            # Final fallback to a default if nothing is configured
+            logger.warning(f"No workers configured for campaign {self.campaign_name}")
+            return []
+
+        results = []
+        for node in nodes:
+            host = node.get("host")
+            label = node.get("label", host)
+            if not host:
+                continue
+                
+            try:
+                # Combined command to save SSH overhead
+                cmd = "uptime; vcgencmd measure_volts; vcgencmd get_throttled; docker ps --format '{{.Names}}|{{.Status}}'"
+                res = await asyncio.to_thread(
+                    subprocess.run,
+                    ["ssh", "-o", "ConnectTimeout=3", f"mstouffer@{host}", cmd],
+                    capture_output=True, text=True
+                )
+                
+                host_info = {"host": host, "label": label, "online": res.returncode == 0}
+                if res.returncode == 0:
+                    lines = res.stdout.strip().split("\n")
+                    host_info["uptime"] = lines[0] if len(lines) > 0 else "Unknown"
+                    host_info["voltage"] = lines[1].replace("volt=", "") if len(lines) > 1 else "Unknown"
+                    host_info["throttled"] = lines[2] if len(lines) > 2 else "Unknown"
+                    host_info["containers"] = [line.split("|") for line in lines[3:] if "|" in line]
+                else:
+                    host_info["error"] = res.stderr.strip()
+                results.append(host_info)
+            except Exception as e:
+                results.append({"host": host, "label": label, "online": False, "error": str(e)})
+        return results
+
     async def _run_command_poller_loop(self, command_queue: Any, s3_client: Any) -> None:
         from ..application.campaign_service import CampaignService
         import shlex

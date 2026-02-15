@@ -4,6 +4,10 @@ from pydantic import BaseModel, Field
 from cocli.application.search_service import get_fuzzy_search_results
 from cocli.application.campaign_service import CampaignService
 from cocli.application.worker_service import WorkerService
+from cocli.application.reporting_service import ReportingService
+from cocli.application.audit_service import AuditService
+from cocli.application.data_sync_service import DataSyncService
+from cocli.application.deployment_service import DeploymentService
 from cocli.application.company_service import get_company_details_for_view
 from cocli.models.search import SearchResult
 from cocli.core.config import get_campaign
@@ -22,6 +26,10 @@ class ServiceContainer(BaseModel):
     # We use a factory that resolves the current campaign for the default service instances
     campaign_service: Any = Field(default_factory=lambda: CampaignService(campaign_name=get_campaign() or "default"))
     worker_service: Any = Field(default_factory=lambda: WorkerService(campaign_name=get_campaign() or "default"))
+    reporting_service: Any = Field(default_factory=lambda: ReportingService(campaign_name=get_campaign() or "default"))
+    audit_service: Any = Field(default_factory=lambda: AuditService(campaign_name=get_campaign() or "default"))
+    data_sync_service: Any = Field(default_factory=lambda: DataSyncService(campaign_name=get_campaign() or "default"))
+    deployment_service: Any = Field(default_factory=lambda: DeploymentService(campaign_name=get_campaign() or "default"))
 
     # If True, the TUI will perform searches synchronously (useful for tests)
     sync_search: bool = False
