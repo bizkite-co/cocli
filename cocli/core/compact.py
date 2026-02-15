@@ -54,7 +54,7 @@ class CompactManager:
                     bucket = data.get("aws", {}).get("data_bucket_name") or data.get("data_bucket_name")
                     if bucket:
                         return str(bucket)
-        return "roadmap-cocli-data-use1"
+        return ""
 
     @property
     def s3(self) -> Any:

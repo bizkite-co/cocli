@@ -38,6 +38,7 @@ def migrate(
         return
 
     legacy_tasks = []
+    # 1. Scan for Sharded Legacy Tasks (pending/{shard}/{md5}/task.json)
     for shard_dir in pending_root.iterdir():
         if shard_dir.is_dir() and len(shard_dir.name) == 1:
             for task_dir in shard_dir.iterdir():
@@ -45,6 +46,13 @@ def migrate(
                     task_json = task_dir / "task.json"
                     if task_json.exists():
                         legacy_tasks.append(task_json)
+    
+    # 2. Scan for Flat Legacy Tasks (pending/{md5}/task.json)
+    for task_dir in pending_root.iterdir():
+        if task_dir.is_dir() and len(task_dir.name) == 32:
+            task_json = task_dir / "task.json"
+            if task_json.exists():
+                legacy_tasks.append(task_json)
 
     console.print(f"Found [bold]{len(legacy_tasks)}[/bold] legacy tasks.")
     

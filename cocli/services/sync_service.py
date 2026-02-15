@@ -30,7 +30,7 @@ class SyncService:
         delete: bool = False, 
         dry_run: bool = False,
         limit: Optional[int] = None
-    ) -> subprocess.CompletedProcess:
+    ) -> subprocess.CompletedProcess[str]:
         """
         Syncs a campaign queue (pending folder) with S3.
         """
@@ -44,16 +44,13 @@ class SyncService:
         source = str(local_path) if direction == "up" else s3_path
         dest = s3_path if direction == "up" else str(local_path)
 
-        exclude = None
         if limit:
             # Simple simulation: exclude everything, then include specific shards
             # We'll just take the first 'limit' shards if they are dirs
-            exclude = ["*"]
             import os
             try:
                 # Get first N shards from local for 'up', or we'd need S3 list for 'down'
                 shards = sorted([d for d in os.listdir(local_path) if len(d) <= 2])[:limit]
-                exclude = ["*"]
                 # AWS CLI 'include' works after 'exclude'
                 # But it's easier to just pass them as extra args to _run_sync
                 # For now, let's just use a simple list of includes
@@ -65,10 +62,27 @@ class SyncService:
 
         return self._run_sync(source, dest, delete=delete, dry_run=dry_run)
 
-    def sync_indexes(self, dry_run: bool = False) -> List[subprocess.CompletedProcess]:
+    def sync_indexes(self, dry_run: bool = False) -> List[subprocess.CompletedProcess[str]]:
         """
-        Performs bidirectional sync of campaign indexes.
+        Performs bidirectional sync of both Shared Areas and Campaign indexes.
         """
+        results = []
+        results.extend(self.sync_shared_areas(dry_run=dry_run))
+        results.extend(self.sync_campaign_indexes(dry_run=dry_run))
+        return results
+
+    def sync_shared_areas(self, dry_run: bool = False) -> List[subprocess.CompletedProcess[str]]:
+        """Syncs the shared scraped_areas index."""
+        local_areas = paths.indexes / "scraped_areas"
+        s3_path = f"s3://{self.bucket}/indexes/scraped_areas/"
+        
+        results = []
+        results.append(self._run_sync(s3_path, str(local_areas), dry_run=dry_run))
+        results.append(self._run_sync(str(local_areas), s3_path, dry_run=dry_run))
+        return results
+
+    def sync_campaign_indexes(self, dry_run: bool = False) -> List[subprocess.CompletedProcess[str]]:
+        """Syncs campaign-specific indexes."""
         local_idx = paths.campaign_indexes(self.campaign_name)
         s3_key = f"campaigns/{self.campaign_name}/indexes/"
         s3_path = f"s3://{self.bucket}/{s3_key}"
@@ -90,7 +104,7 @@ class SyncService:
         exclude: Optional[List[str]] = None,
         include: Optional[List[str]] = None,
         limit: Optional[int] = None
-    ) -> subprocess.CompletedProcess:
+    ) -> subprocess.CompletedProcess[str]:
         """Helper to execute the AWS CLI command with logging."""
         from datetime import datetime
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")

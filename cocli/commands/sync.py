@@ -1,7 +1,7 @@
 import typer
 from typing import Optional
 from rich.console import Console
-from ..services.sync_service import SyncService, SyncDirection
+from ..services.sync_service import SyncService
 
 console = Console()
 app = typer.Typer(help="Commands for syncing data with S3.")

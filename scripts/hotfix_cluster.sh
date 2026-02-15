@@ -92,26 +92,38 @@ hotfix_node() {
 
     printf "[${BLUE}HOTFIX${NC}] Deploying to $host (Campaign: $node_campaign)...\n"
     
-    # 1. Stop and Maintenance
+    # 1. Stop and Cleanup existing
     ssh $RPI_USER@$host "docker stop cocli-supervisor && docker rm cocli-supervisor" >/dev/null 2>&1
-    ssh $RPI_USER@$host "docker run -d --name cocli-supervisor --shm-size=2gb -e TZ=America/Los_Angeles -e CAMPAIGN_NAME='$node_campaign' -e COCLI_QUEUE_TYPE=filesystem -v ~/repos/data:/app/data -v ~/.aws:/root/.aws:ro -v ~/.cocli:/root/.cocli:ro --entrypoint sleep cocli-worker-rpi:latest infinity" >/dev/null
     
-    # 2. Wipe dist-packages and /app
-    ssh $RPI_USER@$host "docker exec cocli-supervisor bash -c 'rm -rf /usr/local/lib/python3.12/dist-packages/cocli /app/cocli /app/build'" >/dev/null 2>&1
+    # 4. Start Final Container (Wait for it to be ready)
+    ssh $RPI_USER@$host "docker run -d --restart always --name cocli-supervisor --shm-size=2gb -e TZ=America/Los_Angeles -e CAMPAIGN_NAME='$node_campaign' -e COCLI_HOSTNAME=$short_name -e COCLI_QUEUE_TYPE=filesystem -v ~/repos/data:/app/data -v ~/.aws:/root/.aws:ro -v ~/.cocli:/root/.cocli:ro --entrypoint sleep cocli-worker-rpi:latest infinity" >/dev/null
     
-    # 3. Push and Symlink
+    # 5. Push Code into the running container
     ssh $RPI_USER@$host "mkdir -p /tmp/cocli_hotfix"
+    # Use -C to compress during scp for speed over slow PI links
     scp -qr cocli scripts VERSION pyproject.toml $RPI_USER@$host:/tmp/cocli_hotfix/
     ssh $RPI_USER@$host "docker cp /tmp/cocli_hotfix/. cocli-supervisor:/app/"
     
-    # FORCED SYMLINK: Make dist-packages point directly to our hotfixed code
+    # 6. Apply Hotfix Symlinks and cleanup dist-packages
     ssh $RPI_USER@$host "docker exec cocli-supervisor bash -c 'rm -rf /usr/local/lib/python3.12/dist-packages/cocli && ln -s /app/cocli /usr/local/lib/python3.12/dist-packages/cocli'"
     
-    # 4. Restore Real Entrypoint
-    ssh $RPI_USER@$host "docker stop cocli-supervisor && docker rm cocli-supervisor" >/dev/null
-    ssh $RPI_USER@$host "docker run -d --restart always --name cocli-supervisor --shm-size=2gb -e TZ=America/Los_Angeles -e CAMPAIGN_NAME='$node_campaign' -e COCLI_HOSTNAME=$short_name -e COCLI_QUEUE_TYPE=filesystem -v ~/repos/data:/app/data -v ~/.aws:/root/.aws:ro -v ~/.cocli:/root/.cocli:ro cocli-worker-rpi:latest cocli worker supervisor --debug" >/dev/null
+    # 7. Final Step: Switch from 'sleep infinity' to real supervisor process
+    # We do this by stopping and starting with the right command, 
+    # but wait, if we stop it we lose the files if we didn't use a volume.
+    # INSTEAD: We will use 'docker exec' to start the supervisor or just 
+    # start it correctly the first time and CP into it while it runs.
     
-    # 5. Verify
+    # REVISED STRATEGY: Start correctly, then CP and restart process.
+    ssh $RPI_USER@$host "docker stop cocli-supervisor && docker rm cocli-supervisor" >/dev/null 2>&1
+    ssh $RPI_USER@$host "docker run -d --restart always --name cocli-supervisor --shm-size=2gb -e TZ=America/Los_Angeles -e CAMPAIGN_NAME='$node_campaign' -e COCLI_HOSTNAME=$short_name -e COCLI_QUEUE_TYPE=filesystem -v ~/repos/data:/app/data -v ~/.aws:/root/.aws:ro -v ~/.cocli:/root/.cocli:ro cocli-worker-rpi:latest sleep infinity" >/dev/null
+    
+    ssh $RPI_USER@$host "docker cp /tmp/cocli_hotfix/. cocli-supervisor:/app/"
+    ssh $RPI_USER@$host "docker exec cocli-supervisor bash -c 'rm -rf /usr/local/lib/python3.12/dist-packages/cocli && ln -s /app/cocli /usr/local/lib/python3.12/dist-packages/cocli'"
+    
+    # RESTART Process inside container (Supervisor)
+    ssh $RPI_USER@$host "docker exec -d cocli-supervisor cocli worker supervisor --debug"
+    
+    # 8. Verify
     verify_node $host
     return $?
 }

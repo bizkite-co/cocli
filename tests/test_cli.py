@@ -15,7 +15,7 @@ def test_sync_command_success(mock_exists, mock_subprocess_run, runner, cli_app)
     mock_subprocess_run.return_value.check_returncode.return_value = None
 
     # Test running sync for a specific campaign
-    result = runner.invoke(cli_app, ["sync", "my-campaign"])
+    result = runner.invoke(cli_app, ["sync", "indexes", "my-campaign"])
 
     assert result.exit_code == 0
     assert "Sync Complete!" in result.stdout
@@ -39,7 +39,7 @@ def test_sync_command_dry_run(mock_exists, mock_subprocess_run, runner, cli_app)
     mock_exists.return_value = True
     mock_subprocess_run.return_value.check_returncode.return_value = None
 
-    result = runner.invoke(cli_app, ["sync", "my-campaign", "--dry-run"])
+    result = runner.invoke(cli_app, ["sync", "indexes", "my-campaign", "--dry-run"])
 
     assert result.exit_code == 0
     
@@ -59,7 +59,7 @@ def test_sync_command_failure(mock_exists, mock_subprocess_run, runner, cli_app)
     # Simulate an error on the first call
     mock_subprocess_run.side_effect = subprocess.CalledProcessError(1, ["aws", "s3", "sync"])
 
-    result = runner.invoke(cli_app, ["sync", "my-campaign"])
+    result = runner.invoke(cli_app, ["sync", "indexes", "my-campaign"])
 
     assert result.exit_code == 1
-    assert "Error running sync" in result.stdout
+    assert "Sync Failed" in result.stdout
