@@ -67,14 +67,18 @@ class FilesystemQueue:
         # We need a worker ID for the lease
         self.worker_id = os.getenv("COCLI_HOSTNAME") or os.getenv("HOSTNAME") or os.getenv("COMPUTERNAME") or "unknown-worker"
 
+    def _get_shard(self, task_id: str) -> str:
+        """Default sharding logic (PlaceID based). Overridden by subclasses."""
+        return get_shard_id(task_id)
+
     def _get_s3_lease_key(self, task_id: str) -> str:
         # V2 S3 Path matches the local structure under the campaign
-        shard = get_shard_id(task_id)
-        return f"campaigns/{self.campaign_name}/queues/{self.queue_name}/pending/{shard}/{task_id}/lease.json"
+        shard = self._get_shard(task_id)
+        return paths.s3_queue_pending(self.campaign_name, self.queue_name, shard, task_id) + "lease.json"
 
     def _get_s3_task_key(self, task_id: str) -> str:
-        shard = get_shard_id(task_id)
-        return f"campaigns/{self.campaign_name}/queues/{self.queue_name}/pending/{shard}/{task_id}/task.json"
+        shard = self._get_shard(task_id)
+        return paths.s3_queue_pending(self.campaign_name, self.queue_name, shard, task_id) + "task.json"
 
     def _get_task_dir(self, task_id: str) -> Path:
         # Sanitize task_id for directory name
@@ -242,8 +246,8 @@ class FilesystemQueue:
         if self.pending_dir.exists():
             for entry in self.pending_dir.iterdir():
                 if entry.is_dir():
-                    # If it's a shard (single char), look inside
-                    if len(entry.name) == 1:
+                    # If it's a shard (1 or 2 chars), look inside
+                    if len(entry.name) in [1, 2]:
                         for sub_entry in entry.iterdir():
                             if sub_entry.is_dir():
                                 candidates.append(sub_entry)
@@ -260,7 +264,7 @@ class FilesystemQueue:
             # Re-scan after discovery
             for entry in self.pending_dir.iterdir():
                 if entry.is_dir():
-                    if len(entry.name) == 1:
+                    if len(entry.name) in [1, 2]:
                         for sub_entry in entry.iterdir():
                             if sub_entry.is_dir() and sub_entry not in candidates:
                                 candidates.append(sub_entry)
@@ -764,22 +768,41 @@ class FilesystemEnrichmentQueue(FilesystemQueue):
     def __init__(self, campaign_name: str, s3_client: Any = None, bucket_name: Optional[str] = None):
         super().__init__(campaign_name, "enrichment", s3_client=s3_client, bucket_name=bucket_name)
 
-    def push(self, task: QueueMessage) -> str: # type: ignore
-        # Use a hash of the company_slug + domain to avoid filesystem length limits
-        import hashlib
-        raw_id = f"{task.company_slug}_{task.domain}"
-        task_id = hashlib.md5(raw_id.encode()).hexdigest()
+    def push(self, message: Union[QueueMessage, Any]) -> str: # type: ignore
+        from ...models.campaigns.queue.enrichment import EnrichmentTask
+        
+        # Upgrade QueueMessage to EnrichmentTask to get Ordinant properties
+        if isinstance(message, EnrichmentTask):
+            task = message
+        else:
+            task = EnrichmentTask(**message.model_dump())
+            
+        task_id = task.task_id
+        shard = task.shard
+        
+        # Use super().push with the deterministic task_id
         pushed_id = super().push(task_id, task.model_dump())
         
         if self.s3_client and self.bucket_name:
             try:
-                task_dir = self._get_task_dir(task_id)
+                # Use the model's own path resolution logic
+                task_dir = self._get_task_dir(task_id) # Uses _get_shard internally
                 task_file = task_dir / "task.json"
-                s3_key = self._get_s3_task_key(task_id)
+                s3_key = task.get_s3_task_key()
+                
                 self.s3_client.upload_file(str(task_file), self.bucket_name, s3_key)
+                logger.debug(f"Pushed Enrichment task {task_id} to S3 shard {shard}")
             except Exception as e:
-                logger.error(f"Failed immediate S3 push for enrichment: {e}")
+                logger.error(f"Failed immediate S3 push for enrichment {task_id}: {e}")
         return pushed_id
+
+    def _get_shard(self, task_id: str) -> str:
+        """
+        Gold Standard: task_id is the Domain.
+        Shard is sha256(domain)[:2].
+        """
+        from cocli.core.sharding import get_domain_shard
+        return str(get_domain_shard(task_id))
 
     def poll(self, batch_size: int = 1) -> List[QueueMessage]:
         return self.poll_frontier(QueueMessage, batch_size)

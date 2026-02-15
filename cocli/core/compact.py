@@ -95,15 +95,14 @@ class CompactManager:
             logger.error(f"Failed to release lock: {e}")
 
     def isolate_wal(self) -> int:
-        """Moves files from wal/ to processing/run_id/ on S3 using AWS CLI for speed."""
+        """Moves files from wal/ to processing/run_id/ on S3 and clears local WAL."""
         logger.info(f"Isolating WAL files to {self.s3_proc_prefix}...")
         
         src = f"s3://{self._bucket}/{self.s3_wal_prefix}"
         dest = f"s3://{self._bucket}/{self.s3_proc_prefix}"
         
         try:
-            # We use shell mv because it is multi-threaded and much faster than Boto3
-            # All shell output is redirected to the log file
+            # 1. MOVE REMOTE WAL -> PROCESSING
             from contextlib import nullcontext
             with open(self.log_file, "a") if self.log_file else nullcontext() as f:
                 result = subprocess.run(
@@ -113,7 +112,16 @@ class CompactManager:
             
             if result.returncode == 0:
                 logger.info("Isolation complete.")
-                return 1 # Indicate progress was made
+                
+                # 2. PURGE LOCAL WAL (It is now safe to do so as S3 is the source of truth for the merge)
+                local_wal = self.index_dir / "wal"
+                if local_wal.exists():
+                    logger.info(f"Purging local WAL shards from {local_wal}...")
+                    import shutil
+                    shutil.rmtree(local_wal)
+                    local_wal.mkdir(parents=True, exist_ok=True)
+                
+                return 1 
             else:
                 return 0
         except Exception as e:

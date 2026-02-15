@@ -6,7 +6,6 @@ from cocli.core.config import get_companies_dir, get_campaigns_dir
 from cocli.models.company import Company
 from cocli.core.prospects_csv_manager import ProspectsIndexManager
 from cocli.core.queue.factory import get_queue_manager
-from cocli.models.queue import QueueMessage
 from cocli.utils.usv_utils import USVDictWriter
 from pathlib import Path
 from typing import Optional, Dict, Set
@@ -94,6 +93,7 @@ def index_to_folders(
     created_count = 0
     updated_count = 0
     tagged_count = 0
+    enqueued_count = 0
     
     prospects = list(manager.read_all_prospects())
     logger.info(f"Loaded {len(prospects)} prospects from index.")
@@ -235,14 +235,19 @@ def index_to_folders(
         # 6. ENQUEUE FOR ENRICHMENT (The "Pipe")
         if prospect.domain and prospect.name:
             try:
-                # We use the same QueueMessage pattern as the worker service
-                enrichment_queue.push(QueueMessage(
+                from cocli.models.campaigns.queue.enrichment import EnrichmentTask
+                
+                # We use the Gold Standard model which handles its own Ordinant (Paths/Shards)
+                task = EnrichmentTask(
                     domain=prospect.domain,
                     company_slug=slug,
                     campaign_name=campaign_name,
                     force_refresh=False
-                ))
-                logger.debug(f"Enqueued {slug} for enrichment")
+                )
+                
+                enrichment_queue.push(task)
+                logger.info(f"Enqueued {slug} for enrichment (Shard: {task.shard})")
+                enqueued_count += 1
             except Exception as e:
                 logger.error(f"Failed to enqueue {slug}: {e}")
 
@@ -267,6 +272,7 @@ def index_to_folders(
     console.print("\n[bold green]Sync Complete![/bold green]")
     console.print(f"Folders Created: {created_count}")
     console.print(f"Companies Updated: {updated_count}")
+    console.print(f"Companies Enqueued: {enqueued_count}")
     console.print(f"Campaign Tags Added: {tagged_count}")
     logger.info("Sync process finished successfully.")
 

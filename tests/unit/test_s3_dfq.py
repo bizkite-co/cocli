@@ -4,7 +4,6 @@ from unittest.mock import MagicMock, patch
 from datetime import datetime, UTC, timedelta
 from cocli.core.queue.filesystem import FilesystemEnrichmentQueue
 from cocli.models.queue import QueueMessage
-from cocli.core.sharding import get_shard_id
 
 @pytest.fixture
 def mock_s3():
@@ -14,21 +13,24 @@ def test_s3_conditional_lease_success(tmp_path, mock_s3):
     with patch('cocli.core.paths.paths.root', tmp_path):
         campaign = "test_s3_campaign"
         bucket = "test-bucket"
+        domain = "example.com"
         
         q = FilesystemEnrichmentQueue(campaign, s3_client=mock_s3, bucket_name=bucket)
         
         task = QueueMessage(
-            domain="example.com",
+            domain=domain,
             company_slug="example-co",
             campaign_name=campaign
         )
         
         # 1. Push task (should push to S3)
-        task_id = q.push(task)
+        task_id = q.push(task) # This is now the domain 'example.com'
         
         # Check S3 upload was called for task.json
-        shard = get_shard_id(task_id)
-        s3_task_key = f"campaigns/{campaign}/queues/enrichment/pending/{shard}/{task_id}/task.json"
+        from cocli.core.sharding import get_domain_shard
+        shard = get_domain_shard(domain) # 'a3' for example.com
+        
+        s3_task_key = f"campaigns/{campaign}/queues/enrichment/pending/{shard}/{domain}/task.json"
         mock_s3.upload_file.assert_called_with(
             str(q._get_task_dir(task_id) / "task.json"),
             bucket,
@@ -41,10 +43,10 @@ def test_s3_conditional_lease_success(tmp_path, mock_s3):
         
         tasks = q.poll(batch_size=1)
         assert len(tasks) == 1
-        assert tasks[0].company_slug == "example-co"
+        assert tasks[0].domain == domain
         
         # Check S3 put_object was called with IfNoneMatch='*'
-        s3_lease_key = f"campaigns/{campaign}/queues/enrichment/pending/{shard}/{task_id}/lease.json"
+        s3_lease_key = f"campaigns/{campaign}/queues/enrichment/pending/{shard}/{domain}/lease.json"
         mock_s3.put_object.assert_called()
         args, kwargs = mock_s3.put_object.call_args
         assert kwargs['Key'] == s3_lease_key

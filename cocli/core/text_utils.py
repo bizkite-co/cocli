@@ -166,3 +166,34 @@ def parse_frontmatter(content: str) -> Optional[str]:
         return content[3:end_idx]
         
     return None
+
+def extract_domain(url: Optional[str]) -> Optional[str]:
+    """
+    Extracts the base domain from a URL, stripping 'www.' and paths.
+    """
+    if not url:
+        return None
+        
+    from urllib.parse import urlparse
+    
+    try:
+        if "://" not in url:
+            url = "http://" + url
+            
+        parsed = urlparse(url)
+        domain = parsed.netloc.lower()
+        
+        if not domain:
+            return None
+            
+        # Strip www.
+        if domain.startswith("www."):
+            domain = domain[4:]
+            
+        # Strip common ports if present
+        if ":" in domain:
+            domain = domain.split(":")[0]
+            
+        return domain
+    except Exception:
+        return None

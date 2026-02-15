@@ -173,6 +173,13 @@ class GoogleMapsProspect(GoogleMapsIdx):
         return cls(**data) # type: ignore
 
     @model_validator(mode='after')
+    def extract_domain(self) -> 'GoogleMapsProspect':
+        if self.website and not self.domain:
+            from ..core.text_utils import extract_domain
+            self.domain = extract_domain(self.website)
+        return self
+
+    @model_validator(mode='after')
     def validate_identity_tripod(self) -> 'GoogleMapsProspect':
         from cocli.core.text_utils import slugify, calculate_company_hash
         
@@ -287,16 +294,18 @@ class GoogleMapsProspect(GoogleMapsIdx):
             if i < len(parts):
                 val = parts[i]
                 if val == "":
-                    data[field_name] = None
+                    # Let pydantic handle defaults for required fields
+                    pass 
                 else:
                     if field_name in ["created_at", "updated_at"]:
                         try:
                             data[field_name] = datetime.fromisoformat(val)
                         except ValueError:
-                            data[field_name] = datetime.now(UTC)
+                            # If invalid, let validator handle or use default
+                            pass
                     else:
                         data[field_name] = val
-            else:
-                data[field_name] = None
-        
+                
         return cls.model_validate(data)
+
+    

@@ -54,3 +54,13 @@ def get_grid_tile_id(latitude: float, longitude: float) -> str:
 def get_shard_id(identifier: str) -> str:
     """Legacy generic sharding. Defaults to Place ID logic."""
     return get_place_id_shard(identifier)
+
+def get_domain_shard(domain: str) -> str:
+    """
+    Returns a deterministic shard ID (00-ff) based on domain hash.
+    Matches the DomainIndexManager 'Gold Standard' for domain-centric data.
+    """
+    import hashlib
+    if not domain:
+        return "__"
+    return hashlib.sha256(domain.encode()).hexdigest()[:2]
