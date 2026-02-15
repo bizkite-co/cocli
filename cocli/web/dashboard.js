@@ -203,12 +203,18 @@ function createCompanyCard(p, index) {
             </div>
         </div>` : '';
 
-    const keywordsHtml = p.keywords ? `
+    const tagsHtml = p.tags ? `
         <div class="info-row">
-            <strong>Keywords:</strong> 
+            <strong>Tags:</strong> 
             <div class="keyword-tags">
-                ${p.keywords.split(';').map(k => `<span class="keyword-tag" onclick="filterByKeyword('${k.trim()}')" style="cursor:pointer;">${k.trim()}</span>`).join(' ')}
+                ${p.tags.split(';').map(k => `<span class="keyword-tag" onclick="filterByKeyword('${k.trim()}')" style="cursor:pointer;">${k.trim()}</span>`).join(' ')}
             </div>
+        </div>` : '';
+
+    const locationHtml = (p.city || p.state) ? `
+        <div class="info-row">
+            <strong>Location:</strong> 
+            <span class="info-data">${[p.city, p.state].filter(Boolean).join(', ')}</span>
         </div>` : '';
 
     const ratingHtml = p.rating ? `
@@ -239,9 +245,10 @@ function createCompanyCard(p, index) {
                     <div class="email-list">${p.emails.split(';').map(e => `<div>${e.trim()}</div>`).join('')}</div>
                 </div>
                 ${formattedPhone ? `<div class="info-row"><strong>Phone:</strong> <span class="phone-number">${formattedPhone}</span></div>` : ''}
+                ${locationHtml}
                 ${ratingHtml}
                 ${p.categories ? `<div class="info-row"><strong>Categories:</strong> <span class="info-data"><small>${p.categories}</small></span></div>` : ''}
-                ${keywordsHtml}
+                ${tagsHtml}
                 
                 <div class="expandable-area">
                     ${servicesHtml}
@@ -304,7 +311,9 @@ function filterProspects() {
             (p.categories && p.categories.toLowerCase().includes(query)) ||
             (p.services && p.services.toLowerCase().includes(query)) ||
             (p.products && p.products.toLowerCase().includes(query)) ||
-            (p.keywords && p.keywords.toLowerCase().includes(query));
+            (p.tags && p.tags.toLowerCase().includes(query)) ||
+            (p.city && p.city.toLowerCase().includes(query)) ||
+            (p.state && p.state.toLowerCase().includes(query));
         
         const matchesCat = !cat || (p.categories && p.categories.includes(cat));
         

@@ -104,8 +104,8 @@ def index_to_folders(
             company_obj.longitude = prospect.longitude
             updated = True
             
-        if company_obj.name == slug and prospect.name:
-            logger.info(f"Setting proper name for {slug}: {prospect.name}")
+        if company_obj.name != prospect.name and prospect.name:
+            logger.info(f"Syncing name for {slug}: {company_obj.name} -> {prospect.name}")
             company_obj.name = prospect.name
             updated = True
 

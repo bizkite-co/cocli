@@ -152,56 +152,6 @@ class WebsiteCompiler(BaseCompiler):
             except Exception:
                 pass
 
-        # Name correction: if the name is currently a slug, domain, or generic, try to get it from website title
-        current_name = company.name
-        is_slug_based = current_name == company.slug or (company.domain and current_name == company.domain)
-        generic_names = {"N/A", "Home", "Home Page", "Flooring Contractor", "Flooring", "Contractor", "Gmail", "Currently.com", "403 Forbidden", "404 Not Found", "Facebook", "Instagram", "dot.cards"}
-        is_generic = current_name in generic_names
-        is_domain_like = "." in current_name and " " not in current_name
-        is_junk_title = any(kw in current_name.lower() for kw in ["servicing", "flooring store", "advisor near me", "financial advisor in"])
-        
-        # 1. First priority: if we have a Place ID name from enrichment (Website model doesn't have it, but company might)
-        # Actually, the Website model is for website enrichment. Google Maps info is usually already in the company model
-        # from the prospect scrape. We should AVOID overwriting a Maps name with a website title.
-        
-        if is_slug_based or is_generic or is_domain_like or is_junk_title or len(current_name) < 4:
-            website_title = getattr(website_data, "title", None)
-            # If no title, maybe it's in company_name
-            if not website_title:
-                website_title = getattr(website_data, "company_name", None)
-
-            if website_title and len(website_title) > 3:
-                # Basic cleaning of title: check if there is a separator
-                if " | " in website_title:
-                    parts = [p.strip() for p in website_title.split(" | ")]
-                elif " - " in website_title:
-                    parts = [p.strip() for p in website_title.split(" - ")]
-                else:
-                    parts = [website_title.strip()]
-                
-                # Heuristic: find a part that is NOT a generic slogan and NOT a generic name
-                potential_brands = []
-                for p in parts:
-                    p_lower = p.lower()
-                    # SEO Junk detection
-                    is_junk_part = any(kw in p_lower for kw in ["servicing", "flooring store", "contractor in", "flooring in", "near me", "advisor in", "financial planning in", "best financial"])
-                    is_generic_name = p.strip() in generic_names
-                    if not is_junk_part and not is_generic_name:
-                        potential_brands.append(p)
-                
-                if potential_brands:
-                    # Prefer the one that isn't just keywords
-                    best_part = potential_brands[-1] # Often the brand is at the end: 'Slogan | Brand'
-                else:
-                    best_part = parts[-1] # Fallback to last part
-                
-                if len(best_part) > 3 and best_part not in generic_names:
-                    # Final check: is the new name still SEO junk?
-                    is_new_name_junk = any(kw in best_part.lower() for kw in ["near me", "best financial", "financial advisor in"])
-                    if not is_new_name_junk:
-                        company.name = best_part
-                        updated = True
-
         if updated:
             create_company_files(company, company_dir)
             company.save()

@@ -30,11 +30,11 @@ def setup_export_logging(campaign_name: str) -> Path:
         force=True
     )
     # Also silence the standard cocli logger to terminal
-    for name in ["cocli.models.company", "root"]:
-        l = logging.getLogger(name)
-        l.setLevel(logging.ERROR)
-        l.propagate = False
-        l.addHandler(logging.FileHandler(log_file))
+    for logger_name in ["cocli.models.company", "root"]:
+        lgr = logging.getLogger(logger_name)
+        lgr.setLevel(logging.ERROR)
+        lgr.propagate = False
+        lgr.addHandler(logging.FileHandler(log_file))
         
     return log_file
 
@@ -82,7 +82,6 @@ def main(
         raise typer.Exit(1)
 
     log_file = setup_export_logging(campaign_name)
-    logger = logging.getLogger("export")
     console.print(f"Exporting leads for [bold]{campaign_name}[/bold]")
     console.print(f"Detailed logs: [cyan]{log_file}[/cyan]")
 
@@ -225,27 +224,42 @@ def main(
         if reviews == "0" and idx_prospect:
             reviews = str(idx_prospect.reviews_count or "0")
 
+        # Combine Tags and Keywords, filtering out the campaign name
+        combined_tags = set(company_obj.tags)
+        if website_data and website_data.found_keywords:
+            combined_tags.update(website_data.found_keywords)
+        if idx_prospect and idx_prospect.keyword:
+            combined_tags.add(idx_prospect.keyword)
+            
+        # Filter out common/campaign tags
+        filtered_tags = sorted([t for t in combined_tags if t.lower() not in [campaign_name.lower(), "prospect", "customer"]])
+
+        city = company_obj.city or (idx_prospect.city if idx_prospect else "")
+        state = company_obj.state or (idx_prospect.state if idx_prospect else "")
+
         results.append({
             "company": company_obj.name,
             "domain": domain,
             "emails": "; ".join(emails),
             "phone": phone,
             "website": domain,
+            "city": city,
+            "state": state,
             "categories": "; ".join(sorted(list(set(company_obj.categories)))),
             "services": "; ".join(sorted(list(set(company_obj.services)))),
             "products": "; ".join(sorted(list(set(company_obj.products)))),
-            "keywords": "; ".join(sorted(list(set(found_keywords)))),
+            "tags": "; ".join(filtered_tags),
             "gmb_url": gmb_url or "",
             "rating": rating,
             "reviews": reviews
         })
 
     with open(output_file, "w", newline="") as f:
-        writer = csv.DictWriter(f, fieldnames=["company", "domain", "emails", "phone", "website", "categories", "services", "products", "keywords", "gmb_url", "rating", "reviews"])
+        writer = csv.DictWriter(f, fieldnames=["company", "domain", "emails", "phone", "website", "city", "state", "categories", "services", "products", "tags", "gmb_url", "rating", "reviews"])
         writer.writeheader()
         writer.writerows(results)
         
-    console.print(f"\n[bold green]Success![/bold green]")
+    console.print("\n[bold green]Success![/bold green]")
     console.print(f"Exported: [bold]{len(results)}[/bold] companies")
     if skipped_count:
         console.print(f"Skipped: [bold red]{skipped_count}[/bold red] malformed records (check log)")
