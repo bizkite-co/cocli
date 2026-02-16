@@ -1,6 +1,7 @@
 from typing import Any, Dict, TYPE_CHECKING, cast
 import asyncio
 import logging
+from datetime import datetime
 from textual.app import ComposeResult
 from textual.containers import Container, VerticalScroll, Horizontal
 from textual.widgets import Label, ListView, ListItem, Static, Button
@@ -40,18 +41,24 @@ class ApplicationView(Container):
         self.can_focus = True
 
     def compose(self) -> ComposeResult:
-        # Sidebar for top-level Application categories
-        with VerticalScroll(id="app_sidebar"):
-            yield Label("[bold]Application[/bold]", classes="sidebar-title")
-            yield ListView(
-                ListItem(Label("Campaigns"), id="nav_campaigns"),
-                ListItem(Label("Environment Status"), id="nav_status"),
-                ListItem(Label("Operations"), id="nav_operations"),
-                id="app_nav_list"
-            )
-        
-        # The main content area
-        yield Container(id="app_main_content")
+        with Horizontal():
+            # Sidebar for top-level Application categories
+            with VerticalScroll(id="app_sidebar"):
+                yield Label("[bold]Application[/bold]", classes="sidebar-title")
+                yield ListView(
+                    ListItem(Label("Campaigns"), id="nav_campaigns"),
+                    ListItem(Label("Environment Status"), id="nav_status"),
+                    ListItem(Label("Operations"), id="nav_operations"),
+                    id="app_nav_list"
+                )
+            
+            # The main content area
+            yield Container(id="app_main_content")
+
+            # Right sidebar for Recent Operations
+            with VerticalScroll(id="app_recent_runs"):
+                yield Label("[bold]Recent Runs[/bold]", classes="sidebar-title")
+                yield ListView(id="recent_runs_list")
 
     def on_mount(self) -> None:
         # Start in Operations (index 2) as requested
@@ -59,6 +66,7 @@ class ApplicationView(Container):
         nav_list.index = 2
         nav_list.focus()
         self.show_category("operations")
+        self.update_recent_runs()
 
     def action_reset_view(self) -> None:
         """Move focus back to the main navigation list."""
@@ -68,7 +76,6 @@ class ApplicationView(Container):
         self.query_one("#app_nav_list", ListView).focus()
 
     def action_focus_content(self) -> None:
-        content = self.query_one("#app_main_content")
         # Delegate focus to the specific category widget
         if self.active_category == "campaigns":
             try:
@@ -80,17 +87,30 @@ class ApplicationView(Container):
                 self.query_one(OperationsMenu).focus()
             except Exception:
                 pass
-        else:
-            # Fallback
-            for widget in content.query("*"):
-                if widget.can_focus:
-                    widget.focus()
-                    break
+        elif self.active_category == "status":
+            try:
+                self.query_one(StatusView).focus()
+            except Exception:
+                pass
 
     def action_select_item(self) -> None:
         focused = self.app.focused
         if isinstance(focused, ListView):
             focused.action_select_cursor()
+
+    def on_key(self, event: events.Key) -> None:
+        """Handle sidebar navigation keys."""
+        nav_list = self.query_one("#app_nav_list", ListView)
+        if nav_list.has_focus:
+            if event.key == "j":
+                nav_list.action_cursor_down()
+                event.prevent_default()
+            elif event.key == "k":
+                nav_list.action_cursor_up()
+                event.prevent_default()
+            elif event.key == "l" or event.key == "enter":
+                nav_list.action_select_cursor()
+                event.prevent_default()
 
     @on(ListView.Selected, "#app_nav_list")
     def handle_nav_selection(self, event: ListView.Selected) -> None:
@@ -132,6 +152,21 @@ class ApplicationView(Container):
             
         elif category == "operations":
             content.mount(OperationsMenu())
+
+    def update_recent_runs(self) -> None:
+        """Update the list of recent process runs."""
+        try:
+            app = cast("CocliApp", self.app)
+            runs_list = self.query_one("#recent_runs_list", ListView)
+            runs_list.clear()
+            
+            for run in reversed(app.process_runs[-15:]):
+                status_color = "green" if run.status == "success" else "yellow" if run.status == "running" else "red"
+                timestamp = run.start_time.strftime("%H:%M:%S")
+                label = f"[{status_color}]{run.title}[/] [dim]({timestamp})[/]"
+                runs_list.append(ListItem(Static(label)))
+        except Exception:
+            pass
 
     @on(CampaignSelection.CampaignSelected)
     def handle_campaign_highlight(self, message: CampaignSelection.CampaignSelected) -> None:
@@ -298,7 +333,27 @@ class OperationsMenu(Container):
         return details.get(op_id, {"title": "Unknown", "description": "No description available."})
 
     def get_last_run_info(self, op_id: str) -> str:
-        # Placeholder: in a real impl, we'd read from a local JSON state file
+        """Detect last run time from memory or disk cache."""
+        app = cast("CocliApp", self.app)
+        
+        # 1. Check in-memory session runs first
+        runs = [r for r in app.process_runs if r.op_id == op_id and r.status == "success"]
+        if runs:
+            latest = max(runs, key=lambda r: r.start_time)
+            return latest.start_time.strftime("%Y-%m-%d %H:%M:%S")
+
+        # 2. Check disk cache for reports
+        if op_id == "op_report":
+            campaign = app.services.reporting_service.campaign_name
+            cached = app.services.reporting_service.load_cached_report(campaign, "status")
+            if cached and cached.get("last_updated"):
+                try:
+                    from datetime import datetime
+                    dt = datetime.fromisoformat(cached["last_updated"])
+                    return dt.strftime("%Y-%m-%d %H:%M:%S")
+                except Exception:
+                    return str(cached["last_updated"])
+
         return "Never"
 
     def log_callback(self, text: str) -> None:
@@ -319,6 +374,20 @@ class OperationsMenu(Container):
         app = cast("CocliApp", self.app)
         services = app.services
         
+        # Log to recent runs
+        from ..navigation import ProcessRun
+        title = self.get_op_details(op_id)["title"]
+        run_record = ProcessRun(op_id, title)
+        app.process_runs.append(run_record)
+        
+        # Trigger UI update for recent runs
+        try:
+            parent_view = next((a for a in self.ancestors if isinstance(a, ApplicationView)), None)
+            if parent_view:
+                parent_view.call_after_refresh(parent_view.update_recent_runs)
+        except Exception:
+            pass
+
         try:
             with capture_logs(self.log_callback):
                 if op_id == "op_report":
@@ -334,9 +403,27 @@ class OperationsMenu(Container):
                 elif op_id == "op_analyze_emails":
                     await asyncio.to_thread(services.reporting_service.get_email_analysis)
             
+            run_record.status = "success"
             indicator.update("[bold green]Success[/bold green]")
-            self.app.notify("Operation Complete")
+            self.app.notify(f"{title} Complete")
         except Exception as e:
+            run_record.status = "failed"
             indicator.update("[bold red]Failed[/bold red]")
             self.app.notify(f"Error: {e}", severity="error")
             print(f"CRITICAL ERROR: {e}") # Captured by capture_logs
+        finally:
+            run_record.end_time = datetime.now()
+            # Update UI again
+            try:
+                if parent_view:
+                    parent_view.call_after_refresh(parent_view.update_recent_runs)
+                
+                # UPDATE THE LAST RUN LABEL IN THE DETAIL PANE
+                def refresh_last_run() -> None:
+                    try:
+                        self.query_one("#op_last_run", Label).update(f"Last Run: {self.get_last_run_info(op_id)}")
+                    except Exception:
+                        pass
+                self.call_after_refresh(refresh_last_run)
+            except Exception:
+                pass

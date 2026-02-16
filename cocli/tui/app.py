@@ -1,7 +1,7 @@
 import logging
 import os
 from datetime import datetime
-from typing import Any, Optional, Type, cast
+from typing import Any, Optional, Type, List, cast, Dict
 
 from textual.app import App, ComposeResult
 from textual.binding import Binding
@@ -16,8 +16,10 @@ from .widgets.master_detail import MasterDetailView
 from .widgets.company_preview import CompanyPreview
 from .widgets.person_detail import PersonDetail
 from .widgets.company_detail import CompanyDetail
-from .widgets.application_view import ApplicationView
-from .navigation import TUI_NAV_TREE, NavNode
+from .widgets.application_view import ApplicationView, OperationsMenu
+from .widgets.status_view import StatusView
+from .widgets.campaign_selection import CampaignSelection
+from .navigation import NavNode, ProcessRun
 from ..application.services import ServiceContainer
 from ..core.config import create_default_config_file
 
@@ -43,9 +45,17 @@ class MenuBar(Horizontal):
         self.active_section: str = ""
 
     def compose(self) -> ComposeResult:
+        # Left-aligned items
         yield Label("Companies ( C)", id="menu-companies", classes="menu-item")
         yield Label("People ( P)", id="menu-people", classes="menu-item")
-        yield Label("Application ( A)", id="menu-application", classes="menu-item")
+        
+        # Spacer to push following items to the right
+        yield Static("", id="menu-spacer")
+        
+        # Right-aligned Application item with campaign name
+        app = cast("CocliApp", self.app)
+        campaign_name = app.services.campaign_service.campaign_name
+        yield Label(f"{campaign_name} ( A)", id="menu-application", classes="menu-item")
 
     def set_active(self, section: str) -> None:
         for label in self.query(Label):
@@ -87,6 +97,57 @@ class CocliApp(App[None]):
         super().__init__(*args, **kwargs)
         self.services = services or ServiceContainer()
         self.auto_show = auto_show
+        self.process_runs: List[ProcessRun] = []
+        
+        # Initialize Navigation Tree here to avoid circular imports at module level
+        self.nav_tree: Dict[Type[Any], NavNode] = {
+            # --- Companies Branch ---
+            CompanyDetail: NavNode(
+                widget_class=CompanyDetail,
+                parent_action="action_show_companies",
+                root_widget=CompanyList,
+                model_type="companies"
+            ),
+            CompanyList: NavNode(
+                widget_class=CompanyList,
+                model_type="companies",
+                is_branch_root=True
+            ),
+
+            # --- People Branch ---
+            PersonDetail: NavNode(
+                widget_class=PersonDetail,
+                parent_action="action_show_people",
+                root_widget=PersonList,
+                model_type="people"
+            ),
+            PersonList: NavNode(
+                widget_class=PersonList,
+                model_type="people",
+                is_branch_root=True
+            ),
+
+            # --- Application Branch ---
+            OperationsMenu: NavNode(
+                widget_class=OperationsMenu,
+                parent_action="action_reset_view", 
+                root_widget=ApplicationView
+            ),
+            StatusView: NavNode(
+                widget_class=StatusView,
+                parent_action="action_reset_view",
+                root_widget=ApplicationView
+            ),
+            CampaignSelection: NavNode(
+                widget_class=CampaignSelection,
+                parent_action="action_reset_view",
+                root_widget=ApplicationView
+            ),
+            ApplicationView: NavNode(
+                widget_class=ApplicationView,
+                is_branch_root=True
+            )
+        }
 
     def on_mount(self) -> None:
         tui_debug_log("--- APP START ---")
@@ -155,11 +216,9 @@ class CocliApp(App[None]):
 
         if target_node.parent_action:
             tui_debug_log(f"APP: Executing parent action: {target_node.parent_action}")
-            # The parent action can be a method on CocliApp or the widget itself
             if hasattr(self, target_node.parent_action):
                 getattr(self, target_node.parent_action)()
             else:
-                # Try calling it on the widget instance
                 try:
                     w = self.query_one(target_node.widget_class)
                     if hasattr(w, target_node.parent_action):
@@ -195,39 +254,34 @@ class CocliApp(App[None]):
 
     def _get_active_nav_node(self) -> Optional[NavNode]:
         """Finds the most specific active navigation node currently visible."""
-        # 1. Check if the FOCUSED widget is one of our nodes (Detail views first)
-        focused = self.focused
-        if focused:
-            # Walk up ancestors to see if we are inside a registered widget
-            for widget_class, node in TUI_NAV_TREE.items():
-                if focused == self.query_one(widget_class) if list(self.query(widget_class)) else None:
-                    # If it's a branch root but another leaf is visible, leaf wins
-                    # (This handles the sidebar vs content ambiguity)
-                    pass
-
-        # 2. Detail Views (Leaf nodes) have priority
-        for widget_class, node in TUI_NAV_TREE.items():
+        tui_debug_log("APP: _get_active_nav_node starting search")
+        # 1. Detail Views (Leaf nodes) have priority
+        for widget_class, node in self.nav_tree.items():
             if node.parent_action:
                 try:
                     widgets = list(self.query(widget_class))
                     for w in widgets:
                         if w.visible:
-                            # If this leaf is focused or contains focus, it's definitely the winner
+                            tui_debug_log(f"APP: Found active leaf: {widget_class.__name__}")
                             return node
-                except Exception:
+                except Exception as e:
+                    tui_debug_log(f"APP: Error querying {widget_class.__name__}: {e}")
                     continue
         
-        # 3. List Views (Branch nodes)
-        for widget_class, node in TUI_NAV_TREE.items():
+        # 2. List Views (Branch nodes)
+        for widget_class, node in self.nav_tree.items():
             if not node.parent_action:
                 try:
                     widgets = list(self.query(widget_class))
                     for w in widgets:
                         if w.visible:
+                            tui_debug_log(f"APP: Found active root: {widget_class.__name__}")
                             return node
-                except Exception:
+                except Exception as e:
+                    tui_debug_log(f"APP: Error querying root {widget_class.__name__}: {e}")
                     continue
         
+        tui_debug_log("APP: No active nav node detected")
         return None
 
     def on_person_list_person_selected(self, message: PersonList.PersonSelected) -> None:

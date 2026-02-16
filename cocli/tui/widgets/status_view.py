@@ -7,6 +7,7 @@ from rich.table import Table
 from rich.text import Text
 from typing import Any, Dict, Optional, List, TYPE_CHECKING, cast
 import asyncio
+from datetime import datetime
 
 if TYPE_CHECKING:
     from ..app import CocliApp
@@ -44,13 +45,12 @@ class StatusView(VerticalScroll):
         # 1. Load context status (always fast)
         self.status_data = app.services.reporting_service.get_environment_status()
         
-        # 2. Try to load cached stats (DO NOT auto-trigger slow refresh)
+        # 2. Try to load cached stats
         cached_stats = app.services.reporting_service.load_cached_report(campaign, "status")
         if cached_stats:
             self.status_data["stats"] = cached_stats
             self.update_view()
         else:
-            # Just show environment if no stats cached
             self.update_view()
 
     def action_refresh_status(self) -> None:
@@ -62,7 +62,22 @@ class StatusView(VerticalScroll):
         app = cast("CocliApp", self.app)
         indicator = self.query_one("#status_refresh_indicator", Static)
         indicator.update("[bold yellow] Refreshing...[/bold yellow]")
+        self.app.notify("Starting environment refresh...")
         
+        # Track run
+        from ..navigation import ProcessRun
+        run_record = ProcessRun("op_status", "Environment Refresh")
+        app.process_runs.append(run_record)
+        
+        # Update parent sidebar if possible
+        try:
+            from .application_view import ApplicationView
+            parent_view = next((a for a in self.ancestors if isinstance(a, ApplicationView)), None)
+            if parent_view:
+                parent_view.call_after_refresh(parent_view.update_recent_runs)
+        except Exception:
+            pass
+
         try:
             campaign = app.services.reporting_service.campaign_name
             
@@ -79,12 +94,20 @@ class StatusView(VerticalScroll):
             self.status_data = env
             self.cluster_health = health
             
+            run_record.status = "success"
             self.call_after_refresh(self.update_view)
             indicator.update("[bold green] Done[/bold green]")
+            self.app.notify("Environment refresh complete")
             await asyncio.sleep(2)
             indicator.update("")
         except Exception as e:
+            run_record.status = "failed"
             indicator.update(f"[bold red] Error: {e}[/bold red]")
+            self.app.notify(f"Refresh Failed: {e}", severity="error")
+        finally:
+            run_record.end_time = datetime.now()
+            if parent_view:
+                parent_view.call_after_refresh(parent_view.update_recent_runs)
 
     def update_view(self) -> None:
         if not self.status_data:

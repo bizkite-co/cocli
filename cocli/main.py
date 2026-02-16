@@ -19,8 +19,8 @@ try:
     @app.command(name="tui", help="Launches the Textual TUI for cocli.") # New command
     def tui_command() -> None:
         run_tui_app()
-except ImportError:
-    console.print("[yellow]Textual TUI commands not available. Install cocli with 'full' extra to enable.[/yellow]")
+except ImportError as e:
+    console.print(f"[yellow]Textual TUI commands not available: {e}[/yellow]")
     # Optionally, provide a placeholder command or just omit it.
     # For now, we'll just omit it by not registering the command.
 
