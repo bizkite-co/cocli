@@ -18,7 +18,13 @@ build: install ## Build the application distributables (wheel and sdist)
 
 SHELL := /bin/bash
 
-.PHONY: test install clean list-packages
+.PHONY: test install clean list-packages dev
+
+# TUI Development with auto-restart on code change
+dev: install ## Run the TUI in dev mode with auto-restart on file changes
+	@echo "Starting TUI in dev mode with auto-restart..."
+	@PYTHONPATH=. uv run watchmedo auto-restart --patterns="*.py;*.css" --recursive --signal SIGTERM -- \
+		uv run textual run --dev cocli.tui.app:CocliApp
 
 # Define the virtual environment directory
 VENV_DIR := ./.venv
