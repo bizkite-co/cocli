@@ -68,13 +68,14 @@ class ProspectsIndexManager:
         self.validation_error_count = 0
         
         # Helper to log errors to file
-        def log_validation_error(filename: str, error: str):
+        def log_validation_error(filename: str, error: str) -> None:
             self.validation_error_count += 1
             try:
                 from datetime import datetime
                 from .utils import UNIT_SEP
+                clean_err = str(error).replace("\n", " ")
                 with open(self.error_log_path, "a", encoding="utf-8") as ef:
-                    ef.write(f"{datetime.now().isoformat()}{UNIT_SEP}{filename}{UNIT_SEP}{str(error).replace('\n', ' ')}\n")
+                    ef.write(f"{datetime.now().isoformat()}{UNIT_SEP}{filename}{UNIT_SEP}{clean_err}\n")
             except Exception:
                 pass
 

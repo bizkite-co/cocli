@@ -109,28 +109,35 @@ class SyncService:
         
         return results
 
-    def sync_config(self, direction: SyncDirection = "up", dry_run: bool = False) -> subprocess.CompletedProcess[str]:
-        """Syncs the campaign config.toml file specifically."""
+    def sync_config(self, direction: SyncDirection = "up", dry_run: bool = False) -> Any:
+        """Syncs the campaign config.toml file specifically using boto3."""
         local_path = paths.campaign(self.campaign_name) / "config.toml"
-        s3_path = f"s3://{self.bucket}/campaigns/{self.campaign_name}/config.toml"
+        s3_key = f"campaigns/{self.campaign_name}/config.toml"
 
         if direction == "up" and not local_path.exists():
             raise FileNotFoundError(f"Local config file not found: {local_path}")
 
-        source = str(local_path) if direction == "up" else s3_path
-        dest = s3_path if direction == "up" else str(local_path)
-
-        # Use 'cp' instead of 'sync' for a single file to be explicit
-        cmd = [self._get_aws_bin(), "s3", "cp", source, dest]
         if dry_run:
-            cmd.append("--dryrun")
-        if self.profile:
-            cmd.extend(["--profile", self.profile])
-        if self.region:
-            cmd.extend(["--region", self.region])
+            logger.info(f"[DRY RUN] Would sync config.toml {direction}")
+            return None
 
-        logger.info(f"Executing config sync: {' '.join(cmd)}")
-        return subprocess.run(cmd, check=True, capture_output=True, text=True)
+        # Use boto3 for single-file sync to avoid CLI dependency
+        from ..core.reporting import get_boto3_session
+        session = get_boto3_session(self.config)
+        s3 = session.client("s3")
+
+        try:
+            if direction == "up":
+                logger.info(f"Uploading config to s3://{self.bucket}/{s3_key}")
+                s3.upload_file(str(local_path), self.bucket, s3_key)
+            else:
+                logger.info(f"Downloading config from s3://{self.bucket}/{s3_key}")
+                local_path.parent.mkdir(parents=True, exist_ok=True)
+                s3.download_file(self.bucket, s3_key, str(local_path))
+            return True
+        except Exception as e:
+            logger.error(f"Boto3 config sync failed: {e}")
+            raise
 
     def _run_sync(
         self, 
