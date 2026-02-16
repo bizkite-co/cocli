@@ -31,6 +31,7 @@ class CompanyList(Container):
 
     BINDINGS = [
         ("f", "toggle_filter", "Toggle Contact Info"),
+        ("r", "toggle_sort", "Toggle Recent"),
     ]
 
     def __init__(self, name: str | None = None, id: str | None = None, classes: str | None = None):
@@ -38,6 +39,7 @@ class CompanyList(Container):
         self.can_focus = True
         self.filtered_fz_items: List[SearchResult] = []
         self.filter_contact: bool = True
+        self.sort_recent: bool = False
 
     async def on_mount(self) -> None:
         """Initialize the list on mount."""
@@ -45,18 +47,28 @@ class CompanyList(Container):
         self.query_one(Input).focus()
 
     def compose(self) -> ComposeResult:
-        filter_status = " [Actionable]" if self.filter_contact else ""
-        yield Label(f"Companies{filter_status}", id="list_title")
+        yield Label(self.get_title_text(), id="list_title")
         yield Input(placeholder="Search companies...", id="company_search_input")
         yield ListView(
             id="company_list_view"
         )
 
+    def get_title_text(self) -> str:
+        filter_status = " [Actionable]" if self.filter_contact else ""
+        sort_status = " [Recent]" if self.sort_recent else ""
+        return f"Companies{filter_status}{sort_status}"
+
     def action_toggle_filter(self) -> None:
         """Toggle the 'Actionable Leads' filter (has email OR phone)."""
         self.filter_contact = not self.filter_contact
-        status = " [Actionable]" if self.filter_contact else ""
-        self.query_one("#list_title", Label).update(f"Companies{status}")
+        self.query_one("#list_title", Label).update(self.get_title_text())
+        query = self.query_one("#company_search_input", Input).value
+        self.run_search(query)
+
+    def action_toggle_sort(self) -> None:
+        """Toggle sorting between Alphabetical and Recent."""
+        self.sort_recent = not self.sort_recent
+        self.query_one("#list_title", Label).update(self.get_title_text())
         query = self.query_one("#company_search_input", Input).value
         self.run_search(query)
 
@@ -83,12 +95,14 @@ class CompanyList(Container):
 
     def run_search(self, query: str) -> None:
         app = cast("CocliApp", self.app)
+        sort_by = "recent" if self.sort_recent else None
         if app.services.sync_search:
             # Synchronous search for tests
             results = app.services.fuzzy_search(
                 search_query=query, 
                 item_type="company",
-                filters={"has_contact_info": self.filter_contact}
+                filters={"has_contact_info": self.filter_contact},
+                sort_by=sort_by
             )
             self.filtered_fz_items = results
             self.update_company_list_view()
@@ -98,10 +112,12 @@ class CompanyList(Container):
     async def perform_search(self, query: str) -> None:
         """Helper for on_mount and other direct calls."""
         app = cast("CocliApp", self.app)
+        sort_by = "recent" if self.sort_recent else None
         results = app.services.fuzzy_search(
             search_query=query, 
             item_type="company",
-            filters={"has_contact_info": self.filter_contact}
+            filters={"has_contact_info": self.filter_contact},
+            sort_by=sort_by
         )
         self.filtered_fz_items = results
         self.update_company_list_view()
@@ -119,10 +135,12 @@ class CompanyList(Container):
                 return
             
             app = cast("CocliApp", self.app)
+            sort_by = "recent" if self.sort_recent else None
             results = app.services.fuzzy_search(
                 search_query=query, 
                 item_type="company",
-                filters={"has_contact_info": self.filter_contact}
+                filters={"has_contact_info": self.filter_contact},
+                sort_by=sort_by
             )
             
             if not self.is_running:
@@ -141,6 +159,8 @@ class CompanyList(Container):
             
             new_items = []
             for i, item in enumerate(self.filtered_fz_items[:20]):
+                # If we sorted by recent, we might want to show some date info if available
+                # (SearchResult would need to carry it, let's keep it simple for now)
                 new_items.append(ListItem(Label(item.name), name=item.name))
             
             list_view.extend(new_items)

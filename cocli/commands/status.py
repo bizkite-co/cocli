@@ -111,6 +111,12 @@ def status(
                 )
             console.print(hb_table)
 
+        # 3. Validation Errors
+        v_errors = data.get("prospect_validation_errors", {})
+        if v_errors.get("count", 0) > 0:
+            console.print(f"[bold red]Found {v_errors['count']} prospect validation errors.[/]")
+            console.print(f"  Log: [dim]{v_errors['log_path']}[/dim]")
+
     console.print("")
 
     console.print("")

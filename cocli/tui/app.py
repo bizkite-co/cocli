@@ -17,6 +17,7 @@ from .widgets.person_detail import PersonDetail
 from .widgets.prospect_menu import ProspectMenu
 from .widgets.company_detail import CompanyDetail
 from .widgets.campaign_detail import CampaignDetail
+from .widgets.status_view import StatusView
 from ..application.services import ServiceContainer
 from ..models.campaign import Campaign
 from ..core.config import create_default_config_file, get_config
@@ -36,6 +37,7 @@ class MenuBar(Horizontal):
         yield Label("People ( P)", id="menu-people", classes="menu-item")
         yield Label("Companies ( C)", id="menu-companies", classes="menu-item")
         yield Label("Prospects ( S)", id="menu-prospects", classes="menu-item")
+        yield Label("Status ( U)", id="menu-status", classes="menu-item")
 
     def set_active(self, section: str) -> None:
         for label in self.query(Label):
@@ -100,6 +102,8 @@ class CocliApp(App[None]):
                 self.call_later(self.action_show_prospects)
             elif self.leader_key_buffer == LEADER_KEY + "a":
                 self.call_later(self.action_show_campaigns)
+            elif self.leader_key_buffer == LEADER_KEY + "u":
+                self.call_later(self.action_show_status)
             
             self.reset_leader_mode()
             event.prevent_default()
@@ -170,6 +174,12 @@ class CocliApp(App[None]):
         """Show the prospect menu screen."""
         self.menu_bar.set_active("prospects")
         self.push_screen(ProspectMenu())
+
+    def action_show_status(self) -> None:
+        """Show the environment status view."""
+        self.menu_bar.set_active("status")
+        self.main_content.remove_children()
+        self.main_content.mount(StatusView())
 
     def action_select_item(self) -> None:
         """Selects the currently focused item, if the focused widget supports it."""

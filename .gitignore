@@ -7,6 +7,7 @@ docker/rpi-worker/.rpi_config
 # Web Dashboard
 cocli/web/node_modules/
 homepage
+.code_signatures.json
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

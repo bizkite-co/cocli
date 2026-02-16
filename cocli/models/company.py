@@ -24,8 +24,17 @@ def split_categories(v: Any) -> List[str]:
         return [cat.strip() for item in v for cat in item.split(';') if cat.strip()]
     return []
 
+def strip_quotes(v: Any) -> str:
+    if isinstance(v, str):
+        v = v.strip()
+        if v.startswith('"') and v.endswith('"'):
+            v = v[1:-1].strip()
+        if v.startswith("'") and v.endswith("'"):
+            v = v[1:-1].strip()
+    return str(v)
+
 class Company(BaseModel):
-    name: str
+    name: Annotated[str, BeforeValidator(strip_quotes)]
     domain: Optional[str] = None
     type: str = "N/A"
     tags: list[str] = Field(default_factory=list)

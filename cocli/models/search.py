@@ -1,9 +1,18 @@
-from pydantic import BaseModel
-from typing import Optional, List
+from pydantic import BaseModel, BeforeValidator
+from typing import Optional, List, Any, Annotated
+
+def strip_quotes(v: Any) -> str:
+    if isinstance(v, str):
+        v = v.strip()
+        if v.startswith('"') and v.endswith('"'):
+            v = v[1:-1].strip()
+        if v.startswith("'") and v.endswith("'"):
+            v = v[1:-1].strip()
+    return str(v)
 
 class SearchResult(BaseModel):
     type: str
-    name: str
+    name: Annotated[str, BeforeValidator(strip_quotes)]
     tags: List[str] = []
     display: str
     slug: Optional[str] = None

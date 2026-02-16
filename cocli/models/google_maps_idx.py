@@ -1,7 +1,17 @@
-from typing import ClassVar
+from typing import ClassVar, Any, Annotated
+from pydantic import BeforeValidator
 from .base_index import BaseIndexModel
 from .place_id import PlaceID
 from .company_slug import CompanySlug
+
+def strip_quotes(v: Any) -> str:
+    if isinstance(v, str):
+        v = v.strip()
+        if v.startswith('"') and v.endswith('"'):
+            v = v[1:-1].strip()
+        if v.startswith("'") and v.endswith("'"):
+            v = v[1:-1].strip()
+    return str(v)
 
 class GoogleMapsIdx(BaseIndexModel):
     """
@@ -12,4 +22,4 @@ class GoogleMapsIdx(BaseIndexModel):
     
     place_id: PlaceID
     company_slug: CompanySlug
-    name: str
+    name: Annotated[str, BeforeValidator(strip_quotes)]
