@@ -1,5 +1,5 @@
 import logging
-from typing import Any, Optional, Dict, Type
+from typing import Any, Optional, Type
 
 from textual.app import App, ComposeResult
 from textual.binding import Binding
@@ -15,34 +15,13 @@ from .widgets.company_preview import CompanyPreview
 from .widgets.person_detail import PersonDetail
 from .widgets.company_detail import CompanyDetail
 from .widgets.application_view import ApplicationView
+from .navigation import TUI_NAV_TREE
 from ..application.services import ServiceContainer
 from ..core.config import create_default_config_file
 
 logger = logging.getLogger(__name__)
 
 LEADER_KEY = "space"
-
-# --- Navigation Tree Documentation ---
-# This map defines the "Drill-Down" relationships in the UI.
-# alt+s uses this to navigate from a Branch Node (Detail) back to a Root Node (Search/List).
-BRANCH_ROOTS: Dict[Type[Any], Dict[str, Any]] = {
-    CompanyDetail: {
-        "parent_action": "action_show_companies",
-        "root_widget": CompanyList
-    },
-    PersonDetail: {
-        "parent_action": "action_show_people",
-        "root_widget": PersonList
-    },
-    CompanyList: {
-        "parent_action": None, # Already at root of this branch
-        "root_widget": CompanyList
-    },
-    PersonList: {
-        "parent_action": None,
-        "root_widget": PersonList
-    }
-}
 
 class MenuBar(Horizontal):
     """A custom menu bar that highlights the active section."""
@@ -126,12 +105,11 @@ class CocliApp(App[None]):
 
     def action_navigate_up(self) -> None:
         """
-        Navigates 'Up' from a leaf node (Detail) to its branch root (Search/List).
-        If already at a branch root, focuses the search box.
+        Context-aware navigation.
+        Leaf Node (Detail) -> Branch Node (Search/List).
+        Branch Node -> Search reset/focus.
         """
-        # Iterate through the registry to find the active context
-        for widget_class, config in BRANCH_ROOTS.items():
-            # We check if the widget exists AND is currently visible in the DOM
+        for widget_class, node in TUI_NAV_TREE.items():
             try:
                 widget = self.query_one(widget_class)
                 if not widget.visible:
@@ -139,22 +117,25 @@ class CocliApp(App[None]):
             except Exception:
                 continue
 
-            # 1. If we are in a detail/branch node, navigate up to the root node
-            parent_action = config.get("parent_action")
-            if parent_action:
-                getattr(self, parent_action)()
-            
-            # 2. Focus/Reset search on the root widget of this specific branch
-            def reset_search(w_class: Type[Any] = config["root_widget"]) -> None:
-                try:
-                    target = self.query_one(w_class)
-                    if hasattr(target, "action_search_fresh"):
-                        target.action_search_fresh()
-                except Exception:
-                    pass
-            
-            self.call_later(reset_search)
-            return
+            # If we are in a leaf (Detail), go to branch root (Search)
+            if node.parent_action:
+                getattr(self, node.parent_action)()
+                
+                # Also focus search on the newly mounted root
+                def focus_search(w_class: Type[Any] = node.root_widget) -> None:
+                    try:
+                        target = self.query_one(w_class)
+                        if hasattr(target, "action_search_fresh"):
+                            target.action_search_fresh()
+                    except Exception:
+                        pass
+                self.call_later(focus_search)
+                return
+            else:
+                # We are already at a branch root, just reset search
+                if hasattr(widget, "action_search_fresh"):
+                    widget.action_search_fresh()
+                return
 
     def on_person_list_person_selected(self, message: PersonList.PersonSelected) -> None:
         self.query_one("#app_content").remove_children()
@@ -208,8 +189,8 @@ class CocliApp(App[None]):
             focused_widget.action_select_cursor()
 
     def action_escape(self) -> None:
-        """Escape the current context (return to previous level without search reset)."""
-        for widget_class, config in BRANCH_ROOTS.items():
+        """Escape context without search reset."""
+        for widget_class, node in TUI_NAV_TREE.items():
             try:
                 widget = self.query_one(widget_class)
                 if not widget.visible:
@@ -217,9 +198,8 @@ class CocliApp(App[None]):
             except Exception:
                 continue
 
-            parent_action = config.get("parent_action")
-            if parent_action:
-                getattr(self, parent_action)()
+            if node.parent_action:
+                getattr(self, node.parent_action)()
                 return
         
         if isinstance(self.focused, Input):

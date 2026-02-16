@@ -45,7 +45,6 @@ class QuadrantTable(DataTable[Any]):
         Binding("j", "cursor_down", "Down", show=False),
         Binding("k", "cursor_up", "Up", show=False),
         Binding("escape", "exit_quadrant", "Exit Quadrant"),
-        Binding("alt+s", "exit_quadrant", "Exit Quadrant"),
     ]
 
     async def _on_key(self, event: events.Key) -> None:
@@ -127,7 +126,7 @@ class EditInput(Input):
         self.field_name = field_name
 
     def on_key(self, event: events.Key) -> None:
-        if event.key == "escape" or event.key == "alt+s":
+        if event.key == "escape":
             detail_view = next((a for a in self.ancestors if isinstance(a, CompanyDetail)), None)
             if detail_view:
                 detail_view.action_cancel_edit()
