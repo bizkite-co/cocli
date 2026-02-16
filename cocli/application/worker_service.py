@@ -678,6 +678,8 @@ class WorkerService:
                     # 0. Sync config from S3 (Efficient Targeted Sync)
                     from ..services.sync_service import SyncService
                     try:
+                        # Use a dedicated SyncService instance for this iteration
+                        # and run the sync in a thread to avoid blocking.
                         sync_service = SyncService(self.campaign_name, aws_config=aws_config)
                         await asyncio.to_thread(sync_service.sync_config, direction="down")
                     except Exception as e:
