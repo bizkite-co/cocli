@@ -123,10 +123,19 @@ DataTable > .datatable--cursor {
 }
 
 /* Application Hub Layout */
-#app_sidebar {
-    width: 25;
+#app_sidebar_column {
+    width: 30;
     border-right: tall #222222;
     background: black;
+}
+
+#app_nav_container {
+    height: auto;
+    border-bottom: solid #222222;
+}
+
+#app_sub_nav_container {
+    height: 1fr;
 }
 
 #app_recent_runs {

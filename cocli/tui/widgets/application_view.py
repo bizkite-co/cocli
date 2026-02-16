@@ -1,9 +1,9 @@
-from typing import Any, Dict, TYPE_CHECKING, cast
+from typing import Any, Dict, List, Optional, TYPE_CHECKING, cast
 import asyncio
 import logging
 from datetime import datetime
 from textual.app import ComposeResult
-from textual.containers import Container, VerticalScroll, Horizontal
+from textual.containers import Container, VerticalScroll, Horizontal, Vertical
 from textual.widgets import Label, ListView, ListItem, Static, Button
 from textual.message import Message
 from textual import on, work, events
@@ -42,26 +42,33 @@ class ApplicationView(Container):
 
     def compose(self) -> ComposeResult:
         with Horizontal():
-            # Sidebar for top-level Application categories
-            with VerticalScroll(id="app_sidebar"):
-                yield Label("[bold]Application[/bold]", classes="sidebar-title")
-                yield ListView(
-                    ListItem(Label("Campaigns"), id="nav_campaigns"),
-                    ListItem(Label("Environment Status"), id="nav_status"),
-                    ListItem(Label("Operations"), id="nav_operations"),
-                    id="app_nav_list"
-                )
+            # Left Column: Stacked Sidebar
+            with Vertical(id="app_sidebar_column"):
+                # Top level Application menu
+                with Vertical(id="app_nav_container"):
+                    yield Label("[bold]Application[/bold]", classes="sidebar-title")
+                    yield ListView(
+                        ListItem(Label("Campaigns"), id="nav_campaigns"),
+                        ListItem(Label("Environment Status"), id="nav_status"),
+                        ListItem(Label("Operations"), id="nav_operations"),
+                        id="app_nav_list"
+                    )
+                
+                # Dynamic Sub-menu (List portion of category)
+                with Vertical(id="app_sub_nav_container"):
+                    yield Label("[bold]Menu[/bold]", id="sub_sidebar_title", classes="sidebar-title")
+                    yield Container(id="app_sub_sidebar")
             
-            # The main content area
+            # Center: The main content / detail area
             yield Container(id="app_main_content")
 
             # Right sidebar for Recent Operations
-            with VerticalScroll(id="app_recent_runs"):
+            with Vertical(id="app_recent_runs"):
                 yield Label("[bold]Recent Runs[/bold]", classes="sidebar-title")
                 yield ListView(id="recent_runs_list")
 
     def on_mount(self) -> None:
-        # Start in Operations (index 2) as requested
+        # Start in Operations (index 2)
         nav_list = self.query_one("#app_nav_list", ListView)
         nav_list.index = 2
         nav_list.focus()
@@ -76,22 +83,17 @@ class ApplicationView(Container):
         self.query_one("#app_nav_list", ListView).focus()
 
     def action_focus_content(self) -> None:
-        # Delegate focus to the specific category widget
-        if self.active_category == "campaigns":
-            try:
-                self.query_one(CampaignSelection).focus()
-            except Exception:
-                pass
-        elif self.active_category == "operations":
-            try:
-                self.query_one(OperationsMenu).focus()
-            except Exception:
-                pass
-        elif self.active_category == "status":
-            try:
-                self.query_one(StatusView).focus()
-            except Exception:
-                pass
+        # Try to focus the sub-menu if it's visible, otherwise main content
+        sub_sidebar = self.query_one("#app_sub_sidebar")
+        focusable = sub_sidebar.query("ListView, Button, Input")
+        if focusable:
+            focusable.first().focus()
+        else:
+            content = self.query_one("#app_main_content")
+            for widget in content.query("*"):
+                if widget.can_focus:
+                    widget.focus()
+                    break
 
     def action_select_item(self) -> None:
         focused = self.app.focused
@@ -124,34 +126,35 @@ class ApplicationView(Container):
     def show_category(self, category: str) -> None:
         logger.debug(f"show_category: {category}")
         self.active_category = category
+        
+        sub_sidebar = self.query_one("#app_sub_sidebar", Container)
         content = self.query_one("#app_main_content", Container)
         
-        # Clear existing content safely
+        sub_sidebar.remove_children()
         content.remove_children()
         
+        title_label = self.query_one("#sub_sidebar_title", Label)
+        
         if category == "campaigns":
+            title_label.update("[bold]Campaigns[/bold]")
             campaign_list = CampaignSelection()
             campaign_detail = CampaignDetail(id="campaign-detail")
-            detail_pane = VerticalScroll()
             
-            config = get_config()
-            mv = MasterDetailView(master=campaign_list, detail=detail_pane, master_width=config.tui.master_width)
-            
-            # Mount mv to content
-            content.mount(mv)
-            
-            # Mount children to detail_pane AFTER mv is mounted
-            def _mount_children() -> None:
-                detail_pane.mount(campaign_detail)
-                detail_pane.mount(Button("Activate Campaign", variant="primary", id="btn_activate_campaign"))
-            
-            self.call_after_refresh(_mount_children)
+            sub_sidebar.mount(campaign_list)
+            content.mount(campaign_detail)
+            content.mount(Button("Activate Campaign", variant="primary", id="btn_activate_campaign"))
             
         elif category == "status":
+            title_label.update("[bold]Environment[/bold]")
             content.mount(StatusView())
             
         elif category == "operations":
-            content.mount(OperationsMenu())
+            title_label.update("[bold]Operations[/bold]")
+            ops_menu = OperationsMenu()
+            # We don't mount the menu itself if we want to split it
+            # Instead, we mount its specific parts
+            sub_sidebar.mount(ops_menu.query_one("#ops_list"))
+            content.mount(ops_menu.query_one("#ops_detail_container"))
 
     def update_recent_runs(self) -> None:
         """Update the list of recent process runs."""
@@ -184,7 +187,6 @@ class ApplicationView(Container):
             detail = self.query_one("#campaign-detail", CampaignDetail)
             if detail.campaign:
                 campaign_name = detail.campaign.name
-                # Use CampaignService to activate
                 app = cast("CocliApp", self.app)
                 if hasattr(app, "services"):
                     app.services.campaign_service.campaign_name = campaign_name
@@ -194,65 +196,56 @@ class ApplicationView(Container):
             self.app.notify(f"Activation Failed: {e}", severity="error")
 
 class OperationsMenu(Container):
-    """A menu for ETL/Sync/Audit operations with non-blocking execution and details."""
+    """
+    A helper widget that provides the operations components.
+    Note: These are extracted by ApplicationView for its stacked layout.
+    """
+    def compose(self) -> ComposeResult:
+        # This structure allows extraction of the list and detail
+        yield ListView(
+            # Reporting
+            ListItem(Label("[dim]--- Reporting ---[/dim]"), disabled=True),
+            ListItem(Label("Generate Report"), id="op_report"),
+            ListItem(Label("Analyze Emails"), id="op_analyze_emails"),
 
-    BINDINGS = [
-        ("[", "focus_sidebar", "Focus Sidebar"),
-        ("]", "focus_detail", "Focus Detail"),
-        ("v", "view_full_log", "View Full Log"),
-    ]
+            # Sync
+            ListItem(Label("[dim]--- Data Sync ---[/dim]"), disabled=True),
+            ListItem(Label("Sync All (S3->Local)"), id="op_sync_all"),
+            ListItem(Label("Push Queue to S3"), id="op_push_queue"),
+
+            # Audit
+            ListItem(Label("[dim]--- Audit ---[/dim]"), disabled=True),
+            ListItem(Label("Audit Integrity"), id="op_audit_integrity"),
+            ListItem(Label("Audit Queue"), id="op_audit_queue"),
+            
+            id="ops_list"
+        )
+        with VerticalScroll(id="ops_detail_container"):
+            yield Label("Select an operation to see details.", id="op_title", classes="op-title")
+            yield Static("", id="op_description", classes="op-description")
+            yield Label("", id="op_last_run", classes="op-timestamp")
+            yield Horizontal(
+                Button("Run Operation", variant="primary", id="btn_run_op"),
+                Button("View Full Log", id="btn_view_log"),
+                Static("", id="op_status_indicator"),
+                id="op_actions"
+            )
+            with VerticalScroll(id="op_log_preview_container"):
+                yield Static("", id="op_log_preview")
 
     def __init__(self, *args: Any, **kwargs: Any) -> None:
         super().__init__(*args, **kwargs)
         self.current_log_content: str = ""
 
-    def compose(self) -> ComposeResult:
-        with Horizontal():
-            with VerticalScroll(id="ops_sidebar"):
-                yield ListView(
-                    # Reporting
-                    ListItem(Label("[dim]--- Reporting ---[/dim]"), disabled=True),
-                    ListItem(Label("Generate Report"), id="op_report"),
-                    ListItem(Label("Analyze Emails"), id="op_analyze_emails"),
-
-                    # Sync
-                    ListItem(Label("[dim]--- Data Sync ---[/dim]"), disabled=True),
-                    ListItem(Label("Sync All (S3->Local)"), id="op_sync_all"),
-                    ListItem(Label("Push Queue to S3"), id="op_push_queue"),
-
-                    # Audit
-                    ListItem(Label("[dim]--- Audit ---[/dim]"), disabled=True),
-                    ListItem(Label("Audit Integrity"), id="op_audit_integrity"),
-                    ListItem(Label("Audit Queue"), id="op_audit_queue"),
-                    
-                    id="ops_list"
-                )
-            with VerticalScroll(id="ops_detail"):
-                yield Label("Select an operation to see details.", id="op_title", classes="op-title")
-                yield Static("", id="op_description", classes="op-description")
-                yield Label("", id="op_last_run", classes="op-timestamp")
-                yield Horizontal(
-                    Button("Run Operation", variant="primary", id="btn_run_op"),
-                    Button("View Full Log", id="btn_view_log"),
-                    Static("", id="op_status_indicator"),
-                    id="op_actions"
-                )
-                with VerticalScroll(id="op_log_preview_container"):
-                    yield Static("", id="op_log_preview")
-
     def on_mount(self) -> None:
-        self.query_one("#ops_list", ListView).focus()
-        self.query_one("#btn_view_log").display = False
-
-    def action_focus_sidebar(self) -> None:
-        self.query_one("#ops_list", ListView).focus()
-
-    def action_focus_detail(self) -> None:
-        self.query_one("#btn_run_op", Button).focus()
+        try:
+            self.query_one("#btn_view_log").display = False
+        except Exception:
+            pass
 
     def action_view_full_log(self) -> None:
         if self.current_log_content:
-            highlighted = self.query_one("#ops_list", ListView).highlighted_child
+            highlighted = self.app.query_one("#ops_list", ListView).highlighted_child
             if highlighted and highlighted.id:
                 op_id = str(highlighted.id)
                 title = self.get_op_details(op_id)["title"]
@@ -262,20 +255,6 @@ class OperationsMenu(Container):
     def handle_view_log_btn(self) -> None:
         self.action_view_full_log()
 
-    def on_key(self, event: events.Key) -> None:
-        """Handle vim-like navigation for the operations list."""
-        list_view = self.query_one("#ops_list", ListView)
-        if event.key == "j":
-            list_view.action_cursor_down()
-            event.prevent_default()
-        elif event.key == "k":
-            list_view.action_cursor_up()
-            event.prevent_default()
-        elif event.key == "l" or event.key == "enter":
-            if list_view.has_focus:
-                list_view.action_select_cursor()
-                event.prevent_default()
-
     @on(ListView.Highlighted, "#ops_list")
     def handle_op_highlight(self, event: ListView.Highlighted) -> None:
         if not event.item or not event.item.id:
@@ -284,20 +263,20 @@ class OperationsMenu(Container):
         op_id = str(event.item.id)
         details = self.get_op_details(op_id)
         
-        self.query_one("#op_title", Label).update(details["title"])
-        self.query_one("#op_description", Static).update(details["description"])
+        self.app.query_one("#op_title", Label).update(details["title"])
+        self.app.query_one("#op_description", Static).update(details["description"])
         
         # Update last run from cache
         last_run = self.get_last_run_info(op_id)
-        self.query_one("#op_last_run", Label).update(f"Last Run: {last_run}")
+        self.app.query_one("#op_last_run", Label).update(f"Last Run: {last_run}")
         
         # Clear log preview when switching ops
-        self.query_one("#op_log_preview", Static).update("")
-        self.query_one("#btn_view_log").display = False
+        self.app.query_one("#op_log_preview", Static).update("")
+        self.app.query_one("#btn_view_log").display = False
 
     @on(Button.Pressed, "#btn_run_op")
     def handle_run_op(self) -> None:
-        ops_list = self.query_one("#ops_list", ListView)
+        ops_list = self.app.query_one("#ops_list", ListView)
         highlighted = ops_list.highlighted_child
         if highlighted and highlighted.id:
             op_id = str(highlighted.id)
@@ -334,7 +313,8 @@ class OperationsMenu(Container):
 
     def get_last_run_info(self, op_id: str) -> str:
         """Detect last run time from memory or disk cache."""
-        app = cast("CocliApp", self.app)
+        from ..app import CocliApp
+        app = cast(CocliApp, self.app)
         
         # 1. Check in-memory session runs first
         runs = [r for r in app.process_runs if r.op_id == op_id and r.status == "success"]
@@ -359,24 +339,24 @@ class OperationsMenu(Container):
     def log_callback(self, text: str) -> None:
         """Callback for real-time log streaming."""
         self.current_log_content += text
-        # Keep preview short
-        preview = self.query_one("#op_log_preview", Static)
+        preview = self.app.query_one("#op_log_preview", Static)
         lines = self.current_log_content.split("\n")
         preview.update("\n".join(lines[-10:]))
 
     @work(exclusive=True, thread=True)
     async def run_operation(self, op_id: str) -> None:
-        indicator = self.query_one("#op_status_indicator", Static)
+        indicator = self.app.query_one("#op_status_indicator", Static)
         indicator.update("[bold yellow]Running...[/bold yellow]")
-        self.query_one("#btn_view_log").display = True
+        self.app.query_one("#btn_view_log").display = True
         self.current_log_content = ""
         
-        app = cast("CocliApp", self.app)
+        from ..app import CocliApp
+        app = cast(CocliApp, self.app)
         services = app.services
         
         # Log to recent runs
-        from ..navigation import ProcessRun
         title = self.get_op_details(op_id)["title"]
+        from ..navigation import ProcessRun
         run_record = ProcessRun(op_id, title)
         app.process_runs.append(run_record)
         
@@ -418,10 +398,9 @@ class OperationsMenu(Container):
                 if parent_view:
                     parent_view.call_after_refresh(parent_view.update_recent_runs)
                 
-                # UPDATE THE LAST RUN LABEL IN THE DETAIL PANE
                 def refresh_last_run() -> None:
                     try:
-                        self.query_one("#op_last_run", Label).update(f"Last Run: {self.get_last_run_info(op_id)}")
+                        self.app.query_one("#op_last_run", Label).update(f"Last Run: {self.get_last_run_info(op_id)}")
                     except Exception:
                         pass
                 self.call_after_refresh(refresh_last_run)
