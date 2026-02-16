@@ -8,19 +8,15 @@ from textual.containers import Container, Horizontal
 from textual import events # Import events for on_key
 
 
-from .widgets.campaign_selection import CampaignSelection
 from .widgets.company_list import CompanyList
 from .widgets.person_list import PersonList
 from .widgets.master_detail import MasterDetailView
 from .widgets.company_preview import CompanyPreview
 from .widgets.person_detail import PersonDetail
-from .widgets.prospect_menu import ProspectMenu
 from .widgets.company_detail import CompanyDetail
-from .widgets.campaign_detail import CampaignDetail
-from .widgets.status_view import StatusView
+from .widgets.application_view import ApplicationView
 from ..application.services import ServiceContainer
-from ..models.campaign import Campaign
-from ..core.config import create_default_config_file, get_config
+from ..core.config import create_default_config_file
 
 logger = logging.getLogger(__name__)
 
@@ -33,11 +29,9 @@ class MenuBar(Horizontal):
         self.active_section: str = ""
 
     def compose(self) -> ComposeResult:
-        yield Label("Campaigns ( A)", id="menu-campaigns", classes="menu-item")
+        yield Label("Application ( A)", id="menu-application", classes="menu-item")
         yield Label("People ( P)", id="menu-people", classes="menu-item")
         yield Label("Companies ( C)", id="menu-companies", classes="menu-item")
-        yield Label("Prospects ( S)", id="menu-prospects", classes="menu-item")
-        yield Label("Status ( U)", id="menu-status", classes="menu-item")
 
     def set_active(self, section: str) -> None:
         for label in self.query(Label):
@@ -98,12 +92,8 @@ class CocliApp(App[None]):
                 self.call_later(self.action_show_companies)
             elif self.leader_key_buffer == LEADER_KEY + "p":
                 self.call_later(self.action_show_people)
-            elif self.leader_key_buffer == LEADER_KEY + "s":
-                self.call_later(self.action_show_prospects)
             elif self.leader_key_buffer == LEADER_KEY + "a":
-                self.call_later(self.action_show_campaigns)
-            elif self.leader_key_buffer == LEADER_KEY + "u":
-                self.call_later(self.action_show_status)
+                self.call_later(self.action_show_application)
             
             self.reset_leader_mode()
             event.prevent_default()
@@ -146,40 +136,17 @@ class CocliApp(App[None]):
         self.main_content.remove_children()
         self.main_content.mount(PersonList())
 
-    def action_show_campaigns(self) -> None:
-        """Show the campaign selection view."""
-        self.menu_bar.set_active("campaigns")
-        config = get_config()
-        master_width = config.tui.master_width
+    def action_show_application(self) -> None:
+        """Show the application view."""
+        self.menu_bar.set_active("application")
         self.main_content.remove_children()
-        campaign_list = CampaignSelection()
-        campaign_detail = CampaignDetail(id="campaign-detail")
-        self.main_content.mount(MasterDetailView(master=campaign_list, detail=campaign_detail, master_width=master_width))
+        self.main_content.mount(ApplicationView())
 
-    def on_company_list_company_highlighted(self, message: CompanyList.CompanyHighlighted) -> None:
-        """Handle CompanyHighlighted message from CompanyList widget."""
-        preview = self.query_one("#company-preview", CompanyPreview)
-        preview.update_preview(message.company)
-
-    def on_campaign_selection_campaign_selected(self, message: CampaignSelection.CampaignSelected) -> None:
-        campaign_name = message.campaign_name
-        detail = self.query_one("#campaign-detail", CampaignDetail)
-        try:
-            campaign = Campaign.load(campaign_name)
-            detail.update_detail(campaign)
-        except Exception as e:
-            detail.display_error(f"Error Loading Campaign: {campaign_name}", str(e))
-
-    async def action_show_prospects(self) -> None:
-        """Show the prospect menu screen."""
-        self.menu_bar.set_active("prospects")
-        self.push_screen(ProspectMenu())
-
-    def action_show_status(self) -> None:
-        """Show the environment status view."""
-        self.menu_bar.set_active("status")
-        self.main_content.remove_children()
-        self.main_content.mount(StatusView())
+    def on_application_view_campaign_activated(self, message: ApplicationView.CampaignActivated) -> None:
+        """Handle campaign activation by refreshing the UI."""
+        self.notify(f"Campaign Activated: {message.campaign_name}")
+        # Reset to company list or refresh current view if needed
+        self.action_show_companies()
 
     def action_select_item(self) -> None:
         """Selects the currently focused item, if the focused widget supports it."""

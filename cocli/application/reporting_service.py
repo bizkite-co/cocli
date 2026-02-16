@@ -1,5 +1,5 @@
 import logging
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, cast
 from datetime import datetime, timezone
 
 from ..core.reporting import get_campaign_stats
@@ -59,12 +59,17 @@ class ReportingService:
     def get_campaign_stats(self, campaign_name: Optional[str] = None) -> Dict[str, Any]:
         """
         Returns a comprehensive dictionary of campaign statistics.
+        Caches the result to disk.
         """
         target_campaign = campaign_name or self.campaign_name
         try:
             stats = get_campaign_stats(target_campaign)
             stats['last_updated'] = datetime.now(timezone.utc).isoformat()
             stats['campaign_name'] = target_campaign
+            
+            # Cache to disk
+            self.save_cached_report(target_campaign, "status", stats)
+            
             return stats
         except Exception as e:
             logger.error(f"Failed to get campaign stats for {target_campaign}: {e}")
@@ -73,6 +78,30 @@ class ReportingService:
                 "campaign_name": target_campaign,
                 "last_updated": datetime.now(timezone.utc).isoformat()
             }
+
+    def save_cached_report(self, campaign_name: str, report_type: str, data: Dict[str, Any]) -> None:
+        """Saves a report to the local reports cache."""
+        from ..core.config import get_cocli_app_data_dir
+        report_dir = get_cocli_app_data_dir() / "reports" / campaign_name
+        report_dir.mkdir(parents=True, exist_ok=True)
+        
+        import json
+        with open(report_dir / f"{report_type}.json", "w") as f:
+            json.dump(data, f, indent=2)
+
+    def load_cached_report(self, campaign_name: str, report_type: str) -> Optional[Dict[str, Any]]:
+        """Loads a report from the local reports cache."""
+        from ..core.config import get_cocli_app_data_dir
+        report_file = get_cocli_app_data_dir() / "reports" / campaign_name / f"{report_type}.json"
+        
+        if report_file.exists():
+            import json
+            try:
+                with open(report_file, "r") as f:
+                    return cast(Dict[str, Any], json.load(f))
+            except Exception:
+                return None
+        return None
 
     def get_email_analysis(self, campaign_name: Optional[str] = None) -> Dict[str, Any]:
         """

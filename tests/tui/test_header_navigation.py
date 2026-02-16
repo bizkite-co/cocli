@@ -2,11 +2,10 @@ import pytest
 from unittest.mock import MagicMock
 from cocli.tui.app import CocliApp, MenuBar
 from cocli.application.services import ServiceContainer
-from cocli.tui.widgets.prospect_menu import ProspectMenu
+from cocli.tui.widgets.application_view import ApplicationView
 from cocli.tui.widgets.company_list import CompanyList
 from cocli.tui.widgets.person_list import PersonList
-from cocli.tui.widgets.campaign_selection import CampaignSelection
-from conftest import wait_for_widget, wait_for_screen
+from conftest import wait_for_widget
 
 def create_mock_services():
     mock_search = MagicMock()
@@ -24,8 +23,8 @@ async def test_header_is_visible():
         assert menu_bar.visible
 
 @pytest.mark.asyncio
-async def test_leader_a_shows_campaigns():
-    """Test that Leader+a shows the CampaignSelection widget."""
+async def test_leader_a_shows_application():
+    """Test that Leader+a shows the ApplicationView widget."""
     app = CocliApp(services=create_mock_services(), auto_show=False)
     async with app.run_test() as driver:
         await driver.pause(0.5)
@@ -33,8 +32,8 @@ async def test_leader_a_shows_campaigns():
         await driver.pause(0.1)
         await driver.press("a")
         await driver.pause(0.1)
-        campaign_selection = await wait_for_widget(driver, CampaignSelection)
-        assert isinstance(campaign_selection, CampaignSelection)
+        application_view = await wait_for_widget(driver, ApplicationView)
+        assert isinstance(application_view, ApplicationView)
 
 @pytest.mark.asyncio
 async def test_leader_p_shows_people():
@@ -62,16 +61,3 @@ async def test_leader_c_shows_companies():
         await driver.pause(0.1)
         company_list = await wait_for_widget(driver, CompanyList)
         assert isinstance(company_list, CompanyList)
-
-@pytest.mark.asyncio
-async def test_leader_s_shows_prospects():
-    """Test that Leader+s shows the ProspectMenu widget."""
-    app = CocliApp(services=create_mock_services(), auto_show=False)
-    async with app.run_test() as driver:
-        await driver.pause(0.5)
-        await driver.press("space")
-        await driver.pause(0.1)
-        await driver.press("s")
-        await driver.pause(0.1)
-        prospect_menu = await wait_for_screen(driver, ProspectMenu)
-        assert isinstance(prospect_menu, ProspectMenu)

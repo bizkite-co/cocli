@@ -1,0 +1,225 @@
+from typing import Any, Dict, TYPE_CHECKING, cast
+import asyncio
+from textual.app import ComposeResult
+from textual.containers import Container, VerticalScroll, Horizontal
+from textual.widgets import Label, ListView, ListItem, Static, Button
+from textual.message import Message
+from textual import on, work
+
+from .master_detail import MasterDetailView
+from .campaign_selection import CampaignSelection
+from .campaign_detail import CampaignDetail
+from .status_view import StatusView
+from cocli.models.campaign import Campaign
+from cocli.core.config import get_config
+
+if TYPE_CHECKING:
+    pass
+
+class ApplicationView(Container):
+    """A consolidated view for Application-level tasks (Campaigns, Status, Operations)."""
+
+    class CampaignActivated(Message):
+        def __init__(self, campaign_name: str) -> None:
+            super().__init__()
+            self.campaign_name = campaign_name
+
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
+        super().__init__(*args, **kwargs)
+        self.active_category: str = "campaigns"
+
+    def compose(self) -> ComposeResult:
+        # Sidebar for top-level Application categories
+        with VerticalScroll(id="app_sidebar"):
+            yield Label("[bold]Application[/bold]", classes="sidebar-title")
+            yield ListView(
+                ListItem(Label("Campaigns"), id="nav_campaigns"),
+                ListItem(Label("Environment Status"), id="nav_status"),
+                ListItem(Label("Operations"), id="nav_operations"),
+                id="app_nav_list"
+            )
+        
+        # The main content area
+        yield Container(id="app_main_content")
+
+    def on_mount(self) -> None:
+        self.query_one("#app_nav_list", ListView).index = 0
+        self.show_category("campaigns")
+
+    @on(ListView.Selected, "#app_nav_list")
+    def handle_nav_selection(self, event: ListView.Selected) -> None:
+        if event.item.id == "nav_campaigns":
+            self.show_category("campaigns")
+        elif event.item.id == "nav_status":
+            self.show_category("status")
+        elif event.item.id == "nav_operations":
+            self.show_category("operations")
+
+    def show_category(self, category: str) -> None:
+        content = self.query_one("#app_main_content", Container)
+        content.remove_children()
+        
+        if category == "campaigns":
+            self.active_category = "campaigns"
+            # Sub-MasterDetail for campaigns
+            campaign_list = CampaignSelection()
+            campaign_detail = CampaignDetail(id="campaign-detail")
+            
+            detail_container = VerticalScroll()
+            
+            config = get_config()
+            mv = MasterDetailView(master=campaign_list, detail=detail_container, master_width=config.tui.master_width)
+            content.mount(mv)
+            
+            # Use call_after_refresh to mount into detail_container once it's attached
+            def mount_details() -> None:
+                detail_container.mount(campaign_detail)
+                detail_container.mount(Button("Activate Campaign", variant="primary", id="btn_activate_campaign"))
+            
+            self.call_after_refresh(mount_details)
+            
+        elif category == "status":
+            self.active_category = "status"
+            content.mount(StatusView())
+            
+        elif category == "operations":
+            self.active_category = "operations"
+            content.mount(OperationsMenu())
+
+    @on(CampaignSelection.CampaignSelected)
+    def handle_campaign_highlight(self, message: CampaignSelection.CampaignSelected) -> None:
+        """Update the detail pane when a campaign is highlighted in the list."""
+        try:
+            detail = self.query_one("#campaign-detail", CampaignDetail)
+            campaign = Campaign.load(message.campaign_name)
+            detail.update_detail(campaign)
+        except Exception:
+            pass
+
+    @on(Button.Pressed, "#btn_activate_campaign")
+    async def handle_activate_campaign(self) -> None:
+        try:
+            detail = self.query_one("#campaign-detail", CampaignDetail)
+            if detail.campaign:
+                campaign_name = detail.campaign.name
+                # Use CampaignService to activate
+                from ..app import CocliApp
+                app = cast(CocliApp, self.app)
+                if hasattr(app, "services"):
+                    app.services.campaign_service.campaign_name = campaign_name
+                    app.services.campaign_service.activate()
+                    self.post_message(self.CampaignActivated(campaign_name))
+        except Exception as e:
+            self.app.notify(f"Activation Failed: {e}", severity="error")
+
+class OperationsMenu(Container):
+    """A menu for ETL/Sync/Audit operations with non-blocking execution and details."""
+
+    def compose(self) -> ComposeResult:
+        with Horizontal():
+            with VerticalScroll(id="ops_sidebar"):
+                yield ListView(
+                    # Reporting
+                    ListItem(Label("[dim]--- Reporting ---[/dim]"), disabled=True),
+                    ListItem(Label("Generate Report"), id="op_report"),
+                    ListItem(Label("Analyze Emails"), id="op_analyze_emails"),
+
+                    # Sync
+                    ListItem(Label("[dim]--- Data Sync ---[/dim]"), disabled=True),
+                    ListItem(Label("Sync All (S3->Local)"), id="op_sync_all"),
+                    ListItem(Label("Push Queue to S3"), id="op_push_queue"),
+
+                    # Audit
+                    ListItem(Label("[dim]--- Audit ---[/dim]"), disabled=True),
+                    ListItem(Label("Audit Integrity"), id="op_audit_integrity"),
+                    ListItem(Label("Audit Queue"), id="op_audit_queue"),
+                    
+                    id="ops_list"
+                )
+            with VerticalScroll(id="ops_detail"):
+                yield Label("Select an operation to see details.", id="op_title", classes="op-title")
+                yield Static("", id="op_description", classes="op-description")
+                yield Label("", id="op_last_run", classes="op-timestamp")
+                yield Horizontal(
+                    Button("Run Operation", variant="primary", id="btn_run_op"),
+                    Static("", id="op_status_indicator"),
+                    id="op_actions"
+                )
+                yield VerticalScroll(id="op_log_preview")
+
+    @on(ListView.Highlighted, "#ops_list")
+    def handle_op_highlight(self, event: ListView.Highlighted) -> None:
+        if not event.item or not event.item.id:
+            return
+        
+        op_id = event.item.id
+        details = self.get_op_details(op_id)
+        
+        self.query_one("#op_title", Label).update(details["title"])
+        self.query_one("#op_description", Static).update(details["description"])
+        
+        # Update last run from cache
+        last_run = self.get_last_run_info(op_id)
+        self.query_one("#op_last_run", Label).update(f"Last Run: {last_run}")
+
+    @on(Button.Pressed, "#btn_run_op")
+    def handle_run_op(self) -> None:
+        ops_list = self.query_one("#ops_list", ListView)
+        if ops_list.highlighted_child and ops_list.highlighted_child.id:
+            op_id = ops_list.highlighted_child.id
+            self.run_operation(op_id)
+
+    def get_op_details(self, op_id: str) -> Dict[str, str]:
+        details = {
+            "op_report": {
+                "title": "Campaign Report",
+                "description": "Generates a full data funnel report, including prospect counts, queue depths, and worker distribution. Results are cached locally."
+            },
+            "op_analyze_emails": {
+                "title": "Email Analysis",
+                "description": "Performs deep validation of found emails, checking for domain validity and common patterns."
+            },
+            "op_sync_all": {
+                "title": "Full S3 Sync",
+                "description": "Synchronizes all campaign data (prospects, emails, indexes) from S3 to your local machine."
+            },
+            "op_push_queue": {
+                "title": "Push Enrichment Queue",
+                "description": "Uploads locally generated enrichment tasks to the global S3 queue for workers to process."
+            },
+            "op_audit_integrity": {
+                "title": "Audit Campaign Integrity",
+                "description": "Scans for cross-contamination between campaigns and unauthorized keywords."
+            },
+            "op_audit_queue": {
+                "title": "Audit Queue Completion",
+                "description": "Verifies that all 'completed' markers in the queue actually have corresponding records in the index."
+            }
+        }
+        return details.get(op_id, {"title": "Unknown", "description": "No description available."})
+
+    def get_last_run_info(self, op_id: str) -> str:
+        # Placeholder: in a real impl, we'd read from a local JSON state file
+        return "Never"
+
+    @work(exclusive=True, thread=True)
+    async def run_operation(self, op_id: str) -> None:
+        indicator = self.query_one("#op_status_indicator", Static)
+        indicator.update("[bold yellow]Running...[/bold yellow]")
+        
+        from ..app import CocliApp
+        app = cast(CocliApp, self.app)
+        services = app.services
+        
+        try:
+            if op_id == "op_report":
+                await asyncio.to_thread(services.reporting_service.get_campaign_stats)
+            elif op_id == "op_sync_all":
+                await asyncio.to_thread(services.data_sync_service.sync_all)
+            # ... other ops ...
+            
+            indicator.update("[bold green]Success[/bold green]")
+            self.app.notify("Operation Complete")
+        except Exception as e:
+            indicator.update("[bold red]Failed[/bold red]")
+            self.app.notify(f"Error: {e}", severity="error")
