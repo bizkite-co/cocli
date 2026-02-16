@@ -10,6 +10,7 @@ class PersonDetail(Screen[None]):
 
     BINDINGS = [
         ("escape", "app.pop_screen", "Back"),
+        ("alt+s", "app.navigate_up", "Navigate Up"),
     ]
 
     def __init__(self, person_slug: str, name: str | None = None, id: str | None = None, classes: str | None = None):
