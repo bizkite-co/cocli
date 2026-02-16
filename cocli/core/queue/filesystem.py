@@ -768,6 +768,25 @@ class FilesystemEnrichmentQueue(FilesystemQueue):
     def __init__(self, campaign_name: str, s3_client: Any = None, bucket_name: Optional[str] = None):
         super().__init__(campaign_name, "enrichment", s3_client=s3_client, bucket_name=bucket_name)
 
+    def _get_task_model(self, task_id: str, data: Dict[str, Any]) -> Any:
+        from ...models.campaigns.queue.enrichment import EnrichmentTask
+        return EnrichmentTask(**data)
+
+    def _get_s3_lease_key(self, task_id: str) -> str:
+        from ...models.campaigns.queue.enrichment import EnrichmentTask
+        # task_id is domain. Use model_construct to avoid validation for path-only objects
+        return EnrichmentTask.model_construct(
+            domain=task_id, 
+            campaign_name=self.campaign_name
+        ).get_s3_lease_key()
+
+    def _get_s3_task_key(self, task_id: str) -> str:
+        from ...models.campaigns.queue.enrichment import EnrichmentTask
+        return EnrichmentTask.model_construct(
+            domain=task_id, 
+            campaign_name=self.campaign_name
+        ).get_s3_task_key()
+
     def push(self, message: Union[QueueMessage, Any]) -> str: # type: ignore
         from ...models.campaigns.queue.enrichment import EnrichmentTask
         
@@ -809,8 +828,41 @@ class FilesystemEnrichmentQueue(FilesystemQueue):
 
     def ack(self, task: Union[QueueMessage, str]) -> None: # type: ignore[override]
         token = task.ack_token if hasattr(task, 'ack_token') else task
+        if not token:
+            return
+            
+        # Standard local cleanup
         super().ack(token)
+        
+        # S3 Completed location for enrichment
+        if self.s3_client and self.bucket_name:
+            from ...models.campaigns.queue.enrichment import EnrichmentTask
+            try:
+                # We need the task_id (domain) to find the completed path
+                t = EnrichmentTask.model_construct(domain=token, campaign_name=self.campaign_name)
+                s3_completed_key = t.get_s3_task_key().replace("/pending/", "/completed/")
+                
+                # Check if local completed file exists (from super().ack)
+                local_completed = self.completed_dir / f"{token}.json"
+                if local_completed.exists():
+                    self.s3_client.upload_file(str(local_completed), self.bucket_name, s3_completed_key)
+                    logger.debug(f"Uploaded completion marker to S3: {s3_completed_key}")
+            except Exception as e:
+                logger.warning(f"Failed to upload enrichment completion marker: {e}")
 
     def nack(self, task: Union[QueueMessage, str]) -> None: # type: ignore[override]
         token = task.ack_token if hasattr(task, 'ack_token') else task
+        if not token:
+            return
+            
+        # 1. Local Cleanup
         super().nack(token)
+        
+        # 2. S3 Cleanup (Correct Path)
+        if self.s3_client and self.bucket_name:
+            s3_key = self._get_s3_lease_key(token)
+            try:
+                self.s3_client.delete_object(Bucket=self.bucket_name, Key=s3_key)
+                logger.debug(f"Immediate S3 Nack for {token} completed.")
+            except Exception as e:
+                logger.error(f"Error S3 nacking for {token}: {e}")
