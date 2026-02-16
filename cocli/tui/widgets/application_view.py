@@ -1,10 +1,11 @@
 from typing import Any, Dict, TYPE_CHECKING, cast
 import asyncio
+import logging
 from textual.app import ComposeResult
 from textual.containers import Container, VerticalScroll, Horizontal
 from textual.widgets import Label, ListView, ListItem, Static, Button
 from textual.message import Message
-from textual import on, work
+from textual import on, work, events
 
 from .master_detail import MasterDetailView
 from .campaign_selection import CampaignSelection
@@ -16,6 +17,8 @@ from cocli.core.config import get_config
 if TYPE_CHECKING:
     pass
 
+logger = logging.getLogger(__name__)
+
 class ApplicationView(Container):
     """A consolidated view for Application-level tasks (Campaigns, Status, Operations)."""
 
@@ -24,9 +27,15 @@ class ApplicationView(Container):
             super().__init__()
             self.campaign_name = campaign_name
 
+    BINDINGS = [
+        ("[", "focus_sidebar", "Focus Sidebar"),
+        ("]", "focus_content", "Focus Content"),
+        ("l", "select_item", "Select"),
+    ]
+
     def __init__(self, *args: Any, **kwargs: Any) -> None:
         super().__init__(*args, **kwargs)
-        self.active_category: str = "campaigns"
+        self.active_category: str = "operations"
 
     def compose(self) -> ComposeResult:
         # Sidebar for top-level Application categories
@@ -43,8 +52,26 @@ class ApplicationView(Container):
         yield Container(id="app_main_content")
 
     def on_mount(self) -> None:
-        self.query_one("#app_nav_list", ListView).index = 0
-        self.show_category("campaigns")
+        # Start in Operations (index 2) as requested
+        nav_list = self.query_one("#app_nav_list", ListView)
+        nav_list.index = 2
+        nav_list.focus()
+        self.show_category("operations")
+
+    def action_focus_sidebar(self) -> None:
+        self.query_one("#app_nav_list", ListView).focus()
+
+    def action_focus_content(self) -> None:
+        content = self.query_one("#app_main_content")
+        for widget in content.query("*"):
+            if widget.can_focus:
+                widget.focus()
+                break
+
+    def action_select_item(self) -> None:
+        focused = self.app.focused
+        if isinstance(focused, ListView):
+            focused.action_select_cursor()
 
     @on(ListView.Selected, "#app_nav_list")
     def handle_nav_selection(self, event: ListView.Selected) -> None:
@@ -56,34 +83,36 @@ class ApplicationView(Container):
             self.show_category("operations")
 
     def show_category(self, category: str) -> None:
+        logger.debug(f"show_category: {category}")
+        self.active_category = category
         content = self.query_one("#app_main_content", Container)
+        
+        # Clear existing content safely
         content.remove_children()
         
         if category == "campaigns":
-            self.active_category = "campaigns"
-            # Sub-MasterDetail for campaigns
             campaign_list = CampaignSelection()
             campaign_detail = CampaignDetail(id="campaign-detail")
-            
-            detail_container = VerticalScroll()
+            detail_pane = VerticalScroll()
             
             config = get_config()
-            mv = MasterDetailView(master=campaign_list, detail=detail_container, master_width=config.tui.master_width)
+            mv = MasterDetailView(master=campaign_list, detail=detail_pane, master_width=config.tui.master_width)
+            
+            # Mount mv to content
             content.mount(mv)
             
-            # Use call_after_refresh to mount into detail_container once it's attached
-            def mount_details() -> None:
-                detail_container.mount(campaign_detail)
-                detail_container.mount(Button("Activate Campaign", variant="primary", id="btn_activate_campaign"))
+            # Mount children to detail_pane AFTER mv is mounted
+            # Using call_after_refresh to ensure the parent is attached
+            def _mount_children() -> None:
+                detail_pane.mount(campaign_detail)
+                detail_pane.mount(Button("Activate Campaign", variant="primary", id="btn_activate_campaign"))
             
-            self.call_after_refresh(mount_details)
+            self.call_after_refresh(_mount_children)
             
         elif category == "status":
-            self.active_category = "status"
             content.mount(StatusView())
             
         elif category == "operations":
-            self.active_category = "operations"
             content.mount(OperationsMenu())
 
     @on(CampaignSelection.CampaignSelected)
@@ -114,6 +143,11 @@ class ApplicationView(Container):
 
 class OperationsMenu(Container):
     """A menu for ETL/Sync/Audit operations with non-blocking execution and details."""
+
+    BINDINGS = [
+        ("[", "focus_sidebar", "Focus Sidebar"),
+        ("]", "focus_detail", "Focus Detail"),
+    ]
 
     def compose(self) -> ComposeResult:
         with Horizontal():
@@ -146,6 +180,29 @@ class OperationsMenu(Container):
                     id="op_actions"
                 )
                 yield VerticalScroll(id="op_log_preview")
+
+    def on_mount(self) -> None:
+        self.query_one("#ops_list", ListView).focus()
+
+    def action_focus_sidebar(self) -> None:
+        self.query_one("#ops_list", ListView).focus()
+
+    def action_focus_detail(self) -> None:
+        self.query_one("#btn_run_op", Button).focus()
+
+    def on_key(self, event: events.Key) -> None:
+        """Handle vim-like navigation for the operations list."""
+        list_view = self.query_one("#ops_list", ListView)
+        if event.key == "j":
+            list_view.action_cursor_down()
+            event.prevent_default()
+        elif event.key == "k":
+            list_view.action_cursor_up()
+            event.prevent_default()
+        elif event.key == "l" or event.key == "enter":
+            if list_view.has_focus:
+                list_view.action_select_cursor()
+                event.prevent_default()
 
     @on(ListView.Highlighted, "#ops_list")
     def handle_op_highlight(self, event: ListView.Highlighted) -> None:

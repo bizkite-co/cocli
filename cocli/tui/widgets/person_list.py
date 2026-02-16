@@ -24,6 +24,11 @@ class PersonList(Screen[None]):
             super().__init__()
             self.person_slug = person_slug
 
+    BINDINGS = [
+        ("s", "focus_search", "Search"),
+        ("alt+s", "search_fresh", "New Search"),
+    ]
+
     def __init__(self, name: str | None = None, id: str | None = None, classes: str | None = None):
         super().__init__(name, id, classes)
         self.all_fz_items: List[SearchResult] = []
@@ -47,6 +52,16 @@ class PersonList(Screen[None]):
         else:
             self.run_search("")
         self.query_one(Input).focus()
+
+    def action_focus_search(self) -> None:
+        """Focus the search input."""
+        self.query_one(Input).focus()
+
+    def action_search_fresh(self) -> None:
+        """Clear and focus the search input."""
+        search_input = self.query_one(Input)
+        search_input.value = ""
+        search_input.focus()
 
     @on(Input.Changed)
     async def on_input_changed(self, event: Input.Changed) -> None:

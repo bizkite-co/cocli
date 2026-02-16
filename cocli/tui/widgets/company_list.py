@@ -30,8 +30,10 @@ class CompanyList(Container):
             self.company_slug = company_slug
 
     BINDINGS = [
-        ("f", "toggle_filter", "Toggle Contact Info"),
+        ("f", "toggle_filter", "Toggle Actionable"),
         ("r", "toggle_sort", "Toggle Recent"),
+        ("s", "focus_search", "Search"),
+        ("alt+s", "search_fresh", "New Search"),
     ]
 
     def __init__(self, name: str | None = None, id: str | None = None, classes: str | None = None):
@@ -39,36 +41,47 @@ class CompanyList(Container):
         self.can_focus = True
         self.filtered_fz_items: List[SearchResult] = []
         self.filter_contact: bool = True
-        self.sort_recent: bool = False
+        # DEFAULT TO MRU (Most Recently Updated)
+        self.sort_recent: bool = True
 
     async def on_mount(self) -> None:
         """Initialize the list on mount."""
         await self.perform_search("")
-        self.query_one(Input).focus()
+        self.query_one(ListView).focus()
 
     def compose(self) -> ComposeResult:
-        yield Label(self.get_title_text(), id="list_title")
+        # Removed "Companies" Label header as requested
         yield Input(placeholder="Search companies...", id="company_search_input")
         yield ListView(
             id="company_list_view"
         )
 
-    def get_title_text(self) -> str:
-        filter_status = " [Actionable]" if self.filter_contact else ""
-        sort_status = " [Recent]" if self.sort_recent else ""
-        return f"Companies{filter_status}{sort_status}"
+    def action_focus_search(self) -> None:
+        """Focus the search input."""
+        self.query_one(Input).focus()
+
+    def action_search_fresh(self) -> None:
+        """Clear and focus the search input."""
+        search_input = self.query_one(Input)
+        search_input.value = ""
+        search_input.focus()
 
     def action_toggle_filter(self) -> None:
         """Toggle the 'Actionable Leads' filter (has email OR phone)."""
         self.filter_contact = not self.filter_contact
-        self.query_one("#list_title", Label).update(self.get_title_text())
+        # Notification of state change might be nice since header is gone
+        status = "Actionable Only" if self.filter_contact else "All Leads"
+        self.app.notify(f"Filter: {status}")
+        
         query = self.query_one("#company_search_input", Input).value
         self.run_search(query)
 
     def action_toggle_sort(self) -> None:
         """Toggle sorting between Alphabetical and Recent."""
         self.sort_recent = not self.sort_recent
-        self.query_one("#list_title", Label).update(self.get_title_text())
+        status = "Recent" if self.sort_recent else "Alphabetical"
+        self.app.notify(f"Sorting: {status}")
+        
         query = self.query_one("#company_search_input", Input).value
         self.run_search(query)
 
@@ -80,14 +93,18 @@ class CompanyList(Container):
 
     def on_key(self, event: events.Key) -> None:
         """Handle key events for the CompanyList widget."""
-        if event.key == "down":
-            list_view = self.query_one(ListView)
+        list_view = self.query_one(ListView)
+        if event.key == "j":
             list_view.action_cursor_down()
             event.prevent_default()
-        elif event.key == "up":
-            list_view = self.query_one(ListView)
+        elif event.key == "k":
             list_view.action_cursor_up()
             event.prevent_default()
+        elif event.key == "escape":
+            # If search is focused, return focus to list
+            if self.query_one(Input).has_focus:
+                list_view.focus()
+                event.prevent_default()
 
     async def on_input_changed(self, event: Input.Changed) -> None:
         """Called when the search input changes."""
@@ -159,8 +176,6 @@ class CompanyList(Container):
             
             new_items = []
             for i, item in enumerate(self.filtered_fz_items[:20]):
-                # If we sorted by recent, we might want to show some date info if available
-                # (SearchResult would need to carry it, let's keep it simple for now)
                 new_items.append(ListItem(Label(item.name), name=item.name))
             
             list_view.extend(new_items)

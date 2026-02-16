@@ -1,11 +1,11 @@
 import logging
-from typing import Any, Optional
+from typing import Any, Optional, Dict, Type
 
 from textual.app import App, ComposeResult
 from textual.binding import Binding
 from textual.widgets import Static, ListView, Input, Label, Footer
 from textual.containers import Container, Horizontal
-from textual import events # Import events for on_key
+from textual import events
 
 
 from .widgets.company_list import CompanyList
@@ -22,6 +22,28 @@ logger = logging.getLogger(__name__)
 
 LEADER_KEY = "space"
 
+# --- Navigation Tree Documentation ---
+# This map defines the "Drill-Down" relationships in the UI.
+# alt+s uses this to navigate from a Branch Node (Detail) back to a Root Node (Search/List).
+BRANCH_ROOTS: Dict[Type[Any], Dict[str, Any]] = {
+    CompanyDetail: {
+        "parent_action": "action_show_companies",
+        "root_widget": CompanyList
+    },
+    PersonDetail: {
+        "parent_action": "action_show_people",
+        "root_widget": PersonList
+    },
+    CompanyList: {
+        "parent_action": None, # Already at root of this branch
+        "root_widget": CompanyList
+    },
+    PersonList: {
+        "parent_action": None,
+        "root_widget": PersonList
+    }
+}
+
 class MenuBar(Horizontal):
     """A custom menu bar that highlights the active section."""
     def __init__(self, *args: Any, **kwargs: Any) -> None:
@@ -29,9 +51,9 @@ class MenuBar(Horizontal):
         self.active_section: str = ""
 
     def compose(self) -> ComposeResult:
-        yield Label("Application ( A)", id="menu-application", classes="menu-item")
-        yield Label("People ( P)", id="menu-people", classes="menu-item")
         yield Label("Companies ( C)", id="menu-companies", classes="menu-item")
+        yield Label("People ( P)", id="menu-people", classes="menu-item")
+        yield Label("Application ( A)", id="menu-application", classes="menu-item")
 
     def set_active(self, section: str) -> None:
         for label in self.query(Label):
@@ -50,10 +72,10 @@ class CocliApp(App[None]):
     CSS_PATH = "tui.css"
     
     BINDINGS = [
-        # General
         ("l", "select_item", "Select"),
         ("q", "quit", "Quit"),
         Binding("ctrl+c", "escape", "Escape", show=False),
+        ("alt+s", "navigate_up", "Navigate Up"),
     ]
 
     leader_mode: bool = False
@@ -78,7 +100,6 @@ class CocliApp(App[None]):
             self.action_show_companies()
 
     async def on_key(self, event: events.Key) -> None:
-        logger.debug(f"Key pressed: {event.key}")
         if event.key == LEADER_KEY:
             self.leader_mode = True
             self.leader_key_buffer = LEADER_KEY
@@ -103,8 +124,39 @@ class CocliApp(App[None]):
         self.leader_mode = False
         self.leader_key_buffer = ""
 
+    def action_navigate_up(self) -> None:
+        """
+        Navigates 'Up' from a leaf node (Detail) to its branch root (Search/List).
+        If already at a branch root, focuses the search box.
+        """
+        # Iterate through the registry to find the active context
+        for widget_class, config in BRANCH_ROOTS.items():
+            # We check if the widget exists AND is currently visible in the DOM
+            try:
+                widget = self.query_one(widget_class)
+                if not widget.visible:
+                    continue
+            except Exception:
+                continue
+
+            # 1. If we are in a detail/branch node, navigate up to the root node
+            parent_action = config.get("parent_action")
+            if parent_action:
+                getattr(self, parent_action)()
+            
+            # 2. Focus/Reset search on the root widget of this specific branch
+            def reset_search(w_class: Type[Any] = config["root_widget"]) -> None:
+                try:
+                    target = self.query_one(w_class)
+                    if hasattr(target, "action_search_fresh"):
+                        target.action_search_fresh()
+                except Exception:
+                    pass
+            
+            self.call_later(reset_search)
+            return
+
     def on_person_list_person_selected(self, message: PersonList.PersonSelected) -> None:
-        """Handle PersonSelected message from PersonList."""
         self.query_one("#app_content").remove_children()
         self.query_one("#app_content").mount(PersonDetail(person_slug=message.person_slug))
 
@@ -143,60 +195,35 @@ class CocliApp(App[None]):
         self.main_content.mount(ApplicationView())
 
     def on_application_view_campaign_activated(self, message: ApplicationView.CampaignActivated) -> None:
-        """Handle campaign activation by refreshing the UI."""
         self.notify(f"Campaign Activated: {message.campaign_name}")
-        # Reset to company list or refresh current view if needed
         self.action_show_companies()
 
     def action_select_item(self) -> None:
-        """Selects the currently focused item, if the focused widget supports it."""
         focused_widget = self.focused
         if not focused_widget:
             return
-
         if hasattr(focused_widget, "action_select_item"):
             focused_widget.action_select_item()
         elif isinstance(focused_widget, ListView):
             focused_widget.action_select_cursor()
 
-    def action_toggle_dark(self) -> None:
-        """An action to toggle dark mode."""
-        self.dark = not self.dark
-
     def action_escape(self) -> None:
-        """Escape the current context (pop screen or return to company list)."""
-        if len(self.screen_stack) > 1:
-            self.pop_screen()
-            return
+        """Escape the current context (return to previous level without search reset)."""
+        for widget_class, config in BRANCH_ROOTS.items():
+            try:
+                widget = self.query_one(widget_class)
+                if not widget.visible:
+                    continue
+            except Exception:
+                continue
 
-        content = self.query_one("#app_content", Container)
-        if content.query("CompanyDetail") or content.query("PersonDetail"):
-            self.action_show_companies()
-            return
-
-        focused_widget = self.focused
-        if isinstance(focused_widget, Input):
-            focused_widget.value = ""
-        else:
-            pass
-
-    async def on_message(self, message: object) -> None:
-        """Log all messages in debug mode."""
-        if logger.isEnabledFor(logging.DEBUG):
-            message_details = {
-                "type": message.__class__.__name__,
-                "sender": getattr(message, "sender", "N/A"),
-                "control": getattr(message, "control", "N/A"),
-                "key": getattr(message, "key", "N/A"),
-                "value": getattr(message, "value", "N/A"),
-                "event_id": getattr(message, "event_id", "N/A"),
-                "name": getattr(message, "name", "N/A"),
-                "item_id": getattr(message, "item_id", "N/A"), 
-                "company_slug": getattr(message, "company_slug", "N/A"), 
-                "campaign_name": getattr(message, "campaign_name", "N/A"), 
-            }
-            logger.debug(f"MESSAGE: {message_details}")
-
+            parent_action = config.get("parent_action")
+            if parent_action:
+                getattr(self, parent_action)()
+                return
+        
+        if isinstance(self.focused, Input):
+            self.focused.value = ""
 
 if __name__ == "__main__":
     app: CocliApp = CocliApp()
