@@ -1,5 +1,7 @@
 import logging
-from typing import Any, Optional, Type
+import os
+from datetime import datetime
+from typing import Any, Optional, Type, List
 
 from textual.app import App, ComposeResult
 from textual.binding import Binding
@@ -15,13 +17,24 @@ from .widgets.company_preview import CompanyPreview
 from .widgets.person_detail import PersonDetail
 from .widgets.company_detail import CompanyDetail
 from .widgets.application_view import ApplicationView
-from .navigation import TUI_NAV_TREE
+from .navigation import TUI_NAV_TREE, NavNode
 from ..application.services import ServiceContainer
 from ..core.config import create_default_config_file
 
 logger = logging.getLogger(__name__)
 
 LEADER_KEY = "space"
+
+def tui_debug_log(msg: str):
+    """Direct-to-file logging for TUI events, bypasses framework config."""
+    try:
+        log_path = ".logs/tui_debug.log"
+        os.makedirs(os.path.dirname(log_path), exist_ok=True)
+        with open(log_path, "a", encoding="utf-8") as f:
+            f.write(f"{datetime.now().isoformat()} - {msg}\n")
+            f.flush()
+    except Exception:
+        pass
 
 class MenuBar(Horizontal):
     """A custom menu bar that highlights the active section."""
@@ -53,8 +66,10 @@ class CocliApp(App[None]):
     BINDINGS = [
         ("l", "select_item", "Select"),
         ("q", "quit", "Quit"),
-        Binding("ctrl+c", "escape", "Escape", show=False),
-        ("alt+s", "navigate_up", "Navigate Up"),
+        Binding("escape", "navigate_up", "Back", show=False),
+        Binding("ctrl+c", "navigate_up", "Back", show=False),
+        Binding("alt+s", "navigate_up", "Navigate Up"),
+        Binding("meta+s", "navigate_up", "Navigate Up", show=False),
     ]
 
     leader_mode: bool = False
@@ -72,6 +87,7 @@ class CocliApp(App[None]):
         self.auto_show = auto_show
 
     def on_mount(self) -> None:
+        tui_debug_log("--- APP START ---")
         self.main_content = self.query_one("#app_content", Container)
         self.menu_bar = self.query_one(MenuBar)
         create_default_config_file()
@@ -79,6 +95,8 @@ class CocliApp(App[None]):
             self.action_show_companies()
 
     async def on_key(self, event: events.Key) -> None:
+        tui_debug_log(f"APP: on_key: {event.key} (focused={self.focused.__class__.__name__ if self.focused else 'None'})")
+        
         if event.key == LEADER_KEY:
             self.leader_mode = True
             self.leader_key_buffer = LEADER_KEY
@@ -105,37 +123,69 @@ class CocliApp(App[None]):
 
     def action_navigate_up(self) -> None:
         """
-        Context-aware navigation.
-        Leaf Node (Detail) -> Branch Node (Search/List).
-        Branch Node -> Search reset/focus.
+        Unifies all 'Up' navigation.
+        Handles Drill-Down exit (Leaf -> Root) and Search Focus (Root -> Input).
         """
-        for widget_class, node in TUI_NAV_TREE.items():
-            try:
-                widget = self.query_one(widget_class)
-                if not widget.visible:
-                    continue
-            except Exception:
-                continue
+        tui_debug_log("APP: action_navigate_up triggered")
+        
+        # 1. First, let the focused widget try to handle it internally (e.g. Field -> Table)
+        # But we only want to do this if we are NOT trying to go all the way to Search.
+        # Actually, if we hit alt+s, we probably want to trigger the global NavNode logic.
+        
+        target_node = self._get_active_nav_node()
+        
+        if not target_node:
+            tui_debug_log("APP: No active nav node detected, defaulting to companies")
+            self.action_show_companies()
+            return
 
-            # If we are in a leaf (Detail), go to branch root (Search)
-            if node.parent_action:
-                getattr(self, node.parent_action)()
-                
-                # Also focus search on the newly mounted root
-                def focus_search(w_class: Type[Any] = node.root_widget) -> None:
-                    try:
-                        target = self.query_one(w_class)
-                        if hasattr(target, "action_search_fresh"):
-                            target.action_search_fresh()
-                    except Exception:
-                        pass
-                self.call_later(focus_search)
-                return
-            else:
-                # We are already at a branch root, just reset search
+        tui_debug_log(f"APP: Target node: {target_node.widget_class.__name__}")
+
+        if target_node.parent_action:
+            tui_debug_log(f"APP: Executing parent action: {target_node.parent_action}")
+            getattr(self, target_node.parent_action)()
+            
+            root_widget_class = target_node.root_widget
+            def focus_search(w_class: Type[Any] = root_widget_class) -> None:
+                try:
+                    target = self.query_one(w_class)
+                    if hasattr(target, "action_search_fresh"):
+                        target.action_search_fresh()
+                except Exception:
+                    pass
+            self.call_later(focus_search)
+        else:
+            # Already at root, just reset search
+            try:
+                widget = self.query_one(target_node.widget_class)
                 if hasattr(widget, "action_search_fresh"):
                     widget.action_search_fresh()
-                return
+            except Exception:
+                pass
+
+    def _get_active_nav_node(self) -> Optional[NavNode]:
+        """Finds the most specific active navigation node currently visible."""
+        # Check from Leaf to Root
+        for widget_class, node in TUI_NAV_TREE.items():
+            if node.parent_action:
+                try:
+                    widgets = list(self.query(widget_class))
+                    for w in widgets:
+                        if w.visible:
+                            return node
+                except Exception:
+                    continue
+        
+        for widget_class, node in TUI_NAV_TREE.items():
+            if not node.parent_action:
+                try:
+                    widgets = list(self.query(widget_class))
+                    for w in widgets:
+                        if w.visible:
+                            return node
+                except Exception:
+                    continue
+        return None
 
     def on_person_list_person_selected(self, message: PersonList.PersonSelected) -> None:
         self.query_one("#app_content").remove_children()
@@ -187,23 +237,6 @@ class CocliApp(App[None]):
             focused_widget.action_select_item()
         elif isinstance(focused_widget, ListView):
             focused_widget.action_select_cursor()
-
-    def action_escape(self) -> None:
-        """Escape context without search reset."""
-        for widget_class, node in TUI_NAV_TREE.items():
-            try:
-                widget = self.query_one(widget_class)
-                if not widget.visible:
-                    continue
-            except Exception:
-                continue
-
-            if node.parent_action:
-                getattr(self, node.parent_action)()
-                return
-        
-        if isinstance(self.focused, Input):
-            self.focused.value = ""
 
 if __name__ == "__main__":
     app: CocliApp = CocliApp()
