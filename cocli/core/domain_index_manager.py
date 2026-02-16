@@ -49,11 +49,14 @@ class DomainIndexManager:
 
     def _init_s3_client(self, aws_config: Dict[str, Any]) -> None:
         try:
-            if os.getenv("COCLI_RUNNING_IN_FARGATE"):
-                session = boto3.Session()
-            else:
-                aws_profile = os.getenv("AWS_PROFILE") or aws_config.get("profile") or aws_config.get("aws_profile")
-                session = boto3.Session(profile_name=aws_profile)
+            from .reporting import get_boto3_session
+            
+            # Prepare config structure for get_boto3_session
+            config = {
+                "aws": aws_config,
+                "campaign": {"name": self.campaign.name}
+            }
+            session = get_boto3_session(config)
             
             s3_config = Config(max_pool_connections=50)
             self.s3_client = session.client("s3", config=s3_config)

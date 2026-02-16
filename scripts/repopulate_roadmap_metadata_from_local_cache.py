@@ -86,7 +86,7 @@ def main():
     
     config = load_campaign_config(args.campaign)
     aws_config = config.get("aws", {})
-    bucket = aws_config.get("data_bucket_name") or f"{args.campaign}-cocli-data-use1"
+    bucket = aws_config.get("data_bucket_name") 
 
     # Use robust session resolution
     session = get_boto3_session(config)

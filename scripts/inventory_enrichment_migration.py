@@ -16,12 +16,19 @@ console = Console()
 
 @app.command()
 def inventory(
-    campaign: str = typer.Argument(..., help="Campaign to scan."),
-    bucket: str = typer.Option("roadmap-cocli-data-use1", help="S3 bucket name.")
+    campaign: str = typer.Argument(..., help="Campaign to scan.")
 ) -> None:
     """
     Scans S3 for legacy enrichment tasks and creates a migration inventory.
     """
+    from cocli.services.sync_service import SyncService
+    service = SyncService(campaign)
+    bucket = service.bucket
+    
+    if not bucket:
+        console.print(f"[red]Error:[/red] No bucket defined for campaign {campaign}")
+        raise typer.Exit(1)
+    
     legacy_prefix = f"campaigns/{campaign}/queues/enrichment/pending/"
     
     console.print(f"Scanning [bold]{bucket}/{legacy_prefix}[/bold] for legacy tasks...")

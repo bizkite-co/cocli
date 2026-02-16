@@ -89,8 +89,11 @@ class ProspectsIndexManager:
                         continue
                     
                     # FILTER: Only include if it starts with 'ChIJ' (PlaceID) or is in a 1-char shard
-                    # This prevents picking up 'hubspot_export_roadmap.csv' and other junk
+                    # Explicitly EXCLUDE legacy hex IDs starting with '0x'
                     name = p.stem
+                    if name.startswith("0x"):
+                        continue
+                        
                     is_place_id = name.startswith("ChIJ")
                     is_in_shard = len(p.parent.name) == 1
                     

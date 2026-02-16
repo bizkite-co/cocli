@@ -413,7 +413,7 @@ def sync_campaign_config(
     # Try to load existing config to get the correct bucket name
     config = load_campaign_config(campaign_name)
     aws_config = config.get("aws", {})
-    bucket_name = aws_config.get("data_bucket_name") or f"cocli-data-{campaign_name}"
+    bucket_name = aws_config.get("data_bucket_name") or aws_config.get("cocli_data_bucket_name") or f"cocli-data-{campaign_name}"
     
     prefix = f"campaigns/{campaign_name}/"
     local_base = DATA_DIR / "campaigns" / campaign_name

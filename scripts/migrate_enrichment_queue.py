@@ -19,13 +19,20 @@ console = Console()
 def migrate(
     campaign: str = typer.Argument(..., help="Campaign to migrate."),
     domains: List[str] = typer.Argument(..., help="Specific domains to migrate."),
-    bucket: str = typer.Option("roadmap-cocli-data-use1", help="S3 bucket name."),
     dry_run: bool = typer.Option(True, "--no-dry-run", is_flag=False, help="Actually move data.")
 ) -> None:
     """
     Migrates specific domains from legacy MD5 sharding to Gold Standard sharding.
     """
+    from cocli.services.sync_service import SyncService
     setup_file_logging(f"migrate_specific_{campaign}")
+    
+    service = SyncService(campaign)
+    bucket = service.bucket
+    
+    if not bucket:
+        console.print(f"[red]Error:[/red] No bucket defined for campaign {campaign}")
+        raise typer.Exit(1)
     
     # We use the NEW queue manager to push
     queue = get_queue_manager("enrichment", queue_type="enrichment", campaign_name=campaign, use_cloud=True)

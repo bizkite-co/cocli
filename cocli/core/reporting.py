@@ -22,11 +22,16 @@ def get_boto3_session(config: Dict[str, Any], max_pool_connections: int = 10) ->
     from botocore.config import Config
     boto_config = Config(max_pool_connections=max_pool_connections)
     aws_config = config.get("aws", {})
+    campaign_name = config.get("campaign", {}).get("name")
     
-    # 1. Try explicit iot_profiles from config
+    # 1. Try candidates (Explicit config + Automatic campaign-iot)
     iot_profiles = aws_config.get("iot_profiles", [])
     if isinstance(iot_profiles, str):
         iot_profiles = [iot_profiles]
+    
+    # Automatic candidate based on campaign
+    if campaign_name:
+        iot_profiles.insert(0, f"{campaign_name}-iot")
     
     for p in iot_profiles:
         try:
@@ -188,9 +193,8 @@ def get_campaign_stats(campaign_name: str) -> Dict[str, Any]:
 
             # Map prospect to its grid tile
             if prospect.latitude and prospect.longitude:
-                sw_lat = (float(prospect.latitude) // 0.1) * 0.1
-                sw_lon = (float(prospect.longitude) // 0.1) * 0.1
-                tile_id = f"{sw_lat:.1f}_{sw_lon:.1f}"
+                from .sharding import get_grid_tile_id
+                tile_id = get_grid_tile_id(float(prospect.latitude), float(prospect.longitude))
                 tile_prospect_counts[tile_id] = tile_prospect_counts.get(tile_id, 0) + 1
 
     stats["prospects_count"] = total_prospects
@@ -256,14 +260,20 @@ def get_campaign_stats(campaign_name: str) -> Dict[str, Any]:
                         pass
 
                     completed_count = 0
+                    last_completed_at = None
                     prefix_completed = f"campaigns/{campaign_name}/queues/{q}/completed/"
                     for page in paginator.paginate(Bucket=data_bucket, Prefix=prefix_completed):
-                        completed_count += len(page.get("Contents", []))
+                        for obj in page.get("Contents", []):
+                            completed_count += 1
+                            mtime = obj["LastModified"]
+                            if last_completed_at is None or mtime > last_completed_at:
+                                last_completed_at = mtime
                     
                     s3_queues[q] = {
                         "pending": pending_count,
                         "inflight": inflight_count,
-                        "completed": completed_count
+                        "completed": completed_count,
+                        "last_completed_at": last_completed_at.isoformat() if last_completed_at else None
                     }
                 except Exception as e:
                     logger.warning(f"Could not count S3 queue tasks for {q}: {e}")
@@ -340,26 +350,30 @@ def get_campaign_stats(campaign_name: str) -> Dict[str, Any]:
         q_pending = 0
         q_inflight = 0
         q_completed = 0
+        last_completed_at = None
 
         if pending_dir.exists():
-            try:
-                with os.scandir(pending_dir) as entries:
-                    for entry in entries:
-                        if entry.is_dir():
-                            q_pending += 1
-            except Exception:
-                pass
-            
-            # Count leases for inflight
-            q_inflight = len(list(pending_dir.glob("*/lease.json")))
+            # Recursive count for sharded pending
+            for root, dirs, files in os.walk(pending_dir):
+                for f in files:
+                    if f == "task.json":
+                        q_pending += 1
+                    elif f == "lease.json":
+                        q_inflight += 1
 
         if completed_dir.exists():
-             q_completed = len(list(completed_dir.glob("*.json")))
+            for completed_file in completed_dir.iterdir():
+                if completed_file.suffix == ".json":
+                    q_completed += 1
+                    mtime = datetime.fromtimestamp(completed_file.stat().st_mtime, tz=UTC)
+                    if last_completed_at is None or mtime > last_completed_at:
+                        last_completed_at = mtime
         
         local_stats[q_name] = {
             "pending": q_pending,
             "inflight": q_inflight,
-            "completed": q_completed
+            "completed": q_completed,
+            "last_completed_at": last_completed_at.isoformat() if last_completed_at else None
         }
 
     stats["local_queues"] = local_stats
@@ -367,10 +381,10 @@ def get_campaign_stats(campaign_name: str) -> Dict[str, Any]:
     # --- Mission Index Awareness for gm-list ---
     # If the virtual queue (target-tiles) has items, count them as pending
     # unless they are already in the witness index.
-    campaign_dir = paths.campaign(campaign_name)
-    target_tiles_dir = campaign_dir / "indexes" / "target-tiles"
+    campaign_dir_path = paths.campaign(campaign_name)
+    target_tiles_dir = campaign_dir_path / "indexes" / "target-tiles"
     if target_tiles_dir.exists():
-        mission_pending = 0
+        mission_pending: int = 0
         for tf in list(target_tiles_dir.glob("**/*.csv")) + list(target_tiles_dir.glob("**/*.usv")):
             rel_path = tf.relative_to(target_tiles_dir)
             witness_csv = witness_root / rel_path.with_suffix(".csv")
@@ -380,7 +394,9 @@ def get_campaign_stats(campaign_name: str) -> Dict[str, Any]:
         
         # Merge mission pending into the gm-list pending count
         if "gm-list" in local_stats:
-            local_stats["gm-list"]["pending"] += mission_pending
+            existing_pending = local_stats["gm-list"].get("pending", 0)
+            if isinstance(existing_pending, int):
+                local_stats["gm-list"]["pending"] = existing_pending + mission_pending
         else:
             local_stats["gm-list"] = {"pending": mission_pending, "inflight": 0, "completed": 0}
     # --------------------------------------------
@@ -514,13 +530,13 @@ def get_campaign_stats(campaign_name: str) -> Dict[str, Any]:
             witness_files = list(witness_root.glob(f"**/{phrase_slug}.csv")) + list(witness_root.glob(f"**/{phrase_slug}.usv"))
             for phrase_file in witness_files:
                 try:
-                    with open(phrase_file, "r", encoding="utf-8") as f:
+                    with open(phrase_file, "r", encoding="utf-8") as fh:
                         from ..utils.usv_utils import USVDictReader
                         reader: Union[USVDictReader, csv.DictReader[Any]]
                         if phrase_file.suffix == ".usv":
-                            reader = USVDictReader(f)
+                            reader = USVDictReader(fh)
                         else:
-                            reader = csv.DictReader(f)
+                            reader = csv.DictReader(fh)
                         
                         try:
                             row = next(reader)
@@ -568,8 +584,8 @@ def get_campaign_stats(campaign_name: str) -> Dict[str, Any]:
         )
         if csv_path.exists():
             try:
-                with open(csv_path, "r") as f:
-                    grid_reader: csv.DictReader[Any] = csv.DictReader(f)
+                with open(csv_path, "r") as fh:
+                    grid_reader: csv.DictReader[Any] = csv.DictReader(fh)
                     for row in grid_reader:
                         name = row.get("name") or row.get("city")
                         if not name:

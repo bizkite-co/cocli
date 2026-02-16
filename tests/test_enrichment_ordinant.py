@@ -18,7 +18,6 @@ def test_gold_standard_enrichment_ordinant():
     expected_s3 = f"campaigns/roadmap/queues/enrichment/pending/e1/{domain}/task.json"
     assert task.get_s3_task_key() == expected_s3
     
-    print(f"✅ Verified Gold Standard Ordinant for {domain}")
 
 if __name__ == "__main__":
     test_gold_standard_enrichment_ordinant()
