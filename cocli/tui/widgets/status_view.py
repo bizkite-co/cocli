@@ -1,7 +1,7 @@
 from textual.app import ComposeResult
-from textual.widgets import Static, Label, Button
+from textual.widgets import Static, Label
 from textual.containers import VerticalScroll, Container, Horizontal
-from textual import on, work
+from textual import work
 from rich.panel import Panel
 from rich.table import Table
 from rich.text import Text
@@ -14,16 +14,20 @@ if TYPE_CHECKING:
 class StatusView(VerticalScroll):
     """A widget to display the current cocli environment status with cached data support."""
 
+    BINDINGS = [
+        ("R", "refresh_status", "Refresh Status"),
+    ]
+
     def __init__(self, *args: Any, **kwargs: Any) -> None:
         super().__init__(*args, **kwargs)
         self.status_data: Optional[Dict[str, Any]] = None
         self.cluster_health: List[Dict[str, Any]] = []
+        self.can_focus = True
 
     def compose(self) -> ComposeResult:
         with Horizontal(id="status_header"):
             yield Label("Environment Status", id="status_title")
             yield Label("", id="status_last_updated")
-            yield Button("Refresh", id="btn_refresh_status", variant="primary")
             yield Static("", id="status_refresh_indicator")
         
         yield Container(id="status_body")
@@ -40,17 +44,17 @@ class StatusView(VerticalScroll):
         # 1. Load context status (always fast)
         self.status_data = app.services.reporting_service.get_environment_status()
         
-        # 2. Try to load cached stats
+        # 2. Try to load cached stats (DO NOT auto-trigger slow refresh)
         cached_stats = app.services.reporting_service.load_cached_report(campaign, "status")
         if cached_stats:
             self.status_data["stats"] = cached_stats
             self.update_view()
         else:
-            # If no cache, trigger a refresh
-            self.action_refresh()
+            # Just show environment if no stats cached
+            self.update_view()
 
-    @on(Button.Pressed, "#btn_refresh_status")
-    def action_refresh(self) -> None:
+    def action_refresh_status(self) -> None:
+        """Triggered by Shift+R."""
         self.trigger_refresh()
 
     @work(exclusive=True, thread=True)
@@ -62,8 +66,7 @@ class StatusView(VerticalScroll):
         try:
             campaign = app.services.reporting_service.campaign_name
             
-            # Fetch both stats and health in parallel if possible, 
-            # but reporting_service is sync for now.
+            # Fetch both stats and health in parallel
             stats_task = asyncio.to_thread(app.services.reporting_service.get_campaign_stats, campaign)
             health_task = app.services.reporting_service.get_cluster_health()
             
@@ -92,15 +95,15 @@ class StatusView(VerticalScroll):
         
         # Update Timestamp in Header
         stats = self.status_data.get("stats", {})
-        last_upd = stats.get("last_updated", "Never")
-        if last_upd != "Never":
+        last_upd = stats.get("last_updated", "Never (Press R to refresh)")
+        if last_upd != "Never (Press R to refresh)":
             try:
                 from datetime import datetime
                 dt = datetime.fromisoformat(last_upd)
-                last_upd = dt.strftime("%Y-%m-%d %H:%M:%S")
+                last_upd = f"Generated: {dt.strftime('%Y-%m-%d %H:%M:%S')}"
             except Exception:
                 pass
-        self.query_one("#status_last_updated", Label).update(f"Generated: {last_upd}")
+        self.query_one("#status_last_updated", Label).update(last_upd)
 
         # 1. Environment Panel
         env_text = Text.assemble(
@@ -129,7 +132,6 @@ class StatusView(VerticalScroll):
                 
                 containers = []
                 for c in node.get("containers", []):
-                    # c is [Name, Status]
                     name = c[0].replace("cocli-worker-", "")
                     containers.append(name)
                 

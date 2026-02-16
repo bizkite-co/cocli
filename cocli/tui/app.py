@@ -1,11 +1,11 @@
 import logging
 import os
 from datetime import datetime
-from typing import Any, Optional, Type
+from typing import Any, Optional, Type, cast
 
 from textual.app import App, ComposeResult
 from textual.binding import Binding
-from textual.widgets import Static, ListView, Label, Footer
+from textual.widgets import Static, ListView, Input, Label, Footer
 from textual.containers import Container, Horizontal
 from textual import events
 
@@ -68,8 +68,10 @@ class CocliApp(App[None]):
         ("q", "quit", "Quit"),
         Binding("escape", "navigate_up", "Back", show=False),
         Binding("ctrl+c", "navigate_up", "Back", show=False),
-        Binding("alt+s", "navigate_up", "Navigate Up"),
+        ("alt+s", "navigate_up", "Navigate Up"),
         Binding("meta+s", "navigate_up", "Navigate Up", show=False),
+        ("[", "focus_sidebar", "Focus Sidebar"),
+        ("]", "focus_content", "Focus Content"),
     ]
 
     leader_mode: bool = False
@@ -93,6 +95,20 @@ class CocliApp(App[None]):
         create_default_config_file()
         if self.auto_show:
             self.action_show_companies()
+
+    def action_focus_sidebar(self) -> None:
+        """Focus the sidebar in views that have one (like ApplicationView)."""
+        for widget in self.query("ApplicationView"):
+            if widget.visible:
+                cast(ApplicationView, widget).action_focus_sidebar()
+                return
+
+    def action_focus_content(self) -> None:
+        """Focus the main content area."""
+        for widget in self.query("ApplicationView"):
+            if widget.visible:
+                cast(ApplicationView, widget).action_focus_content()
+                return
 
     async def on_key(self, event: events.Key) -> None:
         tui_debug_log(f"APP: on_key: {event.key} (focused={self.focused.__class__.__name__ if self.focused else 'None'})")
@@ -128,10 +144,6 @@ class CocliApp(App[None]):
         """
         tui_debug_log("APP: action_navigate_up triggered")
         
-        # 1. First, let the focused widget try to handle it internally (e.g. Field -> Table)
-        # But we only want to do this if we are NOT trying to go all the way to Search.
-        # Actually, if we hit alt+s, we probably want to trigger the global NavNode logic.
-        
         target_node = self._get_active_nav_node()
         
         if not target_node:
@@ -145,46 +157,58 @@ class CocliApp(App[None]):
             tui_debug_log(f"APP: Executing parent action: {target_node.parent_action}")
             getattr(self, target_node.parent_action)()
             
+            # Use local capture to ensure target_node isn't None in closure
             root_widget_class = target_node.root_widget
+            
             def focus_search(w_class: Type[Any] = root_widget_class) -> None:
+                tui_debug_log(f"APP: Resetting search for {w_class.__name__}")
                 try:
                     target = self.query_one(w_class)
                     if hasattr(target, "action_search_fresh"):
                         target.action_search_fresh()
-                except Exception:
-                    pass
+                except Exception as e:
+                    tui_debug_log(f"APP: Failed to reset search: {e}")
             self.call_later(focus_search)
         else:
             # Already at root, just reset search
             try:
                 widget = self.query_one(target_node.widget_class)
+                tui_debug_log(f"APP: Already at root {target_node.widget_class.__name__}, resetting search")
                 if hasattr(widget, "action_search_fresh"):
                     widget.action_search_fresh()
-            except Exception:
-                pass
+            except Exception as e:
+                tui_debug_log(f"APP: Failed to reset search at root: {e}")
 
     def _get_active_nav_node(self) -> Optional[NavNode]:
         """Finds the most specific active navigation node currently visible."""
-        # Check from Leaf to Root
+        tui_debug_log("APP: _get_active_nav_node starting search")
+        # 1. Detail Views (Leaf nodes) have priority
         for widget_class, node in TUI_NAV_TREE.items():
             if node.parent_action:
                 try:
                     widgets = list(self.query(widget_class))
                     for w in widgets:
                         if w.visible:
+                            tui_debug_log(f"APP: Found active leaf: {widget_class.__name__}")
                             return node
-                except Exception:
+                except Exception as e:
+                    tui_debug_log(f"APP: Error querying {widget_class.__name__}: {e}")
                     continue
         
+        # 2. List Views (Branch nodes)
         for widget_class, node in TUI_NAV_TREE.items():
             if not node.parent_action:
                 try:
                     widgets = list(self.query(widget_class))
                     for w in widgets:
                         if w.visible:
+                            tui_debug_log(f"APP: Found active root: {widget_class.__name__}")
                             return node
-                except Exception:
+                except Exception as e:
+                    tui_debug_log(f"APP: Error querying root {widget_class.__name__}: {e}")
                     continue
+        
+        tui_debug_log("APP: No active nav node detected")
         return None
 
     def on_person_list_person_selected(self, message: PersonList.PersonSelected) -> None:
@@ -237,6 +261,16 @@ class CocliApp(App[None]):
             focused_widget.action_select_item()
         elif isinstance(focused_widget, ListView):
             focused_widget.action_select_cursor()
+
+    def action_escape(self) -> None:
+        """Escape context without search reset."""
+        tui_debug_log("APP: action_escape triggered")
+        node = self._get_active_nav_node()
+        if node and node.parent_action:
+            tui_debug_log(f"APP: Escaping from {node.widget_class.__name__} to parent")
+            getattr(self, node.parent_action)()
+        elif isinstance(self.focused, Input):
+            self.focused.value = ""
 
 if __name__ == "__main__":
     app: CocliApp = CocliApp()

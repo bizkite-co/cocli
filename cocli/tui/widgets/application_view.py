@@ -64,10 +64,23 @@ class ApplicationView(Container):
 
     def action_focus_content(self) -> None:
         content = self.query_one("#app_main_content")
-        for widget in content.query("*"):
-            if widget.can_focus:
-                widget.focus()
-                break
+        # Delegate focus to the specific category widget
+        if self.active_category == "campaigns":
+            try:
+                self.query_one(CampaignSelection).focus()
+            except Exception:
+                pass
+        elif self.active_category == "operations":
+            try:
+                self.query_one(OperationsMenu).focus()
+            except Exception:
+                pass
+        else:
+            # Fallback
+            for widget in content.query("*"):
+                if widget.can_focus:
+                    widget.focus()
+                    break
 
     def action_select_item(self) -> None:
         focused = self.app.focused
