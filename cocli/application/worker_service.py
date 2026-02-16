@@ -671,10 +671,14 @@ class WorkerService:
 
             while True:
                 try:
+                    # Load existing config first to get AWS context
+                    config = load_campaign_config(self.campaign_name)
+                    aws_config = config.get("aws", {})
+
                     # 0. Sync config from S3 (Efficient Targeted Sync)
                     from ..services.sync_service import SyncService
                     try:
-                        sync_service = SyncService(self.campaign_name)
+                        sync_service = SyncService(self.campaign_name, aws_config=aws_config)
                         await asyncio.to_thread(sync_service.sync_config, direction="down")
                     except Exception as e:
                         logger.warning(f"Failed to sync config from S3: {e}")

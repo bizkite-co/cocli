@@ -15,13 +15,14 @@ class SyncService:
     Encapsulates bucket resolution, path mapping, and command execution.
     """
 
-    def __init__(self, campaign_name: str):
+    def __init__(self, campaign_name: str, aws_config: Optional[Dict[str, Any]] = None):
         self.campaign_name = campaign_name
         self.config = load_campaign_config(campaign_name)
         
-        aws_config = self.config.get("aws", {})
-        self.bucket = aws_config.get("data_bucket_name") or f"cocli-data-{campaign_name}"
-        self.profile = aws_config.get("profile") or aws_config.get("aws_profile")
+        self.aws_config = aws_config or self.config.get("aws", {})
+        self.bucket = self.aws_config.get("data_bucket_name") or f"cocli-data-{campaign_name}"
+        self.profile = self.aws_config.get("profile") or self.aws_config.get("aws_profile")
+        self.region = self.aws_config.get("region_name") or self.aws_config.get("region")
 
     def sync_queue(
         self, 
@@ -95,6 +96,29 @@ class SyncService:
         
         return results
 
+    def sync_config(self, direction: SyncDirection = "up", dry_run: bool = False) -> subprocess.CompletedProcess[str]:
+        """Syncs the campaign config.toml file specifically."""
+        local_path = paths.campaign(self.campaign_name) / "config.toml"
+        s3_path = f"s3://{self.bucket}/campaigns/{self.campaign_name}/config.toml"
+
+        if direction == "up" and not local_path.exists():
+            raise FileNotFoundError(f"Local config file not found: {local_path}")
+
+        source = str(local_path) if direction == "up" else s3_path
+        dest = s3_path if direction == "up" else str(local_path)
+
+        # Use 'cp' instead of 'sync' for a single file to be explicit
+        cmd = ["aws", "s3", "cp", source, dest]
+        if dry_run:
+            cmd.append("--dryrun")
+        if self.profile:
+            cmd.extend(["--profile", self.profile])
+        if self.region:
+            cmd.extend(["--region", self.region])
+
+        logger.info(f"Executing config sync: {' '.join(cmd)}")
+        return subprocess.run(cmd, check=True, capture_output=True, text=True)
+
     def _run_sync(
         self, 
         source: str, 
@@ -119,6 +143,8 @@ class SyncService:
             cmd.append("--dryrun")
         if self.profile:
             cmd.extend(["--profile", self.profile])
+        if self.region:
+            cmd.extend(["--region", self.region])
         
         if exclude:
             for pattern in exclude:
