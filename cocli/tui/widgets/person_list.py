@@ -26,7 +26,7 @@ class PersonList(Screen[None]):
 
     BINDINGS = [
         ("s", "focus_search", "Search"),
-        ("alt+s", "search_fresh", "New Search"),
+        ("alt+s", "reset_view", "Return to List"),
     ]
 
     def __init__(self, name: str | None = None, id: str | None = None, classes: str | None = None):
@@ -51,17 +51,17 @@ class PersonList(Screen[None]):
             self.update_person_list_view()
         else:
             self.run_search("")
-        self.query_one(Input).focus()
+        self.query_one(ListView).focus()
 
     def action_focus_search(self) -> None:
         """Focus the search input."""
         self.query_one(Input).focus()
 
-    def action_search_fresh(self) -> None:
-        """Clear and focus the search input."""
+    def action_reset_view(self) -> None:
+        """Clear the search input and return focus to the list."""
         search_input = self.query_one(Input)
         search_input.value = ""
-        search_input.focus()
+        self.query_one(ListView).focus()
 
     @on(Input.Changed)
     async def on_input_changed(self, event: Input.Changed) -> None:

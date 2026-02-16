@@ -33,7 +33,7 @@ class CompanyList(Container):
         ("f", "toggle_filter", "Toggle Actionable"),
         ("r", "toggle_sort", "Toggle Recent"),
         ("s", "focus_search", "Search"),
-        ("alt+s", "search_fresh", "New Search"),
+        ("alt+s", "reset_view", "Return to List"),
     ]
 
     def __init__(self, name: str | None = None, id: str | None = None, classes: str | None = None):
@@ -60,11 +60,11 @@ class CompanyList(Container):
         """Focus the search input."""
         self.query_one(Input).focus()
 
-    def action_search_fresh(self) -> None:
-        """Clear and focus the search input."""
+    def action_reset_view(self) -> None:
+        """Clear the search input and return focus to the list."""
         search_input = self.query_one(Input)
         search_input.value = ""
-        search_input.focus()
+        self.query_one(ListView).focus()
 
     def action_toggle_filter(self) -> None:
         """Toggle the 'Actionable Leads' filter (has email OR phone)."""

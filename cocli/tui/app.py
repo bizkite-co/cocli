@@ -1,7 +1,7 @@
 import logging
 import os
 from datetime import datetime
-from typing import Any, Optional, Type, cast
+from typing import Any, Optional, Type, List, cast
 
 from textual.app import App, ComposeResult
 from textual.binding import Binding
@@ -140,7 +140,7 @@ class CocliApp(App[None]):
     def action_navigate_up(self) -> None:
         """
         Unifies all 'Up' navigation.
-        Handles Drill-Down exit (Leaf -> Root) and Search Focus (Root -> Input).
+        Handles Drill-Down exit (Leaf -> Root) and List Reset (Root -> Focus List).
         """
         tui_debug_log("APP: action_navigate_up triggered")
         
@@ -160,24 +160,24 @@ class CocliApp(App[None]):
             # Use local capture to ensure target_node isn't None in closure
             root_widget_class = target_node.root_widget
             
-            def focus_search(w_class: Type[Any] = root_widget_class) -> None:
-                tui_debug_log(f"APP: Resetting search for {w_class.__name__}")
+            def focus_list(w_class: Type[Any] = root_widget_class) -> None:
+                tui_debug_log(f"APP: Resetting view for {w_class.__name__}")
                 try:
                     target = self.query_one(w_class)
-                    if hasattr(target, "action_search_fresh"):
-                        target.action_search_fresh()
+                    if hasattr(target, "action_reset_view"):
+                        target.action_reset_view()
                 except Exception as e:
-                    tui_debug_log(f"APP: Failed to reset search: {e}")
-            self.call_later(focus_search)
+                    tui_debug_log(f"APP: Failed to reset view: {e}")
+            self.call_later(focus_list)
         else:
-            # Already at root, just reset search
+            # Already at root, just reset view/focus list
             try:
                 widget = self.query_one(target_node.widget_class)
-                tui_debug_log(f"APP: Already at root {target_node.widget_class.__name__}, resetting search")
-                if hasattr(widget, "action_search_fresh"):
-                    widget.action_search_fresh()
+                tui_debug_log(f"APP: Already at root {target_node.widget_class.__name__}, resetting view")
+                if hasattr(widget, "action_reset_view"):
+                    widget.action_reset_view()
             except Exception as e:
-                tui_debug_log(f"APP: Failed to reset search at root: {e}")
+                tui_debug_log(f"APP: Failed to reset view at root: {e}")
 
     def _get_active_nav_node(self) -> Optional[NavNode]:
         """Finds the most specific active navigation node currently visible."""

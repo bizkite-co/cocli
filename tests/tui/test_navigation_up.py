@@ -4,7 +4,7 @@ from cocli.tui.app import CocliApp
 from cocli.tui.widgets.company_list import CompanyList
 from cocli.tui.widgets.company_detail import CompanyDetail, InfoTable, DetailPanel
 from cocli.application.services import ServiceContainer
-from textual.widgets import Input
+from textual.widgets import Input, ListView
 
 @pytest.fixture
 def mock_company_data():
@@ -27,8 +27,8 @@ def create_mock_services():
     return ServiceContainer(search_service=mock_search, sync_search=True)
 
 @pytest.mark.asyncio
-async def test_alt_s_in_company_list_resets_search():
-    """Test that alt+s in CompanyList clears and focuses search."""
+async def test_alt_s_in_company_list_resets_search_and_focuses_list():
+    """Test that alt+s in CompanyList clears search and focuses the LIST, not input."""
     app = CocliApp(services=create_mock_services(), auto_show=False)
     async with app.run_test() as driver:
         await app.query_one("#app_content").mount(CompanyList())
@@ -36,21 +36,22 @@ async def test_alt_s_in_company_list_resets_search():
         
         search_input = app.query_one("#company_search_input", Input)
         search_input.value = "something"
-        
-        # Focus something else
-        app.query_one("ListView").focus()
-        assert not search_input.has_focus
+        search_input.focus()
         
         # Press alt+s
         await driver.press("alt+s")
         await driver.pause(0.1)
         
-        assert search_input.has_focus
+        # Input should be cleared
         assert search_input.value == ""
+        # BUT Input should NOT have focus
+        assert not search_input.has_focus
+        # ListView SHOULD have focus
+        assert app.query_one(ListView).has_focus
 
 @pytest.mark.asyncio
-async def test_alt_s_in_company_detail_navigates_up(mock_company_data):
-    """Test that alt+s in CompanyDetail navigates back to CompanyList."""
+async def test_alt_s_in_company_detail_navigates_up_to_list_focus(mock_company_data):
+    """Test that alt+s in CompanyDetail navigates back to CompanyList and focuses the list."""
     services = create_mock_services()
     app = CocliApp(services=services, auto_show=False)
     async with app.run_test() as driver:
@@ -61,7 +62,6 @@ async def test_alt_s_in_company_detail_navigates_up(mock_company_data):
         
         # Verify we are in Detail
         assert len(app.query(CompanyDetail)) == 1
-        assert app.query_one(DetailPanel).has_focus
         
         # Press alt+s
         await driver.press("alt+s")
@@ -70,24 +70,7 @@ async def test_alt_s_in_company_detail_navigates_up(mock_company_data):
         # Should be back at List
         assert len(app.query(CompanyList)) == 1
         assert len(app.query(CompanyDetail)) == 0
-
-@pytest.mark.asyncio
-async def test_alt_s_inside_quadrant_navigates_up(mock_company_data):
-    """Test that alt+s while focused INSIDE a table navigates all the way up to Search."""
-    services = create_mock_services()
-    app = CocliApp(services=services, auto_show=False)
-    async with app.run_test() as driver:
-        detail = CompanyDetail(mock_company_data)
-        await app.query_one("#app_content").mount(detail)
-        await driver.pause(0.1)
         
-        # 1. Enter quadrant (focus InfoTable)
-        await driver.press("i")
-        assert app.query_one(InfoTable).has_focus
-        
-        # 2. Press alt+s
-        await driver.press("alt+s")
-        await driver.pause(0.5)
-        
-        # Should be back at List
-        assert len(app.query(CompanyList)) == 1
+        # ListView should have focus for immediate j/k navigation
+        assert app.query_one(ListView).has_focus
+        assert not app.query_one(Input).has_focus
