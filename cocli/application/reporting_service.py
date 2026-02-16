@@ -92,8 +92,10 @@ class ReportingService:
         return await ws.get_cluster_health()
 
     def save_cached_report(self, campaign_name: str, report_type: str, data: Dict[str, Any]) -> None:
-        """Saves a report to the local reports cache."""
-        from ..core.config import get_cocli_app_data_dir
+        """Saves a report to the local reports cache and the campaign exports dir."""
+        from ..core.config import get_cocli_app_data_dir, get_campaigns_dir
+        
+        # 1. Save to User App Data Cache (Hidden fallback)
         report_dir = get_cocli_app_data_dir() / "reports" / campaign_name
         report_dir.mkdir(parents=True, exist_ok=True)
         
@@ -101,15 +103,31 @@ class ReportingService:
         with open(report_dir / f"{report_type}.json", "w") as f:
             json.dump(data, f, indent=2)
 
+        # 2. Save to Campaign Exports Directory (Primary location)
+        exports_dir = get_campaigns_dir() / campaign_name / "exports"
+        if exports_dir.exists():
+            with open(exports_dir / f"{report_type}.json", "w") as f:
+                json.dump(data, f, indent=2)
+
     def load_cached_report(self, campaign_name: str, report_type: str) -> Optional[Dict[str, Any]]:
-        """Loads a report from the local reports cache."""
-        from ..core.config import get_cocli_app_data_dir
-        report_file = get_cocli_app_data_dir() / "reports" / campaign_name / f"{report_type}.json"
-        
+        """Loads a report from the campaign exports dir or the user cache fallback."""
+        from ..core.config import get_cocli_app_data_dir, get_campaigns_dir
+        import json
+
+        # 1. Try Campaign Exports first
+        report_file = get_campaigns_dir() / campaign_name / "exports" / f"{report_type}.json"
         if report_file.exists():
-            import json
             try:
                 with open(report_file, "r") as f:
+                    return cast(Dict[str, Any], json.load(f))
+            except Exception:
+                pass
+
+        # 2. Fallback to User App Data Cache
+        fallback_file = get_cocli_app_data_dir() / "reports" / campaign_name / f"{report_type}.json"
+        if fallback_file.exists():
+            try:
+                with open(fallback_file, "r") as f:
                     return cast(Dict[str, Any], json.load(f))
             except Exception:
                 return None
