@@ -551,6 +551,7 @@ class WorkerService:
             tasks: List[QueueMessage] = await asyncio.to_thread(enrichment_queue.poll, batch_size=1)
             if not tasks:
                 if once:
+                    logger.info("run_enrichment_worker(once=True): No tasks found in Enrichment queue.")
                     return
                 await asyncio.sleep(5)
                 continue
@@ -565,8 +566,18 @@ class WorkerService:
                     company = await s3_company_manager.fetch_company_index(task.company_slug)
                     if company:
                         company.save()
+                
                 if not company:
-                    company = Company(name=task.company_slug, domain=task.domain, slug=task.company_slug)
+                    logger.info(f"Creating hollow company for enrichment task: {task.company_slug}")
+                    company = Company(
+                        name=task.company_slug, 
+                        domain=task.domain, 
+                        slug=task.company_slug
+                    )
+                
+                # RECOVERY: Ensure domain is set even if company was found without it
+                if not company.domain and task.domain:
+                    company.domain = task.domain
 
                 heartbeat_task = None
                 if hasattr(enrichment_queue, "heartbeat") and task.ack_token:

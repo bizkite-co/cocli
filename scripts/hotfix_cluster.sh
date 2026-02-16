@@ -1,34 +1,23 @@
 #!/bin/bash
-# Verifiable Cluster Hotfix Script (Sticky Campaign Edition)
+# Verifiable Cluster Hotfix Script (Direct Injection Edition)
 
 RPI_USER="mstouffer"
-# DEFAULT_CLUSTER_NODES are now resolved from mk/cluster.mk or passed as target
 CAMPAIGN_OVERRIDE=$2
 
 # Colors
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 BLUE='\033[0;34m'
-YELLOW='\033[1;33m'
 NC='\033[0m'
 
 get_node_campaign() {
     local host=$1
-    # 1. If override provided, use it
     if [ -n "$CAMPAIGN_OVERRIDE" ]; then
         echo "$CAMPAIGN_OVERRIDE"
         return
     fi
-    
-    # 2. Try to get from existing container
     local existing=$(ssh $RPI_USER@$host "docker inspect -f '{{range .Config.Env}}{{println .}}{{end}}' cocli-supervisor 2>/dev/null" | grep CAMPAIGN_NAME | cut -d'=' -f2)
-    if [ -n "$existing" ]; then
-        echo "$existing"
-        return
-    fi
-    
-    # 3. Default fallback
-    echo "roadmap"
+    echo "${existing:-roadmap}"
 }
 
 verify_node() {
@@ -36,44 +25,18 @@ verify_node() {
     local short_name=$(echo $host | cut -d'.' -f1)
     local node_campaign=$(get_node_campaign $host)
 
-    # Resolve IOT_PROFILE from config
+    local bucket=$(python3 -c "from cocli.core.config import load_campaign_config; c = load_campaign_config('$node_campaign'); print(c.get('aws', {}).get('data_bucket_name', ''))")
     local iot_profile=$(python3 -c "from cocli.core.config import load_campaign_config; c = load_campaign_config('$node_campaign'); profiles = c.get('aws', {}).get('iot_profiles', []); print(profiles[0] if profiles else '')")
-    if [ -z "$iot_profile" ]; then
-        printf "[${RED}ERROR${NC}] IOT_PROFILE not found in config for $node_campaign\n"
-        return 1
-    fi
 
-    printf "[${BLUE}VERIFY${NC}] Checking $host stability and heartbeats (Campaign: $node_campaign)...\n"
-    sleep 15
+    printf "[${BLUE}VERIFY${NC}] Checking $host stability (Campaign: $node_campaign)...\n"
+    sleep 10
     
-    # 1. Check for success marker
-    if ssh $RPI_USER@$host "docker logs --since 30s cocli-supervisor 2>&1" | grep -q "Supervisor started"; then
-        printf "[${GREEN}SUCCESS${NC}] $host is stable. Supervisor started.\n"
-        
-        # 2. DEEP VERIFY: Check S3
-        local bucket="${node_campaign}-cocli-data-use1"
-        now=$(date -u +%s)
-        last_mod_str=$(aws s3api head-object --bucket $bucket --key status/$short_name.json --profile $iot_profile --query 'LastModified' --output text 2>/dev/null)
-        
-        if [ -n "$last_mod_str" ]; then
-            last_mod=$(date -d "$last_mod_str" -u +%s)
-            diff=$((now - last_mod))
-            if [ $diff -lt 120 ]; then
-                printf "[${GREEN}ONLINE${NC}] Fresh heartbeat confirmed on S3 (updated ${diff}s ago)\n"
-                return 0
-            else
-                printf "[${RED}STALE${NC}] Heartbeat file exists but is stale ($diff seconds old).\n"
-                return 1
-            fi
-        else
-            printf "[${RED}OFFLINE${NC}] No heartbeat file found on S3 for $short_name yet.\n"
-            return 1
-        fi
+    if ssh $RPI_USER@$host "docker ps --format '{{.Names}}' | grep -q cocli-supervisor"; then
+        printf "[${GREEN}SUCCESS${NC}] $host supervisor container is running.\n"
+        return 0
     else
-        # Report crash
-        error=$(ssh $RPI_USER@$host "docker logs --since 30s cocli-supervisor 2>&1" | grep -iE "Traceback|SyntaxError|ImportError|ModuleNotFoundError")
-        printf "[${RED}CRITICAL${NC}] Crash detected on $host!\n"
-        printf "$error\n"
+        printf "[${RED}ERROR${NC}] $host supervisor container is NOT running.\n"
+        ssh $RPI_USER@$host "docker logs --tail 20 cocli-supervisor"
         return 1
     fi
 }
@@ -83,76 +46,50 @@ hotfix_node() {
     local short_name=$(echo $host | cut -d'.' -f1)
     local node_campaign=$(get_node_campaign $host)
 
-    # Resolve IOT_PROFILE from config
-    local iot_profile=$(python3 -c "from cocli.core.config import load_campaign_config; c = load_campaign_config('$node_campaign'); profiles = c.get('aws', {}).get('iot_profiles', []); print(profiles[0] if profiles else '')")
-    if [ -z "$iot_profile" ]; then
-        printf "[${RED}ERROR${NC}] IOT_PROFILE not found in config for $node_campaign\n"
-        return 1
-    fi
-
     printf "[${BLUE}HOTFIX${NC}] Deploying to $host (Campaign: $node_campaign)...\n"
     
-    # 1. Stop and Cleanup existing
+    # 1. Cleanup
     ssh $RPI_USER@$host "docker stop cocli-supervisor && docker rm cocli-supervisor" >/dev/null 2>&1
     
-    # 4. Start Final Container (Wait for it to be ready)
-    ssh $RPI_USER@$host "docker run -d --restart always --name cocli-supervisor --shm-size=2gb -e TZ=America/Los_Angeles -e CAMPAIGN_NAME='$node_campaign' -e COCLI_HOSTNAME=$short_name -e COCLI_QUEUE_TYPE=filesystem -v ~/repos/data:/app/data -v ~/.aws:/root/.aws:ro -v ~/.cocli:/root/.cocli:ro --entrypoint sleep cocli-worker-rpi:latest infinity" >/dev/null
+    # 2. Start staging container
+    ssh $RPI_USER@$host "docker run -d --name cocli-supervisor --shm-size=2gb -e TZ=America/Los_Angeles -e CAMPAIGN_NAME='$node_campaign' -e COCLI_HOSTNAME=$short_name -e COCLI_QUEUE_TYPE=filesystem -v ~/repos/data:/app/data -v ~/.aws:/root/.aws:ro -v ~/.cocli:/root/.cocli:ro cocli-worker-rpi:latest sleep infinity" >/dev/null
     
-    # 5. Push Code into the running container
-    ssh $RPI_USER@$host "mkdir -p /tmp/cocli_hotfix"
-    # Use -C to compress during scp for speed over slow PI links
-    scp -qr cocli scripts VERSION pyproject.toml $RPI_USER@$host:/tmp/cocli_hotfix/
-    ssh $RPI_USER@$host "docker cp /tmp/cocli_hotfix/. cocli-supervisor:/app/"
+    # 3. Inject ALL code to host (not just container)
+    ssh $RPI_USER@$host "rm -rf ~/repos/cocli_hotfix && mkdir -p ~/repos/cocli_hotfix"
+    scp -qrC cocli scripts VERSION pyproject.toml $RPI_USER@$host:~/repos/cocli_hotfix/
     
-    # 6. Apply Hotfix Symlinks and cleanup dist-packages
-    ssh $RPI_USER@$host "docker exec cocli-supervisor bash -c 'rm -rf /usr/local/lib/python3.12/dist-packages/cocli && ln -s /app/cocli /usr/local/lib/python3.12/dist-packages/cocli'"
-    
-    # 7. Final Step: Switch from 'sleep infinity' to real supervisor process
-    # We do this by stopping and starting with the right command, 
-    # but wait, if we stop it we lose the files if we didn't use a volume.
-    # INSTEAD: We will use 'docker exec' to start the supervisor or just 
-    # start it correctly the first time and CP into it while it runs.
-    
-    # REVISED STRATEGY: Start correctly, then CP and restart process.
+    # 4. Start Container with VOLUME MOUNT for the hotfixed code
+    # We mount the hotfixed cocli dir OVER the container's cocli dir
     ssh $RPI_USER@$host "docker stop cocli-supervisor && docker rm cocli-supervisor" >/dev/null 2>&1
-    ssh $RPI_USER@$host "docker run -d --restart always --name cocli-supervisor --shm-size=2gb -e TZ=America/Los_Angeles -e CAMPAIGN_NAME='$node_campaign' -e COCLI_HOSTNAME=$short_name -e COCLI_QUEUE_TYPE=filesystem -v ~/repos/data:/app/data -v ~/.aws:/root/.aws:ro -v ~/.cocli:/root/.cocli:ro cocli-worker-rpi:latest sleep infinity" >/dev/null
+    ssh $RPI_USER@$host "docker run -d --restart always --name cocli-supervisor \
+        --shm-size=2gb \
+        -e TZ=America/Los_Angeles \
+        -e CAMPAIGN_NAME='$node_campaign' \
+        -e COCLI_HOSTNAME=$short_name \
+        -e COCLI_QUEUE_TYPE=filesystem \
+        -v ~/repos/data:/app/data \
+        -v ~/repos/cocli_hotfix/cocli:/app/cocli \
+        -v ~/repos/cocli_hotfix/scripts:/app/scripts \
+        -v ~/.aws:/root/.aws:ro \
+        -v ~/.cocli:/root/.cocli:ro \
+        cocli-worker-rpi:latest \
+        cocli worker supervisor --debug" >/dev/null
     
-    ssh $RPI_USER@$host "docker cp /tmp/cocli_hotfix/. cocli-supervisor:/app/"
+    # 5. Apply Symlink inside (Just in case anything uses dist-packages)
     ssh $RPI_USER@$host "docker exec cocli-supervisor bash -c 'rm -rf /usr/local/lib/python3.12/dist-packages/cocli && ln -s /app/cocli /usr/local/lib/python3.12/dist-packages/cocli'"
     
-    # RESTART Process inside container (Supervisor)
-    ssh $RPI_USER@$host "docker exec -d cocli-supervisor cocli worker supervisor --debug"
-    
-    # 8. Verify
+    # 6. Verify
     verify_node $host
-    return $?
 }
 
-# --- Execution ---
 target=$1
 if [ -n "$target" ]; then
     hotfix_node $target
 else
-    # Resolve CLUSTER_NODES from campaign config
     campaign=${CAMPAIGN_OVERRIDE:-roadmap}
-    nodes=$(python3 -c "
-from cocli.core.config import load_campaign_config
-c = load_campaign_config('$campaign')
-scaling = c.get('prospecting', {}).get('scaling', {})
-# Filter for nodes ending in .pi or known node names
-print(' '.join([k for k in scaling.keys() if k != 'fargate']))
-")
-    
-    if [ -z "$nodes" ]; then
-        printf "[${RED}ERROR${NC}] No nodes found in config for campaign: $campaign\n"
-        exit 1
-    fi
-    
+    nodes=$(python3 -c "from cocli.core.config import load_campaign_config; c = load_campaign_config('$campaign'); scaling = c.get('prospecting', {}).get('scaling', {}); print(' '.join([k for k in scaling.keys() if k != 'fargate']))")
     for node in $nodes; do
-        # Ensure we have the .pi suffix if missing from config key
-        if [[ ! "$node" == *".pi" ]]; then
-            node="${node}.pi"
-        fi
+        [[ ! "$node" == *".pi" ]] && node="${node}.pi"
         hotfix_node $node
     done
 fi

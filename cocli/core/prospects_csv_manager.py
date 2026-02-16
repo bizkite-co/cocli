@@ -87,7 +87,17 @@ class ProspectsIndexManager:
                         continue
                     if not p.is_file():
                         continue
-                    all_files.append(p)
+                    
+                    # FILTER: Only include if it starts with 'ChIJ' (PlaceID) or is in a 1-char shard
+                    # This prevents picking up 'hubspot_export_roadmap.csv' and other junk
+                    name = p.stem
+                    is_place_id = name.startswith("ChIJ")
+                    is_in_shard = len(p.parent.name) == 1
+                    
+                    if is_place_id or is_in_shard:
+                        all_files.append(p)
+                    else:
+                        logger.debug(f"Skipping non-prospect file in index: {p.name}")
         
         # Sort: .usv before .csv, and sharded (deeper path) before flat
         sorted_files = sorted(all_files, key=lambda p: (p.stem, p.suffix == ".csv", -len(p.parts)))
