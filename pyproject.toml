@@ -71,6 +71,7 @@ dev = [
     "types-psutil",
     "ruff",
     "boto3-stubs[s3,sqs]",
+    "watchdog",
 ]
 
 [tool.setuptools]
