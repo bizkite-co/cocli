@@ -11,11 +11,12 @@ from .master_detail import MasterDetailView
 from .campaign_selection import CampaignSelection
 from .campaign_detail import CampaignDetail
 from .status_view import StatusView
+from .log_viewer import LogViewerModal, capture_logs
 from cocli.models.campaign import Campaign
 from cocli.core.config import get_config
 
 if TYPE_CHECKING:
-    pass
+    from ..app import CocliApp
 
 logger = logging.getLogger(__name__)
 
@@ -102,7 +103,6 @@ class ApplicationView(Container):
             content.mount(mv)
             
             # Mount children to detail_pane AFTER mv is mounted
-            # Using call_after_refresh to ensure the parent is attached
             def _mount_children() -> None:
                 detail_pane.mount(campaign_detail)
                 detail_pane.mount(Button("Activate Campaign", variant="primary", id="btn_activate_campaign"))
@@ -132,8 +132,7 @@ class ApplicationView(Container):
             if detail.campaign:
                 campaign_name = detail.campaign.name
                 # Use CampaignService to activate
-                from ..app import CocliApp
-                app = cast(CocliApp, self.app)
+                app = cast("CocliApp", self.app)
                 if hasattr(app, "services"):
                     app.services.campaign_service.campaign_name = campaign_name
                     app.services.campaign_service.activate()
@@ -147,7 +146,12 @@ class OperationsMenu(Container):
     BINDINGS = [
         ("[", "focus_sidebar", "Focus Sidebar"),
         ("]", "focus_detail", "Focus Detail"),
+        ("v", "view_full_log", "View Full Log"),
     ]
+
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
+        super().__init__(*args, **kwargs)
+        self.current_log_content: str = ""
 
     def compose(self) -> ComposeResult:
         with Horizontal():
@@ -176,19 +180,34 @@ class OperationsMenu(Container):
                 yield Label("", id="op_last_run", classes="op-timestamp")
                 yield Horizontal(
                     Button("Run Operation", variant="primary", id="btn_run_op"),
+                    Button("View Full Log", id="btn_view_log"),
                     Static("", id="op_status_indicator"),
                     id="op_actions"
                 )
-                yield VerticalScroll(id="op_log_preview")
+                with VerticalScroll(id="op_log_preview_container"):
+                    yield Static("", id="op_log_preview")
 
     def on_mount(self) -> None:
         self.query_one("#ops_list", ListView).focus()
+        self.query_one("#btn_view_log").display = False
 
     def action_focus_sidebar(self) -> None:
         self.query_one("#ops_list", ListView).focus()
 
     def action_focus_detail(self) -> None:
         self.query_one("#btn_run_op", Button).focus()
+
+    def action_view_full_log(self) -> None:
+        if self.current_log_content:
+            highlighted = self.query_one("#ops_list", ListView).highlighted_child
+            if highlighted and highlighted.id:
+                op_id = str(highlighted.id)
+                title = self.get_op_details(op_id)["title"]
+                self.app.push_screen(LogViewerModal(title, self.current_log_content))
+
+    @on(Button.Pressed, "#btn_view_log")
+    def handle_view_log_btn(self) -> None:
+        self.action_view_full_log()
 
     def on_key(self, event: events.Key) -> None:
         """Handle vim-like navigation for the operations list."""
@@ -209,7 +228,7 @@ class OperationsMenu(Container):
         if not event.item or not event.item.id:
             return
         
-        op_id = event.item.id
+        op_id = str(event.item.id)
         details = self.get_op_details(op_id)
         
         self.query_one("#op_title", Label).update(details["title"])
@@ -218,12 +237,17 @@ class OperationsMenu(Container):
         # Update last run from cache
         last_run = self.get_last_run_info(op_id)
         self.query_one("#op_last_run", Label).update(f"Last Run: {last_run}")
+        
+        # Clear log preview when switching ops
+        self.query_one("#op_log_preview", Static).update("")
+        self.query_one("#btn_view_log").display = False
 
     @on(Button.Pressed, "#btn_run_op")
     def handle_run_op(self) -> None:
         ops_list = self.query_one("#ops_list", ListView)
-        if ops_list.highlighted_child and ops_list.highlighted_child.id:
-            op_id = ops_list.highlighted_child.id
+        highlighted = ops_list.highlighted_child
+        if highlighted and highlighted.id:
+            op_id = str(highlighted.id)
             self.run_operation(op_id)
 
     def get_op_details(self, op_id: str) -> Dict[str, str]:
@@ -259,24 +283,42 @@ class OperationsMenu(Container):
         # Placeholder: in a real impl, we'd read from a local JSON state file
         return "Never"
 
+    def log_callback(self, text: str) -> None:
+        """Callback for real-time log streaming."""
+        self.current_log_content += text
+        # Keep preview short
+        preview = self.query_one("#op_log_preview", Static)
+        lines = self.current_log_content.split("\n")
+        preview.update("\n".join(lines[-10:]))
+
     @work(exclusive=True, thread=True)
     async def run_operation(self, op_id: str) -> None:
         indicator = self.query_one("#op_status_indicator", Static)
         indicator.update("[bold yellow]Running...[/bold yellow]")
+        self.query_one("#btn_view_log").display = True
+        self.current_log_content = ""
         
-        from ..app import CocliApp
-        app = cast(CocliApp, self.app)
+        app = cast("CocliApp", self.app)
         services = app.services
         
         try:
-            if op_id == "op_report":
-                await asyncio.to_thread(services.reporting_service.get_campaign_stats)
-            elif op_id == "op_sync_all":
-                await asyncio.to_thread(services.data_sync_service.sync_all)
-            # ... other ops ...
+            with capture_logs(self.log_callback):
+                if op_id == "op_report":
+                    await asyncio.to_thread(services.reporting_service.get_campaign_stats)
+                elif op_id == "op_sync_all":
+                    await asyncio.to_thread(services.data_sync_service.sync_all)
+                elif op_id == "op_push_queue":
+                    await asyncio.to_thread(services.data_sync_service.push_queue)
+                elif op_id == "op_audit_integrity":
+                    await asyncio.to_thread(services.audit_service.audit_campaign_integrity)
+                elif op_id == "op_audit_queue":
+                    await asyncio.to_thread(services.audit_service.audit_queue_completion)
+                elif op_id == "op_analyze_emails":
+                    await asyncio.to_thread(services.reporting_service.get_email_analysis)
             
             indicator.update("[bold green]Success[/bold green]")
             self.app.notify("Operation Complete")
         except Exception as e:
             indicator.update("[bold red]Failed[/bold red]")
             self.app.notify(f"Error: {e}", severity="error")
+            print(f"CRITICAL ERROR: {e}") # Captured by capture_logs

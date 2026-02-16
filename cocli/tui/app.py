@@ -1,11 +1,11 @@
 import logging
 import os
 from datetime import datetime
-from typing import Any, Optional, Type, List
+from typing import Any, Optional, Type
 
 from textual.app import App, ComposeResult
 from textual.binding import Binding
-from textual.widgets import Static, ListView, Input, Label, Footer
+from textual.widgets import Static, ListView, Label, Footer
 from textual.containers import Container, Horizontal
 from textual import events
 
@@ -25,7 +25,7 @@ logger = logging.getLogger(__name__)
 
 LEADER_KEY = "space"
 
-def tui_debug_log(msg: str):
+def tui_debug_log(msg: str) -> None:
     """Direct-to-file logging for TUI events, bypasses framework config."""
     try:
         log_path = ".logs/tui_debug.log"

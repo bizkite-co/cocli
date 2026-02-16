@@ -5,7 +5,7 @@ from textual import on, work
 from rich.panel import Panel
 from rich.table import Table
 from rich.text import Text
-from typing import Any, Dict, Optional, TYPE_CHECKING, cast
+from typing import Any, Dict, Optional, List, TYPE_CHECKING, cast
 import asyncio
 
 if TYPE_CHECKING:
@@ -17,6 +17,7 @@ class StatusView(VerticalScroll):
     def __init__(self, *args: Any, **kwargs: Any) -> None:
         super().__init__(*args, **kwargs)
         self.status_data: Optional[Dict[str, Any]] = None
+        self.cluster_health: List[Dict[str, Any]] = []
 
     def compose(self) -> ComposeResult:
         with Horizontal(id="status_header"):
@@ -60,14 +61,21 @@ class StatusView(VerticalScroll):
         
         try:
             campaign = app.services.reporting_service.campaign_name
-            # This is the slow blocking call, now in a thread
-            stats = await asyncio.to_thread(app.services.reporting_service.get_campaign_stats, campaign)
+            
+            # Fetch both stats and health in parallel if possible, 
+            # but reporting_service is sync for now.
+            stats_task = asyncio.to_thread(app.services.reporting_service.get_campaign_stats, campaign)
+            health_task = app.services.reporting_service.get_cluster_health()
+            
+            stats, health = await asyncio.gather(stats_task, health_task)
             
             # Re-fetch environment (it's fast)
             env = await asyncio.to_thread(app.services.reporting_service.get_environment_status)
             env["stats"] = stats
             
             self.status_data = env
+            self.cluster_health = health
+            
             self.call_after_refresh(self.update_view)
             indicator.update("[bold green] Done[/bold green]")
             await asyncio.sleep(2)
@@ -105,7 +113,36 @@ class StatusView(VerticalScroll):
         
         body.mount(Static(Panel(env_text, title="Environment Status", border_style="blue")))
 
-        # 2. Stats Panel
+        # 2. Cluster Health (SSH)
+        if self.cluster_health:
+            health_table = Table(title="Cluster Health (SSH Real-time)", expand=True)
+            health_table.add_column("Node", style="cyan")
+            health_table.add_column("Status", style="bold")
+            health_table.add_column("Uptime", style="magenta")
+            health_table.add_column("Voltage/Throttle", style="yellow")
+            health_table.add_column("Containers", style="green")
+
+            for node in self.cluster_health:
+                status = "[green]ONLINE[/green]" if node.get("online") else "[red]OFFLINE[/red]"
+                uptime = node.get("uptime", "N/A").split("up")[1].split(",")[0].strip() if "up" in node.get("uptime", "") else "N/A"
+                vt = f"{node.get('voltage','N/A')} / {node.get('throttled','N/A')}"
+                
+                containers = []
+                for c in node.get("containers", []):
+                    # c is [Name, Status]
+                    name = c[0].replace("cocli-worker-", "")
+                    containers.append(name)
+                
+                health_table.add_row(
+                    node.get("label", node.get("host", "unknown")),
+                    status,
+                    uptime,
+                    vt,
+                    ", ".join(containers) if containers else "None"
+                )
+            body.mount(Static(health_table))
+
+        # 3. Stats Panel
         if stats and not stats.get("error"):
             from datetime import datetime, UTC
             

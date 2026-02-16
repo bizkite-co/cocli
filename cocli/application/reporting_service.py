@@ -1,5 +1,5 @@
 import logging
-from typing import Any, Dict, Optional, cast
+from typing import Any, Dict, Optional, cast, List
 from datetime import datetime, timezone
 
 from ..core.reporting import get_campaign_stats
@@ -78,6 +78,18 @@ class ReportingService:
                 "campaign_name": target_campaign,
                 "last_updated": datetime.now(timezone.utc).isoformat()
             }
+
+    async def get_cluster_health(self) -> List[Dict[str, Any]]:
+        """
+        Returns health status of all workers in the cluster.
+        This is an SSH-based real-time check.
+        """
+        # We might need to resolve the worker service from the global container 
+        # or instantiate a new one for this campaign.
+        # Given ServiceContainer's factory pattern, we can just create one.
+        from .worker_service import WorkerService
+        ws = WorkerService(campaign_name=self.campaign_name)
+        return await ws.get_cluster_health()
 
     def save_cached_report(self, campaign_name: str, report_type: str, data: Dict[str, Any]) -> None:
         """Saves a report to the local reports cache."""

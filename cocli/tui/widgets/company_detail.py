@@ -2,7 +2,7 @@ import logging
 import webbrowser
 import subprocess
 import re
-from typing import Dict, Optional, Any, Union, cast
+from typing import Dict, Optional, Any, Union, cast, TYPE_CHECKING
 from datetime import datetime
 from pathlib import Path
 
@@ -21,6 +21,9 @@ from ...models.note import Note
 from ...models.phone import PhoneNumber
 from ...core.config import get_companies_dir, get_editor_command
 from .confirm_screen import ConfirmScreen
+
+if TYPE_CHECKING:
+    from ..app import CocliApp
 
 logger = logging.getLogger(__name__)
 
@@ -49,7 +52,6 @@ class QuadrantTable(DataTable[Any]):
 
     async def _on_key(self, event: events.Key) -> None:
         if event.key == "i":
-            # Some quadrants might use 'i' for inline editing, others for full editor
             if hasattr(self, "action_edit_row"):
                 self.action_edit_row()
                 event.stop()
@@ -63,11 +65,20 @@ class QuadrantTable(DataTable[Any]):
                 self.action_delete_item()
                 event.stop()
                 event.prevent_default()
+        elif event.key in ("alt+s", "meta+s"):
+            from ..app import tui_debug_log
+            tui_debug_log(f"DETAIL: Table bubbling {event.key} to app")
+            app = cast("CocliApp", self.app)
+            app.action_navigate_up()
+            event.stop()
+            event.prevent_default()
         else:
             await super()._on_key(event)
 
     def action_exit_quadrant(self) -> None:
         """Move focus back up to the DetailPanel."""
+        from ..app import tui_debug_log
+        tui_debug_log(f"DETAIL: Exit quadrant triggered from {self.__class__.__name__}")
         if self.parent and isinstance(self.parent, DetailPanel):
             self.parent.focus()
 
@@ -126,7 +137,9 @@ class EditInput(Input):
         self.field_name = field_name
 
     def on_key(self, event: events.Key) -> None:
-        if event.key == "escape":
+        if event.key in ("escape", "alt+s", "meta+s"):
+            from ..app import tui_debug_log
+            tui_debug_log(f"DETAIL: Cancel edit for {self.field_name} via {event.key}")
             detail_view = next((a for a in self.ancestors if isinstance(a, CompanyDetail)), None)
             if detail_view:
                 detail_view.action_cancel_edit()
@@ -151,19 +164,19 @@ class CompanyDetail(Container):
     """
     
     BINDINGS = [
-        ("escape", "app.action_escape", "Back"),
-        ("q", "app.action_escape", "Back"),
-        ("i", "enter_quadrant", "Enter Quadrant"),
-        ("enter", "enter_quadrant", "Enter Quadrant"),
-        ("a", "add_item", "Add Item"),
-        ("d", "delete_item", "Delete Item"),
-        # Sequential Jumping
-        ("]", "next_panel", "Next Panel"),
-        ("[", "prev_panel", "Prev Panel"),
-        # CLI-Legacy Keymaps
-        ("w", "open_website", "Website"),
-        ("p", "call_company", "Call"),
-        ("e", "open_folder", "Explorer (NVim)"),
+        Binding("escape", "app.action_escape", "Back"),
+        Binding("q", "app.action_escape", "Back"),
+        Binding("alt+s", "app.navigate_up", "Navigate Up"),
+        Binding("meta+s", "app.navigate_up", "Navigate Up", show=False),
+        Binding("i", "enter_quadrant", "Enter Quadrant"),
+        Binding("enter", "enter_quadrant", "Enter Quadrant"),
+        Binding("a", "add_item", "Add Item"),
+        Binding("d", "delete_item", "Delete Item"),
+        Binding("]", "next_panel", "Next Panel"),
+        Binding("[", "prev_panel", "Prev Panel"),
+        Binding("w", "open_website", "Website"),
+        Binding("p", "call_company", "Call"),
+        Binding("e", "open_folder", "Explorer (NVim)"),
     ]
 
     def __init__(self, company_data: Dict[str, Any], name: Optional[str] = None, id: Optional[str] = None, classes: Optional[str] = None):
@@ -251,7 +264,19 @@ class CompanyDetail(Container):
             self.app.notify("Delete Meeting coming soon")
 
     def on_key(self, event: events.Key) -> None:
+        # Don't return early if it's NOT a nav key, allow bubbling
         focused = self.app.focused
+        
+        # Handle alt+s/meta+s explicitly to ensure it reaches app if not handled by children
+        if event.key in ("alt+s", "meta+s"):
+            from ..app import tui_debug_log
+            tui_debug_log(f"DETAIL: CompanyDetail bubbling {event.key} to app")
+            app = cast("CocliApp", self.app)
+            app.action_navigate_up()
+            event.stop()
+            event.prevent_default()
+            return
+
         if isinstance(focused, DetailPanel):
             if event.key == "h":
                 if focused == self.panel_contacts:
@@ -259,34 +284,40 @@ class CompanyDetail(Container):
                 elif focused == self.panel_notes:
                     self.panel_meetings.focus()
                 event.prevent_default()
+                return
             elif event.key == "l":
                 if focused == self.panel_info:
                     self.panel_contacts.focus()
                 elif focused == self.panel_meetings:
                     self.panel_notes.focus()
                 event.prevent_default()
+                return
             elif event.key == "j":
                 if focused == self.panel_info:
                     self.panel_meetings.focus()
                 elif focused == self.panel_contacts:
                     self.panel_notes.focus()
                 event.prevent_default()
+                return
             elif event.key == "k":
                 if focused == self.panel_meetings:
                     self.panel_info.focus()
                 elif focused == self.panel_notes:
                     self.panel_contacts.focus()
                 event.prevent_default()
-            return
+                return
 
+        # Explicitly handle DataTable focus without swallowing other keys
         if isinstance(focused, DataTable):
             if event.key == "escape":
+                from ..app import tui_debug_log
+                tui_debug_log("DETAIL: DataTable escape to Panel")
                 parent = focused.parent
                 if parent and hasattr(parent, "focus"):
                     parent.focus()
                 event.prevent_default()
                 event.stop()
-            return
+                return
 
     def action_open_website(self) -> None:
         domain = self.company_data["company"].get("domain")
@@ -457,6 +488,8 @@ class CompanyDetail(Container):
 
     def action_cancel_edit(self) -> None:
         """Cancel the current inline edit and restore the table."""
+        from ..app import tui_debug_log
+        tui_debug_log("DETAIL: action_cancel_edit triggered")
         panel = self.query_one("#panel-info", DetailPanel)
         edit_inputs = panel.query(EditInput)
         if edit_inputs:
