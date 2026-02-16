@@ -16,7 +16,7 @@ from .widgets.master_detail import MasterDetailView
 from .widgets.company_preview import CompanyPreview
 from .widgets.person_detail import PersonDetail
 from .widgets.company_detail import CompanyDetail
-from .widgets.application_view import ApplicationView, OperationsMenu
+from .widgets.application_view import ApplicationView
 from .widgets.status_view import StatusView
 from .widgets.campaign_selection import CampaignSelection
 from .navigation import NavNode, ProcessRun
@@ -128,11 +128,6 @@ class CocliApp(App[None]):
             ),
 
             # --- Application Branch ---
-            OperationsMenu: NavNode(
-                widget_class=OperationsMenu,
-                parent_action="action_reset_view", 
-                root_widget=ApplicationView
-            ),
             StatusView: NavNode(
                 widget_class=StatusView,
                 parent_action="action_reset_view",

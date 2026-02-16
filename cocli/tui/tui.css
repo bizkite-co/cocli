@@ -134,8 +134,18 @@ DataTable > .datatable--cursor {
     border-bottom: solid #222222;
 }
 
+#app_nav_list {
+    height: auto;
+    background: black;
+}
+
 #app_sub_nav_container {
     height: 1fr;
+}
+
+.sub-sidebar-list {
+    height: 1fr;
+    background: black;
 }
 
 #app_recent_runs {
