@@ -4,6 +4,7 @@ from cocli.tui.app import CocliApp
 from cocli.tui.widgets.company_detail import CompanyDetail, EditInput, InfoTable
 from cocli.tui.widgets.company_list import CompanyList
 from cocli.application.services import ServiceContainer
+from textual.widgets import ListView
 
 @pytest.fixture
 def mock_company_data():
@@ -58,13 +59,11 @@ async def test_cancel_inline_edit_with_escape(mock_company_data):
 
 @pytest.mark.asyncio
 async def test_navigate_up_with_alt_s(mock_company_data):
-    """Test that pressing 'alt+s' in CompanyDetail navigates up to CompanyList."""
-    # We need real or mock services that handle action_show_companies
+    """Test that pressing 'alt+s' in CompanyDetail navigates up to CompanyList and focuses the list."""
     services = create_mock_services()
     app = CocliApp(services=services, auto_show=False)
     
     async with app.run_test() as driver:
-        # Manually set up state: show CompanyDetail
         detail = CompanyDetail(mock_company_data)
         await app.query_one("#app_content").mount(detail)
         await driver.pause(0.1)
@@ -75,12 +74,15 @@ async def test_navigate_up_with_alt_s(mock_company_data):
         await driver.press("alt+s")
         await driver.pause(0.5)
         
-        # Should be back at CompanyList (Search)
+        # Should be back at CompanyList
         assert len(app.query(CompanyList)) == 1
         assert len(app.query(CompanyDetail)) == 0
         
-        # Search input should have focus and be empty (from action_search_fresh)
+        # ListView should have focus (not search input)
+        list_view = app.query_one("#company_list_view", ListView)
+        assert list_view.has_focus
+        
         from textual.widgets import Input
         search_input = app.query_one("#company_search_input", Input)
-        assert search_input.has_focus
+        assert not search_input.has_focus
         assert search_input.value == ""

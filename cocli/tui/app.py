@@ -1,7 +1,7 @@
 import logging
 import os
 from datetime import datetime
-from typing import Any, Optional, Type, List, cast
+from typing import Any, Optional, Type, cast
 
 from textual.app import App, ComposeResult
 from textual.binding import Binding
@@ -155,60 +155,79 @@ class CocliApp(App[None]):
 
         if target_node.parent_action:
             tui_debug_log(f"APP: Executing parent action: {target_node.parent_action}")
-            getattr(self, target_node.parent_action)()
+            # The parent action can be a method on CocliApp or the widget itself
+            if hasattr(self, target_node.parent_action):
+                getattr(self, target_node.parent_action)()
+            else:
+                # Try calling it on the widget instance
+                try:
+                    w = self.query_one(target_node.widget_class)
+                    if hasattr(w, target_node.parent_action):
+                        getattr(w, target_node.parent_action)()
+                except Exception:
+                    pass
             
             # Use local capture to ensure target_node isn't None in closure
             root_widget_class = target_node.root_widget
             
-            def focus_list(w_class: Type[Any] = root_widget_class) -> None:
+            def focus_root(w_class: Type[Any] = root_widget_class) -> None:
                 tui_debug_log(f"APP: Resetting view for {w_class.__name__}")
                 try:
                     target = self.query_one(w_class)
                     if hasattr(target, "action_reset_view"):
                         target.action_reset_view()
+                    elif hasattr(target, "action_focus_sidebar"):
+                        target.action_focus_sidebar()
                 except Exception as e:
-                    tui_debug_log(f"APP: Failed to reset view: {e}")
-            self.call_later(focus_list)
+                    tui_debug_log(f"APP: Failed to reset root: {e}")
+            self.call_later(focus_root)
         else:
-            # Already at root, just reset view/focus list
+            # Already at branch root, just reset view/focus list/sidebar
             try:
                 widget = self.query_one(target_node.widget_class)
                 tui_debug_log(f"APP: Already at root {target_node.widget_class.__name__}, resetting view")
                 if hasattr(widget, "action_reset_view"):
                     widget.action_reset_view()
+                elif hasattr(widget, "action_focus_sidebar"):
+                    widget.action_focus_sidebar()
             except Exception as e:
                 tui_debug_log(f"APP: Failed to reset view at root: {e}")
 
     def _get_active_nav_node(self) -> Optional[NavNode]:
         """Finds the most specific active navigation node currently visible."""
-        tui_debug_log("APP: _get_active_nav_node starting search")
-        # 1. Detail Views (Leaf nodes) have priority
+        # 1. Check if the FOCUSED widget is one of our nodes (Detail views first)
+        focused = self.focused
+        if focused:
+            # Walk up ancestors to see if we are inside a registered widget
+            for widget_class, node in TUI_NAV_TREE.items():
+                if focused == self.query_one(widget_class) if list(self.query(widget_class)) else None:
+                    # If it's a branch root but another leaf is visible, leaf wins
+                    # (This handles the sidebar vs content ambiguity)
+                    pass
+
+        # 2. Detail Views (Leaf nodes) have priority
         for widget_class, node in TUI_NAV_TREE.items():
             if node.parent_action:
                 try:
                     widgets = list(self.query(widget_class))
                     for w in widgets:
                         if w.visible:
-                            tui_debug_log(f"APP: Found active leaf: {widget_class.__name__}")
+                            # If this leaf is focused or contains focus, it's definitely the winner
                             return node
-                except Exception as e:
-                    tui_debug_log(f"APP: Error querying {widget_class.__name__}: {e}")
+                except Exception:
                     continue
         
-        # 2. List Views (Branch nodes)
+        # 3. List Views (Branch nodes)
         for widget_class, node in TUI_NAV_TREE.items():
             if not node.parent_action:
                 try:
                     widgets = list(self.query(widget_class))
                     for w in widgets:
                         if w.visible:
-                            tui_debug_log(f"APP: Found active root: {widget_class.__name__}")
                             return node
-                except Exception as e:
-                    tui_debug_log(f"APP: Error querying root {widget_class.__name__}: {e}")
+                except Exception:
                     continue
         
-        tui_debug_log("APP: No active nav node detected")
         return None
 
     def on_person_list_person_selected(self, message: PersonList.PersonSelected) -> None:
@@ -268,7 +287,15 @@ class CocliApp(App[None]):
         node = self._get_active_nav_node()
         if node and node.parent_action:
             tui_debug_log(f"APP: Escaping from {node.widget_class.__name__} to parent")
-            getattr(self, node.parent_action)()
+            if hasattr(self, node.parent_action):
+                getattr(self, node.parent_action)()
+            else:
+                try:
+                    w = self.query_one(node.widget_class)
+                    if hasattr(w, node.parent_action):
+                        getattr(w, node.parent_action)()
+                except Exception:
+                    pass
         elif isinstance(self.focused, Input):
             self.focused.value = ""
 

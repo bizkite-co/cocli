@@ -2,7 +2,7 @@ import pytest
 from unittest.mock import MagicMock
 from cocli.tui.app import CocliApp
 from cocli.tui.widgets.company_list import CompanyList
-from cocli.tui.widgets.company_detail import CompanyDetail, InfoTable, DetailPanel
+from cocli.tui.widgets.company_detail import CompanyDetail
 from cocli.application.services import ServiceContainer
 from textual.widgets import Input, ListView
 

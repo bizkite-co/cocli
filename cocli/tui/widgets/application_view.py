@@ -37,6 +37,7 @@ class ApplicationView(Container):
     def __init__(self, *args: Any, **kwargs: Any) -> None:
         super().__init__(*args, **kwargs)
         self.active_category: str = "operations"
+        self.can_focus = True
 
     def compose(self) -> ComposeResult:
         # Sidebar for top-level Application categories
@@ -58,6 +59,10 @@ class ApplicationView(Container):
         nav_list.index = 2
         nav_list.focus()
         self.show_category("operations")
+
+    def action_reset_view(self) -> None:
+        """Move focus back to the main navigation list."""
+        self.query_one("#app_nav_list", ListView).focus()
 
     def action_focus_sidebar(self) -> None:
         self.query_one("#app_nav_list", ListView).focus()
