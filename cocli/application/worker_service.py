@@ -671,6 +671,14 @@ class WorkerService:
 
             while True:
                 try:
+                    # 0. Sync config from S3 (Efficient Targeted Sync)
+                    from ..services.sync_service import SyncService
+                    try:
+                        sync_service = SyncService(self.campaign_name)
+                        await asyncio.to_thread(sync_service.sync_config, direction="down")
+                    except Exception as e:
+                        logger.warning(f"Failed to sync config from S3: {e}")
+
                     now = time.time()
                     if s3_client is None or now - last_client_refresh > 1800:
                         s3_client = self.get_s3_client()
@@ -734,10 +742,7 @@ class WorkerService:
                                     enrichment_queue,
                                     debug,
                                     True, # once=True: Finish after one task
-                                    self.processed_by,
-                                    self.campaign_name,
                                     s3_client=s3_client,
-                                    bucket_name=self.bucket_name,
                                     tracker=tmp_tracker,
                                 )
                                 # If it took more than a second, it probably processed something
