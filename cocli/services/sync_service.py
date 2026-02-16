@@ -24,6 +24,19 @@ class SyncService:
         self.profile = self.aws_config.get("profile") or self.aws_config.get("aws_profile")
         self.region = self.aws_config.get("region_name") or self.aws_config.get("region")
 
+    def _get_aws_bin(self) -> str:
+        """Returns the absolute path to the aws binary if not in PATH."""
+        import shutil
+        aws_bin = shutil.which("aws")
+        if aws_bin:
+            return aws_bin
+        
+        # Fallbacks for common container/RPi paths
+        for p in ["/usr/local/bin/aws", "/usr/bin/aws"]:
+            if Path(p).exists():
+                return p
+        return "aws"
+
     def sync_queue(
         self, 
         queue_name: str, 
@@ -108,7 +121,7 @@ class SyncService:
         dest = s3_path if direction == "up" else str(local_path)
 
         # Use 'cp' instead of 'sync' for a single file to be explicit
-        cmd = ["aws", "s3", "cp", source, dest]
+        cmd = [self._get_aws_bin(), "s3", "cp", source, dest]
         if dry_run:
             cmd.append("--dryrun")
         if self.profile:
@@ -135,7 +148,7 @@ class SyncService:
         log_file = Path(".logs") / f"{timestamp}_s3_sync.log"
         log_file.parent.mkdir(exist_ok=True)
 
-        cmd = ["aws", "s3", "sync", source, dest]
+        cmd = [self._get_aws_bin(), "s3", "sync", source, dest]
         
         if delete:
             cmd.append("--delete")

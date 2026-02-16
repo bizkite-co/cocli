@@ -199,6 +199,10 @@ def get_campaign_stats(campaign_name: str) -> Dict[str, Any]:
 
     stats["prospects_count"] = total_prospects
     stats["worker_stats"] = source_counts
+    stats["prospect_validation_errors"] = {
+        "count": getattr(manager, "validation_error_count", 0),
+        "log_path": str(getattr(manager, "error_log_path", ""))
+    }
     
     # 2. Queue Stats (Cloud vs Local)
     aws_config = config.get("aws", {})

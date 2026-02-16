@@ -64,7 +64,20 @@ class ProspectsIndexManager:
 
         seen_pids = set()
         checkpoint_path = self._get_checkpoint_path().resolve()
+        self.error_log_path = self.index_dir / "validation_errors.usv"
+        self.validation_error_count = 0
         
+        # Helper to log errors to file
+        def log_validation_error(filename: str, error: str):
+            self.validation_error_count += 1
+            try:
+                from datetime import datetime
+                from .utils import UNIT_SEP
+                with open(self.error_log_path, "a", encoding="utf-8") as ef:
+                    ef.write(f"{datetime.now().isoformat()}{UNIT_SEP}{filename}{UNIT_SEP}{str(error).replace('\n', ' ')}\n")
+            except Exception:
+                pass
+
         # 1. Read WAL (Hot Layer) - Files in wal/ shards
         # We also check root, inbox, and the 'prospects/' folder for compatibility
         wal_dir = self.index_dir / "wal"
@@ -127,31 +140,40 @@ class ProspectsIndexManager:
                             reader = USVDictReader(f)
                             for row in reader:
                                 normalized_row = {k.lower().replace(" ", "_"): v for k, v in row.items() if k}
-                                prospect = GoogleMapsProspect.model_validate(normalized_row)
-                                if prospect.place_id:
-                                    seen_pids.add(prospect.place_id)
-                                    yield prospect
+                                try:
+                                    prospect = GoogleMapsProspect.model_validate(normalized_row)
+                                    if prospect.place_id:
+                                        seen_pids.add(prospect.place_id)
+                                        yield prospect
+                                except Exception as e:
+                                    log_validation_error(file_path.name, str(e))
                         else:
                             # Headerless: Use the model's own robust parser
                             f.seek(0)
                             for line in f:
                                 if not line.strip():
                                     continue
-                                prospect = GoogleMapsProspect.from_usv(line)
-                                if prospect.place_id:
-                                    seen_pids.add(prospect.place_id)
-                                    yield prospect
+                                try:
+                                    prospect = GoogleMapsProspect.from_usv(line)
+                                    if prospect.place_id:
+                                        seen_pids.add(prospect.place_id)
+                                        yield prospect
+                                except Exception as e:
+                                    log_validation_error(file_path.name, str(e))
                     else:
                         # Legacy CSV
                         reader = csv.DictReader(f) # type: ignore
                         for row in reader:
                             normalized_row = {k.lower().replace(" ", "_"): v for k, v in row.items() if k}
-                            prospect = GoogleMapsProspect.model_validate(normalized_row)
-                            if prospect.place_id:
-                                seen_pids.add(prospect.place_id)
-                                yield prospect
+                            try:
+                                prospect = GoogleMapsProspect.model_validate(normalized_row)
+                                if prospect.place_id:
+                                    seen_pids.add(prospect.place_id)
+                                    yield prospect
+                            except Exception as e:
+                                log_validation_error(file_path.name, str(e))
             except Exception as e:
-                logger.error(f"Error reading prospect in {file_path.name}: {e}")
+                log_validation_error(file_path.name, str(e))
 
         # 2. Read Checkpoint (Cold Layer)
         if checkpoint_path.exists():
@@ -165,10 +187,10 @@ class ProspectsIndexManager:
                             if prospect.place_id and prospect.place_id not in seen_pids:
                                 seen_pids.add(prospect.place_id)
                                 yield prospect
-                        except Exception:
-                            continue
+                        except Exception as e:
+                            log_validation_error(checkpoint_path.name, str(e))
             except Exception as e:
-                logger.error(f"Error reading checkpoint {checkpoint_path}: {e}")
+                log_validation_error(checkpoint_path.name, str(e))
 
     def append_prospect(self, prospect_data: GoogleMapsProspect) -> bool:
         """

@@ -217,14 +217,14 @@ class Company(BaseModel):
             try:
                 return cls(**model_data)
             except ValidationError as e:
-                logging.error(f"Skipping {company_dir.name}: Validation error loading company: {e}") # More explicit message
+                logger.debug(f"Skipping {company_dir.name}: Validation error loading company: {e}")
                 return None
             except Exception as e:
-                logging.error(f"Skipping {company_dir.name}: Unexpected error loading company: {e}") # More explicit message
+                logger.debug(f"Skipping {company_dir.name}: Unexpected error loading company: {e}")
                 return None
         except Exception as e:
-            logging.error(f"Error in from_directory for {company_dir}: {e}")
-            raise Exception("from_directory") from e
+            logger.debug(f"Error in from_directory for {company_dir}: {e}")
+            return None
 
     def merge_with(self, other: 'Company') -> None:
         """Merges data from another company instance into this one."""

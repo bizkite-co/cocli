@@ -29,7 +29,7 @@ def test_sync_command_success(mock_exists, mock_subprocess_run, runner, cli_app)
     
     # Check that AWS CLI was called (simplified check)
     args, _ = mock_subprocess_run.call_args
-    assert args[0][0] == "aws"
+    assert args[0][0].endswith("aws")
     assert args[0][1] == "s3"
     assert args[0][2] == "sync"
 
