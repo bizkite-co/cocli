@@ -2,7 +2,7 @@ import logging
 import os
 import subprocess
 from pathlib import Path
-from typing import Any, Dict, Optional, List
+from typing import Any, Dict, Optional
 
 from ..core.config import get_campaign, load_campaign_config, get_cocli_base_dir
 from ..commands.smart_sync import run_smart_sync

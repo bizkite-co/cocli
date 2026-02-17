@@ -313,9 +313,11 @@ class CocliApp(App[None]):
 
     def action_show_application(self) -> None:
         """Show the application view."""
+        tui_debug_log("APP: action_show_application starting")
         self.menu_bar.set_active("application")
         self.main_content.remove_children()
         self.main_content.mount(ApplicationView())
+        tui_debug_log("APP: action_show_application finished")
 
     def on_application_view_campaign_activated(self, message: ApplicationView.CampaignActivated) -> None:
         self.notify(f"Campaign Activated: {message.campaign_name}")
