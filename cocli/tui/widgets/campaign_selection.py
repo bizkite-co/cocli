@@ -1,15 +1,18 @@
 import logging
+import asyncio
+from typing import TYPE_CHECKING, Any
 
-from textual.widgets import ListView, ListItem, Label
+from textual.widgets import ListView, ListItem, Label, Static
 from textual.app import ComposeResult
 from textual.containers import VerticalScroll
 from textual.message import Message
-from textual.widgets import Static
 from textual import events
 
 from cocli.core.config import get_all_campaign_dirs
 from cocli.core.text_utils import slugify
 
+if TYPE_CHECKING:
+    pass
 
 logger = logging.getLogger(__name__)
 
@@ -29,29 +32,46 @@ class CampaignSelection(Static):
             super().__init__()
             self.campaign_name = campaign_name
 
-    def compose(self) -> ComposeResult:
-        campaign_dirs = get_all_campaign_dirs()
-        campaign_names = sorted([d.name for d in campaign_dirs])
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
+        super().__init__(*args, **kwargs)
+        self.can_focus = True
 
+    def compose(self) -> ComposeResult:
         yield Label("Select a Campaign")
         with VerticalScroll():
-            yield ListView(
-                *[CampaignListItem(name) for name in campaign_names]
-            )
+            yield ListView(id="campaign_list_view")
     
     def on_mount(self) -> None:
-        self.query_one(ListView).focus()
+        # Load campaigns in a non-blocking worker
+        self.run_worker(self.load_campaigns())
+
+    async def load_campaigns(self) -> None:
+        """Asynchronously discovers available campaigns."""
+        try:
+            # Move I/O to a thread
+            campaign_dirs = await asyncio.to_thread(get_all_campaign_dirs)
+            campaign_names = sorted([d.name for d in campaign_dirs])
+            
+            list_view = self.query_one("#campaign_list_view", ListView)
+            items = [CampaignListItem(name) for name in campaign_names]
+            
+            # Update UI on next refresh
+            def populate() -> None:
+                list_view.extend(items)
+                if items:
+                    list_view.index = 0
+            
+            self.call_after_refresh(populate)
+        except Exception as e:
+            logger.error(f"Failed to load campaigns: {e}")
 
     def on_list_view_selected(self, event: ListView.Selected) -> None:
         if isinstance(event.item, CampaignListItem):
-            logger.debug(f"on_list_view_selected called with item: {event.item.campaign_name}")
             self.post_message(self.CampaignSelected(event.item.campaign_name))
-            logger.debug(f"Posted CampaignSelected message: {event.item.campaign_name}")
 
     def on_key(self, event: events.Key) -> None:
-        """Handle key events for the CampaignSelection screen."""
-        logger.debug(f"CampaignSelection on_key called with key: {event.key}")
-        list_view = self.query_one(ListView)
+        """Handle key events for the CampaignSelection."""
+        list_view = self.query_one("#campaign_list_view", ListView)
         if event.key == "j":
             list_view.action_cursor_down()
             event.prevent_default()

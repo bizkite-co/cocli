@@ -21,7 +21,7 @@ async def test_application_sidebar_stacking():
         nav_list = application_view.query_one("#app_nav_list", ListView)
         
         # 1. Test Operations (Default)
-        # Verify ops_list is visible
+        # Verify ops_list is displayed
         ops_list = application_view.query_one("#ops_list", ListView)
         assert ops_list.styles.display != "none"
         
@@ -49,3 +49,7 @@ async def test_application_sidebar_stacking():
         # Status view should be visible in content area
         status_view = application_view.query_one(StatusView)
         assert status_view.styles.display != "none"
+        
+        # SUB-SIDEBAR CONTAINER itself should be hidden for Status
+        sub_nav_container = application_view.query_one("#app_sub_nav_container")
+        assert sub_nav_container.styles.display == "none"

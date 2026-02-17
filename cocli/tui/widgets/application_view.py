@@ -1,5 +1,4 @@
-from typing import Any, Dict, List, Optional, TYPE_CHECKING, cast
-import asyncio
+from typing import Any, TYPE_CHECKING, cast
 import logging
 from datetime import datetime
 from textual.app import ComposeResult
@@ -58,9 +57,9 @@ class ApplicationView(Container):
                 
                 # 2. Sub-level list (Visible underneath)
                 with Vertical(id="app_sub_nav_container"):
-                    yield Label("[bold]Menu[/bold]", id="sub_sidebar_title", classes="sidebar-title")
+                    yield Label("[bold]Operations[/bold]", id="sub_sidebar_title", classes="sidebar-title")
                     
-                    # Operations List
+                    # Pre-composed sub-lists for each category
                     yield ListView(
                         # Reporting
                         ListItem(Label("[dim]--- Reporting ---[/dim]"), disabled=True),
@@ -94,7 +93,7 @@ class ApplicationView(Container):
                     
                     yield CampaignSelection(id="app_campaign_list", classes="sub-sidebar-list")
             
-            # Center: The main content area
+            # Center: The main content / detail area
             with Container(id="app_main_content"):
                 # Operations Detail
                 with VerticalScroll(id="ops_detail_root", classes="category-content-root"):
@@ -134,18 +133,20 @@ class ApplicationView(Container):
         self.update_recent_runs()
 
     def action_reset_view(self) -> None:
+        """Move focus back to the main navigation list."""
         self.query_one("#app_nav_list", ListView).focus()
 
     def action_focus_sidebar(self) -> None:
         self.query_one("#app_nav_list", ListView).focus()
 
     def action_focus_content(self) -> None:
+        # Focus whichever sub-sidebar list is currently displayed
         if self.active_category == "operations":
             self.query_one("#ops_list", ListView).focus()
         elif self.active_category == "campaigns":
-            self.query_one(CampaignSelection).focus()
+            self.query_one("#app_campaign_list", CampaignSelection).focus()
         elif self.active_category == "status":
-            self.query_one(StatusView).focus()
+            self.query_one("#status_view_root", StatusView).focus()
 
     def action_select_item(self) -> None:
         focused = self.app.focused
@@ -153,25 +154,18 @@ class ApplicationView(Container):
             focused.action_select_cursor()
 
     def on_key(self, event: events.Key) -> None:
-        """Handle navigation keys for both sidebar levels."""
-        nav_list = self.query_one("#app_nav_list", ListView)
-        ops_list = self.query_one("#ops_list", ListView)
-        
-        target = None
-        if nav_list.has_focus:
-            target = nav_list
-        elif ops_list.has_focus:
-            target = ops_list
-            
-        if target:
+        """Handle sidebar navigation keys."""
+        # Check if focus is in ANY listview in the sidebar
+        focused = self.app.focused
+        if isinstance(focused, ListView) and (focused.id == "app_nav_list" or focused.id == "ops_list" or focused.id == "campaign_list_view"):
             if event.key == "j":
-                target.action_cursor_down()
+                focused.action_cursor_down()
                 event.prevent_default()
             elif event.key == "k":
-                target.action_cursor_up()
+                focused.action_cursor_up()
                 event.prevent_default()
             elif event.key == "l" or event.key == "enter":
-                target.action_select_cursor()
+                focused.action_select_cursor()
                 event.prevent_default()
 
     @on(ListView.Selected, "#app_nav_list")
@@ -181,7 +175,7 @@ class ApplicationView(Container):
             self.query_one("#app_campaign_list", CampaignSelection).focus()
         elif event.item.id == "nav_status":
             self.show_category("status")
-            self.query_one(StatusView).focus()
+            self.query_one("#status_view_root", StatusView).focus()
         elif event.item.id == "nav_operations":
             self.show_category("operations")
             self.query_one("#ops_list", ListView).focus()
@@ -196,6 +190,8 @@ class ApplicationView(Container):
         
         ops_list.display = (category == "operations")
         campaign_list.display = (category == "campaigns")
+        
+        # For status, the sub-sidebar is empty/hidden
         self.query_one("#app_sub_nav_container").display = (category != "status")
 
         # Toggle Content Visibility
@@ -230,12 +226,15 @@ class ApplicationView(Container):
             return
         
         op_id = str(event.item.id)
-        details = self.get_op_details(op_id)
+        app = cast("CocliApp", self.app)
+        op = app.services.operation_service.get_details(op_id)
+        if not op:
+            return
         
         # 1. Update Header Info
         try:
-            self.query_one("#op_title", Label).update(details["title"])
-            self.query_one("#op_description", Static).update(details["description"])
+            self.query_one("#op_title", Label).update(op.title)
+            self.query_one("#op_description", Static).update(op.description)
             self.query_one("#op_last_run", Label).update(f"Last Run: {self.get_last_run_info(op_id)}")
             self.query_one("#op_log_preview", Static).update("")
             self.query_one("#btn_view_log").display = False
@@ -246,7 +245,6 @@ class ApplicationView(Container):
         content_area = self.query_one("#op_content_area", Container)
         content_area.remove_children()
         
-        app = cast("CocliApp", self.app)
         campaign = app.services.reporting_service.campaign_name
         
         if op_id == "op_report":
@@ -269,7 +267,6 @@ class ApplicationView(Container):
                 content_area.mount(Static(Panel(table, border_style="green")))
         
         elif "op_scale_" in op_id:
-            # We don't want to call AWS on highlight, but we can show current status if we have it
             cached = app.services.reporting_service.load_cached_report(campaign, "status")
             if cached:
                 active = cached.get("active_fargate_tasks", "Unknown")
@@ -291,73 +288,10 @@ class ApplicationView(Container):
             highlighted = self.query_one("#ops_list", ListView).highlighted_child
             if highlighted and highlighted.id:
                 op_id = str(highlighted.id)
-                title = self.get_op_details(op_id)["title"]
+                app = cast("CocliApp", self.app)
+                op = app.services.operation_service.get_details(op_id)
+                title = op.title if op else "Log"
                 self.app.push_screen(LogViewerModal(title, self.current_log_content))
-
-    def get_op_details(self, op_id: str) -> Dict[str, str]:
-        details = {
-            "op_report": {
-                "title": "Campaign Report",
-                "description": "Generates a full data funnel report, including prospect counts, queue depths, and worker distribution. Results are cached locally."
-            },
-            "op_analyze_emails": {
-                "title": "Email Analysis",
-                "description": "Performs deep validation of found emails, checking for domain validity and common patterns."
-            },
-            "op_sync_all": {
-                "title": "Full S3 Sync",
-                "description": "Synchronizes all campaign data (prospects, emails, indexes) from S3 to your local machine."
-            },
-            "op_sync_gm_list": {
-                "title": "Sync GM List Queue",
-                "description": "Synchronizes the Google Maps area search queue from S3 to local storage."
-            },
-            "op_sync_gm_details": {
-                "title": "Sync GM Details Queue",
-                "description": "Synchronizes the Google Maps place detail queue from S3 to local storage."
-            },
-            "op_sync_enrichment": {
-                "title": "Sync Enrichment Queue",
-                "description": "Synchronizes the website enrichment queue from S3 to local storage."
-            },
-            "op_sync_indexes": {
-                "title": "Sync Indexes",
-                "description": "Synchronizes checkpoint and witness indexes from S3 to local storage."
-            },
-            "op_scale_0": {
-                "title": "Stop Cloud Workers",
-                "description": "Sets Fargate service desired count to 0. Use this when pausing work to save costs."
-            },
-            "op_scale_1": {
-                "title": "Scale to 1 Worker",
-                "description": "Sets Fargate service desired count to 1. Good for continuous trickle enrichment."
-            },
-            "op_scale_5": {
-                "title": "Scale to 5 Workers",
-                "description": "Sets Fargate service desired count to 5. Standard processing speed."
-            },
-            "op_scale_10": {
-                "title": "Scale to 10 Workers",
-                "description": "Sets Fargate service desired count to 10. High-speed burst enrichment."
-            },
-            "op_compact_index": {
-                "title": "Compact Index",
-                "description": "Initiates index compaction: merges WAL files from S3 into the local checkpoint USV."
-            },
-            "op_push_queue": {
-                "title": "Push Local Queue",
-                "description": "Uploads locally generated enrichment tasks to the global S3 queue for workers to process."
-            },
-            "op_audit_integrity": {
-                "title": "Audit Campaign Integrity",
-                "description": "Scans for cross-contamination between campaigns and unauthorized keywords."
-            },
-            "op_audit_queue": {
-                "title": "Audit Queue Completion",
-                "description": "Verifies that all 'completed' markers in the queue actually have corresponding records in the index."
-            }
-        }
-        return details.get(op_id, {"title": "Unknown", "description": "No description available."})
 
     def get_last_run_info(self, op_id: str) -> str:
         app = cast("CocliApp", self.app)
@@ -380,7 +314,6 @@ class ApplicationView(Container):
 
     def log_callback(self, text: str) -> None:
         self.current_log_content += text
-        # Keep preview short
         try:
             preview = self.query_one("#op_log_preview", Static)
             lines = self.current_log_content.split("\n")
@@ -396,50 +329,27 @@ class ApplicationView(Container):
         self.current_log_content = ""
         
         app = cast("CocliApp", self.app)
-        services = app.services
-        
-        title = self.get_op_details(op_id)["title"]
+        op = app.services.operation_service.get_details(op_id)
+        if not op:
+            return
+
         from ..navigation import ProcessRun
-        run_record = ProcessRun(op_id, title)
+        run_record = ProcessRun(op_id, op.title)
         app.process_runs.append(run_record)
         self.call_after_refresh(self.update_recent_runs)
 
         try:
             with capture_logs(self.log_callback):
-                if op_id == "op_report":
-                    await asyncio.to_thread(services.reporting_service.get_campaign_stats)
-                elif op_id == "op_sync_all":
-                    await asyncio.to_thread(services.data_sync_service.sync_all)
-                elif op_id == "op_sync_gm_list":
-                    await asyncio.to_thread(services.data_sync_service.sync_queues, "gm-list")
-                elif op_id == "op_sync_gm_details":
-                    await asyncio.to_thread(services.data_sync_service.sync_queues, "gm-details")
-                elif op_id == "op_sync_enrichment":
-                    await asyncio.to_thread(services.data_sync_service.sync_queues, "enrichment")
-                elif op_id == "op_sync_indexes":
-                    await asyncio.to_thread(services.data_sync_service.sync_indexes)
-                elif op_id == "op_compact_index":
-                    await asyncio.to_thread(services.data_sync_service.compact_index)
-                elif op_id == "op_push_queue":
-                    await asyncio.to_thread(services.data_sync_service.push_queue)
-                elif op_id == "op_audit_integrity":
-                    await asyncio.to_thread(services.audit_service.audit_campaign_integrity)
-                elif op_id == "op_audit_queue":
-                    await asyncio.to_thread(services.audit_service.audit_queue_completion)
-                elif op_id == "op_analyze_emails":
-                    await asyncio.to_thread(services.reporting_service.get_email_analysis)
-                elif "op_scale_" in op_id:
-                    count = int(op_id.replace("op_scale_", ""))
-                    await asyncio.to_thread(services.deployment_service.scale_service, count)
+                await app.services.operation_service.execute(op_id)
             
             run_record.status = "success"
             indicator.update("[bold green]Success[/bold green]")
-            self.app.notify(f"{title} Complete")
+            self.app.notify(f"{op.title} Complete")
         except Exception as e:
             run_record.status = "failed"
             indicator.update("[bold red]Failed[/bold red]")
             self.app.notify(f"Error: {e}", severity="error")
-            print(f"CRITICAL ERROR: {e}") # Captured by capture_logs
+            print(f"CRITICAL ERROR: {e}") 
         finally:
             run_record.end_time = datetime.now()
             self.call_after_refresh(self.update_recent_runs)
@@ -452,7 +362,6 @@ class ApplicationView(Container):
 
     @on(CampaignSelection.CampaignSelected)
     def handle_campaign_highlight(self, message: CampaignSelection.CampaignSelected) -> None:
-        """Update the detail pane when a campaign is highlighted in the list."""
         try:
             detail = self.query_one("#campaign-detail", CampaignDetail)
             campaign = Campaign.load(message.campaign_name)

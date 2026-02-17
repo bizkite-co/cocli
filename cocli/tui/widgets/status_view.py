@@ -30,27 +30,31 @@ class StatusView(VerticalScroll):
             yield Label("", id="status_last_updated")
             yield Static("", id="status_refresh_indicator")
         
-        yield Container(id="status_body")
+        yield Container(Static("[bold yellow]Loading environment status...[/]"), id="status_body")
 
     def on_mount(self) -> None:
-        self.load_initial_data()
+        # Spawn background hydration immediately
+        self.run_worker(self.hydrate_view())
 
-    def load_initial_data(self) -> None:
+    async def hydrate_view(self) -> None:
+        """Hydrate the view with initial data without blocking the UI thread."""
         app = cast("CocliApp", self.app)
         if not hasattr(app, "services"):
             return
 
         campaign = app.services.reporting_service.campaign_name
-        # 1. Load context status (always fast)
-        self.status_data = app.services.reporting_service.get_environment_status()
         
-        # 2. Try to load cached stats
+        # 1. Fetch Environment (Fast, but do it in thread just in case of I/O)
+        env = await asyncio.to_thread(app.services.reporting_service.get_environment_status)
+        self.status_data = env
+        
+        # 2. Try to load cached stats (Fast)
         cached_stats = app.services.reporting_service.load_cached_report(campaign, "status")
         if cached_stats:
             self.status_data["stats"] = cached_stats
-            self.update_view()
-        else:
-            self.update_view()
+        
+        # 3. Update the UI
+        self.call_after_refresh(self.update_view)
 
     def action_refresh_status(self) -> None:
         """Triggered by Shift+R."""
@@ -81,12 +85,13 @@ class StatusView(VerticalScroll):
             campaign = app.services.reporting_service.campaign_name
             
             # Fetch both stats and health in parallel
+            # These are the heavy blocking calls
             stats_task = asyncio.to_thread(app.services.reporting_service.get_campaign_stats, campaign)
             health_task = app.services.reporting_service.get_cluster_health()
             
             stats, health = await asyncio.gather(stats_task, health_task)
             
-            # Re-fetch environment (it's fast)
+            # Re-fetch environment
             env = await asyncio.to_thread(app.services.reporting_service.get_environment_status)
             env["stats"] = stats
             
