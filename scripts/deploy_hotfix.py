@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 import subprocess
-import time
+import os
+import sys
 from rich.console import Console
 
 console = Console()
@@ -8,72 +9,84 @@ console = Console()
 REMOTE_TMP_DIR = "/tmp/cocli_hotfix"
 
 def run_ssh(user: str, host: str, command: str) -> subprocess.CompletedProcess[str]:
-    cmd = f"ssh {user}@{host} \"{command}\""
-    return subprocess.run(cmd, shell=True, capture_output=True, text=True)
+    # Use a list for safer execution and avoid manual escaping where possible
+    full_cmd = ["ssh", f"{user}@{host}", command]
+    return subprocess.run(full_cmd, capture_output=True, text=True)
 
-def deploy_to_host(user: str, host: str) -> None:
+def deploy_to_host(user: str, host: str) -> bool:
     console.print(f"\n[bold blue]Deploying hotfix to {host} using RSYNC...[/bold blue]")
     
-    # 1. Sync the entire cocli directory to the host's temp dir
-    rsync_cmd = f"rsync -avz --delete cocli/ {user}@{host}:{REMOTE_TMP_DIR}/cocli/"
-    console.print("  Syncing cocli/ package...")
+    # Ensure remote tmp dir exists
+    subprocess.run(["ssh", f"{user}@{host}", f"mkdir -p {REMOTE_TMP_DIR}"], capture_output=True)
+
+    # 1. Sync the entire cocli directory, pyproject.toml, and VERSION to the host's temp dir
+    # WE REMOVE TRAILING SLASH from cocli so rsync creates /tmp/cocli_hotfix/cocli/
+    rsync_cmd = f"rsync -avz --delete cocli pyproject.toml VERSION {user}@{host}:{REMOTE_TMP_DIR}/"
+    console.print("  Syncing package files...")
     res = subprocess.run(rsync_cmd, shell=True, capture_output=True, text=True)
     if res.returncode != 0:
         console.print(f"  [red]Rsync failed: {res.stderr}[/red]")
-        return
+        return False
 
-    # 2. Find all cocli containers (including stopped ones)
+    # 2. Find all cocli containers
     res = run_ssh(user, host, "docker ps -a --format '{{.Names}}' | grep cocli")
     containers = [c for c in res.stdout.splitlines() if c.strip()]
     
+    success = True
     for container in containers:
-        # Check if container is running
-        status_res = run_ssh(user, host, f"docker inspect -f '{{{{.State.Running}}}}' {container}")
-        is_running = status_res.stdout.strip() == "true"
-        
-        if not is_running:
-            console.print(f"  Starting stopped container: [cyan]{container}[/cyan]")
-            run_ssh(user, host, f"docker start {container}")
-            # Give it a second to initialize
-            time.sleep(1)
-
         console.print(f"  Patching container: [cyan]{container}[/cyan]")
         
-        # 1. Dynamically find the cocli installation path
-        res = run_ssh(user, host, f"docker exec {container} python3 -c 'import cocli; print(cocli.__path__[0])'")
-        if res.returncode != 0:
-            console.print(f"  [red]Could not find cocli path in {container}: {res.stderr}[/red]")
-            continue
-            
-        lib_path = res.stdout.strip()
-        app_path = "/app/hotfix_cocli"
-        
-        # 2. Ensure /app/hotfix_cocli directory exists inside container
+        # 3. Create /app/hotfix directory inside container
+        app_path = "/app/hotfix"
         run_ssh(user, host, f"docker exec {container} mkdir -p {app_path}")
         
-        # 3. Copy code to /app/hotfix_cocli
-        cmd = f"docker cp {REMOTE_TMP_DIR}/cocli/. {container}:{app_path}/"
+        # 4. Copy everything to /app/hotfix (this puts cocli/ inside /app/hotfix/)
+        cmd = f"docker cp {REMOTE_TMP_DIR}/. {container}:{app_path}/"
         run_ssh(user, host, cmd)
         
-        # 4. Use a bind-mount style replacement or direct overwrite if symlink is risky
-        # Direct overwrite is safer for site-packages if we want to be sure
-        console.print(f"  Overwriting {lib_path} with hotfixed code...")
-        run_ssh(user, host, f"docker exec {container} cp -r {app_path}/. {lib_path}/")
-
+        # 5. Install dependencies
+        console.print(f"  Installing dependencies in {container}...")
+        run_ssh(user, host, f"docker exec {container} uv pip install zeroconf watchdog psutil --system")
+        
+        # 6. Resolve actual installation path and force overwrite
+        res = run_ssh(user, host, f"docker exec {container} python3 -c 'import cocli; print(cocli.__path__[0])'")
+        if res.returncode == 0:
+            lib_path = res.stdout.strip()
+            # If lib_path is /app/cocli, we want to replace it with /app/hotfix/cocli
+            console.print(f"  Force-overwriting {lib_path}...")
+            # We remove the existing one and copy the hotfixed one in its place
+            run_ssh(user, host, f"docker exec {container} rm -rf {lib_path}")
+            # If lib_path was /app/cocli, we copy /app/hotfix/cocli to /app/
+            lib_parent = os.path.dirname(lib_path)
+            run_ssh(user, host, f"docker exec {container} cp -r {app_path}/cocli {lib_parent}/")
+        
         console.print(f"  Restarting {container}...")
         run_ssh(user, host, f"docker restart {container}")
         
-        # 5. Verify the patch (check for a recent change, e.g., the presence of UNIT_SEP in utils)
-        verify_res = run_ssh(user, host, f"docker exec {container} grep 'UNIT_SEP =' {lib_path}/core/utils.py")
-        if verify_res.returncode == 0:
-            console.print(f"  [green]Verification PASSED for {container}[/green]")
+        # 6. Final Verification: Use a simpler command to avoid quoting hell
+        verify_cmd = f"docker exec {container} python3 -c \"import cocli.core.utils as u; print('UNIT_SEP=' + repr(u.UNIT_SEP))\""
+        verify_res = run_ssh(user, host, verify_cmd)
+        
+        if verify_res.returncode == 0 and "UNIT_SEP=" in verify_res.stdout:
+            console.print(f"  [green]Verification PASSED for {container}: {verify_res.stdout.strip()}[/green]")
         else:
             console.print(f"  [red]Verification FAILED for {container}[/red]")
+            console.print(f"  Stdout: {verify_res.stdout}")
+            console.print(f"  Stderr: {verify_res.stderr}")
+            success = False
 
-    console.print(f"  [green]Host {host} updated successfully.[/green]")
+    return success
 
 def main() -> None: 
     from cocli.core.config import get_campaign, load_campaign_config
+    
+    # Allow command line host override
+    target_host = sys.argv[1] if len(sys.argv) > 1 else None
+    
+    if target_host:
+        deploy_to_host("mstouffer", target_host)
+        return
+
     campaign_name = get_campaign() or "turboship"
     config = load_campaign_config(campaign_name)
     

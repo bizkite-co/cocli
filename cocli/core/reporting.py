@@ -24,6 +24,9 @@ def get_boto3_session(config: Dict[str, Any], max_pool_connections: int = 10) ->
     aws_config = config.get("aws", {})
     campaign_name = config.get("campaign", {}).get("name")
     
+    # 0. Check current AWS_PROFILE environment variable first
+    env_profile = os.environ.get("AWS_PROFILE")
+    
     # 1. Try candidates (Explicit config + Automatic campaign-iot)
     iot_profiles = aws_config.get("iot_profiles", [])
     if isinstance(iot_profiles, str):
@@ -33,7 +36,22 @@ def get_boto3_session(config: Dict[str, Any], max_pool_connections: int = 10) ->
     if campaign_name:
         iot_profiles.insert(0, f"{campaign_name}-iot")
     
+    # If env_profile is in our candidate lists, try it FIRST without loop
+    profile_name = aws_config.get("profile") or aws_config.get("aws_profile")
+    all_candidates = iot_profiles + ([profile_name] if profile_name else [])
+    
+    if env_profile and env_profile in all_candidates:
+        try:
+            session = boto3.Session(profile_name=env_profile)
+            session.client("sts", config=boto_config).get_caller_identity()
+            logger.info(f"Using AWS profile from environment: {env_profile}")
+            return session
+        except Exception as e:
+            logger.debug(f"get_boto3_session: Env profile {env_profile} failed: {e}")
+
     for p in iot_profiles:
+        if p == env_profile:
+            continue # Already tried
         try:
             session = boto3.Session(profile_name=p)
             # Test if it works
@@ -58,10 +76,10 @@ def get_boto3_session(config: Dict[str, Any], max_pool_connections: int = 10) ->
     except Exception as e:
         logger.debug(f"get_boto3_session: IoT script fallback failed: {e}")
 
-    # 3. Fallback to Profile in config (ONLY if it exists)
+    # 3. Fallback to Profile in config (ONLY if it exists and we don't already have a session)
     profile_name = aws_config.get("profile") or aws_config.get("aws_profile")
     
-    if profile_name:
+    if profile_name and profile_name != env_profile:
         try:
             session = boto3.Session(profile_name=profile_name)
             session.client("sts", config=boto_config).get_caller_identity()

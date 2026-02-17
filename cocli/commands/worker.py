@@ -157,3 +157,30 @@ def enrichment(
 
     service = WorkerService(effective_campaign)
     asyncio.run(service.run_enrichment_worker(not headed, debug, workers=final_workers))
+
+@app.command()
+def gossip(
+    debug: bool = typer.Option(False, "--debug", help="Enable debug logging."),
+) -> None:
+    """
+    Starts the Gossip Bridge to propagate WAL datagrams across the cluster.
+    """
+    from ..core.gossip_bridge import GossipBridge
+    import time
+    
+    log_level = logging.DEBUG if debug else logging.INFO
+    setup_file_logging("gossip_bridge", console_level=log_level)
+    
+    logger.info("Starting Gossip Bridge...")
+    bridge = GossipBridge()
+    bridge.start()
+    try:
+        while True:
+            time.sleep(1)
+    except KeyboardInterrupt:
+        logger.info("Stopping Gossip Bridge...")
+        bridge.stop()
+    except Exception as e:
+        logger.error(f"Gossip Bridge crashed: {e}")
+        bridge.stop()
+        raise typer.Exit(1)

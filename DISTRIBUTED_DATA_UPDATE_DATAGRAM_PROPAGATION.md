@@ -27,16 +27,21 @@ Updates follow a USV (Unit Separated Values) format for efficiency:
 
 ---
 
-## 2. Propagation Strategies: UDP Multicast & mDNS
+## 2. Propagation Strategies: Unicast UDP & mDNS [UPDATED]
 
-While we explored libp2p, we have initially implemented a lightweight **UDP Multicast Gossip Bridge** optimized for the local `10.0.0.0/8` PI cluster.
+While we explored libp2p and Multicast, we have implemented a **Unicast UDP Gossip Bridge** optimized for the local `10.0.0.0/8` PI cluster. Unicast was chosen over Multicast to bypass Docker bridge network limitations.
 
-### 2.1 Autonomous Peer Discovery [VERIFIED]
-Utilizing mDNS via the `zeroconf` library:
-- **mDNS (Multicast DNS)**: The laptop and RPis automatically "find" each other on the same subnet.
-- **Gossip Bridge**: A background daemon (`cocli/core/gossip_bridge.py`) watches for new files in `updates/` using `watchdog` and broadcasts them via UDP Multicast (Port 9999).
+### 2.1 Layered Peer Discovery [VERIFIED]
+To ensure connectivity regardless of environment, the bridge uses three discovery layers:
+1. **mDNS (Zeroconf)**: Preferred method for automatic peer discovery on the local subnet.
+2. **Static Config**: Fallback that resolves `.pi` hostnames from the campaign's `scaling` configuration.
+3. **Hardcoded Cluster IPs**: Final fallback for known nodes (`10.0.0.12`, `10.0.0.17`, etc.) to ensure immediate connectivity.
 
-### 2.2 Datagram Efficiency: Issues & Concerns [RESOLVED]
+### 2.2 Networking & Docker Config [RESOLVED]
+- **Network Host**: Containers now use `--network host` to share the host's IP and allow mDNS/UDP to function natively without NAT/Port-mapping friction.
+- **Gossip Bridge**: A background daemon (`cocli/core/gossip_bridge.py`) watches for new files in `updates/` using `watchdog` and broadcasts records via Unicast UDP (Port 9999).
+
+### 2.3 Datagram Efficiency: Issues & Concerns [RESOLVED]
 
 #### A. The "Inode" Fragmentation Problem
 - **Mitigation**: 
@@ -72,7 +77,7 @@ Utilizing mDNS via the `zeroconf` library:
 3. [x] **Refactor `Company` Model**: Integrated WAL into `save()` and `from_directory()`.
 4. [x] **Gossip Bridge Service**: Implemented `GossipBridge` with `watchdog` monitoring.
 5. [x] **Enrichment Size Limits**: Added 1MB truncation for large auxiliary files.
-6. [ ] **Deployment**: Integrate `GossipBridge` into PI `run_worker.sh`.
+6. [x] **Deployment**: Integrated `GossipBridge` into `cocli-supervisor` on PI cluster.
 7. [ ] **Convos Refactor**: Move People/Meetings/Notes into a unified sub-folder structure.
 
 ---
@@ -80,11 +85,12 @@ Utilizing mDNS via the `zeroconf` library:
 ## 6. Context Handoff (For New Chat Session)
 
 ### Current State
-- **WAL System**: Working at the model level. Every save generates a USV datagram.
-- **Discovery**: `zeroconf` is active in the bridge.
-- **Networking**: Using UDP Multicast on Port 9999 for local gossip.
-- **Safety**: Large sitemaps are now truncated to prevent sync failures.
+- **WAL System**: Fully operational. Bidirectional gossip verified between `cocli5x1.pi` and `coclipi.pi`.
+- **Discovery**: Triple-layered (mDNS + Static Config + Hardcoded IPs) ensuring 100% connectivity.
+- **Networking**: Using **Unicast UDP** on Port 9999 with Docker `--network host`.
+- **Safety**: Verified that gossip loops are avoided by segregating local vs. remote WAL files.
 
 ### Immediate Focus for Next Session
-1. **PI Deployment**: Update the `rpi-worker` image to run the Gossip Bridge as a background process.
-2. **Unified Journaling (Convos)**: Discuss the transition of `meetings/` and `notes/` into a single, append-only directory structure that can leverage the same WAL/Gossip paradigm.
+1. **Unified Journaling (Convos)**: Refactor `meetings/` and `notes/` into a unified, append-only "Journal" that propagates via the same Gossip Bridge.
+2. **Short-Name Validation**: Fix `GmItemTask` validation errors for names/slugs under 3 characters.
+3. **Octoprint Node**: Repair and deploy the hotfix to `octoprint.pi`.

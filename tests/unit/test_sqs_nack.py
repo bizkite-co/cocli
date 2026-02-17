@@ -5,12 +5,12 @@ from cocli.models.queue import QueueMessage
 
 class TestSQSQueueNack(unittest.TestCase):
     def setUp(self):
-        # Mock boto3 session and client
-        self.boto3_patcher = patch('cocli.core.queue.sqs_queue.boto3')
-        self.mock_boto3 = self.boto3_patcher.start()
+        # Mock get_boto3_session and client
+        self.boto3_patcher = patch('cocli.core.queue.sqs_queue.get_boto3_session')
+        self.mock_get_session = self.boto3_patcher.start()
         
         self.mock_sqs_client = MagicMock()
-        self.mock_boto3.Session.return_value.client.return_value = self.mock_sqs_client
+        self.mock_get_session.return_value.client.return_value = self.mock_sqs_client
         
         self.queue = SQSQueue("https://sqs.us-east-1.amazonaws.com/123456789012/my-queue")
 

@@ -1,11 +1,12 @@
 import json
 import logging
 from typing import List, Optional
-import boto3
 from botocore.exceptions import ClientError
 
 from ...models.queue import QueueMessage
 from . import QueueManager
+from ..reporting import get_boto3_session
+from ..config import load_campaign_config, get_campaign
 
 logger = logging.getLogger(__name__)
 
@@ -18,11 +19,19 @@ class SQSQueue(QueueManager):
         self.queue_url = queue_url
         
         try:
+            # We need a config object for get_boto3_session. 
+            # If we have a campaign context, use it.
+            campaign_name = get_campaign()
+            config = load_campaign_config(campaign_name) if campaign_name else {}
+            
+            # If explicit profile passed, override what's in config for this session
             if aws_profile_name:
-                session = boto3.Session(profile_name=aws_profile_name, region_name=region_name)
-            else:
-                session = boto3.Session(region_name=region_name)
-            self.sqs = session.client("sqs")
+                if "aws" not in config:
+                    config["aws"] = {}
+                config["aws"]["profile"] = aws_profile_name
+
+            session = get_boto3_session(config)
+            self.sqs = session.client("sqs", region_name=region_name)
         except Exception as e:
             logger.error(f"Failed to create SQS client: {e}")
             raise

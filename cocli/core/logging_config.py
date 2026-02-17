@@ -49,3 +49,10 @@ def setup_file_logging(command_name: str, console_level: int = logging.INFO, fil
         console_handler.setFormatter(console_formatter)
         root_logger.addHandler(console_handler)
 
+    # Suppress noise from third-party libraries
+    logging.getLogger("watchdog").setLevel(logging.INFO)
+    logging.getLogger("asyncio").setLevel(logging.INFO)
+    logging.getLogger("botocore").setLevel(logging.INFO)
+    logging.getLogger("s3transfer").setLevel(logging.INFO)
+    logging.getLogger("urllib3").setLevel(logging.INFO)
+

@@ -1,7 +1,6 @@
 import json
 import logging
 from typing import List, Optional
-import boto3
 from botocore.exceptions import ClientError
 
 from ...models.scrape_task import ScrapeTask
@@ -17,11 +16,19 @@ class ScrapeSQSQueue:
         self.queue_url = queue_url
         
         try:
+            from ..reporting import get_boto3_session
+            from ..config import load_campaign_config, get_campaign
+            
+            campaign_name = get_campaign()
+            config = load_campaign_config(campaign_name) if campaign_name else {}
+            
             if aws_profile_name:
-                session = boto3.Session(profile_name=aws_profile_name, region_name=region_name)
-            else:
-                session = boto3.Session(region_name=region_name)
-            self.sqs = session.client("sqs")
+                if "aws" not in config:
+                    config["aws"] = {}
+                config["aws"]["profile"] = aws_profile_name
+
+            session = get_boto3_session(config)
+            self.sqs = session.client("sqs", region_name=region_name)
         except Exception as e:
             logger.error(f"Failed to create SQS client: {e}")
             raise
