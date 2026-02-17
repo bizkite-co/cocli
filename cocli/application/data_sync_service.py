@@ -1,7 +1,8 @@
 import logging
 import os
+import subprocess
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, List
 
 from ..core.config import get_campaign, load_campaign_config, get_cocli_base_dir
 from ..commands.smart_sync import run_smart_sync
@@ -22,15 +23,46 @@ class DataSyncService:
     def sync_emails(self, force: bool = False, full: bool = False) -> Dict[str, Any]:
         return self._sync_target("emails", force, full)
 
-    def sync_queues(self, force: bool = False, full: bool = False) -> Dict[str, Any]:
-        return self._sync_target("queues", force, full)
+    def sync_indexes(self, force: bool = False, full: bool = False) -> Dict[str, Any]:
+        """Syncs all critical indexes (Prospects, Emails, Scraped Areas)."""
+        results = {}
+        results["prospects"] = self.sync_prospects(force, full)
+        results["emails"] = self.sync_emails(force, full)
+        # Add scraped-areas if needed
+        return results
+
+    def sync_queues(self, queue_name: Optional[str] = None, force: bool = False, full: bool = False) -> Dict[str, Any]:
+        """Syncs one or all queues from S3."""
+        config = load_campaign_config(self.campaign_name)
+        aws_config = config.get("aws", {})
+        bucket_name = aws_config.get("data_bucket_name") or f"cocli-data-{self.campaign_name}"
+        
+        target_queues = [queue_name] if queue_name else ["gm-list", "gm-details", "enrichment"]
+        
+        for q in target_queues:
+            try:
+                local_base_completed = paths.queue(self.campaign_name, q) / "completed"
+                local_base_pending = paths.queue(self.campaign_name, q) / "pending"
+                
+                # Pending
+                run_smart_sync(f"{q}-pending", bucket_name, f"campaigns/{self.campaign_name}/queues/{q}/pending/", 
+                                local_base_pending, self.campaign_name, aws_config, force=force, full=full,
+                                completed_dir=local_base_completed)
+                # Completed
+                run_smart_sync(f"{q}-completed", bucket_name, f"campaigns/{self.campaign_name}/queues/{q}/completed/", 
+                                local_base_completed, self.campaign_name, aws_config, force=force, full=full)
+            except Exception as e:
+                logger.error(f"Failed to sync queue {q}: {e}")
+                return {"status": "error", "message": str(e), "queue": q}
+        
+        return {"status": "success", "queues": target_queues}
 
     def sync_all(self, force: bool = False, full: bool = False) -> Dict[str, Any]:
         results = {}
         results["prospects"] = self.sync_prospects(force, full)
         results["companies"] = self.sync_companies(force, full)
         results["emails"] = self.sync_emails(force, full)
-        results["queues"] = self.sync_queues(force, full)
+        results["queues"] = self.sync_queues(force=force, full=full)
         return results
 
     def _sync_target(self, target: str, force: bool = False, full: bool = False) -> Dict[str, Any]:
@@ -51,30 +83,28 @@ class DataSyncService:
         elif target == "emails":
             prefix = f"campaigns/{self.campaign_name}/indexes/emails/"
             local_base = data_dir / "campaigns" / self.campaign_name / "indexes" / "emails"
-        elif target == "queues":
-            # For brevity, we'll just implement the wrapper for the most important ones or use the loop logic
-            # This is a simplification for the service layer
-            pass
             
         try:
-            if target == "queues":
-                 for q in ["gm-list", "gm-details", "enrichment"]:
-                    local_base_completed = paths.queue(self.campaign_name, q) / "completed"
-                    local_base_pending = paths.queue(self.campaign_name, q) / "pending"
-                    
-                    # Pending
-                    run_smart_sync(f"{q}-pending", bucket_name, f"campaigns/{self.campaign_name}/queues/{q}/pending/", 
-                                   local_base_pending, self.campaign_name, aws_config, force=force, full=full,
-                                   completed_dir=local_base_completed)
-                    # Completed
-                    run_smart_sync(f"{q}-completed", bucket_name, f"campaigns/{self.campaign_name}/queues/{q}/completed/", 
-                                   local_base_completed, self.campaign_name, aws_config, force=force, full=full)
-            else:
-                run_smart_sync(target, bucket_name, prefix, local_base, self.campaign_name, aws_config, force=force, full=full)
+            run_smart_sync(target, bucket_name, prefix, local_base, self.campaign_name, aws_config, force=force, full=full)
             return {"status": "success", "target": target}
         except Exception as e:
             logger.error(f"Sync failed for {target}: {e}")
             return {"status": "error", "message": str(e), "target": target}
+
+    def compact_index(self) -> Dict[str, Any]:
+        """Runs the index compaction script (WAL -> Checkpoint)."""
+        try:
+            # We use the existing script for now
+            res = subprocess.run(
+                ["python3", "scripts/compact_shards.py", self.campaign_name],
+                capture_output=True, text=True
+            )
+            if res.returncode == 0:
+                return {"status": "success", "output": res.stdout}
+            else:
+                return {"status": "error", "message": res.stderr}
+        except Exception as e:
+            return {"status": "error", "message": str(e)}
 
     def push_queue(self, queue_name: str = "enrichment") -> Dict[str, Any]:
         """

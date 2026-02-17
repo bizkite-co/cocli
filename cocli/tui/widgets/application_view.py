@@ -1,4 +1,4 @@
-from typing import Any, Dict, TYPE_CHECKING, cast
+from typing import Any, Dict, List, Optional, TYPE_CHECKING, cast
 import asyncio
 import logging
 from datetime import datetime
@@ -7,6 +7,8 @@ from textual.containers import Container, VerticalScroll, Horizontal, Vertical
 from textual.widgets import Label, ListView, ListItem, Static, Button
 from textual.message import Message
 from textual import on, work, events
+from rich.table import Table
+from rich.panel import Panel
 
 from .campaign_selection import CampaignSelection
 from .campaign_detail import CampaignDetail
@@ -56,17 +58,27 @@ class ApplicationView(Container):
                 
                 # 2. Sub-level list (Visible underneath)
                 with Vertical(id="app_sub_nav_container"):
-                    yield Label("[bold]Operations[/bold]", id="sub_sidebar_title", classes="sidebar-title")
+                    yield Label("[bold]Menu[/bold]", id="sub_sidebar_title", classes="sidebar-title")
                     
-                    # Pre-composed sub-lists for each category
+                    # Operations List
                     yield ListView(
+                        # Reporting
                         ListItem(Label("[dim]--- Reporting ---[/dim]"), disabled=True),
                         ListItem(Label("Generate Report"), id="op_report"),
                         ListItem(Label("Analyze Emails"), id="op_analyze_emails"),
+                        
+                        # Sync
                         ListItem(Label("[dim]--- Data Sync ---[/dim]"), disabled=True),
-                        ListItem(Label("Sync All (S3->Local)"), id="op_sync_all"),
-                        ListItem(Label("Push Queue to S3"), id="op_push_queue"),
-                        ListItem(Label("[dim]--- Audit ---[/dim]"), disabled=True),
+                        ListItem(Label("Sync All"), id="op_sync_all"),
+                        ListItem(Label("Sync GM List Queue"), id="op_sync_gm_list"),
+                        ListItem(Label("Sync GM Details Queue"), id="op_sync_gm_details"),
+                        ListItem(Label("Sync Enrichment Queue"), id="op_sync_enrichment"),
+                        ListItem(Label("Sync Indexes"), id="op_sync_indexes"),
+
+                        # Maintenance
+                        ListItem(Label("[dim]--- Maintenance ---[/dim]"), disabled=True),
+                        ListItem(Label("Compact Index"), id="op_compact_index"),
+                        ListItem(Label("Push Local Queue"), id="op_push_queue"),
                         ListItem(Label("Audit Integrity"), id="op_audit_integrity"),
                         ListItem(Label("Audit Queue"), id="op_audit_queue"),
                         id="ops_list",
@@ -75,7 +87,7 @@ class ApplicationView(Container):
                     
                     yield CampaignSelection(id="app_campaign_list", classes="sub-sidebar-list")
             
-            # Center: The main content / detail area
+            # Center: The main content area
             with Container(id="app_main_content"):
                 # Operations Detail
                 with VerticalScroll(id="ops_detail_root", classes="category-content-root"):
@@ -86,6 +98,10 @@ class ApplicationView(Container):
                         yield Button("Run Operation", variant="primary", id="btn_run_op")
                         yield Button("View Full Log", id="btn_view_log")
                         yield Static("", id="op_status_indicator")
+                    
+                    # Area for report content or operation output
+                    yield Container(id="op_content_area")
+                    
                     with VerticalScroll(id="op_log_preview_container"):
                         yield Static("", id="op_log_preview")
 
@@ -111,7 +127,6 @@ class ApplicationView(Container):
         self.update_recent_runs()
 
     def action_reset_view(self) -> None:
-        """Move focus back to the main navigation list."""
         self.query_one("#app_nav_list", ListView).focus()
 
     def action_focus_sidebar(self) -> None:
@@ -132,15 +147,23 @@ class ApplicationView(Container):
 
     def on_key(self, event: events.Key) -> None:
         nav_list = self.query_one("#app_nav_list", ListView)
+        ops_list = self.query_one("#ops_list", ListView)
+        
+        target = None
         if nav_list.has_focus:
+            target = nav_list
+        elif ops_list.has_focus:
+            target = ops_list
+            
+        if target:
             if event.key == "j":
-                nav_list.action_cursor_down()
+                target.action_cursor_down()
                 event.prevent_default()
             elif event.key == "k":
-                nav_list.action_cursor_up()
+                target.action_cursor_up()
                 event.prevent_default()
             elif event.key == "l" or event.key == "enter":
-                nav_list.action_select_cursor()
+                target.action_select_cursor()
                 event.prevent_default()
 
     @on(ListView.Selected, "#app_nav_list")
@@ -159,14 +182,12 @@ class ApplicationView(Container):
         self.active_category = category
         title_label = self.query_one("#sub_sidebar_title", Label)
         
-        # Toggle Sidebar Visibility (Ensure one is always shown under the top menu)
+        # Toggle Sidebar Visibility
         ops_list = self.query_one("#ops_list")
         campaign_list = self.query_one("#app_campaign_list")
         
         ops_list.display = (category == "operations")
         campaign_list.display = (category == "campaigns")
-        
-        # For status, the sub-sidebar is empty/hidden
         self.query_one("#app_sub_nav_container").display = (category != "status")
 
         # Toggle Content Visibility
@@ -176,13 +197,14 @@ class ApplicationView(Container):
 
         if category == "campaigns":
             title_label.update("[bold]Campaigns[/bold]")
+        elif category == "status":
+            title_label.update("[bold]Environment[/bold]")
         elif category == "operations":
             title_label.update("[bold]Operations[/bold]")
 
     def update_recent_runs(self) -> None:
         try:
-            from ..app import CocliApp
-            app = cast(CocliApp, self.app)
+            app = cast("CocliApp", self.app)
             runs_list = self.query_one("#recent_runs_list", ListView)
             runs_list.clear()
             
@@ -202,11 +224,41 @@ class ApplicationView(Container):
         op_id = str(event.item.id)
         details = self.get_op_details(op_id)
         
-        self.query_one("#op_title", Label).update(details["title"])
-        self.query_one("#op_description", Static).update(details["description"])
-        self.query_one("#op_last_run", Label).update(f"Last Run: {self.get_last_run_info(op_id)}")
-        self.query_one("#op_log_preview", Static).update("")
-        self.query_one("#btn_view_log").display = False
+        # 1. Update Header Info
+        try:
+            self.query_one("#op_title", Label).update(details["title"])
+            self.query_one("#op_description", Static).update(details["description"])
+            self.query_one("#op_last_run", Label).update(f"Last Run: {self.get_last_run_info(op_id)}")
+            self.query_one("#op_log_preview", Static).update("")
+            self.query_one("#btn_view_log").display = False
+        except Exception:
+            pass
+
+        # 2. Update Content Area
+        content_area = self.query_one("#op_content_area", Container)
+        content_area.remove_children()
+        
+        app = cast("CocliApp", self.app)
+        campaign = app.services.reporting_service.campaign_name
+        
+        if op_id == "op_report":
+            cached = app.services.reporting_service.load_cached_report(campaign, "status")
+            if cached and not cached.get("error"):
+                table = Table(title=f"Full Report: {campaign}", expand=True)
+                table.add_column("Metric", style="cyan")
+                table.add_column("Value", style="magenta")
+                
+                table.add_row("Total Prospects", str(cached.get("prospects_count", 0)))
+                table.add_row("Enriched (S3/Global)", str(cached.get("total_enriched_global", 0)))
+                table.add_row("Local Enriched", str(cached.get("enriched_count", 0)))
+                table.add_row("Local Emails", str(cached.get("emails_found_count", 0)))
+                
+                # Add queue stats if available
+                q_data = cached.get("s3_queues") or cached.get("local_queues", {})
+                for q_name, metrics in q_data.items():
+                    table.add_row(f"Queue: {q_name}", f"P:{metrics.get('pending',0)} I:{metrics.get('inflight',0)} C:{metrics.get('completed',0)}")
+                
+                content_area.mount(Static(Panel(table, border_style="green")))
 
     @on(Button.Pressed, "#btn_run_op")
     def handle_run_op(self) -> None:
@@ -241,8 +293,28 @@ class ApplicationView(Container):
                 "title": "Full S3 Sync",
                 "description": "Synchronizes all campaign data (prospects, emails, indexes) from S3 to your local machine."
             },
+            "op_sync_gm_list": {
+                "title": "Sync GM List Queue",
+                "description": "Synchronizes the Google Maps area search queue from S3 to local storage."
+            },
+            "op_sync_gm_details": {
+                "title": "Sync GM Details Queue",
+                "description": "Synchronizes the Google Maps place detail queue from S3 to local storage."
+            },
+            "op_sync_enrichment": {
+                "title": "Sync Enrichment Queue",
+                "description": "Synchronizes the website enrichment queue from S3 to local storage."
+            },
+            "op_sync_indexes": {
+                "title": "Sync Indexes",
+                "description": "Synchronizes checkpoint and witness indexes from S3 to local storage."
+            },
+            "op_compact_index": {
+                "title": "Compact Index",
+                "description": "Initiates index compaction: merges WAL files from S3 into the local checkpoint USV."
+            },
             "op_push_queue": {
-                "title": "Push Enrichment Queue",
+                "title": "Push Local Queue to S3",
                 "description": "Uploads locally generated enrichment tasks to the global S3 queue for workers to process."
             },
             "op_audit_integrity": {
@@ -306,6 +378,16 @@ class ApplicationView(Container):
                     await asyncio.to_thread(services.reporting_service.get_campaign_stats)
                 elif op_id == "op_sync_all":
                     await asyncio.to_thread(services.data_sync_service.sync_all)
+                elif op_id == "op_sync_gm_list":
+                    await asyncio.to_thread(services.data_sync_service.sync_queues, "gm-list")
+                elif op_id == "op_sync_gm_details":
+                    await asyncio.to_thread(services.data_sync_service.sync_queues, "gm-details")
+                elif op_id == "op_sync_enrichment":
+                    await asyncio.to_thread(services.data_sync_service.sync_queues, "enrichment")
+                elif op_id == "op_sync_indexes":
+                    await asyncio.to_thread(services.data_sync_service.sync_indexes)
+                elif op_id == "op_compact_index":
+                    await asyncio.to_thread(services.data_sync_service.compact_index)
                 elif op_id == "op_push_queue":
                     await asyncio.to_thread(services.data_sync_service.push_queue)
                 elif op_id == "op_audit_integrity":
