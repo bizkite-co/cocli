@@ -77,6 +77,20 @@ Once the virtual environment is activated, you can run `cocli` commands directly
 * Avoid verbose output to the terminal, which can bog down and choke the chat.
 * Make the scripts write to a named log in the `.logs/`, and put a progress bar and the log name in the terminal output.
 
+## Active Constraints
+
+- Deployment Strategy: ALWAYS deploy and verify on one node (target cocli5x1.pi first) before propagating to the entire cluster.
+- Docker Patching: Updates must be applied to the container's system Python using docker exec ... uv pip install . --system --no-deps.
+s AWS Auth: Raspberry Pi nodes must use the `roadmap-iot` profile (via IoT STS tokens).
+- Networking: Gossip communication requires `--network host` for reliable UDP/mDNS.
+- Resource Management: Inotify watches on the companies/ root must be non-recursive.
+
+## Key Knowledge
+
+- Node IPs: cocli5x1.pi (10.0.0.17), coclipi.pi (10.0.0.12), octoprint.pi (10.0.0.16).
+- Discovery: Using a hybrid approach: Unicast UDP with hardcoded cluster IPs (fallback) and Zeroconf/mDNS (fixed to _cocli-gossip._udp.local.).
+- Data Quality: Relaxed GmItemTask validation to allow empty names/slugs, enabling processing of "hollow" tasks.
+
 ### Testing
 
 The project uses `pytest` and `pytest-bdd` for testing.

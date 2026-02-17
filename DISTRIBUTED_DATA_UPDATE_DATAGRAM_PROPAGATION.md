@@ -56,10 +56,21 @@ To ensure connectivity regardless of environment, the bridge uses three discover
 ## 3. Scraper Integration & PI Cluster Workflow
 
 ### 3.1 Local-First Scraping [TRANSITIONING]
-- **Current**: Workers write to `_index.md`.
-- **New**: `Company.save()` now defaults to `use_wal=True`, writing to local `updates/` first. The Gossip Bridge then handles near-instant propagation to other cluster nodes.
+- **Current**: Workers write to `_index.md` and attempt direct S3 uploads.
+- **New**: `Company.save()` defaults to `use_wal=True`, writing to local `updates/` first. The Gossip Bridge handles near-instant propagation to other cluster nodes for real-time coordination.
 
-### 3.2 WAL Compaction
+### 3.2 Tiered S3 Update Strategy [UPDATED]
+To ensure consistency across disconnections while minimizing overhead, we distinguish between **Durability** and **Consolidation**:
+
+1.  **Real-Time Tier (Gossip)**: All nodes (Pis and Laptop) broadcast new WAL records via UDP. This is the fastest path for coordination but is unreliable (fire-and-forget).
+2.  **Durability Tier (Nodes -> S3)**: RPi nodes are responsible for syncing their **raw USV files** to S3 (prefix: `wal/{node_id}/`). This ensures that if the laptop is offline, the datagrams are stored safely in the cloud.
+3.  **Consolidation Tier (Hub -> S3)**: The Laptop (Hub) node pulls all raw datagrams from S3 (or receives them via Gossip). It runs `compact_all_companies()` locally to merge these into the `_index.md` files. It then uploads the **consolidated state** back to S3.
+4.  **Bootstrap Tier (S3 -> Nodes)**: New nodes or nodes returning from long downtime sync the consolidated `_index.md` from S3 first (large sync), then replay any remaining raw WAL files to reach the current head.
+
+### 3.3 Conflict Resolution
+*   **Field-Level LWW**: Since datagrams are field-specific, conflicts are rare. If two nodes update the same field, the record with the **latest timestamp** (ISO-8601) wins during compaction.
+
+### 3.3 WAL Compaction
 - **Consolidation**: `compact_all_companies()` reads the `updates/` folder and merges the latest field values back into the `_index.md`.
 
 ---
@@ -78,19 +89,19 @@ To ensure connectivity regardless of environment, the bridge uses three discover
 4. [x] **Gossip Bridge Service**: Implemented `GossipBridge` with `watchdog` monitoring.
 5. [x] **Enrichment Size Limits**: Added 1MB truncation for large auxiliary files.
 6. [x] **Deployment**: Integrated `GossipBridge` into `cocli-supervisor` on PI cluster.
-7. [ ] **Convos Refactor**: Move People/Meetings/Notes into a unified sub-folder structure.
+7. [x] **Short-Name Validation**: Fixed `GmItemTask` validation to allow "hollow" tasks.
+8. [ ] **Convos Refactor**: Move People/Meetings/Notes into a unified sub-folder structure.
 
 ---
 
 ## 6. Context Handoff (For New Chat Session)
 
 ### Current State
-- **WAL System**: Fully operational. Bidirectional gossip verified between `cocli5x1.pi` and `coclipi.pi`.
+- **WAL System**: Fully operational. Bidirectional gossip verified between `cocli5x1.pi`, `coclipi.pi`, and `octoprint.pi`.
 - **Discovery**: Triple-layered (mDNS + Static Config + Hardcoded IPs) ensuring 100% connectivity.
 - **Networking**: Using **Unicast UDP** on Port 9999 with Docker `--network host`.
-- **Safety**: Verified that gossip loops are avoided by segregating local vs. remote WAL files.
+- **Data Quality**: "Hollow" tasks (empty name/slug) are now processed correctly after relaxing Pydantic constraints.
 
 ### Immediate Focus for Next Session
 1. **Unified Journaling (Convos)**: Refactor `meetings/` and `notes/` into a unified, append-only "Journal" that propagates via the same Gossip Bridge.
-2. **Short-Name Validation**: Fix `GmItemTask` validation errors for names/slugs under 3 characters.
-3. **Octoprint Node**: Repair and deploy the hotfix to `octoprint.pi`.
+2. **S3 Hub Automation**: Implement a scheduled task on the laptop hub to compact WALs and push to S3.

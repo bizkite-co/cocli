@@ -15,7 +15,7 @@ from .config import get_companies_dir
 logger = logging.getLogger(__name__)
 
 GOSSIP_PORT = 9999
-SERVICE_TYPE = "_cocli_gossip._udp.local."
+SERVICE_TYPE = "_cocli-gossip._udp.local."
 
 class GossipListener(ServiceListener):
     def __init__(self, bridge: "GossipBridge") -> None:
