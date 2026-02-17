@@ -2,12 +2,11 @@ from textual.app import ComposeResult
 from textual.widgets import Static, Label
 from textual.containers import VerticalScroll, Container, Horizontal
 from textual import work
-from rich.panel import Panel
-from rich.table import Table
-from rich.text import Text
 from typing import Any, Dict, Optional, List, TYPE_CHECKING, cast
 import asyncio
 from datetime import datetime
+
+from cocli.renderers import status_renderer
 
 if TYPE_CHECKING:
     from ..app import CocliApp
@@ -129,113 +128,18 @@ class StatusView(VerticalScroll):
         self.query_one("#status_last_updated", Label).update(last_upd)
 
         # 1. Environment Panel
-        env_text = Text.assemble(
-            ("Campaign: ", "bold cyan"), (f"{self.status_data.get('campaign', 'None')}\n", "green"),
-            ("Context:  ", "bold cyan"), (f"{self.status_data.get('context', 'None')}\n", "green"),
-            ("Strategy: ", "bold cyan"), (f"{self.status_data.get('strategy', 'Unknown')}\n", "yellow")
-        )
-        for detail in self.status_data.get("strategy_details", []):
-            env_text.append(f"  - {detail}\n", "dim")
-        
-        body.mount(Static(Panel(env_text, title="Environment Status", border_style="blue")))
+        body.mount(Static(status_renderer.render_environment_panel(self.status_data)))
 
         # 2. Cluster Health (SSH)
         if self.cluster_health:
-            health_table = Table(title="Cluster Health (SSH Real-time)", expand=True)
-            health_table.add_column("Node", style="cyan")
-            health_table.add_column("Status", style="bold")
-            health_table.add_column("Uptime", style="magenta")
-            health_table.add_column("Voltage/Throttle", style="yellow")
-            health_table.add_column("Containers", style="green")
-
-            for node in self.cluster_health:
-                status = "[green]ONLINE[/green]" if node.get("online") else "[red]OFFLINE[/red]"
-                uptime = node.get("uptime", "N/A").split("up")[1].split(",")[0].strip() if "up" in node.get("uptime", "") else "N/A"
-                vt = f"{node.get('voltage','N/A')} / {node.get('throttled','N/A')}"
-                
-                containers = []
-                for c in node.get("containers", []):
-                    name = c[0].replace("cocli-worker-", "")
-                    containers.append(name)
-                
-                health_table.add_row(
-                    node.get("label", node.get("host", "unknown")),
-                    status,
-                    uptime,
-                    vt,
-                    ", ".join(containers) if containers else "None"
-                )
-            body.mount(Static(health_table))
+            body.mount(Static(status_renderer.render_cluster_health_table(self.cluster_health)))
 
         # 3. Stats Panel
         if stats and not stats.get("error"):
-            from datetime import datetime, UTC
-            
             # Queues Table
-            q_data = stats.get("s3_queues") or stats.get("local_queues", {})
-            q_source = "S3 (Cloud)" if stats.get("s3_queues") else "Local Filesystem"
-            
-            table = Table(title=f"Queue Depth & Age (Source: {q_source})", expand=True)
-            table.add_column("Queue", style="cyan")
-            table.add_column("Pending", justify="right", style="magenta")
-            table.add_column("In-Flight", justify="right", style="blue")
-            table.add_column("Completed", justify="right", style="green")
-            table.add_column("Last Completion", style="yellow")
-
-            for name, metrics in q_data.items():
-                last_ts = metrics.get("last_completed_at")
-                age_str = "N/A"
-                if last_ts:
-                    try:
-                        dt = datetime.fromisoformat(last_ts)
-                        if dt.tzinfo is None:
-                            dt = dt.replace(tzinfo=UTC)
-                        diff = datetime.now(UTC) - dt
-                        if diff.total_seconds() < 60:
-                            age_str = f"{int(diff.total_seconds())}s ago"
-                        elif diff.total_seconds() < 3600:
-                            age_str = f"{int(diff.total_seconds()/60)}m ago"
-                        elif diff.total_seconds() < 86400:
-                            age_str = f"{int(diff.total_seconds()/3600)}h ago"
-                        else:
-                            age_str = f"{int(diff.total_seconds()/86400)}d ago"
-                    except Exception:
-                        age_str = last_ts
-
-                table.add_row(
-                    name, 
-                    str(metrics.get("pending", 0)), 
-                    str(metrics.get("inflight", 0)), 
-                    str(metrics.get("completed", 0)), 
-                    age_str
-                )
-            body.mount(Static(table))
+            body.mount(Static(status_renderer.render_queue_table(stats)))
 
             # Worker Heartbeats
-            heartbeats = stats.get("worker_heartbeats", [])
-            if heartbeats:
-                hb_table = Table(title="Worker Heartbeats (S3)", expand=True)
-                hb_table.add_column("Hostname", style="cyan")
-                hb_table.add_column("Workers (S/D/E)", style="magenta")
-                hb_table.add_column("CPU", style="blue")
-                hb_table.add_column("RAM", style="green")
-                hb_table.add_column("Last Seen", style="yellow")
-
-                for hb in heartbeats:
-                    ls_str = hb.get("last_seen", "unknown")
-                    try:
-                        ls_dt = datetime.fromisoformat(ls_str)
-                        ls_diff = datetime.now(UTC) - ls_dt
-                        ls_age = f"{int(ls_diff.total_seconds())}s ago"
-                    except Exception:
-                        ls_age = ls_str
-                    workers = hb.get("workers", {})
-                    w_str = f"{workers.get('scrape',0)}/{workers.get('details',0)}/{workers.get('enrichment',0)}"
-                    hb_table.add_row(
-                        hb.get("hostname", "unknown"), 
-                        w_str, 
-                        f"{hb.get('system',{}).get('cpu_percent',0)}%", 
-                        f"{hb.get('system',{}).get('memory_available_gb',0)}GB free", 
-                        ls_age
-                    )
+            hb_table = status_renderer.render_worker_heartbeat_table(stats)
+            if hb_table:
                 body.mount(Static(hb_table))
