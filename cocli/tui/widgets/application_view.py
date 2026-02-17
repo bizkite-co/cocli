@@ -75,6 +75,13 @@ class ApplicationView(Container):
                         ListItem(Label("Sync Enrichment Queue"), id="op_sync_enrichment"),
                         ListItem(Label("Sync Indexes"), id="op_sync_indexes"),
 
+                        # Scaling
+                        ListItem(Label("[dim]--- Cloud Scaling ---[/dim]"), disabled=True),
+                        ListItem(Label("Scale to 0 (Stop)"), id="op_scale_0"),
+                        ListItem(Label("Scale to 1 (Slow)"), id="op_scale_1"),
+                        ListItem(Label("Scale to 5 (Standard)"), id="op_scale_5"),
+                        ListItem(Label("Scale to 10 (Fast)"), id="op_scale_10"),
+
                         # Maintenance
                         ListItem(Label("[dim]--- Maintenance ---[/dim]"), disabled=True),
                         ListItem(Label("Compact Index"), id="op_compact_index"),
@@ -146,6 +153,7 @@ class ApplicationView(Container):
             focused.action_select_cursor()
 
     def on_key(self, event: events.Key) -> None:
+        """Handle navigation keys for both sidebar levels."""
         nav_list = self.query_one("#app_nav_list", ListView)
         ops_list = self.query_one("#ops_list", ListView)
         
@@ -259,6 +267,13 @@ class ApplicationView(Container):
                     table.add_row(f"Queue: {q_name}", f"P:{metrics.get('pending',0)} I:{metrics.get('inflight',0)} C:{metrics.get('completed',0)}")
                 
                 content_area.mount(Static(Panel(table, border_style="green")))
+        
+        elif "op_scale_" in op_id:
+            # We don't want to call AWS on highlight, but we can show current status if we have it
+            cached = app.services.reporting_service.load_cached_report(campaign, "status")
+            if cached:
+                active = cached.get("active_fargate_tasks", "Unknown")
+                content_area.mount(Static(Panel(f"Current Running Tasks: [bold green]{active}[/]", title="Cloud Status")))
 
     @on(Button.Pressed, "#btn_run_op")
     def handle_run_op(self) -> None:
@@ -309,12 +324,28 @@ class ApplicationView(Container):
                 "title": "Sync Indexes",
                 "description": "Synchronizes checkpoint and witness indexes from S3 to local storage."
             },
+            "op_scale_0": {
+                "title": "Stop Cloud Workers",
+                "description": "Sets Fargate service desired count to 0. Use this when pausing work to save costs."
+            },
+            "op_scale_1": {
+                "title": "Scale to 1 Worker",
+                "description": "Sets Fargate service desired count to 1. Good for continuous trickle enrichment."
+            },
+            "op_scale_5": {
+                "title": "Scale to 5 Workers",
+                "description": "Sets Fargate service desired count to 5. Standard processing speed."
+            },
+            "op_scale_10": {
+                "title": "Scale to 10 Workers",
+                "description": "Sets Fargate service desired count to 10. High-speed burst enrichment."
+            },
             "op_compact_index": {
                 "title": "Compact Index",
                 "description": "Initiates index compaction: merges WAL files from S3 into the local checkpoint USV."
             },
             "op_push_queue": {
-                "title": "Push Local Queue to S3",
+                "title": "Push Local Queue",
                 "description": "Uploads locally generated enrichment tasks to the global S3 queue for workers to process."
             },
             "op_audit_integrity": {
@@ -349,6 +380,7 @@ class ApplicationView(Container):
 
     def log_callback(self, text: str) -> None:
         self.current_log_content += text
+        # Keep preview short
         try:
             preview = self.query_one("#op_log_preview", Static)
             lines = self.current_log_content.split("\n")
@@ -396,6 +428,9 @@ class ApplicationView(Container):
                     await asyncio.to_thread(services.audit_service.audit_queue_completion)
                 elif op_id == "op_analyze_emails":
                     await asyncio.to_thread(services.reporting_service.get_email_analysis)
+                elif "op_scale_" in op_id:
+                    count = int(op_id.replace("op_scale_", ""))
+                    await asyncio.to_thread(services.deployment_service.scale_service, count)
             
             run_record.status = "success"
             indicator.update("[bold green]Success[/bold green]")
@@ -404,6 +439,7 @@ class ApplicationView(Container):
             run_record.status = "failed"
             indicator.update("[bold red]Failed[/bold red]")
             self.app.notify(f"Error: {e}", severity="error")
+            print(f"CRITICAL ERROR: {e}") # Captured by capture_logs
         finally:
             run_record.end_time = datetime.now()
             self.call_after_refresh(self.update_recent_runs)
@@ -416,6 +452,7 @@ class ApplicationView(Container):
 
     @on(CampaignSelection.CampaignSelected)
     def handle_campaign_highlight(self, message: CampaignSelection.CampaignSelected) -> None:
+        """Update the detail pane when a campaign is highlighted in the list."""
         try:
             detail = self.query_one("#campaign-detail", CampaignDetail)
             campaign = Campaign.load(message.campaign_name)
