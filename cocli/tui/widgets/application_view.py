@@ -1,9 +1,10 @@
-from typing import Any, TYPE_CHECKING, cast
+from typing import Any, Dict, List, Optional, TYPE_CHECKING, cast
+import asyncio
 import logging
 from datetime import datetime
 from textual.app import ComposeResult
 from textual.containers import Container, VerticalScroll, Horizontal, Vertical
-from textual.widgets import Label, ListView, ListItem, Static, Button
+from textual.widgets import Label, ListView, ListItem, Static
 from textual.message import Message
 from textual import on, work, events
 from rich.table import Table
@@ -31,7 +32,6 @@ class ApplicationView(Container):
     BINDINGS = [
         ("[", "focus_sidebar", "Focus Sidebar"),
         ("]", "focus_content", "Focus Content"),
-        ("l", "select_item", "Select"),
         ("v", "view_full_log", "View Full Log"),
     ]
 
@@ -57,9 +57,9 @@ class ApplicationView(Container):
                 
                 # 2. Sub-level list (Visible underneath)
                 with Vertical(id="app_sub_nav_container"):
-                    yield Label("[bold]Operations[/bold]", id="sub_sidebar_title", classes="sidebar-title")
+                    yield Label("[bold]Menu[/bold]", id="sub_sidebar_title", classes="sidebar-title")
                     
-                    # Pre-composed sub-lists for each category
+                    # Operations List
                     yield ListView(
                         # Reporting
                         ListItem(Label("[dim]--- Reporting ---[/dim]"), disabled=True),
@@ -93,17 +93,16 @@ class ApplicationView(Container):
                     
                     yield CampaignSelection(id="app_campaign_list", classes="sub-sidebar-list")
             
-            # Center: The main content / detail area
+            # Center: The main content area
             with Container(id="app_main_content"):
                 # Operations Detail
                 with VerticalScroll(id="ops_detail_root", classes="category-content-root"):
-                    yield Label("Select an operation to see details.", id="op_title", classes="op-title")
+                    with Horizontal(id="op_header_row"):
+                        yield Label("Select an operation.", id="op_title", classes="op-title")
+                        yield Static("", id="op_status_indicator")
+                    
                     yield Static("", id="op_description", classes="op-description")
                     yield Label("", id="op_last_run", classes="op-timestamp")
-                    with Horizontal(id="op_actions"):
-                        yield Button("Run Operation", variant="primary", id="btn_run_op")
-                        yield Button("View Full Log", id="btn_view_log")
-                        yield Static("", id="op_status_indicator")
                     
                     # Area for report content or operation output
                     yield Container(id="op_content_area")
@@ -114,7 +113,6 @@ class ApplicationView(Container):
                 # Campaign Detail
                 with VerticalScroll(id="campaign_detail_root", classes="category-content-root"):
                     yield CampaignDetail(id="campaign-detail")
-                    yield Button("Activate Campaign", variant="primary", id="btn_activate_campaign")
 
                 # Status View
                 yield StatusView(id="status_view_root", classes="category-content-root")
@@ -128,19 +126,16 @@ class ApplicationView(Container):
         nav_list = self.query_one("#app_nav_list", ListView)
         nav_list.index = 2
         nav_list.focus()
-        self.query_one("#btn_view_log").display = False
         self.show_category("operations")
         self.update_recent_runs()
 
     def action_reset_view(self) -> None:
-        """Move focus back to the main navigation list."""
         self.query_one("#app_nav_list", ListView).focus()
 
     def action_focus_sidebar(self) -> None:
         self.query_one("#app_nav_list", ListView).focus()
 
     def action_focus_content(self) -> None:
-        # Focus whichever sub-sidebar list is currently displayed
         if self.active_category == "operations":
             self.query_one("#ops_list", ListView).focus()
         elif self.active_category == "campaigns":
@@ -148,14 +143,8 @@ class ApplicationView(Container):
         elif self.active_category == "status":
             self.query_one("#status_view_root", StatusView).focus()
 
-    def action_select_item(self) -> None:
-        focused = self.app.focused
-        if isinstance(focused, ListView):
-            focused.action_select_cursor()
-
     def on_key(self, event: events.Key) -> None:
         """Handle sidebar navigation keys."""
-        # Check if focus is in ANY listview in the sidebar
         focused = self.app.focused
         if isinstance(focused, ListView) and (focused.id == "app_nav_list" or focused.id == "ops_list" or focused.id == "campaign_list_view"):
             if event.key == "j":
@@ -180,6 +169,12 @@ class ApplicationView(Container):
             self.show_category("operations")
             self.query_one("#ops_list", ListView).focus()
 
+    @on(ListView.Selected, "#ops_list")
+    def handle_op_execution(self, event: ListView.Selected) -> None:
+        """Triggers the operation when ENTER or l is pressed in the sub-list."""
+        if event.item and event.item.id:
+            self.run_operation(str(event.item.id))
+
     def show_category(self, category: str) -> None:
         self.active_category = category
         title_label = self.query_one("#sub_sidebar_title", Label)
@@ -190,8 +185,6 @@ class ApplicationView(Container):
         
         ops_list.display = (category == "operations")
         campaign_list.display = (category == "campaigns")
-        
-        # For status, the sub-sidebar is empty/hidden
         self.query_one("#app_sub_nav_container").display = (category != "status")
 
         # Toggle Content Visibility
@@ -237,7 +230,6 @@ class ApplicationView(Container):
             self.query_one("#op_description", Static).update(op.description)
             self.query_one("#op_last_run", Label).update(f"Last Run: {self.get_last_run_info(op_id)}")
             self.query_one("#op_log_preview", Static).update("")
-            self.query_one("#btn_view_log").display = False
         except Exception:
             pass
 
@@ -272,26 +264,17 @@ class ApplicationView(Container):
                 active = cached.get("active_fargate_tasks", "Unknown")
                 content_area.mount(Static(Panel(f"Current Running Tasks: [bold green]{active}[/]", title="Cloud Status")))
 
-    @on(Button.Pressed, "#btn_run_op")
-    def handle_run_op(self) -> None:
-        ops_list = self.query_one("#ops_list", ListView)
-        highlighted = ops_list.highlighted_child
-        if highlighted and highlighted.id:
-            self.run_operation(str(highlighted.id))
-
-    @on(Button.Pressed, "#btn_view_log")
-    def handle_view_log_btn(self) -> None:
-        self.action_view_full_log()
-
     def action_view_full_log(self) -> None:
         if self.current_log_content:
-            highlighted = self.query_one("#ops_list", ListView).highlighted_child
-            if highlighted and highlighted.id:
-                op_id = str(highlighted.id)
-                app = cast("CocliApp", self.app)
-                op = app.services.operation_service.get_details(op_id)
-                title = op.title if op else "Log"
-                self.app.push_screen(LogViewerModal(title, self.current_log_content))
+            focused = self.app.focused
+            if isinstance(focused, ListView) and focused.id == "ops_list":
+                highlighted = focused.highlighted_child
+                if highlighted and highlighted.id:
+                    op_id = str(highlighted.id)
+                    app = cast("CocliApp", self.app)
+                    op = app.services.operation_service.get_details(op_id)
+                    title = op.title if op else "Log"
+                    self.app.push_screen(LogViewerModal(title, self.current_log_content))
 
     def get_last_run_info(self, op_id: str) -> str:
         app = cast("CocliApp", self.app)
@@ -325,7 +308,6 @@ class ApplicationView(Container):
     async def run_operation(self, op_id: str) -> None:
         indicator = self.query_one("#op_status_indicator", Static)
         indicator.update("[bold yellow]Running...[/bold yellow]")
-        self.query_one("#btn_view_log").display = True
         self.current_log_content = ""
         
         app = cast("CocliApp", self.app)
@@ -361,24 +343,25 @@ class ApplicationView(Container):
             self.call_after_refresh(refresh_last_run)
 
     @on(CampaignSelection.CampaignSelected)
-    def handle_campaign_highlight(self, message: CampaignSelection.CampaignSelected) -> None:
+    async def handle_campaign_activation(self, message: CampaignSelection.CampaignSelected) -> None:
+        """Triggered by ENTER/l in the Campaign sub-sidebar."""
+        try:
+            campaign_name = message.campaign_name
+            app = cast("CocliApp", self.app)
+            if hasattr(app, "services"):
+                app.services.campaign_service.campaign_name = campaign_name
+                app.services.campaign_service.activate()
+                self.app.notify(f"Activated Campaign: {campaign_name}")
+                self.post_message(self.CampaignActivated(campaign_name))
+        except Exception as e:
+            self.app.notify(f"Activation Failed: {e}", severity="error")
+
+    @on(CampaignSelection.CampaignHighlighted)
+    def handle_campaign_highlight(self, message: CampaignSelection.CampaignHighlighted) -> None:
+        """Update detail pane on highlight (browsing)."""
         try:
             detail = self.query_one("#campaign-detail", CampaignDetail)
             campaign = Campaign.load(message.campaign_name)
             detail.update_detail(campaign)
         except Exception:
             pass
-
-    @on(Button.Pressed, "#btn_activate_campaign")
-    async def handle_activate_campaign(self) -> None:
-        try:
-            detail = self.query_one("#campaign-detail", CampaignDetail)
-            if detail.campaign:
-                campaign_name = detail.campaign.name
-                app = cast("CocliApp", self.app)
-                if hasattr(app, "services"):
-                    app.services.campaign_service.campaign_name = campaign_name
-                    app.services.campaign_service.activate()
-                    self.post_message(self.CampaignActivated(campaign_name))
-        except Exception as e:
-            self.app.notify(f"Activation Failed: {e}", severity="error")

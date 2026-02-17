@@ -1,18 +1,18 @@
 import logging
 import asyncio
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, List, cast
 
 from textual.widgets import ListView, ListItem, Label, Static
 from textual.app import ComposeResult
 from textual.containers import VerticalScroll
 from textual.message import Message
-from textual import events
+from textual import events, on
 
 from cocli.core.config import get_all_campaign_dirs
 from cocli.core.text_utils import slugify
 
 if TYPE_CHECKING:
-    pass
+    from ..app import CocliApp
 
 logger = logging.getLogger(__name__)
 
@@ -26,8 +26,13 @@ class CampaignSelection(Static):
     """A widget to select a campaign."""
 
     class CampaignSelected(Message):
-        """Message sent when a campaign is selected."""
+        """Triggered by ENTER/l - implies action (Activation)."""
+        def __init__(self, campaign_name: str) -> None:
+            super().__init__()
+            self.campaign_name = campaign_name
 
+    class CampaignHighlighted(Message):
+        """Triggered by Cursor movement - implies browsing."""
         def __init__(self, campaign_name: str) -> None:
             super().__init__()
             self.campaign_name = campaign_name
@@ -42,20 +47,16 @@ class CampaignSelection(Static):
             yield ListView(id="campaign_list_view")
     
     def on_mount(self) -> None:
-        # Load campaigns in a non-blocking worker
         self.run_worker(self.load_campaigns())
 
     async def load_campaigns(self) -> None:
-        """Asynchronously discovers available campaigns."""
         try:
-            # Move I/O to a thread
             campaign_dirs = await asyncio.to_thread(get_all_campaign_dirs)
             campaign_names = sorted([d.name for d in campaign_dirs])
             
             list_view = self.query_one("#campaign_list_view", ListView)
             items = [CampaignListItem(name) for name in campaign_names]
             
-            # Update UI on next refresh
             def populate() -> None:
                 list_view.extend(items)
                 if items:
@@ -65,22 +66,16 @@ class CampaignSelection(Static):
         except Exception as e:
             logger.error(f"Failed to load campaigns: {e}")
 
-    def on_list_view_selected(self, event: ListView.Selected) -> None:
+    @on(ListView.Selected, "#campaign_list_view")
+    def handle_select(self, event: ListView.Selected) -> None:
         if isinstance(event.item, CampaignListItem):
             self.post_message(self.CampaignSelected(event.item.campaign_name))
 
+    @on(ListView.Highlighted, "#campaign_list_view")
+    def handle_highlight(self, event: ListView.Highlighted) -> None:
+        if isinstance(event.item, CampaignListItem):
+            self.post_message(self.CampaignHighlighted(event.item.campaign_name))
+
     def on_key(self, event: events.Key) -> None:
-        """Handle key events for the CampaignSelection."""
-        list_view = self.query_one("#campaign_list_view", ListView)
-        if event.key == "j":
-            list_view.action_cursor_down()
-            event.prevent_default()
-            event.stop()
-        elif event.key == "k":
-            list_view.action_cursor_up()
-            event.prevent_default()
-            event.stop()
-        elif event.key == "l" or event.key == "enter":
-            list_view.action_select_cursor()
-            event.prevent_default()
-            event.stop()
+        # Standard j/k/l/enter handled by ApplicationView parent now
+        pass
