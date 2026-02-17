@@ -1,0 +1,6 @@
+Registering service for DESKTOP-NU23FHO at 172.22.116.192...
+Browsing for cocli services (Press Ctrl+C to exit)...
+Service DESKTOP-NU23FHO._cocli._tcp.local. added, service info: ServiceInfo(type='_cocli._tcp.local.', name='DESKTOP-NU23FHO._cocli._tcp.local.', addresses=[b'\xac\x16t\xc0'], port=8000, weight=0, priority=0, server='DESKTOP-NU23FHO.local.', properties={b'version': b'0.1.0', b'node_id': b'DESKTOP-NU23FHO'}, interface_index=None)
+  Addresses: 172.22.116.192
+  Port: 8000
+  Properties: {b'version': b'0.1.0', b'node_id': b'DESKTOP-NU23FHO'}

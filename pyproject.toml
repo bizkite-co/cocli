@@ -38,6 +38,8 @@ dependencies = [
     "aiohttp>=3.13.3",
     "selectolax>=0.4.6",
     "duckdb",
+    "zeroconf>=0.148.0",
+    "watchdog>=6.0.0",
 ]
 
 [project.scripts]

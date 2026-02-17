@@ -90,11 +90,20 @@ class Website(BaseModel):
             )
             f.write("---\n")
         
-        # Save raw auxiliary files
+        # Save raw auxiliary files with size limits (1MB)
+        MAX_SIZE = 1 * 1024 * 1024
         if self.sitemap_xml:
-            (enrichment_dir / "sitemap.xml").write_text(self.sitemap_xml)
+            content = self.sitemap_xml
+            if len(content.encode('utf-8')) > MAX_SIZE:
+                logger.warning(f"Sitemap too large ({len(content.encode('utf-8'))} bytes), truncating.")
+                content = content[:MAX_SIZE//2] + "\n... [TRUNCATED DUE TO SIZE] ...\n"
+            (enrichment_dir / "sitemap.xml").write_text(content)
         if self.navbar_html:
-            (enrichment_dir / "navbar.html").write_text(self.navbar_html)
+            content = self.navbar_html
+            if len(content.encode('utf-8')) > MAX_SIZE:
+                logger.warning(f"Navbar HTML too large ({len(content.encode('utf-8'))} bytes), truncating.")
+                content = content[:MAX_SIZE//2] + "\n... [TRUNCATED DUE TO SIZE] ...\n"
+            (enrichment_dir / "navbar.html").write_text(content)
 
         logger.debug(f"Saved website enrichment locally for {company_slug}")
 

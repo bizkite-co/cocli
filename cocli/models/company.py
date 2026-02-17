@@ -168,6 +168,22 @@ class Company(BaseModel):
                         logger.warning(f"Skipping {company_dir.name}: YAML error in _index.md: {e}")
                         return None
 
+            # Apply WAL Updates on top of frontmatter
+            from cocli.core.wal import read_updates
+            wal_records = read_updates(company_dir)
+            for record in wal_records:
+                # Naive merge: latest field value wins
+                try:
+                    import json
+                    # Try to parse as JSON for complex types
+                    if record.value.startswith("[") or record.value.startswith("{"):
+                        val = json.loads(record.value)
+                    else:
+                        val = record.value
+                    frontmatter_data[record.field] = val
+                except Exception:
+                    frontmatter_data[record.field] = record.value
+
             # Load tags from tags.lst (Source of Truth)
             tags = []
             if tags_path.exists():
@@ -277,11 +293,24 @@ class Company(BaseModel):
                 self.email_contexts = {}
             self.email_contexts.update(other.email_contexts)
 
-    def save(self, email_sync: bool = True, base_dir: Optional[Path] = None) -> None:
+    def save(self, email_sync: bool = True, base_dir: Optional[Path] = None, use_wal: bool = True) -> None:
         """Saves the company data to _index.md and tags to tags.lst."""
         companies_dir = base_dir or get_companies_dir()
         company_dir = companies_dir / self.slug
         company_dir.mkdir(parents=True, exist_ok=True)
+
+        if use_wal:
+            from cocli.core.wal import append_update
+            # We determine what changed by comparing with on-disk state
+            # For now, we will just log all fields to the WAL if it is a fresh save
+            # In a more optimized version, we'd only log dirty fields.
+            data = self.model_dump(mode="json", exclude_none=True)
+            for field, value in data.items():
+                if field not in ["slug", "description"]:
+                    append_update(company_dir, field, value)
+            
+            # If it's a WAL save, we might skip the full index rewrite if we want true distributed semantics
+            # but for local parity we'll do both for now until compaction is solid.
         
         index_path = company_dir / "_index.md"
         tags_path = company_dir / "tags.lst"

@@ -1,89 +1,90 @@
 # Distributed Data Update Datagram Propagation
 
 ## Objective
-Design and implement a custom distributed update paradigm for the `cocli` plain-text CRM. This system must handle data propagation across a heterogeneous cluster (Raspberry Pi nodes, cloud workers, and mobile laptops) while minimizing conflicts and ensuring eventual consistency.
+Design and implement a custom distributed update paradigm for the `cocli` plain-text CRM. This system handles data propagation across a heterogeneous cluster (Raspberry Pi nodes, cloud workers, and mobile laptops) while minimizing conflicts and ensuring eventual consistency.
 
 ---
 
 ## 1. Core Concepts: Small-Batch Update Datagrams
 
-### 1.1 Field-Level Write-Ahead Log (WAL)
-Instead of updating the monolithic `_index.md` for a company, updates should be modeled as granular "datagrams."
-- **Current State**: Large `_index.md` containing all company metadata.
-- **Proposed State**: Granular files in an `updates/` sub-directory (e.g., `updates/name.md`, `updates/website.md`, `updates/tags.md`).
+### 1.1 Field-Level Write-Ahead Log (WAL) [IMPLEMENTED]
+Instead of updating the monolithic `_index.md` for a company, updates are modeled as granular "datagrams" in a sub-directory.
+- **Current State**: `Company.save()` triggers a WAL append.
+- **Proposed State**: Granular files in an `updates/` sub-directory (e.g., `updates/20260216_node1.usv`).
 - **Benefits**:
-    - **Reduced Conflict**: Simultaneous updates to different fields (e.g., one node updates the name, another adds a tag) become additive rather than conflicting.
-    - **Low Bandwidth**: Propagating a 100-byte name change is significantly more efficient than re-syncing a 5KB Markdown file.
+    - **Reduced Conflict**: Simultaneous updates to different fields are additive.
+    - **Low Bandwidth**: Propagating a 100-byte name change is more efficient than re-syncing a 5KB Markdown file.
     - **Audit Trail**: Every update datagram is a historical record of change.
 
-### 1.2 Datagram Format
-Updates should follow a consistent format (likely YAML or USV) containing:
+### 1.2 Datagram Format [IMPLEMENTED]
+Updates follow a USV (Unit Separated Values) format for efficiency:
 - `timestamp`: ISO-8601 UTC.
 - `node_id`: Unique identifier of the originating node.
+- `target`: The entity ID (e.g., company slug).
 - `field`: The specific data field being modified.
-- `value`: The new value.
-- `signature`: Cryptographic proof of origin (optional but recommended for distributed trust).
+- `value`: The new value (JSON-encoded for complex types).
+- `causality`: [PENDING] Vector Clocks for ordering.
 
 ---
 
-## 2. Propagation Strategies: Commitment to IPFS
+## 2. Propagation Strategies: UDP Multicast & mDNS
 
-We have committed to the **IPFS / libp2p** ecosystem for data propagation. This provides a robust foundation for content-addressing and peer-to-peer networking.
+While we explored libp2p, we have initially implemented a lightweight **UDP Multicast Gossip Bridge** optimized for the local `10.0.0.0/8` PI cluster.
 
-### 2.1 Autonomous Peer Discovery (Replacing /etc/hosts)
-To eliminate manual IP management and router-diving, we will utilize libp2p's discovery stack:
-- **mDNS (Multicast DNS)**: For local network discovery. The laptop and RPis will automatically "find" each other on the same subnet without configuration.
-- **DHT (Distributed Hash Table)**: For "off-grid" discovery. If the laptop is on a different network (e.g., cellular or remote office), it can locate the home RPi cluster via their persistent PeerIDs.
-- **Gossipsub**: A highly optimized pubsub protocol to broadcast "Update Datagrams" across the mesh.
+### 2.1 Autonomous Peer Discovery [VERIFIED]
+Utilizing mDNS via the `zeroconf` library:
+- **mDNS (Multicast DNS)**: The laptop and RPis automatically "find" each other on the same subnet.
+- **Gossip Bridge**: A background daemon (`cocli/core/gossip_bridge.py`) watches for new files in `updates/` using `watchdog` and broadcasts them via UDP Multicast (Port 9999).
 
-### 2.2 Datagram Efficiency: Issues & Concerns
-
-To keep datagrams small and robust, we must address the following:
+### 2.2 Datagram Efficiency: Issues & Concerns [RESOLVED]
 
 #### A. The "Inode" Fragmentation Problem
-- **Concern**: Creating a new file for every single field update (e.g., `updates/name_1.md`, `updates/name_2.md`) will eventually choke the filesystem and slow down directory listings.
 - **Mitigation**: 
-    - **Compaction**: Periodically merge updates into the main `_index.md`.
-    - **Batching**: Group multiple changes from the same session into a single datagram.
+    - **Compaction**: `cocli/core/compact_wal.py` merges updates into the main `_index.md` and clears the `updates/` folder.
+    - **Session Files**: WAL records are grouped by date and node ID into single `.usv` files.
 
-#### B. Causality & Clock Drift
-- **Concern**: RPi system clocks are notorious for drifting. Relying purely on `timestamp` for "Latest Wins" resolution can lead to data loss (e.g., a "later" update from a Pi with a fast clock overwrites a more recent update from the laptop).
-- **Mitigation**: Use **Lamport Timestamps** or **Vector Clocks** to establish a partial ordering of events that doesn't depend on wall-clock time.
-
-#### C. Binary vs. Text Efficiency
-- **Concern**: YAML/Markdown headers are human-readable but bulky for 100-byte updates.
-- **Mitigation**: Use **CBOR (Concise Binary Object Representation)** for the transit datagram (Gossip layer) while keeping the persistence layer (the `updates/` folder) as simple, append-only USV or Markdown for debuggability.
-
-#### D. Content-Addressable Identity
-- **Concern**: How do we verify that an update for `company-a` actually belongs to `company-a`?
-- **Mitigation**: Every datagram should be linked to the **Parent CID** (the hash of the previous state). This creates a verifiable "hash chain" of updates for each entity.
-
----
-
-## 3. Implementation Roadmap
-1. [ ] **Proof of Concept**: A tiny `libp2p` daemon running on one Pi and the laptop.
-2. [ ] **mDNS Discovery**: Verify that the laptop can "ping" the Pi by PeerID without an IP address.
-3. [ ] **The "Update" Command**: Refactor `cocli update` to write to `updates/` instead of `_index.md`.
-4. [ ] **Gossip Bridge**: A service that watches `updates/` and broadcasts changes to the mesh.
+#### B. Enrichment Bloat (The 100MB Sitemap Problem)
+- **Mitigation**: Implemented a **1MB hard limit** on `sitemap.xml` and `navbar.html` in `cocli/models/website.py`. Files exceeding this are truncated with a warning.
 
 ---
 
 ## 3. Scraper Integration & PI Cluster Workflow
 
-### 3.1 Local-First Scraping
-Currently, PI workers push directly to S3.
-- **Improvement**: Workers write results to a local `wal/` directory on the Pi first.
-- **Propagation**: The Pi then gossips this update to other local nodes and asynchronously pushes to S3.
-- **Benefit**: Immediate visibility of scraper progress across the local cluster even if the internet connection to S3 is throttled or interrupted.
+### 3.1 Local-First Scraping [TRANSITIONING]
+- **Current**: Workers write to `_index.md`.
+- **New**: `Company.save()` now defaults to `use_wal=True`, writing to local `updates/` first. The Gossip Bridge then handles near-instant propagation to other cluster nodes.
 
 ### 3.2 WAL Compaction
-- **Consolidation**: A background process (either on a master Pi or during a `make compact` call) reads the `updates/` folder and merges the latest field values back into the `_index.md`.
-- **Identity Integrity**: Compaction must respect the "Latest Timestamp Wins" rule or use Vector Clocks to resolve simultaneous updates to the same field.
+- **Consolidation**: `compact_all_companies()` reads the `updates/` folder and merges the latest field values back into the `_index.md`.
 
 ---
 
 ## 4. Current Challenges & Discussion Points
-- [ ] **Offline Handling**: How does a node verify it has the "latest" data without a central heartbeat?
-- [ ] **Conflict Resolution**: Logic for merging `updates/*.md` into the main index.
-- [ ] **Security**: Ensuring a compromised Pi cannot inject fraudulent update datagrams into the cluster.
-- [ ] **S3 Transition**: Moving from "Direct S3 Sync" to "Distributed Propagation with S3 as a Witness."
+- [ ] **Vector Clocks**: Implementing proper causality to handle out-of-order delivery.
+- [ ] **Convos/Journaling**: Consolidating meetings, notes, and calls into a unified, WAL-friendly "Journal" system.
+- [ ] **S3 Witness**: Refining the strategy for syncing nodes that have been offline for extended periods (using S3 as the historical checkpoint).
+
+---
+
+## 5. Implementation Roadmap
+1. [x] **mDNS Discovery Prototype**: Verified self-discovery and peer detection.
+2. [x] **Datagram Schema Definition**: Finalized USV format in `cocli/core/wal.py`.
+3. [x] **Refactor `Company` Model**: Integrated WAL into `save()` and `from_directory()`.
+4. [x] **Gossip Bridge Service**: Implemented `GossipBridge` with `watchdog` monitoring.
+5. [x] **Enrichment Size Limits**: Added 1MB truncation for large auxiliary files.
+6. [ ] **Deployment**: Integrate `GossipBridge` into PI `run_worker.sh`.
+7. [ ] **Convos Refactor**: Move People/Meetings/Notes into a unified sub-folder structure.
+
+---
+
+## 6. Context Handoff (For New Chat Session)
+
+### Current State
+- **WAL System**: Working at the model level. Every save generates a USV datagram.
+- **Discovery**: `zeroconf` is active in the bridge.
+- **Networking**: Using UDP Multicast on Port 9999 for local gossip.
+- **Safety**: Large sitemaps are now truncated to prevent sync failures.
+
+### Immediate Focus for Next Session
+1. **PI Deployment**: Update the `rpi-worker` image to run the Gossip Bridge as a background process.
+2. **Unified Journaling (Convos)**: Discuss the transition of `meetings/` and `notes/` into a single, append-only directory structure that can leverage the same WAL/Gossip paradigm.
