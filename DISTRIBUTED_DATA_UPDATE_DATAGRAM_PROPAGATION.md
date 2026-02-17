@@ -26,24 +26,45 @@ Updates should follow a consistent format (likely YAML or USV) containing:
 
 ---
 
-## 2. Propagation Strategies: IPFS vs. Hyphanet
+## 2. Propagation Strategies: Commitment to IPFS
 
-### 2.1 IPFS (InterPlanetary File System)
-- **Mechanism**: Content-addressed data (CIDs). Peers fetch data by its hash.
-- **Pros**: Immutable, verifiable, strong existing ecosystem (libp2p).
-- **Cons**: High resource overhead for RPi nodes; IPNS (for mutable names) can be slow; data is not guaranteed to persist unless "pinned."
-- **Cocli Use Case**: Ideal if we treat the entire `data/` directory as a Merkle DAG. Every update results in a new Root CID.
+We have committed to the **IPFS / libp2p** ecosystem for data propagation. This provides a robust foundation for content-addressing and peer-to-peer networking.
 
-### 2.2 Hyphanet (formerly FreeNet)
-- **Mechanism**: Decentralized data store where data is distributed based on key proximity.
-- **Pros**: Built-in persistence (data stays alive if requested), high privacy, handled small blocks of data well.
-- **Cons**: Slower latency; Java-based implementation is resource-heavy for older RPis.
-- **Cocli Use Case**: Excellent for "long-term" distributed storage of the WAL if S3 were to disappear.
+### 2.1 Autonomous Peer Discovery (Replacing /etc/hosts)
+To eliminate manual IP management and router-diving, we will utilize libp2p's discovery stack:
+- **mDNS (Multicast DNS)**: For local network discovery. The laptop and RPis will automatically "find" each other on the same subnet without configuration.
+- **DHT (Distributed Hash Table)**: For "off-grid" discovery. If the laptop is on a different network (e.g., cellular or remote office), it can locate the home RPi cluster via their persistent PeerIDs.
+- **Gossipsub**: A highly optimized pubsub protocol to broadcast "Update Datagrams" across the mesh.
 
-### 2.3 Custom "Gossip + S3 Witness" (Hybrid)
-- **Local Network**: RPis and local laptops use **Gossipsub** (libp2p) to rapidly broadcast update datagrams.
-- **Cloud/Global**: Nodes periodically push their local WAL to S3.
-- **Sync**: If a laptop goes offline and returns, it queries S3 for the "Witness" record (the authoritative merged WAL) to catch up.
+### 2.2 Datagram Efficiency: Issues & Concerns
+
+To keep datagrams small and robust, we must address the following:
+
+#### A. The "Inode" Fragmentation Problem
+- **Concern**: Creating a new file for every single field update (e.g., `updates/name_1.md`, `updates/name_2.md`) will eventually choke the filesystem and slow down directory listings.
+- **Mitigation**: 
+    - **Compaction**: Periodically merge updates into the main `_index.md`.
+    - **Batching**: Group multiple changes from the same session into a single datagram.
+
+#### B. Causality & Clock Drift
+- **Concern**: RPi system clocks are notorious for drifting. Relying purely on `timestamp` for "Latest Wins" resolution can lead to data loss (e.g., a "later" update from a Pi with a fast clock overwrites a more recent update from the laptop).
+- **Mitigation**: Use **Lamport Timestamps** or **Vector Clocks** to establish a partial ordering of events that doesn't depend on wall-clock time.
+
+#### C. Binary vs. Text Efficiency
+- **Concern**: YAML/Markdown headers are human-readable but bulky for 100-byte updates.
+- **Mitigation**: Use **CBOR (Concise Binary Object Representation)** for the transit datagram (Gossip layer) while keeping the persistence layer (the `updates/` folder) as simple, append-only USV or Markdown for debuggability.
+
+#### D. Content-Addressable Identity
+- **Concern**: How do we verify that an update for `company-a` actually belongs to `company-a`?
+- **Mitigation**: Every datagram should be linked to the **Parent CID** (the hash of the previous state). This creates a verifiable "hash chain" of updates for each entity.
+
+---
+
+## 3. Implementation Roadmap
+1. [ ] **Proof of Concept**: A tiny `libp2p` daemon running on one Pi and the laptop.
+2. [ ] **mDNS Discovery**: Verify that the laptop can "ping" the Pi by PeerID without an IP address.
+3. [ ] **The "Update" Command**: Refactor `cocli update` to write to `updates/` instead of `_index.md`.
+4. [ ] **Gossip Bridge**: A service that watches `updates/` and broadcasts changes to the mesh.
 
 ---
 
