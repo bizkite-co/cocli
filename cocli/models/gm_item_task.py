@@ -8,8 +8,8 @@ class GmItemTask(BaseModel):
     """
     place_id: str
     campaign_name: str
-    name: str = Field(..., min_length=3)
-    company_slug: str = Field(..., min_length=3)
+    name: str = ""
+    company_slug: str = ""
     force_refresh: bool = False
     discovery_phrase: Optional[str] = None
     discovery_tile_id: Optional[str] = None
