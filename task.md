@@ -25,6 +25,27 @@ Achieve full feature and data parity in the TUI while stabilizing the automated 
 - [ ] **UI Alignment**: Update Person Detail view to match the 2x2 grid structure.
 - [ ] **Inline Edits**: Enable inline editing for all Person fields.
 
+## Phase 5: Unified Management Hub & Navigation Hierarchy (COMPLETED)
+### Navigation Refinement
+- [x] **Contextual "Drill-Up"**: Unified `alt+s`, `escape`, and `ctrl+c` to move exactly one level up the tree (Field -> Table -> Panel -> List).
+- [x] **Declarative Registry**: Created `BRANCH_ROOTS` mapping to document and drive TUI hierarchy (Leaf -> Branch -> Trunk).
+- [x] **Keyboard Efficiency**: Standardized `j/k/l` navigation across all sidebar levels and added `[`/`]` for instant sidebar/content focus switching.
+- [x] **Smart Search Reset**: Returning to a branch root via `alt+s` now clears and targets the ListView for immediate browsing.
+
+### Application Command Center
+- [x] **Stacked Sidebar**: Implemented a space-efficient vertical menu for top-level categories and sub-category items.
+- [x] **Cloud Scaling**: Added direct Fargate worker controls (0, 1, 5, 10 workers) to the Operations menu.
+- [x] **Granular Sync**: Integrated individual queue (GM List, Details, Enrichment) and index synchronization.
+- [x] **Maintenance Hub**: Added TUI support for index compaction (WAL -> Checkpoint) and local queue pushing.
+- [x] **Session History**: Implemented a "Recent Runs" sidebar to track all background operations and their status.
+
+### Observability & Performance
+- [x] **Real-time Logs**: Implemented log capture and streaming for operations with a full history `LogViewerModal`.
+- [x] **Cluster Monitoring**: Added SSH-based real-time health check (Status, Uptime, Voltage, Containers) for RPi nodes.
+- [x] **Lazy Loading**: Optimized Application tab to open instantly, deferring heavy stats/SSH tasks until selected.
+- [x] **Export Integration**: Automated report saving to campaign-specific `exports/report.json` for persistence.
+- [x] **Hot-Reload Dev Flow**: Implemented `make dev` with `watchdog` for instant TUI restarts on code changes.
+
 ## Phase 6: Data Hygiene & Enrichment Stabilization (STABILIZED)
 ### Enrichment Pipeline Fixes
 - [x] **Queue Misintegration**: Resolved path mismatches between worker leasing and supervisor tracking. Fixed `FilesystemEnrichmentQueue` to use consistent Ordinant-based S3 paths.
