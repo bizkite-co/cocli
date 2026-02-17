@@ -90,7 +90,9 @@ To ensure consistency across disconnections while minimizing overhead, we distin
 5. [x] **Enrichment Size Limits**: Added 1MB truncation for large auxiliary files.
 6. [x] **Deployment**: Integrated `GossipBridge` into `cocli-supervisor` on PI cluster.
 7. [x] **Short-Name Validation**: Fixed `GmItemTask` validation to allow "hollow" tasks.
-8. [ ] **Convos Refactor**: Move People/Meetings/Notes into a unified sub-folder structure.
+8. [ ] **S3 Durability Tier**: Implement automatic sync of raw WAL files from workers to S3.
+9. [ ] **S3 Hub Automation**: Implement scheduled compaction and master index push on Hub.
+10. [ ] **Convos Refactor**: Move People/Meetings/Notes into a unified sub-folder structure.
 
 ---
 
