@@ -1,6 +1,6 @@
 import logging
 import asyncio
-from typing import TYPE_CHECKING, Any, List, cast
+from typing import TYPE_CHECKING, Any
 
 from textual.widgets import ListView, ListItem, Label, Static
 from textual.app import ComposeResult
@@ -12,7 +12,7 @@ from cocli.core.config import get_all_campaign_dirs
 from cocli.core.text_utils import slugify
 
 if TYPE_CHECKING:
-    from ..app import CocliApp
+    pass
 
 logger = logging.getLogger(__name__)
 
