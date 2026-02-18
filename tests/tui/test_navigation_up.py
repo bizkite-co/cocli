@@ -47,7 +47,7 @@ async def test_alt_s_in_company_list_resets_search_and_focuses_list():
         # BUT Input should NOT have focus
         assert not search_input.has_focus
         # ListView SHOULD have focus
-        assert app.query_one(ListView).has_focus
+        assert isinstance(app.focused, ListView)
 
 @pytest.mark.asyncio
 async def test_alt_s_in_company_detail_navigates_up_to_list_focus(mock_company_data):
@@ -72,5 +72,5 @@ async def test_alt_s_in_company_detail_navigates_up_to_list_focus(mock_company_d
         assert len(app.query(CompanyDetail)) == 0
         
         # ListView should have focus for immediate j/k navigation
-        assert app.query_one(ListView).has_focus
+        assert isinstance(app.focused, ListView)
         assert not app.query_one(Input).has_focus
