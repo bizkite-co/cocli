@@ -9,19 +9,22 @@ The system prioritizes local, sub-second coordination while maintaining a durabl
 
 ### Tier 1: Real-Time Gossip (Unicast UDP)
 - **Mechanism**: UDP Unicast datagrams (Port 9999).
-- **Discovery**: Triple-layered (mDNS advertised as `_cocli-gossip._udp.local.`, Static Config, and Hardcoded IP fallbacks).
-- **Networking**: Containers use `--network host` for native communication.
-- **Responsibility**: Instant propagation of field-level changes between active nodes.
+- **Discovery**: Triple-layered (mDNS, Static Config, Hardcoded Fallbacks).
+- **Networking**: Containers use `--network host`.
+- **Storage**: Centralized Journaling in `data/wal/{YYYYMMDD}_{node_id}.usv`.
+- **Scope**: Used for **Mutable Field State** (phone, email, tags, last_enriched).
+- **Conflict Resolution**: **Last-Write-Wins (LWW)** based on ISO-8601 timestamps.
 
-### Tier 2: Durability Buffer (Node -> S3)
-- **Mechanism**: Worker nodes periodically or upon save sync their **raw WAL files** (`.usv`) to S3.
-- **Path**: `s3://{bucket}/wal/{node_id}/{YYYYMMDD}.usv`
-- **Purpose**: Ensures work is not lost if the central Hub is offline or peers disconnect.
+### Tier 2: Large-Blob Durability (Worker -> S3)
+- **Mechanism**: Worker nodes upload large, structured results directly to S3.
+- **Path**: `s3://{bucket}/companies/{slug}/enrichments/{source}.md` (GLOBAL SHARED)
+- **Scope**: Used for **Large Results** (website scrape dumps, head.html).
+- **Consolidation**: Propagated via `aws s3 sync` to the Hub for local compilation.
 
 ### Tier 3: Consolidation & Hub Compaction (Hub -> S3)
-- **Mechanism**: The **Laptop Hub** node pulls all raw datagrams and merges them into the monolithic `_index.md` files (FIMC pattern).
-- **Persistence**: The Hub uploads the consolidated state back to S3.
-- **Bootstrapping**: S3 remains the authoritative source for new nodes or nodes recovering from long downtime.
+- **Mechanism**: The **Laptop Hub** node pulls raw datagrams and blobs, merges them into monolithic `_index.md` files (FIMC pattern).
+- **Persistence**: Hub uploads consolidated `_index.md` back to S3.
+- **Shared Data**: Companies and People are stored at the S3 root (non-namespaced) to ensure cross-campaign accessibility.
 
 ---
 
@@ -35,14 +38,14 @@ sequenceDiagram
     participant W as Worker (coclipi)
     participant G as Gossip Bridge
     participant L as Laptop (Hub)
-    participant S3 as AWS S3 (Durability)
+    participant S3 as AWS S3 (Global Pool)
 
-    W->>W: 1. Company.save(use_wal=True)
-    W->>W: 2. Append USV to local updates/
-    W->G: 3. Watchdog triggers change
-    G-->>L: 4. UDP Unicast broadcast (Instant)
-    L->>L: 5. Write USV to local updates/
-    W->>S3: 6. Sync raw WAL to s3://wal/coclipi/ (Async)
+    W->>W: 1. Save website.md locally
+    W->>S3: 2. Upload website.md to global companies/ (Blob)
+    W->>W: 3. Append field updates to data/wal/ (Journal)
+    W->G: 4. Watchdog triggers change
+    G-->>L: 5. UDP Unicast broadcast (Instant)
+    L->>L: 6. Write USV to local data/wal/
 ```
 
 ### 2.2 Hub Compaction & Master Update
@@ -50,17 +53,21 @@ Periodically, the Hub node consolidates the cluster's work:
 
 ```mermaid
 flowchart TD
-    S3_WAL["S3 Raw WALs (wal/*/*.usv)"]
+    S3_BLOBS["S3 Global Blobs (companies/*/enrichments/*.md)"]
+    S3_WAL["S3 Raw WALs (wal/*.usv)"]
     HUB["Laptop Hub"]
     COMPACT["Compaction Service (DuckDB)"]
+    COMPILE["Website Compiler (Markdown Parsing)"]
     MASTER["Local _index.md (Consolidated)"]
-    S3_MASTER["S3 Master Index (_index.md)"]
+    S3_MASTER["S3 Master Index (companies/*/_index.md)"]
 
+    S3_BLOBS -->|1. Sync| HUB
     S3_WAL -->|1. Pull| HUB
-    HUB -->|2. Ingest| COMPACT
-    COMPACT -->|3. Merge (Latest Wins)| MASTER
+    HUB -->|2. Ingest WAL| COMPACT
+    HUB -->|2. Parse Blobs| COMPILE
+    COMPACT -->|3. Merge Fields| MASTER
+    COMPILE -->|3. Merge Content| MASTER
     MASTER -->|4. Push| S3_MASTER
-    S3_MASTER -->|5. Notify| Hub
 ```
 
 ---

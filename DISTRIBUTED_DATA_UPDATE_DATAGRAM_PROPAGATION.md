@@ -75,10 +75,25 @@ To ensure consistency across disconnections while minimizing overhead, we distin
 
 ---
 
-## 4. Current Challenges & Discussion Points
-- [ ] **Vector Clocks**: Implementing proper causality to handle out-of-order delivery.
-- [ ] **Convos/Journaling**: Consolidating meetings, notes, and calls into a unified, WAL-friendly "Journal" system.
-- [ ] **S3 Witness**: Refining the strategy for syncing nodes that have been offline for extended periods (using S3 as the historical checkpoint).
+## 4. Deliberations & Current Concerns
+
+### 4.1 Last-Write-Wins (LWW) vs. Complexity
+We have decided to accept **Last-Write-Wins (LWW)** as the primary conflict resolution strategy for entity updates. 
+- **Rationale**: Simultaneous updates to the same field of the same company by different nodes are rare. If two PIs are scraping the same company, it indicates an upstream queue coordination issue.
+- **Impact**: This simplifies the WAL system by removing the immediate need for Vector Clocks or complex causality tracking. The ISO-8601 `timestamp` in the USV record is sufficient for ordering during compaction.
+
+### 4.2 Storage Structure & Naming Collisions
+We must avoid burying `wal/` folders deep in nested structures (e.g., `companies/{slug}/updates/`) to prevent:
+1. **Namespace Conflicts**: A company named "wal" or "updates" would conflict with the system folders.
+2. **Sync Inefficiency**: Walking 100,000+ directories for `aws s3 sync` causes massive I/O overhead.
+3. **Confusion with Index WALs**: The project already uses `wal/` folders for sharded index "hot layers" (e.g., `campaigns/*/indexes/*/wal/`).
+
+**Decision**: We will use a separate, top-level `wal/` or `companies-wal/` structure to isolate entity-level updates from both the company data and the index-level sharded WALs.
+
+### 4.3 Atomic Writes & Locking
+The project currently uses S3-native atomic locks (`IfNoneMatch="*"`) in `CompactManager` and `FilesystemQueue`.
+- **Strategy**: When the Hub node performs compaction, it should use a similar locking mechanism to ensure no other node attempts a compaction or a master index push simultaneously.
+- **Verification**: We need to ensure that entity-level WAL appends remain non-blocking while compaction remains atomic.
 
 ---
 
@@ -90,20 +105,43 @@ To ensure consistency across disconnections while minimizing overhead, we distin
 5. [x] **Enrichment Size Limits**: Added 1MB truncation for large auxiliary files.
 6. [x] **Deployment**: Integrated `GossipBridge` into `cocli-supervisor` on PI cluster.
 7. [x] **Short-Name Validation**: Fixed `GmItemTask` validation to allow "hollow" tasks.
-8. [ ] **S3 Durability Tier**: Implement automatic sync of raw WAL files from workers to S3.
-9. [ ] **S3 Hub Automation**: Implement scheduled compaction and master index push on Hub.
-10. [ ] **Convos Refactor**: Move People/Meetings/Notes into a unified sub-folder structure.
+8. [x] **Centralized Journaling**: Refactored `wal.py` to use `data/wal/` to avoid deep directory walks and naming conflicts.
+9. [ ] **Cluster Monitoring**: Add `heartbeat` records to WAL and implement `cocli status --cluster`.
+10. [ ] **S3 Durability Tier**: Implement automatic sync of centralized WAL files from workers to S3.
+11. [ ] **S3 Hub Automation**: Implement scheduled compaction and master index push on Hub.
+12. [ ] **Convos Refactor**: Move People/Meetings/Notes into a unified sub-folder structure.
 
 ---
 
-## 6. Context Handoff (For New Chat Session)
+## 6. Testing & Monitoring
+
+### 6.1 Heartbeats & Network Status
+To monitor cluster health, every node will append a **Heartbeat Record** to its local WAL every 60 seconds:
+- `timestamp|node_id|system|heartbeat|online`
+- **Dashboard**: `cocli status --cluster` will parse the latest USV files from `data/wal/*.usv` to show:
+    - Last seen time for each node.
+    - Drift (number of records) between local state and peer broadcasts.
+
+### 6.2 Unit & Integration Testing
+1.  **WAL Append Test**: Verify that `append_update` correctly writes to `data/wal/` and handles JSON serialization.
+2.  **Gossip Loopback Test**: Run two `GossipBridge` instances locally on different ports and verify that a record appended to one node's WAL is received and written by the other.
+3.  **Compaction LWW Test**: Feed the compaction engine two WAL records for the same company/field with different timestamps and verify the latest one is merged into `_index.md`.
+
+### 6.3 Hub Update Propagation
+The Hub node will periodically broadcast a `sync_checkpoint` record after successful compaction and S3 push:
+- `timestamp|hub_node|system|sync_checkpoint|{last_processed_timestamp}`
+- Workers can use this to prune their local hot WALs.
+
+---
+
+## 7. Context Handoff (For New Chat Session)
 
 ### Current State
 - **WAL System**: Fully operational. Bidirectional gossip verified between `cocli5x1.pi`, `coclipi.pi`, and `octoprint.pi`.
+- **Centralized Data**: All company data is now stored in a global, shared `companies/` pool on S3 and local FS, eliminating campaign-level silos.
 - **Discovery**: Triple-layered (mDNS + Static Config + Hardcoded IPs) ensuring 100% connectivity.
 - **Networking**: Using **Unicast UDP** on Port 9999 with Docker `--network host`.
-- **Data Quality**: "Hollow" tasks (empty name/slug) are now processed correctly after relaxing Pydantic constraints.
 
 ### Immediate Focus for Next Session
-1. **Unified Journaling (Convos)**: Refactor `meetings/` and `notes/` into a unified, append-only "Journal" that propagates via the same Gossip Bridge.
-2. **S3 Hub Automation**: Implement a scheduled task on the laptop hub to compact WALs and push to S3.
+1. **Global Compaction**: Implement a single command to merge all pending `website.md` and `*.usv` updates into the global `companies/` pool.
+2. **Unified Journaling (Convos)**: Refactor `meetings/` and `notes/` into a unified, append-only "Journal" that propagates via the same Gossip Bridge.

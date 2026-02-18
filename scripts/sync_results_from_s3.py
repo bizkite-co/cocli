@@ -49,15 +49,15 @@ def main(
     companies_dir = get_companies_dir()
     compiler = WebsiteCompiler()
     
+    from cocli.core.paths import paths
     synced_count = 0
     
     for item in track(enqueued_data, description="Syncing from S3..."):
         slug = item["slug"]
         
-        # S3 Paths (matching enrichment_service logic)
-        s3_prefix = f"companies/{slug}"
-        web_key = f"{s3_prefix}/enrichments/website.md"
-        index_key = f"{s3_prefix}/_index.md"
+        # Use DataPaths authority for S3 keys
+        web_key = paths.s3_website_enrichment(slug)
+        index_key = paths.s3_company_index(slug)
         
         local_dir = companies_dir / slug
         local_enrichment_dir = local_dir / "enrichments"

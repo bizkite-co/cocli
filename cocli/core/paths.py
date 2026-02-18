@@ -94,6 +94,33 @@ class DataPaths:
         return self.root / "people"
 
     @property
+    def wal(self) -> Path:
+        return self.root / "wal"
+
+    def wal_journal(self, node_id: str, date_str: Optional[str] = None) -> Path:
+        """Returns the path to a local WAL journal file."""
+        if not date_str:
+            from datetime import datetime, UTC
+            date_str = datetime.now(UTC).strftime("%Y%m%d")
+        return self.wal / f"{date_str}_{node_id}.usv"
+
+    def wal_remote_journal(self, node_id: str) -> Path:
+        """Returns the path to a remote WAL journal file (received via gossip)."""
+        return self.wal / f"remote_{node_id}.usv"
+
+    def wal_target_id(self, entity_path: Path) -> str:
+        """
+        Converts a full entity path (e.g. data/companies/apple) 
+        into a stable identifier (e.g. 'companies/apple').
+        """
+        try:
+            # Try to make it relative to the root for a clean 'type/slug' string
+            return str(entity_path.relative_to(self.root))
+        except ValueError:
+            # Fallback if the path is outside the root (e.g. in tests)
+            return f"{entity_path.parent.name}/{entity_path.name}"
+
+    @property
     def indexes(self) -> Path:
         return self.root / "indexes"
 
@@ -117,19 +144,33 @@ class DataPaths:
     def s3_campaign_root(self, campaign_slug: str) -> str:
         return f"campaigns/{campaign_slug}/"
 
+    def s3_campaign_config(self, campaign_slug: str) -> str:
+        """Returns the S3 key for the campaign config.toml."""
+        return f"{self.s3_campaign_root(campaign_slug)}config.toml"
+
     def s3_queue_root(self, campaign_slug: str, queue_name: str) -> str:
         return f"{self.s3_campaign_root(campaign_slug)}queues/{queue_name}/"
 
     def s3_queue_pending(self, campaign_slug: str, queue_name: str, shard: str = "", task_id: str = "") -> str:
         base = f"{self.s3_queue_root(campaign_slug, queue_name)}pending/"
-        if shard and task_id:
-            return f"{base}{shard}/{task_id}/"
+        if shard:
+            base += f"{shard}/"
+            if task_id:
+                base += f"{task_id}/"
         return base
 
     def s3_queue_completed(self, campaign_slug: str, queue_name: str, task_id: str = "") -> str:
         base = f"{self.s3_queue_root(campaign_slug, queue_name)}completed/"
         if task_id:
-            return f"{base}{task_id}"
+            return f"{base}{task_id}.json"
+        return base
+
+    def s3_queue_completed_results(self, campaign_slug: str, queue_name: str, shard: str = "", base_id: str = "") -> str:
+        base = f"{self.s3_queue_root(campaign_slug, queue_name)}completed/results/"
+        if shard:
+            base += f"{shard}/"
+            if base_id:
+                base += f"{base_id}.json"
         return base
 
     def s3_queue_sideline(self, campaign_slug: str, queue_name: str, category: str = "C_BACKUP", shard: str = "", task_id: str = "") -> str:
@@ -140,6 +181,30 @@ class DataPaths:
 
     def s3_index_root(self, campaign_slug: str, index_name: str) -> str:
         return f"{self.s3_campaign_root(campaign_slug)}indexes/{index_name}/"
+
+    def s3_prospect_index_root(self, campaign_slug: str) -> str:
+        """Returns the S3 prefix for the prospect index."""
+        return self.s3_index_root(campaign_slug, "google_maps_prospects")
+
+    def s3_email_index_root(self, campaign_slug: str) -> str:
+        """Returns the S3 prefix for the email index."""
+        return self.s3_index_root(campaign_slug, "emails")
+
+    def s3_wal_root(self) -> str:
+        """Returns the S3 prefix for the centralized cluster WAL."""
+        return "wal/"
+
+    def s3_company_root(self, company_slug: str) -> str:
+        """Returns the S3 prefix for a specific company's data (GLOBAL SHARED)."""
+        return f"companies/{company_slug}/"
+
+    def s3_company_index(self, company_slug: str) -> str:
+        """Returns the S3 key for a company's _index.md (GLOBAL SHARED)."""
+        return f"{self.s3_company_root(company_slug)}_index.md"
+
+    def s3_website_enrichment(self, company_slug: str) -> str:
+        """Returns the S3 key for a company's website enrichment result (GLOBAL SHARED)."""
+        return f"{self.s3_company_root(company_slug)}enrichments/website.md"
 
     def s3_status_root(self) -> str:
         return "status/"

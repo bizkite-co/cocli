@@ -20,7 +20,8 @@ def mock_s3_manager():
             mock_config.return_value = {
                 "aws": {"data_bucket_name": "test-bucket"}
             }
-            manager = DomainIndexManager(campaign)
+            # Explicitly set use_cloud=True for S3 tests
+            manager = DomainIndexManager(campaign, use_cloud=True)
             manager.s3_client = mock_client
             return manager
 
@@ -111,4 +112,5 @@ def test_local_round_trip(tmp_path, monkeypatch):
     shard_id = manager.get_shard_id("local-test.com")
 
     assert shard_id in manifest.shards
-    assert manifest.shards[shard_id].path.startswith("indexes/domains/shards/")
+    # In local mode, paths are now relative to root_dir (domains/)
+    assert manifest.shards[shard_id].path.startswith("shards/")

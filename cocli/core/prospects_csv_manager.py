@@ -26,14 +26,19 @@ class ProspectsIndexManager:
             # Fallback to legacy path if campaign not found
             self.index_dir = get_campaign_scraped_data_dir(campaign_name)
             
-    def get_file_path(self, place_id: str) -> Path:
+    def get_file_path(self, place_id: str, for_write: bool = False) -> Path:
         """
-        Returns the path to a prospect file, prioritizing sharded .usv
-        but falling back to legacy locations for reads.
+        Returns the path to a prospect file.
+        If for_write=True, ALWAYS returns the new sharded path in the WAL.
+        If for_write=False (default), checks for existing files in both modern and legacy locations.
         """
-        # 1. Check for new sharded path (.usv) in the WAL
         shard = get_place_id_shard(place_id)
         sharded_path = self.index_dir / "wal" / shard / f"{place_id}.usv"
+        
+        if for_write:
+            return sharded_path
+
+        # 1. Check for new sharded path (.usv) in the WAL
         if sharded_path.exists():
             return sharded_path
             
@@ -202,12 +207,8 @@ class ProspectsIndexManager:
             logger.warning(f"Prospect data missing place_id, cannot save to index. Skipping: {prospect_data.name or prospect_data.domain}")
             return False
         
-        file_path = self.get_file_path(prospect_data.place_id)
-        if file_path.suffix == ".csv":
-            old_path = file_path
-            file_path = file_path.with_suffix(".usv")
-        else:
-            old_path = None
+        # EXPLICITLY set for_write=True to ensure we write to 'wal/{shard}/{place_id}.usv'
+        file_path = self.get_file_path(prospect_data.place_id, for_write=True)
         
         try:
             file_path.parent.mkdir(parents=True, exist_ok=True)
@@ -215,8 +216,6 @@ class ProspectsIndexManager:
                 logger.info(f"WRITING PROSPECT: {prospect_data.place_id} | processed_by: {prospect_data.processed_by}")
                 f.write(prospect_data.to_usv())
             
-            if old_path and old_path.exists():
-                old_path.unlink()
             return True
         except Exception as e:
             logger.error(f"Error writing prospect to index (place_id: {prospect_data.place_id}): {e}")

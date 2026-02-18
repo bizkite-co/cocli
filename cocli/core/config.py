@@ -75,6 +75,12 @@ def get_people_dir() -> Path:
     v_dir.path.mkdir(parents=True, exist_ok=True)
     return v_dir.path
 
+def get_wal_dir() -> Path:
+    p = paths.wal
+    v_dir = get_validated_dir(p, "WAL Directory")
+    v_dir.path.mkdir(parents=True, exist_ok=True)
+    return v_dir.path
+
 def get_shared_scraped_data_dir() -> Path:
     """
     Returns the shared scraped data directory (e.g., shopify_csv).

@@ -3,6 +3,7 @@ import yaml
 from botocore.exceptions import ClientError
 from typing import Optional
 
+from .paths import paths
 from ..models.campaign import Campaign
 from ..models.company import Company # To load/save _index.md equivalent
 from ..models.website import Website # To load/save website.md equivalent
@@ -12,7 +13,7 @@ logger = logging.getLogger(__name__)
 class S3CompanyManager:
     """
     Manages Company and Website data directly in S3, mirroring the local data structure.
-    Data is stored in YAML format (similar to local _index.md and website.md).
+    Uses the paths authority to determine S3 keys.
     """
     def __init__(self, campaign: Campaign):
         self.campaign = campaign
@@ -35,10 +36,6 @@ class S3CompanyManager:
         
         if not self.s3_bucket_name:
             raise ValueError(f"S3 bucket name could not be resolved for campaign {self.campaign.name}")
-        
-        # Base prefix for all companies managed by this campaign
-        # e.g., "campaigns/roadmap/companies/"
-        self.s3_base_prefix = f"campaigns/{self.campaign.name}/companies/"
 
         try:
             from botocore.config import Config
@@ -51,10 +48,10 @@ class S3CompanyManager:
             raise
 
     def _get_s3_key_for_company_index(self, company_slug: str) -> str:
-        return f"{self.s3_base_prefix}{company_slug}/_index.md"
+        return paths.s3_company_index(company_slug)
 
     def _get_s3_key_for_website_enrichment(self, company_slug: str) -> str:
-        return f"{self.s3_base_prefix}{company_slug}/enrichments/website.md"
+        return paths.s3_website_enrichment(company_slug)
 
     async def save_company_index(self, company: Company) -> None:
         if not company.slug:

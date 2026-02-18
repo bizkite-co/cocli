@@ -363,6 +363,10 @@ compare-emails: ## Compare current emails to a historical CSV (Usage: make compa
 backfill-email-index: ## Backfill the email index from existing company files (Usage: make backfill-email-index [CAMPAIGN=name])
 	@$(VENV_DIR)/bin/python scripts/backfill_email_index.py $(CAMPAIGN)
 
+.PHONY: backfill-domain-index
+backfill-domain-index: ## Backfill the domain index from existing company files (Usage: make backfill-domain-index [CAMPAIGN=name])
+	$(VENV_DIR)/bin/cocli index backfill-domains --campaign $(CAMPAIGN)
+
 .PHONY: recover-prospect-index
 recover-prospect-index: ## Reconstruct the prospect index from tagged companies (Usage: make recover-prospect-index [CAMPAIGN=name])
 	$(call validate_campaign)
@@ -751,6 +755,7 @@ start-rpi-supervisor: ## Start the Supervisor on Raspberry Pi for dynamic scalin
 		-e CAMPAIGN_NAME='$(CAMPAIGN)' \
 		-e AWS_PROFILE=$(IOT_PROFILE) \
 		-e COCLI_HOSTNAME=\$$(hostname) \
+		-e COCLI_DATA_HOME=/app/data \
 		-e COCLI_QUEUE_TYPE=filesystem \
 		-e COCLI_SCRAPE_TASKS_QUEUE_URL='$(SCRAPE_QUEUE)' \
 		-e COCLI_GM_LIST_ITEM_QUEUE_URL='$(DETAILS_QUEUE)' \

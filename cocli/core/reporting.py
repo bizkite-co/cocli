@@ -166,54 +166,33 @@ def get_campaign_stats(campaign_name: str) -> Dict[str, Any]:
 
     # 0. Exclusions
     stats.update(get_exclusions_data(campaign_name))
-    exclusion_manager = ExclusionManager(campaign_name)
 
     # 1. Local Prospects Count & Sources
     manager = ProspectsIndexManager(campaign_name)
     total_prospects = 0
     source_counts = {"local-worker": 0, "fargate-worker": 0, "unknown": 0}
-    all_slugs: set[str] = set()
-    prospect_metadata: Dict[str, str] = {} # slug -> name
-
+    
     # Pre-calculate tile-to-prospect mapping for efficient location stats
     tile_prospect_counts: Dict[str, int] = {}
 
-    from ..models.company import Company
     if manager.index_dir.exists():
-        for prospect in manager.read_all_prospects():
-            # Add to slugs list
-            if prospect.company_slug:
-                # Filter out raw Place IDs that might have leaked into slugs in old/malformed files
-                if prospect.company_slug.startswith("ChIJ") and len(prospect.company_slug) > 20:
-                    # Attempt to re-slugify from name if it's clearly a Place ID
-                    from .text_utils import slugify
-                    slug = slugify(prospect.name)
-                else:
-                    slug = prospect.company_slug
-                
-                all_slugs.add(slug)
-                
-                # Fetch clean name from Company model if not already cached
-                if slug not in prospect_metadata:
-                    comp = Company.get(slug)
-                    if comp:
-                        prospect_metadata[slug] = comp.name
-                    else:
-                        prospect_metadata[slug] = prospect.name or slug
-                
-            # Skip excluded
-            if exclusion_manager.is_excluded(domain=prospect.domain, slug=prospect.company_slug):
-                continue
-                
-            total_prospects += 1
-            source = prospect.processed_by or "unknown"
-            source_counts[source] = source_counts.get(source, 0) + 1
-
-            # Map prospect to its grid tile
-            if prospect.latitude and prospect.longitude:
-                from .sharding import get_grid_tile_id
-                tile_id = get_grid_tile_id(float(prospect.latitude), float(prospect.longitude))
-                tile_prospect_counts[tile_id] = tile_prospect_counts.get(tile_id, 0) + 1
+        # Use DuckDB to count and group prospects without loading objects
+        import duckdb
+        con = duckdb.connect(database=':memory:')
+        checkpoint_path = manager.index_dir / "prospects.checkpoint.usv"
+        
+        if checkpoint_path.exists():
+            q = f"""
+                SELECT 
+                    count(*),
+                    count(CASE WHEN column24 = 'local-worker' THEN 1 END),
+                    count(CASE WHEN column24 = 'fargate-worker' THEN 1 END)
+                FROM read_csv('{checkpoint_path}', delim='\x1f', header=False, auto_detect=True, all_varchar=True)
+            """
+            res = con.execute(q).fetchone()
+            if res:
+                total_prospects, source_counts['local-worker'], source_counts['fargate-worker'] = res
+                source_counts['unknown'] = total_prospects - source_counts['local-worker'] - source_counts['fargate-worker']
 
     stats["prospects_count"] = total_prospects
     stats["worker_stats"] = source_counts
@@ -274,13 +253,6 @@ def get_campaign_stats(campaign_name: str) -> Dict[str, Any]:
                             elif obj["Key"].endswith("lease.json"):
                                 inflight_count += 1
                     
-                    # Special Case for gm-list pending: Use Mission vs Witness if pending is 0
-                    if q == "gm-list" and pending_count == 0:
-                        # This is an approximation. Real count is (target - witness)
-                        # We use the counts we might already have or just leave it for now
-                        # but at least we explain why it might be 0.
-                        pass
-
                     completed_count = 0
                     last_completed_at = None
                     prefix_completed = f"campaigns/{campaign_name}/queues/{q}/completed/"
@@ -299,14 +271,6 @@ def get_campaign_stats(campaign_name: str) -> Dict[str, Any]:
                     }
                 except Exception as e:
                     logger.warning(f"Could not count S3 queue tasks for {q}: {e}")
-            
-            # --- Better gm-list (Global) Pending count ---
-            # If we already scanned scraped tiles from S3, we can use that.
-            if "gm-list" in s3_queues:
-                # We can use total_target_tiles and total_scraped_tiles calculated below
-                # But those are calculated AFTER this loop.
-                pass
-            # ---------------------------------------------
             
             stats["s3_queues"] = s3_queues
             # ----------------------------------------
@@ -451,93 +415,53 @@ def get_campaign_stats(campaign_name: str) -> Dict[str, Any]:
             list(details_frontier.glob("*.json"))
         )
 
-    # 3. Enriched Companies & Emails
+    # 3. Enriched Companies & Emails (OPTIMIZED via Sharded Indexes)
     from cocli.core.email_index_manager import EmailIndexManager
-    from cocli.core.config import get_companies_dir
+    from cocli.core.domain_index_manager import DomainIndexManager
+    from ..models.campaign import Campaign as CampaignModel
 
     email_index = EmailIndexManager(campaign_name)
-    domains_with_emails: set[str] = set()
+    domain_index = DomainIndexManager(CampaignModel.load(campaign_name))
     
-    # Track unique emails globally
-    all_emails_found: set[str] = set()
-
-    # 1. Count from email index
-    for email_entry in email_index.read_all_emails():
-        if email_entry.email:
-            all_emails_found.add(email_entry.email.lower())
-            if email_entry.domain:
-                domains_with_emails.add(email_entry.domain.lower())
-
-    # 2. Also scan company objects for emails (Hydration check)
-    companies_dir = get_companies_dir()
-    tag = config.get("campaign", {}).get("tag") or campaign_name
+    # 1. Count from sharded email index (DuckDB)
+    # We only need the counts, no need to load objects
+    import duckdb
+    con = duckdb.connect(database=':memory:')
     
+    email_shards = [str(p) for p in email_index.shards_dir.glob("*.usv")]
+    emails_count = 0
+    domains_with_emails_count = 0
+    
+    if email_shards:
+        path_list = "', '".join(email_shards)
+        q = f"""
+            SELECT count(DISTINCT lower(email)), count(DISTINCT lower(domain))
+            FROM read_csv(['{path_list}'], delim='\x1f', header=False, auto_detect=False, 
+                          columns={{'email':'VARCHAR','domain':'VARCHAR','c':'VARCHAR','s':'VARCHAR','f':'VARCHAR','fs':'VARCHAR','ls':'VARCHAR','v':'VARCHAR','t':'VARCHAR'}})
+        """
+        res = con.execute(q).fetchone()
+        if res:
+            emails_count, domains_with_emails_count = res
+
+    # 2. Count from sharded domain index (Enriched Companies)
+    # This represents the total pool of successfully enriched domains for this campaign
     enriched_count = 0
-    deep_enriched_count = 0
-
-    if companies_dir.exists():
-        for company_path in companies_dir.iterdir():
-            if not company_path.is_dir():
-                continue
-
-            # Fast tag check
-            tags_file = company_path / "tags.lst"
-            has_tag = False
-            if tags_file.exists():
-                try:
-                    tags = tags_file.read_text().splitlines()
-                    if tag in [t.strip() for t in tags]:
-                        has_tag = True
-                except Exception:
-                    pass
-
-            if has_tag:
-                enriched_count += 1
-                
-                # Check for emails in the company model directly
-                company_obj = Company.get(company_path.name)
-                if company_obj:
-                    # Check primary email
-                    if company_obj.email:
-                        e_str = str(company_obj.email).lower()
-                        all_emails_found.add(e_str)
-                        if company_obj.domain:
-                            domains_with_emails.add(company_obj.domain.lower())
-                    
-                    # Check all_emails list
-                    for email_addr in company_obj.all_emails:
-                        e_str = str(email_addr).lower()
-                        all_emails_found.add(e_str)
-                        if company_obj.domain:
-                            domains_with_emails.add(company_obj.domain.lower())
-
-                # Check for Deep Enrichment artifacts
-                enrich_dir = company_path / "enrichments"
-                if (enrich_dir / "sitemap.xml").exists() or (enrich_dir / "navbar.html").exists():
-                    deep_enriched_count += 1
+    try:
+        # Filter global index by campaign tag using DuckDB
+        tag = config.get("campaign", {}).get("tag") or campaign_name
+        
+        # We reuse the DomainIndexManager's query capability
+        # but we need to ensure it's looking at shards correctly.
+        all_enriched = domain_index.query(sql_where=f"list_contains(tags, '{tag}')")
+        enriched_count = len(all_enriched)
+    except Exception as e:
+        logger.warning(f"Could not fetch enriched count from global index: {e}")
 
     stats["enriched_count"] = enriched_count
-    stats["deep_enriched_count"] = deep_enriched_count
-    stats["companies_with_emails_count"] = len(domains_with_emails)
-    stats["emails_found_count"] = len(all_emails_found)
-
-    # Global Enrichment Count (Total pool from Manifest)
-    try:
-        from .domain_index_manager import DomainIndexManager
-        from ..models.campaign import Campaign as CampaignModel
-        idx_manager = DomainIndexManager(CampaignModel.load(campaign_name))
-        # This might be slow if it has to bootstrap, but once manifest exists it is fast
-        manifest = idx_manager.get_latest_manifest()
-        stats["total_enriched_global"] = len(manifest.shards)
-    except Exception as e:
-        logger.warning(f"Could not fetch global pool count from manifest: {e}")
-        # Fallback to local count
-        total_global = 0
-        if companies_dir.exists():
-            for company_path in companies_dir.iterdir():
-                if (company_path / "enrichments" / "website.md").exists():
-                    total_global += 1
-        stats["total_enriched_global"] = total_global
+    stats["deep_enriched_count"] = 0 # Placeholder: needs separate index or manifest flag
+    stats["companies_with_emails_count"] = domains_with_emails_count
+    stats["emails_found_count"] = emails_count
+    stats["total_enriched_global"] = enriched_count
 
     # 5. Anomaly Detection (Bot Detection Monitoring) using new Witness Index
     total_scraped_tiles_witness = 0

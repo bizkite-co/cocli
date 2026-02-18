@@ -20,32 +20,38 @@ class DomainIndexManager:
     Supports both S3 (distributed) and Local Filesystem storage.
     Uses a Manifest-Pointer architecture for atomic updates and DuckDB for fast querying.
     """
-    def __init__(self, campaign: Campaign):
+    def __init__(self, campaign: Campaign, use_cloud: bool = False):
         self.campaign = campaign
-        self.is_cloud = False
         
-        # Resolve storage type
+        # Resolve bucket name for later use (syncing)
         from .config import load_campaign_config
         config = load_campaign_config(self.campaign.name)
         aws_config = config.get("aws", {})
         self.bucket_name = os.environ.get("COCLI_S3_BUCKET_NAME") or aws_config.get("data_bucket_name")
         
-        if self.bucket_name:
-            self.is_cloud = True
+        self.is_cloud = use_cloud
+        
+        if self.is_cloud:
             self.base_prefix = "" # Root of bucket
             self.protocol = "s3://"
             self._init_s3_client(aws_config)
+            # Common Path Components (Nested within domains/)
+            self.inbox_root = "indexes/domains/inbox/"
+            self.shards_prefix = "indexes/domains/shards/"
+            self.manifests_prefix = "indexes/domains/manifests/"
+            self.latest_pointer_key = "indexes/domains/LATEST"
         else:
             self.is_cloud = False
-            self.root_dir = get_cocli_base_dir() / "indexes"
+            # Domains are global shared data
+            self.root_dir = get_cocli_base_dir() / "indexes" / "domains"
             self.root_dir.mkdir(parents=True, exist_ok=True)
             self.protocol = "" # Local paths are absolute or relative to CWD
             
-        # Common Path Components (Nested within domains/)
-        self.inbox_root = "indexes/domains/inbox/"
-        self.shards_prefix = "indexes/domains/shards/"
-        self.manifests_prefix = "indexes/domains/manifests/"
-        self.latest_pointer_key = "indexes/domains/LATEST"
+            # Local components are relative to the domain-specific root
+            self.inbox_root = "inbox/"
+            self.shards_prefix = "shards/"
+            self.manifests_prefix = "manifests/"
+            self.latest_pointer_key = "LATEST"
 
     def _init_s3_client(self, aws_config: Dict[str, Any]) -> None:
         try:
@@ -68,14 +74,14 @@ class DomainIndexManager:
         if self.is_cloud:
             return f"{self.protocol}{self.bucket_name}/{key}"
         else:
-            return str(get_cocli_base_dir() / key)
+            return str(self.root_dir / key)
 
     def _read_object(self, key: str) -> str:
         if self.is_cloud:
             resp = self.s3_client.get_object(Bucket=self.bucket_name, Key=key)
             return resp["Body"].read().decode("utf-8")
         else:
-            path = get_cocli_base_dir() / key
+            path = self.root_dir / key
             return path.read_text(encoding="utf-8")
 
     def _write_object(self, key: str, content: str) -> None:
@@ -87,7 +93,7 @@ class DomainIndexManager:
                 ContentType="text/plain"
             )
         else:
-            path = get_cocli_base_dir() / key
+            path = self.root_dir / key
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_text(content, encoding="utf-8")
 
@@ -95,7 +101,7 @@ class DomainIndexManager:
         if self.is_cloud:
             self.s3_client.delete_object(Bucket=self.bucket_name, Key=key)
         else:
-            path = get_cocli_base_dir() / key
+            path = self.root_dir / key
             if path.exists():
                 path.unlink()
 
@@ -107,7 +113,7 @@ class DomainIndexManager:
             except Exception:
                 return False
         else:
-            return (get_cocli_base_dir() / key).exists()
+            return (self.root_dir / key).exists()
 
     def get_shard_id(self, domain: str) -> str:
         """Calculates a deterministic shard ID (00-ff) based on domain hash."""
@@ -237,7 +243,7 @@ class DomainIndexManager:
                             if key.endswith(".usv") and not key.split('/')[-1].startswith("_"):
                                 inbox_paths.append(self._get_path(key))
                 else:
-                    inbox_dir = get_cocli_base_dir() / self.inbox_root
+                    inbox_dir = self.root_dir / self.inbox_root
                     if inbox_dir.exists():
                         inbox_paths = [str(f) for f in inbox_dir.rglob("*.usv") if not f.name.startswith("_")]
             except Exception:
@@ -259,11 +265,17 @@ class DomainIndexManager:
 
         try:
             base_query = " UNION ALL ".join(sub_queries)
-            full_query = f"SELECT * FROM ({base_query})"
+            full_query = f"""
+                SELECT * FROM (
+                    SELECT *, row_number() OVER (PARTITION BY domain ORDER BY updated_at DESC) as rn
+                    FROM ({base_query})
+                ) WHERE rn = 1
+            """
+            # Use 'contains' for simple tag matching since tags are stored as 'tag1;tag2' in USV
             if sql_where:
-                full_query += f" WHERE {sql_where}"
-            
-            full_query += " ORDER BY updated_at DESC"
+                # Hotfix for list_contains vs string contains
+                sql_where = sql_where.replace("list_contains(tags,", "contains(tags,")
+                full_query = f"SELECT * FROM ({full_query}) WHERE {sql_where}"
             
             logger.debug(f"Unified Index Query: {full_query}")
             results = con.execute(full_query).fetchall()
@@ -302,6 +314,98 @@ class DomainIndexManager:
             return results[0] if results else None
         
         return None
+
+    def backfill_from_companies(self, campaign_tag: str, limit: int = 0) -> int:
+        """
+        Populates the domain inbox by scanning company directories for website enrichment.
+        Uses a generator to keep memory usage low.
+        """
+        from pathlib import Path
+        from .config import get_companies_dir
+        from .text_utils import parse_frontmatter
+        from ..utils.yaml_utils import resilient_safe_load
+        import re
+        import yaml
+        import time
+
+        # Setup internal logging for backfill
+        logs_dir = Path(".logs")
+        logs_dir.mkdir(exist_ok=True)
+        log_file = logs_dir / f"backfill_domains_{self.campaign.name}_{int(time.time())}.log"
+        file_handler = logging.FileHandler(log_file)
+        file_handler.setFormatter(logging.Formatter("%(asctime)s [%(levelname)s] %(message)s"))
+        logger.addHandler(file_handler)
+
+        companies_dir = get_companies_dir()
+        added_count = 0
+        processed_count = 0
+
+        logger.info(f"Starting domain backfill for tag: {campaign_tag}. Detailed log: {log_file}")
+
+        try:
+            for company_path in companies_dir.iterdir():
+                if not company_path.is_dir():
+                    continue
+                
+                if limit and processed_count >= limit:
+                    break
+
+                # 1. Fast Tag Check
+                tags_path = company_path / "tags.lst"
+                if not tags_path.exists():
+                    continue
+                
+                try:
+                    tags = tags_path.read_text().splitlines()
+                    if campaign_tag not in [t.strip() for t in tags]:
+                        continue
+                except Exception:
+                    continue
+
+                processed_count += 1
+
+                # 2. Extract Data from website.md
+                website_md = company_path / "enrichments" / "website.md"
+                if not website_md.exists():
+                    continue
+
+                try:
+                    content = website_md.read_text()
+                    frontmatter_str = parse_frontmatter(content)
+                    if not frontmatter_str:
+                        continue
+
+                    # Clean problematic YAML tags
+                    cleaned_yaml = re.sub(r'!!python/object/new:cocli\.models\.[a-z_]+\.[A-Za-z]+', '', frontmatter_str)
+                    cleaned_yaml = re.sub(r'args:\s*\[([^\]]+)\]', r'\1', cleaned_yaml)
+
+                    try:
+                        data = yaml.safe_load(cleaned_yaml)
+                    except Exception:
+                        data = resilient_safe_load(frontmatter_str)
+
+                    if not data:
+                        continue
+
+                    domain = data.get("domain") or company_path.name
+                    record = WebsiteDomainCsv(
+                        domain=domain,
+                        company_name=data.get("company_name") or company_path.name,
+                        is_email_provider=data.get("is_email_provider", False),
+                        updated_at=data.get("updated_at") or datetime.now(timezone.utc),
+                        tags=[t.strip() for t in tags]
+                    )
+                    
+                    self.add_or_update(record)
+                    added_count += 1
+
+                except Exception as e:
+                    logger.error(f"Backfill error processing {company_path.name}: {e}")
+        finally:
+            logger.removeHandler(file_handler)
+            file_handler.close()
+
+        return added_count
 
     def compact_inbox(self) -> None:
         """
@@ -377,6 +481,7 @@ class DomainIndexManager:
         logger.info("Cleaning up processed inbox files...")
         for item in inbox_items:
             shard_id = self.get_shard_id(str(item.domain))
+            # Use relative keys for _delete_object
             inbox_key = f"{self.inbox_root}{shard_id}/{slugdotify(str(item.domain))}.usv"
             try:
                 self._delete_object(inbox_key)

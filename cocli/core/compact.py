@@ -95,35 +95,58 @@ class CompactManager:
             logger.error(f"Failed to release lock: {e}")
 
     def isolate_wal(self) -> int:
-        """Moves files from wal/ to processing/run_id/ on S3 and clears local WAL."""
+        """Moves files from wal/ AND out-of-place files in the root to processing/run_id/ on S3."""
         logger.info(f"Isolating WAL files to {self.s3_proc_prefix}...")
         
-        src = f"s3://{self._bucket}/{self.s3_wal_prefix}"
+        # 1. MOVE REMOTE WAL -> PROCESSING
+        src_wal = f"s3://{self._bucket}/{self.s3_wal_prefix}"
         dest = f"s3://{self._bucket}/{self.s3_proc_prefix}"
         
         try:
-            # 1. MOVE REMOTE WAL -> PROCESSING
             from contextlib import nullcontext
             with open(self.log_file, "a") if self.log_file else nullcontext() as f:
-                result = subprocess.run(
-                    ["aws", "s3", "mv", src, dest, "--recursive", "--quiet"],
+                # Move everything from wal/ prefix
+                subprocess.run(
+                    ["aws", "s3", "mv", src_wal, dest, "--recursive", "--quiet"],
                     stdout=f, stderr=f, text=True
                 )
+                
+                # 2. SWEEP: Move any USV/CSV files in the root that aren't the checkpoint
+                # We use a single batch move with filters for high performance
+                root_s3 = f"s3://{self._bucket}/{self.s3_index_prefix}"
+                subprocess.run(
+                    [
+                        "aws", "s3", "mv", root_s3, dest,
+                        "--recursive",
+                        "--exclude", "*",
+                        "--include", "*.usv",
+                        "--include", "*.csv",
+                        "--exclude", "prospects.checkpoint.usv",
+                        "--exclude", "validation_errors.usv",
+                        "--exclude", "_*",
+                        "--quiet"
+                    ],
+                    stdout=f, stderr=f, text=True
+                )
+
+            logger.info("Isolation complete.")
             
-            if result.returncode == 0:
-                logger.info("Isolation complete.")
-                
-                # 2. PURGE LOCAL WAL (It is now safe to do so as S3 is the source of truth for the merge)
-                local_wal = self.index_dir / "wal"
-                if local_wal.exists():
-                    logger.info(f"Purging local WAL shards from {local_wal}...")
-                    import shutil
-                    shutil.rmtree(local_wal)
-                    local_wal.mkdir(parents=True, exist_ok=True)
-                
-                return 1 
-            else:
-                return 0
+            # 2. PURGE LOCAL WAL AND ROOT NAKED FILES
+            local_wal = self.index_dir / "wal"
+            if local_wal.exists():
+                logger.info(f"Purging local WAL shards from {local_wal}...")
+                import shutil
+                shutil.rmtree(local_wal)
+                local_wal.mkdir(parents=True, exist_ok=True)
+            
+            # Purge local naked files in index root
+            for f_path in self.index_dir.glob("*.usv"):
+                if f_path.name != "prospects.checkpoint.usv" and f_path.name != "validation_errors.usv":
+                    f_path.unlink()
+            for f_path in self.index_dir.glob("*.csv"):
+                f_path.unlink()
+            
+            return 1 
         except Exception as e:
             logger.error(f"Failed to isolate WAL: {e}")
             return 0

@@ -196,6 +196,49 @@ def status(
     except Exception as e:
         console.print(f"Checkpoint: [red]Error: {e}[/red]")
 
+@app.command(name="backfill-domains")
+def backfill_domains(
+    campaign: str = typer.Option("roadmap", help="Campaign name"),
+    limit: int = typer.Option(0, "--limit", "-l", help="Limit the number of companies processed (for testing)."),
+    compact: bool = typer.Option(True, "--compact/--no-compact", help="Automatically run compaction after backfill.")
+) -> None:
+    """
+    Backfill the Domain Index from local website enrichment files.
+    """
+    from ..core.domain_index_manager import DomainIndexManager
+    from ..models.campaign import Campaign as CampaignModel
+    from ..core.config import load_campaign_config
+    from rich.progress import Progress, SpinnerColumn, TextColumn
+    
+    console.print(f"Backfilling Domain Index for campaign: [bold]{campaign}[/bold]")
+    
+    # Load campaign to get the tag
+    try:
+        camp_obj = CampaignModel.load(campaign)
+        config = load_campaign_config(campaign)
+        tag = config.get("campaign", {}).get("tag") or campaign
+    except Exception as e:
+        console.print(f"[bold red]Error loading campaign:[/bold red] {e}")
+        raise typer.Exit(1)
+
+    manager = DomainIndexManager(camp_obj)
+    
+    with Progress(
+        SpinnerColumn(),
+        TextColumn("[progress.description]{task.description}"),
+        console=console
+    ) as progress:
+        task = progress.add_task(f"Scanning companies for tag '{tag}'...", total=None)
+        added = manager.backfill_from_companies(tag, limit=limit)
+        progress.update(task, description=f"[green]Scanned and added {added} records to inbox.")
+        
+        if compact and added > 0:
+            task_compact = progress.add_task("Compacting inbox into shards...", total=None)
+            manager.compact_inbox()
+            progress.update(task_compact, description="[green]Compaction complete.")
+
+    console.print(f"[bold green]Success![/bold green] Backfill process finished for [cyan]{campaign}[/cyan].")
+
 @app.command(name="write-datapackage")
 def write_datapackage(
     campaign: str = typer.Option("roadmap", help="Campaign name"),

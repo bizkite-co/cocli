@@ -129,8 +129,18 @@ exclude = [
     "turboship",
     "cdk.out",
     "quickbooks-search",
+    "mutt-setup",
 ]
 follow_imports = "normal"
+
+[tool.ruff]
+exclude = [
+    "mutt-setup",
+    ".venv",
+    "data",
+    "build",
+    "dist",
+]
 
 [[tool.mypy.overrides]]
 module = "cocli.core.website_cache"

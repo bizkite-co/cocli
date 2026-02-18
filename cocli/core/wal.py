@@ -5,6 +5,8 @@ from pathlib import Path
 from typing import Any, Optional, List
 from pydantic import BaseModel
 
+from .paths import paths
+
 logger = logging.getLogger(__name__)
 
 # USV Control Characters
@@ -14,7 +16,7 @@ RS = "\x1e"  # Record Separator
 class DatagramRecord(BaseModel):
     timestamp: str
     node_id: str
-    target: str  # e.g. company slug
+    target: str  # e.g. companies/apple-inc
     field: str
     value: str
     causality: Optional[str] = None  # Future: Vector Clock / Lamport Timestamp
@@ -40,16 +42,12 @@ def get_node_id() -> str:
 
 def append_update(target_dir: Path, field: str, value: Any) -> None:
     """
-    Appends a field update to the local WAL datagram for a specific entity.
+    Appends a field update to the centralized WAL journal via the paths authority.
     """
-    updates_dir = target_dir / "updates"
-    updates_dir.mkdir(parents=True, exist_ok=True)
-    
-    # We use a daily or session-based file to reduce inode fragmentation
-    today = datetime.now(UTC).strftime("%Y%m%d")
     node_id = get_node_id()
-    wal_file = updates_dir / f"{today}_{node_id}.usv"
-    
+    wal_file = paths.wal_journal(node_id)
+    target_id = paths.wal_target_id(target_dir)
+
     # Convert value to string representation (JSON if complex)
     if isinstance(value, (list, dict)):
         import json
@@ -60,11 +58,14 @@ def append_update(target_dir: Path, field: str, value: Any) -> None:
     record = DatagramRecord(
         timestamp=datetime.now(UTC).isoformat(),
         node_id=node_id,
-        target=target_dir.name, # Use directory name as slug
+        target=target_id,
         field=field,
         value=value_str
     )
     
+    # Ensure WAL directory exists
+    wal_file.parent.mkdir(parents=True, exist_ok=True)
+
     with open(wal_file, "a") as f:
         f.write(record.to_usv())
     
@@ -72,21 +73,26 @@ def append_update(target_dir: Path, field: str, value: Any) -> None:
 
 def read_updates(target_dir: Path) -> List[DatagramRecord]:
     """
-    Reads all datagram records from the updates/ directory.
+    Reads all datagram records for a specific entity from the centralized WAL.
     """
-    updates_dir = target_dir / "updates"
+    wal_dir = paths.wal
     records: List[DatagramRecord] = []
-    if not updates_dir.exists():
+    if not wal_dir.exists():
         return records
     
-    for wal_file in sorted(updates_dir.glob("*.usv")):
+    target_id = paths.wal_target_id(target_dir)
+
+    for wal_file in sorted(wal_dir.glob("*.usv")):
         try:
             content = wal_file.read_text()
             for raw_record in content.split(RS):
                 if raw_record.strip():
-                    records.append(DatagramRecord.from_usv(raw_record))
+                    record = DatagramRecord.from_usv(raw_record)
+                    if record.target == target_id:
+                        records.append(record)
         except Exception as e:
             logger.error(f"Error reading WAL file {wal_file}: {e}")
+
             
     # Sort by timestamp (naive 'latest wins' for now)
     records.sort(key=lambda x: x.timestamp)

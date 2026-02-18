@@ -10,7 +10,7 @@ from watchdog.observers import Observer
 from watchdog.events import FileSystemEventHandler
 
 from .wal import DatagramRecord, get_node_id, RS
-from .config import get_companies_dir
+from .paths import paths
 
 logger = logging.getLogger(__name__)
 
@@ -45,6 +45,7 @@ class WalEventHandler(FileSystemEventHandler):
         self.bridge = bridge
 
     def on_modified(self, event: Any) -> None:
+        # Only broadcast .usv files in the root WAL directory
         if not event.is_directory and str(event.src_path).endswith(".usv"):
             # A WAL file was modified, broadcast the new records
             self.bridge.broadcast_file(Path(event.src_path))
@@ -55,7 +56,7 @@ class WalEventHandler(FileSystemEventHandler):
 
 class GossipBridge:
     def __init__(self) -> None:
-        self.companies_dir = get_companies_dir()
+        self.wal_dir = paths.wal
         self.node_id = get_node_id()
         self.zeroconf: Optional[Zeroconf] = None
         self.browser: Optional[ServiceBrowser] = None
@@ -70,6 +71,11 @@ class GossipBridge:
         """Reads new records from a WAL file and sends them to all known peers via Unicast."""
         if not self.sock or not self.peers:
             return
+        
+        # Don't broadcast remote files we received from others (infinite loop prevention)
+        if wal_path.name.startswith("remote_"):
+            return
+
         try:
             offset = self._sent_offsets.get(str(wal_path), 0)
             file_size = wal_path.stat().st_size
@@ -115,7 +121,7 @@ class GossipBridge:
                     logger.error(f"Gossip listen error: {e}")
 
     def handle_gossip(self, msg: str) -> None:
-        """Processes an incoming USV datagram and writes it locally."""
+        """Processes an incoming USV datagram and writes it locally via paths authority."""
         try:
             record = DatagramRecord.from_usv(msg)
             if record.node_id == self.node_id:
@@ -123,17 +129,11 @@ class GossipBridge:
             
             logger.info(f"Received gossip for {record.target}.{record.field} from {record.node_id}")
             
-            # Write this record to our local WAL for this company
-            company_dir = self.companies_dir / record.target
-            if not company_dir.exists():
-                logger.debug(f"Received update for unknown company {record.target}, ignoring.")
-                return
-
-            updates_dir = company_dir / "updates"
-            updates_dir.mkdir(parents=True, exist_ok=True)
+            # Save received updates in a remote-node specific file via paths authority
+            remote_wal = paths.wal_remote_journal(record.node_id)
             
-            # Save received updates in a separate file to prevent broadcast loops
-            remote_wal = updates_dir / f"remote_{record.node_id}.usv"
+            # Ensure WAL dir exists (path authority doesn't create it automatically on path return)
+            remote_wal.parent.mkdir(parents=True, exist_ok=True)
             
             with open(remote_wal, "a") as f:
                 f.write(msg)
@@ -160,18 +160,18 @@ class GossipBridge:
         self.listener_thread = threading.Thread(target=self._listen_loop, daemon=True)
         self.listener_thread.start()
         
-        # Start File Observer (NON-RECURSIVE on root to avoid spam)
-        if self.companies_dir.exists():
+        # Start File Observer on the centralized WAL directory
+        if self.wal_dir.exists():
             try:
-                self.observer.schedule(self.handler, str(self.companies_dir), recursive=False)
+                self.observer.schedule(self.handler, str(self.wal_dir), recursive=False)
                 self.observer.start()
                 
-                # Background WAL Scanner for nested updates/ directories
+                # Background WAL Scanner for the root directory (very fast now)
                 def _scan_wal_loop() -> None:
                     while self.running:
                         try:
-                            # Periodic scan of all updates/*.usv
-                            for wal_file in self.companies_dir.glob("*/updates/*.usv"):
+                            # Only scan files in the root wal_dir
+                            for wal_file in self.wal_dir.glob("*.usv"):
                                 self.broadcast_file(wal_file)
                         except Exception as e:
                             logger.error(f"WAL scanner error: {e}")
@@ -179,6 +179,7 @@ class GossipBridge:
                 
                 self.scanner_thread = threading.Thread(target=_scan_wal_loop, daemon=True)
                 self.scanner_thread.start()
+
                 
             except Exception as e:
                 logger.error(f"Gossip Bridge failed to start observer: {e}")

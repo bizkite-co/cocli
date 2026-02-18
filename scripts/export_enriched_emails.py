@@ -1,7 +1,5 @@
 import typer
-import csv
 import yaml
-import json
 from typing import Optional
 from datetime import datetime
 from pathlib import Path
@@ -9,8 +7,7 @@ import logging
 
 from rich.console import Console
 from rich.progress import track
-from cocli.core.config import get_companies_dir, get_campaign, get_campaigns_dir
-from cocli.core.text_utils import is_valid_email
+from cocli.core.config import get_companies_dir, get_campaign
 from cocli.models.website import Website
 from cocli.core.exclusions import ExclusionManager
 
@@ -85,185 +82,170 @@ def main(
     console.print(f"Exporting leads for [bold]{campaign_name}[/bold]")
     console.print(f"Detailed logs: [cyan]{log_file}[/cyan]")
 
-    campaign_dir = get_campaigns_dir() / campaign_name
-    email_index_dir = campaign_dir / "indexes" / "emails"
     exclusion_manager = ExclusionManager(campaign_name)
     
     from cocli.core.config import get_campaign_exports_dir
-    from cocli.models.company import Company
     export_dir = get_campaign_exports_dir(campaign_name)
     output_file = export_dir / f"enriched_emails_{campaign_name}.csv"
     
-    # 1. Load Email Providers and Enriched Domains via DomainIndexManager
-    from cocli.core.domain_index_manager import DomainIndexManager
-    from cocli.models.campaign import Campaign
-    campaign = Campaign.load(campaign_name)
-    domain_manager = DomainIndexManager(campaign)
-    
-    # Query all domains to identify providers and get enriched metadata
-    all_domains = domain_manager.query()
-    
-    email_providers = {d.domain for d in all_domains if d.is_email_provider}
-    email_providers.update({"gmail.com", "hotmail.com", "yahoo.com", "outlook.com", "aol.com", "icloud.com", "msn.com", "me.com", "live.com", "googlemail.com"})
+    import duckdb
+    con = duckdb.connect(database=':memory:')
 
-    # 2. Load Emails from Index
-    domain_emails = {}
-    if email_index_dir.exists():
-        for domain_dir in email_index_dir.iterdir():
-            if domain_dir.is_dir():
-                domain = domain_dir.name
-                if domain in email_providers:
-                    continue
-                    
-                deduped = {}
-                for email_file in domain_dir.iterdir():
-                    try:
-                        file_content = email_file.read_text().strip()
-                        if email_file.suffix == '.json':
-                            data = json.loads(file_content)
-                            email_val = data.get("email")
-                        else:
-                            email_val = file_content
-                            
-                        if email_val and is_valid_email(str(email_val)):
-                            email_str = str(email_val).strip()
-                            e_lower = email_str.lower()
-                            for prefix in ["mailto:", "mail:", "email:"]:
-                                if e_lower.startswith(prefix):
-                                    email_str = email_str[len(prefix):]
-                                    e_lower = email_str.lower()
-                            
-                            if e_lower not in deduped:
-                                deduped[e_lower] = email_str
-                    except Exception:
-                        pass
-                
-                if deduped:
-                    domain_emails[domain] = sorted(list(deduped.values()))
-
-    # 3. Load Prospects for cross-referencing
+    # 1. Load Prospects using DuckDB (FIMC Checkpoint)
     from cocli.core.prospects_csv_manager import ProspectsIndexManager
-    manager = ProspectsIndexManager(campaign_name)
-    target_place_ids = set()
-    target_slugs = set()
+    prospect_manager = ProspectsIndexManager(campaign_name)
+    checkpoint_path = prospect_manager.index_dir / "prospects.checkpoint.usv"
     
-    # Map for enrichment lookup
-    prospect_data_map = {} # slug -> prospect_obj
-    
-    for prospect in manager.read_all_prospects():
-        if prospect.place_id:
-            target_place_ids.add(prospect.place_id)
-        if prospect.company_slug:
-            target_slugs.add(prospect.company_slug)
-            # Prioritize prospects with more data
-            if prospect.company_slug not in prospect_data_map or prospect.average_rating:
-                prospect_data_map[prospect.company_slug] = prospect
+    if not checkpoint_path.exists():
+        console.print("[bold red]Error: Prospects checkpoint not found. Run sync-prospects first.[/bold red]")
+        raise typer.Exit(1)
 
+    # Prospect Schema
+    con.execute(f"""
+        CREATE TABLE prospects AS SELECT * FROM read_csv('{checkpoint_path}', 
+            delim='\x1f', 
+            header=False,
+            auto_detect=True,
+            all_varchar=True
+        )
+    """)
+    # Add friendly names to prospect columns (mapping from prospects_csv_manager)
+    # We only need a few for the join and export
+    con.execute("ALTER TABLE prospects RENAME column00 TO place_id")
+    con.execute("ALTER TABLE prospects RENAME column01 TO company_slug")
+    con.execute("ALTER TABLE prospects RENAME column02 TO name")
+    con.execute("ALTER TABLE prospects RENAME column03 TO phone_1")
+    con.execute("ALTER TABLE prospects RENAME column07 TO keyword")
+    con.execute("ALTER TABLE prospects RENAME column10 TO city")
+    con.execute("ALTER TABLE prospects RENAME column13 TO state")
+    con.execute("ALTER TABLE prospects RENAME column17 TO website")
+    con.execute("ALTER TABLE prospects RENAME column18 TO domain")
+    con.execute("ALTER TABLE prospects RENAME column22 TO reviews_count")
+    con.execute("ALTER TABLE prospects RENAME column23 TO average_rating")
+
+    # 2. Load Emails using DuckDB (Sharded Index)
+    from cocli.core.email_index_manager import EmailIndexManager
+    email_manager = EmailIndexManager(campaign_name)
+    email_shard_glob = str(email_manager.shards_dir / "*.usv")
+    
+    # Check if any shards exist
+    if list(email_manager.shards_dir.glob("*.usv")):
+        con.execute(f"""
+            CREATE TABLE emails AS SELECT * FROM read_csv('{email_shard_glob}', 
+                delim='\x1f', 
+                header=False,
+                columns={{
+                    'email': 'VARCHAR',
+                    'domain': 'VARCHAR',
+                    'company_slug': 'VARCHAR',
+                    'source': 'VARCHAR',
+                    'found_at': 'VARCHAR',
+                    'first_seen': 'VARCHAR',
+                    'last_seen': 'VARCHAR',
+                    'verification_status': 'VARCHAR',
+                    'tags': 'VARCHAR'
+                }}
+            )
+        """)
+    else:
+        # Create empty table if no emails yet
+        con.execute("CREATE TABLE emails (email VARCHAR, domain VARCHAR, company_slug VARCHAR, tags VARCHAR, last_seen VARCHAR)")
+
+    # 3. Perform High-Performance Join
+    # We group emails by domain/slug to get a semicolon-separated list
+    query = """
+        SELECT 
+            p.name,
+            COALESCE(p.domain, p.company_slug) as domain,
+            string_agg(DISTINCT e.email, '; ') as emails,
+            p.phone_1 as phone,
+            p.city,
+            p.state,
+            p.keyword as tag,
+            p.place_id,
+            p.company_slug,
+            p.average_rating,
+            p.reviews_count
+        FROM prospects p
+        LEFT JOIN emails e ON (
+            p.domain = e.domain OR 
+            p.company_slug = e.company_slug OR 
+            p.company_slug = e.domain OR 
+            p.domain = e.company_slug
+        )
+        GROUP BY p.name, p.domain, p.company_slug, p.phone_1, p.city, p.state, p.keyword, p.place_id, p.average_rating, p.reviews_count
+    """
+    
+    if not include_all:
+        query += " HAVING emails IS NOT NULL"
+
+    rows = con.execute(query).fetchall()
+    
     results = []
     skipped_count = 0
     
-    # 4. Iterate all companies
-    for company_obj in track(Company.get_all(), description="Scanning companies..."):
-        if not company_obj:
-            skipped_count += 1
-            continue
-
-        # Check if company belongs to this campaign via tags (hydration target)
-        in_campaign = campaign_name in company_obj.tags
+    for row in track(rows, description="Refining leads..."):
+        name, domain, emails, phone, city, state, keyword, place_id, slug, rating, reviews = row
         
-        # Primary matching via Place ID or Slug (index target)
-        in_index = (
-            (company_obj.place_id and company_obj.place_id in target_place_ids) or 
-            (company_obj.slug in target_slugs)
-        )
-
-        if not in_campaign and not in_index:
+        if exclusion_manager.is_excluded(domain=domain, slug=slug):
             continue
 
-        domain = company_obj.domain or company_obj.slug
-        if exclusion_manager.is_excluded(domain=domain, slug=company_obj.slug):
-            continue
-
-        if domain in email_providers:
-            continue
-
-        emails = domain_emails.get(domain, [])
-        if not emails and company_obj.email:
-            e = str(company_obj.email).strip()
-            if is_valid_email(e):
-                emails = [e]
-
-        # REQUIREMENT: Domain, Phone, and Email must all be present
-        phone = str(company_obj.phone_number or company_obj.phone_1 or "").strip()
-        
-        if not domain or not phone or not emails:
-            continue
-
-        website_data = get_website_data(company_obj.slug)
+        # Load extra data from company files ONLY for keywords/details if requested
+        website_data = get_website_data(slug)
         if keywords:
             if not website_data or not website_data.found_keywords:
                 continue
 
-        # ENRICHMENT: Pull from index map if missing in company object
-        idx_prospect = prospect_data_map.get(company_obj.slug)
-        
-        gmb_url = company_obj.gmb_url
-        if not gmb_url and idx_prospect:
-            gmb_url = idx_prospect.gmb_url
-            
-        rating = str(company_obj.average_rating or "")
-        if (not rating or rating == "0.0") and idx_prospect:
-            rating = str(idx_prospect.average_rating or "")
-            
-        reviews = str(company_obj.reviews_count or "0")
-        if reviews == "0" and idx_prospect:
-            reviews = str(idx_prospect.reviews_count or "0")
-
-        # Combine Tags and Keywords, filtering out the campaign name
-        combined_tags = set(company_obj.tags)
-        if website_data and website_data.found_keywords:
-            combined_tags.update(website_data.found_keywords)
-        if idx_prospect and idx_prospect.keyword:
-            combined_tags.add(idx_prospect.keyword)
-            
-        # Filter out common/campaign tags
-        filtered_tags = sorted([t for t in combined_tags if t.lower() not in [campaign_name.lower(), "prospect", "customer"]])
-
-        city = company_obj.city or (idx_prospect.city if idx_prospect else "")
-        state = company_obj.state or (idx_prospect.state if idx_prospect else "")
-
+        # Construct final record
         results.append({
-            "company": company_obj.name,
+            "company": name,
             "domain": domain,
-            "emails": "; ".join(emails),
+            "emails": emails or "",
             "phone": phone,
             "website": domain,
             "city": city,
             "state": state,
-            "categories": "; ".join(sorted(list(set(company_obj.categories)))),
-            "services": "; ".join(sorted(list(set(company_obj.services)))),
-            "products": "; ".join(sorted(list(set(company_obj.products)))),
-            "tags": "; ".join(filtered_tags),
-            "gmb_url": gmb_url or "",
+            "categories": "", # Add back if needed from company files
+            "services": "",
+            "products": "",
+            "tags": "; ".join(filter(None, [keyword] + (website_data.found_keywords if website_data else []))),
+            "gmb_url": f"https://www.google.com/maps/search/?api=1&query=google&query_place_id={place_id}" if place_id else "",
             "rating": rating,
             "reviews": reviews
         })
 
-    with open(output_file, "w", newline="") as f:
-        writer = csv.DictWriter(f, fieldnames=["company", "domain", "emails", "phone", "website", "city", "state", "categories", "services", "products", "tags", "gmb_url", "rating", "reviews"])
-        writer.writeheader()
-        writer.writerows(results)
+    # 4. Write Output
+    output_file_usv = output_file.with_suffix(".usv")
+    with open(output_file_usv, "w", newline="", encoding="utf-8") as f:
+        from cocli.core.wal import US
+        # Header
+        f.write(US.join(["company", "domain", "emails", "phone", "website", "city", "state", "categories", "services", "products", "tags", "gmb_url", "rating", "reviews"]) + "\n")
+        for res in results:
+            line = [
+                str(res["company"]),
+                str(res["domain"]),
+                str(res["emails"]),
+                str(res["phone"]),
+                str(res["website"]),
+                str(res["city"]),
+                str(res["state"]),
+                str(res["categories"]),
+                str(res["services"]),
+                str(res["products"]),
+                str(res["tags"]),
+                str(res["gmb_url"]),
+                str(res["rating"]),
+                str(res["reviews"])
+            ]
+            f.write(US.join(line) + "\n")
         
     console.print("\n[bold green]Success![/bold green]")
     console.print(f"Exported: [bold]{len(results)}[/bold] companies")
     if skipped_count:
         console.print(f"Skipped: [bold red]{skipped_count}[/bold red] malformed records (check log)")
-    console.print(f"Output: [cyan]{output_file}[/cyan]")
+    console.print(f"Output: [cyan]{output_file_usv}[/cyan]")
 
-    json_output_file = export_dir / f"enriched_emails_{campaign_name}.json"
-    with open(json_output_file, "w") as f:
-        json.dump(results, f, indent=2)
-
+    # Also upload the USV to S3
     from cocli.core.reporting import get_boto3_session, load_campaign_config
     config = load_campaign_config(campaign_name)
     s3_config = config.get("aws", {})
@@ -272,9 +254,8 @@ def main(
     try:
         session = get_boto3_session(config)
         s3 = session.client("s3")
-        s3.upload_file(str(output_file), bucket_name, f"exports/{campaign_name}-emails.csv")
-        s3.upload_file(str(json_output_file), bucket_name, f"exports/{campaign_name}-emails.json")
-        console.print("[bold green]Successfully uploaded exports to S3.[/bold green]")
+        s3.upload_file(str(output_file_usv), bucket_name, f"exports/{campaign_name}-emails.usv")
+        console.print("[bold green]Successfully uploaded USV export to S3.[/bold green]")
     except Exception as e:
         console.print(f"[bold red]Failed to upload to S3: {e}[/bold red]")
 

@@ -1,122 +1,156 @@
 import json
 import logging
-from pathlib import Path
-from typing import List, Iterator
-from datetime import datetime, UTC
+import hashlib
+from typing import List, Optional, Dict
 
 from ..models.email import EmailEntry
 from .config import get_campaign_dir
-from .text_utils import slugify, slugdotify
+from .text_utils import slugdotify
 
 logger = logging.getLogger(__name__)
 
 class EmailIndexManager:
     """
-    Manages a campaign-specific index of emails.
-    Stored in data/campaigns/{campaign}/indexes/emails/ as individual JSON files.
-    Structure: data/campaigns/{campaign}/indexes/emails/{domain_part}/{user_part}.json
+    Manages a campaign-specific index of emails using a sharded USV structure.
+    Architecture:
+    - inbox/shard/email.usv (Hot layer, atomic writes)
+    - shards/shard.usv (Cold layer, compacted)
     """
     def __init__(self, campaign_name: str):
         self.campaign_name = campaign_name
         campaign_dir = get_campaign_dir(campaign_name)
         if not campaign_dir:
-            # Fallback if campaign dir doesn't exist (e.g. during early initialization)
             from .config import get_campaigns_dir
             campaign_dir = get_campaigns_dir() / campaign_name
             
-        self.base_dir = campaign_dir / "indexes" / "emails"
-        self.base_dir.mkdir(parents=True, exist_ok=True)
-
-    def _get_email_path(self, email: str) -> Path:
-        """
-        Returns the file path for a given email, derived strictly from the email address itself.
-        Structure: indexes/emails/{domain_slug}/{user_slug}.json
-        """
-        if "@" in email:
-            user_part, domain_part = email.rsplit("@", 1)
-        else:
-            user_part, domain_part = email, "unknown"
-            
-        # Use slugdotify to preserve dots in domain (e.g. example.com) and user (john.doe)
-        domain_slug = slugdotify(domain_part)
-        email_slug = slugdotify(user_part)
+        self.index_root = campaign_dir / "indexes" / "emails"
+        self.inbox_dir = self.index_root / "inbox"
+        self.shards_dir = self.index_root / "shards"
         
-        domain_dir = self.base_dir / domain_slug
-        domain_dir.mkdir(parents=True, exist_ok=True)
-        return domain_dir / f"{email_slug}.json"
+        self.inbox_dir.mkdir(parents=True, exist_ok=True)
+        self.shards_dir.mkdir(parents=True, exist_ok=True)
+
+    def get_shard_id(self, domain: str) -> str:
+        """Deterministic shard (00-ff) based on domain hash."""
+        return hashlib.sha256(domain.encode()).hexdigest()[:2]
 
     def add_email(self, email_entry: EmailEntry) -> bool:
         """
-        Adds or updates an email entry in the index.
-        Thread-safe 'latest write wins' approach for distributed workers.
+        Adds an email entry to the sharded inbox.
+        Uses slugdotify(email) as filename for atomic isolation in the hot layer.
         """
-        path = self._get_email_path(email_entry.email)
+        shard_id = self.get_shard_id(email_entry.domain)
+        shard_inbox = self.inbox_dir / shard_id
+        shard_inbox.mkdir(parents=True, exist_ok=True)
         
-        now = datetime.now(UTC)
+        email_slug = slugdotify(str(email_entry.email))
+        path = shard_inbox / f"{email_slug}.usv"
         
-        if path.exists():
-            try:
-                with open(path, 'r', encoding='utf-8') as f:
-                    existing_data = json.load(f)
-                existing_entry = EmailEntry.model_validate(existing_data)
-                
-                # Update existing entry fields
-                email_entry.first_seen = existing_entry.first_seen
-                email_entry.last_seen = now
-                
-                # Preserve company_slug if already present
-                if not email_entry.company_slug and existing_entry.company_slug:
-                    email_entry.company_slug = existing_entry.company_slug
-                
-                # Preserve verification status if existing is better
-                if email_entry.verification_status == "unknown" and existing_entry.verification_status != "unknown":
-                    email_entry.verification_status = existing_entry.verification_status
-                    
-                # Merge tags
-                if existing_entry.tags:
-                    new_tags = set(email_entry.tags) | set(existing_entry.tags)
-                    email_entry.tags = sorted(list(new_tags))
-                    
-            except Exception as e:
-                logger.error(f"Error reading existing email entry {path}: {e}")
-
         try:
+            # Simple append/overwrite for the hot layer
             with open(path, 'w', encoding='utf-8') as f:
-                f.write(email_entry.model_dump_json(indent=2))
+                f.write(email_entry.to_usv())
             return True
         except Exception as e:
-            logger.error(f"Error writing email entry {path}: {e}")
+            logger.error(f"Error writing email to inbox {path}: {e}")
             return False
 
-    def get_emails_for_domain(self, domain: str) -> List[EmailEntry]:
-        """Returns all indexed emails for a given domain."""
-        domain_slug = slugify(domain)
-        domain_dir = self.base_dir / domain_slug
-        emails: List[EmailEntry] = []
+    def query(self, sql_where: Optional[str] = None) -> List[EmailEntry]:
+        """
+        Queries the email index using DuckDB.
+        Merges inbox and shards, taking the latest 'last_seen' for each email.
+        """
+        import duckdb
+        con = duckdb.connect(database=':memory:')
         
-        if not domain_dir.exists():
-            return emails
-            
-        for file_path in domain_dir.glob("*.json"):
-            try:
-                with open(file_path, 'r', encoding='utf-8') as f:
-                    data = json.load(f)
-                emails.append(EmailEntry.model_validate(data))
-            except Exception as e:
-                logger.error(f"Error loading email entry {file_path}: {e}")
-        return emails
+        # Define Schema matching EmailEntry.to_usv()
+        columns = {
+            "email": "VARCHAR",
+            "domain": "VARCHAR",
+            "company_slug": "VARCHAR",
+            "source": "VARCHAR",
+            "found_at": "VARCHAR",
+            "first_seen": "VARCHAR",
+            "last_seen": "VARCHAR",
+            "verification_status": "VARCHAR",
+            "tags": "VARCHAR"
+        }
 
-    def read_all_emails(self) -> Iterator[EmailEntry]:
-        """Yields all emails in the campaign index."""
-        if not self.base_dir.exists():
+        sub_queries = []
+        
+        # 1. Collect Shards
+        shard_paths = [str(p) for p in self.shards_dir.glob("*.usv")]
+        if shard_paths:
+            path_list = "', '".join(shard_paths)
+            sub_queries.append(f"SELECT * FROM read_csv(['{path_list}'], delim='\x1f', header=False, columns={json.dumps(columns)}, auto_detect=False, ignore_errors=True)")
+
+        # 2. Collect Inbox
+        inbox_paths = [str(p) for p in self.inbox_dir.rglob("*.usv")]
+        if inbox_paths:
+            path_list = "', '".join(inbox_paths)
+            sub_queries.append(f"SELECT * FROM read_csv(['{path_list}'], delim='\x1f', header=False, columns={json.dumps(columns)}, auto_detect=False, ignore_errors=True)")
+
+        if not sub_queries:
+            return []
+
+        try:
+            base_query = " UNION ALL ".join(sub_queries)
+            full_query = f"""
+                SELECT * FROM (
+                    SELECT *, row_number() OVER (PARTITION BY email ORDER BY last_seen DESC) as rn
+                    FROM ({base_query})
+                ) WHERE rn = 1
+            """
+            if sql_where:
+                full_query = f"SELECT * FROM ({full_query}) WHERE {sql_where}"
+            
+            results = con.execute(full_query).fetchall()
+            emails = []
+            for row in results:
+                # row[-1] is the row_number 'rn', we skip it
+                data = dict(zip(columns.keys(), row[:-1]))
+                # Convert tags back to list
+                if data['tags']:
+                    data['tags'] = data['tags'].split(';')
+                else:
+                    data['tags'] = []
+                emails.append(EmailEntry.model_validate(data))
+            return emails
+        except Exception as e:
+            logger.error(f"Email index query failed: {e}")
+            return []
+
+    def compact(self) -> None:
+        """
+        Merges all inbox files into the deterministic shards.
+        """
+        logger.info(f"Starting email index compaction for {self.campaign_name}...")
+        
+        # 1. Load everything currently in the index (Inbox + Shards)
+        all_entries = self.query()
+        if not all_entries:
             return
 
-        for domain_dir in self.base_dir.iterdir():
-            if domain_dir.is_dir():
-                for file_path in domain_dir.glob("*.json"):
-                    try:
-                        with open(file_path, 'r', encoding='utf-8') as f:
-                            data = json.load(f)
-                        yield EmailEntry.model_validate(data)
-                    except Exception as e:
-                        logger.error(f"Error loading email entry {file_path}: {e}")
+        # 2. Group by shard ID
+        shard_groups: Dict[str, List[EmailEntry]] = {}
+        for entry in all_entries:
+            shard_id = self.get_shard_id(entry.domain)
+            if shard_id not in shard_groups:
+                shard_groups[shard_id] = []
+            shard_groups[shard_id].append(entry)
+
+        # 3. Write new shards
+        for shard_id, entries in shard_groups.items():
+            shard_path = self.shards_dir / f"{shard_id}.usv"
+            with open(shard_path, 'w', encoding='utf-8') as f:
+                for entry in entries:
+                    f.write(entry.to_usv())
+            logger.info(f"Wrote shard {shard_id} with {len(entries)} emails.")
+
+        # 4. Cleanup Inbox
+        import shutil
+        if self.inbox_dir.exists():
+            shutil.rmtree(self.inbox_dir)
+            self.inbox_dir.mkdir(parents=True, exist_ok=True)
+        
+        logger.info("Email compaction complete.")

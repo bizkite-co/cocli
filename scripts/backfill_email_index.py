@@ -99,6 +99,9 @@ def main(campaign_name: Optional[str] = typer.Argument(None, help="Campaign name
             if email_manager.add_email(entry):
                 added_count += 1
 
+    # Compact the index to move from inbox to shards
+    email_manager.compact()
+
     console.print(f"[bold green]Backfill complete! Added {added_count} email entries to index for {campaign_name}.[/bold green]")
 
 if __name__ == "__main__":
