@@ -1,7 +1,7 @@
 from typing import Optional, List, Any, cast, Dict
 from pydantic import BaseModel, Field
 
-from cocli.application.search_service import get_fuzzy_search_results
+from cocli.application.search_service import get_fuzzy_search_results, get_template_counts
 from cocli.application.campaign_service import CampaignService
 from cocli.application.worker_service import WorkerService
 from cocli.application.reporting_service import ReportingService
@@ -87,7 +87,9 @@ class ServiceContainer(BaseModel):
         campaign_name: Optional[str] = None,
         force_rebuild_cache: bool = False,
         filters: Optional[Dict[str, Any]] = None,
-        sort_by: Optional[str] = None
+        sort_by: Optional[str] = None,
+        limit: int = 100,
+        offset: int = 0
     ) -> List[SearchResult]:
         # Wrap the function call to match the expected signature
         results = self.search_service(
@@ -96,9 +98,14 @@ class ServiceContainer(BaseModel):
             campaign_name=campaign_name,
             force_rebuild_cache=force_rebuild_cache,
             filters=filters,
-            sort_by=sort_by
+            sort_by=sort_by,
+            limit=limit,
+            offset=offset
         )
         return cast(List[SearchResult], results)
+
+    def get_template_counts(self, campaign_name: Optional[str] = None) -> Dict[str, int]:
+        return get_template_counts(campaign_name)
 
     def get_company_details(self, company_slug: str) -> Optional[Dict[str, Any]]:
         return self.company_service(company_slug) # type: ignore

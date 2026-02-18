@@ -203,13 +203,37 @@ DataTable > .datatable--cursor {
     width: 1fr;
 }
 
-#template_container {
-    width: 25;
-    border-left: tall #222222;
+/* Company Search Three-Column Layout */
+CompanySearchView {
+    layout: horizontal;
     background: black;
 }
 
-#template_header {
+#search-templates-pane {
+    width: 25;
+    border-right: tall #222222;
+}
+
+#search-companies-pane {
+    width: 1fr;
+    border-right: tall #222222;
+}
+
+#search-preview-pane {
+    width: 2fr;
+    background: #050505;
+}
+
+.search-pane {
+    height: 100%;
+}
+
+.preview-line {
+    height: auto;
+    width: 100%;
+}
+
+.pane-header {
     background: #111111;
     color: #444444;
     text-align: center;

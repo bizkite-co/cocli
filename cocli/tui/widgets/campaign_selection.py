@@ -77,5 +77,19 @@ class CampaignSelection(Static):
             self.post_message(self.CampaignHighlighted(event.item.campaign_name))
 
     def on_key(self, event: events.Key) -> None:
-        # Standard j/k/l/enter handled by ApplicationView parent now
-        pass
+        """Handle navigation keys for the campaign list."""
+        list_view = self.query_one("#campaign_list_view", ListView)
+        
+        if event.key == "j":
+            list_view.action_cursor_down()
+            event.prevent_default()
+        elif event.key == "k":
+            list_view.action_cursor_up()
+            event.prevent_default()
+        elif event.key == "l" or event.key == "enter":
+            list_view.action_select_cursor()
+            event.prevent_default()
+
+    def focus(self, scroll_visible: bool = True) -> "CampaignSelection":
+        self.query_one("#campaign_list_view", ListView).focus()
+        return self

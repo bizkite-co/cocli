@@ -23,9 +23,30 @@ class CampaignDetail(VerticalScroll):
         """Update the detail view with the given campaign."""
         self.campaign = campaign
         self.remove_children()
-        # Create a string representation of the campaign data for the panel
-        campaign_data_str = "\n".join([f"[b]{key.replace('_', ' ').title()}:[/b] {escape(str(value))}" for key, value in self.campaign.model_dump().items()])
-        self.mount(Static(Panel(campaign_data_str, title=self.campaign.name, border_style="green")))
+        
+        lines = []
+        # 1. Core Info
+        lines.append("[b][cyan]Core Info[/][/b]")
+        lines.append(f"  Name: {escape(campaign.name)}")
+        lines.append(f"  Tag: {escape(campaign.tag)}")
+        lines.append(f"  Domain: {escape(campaign.domain)}")
+        lines.append(f"  Workflows: {escape(', '.join(campaign.workflows))}")
+        lines.append("")
+
+        # 2. Google Maps
+        lines.append("[b][cyan]Google Maps[/][/b]")
+        lines.append(f"  Email: {escape(campaign.google_maps.email)}")
+        lines.append(f"  1P Path: {escape(campaign.google_maps.one_password_path)}")
+        lines.append("")
+
+        # 3. Prospecting
+        lines.append("[b][cyan]Prospecting[/][/b]")
+        lines.append(f"  Keywords: {escape(', '.join(campaign.prospecting.keywords))}")
+        lines.append(f"  Locations: {escape(', '.join(campaign.prospecting.locations or []))}")
+        lines.append(f"  Panning: {campaign.prospecting.panning_distance_miles} miles")
+        lines.append(f"  Initial Zoom: {campaign.prospecting.initial_zoom_out_level}")
+
+        self.mount(Static(Panel("\n".join(lines), title=f"Settings: {campaign.name}", border_style="green")))
 
     def display_error(self, title: str, message: str) -> None:
         logger.debug(f"display_error called with title: {title}, message: {message}")

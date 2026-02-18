@@ -19,6 +19,72 @@ _last_checkpoint_mtime: float = -1.0
 _last_campaign: Optional[str] = None
 _lock = threading.RLock()
 
+# Cache for template counts: { campaign_name: (timestamp, counts_dict) }
+_counts_cache: Dict[str, tuple[float, Dict[str, int]]] = {}
+_COUNTS_CACHE_TTL = 300 # 5 minutes
+
+def get_template_counts(campaign_name: Optional[str] = None) -> Dict[str, int]:
+    """Returns a dictionary of counts for each template filter."""
+    global _con, _counts_cache
+    
+    campaign = campaign_name or get_campaign()
+    if not campaign:
+        return {}
+        
+    now = time.time()
+    if campaign in _counts_cache:
+        ts, counts = _counts_cache[campaign]
+        if now - ts < _COUNTS_CACHE_TTL:
+            return counts
+
+    # Ensure DuckDB is initialized and tables are loaded
+    # We call get_fuzzy_search_results with an empty query just to trigger the rebuild if needed
+    get_fuzzy_search_results("", item_type="company", campaign_name=campaign)
+
+    counts = {}
+    with _lock:
+        if _con:
+            try:
+                def get_count(query: str) -> int:
+                    res = _con.execute(query).fetchone()
+                    return int(res[0]) if res else 0
+
+                # All Leads
+                counts["tpl_all"] = get_count("SELECT count(*) FROM items WHERE type = 'company'")
+                
+                # With Email
+                counts["tpl_with_email"] = get_count("SELECT count(*) FROM items WHERE type = 'company' AND email IS NOT NULL AND email != '' AND email != 'null'")
+                
+                # Missing Email
+                counts["tpl_no_email"] = get_count("SELECT count(*) FROM items WHERE type = 'company' AND (email IS NULL OR email = '' OR email = 'null')")
+                
+                # Actionable
+                counts["tpl_actionable"] = get_count("""
+                    SELECT count(*) FROM items 
+                    WHERE type = 'company' 
+                    AND (
+                        (email IS NOT NULL AND email != '' AND email != 'null') 
+                        OR 
+                        (phone_number IS NOT NULL AND phone_number != '' AND phone_number != 'null')
+                    )
+                """)
+                
+                # Missing Address
+                counts["tpl_no_address"] = get_count("SELECT count(*) FROM items WHERE type = 'company' AND (street_address IS NULL OR street_address = '' OR street_address = 'null')")
+                
+                # Top Rated (Rating > 4)
+                counts["tpl_top_rated"] = get_count("SELECT count(*) FROM items WHERE type = 'company' AND average_rating >= 4.0")
+                
+                # Most Reviewed (Reviews > 10)
+                counts["tpl_most_reviewed"] = get_count("SELECT count(*) FROM items WHERE type = 'company' AND reviews_count >= 10")
+                
+            except Exception as e:
+                logger.error(f"Failed to get template counts: {e}")
+                return {}
+
+    _counts_cache[campaign] = (now, counts)
+    return counts
+
 # Standard schema for GoogleMapsProspect USV
 PROSPECT_COLUMNS = {
     "place_id": "VARCHAR",
@@ -84,7 +150,9 @@ def get_fuzzy_search_results(
     campaign_name: Optional[str] = None,
     force_rebuild_cache: bool = False,
     filters: Optional[Dict[str, Any]] = None,
-    sort_by: Optional[str] = None
+    sort_by: Optional[str] = None,
+    limit: int = 100,
+    offset: int = 0
 ) -> List[SearchResult]:
     """
     Provides fuzzy search results for companies and people, respecting campaign context.
@@ -249,6 +317,9 @@ def get_fuzzy_search_results(
                 if filters.get("no_email"):
                     sql += " AND (email IS NULL OR email = '' OR email = 'null')"
                 
+                if filters.get("has_email"):
+                    sql += " AND email IS NOT NULL AND email != '' AND email != 'null'"
+                
                 if filters.get("no_address"):
                     sql += " AND (street_address IS NULL OR street_address = '' OR street_address = 'null')"
 
@@ -289,7 +360,8 @@ def get_fuzzy_search_results(
             elif not search_query:
                 sql += " ORDER BY name ASC"
             
-            sql += " LIMIT 100"
+            sql += " LIMIT ? OFFSET ?"
+            params.extend([limit, offset])
 
             results = _con.execute(sql, params).fetchall()
             t_query = time.perf_counter() - t0

@@ -2,7 +2,7 @@ import logging
 import asyncio
 from typing import List, TYPE_CHECKING, cast, Dict, Any, Optional
 
-from textual.containers import Container, Horizontal, Vertical
+from textual.containers import Container
 from textual.widgets import Label, ListView, ListItem, Input
 from textual.app import ComposeResult
 from textual.message import Message
@@ -45,19 +45,30 @@ class CompanyList(Container):
         self.sort_recent: bool = True
         self.current_filters: Dict[str, Any] = {}
         self.current_sort: Optional[str] = "recent"
+        self.search_offset: int = 0
+        self.search_limit: int = 30
 
-    @on(ListView.Selected, "#template_list")
-    def on_template_selected(self, event: ListView.Selected) -> None:
-        """Handle template selection."""
-        tpl_id = event.item.id
+    def compose(self) -> ComposeResult:
+        yield Label("SEARCH", id="search_header", classes="pane-header")
+        yield Input(placeholder="Search companies...", id="company_search_input")
+        yield ListView(id="company_list_view")
+
+    def apply_template(self, tpl_id: str) -> None:
+        """Handle template selection from external source."""
         self.current_filters = {}
         self.current_sort = None
+        self.search_offset = 0
         
         if tpl_id == "tpl_all":
             self.filter_contact = False
-            self.current_sort = None
+            self.sort_recent = True
+            self.current_sort = "recent"
+        elif tpl_id == "tpl_with_email":
+            self.current_filters = {"has_email": True}
         elif tpl_id == "tpl_no_email":
             self.current_filters = {"no_email": True}
+        elif tpl_id == "tpl_actionable":
+            self.current_filters = {"has_email_and_phone": True}
         elif tpl_id == "tpl_no_address":
             self.current_filters = {"no_address": True}
         elif tpl_id == "tpl_top_rated":
@@ -67,28 +78,18 @@ class CompanyList(Container):
         
         self.query_one("#company_search_input", Input).value = ""
         self.run_search("")
-        self.query_one("#company_list_view").focus()
+        
+        # We don't want to call .focus() here if run_search is async, 
+        # it might cause flicker before results arrive.
+        # But for 'l' key from template, we MUST focus.
+        list_view = self.query_one("#company_list_view", ListView)
+        if not list_view.has_focus:
+            list_view.focus()
 
     async def on_mount(self) -> None:
         """Initialize the list on mount."""
         await self.perform_search("")
         self.query_one(ListView).focus()
-
-    def compose(self) -> ComposeResult:
-        yield Input(placeholder="Search companies...", id="company_search_input")
-        with Horizontal():
-            with Vertical(id="list_container"):
-                yield ListView(id="company_list_view")
-            with Vertical(id="template_container"):
-                yield Label("TEMPLATES", id="template_header")
-                yield ListView(
-                    ListItem(Label("All Leads"), id="tpl_all"),
-                    ListItem(Label("Missing Email"), id="tpl_no_email"),
-                    ListItem(Label("Missing Address"), id="tpl_no_address"),
-                    ListItem(Label("Top Rated"), id="tpl_top_rated"),
-                    ListItem(Label("Most Reviewed"), id="tpl_most_reviewed"),
-                    id="template_list"
-                )
 
     def action_focus_search(self) -> None:
         """Focus the search input."""
@@ -128,25 +129,24 @@ class CompanyList(Container):
     def on_key(self, event: events.Key) -> None:
         """Handle key events for the CompanyList widget."""
         list_view = self.query_one("#company_list_view", ListView)
-        template_list = self.query_one("#template_list", ListView)
         
         if event.key == "j":
-            focused = self.app.focused
-            if isinstance(focused, ListView) and focused in (list_view, template_list):
-                focused.action_cursor_down()
+            if list_view.has_focus:
+                list_view.action_cursor_down()
                 event.prevent_default()
         elif event.key == "k":
-            focused = self.app.focused
-            if isinstance(focused, ListView) and focused in (list_view, template_list):
-                focused.action_cursor_up()
-                event.prevent_default()
-        elif event.key == "h":
-            if template_list.has_focus:
-                list_view.focus()
-                event.prevent_default()
-        elif event.key == "l":
             if list_view.has_focus:
-                template_list.focus()
+                list_view.action_cursor_up()
+                event.prevent_default()
+        elif event.key == "]": # Next Page
+            if list_view.has_focus:
+                self.search_offset += self.search_limit
+                self.run_search(self.query_one("#company_search_input", Input).value)
+                event.prevent_default()
+        elif event.key == "[": # Prev Page
+            if list_view.has_focus and self.search_offset >= self.search_limit:
+                self.search_offset -= self.search_limit
+                self.run_search(self.query_one("#company_search_input", Input).value)
                 event.prevent_default()
         elif event.key == "escape":
             # If search is focused, return focus to list
@@ -156,6 +156,7 @@ class CompanyList(Container):
 
     async def on_input_changed(self, event: Input.Changed) -> None:
         """Called when the search input changes."""
+        self.search_offset = 0 # Reset on text change
         self.run_search(event.value)
 
     def run_search(self, query: str) -> None:
@@ -164,7 +165,12 @@ class CompanyList(Container):
         
         # Merge template filters with contact filter
         search_filters = dict(self.current_filters)
-        if self.filter_contact:
+        
+        # If 'Actionable Only' is on, we normally require email OR phone.
+        # But if the user specifically asked for 'Missing Email' template, 
+        # we should respect that and NOT force the global actionable filter 
+        # to require an email if it conflicts.
+        if self.filter_contact and not search_filters.get("no_email"):
             search_filters["has_contact_info"] = True
 
         if app.services.sync_search:
@@ -173,7 +179,9 @@ class CompanyList(Container):
                 search_query=query, 
                 item_type="company",
                 filters=search_filters,
-                sort_by=sort_by
+                sort_by=sort_by,
+                limit=self.search_limit,
+                offset=self.search_offset
             )
             self.filtered_fz_items = results
             self.update_company_list_view()
@@ -186,14 +194,16 @@ class CompanyList(Container):
         sort_by = self.current_sort or ("recent" if self.sort_recent else None)
         
         search_filters = dict(self.current_filters)
-        if self.filter_contact:
+        if self.filter_contact and not search_filters.get("no_email"):
             search_filters["has_contact_info"] = True
 
         results = app.services.fuzzy_search(
             search_query=query, 
             item_type="company",
             filters=search_filters,
-            sort_by=sort_by
+            sort_by=sort_by,
+            limit=self.search_limit,
+            offset=self.search_offset
         )
         self.filtered_fz_items = results
         self.update_company_list_view()
@@ -214,14 +224,16 @@ class CompanyList(Container):
             sort_by = self.current_sort or ("recent" if self.sort_recent else None)
             
             search_filters = dict(self.current_filters)
-            if self.filter_contact:
+            if self.filter_contact and not search_filters.get("no_email"):
                 search_filters["has_contact_info"] = True
 
             results = app.services.fuzzy_search(
                 search_query=query, 
                 item_type="company",
                 filters=search_filters,
-                sort_by=sort_by
+                sort_by=sort_by,
+                limit=self.search_limit,
+                offset=self.search_offset
             )
             
             if not self.is_running:
@@ -239,12 +251,21 @@ class CompanyList(Container):
             list_view.clear()
             
             new_items = []
-            for i, item in enumerate(self.filtered_fz_items[:20]):
+            for i, item in enumerate(self.filtered_fz_items):
                 new_items.append(ListItem(Label(item.name), name=item.name))
             
             list_view.extend(new_items)
             if len(new_items) > 0:
+                # Ensure the index is set to 0. 
+                list_view.index = None
                 list_view.index = 0
+                
+                # Manually trigger highlight for the first item to update preview
+                item = self.filtered_fz_items[0]
+                if item.slug:
+                    self.debounce_highlight(item)
+            else:
+                list_view.index = None
         except Exception as e:
             logger.error(f"Error updating list view: {e}")
 
@@ -270,9 +291,7 @@ class CompanyList(Container):
             name = getattr(event.item, "name")
             highlighted_item = next((item for item in self.filtered_fz_items if item.name == name), None)
             if highlighted_item and highlighted_item.slug:
-                company = Company.get(highlighted_item.slug)
-                if company:
-                    self.post_message(self.CompanyHighlighted(company))
+                self.debounce_highlight(highlighted_item)
                 return
 
         list_view = self.query_one("#company_list_view", ListView)
@@ -280,6 +299,29 @@ class CompanyList(Container):
         if idx is not None and idx < len(self.filtered_fz_items):
             highlighted_item = self.filtered_fz_items[idx]
             if highlighted_item and highlighted_item.slug:
-                company = Company.get(highlighted_item.slug)
-                if company:
-                    self.post_message(self.CompanyHighlighted(company))
+                self.debounce_highlight(highlighted_item)
+
+    @work(exclusive=True)
+    async def debounce_highlight(self, item: SearchResult) -> None:
+        """Wait for a brief pause before loading company details for the preview."""
+        # 250ms is usually the "sweet spot" for UI debouncing
+        await asyncio.sleep(0.25)
+        
+        if not item.slug:
+            return
+
+        company = await asyncio.to_thread(Company.get, item.slug)
+        if company:
+            # Supplement with search result data if missing on disk
+            if company.average_rating is None:
+                company.average_rating = item.average_rating
+            if company.reviews_count is None:
+                company.reviews_count = item.reviews_count
+            if not company.street_address:
+                company.street_address = item.street_address
+            if not company.city:
+                company.city = item.city
+            if not company.state:
+                company.state = item.state
+
+            self.post_message(self.CompanyHighlighted(company))

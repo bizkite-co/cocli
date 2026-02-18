@@ -12,13 +12,14 @@ from textual import events
 
 from .widgets.company_list import CompanyList
 from .widgets.person_list import PersonList
-from .widgets.master_detail import MasterDetailView
 from .widgets.company_preview import CompanyPreview
 from .widgets.person_detail import PersonDetail
 from .widgets.company_detail import CompanyDetail
 from .widgets.application_view import ApplicationView
 from .widgets.status_view import StatusView
 from .widgets.campaign_selection import CampaignSelection
+from .widgets.company_search import CompanySearchView
+from .widgets.template_list import TemplateList
 from .navigation import NavNode, ProcessRun
 from ..application.services import ServiceContainer
 from ..core.config import create_default_config_file
@@ -301,9 +302,18 @@ class CocliApp(App[None]):
         """Show the company list view."""
         self.menu_bar.set_active("companies")
         self.main_content.remove_children()
+        
+        template_list = TemplateList()
         company_list = CompanyList()
         company_preview = CompanyPreview(Static("Select a company to see details."), id="company-preview")
-        self.main_content.mount(MasterDetailView(master=company_list, detail=company_preview))
+        
+        self.main_content.mount(
+            CompanySearchView(
+                template_list=template_list,
+                company_list=company_list,
+                company_preview=company_preview
+            )
+        )
 
     def action_show_people(self) -> None:
         """Show the person list view."""
