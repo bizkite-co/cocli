@@ -46,10 +46,7 @@ hotfix_node() {
     local short_name=$(echo $host | cut -d'.' -f1)
     local node_campaign=$(get_node_campaign $host)
 
-    printf "[${BLUE}DEPLOY${NC}] Syncing and Building on $host (Campaign: $node_campaign)...\n"
-    
-    # 1. Sync the entire repository (excluding heavy/temp dirs)
-    # We sync to a dedicated build directory on the host
+    printf "[${BLUE}SYNC${NC}] Syncing repository to $host...\n"
     ssh $RPI_USER@$host "mkdir -p ~/repos/cocli_build"
     rsync -az --delete \
         --exclude '.venv' \
@@ -57,12 +54,19 @@ hotfix_node() {
         --exclude 'data' \
         --exclude '.logs' \
         --exclude '.pytest_cache' \
+        --exclude '.code_signatures.json' \
         ./ $RPI_USER@$host:~/repos/cocli_build/
 
-    # 2. Perform Local Docker Build on the RPi
-    # This leverages layer caching for pyproject.toml/uv.lock
-    printf "[${BLUE}BUILD${NC}] Running Docker build on $host...\n"
-    ssh $RPI_USER@$host "cd ~/repos/cocli_build && docker build -t cocli-worker-rpi:latest -f docker/rpi-worker/Dockerfile ."
+    # 2. Check if the freshly synced code matches the last successful build signature
+    printf "[${BLUE}SIGNATURE${NC}] Checking code state on $host...\n"
+    local needs_build=$(ssh $RPI_USER@$host "cd ~/repos/cocli_build && python3 scripts/check_code_signature.py --check --task docker_build && echo 'SKIP' || echo 'BUILD'")
+    
+    if [ "$needs_build" == "BUILD" ]; then
+        printf "[${BLUE}BUILD${NC}] Code changed. Running Docker build on $host...\n"
+        ssh $RPI_USER@$host "cd ~/repos/cocli_build && docker build -t cocli-worker-rpi:latest -f docker/rpi-worker/Dockerfile . && python3 scripts/check_code_signature.py --update --task docker_build"
+    else
+        printf "[${GREEN}SKIP${NC}] Code identical to last build on $host. Skipping build.\n"
+    fi
 
     # 3. Stop and Restart with the fresh image
     printf "[${BLUE}RESTART${NC}] Swapping container on $host...\n"

@@ -8,7 +8,7 @@ from typing import Dict, cast
 # Directories to include in the signature
 INCLUDES = ["cocli", "scripts", "tests", "features", "Makefile", "pyproject.toml"]
 # Patterns to ignore
-EXCLUDES = ["__pycache__", ".pyc", ".pyo", ".git", "data", "recovery", ".logs"]
+EXCLUDES = ["__pycache__", ".pyc", ".pyo", ".git", "data", "recovery", ".logs", ".code_signatures.json"]
 
 SIGNATURES_FILE = Path(".code_signatures.json")
 
