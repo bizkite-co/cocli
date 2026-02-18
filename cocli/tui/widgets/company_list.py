@@ -1,8 +1,8 @@
 import logging
 import asyncio
-from typing import List, TYPE_CHECKING, cast
+from typing import List, TYPE_CHECKING, cast, Dict, Any, Optional
 
-from textual.containers import Container
+from textual.containers import Container, Horizontal, Vertical
 from textual.widgets import Label, ListView, ListItem, Input
 from textual.app import ComposeResult
 from textual.message import Message
@@ -43,6 +43,31 @@ class CompanyList(Container):
         self.filter_contact: bool = True
         # DEFAULT TO MRU (Most Recently Updated)
         self.sort_recent: bool = True
+        self.current_filters: Dict[str, Any] = {}
+        self.current_sort: Optional[str] = "recent"
+
+    @on(ListView.Selected, "#template_list")
+    def on_template_selected(self, event: ListView.Selected) -> None:
+        """Handle template selection."""
+        tpl_id = event.item.id
+        self.current_filters = {}
+        self.current_sort = None
+        
+        if tpl_id == "tpl_all":
+            self.filter_contact = False
+            self.current_sort = None
+        elif tpl_id == "tpl_no_email":
+            self.current_filters = {"no_email": True}
+        elif tpl_id == "tpl_no_address":
+            self.current_filters = {"no_address": True}
+        elif tpl_id == "tpl_top_rated":
+            self.current_sort = "rating"
+        elif tpl_id == "tpl_most_reviewed":
+            self.current_sort = "reviews"
+        
+        self.query_one("#company_search_input", Input).value = ""
+        self.run_search("")
+        self.query_one("#company_list_view").focus()
 
     async def on_mount(self) -> None:
         """Initialize the list on mount."""
@@ -50,11 +75,20 @@ class CompanyList(Container):
         self.query_one(ListView).focus()
 
     def compose(self) -> ComposeResult:
-        # Removed "Companies" Label header as requested
         yield Input(placeholder="Search companies...", id="company_search_input")
-        yield ListView(
-            id="company_list_view"
-        )
+        with Horizontal():
+            with Vertical(id="list_container"):
+                yield ListView(id="company_list_view")
+            with Vertical(id="template_container"):
+                yield Label("TEMPLATES", id="template_header")
+                yield ListView(
+                    ListItem(Label("All Leads"), id="tpl_all"),
+                    ListItem(Label("Missing Email"), id="tpl_no_email"),
+                    ListItem(Label("Missing Address"), id="tpl_no_address"),
+                    ListItem(Label("Top Rated"), id="tpl_top_rated"),
+                    ListItem(Label("Most Reviewed"), id="tpl_most_reviewed"),
+                    id="template_list"
+                )
 
     def action_focus_search(self) -> None:
         """Focus the search input."""
@@ -93,13 +127,27 @@ class CompanyList(Container):
 
     def on_key(self, event: events.Key) -> None:
         """Handle key events for the CompanyList widget."""
-        list_view = self.query_one(ListView)
+        list_view = self.query_one("#company_list_view", ListView)
+        template_list = self.query_one("#template_list", ListView)
+        
         if event.key == "j":
-            list_view.action_cursor_down()
-            event.prevent_default()
+            focused = self.app.focused
+            if isinstance(focused, ListView) and focused in (list_view, template_list):
+                focused.action_cursor_down()
+                event.prevent_default()
         elif event.key == "k":
-            list_view.action_cursor_up()
-            event.prevent_default()
+            focused = self.app.focused
+            if isinstance(focused, ListView) and focused in (list_view, template_list):
+                focused.action_cursor_up()
+                event.prevent_default()
+        elif event.key == "h":
+            if template_list.has_focus:
+                list_view.focus()
+                event.prevent_default()
+        elif event.key == "l":
+            if list_view.has_focus:
+                template_list.focus()
+                event.prevent_default()
         elif event.key == "escape":
             # If search is focused, return focus to list
             if self.query_one(Input).has_focus:
@@ -112,13 +160,19 @@ class CompanyList(Container):
 
     def run_search(self, query: str) -> None:
         app = cast("CocliApp", self.app)
-        sort_by = "recent" if self.sort_recent else None
+        sort_by = self.current_sort or ("recent" if self.sort_recent else None)
+        
+        # Merge template filters with contact filter
+        search_filters = dict(self.current_filters)
+        if self.filter_contact:
+            search_filters["has_contact_info"] = True
+
         if app.services.sync_search:
             # Synchronous search for tests
             results = app.services.fuzzy_search(
                 search_query=query, 
                 item_type="company",
-                filters={"has_contact_info": self.filter_contact},
+                filters=search_filters,
                 sort_by=sort_by
             )
             self.filtered_fz_items = results
@@ -129,11 +183,16 @@ class CompanyList(Container):
     async def perform_search(self, query: str) -> None:
         """Helper for on_mount and other direct calls."""
         app = cast("CocliApp", self.app)
-        sort_by = "recent" if self.sort_recent else None
+        sort_by = self.current_sort or ("recent" if self.sort_recent else None)
+        
+        search_filters = dict(self.current_filters)
+        if self.filter_contact:
+            search_filters["has_contact_info"] = True
+
         results = app.services.fuzzy_search(
             search_query=query, 
             item_type="company",
-            filters={"has_contact_info": self.filter_contact},
+            filters=search_filters,
             sort_by=sort_by
         )
         self.filtered_fz_items = results
@@ -152,11 +211,16 @@ class CompanyList(Container):
                 return
             
             app = cast("CocliApp", self.app)
-            sort_by = "recent" if self.sort_recent else None
+            sort_by = self.current_sort or ("recent" if self.sort_recent else None)
+            
+            search_filters = dict(self.current_filters)
+            if self.filter_contact:
+                search_filters["has_contact_info"] = True
+
             results = app.services.fuzzy_search(
                 search_query=query, 
                 item_type="company",
-                filters={"has_contact_info": self.filter_contact},
+                filters=search_filters,
                 sort_by=sort_by
             )
             

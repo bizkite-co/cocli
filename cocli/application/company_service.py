@@ -130,7 +130,13 @@ def get_company_details_for_view(company_slug: str) -> Optional[Dict[str, Any]]:
         else:
             content = file_content
 
-    # Load website data using WebsiteCache
+    # Load website data (enrichment)
+    enrichment_path = selected_company_dir / "enrichments" / "website.md"
+    enrichment_mtime = None
+    if enrichment_path.exists():
+        enrichment_mtime = datetime.datetime.fromtimestamp(enrichment_path.stat().st_mtime, tz=datetime.timezone.utc)
+    
+    # Load website data using WebsiteCache (legacy fallback)
     website_data = None
     if company.domain:
         website_cache = WebsiteCache()
@@ -139,7 +145,7 @@ def get_company_details_for_view(company_slug: str) -> Optional[Dict[str, Any]]:
     # Load contacts
     contacts = []
     if contacts_dir.exists():
-        for contact_symlink in contacts_dir.iterdir():
+        for contact_symlink in sorted(contacts_dir.iterdir()):
             if contact_symlink.is_symlink():
                 person_dir = contact_symlink.resolve()
                 person = Person.from_directory(person_dir)
@@ -177,7 +183,7 @@ def get_company_details_for_view(company_slug: str) -> Optional[Dict[str, Any]]:
     # Load notes
     notes = []
     if notes_dir.exists():
-        for note_file in notes_dir.iterdir():
+        for note_file in sorted(notes_dir.iterdir()):
             if note_file.is_file() and note_file.suffix == ".md":
                 note = Note.from_file(note_file)
                 if note:
@@ -188,6 +194,8 @@ def get_company_details_for_view(company_slug: str) -> Optional[Dict[str, Any]]:
         "tags": tags,
         "content": content,
         "website_data": website_data.model_dump() if website_data else None,
+        "enrichment_path": str(enrichment_path) if enrichment_path.exists() else None,
+        "enrichment_mtime": enrichment_mtime.isoformat() if enrichment_mtime else None,
         "contacts": contacts,
         "meetings": meetings,
         "notes": notes,

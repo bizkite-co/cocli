@@ -135,7 +135,13 @@ def get_fuzzy_search_results(
                         CAST(i.phone_number AS VARCHAR) as phone_number,
                         list_filter(CAST(i.tags AS VARCHAR[]), x -> x IS NOT NULL) as tags,
                         COALESCE(CAST(i.display AS VARCHAR), CAST(i.name AS VARCHAR), 'Unknown') as display,
-                        NULL as last_modified,
+                        CAST(NULL AS VARCHAR) as last_modified,
+                        CAST(i.average_rating AS DOUBLE) as average_rating,
+                        CAST(i.reviews_count AS INTEGER) as reviews_count,
+                        CAST(i.street_address AS VARCHAR) as street_address,
+                        CAST(i.city AS VARCHAR) as city,
+                        CAST(i.state AS VARCHAR) as state,
+                        CAST(i.zip AS VARCHAR) as zip,
                         1 as priority
                     FROM (
                         SELECT unnest(items) as i 
@@ -149,7 +155,13 @@ def get_fuzzy_search_results(
                                     "email" VARCHAR, 
                                     "phone_number" VARCHAR, 
                                     "tags" VARCHAR[], 
-                                    "display" VARCHAR
+                                    "display" VARCHAR,
+                                    "average_rating" DOUBLE,
+                                    "reviews_count" INTEGER,
+                                    "street_address" VARCHAR,
+                                    "city" VARCHAR,
+                                    "state" VARCHAR,
+                                    "zip" VARCHAR
                                 )[]'
                             }}
                         )
@@ -165,11 +177,17 @@ def get_fuzzy_search_results(
                             name,
                             company_slug as slug,
                             domain,
-                            NULL as email,
+                            CAST(NULL AS VARCHAR) as email,
                             phone as phone_number,
                             list_filter([keyword], x -> x IS NOT NULL) as tags,
                             name as display,
                             updated_at as last_modified,
+                            average_rating,
+                            reviews_count,
+                            street_address,
+                            city,
+                            state,
+                            zip,
                             0 as priority
                         FROM read_csv('{checkpoint_path}', 
                                      delim='\x1f', 
@@ -179,20 +197,29 @@ def get_fuzzy_search_results(
                                      ignore_errors=True)
                     """)
                 else:
-                    _con.execute("CREATE TABLE items_checkpoint (type VARCHAR, name VARCHAR, slug VARCHAR, domain VARCHAR, email VARCHAR, phone_number VARCHAR, tags VARCHAR[], display VARCHAR, last_modified VARCHAR, priority INTEGER)")
+                    _con.execute("CREATE TABLE items_checkpoint (type VARCHAR, name VARCHAR, slug VARCHAR, domain VARCHAR, email VARCHAR, phone_number VARCHAR, tags VARCHAR[], display VARCHAR, last_modified VARCHAR, average_rating DOUBLE, reviews_count INTEGER, street_address VARCHAR, city VARCHAR, state VARCHAR, zip VARCHAR, priority INTEGER)")
 
-                # C. Unified View with Deduplication (Favor Checkpoint over Cache)
+                # C. Unified View with Deduplication (Favor Checkpoint but Coalesce Email/Details)
                 _con.execute("""
                     CREATE VIEW items AS 
-                    SELECT * FROM (
-                        SELECT *, 
-                               row_number() OVER (PARTITION BY COALESCE(slug, name), type ORDER BY priority ASC) as row_num
-                        FROM (
-                            SELECT type, name, slug, domain, email, phone_number, tags, display, last_modified, priority FROM items_checkpoint
-                            UNION ALL
-                            SELECT type, name, slug, domain, email, phone_number, tags, display, last_modified, priority FROM items_cache
-                        )
-                    ) WHERE row_num = 1
+                    SELECT 
+                        COALESCE(t1.type, t2.type) as type,
+                        COALESCE(t1.name, t2.name) as name,
+                        COALESCE(t1.slug, t2.slug) as slug,
+                        COALESCE(t1.domain, t2.domain) as domain,
+                        COALESCE(t1.email, t2.email) as email,
+                        COALESCE(t1.phone_number, t2.phone_number) as phone_number,
+                        COALESCE(t1.tags, t2.tags) as tags,
+                        COALESCE(t1.display, t2.display) as display,
+                        COALESCE(t1.last_modified, t2.last_modified) as last_modified,
+                        COALESCE(t1.average_rating, t2.average_rating) as average_rating,
+                        COALESCE(t1.reviews_count, t2.reviews_count) as reviews_count,
+                        COALESCE(t1.street_address, t2.street_address) as street_address,
+                        COALESCE(t1.city, t2.city) as city,
+                        COALESCE(t1.state, t2.state) as state,
+                        COALESCE(t1.zip, t2.zip) as zip
+                    FROM items_checkpoint t1
+                    FULL OUTER JOIN items_cache t2 ON t1.slug = t2.slug AND t1.type = t2.type
                 """)
 
                 _last_cache_mtime = current_cache_mtime
@@ -202,7 +229,7 @@ def get_fuzzy_search_results(
             
             # 3. Build Query
             t0 = time.perf_counter()
-            sql = "SELECT type, name, slug, domain, email, phone_number, tags, display FROM items WHERE 1=1"
+            sql = "SELECT type, name, slug, domain, email, phone_number, tags, display, average_rating, reviews_count, street_address, city, state, zip FROM items WHERE 1=1"
             params: List[Any] = []
 
             if item_type:
@@ -218,6 +245,12 @@ def get_fuzzy_search_results(
                     )"""
                 elif filters.get("has_email_and_phone"):
                     sql += " AND email IS NOT NULL AND email != '' AND email != 'null' AND phone_number IS NOT NULL AND phone_number != '' AND phone_number != 'null'"
+                
+                if filters.get("no_email"):
+                    sql += " AND (email IS NULL OR email = '' OR email = 'null')"
+                
+                if filters.get("no_address"):
+                    sql += " AND (street_address IS NULL OR street_address = '' OR street_address = 'null')"
 
             if campaign:
                 exclusion_manager = ExclusionManager(campaign=campaign)
@@ -249,6 +282,10 @@ def get_fuzzy_search_results(
             # Ordering
             if sort_by == "recent":
                 sql += " ORDER BY last_modified DESC NULLS LAST"
+            elif sort_by == "rating":
+                sql += " ORDER BY average_rating DESC NULLS LAST, reviews_count DESC NULLS LAST"
+            elif sort_by == "reviews":
+                sql += " ORDER BY reviews_count DESC NULLS LAST"
             elif not search_query:
                 sql += " ORDER BY name ASC"
             
@@ -272,7 +309,13 @@ def get_fuzzy_search_results(
                 phone_number=str(r[5]) if r[5] else None,
                 tags=cast(List[str], r[6]) if r[6] else [],
                 display=str(r[7]),
-                unique_id=str(r[2]) if r[2] else str(r[1]) or "unknown"
+                unique_id=str(r[2]) if r[2] else str(r[1]) or "unknown",
+                average_rating=float(r[8]) if r[8] is not None else None,
+                reviews_count=int(r[9]) if r[9] is not None else None,
+                street_address=str(r[10]) if r[10] else None,
+                city=str(r[11]) if r[11] else None,
+                state=str(r[12]) if r[12] else None,
+                zip=str(r[13]) if r[13] else None
             ))
 
         logger.debug(f"Fuzzy search '{search_query}' (type={item_type}) took {time.perf_counter() - start_total:.4f}s (query={t_query:.4f}s)")

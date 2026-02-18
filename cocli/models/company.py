@@ -5,7 +5,7 @@ import logging
 from datetime import datetime, UTC
 
 import yaml
-from pydantic import BaseModel, Field, BeforeValidator, ValidationError, model_validator
+from pydantic import BaseModel, Field, BeforeValidator, ValidationError, model_validator, computed_field
 from typing_extensions import Annotated
 
 from .email_address import EmailAddress
@@ -110,7 +110,7 @@ class Company(BaseModel):
     enrichment_ttl_days: int = 30
     processed_by: Optional[str] = "local-worker"
 
-    @property
+    @computed_field
     def gmb_url(self) -> Optional[str]:
         """Constructs a Google Maps search URL from the place_id."""
         if self.place_id:

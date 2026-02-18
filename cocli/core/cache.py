@@ -106,6 +106,12 @@ def build_cache(campaign: Optional[str] = None) -> List[Dict[str, Any]]:
                         "email": company.email,
                         "domain": company.domain,
                         "slug": company.slug,
+                        "average_rating": company.average_rating,
+                        "reviews_count": company.reviews_count,
+                        "street_address": company.street_address,
+                        "city": company.city,
+                        "state": company.state,
+                        "zip": company.zip_code,
                         "display": _format_entity_for_fzf("company", company)
                     })
                 else:

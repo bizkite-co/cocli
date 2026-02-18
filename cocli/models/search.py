@@ -21,3 +21,9 @@ class SearchResult(BaseModel):
     phone_number: Optional[str] = None
     company_name: Optional[str] = None
     unique_id: str
+    average_rating: Optional[float] = None
+    reviews_count: Optional[int] = None
+    street_address: Optional[str] = None
+    city: Optional[str] = None
+    state: Optional[str] = None
+    zip: Optional[str] = None

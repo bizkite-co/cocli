@@ -176,6 +176,8 @@ class CompanyDetail(Container):
         Binding("]", "next_panel", "Next Panel"),
         Binding("[", "prev_panel", "Prev Panel"),
         Binding("w", "open_website", "Website"),
+        Binding("g", "open_gmb", "Google Maps"),
+        Binding("v", "view_enrichment", "Enrichment"),
         Binding("p", "call_company", "Call"),
         Binding("e", "open_folder", "Explorer (NVim)"),
     ]
@@ -328,6 +330,21 @@ class CompanyDetail(Container):
             self.app.notify(f"Opening {url}")
         else:
             self.app.notify("No domain found", severity="warning")
+
+    def action_open_gmb(self) -> None:
+        gmb_url = self.company_data["company"].get("gmb_url")
+        if gmb_url:
+            webbrowser.open(gmb_url)
+            self.app.notify("Opening Google Maps...")
+        else:
+            self.app.notify("No Google Maps URL found", severity="warning")
+
+    def action_view_enrichment(self) -> None:
+        path = self.company_data.get("enrichment_path")
+        if path and Path(path).exists():
+            self._edit_with_nvim(Path(path))
+        else:
+            self.app.notify("Enrichment file not found", severity="warning")
 
     def action_call_company(self) -> None:
         phone = self.company_data["company"].get("phone_number")
@@ -528,15 +545,29 @@ class CompanyDetail(Container):
         c = self.company_data["company"]
         tags = self.company_data.get("tags", [])
         website_data = self.company_data.get("website_data")
+        enrichment_mtime = self.company_data.get("enrichment_mtime")
 
         self.info_table.add_row("Name", escape(str(c.get("name", "Unknown"))))
         self.info_table.add_row("Domain", escape(str(c.get("domain") or "")))
         self.info_table.add_row("Email", escape(str(c.get("email") or "")))
         self.info_table.add_row("Phone", format_phone_display(c.get("phone_number")))
+        
+        rating = c.get("average_rating")
+        review_count = c.get("reviews_count")
+        if rating or review_count:
+            rating_str = f"{rating or '?'}/5.0 ({review_count or 0} reviews)"
+            self.info_table.add_row("Rating", rating_str)
+
         self.info_table.add_row("Street", escape(str(c.get("street_address") or "")))
         self.info_table.add_row("City", escape(str(c.get("city") or "")))
         self.info_table.add_row("State", escape(str(c.get("state") or "")))
         self.info_table.add_row("Zip", escape(str(c.get("zip_code") or "")))
+
+        if enrichment_mtime:
+            dt = datetime.fromisoformat(enrichment_mtime)
+            self.info_table.add_row("Enriched", dt.strftime("%Y-%m-%d %H:%M"))
+        else:
+            self.info_table.add_row("Enriched", "No (website.md missing)")
 
         if tags:
             self.info_table.add_row("Tags", ", ".join(tags))

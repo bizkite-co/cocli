@@ -193,6 +193,44 @@ DataTable > .datatable--cursor {
 }
 
 /* Search List Styling */
+#company_search_input {
+    border: none;
+    background: black;
+    color: #00ff00;
+}
+
+#list_container {
+    width: 1fr;
+}
+
+#template_container {
+    width: 25;
+    border-left: tall #222222;
+    background: black;
+}
+
+#template_header {
+    background: #111111;
+    color: #444444;
+    text-align: center;
+    text-style: bold;
+    width: 100%;
+}
+
+#template_list {
+    background: black;
+}
+
+#template_list ListItem {
+    color: #666666;
+    padding-left: 1;
+}
+
+#template_list > .listview--highlight {
+    background: rgba(255, 255, 255, 0.05);
+    color: #ffffff;
+}
+
 #company_list_view {
     background: black;
     color: #888888;
