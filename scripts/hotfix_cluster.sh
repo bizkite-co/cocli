@@ -46,21 +46,28 @@ hotfix_node() {
     local short_name=$(echo $host | cut -d'.' -f1)
     local node_campaign=$(get_node_campaign $host)
 
-    printf "[${BLUE}HOTFIX${NC}] Deploying to $host (Campaign: $node_campaign)...\n"
+    printf "[${BLUE}DEPLOY${NC}] Syncing and Building on $host (Campaign: $node_campaign)...\n"
     
-    # 1. Cleanup
+    # 1. Sync the entire repository (excluding heavy/temp dirs)
+    # We sync to a dedicated build directory on the host
+    ssh $RPI_USER@$host "mkdir -p ~/repos/cocli_build"
+    rsync -az --delete \
+        --exclude '.venv' \
+        --exclude '.git' \
+        --exclude 'data' \
+        --exclude '.logs' \
+        --exclude '.pytest_cache' \
+        ./ $RPI_USER@$host:~/repos/cocli_build/
+
+    # 2. Perform Local Docker Build on the RPi
+    # This leverages layer caching for pyproject.toml/uv.lock
+    printf "[${BLUE}BUILD${NC}] Running Docker build on $host...\n"
+    ssh $RPI_USER@$host "cd ~/repos/cocli_build && docker build -t cocli-worker-rpi:latest -f docker/rpi-worker/Dockerfile ."
+
+    # 3. Stop and Restart with the fresh image
+    printf "[${BLUE}RESTART${NC}] Swapping container on $host...\n"
     ssh $RPI_USER@$host "docker stop cocli-supervisor && docker rm cocli-supervisor" >/dev/null 2>&1
     
-    # 2. Start staging container
-    ssh $RPI_USER@$host "docker run -d --name cocli-supervisor --shm-size=2gb -e TZ=America/Los_Angeles -e CAMPAIGN_NAME='$node_campaign' -e COCLI_HOSTNAME=$short_name -e COCLI_QUEUE_TYPE=filesystem -v ~/repos/data:/app/data -v ~/.aws:/root/.aws:ro -v ~/.cocli:/root/.cocli:ro cocli-worker-rpi:latest sleep infinity" >/dev/null
-    
-    # 3. Inject ALL code to host (not just container)
-    ssh $RPI_USER@$host "rm -rf ~/repos/cocli_hotfix && mkdir -p ~/repos/cocli_hotfix"
-    scp -qrC cocli scripts VERSION pyproject.toml $RPI_USER@$host:~/repos/cocli_hotfix/
-    
-    # 4. Start Container with VOLUME MOUNT for the hotfixed code
-    # We mount the hotfixed cocli dir OVER the container's cocli dir
-    ssh $RPI_USER@$host "docker stop cocli-supervisor && docker rm cocli-supervisor" >/dev/null 2>&1
     ssh $RPI_USER@$host "docker run -d --restart always --name cocli-supervisor \
         --shm-size=2gb \
         -e TZ=America/Los_Angeles \
@@ -68,17 +75,12 @@ hotfix_node() {
         -e COCLI_HOSTNAME=$short_name \
         -e COCLI_QUEUE_TYPE=filesystem \
         -v ~/repos/data:/app/data \
-        -v ~/repos/cocli_hotfix/cocli:/app/cocli \
-        -v ~/repos/cocli_hotfix/scripts:/app/scripts \
         -v ~/.aws:/root/.aws:ro \
         -v ~/.cocli:/root/.cocli:ro \
         cocli-worker-rpi:latest \
         cocli worker supervisor --debug" >/dev/null
     
-    # 5. Apply Symlink inside (Just in case anything uses dist-packages)
-    ssh $RPI_USER@$host "docker exec cocli-supervisor bash -c 'rm -rf /usr/local/lib/python3.12/dist-packages/cocli && ln -s /app/cocli /usr/local/lib/python3.12/dist-packages/cocli'"
-    
-    # 6. Verify
+    # 4. Verify
     verify_node $host
 }
 

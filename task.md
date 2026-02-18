@@ -34,6 +34,7 @@ Align the Python codebase with the Data Ordinance defined in `docs/_schema/ORDIN
 - [x] **Deprecate Legacy Path Helpers**: Refactor `cocli/core/config.py` to remove redundant `get_*_dir` functions.
     - Example: `get_companies_dir()` becomes `paths.companies.ensure()`.
 - [x] **Update Call Sites**: Audit the codebase and update all imports from `config.get_*_dir` to use the new `paths` hierarchy.
+- [x] **Cluster Deployment**: Deploy the OMAP refactor and search enhancements to the Raspberry Pi cluster.
 
 ## Phase 5: Verification & Safety
 - [ ] **Ordinance Validation**: Add a startup check that verifies the first record of a sync matches the expected `docs/_schema/` path.
