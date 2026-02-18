@@ -16,7 +16,8 @@ from rich.console import Console
 
 from cocli.core.text_utils import slugify
 from cocli.core.utils import _getch, run_fzf, create_person_files
-from ..core.config import get_companies_dir, get_people_dir, get_campaign, get_editor_command, get_enrichment_service_url
+from cocli.core.paths import paths
+from ..core.config import get_campaign, get_editor_command, get_enrichment_service_url
 from ..models.company import Company
 from ..models.person import Person
 from ..models.note import Note
@@ -72,7 +73,7 @@ def _interactive_view_company(company_slug: str) -> None:
         console.print("\n[bold yellow]Press 'a' to add meeting, 'c' for contact menu, 't' to add tag, 'T' to remove tag, 'e' to edit _index.md, 'E' to add email, 'w' to open website, 'p' to call, 'm' to select meeting, 'X' to exclude, 'f' to go back to fuzzy finder, 'r' to re-enrich, 'n' to add note, 'N' to edit note, 'q' to quit.[/bold yellow]")
         char = _getch()
 
-        selected_company_dir = get_companies_dir() / company_slug
+        selected_company_dir = paths.companies.path / company_slug
         index_path = selected_company_dir / "_index.md"
         frontmatter_data = _load_frontmatter(index_path)
 
@@ -224,7 +225,7 @@ def _interactive_view_company(company_slug: str) -> None:
 
                     new_person = Person(name=contact_name, email=contact_email if contact_email else None, phone=contact_phone if contact_phone else None, role=contact_role if contact_role else None, slug=slugify(contact_name)) # Add slug here
                     
-                    people_dir = get_people_dir()
+                    people_dir = paths.people.path
                     person_dir = people_dir / slugify(new_person.name)
                     create_person_files(new_person, person_dir)
 
@@ -240,7 +241,7 @@ def _interactive_view_company(company_slug: str) -> None:
                     _getch()
                 elif contact_choice == '2':
                     console.print("\n[bold green]Adding an existing contact...[/bold green]")
-                    people_dir = get_people_dir()
+                    people_dir = paths.people.path
                     if not people_dir.exists():
                         console.print("[bold red]People directory not found. Press any key to continue.[/bold red]")
                         _getch()
@@ -628,7 +629,7 @@ def view_meetings(
     """
     View all meetings for a specific company.
     """
-    companies_dir = get_companies_dir()
+    companies_dir = paths.companies.path
     company_slug = slugify(company_name)
     company_dir = companies_dir / company_slug
     meetings_dir = company_dir / "meetings"
@@ -661,7 +662,7 @@ def open_company_folder(
     """
     Open the company's folder in nvim.
     """
-    companies_dir = get_companies_dir()
+    companies_dir = paths.companies.path
     company_slug = slugify(company_name)
     company_dir = companies_dir / company_slug
 

@@ -13,11 +13,10 @@ import typer
 import boto3
 from pydantic import ValidationError
 
+from cocli.core.paths import paths
 from cocli.core.config import (
-    get_companies_dir, 
     get_campaign, 
     get_enrichment_service_url,
-    get_campaigns_dir
 )
 from cocli.core.queue.factory import get_queue_manager
 from cocli.models.queue import QueueMessage
@@ -65,7 +64,7 @@ def to_hubspot_csv(
 
     prospects = get_prospects(campaign, with_email, city, state)
 
-    campaigns_dir = get_campaigns_dir()
+    campaigns_dir = paths.campaigns
     output_dir = campaigns_dir / campaign / "prospects" / "exports"
     output_dir.mkdir(parents=True, exist_ok=True)
     output_file = output_dir / f"hubspot_export_{campaign}.csv"
@@ -118,7 +117,7 @@ async def enrich_prospect_docker(client: httpx.AsyncClient, prospect: Company, f
                 if prospect.slug is None:
                     logger.warning(f"Skipping enrichment data save for company {prospect.name} due to missing slug.")
                     return
-                company_dir = get_companies_dir() / prospect.slug
+                company_dir = paths.companies.path / prospect.slug
                 enrichment_dir = company_dir / "enrichments"
                 website_md_path = enrichment_dir / "website.md"
                 website_data.associated_company_folder = company_dir.name
@@ -171,7 +170,7 @@ async def enrich_prospect_local(
                 if prospect.slug is None:
                     logger.warning(f"Skipping enrichment data save for company {prospect.name} due to missing slug.")
                     return
-                company_dir = get_companies_dir() / prospect.slug
+                company_dir = paths.companies.path / prospect.slug
                 enrichment_dir = company_dir / "enrichments"
                 website_md_path = enrichment_dir / "website.md"
                 website_data.associated_company_folder = company_dir.name
@@ -313,7 +312,7 @@ def enrich_from_queue(
             # --- Freshness Check (S3 First) ---
             if s3_client and s3_bucket and not msg.force_refresh:
                 s3_path = f"companies/{msg.company_slug}/enrichments/website.md"
-                local_path = get_companies_dir() / msg.company_slug / "enrichments" / "website.md"
+                local_path = paths.companies.path / msg.company_slug / "enrichments" / "website.md"
                 
                 # Check if it exists on S3
                 try:
@@ -371,7 +370,7 @@ def enrich_from_queue(
                 website_data = Website(**response_json)
                 
                 # Create Company Skeleton if needed
-                company_dir = get_companies_dir() / msg.company_slug
+                company_dir = paths.companies.path / msg.company_slug
                 if not (company_dir / "_index.md").exists():
                     company_dir.mkdir(parents=True, exist_ok=True)
                     with open(company_dir / "_index.md", "w") as f:
@@ -436,7 +435,7 @@ def enrich_from_queue(
             if status == 404:
                 console.print(f"[yellow]Service returned 404 (Not Found/Scrape Fail) for {msg.domain}. Saving empty result.")
                 
-                company_dir = get_companies_dir() / msg.company_slug
+                company_dir = paths.companies.path / msg.company_slug
                 if not (company_dir / "_index.md").exists():
                     company_dir.mkdir(parents=True, exist_ok=True)
                     with open(company_dir / "_index.md", "w") as f:
@@ -590,7 +589,7 @@ def tag_prospects_from_csv() -> None:
         console.print(f"[bold red]Prospects index not found at: {manager.index_dir}[/bold red]")
         raise typer.Exit(code=1)
 
-    companies_dir = get_companies_dir()
+    companies_dir = paths.companies.path
     updated_count = 0
     
     prospects = manager.read_all_prospects()

@@ -5,6 +5,7 @@ from datetime import datetime
 
 from cocli.tui.app import CocliApp
 from cocli.tui.widgets.company_detail import CompanyDetail, NotesTable
+from cocli.core.paths import paths
 
 @pytest.fixture
 def mock_company_data():
@@ -20,12 +21,11 @@ def mock_company_data():
     }
 
 @pytest.mark.asyncio
-@patch('cocli.tui.widgets.company_detail.get_companies_dir')
 @patch('cocli.tui.widgets.company_detail.get_editor_command')
 @patch('cocli.application.company_service.get_company_details_for_view')
-async def test_notes_navigation_and_edit_key(mock_get_details, mock_get_editor, mock_get_dir, mock_company_data):
+async def test_notes_navigation_and_edit_key(mock_get_details, mock_get_editor, mock_company_data, tmp_path, monkeypatch):
     """Test that 'i' focuses notes and then 'i' triggers edit."""
-    mock_get_dir.return_value = Path("/tmp/cocli")
+    monkeypatch.setattr(paths, "root", tmp_path)
     mock_get_details.return_value = mock_company_data
     mock_get_editor.return_value = "true" # Mock editor command to just succeed
 
@@ -60,11 +60,10 @@ async def test_notes_navigation_and_edit_key(mock_get_details, mock_get_editor, 
                 mock_edit_nvim.assert_called_once_with(Path("/tmp/note1.md"))
 
 @pytest.mark.asyncio
-@patch('cocli.tui.widgets.company_detail.get_companies_dir')
 @patch('cocli.application.company_service.get_company_details_for_view')
-async def test_note_deletion_flow(mock_get_details, mock_get_dir, mock_company_data):
+async def test_note_deletion_flow(mock_get_details, mock_company_data, tmp_path, monkeypatch):
     """Test that 'd' opens confirmation."""
-    mock_get_dir.return_value = Path("/tmp/cocli")
+    monkeypatch.setattr(paths, "root", tmp_path)
     mock_get_details.return_value = mock_company_data
 
     app = CocliApp(auto_show=False)

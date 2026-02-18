@@ -64,32 +64,26 @@ def get_config_dir() -> Path:
             return Path.home() / ".config" / "cocli"
 
 def get_companies_dir() -> Path:
-    p = paths.companies
-    v_dir = get_validated_dir(p, "Companies Directory")
-    v_dir.path.mkdir(parents=True, exist_ok=True)
-    return v_dir.path
+    """DEPRECATED: Use paths.companies.ensure()"""
+    return paths.companies.ensure()
 
 def get_people_dir() -> Path:
-    p = paths.people
-    v_dir = get_validated_dir(p, "People Directory")
-    v_dir.path.mkdir(parents=True, exist_ok=True)
-    return v_dir.path
+    """DEPRECATED: Use paths.people.ensure()"""
+    return paths.people.ensure()
 
 def get_wal_dir() -> Path:
-    p = paths.wal
-    v_dir = get_validated_dir(p, "WAL Directory")
-    v_dir.path.mkdir(parents=True, exist_ok=True)
-    return v_dir.path
+    """DEPRECATED: Use paths.wal.ensure()"""
+    return paths.wal.ensure()
 
 def get_shared_scraped_data_dir() -> Path:
     """
     Returns the shared scraped data directory (e.g., shopify_csv).
     Previously used for all scraped data.
+    DEPRECATED: Use paths.root / 'scraped_data'
     """
     p = paths.root / "scraped_data"
-    v_dir = get_validated_dir(p, "Shared Scraped Data")
-    v_dir.path.mkdir(parents=True, exist_ok=True)
-    return v_dir.path
+    p.mkdir(parents=True, exist_ok=True)
+    return p
 
 def get_scraped_data_dir() -> Path:
     """
@@ -102,11 +96,11 @@ def get_indexes_dir() -> Path:
     """
     Returns the base directory for shared indexes.
     Path: data/indexes/
+    DEPRECATED: Use paths.indexes
     """
     p = paths.indexes
-    v_dir = get_validated_dir(p, "Indexes Directory")
-    v_dir.path.mkdir(parents=True, exist_ok=True)
-    return v_dir.path
+    p.mkdir(parents=True, exist_ok=True)
+    return p
 
 def get_temp_dir() -> Path:
     """
@@ -143,43 +137,32 @@ def get_campaign_scraped_data_dir(campaign_name: str) -> Path:
     Returns the scraped data directory for a specific campaign.
     Path: data/campaigns/<campaign>/scraped_data/
     """
-    campaign_dir = paths.campaign(campaign_name)
-    campaign_dir.mkdir(parents=True, exist_ok=True)
-    
-    p = campaign_dir / "scraped_data"
-    v_dir = get_validated_dir(p, f"Campaign Scraped Data: {campaign_name}")
-    v_dir.path.mkdir(parents=True, exist_ok=True)
-    return v_dir.path
+    p = paths.campaign(campaign_name).path / "scraped_data"
+    p.mkdir(parents=True, exist_ok=True)
+    return p
 
 def get_campaign_exports_dir(campaign_name: str) -> Path:
     """
     Returns the exports directory for a specific campaign.
     Path: data/campaigns/<campaign>/exports/
     """
-    p = paths.campaign_exports(campaign_name)
-    v_dir = get_validated_dir(p, f"Campaign Exports: {campaign_name}")
-    v_dir.path.mkdir(parents=True, exist_ok=True)
-    return v_dir.path
+    p = paths.campaign(campaign_name).exports
+    p.mkdir(parents=True, exist_ok=True)
+    return p
 
 def get_campaigns_dir() -> Path:
     p = paths.campaigns
-    v_dir = get_validated_dir(p, "Campaigns Root")
-    v_dir.path.mkdir(parents=True, exist_ok=True)
-    return v_dir.path
+    p.mkdir(parents=True, exist_ok=True)
+    return p
 
 
 def get_campaign_dir(campaign_name: str) -> Optional[Path]:
     """
     Returns the directory for a specific campaign.
     """
-    campaign_dir = paths.campaign(campaign_name)
+    campaign_dir = paths.campaign(campaign_name).path
     if campaign_dir.exists() and campaign_dir.is_dir():
-        # Validate specifically if it exists
-        v_dir = get_validated_dir(campaign_dir, f"Campaign Directory: {campaign_name}")
-        return v_dir.path
-    
-    # If it doesn't exist yet, we don't return it here to maintain current contract
-    # of 'Optional' return, but we allow it to be created by other functions.
+        return campaign_dir
     return None
 
 def get_all_campaign_dirs() -> list[Path]:
@@ -300,7 +283,7 @@ def load_campaign_config(campaign_name: str) -> Dict[str, Any]:
     config_hierarchy: list[Path] = []
     
     # Walk up from campaign_dir to campaigns_root
-    current = campaign_dir
+    current = campaign_dir.path
     while True:
         config_file = current / "config.toml"
         if config_file.exists():

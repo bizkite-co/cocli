@@ -19,7 +19,8 @@ from rich.markup import escape
 from ...models.company import Company
 from ...models.note import Note
 from ...models.phone import PhoneNumber
-from ...core.config import get_companies_dir, get_editor_command
+from ...core.paths import paths
+from ...core.config import get_editor_command
 from .confirm_screen import ConfirmScreen
 
 if TYPE_CHECKING:
@@ -343,7 +344,7 @@ class CompanyDetail(Container):
     def action_open_folder(self) -> None:
         slug = self.company_data["company"].get("slug")
         if slug:
-            path = get_companies_dir() / slug
+            path = paths.companies.entry(slug)
             self.app.notify(f"Opening {slug} in NVim...")
             subprocess.Popen(["nvim", str(path)])
         else:
@@ -356,7 +357,7 @@ class CompanyDetail(Container):
             return
 
         new_note = Note(title="New Note", content="")
-        notes_dir = get_companies_dir() / slug / "notes"
+        notes_dir = paths.companies.entry(slug) / "notes"
         notes_dir.mkdir(parents=True, exist_ok=True)
         
         timestamp_str = new_note.timestamp.strftime("%Y-%m-%dT%H-%M-%SZ")

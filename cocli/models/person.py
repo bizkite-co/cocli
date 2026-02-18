@@ -8,7 +8,9 @@ from pydantic import BaseModel, Field, ValidationError
 from .email_address import EmailAddress
 from .phone import OptionalPhone
 from .email import EmailEntry
-from ..core.config import get_people_dir, get_campaign
+from ..core.paths import paths
+from ..core.ordinant import CollectionName
+from ..core.config import get_campaign
 from ..core.email_index_manager import EmailIndexManager
 
 logger = logging.getLogger(__name__)
@@ -29,10 +31,30 @@ class Person(BaseModel):
     zip_code: Optional[str] = None
     country: Optional[str] = None
 
+    # --- Ordinant Protocol Implementation ---
+    @property
+    def collection(self) -> CollectionName:
+        return "people"
+
+    def get_local_path(self) -> Path:
+        """Returns the path to the person directory: data/people/{slug}/"""
+        return paths.people.entry(self.slug)
+
+    def get_remote_key(self) -> str:
+        """Returns the S3 prefix: people/{slug}/"""
+        return f"people/{self.slug}/"
+
+    def get_shard_id(self) -> str:
+        """People are currently flat within the global collection."""
+        return ""
+    # ----------------------------------------
+
     @classmethod
     def get_all(cls) -> Iterator["Person"]:
         """Iterates through all person directories and yields Person objects."""
-        people_dir = get_people_dir()
+        people_dir = paths.people.path
+        if not people_dir.exists():
+            return
         for person_dir in sorted(people_dir.iterdir()):
             if person_dir.is_dir():
                 person = cls.from_directory(person_dir)
@@ -42,8 +64,7 @@ class Person(BaseModel):
     @classmethod
     def get(cls, slug: str) -> Optional["Person"]:
         """Retrieves a single person by their slug."""
-        people_dir = get_people_dir()
-        person_dir = people_dir / slug
+        person_dir = paths.people.entry(slug)
         if person_dir.is_dir():
             return cls.from_directory(person_dir)
         return None
@@ -89,8 +110,11 @@ class Person(BaseModel):
     def save(self, person_file: Optional[Path] = None, base_dir: Optional[Path] = None) -> None:
         """Saves the person data to a markdown file and syncs with email index."""
         if not person_file:
-            people_dir = base_dir or get_people_dir()
-            person_dir = people_dir / self.slug
+            if base_dir:
+                person_dir = base_dir / self.slug
+            else:
+                person_dir = paths.people.entry(self.slug)
+            
             person_dir.mkdir(parents=True, exist_ok=True)
             from ..core.text_utils import slugify
             person_file = person_dir / f"{slugify(self.name)}.md"

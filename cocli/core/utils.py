@@ -12,7 +12,7 @@ import subprocess
 
 from ..models.company import Company
 from ..models.person import Person  # Import Company and Person models
-from .config import get_companies_dir  # Import directory getters
+from .paths import paths
 from .text_utils import slugify
 
 logger = logging.getLogger(__name__)
@@ -74,7 +74,7 @@ def create_person_files(person: Person, person_dir: Path) -> Path:
     # --- Create Symlinks ---
     if person.company_name:
         company_slug = slugify(person.company_name)
-        company_dir = get_companies_dir() / company_slug
+        company_dir = paths.companies.path / company_slug
 
         if company_dir.exists():
             # Create Company-to-Person Symlink

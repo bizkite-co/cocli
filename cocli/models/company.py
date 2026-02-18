@@ -13,7 +13,9 @@ from .phone import OptionalPhone
 from .email import EmailEntry
 from .place_id import PlaceID
 from .company_slug import CompanySlug
-from ..core.config import get_companies_dir, get_campaign
+from ..core.paths import paths
+from ..core.ordinant import CollectionName
+from ..core.config import get_campaign
 
 logger = logging.getLogger(__name__)
 
@@ -42,6 +44,24 @@ class Company(BaseModel):
     company_hash: Optional[str] = None
     description: Optional[str] = None
     visits_per_day: Optional[int] = None
+
+    # --- Ordinant Protocol Implementation ---
+    @property
+    def collection(self) -> CollectionName:
+        return "companies"
+
+    def get_local_path(self) -> Path:
+        """Returns the path to the company directory: data/companies/{slug}/"""
+        return paths.companies.entry(self.slug)
+
+    def get_remote_key(self) -> str:
+        """Returns the S3 prefix: companies/{slug}/"""
+        return paths.s3_company(self.slug)
+
+    def get_shard_id(self) -> str:
+        """Companies are currently flat within the global collection."""
+        return ""
+    # ----------------------------------------
 
     # New fields for enrichment
     # id: Optional[str] = None # Removed as per feedback
@@ -122,7 +142,9 @@ class Company(BaseModel):
     @classmethod
     def get_all(cls) -> Iterator["Company"]:
         """Iterates through all company directories and yields Company objects."""
-        companies_dir = get_companies_dir()
+        companies_dir = paths.companies.path
+        if not companies_dir.exists():
+            return
         for company_dir in sorted(companies_dir.iterdir()):
             if company_dir.is_dir():
                 company = cls.from_directory(company_dir)
@@ -133,8 +155,7 @@ class Company(BaseModel):
     @classmethod
     def get(cls, slug: str) -> Optional["Company"]:
         """Retrieves a single company by its slug."""
-        companies_dir = get_companies_dir()
-        company_dir = companies_dir / slug
+        company_dir = paths.companies.entry(slug)
         if company_dir.is_dir():
             return cls.from_directory(company_dir)
         return None
@@ -295,8 +316,11 @@ class Company(BaseModel):
 
     def save(self, email_sync: bool = True, base_dir: Optional[Path] = None, use_wal: bool = True) -> None:
         """Saves the company data to _index.md and tags to tags.lst."""
-        companies_dir = base_dir or get_companies_dir()
-        company_dir = companies_dir / self.slug
+        if base_dir:
+            company_dir = base_dir / self.slug
+        else:
+            company_dir = paths.companies.entry(self.slug)
+        
         company_dir.mkdir(parents=True, exist_ok=True)
 
         if use_wal:
