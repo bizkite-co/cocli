@@ -26,14 +26,18 @@ Align the Python codebase with the Data Ordinance defined in `docs/_schema/ORDIN
 - [x] **Migrate Core Models**:
     - [x] `Company`: Implement `Ordinant`. Path: `data/companies/{slug}/`.
     - [x] `Person`: Implement `Ordinant`. Path: `data/people/{slug}/`.
-    - [ ] `EnrichmentTask`: Formalize `Ordinant` implementation.
-- [x] **Refactor Base Index**:
-    - [x] `BaseIndexModel`: Update to use `Ordinant` for deterministic shard and file resolution.
+    - [ ] `EnrichmentTask`: Formalize `Ordinant` implementation (ensure protocol naming).
+    - [ ] `ScrapeTask` & `GmItemTask`: Implement `Ordinant` protocol.
+- [ ] **Refactor Base Index**:
+    - [ ] `BaseIndexModel`: Update to use `Ordinant` for deterministic shard and file resolution.
+- [ ] **Refactor `CollectionPaths` Sub-hierarchy**:
+    - [ ] Update `CollectionPaths.entry(slug)` to return an `EntryPaths` object with dot-notation for `_index.md`, `tags.lst`, and `enrichments/`.
 
 ## Phase 4: Config Simplification & Cleanup
 - [x] **Deprecate Legacy Path Helpers**: Refactor `cocli/core/config.py` to remove redundant `get_*_dir` functions.
-    - Example: `get_companies_dir()` becomes `paths.companies.ensure()`.
 - [x] **Update Call Sites**: Audit the codebase and update all imports from `config.get_*_dir` to use the new `paths` hierarchy.
+- [ ] **TUI Pathing Audit**: Replace manual string joining in `cocli/tui/` and `cocli/application/company_service.py` with the `paths` authority.
+- [ ] **S3 Pathing Hierarchy**: Refactor string-based `s3_*` methods in `DataPaths` to a hierarchical dot-notation structure.
 - [x] **Cluster Deployment**: Deploy the OMAP refactor and search enhancements to the Raspberry Pi cluster.
 
 ## Phase 5: Verification & Safety

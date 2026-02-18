@@ -92,6 +92,22 @@ def main(
     con = duckdb.connect(database=':memory:')
 
     # 1. Load Prospects using DuckDB (FIMC Checkpoint)
+    from cocli.models.google_maps_prospect import GoogleMapsProspect
+    import json
+    
+    # Generate columns for DuckDB from model fields
+    model_fields = GoogleMapsProspect.model_fields
+    columns = {}
+    for name, field in model_fields.items():
+        # Map Python types to DuckDB types
+        field_type = "VARCHAR"
+        type_str = str(field.annotation)
+        if "int" in type_str:
+            field_type = "INTEGER"
+        elif "float" in type_str:
+            field_type = "DOUBLE"
+        columns[name] = field_type
+
     from cocli.core.prospects_csv_manager import ProspectsIndexManager
     prospect_manager = ProspectsIndexManager(campaign_name)
     checkpoint_path = prospect_manager.index_dir / "prospects.checkpoint.usv"
@@ -105,23 +121,11 @@ def main(
         CREATE TABLE prospects AS SELECT * FROM read_csv('{checkpoint_path}', 
             delim='\x1f', 
             header=False,
-            auto_detect=True,
-            all_varchar=True
+            columns={json.dumps(columns)},
+            auto_detect=False,
+            ignore_errors=True
         )
     """)
-    # Add friendly names to prospect columns (mapping from prospects_csv_manager)
-    # We only need a few for the join and export
-    con.execute("ALTER TABLE prospects RENAME column00 TO place_id")
-    con.execute("ALTER TABLE prospects RENAME column01 TO company_slug")
-    con.execute("ALTER TABLE prospects RENAME column02 TO name")
-    con.execute("ALTER TABLE prospects RENAME column03 TO phone_1")
-    con.execute("ALTER TABLE prospects RENAME column07 TO keyword")
-    con.execute("ALTER TABLE prospects RENAME column10 TO city")
-    con.execute("ALTER TABLE prospects RENAME column13 TO state")
-    con.execute("ALTER TABLE prospects RENAME column17 TO website")
-    con.execute("ALTER TABLE prospects RENAME column18 TO domain")
-    con.execute("ALTER TABLE prospects RENAME column22 TO reviews_count")
-    con.execute("ALTER TABLE prospects RENAME column23 TO average_rating")
 
     # 2. Load Emails using DuckDB (Sharded Index)
     from cocli.core.email_index_manager import EmailIndexManager
@@ -158,7 +162,7 @@ def main(
             p.name,
             COALESCE(p.domain, p.company_slug) as domain,
             string_agg(DISTINCT e.email, '; ') as emails,
-            p.phone_1 as phone,
+            p.phone as phone,
             p.city,
             p.state,
             p.keyword as tag,
@@ -173,7 +177,7 @@ def main(
             p.company_slug = e.domain OR 
             p.domain = e.company_slug
         )
-        GROUP BY p.name, p.domain, p.company_slug, p.phone_1, p.city, p.state, p.keyword, p.place_id, p.average_rating, p.reviews_count
+        GROUP BY p.name, p.domain, p.company_slug, p.phone, p.city, p.state, p.keyword, p.place_id, p.average_rating, p.reviews_count
     """
     
     if not include_all:

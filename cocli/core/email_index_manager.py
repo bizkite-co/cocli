@@ -145,7 +145,7 @@ class EmailIndexManager:
             with open(shard_path, 'w', encoding='utf-8') as f:
                 for entry in entries:
                     f.write(entry.to_usv())
-            logger.info(f"Wrote shard {shard_id} with {len(entries)} emails.")
+            logger.info(f"Wrote shard {shard_id} ({shard_path}) with {len(entries)} emails.")
 
         # 4. Cleanup Inbox
         import shutil
