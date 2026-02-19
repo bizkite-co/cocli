@@ -36,9 +36,14 @@ Align the Python codebase with the Data Ordinance defined in `docs/_schema/ORDIN
 ## Phase 4: Config Simplification & Cleanup
 - [x] **Deprecate Legacy Path Helpers**: Refactor `cocli/core/config.py` to remove redundant `get_*_dir` functions.
 - [x] **Update Call Sites**: Audit the codebase and update all imports from `config.get_*_dir` to use the new `paths` hierarchy.
+- [x] **TUI Company Search Overhaul**: Implement three-column layout, template-based filtering with counts, and debounced preview loading for high-performance browsing.
 - [ ] **TUI Pathing Audit**: Replace manual string joining in `cocli/tui/` and `cocli/application/company_service.py` with the `paths` authority.
 - [ ] **S3 Pathing Hierarchy**: Refactor string-based `s3_*` methods in `DataPaths` to a hierarchical dot-notation structure.
-- [x] **Cluster Deployment**: Deploy the OMAP refactor and search enhancements to the Raspberry Pi cluster.
+- [x] **Cluster Optimization & Deployment**:
+    - [x] Implement centralized cluster management in `cocli_config.toml`.
+    - [x] Deploy local Docker registry on Pi hub (`cocli5x1.pi`) for cluster-wide image distribution.
+    - [x] Automate `/etc/hosts` mapping for reliable node-to-node hostname resolution.
+    - [x] Fix email inbox collision hazard and fully migrate `turboship`/`roadmap` to sharded USV schema.
 
 ## Phase 5: Verification & Safety
 - [ ] **Ordinance Validation**: Add a startup check that verifies the first record of a sync matches the expected `docs/_schema/` path.
