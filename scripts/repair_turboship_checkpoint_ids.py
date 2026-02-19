@@ -4,7 +4,6 @@ import logging
 from pathlib import Path
 from rich.console import Console
 from cocli.core.utils import UNIT_SEP
-from cocli.models.google_maps_prospect import GoogleMapsProspect
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -73,7 +72,7 @@ def repair_checkpoint(campaign_name: str = "turboship") -> None:
 
     if repaired_count > 0:
         os.replace(temp_path, checkpoint_path)
-        console.print(f"[bold green]Success![/bold green]")
+        console.print("[bold green]Success![/bold green]")
         console.print(f"Total records: {total_count}")
         console.print(f"Legacy IDs found: {legacy_count}")
         console.print(f"Repaired: {repaired_count}")

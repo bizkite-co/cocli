@@ -2,10 +2,9 @@ import json
 import logging
 import typer
 from pathlib import Path
-from typing import Optional
 from rich.console import Console
 from rich.progress import track
-from cocli.core.config import get_campaign, get_cocli_base_dir
+from cocli.core.config import get_cocli_base_dir
 from cocli.core.domain_index_manager import DomainIndexManager
 from cocli.models.campaign import Campaign as CampaignModel
 from cocli.models.website_domain_csv import WebsiteDomainCsv
@@ -42,10 +41,14 @@ def main(
     base_dir = get_cocli_base_dir()
     campaign_dir = base_dir / "campaigns" / campaign_name
     legacy_domains_dir = campaign_dir / "indexes" / "domains"
+    backup_domains_dir = campaign_dir / "indexes" / "domains_backup"
     
     if not legacy_domains_dir.exists():
-        console.print(f"[bold red]Error: Legacy domains directory not found at {legacy_domains_dir}[/bold red]")
-        raise typer.Exit(1)
+        if backup_domains_dir.exists():
+            legacy_domains_dir = backup_domains_dir
+        else:
+            console.print(f"[bold red]Error: Legacy domains directory not found at {legacy_domains_dir}[/bold red]")
+            raise typer.Exit(1)
 
     campaign = CampaignModel.load(campaign_name)
     domain_manager = DomainIndexManager(campaign)
@@ -57,6 +60,8 @@ def main(
     error_count = 0
 
     for json_file in track(json_files, description="Migrating domains..."):
+        if json_file.name == "datapackage.json":
+            continue
         try:
             with open(json_file, "r", encoding="utf-8") as f:
                 data = json.load(f)
@@ -92,6 +97,7 @@ def main(
             
             if not dry_run:
                 domain_manager.add_or_update(record)
+                json_file.unlink()
             
             migrated_count += 1
             logging.info(f"Migrated {record.domain} from {json_file.name}")

@@ -5,7 +5,6 @@ from typing import List, Optional, Dict
 
 from ..models.email import EmailEntry
 from .config import get_campaign_dir
-from .text_utils import slugdotify
 
 logger = logging.getLogger(__name__)
 
@@ -37,14 +36,15 @@ class EmailIndexManager:
     def add_email(self, email_entry: EmailEntry) -> bool:
         """
         Adds an email entry to the sharded inbox.
-        Uses slugdotify(email) as filename for atomic isolation in the hot layer.
+        Uses the email address as the filename for atomic isolation in the hot layer.
         """
         shard_id = self.get_shard_id(email_entry.domain)
         shard_inbox = self.inbox_dir / shard_id
         shard_inbox.mkdir(parents=True, exist_ok=True)
         
-        email_slug = slugdotify(str(email_entry.email))
-        path = shard_inbox / f"{email_slug}.usv"
+        # Use raw email (lowercased) to avoid collisions with characters like '+' or '.'
+        email_filename = str(email_entry.email).lower().strip()
+        path = shard_inbox / f"{email_filename}.usv"
         
         try:
             # Simple append/overwrite for the hot layer

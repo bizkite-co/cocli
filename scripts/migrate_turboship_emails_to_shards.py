@@ -2,10 +2,10 @@ import json
 import logging
 import typer
 from pathlib import Path
-from typing import Optional, List
+from typing import List
 from rich.console import Console
 from rich.progress import track
-from cocli.core.config import get_campaign, get_cocli_base_dir
+from cocli.core.config import get_cocli_base_dir
 from cocli.models.email import EmailEntry
 from cocli.core.email_index_manager import EmailIndexManager
 from datetime import datetime
@@ -30,7 +30,8 @@ def setup_logging() -> Path:
 @app.command()
 def main(
     campaign_name: str = typer.Option("turboship", help="Campaign name to migrate."),
-    dry_run: bool = typer.Option(False, "--dry-run", help="Show what would be migrated without doing it.")
+    dry_run: bool = typer.Option(False, "--dry-run", help="Show what would be migrated without doing it."),
+    include_inbox: bool = typer.Option(False, "--include-inbox", help="Include the 'inbox' directory in migration.")
 ) -> None:
     log_file = setup_logging()
     console.print(f"Migrating email index from campaign [bold]{campaign_name}[/bold] to sharded USV.")
@@ -48,14 +49,19 @@ def main(
     manager = EmailIndexManager(campaign_name)
     
     # Identify all candidate files (JSON or USV)
-    # We avoid recursing into 'inbox' or 'shards' if they already exist
+    # We avoid recursing into 'shards' if they already exist
     all_files: List[Path] = []
     for d in candidate_dirs:
         if d.exists():
             for f in d.rglob("*"):
                 if f.is_file() and f.suffix in [".json", ".usv"]:
-                    # Skip files already in the new structure
-                    if "inbox" in f.parts or "shards" in f.parts:
+                    # Skip files already in shards
+                    if "shards" in f.parts:
+                        continue
+                    # Skip inbox unless explicitly requested
+                    if "inbox" in f.parts and not include_inbox:
+                        continue
+                    if f.name == "datapackage.json":
                         continue
                     all_files.append(f)
             
@@ -65,6 +71,8 @@ def main(
     error_count = 0
 
     for file_path in track(all_files, description="Migrating emails..."):
+        if file_path.name == "datapackage.json":
+            continue
         try:
             if file_path.suffix == ".json":
                 with open(file_path, "r", encoding="utf-8") as f:
@@ -79,6 +87,7 @@ def main(
                 entry = EmailEntry.model_validate(filtered_data)
                 if not dry_run:
                     manager.add_email(entry)
+                    file_path.unlink()
                 migrated_count += 1
                 logging.info(f"Migrated {entry.email} from {file_path.name}")
                 
@@ -86,6 +95,8 @@ def main(
                 # Assume USV
                 content = file_path.read_text(encoding="utf-8").strip()
                 if not content:
+                    if not dry_run:
+                        file_path.unlink()
                     continue
                 for line in content.split("\n"):
                     if line.strip():
@@ -97,6 +108,9 @@ def main(
                         except Exception as e:
                             logging.error(f"Error parsing USV line in {file_path.name}: {e}")
                             error_count += 1
+                
+                if not dry_run:
+                    file_path.unlink()
             
         except Exception as e:
             error_count += 1
