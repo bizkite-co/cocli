@@ -83,7 +83,7 @@ class FilesystemQueue:
     def _get_task_dir(self, task_id: str) -> Path:
         # Sanitize task_id for directory name
         safe_id = task_id.replace("/", "_").replace("\\", "_")
-        shard = get_shard_id(safe_id)
+        shard = self._get_shard(task_id)
         return self.pending_dir / shard / safe_id
 
     def _get_lease_path(self, task_id: str) -> Path:
