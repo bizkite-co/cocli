@@ -382,3 +382,54 @@ def compile_lifecycle(
     except Exception as e:
         console.print(f"[bold red]Error: {e}[/bold red]")
         raise typer.Exit(1)
+
+@app.command(name="restore-names")
+def restore_names(
+    campaign_name: Annotated[Optional[str], typer.Argument(help="The name of the campaign.")] = None,
+    dry_run: bool = typer.Option(False, "--dry-run", help="Don't save changes.")
+) -> None:
+    """
+    Restores company names from the Google Maps index and writes provenance receipts.
+    """
+    if not campaign_name:
+        campaign_name = get_campaign()
+    if not campaign_name:
+        console.print("[bold red]Error: No campaign specified.[/bold red]")
+        raise typer.Exit(1)
+
+    try:
+        from ...application.campaign_service import CampaignService
+        from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, TaskProgressColumn
+        
+        service = CampaignService(campaign_name)
+        
+        with Progress(
+            SpinnerColumn(),
+            TextColumn("[progress.description]{task.description}"),
+            BarColumn(),
+            TaskProgressColumn(),
+            TextColumn("[dim]{task.fields[slug]}"),
+            console=console
+        ) as progress:
+            task = progress.add_task("Restoring names...", total=None, slug="")
+            
+            generator = service.restore_names_from_index(dry_run=dry_run)
+            final_stats = {}
+            
+            for update in generator:
+                if "total" in update:
+                    progress.update(task, total=update["total"], completed=update["current"], slug=update["slug"])
+                else:
+                    final_stats = update
+            
+        if dry_run:
+            console.print(f"[yellow]DRY RUN: Would restore {final_stats.get('restored', 0)} names.[/yellow]")
+        else:
+            console.print(f"[bold green]Successfully restored {final_stats.get('restored', 0)} names.[/bold green]")
+            console.print(f"[bold green]Wrote {final_stats.get('receipts_written', 0)} provenance receipts.[/bold green]")
+            
+        if final_stats.get("errors", 0) > 0:
+            console.print(f"[bold red]Encoutered {final_stats['errors']} errors.[/bold red]")
+    except Exception as e:
+        console.print(f"[bold red]Error: {e}[/bold red]")
+        raise typer.Exit(1)

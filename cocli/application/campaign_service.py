@@ -304,3 +304,64 @@ class CampaignService:
         from ..core.lifecycle_manager import LifecycleManager
         manager = LifecycleManager(self.campaign_name)
         return manager.compile()
+
+    def restore_names_from_index(self, dry_run: bool = False) -> Any:
+        """
+        Reads from the Google Maps prospect index and restores names in _index.md.
+        Also writes a file-per-object USV to enrichments/ for provenance.
+        Yields status updates for progress bars.
+        """
+        from ..core.prospects_csv_manager import ProspectsIndexManager
+        from ..models.company import Company
+        from ..core.config import get_companies_dir
+        from ..models.google_maps_prospect import GoogleMapsProspect
+
+        manager = ProspectsIndexManager(self.campaign_name)
+        companies_dir = get_companies_dir()
+        
+        stats = {"restored": 0, "receipts_written": 0, "errors": 0}
+        
+        # 1. Load prospects into a list to get a total count
+        prospects = list(manager.read_all_prospects())
+        total = len(prospects)
+        
+        for i, prospect in enumerate(prospects):
+            if not prospect.company_slug or not prospect.name:
+                continue
+                
+            slug = prospect.company_slug
+            company_obj = Company.get(slug)
+            
+            # Yield progress
+            yield {"current": i + 1, "total": total, "slug": slug}
+
+            if not company_obj:
+                continue
+
+            try:
+                # 1. Restore Name if corrupted or missing
+                if company_obj.name != prospect.name:
+                    logger.info(f"Restoring name for {slug}: {company_obj.name} -> {prospect.name}")
+                    company_obj.name = prospect.name
+                    if not dry_run:
+                        company_obj.save(email_sync=False)
+                    stats["restored"] += 1
+
+                # 2. Write provenance receipt (google_maps.usv)
+                if not dry_run:
+                    enrich_dir = companies_dir / slug / "enrichments"
+                    enrich_dir.mkdir(exist_ok=True)
+                    receipt_path = enrich_dir / "google_maps.usv"
+                    
+                    from ..core.utils import UNIT_SEP
+                    with open(receipt_path, "w", encoding="utf-8") as f:
+                        header = UNIT_SEP.join(list(GoogleMapsProspect.model_fields.keys()))
+                        f.write(f"{header}\n")
+                        f.write(prospect.to_usv())
+                    stats["receipts_written"] += 1
+                    
+            except Exception as e:
+                logger.error(f"Failed to restore name for {slug}: {e}")
+                stats["errors"] += 1
+                
+        yield stats

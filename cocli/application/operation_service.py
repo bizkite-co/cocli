@@ -74,6 +74,11 @@ class OperationService:
                 "Builds the lifecycle index (scrape/detail dates) from local queues.", 
                 "maintenance"
             ),
+            "op_restore_names": OperationMetadata(
+                "op_restore_names", "Restore Company Names", 
+                "Restores company names from Google Maps index and writes provenance USVs.", 
+                "maintenance"
+            ),
             "op_push_queue": OperationMetadata(
                 "op_push_queue", "Push Local Queue", 
                 "Uploads locally generated enrichment tasks to S3.", 
@@ -123,6 +128,14 @@ class OperationService:
             elif op_id == "op_compile_lifecycle":
                 count = await asyncio.to_thread(self.services.campaign_service.compile_lifecycle_index)
                 result = {"records_indexed": count}
+            elif op_id == "op_restore_names":
+                def run_restore() -> Dict[str, Any]:
+                    gen = self.services.campaign_service.restore_names_from_index()
+                    final: Dict[str, Any] = {}
+                    for update in gen:
+                        final = update
+                    return final
+                result = await asyncio.to_thread(run_restore)
             elif op_id == "op_push_queue":
                 result = await asyncio.to_thread(self.services.data_sync_service.push_queue)
             elif op_id == "op_audit_integrity":
