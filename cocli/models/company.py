@@ -107,6 +107,8 @@ class Company(BaseModel):
     meta_keywords: Optional[str] = None
     place_id: Optional[PlaceID] = None
     last_enriched: Optional[datetime] = None
+    list_found_at: Optional[datetime] = None
+    details_found_at: Optional[datetime] = None
     enrichment_ttl_days: int = 30
     processed_by: Optional[str] = "local-worker"
 
@@ -291,7 +293,8 @@ class Company(BaseModel):
             "latitude", "longitude",
             "facebook_url", "linkedin_url", "instagram_url", "twitter_url", 
             "youtube_url", "about_us_url", "contact_url", "meta_description", 
-            "meta_keywords", "place_id", "last_enriched", "processed_by"
+            "meta_keywords", "place_id", "last_enriched", "processed_by",
+            "list_found_at", "details_found_at"
         ]:
             new_val = getattr(other, field)
             current_val = getattr(self, field)

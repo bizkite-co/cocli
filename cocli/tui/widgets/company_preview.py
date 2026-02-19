@@ -5,6 +5,7 @@ from rich.markup import escape
 from cocli.models.company import Company
 from textual.app import ComposeResult
 from .phone import Phone
+from .email import Email
 
 class CompanyPreview(Container):
     """A widget to display a preview of a company."""
@@ -35,7 +36,10 @@ class CompanyPreview(Container):
         # Rating info
         rating_str = f"{company.average_rating or 'N/A'} ({company.reviews_count or 0} reviews)"
 
-        # Enriched status
+        # Lifecycle dates
+        scraped_at = company.list_found_at.strftime('%Y-%m-%d') if company.list_found_at else "N/A"
+        details_at = company.details_found_at.strftime('%Y-%m-%d') if company.details_found_at else "N/A"
+        
         if company.last_enriched:
             enriched_str = f"[bold green]{company.last_enriched.strftime('%Y-%m-%d')}[/]"
         else:
@@ -52,9 +56,14 @@ class CompanyPreview(Container):
                 Phone(company.phone_number),
                 classes="preview-line"
             ),
-            Static(f"[b]Email:[/b] {escape(str(company.email or 'N/A'))}"),
+            Horizontal(
+                Label("[b]Email:[/b] "),
+                Email(company.email),
+                classes="preview-line"
+            ),
+            Static(f"[b]Scraped:[/b] {scraped_at}"),
+            Static(f"[b]Details:[/b] {details_at}"),
             Static(f"[b]Enriched:[/b] {enriched_str}"),
             Static(f"[b]Tags:[/b] {escape(', '.join(company.tags))}"),
             Static(f"\n[b]Description:[/b]\n{escape(str(company.description or ''))}"),
         )
-    

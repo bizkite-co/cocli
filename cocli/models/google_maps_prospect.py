@@ -163,7 +163,9 @@ class GoogleMapsProspect(GoogleMapsIdx):
             "thumbnail_url": raw.Thumbnail_URL,
             "reviews": raw.Reviews,
             "quotes": raw.Quotes,
-            "processed_by": raw.processed_by or "local-worker"
+            "processed_by": raw.processed_by or "local-worker",
+            "list_found_at": raw.created_at,
+            "details_found_at": raw.updated_at
         }
         
         if data["name"]:

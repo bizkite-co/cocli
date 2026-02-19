@@ -359,3 +359,26 @@ def bucket(
         # Fallback to default pattern
 
         console.print(f"s3://cocli-data-{campaign_name}/campaigns/{campaign_name}/")
+
+@app.command(name="compile-lifecycle")
+def compile_lifecycle(
+    campaign_name: Annotated[Optional[str], typer.Argument(help="The name of the campaign.")] = None
+) -> None:
+    """
+    Compiles the lifecycle index from local completed queues.
+    Mandate: Sync 'queues/' before running.
+    """
+    if not campaign_name:
+        campaign_name = get_campaign()
+    if not campaign_name:
+        console.print("[bold red]Error: No campaign specified.[/bold red]")
+        raise typer.Exit(1)
+
+    try:
+        from ...application.campaign_service import CampaignService
+        service = CampaignService(campaign_name)
+        count = service.compile_lifecycle_index()
+        console.print(f"[bold green]Successfully compiled lifecycle index with {count} records.[/bold green]")
+    except Exception as e:
+        console.print(f"[bold red]Error: {e}[/bold red]")
+        raise typer.Exit(1)

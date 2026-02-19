@@ -1,5 +1,6 @@
 import logging
 import asyncio
+from datetime import datetime
 from typing import List, TYPE_CHECKING, cast, Dict, Any, Optional
 
 from textual.containers import Container
@@ -323,5 +324,24 @@ class CompanyList(Container):
                 company.city = item.city
             if not company.state:
                 company.state = item.state
+            
+            # Map lifecycle fields
+            if not company.list_found_at and item.list_found_at:
+                try:
+                    company.list_found_at = datetime.fromisoformat(item.list_found_at)
+                except (ValueError, TypeError):
+                    pass
+            
+            if not company.details_found_at and item.details_found_at:
+                try:
+                    company.details_found_at = datetime.fromisoformat(item.details_found_at)
+                except (ValueError, TypeError):
+                    pass
+
+            if not company.last_enriched and item.last_enriched:
+                try:
+                    company.last_enriched = datetime.fromisoformat(item.last_enriched)
+                except (ValueError, TypeError):
+                    pass
 
             self.post_message(self.CompanyHighlighted(company))

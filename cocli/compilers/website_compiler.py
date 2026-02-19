@@ -1,4 +1,5 @@
 import json
+import logging
 from pathlib import Path
 from datetime import datetime, UTC
 from typing import List, Any, Dict
@@ -10,6 +11,7 @@ from ..models.company import Company
 from ..models.website import Website
 from ..core.utils import create_company_files
 
+logger = logging.getLogger(__name__)
 console = Console()
 
 class WebsiteCompiler(BaseCompiler):
@@ -100,6 +102,20 @@ class WebsiteCompiler(BaseCompiler):
 
         updated = False
         
+        # Name Safeguard
+        if website_data.company_name and website_data.company_name != company.name:
+            # Only overwrite if current name looks like a slug/domain
+            is_weak_name = (company.name == company.slug or (company.domain and company.name == company.domain))
+            
+            # AND new name must not be a generic SEO junk title
+            junk_keywords = ["home", "homepage", "fee only", "advisor", "financial", "near me", "independent"]
+            is_new_name_junk = any(jk in website_data.company_name.lower() for jk in junk_keywords) and len(website_data.company_name.split()) > 5
+            
+            if is_weak_name and not is_new_name_junk:
+                logger.info(f"Updating name for {company.slug}: {company.name} -> {website_data.company_name}")
+                company.name = website_data.company_name
+                updated = True
+
         # Phone
         if website_data.phone and not company.phone_number:
             company.phone_number = website_data.phone

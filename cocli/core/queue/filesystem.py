@@ -605,6 +605,11 @@ class FilesystemGmListQueue(FilesystemQueue):
                 csv_path = Path(root) / file
                 task_id = str(csv_path.relative_to(self.target_tiles_dir))
                 
+                # OMAP Violation Check: Detect deep legacy paths (more than 3 parts: lat/lon/phrase)
+                if len(task_id.split(os.sep)) > 3:
+                    logger.warning(f"DEPRECATED PATH DETECTED: {task_id}. Please run scripts/cleanup_queue_paths.py")
+                    continue
+
                 # Check witness (both .csv and .usv)
                 witness_csv = self.witness_dir / Path(task_id).with_suffix(".csv")
                 witness_usv = self.witness_dir / Path(task_id).with_suffix(".usv")

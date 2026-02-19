@@ -27,3 +27,6 @@ class SearchResult(BaseModel):
     city: Optional[str] = None
     state: Optional[str] = None
     zip: Optional[str] = None
+    list_found_at: Optional[str] = None
+    details_found_at: Optional[str] = None
+    last_enriched: Optional[str] = None

@@ -37,9 +37,9 @@ class CompanySearchView(Container):
 
     def compose(self) -> ComposeResult:
         with Horizontal():
-            yield Container(self.template_list, id="search-templates-pane", classes="search-pane")
-            yield Container(self.company_list, id="search-companies-pane", classes="search-pane")
-            yield Container(self.company_preview, id="search-preview-pane", classes="search-pane")
+            yield self.template_list
+            yield self.company_list
+            yield self.company_preview
 
     @on(TemplateList.TemplateSelected)
     def on_template_selected(self, message: TemplateList.TemplateSelected) -> None:

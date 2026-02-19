@@ -105,6 +105,10 @@ class CampaignPaths(PathObject):
         return self._path / "exports"
 
     @property
+    def lifecycle(self) -> Path:
+        return self.indexes / "lifecycle" / "lifecycle.usv"
+
+    @property
     def config(self) -> Path:
         return self._path / "config.toml"
 

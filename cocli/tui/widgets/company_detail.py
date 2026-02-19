@@ -40,6 +40,12 @@ def format_phone_display(value: Any) -> Union[Text, str]:
         pass
     return str(value)
 
+def format_email_display(value: Any) -> Union[Text, str]:
+    """Helper to consistently format email addresses for display."""
+    if not value:
+        return ""
+    return Text(str(value), style="cyan")
+
 class QuadrantTable(DataTable[Any]):
     """
     A specialized DataTable for quadrants that supports VIM keys 
@@ -549,7 +555,7 @@ class CompanyDetail(Container):
 
         self.info_table.add_row("Name", escape(str(c.get("name", "Unknown"))))
         self.info_table.add_row("Domain", escape(str(c.get("domain") or "")))
-        self.info_table.add_row("Email", escape(str(c.get("email") or "")))
+        self.info_table.add_row("Email", format_email_display(c.get("email")))
         self.info_table.add_row("Phone", format_phone_display(c.get("phone_number")))
         
         rating = c.get("average_rating")
@@ -562,6 +568,17 @@ class CompanyDetail(Container):
         self.info_table.add_row("City", escape(str(c.get("city") or "")))
         self.info_table.add_row("State", escape(str(c.get("state") or "")))
         self.info_table.add_row("Zip", escape(str(c.get("zip_code") or "")))
+
+        # Lifecycle
+        scraped_at = c.get("list_found_at")
+        if scraped_at:
+            dt = datetime.fromisoformat(scraped_at) if isinstance(scraped_at, str) else scraped_at
+            self.info_table.add_row("Scraped", dt.strftime("%Y-%m-%d"))
+        
+        details_at = c.get("details_found_at")
+        if details_at:
+            dt = datetime.fromisoformat(details_at) if isinstance(details_at, str) else details_at
+            self.info_table.add_row("Details", dt.strftime("%Y-%m-%d"))
 
         if enrichment_mtime:
             dt = datetime.fromisoformat(enrichment_mtime)

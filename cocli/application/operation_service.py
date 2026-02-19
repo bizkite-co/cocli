@@ -69,6 +69,11 @@ class OperationService:
                 "Merges WAL files from S3 into the local checkpoint USV.", 
                 "maintenance"
             ),
+            "op_compile_lifecycle": OperationMetadata(
+                "op_compile_lifecycle", "Compile Lifecycle", 
+                "Builds the lifecycle index (scrape/detail dates) from local queues.", 
+                "maintenance"
+            ),
             "op_push_queue": OperationMetadata(
                 "op_push_queue", "Push Local Queue", 
                 "Uploads locally generated enrichment tasks to S3.", 
@@ -115,6 +120,9 @@ class OperationService:
                 result = await asyncio.to_thread(self.services.data_sync_service.sync_indexes)
             elif op_id == "op_compact_index":
                 result = await asyncio.to_thread(self.services.data_sync_service.compact_index)
+            elif op_id == "op_compile_lifecycle":
+                count = await asyncio.to_thread(self.services.campaign_service.compile_lifecycle_index)
+                result = {"records_indexed": count}
             elif op_id == "op_push_queue":
                 result = await asyncio.to_thread(self.services.data_sync_service.push_queue)
             elif op_id == "op_audit_integrity":

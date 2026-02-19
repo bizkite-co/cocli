@@ -83,6 +83,7 @@ class ApplicationView(Container):
                         # Maintenance
                         ListItem(Label("[dim]--- Maintenance ---[/dim]"), disabled=True),
                         ListItem(Label("Compact Index"), id="op_compact_index"),
+                        ListItem(Label("Compile Lifecycle"), id="op_compile_lifecycle"),
                         ListItem(Label("Push Local Queue"), id="op_push_queue"),
                         ListItem(Label("Audit Integrity"), id="op_audit_integrity"),
                         ListItem(Label("Audit Queue"), id="op_audit_queue"),

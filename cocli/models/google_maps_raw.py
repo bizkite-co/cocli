@@ -51,3 +51,5 @@ class GoogleMapsRawResult(BaseModel):
     Reviews: Optional[str] = None
     Quotes: Optional[str] = None
     processed_by: Optional[str] = None
+    created_at: Optional[str] = None
+    updated_at: Optional[str] = None

@@ -296,3 +296,11 @@ class CampaignService:
 
     def _save_config(self, config: Dict[str, Any]) -> None:
         self.save_config(config)
+
+    def compile_lifecycle_index(self) -> int:
+        """
+        Compiles the lifecycle index for this campaign.
+        """
+        from ..core.lifecycle_manager import LifecycleManager
+        manager = LifecycleManager(self.campaign_name)
+        return manager.compile()

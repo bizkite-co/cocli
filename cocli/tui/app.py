@@ -83,6 +83,7 @@ class CocliApp(App[None]):
         Binding("meta+s", "navigate_up", "Navigate Up", show=False),
         ("[", "focus_sidebar", "Focus Sidebar"),
         ("]", "focus_content", "Focus Content"),
+        ("t", "focus_templates", "Templates"),
     ]
 
     leader_mode: bool = False
@@ -111,6 +112,11 @@ class CocliApp(App[None]):
             ),
             CompanyList: NavNode(
                 widget_class=CompanyList,
+                model_type="companies",
+                is_branch_root=True
+            ),
+            CompanySearchView: NavNode(
+                widget_class=CompanySearchView,
                 model_type="companies",
                 is_branch_root=True
             ),
@@ -241,7 +247,12 @@ class CocliApp(App[None]):
             try:
                 widget = self.query_one(target_node.widget_class)
                 tui_debug_log(f"APP: Already at root {target_node.widget_class.__name__}, resetting view")
-                if hasattr(widget, "action_reset_view"):
+                
+                # SPECIAL CASE: CompanySearchView. Navigate Up should focus Templates if we are in Search
+                if isinstance(widget, CompanySearchView):
+                    tui_debug_log("APP: Focus Templates in CompanySearchView")
+                    widget.action_focus_template()
+                elif hasattr(widget, "action_reset_view"):
                     widget.action_reset_view()
                 elif hasattr(widget, "action_focus_sidebar"):
                     widget.action_focus_sidebar()
@@ -303,9 +314,9 @@ class CocliApp(App[None]):
         self.menu_bar.set_active("companies")
         self.main_content.remove_children()
         
-        template_list = TemplateList()
-        company_list = CompanyList()
-        company_preview = CompanyPreview(Static("Select a company to see details."), id="company-preview")
+        template_list = TemplateList(id="search-templates-pane", classes="search-pane")
+        company_list = CompanyList(id="search-companies-pane", classes="search-pane")
+        company_preview = CompanyPreview(Static("Select a company to see details."), id="search-preview-pane", classes="search-pane")
         
         self.main_content.mount(
             CompanySearchView(
@@ -314,6 +325,13 @@ class CocliApp(App[None]):
                 company_preview=company_preview
             )
         )
+
+    def action_focus_templates(self) -> None:
+        """Focus the template list in search view."""
+        for search_view in self.query(CompanySearchView):
+            if search_view.visible:
+                search_view.action_focus_template()
+                return
 
     def action_show_people(self) -> None:
         """Show the person list view."""
