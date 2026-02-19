@@ -5,7 +5,6 @@ import datetime
 from ..models.company import Company
 from ..models.person import Person
 from ..models.note import Note
-from ..core.config import get_companies_dir
 from ..core.website_cache import WebsiteCache # Corrected import
 
 from ..models.website import Website
@@ -100,21 +99,22 @@ def get_company_details_for_view(company_slug: str) -> Optional[Dict[str, Any]]:
         A dictionary containing company details, contacts, meetings, notes,
         and website data, or None if the company is not found.
     """
-    companies_dir = get_companies_dir()
-    selected_company_dir = companies_dir / company_slug
+    from ..core.paths import paths
+    
+    entry = paths.companies.entry(company_slug)
 
-    if not selected_company_dir.exists():
+    if not entry.exists():
         return None
 
-    company = Company.from_directory(selected_company_dir)
+    company = Company.from_directory(entry.path)
     if not company:
         return None
 
-    index_path = selected_company_dir / "_index.md"
-    tags_path = selected_company_dir / "tags.lst"
-    meetings_dir = selected_company_dir / "meetings"
-    contacts_dir = selected_company_dir / "contacts"
-    notes_dir = selected_company_dir / "notes"
+    index_path = entry.index
+    tags_path = entry.tags
+    meetings_dir = entry / "meetings"
+    contacts_dir = entry / "contacts"
+    notes_dir = entry / "notes"
 
     # Load tags
     tags = []
@@ -131,7 +131,7 @@ def get_company_details_for_view(company_slug: str) -> Optional[Dict[str, Any]]:
             content = file_content
 
     # Load website data (enrichment)
-    enrichment_path = selected_company_dir / "enrichments" / "website.md"
+    enrichment_path = entry.enrichment("website")
     enrichment_mtime = None
     if enrichment_path.exists():
         enrichment_mtime = datetime.datetime.fromtimestamp(enrichment_path.stat().st_mtime, tz=datetime.timezone.utc)

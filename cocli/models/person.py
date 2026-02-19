@@ -38,7 +38,7 @@ class Person(BaseModel):
 
     def get_local_path(self) -> Path:
         """Returns the path to the person directory: data/people/{slug}/"""
-        return paths.people.entry(self.slug)
+        return paths.people.entry(self.slug).path
 
     def get_remote_key(self) -> str:
         """Returns the S3 prefix: people/{slug}/"""
@@ -64,17 +64,18 @@ class Person(BaseModel):
     @classmethod
     def get(cls, slug: str) -> Optional["Person"]:
         """Retrieves a single person by their slug."""
-        person_dir = paths.people.entry(slug)
-        if person_dir.is_dir():
-            return cls.from_directory(person_dir)
+        entry = paths.people.entry(slug)
+        if entry.is_dir():
+            return cls.from_directory(entry.path)
         return None
 
     @classmethod
     def from_directory(cls, person_dir: Path) -> Optional["Person"]:
         """Loads a person from a directory by looking for the first .md file."""
-        for person_file in person_dir.glob("*.md"):
+        entry = paths.people.entry(person_dir)
+        for person_file in entry.path.glob("*.md"):
             # Use the directory name as the slug
-            return cls.from_file(person_file, person_dir.name)
+            return cls.from_file(person_file, entry.path.name)
         return None
 
     @classmethod
@@ -113,7 +114,7 @@ class Person(BaseModel):
             if base_dir:
                 person_dir = base_dir / self.slug
             else:
-                person_dir = paths.people.entry(self.slug)
+                person_dir = paths.people.entry(self.slug).path
             
             person_dir.mkdir(parents=True, exist_ok=True)
             from ..core.text_utils import slugify

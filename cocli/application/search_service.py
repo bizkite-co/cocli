@@ -6,7 +6,7 @@ import threading
 import json
 from typing import List, Optional, Any, cast, Dict
 from cocli.core.cache import get_cached_items, get_cache_path
-from cocli.core.config import get_campaign, get_cocli_base_dir
+from cocli.core.config import get_campaign
 from cocli.core.exclusions import ExclusionManager
 from cocli.models.search import SearchResult
 
@@ -160,11 +160,17 @@ def get_fuzzy_search_results(
     """
     global _con, _last_cache_mtime, _last_checkpoint_mtime, _last_campaign
     
+    from cocli.core.paths import paths
+
     with _lock:
         start_total = time.perf_counter()
         campaign = campaign_name or get_campaign()
         cache_path = get_cache_path(campaign=campaign)
-        checkpoint_path = get_cocli_base_dir() / "campaigns" / campaign / "indexes" / "google_maps_prospects" / "prospects.checkpoint.usv" if campaign else None
+        
+        # Use hierarchical paths authority
+        checkpoint_path = None
+        if campaign:
+            checkpoint_path = paths.campaign(campaign).index("google_maps_prospects").checkpoint
         
         # 1. Ensure JSON cache exists (for people and tags)
         if not cache_path.exists() or force_rebuild_cache:

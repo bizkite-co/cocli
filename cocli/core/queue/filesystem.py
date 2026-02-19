@@ -775,17 +775,17 @@ class FilesystemEnrichmentQueue(FilesystemQueue):
     def _get_s3_lease_key(self, task_id: str) -> str:
         from ...models.campaigns.queue.enrichment import EnrichmentTask
         # task_id is domain. Use model_construct to avoid validation for path-only objects
-        return EnrichmentTask.model_construct(
+        return str(EnrichmentTask.model_construct(
             domain=task_id, 
             campaign_name=self.campaign_name
-        ).get_s3_lease_key()
+        ).get_s3_lease_key())
 
     def _get_s3_task_key(self, task_id: str) -> str:
         from ...models.campaigns.queue.enrichment import EnrichmentTask
-        return EnrichmentTask.model_construct(
+        return str(EnrichmentTask.model_construct(
             domain=task_id, 
             campaign_name=self.campaign_name
-        ).get_s3_task_key()
+        ).get_s3_task_key())
 
     def push(self, message: Union[QueueMessage, Any]) -> str: # type: ignore
         from ...models.campaigns.queue.enrichment import EnrichmentTask
@@ -807,7 +807,7 @@ class FilesystemEnrichmentQueue(FilesystemQueue):
                 # Use the model's own path resolution logic
                 task_dir = self._get_task_dir(task_id) # Uses _get_shard internally
                 task_file = task_dir / "task.json"
-                s3_key = task.get_s3_task_key()
+                s3_key = str(task.get_s3_task_key())
                 
                 self.s3_client.upload_file(str(task_file), self.bucket_name, s3_key)
                 logger.debug(f"Pushed Enrichment task {task_id} to S3 shard {shard}")
@@ -840,7 +840,7 @@ class FilesystemEnrichmentQueue(FilesystemQueue):
             try:
                 # We need the task_id (domain) to find the completed path
                 t = EnrichmentTask.model_construct(domain=token, campaign_name=self.campaign_name)
-                s3_completed_key = t.get_s3_task_key().replace("/pending/", "/completed/")
+                s3_completed_key = str(t.get_s3_task_key()).replace("/pending/", "/completed/")
                 
                 # Check if local completed file exists (from super().ack)
                 local_completed = self.completed_dir / f"{token}.json"

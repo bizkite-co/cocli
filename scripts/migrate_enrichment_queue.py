@@ -57,7 +57,7 @@ def migrate(
             queue.push(task)
             console.print("  [green]✅ Migrated to S3[/green]")
         else:
-            console.print(f"  [yellow](Dry Run) Would push to s3://{bucket}/{task.get_s3_task_key()}[/yellow]")
+            console.print(f"  [yellow](Dry Run) Would push to s3://{bucket}/{str(task.get_s3_task_key())}[/yellow]")
 
 if __name__ == "__main__":
     app()

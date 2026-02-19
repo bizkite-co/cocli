@@ -2,7 +2,8 @@ import json
 from pathlib import Path
 from typing import List, Dict, Optional, ClassVar
 from pydantic import BaseModel
-from cocli.core.config import get_campaign_dir
+from cocli.core.paths import paths
+from cocli.core.ordinant import IndexName, get_shard
 
 class BaseIndexModel(BaseModel):
     """
@@ -16,11 +17,32 @@ class BaseIndexModel(BaseModel):
     @classmethod
     def get_index_dir(cls, campaign_name: str) -> Path:
         """Returns the absolute path to this index for a specific campaign."""
-        campaign_dir = get_campaign_dir(campaign_name)
-        if not campaign_dir:
-            from ..core.config import get_campaigns_dir
-            campaign_dir = get_campaigns_dir() / campaign_name
-        return campaign_dir / "indexes" / cls.INDEX_NAME
+        return paths.campaign(campaign_name).index(cls.INDEX_NAME).path
+
+    @property
+    def collection(self) -> IndexName:
+        return self.INDEX_NAME
+
+    def get_shard_id(self) -> str:
+        # Most indexes shard by place_id if available
+        identifier = getattr(self, "place_id", None) or getattr(self, "slug", "")
+        return get_shard(str(identifier), strategy="place_id")
+
+    def get_local_path(self, campaign_name: str) -> Path:
+        """Returns the path to the individual record file (sharded)."""
+        # Note: Index records are typically sharded USV files.
+        # This implementation assumes the record is stored in a campaign index.
+        index_path = self.get_index_dir(campaign_name)
+        shard_id = self.get_shard_id()
+        # Identity is usually place_id or slug
+        identity = getattr(self, "place_id", None) or getattr(self, "company_slug", None) or getattr(self, "slug", "unknown")
+        return index_path / shard_id / f"{identity}.usv"
+
+    def get_remote_key(self, campaign_name: str) -> str:
+        """Returns the S3 key for this index record."""
+        shard_id = self.get_shard_id()
+        identity = getattr(self, "place_id", None) or getattr(self, "company_slug", None) or getattr(self, "slug", "unknown")
+        return f"campaigns/{campaign_name}/indexes/{self.INDEX_NAME}/{shard_id}/{identity}.usv"
 
     @classmethod
     def get_datapackage_fields(cls) -> List[Dict[str, str]]:

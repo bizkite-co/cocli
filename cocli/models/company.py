@@ -52,7 +52,7 @@ class Company(BaseModel):
 
     def get_local_path(self) -> Path:
         """Returns the path to the company directory: data/companies/{slug}/"""
-        return paths.companies.entry(self.slug)
+        return paths.companies.entry(self.slug).path
 
     def get_remote_key(self) -> str:
         """Returns the S3 prefix: companies/{slug}/"""
@@ -155,9 +155,9 @@ class Company(BaseModel):
     @classmethod
     def get(cls, slug: str) -> Optional["Company"]:
         """Retrieves a single company by its slug."""
-        company_dir = paths.companies.entry(slug)
-        if company_dir.is_dir():
-            return cls.from_directory(company_dir)
+        entry = paths.companies.entry(slug)
+        if entry.is_dir():
+            return cls.from_directory(entry.path)
         return None
 
     @classmethod
@@ -165,8 +165,9 @@ class Company(BaseModel):
         logger = logging.getLogger(__name__)
         # logger.debug(f"Starting from_directory for {company_dir}")
         try:
-            index_path = company_dir / "_index.md"
-            tags_path = company_dir / "tags.lst"
+            entry = paths.companies.entry(company_dir)
+            index_path = entry.index
+            tags_path = entry.tags
 
             if not index_path.exists():
                 logger.warning(f"Skipping {company_dir.name}: _index.md not found.") # More explicit message
@@ -317,27 +318,18 @@ class Company(BaseModel):
     def save(self, email_sync: bool = True, base_dir: Optional[Path] = None, use_wal: bool = True) -> None:
         """Saves the company data to _index.md and tags to tags.lst."""
         if base_dir:
+            entry = paths.companies.entry(self.slug)
+            # Override for bulk operations
             company_dir = base_dir / self.slug
+            index_path = company_dir / "_index.md"
+            tags_path = company_dir / "tags.lst"
         else:
-            company_dir = paths.companies.entry(self.slug)
+            entry = paths.companies.entry(self.slug)
+            company_dir = entry.path
+            index_path = entry.index
+            tags_path = entry.tags
         
         company_dir.mkdir(parents=True, exist_ok=True)
-
-        if use_wal:
-            from cocli.core.wal import append_update
-            # We determine what changed by comparing with on-disk state
-            # For now, we will just log all fields to the WAL if it is a fresh save
-            # In a more optimized version, we'd only log dirty fields.
-            data = self.model_dump(mode="json", exclude_none=True)
-            for field, value in data.items():
-                if field not in ["slug", "description"]:
-                    append_update(company_dir, field, value)
-            
-            # If it's a WAL save, we might skip the full index rewrite if we want true distributed semantics
-            # but for local parity we'll do both for now until compaction is solid.
-        
-        index_path = company_dir / "_index.md"
-        tags_path = company_dir / "tags.lst"
         
         # 1. Update tags.lst (Primary Source of Truth)
         if self.tags:
@@ -376,7 +368,7 @@ class Company(BaseModel):
                             emails_to_sync.add(e)
                     
                     for email_str in emails_to_sync:
-                        entry = EmailEntry(
+                        email_entry = EmailEntry(
                             email=email_str,
                             domain=self.domain or "unknown",
                             company_slug=self.slug,
@@ -384,6 +376,6 @@ class Company(BaseModel):
                             found_at=datetime.now(UTC),
                             tags=self.tags
                         )
-                        index_manager.add_email(entry)
+                        index_manager.add_email(email_entry)
                 except Exception as e:
                     logger.error(f"Error syncing emails to index for {self.slug}: {e}")

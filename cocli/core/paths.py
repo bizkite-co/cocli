@@ -37,6 +37,10 @@ class PathObject:
     def __init__(self, path: Path):
         self._path = path
 
+    @property
+    def path(self) -> Path:
+        return self._path
+
     def ensure(self) -> Path:
         """Creates the directory if it doesn't exist and returns the Path."""
         self._path.mkdir(parents=True, exist_ok=True)
@@ -57,10 +61,6 @@ class PathObject:
 
     def is_dir(self) -> bool:
         return self._path.is_dir()
-
-    @property
-    def path(self) -> Path:
-        return self._path
 
 class QueuePaths(PathObject):
     def state(self, folder: StateFolder) -> Path:
@@ -105,12 +105,42 @@ class CampaignPaths(PathObject):
         return self._path / "exports"
 
     @property
-    def config_file(self) -> Path:
+    def config(self) -> Path:
         return self._path / "config.toml"
 
+    @property
+    def config_file(self) -> Path:
+        # Legacy alias
+        return self.config
+
+class EntryPaths(PathObject):
+    @property
+    def index(self) -> Path:
+        return self._path / "_index.md"
+
+    @property
+    def tags(self) -> Path:
+        return self._path / "tags.lst"
+
+    @property
+    def enrichments(self) -> Path:
+        return self._path / "enrichments"
+    
+    def enrichment(self, name: str) -> Path:
+        if not name.endswith(".md") and not name.endswith(".html"):
+            name = f"{name}.md"
+        return self.enrichments / name
+
+    def meeting(self, filename: str) -> Path:
+        if not filename.endswith(".md"):
+            filename = f"{filename}.md"
+        return self._path / "meetings" / filename
+
 class CollectionPaths(PathObject):
-    def entry(self, slug: str) -> Path:
-        return self._path / slug
+    def entry(self, slug_or_path: str | Path) -> EntryPaths:
+        if isinstance(slug_or_path, Path):
+            return EntryPaths(slug_or_path)
+        return EntryPaths(self._path / slug_or_path)
 
 class WalPaths(PathObject):
     @property

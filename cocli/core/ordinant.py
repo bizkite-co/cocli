@@ -5,20 +5,20 @@ import hashlib
 # --- The Known Universe (Literals) ---
 
 # Top-level global collections
-CollectionName = Literal["companies", "people", "wal"]
+CollectionName = Literal["companies", "people", "wal", "tasks"]
 
 # Campaign-specific sharded indexes
 IndexName = Union[Literal["google_maps_prospects", "target-tiles", "domains", "emails"], str]
 
 # Campaign-specific task queues
-QueueName = Union[Literal["enrichment", "gm-details", "gm-list"], str]
+QueueName = Union[Literal["enrichment", "gm-details", "gm-list", "gm-scrape"], str]
 
 # Standardized folder names for Queues/WAL
 StateFolder = Literal["pending", "completed", "sideline", "inbox", "processing"]
 
 # --- Deterministic Sharding ---
 
-def get_shard(identifier: str, strategy: Literal["place_id", "domain", "geo", "none"] = "place_id") -> str:
+def get_shard(identifier: str, strategy: Literal["place_id", "domain", "geo", "geo_tile", "none"] = "place_id") -> str:
     """
     Standardized sharding logic for all Ordinant models.
     """
@@ -39,6 +39,15 @@ def get_shard(identifier: str, strategy: Literal["place_id", "domain", "geo", "n
     elif strategy == "geo":
         # Returns the first character of the latitude (e.g., '3', '4', '-')
         return identifier.strip()[0] if identifier.strip() else "_"
+
+    elif strategy == "geo_tile":
+        # For ScrapeTasks: Shard by latitude prefix (e.g., '32', '33', '40')
+        # We take the integer part of the latitude.
+        try:
+            val = float(identifier)
+            return str(int(val))
+        except (ValueError, TypeError):
+            return identifier.strip()[0] if identifier.strip() else "_"
         
     return "" # No sharding
 
