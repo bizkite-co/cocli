@@ -297,13 +297,14 @@ class CampaignService:
     def _save_config(self, config: Dict[str, Any]) -> None:
         self.save_config(config)
 
-    def compile_lifecycle_index(self) -> int:
+    def compile_lifecycle_index(self) -> Any:
         """
         Compiles the lifecycle index for this campaign.
+        Yields progress updates.
         """
         from ..core.lifecycle_manager import LifecycleManager
         manager = LifecycleManager(self.campaign_name)
-        return manager.compile()
+        yield from manager.compile()
 
     def restore_names_from_index(self, dry_run: bool = False) -> Any:
         """

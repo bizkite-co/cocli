@@ -94,7 +94,7 @@ class DataSyncService:
     def compact_index(self) -> Dict[str, Any]:
         """Runs the index compaction script (WAL -> Checkpoint)."""
         try:
-            # We use the existing script for now
+            # Pass campaign name explicitly
             res = subprocess.run(
                 ["python3", "scripts/compact_shards.py", self.campaign_name],
                 capture_output=True, text=True

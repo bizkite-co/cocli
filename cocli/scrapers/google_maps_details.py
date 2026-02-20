@@ -36,10 +36,18 @@ async def scrape_google_maps_details(
         from cocli.models.google_maps_raw import GoogleMapsRawResult
         
         # Merge parsed data with provided fallbacks
-        final_name = details_dict.get("Name") or name
+        final_name = details_dict.get("Name")
+        
+        # IDENTITY SHIELD: Reject SEO junk or generic recovery names
+        if not final_name or final_name.lower() in ["home", "homepage", "home page"]:
+            # Only use the provided 'name' if it's not a generic recovery title
+            if name and "recovery task" not in name.lower() and name.lower() not in ["home", "homepage"]:
+                final_name = name
+            else:
+                final_name = None
         
         if not final_name:
-            logger.error(f"IDENTITY SHIELD: No name found for {place_id} and no fallback provided. Blocking save.")
+            logger.error(f"IDENTITY SHIELD: No valid name found for {place_id} (Scraped: {details_dict.get('Name')}, Fallback: {name}). Blocking save.")
             return None
 
         raw_result = GoogleMapsRawResult(

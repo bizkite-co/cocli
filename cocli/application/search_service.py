@@ -216,11 +216,11 @@ def get_fuzzy_search_results(
                     "CAST(NULL AS VARCHAR) as list_found_at, " +
                     "CAST(NULL AS VARCHAR) as details_found_at, " +
                     "CAST(NULL AS VARCHAR) as last_enriched, " +
-                    "CAST(NULL AS VARCHAR) as place_id, " +
+                    "CAST(i.place_id AS VARCHAR) as place_id, " +
                     "1 as priority FROM (SELECT unnest(items) as i FROM read_json('" + str(cache_path) + "', " +
-                    "columns={'items': 'STRUCT(\"type\" VARCHAR, \"name\" VARCHAR, \"slug\" VARCHAR, \"domain\" VARCHAR, \"email\" VARCHAR, \"phone_number\" VARCHAR, \"tags\" VARCHAR[], \"display\" VARCHAR, \"average_rating\" DOUBLE, \"reviews_count\" INTEGER, \"street_address\" VARCHAR, \"city\" VARCHAR, \"state\" VARCHAR, \"zip\" VARCHAR)[]'}))")
+                    "columns={'items': 'STRUCT(\"type\" VARCHAR, \"name\" VARCHAR, \"slug\" VARCHAR, \"domain\" VARCHAR, \"email\" VARCHAR, \"phone_number\" VARCHAR, \"tags\" VARCHAR[], \"display\" VARCHAR, \"average_rating\" DOUBLE, \"reviews_count\" INTEGER, \"street_address\" VARCHAR, \"city\" VARCHAR, \"state\" VARCHAR, \"zip\" VARCHAR, \"place_id\" VARCHAR)[]'}))")
 
-                # B. Load USV Checkpoint - FORCE PARSING PARAMS to bypass sniffer
+                # B. Load USV Checkpoint
                 if checkpoint_path and checkpoint_path.exists():
                     _con.execute("CREATE TABLE items_checkpoint AS SELECT 'company' as type, name, company_slug as slug, domain, CAST(NULL AS VARCHAR) as email, phone as phone_number, list_filter([keyword], x -> x IS NOT NULL) as tags, name as display, updated_at as last_modified, average_rating, reviews_count, street_address, city, state, zip, created_at as list_found_at, updated_at as details_found_at, CAST(NULL AS VARCHAR) as last_enriched, place_id, 0 as priority FROM read_csv('" + str(checkpoint_path) + "', delim='\\x1f', header=False, quote='', escape='', auto_detect=false, columns=" + json.dumps(PROSPECT_COLUMNS) + ", ignore_errors=True)")
                 else:
@@ -232,7 +232,7 @@ def get_fuzzy_search_results(
                 else:
                     _con.execute("CREATE TABLE items_lifecycle (place_id VARCHAR, scraped_at VARCHAR, details_at VARCHAR, enriched_at VARCHAR)")
 
-                # D. Unified View
+                # D. Unified View - Join on PlaceID from EITHER source
                 _con.execute("CREATE VIEW items AS SELECT " +
                     "COALESCE(t1.type, t2.type) as type, " +
                     "COALESCE(t1.name, t2.name) as name, " +
@@ -253,7 +253,7 @@ def get_fuzzy_search_results(
                     "COALESCE(lc.details_at, t1.details_found_at, t2.details_found_at) as details_found_at, " +
                     "COALESCE(lc.enriched_at, t1.last_enriched, t2.last_enriched) as last_enriched " +
                     "FROM items_checkpoint t1 FULL OUTER JOIN items_cache t2 ON t1.slug = t2.slug AND t1.type = t2.type " +
-                    "LEFT JOIN items_lifecycle lc ON (t1.place_id = lc.place_id)")
+                    "LEFT JOIN items_lifecycle lc ON (COALESCE(t1.place_id, t2.place_id) = lc.place_id)")
 
                 _last_cache_mtime = current_cache_mtime
                 _last_checkpoint_mtime = current_checkpoint_mtime

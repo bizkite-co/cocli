@@ -126,8 +126,14 @@ class OperationService:
             elif op_id == "op_compact_index":
                 result = await asyncio.to_thread(self.services.data_sync_service.compact_index)
             elif op_id == "op_compile_lifecycle":
-                count = await asyncio.to_thread(self.services.campaign_service.compile_lifecycle_index)
-                result = {"records_indexed": count}
+                def run_compile() -> Dict[str, Any]:
+                    gen = self.services.campaign_service.compile_lifecycle_index()
+                    count = 0
+                    for update in gen:
+                        if not isinstance(update, dict):
+                            count = update
+                    return {"records_indexed": count}
+                result = await asyncio.to_thread(run_compile)
             elif op_id == "op_restore_names":
                 def run_restore() -> Dict[str, Any]:
                     gen = self.services.campaign_service.restore_names_from_index()

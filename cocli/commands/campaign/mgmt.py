@@ -376,9 +376,36 @@ def compile_lifecycle(
 
     try:
         from ...application.campaign_service import CampaignService
+        from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, TaskProgressColumn
+        
         service = CampaignService(campaign_name)
-        count = service.compile_lifecycle_index()
-        console.print(f"[bold green]Successfully compiled lifecycle index with {count} records.[/bold green]")
+        
+        with Progress(
+            SpinnerColumn(),
+            TextColumn("[progress.description]{task.description}"),
+            BarColumn(),
+            TaskProgressColumn(),
+            TextColumn("[dim]{task.fields[label]}"),
+            console=console
+        ) as progress:
+            task = progress.add_task("Compiling lifecycle index...", total=None, label="")
+            
+            generator = service.compile_lifecycle_index()
+            final_count = 0
+            
+            for update in generator:
+                if isinstance(update, dict):
+                    progress.update(
+                        task, 
+                        description=f"Compiling: {update['phase']}", 
+                        total=update['total'], 
+                        completed=update['current'], 
+                        label=update['label']
+                    )
+                else:
+                    final_count = update
+                    
+        console.print(f"[bold green]Successfully compiled lifecycle index with {final_count} records.[/bold green]")
     except Exception as e:
         console.print(f"[bold red]Error: {e}[/bold red]")
         raise typer.Exit(1)
