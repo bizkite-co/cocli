@@ -29,4 +29,5 @@ class SearchResult(BaseModel):
     zip: Optional[str] = None
     list_found_at: Optional[str] = None
     details_found_at: Optional[str] = None
+    enqueued_at: Optional[str] = None
     last_enriched: Optional[str] = None

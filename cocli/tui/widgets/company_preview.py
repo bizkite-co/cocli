@@ -42,8 +42,10 @@ class CompanyPreview(Container):
         
         if company.last_enriched:
             enriched_str = f"[bold green]{company.last_enriched.strftime('%Y-%m-%d')}[/]"
+        elif hasattr(company, "_enqueued_at") and getattr(company, "_enqueued_at"):
+            enriched_str = "[bold yellow]Enqueued[/]"
         else:
-            enriched_str = "[bold yellow]No[/]"
+            enriched_str = "No"
 
         content.mount(
             Static(f"[b]Name:[/b] {escape(company.name)}"),
@@ -65,5 +67,4 @@ class CompanyPreview(Container):
             Static(f"[b]Details:[/b] {details_at}"),
             Static(f"[b]Enriched:[/b] {enriched_str}"),
             Static(f"[b]Tags:[/b] {escape(', '.join(company.tags))}"),
-            Static(f"\n[b]Description:[/b]\n{escape(str(company.description or ''))}"),
         )

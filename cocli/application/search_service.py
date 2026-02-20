@@ -186,7 +186,7 @@ def get_fuzzy_search_results(
                 if lifecycle_path and lifecycle_path.exists():
                     load_usv_to_duckdb(_con, "items_lifecycle", lifecycle_path, lifecycle_dir / "datapackage.json" if lifecycle_dir else None)
                 else:
-                    _con.execute("CREATE TABLE items_lifecycle (place_id VARCHAR, scraped_at VARCHAR, details_at VARCHAR, enriched_at VARCHAR)")
+                    _con.execute("CREATE TABLE items_lifecycle (place_id VARCHAR, scraped_at VARCHAR, details_at VARCHAR, enqueued_at VARCHAR, enriched_at VARCHAR)")
 
                 # D. Unified View - JOIN FIX
                 # Standardized utility now maps both tables to use 'slug', 'phone_number', and 'tags'.
@@ -214,6 +214,7 @@ def get_fuzzy_search_results(
                     "COALESCE(t1.zip, CAST(NULL AS VARCHAR)) as zip, " +
                     "COALESCE(lc.scraped_at, t1.created_at) as list_found_at, " +
                     "COALESCE(lc.details_at, t1.updated_at) as details_found_at, " +
+                    "COALESCE(lc.enqueued_at, CAST(NULL AS VARCHAR)) as enqueued_at, " +
                     "COALESCE(lc.enriched_at, CAST(NULL AS VARCHAR)) as last_enriched " +
                     f"FROM items_checkpoint t1 FULL OUTER JOIN items_cache t2 ON {t1_slug} = t2.slug " +
                     "LEFT JOIN items_lifecycle lc ON (COALESCE(t1.place_id, CAST(NULL AS VARCHAR)) = lc.place_id)")
@@ -226,7 +227,7 @@ def get_fuzzy_search_results(
             
             # 3. Build Query
             t0 = time.perf_counter()
-            sql = "SELECT type, name, slug, domain, email, phone_number, tags, display, average_rating, reviews_count, street_address, city, state, zip, list_found_at, details_found_at, last_enriched FROM items WHERE 1=1"
+            sql = "SELECT type, name, slug, domain, email, phone_number, tags, display, average_rating, reviews_count, street_address, city, state, zip, list_found_at, details_found_at, enqueued_at, last_enriched FROM items WHERE 1=1"
             params: List[Any] = []
 
             if item_type:
@@ -314,7 +315,8 @@ def get_fuzzy_search_results(
                 zip=str(r[13]) if r[13] else None,
                 list_found_at=str(r[14]) if r[14] else None,
                 details_found_at=str(r[15]) if r[15] else None,
-                last_enriched=str(r[16]) if r[16] else None
+                enqueued_at=str(r[16]) if r[16] else None,
+                last_enriched=str(r[17]) if r[17] else None
             ))
 
         logger.debug(f"Fuzzy search '{search_query}' took {time.perf_counter() - start_total:.4f}s (query={t_query:.4f}s)")

@@ -384,4 +384,7 @@ class CompanyList(Container):
                 except (ValueError, TypeError):
                     pass
 
+            # Transfer transient enqueued status for preview logic
+            setattr(company, "_enqueued_at", item.enqueued_at)
+
             self.post_message(self.CompanyHighlighted(company))

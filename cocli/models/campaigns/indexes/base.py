@@ -13,6 +13,7 @@ class BaseIndexModel(BaseModel):
     # Using ClassVar to ensure these are accessible via the class itself
     INDEX_NAME: ClassVar[str] = "base"
     SCHEMA_VERSION: ClassVar[str] = "1.0.0"
+    RESOURCE_PATH: ClassVar[Optional[str]] = None # Overridable
 
     @classmethod
     def get_index_dir(cls, campaign_name: str) -> Path:
@@ -74,6 +75,14 @@ class BaseIndexModel(BaseModel):
         index_dir.mkdir(parents=True, exist_ok=True)
         output_path = index_dir / "datapackage.json"
         
+        # Determine the data file path for the resource
+        if cls.RESOURCE_PATH:
+            res_path = cls.RESOURCE_PATH
+        elif cls.INDEX_NAME == "google_maps_prospects":
+            res_path = "prospects.checkpoint.usv"
+        else:
+            res_path = f"{cls.INDEX_NAME}.checkpoint.usv"
+
         schema = {
             "profile": "tabular-data-package",
             "name": cls.INDEX_NAME,
@@ -82,7 +91,7 @@ class BaseIndexModel(BaseModel):
             "resources": [
                 {
                     "name": cls.INDEX_NAME,
-                    "path": "prospects.checkpoint.usv" if cls.INDEX_NAME == "google_maps_prospects" else f"{cls.INDEX_NAME}.checkpoint.usv",
+                    "path": res_path,
                     "format": "usv",
                     "dialect": {"delimiter": "\u001f", "header": False},
                     "schema": {"fields": cls.get_datapackage_fields()}

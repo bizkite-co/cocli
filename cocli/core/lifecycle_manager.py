@@ -1,7 +1,7 @@
 import os
 import logging
 from pathlib import Path
-from typing import Dict, Any, Optional, Iterator
+from typing import Dict, Any, Iterator
 from datetime import datetime, UTC
 
 from .paths import paths
@@ -29,8 +29,81 @@ class LifecycleManager:
         """
         # place_id -> LifecycleItem
         lifecycle_data: Dict[str, LifecycleItem] = {}
+        
+        # Helper Map: slug -> place_id (built from company folders)
+        slug_to_pid: Dict[str, str] = {}
 
-        # 1. Scan gm-details completions
+        # 1. Build slug_to_pid and domain_to_pid maps from both company folders and checkpoint index
+        from .config import get_companies_dir
+        companies_root = get_companies_dir()
+        
+        # Mapping: slug -> place_id, domain -> place_id
+        slug_to_pid: Dict[str, str] = {}
+        domain_to_pid: Dict[str, str] = {}
+
+        entries = [e for e in os.scandir(companies_root) if e.is_dir()]
+        for i, entry in enumerate(entries):
+            slug = entry.name
+            maps_receipt = Path(entry.path) / "enrichments" / "google_maps.usv"
+            if maps_receipt.exists():
+                try:
+                    with open(maps_receipt, "r", encoding="utf-8") as rf:
+                        rf.readline() # skip header
+                        data_line = rf.readline()
+                        if data_line:
+                            parts = data_line.split(UNIT_SEP)
+                            if len(parts) > 0 and parts[0].startswith("ChIJ"):
+                                pid = parts[0]
+                                slug_to_pid[slug] = pid
+                                # domain is typically at index 21 in GoogleMapsProspect
+                                if len(parts) >= 22:
+                                    domain = parts[21].strip()
+                                    if domain:
+                                        domain_to_pid[domain] = pid
+
+                                if pid not in lifecycle_data:
+                                    lifecycle_data[pid] = LifecycleItem(
+                                        place_id=pid,
+                                        scraped_at=None,
+                                        details_at=None,
+                                        enqueued_at=None,
+                                        enriched_at=None
+                                    )
+                except Exception:
+                    pass
+            
+            if i % 1000 == 0:
+                yield {"phase": "Building Slug Map (Folders)", "current": i, "total": len(entries), "label": slug}
+
+        # 1b. Augmented mapping from Checkpoint Index
+        from .text_utils import extract_domain
+        checkpoint_path = self.campaign_path.index("google_maps_prospects").checkpoint
+        if checkpoint_path.exists():
+            try:
+                with open(checkpoint_path, "r", encoding="utf-8") as cf:
+                    for line in cf:
+                        parts = line.split(UNIT_SEP)
+                        if len(parts) >= 31:
+                            pid = parts[0].strip()
+                            slug = parts[1].strip()
+                            website = parts[20].strip()
+                            domain = extract_domain(website) if website else None
+                            
+                            if pid.startswith("ChIJ"):
+                                if slug: slug_to_pid[slug] = pid
+                                if domain: domain_to_pid[domain] = pid
+                                if pid not in lifecycle_data:
+                                    lifecycle_data[pid] = LifecycleItem(
+                                        place_id=pid,
+                                        scraped_at=None,
+                                        details_at=None,
+                                        enqueued_at=None,
+                                        enriched_at=None
+                                    )
+            except Exception as e:
+                logger.warning(f"Failed to scan checkpoint for slug mapping: {e}")
+
+        # 2. Scan gm-details completions
         details_dir = self.campaign_path.queue("gm-details").completed
         if details_dir.exists():
             files = list(details_dir.glob("*.json"))
@@ -44,6 +117,7 @@ class LifecycleManager:
                             place_id=place_id,
                             scraped_at=None,
                             details_at=None,
+                            enqueued_at=None,
                             enriched_at=None
                         )
                     lifecycle_data[place_id].details_at = mtime
@@ -51,7 +125,7 @@ class LifecycleManager:
                 if i % 1000 == 0:
                     yield {"phase": "Details Queue", "current": i, "total": total_files, "label": place_id}
 
-        # 2. Scan gm-list results
+        # 3. Scan gm-list results
         list_results_dir = self.campaign_path.queue("gm-list").completed / "results"
         if list_results_dir.exists():
             usv_files = list(list_results_dir.rglob("*.usv"))
@@ -72,6 +146,7 @@ class LifecycleManager:
                                             place_id=place_id,
                                             scraped_at=None,
                                             details_at=None,
+                                            enqueued_at=None,
                                             enriched_at=None
                                         )
                                     
@@ -89,66 +164,50 @@ class LifecycleManager:
                 if i % 500 == 0:
                     yield {"phase": "Scraped Results", "current": i, "total": total_usv, "label": f.name}
 
-        # 3. Scan Company folders
-        from .config import get_companies_dir
-        companies_root = get_companies_dir()
+        # 4. Scan Enrichment Queue (Pending)
+        enqueued_count = 0
+        enrichment_pending_dir = self.campaign_path.queue("enrichment").pending
+        if enrichment_pending_dir.exists():
+            # Pending tasks are in shard/domain/task.json
+            task_files = list(enrichment_pending_dir.rglob("task.json"))
+            total_tasks = len(task_files)
+            for i, f in enumerate(task_files):
+                # For enrichment queue, task_id is domain, parent folder is domain
+                domain = f.parent.name
+                if domain in domain_to_pid:
+                    pid = domain_to_pid[domain]
+                    mtime = datetime.fromtimestamp(f.stat().st_mtime, tz=UTC).strftime('%Y-%m-%d')
+                    if pid in lifecycle_data:
+                        lifecycle_data[pid].enqueued_at = mtime
+                        enqueued_count += 1
+                
+                if i % 500 == 0:
+                    yield {"phase": "Enrichment Queue", "current": i, "total": total_tasks, "label": domain}
         
-        entries = [e for e in os.scandir(companies_root) if e.is_dir()]
-        total_entries = len(entries)
+        logger.info(f"Populated enqueued_at for {enqueued_count} records.")
 
+        # 5. Final pass on Company folders for Enriched date and detailed check
         for i, entry in enumerate(entries):
             slug = entry.name
+            if slug not in slug_to_pid:
+                continue
+            
+            pid = slug_to_pid[slug]
             enrichments_dir = Path(entry.path) / "enrichments"
             
-            if i % 1000 == 0:
-                yield {"phase": "Company Folders", "current": i, "total": total_entries, "label": slug}
-
-            if not enrichments_dir.exists():
-                continue
-                
-            maps_receipt = enrichments_dir / "google_maps.usv"
-            receipt_pid: Optional[str] = None
-            if maps_receipt.exists():
-                try:
-                    with open(maps_receipt, "r", encoding="utf-8") as rf:
-                        rf.readline() # skip header
-                        data_line = rf.readline()
-                        if data_line:
-                            parts = data_line.split(UNIT_SEP)
-                            if len(parts) > 0 and parts[0].startswith("ChIJ"):
-                                receipt_pid = parts[0]
-                                mtime = datetime.fromtimestamp(maps_receipt.stat().st_mtime, tz=UTC).strftime('%Y-%m-%d')
-                                if receipt_pid not in lifecycle_data:
-                                    lifecycle_data[receipt_pid] = LifecycleItem(
-                                        place_id=receipt_pid,
-                                        scraped_at=None,
-                                        details_at=None,
-                                        enriched_at=None
-                                    )
-                                if not lifecycle_data[receipt_pid].details_at:
-                                    lifecycle_data[receipt_pid].details_at = mtime
-                except Exception:
-                    pass
-
             website_md = enrichments_dir / "website.md"
-            if website_md.exists() and receipt_pid:
+            if website_md.exists():
                 mtime = datetime.fromtimestamp(website_md.stat().st_mtime, tz=UTC).strftime('%Y-%m-%d')
-                if receipt_pid not in lifecycle_data:
-                    lifecycle_data[receipt_pid] = LifecycleItem(
-                        place_id=receipt_pid,
-                        scraped_at=None,
-                        details_at=None,
-                        enriched_at=None
-                    )
-                lifecycle_data[receipt_pid].enriched_at = mtime
+                if pid in lifecycle_data:
+                    lifecycle_data[pid].enriched_at = mtime
 
-        # 4. Write to USV and Save Datapackage
+        # 6. Write to USV and Save Datapackage
         self.index_dir.mkdir(parents=True, exist_ok=True)
         count = 0
         sorted_pids = sorted(lifecycle_data.keys())
         
         # Save the frictionless schema BEFORE writing data so search_service can find it if triggered
-        LifecycleItem.save_datapackage(self.index_dir)
+        LifecycleItem.write_datapackage(self.campaign_name)
 
         with open(self.index_path, "w", encoding="utf-8") as f_handle:
             for pid in sorted_pids:
