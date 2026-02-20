@@ -364,5 +364,10 @@ class ApplicationView(Container):
             detail = self.query_one("#campaign-detail", CampaignDetail)
             campaign = Campaign.load(message.campaign_name)
             detail.update_detail(campaign)
-        except Exception:
-            pass
+        except Exception as e:
+            logger.error(f"Failed to load campaign {message.campaign_name}: {e}")
+            try:
+                detail = self.query_one("#campaign-detail", CampaignDetail)
+                detail.display_error("Error Loading Campaign", f"Invalid Campaign: {message.campaign_name}\n\n{str(e)}")
+            except Exception:
+                pass

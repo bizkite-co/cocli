@@ -39,7 +39,6 @@ class CompanyList(Container):
 
     def __init__(self, name: str | None = None, id: str | None = None, classes: str | None = None):
         super().__init__(name=name, id=id, classes=classes)
-        self.can_focus = True
         self.filtered_fz_items: List[SearchResult] = []
         self.filter_contact: bool = True
         # DEFAULT TO MRU (Most Recently Updated)
@@ -174,6 +173,14 @@ class CompanyList(Container):
         if self.filter_contact and not search_filters.get("no_email"):
             search_filters["has_contact_info"] = True
 
+        # Visual feedback: Clear list and show loading while searching
+        try:
+            list_view = self.query_one("#company_list_view", ListView)
+            list_view.clear()
+            self.loading = True
+        except Exception:
+            pass
+
         if app.services.sync_search:
             # Synchronous search for tests
             results = app.services.fuzzy_search(
@@ -198,6 +205,13 @@ class CompanyList(Container):
         if self.filter_contact and not search_filters.get("no_email"):
             search_filters["has_contact_info"] = True
 
+        try:
+            list_view = self.query_one("#company_list_view", ListView)
+            list_view.clear()
+            self.loading = True
+        except Exception:
+            pass
+
         results = app.services.fuzzy_search(
             search_query=query, 
             item_type="company",
@@ -215,6 +229,12 @@ class CompanyList(Container):
         Runs the fuzzy search in a background thread to avoid blocking the UI.
         Exclusive=True ensures only the latest search task runs.
         """
+        # Ensure loading state is visible
+        try:
+            self.loading = True
+        except Exception:
+            pass
+
         await asyncio.sleep(0.1)
         
         try:
@@ -244,27 +264,31 @@ class CompanyList(Container):
             self.call_after_refresh(self.update_company_list_view)
         except Exception as e:
             logger.error(f"Search worker failed: {e}", exc_info=True)
+            self.loading = False
 
     def update_company_list_view(self) -> None:
         """Updates the ListView with filtered companies."""
+        self.loading = False
         try:
             list_view = self.query_one("#company_list_view", ListView)
             list_view.clear()
             
             new_items = []
-            for i, item in enumerate(self.filtered_fz_items):
+            for item in self.filtered_fz_items:
                 new_items.append(ListItem(Label(item.name), name=item.name))
             
-            list_view.extend(new_items)
-            if len(new_items) > 0:
-                # Ensure the index is set to 0. 
-                list_view.index = None
-                list_view.index = 0
+            if new_items:
+                list_view.mount_all(new_items)
                 
-                # Manually trigger highlight for the first item to update preview
-                item = self.filtered_fz_items[0]
-                if item.slug:
-                    self.debounce_highlight(item)
+                def select_first() -> None:
+                    list_view.index = 0
+                    # Manually trigger highlight for the first item to update preview
+                    if self.filtered_fz_items:
+                        item = self.filtered_fz_items[0]
+                        if item.slug:
+                            self.debounce_highlight(item)
+                
+                self.call_after_refresh(select_first)
             else:
                 list_view.index = None
         except Exception as e:

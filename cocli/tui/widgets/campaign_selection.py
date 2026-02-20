@@ -58,7 +58,7 @@ class CampaignSelection(Static):
             items = [CampaignListItem(name) for name in campaign_names]
             
             def populate() -> None:
-                list_view.extend(items)
+                list_view.mount_all(items)
                 if items:
                     list_view.index = 0
             
