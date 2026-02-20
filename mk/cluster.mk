@@ -7,7 +7,14 @@ REGISTRY_HOST ?= cocli5x1.pi
 # Resolve authorized nodes from global config
 CLUSTER_NODES = $(shell python3 -c "import toml; c = toml.load('data/config/cocli_config.toml'); nodes = c.get('cluster', {}).get('nodes', []); print(' '.join([n['host'] for n in nodes]))" 2>/dev/null)
 
-.PHONY: hotfix-cluster-safe log-rpi-all cluster-status setup-registry configure-cluster-registry configure-cluster-hosts
+.PHONY: hotfix-cluster-safe log-rpi-all cluster-status setup-registry configure-cluster-registry configure-cluster-hosts provision-cluster-tools
+
+provision-cluster-tools: ## Install mise, zoxide, and nvim fork across the cluster
+	@for node in $(CLUSTER_NODES); do \
+		printf "\033[1;34m--- Provisioning Tools: %s ---\033[0m\n" "$$node"; \
+		scp scripts/provision_pi_tools.sh $(RPI_USER)@$$node:/tmp/; \
+		ssh $(RPI_USER)@$$node "chmod +x /tmp/provision_pi_tools.sh && /tmp/provision_pi_tools.sh"; \
+	done
 
 setup-registry: ## Setup local Docker registry on the registry host
 	@scp scripts/setup_local_registry.sh $(RPI_USER)@$(REGISTRY_HOST):/tmp/
