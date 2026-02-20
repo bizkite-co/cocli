@@ -3,7 +3,7 @@ import logging
 from pathlib import Path
 from typing import Iterator
 
-from ..models.google_maps_prospect import GoogleMapsProspect
+from ..models.campaigns.indexes.google_maps_prospect import GoogleMapsProspect
 from ..core.config import get_campaign_scraped_data_dir, get_campaign_dir
 from ..core.sharding import get_place_id_shard
 from ..core.utils import UNIT_SEP

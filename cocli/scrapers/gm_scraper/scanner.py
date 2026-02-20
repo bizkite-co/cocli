@@ -3,7 +3,7 @@ from typing import AsyncIterator, Set, Optional
 from playwright.async_api import Page
 
 from ...core.config import load_scraper_settings
-from ...models.google_maps_list_item import GoogleMapsListItem
+from ...models.campaigns.indexes.google_maps_list_item import GoogleMapsListItem
 from ..google_maps_parser import parse_business_listing_html
 
 logger = logging.getLogger(__name__)

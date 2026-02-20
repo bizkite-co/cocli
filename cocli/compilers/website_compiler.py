@@ -7,8 +7,8 @@ import yaml
 from rich.console import Console
 
 from .base import BaseCompiler
-from ..models.company import Company
-from ..models.website import Website
+from ..models.companies.company import Company
+from ..models.companies.website import Website
 from ..core.utils import create_company_files
 
 logger = logging.getLogger(__name__)

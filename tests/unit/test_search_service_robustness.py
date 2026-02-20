@@ -1,7 +1,7 @@
 import pytest
 from cocli.application.search_service import get_fuzzy_search_results
 from cocli.core.paths import paths
-from cocli.models.google_maps_prospect import GoogleMapsProspect
+from cocli.models.campaigns.indexes.google_maps_prospect import GoogleMapsProspect
 from cocli.core.cache import build_cache
 
 @pytest.fixture
@@ -18,7 +18,7 @@ def repro_env(mock_cocli_env, mocker):
     
     # 1. Create a dummy prospect without email
     from cocli.models.place_id import PlaceID
-    from cocli.models.company_slug import CompanySlug
+    from cocli.models.companies.slug import CompanySlug
     
     prospect = GoogleMapsProspect(
         place_id=PlaceID("ChIJtest_longer_place_id_for_validation"),

@@ -3,7 +3,7 @@ from typing import Optional, Dict, List
 from datetime import datetime
 import logging
 
-from ..models.exclusion import Exclusion
+from ..models.campaigns.indexes.exclusion import Exclusion
 from .paths import paths
 
 logger = logging.getLogger(__name__)

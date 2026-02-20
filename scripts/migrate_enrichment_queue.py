@@ -9,7 +9,7 @@ from rich.console import Console
 sys.path.append(str(Path(__file__).parent.parent))
 
 from cocli.core.logging_config import setup_file_logging
-from cocli.models.campaigns.queue.enrichment import EnrichmentTask
+from cocli.models.campaigns.queues.enrichment import EnrichmentTask
 from cocli.core.queue.factory import get_queue_manager
 
 app = typer.Typer()

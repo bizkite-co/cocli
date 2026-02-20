@@ -6,8 +6,8 @@ from rich.console import Console
 from rich.progress import track
 from cocli.core.config import get_companies_dir, get_campaign
 from cocli.core.domain_index_manager import DomainIndexManager
-from cocli.models.campaign import Campaign as CampaignModel
-from cocli.models.website_domain_csv import WebsiteDomainCsv
+from cocli.models.campaigns.campaign import Campaign as CampaignModel
+from cocli.models.campaigns.indexes.domains import WebsiteDomainCsv
 from datetime import datetime, timezone
 
 import logging

@@ -7,8 +7,8 @@ from pathlib import Path # Import Path
 
 from ..core.config import get_companies_dir, get_campaign_dir
 from ..core.geocoding import get_coordinates_from_zip, get_coordinates_from_city_state, get_coordinates_from_address
-from ..models.company import Company
-from ..models.person import Person
+from ..models.companies.company import Company
+from ..models.people.person import Person
 from ..models.geocode import GeocodeData
 from cocli.core.text_utils import slugify
 

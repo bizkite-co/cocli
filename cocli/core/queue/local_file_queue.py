@@ -5,7 +5,7 @@ import time
 from typing import List
 from datetime import datetime, UTC
 
-from ...models.queue import QueueMessage
+from ...models.campaigns.queues.base import QueueMessage
 from . import QueueManager
 from ...core.config import get_cocli_base_dir
 

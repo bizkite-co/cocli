@@ -1,6 +1,6 @@
 from cocli.core.website_cache import WebsiteCache
 from cocli.core.website_domain_csv_manager import WebsiteDomainCsvManager
-from cocli.models.website_domain_csv import WebsiteDomainCsv
+from cocli.models.campaigns.indexes.domains import WebsiteDomainCsv
 
 import sys
 from datetime import datetime

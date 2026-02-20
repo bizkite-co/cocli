@@ -6,8 +6,8 @@ from pathlib import Path
 from typing import Any, Dict, List
 
 from ..core.config import get_campaign_dir, load_campaign_config
-from ..models.gm_item_task import GmItemTask
-from ..models.company import Company
+from ..models.campaigns.queues.gm_details import GmItemTask
+from ..models.companies.company import Company
 from ..core.prospects_csv_manager import ProspectsIndexManager
 from ..core.text_utils import slugify
 

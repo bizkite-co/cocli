@@ -6,7 +6,7 @@ from typing import Optional
 from pathlib import Path
 
 from cocli.core.config import get_campaign, get_campaign_exports_dir
-from cocli.models.company import Company
+from cocli.models.companies.company import Company
 
 app = typer.Typer()
 console = Console()

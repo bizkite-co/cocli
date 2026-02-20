@@ -1,7 +1,7 @@
 from typing import Optional, Union, Any
 from pydantic import BaseModel, Field, field_validator
 from datetime import datetime, UTC
-from .email_address import EmailAddress
+from ...email_address import EmailAddress
 
 class EmailEntry(BaseModel):
     """
@@ -40,13 +40,13 @@ class EmailEntry(BaseModel):
             self.verification_status,
             ";".join(self.tags)
         ]
-        from ..core.wal import US
+        from ...wal.record import US
         return US.join(parts) + "\n"
 
     @classmethod
     def from_usv(cls, usv_line: str) -> "EmailEntry":
         """Deserializes a USV line into an EmailEntry."""
-        from ..core.wal import US
+        from ...wal.record import US
         parts = usv_line.strip().split(US)
         
         # Helper to parse dates safely

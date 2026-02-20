@@ -13,7 +13,7 @@ from dateutil import tz # Import for timezone handling
 from cocli.core.scrape_index import ScrapedArea, ScrapeIndex
 from cocli.core.config import get_cocli_base_dir
 from cocli.core.website_domain_csv_manager import WebsiteDomainCsvManager # Import manager
-from cocli.models.website_domain_csv import WebsiteDomainCsv # Import model
+from cocli.models.campaigns.indexes.domains import WebsiteDomainCsv # Import model
 
 # --- Configuration ---
 LOG_FILE = Path(__file__).parent / "recover_data.log"

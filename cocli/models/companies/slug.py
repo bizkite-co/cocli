@@ -41,7 +41,7 @@ def to_company_slug(name: str, max_length: int = 64) -> str:
     """
     Utility to create a truncated, valid CompanySlug from a string.
     """
-    from ..core.text_utils import slugify
+    from ...core.text_utils import slugify
     # Use slugify for initial pass (handles many edge cases)
     s = slugify(name)
     # Apply strict normalization

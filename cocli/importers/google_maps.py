@@ -3,7 +3,7 @@ from pathlib import Path
 from typing import Dict, Any, Optional
 import logging
 
-from ..models.company import Company
+from ..models.companies.company import Company
 from cocli.core.text_utils import slugify
 from cocli.core.utils import create_company_files
 from ..core.config import get_companies_dir

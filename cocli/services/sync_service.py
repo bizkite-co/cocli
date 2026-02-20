@@ -49,7 +49,7 @@ class SyncService:
         Syncs a campaign queue (pending folder) with S3.
         """
         local_path = paths.queue(self.campaign_name, queue_name) / "pending"
-        s3_key = paths.s3_queue_pending(self.campaign_name, queue_name)
+        s3_key = paths.s3.campaign(self.campaign_name).queue(queue_name).pending()
         s3_path = f"s3://{self.bucket}/{s3_key}"
 
         if direction == "up" and not local_path.exists():

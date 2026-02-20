@@ -11,18 +11,18 @@ import logging
 from urllib.parse import urljoin
 from datetime import datetime, timedelta, UTC
 
-from ..models.website import Website
+from ..models.companies.website import Website
 from ..core.website_domain_csv_manager import (
     WebsiteDomainCsvManager,
     CURRENT_SCRAPER_VERSION,
 )
 from ..core.domain_index_manager import DomainIndexManager
 from ..core.s3_company_manager import S3CompanyManager
-from ..models.website_domain_csv import WebsiteDomainCsv
-from ..models.campaign import Campaign
+from ..models.campaigns.indexes.domains import WebsiteDomainCsv
+from ..models.campaigns.campaign import Campaign
 from ..core.exceptions import EnrichmentError
 from ..core.email_index_manager import EmailIndexManager
-from ..models.email import EmailEntry
+from ..models.campaigns.indexes.email import EmailEntry
 from ..models.email_address import EmailAddress
 from ..core.text_utils import is_valid_email
 from ..utils.headers import ANTI_BOT_HEADERS, USER_AGENT
@@ -155,7 +155,7 @@ class WebsiteScraper:
             domain_index_manager = DomainIndexManager(campaign=campaign)
         else:
             # Fallback to a default local campaign if none provided
-            from ..models.campaign import Campaign
+            from ..models.campaigns.campaign import Campaign
             try:
                 default_campaign = Campaign.load("default")
             except Exception:

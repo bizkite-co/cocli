@@ -2,8 +2,8 @@ import json
 from pathlib import Path
 from typing import List, Dict, Optional, ClassVar
 from pydantic import BaseModel
-from cocli.core.paths import paths
-from cocli.core.ordinant import IndexName, get_shard
+from ....core.paths import paths
+from ....core.ordinant import IndexName, get_shard
 
 class BaseIndexModel(BaseModel):
     """

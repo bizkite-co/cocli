@@ -3,7 +3,7 @@ import logging
 from rich.console import Console
 from rich.progress import track
 from cocli.core.config import get_companies_dir, get_campaign, get_campaigns_dir
-from cocli.models.company import Company
+from cocli.models.companies.company import Company
 from cocli.utils.usv_utils import USVDictWriter, USVDictReader
 from pathlib import Path
 from typing import Optional, List, Dict, Set

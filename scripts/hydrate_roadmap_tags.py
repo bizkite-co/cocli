@@ -1,7 +1,7 @@
 from rich.console import Console
 from rich.progress import track
 from cocli.core.config import get_cocli_base_dir, get_companies_dir
-from cocli.models.company_slug import normalize_company_slug
+from cocli.models.companies.slug import normalize_company_slug
 
 console = Console()
 
@@ -66,7 +66,7 @@ def hydrate() -> None:
         # 2. Ensure _index.md exists (so it's not skipped by reporting/compilers)
         index_file = company_dir / "_index.md"
         if not index_file.exists():
-            from cocli.models.company import Company
+            from cocli.models.companies.company import Company
             try:
                 # Create a minimal company object and save it
                 company_obj = Company(

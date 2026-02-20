@@ -6,8 +6,8 @@ from typing import Optional
 
 from cocli.core.config import get_campaign
 from cocli.core.queue.factory import get_queue_manager
-from cocli.models.queue import QueueMessage
-from cocli.models.company import Company
+from cocli.models.campaigns.queues.base import QueueMessage
+from cocli.models.companies.company import Company
 
 app = typer.Typer()
 console = Console()

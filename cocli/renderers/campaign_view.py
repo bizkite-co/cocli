@@ -3,7 +3,7 @@ from rich.console import Console
 from rich.markdown import Markdown
 from rich.panel import Panel
 
-from ..models.campaign import Campaign
+from ..models.campaigns.campaign import Campaign
 
 def _render_campaign_details(campaign: Campaign) -> Panel:
     """Renders campaign details."""

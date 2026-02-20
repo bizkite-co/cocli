@@ -1,4 +1,4 @@
-from cocli.models.website_domain_csv import WebsiteDomainCsv
+from cocli.models.campaigns.indexes.domains import WebsiteDomainCsv
 
 def test_usv_serialization():
     # 1. Test basic round-trip

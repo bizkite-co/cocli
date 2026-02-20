@@ -3,7 +3,7 @@ from typing import List, AsyncIterator, Optional, Dict, Any, Union
 from playwright.async_api import Browser
 from geopy.distance import geodesic # type: ignore
 
-from ...models.google_maps_list_item import GoogleMapsListItem
+from ...models.campaigns.indexes.google_maps_list_item import GoogleMapsListItem
 from .navigator import Navigator
 from .strategy import SpiralStrategy, GridStrategy
 from .wilderness import WildernessManager

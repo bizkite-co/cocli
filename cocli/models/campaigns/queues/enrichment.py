@@ -1,7 +1,7 @@
 import logging
 from pathlib import Path
 
-from ...queue import QueueMessage
+from .base import QueueMessage
 from ....core.paths import paths
 from ....core.ordinant import QueueName, get_shard
 
@@ -39,17 +39,13 @@ class EnrichmentTask(QueueMessage):
         return self.get_s3_task_key()
 
     def get_s3_task_key(self) -> str:
-        return paths.s3_queue_pending(
-            self.campaign_name, 
-            "enrichment", 
+        return paths.s3.campaign(self.campaign_name).queue("enrichment").pending(
             self.get_shard_id(), 
             self.task_id
         ) + "task.json"
 
     def get_s3_lease_key(self) -> str:
-        return paths.s3_queue_pending(
-            self.campaign_name, 
-            "enrichment", 
+        return paths.s3.campaign(self.campaign_name).queue("enrichment").pending(
             self.get_shard_id(), 
             self.task_id
         ) + "lease.json"

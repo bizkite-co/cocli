@@ -1,6 +1,6 @@
 from pydantic import BaseModel, Field
 from typing import Optional
-from .gm_item_task import GmItemTask
+from ..queues.gm_details import GmItemTask
 
 class GoogleMapsListItem(BaseModel):
     """

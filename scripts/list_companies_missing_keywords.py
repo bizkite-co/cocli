@@ -5,9 +5,9 @@ import typer
 from rich.console import Console
 from rich.progress import track
 
-from cocli.models.company import Company
+from cocli.models.companies.company import Company
 from cocli.core.config import get_companies_dir, get_campaign, get_campaign_dir
-from cocli.models.website import Website
+from cocli.models.companies.website import Website
 import yaml
 
 app = typer.Typer()

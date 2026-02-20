@@ -5,7 +5,7 @@ from typing import Optional
 # Add project root to path
 sys.path.append(str(Path(__file__).parent.parent))
 
-from cocli.models.google_maps_prospect import GoogleMapsProspect
+from cocli.models.campaigns.indexes.google_maps_prospect import GoogleMapsProspect
 from cocli.models.quarantine.legacy_prospect import LegacyProspectUSV
 
 def repair_record(line: str) -> Optional[GoogleMapsProspect]:

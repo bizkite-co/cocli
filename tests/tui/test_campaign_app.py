@@ -1,7 +1,7 @@
 import pytest
 import asyncio
 import toml
-from cocli.models.campaign import Campaign
+from cocli.models.campaigns.campaign import Campaign
 from cocli.tui.campaign_app import CampaignScreen
 from cocli.core.config import get_campaign_dir, get_campaigns_dir
 

@@ -4,7 +4,7 @@ from rich.console import Console
 from rich.table import Table
 from pathlib import Path
 
-from cocli.models.company import Company
+from cocli.models.companies.company import Company
 
 app = typer.Typer()
 console = Console()

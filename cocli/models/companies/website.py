@@ -3,9 +3,9 @@ from typing import Optional, List, Dict, Any
 from datetime import datetime, timezone
 import yaml
 import logging
-from .domain import Domain
-from .email_address import EmailAddress
-from .phone import OptionalPhone
+from ..domain import Domain
+from ..email_address import EmailAddress
+from ..phone import OptionalPhone
 
 logger = logging.getLogger(__name__)
 
@@ -60,9 +60,9 @@ class Website(BaseModel):
 
     def save(self, company_slug: str) -> None:
         """Saves the website enrichment data to the local company directory."""
-        from ..core.config import get_companies_dir, get_campaign
-        from ..core.email_index_manager import EmailIndexManager
-        from .email import EmailEntry
+        from ...core.config import get_companies_dir, get_campaign
+        from ...core.email_index_manager import EmailIndexManager
+        from ..campaigns.indexes.email import EmailEntry
         from datetime import UTC
 
         company_dir = get_companies_dir() / company_slug

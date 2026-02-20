@@ -1,7 +1,7 @@
 import logging
 import asyncio
 from cocli.core.domain_index_manager import DomainIndexManager
-from cocli.models.campaign import Campaign
+from cocli.models.campaigns.campaign import Campaign
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -36,7 +36,7 @@ async def clean_sweep(campaign_name: str) -> None:
             # Since a shard can contain multiple records (if compacted), we need to handle it.
             # But DomainIndexManager.add_or_update currently handles single records.
             # For a clean sweep, we can just re-process each domain in the shard.
-            from cocli.models.website_domain_csv import WebsiteDomainCsv
+            from cocli.models.campaigns.indexes.domains import WebsiteDomainCsv
             
             # For simplicity in this maintenance script, we'll treat each line as a potential record
             lines = content.strip("\x1e\n").split("\x1e")

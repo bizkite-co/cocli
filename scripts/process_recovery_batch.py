@@ -10,8 +10,8 @@ from playwright.async_api import async_playwright
 # Add project root to path
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
-from cocli.models.google_maps_raw import GoogleMapsRawResult
-from cocli.models.google_maps_prospect import GoogleMapsProspect
+from cocli.models.campaigns.indexes.google_maps_raw import GoogleMapsRawResult
+from cocli.models.campaigns.indexes.google_maps_prospect import GoogleMapsProspect
 from cocli.utils.headers import ANTI_BOT_HEADERS, USER_AGENT
 
 # Unit Separator Standard

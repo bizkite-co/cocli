@@ -1,8 +1,8 @@
 from pydantic import BaseModel, Field
 from typing import Optional
 from pathlib import Path
-from ..core.paths import paths
-from ..core.ordinant import QueueName, get_shard
+from ....core.paths import paths
+from ....core.ordinant import QueueName, get_shard
 
 class GmItemTask(BaseModel):
     """

@@ -13,11 +13,11 @@ from playwright.async_api import async_playwright
 from ..core.queue.factory import get_queue_manager
 from ..scrapers.google_maps import scrape_google_maps
 from ..scrapers.google_maps_details import scrape_google_maps_details
-from ..models.scrape_task import ScrapeTask
-from ..models.google_maps_prospect import GoogleMapsProspect
-from ..models.google_maps_list_item import GoogleMapsListItem
-from ..models.gm_item_task import GmItemTask
-from ..models.queue import QueueMessage
+from ..models.campaigns.queues.gm_list import ScrapeTask
+from ..models.campaigns.indexes.google_maps_prospect import GoogleMapsProspect
+from ..models.campaigns.indexes.google_maps_list_item import GoogleMapsListItem
+from ..models.campaigns.queues.gm_details import GmItemTask
+from ..models.campaigns.queues.base import QueueMessage
 from ..core.prospects_csv_manager import ProspectsIndexManager
 from ..core.config import load_campaign_config, get_campaign_dir
 from ..utils.playwright_utils import setup_optimized_context
@@ -123,7 +123,7 @@ class WorkerService:
 
                             # DISCOVERY LINKAGE: Create/Update the hollow company record immediately
                             try:
-                                from ..models.company import Company
+                                from ..models.companies.company import Company
                                 company_obj = Company.get(list_item.company_slug)
                                 if not company_obj:
                                     company_obj = Company(
@@ -338,7 +338,7 @@ class WorkerService:
                     
                     # LINKAGE: Create/Update the company record immediately
                     try:
-                        from ..models.company import Company
+                        from ..models.companies.company import Company
                         company_obj = Company.get(final_prospect_data.company_slug)
                         if not company_obj:
                             company_obj = Company(
@@ -380,7 +380,7 @@ class WorkerService:
                 if hasattr(final_prospect_data, "email") and final_prospect_data.email:
                     try:
                         from ..core.email_index_manager import EmailIndexManager
-                        from ..models.email import EmailEntry
+                        from ..models.campaigns.indexes.email import EmailEntry
                         email_manager = EmailIndexManager(task.campaign_name)
                         entry = EmailEntry(
                             email=final_prospect_data.email, 
@@ -515,8 +515,8 @@ class WorkerService:
         tracker: Optional[Any] = None,
     ) -> None:
         from ..core.enrichment import enrich_company_website
-        from ..models.company import Company
-        from ..models.campaign import Campaign
+        from ..models.companies.company import Company
+        from ..models.campaigns.campaign import Campaign
         from ..core.s3_company_manager import S3CompanyManager
 
         try:
@@ -839,7 +839,7 @@ class WorkerService:
                 "status": "healthy"
             }
             # USE self.bucket_name which is resolved in __init__ from campaign config
-            s3_client.put_object(Bucket=self.bucket_name, Key=paths.s3_heartbeat(self.processed_by), Body=json.dumps(stats, indent=2), ContentType="application/json")
+            s3_client.put_object(Bucket=self.bucket_name, Key=paths.s3.heartbeat(self.processed_by), Body=json.dumps(stats, indent=2), ContentType="application/json")
         except Exception as e:
             logger.error(f"HEARTBEAT CRITICAL FAILURE: {e}")
 

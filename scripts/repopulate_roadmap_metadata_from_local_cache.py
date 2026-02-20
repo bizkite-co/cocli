@@ -8,8 +8,8 @@ from io import StringIO
 # Add project root to path
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
-from cocli.models.google_maps_raw import GoogleMapsRawResult
-from cocli.models.google_maps_prospect import GoogleMapsProspect
+from cocli.models.campaigns.indexes.google_maps_raw import GoogleMapsRawResult
+from cocli.models.campaigns.indexes.google_maps_prospect import GoogleMapsProspect
 from cocli.utils.usv_utils import USVDictReader
 
 def load_google_maps_usv_cache(cache_path: Path) -> Dict[str, Dict[str, Any]]:

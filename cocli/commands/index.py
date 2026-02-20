@@ -206,7 +206,7 @@ def backfill_domains(
     Backfill the Domain Index from local website enrichment files.
     """
     from ..core.domain_index_manager import DomainIndexManager
-    from ..models.campaign import Campaign as CampaignModel
+    from ..models.campaigns.campaign import Campaign as CampaignModel
     from ..core.config import load_campaign_config
     from rich.progress import Progress, SpinnerColumn, TextColumn
     
@@ -251,10 +251,10 @@ def write_datapackage(
     model_cls: Union[Type['GoogleMapsProspect'], Type['WebsiteDomainCsv']]
 
     if index_model == "google_maps_prospects":
-        from ..models.google_maps_prospect import GoogleMapsProspect
+        from ..models.campaigns.indexes.google_maps_prospect import GoogleMapsProspect
         model_cls = GoogleMapsProspect
     elif index_model == "domains":
-        from ..models.website_domain_csv import WebsiteDomainCsv
+        from ..models.campaigns.indexes.domains import WebsiteDomainCsv
         model_cls = WebsiteDomainCsv
     else:
         console.print(f"[bold red]Unknown index model: {index_model}[/bold red]")

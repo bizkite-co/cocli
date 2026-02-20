@@ -1,7 +1,7 @@
 import asyncio
-from cocli.models.company import Company
+from cocli.models.companies.company import Company
 from cocli.core.queue.factory import get_queue_manager
-from cocli.models.queue import QueueMessage
+from cocli.models.campaigns.queues.base import QueueMessage
 from rich.console import Console
 
 console = Console()

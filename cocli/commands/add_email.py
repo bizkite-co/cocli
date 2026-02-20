@@ -3,7 +3,7 @@ import logging
 from typing import Optional
 
 from ..core.config import get_companies_dir, get_campaign
-from ..models.company import Company
+from ..models.companies.company import Company
 from ..core.utils import create_company_files
 from ..models.email_address import EmailAddress
 

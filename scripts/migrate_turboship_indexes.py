@@ -6,7 +6,7 @@ import os
 # Add project root to path
 sys.path.append(str(Path(__file__).parent.parent))
 
-from cocli.models.google_maps_prospect import GoogleMapsProspect
+from cocli.models.campaigns.indexes.google_maps_prospect import GoogleMapsProspect
 from cocli.models.quarantine.turboship_legacy import TurboshipLegacyProspect
 
 def migrate_record(line: str) -> Optional[GoogleMapsProspect]:

@@ -3,7 +3,7 @@ import logging
 import hashlib
 from typing import List, Optional, Dict
 
-from ..models.email import EmailEntry
+from ..models.campaigns.indexes.email import EmailEntry
 from .config import get_campaign_dir
 
 logger = logging.getLogger(__name__)

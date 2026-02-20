@@ -19,9 +19,9 @@ from cocli.core.config import (
     get_enrichment_service_url,
 )
 from cocli.core.queue.factory import get_queue_manager
-from cocli.models.queue import QueueMessage
-from cocli.models.company import Company
-from cocli.models.website import Website
+from cocli.models.campaigns.queues.base import QueueMessage
+from cocli.models.companies.company import Company
+from cocli.models.companies.website import Website
 from cocli.models.hubspot import HubspotContactCsv
 from cocli.compilers.website_compiler import WebsiteCompiler
 from cocli.core.enrichment import enrich_company_website

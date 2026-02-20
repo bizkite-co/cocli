@@ -7,7 +7,7 @@ from rich.console import Console
 from typing_extensions import Annotated
 
 from ...core.config import get_campaign_dir, get_cocli_base_dir, get_all_campaign_dirs, get_editor_command, get_campaign, set_campaign
-from ...models.campaign import Campaign
+from ...models.campaigns.campaign import Campaign
 from ...renderers.campaign_view import display_campaign_view
 from ...core.campaign_workflow import CampaignWorkflow
 from ...core.utils import run_fzf

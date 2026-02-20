@@ -6,7 +6,7 @@ from datetime import datetime, UTC
 
 from .paths import paths
 from .utils import UNIT_SEP
-from ..models.lifecycle import LifecycleItem
+from ..models.campaigns.indexes.lifecycle import LifecycleItem
 
 logger = logging.getLogger(__name__)
 

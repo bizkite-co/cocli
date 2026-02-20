@@ -17,9 +17,9 @@ from cocli.core.text_utils import slugify
 from cocli.core.location_prospects_index import LocationProspectsIndex
 from cocli.core.queue.factory import get_queue_manager
 from cocli.planning.generate_grid import get_campaign_grid_tiles
-from cocli.models.scrape_task import ScrapeTask
-from cocli.models.company import Company
-from cocli.models.website import Website
+from cocli.models.campaigns.queues.gm_list import ScrapeTask
+from cocli.models.companies.company import Company
+from cocli.models.companies.website import Website
 from cocli.scrapers.google_maps import scrape_google_maps
 from cocli.scrapers.google_maps_details import scrape_google_maps_details
 from cocli.compilers.website_compiler import WebsiteCompiler
@@ -138,7 +138,7 @@ async def pipeline(
             compiler.save_audit_report()
         async def producer_task(existing_companies_map: Dict[str, str]) -> None: 
             # Discovery-only in producer task
-            from ...models.queue import QueueMessage
+            from ...models.campaigns.queues.base import QueueMessage
             
             enrichment_queue = get_queue_manager(
                 f"{campaign_name}_enrichment", 
@@ -366,7 +366,7 @@ def queue_batch(
 
         queue_manager = get_queue_manager("scrape_tasks", use_cloud=True, queue_type="scrape")
         for t_dict in tasks_to_queue:
-            from cocli.models.scrape_task import ScrapeTask
+            from cocli.models.campaigns.queues.gm_list import ScrapeTask
             queue_manager.push(ScrapeTask(**t_dict))
         console.print(f"[bold green]Successfully queued {len(tasks_to_queue)} tasks.[/bold green]")
     else:

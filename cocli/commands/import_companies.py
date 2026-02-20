@@ -7,8 +7,8 @@ import logging
 
 from cocli.core.text_utils import slugify
 from cocli.core.utils import create_company_files
-from cocli.models.company import Company
-from cocli.models.website_domain_csv import WebsiteDomainCsv
+from cocli.models.companies.company import Company
+from cocli.models.campaigns.indexes.domains import WebsiteDomainCsv
 from cocli.core.website_domain_csv_manager import WebsiteDomainCsvManager
 from cocli.core.config import get_campaign, get_companies_dir
 

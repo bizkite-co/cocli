@@ -1,8 +1,8 @@
 from typing import ClassVar, Any, Annotated
 from pydantic import BeforeValidator
-from .base_index import BaseIndexModel
-from .place_id import PlaceID
-from .company_slug import CompanySlug
+from .base import BaseIndexModel
+from ...place_id import PlaceID
+from ...companies.slug import CompanySlug
 
 def strip_quotes(v: Any) -> str:
     if isinstance(v, str):

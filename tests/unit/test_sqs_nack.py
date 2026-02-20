@@ -1,7 +1,7 @@
 import unittest
 from unittest.mock import MagicMock, patch
 from cocli.core.queue.sqs_queue import SQSQueue
-from cocli.models.queue import QueueMessage
+from cocli.models.campaigns.queues.base import QueueMessage
 
 class TestSQSQueueNack(unittest.TestCase):
     def setUp(self):

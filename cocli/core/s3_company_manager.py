@@ -4,9 +4,9 @@ from botocore.exceptions import ClientError
 from typing import Optional
 
 from .paths import paths
-from ..models.campaign import Campaign
-from ..models.company import Company # To load/save _index.md equivalent
-from ..models.website import Website # To load/save website.md equivalent
+from ..models.campaigns.campaign import Campaign
+from ..models.companies.company import Company # To load/save _index.md equivalent
+from ..models.companies.website import Website # To load/save website.md equivalent
 
 logger = logging.getLogger(__name__)
 
@@ -48,10 +48,10 @@ class S3CompanyManager:
             raise
 
     def _get_s3_key_for_company_index(self, company_slug: str) -> str:
-        return paths.s3_company_index(company_slug)
+        return paths.s3.company_index(company_slug)
 
     def _get_s3_key_for_website_enrichment(self, company_slug: str) -> str:
-        return paths.s3_website_enrichment(company_slug)
+        return paths.s3.website_enrichment(company_slug)
 
     async def save_company_index(self, company: Company) -> None:
         if not company.slug:

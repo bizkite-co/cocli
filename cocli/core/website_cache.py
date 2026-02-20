@@ -6,7 +6,7 @@ import json
 import logging
 
 from cocli.models.domain import Domain
-from cocli.models.website import Website
+from cocli.models.companies.website import Website
 from .config import get_cocli_app_data_dir
 from ..utils.usv_utils import USVDictReader, USVDictWriter
 

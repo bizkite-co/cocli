@@ -1,7 +1,7 @@
 import csv
 import logging
 from cocli.core.website_domain_csv_manager import WebsiteDomainCsvManager
-from cocli.models.website_domain_csv import WebsiteDomainCsv
+from cocli.models.campaigns.indexes.domains import WebsiteDomainCsv
 from cocli.core.config import get_cocli_base_dir
 
 logging.basicConfig(level=logging.INFO)

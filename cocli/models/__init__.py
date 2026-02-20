@@ -1,10 +1,10 @@
-from .company import Company
-from .google_maps_prospect import GoogleMapsProspect
-from .google_maps_list_item import GoogleMapsListItem
-from .gm_item_task import GmItemTask
-from .scrape_task import ScrapeTask
+from .companies.company import Company
+from .campaigns.indexes.google_maps_prospect import GoogleMapsProspect
+from .campaigns.indexes.google_maps_list_item import GoogleMapsListItem
+from .campaigns.queues.gm_details import GmItemTask
+from .campaigns.queues.gm_list import ScrapeTask
 from .types import AwareDatetime
-from .queue import QueueMessage
+from .campaigns.queues.base import QueueMessage
 from .index_manifest import IndexManifest, IndexShard
 
 __all__ = [

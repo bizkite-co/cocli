@@ -5,8 +5,8 @@ import logging
 from ..core.config import get_companies_dir, get_people_dir
 from cocli.core.text_utils import slugify
 from cocli.core.utils import create_company_files, create_person_files
-from ..models.company import Company
-from ..models.person import Person
+from ..models.companies.company import Company
+from ..models.people.person import Person
 
 logger = logging.getLogger(__name__)
 

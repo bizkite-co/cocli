@@ -6,8 +6,8 @@ from typing import List, Optional, Dict, Any
 from datetime import datetime, timezone
 from botocore.config import Config
 
-from ..models.campaign import Campaign
-from ..models.website_domain_csv import WebsiteDomainCsv
+from ..models.campaigns.campaign import Campaign
+from ..models.campaigns.indexes.domains import WebsiteDomainCsv
 from ..models.index_manifest import IndexManifest, IndexShard
 from .text_utils import slugdotify
 from .config import get_cocli_base_dir

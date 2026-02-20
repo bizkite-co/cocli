@@ -1,6 +1,6 @@
 from abc import ABC, abstractmethod
 from typing import List
-from ...models.queue import QueueMessage
+from ...models.campaigns.queues.base import QueueMessage
 
 class QueueManager(ABC):
     """

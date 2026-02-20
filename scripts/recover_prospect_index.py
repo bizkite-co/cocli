@@ -3,8 +3,8 @@ from typing import Optional
 from rich.console import Console
 from cocli.core.config import get_companies_dir, get_campaign
 from cocli.core.prospects_csv_manager import ProspectsIndexManager
-from cocli.models.company import Company
-from cocli.models.google_maps_prospect import GoogleMapsProspect
+from cocli.models.companies.company import Company
+from cocli.models.campaigns.indexes.google_maps_prospect import GoogleMapsProspect
 
 app = typer.Typer()
 console = Console()

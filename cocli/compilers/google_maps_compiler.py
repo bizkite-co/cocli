@@ -4,7 +4,7 @@ from pathlib import Path
 from typing import Any, cast
 from rich.console import Console
 from .base import BaseCompiler
-from ..models.company import Company
+from ..models.companies.company import Company
 from ..core.config import get_cocli_base_dir
 
 console = Console()

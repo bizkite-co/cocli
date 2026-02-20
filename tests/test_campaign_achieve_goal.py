@@ -1,4 +1,4 @@
-from cocli.models.google_maps_list_item import GoogleMapsListItem
+from cocli.models.campaigns.indexes.google_maps_list_item import GoogleMapsListItem
 from typer.testing import CliRunner
 from cocli.main import app
 import pytest
@@ -69,7 +69,7 @@ queries = ["software company"]
     mock_prospect.company_slug = "mock-company"
     mocker.patch("cocli.commands.campaign.prospecting.scrape_google_maps_details", new_callable=AsyncMock, return_value=mock_prospect)
 
-    mocker.patch("cocli.models.company.Company.get_all", return_value=[]) # <--- Added this line
+    mocker.patch("cocli.models.companies.company.Company.get_all", return_value=[]) # <--- Added this line
     mock_website = MagicMock()
     mock_website.email = "test@example.com"
     mock_website.model_dump.return_value = {

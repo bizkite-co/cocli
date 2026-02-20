@@ -3,7 +3,7 @@ import asyncio
 from typing import Optional
 from playwright.async_api import Page
 
-from cocli.models.google_maps_prospect import GoogleMapsProspect
+from cocli.models.campaigns.indexes.google_maps_prospect import GoogleMapsProspect
 from cocli.scrapers.google_maps_gmb_parser import parse_gmb_page
 
 logger = logging.getLogger(__name__)
@@ -33,7 +33,7 @@ async def scrape_google_maps_details(
         html_content = await page.content()
         details_dict = parse_gmb_page(html_content, debug=debug)
         
-        from cocli.models.google_maps_raw import GoogleMapsRawResult
+        from cocli.models.campaigns.indexes.google_maps_raw import GoogleMapsRawResult
         
         # Merge parsed data with provided fallbacks
         final_name = details_dict.get("Name")

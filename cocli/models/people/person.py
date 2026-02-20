@@ -5,13 +5,13 @@ import logging
 
 import yaml
 from pydantic import BaseModel, Field, ValidationError
-from .email_address import EmailAddress
-from .phone import OptionalPhone
-from .email import EmailEntry
-from ..core.paths import paths
-from ..core.ordinant import CollectionName
-from ..core.config import get_campaign
-from ..core.email_index_manager import EmailIndexManager
+from ..email_address import EmailAddress
+from ..phone import OptionalPhone
+from ..campaigns.indexes.email import EmailEntry
+from ...core.paths import paths
+from ...core.ordinant import CollectionName
+from ...core.config import get_campaign
+from ...core.email_index_manager import EmailIndexManager
 
 logger = logging.getLogger(__name__)
 
@@ -117,7 +117,7 @@ class Person(BaseModel):
                 person_dir = paths.people.entry(self.slug).path
             
             person_dir.mkdir(parents=True, exist_ok=True)
-            from ..core.text_utils import slugify
+            from ...core.text_utils import slugify
             person_file = person_dir / f"{slugify(self.name)}.md"
 
         # We don't want to save the description/content in YAML if it's large

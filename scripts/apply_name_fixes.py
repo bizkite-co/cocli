@@ -2,7 +2,7 @@ import typer
 import logging
 from rich.console import Console
 from cocli.utils.usv_utils import USVDictReader
-from cocli.models.company import Company
+from cocli.models.companies.company import Company
 from pathlib import Path
 
 app = typer.Typer()

@@ -1,6 +1,6 @@
 import shutil
 import logging
-from ..models.company import Company
+from ..models.companies.company import Company
 
 logger = logging.getLogger(__name__)
 

@@ -6,8 +6,8 @@ from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, TaskPr
 
 from ...core.config import get_campaign
 from ...core.queue.factory import get_queue_manager
-from ...models.company import Company
-from ...models.queue import QueueMessage
+from ...models.companies.company import Company
+from ...models.campaigns.queues.base import QueueMessage
 
 logger = logging.getLogger(__name__)
 console = Console()

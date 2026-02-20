@@ -6,8 +6,8 @@ from pydantic import ValidationError
 # Add project root to path
 sys.path.append(str(Path(__file__).parent.parent))
 
-from cocli.models.google_maps_prospect import GoogleMapsProspect
-from cocli.models.google_maps_raw import GoogleMapsRawResult
+from cocli.models.campaigns.indexes.google_maps_prospect import GoogleMapsProspect
+from cocli.models.campaigns.indexes.google_maps_raw import GoogleMapsRawResult
 from cocli.core.utils import UNIT_SEP
 from cocli.utils.usv_utils import USVDictReader
 

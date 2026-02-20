@@ -3,7 +3,7 @@ from textual.widgets import Header, Footer, Markdown
 from textual.app import ComposeResult
 from textual.containers import VerticalScroll
 
-from cocli.models.person import Person
+from cocli.models.people.person import Person
 
 class PersonDetail(Screen[None]):
     """A screen to display the details of a single person."""

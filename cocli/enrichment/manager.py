@@ -8,7 +8,7 @@ from cocli.core.text_utils import slugify
 from datetime import datetime
 
 from .base import EnrichmentScript
-from ..models.company import Company
+from ..models.companies.company import Company
 
 logger = logging.getLogger(__name__)
 

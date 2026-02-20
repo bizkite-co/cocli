@@ -6,9 +6,9 @@ from pathlib import Path
 from datetime import datetime, timedelta, UTC
 from botocore.exceptions import ClientError
 
-from ...models.scrape_task import ScrapeTask
-from ...models.gm_item_task import GmItemTask
-from ...models.queue import QueueMessage
+from ...models.campaigns.queues.gm_list import ScrapeTask
+from ...models.campaigns.queues.gm_details import GmItemTask
+from ...models.campaigns.queues.base import QueueMessage
 from ...core.config import get_cocli_base_dir, get_campaign_dir
 from ...core.paths import paths
 from ...core.sharding import get_shard_id
@@ -74,11 +74,11 @@ class FilesystemQueue:
     def _get_s3_lease_key(self, task_id: str) -> str:
         # V2 S3 Path matches the local structure under the campaign
         shard = self._get_shard(task_id)
-        return paths.s3_queue_pending(self.campaign_name, self.queue_name, shard, task_id) + "lease.json"
+        return paths.s3.campaign(self.campaign_name).queue(self.queue_name).pending(shard, task_id) + "lease.json"
 
     def _get_s3_task_key(self, task_id: str) -> str:
         shard = self._get_shard(task_id)
-        return paths.s3_queue_pending(self.campaign_name, self.queue_name, shard, task_id) + "task.json"
+        return paths.s3.campaign(self.campaign_name).queue(self.queue_name).pending(shard, task_id) + "task.json"
 
     def _get_task_dir(self, task_id: str) -> Path:
         # Sanitize task_id for directory name
@@ -774,11 +774,11 @@ class FilesystemEnrichmentQueue(FilesystemQueue):
         super().__init__(campaign_name, "enrichment", s3_client=s3_client, bucket_name=bucket_name)
 
     def _get_task_model(self, task_id: str, data: Dict[str, Any]) -> Any:
-        from ...models.campaigns.queue.enrichment import EnrichmentTask
+        from ...models.campaigns.queues.enrichment import EnrichmentTask
         return EnrichmentTask(**data)
 
     def _get_s3_lease_key(self, task_id: str) -> str:
-        from ...models.campaigns.queue.enrichment import EnrichmentTask
+        from ...models.campaigns.queues.enrichment import EnrichmentTask
         # task_id is domain. Use model_construct to avoid validation for path-only objects
         return str(EnrichmentTask.model_construct(
             domain=task_id, 
@@ -786,14 +786,14 @@ class FilesystemEnrichmentQueue(FilesystemQueue):
         ).get_s3_lease_key())
 
     def _get_s3_task_key(self, task_id: str) -> str:
-        from ...models.campaigns.queue.enrichment import EnrichmentTask
+        from ...models.campaigns.queues.enrichment import EnrichmentTask
         return str(EnrichmentTask.model_construct(
             domain=task_id, 
             campaign_name=self.campaign_name
         ).get_s3_task_key())
 
     def push(self, message: Union[QueueMessage, Any]) -> str: # type: ignore
-        from ...models.campaigns.queue.enrichment import EnrichmentTask
+        from ...models.campaigns.queues.enrichment import EnrichmentTask
         
         # Upgrade QueueMessage to EnrichmentTask to get Ordinant properties
         if isinstance(message, EnrichmentTask):
@@ -841,7 +841,7 @@ class FilesystemEnrichmentQueue(FilesystemQueue):
         
         # S3 Completed location for enrichment
         if self.s3_client and self.bucket_name:
-            from ...models.campaigns.queue.enrichment import EnrichmentTask
+            from ...models.campaigns.queues.enrichment import EnrichmentTask
             try:
                 # We need the task_id (domain) to find the completed path
                 t = EnrichmentTask.model_construct(domain=token, campaign_name=self.campaign_name)

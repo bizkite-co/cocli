@@ -1,5 +1,5 @@
 from abc import ABC, abstractmethod
-from ..models.company import Company
+from ..models.companies.company import Company
 
 class EnrichmentScript(ABC):
     @abstractmethod

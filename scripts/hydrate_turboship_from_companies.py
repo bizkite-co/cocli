@@ -1,7 +1,7 @@
 import yaml
 from pathlib import Path
 from cocli.core.utils import UNIT_SEP
-from cocli.models.google_maps_prospect import GoogleMapsProspect
+from cocli.models.campaigns.indexes.google_maps_prospect import GoogleMapsProspect
 
 def hydrate():
     checkpoint_path = Path("data/campaigns/turboship/recovery/indexes/google_maps_prospects/prospects.checkpoint.usv")

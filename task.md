@@ -28,6 +28,7 @@ Align the Python codebase with the Data Ordinance defined in `docs/_schema/ORDIN
     - [x] `Person`: Implement `Ordinant`. Path: `data/people/{slug}/`.
     - [x] `EnrichmentTask`: Formalize `Ordinant` implementation (ensure protocol naming).
     - [x] `ScrapeTask` & `GmItemTask`: Implement `Ordinant` protocol.
+- [x] **Hierarchical Model Nesting**: Reorganize `cocli/models/` into a "Screaming Architecture" structure (`companies/`, `people/`, `campaigns/indexes/`, `campaigns/queues/`, `wal/`) mirroring the Data Ordinance.
 - [x] **Refactor Base Index**:
     - [x] `BaseIndexModel`: Update to use `Ordinant` for deterministic shard and file resolution.
 - [x] **Refactor `CollectionPaths` Sub-hierarchy**:
@@ -38,7 +39,7 @@ Align the Python codebase with the Data Ordinance defined in `docs/_schema/ORDIN
 - [x] **Update Call Sites**: Audit the codebase and update all imports from `config.get_*_dir` to use the new `paths` hierarchy.
 - [x] **TUI Company Search Overhaul**: Implement three-column layout, template-based filtering with counts, and debounced preview loading for high-performance browsing.
 - [x] **TUI Pathing Audit**: Replace manual string joining in `cocli/tui/` and `cocli/application/company_service.py` with the `paths` authority.
-- [ ] **S3 Pathing Hierarchy**: Refactor string-based `s3_*` methods in `DataPaths` to a hierarchical dot-notation structure.
+- [x] **S3 Pathing Hierarchy**: Refactor string-based `s3_*` methods in `DataPaths` to a hierarchical dot-notation structure.
 - [x] **Cluster Optimization & Deployment**:
     - [x] Implement centralized cluster management in `cocli_config.toml`.
     - [x] Deploy local Docker registry on Pi hub (`cocli5x1.pi`) for cluster-wide image distribution.

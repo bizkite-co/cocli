@@ -8,8 +8,8 @@ from pathlib import Path
 
 from cocli.core.config import get_campaign, get_campaign_exports_dir, get_temp_dir
 from cocli.core.queue.factory import get_queue_manager
-from cocli.models.queue import QueueMessage
-from cocli.models.company import Company
+from cocli.models.campaigns.queues.base import QueueMessage
+from cocli.models.companies.company import Company
 
 app = typer.Typer()
 console = Console()

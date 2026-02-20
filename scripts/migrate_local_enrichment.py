@@ -12,7 +12,7 @@ from rich.progress import track
 sys.path.append(str(Path(__file__).parent.parent))
 
 from cocli.core.logging_config import setup_file_logging
-from cocli.models.campaigns.queue.enrichment import EnrichmentTask
+from cocli.models.campaigns.queues.enrichment import EnrichmentTask
 from cocli.core.paths import paths
 
 app = typer.Typer()

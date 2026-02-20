@@ -4,7 +4,7 @@ from typing import Optional
 import typer
 from cocli.core.config import get_campaign_dir
 from cocli.core.queue.factory import get_queue_manager
-from cocli.models.queue import QueueMessage
+from cocli.models.campaigns.queues.base import QueueMessage
 from cocli.core.text_utils import slugify
 
 logging.basicConfig(level=logging.INFO)

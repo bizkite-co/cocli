@@ -2,7 +2,7 @@ import asyncio
 import logging
 from cocli.core.website_domain_csv_manager import WebsiteDomainCsvManager
 from cocli.core.domain_index_manager import DomainIndexManager
-from cocli.models.campaign import Campaign
+from cocli.models.campaigns.campaign import Campaign
 from cocli.core.config import load_campaign_config
 
 logging.basicConfig(level=logging.INFO)

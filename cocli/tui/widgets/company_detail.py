@@ -16,8 +16,8 @@ from textual.binding import Binding
 from rich.text import Text
 from rich.markup import escape
 
-from ...models.company import Company
-from ...models.note import Note
+from ...models.companies.company import Company
+from ...models.companies.note import Note
 from ...models.phone import PhoneNumber
 from ...core.paths import paths
 from ...core.config import get_editor_command

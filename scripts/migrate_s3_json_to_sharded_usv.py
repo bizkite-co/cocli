@@ -7,7 +7,7 @@ import hashlib
 from typing import Any, Dict
 from datetime import datetime, timezone
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from cocli.models.website_domain_csv import WebsiteDomainCsv
+from cocli.models.campaigns.indexes.domains import WebsiteDomainCsv
 from cocli.models.index_manifest import IndexManifest, IndexShard
 from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, TaskProgressColumn, TimeRemainingColumn
 

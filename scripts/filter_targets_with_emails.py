@@ -9,7 +9,7 @@ from rich.progress import track
 # Ensure cocli is in path
 sys.path.append(os.getcwd())
 
-from cocli.models.company import Company
+from cocli.models.companies.company import Company
 from cocli.core.text_utils import is_valid_email
 from cocli.core.config import get_campaign, get_campaign_exports_dir
 

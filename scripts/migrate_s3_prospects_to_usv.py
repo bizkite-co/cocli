@@ -6,7 +6,7 @@ import typer
 from typing import Any
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from cocli.utils.usv_utils import USVDictWriter
-from cocli.models.google_maps_prospect import GoogleMapsProspect
+from cocli.models.campaigns.indexes.google_maps_prospect import GoogleMapsProspect
 from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, TaskProgressColumn, TimeRemainingColumn
 
 # Set logging to WARNING to silence individual file logs

@@ -6,7 +6,7 @@ from typing import List, Optional
 
 from cocli.core.config import load_campaign_config
 from cocli.core.prospects_csv_manager import ProspectsIndexManager
-from cocli.models.company import Company
+from cocli.models.companies.company import Company
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)

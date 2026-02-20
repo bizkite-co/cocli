@@ -5,7 +5,7 @@ from pathlib import Path
 from typing import Optional, Dict, Any, Iterable
 from datetime import datetime, UTC
 
-from ..models.google_maps_prospect import GoogleMapsProspect
+from ..models.campaigns.indexes.google_maps_prospect import GoogleMapsProspect
 from .config import get_cocli_base_dir
 from ..utils.usv_utils import USVDictReader, USVDictWriter
 

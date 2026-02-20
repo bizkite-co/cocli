@@ -4,8 +4,8 @@ import logging
 from typing import Dict, List, Optional
 
 from ..core.config import get_campaign_dir
-from ..models.company import Company
-from ..models.person import Person
+from ..models.companies.company import Company
+from ..models.people.person import Person
 
 logger = logging.getLogger(__name__)
 

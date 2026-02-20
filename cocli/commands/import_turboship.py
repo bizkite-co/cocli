@@ -8,8 +8,8 @@ from pathlib import Path
 from ..core.config import get_companies_dir, get_people_dir
 from ..core.text_utils import slugify
 from ..core.utils import create_company_files, create_person_files
-from ..models.person import Person
-from ..models.company import Company
+from ..models.people.person import Person
+from ..models.companies.company import Company
 from ..models.shopify import ShopifyData
 
 logger = logging.getLogger(__name__)

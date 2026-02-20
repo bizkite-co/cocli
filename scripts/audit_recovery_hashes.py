@@ -7,7 +7,7 @@ from rich.table import Table
 # Add project root to path
 sys.path.append(str(Path(__file__).parent.parent))
 
-from cocli.models.google_maps_prospect import GoogleMapsProspect
+from cocli.models.campaigns.indexes.google_maps_prospect import GoogleMapsProspect
 
 def audit_recovery(campaign_name: str) -> None:
     data_home = Path(os.environ.get("COCLI_DATA_HOME", Path.home() / ".local/share/cocli_data"))

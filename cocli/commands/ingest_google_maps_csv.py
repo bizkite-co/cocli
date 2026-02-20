@@ -5,7 +5,7 @@ from typing import Optional
 import logging
 
 from ..core.google_maps_cache import GoogleMapsCache
-from ..models.google_maps_prospect import GoogleMapsProspect
+from ..models.campaigns.indexes.google_maps_prospect import GoogleMapsProspect
 from ..core.config import get_campaign
 from ..core.prospects_csv_manager import ProspectsIndexManager
 

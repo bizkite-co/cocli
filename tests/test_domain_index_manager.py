@@ -2,7 +2,7 @@ import pytest
 from datetime import datetime, UTC
 from unittest.mock import MagicMock, patch
 from cocli.core.domain_index_manager import DomainIndexManager
-from cocli.models.website_domain_csv import WebsiteDomainCsv
+from cocli.models.campaigns.indexes.domains import WebsiteDomainCsv
 
 @pytest.fixture
 def mock_s3_manager():

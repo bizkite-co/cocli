@@ -6,7 +6,7 @@ from rich.console import Console
 
 from ..core.config import get_companies_dir, get_campaign
 from ..core.geocoding import get_coordinates_from_city_state
-from ..models.person import Person
+from ..models.people.person import Person
 import yaml
 
 logger = logging.getLogger(__name__)

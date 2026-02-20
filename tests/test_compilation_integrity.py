@@ -1,6 +1,6 @@
 import pytest
 from pathlib import Path
-from cocli.models.company import Company
+from cocli.models.companies.company import Company
 from cocli.compilers.website_compiler import WebsiteCompiler
 from cocli.core.utils import create_company_files
 

@@ -2,7 +2,7 @@ import typer
 import logging
 from rich.console import Console
 from cocli.core.config import get_companies_dir
-from cocli.models.company import Company
+from cocli.models.companies.company import Company
 from cocli.core.prospects_csv_manager import ProspectsIndexManager
 from cocli.utils.usv_utils import USVDictWriter
 from pathlib import Path

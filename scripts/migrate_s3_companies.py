@@ -23,7 +23,7 @@ def migrate_companies(campaign_name: str, dry_run: bool = True) -> None:
     # Legacy prefix: "companies/"
     legacy_prefix = "companies/"
     # New prefix: "campaigns/<campaign>/companies/"
-    new_prefix = paths.s3_campaign_root(campaign_name) + "companies/"
+    new_prefix = paths.s3.campaign(campaign_name).root + "companies/"
     
     console.print(f"Migrating from [cyan]{legacy_prefix}[/cyan] to [green]{new_prefix}[/green] in bucket [bold]{bucket}[/bold]")
     if dry_run:

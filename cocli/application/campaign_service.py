@@ -313,9 +313,9 @@ class CampaignService:
         Yields status updates for progress bars.
         """
         from ..core.prospects_csv_manager import ProspectsIndexManager
-        from ..models.company import Company
+        from ..models.companies.company import Company
         from ..core.config import get_companies_dir
-        from ..models.google_maps_prospect import GoogleMapsProspect
+        from ..models.campaigns.indexes.google_maps_prospect import GoogleMapsProspect
 
         manager = ProspectsIndexManager(self.campaign_name)
         companies_dir = get_companies_dir()

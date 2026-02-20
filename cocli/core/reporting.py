@@ -418,7 +418,7 @@ def get_campaign_stats(campaign_name: str) -> Dict[str, Any]:
     # 3. Enriched Companies & Emails (OPTIMIZED via Sharded Indexes)
     from cocli.core.email_index_manager import EmailIndexManager
     from cocli.core.domain_index_manager import DomainIndexManager
-    from ..models.campaign import Campaign as CampaignModel
+    from ..models.campaigns.campaign import Campaign as CampaignModel
 
     email_index = EmailIndexManager(campaign_name)
     domain_index = DomainIndexManager(CampaignModel.load(campaign_name))

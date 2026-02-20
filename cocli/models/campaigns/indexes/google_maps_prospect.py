@@ -5,7 +5,7 @@ import logging
 
 from .google_maps_idx import GoogleMapsIdx
 from .google_maps_raw import GoogleMapsRawResult
-from .phone import OptionalPhone
+from ...phone import OptionalPhone
 
 logger = logging.getLogger(__name__)
 
@@ -178,7 +178,7 @@ class GoogleMapsProspect(GoogleMapsIdx):
     @model_validator(mode='after')
     def extract_domain(self) -> 'GoogleMapsProspect':
         if self.website and not self.domain:
-            from ..core.text_utils import extract_domain
+            from ....core.text_utils import extract_domain
             self.domain = extract_domain(self.website)
         return self
 
@@ -238,7 +238,7 @@ class GoogleMapsProspect(GoogleMapsIdx):
             
         full_addr = values.get("full_address")
         if full_addr and not values.get("street_address"):
-            from ..core.text_utils import parse_address_components
+            from ....core.text_utils import parse_address_components
             addr_data = parse_address_components(full_addr)
             for key, val in addr_data.items():
                 if val and not values.get(key):
@@ -262,7 +262,7 @@ class GoogleMapsProspect(GoogleMapsIdx):
 
     def to_usv(self) -> str:
         """Serializes based on architectural sequence."""
-        from ..core.utils import UNIT_SEP
+        from ....core.utils import UNIT_SEP
         field_names = list(self.model_fields.keys())
         
         values = []
@@ -284,7 +284,7 @@ class GoogleMapsProspect(GoogleMapsIdx):
     @classmethod
     def from_usv(cls, usv_str: str) -> "GoogleMapsProspect":
         """Parses based on architectural sequence."""
-        from ..core.utils import UNIT_SEP
+        from ....core.utils import UNIT_SEP
         line = usv_str.strip("\x1e\n")
         if not line:
             raise ValueError("Empty unit-separated line")

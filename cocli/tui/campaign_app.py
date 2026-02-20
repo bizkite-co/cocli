@@ -7,7 +7,7 @@ from textual.containers import Vertical
 from textual.app import ComposeResult # Added ComposeResult import
 from typing import Any
 
-from ..models.campaign import Campaign, CampaignImport, GoogleMaps, Prospecting
+from ..models.campaigns.campaign import Campaign, CampaignImport, GoogleMaps, Prospecting
 
 from ..application.campaign_service import CampaignService
 

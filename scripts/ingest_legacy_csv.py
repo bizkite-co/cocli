@@ -7,10 +7,10 @@ from rich.console import Console
 
 from cocli.core.config import get_campaign_scraped_data_dir, get_campaign
 from cocli.core.importing import import_prospect
-from cocli.models.google_maps_prospect import GoogleMapsProspect
-from cocli.models.company import Company
+from cocli.models.campaigns.indexes.google_maps_prospect import GoogleMapsProspect
+from cocli.models.companies.company import Company
 from cocli.core.queue.factory import get_queue_manager
-from cocli.models.queue import QueueMessage
+from cocli.models.campaigns.queues.base import QueueMessage
 
 logger = logging.getLogger(__name__)
 console = Console()

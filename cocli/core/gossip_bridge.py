@@ -9,7 +9,8 @@ from zeroconf import Zeroconf, ServiceInfo, ServiceBrowser, ServiceListener
 from watchdog.observers import Observer
 from watchdog.events import FileSystemEventHandler
 
-from .wal import DatagramRecord, get_node_id, RS
+from .wal import get_node_id
+from ..models.wal.record import DatagramRecord, RS
 from .paths import paths
 
 logger = logging.getLogger(__name__)

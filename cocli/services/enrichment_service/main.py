@@ -9,9 +9,9 @@ from contextlib import asynccontextmanager
 
 # Adjust imports to be absolute from the project root
 from cocli.core.enrichment import enrich_company_website
-from cocli.models.website import Website
-from cocli.models.company import Company
-from cocli.models.campaign import Campaign 
+from cocli.models.companies.website import Website
+from cocli.models.companies.company import Company
+from cocli.models.campaigns.campaign import Campaign 
 from cocli.core.config import get_campaign_dir
 from cocli.core.exceptions import EnrichmentError, NavigationError
 from cocli.core.text_utils import slugify

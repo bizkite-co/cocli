@@ -13,7 +13,7 @@ from .campaign_selection import CampaignSelection
 from .campaign_detail import CampaignDetail
 from .status_view import StatusView
 from .log_viewer import LogViewerModal, capture_logs
-from cocli.models.campaign import Campaign
+from cocli.models.campaigns.campaign import Campaign
 
 if TYPE_CHECKING:
     from ..app import CocliApp

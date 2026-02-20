@@ -6,7 +6,7 @@ from typing import List
 from rich.console import Console
 from rich.progress import track
 from cocli.core.config import get_cocli_base_dir
-from cocli.models.email import EmailEntry
+from cocli.models.campaigns.indexes.email import EmailEntry
 from cocli.core.email_index_manager import EmailIndexManager
 from datetime import datetime
 

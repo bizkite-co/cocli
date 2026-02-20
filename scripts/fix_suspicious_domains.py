@@ -12,8 +12,8 @@ from rich.console import Console
 from rich.progress import track
 
 from cocli.enrichment.website_scraper import WebsiteScraper
-from cocli.models.campaign import Campaign
-from cocli.models.company import Company
+from cocli.models.campaigns.campaign import Campaign
+from cocli.models.companies.company import Company
 from cocli.core.config import load_campaign_config, get_campaign_exports_dir
 from cocli.application.company_service import update_company_from_website_data
 

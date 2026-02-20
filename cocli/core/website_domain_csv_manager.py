@@ -1,9 +1,9 @@
 from pathlib import Path
 from typing import Optional, Dict, List
 
-from ..models.website_domain_csv import WebsiteDomainCsv
+from ..models.campaigns.indexes.domains import WebsiteDomainCsv
 from .domain_index_manager import DomainIndexManager
-from ..models.campaign import Campaign
+from ..models.campaigns.campaign import Campaign
 
 CURRENT_SCRAPER_VERSION = 6
 

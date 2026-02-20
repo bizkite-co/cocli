@@ -7,7 +7,7 @@ from pathlib import Path
 # Add project root to path
 sys.path.append(str(Path(__file__).parent.parent))
 
-from cocli.models.gm_item_task import GmItemTask
+from cocli.models.campaigns.queues.gm_details import GmItemTask
 from cocli.core.config import get_campaign_dir
 
 logging.basicConfig(level=logging.INFO, format='%(levelname)s: %(message)s')

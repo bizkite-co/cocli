@@ -18,12 +18,12 @@ from cocli.core.text_utils import slugify
 from cocli.core.utils import _getch, run_fzf, create_person_files
 from cocli.core.paths import paths
 from ..core.config import get_campaign, get_editor_command, get_enrichment_service_url
-from ..models.company import Company
-from ..models.person import Person
-from ..models.note import Note
+from ..models.companies.company import Company
+from ..models.people.person import Person
+from ..models.companies.note import Note
 
 
-from ..models.website import Website
+from ..models.companies.website import Website
 from ..renderers.company_view import display_company_view
 from ..core.exclusions import ExclusionManager
 from ..commands.add_meeting import _add_meeting_logic

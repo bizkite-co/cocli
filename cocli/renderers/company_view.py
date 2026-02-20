@@ -8,10 +8,10 @@ from rich.panel import Panel
 from rich.columns import Columns
 
 from tzlocal import get_localzone
-from ..models.company import Company
-from ..models.website import Website
-from ..models.person import Person
-from ..models.note import Note
+from ..models.companies.company import Company
+from ..models.companies.website import Website
+from ..models.people.person import Person
+from ..models.companies.note import Note
 
 def _render_company_details(company: Company, tags: List[str], content: str, website_data: Optional[Website]) -> Panel:
     """Renders company details, including tags, services, and markdown content."""

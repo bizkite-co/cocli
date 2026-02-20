@@ -1,6 +1,6 @@
 import os
 from pathlib import Path
-from cocli.models.google_maps_prospect import GoogleMapsProspect
+from cocli.models.campaigns.indexes.google_maps_prospect import GoogleMapsProspect
 from cocli.utils.usv_utils import USVDictReader, USVDictWriter
 
 def heal_shards(data_path: Path) -> None:

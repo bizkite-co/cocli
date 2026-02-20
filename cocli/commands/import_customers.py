@@ -7,10 +7,10 @@ import logging
 from ..core.config import get_companies_dir, get_people_dir
 from cocli.core.text_utils import slugify
 from cocli.core.utils import create_company_files, create_person_files
-from ..models.person import Person
-from ..models.company import Company
+from ..models.people.person import Person
+from ..models.companies.company import Company
 from ..models.phone import PhoneNumber
-from ..models.website_domain_csv import WebsiteDomainCsv
+from ..models.campaigns.indexes.domains import WebsiteDomainCsv
 from ..core.website_domain_csv_manager import WebsiteDomainCsvManager
 from ..models.email_address import EmailAddress
 from ..core.config import get_campaign

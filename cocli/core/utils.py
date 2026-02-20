@@ -10,8 +10,8 @@ import logging
 import shutil
 import subprocess
 
-from ..models.company import Company
-from ..models.person import Person  # Import Company and Person models
+from ..models.companies.company import Company
+from ..models.people.person import Person  # Import Company and Person models
 from .paths import paths
 from .text_utils import slugify
 

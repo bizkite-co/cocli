@@ -5,7 +5,7 @@ from typing import Optional, Any
 # Add project root to path
 sys.path.append(str(Path(__file__).parent.parent))
 
-from cocli.models.google_maps_prospect import GoogleMapsProspect
+from cocli.models.campaigns.indexes.google_maps_prospect import GoogleMapsProspect
 from cocli.core.utils import UNIT_SEP
 
 def repair_file(path: Path, execute: bool = False) -> bool:

@@ -4,7 +4,7 @@ import logging
 import typer
 from typing import Any
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from cocli.models.website_domain_csv import WebsiteDomainCsv
+from cocli.models.campaigns.indexes.domains import WebsiteDomainCsv
 from cocli.core.text_utils import slugdotify
 from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, TaskProgressColumn, TimeRemainingColumn
 

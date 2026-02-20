@@ -2,12 +2,12 @@ from typing import Dict, Any, Optional
 import re
 import datetime
 
-from ..models.company import Company
-from ..models.person import Person
-from ..models.note import Note
+from ..models.companies.company import Company
+from ..models.people.person import Person
+from ..models.companies.note import Note
 from ..core.website_cache import WebsiteCache # Corrected import
 
-from ..models.website import Website
+from ..models.companies.website import Website
 from ..core.s3_company_manager import S3CompanyManager
 import logging
 

@@ -11,7 +11,7 @@ from textual import events, on, work
 
 if TYPE_CHECKING:
     from ..app import CocliApp
-from cocli.models.company import Company
+from cocli.models.companies.company import Company
 from cocli.models.search import SearchResult
 
 logger = logging.getLogger(__name__)

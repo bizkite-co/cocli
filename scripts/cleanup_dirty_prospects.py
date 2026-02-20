@@ -7,7 +7,7 @@ import pydantic
 # Add project root to path
 sys.path.append(str(Path(__file__).parent.parent))
 
-from cocli.models.google_maps_prospect import GoogleMapsProspect
+from cocli.models.campaigns.indexes.google_maps_prospect import GoogleMapsProspect
 from cocli.core.sharding import get_place_id_shard
 from cocli.core.config import get_campaign_dir
 from cocli.utils.usv_utils import USVDictReader

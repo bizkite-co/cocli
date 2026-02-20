@@ -56,8 +56,8 @@ def main(
         slug = item["slug"]
         
         # Use DataPaths authority for S3 keys
-        web_key = paths.s3_website_enrichment(slug)
-        index_key = paths.s3_company_index(slug)
+        web_key = paths.s3.website_enrichment(slug)
+        index_key = paths.s3.company_index(slug)
         
         local_dir = companies_dir / slug
         local_enrichment_dir = local_dir / "enrichments"

@@ -8,14 +8,14 @@ import yaml
 from pydantic import BaseModel, Field, BeforeValidator, ValidationError, model_validator, computed_field
 from typing_extensions import Annotated
 
-from .email_address import EmailAddress
-from .phone import OptionalPhone
-from .email import EmailEntry
-from .place_id import PlaceID
-from .company_slug import CompanySlug
-from ..core.paths import paths
-from ..core.ordinant import CollectionName
-from ..core.config import get_campaign
+from ..email_address import EmailAddress
+from ..phone import OptionalPhone
+from ..campaigns.indexes.email import EmailEntry
+from ..place_id import PlaceID
+from .slug import CompanySlug
+from ...core.paths import paths
+from ...core.ordinant import CollectionName
+from ...core.config import get_campaign
 
 logger = logging.getLogger(__name__)
 
@@ -56,7 +56,7 @@ class Company(BaseModel):
 
     def get_remote_key(self) -> str:
         """Returns the S3 prefix: companies/{slug}/"""
-        return paths.s3_company(self.slug)
+        return paths.s3.company(self.slug)
 
     def get_shard_id(self) -> str:
         """Companies are currently flat within the global collection."""
@@ -360,7 +360,7 @@ class Company(BaseModel):
 
         # 3. Sync with Email Index (if a campaign is active)
         if email_sync:
-            from ..core.email_index_manager import EmailIndexManager
+            from ...core.email_index_manager import EmailIndexManager
             campaign_name = get_campaign()
             if campaign_name:
                 try:

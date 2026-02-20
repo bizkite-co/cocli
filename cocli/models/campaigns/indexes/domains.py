@@ -1,10 +1,10 @@
 from pydantic import Field
 from typing import Optional, List, Dict, Any, ClassVar
 from datetime import datetime, UTC
-from .domain import Domain
-from .email_address import EmailAddress
-from .phone import OptionalPhone
-from .base_index import BaseIndexModel
+from ...domain import Domain
+from ...email_address import EmailAddress
+from ...phone import OptionalPhone
+from .base import BaseIndexModel
 
 class WebsiteDomainCsv(BaseIndexModel):
     INDEX_NAME: ClassVar[str] = "domains"

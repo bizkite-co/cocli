@@ -7,7 +7,7 @@ from pathlib import Path
 
 from cocli.core.config import get_campaign
 from cocli.core.queue.filesystem import FilesystemEnrichmentQueue
-from cocli.models.queue import QueueMessage
+from cocli.models.campaigns.queues.base import QueueMessage
 
 app = typer.Typer()
 console = Console()

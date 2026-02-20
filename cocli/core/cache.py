@@ -5,7 +5,7 @@ from pathlib import Path
 from typing import List, Dict, Any, Optional
 
 from .config import get_cocli_base_dir, get_companies_dir, get_people_dir
-from ..models.company_cache import CompanyCacheItem
+from ..models.companies.cache import CompanyCacheItem
 
 logger = logging.getLogger(__name__)
 

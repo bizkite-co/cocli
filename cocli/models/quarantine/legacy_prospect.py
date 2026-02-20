@@ -1,6 +1,6 @@
 from pydantic import BaseModel
 from typing import Optional
-from ..google_maps_prospect import GoogleMapsProspect
+from ..campaigns.indexes.google_maps_prospect import GoogleMapsProspect
 
 class LegacyProspectUSV(BaseModel):
     """

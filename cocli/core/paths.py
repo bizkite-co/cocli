@@ -174,6 +174,55 @@ def get_data_home() -> Path:
         
     return (base / "data").resolve()
 
+class S3QueuePaths:
+    def __init__(self, campaign_slug: str, queue_name: QueueName):
+        self.campaign_slug = campaign_slug
+        self.queue_name = queue_name
+        self.base = f"campaigns/{campaign_slug}/queues/{queue_name}/"
+
+    @property
+    def root(self) -> str:
+        return self.base
+
+    def pending(self, shard: str = "", task_id: str = "") -> str:
+        res = self.base + "pending/"
+        if shard:
+            res += f"{shard}/"
+            if task_id:
+                res += f"{task_id}/"
+        return res
+
+class S3CampaignPaths:
+    def __init__(self, slug: str):
+        self.slug = slug
+        self.root = f"campaigns/{slug}/"
+
+    def index(self, name: IndexName) -> str:
+        return f"{self.root}indexes/{name}/"
+
+    def queue(self, name: QueueName) -> S3QueuePaths:
+        return S3QueuePaths(self.slug, name)
+
+class S3DataPaths:
+    def campaign(self, slug: str) -> S3CampaignPaths:
+        return S3CampaignPaths(slug)
+
+    def company(self, slug: str) -> str:
+        return f"companies/{slug}/"
+
+    def company_index(self, slug: str) -> str:
+        return f"companies/{slug}/_index.md"
+
+    def website_enrichment(self, slug: str) -> str:
+        return f"companies/{slug}/enrichments/website.md"
+
+    @property
+    def status_root(self) -> str:
+        return "status/"
+
+    def heartbeat(self, hostname: str) -> str:
+        return f"{self.status_root}{hostname}.json"
+
 class DataPaths:
     """
     Central Authority for Data Directory Paths (OMAP Implementation).
@@ -181,6 +230,7 @@ class DataPaths:
     """
     def __init__(self, root: Optional[Path] = None):
         self.root = root or get_data_home()
+        self.s3 = S3DataPaths()
 
     @property
     def campaigns(self) -> Path:
@@ -232,42 +282,6 @@ class DataPaths:
             return str(entity_path.relative_to(self.root))
         except ValueError:
             return f"{entity_path.parent.name}/{entity_path.name}"
-
-    # --- S3 Namespace (Mirrors hierarchy) ---
-    def s3_campaign(self, slug: str) -> str:
-        return f"campaigns/{slug}/"
-
-    def s3_campaign_root(self, slug: str) -> str:
-        return self.s3_campaign(slug)
-
-    def s3_index(self, campaign_slug: str, name: IndexName) -> str:
-        return f"{self.s3_campaign(campaign_slug)}indexes/{name}/"
-
-    def s3_queue(self, campaign_slug: str, name: QueueName) -> str:
-        return f"{self.s3_campaign(campaign_slug)}queues/{name}/"
-
-    def s3_queue_pending(self, campaign_slug: str, queue_name: QueueName, shard: str = "", task_id: str = "") -> str:
-        base = f"{self.s3_queue(campaign_slug, queue_name)}pending/"
-        if shard:
-            base += f"{shard}/"
-            if task_id:
-                base += f"{task_id}/"
-        return base
-
-    def s3_company(self, slug: str) -> str:
-        return f"companies/{slug}/"
-
-    def s3_company_index(self, slug: str) -> str:
-        return f"{self.s3_company(slug)}_index.md"
-
-    def s3_website_enrichment(self, slug: str) -> str:
-        return f"{self.s3_company(slug)}enrichments/website.md"
-
-    def s3_status_root(self) -> str:
-        return "status/"
-
-    def s3_heartbeat(self, hostname: str) -> str:
-        return f"{self.s3_status_root()}{hostname}.json"
 
 # Global instance
 paths = DataPaths()

@@ -1,8 +1,8 @@
 import typer
 from rich.progress import track
 from cocli.core.config import get_companies_dir, get_campaigns_dir
-from cocli.models.company import Company
-from cocli.models.google_maps_prospect import GoogleMapsProspect
+from cocli.models.companies.company import Company
+from cocli.models.campaigns.indexes.google_maps_prospect import GoogleMapsProspect
 from cocli.utils.usv_utils import USVDictReader, USVDictWriter
 import io
 

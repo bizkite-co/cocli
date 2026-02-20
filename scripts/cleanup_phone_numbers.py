@@ -2,7 +2,7 @@ import logging
 import yaml
 from typing import Optional
 import typer
-from cocli.models.company import Company
+from cocli.models.companies.company import Company
 from cocli.models.phone import PhoneNumber
 from cocli.core.config import get_companies_dir, get_people_dir
 
@@ -94,7 +94,7 @@ def migrate(
                         logger.info(f"Person {person_dir.name}: phone '{val}' -> '{phone_obj}'")
                         if not dry_run:
                             # Use Person.from_file or similar
-                            from cocli.models.person import Person
+                            from cocli.models.people.person import Person
                             person = Person.from_file(person_file, person_dir.name)
                             if person:
                                 from cocli.core.utils import create_person_files

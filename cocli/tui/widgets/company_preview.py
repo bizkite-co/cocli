@@ -2,7 +2,7 @@ from typing import Any
 from textual.widgets import Static, Label
 from textual.containers import VerticalScroll, Container, Horizontal
 from rich.markup import escape
-from cocli.models.company import Company
+from cocli.models.companies.company import Company
 from textual.app import ComposeResult
 from .phone import Phone
 from .email import Email

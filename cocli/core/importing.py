@@ -1,8 +1,8 @@
 from typing import Optional
 import logging
 
-from ..models.company import Company
-from ..models.google_maps_prospect import GoogleMapsProspect
+from ..models.companies.company import Company
+from ..models.campaigns.indexes.google_maps_prospect import GoogleMapsProspect
 
 logger = logging.getLogger(__name__)
 

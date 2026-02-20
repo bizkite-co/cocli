@@ -3,7 +3,7 @@ import logging
 from rich.console import Console
 from rich.progress import track
 from cocli.core.config import get_companies_dir, get_campaigns_dir
-from cocli.models.company import Company
+from cocli.models.companies.company import Company
 from cocli.core.prospects_csv_manager import ProspectsIndexManager
 from cocli.core.queue.factory import get_queue_manager
 from cocli.utils.usv_utils import USVDictWriter
@@ -98,7 +98,7 @@ def index_to_folders(
     prospects = list(manager.read_all_prospects())
     logger.info(f"Loaded {len(prospects)} prospects from index.")
 
-    from cocli.models.google_maps_prospect import GoogleMapsProspect
+    from cocli.models.campaigns.indexes.google_maps_prospect import GoogleMapsProspect
 
     for prospect in track(prospects, description="Syncing Index -> Folders"):
         if not prospect.company_slug:
@@ -235,7 +235,7 @@ def index_to_folders(
         # 6. ENQUEUE FOR ENRICHMENT (The "Pipe")
         if prospect.domain and prospect.name:
             try:
-                from cocli.models.campaigns.queue.enrichment import EnrichmentTask
+                from cocli.models.campaigns.queues.enrichment import EnrichmentTask
                 
                 # We use the Gold Standard model which handles its own Ordinant (Paths/Shards)
                 task = EnrichmentTask(

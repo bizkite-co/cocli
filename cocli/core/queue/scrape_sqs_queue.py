@@ -3,7 +3,7 @@ import logging
 from typing import List, Optional
 from botocore.exceptions import ClientError
 
-from ...models.scrape_task import ScrapeTask
+from ...models.campaigns.queues.gm_list import ScrapeTask
 
 logger = logging.getLogger(__name__)
 

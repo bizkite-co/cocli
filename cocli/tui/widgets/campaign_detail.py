@@ -2,7 +2,7 @@ from textual.containers import VerticalScroll
 from textual.widgets import Static
 from rich.panel import Panel
 from rich.markup import escape
-from cocli.models.campaign import Campaign
+from cocli.models.campaigns.campaign import Campaign
 import logging
 
 logger = logging.getLogger(__name__)

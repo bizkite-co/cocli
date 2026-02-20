@@ -8,7 +8,7 @@ import logging
 from rich.console import Console
 from rich.progress import track
 from cocli.core.config import get_companies_dir, get_campaign
-from cocli.models.website import Website
+from cocli.models.companies.website import Website
 from cocli.core.exclusions import ExclusionManager
 
 app = typer.Typer()
@@ -27,7 +27,7 @@ def setup_export_logging(campaign_name: str) -> Path:
         force=True
     )
     # Also silence the standard cocli logger to terminal
-    for logger_name in ["cocli.models.company", "root"]:
+    for logger_name in ["cocli.models.companies.company", "root"]:
         lgr = logging.getLogger(logger_name)
         lgr.setLevel(logging.ERROR)
         lgr.propagate = False
@@ -92,7 +92,7 @@ def main(
     con = duckdb.connect(database=':memory:')
 
     # 1. Load Prospects using DuckDB (FIMC Checkpoint)
-    from cocli.models.google_maps_prospect import GoogleMapsProspect
+    from cocli.models.campaigns.indexes.google_maps_prospect import GoogleMapsProspect
     import json
     
     # Generate columns for DuckDB from model fields
@@ -221,7 +221,7 @@ def main(
     # 4. Write Output
     output_file_usv = output_file.with_suffix(".usv")
     with open(output_file_usv, "w", newline="", encoding="utf-8") as f:
-        from cocli.core.wal import US
+        from cocli.models.wal.record import US
         # Header
         f.write(US.join(["company", "domain", "emails", "phone", "website", "city", "state", "categories", "services", "products", "tags", "gmb_url", "rating", "reviews"]) + "\n")
         for res in results:

@@ -3,7 +3,7 @@ from typing import Optional
 from rich.console import Console
 from cocli.core.config import get_campaign, get_campaign_dir
 from cocli.core.queue.factory import get_queue_manager
-from cocli.models.gm_item_task import GmItemTask
+from cocli.models.campaigns.queues.gm_details import GmItemTask
 
 app = typer.Typer()
 console = Console()

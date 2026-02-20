@@ -9,7 +9,7 @@ from rich.console import Console
 from datetime import datetime
 
 from ...core.config import get_campaign_dir, get_people_dir, get_campaign
-from ...models.person import Person
+from ...models.people.person import Person
 from ...core.text_utils import slugify
 from ...core.importing import import_prospect
 from ...core.prospects_csv_manager import ProspectsIndexManager

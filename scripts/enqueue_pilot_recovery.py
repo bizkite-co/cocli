@@ -8,7 +8,7 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 from cocli.core.config import get_campaign, get_campaign_dir
 from cocli.core.queue.factory import get_queue_manager
-from cocli.models.gm_item_task import GmItemTask
+from cocli.models.campaigns.queues.gm_details import GmItemTask
 from cocli.core.text_utils import slugify
 
 logging.basicConfig(level=logging.INFO, format='%(levelname)s: %(message)s')

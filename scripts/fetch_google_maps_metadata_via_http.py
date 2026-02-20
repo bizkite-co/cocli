@@ -8,7 +8,7 @@ import argparse
 
 # Add project root to path
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__name__), "..")))
-from cocli.models.google_maps_raw import GoogleMapsRawResult
+from cocli.models.campaigns.indexes.google_maps_raw import GoogleMapsRawResult
 
 def fetch_google_maps_metadata_via_http(place_id: str) -> Optional[GoogleMapsRawResult]:
     """

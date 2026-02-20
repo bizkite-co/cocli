@@ -3,7 +3,7 @@ import pytest
 from unittest.mock import MagicMock, patch
 from datetime import datetime, UTC, timedelta
 from cocli.core.queue.filesystem import FilesystemEnrichmentQueue
-from cocli.models.queue import QueueMessage
+from cocli.models.campaigns.queues.base import QueueMessage
 
 @pytest.fixture
 def mock_s3():

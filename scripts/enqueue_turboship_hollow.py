@@ -4,7 +4,7 @@ from rich.progress import track
 
 from cocli.core.config import get_campaign_dir
 from cocli.core.queue.factory import get_queue_manager
-from cocli.models.gm_item_task import GmItemTask
+from cocli.models.campaigns.queues.gm_details import GmItemTask
 
 app = typer.Typer()
 console = Console()

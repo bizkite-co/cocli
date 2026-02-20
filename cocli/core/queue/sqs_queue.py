@@ -3,7 +3,7 @@ import logging
 from typing import List, Optional
 from botocore.exceptions import ClientError
 
-from ...models.queue import QueueMessage
+from ...models.campaigns.queues.base import QueueMessage
 from . import QueueManager
 from ..reporting import get_boto3_session
 from ..config import load_campaign_config, get_campaign

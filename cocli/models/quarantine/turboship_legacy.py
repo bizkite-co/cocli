@@ -1,7 +1,7 @@
 from pydantic import BaseModel
 from typing import Optional
 from datetime import datetime
-from ..google_maps_prospect import GoogleMapsProspect
+from ..campaigns.indexes.google_maps_prospect import GoogleMapsProspect
 
 class TurboshipLegacyProspect(BaseModel):
     """

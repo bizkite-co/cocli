@@ -6,7 +6,7 @@ from rich.progress import track
 from typing import Optional
 from cocli.core.config import get_companies_dir, get_cocli_base_dir, get_campaign
 from cocli.core.queue.factory import get_queue_manager
-from cocli.models.queue import QueueMessage
+from cocli.models.campaigns.queues.base import QueueMessage
 
 app = typer.Typer()
 console = Console()

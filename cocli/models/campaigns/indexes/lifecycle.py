@@ -3,7 +3,7 @@ from pathlib import Path
 from typing import Optional, Dict, Any
 from pydantic import BaseModel, Field
 
-from ..core.utils import UNIT_SEP
+from ....core.utils import UNIT_SEP
 
 class LifecycleItem(BaseModel):
     """

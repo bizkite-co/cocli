@@ -2,7 +2,7 @@ import typer
 import io
 from rich.progress import track
 from cocli.core.config import get_campaigns_dir
-from cocli.models.google_maps_prospect import GoogleMapsProspect
+from cocli.models.campaigns.indexes.google_maps_prospect import GoogleMapsProspect
 from cocli.utils.usv_utils import USVDictReader, USVDictWriter
 
 app = typer.Typer()

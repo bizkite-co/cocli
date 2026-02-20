@@ -3,10 +3,10 @@ from typing import Optional
 
 from playwright.async_api import Browser, BrowserContext
 
-from ..models.company import Company
-from ..models.campaign import Campaign # New import
+from ..models.companies.company import Company
+from ..models.campaigns.campaign import Campaign # New import
 from ..enrichment.website_scraper import WebsiteScraper
-from ..models.website import Website
+from ..models.companies.website import Website
 
 logger = logging.getLogger(__name__)
 
