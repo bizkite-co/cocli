@@ -142,6 +142,38 @@ def get_company_details_for_view(company_slug: str) -> Optional[Dict[str, Any]]:
         website_cache = WebsiteCache()
         website_data = website_cache.get_by_url(company.domain)
 
+    # Load lifecycle data for status display
+    lifecycle_dates: Dict[str, Optional[str]] = {"list_found_at": None, "details_found_at": None, "enqueued_at": None}
+    from ..core.config import get_campaign
+    campaign = get_campaign()
+    if campaign:
+        maps_receipt = entry / "enrichments" / "google_maps.usv"
+        if maps_receipt.exists():
+            try:
+                from ..core.utils import UNIT_SEP
+                with open(maps_receipt, "r", encoding="utf-8") as rf:
+                    rf.readline() # skip header
+                    data_line = rf.readline()
+                    if data_line:
+                        parts = data_line.split(UNIT_SEP)
+                        if len(parts) > 0 and parts[0].startswith("ChIJ"):
+                            place_id = parts[0]
+                            # Look up in lifecycle.usv
+                            lifecycle_path = paths.campaign(campaign).lifecycle
+                            if lifecycle_path.exists():
+                                with open(lifecycle_path, "r", encoding="utf-8") as lf:
+                                    # Header: place_id, scraped_at, details_at, enqueued_at, enriched_at
+                                    lf.readline() # skip header
+                                    for line in lf:
+                                        l_parts = line.split(UNIT_SEP)
+                                        if len(l_parts) >= 4 and l_parts[0] == place_id:
+                                            lifecycle_dates["list_found_at"] = l_parts[1].strip() or None
+                                            lifecycle_dates["details_found_at"] = l_parts[2].strip() or None
+                                            lifecycle_dates["enqueued_at"] = l_parts[3].strip() or None
+                                            break
+            except Exception:
+                pass
+
     # Load contacts
     contacts = []
     if contacts_dir.exists():
@@ -173,8 +205,14 @@ def get_company_details_for_view(company_slug: str) -> Optional[Dict[str, Any]]:
                 if note:
                     notes.append(note.model_dump()) # Convert to dict for generic return
 
+    comp_dict = company.model_dump()
+    # Merge lifecycle data if missing from disk
+    for key, val in lifecycle_dates.items():
+        if val and not comp_dict.get(key):
+            comp_dict[key] = val
+
     return {
-        "company": company.model_dump(),
+        "company": comp_dict,
         "tags": tags,
         "content": content,
         "website_data": website_data.model_dump() if website_data else None,

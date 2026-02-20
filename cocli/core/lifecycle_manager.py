@@ -32,15 +32,12 @@ class LifecycleManager:
         
         # Helper Map: slug -> place_id (built from company folders)
         slug_to_pid: Dict[str, str] = {}
+        domain_to_pid: Dict[str, str] = {}
 
         # 1. Build slug_to_pid and domain_to_pid maps from both company folders and checkpoint index
         from .config import get_companies_dir
         companies_root = get_companies_dir()
         
-        # Mapping: slug -> place_id, domain -> place_id
-        slug_to_pid: Dict[str, str] = {}
-        domain_to_pid: Dict[str, str] = {}
-
         entries = [e for e in os.scandir(companies_root) if e.is_dir()]
         for i, entry in enumerate(entries):
             slug = entry.name
@@ -85,13 +82,15 @@ class LifecycleManager:
                         parts = line.split(UNIT_SEP)
                         if len(parts) >= 31:
                             pid = parts[0].strip()
-                            slug = parts[1].strip()
+                            slug_val = parts[1].strip()
                             website = parts[20].strip()
-                            domain = extract_domain(website) if website else None
+                            domain_val = extract_domain(website) if website else None
                             
                             if pid.startswith("ChIJ"):
-                                if slug: slug_to_pid[slug] = pid
-                                if domain: domain_to_pid[domain] = pid
+                                if slug_val:
+                                    slug_to_pid[slug_val] = pid
+                                if domain_val:
+                                    domain_to_pid[domain_val] = pid
                                 if pid not in lifecycle_data:
                                     lifecycle_data[pid] = LifecycleItem(
                                         place_id=pid,

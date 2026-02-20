@@ -109,6 +109,7 @@ class Company(BaseModel):
     last_enriched: Optional[datetime] = None
     list_found_at: Optional[datetime] = None
     details_found_at: Optional[datetime] = None
+    enqueued_at: Optional[datetime] = None
     enrichment_ttl_days: int = 30
     processed_by: Optional[str] = "local-worker"
 

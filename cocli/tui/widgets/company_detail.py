@@ -648,11 +648,16 @@ class CompanyDetail(Container):
             dt = datetime.fromisoformat(details_at) if isinstance(details_at, str) else details_at
             self.info_table.add_row("Details", dt.strftime("%Y-%m-%d"))
 
+        # Consolidate Enriched/Enqueued status
+        enqueued_at = c.get("enqueued_at")
         if enrichment_mtime:
             dt = datetime.fromisoformat(enrichment_mtime)
-            self.info_table.add_row("Enriched", dt.strftime("%Y-%m-%d %H:%M"))
+            self.info_table.add_row("Enriched", f"[bold green]{dt.strftime('%Y-%m-%d %H:%M')}[/]")
+        elif enqueued_at:
+            dt = datetime.fromisoformat(enqueued_at) if isinstance(enqueued_at, str) else enqueued_at
+            self.info_table.add_row("Enriched", f"[bold yellow]{dt.strftime('%Y-%m-%d')} (pending)[/]")
         else:
-            self.info_table.add_row("Enriched", "No (website.md missing)")
+            self.info_table.add_row("Enriched", "No")
 
         if tags:
             self.info_table.add_row("Tags", ", ".join(tags))

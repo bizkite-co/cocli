@@ -40,10 +40,15 @@ class CompanyPreview(Container):
         scraped_at = company.list_found_at.strftime('%Y-%m-%d') if company.list_found_at else "N/A"
         details_at = company.details_found_at.strftime('%Y-%m-%d') if company.details_found_at else "N/A"
         
+        # Enriched status logic
         if company.last_enriched:
             enriched_str = f"[bold green]{company.last_enriched.strftime('%Y-%m-%d')}[/]"
+        elif company.enqueued_at:
+            enriched_str = f"[bold yellow]{company.enqueued_at.strftime('%Y-%m-%d')} (pending)[/]"
         elif hasattr(company, "_enqueued_at") and getattr(company, "_enqueued_at"):
-            enriched_str = "[bold yellow]Enqueued[/]"
+            # Fallback for transient SearchResult data
+            val = getattr(company, "_enqueued_at")
+            enriched_str = f"[bold yellow]{val} (pending)[/]"
         else:
             enriched_str = "No"
 
