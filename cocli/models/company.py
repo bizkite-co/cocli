@@ -263,6 +263,9 @@ class Company(BaseModel):
             if "place_id" in frontmatter_data:
                 model_data["place_id"] = frontmatter_data["place_id"]
 
+            if "details_found_at" in frontmatter_data:
+                model_data["details_found_at"] = frontmatter_data["details_found_at"]
+
             try:
                 return cls(**model_data)
             except ValidationError as e:

@@ -89,7 +89,7 @@ class CompanyList(Container):
 
     async def on_mount(self) -> None:
         """Initialize the list on mount."""
-        await self.perform_search("")
+        self.run_search("")
         self.query_one(ListView).focus()
 
     def action_focus_search(self) -> None:
