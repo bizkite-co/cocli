@@ -3,13 +3,12 @@ import os
 import logging
 import time
 import threading
-import json
-import asyncio
 from typing import List, Optional, Any, cast, Dict
-from cocli.core.cache import get_cached_items, get_cache_path, is_cache_valid
-from cocli.core.config import get_campaign, get_cocli_base_dir
+from cocli.core.cache import get_cache_path, is_cache_valid, build_cache, CACHE_FILE_NAME
+from cocli.core.config import get_campaign
 from cocli.core.exclusions import ExclusionManager
 from cocli.models.search import SearchResult
+from cocli.utils.duckdb_utils import load_usv_to_duckdb
 
 logger = logging.getLogger(__name__)
 
@@ -83,65 +82,6 @@ def get_template_counts(campaign_name: Optional[str] = None) -> Dict[str, int]:
     _counts_cache[campaign] = (now, counts)
     return counts
 
-# Standard schema for GoogleMapsProspect USV
-PROSPECT_COLUMNS = {
-    "place_id": "VARCHAR",
-    "company_slug": "VARCHAR",
-    "name": "VARCHAR",
-    "phone": "VARCHAR",
-    "created_at": "VARCHAR",
-    "updated_at": "VARCHAR",
-    "version": "INTEGER",
-    "processed_by": "VARCHAR",
-    "company_hash": "VARCHAR",
-    "keyword": "VARCHAR",
-    "full_address": "VARCHAR",
-    "street_address": "VARCHAR",
-    "city": "VARCHAR",
-    "zip": "VARCHAR",
-    "municipality": "VARCHAR",
-    "state": "VARCHAR",
-    "country": "VARCHAR",
-    "timezone": "VARCHAR",
-    "phone_standard_format": "VARCHAR",
-    "website": "VARCHAR",
-    "domain": "VARCHAR",
-    "first_category": "VARCHAR",
-    "second_category": "VARCHAR",
-    "claimed_google_my_business": "VARCHAR",
-    "reviews_count": "INTEGER",
-    "average_rating": "DOUBLE",
-    "hours": "VARCHAR",
-    "saturday": "VARCHAR",
-    "sunday": "VARCHAR",
-    "monday": "VARCHAR",
-    "tuesday": "VARCHAR",
-    "wednesday": "VARCHAR",
-    "thursday": "VARCHAR",
-    "friday": "VARCHAR",
-    "latitude": "DOUBLE",
-    "longitude": "DOUBLE",
-    "coordinates": "VARCHAR",
-    "plus_code": "VARCHAR",
-    "menu_link": "VARCHAR",
-    "gmb_url": "VARCHAR",
-    "cid": "VARCHAR",
-    "google_knowledge_url": "VARCHAR",
-    "kgmid": "VARCHAR",
-    "image_url": "VARCHAR",
-    "favicon": "VARCHAR",
-    "review_url": "VARCHAR",
-    "facebook_url": "VARCHAR",
-    "linkedin_url": "VARCHAR",
-    "instagram_url": "VARCHAR",
-    "thumbnail_url": "VARCHAR",
-    "reviews": "VARCHAR",
-    "quotes": "VARCHAR",
-    "uuid": "VARCHAR",
-    "discovery_phrase": "VARCHAR",
-    "discovery_tile_id": "VARCHAR"
-}
-
 def get_fuzzy_search_results(
     search_query: str = "",
     item_type: Optional[str] = None,
@@ -153,37 +93,48 @@ def get_fuzzy_search_results(
     offset: int = 0
 ) -> List[SearchResult]:
     """
-    Provides fuzzy search results. Optimized to avoid blocking TUI startup.
+    Provides fuzzy search results joined across three high-performance USV indices.
     """
     global _con, _last_cache_mtime, _last_checkpoint_mtime, _last_lifecycle_mtime, _last_campaign
     
     from cocli.core.paths import paths
 
     campaign = campaign_name or get_campaign()
-    cache_path = get_cache_path(campaign=campaign)
+    # If campaign is 'None' (literal string), treat as None
+    if campaign == "None":
+        campaign = None
+
+    cache_dir = get_cache_path(campaign=campaign)
+    cache_file = cache_dir / CACHE_FILE_NAME
     
     checkpoint_path = None
+    lifecycle_dir = None
     lifecycle_path = None
+    prospect_dp = None
     if campaign:
-        checkpoint_path = paths.campaign(campaign).index("google_maps_prospects").checkpoint
-        lifecycle_path = paths.campaign(campaign).lifecycle
+        campaign_node = paths.campaign(campaign)
+        prospect_idx = campaign_node.index("google_maps_prospects")
+        checkpoint_path = prospect_idx.checkpoint
+        prospect_dp = prospect_idx.path / "datapackage.json"
+        lifecycle_dir = campaign_node.path / "indexes" / "lifecycle"
+        lifecycle_path = campaign_node.lifecycle
+    else:
+        # Check if we should fallback to global search if no campaign
+        pass
     
-    # 1. NON-BLOCKING CACHE STRATEGY - OUTSIDE OF LOCK
-    if not cache_path.exists() or force_rebuild_cache:
-        if not checkpoint_path or not checkpoint_path.exists():
-            # If we have NO data at all, we must build the cache synchronously
-            get_cached_items(campaign=campaign, force_rebuild=True)
+    # 1. NON-BLOCKING CACHE REBUILD
+    if force_rebuild_cache or not is_cache_valid(campaign=campaign):
+        if not cache_file.exists():
+            build_cache(campaign=campaign)
         else:
             if not hasattr(get_fuzzy_search_results, "_building"):
                 get_fuzzy_search_results._building = set() # type: ignore
             
             if campaign not in get_fuzzy_search_results._building: # type: ignore
                 get_fuzzy_search_results._building.add(campaign) # type: ignore
-                def bg_rebuild():
+                def bg_rebuild() -> None:
                     try:
-                        logger.info(f"Background cache rebuild started for {campaign}")
-                        get_cached_items(campaign=campaign, force_rebuild=True)
-                        logger.info(f"Background cache rebuild finished for {campaign}")
+                        build_cache(campaign=campaign)
                     except Exception as e:
                         logger.error(f"Background cache rebuild failed: {e}")
                     finally:
@@ -193,9 +144,16 @@ def get_fuzzy_search_results(
 
     with _lock:
         start_total = time.perf_counter()
-        current_cache_mtime = os.path.getmtime(cache_path) if cache_path.exists() else -1.0
+        current_cache_mtime = os.path.getmtime(cache_file) if cache_file.exists() else -1.0
         current_checkpoint_mtime = os.path.getmtime(checkpoint_path) if checkpoint_path and checkpoint_path.exists() else -1.0
         current_lifecycle_mtime = os.path.getmtime(lifecycle_path) if lifecycle_path and lifecycle_path.exists() else -1.0
+
+        # Check column existence for dynamic view creation and query building
+        def has_col(table: str, col: str) -> bool:
+            if not _con:
+                return False
+            res = _con.execute(f"SELECT count(*) FROM information_schema.columns WHERE table_name = '{table}' AND lower(column_name) = '{col.lower()}'").fetchone()
+            return bool(res and res[0] > 0)
 
         try:
             if _con is None:
@@ -210,72 +168,55 @@ def get_fuzzy_search_results(
                _last_lifecycle_mtime != current_lifecycle_mtime:
                 
                 t0 = time.perf_counter()
+                _con.execute("DROP VIEW IF EXISTS items")
                 _con.execute("DROP TABLE IF EXISTS items_cache")
                 _con.execute("DROP TABLE IF EXISTS items_checkpoint")
                 _con.execute("DROP TABLE IF EXISTS items_lifecycle")
-                _con.execute("DROP VIEW IF EXISTS items")
                 
-                # A. Load JSON Cache
-                if cache_path.exists():
-                    _con.execute("CREATE TABLE items_cache AS SELECT " +
-                        "COALESCE(CAST(i.type AS VARCHAR), 'unknown') as type, " +
-                        "COALESCE(CAST(i.name AS VARCHAR), 'Unknown') as name, " +
-                        "CAST(i.slug AS VARCHAR) as slug, " +
-                        "CAST(i.domain AS VARCHAR) as domain, " +
-                        "CAST(i.email AS VARCHAR) as email, " +
-                        "CAST(i.phone_number AS VARCHAR) as phone_number, " +
-                        "list_filter(CAST(i.tags AS VARCHAR[]), x -> x IS NOT NULL) as tags, " +
-                        "COALESCE(CAST(i.display AS VARCHAR), CAST(i.name AS VARCHAR), 'Unknown') as display, " +
-                        "CAST(NULL AS VARCHAR) as last_modified, " +
-                        "CAST(i.average_rating AS DOUBLE) as average_rating, " +
-                        "CAST(i.reviews_count AS INTEGER) as reviews_count, " +
-                        "CAST(i.street_address AS VARCHAR) as street_address, " +
-                        "CAST(i.city AS VARCHAR) as city, " +
-                        "CAST(i.state AS VARCHAR) as state, " +
-                        "CAST(i.zip AS VARCHAR) as zip, " +
-                        "CAST(NULL AS VARCHAR) as list_found_at, " +
-                        "CAST(NULL AS VARCHAR) as details_found_at, " +
-                        "CAST(NULL AS VARCHAR) as last_enriched, " +
-                        "CAST(i.place_id AS VARCHAR) as place_id, " +
-                        "1 as priority FROM (SELECT unnest(items) as i FROM read_json('" + str(cache_path) + "', " +
-                        "columns={'items': 'STRUCT(\"type\" VARCHAR, \"name\" VARCHAR, \"slug\" VARCHAR, \"domain\" VARCHAR, \"email\" VARCHAR, \"phone_number\" VARCHAR, \"tags\" VARCHAR[], \"display\" VARCHAR, \"average_rating\" DOUBLE, \"reviews_count\" INTEGER, \"street_address\" VARCHAR, \"city\" VARCHAR, \"state\" VARCHAR, \"zip\" VARCHAR, \"place_id\" VARCHAR)[]'}))")
-                else:
-                    _con.execute("CREATE TABLE items_cache (type VARCHAR, name VARCHAR, slug VARCHAR, domain VARCHAR, email VARCHAR, phone_number VARCHAR, tags VARCHAR[], display VARCHAR, last_modified VARCHAR, average_rating DOUBLE, reviews_count INTEGER, street_address VARCHAR, city VARCHAR, state VARCHAR, zip VARCHAR, list_found_at VARCHAR, details_found_at VARCHAR, last_enriched VARCHAR, place_id VARCHAR, priority INTEGER)")
+                # A. Load Company Cache USV
+                load_usv_to_duckdb(_con, "items_cache", cache_file, cache_dir / "datapackage.json" if cache_dir else None)
 
-                # B. Load USV Checkpoint
+                # B. Load Prospect Checkpoint USV
                 if checkpoint_path and checkpoint_path.exists():
-                    _con.execute("CREATE TABLE items_checkpoint AS SELECT 'company' as type, name, company_slug as slug, domain, CAST(NULL AS VARCHAR) as email, phone as phone_number, list_filter([keyword], x -> x IS NOT NULL) as tags, name as display, updated_at as last_modified, average_rating, reviews_count, street_address, city, state, zip, created_at as list_found_at, updated_at as details_found_at, CAST(NULL AS VARCHAR) as last_enriched, place_id, 0 as priority FROM read_csv('" + str(checkpoint_path) + "', delim='\\x1f', header=False, quote='', escape='', auto_detect=false, columns=" + json.dumps(PROSPECT_COLUMNS) + ", ignore_errors=True)")
+                    load_usv_to_duckdb(_con, "items_checkpoint", checkpoint_path, prospect_dp)
                 else:
-                    _con.execute("CREATE TABLE items_checkpoint (type VARCHAR, name VARCHAR, slug VARCHAR, domain VARCHAR, email VARCHAR, phone_number VARCHAR, tags VARCHAR[], display VARCHAR, last_modified VARCHAR, average_rating DOUBLE, reviews_count INTEGER, street_address VARCHAR, city VARCHAR, state VARCHAR, zip VARCHAR, list_found_at VARCHAR, details_found_at VARCHAR, last_enriched VARCHAR, place_id VARCHAR, priority INTEGER)")
+                    _con.execute("CREATE TABLE items_checkpoint (place_id VARCHAR, slug VARCHAR, company_slug VARCHAR, name VARCHAR, phone VARCHAR, phone_number VARCHAR, email VARCHAR, tags VARCHAR, created_at VARCHAR, updated_at VARCHAR, version INTEGER, processed_by VARCHAR, company_hash VARCHAR, keyword VARCHAR, full_address VARCHAR, street_address VARCHAR, city VARCHAR, zip VARCHAR, municipality VARCHAR, state VARCHAR, country VARCHAR, timezone VARCHAR, phone_standard_format VARCHAR, website VARCHAR, domain VARCHAR, first_category VARCHAR, second_category VARCHAR, claimed_google_my_business VARCHAR, reviews_count INTEGER, average_rating DOUBLE, hours VARCHAR, saturday VARCHAR, sunday VARCHAR, monday VARCHAR, tuesday VARCHAR, wednesday VARCHAR, thursday VARCHAR, friday VARCHAR, latitude DOUBLE, longitude DOUBLE, coordinates VARCHAR, plus_code VARCHAR, menu_link VARCHAR, gmb_url VARCHAR, cid VARCHAR, google_knowledge_url VARCHAR, kgmid VARCHAR, image_url VARCHAR, favicon VARCHAR, review_url VARCHAR, facebook_url VARCHAR, linkedin_url VARCHAR, instagram_url VARCHAR, thumbnail_url VARCHAR, reviews VARCHAR, quotes VARCHAR, uuid VARCHAR, discovery_phrase VARCHAR, discovery_tile_id VARCHAR)")
 
-                # C. Load Lifecycle Index
+                # C. Load Lifecycle Index USV
                 if lifecycle_path and lifecycle_path.exists():
-                    _con.execute("CREATE TABLE items_lifecycle AS SELECT place_id, scraped_at, details_at, enriched_at FROM read_csv('" + str(lifecycle_path) + "', delim='\\x1f', header=True, quote='', escape='', auto_detect=false, columns={'place_id':'VARCHAR', 'scraped_at':'VARCHAR', 'details_at':'VARCHAR', 'enriched_at':'VARCHAR'}, ignore_errors=True)")
+                    load_usv_to_duckdb(_con, "items_lifecycle", lifecycle_path, lifecycle_dir / "datapackage.json" if lifecycle_dir else None)
                 else:
                     _con.execute("CREATE TABLE items_lifecycle (place_id VARCHAR, scraped_at VARCHAR, details_at VARCHAR, enriched_at VARCHAR)")
 
-                # D. Unified View - JOIN FIX (COALESCE DISPLAY)
+                # D. Unified View - JOIN FIX
+                # Standardized utility now maps both tables to use 'slug', 'phone_number', and 'tags'.
+                
+                t1_slug = "t1.slug" if has_col("items_checkpoint", "slug") else "t1.company_slug" if has_col("items_checkpoint", "company_slug") else "CAST(NULL AS VARCHAR)"
+                t1_phone = "t1.phone_number" if has_col("items_checkpoint", "phone_number") else "t1.phone" if has_col("items_checkpoint", "phone") else "CAST(NULL AS VARCHAR)"
+                t1_tags = "string_to_array(t1.tags, ';')" if has_col("items_checkpoint", "tags") else "string_to_array(t1.keyword, ';')" if has_col("items_checkpoint", "keyword") else "CAST([] AS VARCHAR[])"
+                t2_tags = "string_to_array(t2.tags, ';')" if has_col("items_cache", "tags") else "CAST([] AS VARCHAR[])"
+
                 _con.execute("CREATE VIEW items AS SELECT " +
-                    "COALESCE(t1.type, t2.type) as type, " +
+                    f"COALESCE({t1_slug}, t2.slug) as slug, " +
                     "COALESCE(t1.name, t2.name) as name, " +
-                    "COALESCE(t1.slug, t2.slug) as slug, " +
+                    "COALESCE(t2.type, CAST('company' AS VARCHAR)) as type, " +
                     "COALESCE(t1.domain, t2.domain) as domain, " +
-                    "COALESCE(t1.email, t2.email) as email, " +
-                    "COALESCE(t1.phone_number, t2.phone_number) as phone_number, " +
-                    "COALESCE(t1.tags, t2.tags) as tags, " +
-                    "COALESCE(t1.display, t2.display, 'COMPANY:' || COALESCE(t1.name, t2.name) || ' -- ' || COALESCE(t1.slug, t2.slug)) as display, " +
-                    "COALESCE(t1.last_modified, t2.last_modified) as last_modified, " +
-                    "COALESCE(t1.average_rating, t2.average_rating) as average_rating, " +
-                    "COALESCE(t1.reviews_count, t2.reviews_count) as reviews_count, " +
-                    "COALESCE(t1.street_address, t2.street_address) as street_address, " +
-                    "COALESCE(t1.city, t2.city) as city, " +
-                    "COALESCE(t1.state, t2.state) as state, " +
-                    "COALESCE(t1.zip, t2.zip) as zip, " +
-                    "COALESCE(lc.scraped_at, t1.list_found_at, t2.list_found_at) as list_found_at, " +
-                    "COALESCE(lc.details_at, t1.details_found_at, t2.details_found_at) as details_found_at, " +
-                    "COALESCE(lc.enriched_at, t1.last_enriched, t2.last_enriched) as last_enriched " +
-                    "FROM items_checkpoint t1 FULL OUTER JOIN items_cache t2 ON t1.slug = t2.slug AND t1.type = t2.type " +
-                    "LEFT JOIN items_lifecycle lc ON (COALESCE(t1.place_id, t2.place_id) = lc.place_id)")
+                    "t2.email as email, " +
+                    f"COALESCE({t1_phone}, t2.phone_number) as phone_number, " +
+                    f"COALESCE({t1_tags}, {t2_tags}) as tags, " +
+                    f"COALESCE(t2.display, 'COMPANY:' || COALESCE(t1.name, t2.name) || ' -- ' || COALESCE({t1_slug}, t2.slug)) as display, " +
+                    "COALESCE(t1.updated_at, CAST(NULL AS VARCHAR)) as last_modified, " +
+                    "COALESCE(t1.average_rating, CAST(NULL AS DOUBLE)) as average_rating, " +
+                    "COALESCE(t1.reviews_count, CAST(NULL AS INTEGER)) as reviews_count, " +
+                    "COALESCE(t1.street_address, CAST(NULL AS VARCHAR)) as street_address, " +
+                    "COALESCE(t1.city, CAST(NULL AS VARCHAR)) as city, " +
+                    "COALESCE(t1.state, CAST(NULL AS VARCHAR)) as state, " +
+                    "COALESCE(t1.zip, CAST(NULL AS VARCHAR)) as zip, " +
+                    "COALESCE(lc.scraped_at, t1.created_at) as list_found_at, " +
+                    "COALESCE(lc.details_at, t1.updated_at) as details_found_at, " +
+                    "COALESCE(lc.enriched_at, CAST(NULL AS VARCHAR)) as last_enriched " +
+                    f"FROM items_checkpoint t1 FULL OUTER JOIN items_cache t2 ON {t1_slug} = t2.slug " +
+                    "LEFT JOIN items_lifecycle lc ON (COALESCE(t1.place_id, CAST(NULL AS VARCHAR)) = lc.place_id)")
 
                 _last_cache_mtime = current_cache_mtime
                 _last_checkpoint_mtime = current_checkpoint_mtime
@@ -324,8 +265,14 @@ def get_fuzzy_search_results(
 
             if search_query:
                 query_pattern = f"%{search_query.lower()}%"
-                sql += " AND (lower(name) LIKE ? OR lower(slug) LIKE ? OR lower(domain) LIKE ? OR lower(email) LIKE ? OR lower(display) LIKE ? OR array_to_string(tags, ',') LIKE ?)"
-                params.extend([query_pattern] * 6)
+                sql += " AND (lower(name) LIKE ? OR lower(slug) LIKE ? OR lower(domain) LIKE ? OR lower(email) LIKE ? OR lower(display) LIKE ?)"
+                params.extend([query_pattern] * 5)
+                
+                # Restore tags search with safety
+                if has_col("items", "tags"):
+                    sql = sql[:-1] # Remove last ')'
+                    sql += " OR array_to_string(tags, ',') LIKE ?)"
+                    params.append(query_pattern)
 
             # Ordering
             if sort_by == "recent":
@@ -370,5 +317,5 @@ def get_fuzzy_search_results(
                 last_enriched=str(r[16]) if r[16] else None
             ))
 
-        logger.debug(f"Fuzzy search '{search_query}' (type={item_type}) took {time.perf_counter() - start_total:.4f}s (query={t_query:.4f}s)")
+        logger.debug(f"Fuzzy search '{search_query}' took {time.perf_counter() - start_total:.4f}s (query={t_query:.4f}s)")
         return final_items

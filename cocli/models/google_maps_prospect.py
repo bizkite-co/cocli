@@ -22,6 +22,7 @@ class GoogleMapsProspect(GoogleMapsIdx):
     """
     # Increment this when columns are added, removed, or reordered
     SCHEMA_VERSION: ClassVar[str] = "1.0.0"
+    INDEX_NAME: ClassVar[str] = "google_maps_prospects"
 
     model_config = {
         "populate_by_name": True,

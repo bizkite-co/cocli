@@ -48,7 +48,11 @@ def compact_index(campaign_name: str, archive: bool = False) -> None:
     os.replace(temp_checkpoint, checkpoint_path)
     console.print(f"[bold green]Checkpoint created:[/bold green] {checkpoint_path} ({checkpoint_path.stat().st_size / 1024 / 1024:.2f} MB)")
 
-    # 5. Optional Archive (Move hot files to an archive folder)
+    # 5. Write Frictionless DataPackage
+    dp_path = GoogleMapsProspect.write_datapackage(campaign_name)
+    console.print(f"[bold green]Datapackage created:[/bold green] {dp_path}")
+
+    # 6. Optional Archive (Move hot files to an archive folder)
     if archive:
         archive_dir = manager.index_dir / "archive" / datetime.now().strftime("%Y%m%d_%H%M%S")
         archive_dir.mkdir(parents=True, exist_ok=True)
