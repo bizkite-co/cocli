@@ -1,10 +1,10 @@
 from typing import Dict, Any, Optional
-import re
 import datetime
 
 from ..models.companies.company import Company
 from ..models.people.person import Person
 from ..models.companies.note import Note
+from ..models.companies.meeting import Meeting
 from ..core.website_cache import WebsiteCache # Corrected import
 
 from ..models.companies.website import Website
@@ -157,28 +157,12 @@ def get_company_details_for_view(company_slug: str) -> Optional[Dict[str, Any]]:
     if meetings_dir.exists():
         for meeting_file in sorted(meetings_dir.iterdir()):
             if meeting_file.is_file() and meeting_file.suffix == ".md":
-                try:
-                    match = re.match(r"^(\d{4}-\d{2}-\d{2}(?:T\d{4}Z)?)-?(.*)\.md$", meeting_file.name)
-                    if not match:
-                        continue
-
-                    datetime_str = match.group(1)
-                    title_slug = match.group(2)
-
-                    if 'T' in datetime_str and datetime_str.endswith('Z'):
-                        meeting_datetime_utc = datetime.datetime.strptime(datetime_str, '%Y-%m-%dT%H%MZ').replace(tzinfo=datetime.timezone.utc)
-                    else:
-                        meeting_datetime_utc = datetime.datetime.strptime(datetime_str, '%Y-%m-%d').replace(tzinfo=datetime.timezone.utc)
-
-                    meeting_title = title_slug.replace("-", " ") if title_slug else "Untitled Meeting"
-                    
-                    meetings.append({
-                        "datetime_utc": meeting_datetime_utc.isoformat(),
-                        "title": meeting_title,
-                        "file_path": str(meeting_file)
-                    })
-                except (ValueError, IndexError):
-                    pass
+                meeting = Meeting.from_file(meeting_file)
+                if meeting:
+                    m_data = meeting.model_dump()
+                    m_data["datetime_utc"] = meeting.timestamp.isoformat()
+                    m_data["file_path"] = str(meeting_file)
+                    meetings.append(m_data)
     
     # Load notes
     notes = []

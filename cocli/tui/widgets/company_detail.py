@@ -18,6 +18,7 @@ from rich.markup import escape
 
 from ...models.companies.company import Company
 from ...models.companies.note import Note
+from ...models.companies.meeting import Meeting
 from ...models.phone import PhoneNumber
 from ...core.paths import paths
 from ...core.config import get_editor_command
@@ -260,7 +261,7 @@ class CompanyDetail(Container):
         elif focused == self.panel_contacts or self.contacts_table.has_focus:
             self.app.notify("Add Contact coming soon")
         elif focused == self.panel_meetings or self.meetings_table.has_focus:
-            self.app.notify("Add Meeting coming soon")
+            self.action_add_meeting()
 
     def action_delete_item(self) -> None:
         """Route 'd' key based on the focused quadrant."""
@@ -361,6 +362,14 @@ class CompanyDetail(Container):
             url = f"https://voice.google.com/u/0/calls?a=nc,%2B{cleaned}"
             webbrowser.open(url)
             self.app.notify(f"Calling {phone}...")
+            
+            # Create a meeting item for the phone call
+            slug = self.company_data["company"].get("slug")
+            if slug:
+                meeting = Meeting(title=f"Phone Call to {phone}", type="phone-call", content="")
+                meetings_dir = paths.companies.entry(slug) / "meetings"
+                meeting_path = meeting.to_file(meetings_dir)
+                self._edit_with_nvim(meeting_path)
         else:
             self.app.notify("No phone number found", severity="warning")
 
@@ -389,6 +398,17 @@ class CompanyDetail(Container):
         new_note.to_file(notes_dir)
         self._edit_with_nvim(temp_path)
 
+    def action_add_meeting(self) -> None:
+        """Create a new meeting using NVim."""
+        slug = self.company_data["company"].get("slug")
+        if not slug:
+            return
+
+        new_meeting = Meeting(title="New Meeting", type="meeting", content="")
+        meetings_dir = paths.companies.entry(slug) / "meetings"
+        meeting_path = new_meeting.to_file(meetings_dir)
+        self._edit_with_nvim(meeting_path)
+
     def action_edit_note(self) -> None:
         """Edit an existing note using NVim."""
         row_idx = self.notes_table.cursor_row
@@ -402,6 +422,21 @@ class CompanyDetail(Container):
         note_data = self.company_data["notes"][row_idx]
         file_path = note_data.get("file_path")
         logger.debug(f"action_edit_note: selected note file_path={file_path}")
+        
+        if file_path:
+            self._edit_with_nvim(Path(file_path))
+
+    def action_edit_meeting(self) -> None:
+        """Edit an existing meeting using NVim."""
+        row_idx = self.meetings_table.cursor_row
+        num_meetings = len(self.company_data.get("meetings", []))
+        
+        if row_idx is None or row_idx >= num_meetings:
+            self.app.notify("No meeting selected", severity="warning")
+            return
+        
+        meeting_data = self.company_data["meetings"][row_idx]
+        file_path = meeting_data.get("file_path")
         
         if file_path:
             self._edit_with_nvim(Path(file_path))
@@ -443,9 +478,10 @@ class CompanyDetail(Container):
             with self.app.suspend():
                 subprocess.run([editor, str(path)], check=False)
             
-            self.app.notify("Note saved")
-            # Reload notes from disk
+            self.app.notify("Item saved")
+            # Reload data from disk
             self.refresh_notes_data()
+            self.refresh_meetings_data()
         except Exception as e:
             logger.error(f"NVim editor session failed: {e}")
             self.app.notify(f"Editor failed: {e}", severity="error")
@@ -478,7 +514,37 @@ class CompanyDetail(Container):
             content_preview = escape(n.get("content", "")[:100].replace("\n", " "))
             self.notes_table.add_row(ts_str, content_preview)
         
-        self.notes_table.focus()
+        # Only re-focus if we had focus before
+        if self.notes_table.has_focus:
+            self.notes_table.focus()
+
+    def refresh_meetings_data(self) -> None:
+        """Reload meetings from the filesystem and refresh the table."""
+        slug = self.company_data["company"].get("slug")
+        if not slug:
+            return
+            
+        try:
+            from ...application.company_service import get_company_details_for_view
+            reloaded = get_company_details_for_view(slug)
+            if reloaded:
+                self.company_data["meetings"] = reloaded["meetings"]
+                self.refresh_meetings_table()
+        except Exception as e:
+            logger.error(f"Failed to refresh meetings: {e}")
+
+    def refresh_meetings_table(self) -> None:
+        """Repopulate the existing table rather than replacing it for stability."""
+        self.meetings_table.clear()
+        meetings = self.company_data.get("meetings", [])
+        for m in meetings:
+            dt = m.get("datetime_utc", "")[:10]
+            # Try to get type from model if possible, though currently it's just in filenames or frontmatter
+            m_type = m.get("type", "meeting")
+            self.meetings_table.add_row(dt, f"[{m_type}] {escape(m.get('title', 'Untitled'))}")
+        
+        if self.meetings_table.has_focus:
+            self.meetings_table.focus()
 
     @on(DataTable.RowSelected)
     def handle_row_selected(self, event: DataTable.RowSelected) -> None:
@@ -486,6 +552,8 @@ class CompanyDetail(Container):
             self.trigger_row_edit(cast(InfoTable, event.data_table))
         elif event.data_table.id == "notes-table":
             self.action_edit_note()
+        elif event.data_table.id == "meetings-table":
+            self.action_edit_meeting()
 
     def trigger_row_edit(self, table: InfoTable) -> None:
         row_idx = table.cursor_row
@@ -630,7 +698,8 @@ class CompanyDetail(Container):
         meetings = self.company_data.get("meetings", [])
         for m in meetings:
             dt = m.get("datetime_utc", "")[:10]
-            table.add_row(dt, escape(m.get("title", "Untitled")))
+            m_type = m.get("type", "meeting")
+            table.add_row(dt, f"[{m_type}] {escape(m.get('title', 'Untitled'))}")
         return table
 
     def _create_notes_table(self) -> NotesTable:
