@@ -86,7 +86,7 @@ test: install lint ## Run all non-TUI tests using pytest (incremental)
 	@if python3 scripts/check_code_signature.py --check --task test $(if $(FORCE),--force); then \
 		echo "Code signature matches for task 'test'. Skipping tests."; \
 	else \
-		source $(VENV_DIR)/bin/activate && PYTHONPATH=. pytest -s tests/ --quiet --ignore=tests/tui/test_navigation_steps.py --ignore=tests/e2e && \
+		source $(VENV_DIR)/bin/activate && PYTHONPATH=. pytest -s tests/ --quiet --ignore=tests/e2e && \
 		python3 scripts/check_code_signature.py --update --task test; \
 	fi
 

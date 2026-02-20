@@ -282,6 +282,10 @@ class CompanyList(Container):
                 
                 def select_first() -> None:
                     list_view.index = 0
+                    # If we had focus within this widget, ensure list_view gets it back
+                    if self.has_focus_within:
+                        list_view.focus()
+                    
                     # Manually trigger highlight for the first item to update preview
                     if self.filtered_fz_items:
                         item = self.filtered_fz_items[0]

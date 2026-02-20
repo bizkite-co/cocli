@@ -66,3 +66,30 @@ async def test_template_change_updates_selection(monkeypatch):
         
         # Verify it's highlighted child
         assert list_view.highlighted_child == list_view.children[0]
+
+@pytest.mark.asyncio
+async def test_l_key_drill_down_updates_selection(monkeypatch):
+    """Verify that using 'l' to drill down updates the list and selects the first item."""
+    services = setup_mocks(monkeypatch)
+    app = CocliApp(services=services)
+    
+    async with app.run_test() as driver:
+        await driver.pause(0.5)
+        
+        # Focus templates
+        await driver.press("t")
+        await driver.press("j") # Down to "With Email"
+        
+        # Press 'l' to drill down
+        await driver.press("l")
+        await driver.pause(0.5)
+        
+        # Company list should have focus
+        focused = app.focused
+        assert isinstance(focused, ListView)
+        assert focused.id == "company_list_view"
+        
+        # Check if list updated and first item is selected
+        assert "Email Company 1" in str(focused.children[0])
+        assert focused.index == 0
+        assert focused.highlighted_child == focused.children[0]
