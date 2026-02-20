@@ -47,6 +47,7 @@ class CompanyList(Container):
         self.current_sort: Optional[str] = "recent"
         self.search_offset: int = 0
         self.search_limit: int = 30
+        self._ignoring_input_change: bool = False
 
     def compose(self) -> ComposeResult:
         yield Label("SEARCH", id="search_header", classes="pane-header")
@@ -76,7 +77,14 @@ class CompanyList(Container):
         elif tpl_id == "tpl_most_reviewed":
             self.current_sort = "reviews"
         
-        self.query_one("#company_search_input", Input).value = ""
+        # Clear search without triggering redundant update
+        search_input = self.query_one("#company_search_input", Input)
+        self._ignoring_input_change = True
+        try:
+            search_input.value = ""
+        finally:
+            self._ignoring_input_change = False
+            
         self.run_search("")
         
         # We don't want to call .focus() here if run_search is async, 
@@ -156,6 +164,8 @@ class CompanyList(Container):
 
     async def on_input_changed(self, event: Input.Changed) -> None:
         """Called when the search input changes."""
+        if self._ignoring_input_change:
+            return
         self.search_offset = 0 # Reset on text change
         self.run_search(event.value)
 
@@ -282,8 +292,10 @@ class CompanyList(Container):
                 
                 def select_first() -> None:
                     list_view.index = 0
-                    # If we had focus within this widget, ensure list_view gets it back
-                    if self.has_focus_within:
+                    
+                    # If we had focus within this widget, or the list_view itself was focused
+                    # ensure list_view gets it back (especially important if it was hidden during loading)
+                    if self.has_focus_within or list_view.has_focus:
                         list_view.focus()
                     
                     # Manually trigger highlight for the first item to update preview

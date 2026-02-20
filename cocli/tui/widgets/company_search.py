@@ -44,7 +44,9 @@ class CompanySearchView(Container):
     @on(TemplateList.TemplateSelected)
     def on_template_selected(self, message: TemplateList.TemplateSelected) -> None:
         self.company_list.apply_template(message.template_id)
-        self.action_focus_companies()
+        # Use call_after_refresh to ensure focus happens AFTER the company_list 
+        # has reacted to the template change (e.g. started loading)
+        self.call_after_refresh(self.action_focus_companies)
 
     @on(CompanyList.CompanyHighlighted)
     def on_company_highlighted(self, message: CompanyList.CompanyHighlighted) -> None:
@@ -64,14 +66,8 @@ class CompanySearchView(Container):
             if self.company_list.has_focus_within:
                 self.template_list.focus_list()
                 event.prevent_default()
-            elif self.company_preview.has_focus_within:
-                self.action_focus_companies()
-                event.prevent_default()
         elif event.key == "l":
             if self.template_list.has_focus_within:
                 # Trigger selection which will apply template and move focus
                 self.template_list.query_one(ListView).action_select_cursor()
-                event.prevent_default()
-            elif self.company_list.has_focus_within:
-                self.company_preview.focus()
                 event.prevent_default()

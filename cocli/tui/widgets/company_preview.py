@@ -14,7 +14,7 @@ class CompanyPreview(Container):
         # Capture initial widgets to mount in preview_content later
         self._initial_widgets = args
         super().__init__(**kwargs)
-        self.can_focus = True
+        self.can_focus = False
 
     def compose(self) -> ComposeResult:
         yield Label("PREVIEW", id="preview_header", classes="pane-header")
