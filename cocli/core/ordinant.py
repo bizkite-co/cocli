@@ -11,7 +11,7 @@ CollectionName = Literal["companies", "people", "wal", "tasks"]
 IndexName = Union[Literal["google_maps_prospects", "target-tiles", "domains", "emails"], str]
 
 # Campaign-specific task queues
-QueueName = Union[Literal["enrichment", "gm-details", "gm-list", "gm-scrape"], str]
+QueueName = Union[Literal["enrichment", "gm-details", "gm-list", "gm-scrape", "to-call"], str]
 
 # Standardized folder names for Queues/WAL
 StateFolder = Literal["pending", "completed", "sideline", "inbox", "processing"]

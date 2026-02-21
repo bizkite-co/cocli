@@ -50,6 +50,7 @@ class ApplicationView(Container):
                     yield ListView(
                         ListItem(Label("Campaigns"), id="nav_campaigns"),
                         ListItem(Label("Environment Status"), id="nav_status"),
+                        ListItem(Label("Queues"), id="nav_queues"),
                         ListItem(Label("Operations"), id="nav_operations"),
                         id="app_nav_list"
                     )
@@ -58,6 +59,10 @@ class ApplicationView(Container):
                 with Vertical(id="app_sub_nav_container"):
                     yield Label("[bold]Menu[/bold]", id="sub_sidebar_title", classes="sidebar-title")
                     
+                    # Queues List (Newly Added)
+                    from .queues_view import QueueSelection
+                    yield QueueSelection(id="app_queue_list", classes="sub-sidebar-list")
+
                     # Operations List
                     yield ListView(
                         # Reporting
@@ -111,6 +116,11 @@ class ApplicationView(Container):
                     with VerticalScroll(id="op_log_preview_container"):
                         yield Static("", id="op_log_preview")
 
+                # Queues Detail (Newly Added)
+                from .queues_view import QueueDetail
+                with VerticalScroll(id="queue_detail_root", classes="category-content-root"):
+                    yield QueueDetail(id="queue_detail")
+
                 # Campaign Detail
                 with VerticalScroll(id="campaign_detail_root", classes="category-content-root"):
                     yield CampaignDetail(id="campaign-detail")
@@ -141,13 +151,15 @@ class ApplicationView(Container):
             self.query_one("#ops_list", ListView).focus()
         elif self.active_category == "campaigns":
             self.query_one("#app_campaign_list", CampaignSelection).focus()
+        elif self.active_category == "queues":
+            self.query_one("#app_queue_list", ListView).focus()
         elif self.active_category == "status":
             self.query_one("#status_view_root", StatusView).focus()
 
     def on_key(self, event: events.Key) -> None:
         """Handle sidebar navigation keys."""
         focused = self.app.focused
-        if isinstance(focused, ListView) and (focused.id == "app_nav_list" or focused.id == "ops_list" or focused.id == "campaign_list_view"):
+        if isinstance(focused, ListView) and (focused.id == "app_nav_list" or focused.id == "ops_list" or focused.id == "campaign_list_view" or focused.id == "app_queue_list"):
             if event.key == "j":
                 focused.action_cursor_down()
                 event.prevent_default()
@@ -166,6 +178,9 @@ class ApplicationView(Container):
         elif event.item.id == "nav_status":
             self.show_category("status")
             self.query_one("#status_view_root", StatusView).focus()
+        elif event.item.id == "nav_queues":
+            self.show_category("queues")
+            self.query_one("#app_queue_list", ListView).focus()
         elif event.item.id == "nav_operations":
             self.show_category("operations")
             self.query_one("#ops_list", ListView).focus()
@@ -183,15 +198,18 @@ class ApplicationView(Container):
         # Toggle Sidebar Visibility
         ops_list = self.query_one("#ops_list")
         campaign_list = self.query_one("#app_campaign_list")
+        queue_list = self.query_one("#app_queue_list")
         
         ops_list.display = (category == "operations")
         campaign_list.display = (category == "campaigns")
+        queue_list.display = (category == "queues")
         self.query_one("#app_sub_nav_container").display = (category != "status")
 
         # Toggle Content Visibility
         self.query_one("#ops_detail_root").display = (category == "operations")
         self.query_one("#campaign_detail_root").display = (category == "campaigns")
         self.query_one("#status_view_root").display = (category == "status")
+        self.query_one("#queue_detail_root").display = (category == "queues")
 
         if category == "campaigns":
             title_label.update("[bold]Campaigns[/bold]")
@@ -199,6 +217,8 @@ class ApplicationView(Container):
             title_label.update("[bold]Environment[/bold]")
         elif category == "operations":
             title_label.update("[bold]Operations[/bold]")
+        elif category == "queues":
+            title_label.update("[bold]Queues[/bold]")
 
     def update_recent_runs(self) -> None:
         try:
@@ -264,6 +284,23 @@ class ApplicationView(Container):
             if cached:
                 active = cached.get("active_fargate_tasks", "Unknown")
                 content_area.mount(Static(Panel(f"Current Running Tasks: [bold green]{active}[/]", title="Cloud Status")))
+
+    @on(ListView.Highlighted, "#app_queue_list")
+    def handle_queue_highlight(self, event: ListView.Highlighted) -> None:
+        """Update Queue Detail on highlight."""
+        if not event.item or not event.item.id:
+            return
+        
+        from .queues_view import QueueDetail
+        queue_id = str(event.item.id).replace("q_", "")
+        detail = self.query_one("#queue_detail", QueueDetail)
+        detail.update_detail(queue_id)
+
+    @on(ListView.Selected, "#app_queue_list")
+    def handle_queue_selection(self, event: ListView.Selected) -> None:
+        """Focus the detail pane when a queue is selected."""
+        from .queues_view import QueueDetail
+        self.query_one("#queue_detail", QueueDetail).focus()
 
     def action_view_full_log(self) -> None:
         if self.current_log_content:

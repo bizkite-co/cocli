@@ -240,7 +240,7 @@ def get_campaign_stats(campaign_name: str) -> Dict[str, Any]:
             
             # --- S3 Queue Progress (V2 Filesystem) ---
             s3_queues = {}
-            for q in ["gm-list", "gm-details", "enrichment"]:
+            for q in ["gm-list", "gm-details", "enrichment", "to-call"]:
                 try:
                     paginator = s3.get_paginator("list_objects_v2")
                     pending_count = 0
@@ -328,7 +328,7 @@ def get_campaign_stats(campaign_name: str) -> Dict[str, Any]:
     # Always check Local queue stats (for RPI cluster / Filesystem mode)
     from .paths import paths
     local_stats = {}
-    for q_name in ["gm-list", "gm-details", "enrichment"]:
+    for q_name in ["gm-list", "gm-details", "enrichment", "to-call"]:
         queue_base = paths.queue(campaign_name, q_name)
         pending_dir = queue_base / "pending"
         completed_dir = queue_base / "completed"
