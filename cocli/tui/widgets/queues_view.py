@@ -24,8 +24,7 @@ class QueueSelection(ListView):
 class QueueDetail(VerticalScroll):
     """
     Detailed view for a specific queue.
-    Uses a vertical scrolling layout to ensure both Metadata and Property Lists
-    are visible without competing for space.
+    Uses a vertical scrolling layout. Panels use height: auto to fit data.
     """
     
     BINDINGS = [
@@ -43,24 +42,24 @@ class QueueDetail(VerticalScroll):
             yield Label("Select a queue to view details.", id="queue_title")
             yield Static("", id="queue_sync_indicator")
         
-        # 1. Top Section: Queue Metadata Panel
+        # 1. Top Section: Metadata
         with Vertical(classes="panel", id="queue_info_panel"):
             yield Label("QUEUE METADATA", classes="panel-header")
             yield Static(id="queue_info_content", classes="panel-content")
         
-        # 2. Middle Section: Transformation Columns (Side-by-Side)
+        # 2. Transformation Grid
         with Container(id="queue_transform_grid"):
             # LEFT: Source / Pending
             with Vertical(classes="panel", id="source_panel"):
                 yield Label("SOURCE (FROM-MODEL)", classes="panel-header")
                 yield Label("PENDING COUNT: 0", id="count_pending_label", classes="count-display-label")
-                yield VerticalScroll(id="source_props_list", classes="panel-content")
+                yield Vertical(id="source_props_list", classes="panel-content")
             
             # RIGHT: Destination / Completed
             with Vertical(classes="panel", id="dest_panel"):
                 yield Label("DESTINATION (TO-MODEL)", classes="panel-header")
                 yield Label("COMPLETED COUNT: 0", id="count_completed_label", classes="count-display-label")
-                yield VerticalScroll(id="dest_props_list", classes="panel-content")
+                yield Vertical(id="dest_props_list", classes="panel-content")
 
     def update_detail(self, queue_id: str) -> None:
         meta = QUEUES_METADATA.get(queue_id)
@@ -70,7 +69,7 @@ class QueueDetail(VerticalScroll):
         self.active_queue = meta
         self.query_one("#queue_title", Label).update(f"QUEUE: {meta.label.upper()}")
         
-        # 1. Clear and Populate Property Lists (Left/Right)
+        # 1. Populate Property Lists
         self._populate_props("#source_props_list", meta.from_property_map, "cyan")
         self._populate_props("#dest_props_list", meta.to_property_map, "magenta")
         
@@ -78,17 +77,14 @@ class QueueDetail(VerticalScroll):
         self.refresh_counts()
 
     def _populate_props(self, container_id: str, props: Dict[str, str], color: str) -> None:
-        """Populates a vertical list of properties into the scrollable area."""
-        container = self.query_one(container_id, VerticalScroll)
+        """Populates a vertical list of properties into the container."""
+        container = self.query_one(container_id, Vertical)
         container.remove_children()
         
         for tech_name, description in props.items():
-            # Technical name in bold color
             name_label = Label(f"[bold {color}]{tech_name}[/]", classes="prop-name")
-            # Store tech name for test verification
             setattr(name_label, "tech_name", tech_name)
             container.mount(name_label)
-            # Description underneath
             container.mount(Label(f"{description}", classes="prop-desc"))
             container.mount(Static("", classes="prop-spacer"))
 
@@ -118,11 +114,10 @@ class QueueDetail(VerticalScroll):
             pending = q_stats.get("pending", 0)
             completed = q_stats.get("completed", 0)
         
-        # Update Count Labels
         self.query_one("#count_pending_label", Label).update(f"PENDING ITEMS: [bold yellow]{pending}[/]")
         self.query_one("#count_completed_label", Label).update(f"COMPLETED ITEMS: [bold green]{completed}[/]")
 
-        # Update Metadata Table
+        # Metadata Table
         info_table = Table(box=None, show_header=False, expand=True, padding=(0, 1))
         info_table.add_column("Key", style="dim cyan", width=20)
         info_table.add_column("Value", style="white")

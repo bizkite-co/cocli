@@ -344,7 +344,6 @@ Footer > .footer--key {
 
 #queue_info_panel {
     height: auto;
-    min-height: 10;
     border-bottom: solid #222222;
     margin-bottom: 1;
 }
@@ -363,7 +362,7 @@ Footer > .footer--key {
 .panel-content {
     margin-left: 2;
     margin-top: 1;
-    height: 1fr;
+    height: auto;
 }
 
 .count-display-label {
