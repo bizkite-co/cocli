@@ -13,7 +13,8 @@ class QueueMetadata(BaseModel):
     model_class: Type[BaseModel]
     from_models: List[str]
     to_models: List[str]
-    properties: List[str]
+    from_properties: List[str]
+    to_properties: List[str]
     sharding_strategy: str
 
 QUEUES_METADATA: Dict[QueueName, QueueMetadata] = {
@@ -24,7 +25,8 @@ QUEUES_METADATA: Dict[QueueName, QueueMetadata] = {
         model_class=ScrapeTask,
         from_models=["CampaignConfig"],
         to_models=["ProspectIndex", "gm-details"],
-        properties=["latitude", "longitude", "zoom", "search_phrase", "tile_id"],
+        from_properties=["queries", "locations", "proximity"],
+        to_properties=["latitude", "longitude", "zoom", "tile_id"],
         sharding_strategy="geo_tile (latitude prefix)"
     ),
     "gm-details": QueueMetadata(
@@ -34,7 +36,8 @@ QUEUES_METADATA: Dict[QueueName, QueueMetadata] = {
         model_class=GmItemTask,
         from_models=["gm-list", "ProspectIndex"],
         to_models=["Company", "enrichment"],
-        properties=["place_id", "name", "company_slug", "discovery_phrase"],
+        from_properties=["place_id", "name", "discovery_phrase"],
+        to_properties=["Company.name", "Company.address", "Company.phone", "Company.website"],
         sharding_strategy="place_id (6th char)"
     ),
     "enrichment": QueueMetadata(
@@ -44,7 +47,8 @@ QUEUES_METADATA: Dict[QueueName, QueueMetadata] = {
         model_class=EnrichmentTask,
         from_models=["Company", "gm-details"],
         to_models=["Company", "EmailIndex", "DomainIndex"],
-        properties=["domain", "company_slug", "attempts", "last_enriched"],
+        from_properties=["domain", "company_slug"],
+        to_properties=["Company.email", "Company.socials", "Company.tech_stack"],
         sharding_strategy="domain (sha256 hash)"
     ),
     "to-call": QueueMetadata(
@@ -54,7 +58,8 @@ QUEUES_METADATA: Dict[QueueName, QueueMetadata] = {
         model_class=ToCallTask,
         from_models=["Company", "enrichment"],
         to_models=["CRM", "SalesLog"],
-        properties=["company_slug", "priority", "reason"],
+        from_properties=["company_slug", "has_phone", "has_email"],
+        to_properties=["Priority", "Reason", "ContactHistory"],
         sharding_strategy="None (Flat List)"
     )
 }

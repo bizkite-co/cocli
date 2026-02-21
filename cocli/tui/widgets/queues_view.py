@@ -2,14 +2,12 @@ from typing import Any, Optional, TYPE_CHECKING, cast
 import logging
 import asyncio
 from textual.app import ComposeResult
-from textual.containers import Container, Vertical, Horizontal, VerticalScroll
-from textual.widgets import Label, ListView, ListItem, Static, Button
-from textual import on, work
-from rich.table import Table
-from rich.panel import Panel
+from textual.containers import Container, Vertical, Horizontal
+from textual.widgets import Label, ListView, ListItem, Static
+from textual import work
+from rich.text import Text
 
 from cocli.models.campaigns.queues.metadata import QUEUES_METADATA, QueueMetadata
-from cocli.core.paths import paths
 
 if TYPE_CHECKING:
     from ..app import CocliApp
@@ -22,34 +20,39 @@ class QueueSelection(ListView):
         for q_id, meta in QUEUES_METADATA.items():
             yield ListItem(Label(meta.label), id=f"q_{q_id}")
 
-class QueueDetail(VerticalScroll):
-    """Detailed view for a specific queue."""
+class QueueDetail(Container):
+    """Detailed view for a specific queue using a panel-based transformation layout."""
+    
+    BINDINGS = [
+        ("s", "sync_pending", "Sync Pending"),
+        ("p", "sync_pending", "Sync Pending"), # Allow s or p
+        ("c", "sync_completed", "Sync Completed"),
+    ]
+
     def __init__(self, *args: Any, **kwargs: Any) -> None:
         super().__init__(*args, **kwargs)
         self.active_queue: Optional[QueueMetadata] = None
+        self.can_focus = True
 
     def compose(self) -> ComposeResult:
         with Horizontal(id="queue_header"):
             yield Label("Select a queue to view details.", id="queue_title")
+            yield Label("", id="queue_counts_summary")
             yield Static("", id="queue_sync_indicator")
         
         yield Static("", id="queue_description", classes="op-description")
         
-        with Container(id="queue_content_area"):
-            # Metadata Table
-            yield Static(id="queue_meta_pane")
+        # Transformation Grid (Style consistent with Company Details)
+        with Container(id="queue_transform_grid"):
+            # Left: Source Panel
+            with Vertical(classes="panel", id="source_panel"):
+                yield Label("FROM PROPERTY", classes="panel-header")
+                yield Static(id="source_props_list", classes="props-list")
             
-            # Counts & Actions
-            with Horizontal(id="queue_action_row"):
-                with Vertical(classes="count-box"):
-                    yield Label("PENDING", classes="count-label")
-                    yield Label("0", id="count_pending", classes="count-value")
-                    yield Button("Sync Pending", id="btn_sync_pending", variant="primary")
-                
-                with Vertical(classes="count-box"):
-                    yield Label("COMPLETED", classes="count-label")
-                    yield Label("0", id="count_completed", classes="count-value")
-                    yield Button("Sync Completed", id="btn_sync_completed", variant="success")
+            # Right: Destination Panel
+            with Vertical(classes="panel", id="dest_panel"):
+                yield Label("TO PROPERTY", classes="panel-header")
+                yield Static(id="dest_props_list", classes="props-list")
 
     def update_detail(self, queue_id: str) -> None:
         meta = QUEUES_METADATA.get(queue_id)
@@ -57,32 +60,20 @@ class QueueDetail(VerticalScroll):
             return
         
         self.active_queue = meta
-        self.query_one("#queue_title", Label).update(f"Queue: {meta.label}")
+        self.query_one("#queue_title", Label).update(f"QUEUE: {meta.label.upper()}")
         self.query_one("#queue_description", Static).update(meta.description)
         
-        # Render Metadata Table
-        table = Table(box=None, show_header=False, expand=True)
-        table.add_column("Key", style="dim cyan", width=15)
-        table.add_column("Value", style="white")
+        # Render Source Properties
+        source_text = Text()
+        for prop in meta.from_properties:
+            source_text.append(f"• {prop}\n", style="cyan")
+        self.query_one("#source_props_list", Static).update(source_text)
         
-        app = cast("CocliApp", self.app)
-        campaign = app.services.reporting_service.campaign_name
-        local_path = paths.campaign(campaign).queue(meta.name).path
-        
-        # Use relative path for display if possible, else full path
-        try:
-            display_path = local_path.relative_to(paths.root)
-            display_path_str = f"data/{display_path}/"
-        except ValueError:
-            display_path_str = str(local_path)
-
-        table.add_row("Data Path", display_path_str)
-        table.add_row("From Models", ", ".join(meta.from_models))
-        table.add_row("To Models", ", ".join(meta.to_models))
-        table.add_row("Shard Logic", meta.sharding_strategy)
-        table.add_row("Properties", ", ".join(meta.properties))
-        
-        self.query_one("#queue_meta_pane", Static).update(Panel(table, title="Transformation Metadata", border_style="blue"))
+        # Render Destination Properties
+        dest_text = Text()
+        for prop in meta.to_properties:
+            dest_text.append(f"• {prop}\n", style="magenta")
+        self.query_one("#dest_props_list", Static).update(dest_text)
         
         # Refresh Counts
         self.refresh_counts()
@@ -94,20 +85,20 @@ class QueueDetail(VerticalScroll):
         app = cast("CocliApp", self.app)
         campaign = app.services.reporting_service.campaign_name
         
-        # Load stats from cache or trigger refresh
         stats = app.services.reporting_service.load_cached_report(campaign, "status")
         if stats:
             q_stats = stats.get("local_queues", {}).get(self.active_queue.name, {})
-            self.query_one("#count_pending", Label).update(str(q_stats.get("pending", 0)))
-            self.query_one("#count_completed", Label).update(str(q_stats.get("completed", 0)))
+            pending = q_stats.get("pending", 0)
+            completed = q_stats.get("completed", 0)
+            
+            summary = f"[bold white]Pending:[/] [yellow]{pending}[/]  |  [bold white]Completed:[/] [green]{completed}[/]"
+            self.query_one("#queue_counts_summary", Label).update(summary)
 
-    @on(Button.Pressed, "#btn_sync_pending")
-    def handle_sync_pending(self) -> None:
+    def action_sync_pending(self) -> None:
         if self.active_queue:
             self.run_sync(self.active_queue.name, "pending")
 
-    @on(Button.Pressed, "#btn_sync_completed")
-    def handle_sync_completed(self) -> None:
+    def action_sync_completed(self) -> None:
         if self.active_queue:
             self.run_sync(self.active_queue.name, "completed")
 
@@ -118,15 +109,10 @@ class QueueDetail(VerticalScroll):
         indicator.update(f"[bold yellow] Syncing {branch}...[/bold yellow]")
         
         try:
-            # We'll use the existing sync service but we might need a more granular 
-            # method in DataSyncService for specific branches later.
-            # For now, we'll call the general queue sync.
             await asyncio.to_thread(app.services.data_sync_service.sync_queues, queue_name)
-            
             indicator.update(f"[bold green] {branch.title()} Synced[/bold green]")
             self.app.notify(f"Sync Complete: {queue_name} ({branch})")
             
-            # Refresh stats after sync
             await asyncio.to_thread(app.services.reporting_service.get_campaign_stats)
             self.call_after_refresh(self.refresh_counts)
             
