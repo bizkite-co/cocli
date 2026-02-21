@@ -351,28 +351,19 @@ Footer > .footer--key {
 
 #queue_transform_grid {
     layout: horizontal;
-    height: 1fr;
+    height: auto;
     width: 100%;
 }
 
 #queue_transform_grid .panel {
     width: 1fr;
+    height: auto;
 }
 
 .panel-content {
     margin-left: 2;
     margin-top: 1;
     height: 1fr;
-}
-
-.panel-header {
-    color: #444444; 
-    text-align: left;
-    text-style: bold;
-    width: 100%;
-    margin-bottom: 0;
-    padding-left: 1;
-    border-left: solid #222222;
 }
 
 .count-display-label {

@@ -34,7 +34,6 @@ async def test_queue_detail_structure_regression(mocker):
         
         # 2. Check technical names exist in the scroll area
         source_list = detail.query_one("#source_props_list", VerticalScroll)
-        # Content is dynamic, we check the custom attribute 'tech_name'
         prop_names = [getattr(c, "tech_name") for c in source_list.children if hasattr(c, "tech_name")]
         assert "queries" in prop_names
         
@@ -42,7 +41,7 @@ async def test_queue_detail_structure_regression(mocker):
         prop_names_dest = [getattr(c, "tech_name") for c in dest_list.children if hasattr(c, "tech_name")]
         assert "latitude" in prop_names_dest
 
-        # 3. Check Bindings (Literals for Footer)
+        # 3. Check Bindings (sp/sc)
         binding_keys = [b[0] for b in QueueDetail.BINDINGS]
         assert "s p" in binding_keys
         assert "s c" in binding_keys

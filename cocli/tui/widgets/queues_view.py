@@ -21,12 +21,11 @@ class QueueSelection(ListView):
         for q_id, meta in QUEUES_METADATA.items():
             yield ListItem(Label(meta.label), id=f"q_{q_id}")
 
-class QueueDetail(Container):
+class QueueDetail(VerticalScroll):
     """
     Detailed view for a specific queue.
-    - Metadata Panel (Top)
-    - Source/Pending Panel (Left Column) with Count + Property List
-    - Destination/Completed Panel (Right Column) with Count + Property List
+    Uses a vertical scrolling layout to ensure both Metadata and Property Lists
+    are visible without competing for space.
     """
     
     BINDINGS = [
@@ -44,20 +43,20 @@ class QueueDetail(Container):
             yield Label("Select a queue to view details.", id="queue_title")
             yield Static("", id="queue_sync_indicator")
         
-        # 1. Top Panel: Queue Metadata
+        # 1. Top Section: Queue Metadata Panel
         with Vertical(classes="panel", id="queue_info_panel"):
             yield Label("QUEUE METADATA", classes="panel-header")
             yield Static(id="queue_info_content", classes="panel-content")
         
-        # 2. Side-by-Side Panels
+        # 2. Middle Section: Transformation Columns (Side-by-Side)
         with Container(id="queue_transform_grid"):
-            # LEFT: SOURCE / PENDING
+            # LEFT: Source / Pending
             with Vertical(classes="panel", id="source_panel"):
                 yield Label("SOURCE (FROM-MODEL)", classes="panel-header")
                 yield Label("PENDING COUNT: 0", id="count_pending_label", classes="count-display-label")
                 yield VerticalScroll(id="source_props_list", classes="panel-content")
             
-            # RIGHT: DESTINATION / COMPLETED
+            # RIGHT: Destination / Completed
             with Vertical(classes="panel", id="dest_panel"):
                 yield Label("DESTINATION (TO-MODEL)", classes="panel-header")
                 yield Label("COMPLETED COUNT: 0", id="count_completed_label", classes="count-display-label")
@@ -75,7 +74,7 @@ class QueueDetail(Container):
         self._populate_props("#source_props_list", meta.from_property_map, "cyan")
         self._populate_props("#dest_props_list", meta.to_property_map, "magenta")
         
-        # 2. Refresh counts and metadata
+        # 2. Refresh counts and info
         self.refresh_counts()
 
     def _populate_props(self, container_id: str, props: Dict[str, str], color: str) -> None:
@@ -85,10 +84,11 @@ class QueueDetail(Container):
         
         for tech_name, description in props.items():
             # Technical name in bold color
-            # Description underneath in dim white
             name_label = Label(f"[bold {color}]{tech_name}[/]", classes="prop-name")
+            # Store tech name for test verification
             setattr(name_label, "tech_name", tech_name)
             container.mount(name_label)
+            # Description underneath
             container.mount(Label(f"{description}", classes="prop-desc"))
             container.mount(Static("", classes="prop-spacer"))
 
@@ -118,11 +118,11 @@ class QueueDetail(Container):
             pending = q_stats.get("pending", 0)
             completed = q_stats.get("completed", 0)
         
-        # Update Counts (Placed at the top of the columns)
+        # Update Count Labels
         self.query_one("#count_pending_label", Label).update(f"PENDING ITEMS: [bold yellow]{pending}[/]")
         self.query_one("#count_completed_label", Label).update(f"COMPLETED ITEMS: [bold green]{completed}[/]")
 
-        # Build Global Metadata Table (Top Panel)
+        # Update Metadata Table
         info_table = Table(box=None, show_header=False, expand=True, padding=(0, 1))
         info_table.add_column("Key", style="dim cyan", width=20)
         info_table.add_column("Value", style="white")
