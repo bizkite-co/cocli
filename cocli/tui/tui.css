@@ -355,6 +355,10 @@ Footer > .footer--key {
     width: 100%;
 }
 
+#queue_transform_grid .panel {
+    width: 1fr;
+}
+
 .panel-content {
     margin-left: 2;
     margin-top: 1;
@@ -378,4 +382,20 @@ Footer > .footer--key {
     padding-left: 2;
     margin-bottom: 1;
     border-left: solid #222222;
+}
+
+.prop-name {
+    width: 100%;
+    text-style: bold;
+}
+
+.prop-desc {
+    width: 100%;
+    color: #aaaaaa;
+    margin-left: 2;
+}
+
+.prop-spacer {
+    height: 1;
+    width: 100%;
 }

@@ -7,7 +7,6 @@ help: ## Display this help screen
 init: ## Initialize the cocli configuration file
 	./.venv/bin/cocli init
 
-
 # ==============================================================================
 # Application Tasks
 # ==============================================================================
