@@ -24,7 +24,11 @@ class QueueSelection(ListView):
 class QueueDetail(VerticalScroll):
     """
     Detailed view for a specific queue.
-    Uses a vertical scrolling layout. Panels use height: auto to fit data.
+    Strictly follows the requested layout:
+    - Top: Metadata panel (with green Path)
+    - Grid: 
+        - Left: 'pending/' title (green), Model Name, Count, Property Table
+        - Right: 'completed/' title (green), Model Name, Count, Property Table
     """
     
     BINDINGS = [
@@ -42,7 +46,7 @@ class QueueDetail(VerticalScroll):
             yield Label("Select a queue to view details.", id="queue_title")
             yield Static("", id="queue_sync_indicator")
         
-        # 1. Top Section: Metadata
+        # 1. Top Section: Metadata Panel
         with Vertical(classes="panel", id="queue_info_panel"):
             yield Label("QUEUE METADATA", classes="panel-header")
             yield Static(id="queue_info_content", classes="panel-content")
@@ -51,13 +55,15 @@ class QueueDetail(VerticalScroll):
         with Container(id="queue_transform_grid"):
             # LEFT: Source / Pending
             with Vertical(classes="panel", id="source_panel"):
-                yield Label("SOURCE (FROM-MODEL)", classes="panel-header")
+                yield Label("pending/", classes="panel-header-green")
+                yield Label("", id="from_model_label", classes="model-name-label")
                 yield Label("PENDING COUNT: 0", id="count_pending_label", classes="count-display-label")
                 yield Vertical(id="source_props_list", classes="panel-content")
             
             # RIGHT: Destination / Completed
             with Vertical(classes="panel", id="dest_panel"):
-                yield Label("DESTINATION (TO-MODEL)", classes="panel-header")
+                yield Label("completed/", classes="panel-header-green")
+                yield Label("", id="to_model_label", classes="model-name-label")
                 yield Label("COMPLETED COUNT: 0", id="count_completed_label", classes="count-display-label")
                 yield Vertical(id="dest_props_list", classes="panel-content")
 
@@ -69,11 +75,15 @@ class QueueDetail(VerticalScroll):
         self.active_queue = meta
         self.query_one("#queue_title", Label).update(f"QUEUE: {meta.label.upper()}")
         
-        # 1. Populate Property Lists
+        # Set Model Names
+        self.query_one("#from_model_label", Label).update(meta.from_model_name)
+        self.query_one("#to_model_label", Label).update(meta.to_model_name)
+        
+        # Populate Property Lists
         self._populate_props("#source_props_list", meta.from_property_map, "cyan")
         self._populate_props("#dest_props_list", meta.to_property_map, "magenta")
         
-        # 2. Refresh counts and info
+        # Refresh counts and info
         self.refresh_counts()
 
     def _populate_props(self, container_id: str, props: Dict[str, str], color: str) -> None:
@@ -81,16 +91,14 @@ class QueueDetail(VerticalScroll):
         container = self.query_one(container_id, Vertical)
         container.remove_children()
         
-        tech_names = []
         for tech_name, description in props.items():
             name_label = Label(f"[bold {color}]{tech_name}[/]", classes="prop-name")
             setattr(name_label, "tech_name", tech_name)
             container.mount(name_label)
             container.mount(Label(f"{description}", classes="prop-desc"))
             container.mount(Static("", classes="prop-spacer"))
-            tech_names.append(tech_name)
         
-        setattr(container, "tech_props", tech_names)
+        setattr(container, "tech_props", list(props.keys()))
 
     def refresh_counts(self) -> None:
         if not self.active_queue:
@@ -121,26 +129,19 @@ class QueueDetail(VerticalScroll):
         self.query_one("#count_pending_label", Label).update(f"PENDING ITEMS: [bold yellow]{pending}[/]")
         self.query_one("#count_completed_label", Label).update(f"COMPLETED ITEMS: [bold green]{completed}[/]")
 
-        # Metadata Table
+        # Build Metadata Table
         info_table = Table(box=None, show_header=False, expand=True, padding=(0, 1))
         info_table.add_column("Key", style="dim cyan", width=20)
         info_table.add_column("Value", style="white")
         
-        metadata = {
-            "Functional Purpose": self.active_queue.description,
-            "Task Model": self.active_queue.model_class.__name__,
-            "Filesystem Path": display_path_str,
-            "Sharding Strategy": self.active_queue.sharding_strategy,
-            "Upstream Sources": ", ".join(self.active_queue.from_models),
-            "Downstream Targets": ", ".join(self.active_queue.to_models)
-        }
-
-        for key, val in metadata.items():
-            info_table.add_row(key, val)
+        info_table.add_row("Functional Purpose", self.active_queue.description)
+        # Filesystem path value in green
+        info_table.add_row("Filesystem Path", f"[bold green]{display_path_str}[/]")
+        info_table.add_row("Sharding Strategy", self.active_queue.sharding_strategy)
+        info_table.add_row("Upstream Sources", ", ".join(self.active_queue.from_models))
+        info_table.add_row("Downstream Targets", ", ".join(self.active_queue.to_models))
         
-        widget = self.query_one("#queue_info_content", Static)
-        widget.update(info_table)
-        setattr(widget, "metadata_map", metadata)
+        self.query_one("#queue_info_content", Static).update(info_table)
 
     def action_sync_pending(self) -> None:
         if self.active_queue:
