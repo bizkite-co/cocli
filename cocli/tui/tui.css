@@ -374,20 +374,9 @@ Footer > .footer--key {
     border-left: solid #222222;
 }
 
-.prop-name {
+.prop-line {
     width: 100%;
-    text-style: bold;
-}
-
-.prop-desc {
-    width: 100%;
-    color: #aaaaaa;
     margin-left: 2;
-}
-
-.prop-spacer {
-    height: 1;
-    width: 100%;
 }
 
 .panel-header-green {

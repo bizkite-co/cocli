@@ -7,7 +7,7 @@ from textual.widgets import Label, ListView, ListItem, Static
 from textual import work
 from rich.table import Table
 
-from cocli.models.campaigns.queues.metadata import QUEUES_METADATA, QueueMetadata
+from cocli.models.campaigns.queues.metadata import QUEUES_METADATA, QueueMetadata, PropertyInfo
 from cocli.core.paths import paths
 
 if TYPE_CHECKING:
@@ -86,17 +86,21 @@ class QueueDetail(VerticalScroll):
         # Refresh counts and info
         self.refresh_counts()
 
-    def _populate_props(self, container_id: str, props: Dict[str, str], color: str) -> None:
-        """Populates a vertical list of properties into the container."""
+    def _populate_props(self, container_id: str, props: Dict[str, PropertyInfo], color: str) -> None:
+        """
+        Populates a vertical list of properties into the container.
+        Format: {name}:{type} {desc}
+        """
         container = self.query_one(container_id, Vertical)
         container.remove_children()
         
-        for tech_name, description in props.items():
-            name_label = Label(f"[bold {color}]{tech_name}[/]", classes="prop-name")
-            setattr(name_label, "tech_name", tech_name)
-            container.mount(name_label)
-            container.mount(Label(f"{description}", classes="prop-desc"))
-            container.mount(Static("", classes="prop-spacer"))
+        for tech_name, info in props.items():
+            # Only the tech_name is highlighted in the specified color.
+            # Type and description follow on the same line.
+            line = f"[bold {color}]{tech_name}[/]:[dim]{info.type}[/] {info.desc}"
+            label = Label(line, classes="prop-line")
+            setattr(label, "tech_name", tech_name)
+            container.mount(label)
         
         setattr(container, "tech_props", list(props.keys()))
 
@@ -135,7 +139,6 @@ class QueueDetail(VerticalScroll):
         info_table.add_column("Value", style="white")
         
         info_table.add_row("Functional Purpose", self.active_queue.description)
-        # Filesystem path value in green
         info_table.add_row("Filesystem Path", f"[bold green]{display_path_str}[/]")
         info_table.add_row("Sharding Strategy", self.active_queue.sharding_strategy)
         info_table.add_row("Upstream Sources", ", ".join(self.active_queue.from_models))

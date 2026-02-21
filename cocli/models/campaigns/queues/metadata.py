@@ -6,6 +6,10 @@ from .enrichment import EnrichmentTask
 from .to_call import ToCallTask
 from ....core.ordinant import QueueName
 
+class PropertyInfo(BaseModel):
+    type: str
+    desc: str
+
 class QueueMetadata(BaseModel):
     name: QueueName
     label: str
@@ -13,10 +17,10 @@ class QueueMetadata(BaseModel):
     model_class: Type[BaseModel]
     from_model_name: str
     to_model_name: str
-    from_models: List[str] # Restored
-    to_models: List[str]   # Restored
-    from_property_map: Dict[str, str]  # Tech Name -> Descriptive Name
-    to_property_map: Dict[str, str]    # Tech Name -> Descriptive Name
+    from_models: List[str]
+    to_models: List[str]
+    from_property_map: Dict[str, PropertyInfo]
+    to_property_map: Dict[str, PropertyInfo]
     sharding_strategy: str
 
 QUEUES_METADATA: Dict[QueueName, QueueMetadata] = {
@@ -30,20 +34,20 @@ QUEUES_METADATA: Dict[QueueName, QueueMetadata] = {
         from_models=["CampaignConfig"],
         to_models=["ProspectIndex", "gm-details"],
         from_property_map={
-            "queries": "List of search phrases (e.g. 'Flooring Contractor') to iterate over.",
-            "locations": "Target cities, zip codes, or custom regions defined in the campaign.",
-            "proximity": "The search radius in miles around each location center.",
-            "grid_size": "Step size for geographic tiling (default 0.1 deg)."
+            "queries": PropertyInfo(type="list[str]", desc="Search phrases (e.g. 'Flooring Contractor') to iterate over."),
+            "locations": PropertyInfo(type="list[str]", desc="Target cities, zip codes, or custom regions defined in the campaign."),
+            "proximity": PropertyInfo(type="float", desc="The search radius in miles around each location center."),
+            "grid_size": PropertyInfo(type="float", desc="Step size for geographic tiling (default 0.1 deg).")
         },
         to_property_map={
-            "latitude": "WGS84 Latitude coordinate for the center of the scrape tile.",
-            "longitude": "WGS84 Longitude coordinate for the center of the scrape tile.",
-            "zoom": "The Google Maps zoom level (usually 14-16) for appropriate density.",
-            "search_phrase": "The specific query phrase used for this tile.",
-            "tile_id": "Deterministic 0.1 degree grid identifier (e.g. '30.1_-97.5').",
-            "radius_miles": "Approximate radius covered by this specific task.",
-            "force_refresh": "If true, bypasses local witness index.",
-            "ttl_days": "Time-to-live for the cached result."
+            "latitude": PropertyInfo(type="float", desc="WGS84 Latitude coordinate for the center of the scrape tile."),
+            "longitude": PropertyInfo(type="float", desc="WGS84 Longitude coordinate for the center of the scrape tile."),
+            "zoom": PropertyInfo(type="float", desc="The Google Maps zoom level (usually 14-16)."),
+            "search_phrase": PropertyInfo(type="str", desc="The specific query phrase used for this tile."),
+            "tile_id": PropertyInfo(type="str", desc="Deterministic 0.1 degree grid identifier (e.g. '30.1_-97.5')."),
+            "radius_miles": PropertyInfo(type="float", desc="Approximate radius covered by this specific task."),
+            "force_refresh": PropertyInfo(type="bool", desc="If true, bypasses local witness index."),
+            "ttl_days": PropertyInfo(type="int", desc="Time-to-live for the cached result.")
         },
         sharding_strategy="geo_tile (latitude prefix)"
     ),
@@ -57,17 +61,17 @@ QUEUES_METADATA: Dict[QueueName, QueueMetadata] = {
         from_models=["gm-list", "ProspectIndex"],
         to_models=["Company", "enrichment"],
         from_property_map={
-            "place_id": "The unique Google Maps identifier found in the list results.",
-            "name": "The business name found during the initial list scrape.",
-            "discovery_phrase": "The query that originally discovered this lead.",
-            "discovery_tile_id": "The geographic tile where this lead was found."
+            "place_id": PropertyInfo(type="str", desc="The unique Google Maps identifier found in the list results."),
+            "name": PropertyInfo(type="str", desc="The business name found during the initial list scrape."),
+            "discovery_phrase": PropertyInfo(type="str", desc="The query that originally discovered this lead."),
+            "discovery_tile_id": PropertyInfo(type="str", desc="The geographic tile where this lead was found.")
         },
         to_property_map={
-            "place_id": "Unique anchor for Place Detail API/Web scraping.",
-            "name": "The verified business name from the Detail result.",
-            "company_slug": "Generated URL-safe slug for the company directory.",
-            "force_refresh": "If true, forces a re-scrape of an existing Place ID.",
-            "attempts": "Number of times this task has been tried."
+            "place_id": PropertyInfo(type="str", desc="Unique anchor for Place Detail API/Web scraping."),
+            "name": PropertyInfo(type="str", desc="The verified business name from the Detail result."),
+            "company_slug": PropertyInfo(type="str", desc="Generated URL-safe slug for the company directory."),
+            "force_refresh": PropertyInfo(type="bool", desc="If true, forces a re-scrape of an existing Place ID."),
+            "attempts": PropertyInfo(type="int", desc="Number of times this task has been tried.")
         },
         sharding_strategy="place_id (6th char)"
     ),
@@ -81,19 +85,19 @@ QUEUES_METADATA: Dict[QueueName, QueueMetadata] = {
         from_models=["gm-details"],
         to_models=["Company", "EmailIndex", "DomainIndex"],
         from_property_map={
-            "domain": "The target website domain to crawl.",
-            "company_slug": "Internal identifier used to link data back to the company file."
+            "domain": PropertyInfo(type="str", desc="The target website domain to crawl."),
+            "company_slug": PropertyInfo(type="str", desc="Internal identifier used to link data back to the company file.")
         },
         to_property_map={
-            "id": "Unique UUID for the enrichment message.",
-            "domain": "The primary domain being enriched.",
-            "company_slug": "Pointer to data/companies/{slug}/.",
-            "aws_profile_name": "Optional IAM profile for cloud workers.",
-            "force_refresh": "Bypasses the 30-day enrichment cache.",
-            "attempts": "Total retry count for this domain.",
-            "http_500_attempts": "Specific tracking for server-side failures.",
-            "created_at": "Initial enqueue timestamp.",
-            "updated_at": "Last status update timestamp."
+            "id": PropertyInfo(type="str", desc="Unique UUID for the enrichment message."),
+            "domain": PropertyInfo(type="str", desc="The primary domain being enriched."),
+            "company_slug": PropertyInfo(type="str", desc="Pointer to data/companies/{slug}/."),
+            "aws_profile_name": PropertyInfo(type="str", desc="Optional IAM profile for cloud workers."),
+            "force_refresh": PropertyInfo(type="bool", desc="Bypasses the 30-day enrichment cache."),
+            "attempts": PropertyInfo(type="int", desc="Total retry count for this domain."),
+            "http_500_attempts": PropertyInfo(type="int", desc="Specific tracking for server-side failures."),
+            "created_at": PropertyInfo(type="datetime", desc="Initial enqueue timestamp."),
+            "updated_at": PropertyInfo(type="datetime", desc="Last status update timestamp.")
         },
         sharding_strategy="domain (sha256 hash)"
     ),
@@ -107,17 +111,17 @@ QUEUES_METADATA: Dict[QueueName, QueueMetadata] = {
         from_models=["Company", "enrichment"],
         to_models=["CRM", "SalesLog"],
         from_property_map={
-            "company_slug": "Internal identifier for the target company.",
-            "has_phone": "Boolean flag indicating if a valid phone number is available.",
-            "has_email": "Boolean flag indicating if a valid email is available.",
-            "tags": "List of tags (e.g. 'high-value') used for prioritization."
+            "company_slug": PropertyInfo(type="str", desc="Internal identifier for the target company."),
+            "has_phone": PropertyInfo(type="bool", desc="Boolean flag indicating if a valid phone number is available."),
+            "has_email": PropertyInfo(type="bool", desc="Boolean flag indicating if a valid email is available."),
+            "tags": PropertyInfo(type="list[str]", desc="List of tags (e.g. 'high-value') used for prioritization.")
         },
         to_property_map={
-            "company_slug": "Internal identifier for the target company.",
-            "priority": "Numerical urgency score (1-5) based on lead quality.",
-            "reason": "Explains why this lead was enqueued (e.g. 'Highly Enriched').",
-            "created_at": "Timestamp when lead entered the outreach queue.",
-            "enqueued_at": "Last move to 'pending' state."
+            "company_slug": PropertyInfo(type="str", desc="Internal identifier for the target company."),
+            "priority": PropertyInfo(type="int", desc="Numerical urgency score (1-5) based on lead quality."),
+            "reason": PropertyInfo(type="str", desc="Explains why this lead was enqueued."),
+            "created_at": PropertyInfo(type="datetime", desc="Timestamp when lead entered the outreach queue."),
+            "enqueued_at": PropertyInfo(type="datetime", desc="Last move to 'pending' state.")
         },
         sharding_strategy="None (Flat List)"
     )
