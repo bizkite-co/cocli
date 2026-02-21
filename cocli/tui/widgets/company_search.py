@@ -55,6 +55,19 @@ class CompanySearchView(Container):
     def action_focus_template(self) -> None:
         self.template_list.focus_list()
 
+    def action_reset_view(self) -> None:
+        """Fully resets the search view and returns to template selection."""
+        # Suppress input-changed events during reset to prevent focus stealing
+        self.company_list._ignoring_input_change = True
+        try:
+            from textual.widgets import Input
+            search_input = self.company_list.query_one("#company_search_input", Input)
+            search_input.value = ""
+        finally:
+            self.company_list._ignoring_input_change = False
+        
+        self.template_list.focus_list()
+
     def action_focus_companies(self) -> None:
         self.company_list.query_one("#company_list_view").focus()
 

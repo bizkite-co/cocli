@@ -1,3 +1,4 @@
+# POLICY: frictionless-data-policy-enforcement (See docs/FRICTIONLESS_DATA_POLICY_ENFORCEMENT.md)
 from typing import Any, Dict, Optional, TYPE_CHECKING, cast
 import logging
 import asyncio
@@ -24,11 +25,8 @@ class QueueSelection(ListView):
 class QueueDetail(VerticalScroll):
     """
     Detailed view for a specific queue.
-    Strictly follows the requested layout:
-    - Top: Metadata panel (with green Path)
-    - Grid: 
-        - Left: 'pending/' title (green), Model Name, Count, Property Table
-        - Right: 'completed/' title (green), Model Name, Count, Property Table
+    Uses a vertical scrolling layout to ensure both Metadata and Property Lists
+    are visible without competing for space.
     """
     
     BINDINGS = [
@@ -46,12 +44,12 @@ class QueueDetail(VerticalScroll):
             yield Label("Select a queue to view details.", id="queue_title")
             yield Static("", id="queue_sync_indicator")
         
-        # 1. Top Section: Metadata Panel
+        # 1. Top Section: Queue Metadata Panel
         with Vertical(classes="panel", id="queue_info_panel"):
             yield Label("QUEUE METADATA", classes="panel-header")
             yield Static(id="queue_info_content", classes="panel-content")
         
-        # 2. Transformation Grid
+        # 2. Middle Section: Transformation Columns (Side-by-Side)
         with Container(id="queue_transform_grid"):
             # LEFT: Source / Pending
             with Vertical(classes="panel", id="source_panel"):
@@ -79,11 +77,11 @@ class QueueDetail(VerticalScroll):
         self.query_one("#from_model_label", Label).update(meta.from_model_name)
         self.query_one("#to_model_label", Label).update(meta.to_model_name)
         
-        # Populate Property Lists
+        # 1. Populate Property Lists (Left/Right)
         self._populate_props("#source_props_list", meta.from_property_map, "cyan")
         self._populate_props("#dest_props_list", meta.to_property_map, "magenta")
         
-        # Refresh counts and info
+        # 2. Refresh counts and info
         self.refresh_counts()
 
     def _populate_props(self, container_id: str, props: Dict[str, PropertyInfo], color: str) -> None:
@@ -94,15 +92,18 @@ class QueueDetail(VerticalScroll):
         container = self.query_one(container_id, Vertical)
         container.remove_children()
         
+        tech_names = []
         for tech_name, info in props.items():
-            # Only the tech_name is highlighted in the specified color.
+            # Technical name in bold color
             # Type and description follow on the same line.
             line = f"[bold {color}]{tech_name}[/]:[dim]{info.type}[/] {info.desc}"
-            label = Label(line, classes="prop-line")
-            setattr(label, "tech_name", tech_name)
-            container.mount(label)
+            name_label = Label(line, classes="prop-line")
+            # Store tech name for test verification
+            setattr(name_label, "tech_name", tech_name)
+            container.mount(name_label)
+            tech_names.append(tech_name)
         
-        setattr(container, "tech_props", list(props.keys()))
+        setattr(container, "tech_props", tech_names)
 
     def refresh_counts(self) -> None:
         if not self.active_queue:
@@ -130,21 +131,30 @@ class QueueDetail(VerticalScroll):
             pending = q_stats.get("pending", 0)
             completed = q_stats.get("completed", 0)
         
+        # Update Count Labels
         self.query_one("#count_pending_label", Label).update(f"PENDING ITEMS: [bold yellow]{pending}[/]")
         self.query_one("#count_completed_label", Label).update(f"COMPLETED ITEMS: [bold green]{completed}[/]")
 
-        # Build Metadata Table
+        # Metadata Table
         info_table = Table(box=None, show_header=False, expand=True, padding=(0, 1))
         info_table.add_column("Key", style="dim cyan", width=20)
         info_table.add_column("Value", style="white")
         
-        info_table.add_row("Functional Purpose", self.active_queue.description)
-        info_table.add_row("Filesystem Path", f"[bold green]{display_path_str}[/]")
-        info_table.add_row("Sharding Strategy", self.active_queue.sharding_strategy)
-        info_table.add_row("Upstream Sources", ", ".join(self.active_queue.from_models))
-        info_table.add_row("Downstream Targets", ", ".join(self.active_queue.to_models))
+        metadata = {
+            "Functional Purpose": self.active_queue.description,
+            "Task Model": self.active_queue.model_class.__name__,
+            "Filesystem Path": f"[bold green]{display_path_str}[/]",
+            "Sharding Strategy": self.active_queue.sharding_strategy,
+            "Upstream Sources": ", ".join(self.active_queue.from_models),
+            "Downstream Targets": ", ".join(self.active_queue.to_models)
+        }
+
+        for key, val in metadata.items():
+            info_table.add_row(key, val)
         
-        self.query_one("#queue_info_content", Static).update(info_table)
+        widget = self.query_one("#queue_info_content", Static)
+        widget.update(info_table)
+        setattr(widget, "metadata_map", metadata)
 
     def action_sync_pending(self) -> None:
         if self.active_queue:

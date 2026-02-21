@@ -32,6 +32,18 @@ Loading logic must never rely on "auto-detection." It must:
 - Map the headerless stream explicitly to these names.
 - Use `TRY_CAST` to enforce types and prevent numeric/rating data from being treated as strings.
 
+## Schema Stability & Schism Alerts
+
+### 🚨 RED ALERT: In-File-Schema-Schism (IFSS)
+**Definition:** A single data file containing records that follow different column sequences or counts.
+- **Impact:** Catastrophic. Breaks bulk processing, DuckDB loading, and analytics.
+- **Prevention:** Never mix versions in a single checkpoint or journal.
+
+### 🟠 ORANGE ALERT: Trans-Storage-Schema-Schism (TSSS)
+**Definition:** Different storage locations (e.g., Local vs S3, Pi-Node vs Laptop) using different versions of the schema.
+- **Impact:** Synchronization failure. Data becomes "un-joinable" or mismatched during merge.
+- **Prevention:** **All schema changes MUST BE ADDITIVE.** New fields must be appended to the end of the model to maintain backward compatibility with existing headerless streams.
+
 ## Exceptions to the "No Header" Rule
 
 ### File-per-Object Data Stores

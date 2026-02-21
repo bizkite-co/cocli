@@ -1,3 +1,4 @@
+# POLICY: frictionless-data-policy-enforcement (See docs/FRICTIONLESS_DATA_POLICY_ENFORCEMENT.md)
 import duckdb
 import os
 import logging
@@ -38,7 +39,7 @@ def get_template_counts(campaign_name: Optional[str] = None) -> Dict[str, int]:
         if now - ts < _COUNTS_CACHE_TTL:
             return counts
 
-    # Non-blocking search trigger
+    # Non-blocking search trigger to ensure DuckDB is warm
     get_fuzzy_search_results("", item_type="company", campaign_name=campaign, limit=1)
 
     counts = {}
@@ -93,34 +94,33 @@ def get_fuzzy_search_results(
     offset: int = 0
 ) -> List[SearchResult]:
     """
-    Provides fuzzy search results joined across three high-performance USV indices.
+    FDPE ENFORCEMENT: Provides fuzzy search results joined across multiple indices.
+    Uses datapackage.json as the sole authority for DuckDB schemas.
     """
     global _con, _last_cache_mtime, _last_checkpoint_mtime, _last_lifecycle_mtime, _last_campaign
     
     from cocli.core.paths import paths
 
     campaign = campaign_name or get_campaign()
-    # If campaign is 'None' (literal string), treat as None
     if campaign == "None":
         campaign = None
 
     cache_dir = get_cache_path(campaign=campaign)
     cache_file = cache_dir / CACHE_FILE_NAME
+    cache_dp = cache_dir / "datapackage.json"
     
     checkpoint_path = None
-    lifecycle_dir = None
-    lifecycle_path = None
     prospect_dp = None
+    lifecycle_path = None
+    lifecycle_dp = None
+
     if campaign:
         campaign_node = paths.campaign(campaign)
         prospect_idx = campaign_node.index("google_maps_prospects")
         checkpoint_path = prospect_idx.checkpoint
         prospect_dp = prospect_idx.path / "datapackage.json"
-        lifecycle_dir = campaign_node.path / "indexes" / "lifecycle"
         lifecycle_path = campaign_node.lifecycle
-    else:
-        # Check if we should fallback to global search if no campaign
-        pass
+        lifecycle_dp = campaign_node.path / "indexes" / "lifecycle" / "datapackage.json"
     
     # 1. NON-BLOCKING CACHE REBUILD
     if force_rebuild_cache or not is_cache_valid(campaign=campaign):
@@ -148,13 +148,6 @@ def get_fuzzy_search_results(
         current_checkpoint_mtime = os.path.getmtime(checkpoint_path) if checkpoint_path and checkpoint_path.exists() else -1.0
         current_lifecycle_mtime = os.path.getmtime(lifecycle_path) if lifecycle_path and lifecycle_path.exists() else -1.0
 
-        # Check column existence for dynamic view creation and query building
-        def has_col(table: str, col: str) -> bool:
-            if not _con:
-                return False
-            res = _con.execute(f"SELECT count(*) FROM information_schema.columns WHERE table_name = '{table}' AND lower(column_name) = '{col.lower()}'").fetchone()
-            return bool(res and res[0] > 0)
-
         try:
             if _con is None:
                 _con = duckdb.connect(database=':memory:')
@@ -173,120 +166,79 @@ def get_fuzzy_search_results(
                 _con.execute("DROP TABLE IF EXISTS items_checkpoint")
                 _con.execute("DROP TABLE IF EXISTS items_lifecycle")
                 
-                # A. Load Company Cache USV
-                load_usv_to_duckdb(_con, "items_cache", cache_file, cache_dir / "datapackage.json" if cache_dir else None)
+                # A. Load Company Cache (Human Edits) - FDPE MANDATORY
+                load_usv_to_duckdb(_con, "items_cache", cache_file, cache_dp)
+                c_res = _con.execute("SELECT count(*) FROM items_cache").fetchone()
+                c_count = c_res[0] if c_res else 0
+                logger.debug(f"FDPE: Loaded {c_count} rows into items_cache")
 
-                # B. Load Prospect Checkpoint USV
+                # B. Load Prospect Checkpoint (Machine Scraping) - FDPE MANDATORY
                 if checkpoint_path and checkpoint_path.exists():
+                    # ALWAYS Refresh datapackage to ensure model changes are reflected
+                    if prospect_dp:
+                        from cocli.models.campaigns.indexes.google_maps_prospect import GoogleMapsProspect
+                        GoogleMapsProspect.save_datapackage(prospect_dp.parent)
                     load_usv_to_duckdb(_con, "items_checkpoint", checkpoint_path, prospect_dp)
+                    p_res = _con.execute("SELECT count(*) FROM items_checkpoint").fetchone()
+                    p_count = p_res[0] if p_res else 0
+                    logger.debug(f"FDPE: Loaded {p_count} rows into items_checkpoint")
                 else:
-                    # Robust fallback schema matching GoogleMapsProspect USV sequence
-                    _con.execute("""
-                        CREATE TABLE items_checkpoint (
-                            place_id VARCHAR, 
-                            slug VARCHAR, 
-                            company_slug VARCHAR, 
-                            name VARCHAR, 
-                            phone VARCHAR, 
-                            phone_number VARCHAR, 
-                            email VARCHAR, 
-                            tags VARCHAR, 
-                            created_at VARCHAR, 
-                            updated_at VARCHAR, 
-                            version INTEGER, 
-                            processed_by VARCHAR, 
-                            company_hash VARCHAR, 
-                            keyword VARCHAR, 
-                            full_address VARCHAR, 
-                            street_address VARCHAR, 
-                            city VARCHAR, 
-                            zip VARCHAR, 
-                            municipality VARCHAR, 
-                            state VARCHAR, 
-                            country VARCHAR, 
-                            timezone VARCHAR, 
-                            phone_standard_format VARCHAR, 
-                            website VARCHAR, 
-                            domain VARCHAR, 
-                            first_category VARCHAR, 
-                            second_category VARCHAR, 
-                            claimed_google_my_business VARCHAR, 
-                            reviews_count INTEGER, 
-                            average_rating DOUBLE, 
-                            hours VARCHAR, 
-                            saturday VARCHAR, 
-                            sunday VARCHAR, 
-                            monday VARCHAR, 
-                            tuesday VARCHAR, 
-                            wednesday VARCHAR, 
-                            thursday VARCHAR, 
-                            friday VARCHAR, 
-                            latitude DOUBLE, 
-                            longitude DOUBLE, 
-                            coordinates VARCHAR, 
-                            plus_code VARCHAR, 
-                            menu_link VARCHAR, 
-                            gmb_url VARCHAR, 
-                            cid VARCHAR, 
-                            google_knowledge_url VARCHAR, 
-                            kgmid VARCHAR, 
-                            image_url VARCHAR, 
-                            favicon VARCHAR, 
-                            review_url VARCHAR, 
-                            facebook_url VARCHAR, 
-                            linkedin_url VARCHAR, 
-                            instagram_url VARCHAR, 
-                            thumbnail_url VARCHAR, 
-                            reviews VARCHAR, 
-                            quotes VARCHAR, 
-                            uuid VARCHAR, 
-                            discovery_phrase VARCHAR, 
-                            discovery_tile_id VARCHAR
-                        )
-                    """)
+                    _con.execute("CREATE TABLE items_checkpoint (slug VARCHAR, name VARCHAR, email VARCHAR, phone_number VARCHAR, average_rating DOUBLE, reviews_count BIGINT, street_address VARCHAR, city VARCHAR, state VARCHAR, zip VARCHAR, place_id VARCHAR, domain VARCHAR, created_at VARCHAR, updated_at VARCHAR, tags VARCHAR)")
 
-                # C. Load Lifecycle Index USV
+                # C. Load Lifecycle Index
                 if lifecycle_path and lifecycle_path.exists():
-                    load_usv_to_duckdb(_con, "items_lifecycle", lifecycle_path, lifecycle_dir / "datapackage.json" if lifecycle_dir else None)
+                    load_usv_to_duckdb(_con, "items_lifecycle", lifecycle_path, lifecycle_dp)
                 else:
                     _con.execute("CREATE TABLE items_lifecycle (place_id VARCHAR, scraped_at VARCHAR, details_at VARCHAR, enqueued_at VARCHAR, enriched_at VARCHAR)")
 
-                # D. Unified View - JOIN FIX
-                # Standardized utility now maps both tables to use 'slug', 'phone_number', and 'tags'.
-                
-                t1_slug = "t1.slug" if has_col("items_checkpoint", "slug") else "t1.company_slug" if has_col("items_checkpoint", "company_slug") else "CAST(NULL AS VARCHAR)"
-                t1_phone = "t1.phone_number" if has_col("items_checkpoint", "phone_number") else "t1.phone" if has_col("items_checkpoint", "phone") else "CAST(NULL AS VARCHAR)"
-                t1_tags = "string_to_array(t1.tags, ';')" if has_col("items_checkpoint", "tags") else "string_to_array(t1.keyword, ';')" if has_col("items_checkpoint", "keyword") else "CAST([] AS VARCHAR[])"
-                t2_tags = "string_to_array(t2.tags, ';')" if has_col("items_cache", "tags") else "CAST([] AS VARCHAR[])"
+                # D. Unified View - JOIN on slug/id
+                def table_has_col(table: str, col: str) -> bool:
+                    try:
+                        res = _con.execute(f"PRAGMA table_info('{table}')").fetchall()
+                        return any(cast(str, c[1]).lower() == col.lower() for c in res)
+                    except Exception:
+                        return False
 
-                _con.execute("CREATE VIEW items AS SELECT " +
-                    f"COALESCE({t1_slug}, t2.slug) as slug, " +
-                    "COALESCE(t1.name, t2.name) as name, " +
-                    "COALESCE(t2.type, CAST('company' AS VARCHAR)) as type, " +
-                    "COALESCE(t1.domain, t2.domain) as domain, " +
-                    "t2.email as email, " +
-                    f"COALESCE({t1_phone}, t2.phone_number) as phone_number, " +
-                    f"COALESCE({t1_tags}, {t2_tags}) as tags, " +
-                    f"COALESCE(t2.display, 'COMPANY:' || COALESCE(t1.name, t2.name) || ' -- ' || COALESCE({t1_slug}, t2.slug)) as display, " +
-                    "COALESCE(t1.updated_at, CAST(NULL AS VARCHAR)) as last_modified, " +
-                    "COALESCE(t1.average_rating, CAST(NULL AS DOUBLE)) as average_rating, " +
-                    "COALESCE(t1.reviews_count, CAST(NULL AS INTEGER)) as reviews_count, " +
-                    "COALESCE(t1.street_address, CAST(NULL AS VARCHAR)) as street_address, " +
-                    "COALESCE(t1.city, CAST(NULL AS VARCHAR)) as city, " +
-                    "COALESCE(t1.state, CAST(NULL AS VARCHAR)) as state, " +
-                    "COALESCE(t1.zip, CAST(NULL AS VARCHAR)) as zip, " +
-                    "COALESCE(lc.scraped_at, t1.created_at) as list_found_at, " +
-                    "COALESCE(lc.details_at, t1.updated_at) as details_found_at, " +
-                    "COALESCE(lc.enqueued_at, CAST(NULL AS VARCHAR)) as enqueued_at, " +
-                    "COALESCE(lc.enriched_at, CAST(NULL AS VARCHAR)) as last_enriched " +
-                    f"FROM items_checkpoint t1 FULL OUTER JOIN items_cache t2 ON {t1_slug} = t2.slug " +
-                    "LEFT JOIN items_lifecycle lc ON (COALESCE(t1.place_id, CAST(NULL AS VARCHAR)) = lc.place_id)")
+                # FDPE Ensures consistency, but we add guards for array transformation
+                # and explicit casting to VARCHAR[] to avoid COALESCE type mixing errors.
+                t1_tags = "string_to_array(t1.tags, ';')" if table_has_col("items_checkpoint", "tags") else "string_to_array(t1.keyword, ';')" if table_has_col("items_checkpoint", "keyword") else "CAST([] AS VARCHAR[])"
+                t2_tags = "string_to_array(t2.tags, ';')" if table_has_col("items_cache", "tags") else "CAST([] AS VARCHAR[])"
+                
+                t1_email = "t1.email" if table_has_col("items_checkpoint", "email") else "CAST(NULL AS VARCHAR)"
+                t1_slug = "t1.slug" if table_has_col("items_checkpoint", "slug") else "t1.company_slug" if table_has_col("items_checkpoint", "company_slug") else "CAST(NULL AS VARCHAR)"
+                t1_phone = "t1.phone_number" if table_has_col("items_checkpoint", "phone_number") else "t1.phone" if table_has_col("items_checkpoint", "phone") else "CAST(NULL AS VARCHAR)"
+
+                _con.execute(f"""
+                    CREATE VIEW items AS SELECT 
+                        COALESCE({t1_slug}, t2.slug) as slug,
+                        COALESCE(t1.name, t2.name) as name,
+                        COALESCE(t2.type, CAST('company' AS VARCHAR)) as type,
+                        COALESCE(t1.domain, t2.domain) as domain,
+                        COALESCE(t2.email, {t1_email}) as email,
+                        COALESCE({t1_phone}, t2.phone_number) as phone_number,
+                        COALESCE({t2_tags}, {t1_tags}) as tags,
+                        COALESCE(t2.display, 'COMPANY:' || COALESCE(t1.name, t2.name)) as display,
+                        COALESCE(t1.updated_at, CAST(NULL AS VARCHAR)) as last_modified,
+                        COALESCE(t1.average_rating, CAST(NULL AS DOUBLE)) as average_rating,
+                        COALESCE(t1.reviews_count, CAST(NULL AS BIGINT)) as reviews_count,
+                        COALESCE(t1.street_address, CAST(NULL AS VARCHAR)) as street_address,
+                        COALESCE(t1.city, CAST(NULL AS VARCHAR)) as city,
+                        COALESCE(t1.state, CAST(NULL AS VARCHAR)) as state,
+                        COALESCE(t1.zip, CAST(NULL AS VARCHAR)) as zip,
+                        COALESCE(lc.scraped_at, t1.created_at) as list_found_at,
+                        COALESCE(lc.details_at, t1.updated_at) as details_found_at,
+                        COALESCE(lc.enqueued_at, CAST(NULL AS VARCHAR)) as enqueued_at,
+                        COALESCE(lc.enriched_at, CAST(NULL AS VARCHAR)) as last_enriched
+                    FROM items_checkpoint t1 
+                    FULL OUTER JOIN items_cache t2 ON t1.slug = t2.slug
+                    LEFT JOIN items_lifecycle lc ON t1.place_id = lc.place_id
+                """)
 
                 _last_cache_mtime = current_cache_mtime
                 _last_checkpoint_mtime = current_checkpoint_mtime
                 _last_lifecycle_mtime = current_lifecycle_mtime
                 _last_campaign = campaign
-                logger.debug(f"Rebuilt DuckDB search sources in {time.perf_counter() - t0:.4f}s")
+                logger.debug(f"FDPE: Rebuilt DuckDB sources in {time.perf_counter() - t0:.4f}s")
             
             # 3. Build Query
             t0 = time.perf_counter()
@@ -329,14 +281,8 @@ def get_fuzzy_search_results(
 
             if search_query:
                 query_pattern = f"%{search_query.lower()}%"
-                sql += " AND (lower(name) LIKE ? OR lower(slug) LIKE ? OR lower(domain) LIKE ? OR lower(email) LIKE ? OR lower(display) LIKE ?)"
-                params.extend([query_pattern] * 5)
-                
-                # Restore tags search with safety
-                if has_col("items", "tags"):
-                    sql = sql[:-1] # Remove last ')'
-                    sql += " OR array_to_string(tags, ',') LIKE ?)"
-                    params.append(query_pattern)
+                sql += " AND (lower(name) LIKE ? OR lower(slug) LIKE ? OR lower(domain) LIKE ? OR lower(email) LIKE ? OR lower(display) LIKE ? OR list_contains(tags, ?))"
+                params.extend([query_pattern] * 5 + [search_query.lower()])
 
             # Ordering
             if sort_by == "recent":
@@ -352,12 +298,11 @@ def get_fuzzy_search_results(
             params.extend([limit, offset])
 
             results = _con.execute(sql, params).fetchall()
-            t_query = time.perf_counter() - t0
         except Exception as e:
-            logger.error(f"DuckDB search failed: {e}", exc_info=True)
+            logger.error(f"FDPE: DuckDB search failed: {e}", exc_info=True)
             return []
 
-        # 4. Transform results to Pydantic models
+        # 4. Transform results to SearchResult models
         final_items = []
         for r in results:
             final_items.append(SearchResult(
@@ -367,7 +312,7 @@ def get_fuzzy_search_results(
                 domain=str(r[3]) if r[3] else None,
                 email=str(r[4]) if r[4] else None,
                 phone_number=str(r[5]) if r[5] else None,
-                tags=cast(List[str], r[6]) if r[6] else [],
+                tags=r[6] if isinstance(r[6], list) else [],
                 display=str(r[7]),
                 unique_id=str(r[2]) if r[2] else str(r[1]) or "unknown",
                 average_rating=float(r[8]) if r[8] is not None else None,
@@ -382,5 +327,5 @@ def get_fuzzy_search_results(
                 last_enriched=str(r[17]) if r[17] else None
             ))
 
-        logger.debug(f"Fuzzy search '{search_query}' took {time.perf_counter() - start_total:.4f}s (query={t_query:.4f}s)")
+        logger.debug(f"FDPE: Search '{search_query}' took {time.perf_counter() - start_total:.4f}s")
         return final_items

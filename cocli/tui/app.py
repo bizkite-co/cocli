@@ -112,8 +112,9 @@ class CocliApp(App[None]):
             ),
             CompanyList: NavNode(
                 widget_class=CompanyList,
-                model_type="companies",
-                is_branch_root=True
+                parent_action="action_focus_templates",
+                root_widget=CompanySearchView,
+                model_type="companies"
             ),
             CompanySearchView: NavNode(
                 widget_class=CompanySearchView,
@@ -239,6 +240,8 @@ class CocliApp(App[None]):
                         target.action_reset_view()
                     elif hasattr(target, "action_focus_sidebar"):
                         target.action_focus_sidebar()
+                    elif hasattr(target, "action_focus_template"): # For SearchView
+                        target.action_focus_template()
                 except Exception as e:
                     tui_debug_log(f"APP: Failed to reset root: {e}")
             self.call_later(focus_root)
@@ -251,7 +254,7 @@ class CocliApp(App[None]):
                 # SPECIAL CASE: CompanySearchView. Navigate Up should focus Templates if we are in Search
                 if isinstance(widget, CompanySearchView):
                     tui_debug_log("APP: Focus Templates in CompanySearchView")
-                    widget.action_focus_template()
+                    widget.action_reset_view()
                 elif hasattr(widget, "action_reset_view"):
                     widget.action_reset_view()
                 elif hasattr(widget, "action_focus_sidebar"):
@@ -268,7 +271,7 @@ class CocliApp(App[None]):
                 try:
                     widgets = list(self.query(widget_class))
                     for w in widgets:
-                        if w.visible:
+                        if w.visible and w.has_focus_within:
                             tui_debug_log(f"APP: Found active leaf: {widget_class.__name__}")
                             return node
                 except Exception as e:
@@ -281,7 +284,7 @@ class CocliApp(App[None]):
                 try:
                     widgets = list(self.query(widget_class))
                     for w in widgets:
-                        if w.visible:
+                        if w.visible and w.has_focus_within:
                             tui_debug_log(f"APP: Found active root: {widget_class.__name__}")
                             return node
                 except Exception as e:

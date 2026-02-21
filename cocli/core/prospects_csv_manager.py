@@ -1,3 +1,4 @@
+# POLICY: frictionless-data-policy-enforcement (See docs/FRICTIONLESS_DATA_POLICY_ENFORCEMENT.md)
 import csv
 import logging
 from pathlib import Path
@@ -25,6 +26,12 @@ class ProspectsIndexManager:
         else:
             # Fallback to legacy path if campaign not found
             self.index_dir = get_campaign_scraped_data_dir(campaign_name)
+        
+        # FDPE: Ensure the schema authority exists
+        try:
+            GoogleMapsProspect.save_datapackage(self.index_dir)
+        except Exception as e:
+            logger.error(f"FDPE: Failed to save datapackage for prospect index: {e}")
             
     def get_file_path(self, place_id: str, for_write: bool = False) -> Path:
         """

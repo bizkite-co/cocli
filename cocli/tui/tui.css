@@ -379,6 +379,11 @@ Footer > .footer--key {
     margin-left: 2;
 }
 
+.prop-spacer {
+    height: 1;
+    width: 100%;
+}
+
 .panel-header-green {
     color: #00ff00; 
     text-align: left;

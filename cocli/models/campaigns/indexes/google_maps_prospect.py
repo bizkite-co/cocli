@@ -1,6 +1,7 @@
 from pydantic import Field, model_validator
 from typing import Optional, Dict, Any, Annotated, List, ClassVar
 from datetime import datetime, UTC
+from pathlib import Path
 import logging
 
 from .google_maps_idx import GoogleMapsIdx
@@ -92,6 +93,7 @@ class GoogleMapsProspect(GoogleMapsIdx):
     uuid: Optional[str] = None
     discovery_phrase: Optional[str] = None
     discovery_tile_id: Optional[str] = None
+    email: Optional[str] = None
 
     @classmethod
     def get_datapackage_fields(cls) -> List[Dict[str, str]]:
@@ -116,6 +118,34 @@ class GoogleMapsProspect(GoogleMapsIdx):
                 "description": field.description or ""
             })
         return fields
+
+    @classmethod
+    def get_datapackage(cls) -> Dict[str, Any]:
+        """Returns the Frictionless Data Package schema for Google Maps Prospects."""
+        from ....core.utils import UNIT_SEP
+        return {
+            "profile": "tabular-data-package",
+            "name": cls.INDEX_NAME,
+            "resources": [
+                {
+                    "name": "prospects",
+                    "path": "prospects.checkpoint.usv",
+                    "format": "usv",
+                    "dialect": {"delimiter": UNIT_SEP, "header": False},
+                    "schema": {
+                        "fields": cls.get_datapackage_fields()
+                    }
+                }
+            ]
+        }
+
+    @classmethod
+    def save_datapackage(cls, path: Path) -> None:
+        """Saves the datapackage.json to the specified directory."""
+        import json
+        path.mkdir(parents=True, exist_ok=True)
+        with open(path / "datapackage.json", "w") as f:
+            json.dump(cls.get_datapackage(), f, indent=2)
 
     @classmethod
     def from_raw(cls, raw: GoogleMapsRawResult) -> "GoogleMapsProspect":

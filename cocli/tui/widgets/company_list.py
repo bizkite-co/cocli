@@ -293,9 +293,9 @@ class CompanyList(Container):
                 def select_first() -> None:
                     list_view.index = 0
                     
-                    # If we had focus within this widget, or the list_view itself was focused
-                    # ensure list_view gets it back (especially important if it was hidden during loading)
-                    if self.has_focus_within or list_view.has_focus:
+                    # If we were searching (input focused), return focus to the list 
+                    # so the user can browse results immediately.
+                    if self.query_one("#company_search_input").has_focus:
                         list_view.focus()
                     
                     # Manually trigger highlight for the first item to update preview
