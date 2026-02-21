@@ -135,9 +135,9 @@ class ApplicationView(Container):
 
     def on_mount(self) -> None:
         nav_list = self.query_one("#app_nav_list", ListView)
-        nav_list.index = 2
+        nav_list.index = 0
         nav_list.focus()
-        self.show_category("operations")
+        self.show_category("campaigns")
         self.update_recent_runs()
 
     def action_reset_view(self) -> None:
@@ -217,8 +217,17 @@ class ApplicationView(Container):
             title_label.update("[bold]Environment[/bold]")
         elif category == "operations":
             title_label.update("[bold]Operations[/bold]")
+            # Index 0 is a disabled header "--- Reporting ---", so we select index 1
+            try:
+                self.query_one("#ops_list", ListView).index = 1
+            except Exception:
+                pass
         elif category == "queues":
             title_label.update("[bold]Queues[/bold]")
+            try:
+                self.query_one("#app_queue_list", ListView).index = 0
+            except Exception:
+                pass
 
     def update_recent_runs(self) -> None:
         try:

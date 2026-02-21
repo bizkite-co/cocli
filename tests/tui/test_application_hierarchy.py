@@ -20,24 +20,23 @@ async def test_application_sidebar_stacking():
         application_view = await wait_for_widget(driver, ApplicationView)
         nav_list = application_view.query_one("#app_nav_list", ListView)
         
-        # 1. Test Operations (Default)
-        # Verify ops_list is displayed
-        ops_list = application_view.query_one("#ops_list", ListView)
-        assert ops_list.styles.display != "none"
+        # 1. Test Campaigns (New Default)
+        # Top nav should be there
+        assert nav_list.styles.display != "none"
+        # Campaign list should be visible below it
+        campaign_list = application_view.query_one(CampaignSelection)
+        assert campaign_list.styles.display != "none"
         
-        # 2. Test Campaigns
-        nav_list.index = 0
+        # 2. Test Operations
+        nav_list.index = 3 # Operations is now index 3
         nav_list.action_select_cursor()
         await driver.pause(0.2)
         
-        # Top nav should still be there
-        assert nav_list.styles.display != "none"
-        
-        # Campaign list should now be visible below it
-        campaign_list = application_view.query_one(CampaignSelection)
-        assert campaign_list.styles.display != "none"
-        # Operations list should be hidden
-        assert ops_list.styles.display == "none"
+        # Operations list should now be visible
+        ops_list = application_view.query_one("#ops_list", ListView)
+        assert ops_list.styles.display != "none"
+        # Campaign list should be hidden
+        assert campaign_list.styles.display == "none"
 
         # 3. Test Status
         nav_list.index = 1
