@@ -180,7 +180,70 @@ def get_fuzzy_search_results(
                 if checkpoint_path and checkpoint_path.exists():
                     load_usv_to_duckdb(_con, "items_checkpoint", checkpoint_path, prospect_dp)
                 else:
-                    _con.execute("CREATE TABLE items_checkpoint (place_id VARCHAR, slug VARCHAR, company_slug VARCHAR, name VARCHAR, phone VARCHAR, phone_number VARCHAR, email VARCHAR, tags VARCHAR, created_at VARCHAR, updated_at VARCHAR, version INTEGER, processed_by VARCHAR, company_hash VARCHAR, keyword VARCHAR, full_address VARCHAR, street_address VARCHAR, city VARCHAR, zip VARCHAR, municipality VARCHAR, state VARCHAR, country VARCHAR, timezone VARCHAR, phone_standard_format VARCHAR, website VARCHAR, domain VARCHAR, first_category VARCHAR, second_category VARCHAR, claimed_google_my_business VARCHAR, reviews_count INTEGER, average_rating DOUBLE, hours VARCHAR, saturday VARCHAR, sunday VARCHAR, monday VARCHAR, tuesday VARCHAR, wednesday VARCHAR, thursday VARCHAR, friday VARCHAR, latitude DOUBLE, longitude DOUBLE, coordinates VARCHAR, plus_code VARCHAR, menu_link VARCHAR, gmb_url VARCHAR, cid VARCHAR, google_knowledge_url VARCHAR, kgmid VARCHAR, image_url VARCHAR, favicon VARCHAR, review_url VARCHAR, facebook_url VARCHAR, linkedin_url VARCHAR, instagram_url VARCHAR, thumbnail_url VARCHAR, reviews VARCHAR, quotes VARCHAR, uuid VARCHAR, discovery_phrase VARCHAR, discovery_tile_id VARCHAR)")
+                    # Robust fallback schema matching GoogleMapsProspect USV sequence
+                    _con.execute("""
+                        CREATE TABLE items_checkpoint (
+                            place_id VARCHAR, 
+                            slug VARCHAR, 
+                            company_slug VARCHAR, 
+                            name VARCHAR, 
+                            phone VARCHAR, 
+                            phone_number VARCHAR, 
+                            email VARCHAR, 
+                            tags VARCHAR, 
+                            created_at VARCHAR, 
+                            updated_at VARCHAR, 
+                            version INTEGER, 
+                            processed_by VARCHAR, 
+                            company_hash VARCHAR, 
+                            keyword VARCHAR, 
+                            full_address VARCHAR, 
+                            street_address VARCHAR, 
+                            city VARCHAR, 
+                            zip VARCHAR, 
+                            municipality VARCHAR, 
+                            state VARCHAR, 
+                            country VARCHAR, 
+                            timezone VARCHAR, 
+                            phone_standard_format VARCHAR, 
+                            website VARCHAR, 
+                            domain VARCHAR, 
+                            first_category VARCHAR, 
+                            second_category VARCHAR, 
+                            claimed_google_my_business VARCHAR, 
+                            reviews_count INTEGER, 
+                            average_rating DOUBLE, 
+                            hours VARCHAR, 
+                            saturday VARCHAR, 
+                            sunday VARCHAR, 
+                            monday VARCHAR, 
+                            tuesday VARCHAR, 
+                            wednesday VARCHAR, 
+                            thursday VARCHAR, 
+                            friday VARCHAR, 
+                            latitude DOUBLE, 
+                            longitude DOUBLE, 
+                            coordinates VARCHAR, 
+                            plus_code VARCHAR, 
+                            menu_link VARCHAR, 
+                            gmb_url VARCHAR, 
+                            cid VARCHAR, 
+                            google_knowledge_url VARCHAR, 
+                            kgmid VARCHAR, 
+                            image_url VARCHAR, 
+                            favicon VARCHAR, 
+                            review_url VARCHAR, 
+                            facebook_url VARCHAR, 
+                            linkedin_url VARCHAR, 
+                            instagram_url VARCHAR, 
+                            thumbnail_url VARCHAR, 
+                            reviews VARCHAR, 
+                            quotes VARCHAR, 
+                            uuid VARCHAR, 
+                            discovery_phrase VARCHAR, 
+                            discovery_tile_id VARCHAR
+                        )
+                    """)
 
                 # C. Load Lifecycle Index USV
                 if lifecycle_path and lifecycle_path.exists():

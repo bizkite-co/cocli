@@ -8,12 +8,18 @@ The directory structure in `cocli/models/` and the path resolution in `cocli/cor
 ### Implemented Hierarchy:
 *   `paths.campaign(slug).indexes` -> `data/campaigns/{slug}/indexes/`
 *   `paths.campaign(slug).queues` -> `data/campaigns/{slug}/queues/`
+*   `paths.campaign(slug).exports` -> `data/campaigns/{slug}/exports/`
 *   `paths.companies` -> `data/companies/`
 *   `paths.people` -> `data/people/`
 *   `paths.wal` -> `data/wal/`
 
 ## 2. Type-Safe Pathing
 To eliminate "String-ly Typed" fragility, we use Python `Literal` and `Union` types for all standardized collection, index, and queue names in `cocli/core/ordinant.py`.
+
+### Standardized Identifiers:
+*   **CollectionName**: `companies`, `people`, `wal`, `tasks`
+*   **IndexName**: `google_maps_prospects`, `target-tiles`, `domains`, `emails`
+*   **QueueName**: `enrichment`, `gm-details`, `gm-list`, `gm-scrape`
 
 ### Implementation Idiom:
 ```python
@@ -39,6 +45,19 @@ class Ordinant(Protocol):
     @property
     def collection(self) -> CollectionName | IndexName | QueueName: ...
 ```
+
+### Deterministic Sharding Strategies:
+*   **place_id**: Uses the 6th character of the Google Place ID (e.g., `data/companies/a/`).
+*   **domain**: Returns a 2-character hex shard (00-ff) based on the SHA256 of the domain.
+*   **geo**: Uses the first character of the latitude.
+*   **geo_tile**: Shards by the integer part of the latitude (e.g., `32`, `40`).
+
+### Core Ordinants:
+*   **Company**: `data/companies/{slug}/`
+*   **Person**: `data/people/{slug}/`
+*   **EnrichmentTask**: `data/campaigns/{campaign}/queues/enrichment/pending/{shard}/{domain}/`
+*   **GmItemTask**: `data/campaigns/{campaign}/queues/gm-details/pending/{shard}/{place_id}/`
+*   **ScrapeTask**: `data/campaigns/{campaign}/queues/gm-list/pending/{shard}/{lat}/{lon}/`
 
 ## 4. TUI Discovery
 The TUI must not "guess" paths or construct them via manual string joining. It must use the `paths` authority to resolve paths for any model instance.

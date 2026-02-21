@@ -143,7 +143,13 @@ def get_company_details_for_view(company_slug: str) -> Optional[Dict[str, Any]]:
         website_data = website_cache.get_by_url(company.domain)
 
     # Load lifecycle data for status display
-    lifecycle_dates: Dict[str, Optional[str]] = {"list_found_at": None, "details_found_at": None, "enqueued_at": None}
+    lifecycle_dates: Dict[str, Any] = {
+        "list_found_at": None, 
+        "details_found_at": None, 
+        "enqueued_at": None,
+        "average_rating": None,
+        "reviews_count": None
+    }
     from ..core.config import get_campaign
     campaign = get_campaign()
     if campaign:
@@ -158,7 +164,7 @@ def get_company_details_for_view(company_slug: str) -> Optional[Dict[str, Any]]:
                         parts = data_line.split(UNIT_SEP)
                         if len(parts) > 0 and parts[0].startswith("ChIJ"):
                             place_id = parts[0]
-                            # Look up in lifecycle.usv
+                            # 1. Look up in lifecycle.usv
                             lifecycle_path = paths.campaign(campaign).lifecycle
                             if lifecycle_path.exists():
                                 with open(lifecycle_path, "r", encoding="utf-8") as lf:
@@ -171,6 +177,24 @@ def get_company_details_for_view(company_slug: str) -> Optional[Dict[str, Any]]:
                                             lifecycle_dates["details_found_at"] = l_parts[2].strip() or None
                                             lifecycle_dates["enqueued_at"] = l_parts[3].strip() or None
                                             break
+                            
+                            # 2. Look up in prospects checkpoint for missing ratings
+                            if not company.average_rating or not company.reviews_count:
+                                checkpoint_path = paths.campaign(campaign).index("google_maps_prospects").checkpoint
+                                if checkpoint_path.exists():
+                                    with open(checkpoint_path, "r", encoding="utf-8") as cf:
+                                        for line in cf:
+                                            # place_id is index 0
+                                            if line.startswith(place_id + UNIT_SEP):
+                                                c_parts = line.split(UNIT_SEP)
+                                                if len(c_parts) >= 30:
+                                                    # average_rating=29, reviews_count=28 in GoogleMapsProspect
+                                                    try:
+                                                        lifecycle_dates["reviews_count"] = int(c_parts[28]) if c_parts[28] else None
+                                                        lifecycle_dates["average_rating"] = float(c_parts[29]) if c_parts[29] else None
+                                                    except (ValueError, IndexError):
+                                                        pass
+                                                break
             except Exception:
                 pass
 

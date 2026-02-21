@@ -378,6 +378,12 @@ class CompanyList(Container):
                 except (ValueError, TypeError):
                     pass
 
+            if not company.enqueued_at and item.enqueued_at:
+                try:
+                    company.enqueued_at = datetime.fromisoformat(item.enqueued_at)
+                except (ValueError, TypeError):
+                    pass
+
             if not company.last_enriched and item.last_enriched:
                 try:
                     company.last_enriched = datetime.fromisoformat(item.last_enriched)
