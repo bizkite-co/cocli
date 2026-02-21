@@ -370,3 +370,13 @@ Footer > .footer--key {
     padding-left: 1;
     border-left: solid #222222;
 }
+
+.panel-subheader {
+    color: #666666;
+    background: #0d0d0d;
+    text-align: left;
+    width: 100%;
+    padding-left: 2;
+    margin-bottom: 1;
+    border-left: solid #222222;
+}

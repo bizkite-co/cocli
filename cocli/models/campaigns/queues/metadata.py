@@ -26,15 +26,15 @@ QUEUES_METADATA: Dict[QueueName, QueueMetadata] = {
         from_models=["CampaignConfig"],
         to_models=["ProspectIndex", "gm-details"],
         from_property_map={
-            "queries": "Search Phrases (e.g. 'Flooring Contractor')",
-            "locations": "Target Cities/Regions",
-            "proximity": "Search Radius (miles)"
+            "queries": "List of search phrases (e.g. 'Flooring Contractor') to iterate over.",
+            "locations": "Target cities, zip codes, or custom regions defined in the campaign.",
+            "proximity": "The search radius in miles around each location center."
         },
         to_property_map={
-            "latitude": "WGS84 Latitude",
-            "longitude": "WGS84 Longitude",
-            "zoom": "Maps Zoom Level",
-            "tile_id": "0.1 Degree Grid Tile ID"
+            "latitude": "WGS84 Latitude coordinate for the center of the scrape tile.",
+            "longitude": "WGS84 Longitude coordinate for the center of the scrape tile.",
+            "zoom": "The Google Maps zoom level (usually 14-16) for appropriate density.",
+            "tile_id": "Deterministic 0.1 degree grid identifier (e.g. '30.1_-97.5')."
         },
         sharding_strategy="geo_tile (latitude prefix)"
     ),
@@ -46,15 +46,15 @@ QUEUES_METADATA: Dict[QueueName, QueueMetadata] = {
         from_models=["gm-list", "ProspectIndex"],
         to_models=["Company", "enrichment"],
         from_property_map={
-            "place_id": "Google Place ID (Unique Anchor)",
-            "name": "Business Name (Display)",
-            "discovery_phrase": "Source Search Query"
+            "place_id": "The unique Google Maps identifier used to fetch place details API/web data.",
+            "name": "The business name found during the initial list scrape.",
+            "discovery_phrase": "The query that originally discovered this lead (for attribution)."
         },
         to_property_map={
-            "Company.name": "Canonical Business Name",
-            "Company.address": "Verified Physical Address",
-            "Company.phone": "Primary Business Phone",
-            "Company.website": "Official Domain/URL"
+            "Company.name": "The verified business name from the Place Detail result.",
+            "Company.address": "Formatted physical address including street, city, state, and zip.",
+            "Company.phone": "The primary business telephone number.",
+            "Company.website": "The official business domain or landing page URL."
         },
         sharding_strategy="place_id (6th char)"
     ),
@@ -66,13 +66,13 @@ QUEUES_METADATA: Dict[QueueName, QueueMetadata] = {
         from_models=["Company", "gm-details"],
         to_models=["Company", "EmailIndex", "DomainIndex"],
         from_property_map={
-            "domain": "Target Website Domain",
-            "company_slug": "Internal ID Link"
+            "domain": "The target website domain to crawl.",
+            "company_slug": "Internal identifier used to link enrichment data back to the company file."
         },
         to_property_map={
-            "Company.email": "Found Email Addresses",
-            "Company.socials": "FB/IG/LI Profiles",
-            "Company.tech_stack": "Detected CMS/Trackers"
+            "Company.email": "Primary and secondary email addresses found on the site.",
+            "Company.socials": "Links to Facebook, Instagram, LinkedIn, and Twitter profiles.",
+            "Company.tech_stack": "List of detected technologies (e.g. WordPress, Shopify, Google Analytics)."
         },
         sharding_strategy="domain (sha256 hash)"
     ),
@@ -84,14 +84,14 @@ QUEUES_METADATA: Dict[QueueName, QueueMetadata] = {
         from_models=["Company", "enrichment"],
         to_models=["CRM", "SalesLog"],
         from_property_map={
-            "company_slug": "Internal ID Link",
-            "has_phone": "Valid Phone Check",
-            "has_email": "Valid Email Check"
+            "company_slug": "Internal identifier for the target company.",
+            "has_phone": "Boolean flag indicating if a valid phone number is available for calling.",
+            "has_email": "Boolean flag indicating if a valid email is available for follow-up."
         },
         to_property_map={
-            "Priority": "Urgency Score (1-5)",
-            "Reason": "Why they were enqueued",
-            "ContactHistory": "Previous outreach logs"
+            "Priority": "Numerical urgency score (1-5) based on lead quality.",
+            "Reason": "Explains why this lead was enqueued (e.g. 'Highly Enriched').",
+            "ContactHistory": "Previous outreach attempts and disposition logs."
         },
         sharding_strategy="None (Flat List)"
     )

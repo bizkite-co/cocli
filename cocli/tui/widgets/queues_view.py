@@ -24,7 +24,7 @@ class QueueSelection(ListView):
 class QueueDetail(Container):
     """
     Detailed view for a specific queue using a panel-based transformation layout.
-    Maintains consistency with the Company Details view panels.
+    Source/Pending on left, Destination/Completed on right.
     """
     
     BINDINGS = [
@@ -42,21 +42,23 @@ class QueueDetail(Container):
             yield Label("Select a queue to view details.", id="queue_title")
             yield Static("", id="queue_sync_indicator")
         
-        # 1. Info / Status Panel (Counts, Path, Sharding)
+        # 1. Info Pane (Metadata about the queue itself)
         with Vertical(classes="panel", id="queue_info_panel"):
-            yield Label("QUEUE STATUS & INFO", classes="panel-header")
+            yield Label("QUEUE METADATA", classes="panel-header")
             yield Static(id="queue_info_content", classes="panel-content")
         
         # 2. Transformation Grid (Source -> Destination)
         with Container(id="queue_transform_grid"):
-            # Left: Source Panel
+            # Left: Source Panel (Pending)
             with Vertical(classes="panel", id="source_panel"):
-                yield Label("FROM (SOURCE PROPERTIES)", classes="panel-header")
+                yield Label("SOURCE (PENDING)", classes="panel-header")
+                yield Label("Count: 0", id="count_pending_label", classes="panel-subheader")
                 yield Static(id="source_props_table", classes="panel-content")
             
-            # Right: Destination Panel
+            # Right: Destination Panel (Completed)
             with Vertical(classes="panel", id="dest_panel"):
-                yield Label("TO (DESTINATION PROPERTIES)", classes="panel-header")
+                yield Label("DESTINATION (COMPLETED)", classes="panel-header")
+                yield Label("Count: 0", id="count_completed_label", classes="panel-subheader")
                 yield Static(id="dest_props_table", classes="panel-content")
 
     def update_detail(self, queue_id: str) -> None:
@@ -67,7 +69,7 @@ class QueueDetail(Container):
         self.active_queue = meta
         self.query_one("#queue_title", Label).update(f"QUEUE: {meta.label.upper()}")
         
-        # 1. Update Transformation Tables
+        # 1. Update Transformation Tables (Showing Tech Names and Descriptions)
         self._render_property_table("#source_props_table", meta.from_property_map, "cyan")
         self._render_property_table("#dest_props_table", meta.to_property_map, "magenta")
         
@@ -75,9 +77,10 @@ class QueueDetail(Container):
         self.refresh_counts()
 
     def _render_property_table(self, widget_id: str, props: Dict[str, str], color: str) -> None:
-        table = Table(box=None, show_header=False, expand=True, padding=(0, 1))
-        table.add_column("Property", style=f"bold {color}", width=15)
-        table.add_column("Description", style="white")
+        # Tech Name on left, Docstring on right
+        table = Table(box=None, show_header=True, expand=True, padding=(0, 1))
+        table.add_column("Property Name", style=f"bold {color}", width=20)
+        table.add_column("Description / Docstring", style="white")
         
         for tech_name, desc in props.items():
             table.add_row(tech_name, desc)
@@ -92,7 +95,7 @@ class QueueDetail(Container):
         campaign = app.services.reporting_service.campaign_name
         local_path = paths.campaign(campaign).queue(self.active_queue.name).path
         
-        # Use relative path for display if possible, else full path
+        # Resolve path strings for display
         try:
             display_path = local_path.relative_to(paths.root)
             display_path_str = f"data/{display_path}/"
@@ -108,19 +111,21 @@ class QueueDetail(Container):
             pending = q_stats.get("pending", 0)
             completed = q_stats.get("completed", 0)
         
-        # Build Info Panel Content
+        # Update Count Labels in Panel Subheaders
+        self.query_one("#count_pending_label", Label).update(f"Pending Items: [bold yellow]{pending}[/]")
+        self.query_one("#count_completed_label", Label).update(f"Completed Items: [bold green]{completed}[/]")
+
+        # Build Global Metadata Table (Top Panel)
         info_table = Table(box=None, show_header=False, expand=True, padding=(0, 1))
-        info_table.add_column("Key", style="dim cyan", width=15)
+        info_table.add_column("Key", style="dim cyan", width=20)
         info_table.add_column("Value", style="white")
         
-        info_table.add_row("Description", self.active_queue.description)
-        info_table.add_row("Data Path", display_path_str)
-        info_table.add_row("Shard Strategy", self.active_queue.sharding_strategy)
-        info_table.add_row("From Models", ", ".join(self.active_queue.from_models))
-        info_table.add_row("To Models", ", ".join(self.active_queue.to_models))
-        info_table.add_row("Pending Count", f"[bold yellow]{pending}[/]")
-        info_table.add_row("Completed Count", f"[bold green]{completed}[/]")
-        info_table.add_row("Controls", "[dim]Press 'p' to sync Pending, 'c' to sync Completed[/dim]")
+        info_table.add_row("Functional Purpose", self.active_queue.description)
+        info_table.add_row("Filesystem Path", display_path_str)
+        info_table.add_row("Sharding Strategy", self.active_queue.sharding_strategy)
+        info_table.add_row("Upstream Sources", ", ".join(self.active_queue.from_models))
+        info_table.add_row("Downstream Targets", ", ".join(self.active_queue.to_models))
+        info_table.add_row("Queue Commands", "[dim]Press 'p' to sync Pending, 'c' to sync Completed[/dim]")
         
         self.query_one("#queue_info_content", Static).update(info_table)
 
@@ -143,6 +148,7 @@ class QueueDetail(Container):
             indicator.update(f"[bold green] {branch.title()} Synced[/bold green]")
             self.app.notify(f"Sync Complete: {queue_name} ({branch})")
             
+            # Refresh stats to update counts
             await asyncio.to_thread(app.services.reporting_service.get_campaign_stats)
             self.call_after_refresh(self.refresh_counts)
             
