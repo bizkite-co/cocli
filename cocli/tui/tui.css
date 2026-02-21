@@ -371,10 +371,9 @@ Footer > .footer--key {
     border-left: solid #222222;
 }
 
-.panel-subheader {
-    color: #666666;
-    background: #0d0d0d;
-    text-align: left;
+.count-display-label {
+    color: #888888;
+    background: rgba(255, 255, 255, 0.02);
     width: 100%;
     padding-left: 2;
     margin-bottom: 1;
