@@ -218,33 +218,38 @@ class CocliApp(App[None]):
         tui_debug_log(f"APP: Target node: {target_node.widget_class.__name__}")
 
         if target_node.parent_action:
-            tui_debug_log(f"APP: Executing parent action: {target_node.parent_action}")
-            if hasattr(self, target_node.parent_action):
-                getattr(self, target_node.parent_action)()
-            else:
-                try:
-                    w = self.query_one(target_node.widget_class)
-                    if hasattr(w, target_node.parent_action):
-                        getattr(w, target_node.parent_action)()
-                except Exception:
-                    pass
+            tui_debug_log(f"APP: Scheduling parent action: {target_node.parent_action}")
             
-            # Use local capture to ensure target_node isn't None in closure
-            root_widget_class = target_node.root_widget
+            p_action = target_node.parent_action
+            r_widget_class = target_node.root_widget
+            w_class = target_node.widget_class
+
+            def do_nav_up() -> None:
+                if hasattr(self, p_action):
+                    getattr(self, p_action)()
+                else:
+                    try:
+                        w = self.query_one(w_class)
+                        if hasattr(w, p_action):
+                            getattr(w, p_action)()
+                    except Exception:
+                        pass
+                
+                # Use local capture to ensure target_node isn't None in closure
+                if r_widget_class:
+                    tui_debug_log(f"APP: Resetting view for {r_widget_class.__name__}")
+                    try:
+                        target = self.query_one(r_widget_class)
+                        if hasattr(target, "action_reset_view"):
+                            target.action_reset_view()
+                        elif hasattr(target, "action_focus_sidebar"):
+                            target.action_focus_sidebar()
+                        elif hasattr(target, "action_focus_template"): # For SearchView
+                            target.action_focus_template()
+                    except Exception as e:
+                        tui_debug_log(f"APP: Failed to reset root: {e}")
             
-            def focus_root(w_class: Type[Any] = root_widget_class) -> None:
-                tui_debug_log(f"APP: Resetting view for {w_class.__name__}")
-                try:
-                    target = self.query_one(w_class)
-                    if hasattr(target, "action_reset_view"):
-                        target.action_reset_view()
-                    elif hasattr(target, "action_focus_sidebar"):
-                        target.action_focus_sidebar()
-                    elif hasattr(target, "action_focus_template"): # For SearchView
-                        target.action_focus_template()
-                except Exception as e:
-                    tui_debug_log(f"APP: Failed to reset root: {e}")
-            self.call_later(focus_root)
+            self.call_later(do_nav_up)
         else:
             # Already at branch root, just reset view/focus list/sidebar
             try:

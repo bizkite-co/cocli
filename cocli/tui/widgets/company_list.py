@@ -295,7 +295,9 @@ class CompanyList(Container):
                     
                     # If we were searching (input focused), return focus to the list 
                     # so the user can browse results immediately.
-                    if self.query_one("#company_search_input").has_focus:
+                    # BUT: Don't steal focus if the app shifted focus elsewhere (e.g. during a reset)
+                    search_input = self.query_one("#company_search_input", Input)
+                    if self.app.focused == search_input and search_input.value:
                         list_view.focus()
                     
                     # Manually trigger highlight for the first item to update preview

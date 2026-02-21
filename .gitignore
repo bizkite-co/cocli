@@ -25,10 +25,9 @@ data
 dist
 .logs/
 logs
-.envrc
 turboship
 quickbooks-search
 recovery
 .code_signature.md5
 mutt-setup
-.envrc
+.aws_profile.env
