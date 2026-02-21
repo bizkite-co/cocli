@@ -81,12 +81,16 @@ class QueueDetail(VerticalScroll):
         container = self.query_one(container_id, Vertical)
         container.remove_children()
         
+        tech_names = []
         for tech_name, description in props.items():
             name_label = Label(f"[bold {color}]{tech_name}[/]", classes="prop-name")
             setattr(name_label, "tech_name", tech_name)
             container.mount(name_label)
             container.mount(Label(f"{description}", classes="prop-desc"))
             container.mount(Static("", classes="prop-spacer"))
+            tech_names.append(tech_name)
+        
+        setattr(container, "tech_props", tech_names)
 
     def refresh_counts(self) -> None:
         if not self.active_queue:
@@ -122,13 +126,21 @@ class QueueDetail(VerticalScroll):
         info_table.add_column("Key", style="dim cyan", width=20)
         info_table.add_column("Value", style="white")
         
-        info_table.add_row("Functional Purpose", self.active_queue.description)
-        info_table.add_row("Filesystem Path", display_path_str)
-        info_table.add_row("Sharding Strategy", self.active_queue.sharding_strategy)
-        info_table.add_row("Upstream Sources", ", ".join(self.active_queue.from_models))
-        info_table.add_row("Downstream Targets", ", ".join(self.active_queue.to_models))
+        metadata = {
+            "Functional Purpose": self.active_queue.description,
+            "Task Model": self.active_queue.model_class.__name__,
+            "Filesystem Path": display_path_str,
+            "Sharding Strategy": self.active_queue.sharding_strategy,
+            "Upstream Sources": ", ".join(self.active_queue.from_models),
+            "Downstream Targets": ", ".join(self.active_queue.to_models)
+        }
+
+        for key, val in metadata.items():
+            info_table.add_row(key, val)
         
-        self.query_one("#queue_info_content", Static).update(info_table)
+        widget = self.query_one("#queue_info_content", Static)
+        widget.update(info_table)
+        setattr(widget, "metadata_map", metadata)
 
     def action_sync_pending(self) -> None:
         if self.active_queue:
