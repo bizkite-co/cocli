@@ -336,15 +336,17 @@ Footer > .footer--key {
     text-style: bold;
 }
 
-#queue_counts_summary {
+#queue_sync_indicator {
     width: 1fr;
     text-align: right;
     padding-right: 2;
-    color: #888888;
 }
 
-#queue_sync_indicator {
-    width: auto;
+#queue_info_panel {
+    height: auto;
+    min-height: 10;
+    border-bottom: solid #222222;
+    margin-bottom: 1;
 }
 
 #queue_transform_grid {
@@ -353,9 +355,10 @@ Footer > .footer--key {
     width: 100%;
 }
 
-.props-list {
+.panel-content {
     margin-left: 2;
     margin-top: 1;
+    height: 1fr;
 }
 
 .panel-header {
