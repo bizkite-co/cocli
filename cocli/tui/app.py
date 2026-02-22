@@ -7,7 +7,7 @@ from textual.app import App, ComposeResult
 from textual.binding import Binding
 from textual.widgets import Static, ListView, Input, Label, Footer
 from textual.containers import Container, Horizontal
-from textual import events
+from textual import events, on
 
 
 from .widgets.company_list import CompanyList
@@ -65,6 +65,15 @@ class MenuBar(Horizontal):
         target_id = f"menu-{section}"
         try:
             self.query_one(f"#{target_id}", Label).add_class("active-menu-item")
+        except Exception:
+            pass
+
+    def refresh_campaign(self) -> None:
+        """Updates the campaign name label in the menu bar."""
+        app = cast("CocliApp", self.app)
+        campaign_name = app.services.campaign_service.campaign_name
+        try:
+            self.query_one("#menu-application", Label).update(f"{campaign_name} ( A)")
         except Exception:
             pass
 
@@ -355,8 +364,10 @@ class CocliApp(App[None]):
         self.main_content.mount(ApplicationView())
         tui_debug_log("APP: action_show_application finished")
 
+    @on(ApplicationView.CampaignActivated)
     def on_application_view_campaign_activated(self, message: ApplicationView.CampaignActivated) -> None:
         self.notify(f"Campaign Activated: {message.campaign_name}")
+        self.query_one(MenuBar).refresh_campaign()
         self.action_show_companies()
 
     def action_select_item(self) -> None:
