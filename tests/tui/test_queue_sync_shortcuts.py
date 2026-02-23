@@ -18,7 +18,7 @@ async def test_queue_sync_shortcuts(mocker):
         await pilot.pause()
         
         nav_list = app.query_one("#app_nav_list", ListView)
-        nav_list.index = 2 # Queues
+        nav_list.index = 3 # Queues
         await pilot.press("enter")
         await pilot.pause()
         

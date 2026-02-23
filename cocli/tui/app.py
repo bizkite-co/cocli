@@ -85,6 +85,7 @@ class CocliApp(App[None]):
     
     BINDINGS = [
         ("l", "select_item", "Select"),
+        ("h", "navigate_up", "Back"),
         ("q", "quit", "Quit"),
         Binding("escape", "navigate_up", "Back", show=False),
         Binding("ctrl+c", "navigate_up", "Back", show=False),
@@ -205,6 +206,15 @@ class CocliApp(App[None]):
             self.reset_leader_mode()
             event.prevent_default()
             return
+
+        if event.key == "h":
+            # If we are already at a major view's trunk (nav list), h should take us back to companies
+            focused = self.focused
+            if focused and focused.id in ["app_nav_list", "template_list", "person_list_view"]:
+                self.action_show_companies()
+                event.stop()
+                event.prevent_default()
+                return
 
     def reset_leader_mode(self) -> None:
         self.leader_mode = False
@@ -335,13 +345,21 @@ class CocliApp(App[None]):
         company_list = CompanyList(id="search-companies-pane", classes="search-pane")
         company_preview = CompanyPreview(Static("Select a company to see details."), id="search-preview-pane", classes="search-pane")
         
-        self.main_content.mount(
-            CompanySearchView(
+        search_view = CompanySearchView(
                 template_list=template_list,
                 company_list=company_list,
                 company_preview=company_preview
             )
-        )
+        self.main_content.mount(search_view)
+        
+        def focus_list() -> None:
+            try:
+                company_list.query_one("#company_list_view").focus()
+            except Exception:
+                pass
+        
+        # Ensure company list has focus if we are returning from a detail view
+        self.call_after_refresh(focus_list)
 
     def action_focus_templates(self) -> None:
         """Focus the template list in search view."""

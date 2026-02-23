@@ -192,6 +192,20 @@ class QueueDetail(VerticalScroll):
         indicator = self.query_one("#queue_sync_indicator", Label)
         loading = self.query_one("#queue_sync_loading", LoadingIndicator)
         
+        # 1. Register Process Run
+        from ..navigation import ProcessRun
+        op_id = f"sync_{queue_name}_{branch}"
+        run_record = ProcessRun(op_id, f"Sync {queue_name} ({branch})")
+        app.process_runs.append(run_record)
+        
+        # Trigger sidebar refresh if we are in ApplicationView
+        app_view = next((a for a in self.ancestors if a.id == "app_content"), None)
+        if app_view:
+            from .application_view import ApplicationView
+            apps = list(app_view.query(ApplicationView))
+            if apps:
+                self.call_after_refresh(apps[0].update_recent_runs)
+
         indicator.update(f"[bold yellow] Syncing {branch}...[/bold yellow]")
         loading.display = True
         
@@ -200,17 +214,34 @@ class QueueDetail(VerticalScroll):
             await asyncio.to_thread(app.services.data_sync_service.sync_queues, queue_name)
             logger.info(f"WORKER: sync_queues finished for {queue_name}")
             
+            run_record.status = "success"
             indicator.update(f"[bold green] {branch.title()} Synced[/bold green]")
             self.app.notify(f"Sync Complete: {queue_name} ({branch})")
             
+            # Recalculate stats and refresh local counts
             await asyncio.to_thread(app.services.reporting_service.get_campaign_stats)
             self.call_after_refresh(self.refresh_counts)
             
+            # Refresh Template List counts if visible
+            if app_view:
+                from .template_list import TemplateList
+                templates = list(app_view.query(TemplateList))
+                if templates:
+                    self.call_after_refresh(templates[0].update_counts)
+            
         except Exception as e:
             logger.error(f"WORKER: Sync failed: {e}")
+            run_record.status = "failed"
+            run_record.message = str(e)
             indicator.update(f"[bold red] Sync Failed: {e}[/bold red]")
             self.app.notify(f"Sync Failed: {e}", severity="error")
         
-        loading.display = False
+        finally:
+            from datetime import datetime
+            run_record.end_time = datetime.now()
+            loading.display = False
+            if app_view and apps:
+                self.call_after_refresh(apps[0].update_recent_runs)
+        
         await asyncio.sleep(3)
         indicator.update("")

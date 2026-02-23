@@ -1,6 +1,5 @@
 from textual.app import ComposeResult
 from textual.containers import Horizontal, Container
-from textual.widgets import ListView
 from textual import on, events
 
 from .template_list import TemplateList
@@ -76,11 +75,21 @@ class CompanySearchView(Container):
 
     def on_key(self, event: events.Key) -> None:
         if event.key == "h":
-            if self.company_list.has_focus_within:
+            if self.company_list.query_one("#company_list_view").has_focus:
                 self.template_list.focus_list()
+                event.stop()
                 event.prevent_default()
+                return
+            elif self.template_list.query_one("#template_list").has_focus:
+                # Already at the trunk of this view, let it bubble if needed
+                pass
         elif event.key == "l":
             if self.template_list.has_focus_within:
                 # Trigger selection which will apply template and move focus
+                from textual.widgets import ListView
                 self.template_list.query_one(ListView).action_select_cursor()
+                event.prevent_default()
+            elif self.company_list.query_one("#company_list_view").has_focus:
+                # Enter detail view
+                self.company_list.query_one("#company_list_view").action_select_cursor() # type: ignore
                 event.prevent_default()

@@ -10,7 +10,7 @@ from watchdog.observers import Observer
 from watchdog.events import FileSystemEventHandler
 
 from .wal import get_node_id
-from ..models.wal.record import DatagramRecord, RS
+from ..models.wal.record import DatagramRecord, RS, QueueDatagram
 from .paths import paths
 
 logger = logging.getLogger(__name__)
@@ -124,6 +124,37 @@ class GossipBridge:
     def handle_gossip(self, msg: str) -> None:
         """Processes an incoming USV datagram and writes it locally via paths authority."""
         try:
+            # 1. Handle Queue Synchronization
+            if msg.startswith("Q"):
+                q_record = QueueDatagram.from_usv(msg)
+                if not q_record or q_record.node_id == self.node_id:
+                    return
+                
+                logger.info(f"Received queue sync: {q_record.queue_name}/{q_record.task_id} [{q_record.status}] from {q_record.node_id}")
+                
+                from .config import get_campaign
+                campaign = get_campaign()
+                if not campaign:
+                    return
+                
+                # Write marker to local filesystem
+                q_dir = paths.campaign(campaign).queue(q_record.queue_name).path
+                dest = q_dir / q_record.status / f"{q_record.task_id}.json"
+                
+                if not dest.exists():
+                    dest.parent.mkdir(parents=True, exist_ok=True)
+                    import json
+                    with open(dest, "w") as f:
+                        json.dump({
+                            "id": q_record.task_id, 
+                            "status": q_record.status, 
+                            "synced_via": "gossip", 
+                            "remote_node": q_record.node_id,
+                            "timestamp": q_record.timestamp
+                        }, f)
+                return
+
+            # 2. Handle standard WAL Records
             record = DatagramRecord.from_usv(msg)
             if record.node_id == self.node_id:
                 return # Ignore self

@@ -290,6 +290,16 @@ class GoogleMapsProspect(GoogleMapsIdx):
                 values[field] = None
         return values
 
+    @classmethod
+    def append_to_checkpoint(cls, campaign_name: str, prospect: "GoogleMapsProspect") -> None:
+        """Appends a prospect to the campaign's main checkpoint USV."""
+        from ....core.paths import paths
+        checkpoint_path = paths.campaign(campaign_name).index(cls.INDEX_NAME).checkpoint
+        checkpoint_path.parent.mkdir(parents=True, exist_ok=True)
+        
+        with open(checkpoint_path, "a", encoding="utf-8") as f:
+            f.write(prospect.to_usv())
+
     def to_usv(self) -> str:
         """Serializes based on architectural sequence."""
         from ....core.utils import UNIT_SEP

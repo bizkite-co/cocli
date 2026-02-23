@@ -13,6 +13,9 @@ class OperationMetadata:
     title: str
     description: str
     category: str # 'reporting', 'sync', 'scaling', 'maintenance'
+    source_path: Optional[str] = None
+    dest_path: Optional[str] = None
+    process_details: Optional[str] = None
 
 class OperationService:
     """
@@ -65,40 +68,45 @@ class OperationService:
             "op_scale_5": OperationMetadata("op_scale_5", "Scale to 5 Workers", "Sets Fargate service desired count to 5.", "scaling"),
             "op_scale_10": OperationMetadata("op_scale_10", "Scale to 10 Workers", "Sets Fargate service desired count to 10.", "scaling"),
             "op_compact_index": OperationMetadata(
-                "op_compact_index", "Compact Index", 
-                "Merges WAL files from S3 into the local checkpoint USV.", 
-                "maintenance"
+                "op_compact_index", "Compact Email Index", 
+                "Merges email WAL files from S3 into the local checkpoint USV.", 
+                "maintenance",
+                source_path="data/campaigns/{campaign}/indexes/emails/inbox/",
+                dest_path="data/campaigns/{campaign}/indexes/emails/shards/",
+                process_details="Moves 'inbox/' USVs to a temporary shard before merging into 00-ff shards. deduplicates on 'email' field."
             ),
             "op_compile_lifecycle": OperationMetadata(
                 "op_compile_lifecycle", "Compile Lifecycle", 
                 "Builds the lifecycle index (scrape/detail dates) from local queues.", 
-                "maintenance"
+                "maintenance",
+                source_path="data/campaigns/{campaign}/queues/gm-list/completed/",
+                dest_path="data/campaigns/{campaign}/indexes/lifecycle.usv",
+                process_details="Scans all completed task JSONs to extract 'scraped_at' and 'details_at' timestamps."
+            ),
+            "op_compact_prospects": OperationMetadata(
+                "op_compact_prospects", "Compact Prospects Index", 
+                "Merges completed GM results into the main checkpoint and cleans up queue files.", 
+                "maintenance",
+                source_path="data/campaigns/{campaign}/queues/gm-list/completed/results/",
+                dest_path="data/campaigns/{campaign}/indexes/google_maps_prospects/prospects.checkpoint.usv",
+                process_details="Consolidates high-precision results into 0.1-degree tiles, then appends to main checkpoint and deletes source USVs."
+            ),
+            "op_compile_top_prospects": OperationMetadata(
+                "op_compile_top_prospects", "Compile Top Prospects", 
+                "Identifies high-rating, highly-reviewed leads with contact info using DuckDB.", 
+                "maintenance",
+                source_path="data/campaigns/{campaign}/indexes/google_maps_prospects/",
+                dest_path="data/companies/{slug}/",
+                process_details="Filters DuckDB 'items' view for rating >= 4.5 and reviews >= 20. Tags matches with 'to-call'."
             ),
             "op_restore_names": OperationMetadata(
                 "op_restore_names", "Restore Company Names", 
                 "Restores company names from Google Maps index and writes provenance USVs.", 
-                "maintenance"
+                "maintenance",
+                source_path="data/campaigns/{campaign}/indexes/google_maps_prospects/",
+                dest_path="data/companies/{slug}/_index.md",
+                process_details="Maps PlaceIDs to slugs, updates YAML 'name' field if current name is generic."
             ),
-            "op_push_queue": OperationMetadata(
-                "op_push_queue", "Push Local Queue", 
-                "Uploads locally generated enrichment tasks to S3.", 
-                "maintenance"
-            ),
-            "op_audit_integrity": OperationMetadata(
-                "op_audit_integrity", "Audit Campaign Integrity", 
-                "Scans for cross-contamination between campaigns.", 
-                "maintenance"
-            ),
-            "op_audit_queue": OperationMetadata(
-                "op_audit_queue", "Audit Queue Completion", 
-                "Verifies completed markers against the prospect index.", 
-                "maintenance"
-            ),
-            "op_path_check": OperationMetadata(
-                "op_path_check", "Cluster Path Check", 
-                "Audits core data paths across local, PI cluster, and S3.", 
-                "maintenance"
-            )
         }
 
     def get_details(self, op_id: str) -> Optional[OperationMetadata]:
@@ -159,6 +167,42 @@ class OperationService:
                 def run_check() -> Dict[str, Any]:
                     return {"results": self.services.audit_service.audit_cluster_paths(paths_to_check)}
                 result = await asyncio.to_thread(run_check)
+            elif op_id == "op_compact_prospects":
+                def run_compaction() -> Dict[str, Any]:
+                    from cocli.core.prospect_compactor import consolidate_campaign_results, compact_prospects_to_checkpoint
+                    
+                    # 1. Consolidate results into standard tiles
+                    c_count = consolidate_campaign_results(self.campaign_name)
+                    
+                    # 2. Merge tiles into checkpoint
+                    m_count = compact_prospects_to_checkpoint(self.campaign_name)
+                    
+                    return {"files_consolidated": c_count, "prospects_merged": m_count}
+                result = await asyncio.to_thread(run_compaction)
+            elif op_id == "op_compile_top_prospects":
+                def run_compile() -> Dict[str, Any]:
+                    from .search_service import get_fuzzy_search_results
+                    filters = {"has_contact_info": True}
+                    results = get_fuzzy_search_results(
+                        "", 
+                        item_type="company", 
+                        campaign_name=self.campaign_name,
+                        filters=filters,
+                        sort_by="rating",
+                        limit=500
+                    )
+                    top_prospects = [r for r in results if (r.average_rating or 0) >= 4.5 and (r.reviews_count or 0) >= 20]
+                    tagged = 0
+                    from cocli.models.companies.company import Company
+                    for p in top_prospects:
+                        if p.slug:
+                            company = Company.get(p.slug)
+                            if company and "to-call" not in company.tags:
+                                company.tags.append("to-call")
+                                company.save()
+                                tagged += 1
+                    return {"top_candidates_found": len(top_prospects), "newly_tagged": tagged}
+                result = await asyncio.to_thread(run_compile)
             elif op_id == "op_analyze_emails":
                 result = await asyncio.to_thread(self.services.reporting_service.get_email_analysis)
             elif "op_scale_" in op_id:

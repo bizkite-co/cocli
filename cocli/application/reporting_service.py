@@ -1,4 +1,5 @@
 import logging
+from pathlib import Path
 from typing import Any, Dict, Optional, cast, List
 from datetime import datetime, timezone
 
@@ -90,6 +91,57 @@ class ReportingService:
         from .worker_service import WorkerService
         ws = WorkerService(campaign_name=self.campaign_name)
         return await ws.get_cluster_health()
+
+    def get_index_stats(self, campaign_name: Optional[str] = None) -> Dict[str, Any]:
+        """Returns record counts and paths for core system indexes."""
+        from ..core.paths import paths
+        import subprocess
+        
+        target_campaign = campaign_name or self.campaign_name
+        campaign_node = paths.campaign(target_campaign)
+        
+        def count_lines(path: Path) -> int:
+            if not path.exists():
+                return 0
+            try:
+                # Use 'wc -l' for speed on USV files
+                res = subprocess.run(["wc", "-l", str(path)], capture_output=True, text=True)
+                if res.returncode == 0:
+                    # Subtract 1 for header
+                    return max(0, int(res.stdout.strip().split()[0]) - 1)
+            except Exception:
+                pass
+            return 0
+
+        from ..core.email_index_manager import EmailIndexManager
+        email_manager = EmailIndexManager(target_campaign)
+        email_root = email_manager.index_root
+        
+        # Calculate email count across all shards and inbox
+        email_count = 0
+        try:
+            # Simple count of USV files in inbox + records in shards
+            for p in email_manager.inbox_dir.rglob("*.usv"):
+                email_count += 1
+            for p in email_manager.shards_dir.glob("*.usv"):
+                email_count += count_lines(p)
+        except Exception:
+            pass
+
+        return {
+            "gm_prospects": {
+                "count": count_lines(campaign_node.index("google_maps_prospects").checkpoint),
+                "path": str(campaign_node.index("google_maps_prospects").checkpoint.relative_to(paths.root))
+            },
+            "email_index": {
+                "count": email_count,
+                "path": str(email_root.relative_to(paths.root))
+            },
+            "lifecycle": {
+                "count": count_lines(campaign_node.lifecycle),
+                "path": str(campaign_node.lifecycle.relative_to(paths.root))
+            }
+        }
 
     def save_cached_report(self, campaign_name: str, report_type: str, data: Dict[str, Any]) -> None:
         """Saves a report to the local reports cache and the campaign exports dir."""

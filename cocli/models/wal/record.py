@@ -28,3 +28,30 @@ class DatagramRecord(BaseModel):
             value=parts[4],
             causality=parts[5] if len(parts) > 5 else None
         )
+
+class QueueDatagram(BaseModel):
+    queue_name: str
+    task_id: str
+    status: str
+    timestamp: str
+    node_id: str
+
+    def to_usv(self) -> str:
+        parts = ["Q", self.queue_name, self.task_id, self.status, self.timestamp, self.node_id]
+        return US.join(parts) + RS
+
+    @classmethod
+    def from_usv(cls, usv_record: str) -> Optional["QueueDatagram"]:
+        parts = usv_record.rstrip(RS).split(US)
+        if not parts or parts[0] != "Q":
+            return None
+        try:
+            return cls(
+                queue_name=parts[1],
+                task_id=parts[2],
+                status=parts[3],
+                timestamp=parts[4],
+                node_id=parts[5]
+            )
+        except (IndexError, ValueError):
+            return None

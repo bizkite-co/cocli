@@ -55,6 +55,7 @@ class QuadrantTable(DataTable[Any]):
     BINDINGS = [
         Binding("j", "cursor_down", "Down", show=False),
         Binding("k", "cursor_up", "Up", show=False),
+        Binding("h", "exit_quadrant", "Back", show=False),
         Binding("escape", "exit_quadrant", "Exit Quadrant"),
     ]
 
@@ -173,6 +174,7 @@ class CompanyDetail(Container):
     
     BINDINGS = [
         Binding("escape", "app.action_escape", "Back"),
+        Binding("h", "app.action_escape", "Back", show=False),
         Binding("q", "app.action_escape", "Back"),
         Binding("alt+s", "app.navigate_up", "Navigate Up"),
         Binding("meta+s", "app.navigate_up", "Navigate Up", show=False),

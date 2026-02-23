@@ -50,6 +50,7 @@ class ApplicationView(Container):
                     yield ListView(
                         ListItem(Label("Campaigns"), id="nav_campaigns"),
                         ListItem(Label("Environment Status"), id="nav_status"),
+                        ListItem(Label("Indexes"), id="nav_indexes"),
                         ListItem(Label("Queues"), id="nav_queues"),
                         ListItem(Label("Operations"), id="nav_operations"),
                         id="app_nav_list"
@@ -62,6 +63,10 @@ class ApplicationView(Container):
                     # Queues List (Newly Added)
                     from .queues_view import QueueSelection
                     yield QueueSelection(id="app_queue_list", classes="sub-sidebar-list")
+
+                    # Indexes List (Newly Added)
+                    from .indexes_view import IndexSelection
+                    yield IndexSelection(id="app_index_list", classes="sub-sidebar-list")
 
                     # Operations List
                     yield ListView(
@@ -87,12 +92,15 @@ class ApplicationView(Container):
 
                         # Maintenance
                         ListItem(Label("[dim]--- Maintenance ---[/dim]"), disabled=True),
-                        ListItem(Label("Compact Index"), id="op_compact_index"),
+                        ListItem(Label("Compact Email Index"), id="op_compact_index"),
+                        ListItem(Label("Compact Prospects"), id="op_compact_prospects"),
                         ListItem(Label("Compile Lifecycle"), id="op_compile_lifecycle"),
+                        ListItem(Label("Compile Top Prospects"), id="op_compile_top_prospects"),
                         ListItem(Label("Restore Company Names"), id="op_restore_names"),
                         ListItem(Label("Push Local Queue"), id="op_push_queue"),
                         ListItem(Label("Audit Integrity"), id="op_audit_integrity"),
                         ListItem(Label("Audit Queue"), id="op_audit_queue"),
+                        ListItem(Label("Cluster Path Check"), id="op_path_check"),
                         id="ops_list",
                         classes="sub-sidebar-list"
                     )
@@ -120,6 +128,11 @@ class ApplicationView(Container):
                 from .queues_view import QueueDetail
                 with VerticalScroll(id="queue_detail_root", classes="category-content-root"):
                     yield QueueDetail(id="queue_detail")
+
+                # Indexes Detail (Newly Added)
+                from .indexes_view import IndexDetail
+                with VerticalScroll(id="index_detail_root", classes="category-content-root"):
+                    yield IndexDetail(id="index_detail")
 
                 # Campaign Detail
                 with VerticalScroll(id="campaign_detail_root", classes="category-content-root"):
@@ -151,6 +164,8 @@ class ApplicationView(Container):
             self.query_one("#ops_list", ListView).focus()
         elif self.active_category == "campaigns":
             self.query_one("#app_campaign_list", CampaignSelection).focus()
+        elif self.active_category == "indexes":
+            self.query_one("#app_index_list", ListView).focus()
         elif self.active_category == "queues":
             self.query_one("#app_queue_list", ListView).focus()
         elif self.active_category == "status":
@@ -162,8 +177,41 @@ class ApplicationView(Container):
         if not focused:
             return
 
-        # Only intercept j/k/l/enter if we are focusing one of OUR sidebar lists
-        if isinstance(focused, ListView) and focused.id in ["app_nav_list", "ops_list", "campaign_list_view", "app_queue_list"]:
+        # 1. Handle 'h' (Step-wise Back)
+        if event.key == "h":
+            # From Detail -> Sub-sidebar
+            if self.active_category == "queues" and focused.id == "queue_detail":
+                self.query_one("#app_queue_list", ListView).focus()
+                event.stop()
+                event.prevent_default()
+                return
+            elif self.active_category == "indexes" and focused.id == "index_detail":
+                self.query_one("#app_index_list", ListView).focus()
+                event.stop()
+                event.prevent_default()
+                return
+            elif self.active_category == "operations" and (focused.id == "ops_detail_root" or focused.has_focus_within):
+                # For operations, focus might be in content area, but we want to go back to ops list
+                if focused.id != "ops_list":
+                    self.query_one("#ops_list", ListView).focus()
+                    event.stop()
+                    event.prevent_default()
+                    return
+            
+            # From Sub-sidebar -> Main Nav
+            if isinstance(focused, ListView) and focused.id in ["ops_list", "app_queue_list", "app_index_list", "app_campaign_list"]:
+                self.query_one("#app_nav_list", ListView).focus()
+                event.stop()
+                event.prevent_default()
+                return
+            
+            # From Main Nav (Trunk) -> Root App Navigation (Bubble up to major view change)
+            if focused.id == "app_nav_list":
+                # Let it bubble up to the app level if we want to change major tabs
+                pass
+
+        # 2. Only intercept j/k/l/enter if we are focusing one of OUR sidebar lists
+        if isinstance(focused, ListView) and focused.id in ["app_nav_list", "ops_list", "campaign_list_view", "app_queue_list", "app_index_list"]:
             if event.key == "j":
                 focused.action_cursor_down()
                 event.prevent_default()
@@ -182,6 +230,9 @@ class ApplicationView(Container):
         elif event.item.id == "nav_status":
             self.show_category("status")
             self.query_one("#status_view_root", StatusView).focus()
+        elif event.item.id == "nav_indexes":
+            self.show_category("indexes")
+            self.query_one("#app_index_list", ListView).focus()
         elif event.item.id == "nav_queues":
             self.show_category("queues")
             self.query_one("#app_queue_list", ListView).focus()
@@ -203,10 +254,12 @@ class ApplicationView(Container):
         ops_list = self.query_one("#ops_list")
         campaign_list = self.query_one("#app_campaign_list")
         queue_list = self.query_one("#app_queue_list")
+        index_list = self.query_one("#app_index_list")
         
         ops_list.display = (category == "operations")
         campaign_list.display = (category == "campaigns")
         queue_list.display = (category == "queues")
+        index_list.display = (category == "indexes")
         self.query_one("#app_sub_nav_container").display = (category != "status")
 
         # Toggle Content Visibility
@@ -214,11 +267,18 @@ class ApplicationView(Container):
         self.query_one("#campaign_detail_root").display = (category == "campaigns")
         self.query_one("#status_view_root").display = (category == "status")
         self.query_one("#queue_detail_root").display = (category == "queues")
+        self.query_one("#index_detail_root").display = (category == "indexes")
 
         if category == "campaigns":
             title_label.update("[bold]Campaigns[/bold]")
         elif category == "status":
             title_label.update("[bold]Environment[/bold]")
+        elif category == "indexes":
+            title_label.update("[bold]Indexes[/bold]")
+            try:
+                self.query_one("#app_index_list", ListView).index = 0
+            except Exception:
+                pass
         elif category == "operations":
             title_label.update("[bold]Operations[/bold]")
             # Index 0 is a disabled header "--- Reporting ---", so we select index 1
@@ -244,8 +304,8 @@ class ApplicationView(Container):
                 timestamp = run.start_time.strftime("%H:%M:%S")
                 label = f"[{status_color}]{run.title}[/] [dim]({timestamp})[/]"
                 runs_list.append(ListItem(Static(label)))
-        except Exception:
-            pass
+        except Exception as e:
+            logger.error(f"Failed to update recent runs: {e}")
 
     @on(ListView.Highlighted, "#ops_list")
     def handle_op_highlight(self, event: ListView.Highlighted) -> None:
@@ -254,6 +314,7 @@ class ApplicationView(Container):
         
         op_id = str(event.item.id)
         app = cast("CocliApp", self.app)
+        campaign = app.services.reporting_service.campaign_name
         op = app.services.operation_service.get_details(op_id)
         if not op:
             return
@@ -262,15 +323,30 @@ class ApplicationView(Container):
         try:
             self.query_one("#op_title", Label).update(op.title)
             self.query_one("#op_description", Static).update(op.description)
+            
+            # Show Transparency Metadata
+            meta_table = Table(box=None, show_header=False, padding=(0, 1))
+            meta_table.add_column("Key", style="dim cyan", width=15)
+            meta_table.add_column("Value")
+            
+            if op.source_path:
+                meta_table.add_row("Source", f"[bold yellow]{op.source_path.format(campaign=campaign)}[/]")
+            if op.dest_path:
+                meta_table.add_row("Destination", f"[bold green]{op.dest_path.format(campaign=campaign)}[/]")
+            if op.process_details:
+                meta_table.add_row("Process", f"[dim]{op.process_details}[/]")
+            
+            # Use existing Content area for metadata
+            content_area = self.query_one("#op_content_area", Container)
+            content_area.remove_children()
+            content_area.mount(Static(Panel(meta_table, border_style="dim white", title="Plan Details")))
+
             self.query_one("#op_last_run", Label).update(f"Last Run: {self.get_last_run_info(op_id)}")
             self.query_one("#op_log_preview", Static).update("")
-        except Exception:
-            pass
+        except Exception as e:
+            logger.error(f"Error updating op header: {e}")
 
-        # 2. Update Content Area
-        content_area = self.query_one("#op_content_area", Container)
-        content_area.remove_children()
-        
+        # 2. Update Content Area (Additional details like reports)
         campaign = app.services.reporting_service.campaign_name
         
         if op_id == "op_report":
@@ -297,6 +373,23 @@ class ApplicationView(Container):
             if cached:
                 active = cached.get("active_fargate_tasks", "Unknown")
                 content_area.mount(Static(Panel(f"Current Running Tasks: [bold green]{active}[/]", title="Cloud Status")))
+
+    @on(ListView.Highlighted, "#app_index_list")
+    def handle_index_highlight(self, event: ListView.Highlighted) -> None:
+        """Update Index Detail on highlight."""
+        if not event.item or not event.item.id:
+            return
+        
+        from .indexes_view import IndexDetail
+        index_id = str(event.item.id).replace("idx_", "")
+        detail = self.query_one("#index_detail", IndexDetail)
+        detail.update_detail(index_id)
+
+    @on(ListView.Selected, "#app_index_list")
+    def handle_index_selection(self, event: ListView.Selected) -> None:
+        """Focus the detail pane when an index is selected."""
+        from .indexes_view import IndexDetail
+        self.query_one("#index_detail", IndexDetail).focus()
 
     @on(ListView.Highlighted, "#app_queue_list")
     def handle_queue_highlight(self, event: ListView.Highlighted) -> None:
