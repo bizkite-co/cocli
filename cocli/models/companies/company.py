@@ -371,6 +371,15 @@ class Company(BaseModel):
         
         logger.debug(f"Saved company: {self.slug}")
 
+        # 4. Trigger Fuzzy Search Cache Rebuild (Non-blocking)
+        # This ensures the TUI sees the new company immediately without a restart.
+        try:
+            from ...core.cache import build_cache
+            import threading
+            threading.Thread(target=build_cache, kwargs={"campaign": get_campaign()}, daemon=True).start()
+        except Exception as e:
+            logger.debug(f"Non-critical: Failed to trigger cache rebuild: {e}")
+
         # 3. Sync with Email Index (if a campaign is active)
         if email_sync:
             from ...core.email_index_manager import EmailIndexManager
