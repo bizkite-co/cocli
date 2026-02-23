@@ -1,6 +1,5 @@
 import logging
 import os
-import subprocess
 from pathlib import Path
 from typing import Any, Dict, Optional
 
@@ -92,18 +91,14 @@ class DataSyncService:
             return {"status": "error", "message": str(e), "target": target}
 
     def compact_index(self) -> Dict[str, Any]:
-        """Runs the index compaction script (WAL -> Checkpoint)."""
+        """Runs the email index compaction (Hot Inbox -> Shards)."""
         try:
-            # Pass campaign name explicitly
-            res = subprocess.run(
-                ["python3", "scripts/compact_shards.py", self.campaign_name],
-                capture_output=True, text=True
-            )
-            if res.returncode == 0:
-                return {"status": "success", "output": res.stdout}
-            else:
-                return {"status": "error", "message": res.stderr}
+            from ..core.email_index_manager import EmailIndexManager
+            manager = EmailIndexManager(self.campaign_name)
+            manager.compact()
+            return {"status": "success", "message": "Email index compacted (Hot Inbox -> Shards)"}
         except Exception as e:
+            logger.error(f"Email compaction failed: {e}")
             return {"status": "error", "message": str(e)}
 
     def push_queue(self, queue_name: str = "enrichment") -> Dict[str, Any]:

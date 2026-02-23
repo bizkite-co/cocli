@@ -95,7 +95,7 @@ class ApplicationView(Container):
                         ListItem(Label("Compact Email Index"), id="op_compact_index"),
                         ListItem(Label("Compact Prospects"), id="op_compact_prospects"),
                         ListItem(Label("Compile Lifecycle"), id="op_compile_lifecycle"),
-                        ListItem(Label("Compile Top Prospects"), id="op_compile_top_prospects"),
+                        ListItem(Label("Compile To-Call List"), id="op_compile_to_call"),
                         ListItem(Label("Restore Company Names"), id="op_restore_names"),
                         ListItem(Label("Push Local Queue"), id="op_push_queue"),
                         ListItem(Label("Audit Integrity"), id="op_audit_integrity"),

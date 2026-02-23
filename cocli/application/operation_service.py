@@ -1,6 +1,6 @@
 import logging
 import asyncio
-from typing import Any, Dict, Optional, Callable
+from typing import Any, Dict, Optional, Callable, List
 from dataclasses import dataclass
 
 from .services import ServiceContainer
@@ -91,6 +91,14 @@ class OperationService:
                 dest_path="data/campaigns/{campaign}/indexes/google_maps_prospects/prospects.checkpoint.usv",
                 process_details="Consolidates high-precision results into 0.1-degree tiles, then appends to main checkpoint and deletes source USVs."
             ),
+            "op_compile_to_call": OperationMetadata(
+                "op_compile_to_call", "Compile To-Call List", 
+                "Full workflow: Compacts GM and Email indexes, then identifies top leads for calling.", 
+                "maintenance",
+                source_path="data/campaigns/{campaign}/indexes/",
+                dest_path="data/companies/{slug}/",
+                process_details="1. Compacts GM results. 2. Compacts Email shards. 3. Filters rating >= 4.5, reviews >= 20, HAS email/phone. 4. Tags results as 'to-call'."
+            ),
             "op_compile_top_prospects": OperationMetadata(
                 "op_compile_top_prospects", "Compile Top Prospects", 
                 "Identifies high-rating, highly-reviewed leads with contact info using DuckDB.", 
@@ -172,13 +180,55 @@ class OperationService:
                     from cocli.core.prospect_compactor import consolidate_campaign_results, compact_prospects_to_checkpoint
                     
                     # 1. Consolidate results into standard tiles
-                    c_count = consolidate_campaign_results(self.campaign_name)
+                    consolidate_campaign_results(self.campaign_name)
                     
                     # 2. Merge tiles into checkpoint
                     m_count = compact_prospects_to_checkpoint(self.campaign_name)
                     
-                    return {"files_consolidated": c_count, "prospects_merged": m_count}
+                    return {"prospects_merged": m_count}
                 result = await asyncio.to_thread(run_compaction)
+            elif op_id == "op_compile_to_call":
+                async def run_workflow() -> Dict[str, Any]:
+                    report: Dict[str, Any] = {"steps": []}
+                    # 1. Compact Prospects
+                    from cocli.core.prospect_compactor import consolidate_campaign_results, compact_prospects_to_checkpoint
+                    consolidate_campaign_results(self.campaign_name)
+                    m_count = compact_prospects_to_checkpoint(self.campaign_name)
+                    report["steps"].append(f"Prospects Compacted: {m_count} records")
+
+                    # 2. Compact Emails
+                    from cocli.core.email_index_manager import EmailIndexManager
+                    email_manager = EmailIndexManager(self.campaign_name)
+                    email_manager.compact()
+                    report["steps"].append("Email Index Compacted")
+
+                    # 3. Identify Top Leads (Rating >= 4.5, Reviews >= 20, HAS email/phone)
+                    from .search_service import get_fuzzy_search_results
+                    filters = {"has_contact_info": True}
+                    results = get_fuzzy_search_results(
+                        "", 
+                        item_type="company", 
+                        campaign_name=self.campaign_name,
+                        filters=filters,
+                        sort_by="rating",
+                        limit=1000
+                    )
+                    top_prospects = [r for r in results if (r.average_rating or 0) >= 4.5 and (r.reviews_count or 0) >= 20]
+                    
+                    tagged = 0
+                    from cocli.models.companies.company import Company
+                    for p in top_prospects:
+                        if p.slug:
+                            company = Company.get(p.slug)
+                            if company and "to-call" not in company.tags:
+                                company.tags.append("to-call")
+                                company.save()
+                                tagged += 1
+                    
+                    report["top_leads_found"] = len(top_prospects)
+                    report["newly_tagged"] = tagged
+                    return report
+                result = await run_workflow()
             elif op_id == "op_compile_top_prospects":
                 def run_compile() -> Dict[str, Any]:
                     from .search_service import get_fuzzy_search_results
