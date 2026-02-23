@@ -159,7 +159,11 @@ class ApplicationView(Container):
     def on_key(self, event: events.Key) -> None:
         """Handle sidebar navigation keys."""
         focused = self.app.focused
-        if isinstance(focused, ListView) and (focused.id == "app_nav_list" or focused.id == "ops_list" or focused.id == "campaign_list_view" or focused.id == "app_queue_list"):
+        if not focused:
+            return
+
+        # Only intercept j/k/l/enter if we are focusing one of OUR sidebar lists
+        if isinstance(focused, ListView) and focused.id in ["app_nav_list", "ops_list", "campaign_list_view", "app_queue_list"]:
             if event.key == "j":
                 focused.action_cursor_down()
                 event.prevent_default()

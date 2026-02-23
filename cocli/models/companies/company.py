@@ -110,6 +110,7 @@ class Company(BaseModel):
     list_found_at: Optional[datetime] = None
     details_found_at: Optional[datetime] = None
     enqueued_at: Optional[datetime] = None
+    callback_at: Optional[datetime] = None
     enrichment_ttl_days: int = 30
     processed_by: Optional[str] = "local-worker"
 
@@ -278,6 +279,17 @@ class Company(BaseModel):
         except Exception as e:
             logger.debug(f"Error in from_directory for {company_dir}: {e}")
             return None
+
+    def toggle_to_call(self) -> bool:
+        """Adds or removes the 'to-call' tag. Returns True if added, False if removed."""
+        if "to-call" in self.tags:
+            self.tags.remove("to-call")
+            self.save()
+            return False
+        else:
+            self.tags.append("to-call")
+            self.save()
+            return True
 
     def merge_with(self, other: 'Company') -> None:
         """Merges data from another company instance into this one."""

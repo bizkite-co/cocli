@@ -876,4 +876,8 @@ provision-pi-iot: ## Provision a Pi with unique IoT certificate (Usage: make pro
 clean-html: ## Convert HTML source to clean Markdown (Usage: make clean-html FILE=docs/ref.html)
 	@if [ -z "$(FILE)" ]; then echo "ERROR: FILE parameter is required."; exit 1; fi
 	$(VENV_DIR)/bin/python scripts/clean_html_docs.py $(FILE) $(FILE:.html=.md)
+.PHONY: path-check
+path-check: install ## Audit paths across cluster and S3 (Usage: make path-check PATHS="wal/,indexes/scraped_areas/" [CAMPAIGNS="roadmap,turboship"])
+	@$(VENV_DIR)/bin/python scripts/audit_cluster_paths.py --paths "$(PATHS)" --campaigns "$(or $(CAMPAIGNS), $(CAMPAIGN))"
+
 include mk/cluster.mk

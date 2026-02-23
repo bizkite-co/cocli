@@ -186,6 +186,7 @@ class CompanyDetail(Container):
         Binding("g", "open_gmb", "Google Maps"),
         Binding("v", "view_enrichment", "Enrichment"),
         Binding("p", "call_company", "Call"),
+        Binding("t", "toggle_to_call", "To Call"),
         Binding("e", "open_folder", "Explorer (NVim)"),
     ]
 
@@ -372,6 +373,21 @@ class CompanyDetail(Container):
                 self._edit_with_nvim(meeting_path)
         else:
             self.app.notify("No phone number found", severity="warning")
+
+    def action_toggle_to_call(self) -> None:
+        slug = self.company_data["company"].get("slug")
+        if not slug:
+            return
+        
+        company = Company.get(slug)
+        if company:
+            is_added = company.toggle_to_call()
+            status = "Added to" if is_added else "Removed from"
+            self.app.notify(f"{status} To-Call Queue")
+            
+            # Update local data and refresh
+            self.company_data["company"]["tags"] = company.tags
+            self._refresh_info_table()
 
     def action_open_folder(self) -> None:
         slug = self.company_data["company"].get("slug")
@@ -659,8 +675,20 @@ class CompanyDetail(Container):
         else:
             self.info_table.add_row("Enriched", "No")
 
+        # Callback date
+        callback_at = c.get("callback_at")
+        if callback_at:
+            dt = datetime.fromisoformat(callback_at) if isinstance(callback_at, str) else callback_at
+            self.info_table.add_row("Callback", f"[bold cyan]{dt.strftime('%Y-%m-%d')}[/]")
+
         if tags:
-            self.info_table.add_row("Tags", ", ".join(tags))
+            display_tags = []
+            for t in tags:
+                if t == "to-call":
+                    display_tags.append("[bold yellow]to-call[/]")
+                else:
+                    display_tags.append(t)
+            self.info_table.add_row("Tags", ", ".join(display_tags))
         
         if website_data:
             socials = []

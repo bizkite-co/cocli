@@ -70,6 +70,9 @@ def get_template_counts(campaign_name: Optional[str] = None) -> Dict[str, int]:
                 # Missing Address
                 counts["tpl_no_address"] = get_count("SELECT count(*) FROM items WHERE type = 'company' AND (street_address IS NULL OR street_address = '' OR street_address = 'null')")
                 
+                # To Call Tomorrow
+                counts["tpl_to_call"] = get_count("SELECT count(*) FROM items WHERE type = 'company' AND list_contains(tags, 'to-call')")
+
                 # Top Rated (Rating > 4)
                 counts["tpl_top_rated"] = get_count("SELECT count(*) FROM items WHERE type = 'company' AND average_rating >= 4.0")
                 
@@ -263,6 +266,9 @@ def get_fuzzy_search_results(
                 
                 if filters.get("no_address"):
                     sql += " AND (street_address IS NULL OR street_address = '' OR street_address = 'null')"
+                
+                if filters.get("to_call"):
+                    sql += " AND list_contains(tags, 'to-call')"
 
             if campaign:
                 exclusion_manager = ExclusionManager(campaign=campaign)

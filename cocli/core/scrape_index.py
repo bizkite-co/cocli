@@ -231,35 +231,9 @@ class ScrapeIndex:
         grid_dir = self._get_grid_dir(phrase_slug, bounds['lat_min'], bounds['lon_min'])
         grid_dir.mkdir(parents=True, exist_ok=True)
 
-        # Generate filename
-        if tile_id:
-            filename = f"{tile_id}.json"
-        else:
-            filename = f"{bounds['lat_min']:.5f}_{bounds['lat_max']:.5f}_{bounds['lon_min']:.5f}_{bounds['lon_max']:.5f}.json"
-        
-        file_path = grid_dir / filename
-
-        data = {
-            "phrase": phrase_slug,
-            "scrape_date": (scrape_date or datetime.now(UTC)).isoformat(),
-            "lat_min": bounds['lat_min'],
-            "lat_max": bounds['lat_max'],
-            "lon_min": bounds['lon_min'],
-            "lon_max": bounds['lon_max'],
-            "lat_miles": lat_miles,
-            "lon_miles": lon_miles,
-            "items_found": items_found,
-            "processed_by": processed_by
-        }
-        
-        if tile_id:
-            data["tile_id"] = tile_id
+        # LEGACY JSON DISABLED: We only write modern witness files now to prevent high-precision junk.
 
         try:
-            with open(file_path, 'w', encoding='utf-8') as f:
-                json.dump(data, f)
-            logger.debug(f"Saved scraped area index: {file_path.name}")
-            
             # --- PHASE 10: Witness File (Nested structure) ---
             if tile_id:
                 try:
@@ -274,15 +248,16 @@ class ScrapeIndex:
                     with open(witness_path, 'w', encoding='utf-8') as wf:
                         writer = USVWriter(wf)
                         writer.writerow(["scrape_date", "items_found", "processed_by"])
-                        writer.writerow([data['scrape_date'], str(items_found), processed_by or ""])
+                        writer.writerow([(scrape_date or datetime.now(UTC)).isoformat(), str(items_found), processed_by or ""])
                     logger.debug(f"Saved witness file (USV): {witness_path}")
+                    return witness_path
                 except Exception as we:
                     logger.error(f"Failed to save witness file for {tile_id}: {we}")
             # ------------------------------------------------
             
-            return file_path
+            return None # No legacy path returned
         except Exception as e:
-            logger.error(f"Failed to save scrape index {file_path}: {e}")
+            logger.error(f"Failed to save witness index for {tile_id}: {e}")
             return None
 
     def is_area_scraped(self, phrase: str, bounds: dict[str, float], ttl_days: Optional[int] = None, overlap_threshold_percent: float = 0.0) -> Optional[Tuple[ScrapedArea, float]]:

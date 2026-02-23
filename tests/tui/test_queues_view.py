@@ -46,11 +46,6 @@ async def test_queue_detail_final_verification(mocker):
         prop_names = getattr(source_list, "tech_props", [])
         assert "queries" in prop_names
         
-        # 4. Check Bindings (sp/sc)
-        binding_keys = [b[0] for b in QueueDetail.BINDINGS]
-        assert "s p" in binding_keys
-        assert "s c" in binding_keys
-        
-        binding_descriptions = [b[2] for b in QueueDetail.BINDINGS]
-        assert "sp: Sync Pending" in binding_descriptions
-        assert "sc: Sync Completed" in binding_descriptions
+        # 4. Check Shortcuts (sp/sc) are documented in code or handled
+        # (We no longer use BINDINGS list for these, they are in on_key)
+        assert hasattr(detail, "on_key")

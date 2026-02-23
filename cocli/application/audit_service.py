@@ -2,10 +2,11 @@ import logging
 import json
 import shutil
 import csv
+import subprocess
 from pathlib import Path
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
-from ..core.config import get_campaign_dir, load_campaign_config
+from ..core.config import get_campaign_dir, load_campaign_config, load_global_config
 from ..models.campaigns.queues.gm_details import GmItemTask
 from ..models.companies.company import Company
 from ..core.prospects_csv_manager import ProspectsIndexManager
@@ -142,3 +143,88 @@ class AuditService:
                 continue
 
         return stats
+
+    def audit_cluster_paths(self, target_paths: List[str], campaigns: Optional[List[str]] = None) -> List[Dict[str, Any]]:
+        """
+        Audits specific paths across the cluster and S3.
+        target_paths: List of path templates (can use {campaign} placeholder).
+        campaigns: Optional list of campaigns to check (defaults to active campaign).
+        """
+        active_campaigns = campaigns or [self.campaign_name]
+        global_config = load_global_config()
+        nodes = global_config.get("cluster", {}).get("nodes", [])
+        
+        results = []
+
+        for campaign in active_campaigns:
+            try:
+                config = load_campaign_config(campaign)
+                aws_config = config.get("aws", {})
+                bucket = aws_config.get("data_bucket_name") or aws_config.get("cocli_data_bucket_name")
+                profile = aws_config.get("profile") or aws_config.get("aws_profile", "default")
+                
+                # Local Root is always 'data/' symlink in this repo context
+                local_root = Path("data")
+
+                for template in target_paths:
+                    actual_path = template.replace("{campaign}", campaign)
+                    
+                    # 1. Local
+                    local_target = local_root / actual_path.lstrip("/")
+                    results.append({
+                        "campaign": campaign,
+                        "template": template,
+                        "location": "Local",
+                        "status": "FOUND" if local_target.exists() else "MISSING"
+                    })
+
+                    # 2. PIs
+                    for node in nodes:
+                        host = node['host']
+                        pi_path = f"~/.local/share/cocli_data/{actual_path.lstrip('/')}"
+                        exists = self._check_remote_pi(host, pi_path)
+                        results.append({
+                            "campaign": campaign,
+                            "template": template,
+                            "location": f"Pi: {host}",
+                            "status": "FOUND" if exists else "MISSING"
+                        })
+
+                    # 3. Check S3
+                    if bucket:
+                        exists = self._check_s3(bucket, profile, actual_path)
+                        results.append({
+                            "campaign": campaign,
+                            "template": template,
+                            "location": f"S3: {bucket}",
+                            "status": "FOUND" if exists else "MISSING"
+                        })
+                    else:
+                        results.append({
+                            "campaign": campaign,
+                            "template": template,
+                            "location": "S3",
+                            "status": "NO BUCKET"
+                        })
+
+            except Exception as e:
+                logger.error(f"Error auditing paths for campaign {campaign}: {e}")
+        
+        return results
+
+    def _check_remote_pi(self, host: str, path: str) -> bool:
+        try:
+            cmd = f"ls -d {path} >/dev/null 2>&1 && echo 'EXISTS' || echo 'MISSING'"
+            res = subprocess.run(["ssh", "-o", "ConnectTimeout=2", f"mstouffer@{host}", cmd], capture_output=True, text=True, timeout=5)
+            return "EXISTS" in res.stdout
+        except Exception:
+            return False
+
+    def _check_s3(self, bucket: str, profile: str, path: str) -> bool:
+        try:
+            s3_path = path.lstrip("/")
+            cmd = ["aws", "s3", "ls", f"s3://{bucket}/{s3_path}", "--profile", profile]
+            res = subprocess.run(cmd, capture_output=True, text=True, timeout=10)
+            return res.returncode == 0 and len(res.stdout.strip()) > 0
+        except Exception:
+            return False

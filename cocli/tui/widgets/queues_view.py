@@ -4,8 +4,8 @@ import logging
 import asyncio
 from textual.app import ComposeResult
 from textual.containers import Container, Vertical, Horizontal, VerticalScroll
-from textual.widgets import Label, ListView, ListItem, Static
-from textual import work
+from textual.widgets import Label, ListView, ListItem, Static, LoadingIndicator
+from textual import work, events
 from rich.table import Table
 
 from cocli.models.campaigns.queues.metadata import QUEUES_METADATA, QueueMetadata, PropertyInfo
@@ -29,20 +29,36 @@ class QueueDetail(VerticalScroll):
     are visible without competing for space.
     """
     
-    BINDINGS = [
-        ("s p", "sync_pending", "sp: Sync Pending"),
-        ("s c", "sync_completed", "sc: Sync Completed"),
-    ]
+    BINDINGS = []
 
     def __init__(self, *args: Any, **kwargs: Any) -> None:
         super().__init__(*args, **kwargs)
         self.active_queue: Optional[QueueMetadata] = None
         self.can_focus = True
+        self.last_key: str = ""
+
+    def on_key(self, event: events.Key) -> None:
+        # Explicit Chord Handling: sp / sc
+        if self.last_key == "s":
+            if event.key == "p":
+                self.action_sync_pending()
+                self.last_key = ""
+                event.prevent_default()
+                return
+            elif event.key == "c":
+                self.action_sync_completed()
+                self.last_key = ""
+                event.prevent_default()
+                return
+        
+        self.last_key = event.key
 
     def compose(self) -> ComposeResult:
         with Horizontal(id="queue_header"):
             yield Label("Select a queue to view details.", id="queue_title")
-            yield Static("", id="queue_sync_indicator")
+            yield Label("", id="queue_sync_indicator")
+        
+        yield LoadingIndicator(id="queue_sync_loading")
         
         # 1. Top Section: Queue Metadata Panel
         with Vertical(classes="panel", id="queue_info_panel"):
@@ -157,21 +173,33 @@ class QueueDetail(VerticalScroll):
         setattr(widget, "metadata_map", metadata)
 
     def action_sync_pending(self) -> None:
+        logger.info("ACTION: sync_pending triggered")
         if self.active_queue:
             self.run_sync(self.active_queue.name, "pending")
 
     def action_sync_completed(self) -> None:
+        logger.info("ACTION: sync_completed triggered")
         if self.active_queue:
             self.run_sync(self.active_queue.name, "completed")
 
+    def on_mount(self) -> None:
+        self.query_one("#queue_sync_loading", LoadingIndicator).display = False
+
     @work(exclusive=True, thread=True)
     async def run_sync(self, queue_name: str, branch: str) -> None:
+        logger.info(f"WORKER: run_sync started for {queue_name} ({branch})")
         app = cast("CocliApp", self.app)
-        indicator = self.query_one("#queue_sync_indicator", Static)
+        indicator = self.query_one("#queue_sync_indicator", Label)
+        loading = self.query_one("#queue_sync_loading", LoadingIndicator)
+        
         indicator.update(f"[bold yellow] Syncing {branch}...[/bold yellow]")
+        loading.display = True
         
         try:
+            # Service call
             await asyncio.to_thread(app.services.data_sync_service.sync_queues, queue_name)
+            logger.info(f"WORKER: sync_queues finished for {queue_name}")
+            
             indicator.update(f"[bold green] {branch.title()} Synced[/bold green]")
             self.app.notify(f"Sync Complete: {queue_name} ({branch})")
             
@@ -179,8 +207,10 @@ class QueueDetail(VerticalScroll):
             self.call_after_refresh(self.refresh_counts)
             
         except Exception as e:
+            logger.error(f"WORKER: Sync failed: {e}")
             indicator.update(f"[bold red] Sync Failed: {e}[/bold red]")
             self.app.notify(f"Sync Failed: {e}", severity="error")
         
+        loading.display = False
         await asyncio.sleep(3)
         indicator.update("")

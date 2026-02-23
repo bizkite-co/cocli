@@ -93,6 +93,11 @@ class OperationService:
                 "op_audit_queue", "Audit Queue Completion", 
                 "Verifies completed markers against the prospect index.", 
                 "maintenance"
+            ),
+            "op_path_check": OperationMetadata(
+                "op_path_check", "Cluster Path Check", 
+                "Audits core data paths across local, PI cluster, and S3.", 
+                "maintenance"
             )
         }
 
@@ -148,6 +153,12 @@ class OperationService:
                 result = await asyncio.to_thread(self.services.audit_service.audit_campaign_integrity)
             elif op_id == "op_audit_queue":
                 result = await asyncio.to_thread(self.services.audit_service.audit_queue_completion)
+            elif op_id == "op_path_check":
+                # Default paths for quick check
+                paths_to_check = ["wal/", "indexes/scraped_areas/", "indexes/scraped-tiles/"]
+                def run_check() -> Dict[str, Any]:
+                    return {"results": self.services.audit_service.audit_cluster_paths(paths_to_check)}
+                result = await asyncio.to_thread(run_check)
             elif op_id == "op_analyze_emails":
                 result = await asyncio.to_thread(self.services.reporting_service.get_email_analysis)
             elif "op_scale_" in op_id:

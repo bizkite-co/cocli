@@ -5,7 +5,7 @@ import tomli
 import tomli_w
 from typing import Optional, Any, Dict
 import logging
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ConfigDict
 
 from pydantic_settings import BaseSettings
 from rich.console import Console
@@ -216,6 +216,7 @@ class Tui(BaseModel):
     master_width: int = 30
 
 class Config(BaseModel):
+    model_config = ConfigDict(extra="allow")
     data_home: Path = Field(default_factory=get_cocli_base_dir)
     tui: Tui = Tui()
     campaign: Optional[Dict[str, Any]] = None
@@ -316,32 +317,31 @@ def load_config(config_path: Path) -> Config:
         data = tomli.load(f)
     return Config(**data)
 
+def load_global_config() -> Dict[str, Any]:
+    """
+    Returns the raw dictionary of the global cocli_config.toml.
+    """
+    config_path = get_config_path()
+    if not config_path.exists():
+        return {}
+    with config_path.open("rb") as f:
+        return tomli.load(f)
+
 def save_config(config_data: Dict[str, Any]) -> None:
     config_file = get_config_path()
     config_file.parent.mkdir(parents=True, exist_ok=True)
     
     # Convert Path objects to strings for TOML serialization
-    # We do a shallow conversion as config_data is mostly flat or simple dicts
-    # If deeper nesting with Path objects occurs, a recursive function would be needed.
-    serializable_config: Dict[str, Any] = {}
-    for k, v in config_data.items():
-        if v is None:
-            continue # Skip None values as TOML doesn't support them
-        
-        if isinstance(v, Path):
-            serializable_config[k] = str(v)
-        elif isinstance(v, dict):
-             # Handle one level deep for nested dicts like 'campaign' or 'tui'
-             serializable_config[k] = {}
-             for sk, sv in v.items():
-                 if sv is None:
-                     continue
-                 if isinstance(sv, Path):
-                     serializable_config[k][sk] = str(sv)
-                 else:
-                     serializable_config[k][sk] = sv
-        else:
-            serializable_config[k] = v
+    def _make_serializable(obj: Any) -> Any:
+        if isinstance(obj, Path):
+            return str(obj)
+        if isinstance(obj, dict):
+            return {k: _make_serializable(v) for k, v in obj.items() if v is not None}
+        if isinstance(obj, list):
+            return [_make_serializable(i) for i in obj]
+        return obj
+
+    serializable_config = _make_serializable(config_data)
 
     with config_file.open("wb") as f:
         tomli_w.dump(serializable_config, f)

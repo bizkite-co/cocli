@@ -668,7 +668,6 @@ class WorkerService:
             details_tasks: Dict[int, asyncio.Task[Any]] = {}
             enrichment_tasks: Dict[int, asyncio.Task[Any]] = {}
             command_task: Optional[asyncio.Task[Any]] = None
-            gossip_task: Optional[asyncio.Task[Any]] = None
 
             context = await browser.new_context(
                 ignore_https_errors=True, user_agent=USER_AGENT, extra_http_headers=ANTI_BOT_HEADERS,
@@ -713,22 +712,23 @@ class WorkerService:
                     if command_task is None or command_task.done():
                         command_task = asyncio.create_task(self._run_command_poller_loop(command_queue, s3_client))
                     
-                    if gossip_task is None or gossip_task.done():
-                        # Start the Gossip Bridge in a thread to avoid blocking the event loop
-                        from ..core.gossip_bridge import GossipBridge
-                        def _run_gossip() -> None:
-                            bridge = GossipBridge()
-                            bridge.start()
-                            try:
-                                while True:
-                                    time.sleep(1)
-                            except Exception as e:
-                                logger.error(f"Gossip Bridge thread error: {e}")
-                            finally:
-                                bridge.stop()
-                        
-                        logger.info("Starting Gossip Bridge via Supervisor...")
-                        gossip_task = asyncio.create_task(asyncio.to_thread(_run_gossip))
+                    # Gossip Bridge DISABLED to prevent propagation of redundant field-level WAL junk
+                    # if gossip_task is None or gossip_task.done():
+                    #     # Start the Gossip Bridge in a thread to avoid blocking the event loop
+                    #     from ..core.gossip_bridge import GossipBridge
+                    #     def _run_gossip() -> None:
+                    #         bridge = GossipBridge()
+                    #         bridge.start()
+                    #         try:
+                    #             while True:
+                    #                 time.sleep(1)
+                    #         except Exception as e:
+                    #             logger.error(f"Gossip Bridge thread error: {e}")
+                    #         finally:
+                    #             bridge.stop()
+                    #     
+                    #     logger.info("Starting Gossip Bridge via Supervisor...")
+                    #     gossip_task = asyncio.create_task(asyncio.to_thread(_run_gossip))
 
                     config = load_campaign_config(self.campaign_name)
                     scaling = config.get("prospecting", {}).get("scaling", {}).get(self.processed_by, {})

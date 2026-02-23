@@ -342,6 +342,13 @@ Footer > .footer--key {
     padding-right: 2;
 }
 
+#queue_sync_loading {
+    height: 1;
+    color: yellow;
+    background: black;
+    margin: 0 2;
+}
+
 #queue_info_panel {
     height: auto;
     border-bottom: solid #222222;

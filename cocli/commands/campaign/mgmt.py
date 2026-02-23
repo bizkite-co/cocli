@@ -4,6 +4,7 @@ import toml
 import logging
 from typing import Optional
 from rich.console import Console
+from rich.table import Table
 from typing_extensions import Annotated
 
 from ...core.config import get_campaign_dir, get_cocli_base_dir, get_all_campaign_dirs, get_editor_command, get_campaign, set_campaign
@@ -459,4 +460,51 @@ def restore_names(
             console.print(f"[bold red]Encoutered {final_stats['errors']} errors.[/bold red]")
     except Exception as e:
         console.print(f"[bold red]Error: {e}[/bold red]")
+        raise typer.Exit(1)
+
+@app.command(name="path-check")
+def path_check(
+    paths: Annotated[str, typer.Argument(help="Comma-separated list of path templates (use {campaign} placeholder).")],
+    campaigns: Annotated[Optional[str], typer.Option("--campaigns", "-c", help="Comma-separated list of campaigns to audit.")] = None
+) -> None:
+    """
+    Audits specific data paths across the local machine, PI cluster, and S3.
+    """
+    effective_campaign = get_campaign()
+    campaign_list = [c.strip() for c in campaigns.split(",")] if campaigns else ([effective_campaign] if effective_campaign else [])
+    
+    if not campaign_list:
+        console.print("[bold red]Error: No campaigns specified and no active context.[/bold red]")
+        raise typer.Exit(1)
+
+    path_list = [p.strip() for p in paths.split(",")]
+
+    try:
+        from ...application.audit_service import AuditService
+        
+        # Use first campaign for service init, but service handles multiple campaigns in method
+        service = AuditService(campaign_list[0])
+        results = service.audit_cluster_paths(path_list, campaigns=campaign_list)
+
+        table = Table(title="Cluster Path Audit")
+        table.add_column("Campaign", style="cyan")
+        table.add_column("Path Template", style="magenta")
+        table.add_column("Location", style="yellow")
+        table.add_column("Status", justify="center")
+
+        for r in results:
+            status_style = "green" if r["status"] == "FOUND" else "red"
+            if r["status"] == "NO BUCKET":
+                status_style = "yellow"
+            
+            table.add_row(
+                r["campaign"], 
+                r["template"], 
+                r["location"], 
+                f"[{status_style}]{r['status']}[/]"
+            )
+
+        console.print(table)
+    except Exception as e:
+        console.print(f"[bold red]Error during path audit: {e}[/bold red]")
         raise typer.Exit(1)

@@ -76,6 +76,8 @@ class CompanyList(Container):
             self.current_sort = "rating"
         elif tpl_id == "tpl_most_reviewed":
             self.current_sort = "reviews"
+        elif tpl_id == "tpl_to_call":
+            self.current_filters = {"to_call": True}
         
         # Clear search without triggering redundant update
         search_input = self.query_one("#company_search_input", Input)
