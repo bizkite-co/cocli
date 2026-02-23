@@ -1,9 +1,9 @@
-from typing import Any, TYPE_CHECKING, cast
+from typing import Any, TYPE_CHECKING, cast, List
 import logging
 from datetime import datetime
 from textual.app import ComposeResult
 from textual.containers import Container, VerticalScroll, Horizontal, Vertical
-from textual.widgets import Label, ListView, ListItem, Static
+from textual.widgets import Label, ListView, ListItem, Static, Input
 from textual.message import Message
 from textual import on, work, events
 from rich.table import Table
@@ -174,7 +174,7 @@ class ApplicationView(Container):
     def on_key(self, event: events.Key) -> None:
         """Handle sidebar navigation keys."""
         focused = self.app.focused
-        if not focused:
+        if not focused or isinstance(focused, Input):
             return
 
         # 1. Handle 'h' (Step-wise Back)
@@ -459,6 +459,14 @@ class ApplicationView(Container):
         if not op:
             return
 
+        def step_callback(step_name: str, status: str) -> None:
+            # Refresh Index detail if we are looking at it
+            if self.active_category == "indexes":
+                from .indexes_view import IndexDetail
+                idx_details: List[IndexDetail] = list(self.query(IndexDetail))
+                if idx_details:
+                    self.call_after_refresh(idx_details[0].update_detail, idx_details[0].active_index)
+
         from ..navigation import ProcessRun
         run_record = ProcessRun(op_id, op.title)
         app.process_runs.append(run_record)
@@ -466,11 +474,18 @@ class ApplicationView(Container):
 
         try:
             with capture_logs(self.log_callback):
-                await app.services.operation_service.execute(op_id)
+                await app.services.operation_service.execute(
+                    op_id, 
+                    log_callback=self.log_callback,
+                    step_callback=step_callback
+                )
             
             run_record.status = "success"
             indicator.update("[bold green]Success[/bold green]")
             self.app.notify(f"{op.title} Complete")
+
+            # Final refresh
+            step_callback("", "finished")
         except Exception as e:
             run_record.status = "failed"
             indicator.update("[bold red]Failed[/bold red]")

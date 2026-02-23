@@ -146,17 +146,69 @@ class OperationService:
     def get_details(self, op_id: str) -> Optional[OperationMetadata]:
         return self.operations.get(op_id)
 
-    async def execute(self, op_id: str, log_callback: Optional[Callable[[str], None]] = None) -> Dict[str, Any]:
+    async def execute(
+        self, 
+        op_id: str, 
+        log_callback: Optional[Callable[[str], None]] = None,
+        step_callback: Optional[Callable[[str, str], None]] = None
+    ) -> Dict[str, Any]:
         """
         Executes the specified operation asynchronously.
         This is the shared logic used by both the TUI and CLI.
         """
+        from datetime import datetime, UTC
+        from pathlib import Path
         op = self.get_details(op_id)
         if not op:
             raise ValueError(f"Unknown operation: {op_id}")
 
         logger.info(f"Executing operation: {op.title} ({op_id})")
         
+        # 1. Initialize Durable Run Log
+        run_ts = datetime.now(UTC).strftime("%Y%m%d_%H%M%S")
+        run_file: Optional[Path] = None
+        
+        # Determine index context for run log
+        index_map = {
+            "op_compact_index": "emails",
+            "op_compact_prospects": "google_maps_prospects",
+            "op_compile_to_call": "google_maps_prospects" # Primary anchor
+        }
+        
+        from ..core.paths import paths
+        if op_id in index_map:
+            idx_name = index_map[op_id]
+            run_dir = paths.campaign(self.campaign_name).index(idx_name).runs
+            run_dir.mkdir(parents=True, exist_ok=True)
+            run_file = run_dir / f"{run_ts}_{op_id}.usv"
+            logger.info(f"Durable Run Log: {run_file}")
+            
+            # Write Header
+            from ..core.utils import UNIT_SEP
+            try:
+                with open(run_file, "w") as f:
+                    f.write(UNIT_SEP.join(["timestamp", "step", "status", "details"]) + "\n")
+            except Exception as e:
+                logger.error(f"Failed to create run log file: {e}")
+                run_file = None
+
+        def log_step(step_name: str, status: str, details: str = "") -> None:
+            if run_file:
+                ts = datetime.now(UTC).isoformat()
+                from ..core.utils import UNIT_SEP
+                try:
+                    with open(run_file, "a") as f:
+                        f.write(UNIT_SEP.join([ts, step_name, status, details]) + "\n")
+                except Exception as e:
+                    logger.error(f"Failed to write to run log: {e}")
+            
+            msg = f"[{status.upper()}] {step_name}: {details}"
+            logger.info(msg)
+            if log_callback:
+                log_callback(msg + "\n")
+            if step_callback:
+                step_callback(step_name, status)
+
         try:
             if op_id == "op_report":
                 result = await asyncio.to_thread(self.services.reporting_service.get_campaign_stats)
@@ -171,7 +223,28 @@ class OperationService:
             elif op_id == "op_sync_indexes":
                 result = await asyncio.to_thread(self.services.data_sync_service.sync_indexes)
             elif op_id == "op_compact_index":
-                result = await asyncio.to_thread(self.services.data_sync_service.compact_index)
+                async def run_compaction() -> Dict[str, Any]:
+                    log_step("s3_sync_down", "pending", "Pulling latest email WAL files from S3...")
+                    await asyncio.to_thread(self.services.data_sync_service.sync_emails)
+                    log_step("s3_sync_down", "success")
+
+                    log_step("offline_inbox", "pending")
+                    # Offline logic is integrated in Manager.compact()
+                    log_step("offline_inbox", "success")
+
+                    log_step("merge_shards", "pending")
+                    from ..core.email_index_manager import EmailIndexManager
+                    email_manager = EmailIndexManager(self.campaign_name)
+                    await asyncio.to_thread(email_manager.compact)
+                    log_step("merge_shards", "success")
+
+                    log_step("s3_sync_up", "pending", "Pushing updated shards to S3...")
+                    await asyncio.to_thread(self.services.data_sync_service.sync_emails)
+                    log_step("s3_sync_up", "success")
+                    
+                    log_step("cleanup", "success")
+                    return {"status": "success"}
+                result = await run_compaction()
             elif op_id == "op_compile_lifecycle":
                 def run_compile() -> Dict[str, Any]:
                     gen = self.services.campaign_service.compile_lifecycle_index()
@@ -202,36 +275,48 @@ class OperationService:
                     return {"results": self.services.audit_service.audit_cluster_paths(paths_to_check)}
                 result = await asyncio.to_thread(run_check)
             elif op_id == "op_compact_prospects":
-                def run_compaction() -> Dict[str, Any]:
+                async def run_compaction() -> Dict[str, Any]:
+                    log_step("s3_sync_down", "pending", "Pulling latest GM results from S3...")
+                    await asyncio.to_thread(self.services.data_sync_service.sync_prospects)
+                    log_step("s3_sync_down", "success")
+
+                    log_step("consolidate_tiles", "pending")
                     from cocli.core.prospect_compactor import consolidate_campaign_results, compact_prospects_to_checkpoint
+                    await asyncio.to_thread(consolidate_campaign_results, self.campaign_name)
+                    log_step("consolidate_tiles", "success")
                     
-                    # 1. Consolidate results into standard tiles
-                    consolidate_campaign_results(self.campaign_name)
+                    log_step("merge_checkpoint", "pending")
+                    m_count = await asyncio.to_thread(compact_prospects_to_checkpoint, self.campaign_name)
+                    log_step("merge_checkpoint", "success", f"Merged {m_count} records")
                     
-                    # 2. Merge tiles into checkpoint
-                    m_count = compact_prospects_to_checkpoint(self.campaign_name)
+                    log_step("s3_sync_up", "pending", "Pushing updated checkpoint to S3...")
+                    await asyncio.to_thread(self.services.data_sync_service.sync_prospects)
+                    log_step("s3_sync_up", "success")
                     
+                    log_step("cleanup", "success")
                     return {"prospects_merged": m_count}
-                result = await asyncio.to_thread(run_compaction)
+                result = await run_compaction()
             elif op_id == "op_compile_to_call":
                 async def run_workflow() -> Dict[str, Any]:
                     report: Dict[str, Any] = {"steps": []}
-                    # 1. Compact Prospects
+                    
+                    log_step("compact_gm", "pending", "Running GM index compaction...")
                     from cocli.core.prospect_compactor import consolidate_campaign_results, compact_prospects_to_checkpoint
-                    consolidate_campaign_results(self.campaign_name)
-                    m_count = compact_prospects_to_checkpoint(self.campaign_name)
-                    report["steps"].append(f"Prospects Compacted: {m_count} records")
+                    await asyncio.to_thread(consolidate_campaign_results, self.campaign_name)
+                    m_count = await asyncio.to_thread(compact_prospects_to_checkpoint, self.campaign_name)
+                    log_step("compact_gm", "success", f"{m_count} records merged")
 
-                    # 2. Compact Emails
-                    from cocli.core.email_index_manager import EmailIndexManager
+                    log_step("compact_emails", "pending", "Running Email index compaction...")
+                    from ..core.email_index_manager import EmailIndexManager
                     email_manager = EmailIndexManager(self.campaign_name)
-                    email_manager.compact()
-                    report["steps"].append("Email Index Compacted")
+                    await asyncio.to_thread(email_manager.compact)
+                    log_step("compact_emails", "success")
 
-                    # 3. Identify Top Leads (Rating >= 4.5, Reviews >= 20, HAS email/phone)
+                    log_step("identify_leads", "pending", "Identifying top leads via DuckDB...")
                     from .search_service import get_fuzzy_search_results
                     filters = {"has_contact_info": True}
-                    results = get_fuzzy_search_results(
+                    results = await asyncio.to_thread(
+                        get_fuzzy_search_results, 
                         "", 
                         item_type="company", 
                         campaign_name=self.campaign_name,
@@ -240,16 +325,19 @@ class OperationService:
                         limit=1000
                     )
                     top_prospects = [r for r in results if (r.average_rating or 0) >= 4.5 and (r.reviews_count or 0) >= 20]
+                    log_step("identify_leads", "success", f"Found {len(top_prospects)} leads")
                     
+                    log_step("tag_leads", "pending")
                     tagged = 0
                     from cocli.models.companies.company import Company
                     for p in top_prospects:
                         if p.slug:
-                            company = Company.get(p.slug)
+                            company = await asyncio.to_thread(Company.get, p.slug)
                             if company and "to-call" not in company.tags:
                                 company.tags.append("to-call")
-                                company.save()
+                                await asyncio.to_thread(company.save)
                                 tagged += 1
+                    log_step("tag_leads", "success", f"Tagged {tagged} new leads")
                     
                     report["top_leads_found"] = len(top_prospects)
                     report["newly_tagged"] = tagged

@@ -2,6 +2,7 @@
 from typing import Any, Optional, TYPE_CHECKING, cast
 import logging
 import json
+from pathlib import Path
 from textual.app import ComposeResult
 from textual.containers import Vertical, Horizontal, VerticalScroll
 from textual.widgets import Label, ListView, ListItem, Static
@@ -93,21 +94,68 @@ class IndexDetail(VerticalScroll):
         
         self.query_one("#index_info_content", Static).update(info_table)
 
-        # 2. Dynamic Sections (Plan, Schema, Runs)
+        # 2. Dynamic Sections (Schema, Execution Journal)
         dynamic_content = self.query_one("#index_dynamic_content", Vertical)
         dynamic_content.remove_children()
 
-        # A. Plan Details (if maintenance op exists)
-        op_id = f"op_compact_{index_id.replace('gm_', '').replace('_index', '')}"
-        op = app.services.operation_service.get_details(op_id)
-        
-        if op and op.steps:
-            steps_table = Table(box=None, show_header=False, padding=(0, 1))
-            steps_table.add_column("Step", style="cyan")
-            steps_table.add_column("Description", style="dim")
-            for step in op.steps:
-                steps_table.add_row(f"○ {step.name}", step.description)
-            dynamic_content.mount(Static(Panel(steps_table, title="Compaction Plan", border_style="yellow")))
+        # A. Execution Journal (Merges Plan + Latest Run)
+        try:
+            # Determine Op and Index context
+            idx_name = index_id.replace("idx_", "").replace("email_index", "emails").replace("gm_prospects", "google_maps_prospects")
+            op_id = f"op_compact_{index_id.replace('idx_', '').replace('gm_', '').replace('_index', '')}"
+            op = app.services.operation_service.get_details(op_id)
+            
+            run_dir = paths.campaign(campaign).index(idx_name).runs
+            latest_run: Optional[Path] = None
+            if run_dir.exists():
+                runs = sorted([p for p in run_dir.glob("*.usv")], key=lambda p: p.name, reverse=True)
+                if runs:
+                    latest_run = runs[0]
+
+            if op and op.steps:
+                # Load latest statuses if log exists
+                step_statuses = {}
+                step_details = {}
+                if latest_run:
+                    from ...core.utils import UNIT_SEP
+                    with open(latest_run, "r") as f:
+                        next(f) # Skip header
+                        for line in f:
+                            if UNIT_SEP in line:
+                                parts = line.strip().split(UNIT_SEP)
+                                if len(parts) >= 3:
+                                    s_name, s_status, s_det = parts[1], parts[2], parts[3] if len(parts)>3 else ""
+                                    step_statuses[s_name] = s_status
+                                    step_details[s_name] = s_det
+
+                journal_table = Table(box=None, show_header=True, padding=(0, 1))
+                journal_table.add_column("Step", style="white", width=25)
+                journal_table.add_column("Status", style="bold", width=12)
+                journal_table.add_column("Notes", style="dim")
+                
+                for step in op.steps:
+                    status = step_statuses.get(step.name, "pending")
+                    details = step_details.get(step.name, "")
+                    
+                    if status == "success":
+                        marker = "[green]✔ success[/]"
+                    elif status == "failed":
+                        marker = "[red]✘ failed[/]"
+                    else:
+                        marker = "[dim]○ pending[/]"
+                    
+                    journal_table.add_row(step.description, marker, details)
+                
+                title = "Execution Journal"
+                if latest_run:
+                    title += f" (Last Run: {latest_run.stem.split('_')[0]})"
+                
+                dynamic_content.mount(Static(Panel(journal_table, title=title, border_style="blue" if latest_run else "yellow")))
+            else:
+                dynamic_content.mount(Static(Panel("No maintenance operations defined for this index.", title="Execution Journal", border_style="dim")))
+        except Exception as e:
+            logger.error(f"Error loading journal: {e}")
+            dynamic_content.mount(Static(Panel(f"Failed to load journal: {e}", title="Execution Journal", border_style="red")))
 
         # B. Schema (Datapackage Fields)
         try:
@@ -131,6 +179,3 @@ class IndexDetail(VerticalScroll):
                     dynamic_content.mount(Static(Panel(schema_table, title="Schema (datapackage.json)", border_style="dim white")))
         except Exception:
             pass
-
-        # C. Run Log (Most recent runs)
-        dynamic_content.mount(Static(Panel("No recent runs recorded in journal.", title="Recent Runs", border_style="dim blue")))

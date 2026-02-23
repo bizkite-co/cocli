@@ -31,10 +31,6 @@ class CompanyList(Container):
             self.company_slug = company_slug
 
     BINDINGS = [
-        ("f", "toggle_filter", "Toggle Actionable"),
-        ("r", "toggle_sort", "Toggle Recent"),
-        ("s", "focus_search", "Search"),
-        ("a", "add_company", "Add Company"),
         ("alt+s", "reset_view", "Return to List"),
     ]
 
@@ -145,7 +141,36 @@ class CompanyList(Container):
     def on_key(self, event: events.Key) -> None:
         """Handle key events for the CompanyList widget."""
         list_view = self.query_one("#company_list_view", ListView)
+        search_input = self.query_one(Input)
         
+        # 1. Protection: If search is focused, do NOT hijack characters
+        if search_input.has_focus:
+            if event.key == "escape":
+                # Except escape, which returns focus to the list
+                list_view.focus()
+                event.prevent_default()
+                event.stop()
+            return
+
+        # 2. List-only shortcuts (only trigger if list_view has focus)
+        if list_view.has_focus:
+            if event.key == "f":
+                self.action_toggle_filter()
+                event.stop()
+                return
+            elif event.key == "r":
+                self.action_toggle_sort()
+                event.stop()
+                return
+            elif event.key == "s":
+                self.action_focus_search()
+                event.stop()
+                return
+            elif event.key == "a":
+                self.action_add_company()
+                event.stop()
+                return
+
         if event.key == "j":
             if list_view.has_focus:
                 list_view.action_cursor_down()
@@ -300,13 +325,6 @@ class CompanyList(Container):
                 
                 def select_first() -> None:
                     list_view.index = 0
-                    
-                    # If we were searching (input focused), return focus to the list 
-                    # so the user can browse results immediately.
-                    # BUT: Don't steal focus if the app shifted focus elsewhere (e.g. during a reset)
-                    search_input = self.query_one("#company_search_input", Input)
-                    if self.app.focused == search_input and search_input.value:
-                        list_view.focus()
                     
                     # Manually trigger highlight for the first item to update preview
                     if self.filtered_fz_items:

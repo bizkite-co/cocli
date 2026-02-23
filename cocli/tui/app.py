@@ -184,7 +184,23 @@ class CocliApp(App[None]):
                 cast(ApplicationView, widget).action_focus_content()
                 return
 
+    # Keys allowed to bubble and trigger shortcuts even when typing
+    INPUT_CONTROL_KEYS = {
+        "tab", "backtab", "enter", "escape", "ctrl+c", 
+        "alt+s", "meta+s", "f1", "f2", "f3", "f4", "f5", 
+        "f6", "f7", "f8", "f9", "f10", "f11", "f12"
+    }
+
     async def on_key(self, event: events.Key) -> None:
+        # 1. CRITICAL Protection: If an Input is focused, do NOT handle any shortcuts
+        # unless they are explicit control keys.
+        if isinstance(self.focused, Input):
+            if event.key not in self.INPUT_CONTROL_KEYS:
+                # This is a typing character. Stop it from reaching ANY bindings
+                # or global logic like leader mode.
+                event.stop()
+                return
+
         tui_debug_log(f"APP: on_key: {event.key} (focused={self.focused.__class__.__name__ if self.focused else 'None'})")
         
         if event.key == LEADER_KEY:
