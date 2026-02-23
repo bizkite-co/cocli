@@ -14,6 +14,8 @@ if TYPE_CHECKING:
 from cocli.models.companies.company import Company
 from cocli.models.search import SearchResult
 
+from .inputs import CocliSearchInput
+
 logger = logging.getLogger(__name__)
 
 class CompanyList(Container):
@@ -48,7 +50,7 @@ class CompanyList(Container):
 
     def compose(self) -> ComposeResult:
         yield Label("SEARCH", id="search_header", classes="pane-header")
-        yield Input(placeholder="Search companies...", id="company_search_input")
+        yield CocliSearchInput(placeholder="Search companies...", id="company_search_input")
         yield ListView(id="company_list_view")
 
     def apply_template(self, tpl_id: str) -> None:
@@ -138,16 +140,31 @@ class CompanyList(Container):
         list_view = self.query_one(ListView)
         list_view.action_select_cursor()
 
+    @on(CocliSearchInput.DebouncedChanged)
+    def on_search_debounced(self, event: CocliSearchInput.DebouncedChanged) -> None:
+        """Called after 250ms of inactivity after typing."""
+        if self._ignoring_input_change:
+            return
+        self.search_offset = 0 
+        self.run_search(event.value)
+
     def on_key(self, event: events.Key) -> None:
         """Handle key events for the CompanyList widget."""
         list_view = self.query_one("#company_list_view", ListView)
-        search_input = self.query_one(Input)
+        search_input = self.query_one("#company_search_input", CocliSearchInput)
         
-        # 1. Protection: If search is focused, do NOT hijack characters
+        # 1. Protection & Passthrough: If search is focused
         if search_input.has_focus:
             if event.key == "escape":
-                # Except escape, which returns focus to the list
                 list_view.focus()
+                event.prevent_default()
+                event.stop()
+            elif event.key == "up":
+                list_view.action_cursor_up()
+                event.prevent_default()
+                event.stop()
+            elif event.key == "down":
+                list_view.action_cursor_down()
                 event.prevent_default()
                 event.stop()
             return

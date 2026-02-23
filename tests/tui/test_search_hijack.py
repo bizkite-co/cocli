@@ -1,6 +1,6 @@
 # POLICY: frictionless-data-policy-enforcement
 import pytest
-from textual.widgets import Input, Checkbox
+from textual.widgets import Input
 from cocli.tui.app import CocliApp
 from cocli.tui.widgets.company_list import CompanyList
 

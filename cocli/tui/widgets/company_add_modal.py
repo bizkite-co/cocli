@@ -11,6 +11,7 @@ from cocli.core.text_utils import slugify
 from cocli.models.campaigns.queues.gm_details import GmItemTask
 from cocli.models.campaigns.queues.enrichment import EnrichmentTask
 from cocli.core.paths import paths
+from .inputs import CocliInput
 
 class CompanyAddModal(ModalScreen[bool]):
     """A keyboard-driven modal form to add a new company and optionally enqueue it."""
@@ -28,30 +29,30 @@ class CompanyAddModal(ModalScreen[bool]):
             
             with Vertical(id="form_fields"):
                 yield Label("Company Name*", classes="field-label")
-                yield Input(placeholder="Acme Corp", id="add_company_name")
+                yield CocliInput(placeholder="Acme Corp", id="add_company_name")
                 
                 yield Label("Domain", classes="field-label")
-                yield Input(placeholder="acme.com", id="add_company_domain")
+                yield CocliInput(placeholder="acme.com", id="add_company_domain")
 
                 yield Label("Email", classes="field-label")
-                yield Input(placeholder="hello@acme.com", id="add_company_email")
+                yield CocliInput(placeholder="hello@acme.com", id="add_company_email")
 
                 yield Label("Phone", classes="field-label")
-                yield Input(placeholder="555-0123", id="add_company_phone")
+                yield CocliInput(placeholder="555-0123", id="add_company_phone")
 
                 yield Label("Street Address", classes="field-label")
-                yield Input(placeholder="123 Main St", id="add_company_address")
+                yield CocliInput(placeholder="123 Main St", id="add_company_address")
 
                 with Horizontal(id="addr_row_1"):
                     with Vertical():
                         yield Label("City", classes="field-label")
-                        yield Input(placeholder="Anytown", id="add_company_city")
+                        yield CocliInput(placeholder="Anytown", id="add_company_city")
                     with Vertical():
                         yield Label("State", classes="field-label")
-                        yield Input(placeholder="CA", id="add_company_state")
+                        yield CocliInput(placeholder="CA", id="add_company_state")
                     with Vertical():
                         yield Label("Zip", classes="field-label")
-                        yield Input(placeholder="90210", id="add_company_zip")
+                        yield CocliInput(placeholder="90210", id="add_company_zip")
 
             yield Label("Queues (Space to toggle, Enter to save all)", classes="field-label-header")
             with Horizontal(id="queue_selections_row"):
@@ -66,14 +67,14 @@ class CompanyAddModal(ModalScreen[bool]):
         self.add_company()
 
     def add_company(self) -> None:
-        name = self.query_one("#add_company_name", Input).value.strip()
-        domain = self.query_one("#add_company_domain", Input).value.strip()
-        email = self.query_one("#add_company_email", Input).value.strip()
-        phone = self.query_one("#add_company_phone", Input).value.strip()
-        address = self.query_one("#add_company_address", Input).value.strip()
-        city = self.query_one("#add_company_city", Input).value.strip()
-        state = self.query_one("#add_company_state", Input).value.strip()
-        zip_code = self.query_one("#add_company_zip", Input).value.strip()
+        name = self.query_one("#add_company_name", CocliInput).value.strip()
+        domain = self.query_one("#add_company_domain", CocliInput).value.strip()
+        email = self.query_one("#add_company_email", CocliInput).value.strip()
+        phone = self.query_one("#add_company_phone", CocliInput).value.strip()
+        address = self.query_one("#add_company_address", CocliInput).value.strip()
+        city = self.query_one("#add_company_city", CocliInput).value.strip()
+        state = self.query_one("#add_company_state", CocliInput).value.strip()
+        zip_code = self.query_one("#add_company_zip", CocliInput).value.strip()
         
         if not name:
             self.app.notify("Company name is required", severity="error")

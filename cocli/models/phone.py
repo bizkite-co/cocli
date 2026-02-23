@@ -81,7 +81,7 @@ class PhoneNumber:
             raise ValueError(f"No digits found in phone number: {v}")
 
         # Default to NANP (US/Canada) if 10 digits and doesn't start with 0/1
-        if len(digits) == 10 and not has_plus and digits[0] not in '01':
+        if len(digits) == 10:
             return cls("1", digits[:3], digits[3:], extension)
         
         # If 11 digits and starts with 1, it's NANP with CC
