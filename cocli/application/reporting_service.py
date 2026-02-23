@@ -120,13 +120,29 @@ class ReportingService:
         # Calculate email count across all shards and inbox
         email_count = 0
         try:
-            # Simple count of USV files in inbox + records in shards
             for p in email_manager.inbox_dir.rglob("*.usv"):
                 email_count += 1
             for p in email_manager.shards_dir.glob("*.usv"):
                 email_count += count_lines(p)
         except Exception:
             pass
+
+        # Shared Domain Index (Sharded)
+        domain_root = paths.indexes / "domains"
+        domain_count = 0
+        if domain_root.exists():
+            try:
+                # Count files in inbox
+                for p in (domain_root / "inbox").rglob("*.usv"):
+                    domain_count += 1
+                # Count lines in shards
+                for p in (domain_root / "shards").glob("*.usv"):
+                    domain_count += count_lines(p)
+            except Exception:
+                pass
+        
+        # Exclusion Index (Campaign Specific)
+        exclusion_index_path = campaign_node.indexes / "exclude" / "prospects.checkpoint.usv"
 
         return {
             "gm_prospects": {
@@ -137,9 +153,17 @@ class ReportingService:
                 "count": email_count,
                 "path": str(email_root.relative_to(paths.root))
             },
+            "domain_index": {
+                "count": domain_count,
+                "path": str(domain_root.relative_to(paths.root)) if domain_root.exists() else "N/A"
+            },
             "lifecycle": {
                 "count": count_lines(campaign_node.lifecycle),
                 "path": str(campaign_node.lifecycle.relative_to(paths.root))
+            },
+            "exclusions": {
+                "count": count_lines(exclusion_index_path),
+                "path": str(exclusion_index_path.relative_to(paths.root)) if exclusion_index_path.exists() else "N/A"
             }
         }
 

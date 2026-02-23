@@ -25,7 +25,7 @@ INDEXES_METADATA = {
     },
     "domain_index": {
         "label": "Domain Index",
-        "description": "Index mapping domains to company discovery status.",
+        "description": "[bold yellow][shared][/bold yellow] Index mapping domains to company discovery status.",
         "model": "DomainEntry"
     },
     "lifecycle": {
