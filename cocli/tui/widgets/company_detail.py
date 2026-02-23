@@ -357,10 +357,12 @@ class CompanyDetail(Container):
             self.app.notify("Enrichment file not found", severity="warning")
 
     def action_call_company(self) -> None:
-        phone = self.company_data["company"].get("phone_number")
+        # Prefer phone_1 which is our primary standardized field
+        phone = self.company_data["company"].get("phone_1") or self.company_data["company"].get("phone_number")
         if phone:
+            import webbrowser
             cleaned = re.sub(r'\D', '', str(phone))
-            if not cleaned.startswith('1'):
+            if not cleaned.startswith('1') and len(cleaned) == 10:
                 cleaned = '1' + cleaned
             url = f"https://voice.google.com/u/0/calls?a=nc,%2B{cleaned}"
             webbrowser.open(url)
@@ -369,10 +371,22 @@ class CompanyDetail(Container):
             # Create a meeting item for the phone call
             slug = self.company_data["company"].get("slug")
             if slug:
-                meeting = Meeting(title=f"Phone Call to {phone}", type="phone-call", content="")
-                meetings_dir = paths.companies.entry(slug) / "meetings"
-                meeting_path = meeting.to_file(meetings_dir)
-                self._edit_with_nvim(meeting_path)
+                try:
+                    from cocli.models.companies.meeting import Meeting
+                    from cocli.core.paths import paths
+                    
+                    meeting = Meeting(title=f"Phone Call to {phone}", type="phone-call", content="Initiated call via Google Voice.")
+                    meetings_dir = paths.companies.entry(slug).path / "meetings"
+                    meeting_path = meeting.to_file(meetings_dir)
+                    
+                    # Refresh TUI tables
+                    self.refresh_notes_data()
+                    self.app.notify("Logged call in meetings")
+                    
+                    # Open for editing notes
+                    self._edit_with_nvim(meeting_path)
+                except Exception as e:
+                    logger.error(f"Failed to log call: {e}")
         else:
             self.app.notify("No phone number found", severity="warning")
 

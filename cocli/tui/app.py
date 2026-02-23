@@ -368,6 +368,9 @@ class CocliApp(App[None]):
             )
         self.main_content.mount(search_view)
         
+        # Default to 'All Leads' to ensure new global entries are visible
+        company_list.apply_template("tpl_all")
+        
         def focus_list() -> None:
             try:
                 company_list.query_one("#company_list_view").focus()
