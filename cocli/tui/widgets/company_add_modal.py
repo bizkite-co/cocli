@@ -1,7 +1,7 @@
 # POLICY: frictionless-data-policy-enforcement
 from textual.app import ComposeResult
 from textual.screen import ModalScreen
-from textual.widgets import Label, Input, Checkbox, Static
+from textual.widgets import Label, Checkbox, Static
 from textual.containers import Container, Vertical, Horizontal
 from textual import on
 
@@ -25,49 +25,62 @@ class CompanyAddModal(ModalScreen[bool]):
         
         with Container(id="add_company_form"):
             yield Label("ADD NEW COMPANY", classes="modal-title")
-            yield Label(f"Campaign: [yellow]{campaign}[/]", classes="modal-subtitle")
             
             with Vertical(id="form_fields"):
-                yield Label("Company Name*", classes="field-label")
-                yield CocliInput(placeholder="Acme Corp", id="add_company_name")
-                
-                yield Label("Domain", classes="field-label")
-                yield CocliInput(placeholder="acme.com", id="add_company_domain")
+                # Row 1: Name and Campaign
+                with Horizontal(classes="form-row"):
+                    with Vertical(classes="field-group", id="fg_name"):
+                        yield Label("Company Name*", classes="field-label")
+                        yield CocliInput(placeholder="Acme Corp", id="add_company_name")
+                    with Vertical(classes="field-group", id="fg_campaign"):
+                        yield Label("Campaign Tag", classes="field-label")
+                        yield CocliInput(value=campaign, id="add_company_campaign")
 
-                yield Label("Email", classes="field-label")
-                yield CocliInput(placeholder="hello@acme.com", id="add_company_email")
+                # Row 2: Domain and Email
+                with Horizontal(classes="form-row"):
+                    with Vertical(classes="field-group"):
+                        yield Label("Domain", classes="field-label")
+                        yield CocliInput(placeholder="acme.com", id="add_company_domain")
+                    with Vertical(classes="field-group"):
+                        yield Label("Email", classes="field-label")
+                        yield CocliInput(placeholder="hello@acme.com", id="add_company_email")
 
-                yield Label("Phone", classes="field-label")
-                yield CocliInput(placeholder="555-0123", id="add_company_phone")
+                # Row 3: Phone and Address
+                with Horizontal(classes="form-row"):
+                    with Vertical(classes="field-group"):
+                        yield Label("Phone", classes="field-label")
+                        yield CocliInput(placeholder="555-0123", id="add_company_phone")
+                    with Vertical(classes="field-group"):
+                        yield Label("Street Address", classes="field-label")
+                        yield CocliInput(placeholder="123 Main St", id="add_company_address")
 
-                yield Label("Street Address", classes="field-label")
-                yield CocliInput(placeholder="123 Main St", id="add_company_address")
-
-                with Horizontal(id="addr_row_1"):
-                    with Vertical():
+                # Row 4: City, State, Zip (Triple Column)
+                with Horizontal(classes="form-row"):
+                    with Vertical(classes="field-group"):
                         yield Label("City", classes="field-label")
                         yield CocliInput(placeholder="Anytown", id="add_company_city")
-                    with Vertical():
+                    with Vertical(classes="field-group", id="fg_state"):
                         yield Label("State", classes="field-label")
                         yield CocliInput(placeholder="CA", id="add_company_state")
-                    with Vertical():
+                    with Vertical(classes="field-group", id="fg_zip"):
                         yield Label("Zip", classes="field-label")
                         yield CocliInput(placeholder="90210", id="add_company_zip")
 
-            yield Label("Queues (Space to toggle, Enter to save all)", classes="field-label-header")
+            yield Label("Add to Queues:", classes="field-label-header")
             with Horizontal(id="queue_selections_row"):
                 yield Checkbox("To-Call", value=True, id="q_to_call")
                 yield Checkbox("GM Details", value=False, id="q_gm_details")
                 yield Checkbox("Enrichment", value=False, id="q_enrichment")
 
-            yield Static("[dim]Enter: Save | Esc: Cancel[/dim]", id="modal_help")
+            yield Static("[bold reverse] ENTER: SAVE & CLOSE [/]  [dim] ESC: CANCEL [/]", id="modal_help")
 
-    @on(Input.Submitted)
+    @on(CocliInput.Submitted)
     def handle_submit(self) -> None:
         self.add_company()
 
     def add_company(self) -> None:
         name = self.query_one("#add_company_name", CocliInput).value.strip()
+        campaign_tag = self.query_one("#add_company_campaign", CocliInput).value.strip()
         domain = self.query_one("#add_company_domain", CocliInput).value.strip()
         email = self.query_one("#add_company_email", CocliInput).value.strip()
         phone = self.query_one("#add_company_phone", CocliInput).value.strip()
@@ -80,9 +93,7 @@ class CompanyAddModal(ModalScreen[bool]):
             self.app.notify("Company name is required", severity="error")
             return
 
-        campaign = get_campaign()
         slug = slugify(name)
-        
         from cocli.models.email_address import EmailAddress
         from cocli.models.phone import PhoneNumber
         
@@ -113,7 +124,7 @@ class CompanyAddModal(ModalScreen[bool]):
                 city=city or None,
                 state=state or None,
                 zip_code=zip_code or None,
-                tags=[campaign] if campaign else []
+                tags=[campaign_tag] if campaign_tag else []
             )
             
             # 2. Add To-Call Tag if selected
@@ -125,17 +136,17 @@ class CompanyAddModal(ModalScreen[bool]):
             self.app.notify(f"Added company: {name}")
 
             # 3. Handle Queues
-            if campaign:
+            if campaign_tag:
                 # GM Details
                 if self.query_one("#q_gm_details", Checkbox).value:
                     manual_pid = f"MANUAL_{slug}"
                     gm_task = GmItemTask(
                         place_id=manual_pid, 
-                        campaign_name=campaign,
+                        campaign_name=campaign_tag,
                         name=name, 
                         company_slug=slug
                     )
-                    q_dir = paths.campaign(campaign).queue("gm-details").path / "pending"
+                    q_dir = paths.campaign(campaign_tag).queue("gm-details").path / "pending"
                     q_dir.mkdir(parents=True, exist_ok=True)
                     import json
                     with open(q_dir / f"{slug}.json", "w") as f:
@@ -148,10 +159,10 @@ class CompanyAddModal(ModalScreen[bool]):
                         e_task = EnrichmentTask(
                             domain=domain,
                             company_slug=slug,
-                            campaign_name=campaign,
+                            campaign_name=campaign_tag,
                             ack_token=None
                         )
-                        q_dir = paths.campaign(campaign).queue("enrichment").path / "pending"
+                        q_dir = paths.campaign(campaign_tag).queue("enrichment").path / "pending"
                         q_dir.mkdir(parents=True, exist_ok=True)
                         import json
                         with open(q_dir / f"{slug}.json", "w") as f:

@@ -350,31 +350,40 @@ Footer > .footer--key {
 }
 
 #add_company_form {
-    width: 70;
+    width: 80;
     height: auto;
     background: $surface;
     border: tall $primary;
-    padding: 1 4;
-    align: center middle;
+    padding: 1 2;
 }
+
+.form-row {
+    height: auto;
+    width: 100%;
+    margin-bottom: 0;
+}
+
+.field-group {
+    width: 1fr;
+    height: auto;
+    margin-right: 2;
+}
+
+#fg_name { width: 60%; }
+#fg_campaign { width: 40%; }
+#fg_state { width: 15%; }
+#fg_zip { width: 25%; }
 
 .modal-title {
     width: 100%;
     text-align: center;
     color: $text;
     text-style: bold;
-}
-
-.modal-subtitle {
-    width: 100%;
-    text-align: center;
-    color: $text-disabled;
     margin-bottom: 1;
 }
 
 #form_fields {
     height: auto;
-    margin-bottom: 1;
 }
 
 .field-label {
@@ -389,26 +398,8 @@ Footer > .footer--key {
     text-style: bold;
 }
 
-#add_company_form Input {
-    border: none;
-    background: $surface-lighten-1;
-    height: 1;
-    padding: 0 1;
+#add_company_form CocliInput {
     margin-bottom: 0;
-}
-
-#add_company_form Input:focus {
-    background: $surface-lighten-2;
-    color: $text;
-}
-
-#addr_row_1 {
-    height: auto;
-}
-
-#addr_row_1 Vertical {
-    width: 1fr;
-    margin-right: 1;
 }
 
 #queue_selections_row {
@@ -427,7 +418,8 @@ Footer > .footer--key {
     width: 100%;
     text-align: center;
     margin-top: 1;
-    color: $text-disabled;
+    padding: 0 1;
+    color: $text;
 }
 
 #queue_info_panel {
