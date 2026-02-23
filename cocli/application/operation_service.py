@@ -1,11 +1,16 @@
 import logging
 import asyncio
 from typing import Any, Dict, Optional, Callable, List
-from dataclasses import dataclass
+from dataclasses import dataclass, field as dataclass_field
 
 from .services import ServiceContainer
 
 logger = logging.getLogger(__name__)
+
+@dataclass
+class OperationStep:
+    name: str
+    description: str
 
 @dataclass
 class OperationMetadata:
@@ -16,6 +21,7 @@ class OperationMetadata:
     source_path: Optional[str] = None
     dest_path: Optional[str] = None
     process_details: Optional[str] = None
+    steps: List[OperationStep] = dataclass_field(default_factory=list)
 
 class OperationService:
     """
@@ -73,7 +79,14 @@ class OperationService:
                 "maintenance",
                 source_path="data/campaigns/{campaign}/indexes/emails/inbox/",
                 dest_path="data/campaigns/{campaign}/indexes/emails/shards/",
-                process_details="Moves 'inbox/' USVs to a temporary shard before merging into 00-ff shards. deduplicates on 'email' field."
+                process_details="Moves 'inbox/' USVs to a temporary shard before merging into 00-ff shards. deduplicates on 'email' field.",
+                steps=[
+                    OperationStep("s3_sync_down", "Pull latest email WAL files from S3."),
+                    OperationStep("offline_inbox", "Move inbox files to processing directory."),
+                    OperationStep("merge_shards", "Deduplicate and merge into 00-ff shards."),
+                    OperationStep("s3_sync_up", "Push updated shards to S3."),
+                    OperationStep("cleanup", "Remove processing directory.")
+                ]
             ),
             "op_compile_lifecycle": OperationMetadata(
                 "op_compile_lifecycle", "Compile Lifecycle", 
@@ -89,7 +102,14 @@ class OperationService:
                 "maintenance",
                 source_path="data/campaigns/{campaign}/queues/gm-list/completed/results/",
                 dest_path="data/campaigns/{campaign}/indexes/google_maps_prospects/prospects.checkpoint.usv",
-                process_details="Consolidates high-precision results into 0.1-degree tiles, then appends to main checkpoint and deletes source USVs."
+                process_details="Consolidates high-precision results into 0.1-degree tiles, then appends to main checkpoint and deletes source USVs.",
+                steps=[
+                    OperationStep("s3_sync_down", "Pull latest results from S3."),
+                    OperationStep("consolidate_tiles", "Align results to 0.1-degree tiles."),
+                    OperationStep("merge_checkpoint", "Append results to main checkpoint."),
+                    OperationStep("s3_sync_up", "Push updated checkpoint to S3."),
+                    OperationStep("cleanup", "Delete source USV result files.")
+                ]
             ),
             "op_compile_to_call": OperationMetadata(
                 "op_compile_to_call", "Compile To-Call List", 
@@ -97,7 +117,13 @@ class OperationService:
                 "maintenance",
                 source_path="data/campaigns/{campaign}/indexes/",
                 dest_path="data/companies/{slug}/",
-                process_details="1. Compacts GM results. 2. Compacts Email shards. 3. Filters rating >= 4.5, reviews >= 20, HAS email/phone. 4. Tags results as 'to-call'."
+                process_details="1. Compacts GM results. 2. Compacts Email shards. 3. Filters rating >= 4.5, reviews >= 20, HAS email/phone. 4. Tags results as 'to-call'.",
+                steps=[
+                    OperationStep("compact_gm", "Run full Google Maps index compaction."),
+                    OperationStep("compact_emails", "Run full Email index compaction."),
+                    OperationStep("identify_leads", "Filter DuckDB for high-rating/reviewed leads with contact info."),
+                    OperationStep("tag_leads", "Add 'to-call' tag to matching companies.")
+                ]
             ),
             "op_compile_top_prospects": OperationMetadata(
                 "op_compile_top_prospects", "Compile Top Prospects", 

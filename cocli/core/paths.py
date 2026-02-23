@@ -85,6 +85,14 @@ class IndexPaths(PathObject):
             return self._path / "prospects.checkpoint.usv"
         return self._path / f"{self._path.name}.checkpoint.usv"
 
+    @property
+    def runs(self) -> Path:
+        return self._path / "runs"
+
+    @property
+    def datapackage(self) -> Path:
+        return self._path / "datapackage.json"
+
 class CampaignPaths(PathObject):
     @property
     def indexes(self) -> Path:
