@@ -1,7 +1,7 @@
 # POLICY: frictionless-data-policy-enforcement
 from textual.app import ComposeResult
 from textual.screen import ModalScreen
-from textual.widgets import Label, Input, Button, Checkbox
+from textual.widgets import Label, Input, Checkbox, Static
 from textual.containers import Container, Vertical, Horizontal
 from textual import on
 
@@ -13,39 +13,67 @@ from cocli.models.campaigns.queues.enrichment import EnrichmentTask
 from cocli.core.paths import paths
 
 class CompanyAddModal(ModalScreen[bool]):
-    """A modal form to add a new company and optionally enqueue it."""
+    """A keyboard-driven modal form to add a new company and optionally enqueue it."""
+
+    BINDINGS = [
+        ("escape", "dismiss(False)", "Cancel"),
+    ]
 
     def compose(self) -> ComposeResult:
         campaign = get_campaign() or "default"
         
         with Container(id="add_company_form"):
-            yield Label(f"[bold]ADD NEW COMPANY[/bold] (Campaign: {campaign})", classes="modal-title")
+            yield Label("ADD NEW COMPANY", classes="modal-title")
+            yield Label(f"Campaign: [yellow]{campaign}[/]", classes="modal-subtitle")
             
-            yield Label("Company Name", classes="input-label")
-            yield Input(placeholder="e.g. Acme Corp", id="add_company_name")
-            
-            yield Label("Domain (Optional)", classes="input-label")
-            yield Input(placeholder="e.g. acme.com", id="add_company_domain")
+            with Vertical(id="form_fields"):
+                yield Label("Company Name*", classes="field-label")
+                yield Input(placeholder="Acme Corp", id="add_company_name")
+                
+                yield Label("Domain", classes="field-label")
+                yield Input(placeholder="acme.com", id="add_company_domain")
 
-            yield Label("Add to Queues:", classes="input-label")
-            with Vertical(id="queue_selections"):
-                yield Checkbox("To-Call Queue", value=True, id="q_to_call")
-                yield Checkbox("GM Details Queue", value=False, id="q_gm_details")
-                yield Checkbox("Enrichment Queue", value=False, id="q_enrichment")
+                yield Label("Email", classes="field-label")
+                yield Input(placeholder="hello@acme.com", id="add_company_email")
 
-            with Horizontal(id="modal_buttons"):
-                yield Button("Cancel", variant="error", id="cancel_btn")
-                yield Button("Add Company", variant="primary", id="add_btn")
+                yield Label("Phone", classes="field-label")
+                yield Input(placeholder="555-0123", id="add_company_phone")
 
-    @on(Button.Pressed, "#cancel_btn")
-    def cancel(self) -> None:
-        self.dismiss(False)
+                yield Label("Street Address", classes="field-label")
+                yield Input(placeholder="123 Main St", id="add_company_address")
 
-    @on(Button.Pressed, "#add_btn")
+                with Horizontal(id="addr_row_1"):
+                    with Vertical():
+                        yield Label("City", classes="field-label")
+                        yield Input(placeholder="Anytown", id="add_company_city")
+                    with Vertical():
+                        yield Label("State", classes="field-label")
+                        yield Input(placeholder="CA", id="add_company_state")
+                    with Vertical():
+                        yield Label("Zip", classes="field-label")
+                        yield Input(placeholder="90210", id="add_company_zip")
+
+            yield Label("Queues (Space to toggle, Enter to save all)", classes="field-label-header")
+            with Horizontal(id="queue_selections_row"):
+                yield Checkbox("To-Call", value=True, id="q_to_call")
+                yield Checkbox("GM Details", value=False, id="q_gm_details")
+                yield Checkbox("Enrichment", value=False, id="q_enrichment")
+
+            yield Static("[dim]Enter: Save | Esc: Cancel[/dim]", id="modal_help")
+
     @on(Input.Submitted)
+    def handle_submit(self) -> None:
+        self.add_company()
+
     def add_company(self) -> None:
         name = self.query_one("#add_company_name", Input).value.strip()
         domain = self.query_one("#add_company_domain", Input).value.strip()
+        email = self.query_one("#add_company_email", Input).value.strip()
+        phone = self.query_one("#add_company_phone", Input).value.strip()
+        address = self.query_one("#add_company_address", Input).value.strip()
+        city = self.query_one("#add_company_city", Input).value.strip()
+        state = self.query_one("#add_company_state", Input).value.strip()
+        zip_code = self.query_one("#add_company_zip", Input).value.strip()
         
         if not name:
             self.app.notify("Company name is required", severity="error")
@@ -54,12 +82,36 @@ class CompanyAddModal(ModalScreen[bool]):
         campaign = get_campaign()
         slug = slugify(name)
         
+        from cocli.models.email_address import EmailAddress
+        from cocli.models.phone import PhoneNumber
+        
         try:
+            # Validate fields if provided
+            validated_email = None
+            if email:
+                try:
+                    validated_email = EmailAddress(email)
+                except Exception:
+                    self.app.notify(f"Invalid email format: {email}", severity="warning")
+            
+            validated_phone = None
+            if phone:
+                try:
+                    validated_phone = PhoneNumber.validate(phone)
+                except Exception:
+                    self.app.notify(f"Invalid phone format: {phone}", severity="warning")
+
             # 1. Create Company
             company = Company(
                 name=name,
                 domain=domain or None,
                 slug=slug,
+                email=validated_email,
+                phone_1=validated_phone,
+                street_address=address or None,
+                city=city or None,
+                state=state or None,
+                zip_code=zip_code or None,
                 tags=[campaign] if campaign else []
             )
             

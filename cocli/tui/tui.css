@@ -350,41 +350,84 @@ Footer > .footer--key {
 }
 
 #add_company_form {
-    width: 60;
+    width: 70;
     height: auto;
-    background: #1a1a1a;
-    border: thick #333333;
-    padding: 1 2;
+    background: $surface;
+    border: tall $primary;
+    padding: 1 4;
+    align: center middle;
 }
 
 .modal-title {
     width: 100%;
     text-align: center;
-    color: #ffffff;
+    color: $text;
+    text-style: bold;
+}
+
+.modal-subtitle {
+    width: 100%;
+    text-align: center;
+    color: $text-disabled;
     margin-bottom: 1;
 }
 
-.input-label {
-    color: #888888;
-    margin-top: 1;
+#form_fields {
+    height: auto;
+    margin-bottom: 1;
 }
 
-#queue_selections {
+.field-label {
+    color: $text-muted;
+    margin-top: 1;
+    text-style: dim;
+}
+
+.field-label-header {
+    color: $accent;
+    margin-top: 1;
+    text-style: bold;
+}
+
+#add_company_form Input {
+    border: none;
+    background: $surface-lighten-1;
+    height: 1;
+    padding: 0 1;
+    margin-bottom: 0;
+}
+
+#add_company_form Input:focus {
+    background: $surface-lighten-2;
+    color: $text;
+}
+
+#addr_row_1 {
+    height: auto;
+}
+
+#addr_row_1 Vertical {
+    width: 1fr;
+    margin-right: 1;
+}
+
+#queue_selections_row {
     margin: 1 0;
     height: auto;
-    border: solid #222222;
+    background: $surface-lighten-1;
     padding: 0 1;
 }
 
-#modal_buttons {
-    margin-top: 1;
-    height: 3;
-    width: 100%;
-    align: center middle;
+#queue_selections_row Checkbox {
+    margin-right: 2;
+    border: none;
 }
 
-#modal_buttons Button {
-    margin: 0 1;
+#modal_help {
+    width: 100%;
+    text-align: center;
+    margin-top: 1;
+    color: $text-disabled;
 }
 
 #queue_info_panel {
