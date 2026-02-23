@@ -3,7 +3,6 @@ import logging
 import shutil
 import typer
 from pathlib import Path
-from typing import Optional
 from cocli.models.companies.company import Company
 from cocli.core.paths import paths
 
@@ -40,7 +39,7 @@ def merge_directories(src: Path, dest: Path) -> None:
 def main(
     src_slug: str = typer.Argument(..., help="The slug of the duplicate company to move."),
     dest_slug: str = typer.Argument(..., help="The slug of the primary company to keep.")
-):
+) -> None:
     """
     Merges two companies into one. 
     Moves all data from src_slug to dest_slug and updates the target YAML.
@@ -71,7 +70,7 @@ def main(
     # 4. Remove Source
     shutil.rmtree(src_dir)
     
-    print(f"Successfully merged. Source directory removed.")
+    print("Successfully merged. Source directory removed.")
     print(f"Merged company saved to: {dest_dir}")
 
 if __name__ == "__main__":

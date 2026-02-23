@@ -369,7 +369,8 @@ class CocliApp(App[None]):
         self.main_content.mount(search_view)
         
         # Default to 'All Leads' to ensure new global entries are visible
-        company_list.apply_template("tpl_all")
+        # Must be called after refresh to ensure widgets are mounted
+        self.call_after_refresh(company_list.apply_template, "tpl_all")
         
         def focus_list() -> None:
             try:

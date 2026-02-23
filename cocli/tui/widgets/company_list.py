@@ -81,21 +81,27 @@ class CompanyList(Container):
             self.current_filters = {"to_call": True}
         
         # Clear search without triggering redundant update
-        search_input = self.query_one("#company_search_input", Input)
-        self._ignoring_input_change = True
-        try:
-            search_input.value = ""
-        finally:
-            self._ignoring_input_change = False
+        search_inputs = self.query("#company_search_input")
+        if search_inputs:
+            search_input = search_inputs.first()
+            self._ignoring_input_change = True
+            try:
+                # Type check for safety
+                if hasattr(search_input, "value"):
+                    setattr(search_input, "value", "")
+            finally:
+                self._ignoring_input_change = False
             
         self.run_search("")
         
         # We don't want to call .focus() here if run_search is async, 
         # it might cause flicker before results arrive.
         # But for 'l' key from template, we MUST focus.
-        list_view = self.query_one("#company_list_view", ListView)
-        if not list_view.has_focus:
-            list_view.focus()
+        list_views = self.query("#company_list_view")
+        if list_views:
+            list_view = list_views.first()
+            if not list_view.has_focus:
+                list_view.focus()
 
     async def on_mount(self) -> None:
         """Initialize the list on mount."""
@@ -152,8 +158,14 @@ class CompanyList(Container):
 
     def on_key(self, event: events.Key) -> None:
         """Handle key events for the CompanyList widget."""
-        list_view = self.query_one("#company_list_view", ListView)
-        search_input = self.query_one("#company_search_input", CocliSearchInput)
+        list_views = self.query("#company_list_view")
+        search_inputs = self.query("#company_search_input")
+        
+        if not list_views or not search_inputs:
+            return
+            
+        list_view = cast(ListView, list_views.first())
+        search_input = cast(CocliSearchInput, search_inputs.first())
         
         # 1. Protection & Passthrough: If search is focused
         if search_input.has_focus:
@@ -331,13 +343,17 @@ class CompanyList(Container):
 
     def update_company_list_view(self) -> None:
         """Updates the ListView with filtered companies."""
-        try:
-            self.query_one("#search_loading").display = False
-        except Exception:
-            pass
+        # Visual feedback cleanup
+        loading = self.query("#search_loading")
+        if loading:
+            loading.first().display = False
         
         try:
-            list_view = self.query_one("#company_list_view", ListView)
+            list_views = self.query(ListView)
+            if not list_views:
+                return
+            
+            list_view = list_views.first()
             list_view.clear()
             
             new_items = []
@@ -348,6 +364,9 @@ class CompanyList(Container):
                 list_view.mount_all(new_items)
                 
                 def select_first() -> None:
+                    # Double check list_view is still valid
+                    if not list_view.is_mounted:
+                        return
                     list_view.index = 0
                     
                     # Manually trigger highlight for the first item to update preview
@@ -371,7 +390,10 @@ class CompanyList(Container):
                 self.post_message(self.CompanySelected(selected_item.slug))
                 return
 
-        list_view = self.query_one("#company_list_view", ListView)
+        list_views = self.query(ListView)
+        if not list_views:
+            return
+        list_view = list_views.first()
         idx = list_view.index
         if idx is not None and idx < len(self.filtered_fz_items):
             selected_item = self.filtered_fz_items[idx]
@@ -387,7 +409,10 @@ class CompanyList(Container):
                 self.debounce_highlight(highlighted_item)
                 return
 
-        list_view = self.query_one("#company_list_view", ListView)
+        list_views = self.query(ListView)
+        if not list_views:
+            return
+        list_view = list_views.first()
         idx = list_view.index
         if idx is not None and idx < len(self.filtered_fz_items):
             highlighted_item = self.filtered_fz_items[idx]

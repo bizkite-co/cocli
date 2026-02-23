@@ -13,13 +13,20 @@ Align the Python codebase with the Data Ordinance and implement a robust Queue M
 - [ ] **Ordinance Validation**: Add a startup check that verifies the first record of a sync matches the expected `docs/_schema/` path.
 - [x] **Tests**: Update `tests/test_paths.py` to verify the new hierarchical pathing.
 
-## Phase 6: Queue Management & Transformation Visibility (NEW)
-- [ ] **Queue Metadata Registry**: Define formal metadata for each queue (gm-list, gm-details, enrichment, to-call) including labels, model mapping, and sharding strategies.
-- [ ] **TUI Queue Viewer**:
-    - [ ] **Queue Selection Sidebar**: Add "Queues" to the Application tab.
-    - [ ] **Queue Detail Pane**: Display data path, from/to model properties, and sharded counts (pending/completed).
-    - [ ] **Surgical Sync**: Implement buttons to sync *only* the specific queue branch (Pending vs. Completed).
-- [ ] **The "To Call" Pipeline**:
-    - [ ] **Queue Definition**: Create `ToCallTask` model and directory structure in `data/campaigns/{slug}/queues/to-call/`.
-    - [ ] **Queue Builder (Promotion)**: Implement a command/service to find enriched companies missing the `contacted` tag and enqueue them for calling.
-- [ ] **Transformation Insights**: Add a "Model Schema" view that shows exactly how fields are mapped during the transformation (e.g., `GmItemTask.place_id` -> `Company.place_id`).
+## Phase 6: Queue Management & Transformation Visibility ✅
+- [x] **Queue Metadata Registry**: Defined in `ReportingService` and TUI views.
+- [x] **TUI Queue Viewer**:
+    - [x] **Queue Selection Sidebar**: Added "Queues" to the Application tab.
+    - [x] **Queue Detail Pane**: Displays data path, sharded counts, and live status.
+    - [x] **Surgical Sync**: Implemented `sp` (sync pending) and `sc` (sync completed) shortcuts.
+- [x] **The "To Call" Pipeline**:
+    - [x] **Queue Builder (Promotion)**: Implemented `Compile To-Call List` workflow to tag top leads based on rating/reviews/contact-info.
+- [x] **Transformation Insights**: Added "Schema" view showing `datapackage.json` field mappings and types.
+
+## Phase 7: Operational Integrity & Cluster Sync (NEW)
+- [x] **Durable Operation Journals**: Implemented `runs/` folder with timestamped USVs for every major maintenance task.
+- [x] **Live Checklist UI**: Real-time status markers (✔ success / ○ pending) in the Index/Operation views.
+- [x] **Input Shield (Safety)**: Global focus protection to prevent shortcut hijacking during typing.
+- [ ] **Gossip-Based Queue Sync**: Enable compact datagram propagation (`Q:` records) for real-time task status sharing across the cluster.
+- [ ] **Log Call Expansion**: Implement "Callback" scheduling logic that promotes companies to the To-Call queue on a specific date.
+

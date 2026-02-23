@@ -392,8 +392,8 @@ class Company(BaseModel):
                     if self.email:
                         emails_to_sync.add(self.email)
                     if self.all_emails:
-                        for e in self.all_emails:
-                            emails_to_sync.add(e)
+                        for email_val in self.all_emails:
+                            emails_to_sync.add(email_val)
                     
                     for email_str in emails_to_sync:
                         email_entry = EmailEntry(
