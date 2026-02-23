@@ -34,6 +34,7 @@ class CompanyList(Container):
         ("f", "toggle_filter", "Toggle Actionable"),
         ("r", "toggle_sort", "Toggle Recent"),
         ("s", "focus_search", "Search"),
+        ("a", "add_company", "Add Company"),
         ("alt+s", "reset_view", "Return to List"),
     ]
 
@@ -110,6 +111,11 @@ class CompanyList(Container):
         search_input = self.query_one(Input)
         search_input.value = ""
         self.query_one(ListView).focus()
+
+    def action_add_company(self) -> None:
+        """Pushes the Add Company modal."""
+        from .company_add_modal import CompanyAddModal
+        self.app.push_screen(CompanyAddModal())
 
     def action_toggle_filter(self) -> None:
         """Toggle the 'Actionable Leads' filter (has email OR phone)."""
