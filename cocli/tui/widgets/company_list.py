@@ -4,7 +4,7 @@ from datetime import datetime
 from typing import List, TYPE_CHECKING, cast, Dict, Any, Optional
 
 from textual.containers import Container
-from textual.widgets import Label, ListView, ListItem, Input
+from textual.widgets import Label, ListView, ListItem, LoadingIndicator, Input
 from textual.app import ComposeResult
 from textual.message import Message
 from textual import events, on, work
@@ -51,7 +51,9 @@ class CompanyList(Container):
     def compose(self) -> ComposeResult:
         yield Label("SEARCH", id="search_header", classes="pane-header")
         yield CocliSearchInput(placeholder="Search companies...", id="company_search_input")
-        yield ListView(id="company_list_view")
+        with Container(id="list_container"):
+            yield ListView(id="company_list_view")
+            yield LoadingIndicator(id="search_loading")
 
     def apply_template(self, tpl_id: str) -> None:
         """Handle template selection from external source."""
@@ -102,11 +104,11 @@ class CompanyList(Container):
 
     def action_focus_search(self) -> None:
         """Focus the search input."""
-        self.query_one(Input).focus()
+        self.query_one(CocliSearchInput).focus()
 
     def action_reset_view(self) -> None:
         """Clear the search input and return focus to the list."""
-        search_input = self.query_one(Input)
+        search_input = self.query_one(CocliSearchInput)
         search_input.value = ""
         self.query_one(ListView).focus()
 
@@ -122,7 +124,7 @@ class CompanyList(Container):
         status = "Actionable Only" if self.filter_contact else "All Leads"
         self.app.notify(f"Filter: {status}")
         
-        query = self.query_one("#company_search_input", Input).value
+        query = self.query_one("#company_search_input", CocliSearchInput).value
         self.run_search(query)
 
     def action_toggle_sort(self) -> None:
@@ -131,7 +133,7 @@ class CompanyList(Container):
         status = "Recent" if self.sort_recent else "Alphabetical"
         self.app.notify(f"Sorting: {status}")
         
-        query = self.query_one("#company_search_input", Input).value
+        query = self.query_one("#company_search_input", CocliSearchInput).value
         self.run_search(query)
 
     @on(Input.Submitted)
@@ -199,16 +201,16 @@ class CompanyList(Container):
         elif event.key == "]": # Next Page
             if list_view.has_focus:
                 self.search_offset += self.search_limit
-                self.run_search(self.query_one("#company_search_input", Input).value)
+                self.run_search(self.query_one("#company_search_input", CocliSearchInput).value)
                 event.prevent_default()
         elif event.key == "[": # Prev Page
             if list_view.has_focus and self.search_offset >= self.search_limit:
                 self.search_offset -= self.search_limit
-                self.run_search(self.query_one("#company_search_input", Input).value)
+                self.run_search(self.query_one("#company_search_input", CocliSearchInput).value)
                 event.prevent_default()
         elif event.key == "escape":
             # If search is focused, return focus to list
-            if self.query_one(Input).has_focus:
+            if self.query_one(CocliSearchInput).has_focus:
                 list_view.focus()
                 event.prevent_default()
 
@@ -216,8 +218,9 @@ class CompanyList(Container):
         """Called when the search input changes."""
         if self._ignoring_input_change:
             return
-        self.search_offset = 0 # Reset on text change
-        self.run_search(event.value)
+        # Standard changed events are still useful for non-search CocliInputs
+        # but for search we rely on on_search_debounced
+        pass
 
     def run_search(self, query: str) -> None:
         app = cast("CocliApp", self.app)
@@ -233,11 +236,9 @@ class CompanyList(Container):
         if self.filter_contact and not search_filters.get("no_email"):
             search_filters["has_contact_info"] = True
 
-        # Visual feedback: Clear list and show loading while searching
+        # Visual feedback: Show loading indicator over list
         try:
-            list_view = self.query_one("#company_list_view", ListView)
-            list_view.clear()
-            self.loading = True
+            self.query_one("#search_loading").display = True
         except Exception:
             pass
 
@@ -266,9 +267,7 @@ class CompanyList(Container):
             search_filters["has_contact_info"] = True
 
         try:
-            list_view = self.query_one("#company_list_view", ListView)
-            list_view.clear()
-            self.loading = True
+            self.query_one("#search_loading").display = True
         except Exception:
             pass
 
@@ -291,7 +290,9 @@ class CompanyList(Container):
         """
         # Ensure loading state is visible
         try:
-            self.loading = True
+            def show_loading() -> None:
+                self.query_one("#search_loading").display = True
+            self.call_after_refresh(show_loading)
         except Exception:
             pass
 
@@ -324,11 +325,17 @@ class CompanyList(Container):
             self.call_after_refresh(self.update_company_list_view)
         except Exception as e:
             logger.error(f"Search worker failed: {e}", exc_info=True)
-            self.loading = False
+            def hide_loading() -> None:
+                self.query_one("#search_loading").display = False
+            self.call_after_refresh(hide_loading)
 
     def update_company_list_view(self) -> None:
         """Updates the ListView with filtered companies."""
-        self.loading = False
+        try:
+            self.query_one("#search_loading").display = False
+        except Exception:
+            pass
+        
         try:
             list_view = self.query_one("#company_list_view", ListView)
             list_view.clear()

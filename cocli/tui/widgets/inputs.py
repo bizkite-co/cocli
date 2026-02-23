@@ -32,7 +32,7 @@ class CocliInput(Input):
     @work(exclusive=True)
     async def _debounce_change(self, value: str) -> None:
         """Wait for a brief pause before posting the debounced message."""
-        await asyncio.sleep(0.25)
+        await asyncio.sleep(0.5)
         self.post_message(self.DebouncedChanged(value))
 
     def on_input_changed(self, event: Input.Changed) -> None:
