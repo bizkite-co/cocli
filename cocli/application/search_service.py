@@ -125,7 +125,7 @@ def get_fuzzy_search_results(
         prospect_dp = prospect_idx.path / "datapackage.json"
         lifecycle_path = campaign_node.lifecycle
         lifecycle_dp = campaign_node.path / "indexes" / "lifecycle" / "datapackage.json"
-        to_call_pending_dir = campaign_node.path / "queues" / "to-call" / "pending"
+        to_call_pending_dir = paths.queue(campaign, "to-call") / "pending"
     
     # 1. NON-BLOCKING CACHE REBUILD
     if force_rebuild_cache or not is_cache_valid(campaign=campaign):
@@ -251,6 +251,10 @@ def get_fuzzy_search_results(
                 _last_lifecycle_mtime = current_lifecycle_mtime
                 _last_to_call_mtime = current_to_call_mtime
                 _last_campaign = campaign
+                
+                # FDPE: Invalidate counts cache for this campaign as the data has changed
+                if campaign in _counts_cache:
+                    del _counts_cache[campaign]
             
             # 3. Build Query
             sql = "SELECT type, name, slug, domain, email, phone_number, tags, display, average_rating, reviews_count, street_address, city, state, zip, list_found_at, details_found_at, enqueued_at, last_enriched FROM items WHERE 1=1"

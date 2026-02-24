@@ -13,7 +13,6 @@ from ..phone import OptionalPhone
 from ..campaigns.indexes.email import EmailEntry
 from ..place_id import PlaceID
 from .slug import CompanySlug
-from ...core.paths import paths
 from ...core.ordinant import CollectionName
 from ...core.config import get_campaign
 
@@ -52,10 +51,12 @@ class Company(BaseModel):
 
     def get_local_path(self) -> Path:
         """Returns the path to the company directory: data/companies/{slug}/"""
+        from ...core.paths import paths
         return paths.companies.entry(self.slug).path
 
     def get_remote_key(self) -> str:
         """Returns the S3 prefix: companies/{slug}/"""
+        from ...core.paths import paths
         return paths.s3.company(self.slug)
 
     def get_shard_id(self) -> str:
@@ -146,6 +147,7 @@ class Company(BaseModel):
     @classmethod
     def get_all(cls) -> Iterator["Company"]:
         """Iterates through all company directories and yields Company objects."""
+        from ...core.paths import paths
         companies_dir = paths.companies.path
         if not companies_dir.exists():
             return
@@ -159,6 +161,7 @@ class Company(BaseModel):
     @classmethod
     def get(cls, slug: str) -> Optional["Company"]:
         """Retrieves a single company by its slug."""
+        from ...core.paths import paths
         entry = paths.companies.entry(slug)
         if entry.is_dir():
             return cls.from_directory(entry.path)
@@ -166,6 +169,7 @@ class Company(BaseModel):
 
     @classmethod
     def from_directory(cls, company_dir: Path) -> Optional["Company"]:
+        from ...core.paths import paths
         logger = logging.getLogger(__name__)
         # logger.debug(f"Starting from_directory for {company_dir}")
         try:
@@ -346,6 +350,7 @@ class Company(BaseModel):
 
     def save(self, email_sync: bool = True, base_dir: Optional[Path] = None, use_wal: bool = True) -> None:
         """Saves the company data to _index.md and tags to tags.lst."""
+        from ...core.paths import paths
         if base_dir:
             entry = paths.companies.entry(self.slug)
             # Override for bulk operations

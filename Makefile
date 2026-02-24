@@ -146,6 +146,14 @@ commit-indexes:
 commit-data: commit-campaigns commit-companies commit-indexes
 	cd data && git add . && git commit -m "chore: snapshot data directory" || echo "No changes to commit" ; cd -
 
+clean-logs: ## Remove logs and journals older than 7 days
+	find .logs/ -name "*.log" -mtime +7 -delete
+	find .logs/ -name "*.usv" -mtime +7 -delete
+
+clean-test-data: ## Remove stray test campaigns from data home
+	rm -rf data/campaigns/test-*
+	rm -rf data/campaigns/default/indexes/company_cache/
+
 test-file: install ## Run a specific test file, e.g., make test-file FILE=tests/test_google_maps_scraper.py
 	source $(VENV_DIR)/bin/activate && pytest $(FILE)
 

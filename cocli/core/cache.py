@@ -114,10 +114,11 @@ def _fast_extract_metadata(index_path: Path) -> Dict[str, Any]:
 
 def build_cache(campaign: Optional[str] = None) -> None:
     """Builds the USV search cache and its datapackage.json."""
+    from .paths import paths
     logger.info(f"Building high-performance search cache for {campaign or 'global'}...")
     items: List[CompanyCacheItem] = []
-    companies_dir = get_companies_dir()
-    people_dir = get_people_dir()
+    companies_dir = paths.companies.path
+    people_dir = paths.people.path
 
     if companies_dir.exists():
         with os.scandir(companies_dir) as it:

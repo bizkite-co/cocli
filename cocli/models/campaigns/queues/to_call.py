@@ -4,7 +4,6 @@ from datetime import datetime
 from typing import Optional
 from .base import QueueMessage
 from ....core.ordinant import QueueName
-from ....core.paths import paths
 
 class ToCallTask(QueueMessage):
     """
@@ -28,6 +27,8 @@ class ToCallTask(QueueMessage):
         Active: queues/{campaign}/to-call/pending/{company_slug}.usv
         Scheduled: queues/{campaign}/to-call/scheduled/{YYYY}/{MM}/{DD}/{YYYYMMDD_HHMMSS}_{slug}.usv
         """
+        # FDPE: Local import to ensure we respect current re-rooted paths authority
+        from ....core.paths import paths
         base_queue = paths.campaign(self.campaign_name).path / "queues" / "to-call"
         
         if self.callback_at:
@@ -46,5 +47,7 @@ class ToCallTask(QueueMessage):
         path.write_text(self.to_usv(), encoding="utf-8")
         
         # Ensure datapackage exists in the collection root
+        # FDPE: Local import to ensure we respect current re-rooted paths authority
+        from ....core.paths import paths
         base_queue = paths.campaign(self.campaign_name).path / "queues" / "to-call"
         self.save_datapackage(base_queue, "to_call_queue", "pending/*.usv")
