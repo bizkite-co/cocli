@@ -7,7 +7,7 @@ from typing import Iterator
 from ..models.campaigns.indexes.google_maps_prospect import GoogleMapsProspect
 from ..core.config import get_campaign_scraped_data_dir, get_campaign_dir
 from ..core.sharding import get_place_id_shard
-from ..core.utils import UNIT_SEP
+from cocli.core.constants import UNIT_SEP
 from ..utils.usv_utils import USVDictReader
 
 logger = logging.getLogger(__name__)
@@ -84,7 +84,7 @@ class ProspectsIndexManager:
             self.validation_error_count += 1
             try:
                 from datetime import datetime
-                from .utils import UNIT_SEP
+                from cocli.core.constants import UNIT_SEP
                 clean_err = str(error).replace("\n", " ")
                 with open(self.error_log_path, "a", encoding="utf-8") as ef:
                     ef.write(f"{datetime.now().isoformat()}{UNIT_SEP}{filename}{UNIT_SEP}{clean_err}\n")

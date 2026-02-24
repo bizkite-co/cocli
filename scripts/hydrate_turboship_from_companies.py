@@ -1,6 +1,6 @@
 import yaml
 from pathlib import Path
-from cocli.core.utils import UNIT_SEP
+from cocli.core.constants import UNIT_SEP
 from cocli.models.campaigns.indexes.google_maps_prospect import GoogleMapsProspect
 
 def hydrate():

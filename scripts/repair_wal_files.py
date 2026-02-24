@@ -8,7 +8,7 @@ sys.path.append(str(Path(__file__).parent.parent))
 
 from cocli.models.campaigns.indexes.google_maps_prospect import GoogleMapsProspect
 from cocli.models.campaigns.indexes.google_maps_raw import GoogleMapsRawResult
-from cocli.core.utils import UNIT_SEP
+from cocli.core.constants import UNIT_SEP
 from cocli.utils.usv_utils import USVDictReader
 
 def repair_wal(execute: bool = False) -> None:

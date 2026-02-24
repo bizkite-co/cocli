@@ -17,8 +17,6 @@ from .text_utils import slugify
 
 logger = logging.getLogger(__name__)
 
-UNIT_SEP = "\x1f" # ASCII Unit Separator
-
 def get_place_id_shard(place_id: str) -> str:
     """
     Returns a deterministic shard for a Place ID.

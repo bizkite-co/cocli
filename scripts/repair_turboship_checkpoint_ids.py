@@ -3,7 +3,7 @@ import re
 import logging
 from pathlib import Path
 from rich.console import Console
-from cocli.core.utils import UNIT_SEP
+from cocli.core.constants import UNIT_SEP
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)

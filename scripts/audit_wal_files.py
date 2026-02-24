@@ -4,7 +4,7 @@ from pathlib import Path
 # Add project root to path
 sys.path.append(str(Path(__file__).parent.parent))
 
-from cocli.core.utils import UNIT_SEP
+from cocli.core.constants import UNIT_SEP
 
 def audit_wal() -> None:
     wal_dir = Path("data/campaigns/roadmap/indexes/google_maps_prospects/wal")

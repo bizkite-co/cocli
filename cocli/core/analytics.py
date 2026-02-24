@@ -3,7 +3,7 @@ import duckdb
 from typing import Dict, Any
 from .reporting import get_boto3_session
 from .config import load_campaign_config
-from .utils import UNIT_SEP
+from cocli.core.constants import UNIT_SEP
 
 logger = logging.getLogger(__name__)
 

@@ -332,24 +332,33 @@ def get_campaign_stats(campaign_name: str) -> Dict[str, Any]:
         queue_base = paths.queue(campaign_name, q_name)
         pending_dir = queue_base / "pending"
         completed_dir = queue_base / "completed"
+        scheduled_dir = queue_base / "scheduled"
 
         q_pending = 0
         q_inflight = 0
         q_completed = 0
+        q_scheduled = 0
         last_completed_at = None
 
         if pending_dir.exists():
             # Recursive count for sharded pending
             for root, dirs, files in os.walk(pending_dir):
                 for f in files:
-                    if f == "task.json":
+                    if f == "task.json" or f.endswith(".usv"):
                         q_pending += 1
                     elif f == "lease.json":
                         q_inflight += 1
 
+        if scheduled_dir.exists():
+            # Recursive count for date-sharded scheduled
+            for root, dirs, files in os.walk(scheduled_dir):
+                for f in files:
+                    if f.endswith(".usv") or f.endswith(".json"):
+                        q_scheduled += 1
+
         if completed_dir.exists():
             for completed_file in completed_dir.iterdir():
-                if completed_file.suffix == ".json":
+                if completed_file.suffix in [".json", ".usv"]:
                     q_completed += 1
                     mtime = datetime.fromtimestamp(completed_file.stat().st_mtime, tz=UTC)
                     if last_completed_at is None or mtime > last_completed_at:
@@ -358,6 +367,7 @@ def get_campaign_stats(campaign_name: str) -> Dict[str, Any]:
         local_stats[q_name] = {
             "pending": q_pending,
             "inflight": q_inflight,
+            "scheduled": q_scheduled,
             "completed": q_completed,
             "last_completed_at": last_completed_at.isoformat() if last_completed_at else None
         }

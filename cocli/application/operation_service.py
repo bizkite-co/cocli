@@ -184,7 +184,7 @@ class OperationService:
             logger.info(f"Durable Run Log: {run_file}")
             
             # Write Header
-            from ..core.utils import UNIT_SEP
+            from cocli.core.constants import UNIT_SEP
             try:
                 with open(run_file, "w") as f:
                     f.write(UNIT_SEP.join(["timestamp", "step", "status", "details"]) + "\n")
@@ -195,7 +195,7 @@ class OperationService:
         def log_step(step_name: str, status: str, details: str = "") -> None:
             if run_file:
                 ts = datetime.now(UTC).isoformat()
-                from ..core.utils import UNIT_SEP
+                from cocli.core.constants import UNIT_SEP
                 try:
                     with open(run_file, "a") as f:
                         f.write(UNIT_SEP.join([ts, step_name, status, details]) + "\n")

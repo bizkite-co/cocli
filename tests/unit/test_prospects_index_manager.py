@@ -1,7 +1,7 @@
 import pytest
 from cocli.core.prospects_csv_manager import ProspectsIndexManager
 from cocli.models.campaigns.indexes.google_maps_prospect import GoogleMapsProspect
-from cocli.core.utils import UNIT_SEP
+from cocli.core.constants import UNIT_SEP
 
 @pytest.fixture
 def temp_campaign_dir(tmp_path):

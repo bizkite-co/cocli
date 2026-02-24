@@ -345,7 +345,7 @@ class CampaignService:
                     enrich_dir.mkdir(exist_ok=True)
                     receipt_path = enrich_dir / "google_maps.usv"
                     
-                    from ..core.utils import UNIT_SEP
+                    from cocli.core.constants import UNIT_SEP
                     with open(receipt_path, "w", encoding="utf-8") as f:
                         header = UNIT_SEP.join(list(GoogleMapsProspect.model_fields.keys()))
                         f.write(f"{header}\n")

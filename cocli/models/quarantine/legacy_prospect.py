@@ -24,7 +24,7 @@ class LegacyProspectUSV(BaseModel):
     
     @classmethod
     def from_usv_line(cls, line: str) -> "LegacyProspectUSV":
-        from cocli.core.utils import UNIT_SEP
+        from cocli.core.constants import UNIT_SEP
         parts = line.strip("\x1e\n").split(UNIT_SEP)
         
         data = {

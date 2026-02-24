@@ -120,32 +120,9 @@ class GoogleMapsProspect(GoogleMapsIdx):
         return fields
 
     @classmethod
-    def get_datapackage(cls) -> Dict[str, Any]:
-        """Returns the Frictionless Data Package schema for Google Maps Prospects."""
-        from ....core.utils import UNIT_SEP
-        return {
-            "profile": "tabular-data-package",
-            "name": cls.INDEX_NAME,
-            "resources": [
-                {
-                    "name": "prospects",
-                    "path": "prospects.checkpoint.usv",
-                    "format": "usv",
-                    "dialect": {"delimiter": UNIT_SEP, "header": False},
-                    "schema": {
-                        "fields": cls.get_datapackage_fields()
-                    }
-                }
-            ]
-        }
-
-    @classmethod
-    def save_datapackage(cls, path: Path) -> None:
+    def save_datapackage(cls, path: Path, resource_name: str = "google_maps_prospects", resource_path: str = "prospects.checkpoint.usv") -> None:
         """Saves the datapackage.json to the specified directory."""
-        import json
-        path.mkdir(parents=True, exist_ok=True)
-        with open(path / "datapackage.json", "w") as f:
-            json.dump(cls.get_datapackage(), f, indent=2)
+        super().save_datapackage(path, resource_name, resource_path)
 
     @classmethod
     def from_raw(cls, raw: GoogleMapsRawResult) -> "GoogleMapsProspect":
@@ -299,56 +276,5 @@ class GoogleMapsProspect(GoogleMapsIdx):
         
         with open(checkpoint_path, "a", encoding="utf-8") as f:
             f.write(prospect.to_usv())
-
-    def to_usv(self) -> str:
-        """Serializes based on architectural sequence."""
-        from ....core.utils import UNIT_SEP
-        field_names = list(self.model_fields.keys())
-        
-        values = []
-        dump = self.model_dump(by_alias=False)
-        for field in field_names:
-            val = dump.get(field)
-            if val is None:
-                values.append("")
-            elif isinstance(val, (list, tuple)):
-                sanitized_list = [str(v).replace("\r\n", "<br>").replace("\n", "<br>").replace("\r", "<br>") for v in val]
-                values.append(";".join(sanitized_list))
-            elif isinstance(val, datetime):
-                values.append(val.isoformat())
-            else:
-                values.append(str(val).replace("\r\n", "<br>").replace("\n", "<br>").replace("\r", "<br>"))
-        
-        return UNIT_SEP.join(values) + "\n"
-
-    @classmethod
-    def from_usv(cls, usv_str: str) -> "GoogleMapsProspect":
-        """Parses based on architectural sequence."""
-        from ....core.utils import UNIT_SEP
-        line = usv_str.strip("\x1e\n")
-        if not line:
-            raise ValueError("Empty unit-separated line")
-            
-        parts = line.split(UNIT_SEP)
-        field_names = list(cls.model_fields.keys())
-        
-        data: Dict[str, Any] = {}
-        for i, field_name in enumerate(field_names):
-            if i < len(parts):
-                val = parts[i]
-                if val == "":
-                    # Let pydantic handle defaults for required fields
-                    pass 
-                else:
-                    if field_name in ["created_at", "updated_at"]:
-                        try:
-                            data[field_name] = datetime.fromisoformat(val)
-                        except ValueError:
-                            # If invalid, let validator handle or use default
-                            pass
-                    else:
-                        data[field_name] = val
-                
-        return cls.model_validate(data)
 
     

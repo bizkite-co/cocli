@@ -18,6 +18,7 @@ _con: Optional[duckdb.DuckDBPyConnection] = None
 _last_cache_mtime: float = -1.0
 _last_checkpoint_mtime: float = -1.0
 _last_lifecycle_mtime: float = -1.0
+_last_to_call_mtime: float = -1.0
 _last_campaign: Optional[str] = None
 _lock = threading.RLock()
 
@@ -70,8 +71,8 @@ def get_template_counts(campaign_name: Optional[str] = None) -> Dict[str, int]:
                 # Missing Address
                 counts["tpl_no_address"] = get_count("SELECT count(*) FROM items WHERE type = 'company' AND (street_address IS NULL OR street_address = '' OR street_address = 'null')")
                 
-                # To Call Tomorrow
-                counts["tpl_to_call"] = get_count("SELECT count(*) FROM items WHERE type = 'company' AND list_contains(tags, 'to-call')")
+                # To Call (from filesystem queue, decoupled from tags)
+                counts["tpl_to_call"] = get_count("SELECT count(*) FROM items WHERE type = 'company' AND is_to_call = TRUE")
 
                 # Top Rated (Rating > 4)
                 counts["tpl_top_rated"] = get_count("SELECT count(*) FROM items WHERE type = 'company' AND average_rating >= 4.0")
@@ -98,9 +99,8 @@ def get_fuzzy_search_results(
 ) -> List[SearchResult]:
     """
     FDPE ENFORCEMENT: Provides fuzzy search results joined across multiple indices.
-    Uses datapackage.json as the sole authority for DuckDB schemas.
     """
-    global _con, _last_cache_mtime, _last_checkpoint_mtime, _last_lifecycle_mtime, _last_campaign
+    global _con, _last_cache_mtime, _last_checkpoint_mtime, _last_lifecycle_mtime, _last_to_call_mtime, _last_campaign
     
     from cocli.core.paths import paths
 
@@ -116,6 +116,7 @@ def get_fuzzy_search_results(
     prospect_dp = None
     lifecycle_path = None
     lifecycle_dp = None
+    to_call_pending_dir = None
 
     if campaign:
         campaign_node = paths.campaign(campaign)
@@ -124,6 +125,7 @@ def get_fuzzy_search_results(
         prospect_dp = prospect_idx.path / "datapackage.json"
         lifecycle_path = campaign_node.lifecycle
         lifecycle_dp = campaign_node.path / "indexes" / "lifecycle" / "datapackage.json"
+        to_call_pending_dir = campaign_node.path / "queues" / "to-call" / "pending"
     
     # 1. NON-BLOCKING CACHE REBUILD
     if force_rebuild_cache or not is_cache_valid(campaign=campaign):
@@ -146,10 +148,10 @@ def get_fuzzy_search_results(
                 threading.Thread(target=bg_rebuild, daemon=True).start()
 
     with _lock:
-        start_total = time.perf_counter()
         current_cache_mtime = os.path.getmtime(cache_file) if cache_file.exists() else -1.0
         current_checkpoint_mtime = os.path.getmtime(checkpoint_path) if checkpoint_path and checkpoint_path.exists() else -1.0
         current_lifecycle_mtime = os.path.getmtime(lifecycle_path) if lifecycle_path and lifecycle_path.exists() else -1.0
+        current_to_call_mtime = os.path.getmtime(to_call_pending_dir) if to_call_pending_dir and to_call_pending_dir.exists() else -1.0
 
         try:
             if _con is None:
@@ -157,34 +159,29 @@ def get_fuzzy_search_results(
                 _last_cache_mtime = -1.0
                 _last_checkpoint_mtime = -1.0
                 _last_lifecycle_mtime = -1.0
+                _last_to_call_mtime = -1.0
 
             if _last_cache_mtime != current_cache_mtime or \
                _last_checkpoint_mtime != current_checkpoint_mtime or \
                _last_campaign != campaign or \
-               _last_lifecycle_mtime != current_lifecycle_mtime:
+               _last_lifecycle_mtime != current_lifecycle_mtime or \
+               _last_to_call_mtime != current_to_call_mtime:
                 
-                t0 = time.perf_counter()
                 _con.execute("DROP VIEW IF EXISTS items")
                 _con.execute("DROP TABLE IF EXISTS items_cache")
                 _con.execute("DROP TABLE IF EXISTS items_checkpoint")
                 _con.execute("DROP TABLE IF EXISTS items_lifecycle")
+                _con.execute("DROP TABLE IF EXISTS items_to_call")
                 
-                # A. Load Company Cache (Human Edits) - FDPE MANDATORY
+                # A. Load Company Cache (Human Edits)
                 load_usv_to_duckdb(_con, "items_cache", cache_file, cache_dp)
-                c_res = _con.execute("SELECT count(*) FROM items_cache").fetchone()
-                c_count = c_res[0] if c_res else 0
-                logger.debug(f"FDPE: Loaded {c_count} rows into items_cache")
 
-                # B. Load Prospect Checkpoint (Machine Scraping) - FDPE MANDATORY
+                # B. Load Prospect Checkpoint (Machine Scraping)
                 if checkpoint_path and checkpoint_path.exists():
-                    # ALWAYS Refresh datapackage to ensure model changes are reflected
                     if prospect_dp:
                         from cocli.models.campaigns.indexes.google_maps_prospect import GoogleMapsProspect
                         GoogleMapsProspect.save_datapackage(prospect_dp.parent)
                     load_usv_to_duckdb(_con, "items_checkpoint", checkpoint_path, prospect_dp)
-                    p_res = _con.execute("SELECT count(*) FROM items_checkpoint").fetchone()
-                    p_count = p_res[0] if p_res else 0
-                    logger.debug(f"FDPE: Loaded {p_count} rows into items_checkpoint")
                 else:
                     _con.execute("CREATE TABLE items_checkpoint (slug VARCHAR, name VARCHAR, email VARCHAR, phone_number VARCHAR, average_rating DOUBLE, reviews_count BIGINT, street_address VARCHAR, city VARCHAR, state VARCHAR, zip VARCHAR, place_id VARCHAR, domain VARCHAR, created_at VARCHAR, updated_at VARCHAR, tags VARCHAR)")
 
@@ -194,7 +191,19 @@ def get_fuzzy_search_results(
                 else:
                     _con.execute("CREATE TABLE items_lifecycle (place_id VARCHAR, scraped_at VARCHAR, details_at VARCHAR, enqueued_at VARCHAR, enriched_at VARCHAR)")
 
-                # D. Unified View - JOIN on slug/id
+                # D. Load To-Call Queue (Filesystem Pointers)
+                to_call_items = []
+                if to_call_pending_dir and to_call_pending_dir.exists():
+                    # We only need the slug from the filename for existence check
+                    # filename: slug.usv
+                    to_call_items = [[f.replace(".usv", "")] for f in os.listdir(to_call_pending_dir) if f.endswith(".usv")]
+                
+                _con.execute("CREATE TABLE items_to_call (slug VARCHAR)")
+                if to_call_items:
+                    # Batch insert
+                    _con.executemany("INSERT INTO items_to_call VALUES (?)", to_call_items)
+
+                # E. Unified View
                 def table_has_col(table: str, col: str) -> bool:
                     try:
                         res = _con.execute(f"PRAGMA table_info('{table}')").fetchall()
@@ -202,8 +211,6 @@ def get_fuzzy_search_results(
                     except Exception:
                         return False
 
-                # FDPE Ensures consistency, but we add guards for array transformation
-                # and explicit casting to VARCHAR[] to avoid COALESCE type mixing errors.
                 t1_tags = "string_to_array(t1.tags, ';')" if table_has_col("items_checkpoint", "tags") else "string_to_array(t1.keyword, ';')" if table_has_col("items_checkpoint", "keyword") else "CAST([] AS VARCHAR[])"
                 t2_tags = "string_to_array(t2.tags, ';')" if table_has_col("items_cache", "tags") else "CAST([] AS VARCHAR[])"
                 
@@ -231,20 +238,21 @@ def get_fuzzy_search_results(
                         COALESCE(lc.scraped_at, t1.created_at) as list_found_at,
                         COALESCE(lc.details_at, t1.updated_at) as details_found_at,
                         COALESCE(lc.enqueued_at, CAST(NULL AS VARCHAR)) as enqueued_at,
-                        COALESCE(lc.enriched_at, CAST(NULL AS VARCHAR)) as last_enriched
+                        COALESCE(lc.enriched_at, CAST(NULL AS VARCHAR)) as last_enriched,
+                        CASE WHEN tc.slug IS NOT NULL THEN TRUE ELSE FALSE END as is_to_call
                     FROM items_checkpoint t1 
                     FULL OUTER JOIN items_cache t2 ON t1.slug = t2.slug
                     LEFT JOIN items_lifecycle lc ON t1.place_id = lc.place_id
+                    LEFT JOIN items_to_call tc ON COALESCE({t1_slug}, t2.slug) = tc.slug
                 """)
 
                 _last_cache_mtime = current_cache_mtime
                 _last_checkpoint_mtime = current_checkpoint_mtime
                 _last_lifecycle_mtime = current_lifecycle_mtime
+                _last_to_call_mtime = current_to_call_mtime
                 _last_campaign = campaign
-                logger.debug(f"FDPE: Rebuilt DuckDB sources in {time.perf_counter() - t0:.4f}s")
             
             # 3. Build Query
-            t0 = time.perf_counter()
             sql = "SELECT type, name, slug, domain, email, phone_number, tags, display, average_rating, reviews_count, street_address, city, state, zip, list_found_at, details_found_at, enqueued_at, last_enriched FROM items WHERE 1=1"
             params: List[Any] = []
 
@@ -268,7 +276,7 @@ def get_fuzzy_search_results(
                     sql += " AND (street_address IS NULL OR street_address = '' OR street_address = 'null')"
                 
                 if filters.get("to_call"):
-                    sql += " AND list_contains(tags, 'to-call')"
+                    sql += " AND is_to_call = TRUE"
 
             if campaign:
                 exclusion_manager = ExclusionManager(campaign=campaign)
@@ -290,7 +298,6 @@ def get_fuzzy_search_results(
                 sql += " AND (lower(name) LIKE ? OR lower(slug) LIKE ? OR lower(domain) LIKE ? OR lower(email) LIKE ? OR lower(display) LIKE ? OR list_contains(tags, ?))"
                 params.extend([query_pattern] * 5 + [search_query.lower()])
 
-            # Ordering
             if sort_by == "recent":
                 sql += " ORDER BY last_modified DESC NULLS LAST"
             elif sort_by == "rating":
@@ -308,7 +315,6 @@ def get_fuzzy_search_results(
             logger.error(f"FDPE: DuckDB search failed: {e}", exc_info=True)
             return []
 
-        # 4. Transform results to SearchResult models
         final_items = []
         for r in results:
             final_items.append(SearchResult(
@@ -333,5 +339,4 @@ def get_fuzzy_search_results(
                 last_enriched=str(r[17]) if r[17] else None
             ))
 
-        logger.debug(f"FDPE: Search '{search_query}' took {time.perf_counter() - start_total:.4f}s")
         return final_items

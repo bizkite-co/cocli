@@ -46,7 +46,7 @@ def is_cache_valid(campaign: Optional[str] = None) -> bool:
         with open(cache_file, "r", encoding="utf-8") as f:
             first_line = f.readline()
             if first_line:
-                from .utils import UNIT_SEP
+                from cocli.core.constants import UNIT_SEP
                 # If first line contains 'slug', it's a header - we don't use headers anymore
                 if "slug" in first_line:
                     logger.info("Cache contains header. Invalidating.")

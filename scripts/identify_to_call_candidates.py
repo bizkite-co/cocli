@@ -53,11 +53,9 @@ def identify_candidates() -> None:
     print(f"\nSelected {len(candidates)} candidates for the To-Call queue:")
     for c in candidates:
         print(f"- {c.name} ({c.slug}) | Phone: {c.phone_number or c.phone_1}")
-        # Add the tag
-        if "to-call" not in c.tags:
-            c.tags.append("to-call")
-            c.save()
-            print("  [Tagged as to-call]")
+        # Use the unified toggle logic (decoupled from tags, manages filesystem queue)
+        c.toggle_to_call()
+        print("  [Added to durable To-Call Queue]")
 
 if __name__ == "__main__":
     identify_candidates()

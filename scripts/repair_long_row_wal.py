@@ -7,7 +7,7 @@ from pydantic import ValidationError
 sys.path.append(str(Path(__file__).parent.parent))
 
 from cocli.models.campaigns.indexes.google_maps_prospect import GoogleMapsProspect
-from cocli.core.utils import UNIT_SEP
+from cocli.core.constants import UNIT_SEP
 
 def repair_file(path: Path, execute: bool = False) -> bool:
     print(f"\n--- Debugging: {path.name} ---")

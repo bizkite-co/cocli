@@ -156,7 +156,7 @@ def get_company_details_for_view(company_slug: str) -> Optional[Dict[str, Any]]:
         maps_receipt = entry / "enrichments" / "google_maps.usv"
         if maps_receipt.exists():
             try:
-                from ..core.utils import UNIT_SEP
+                from cocli.core.constants import UNIT_SEP
                 with open(maps_receipt, "r", encoding="utf-8") as rf:
                     rf.readline() # skip header
                     data_line = rf.readline()

@@ -1,11 +1,11 @@
 import json
 from pathlib import Path
 from typing import List, Dict, Optional, ClassVar
-from pydantic import BaseModel
+from ...base import BaseUsvModel
 from ....core.paths import paths
 from ....core.ordinant import IndexName, get_shard
 
-class BaseIndexModel(BaseModel):
+class BaseIndexModel(BaseUsvModel):
     """
     SINGLE SOURCE OF TRUTH for all cocli indexes.
     Defines the storage location, schema generation, and versioning.

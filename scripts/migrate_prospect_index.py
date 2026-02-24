@@ -9,7 +9,7 @@ import pydantic
 sys.path.append(str(Path(__file__).parent.parent))
 
 from cocli.models.campaigns.indexes.google_maps_prospect import GoogleMapsProspect
-from cocli.core.utils import UNIT_SEP
+from cocli.core.constants import UNIT_SEP
 from cocli.core.sharding import get_place_id_shard
 from cocli.core.config import get_campaign_dir
 

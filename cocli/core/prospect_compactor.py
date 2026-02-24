@@ -5,7 +5,7 @@ from pathlib import Path
 from typing import Set
 from cocli.core.config import get_campaigns_dir
 from cocli.core.sharding import get_grid_tile_id, get_geo_shard
-from cocli.core.utils import UNIT_SEP
+from cocli.core.constants import UNIT_SEP
 from cocli.models.campaigns.indexes.google_maps_prospect import GoogleMapsProspect
 
 logger = logging.getLogger(__name__)

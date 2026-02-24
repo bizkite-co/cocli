@@ -1,7 +1,7 @@
 import csv
 from typing import List, Iterable, Iterator, Any, Dict, Optional
 
-from ..core.utils import UNIT_SEP
+from cocli.core.constants import UNIT_SEP
 
 # Record Separator - using standard newline for broad tool compatibility
 RECORD_SEPARATOR = "\n"

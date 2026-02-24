@@ -117,7 +117,7 @@ class IndexDetail(VerticalScroll):
                 step_statuses = {}
                 step_details = {}
                 if latest_run:
-                    from ...core.utils import UNIT_SEP
+                    from cocli.core.constants import UNIT_SEP
                     with open(latest_run, "r") as f:
                         next(f) # Skip header
                         for line in f:

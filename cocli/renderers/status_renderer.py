@@ -1,3 +1,4 @@
+# POLICY: frictionless-data-policy-enforcement
 from typing import Any, Dict, List, Optional
 from rich.table import Table
 from rich.panel import Panel
@@ -25,6 +26,7 @@ def render_queue_table(stats: Dict[str, Any]) -> Table:
     table.add_column("Queue", style="cyan")
     table.add_column("Pending", justify="right", style="magenta")
     table.add_column("In-Flight", justify="right", style="blue")
+    table.add_column("Scheduled", justify="right", style="cyan")
     table.add_column("Completed", justify="right", style="green")
     table.add_column("Last Completion", style="yellow")
 
@@ -52,6 +54,7 @@ def render_queue_table(stats: Dict[str, Any]) -> Table:
             name, 
             str(metrics.get("pending", 0)), 
             str(metrics.get("inflight", 0)), 
+            str(metrics.get("scheduled", 0)),
             str(metrics.get("completed", 0)), 
             age_str
         )

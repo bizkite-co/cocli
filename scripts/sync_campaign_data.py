@@ -42,7 +42,7 @@ def get_discovery_map(campaign_name: str) -> Dict[str, Set[str]]:
     if not results_dir.exists():
         return discovery_map
         
-    from cocli.core.utils import UNIT_SEP
+    from cocli.core.constants import UNIT_SEP
     
     # Results are in shards like results/4/40.08/-104.97/phrase.usv
     # OR results/4/40.1_-105.0/phrase.usv

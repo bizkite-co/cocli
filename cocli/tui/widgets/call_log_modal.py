@@ -9,6 +9,7 @@ from textual import on, events
 
 from cocli.models.companies.company import Company
 from cocli.models.companies.meeting import Meeting
+from cocli.models.campaigns.queues.to_call import ToCallTask
 from cocli.core.config import get_campaign
 from cocli.core.paths import paths
 from .inputs import CocliInput
@@ -66,6 +67,8 @@ class CallLogModal(ModalScreen[bool]):
                 self.app.notify("Company not found", severity="error")
                 return
 
+            campaign = get_campaign() or "default"
+
             # 1. Log the Meeting
             meeting = Meeting(
                 title=f"Logged Call to {self.phone}",
@@ -75,28 +78,45 @@ class CallLogModal(ModalScreen[bool]):
             meetings_dir = paths.companies.entry(self.company_slug).path / "meetings"
             meeting.to_file(meetings_dir)
 
-            # 2. Update Company: Remove 'to-call' tag (it's done!)
-            if "to-call" in company.tags:
-                company.tags.remove("to-call")
-            
+            # 2. Queue Lifecycle: Move from PENDING to COMPLETED
+            # We don't remove the tag anymore, as it's decoupled.
+            pending_task = ToCallTask(
+                company_slug=self.company_slug,
+                domain=company.domain or "unknown",
+                campaign_name=campaign,
+                ack_token=None
+            )
+            pending_path = pending_task.get_local_path()
+            if pending_path.exists():
+                completed_dir = paths.campaign(campaign).path / "queues" / "to-call" / "completed"
+                completed_dir.mkdir(parents=True, exist_ok=True)
+                # Move and rename to .usv with timestamp for uniqueness in completed
+                ts = datetime.now(UTC).strftime("%Y%m%d_%H%M%S")
+                target_path = completed_dir / f"{ts}_{self.company_slug}.usv"
+                pending_path.rename(target_path)
+                self.app.notify("Task moved to completed.")
+
             # 3. Schedule Follow-up if requested
             if should_schedule and callback_str:
                 try:
                     cb_date = datetime.strptime(callback_str, "%Y-%m-%d").replace(tzinfo=UTC)
                     company.callback_at = cb_date
                     
-                    # Create a marker in the scheduled queue
-                    campaign = get_campaign()
-                    if campaign:
-                        sched_dir = paths.campaign(campaign).path / "queues" / "to-call" / "scheduled" / callback_str
-                        sched_dir.mkdir(parents=True, exist_ok=True)
-                        (sched_dir / f"{self.company_slug}.json").write_text('{"status": "scheduled"}')
-                        self.app.notify(f"Scheduled callback for {callback_str}")
+                    # Create sharded USV task marker
+                    scheduled_task = ToCallTask(
+                        company_slug=self.company_slug,
+                        domain=company.domain or "unknown",
+                        campaign_name=campaign,
+                        callback_at=cb_date,
+                        ack_token=None
+                    )
+                    scheduled_task.save()
+                    self.app.notify(f"Scheduled callback for {callback_str}")
                 except ValueError:
                     self.app.notify(f"Invalid date format: {callback_str}", severity="warning")
 
             company.save()
-            self.app.notify("Call logged and removed from to-call list.")
+            self.app.notify("Call logged.")
             self.dismiss(True)
             
         except Exception as e:

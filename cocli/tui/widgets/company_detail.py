@@ -377,6 +377,7 @@ class CompanyDetail(Container):
             
             # Refresh data after modal dismiss
             self.refresh_notes_data()
+            self.refresh_meetings_data()
             self._refresh_info_table()
         else:
             self.app.notify("Phone number or slug missing", severity="warning")
@@ -595,10 +596,20 @@ class CompanyDetail(Container):
         self.meetings_table.clear()
         meetings = self.company_data.get("meetings", [])
         for m in meetings:
-            dt = m.get("datetime_utc", "")[:10]
-            # Try to get type from model if possible, though currently it's just in filenames or frontmatter
+            raw_dt = m.get("datetime_utc")
+            dt_str = "Unknown"
+            time_str = ""
+            if raw_dt:
+                try:
+                    dt = datetime.fromisoformat(raw_dt) if isinstance(raw_dt, str) else raw_dt
+                    dt_str = dt.strftime("%Y-%m-%d")
+                    time_str = dt.strftime("%H:%M")
+                except (ValueError, TypeError):
+                    dt_str = str(raw_dt)[:10]
+            
+            content_preview = escape(m.get("content", "")[:100].replace("\n", " "))
             m_type = m.get("type", "meeting")
-            self.meetings_table.add_row(dt, f"[{m_type}] {escape(m.get('title', 'Untitled'))}")
+            self.meetings_table.add_row(dt_str, time_str, f"[{m_type}] {content_preview}")
         
         if self.meetings_table.has_focus:
             self.meetings_table.focus()
@@ -768,12 +779,27 @@ class CompanyDetail(Container):
     def _create_meetings_table(self) -> MeetingsTable:
         table = MeetingsTable(id="meetings-table")
         table.add_column("Date", width=12)
-        table.add_column("Title")
+        table.add_column("Time", width=8)
+        table.add_column("Preview")
         meetings = self.company_data.get("meetings", [])
         for m in meetings:
-            dt = m.get("datetime_utc", "")[:10]
+            # Handle local time display
+            raw_dt = m.get("datetime_utc")
+            dt_str = "Unknown"
+            time_str = ""
+            if raw_dt:
+                try:
+                    dt = datetime.fromisoformat(raw_dt)
+                    # Convert to local for display? Textual apps usually stay local.
+                    # For now, just show the HH:MM
+                    dt_str = dt.strftime("%Y-%m-%d")
+                    time_str = dt.strftime("%H:%M")
+                except (ValueError, TypeError):
+                    dt_str = str(raw_dt)[:10]
+            
+            content_preview = escape(m.get("content", "")[:100].replace("\n", " "))
             m_type = m.get("type", "meeting")
-            table.add_row(dt, f"[{m_type}] {escape(m.get('title', 'Untitled'))}")
+            table.add_row(dt_str, time_str, f"[{m_type}] {content_preview}")
         return table
 
     def _create_notes_table(self) -> NotesTable:

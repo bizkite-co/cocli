@@ -5,7 +5,7 @@ from typing import Dict, Any, Iterator
 from datetime import datetime, UTC
 
 from .paths import paths
-from .utils import UNIT_SEP
+from cocli.core.constants import UNIT_SEP
 from ..models.campaigns.indexes.lifecycle import LifecycleItem
 
 logger = logging.getLogger(__name__)

@@ -64,7 +64,7 @@ class TurboshipLegacyProspect(BaseModel):
 
     @classmethod
     def from_usv_line(cls, line: str) -> "TurboshipLegacyProspect":
-        from cocli.core.utils import UNIT_SEP
+        from cocli.core.constants import UNIT_SEP
         parts = line.strip("\x1e\n").split(UNIT_SEP)
         
         # Skip header if it's the header row

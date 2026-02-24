@@ -23,7 +23,7 @@ from ..core.config import load_campaign_config, get_campaign_dir
 from ..utils.playwright_utils import setup_optimized_context
 from ..utils.headers import ANTI_BOT_HEADERS, USER_AGENT
 from ..core.text_utils import slugify
-from ..core.utils import UNIT_SEP
+from cocli.core.constants import UNIT_SEP
 
 logger = logging.getLogger(__name__)
 
