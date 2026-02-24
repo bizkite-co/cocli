@@ -422,6 +422,37 @@ Footer > .footer--key {
     color: $text;
 }
 
+#call_log_form {
+    width: 90;
+    height: 35;
+    background: $surface;
+    border: tall $accent;
+    padding: 1 2;
+}
+
+#call_modal_title {
+    width: 100%;
+    text-align: center;
+    color: $text;
+}
+
+.notes-area {
+    height: 15;
+    margin: 1 0;
+    border: solid $surface-lighten-1;
+}
+
+#callback_row {
+    height: auto;
+    background: $surface-lighten-1;
+    padding: 0 1;
+    margin-bottom: 1;
+}
+
+#callback_row Checkbox {
+    margin-top: 1;
+}
+
 #queue_info_panel {
     height: auto;
     border-bottom: solid #222222;

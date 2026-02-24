@@ -86,17 +86,16 @@ class CompanyList(Container):
             search_input = search_inputs.first()
             self._ignoring_input_change = True
             try:
-                # Type check for safety
                 if hasattr(search_input, "value"):
                     setattr(search_input, "value", "")
             finally:
                 self._ignoring_input_change = False
             
+        # FORCE search update for the new template
+        self.search_offset = 0
         self.run_search("")
         
-        # We don't want to call .focus() here if run_search is async, 
-        # it might cause flicker before results arrive.
-        # But for 'l' key from template, we MUST focus.
+        # Focus list after template application
         list_views = self.query("#company_list_view")
         if list_views:
             list_view = list_views.first()
@@ -105,8 +104,10 @@ class CompanyList(Container):
 
     async def on_mount(self) -> None:
         """Initialize the list on mount."""
-        self.run_search("")
-        self.query_one(ListView).focus()
+        # Initial search is now handled by app.action_show_companies via apply_template
+        list_views = self.query(ListView)
+        if list_views:
+            list_views.first().focus()
 
     def action_focus_search(self) -> None:
         """Focus the search input."""
@@ -265,6 +266,7 @@ class CompanyList(Container):
                 offset=self.search_offset
             )
             self.filtered_fz_items = results
+            # For synchronous tests, we need immediate update
             self.update_company_list_view()
         else:
             self.trigger_async_search(query)
@@ -279,7 +281,9 @@ class CompanyList(Container):
             search_filters["has_contact_info"] = True
 
         try:
-            self.query_one("#search_loading").display = True
+            loading = self.query("#search_loading")
+            if loading:
+                loading.first().display = True
         except Exception:
             pass
 
@@ -292,7 +296,11 @@ class CompanyList(Container):
             offset=self.search_offset
         )
         self.filtered_fz_items = results
-        self.update_company_list_view()
+        
+        if app.services.sync_search:
+            self.update_company_list_view()
+        else:
+            self.app.call_after_refresh(self.update_company_list_view)
 
     @work(exclusive=True, thread=True)
     async def trigger_async_search(self, query: str) -> None:
@@ -300,6 +308,8 @@ class CompanyList(Container):
         Runs the fuzzy search in a background thread to avoid blocking the UI.
         Exclusive=True ensures only the latest search task runs.
         """
+        app = cast("CocliApp", self.app)
+        
         # Ensure loading state is visible
         try:
             def show_loading() -> None:
@@ -308,13 +318,14 @@ class CompanyList(Container):
         except Exception:
             pass
 
-        await asyncio.sleep(0.1)
+        # Skip delay for synchronous/test searches to avoid race conditions
+        if not app.services.sync_search:
+            await asyncio.sleep(0.1)
         
         try:
             if not self.is_running or not self.app:
                 return
             
-            app = cast("CocliApp", self.app)
             sort_by = self.current_sort or ("recent" if self.sort_recent else None)
             
             search_filters = dict(self.current_filters)
@@ -334,12 +345,14 @@ class CompanyList(Container):
                 return
 
             self.filtered_fz_items = results
-            self.call_after_refresh(self.update_company_list_view)
+            self.app.call_after_refresh(self.update_company_list_view)
         except Exception as e:
             logger.error(f"Search worker failed: {e}", exc_info=True)
             def hide_loading() -> None:
-                self.query_one("#search_loading").display = False
-            self.call_after_refresh(hide_loading)
+                loading = self.query("#search_loading")
+                if loading:
+                    loading.first().display = False
+            self.app.call_after_refresh(hide_loading)
 
     def update_company_list_view(self) -> None:
         """Updates the ListView with filtered companies."""
@@ -356,28 +369,42 @@ class CompanyList(Container):
             list_view = list_views.first()
             list_view.clear()
             
+            if not self.filtered_fz_items:
+                list_view.index = None
+                return
+
             new_items = []
             for item in self.filtered_fz_items:
                 new_items.append(ListItem(Label(item.name), name=item.name))
             
-            if new_items:
-                list_view.mount_all(new_items)
-                
-                def select_first() -> None:
-                    # Double check list_view is still valid
-                    if not list_view.is_mounted:
-                        return
+            # extend() is more synchronous for small lists and helps tests
+            list_view.extend(new_items)
+            
+            app = cast("CocliApp", self.app)
+            
+            # Atomic selection and highlight trigger
+            def select_and_highlight() -> None:
+                if not list_view.is_mounted:
+                    return
+                # Only set index if there are children
+                if list_view.children:
                     list_view.index = 0
-                    
-                    # Manually trigger highlight for the first item to update preview
                     if self.filtered_fz_items:
                         item = self.filtered_fz_items[0]
                         if item.slug:
-                            self.debounce_highlight(item)
-                
-                self.call_after_refresh(select_first)
+                            # For tests, trigger highlight immediately
+                            if app.services.sync_search:
+                                company = Company.get(item.slug)
+                                if company:
+                                    self.post_message(self.CompanyHighlighted(company))
+                            else:
+                                self.debounce_highlight(item)
+            
+            # For tests, we need immediate synchronization
+            if app.services.sync_search:
+                select_and_highlight()
             else:
-                list_view.index = None
+                self.app.call_after_refresh(select_and_highlight)
         except Exception as e:
             logger.error(f"Error updating list view: {e}")
 

@@ -24,6 +24,7 @@ class ServiceContainer(BaseModel):
     
     search_service: Any = Field(default_factory=lambda: get_fuzzy_search_results)
     company_service: Any = Field(default_factory=lambda: get_company_details_for_view)
+    template_counts_service: Any = Field(default_factory=lambda: get_template_counts)
     
     # Lazy properties for services that need campaign_name
     _campaign_service: Optional[CampaignService] = None
@@ -105,7 +106,7 @@ class ServiceContainer(BaseModel):
         return cast(List[SearchResult], results)
 
     def get_template_counts(self, campaign_name: Optional[str] = None) -> Dict[str, int]:
-        return get_template_counts(campaign_name)
+        return self.template_counts_service(campaign_name) # type: ignore
 
     def get_company_details(self, company_slug: str) -> Optional[Dict[str, Any]]:
         return self.company_service(company_slug) # type: ignore

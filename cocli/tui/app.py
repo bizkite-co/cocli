@@ -1,5 +1,6 @@
 import logging
 import os
+import asyncio
 from datetime import datetime
 from typing import Any, Optional, Type, List, cast, Dict
 
@@ -111,7 +112,11 @@ class CocliApp(App[None]):
         self.auto_show = auto_show
         self.process_runs: List[ProcessRun] = []
         
-        # Initialize Navigation Tree here to avoid circular imports at module level
+        # Explicitly ensure the OperationService uses our shared services container
+        # to prevent it from spawning its own ServiceContainer (which breaks mocks)
+        if hasattr(self.services, "operation_service"):
+             # Trigger lazy load if it's a property, but ensure it's synced
+             _ = self.services.operation_service
         self.nav_tree: Dict[Type[Any], NavNode] = {
             # --- Companies Branch ---
             CompanyDetail: NavNode(
@@ -168,7 +173,7 @@ class CocliApp(App[None]):
         self.menu_bar = self.query_one(MenuBar)
         create_default_config_file()
         if self.auto_show:
-            self.action_show_companies()
+            self.run_worker(self.action_show_companies())
 
     def action_focus_sidebar(self) -> None:
         """Focus the sidebar in views that have one (like ApplicationView)."""
@@ -213,7 +218,7 @@ class CocliApp(App[None]):
             self.leader_key_buffer += event.key
             
             if self.leader_key_buffer == LEADER_KEY + "c":
-                self.call_later(self.action_show_companies)
+                self.run_worker(self.action_show_companies())
             elif self.leader_key_buffer == LEADER_KEY + "p":
                 self.call_later(self.action_show_people)
             elif self.leader_key_buffer == LEADER_KEY + "a":
@@ -227,7 +232,7 @@ class CocliApp(App[None]):
             # If we are already at a major view's trunk (nav list), h should take us back to companies
             focused = self.focused
             if focused and focused.id in ["app_nav_list", "template_list", "person_list_view"]:
-                self.action_show_companies()
+                self.run_worker(self.action_show_companies())
                 event.stop()
                 event.prevent_default()
                 return
@@ -247,7 +252,7 @@ class CocliApp(App[None]):
         
         if not target_node:
             tui_debug_log("APP: No active nav node detected, defaulting to companies")
-            self.action_show_companies()
+            self.run_worker(self.action_show_companies())
             return
 
         tui_debug_log(f"APP: Target node: {target_node.widget_class.__name__}")
@@ -261,7 +266,11 @@ class CocliApp(App[None]):
 
             def do_nav_up() -> None:
                 if hasattr(self, p_action):
-                    getattr(self, p_action)()
+                    attr = getattr(self, p_action)
+                    if asyncio.iscoroutinefunction(attr):
+                        self.run_worker(attr())
+                    else:
+                        attr()
                 else:
                     try:
                         w = self.query_one(w_class)
@@ -352,7 +361,7 @@ class CocliApp(App[None]):
         except Exception:
             self.bell()
 
-    def action_show_companies(self) -> None:
+    async def action_show_companies(self) -> None:
         """Show the company list view."""
         self.menu_bar.set_active("companies")
         self.main_content.remove_children()
@@ -366,11 +375,15 @@ class CocliApp(App[None]):
                 company_list=company_list,
                 company_preview=company_preview
             )
-        self.main_content.mount(search_view)
+        await self.main_content.mount(search_view)
         
         # Default to 'All Leads' to ensure new global entries are visible
-        # Must be called after refresh to ensure widgets are mounted
-        self.call_after_refresh(company_list.apply_template, "tpl_all")
+        # For synchronous tests, we need results ready immediately
+        if self.services.sync_search:
+            # We already awaited mount, so widgets should be ready
+            await company_list.perform_search("")
+        else:
+            self.call_after_refresh(company_list.apply_template, "tpl_all")
         
         def focus_list() -> None:
             try:
@@ -406,7 +419,7 @@ class CocliApp(App[None]):
     def on_application_view_campaign_activated(self, message: ApplicationView.CampaignActivated) -> None:
         self.notify(f"Campaign Activated: {message.campaign_name}")
         self.query_one(MenuBar).refresh_campaign()
-        self.action_show_companies()
+        self.run_worker(self.action_show_companies())
 
     def action_select_item(self) -> None:
         focused_widget = self.focused

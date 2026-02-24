@@ -20,10 +20,10 @@ class TemplateList(Container):
         yield Label("TEMPLATES", id="template_header", classes="pane-header")
         yield ListView(
             ListItem(Label("All Leads"), id="tpl_all"),
+            ListItem(Label("To Call Tomorrow"), id="tpl_to_call"),
             ListItem(Label("With Email"), id="tpl_with_email"),
             ListItem(Label("Missing Email"), id="tpl_no_email"),
             ListItem(Label("Actionable (E+P)"), id="tpl_actionable"),
-            ListItem(Label("To Call Tomorrow"), id="tpl_to_call"),
             ListItem(Label("Missing Address"), id="tpl_no_address"),
             ListItem(Label("Top Rated"), id="tpl_top_rated"),
             ListItem(Label("Most Reviewed"), id="tpl_most_reviewed"),

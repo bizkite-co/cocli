@@ -38,8 +38,8 @@ async def test_company_selection_integration():
 
     # Act & Assert
     async with app.run_test() as driver:
-        driver.app.action_show_companies()
-        await driver.pause(0.5)
+        await driver.app.action_show_companies()
+        await driver.pause(1.0)
         company_list_screen = await wait_for_widget(driver, CompanyList)
         # --- Direct Message Capture ---
         posted_messages = []

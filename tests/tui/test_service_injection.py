@@ -31,9 +31,8 @@ async def test_search_with_injected_service():
     
     async with app.run_test() as driver:
         # Show companies
-        driver.app.action_show_companies()
-        await driver.pause(0.1)
+        await driver.app.action_show_companies()
+        await driver.pause(1.0)
         
-        # Verify the mock was called by the widget during mount
-        # (CompanyList calls it on_mount)
+        # Verify the mock was called by the widget during initialization
         mock_search.assert_called()

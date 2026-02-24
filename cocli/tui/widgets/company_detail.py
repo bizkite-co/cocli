@@ -189,6 +189,7 @@ class CompanyDetail(Container):
         Binding("v", "view_enrichment", "Enrichment"),
         Binding("p", "call_company", "Call"),
         Binding("t", "toggle_to_call", "To Call"),
+        Binding("D", "delete_company", "Delete Company"),
         Binding("e", "open_folder", "Explorer (NVim)"),
     ]
 
@@ -356,10 +357,12 @@ class CompanyDetail(Container):
         else:
             self.app.notify("Enrichment file not found", severity="warning")
 
-    def action_call_company(self) -> None:
+    async def action_call_company(self) -> None:
         # Prefer phone_1 which is our primary standardized field
         phone = self.company_data["company"].get("phone_1") or self.company_data["company"].get("phone_number")
-        if phone:
+        slug = self.company_data["company"].get("slug")
+        
+        if phone and slug:
             import webbrowser
             cleaned = re.sub(r'\D', '', str(phone))
             if not cleaned.startswith('1') and len(cleaned) == 10:
@@ -368,27 +371,15 @@ class CompanyDetail(Container):
             webbrowser.open(url)
             self.app.notify(f"Calling {phone}...")
             
-            # Create a meeting item for the phone call
-            slug = self.company_data["company"].get("slug")
-            if slug:
-                try:
-                    from cocli.models.companies.meeting import Meeting
-                    from cocli.core.paths import paths
-                    
-                    meeting = Meeting(title=f"Phone Call to {phone}", type="phone-call", content="Initiated call via Google Voice.")
-                    meetings_dir = paths.companies.entry(slug).path / "meetings"
-                    meeting_path = meeting.to_file(meetings_dir)
-                    
-                    # Refresh TUI tables
-                    self.refresh_notes_data()
-                    self.app.notify("Logged call in meetings")
-                    
-                    # Open for editing notes
-                    self._edit_with_nvim(meeting_path)
-                except Exception as e:
-                    logger.error(f"Failed to log call: {e}")
+            # Push the embedded call logger
+            from .call_log_modal import CallLogModal
+            await self.app.push_screen(CallLogModal(company_slug=slug, phone=str(phone)))
+            
+            # Refresh data after modal dismiss
+            self.refresh_notes_data()
+            self._refresh_info_table()
         else:
-            self.app.notify("No phone number found", severity="warning")
+            self.app.notify("Phone number or slug missing", severity="warning")
 
     def action_toggle_to_call(self) -> None:
         slug = self.company_data["company"].get("slug")
@@ -404,6 +395,40 @@ class CompanyDetail(Container):
             # Update local data and refresh
             self.company_data["company"]["tags"] = company.tags
             self._refresh_info_table()
+
+    async def action_delete_company(self) -> None:
+        """Permanently deletes the entire company directory."""
+        slug = self.company_data["company"].get("slug")
+        name = self.company_data["company"].get("name", slug)
+        if not slug:
+            return
+
+        from .confirm_screen import ConfirmScreen
+        confirm = await self.app.push_screen(ConfirmScreen(f"Are you sure you want to PERMANENTLY DELETE '{name}'?"))
+        
+        if confirm:
+            try:
+                import shutil
+                from cocli.core.paths import paths
+                from cocli.core.cache import build_cache
+                import threading
+                
+                path = paths.companies.entry(slug).path
+                if path.exists():
+                    shutil.rmtree(path)
+                    self.app.notify(f"Deleted company: {name}")
+                    
+                    # Rebuild cache so it's gone from search
+                    from cocli.core.config import get_campaign
+                    threading.Thread(target=build_cache, kwargs={"campaign": get_campaign()}, daemon=True).start()
+                    
+                    # Go back to list
+                    self.app.action_show_companies()
+                else:
+                    self.app.notify(f"Directory not found: {path}", severity="error")
+            except Exception as e:
+                logger.error(f"Failed to delete company: {e}")
+                self.app.notify(f"Delete failed: {e}", severity="error")
 
     def action_open_folder(self) -> None:
         slug = self.company_data["company"].get("slug")
