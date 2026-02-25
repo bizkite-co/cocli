@@ -103,6 +103,8 @@ def get_golden_data() -> List[Dict[str, str]]:
 
 async def run_capture(force: bool = False) -> None:
     """Runs the capture pipeline for all items in the golden set if they are stale."""
+    from cocli.models.campaigns.indexes.google_maps_golden import GoogleMapsGoldenItem
+    
     data = get_golden_data()
     if not data:
         print("Golden set is empty.")
@@ -123,7 +125,8 @@ async def run_capture(force: bool = False) -> None:
                 stale_items.append(item)
 
     if not stale_items:
-        print("All snapshots are fresh (< 24h old).")
+        # Ensure datapackage exists even if no snapshots refreshed
+        GoogleMapsGoldenItem.save_datapackage(SNAPSHOT_DIR.parent)
         return
 
     print(f"Refreshing {len(stale_items)} stale snapshots...")
@@ -137,6 +140,9 @@ async def run_capture(force: bool = False) -> None:
             await capture_pipeline(page, item["name"], item["search_phrase"], item["lat"], item["lon"], base_dir)
 
         await browser.close()
+    
+    # Ensure datapackage exists
+    GoogleMapsGoldenItem.save_datapackage(SNAPSHOT_DIR.parent)
 
 @app.command()
 def main(
