@@ -46,6 +46,11 @@ The project is built using `typer` for the CLI, `pydantic` for data modeling, an
             * Continue to the next step in the plan.
     * Whether the test passed or failed, you learned something valuable.
 
+### Prefer Logging over Print
+*   **ALWAYS use the `logging` module** for terminal output and status updates.
+*   **Avoid `print()`** as it is prone to syntax errors (like unterminated literals) and lacks the level-based control required for professional CLI tools.
+*   Use `logger.info()` for important user-facing messages and `logger.debug()` for internal process details.
+
 
 ### Running Commands
 
