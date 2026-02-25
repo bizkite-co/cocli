@@ -48,7 +48,7 @@ def consolidate_campaign_results(campaign_name: str) -> int:
                     if not target_path.exists():
                         shutil.move(str(file_path), str(target_path))
                     else:
-                        file_path.unlink()
+                        file_path.unlink(missing_ok=True)
                 merged_count += 1
         except ValueError:
             continue
@@ -57,25 +57,40 @@ def consolidate_campaign_results(campaign_name: str) -> int:
     return merged_count
 
 def compact_prospects_to_checkpoint(campaign_name: str) -> int:
-    """Merges all consolidated queue results into the main campaign checkpoint."""
+    """Merges all sharded WAL prospects into the main campaign checkpoint."""
     from cocli.core.paths import paths
-    results_dir = paths.campaign(campaign_name).path / "queues" / "gm-list" / "completed" / "results"
+    wal_dir = paths.campaign(campaign_name).index("google_maps_prospects").wal
     
     added = 0
-    if not results_dir.exists():
+    
+    if not wal_dir.exists():
+        logger.info("WAL directory does not exist. Nothing to compact.")
         return 0
-
-    for usv_file in results_dir.rglob("*.usv"):
+            
+    logger.info("Compacting prospects from wal...")
+    
+    # rglob to catch sharded subdirectories in WAL
+    for usv_file in wal_dir.rglob("*.usv"):
+        if usv_file.name == "prospects.checkpoint.usv":
+            continue
+            
         try:
             with open(usv_file, "r") as f:
                 for line in f:
                     if line.strip():
-                        prospect = GoogleMapsProspect.from_usv(line)
-                        if prospect:
-                            GoogleMapsProspect.append_to_checkpoint(campaign_name, prospect)
-                            added += 1
+                        # skip potential headers if they were missed by cleanup
+                        if "created_at" in line or "scrape_date" in line:
+                            continue
+                        try:
+                            prospect = GoogleMapsProspect.from_usv(line)
+                            if prospect and prospect.place_id:
+                                GoogleMapsProspect.append_to_checkpoint(campaign_name, prospect)
+                                added += 1
+                        except Exception as e:
+                            logger.warning(f"Failed to parse prospect in {usv_file}: {e}")
+            
             # Surgical cleanup: delete file after successful merge
-            usv_file.unlink()
+            usv_file.unlink(missing_ok=True)
         except Exception as e:
             logger.error(f"Failed to merge {usv_file}: {e}")
             
@@ -100,7 +115,7 @@ def _merge_usv(src: Path, dest: Path) -> None:
         with open(dest, "a", encoding="utf-8") as df:
             for row in new_rows:
                 df.write(row + "\n")
-    src.unlink()
+    src.unlink(missing_ok=True)
 
 def _cleanup_empty_dirs(root: Path) -> None:
     dirs = sorted([d for d in root.rglob("*") if d.is_dir()], key=lambda x: len(x.parts), reverse=True)

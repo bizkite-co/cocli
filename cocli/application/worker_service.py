@@ -1,4 +1,3 @@
-import csv
 import socket
 import time
 import asyncio
@@ -235,8 +234,11 @@ class WorkerService:
             try:
                 csv_manager = ProspectsIndexManager(task.campaign_name)
                 file_path = csv_manager.get_file_path(task.place_id)
-                rel_path = file_path.relative_to(csv_manager.index_dir)
-                s3_key = f"campaigns/{task.campaign_name}/indexes/google_maps_prospects/{rel_path}"
+                
+                # Use OMAP-compliant S3 key for WAL records
+                from ..core.sharding import get_place_id_shard
+                shard = get_place_id_shard(task.place_id)
+                s3_key = f"campaigns/{task.campaign_name}/indexes/google_maps_prospects/wal/{shard}/{task.place_id}.usv"
 
                 if not file_path.exists():
                     try:
@@ -248,10 +250,17 @@ class WorkerService:
                 if file_path.exists():
                     try:
                         with open(file_path, "r", encoding="utf-8") as f:
-                            reader = csv.DictReader(f)
-                            existing_data = next(reader, None)
-                            if existing_data:
-                                existing_prospect = GoogleMapsProspect.model_validate(existing_data)
+                            for line in f:
+                                if not line.strip():
+                                    continue
+                                # Robust header detection: skip if it looks like the header from ScrapeIndex
+                                if "created_at" in line or "scrape_date" in line:
+                                    continue
+                                try:
+                                    existing_prospect = GoogleMapsProspect.from_usv(line)
+                                    break # Only one prospect per file in details WAL
+                                except Exception as e:
+                                    logger.warning(f"Error parsing line in {file_path}: {e}")
                     except Exception as e:
                         logger.warning(f"Error reading local file {file_path}: {e}")
 

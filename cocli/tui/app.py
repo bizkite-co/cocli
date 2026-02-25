@@ -167,13 +167,13 @@ class CocliApp(App[None]):
             )
         }
 
-    def on_mount(self) -> None:
+    async def on_mount(self) -> None:
         tui_debug_log("--- APP START ---")
         self.main_content = self.query_one("#app_content", Container)
         self.menu_bar = self.query_one(MenuBar)
         create_default_config_file()
         if self.auto_show:
-            self.run_worker(self.action_show_companies())
+            await self.action_show_companies()
 
     def action_focus_sidebar(self) -> None:
         """Focus the sidebar in views that have one (like ApplicationView)."""
@@ -218,24 +218,15 @@ class CocliApp(App[None]):
             self.leader_key_buffer += event.key
             
             if self.leader_key_buffer == LEADER_KEY + "c":
-                self.run_worker(self.action_show_companies())
+                await self.action_show_companies()
             elif self.leader_key_buffer == LEADER_KEY + "p":
-                self.call_later(self.action_show_people)
+                await self.action_show_people()
             elif self.leader_key_buffer == LEADER_KEY + "a":
-                self.call_later(self.action_show_application)
+                await self.action_show_application()
             
             self.reset_leader_mode()
             event.prevent_default()
             return
-
-        if event.key == "h":
-            # If we are already at a major view's trunk (nav list), h should take us back to companies
-            focused = self.focused
-            if focused and focused.id in ["app_nav_list", "template_list", "person_list_view"]:
-                self.run_worker(self.action_show_companies())
-                event.stop()
-                event.prevent_default()
-                return
 
     def reset_leader_mode(self) -> None:
         self.leader_mode = False
@@ -401,18 +392,18 @@ class CocliApp(App[None]):
                 search_view.action_focus_template()
                 return
 
-    def action_show_people(self) -> None:
+    async def action_show_people(self) -> None:
         """Show the person list view."""
         self.menu_bar.set_active("people")
         self.main_content.remove_children()
-        self.main_content.mount(PersonList())
+        await self.main_content.mount(PersonList())
 
-    def action_show_application(self) -> None:
+    async def action_show_application(self) -> None:
         """Show the application view."""
         tui_debug_log("APP: action_show_application starting")
         self.menu_bar.set_active("application")
         self.main_content.remove_children()
-        self.main_content.mount(ApplicationView())
+        await self.main_content.mount(ApplicationView())
         tui_debug_log("APP: action_show_application finished")
 
     @on(ApplicationView.CampaignActivated)
@@ -435,16 +426,7 @@ class CocliApp(App[None]):
         tui_debug_log("APP: action_escape triggered")
         node = self._get_active_nav_node()
         if node and node.parent_action:
-            tui_debug_log(f"APP: Escaping from {node.widget_class.__name__} to parent")
-            if hasattr(self, node.parent_action):
-                getattr(self, node.parent_action)()
-            else:
-                try:
-                    w = self.query_one(node.widget_class)
-                    if hasattr(w, node.parent_action):
-                        getattr(w, node.parent_action)()
-                except Exception:
-                    pass
+            self.action_navigate_up()
         elif isinstance(self.focused, Input):
             self.focused.value = ""
 

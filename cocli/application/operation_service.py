@@ -334,8 +334,8 @@ class OperationService:
                         if p.slug:
                             company = await asyncio.to_thread(Company.get, p.slug)
                             if company and "to-call" not in company.tags:
-                                company.tags.append("to-call")
-                                await asyncio.to_thread(company.save)
+                                # toggle_to_call now handles both the tag and the filesystem queue USV
+                                await asyncio.to_thread(company.toggle_to_call)
                                 tagged += 1
                     log_step("tag_leads", "success", f"Tagged {tagged} new leads")
                     

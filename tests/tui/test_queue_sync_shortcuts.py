@@ -13,11 +13,10 @@ async def test_queue_sync_shortcuts(mocker):
     mock_sync = mocker.patch("cocli.application.data_sync_service.DataSyncService.sync_queues")
     mocker.patch("cocli.application.reporting_service.ReportingService.get_campaign_stats")
     
-    app = CocliApp()
+    app = CocliApp(auto_show=False)
     async with app.run_test() as pilot:
-        # Navigate to Application view (Space -> a)
-        await pilot.press("space")
-        await pilot.press("a")
+        # Manually show application view
+        await app.action_show_application()
         
         # Wait for the ApplicationView and nav list to appear
         nav_list = await wait_for_widget(pilot, ListView, "#app_nav_list")

@@ -248,11 +248,13 @@ CompanySearchView {
 #template_list ListItem {
     color: #666666;
     padding-left: 1;
+    background: black;
 }
 
 #template_list > .listview--highlight {
-    background: rgba(255, 255, 255, 0.05);
-    color: #ffffff;
+    background: #0a0a0a;
+    color: #00ff00;
+    text-style: bold;
 }
 
 #company_list_view {

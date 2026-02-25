@@ -2,13 +2,11 @@
 import csv
 import logging
 from pathlib import Path
-from typing import Iterator
+from typing import Iterator, Optional
 
 from ..models.campaigns.indexes.google_maps_prospect import GoogleMapsProspect
-from ..core.config import get_campaign_scraped_data_dir, get_campaign_dir
-from ..core.sharding import get_place_id_shard
-from cocli.core.constants import UNIT_SEP
-from ..utils.usv_utils import USVDictReader
+from .sharding import get_place_id_shard
+from .config import get_campaign_dir, get_campaign_scraped_data_dir  # noqa: F401
 
 logger = logging.getLogger(__name__)
 
@@ -20,12 +18,8 @@ class ProspectsIndexManager:
     """
     def __init__(self, campaign_name: str):
         self.campaign_name = campaign_name
-        campaign_dir = get_campaign_dir(campaign_name)
-        if campaign_dir:
-            self.index_dir = campaign_dir / "indexes" / "google_maps_prospects"
-        else:
-            # Fallback to legacy path if campaign not found
-            self.index_dir = get_campaign_scraped_data_dir(campaign_name)
+        from cocli.core.paths import paths
+        self.index_dir = paths.campaign_prospect_index(campaign_name)
         
         # FDPE: Ensure the schema authority exists
         try:
@@ -33,19 +27,25 @@ class ProspectsIndexManager:
         except Exception as e:
             logger.error(f"FDPE: Failed to save datapackage for prospect index: {e}")
             
+    def _get_checkpoint_path(self) -> Path:
+        """Internal helper for maintenance scripts."""
+        return self.index_dir / "prospects.checkpoint.usv"
+
     def get_file_path(self, place_id: str, for_write: bool = False) -> Path:
         """
         Returns the path to a prospect file.
         If for_write=True, ALWAYS returns the new sharded path in the WAL.
         If for_write=False (default), checks for existing files in both modern and legacy locations.
         """
+        from cocli.core.paths import paths
         shard = get_place_id_shard(place_id)
-        sharded_path = self.index_dir / "wal" / shard / f"{place_id}.usv"
+        # Use paths authority for standard WAL location
+        sharded_path = paths.campaign(self.campaign_name).index("google_maps_prospects").wal / shard / f"{place_id}.usv"
         
         if for_write:
             return sharded_path
 
-        # 1. Check for new sharded path (.usv) in the WAL
+        # 1. Check for standard sharded path (.usv) in the WAL
         if sharded_path.exists():
             return sharded_path
             
@@ -57,90 +57,69 @@ class ProspectsIndexManager:
             self.index_dir / "inbox" / f"{place_id}.usv",
             self.index_dir / "inbox" / f"{place_id}.csv"
         ]
+        
         for p in legacy_paths:
             if p.exists():
                 return p
                 
-        # 3. Default for new files: ALWAYS SHARDED
         return sharded_path
 
-    def _get_checkpoint_path(self) -> Path:
-        return self.index_dir / "prospects.checkpoint.usv"
-
-    def read_all_prospects(self) -> Iterator[GoogleMapsProspect]:
-        """
-        Yields prospects from the index, merging the checkpoint and WAL.
-        """
-        if not self.index_dir.exists():
-            return
-
-        seen_pids = set()
-        checkpoint_path = self._get_checkpoint_path().resolve()
-        self.error_log_path = self.index_dir / "validation_errors.usv"
-        self.validation_error_count = 0
-        
-        # Helper to log errors to file
-        def log_validation_error(filename: str, error: str) -> None:
-            self.validation_error_count += 1
+    def has_prospect(self, place_id: str) -> bool:
+        """Checks if a prospect exists in the index (WAL or Checkpoint)."""
+        # 1. Check WAL / Legacy paths (fast individual file check)
+        if self.get_file_path(place_id).exists():
+            return True
+            
+        # 2. Check Checkpoint (slower file scan, but necessary for completeness)
+        checkpoint_path = self._get_checkpoint_path()
+        if checkpoint_path.exists():
             try:
-                from datetime import datetime
-                from cocli.core.constants import UNIT_SEP
-                clean_err = str(error).replace("\n", " ")
-                with open(self.error_log_path, "a", encoding="utf-8") as ef:
-                    ef.write(f"{datetime.now().isoformat()}{UNIT_SEP}{filename}{UNIT_SEP}{clean_err}\n")
+                # Fast string check for existence in USV
+                with open(checkpoint_path, 'r', encoding='utf-8') as f:
+                    content = f.read()
+                    return place_id in content
             except Exception:
                 pass
+        return False
 
-        # 1. Read WAL (Hot Layer) - Files in wal/ shards
-        # We also check root, inbox, and the 'prospects/' folder for compatibility
-        wal_dir = self.index_dir / "wal"
-        search_dirs = [wal_dir, self.index_dir / "inbox"]
-        
-        campaign_dir = get_campaign_dir(self.campaign_name)
-        if campaign_dir:
-            search_dirs.append(campaign_dir / "prospects")
+    def has_place_id(self, place_id: str) -> bool:
+        """Legacy alias for has_prospect."""
+        return self.has_prospect(place_id)
 
+    def append_prospect(self, prospect: GoogleMapsProspect) -> bool:
+        """Saves a prospect to the index. Returns True if successful."""
+        try:
+            file_path = self.get_file_path(prospect.place_id, for_write=True)
+            file_path.parent.mkdir(parents=True, exist_ok=True)
+            
+            with open(file_path, "w", encoding="utf-8") as f:
+                f.write(prospect.to_usv())
+            return True
+        except Exception as e:
+            logger.error(f"Failed to append prospect {prospect.place_id}: {e}")
+            return False
+
+    def read_all_prospects(self) -> Iterator[GoogleMapsProspect]:
+        """Iterates through all prospects in the index."""
         all_files = []
-        for d in search_dirs:
-            if d.exists():
-                # Explicitly exclude the error log and the checkpoint itself
-                for p in d.rglob("*.*"):
-                    if p.suffix not in [".usv", ".csv"]:
-                        continue
-                    if p.name == "validation_errors.usv" or p.name == "validation_errors.csv":
-                        continue
-                    if p.resolve() == checkpoint_path:
-                        continue
-                    if not p.is_file():
-                        continue
-                    
-                    # FILTER: Only include if it starts with 'ChIJ' (PlaceID) or is in a 1-char shard
-                    # Explicitly EXCLUDE legacy hex IDs starting with '0x'
-                    name = p.stem
-                    if name.startswith("0x"):
-                        continue
-                        
-                    is_place_id = name.startswith("ChIJ")
-                    is_in_shard = len(p.parent.name) == 1
-                    
-                    if is_place_id or is_in_shard:
-                        all_files.append(p)
-                    else:
-                        logger.debug(f"Skipping non-prospect file in index: {p.name}")
+
+        # 1. Read Checkpoint (Cold Layer) FIRST
+        checkpoint_path = self._get_checkpoint_path()
+        if checkpoint_path.exists():
+            all_files.append(checkpoint_path)
+
+        # 2. Read WAL (Hot Layer) LAST
+        from cocli.core.paths import paths
+        wal_dir = paths.campaign(self.campaign_name).index("google_maps_prospects").wal
+        search_dirs = [wal_dir]
         
-        # Sort: .usv before .csv, and sharded (deeper path) before flat
-        sorted_files = sorted(all_files, key=lambda p: (p.stem, p.suffix == ".csv", -len(p.parts)))
-        
-        for file_path in sorted_files:
-            if file_path.resolve() == checkpoint_path:
-                continue
-            if file_path.name == "validation_errors.usv":
-                continue
+        for s_dir in search_dirs:
+            if s_dir.exists():
+                all_files.extend(list(s_dir.rglob("*.usv")))
+                all_files.extend(list(s_dir.rglob("*.csv")))
+
+        for file_path in all_files:
             if not file_path.is_file():
-                continue
-                
-            place_id_stem = file_path.stem
-            if place_id_stem in seen_pids:
                 continue
             
             try:
@@ -148,107 +127,58 @@ class ProspectsIndexManager:
                     if file_path.suffix == ".usv":
                         # Detect Header
                         first_line = f.readline()
+                        if not first_line:
+                            continue
+                        
+                        # Skip header if present
                         if "created_at" in first_line:
-                            f.seek(0)
-                            reader = USVDictReader(f)
-                            for row in reader:
-                                normalized_row = {k.lower().replace(" ", "_"): v for k, v in row.items() if k}
-                                try:
-                                    prospect = GoogleMapsProspect.model_validate(normalized_row)
-                                    if prospect.place_id:
-                                        seen_pids.add(prospect.place_id)
-                                        yield prospect
-                                except Exception as e:
-                                    log_validation_error(file_path.name, str(e))
+                            # It's a header, read the next line
+                            pass
                         else:
-                            # Headerless: Use the model's own robust parser
-                            f.seek(0)
-                            for line in f:
-                                if not line.strip():
-                                    continue
+                            # It's data, parse it
+                            try:
+                                yield GoogleMapsProspect.from_usv(first_line)
+                            except Exception:
+                                pass
+                        
+                        # Parse remaining lines
+                        for line in f:
+                            if line.strip():
                                 try:
-                                    prospect = GoogleMapsProspect.from_usv(line)
-                                    if prospect.place_id:
-                                        seen_pids.add(prospect.place_id)
-                                        yield prospect
-                                except Exception as e:
-                                    log_validation_error(file_path.name, str(e))
+                                    yield GoogleMapsProspect.from_usv(line)
+                                except Exception:
+                                    pass
                     else:
                         # Legacy CSV
-                        reader = csv.DictReader(f) # type: ignore
+                        reader = csv.DictReader(f)
                         for row in reader:
-                            normalized_row = {k.lower().replace(" ", "_"): v for k, v in row.items() if k}
                             try:
-                                prospect = GoogleMapsProspect.model_validate(normalized_row)
-                                if prospect.place_id:
-                                    seen_pids.add(prospect.place_id)
-                                    yield prospect
-                            except Exception as e:
-                                log_validation_error(file_path.name, str(e))
+                                yield GoogleMapsProspect.model_validate(row)
+                            except Exception:
+                                pass
             except Exception as e:
-                log_validation_error(file_path.name, str(e))
+                logger.error(f"Error reading prospect file {file_path}: {e}")
 
-        # 2. Read Checkpoint (Cold Layer)
-        if checkpoint_path.exists():
-            try:
-                with open(checkpoint_path, 'r', encoding='utf-8') as f:
-                    for line in f:
-                        if not line.strip():
-                            continue
-                        try:
-                            prospect = GoogleMapsProspect.from_usv(line)
-                            if prospect.place_id and prospect.place_id not in seen_pids:
-                                seen_pids.add(prospect.place_id)
-                                yield prospect
-                        except Exception as e:
-                            log_validation_error(checkpoint_path.name, str(e))
-            except Exception as e:
-                log_validation_error(checkpoint_path.name, str(e))
-
-    def append_prospect(self, prospect_data: GoogleMapsProspect) -> bool:
-        """
-        Writes a single GoogleMapsProspect object to its sharded file in the index.
-        Always writes in headerless USV format.
-        """
-        if not prospect_data.place_id:
-            logger.warning(f"Prospect data missing place_id, cannot save to index. Skipping: {prospect_data.name or prospect_data.domain}")
-            return False
-        
-        # EXPLICITLY set for_write=True to ensure we write to 'wal/{shard}/{place_id}.usv'
-        file_path = self.get_file_path(prospect_data.place_id, for_write=True)
-        
+    def get_prospect(self, place_id: str) -> Optional[GoogleMapsProspect]:
+        """Retrieves a single prospect by place_id."""
+        file_path = self.get_file_path(place_id)
+        if not file_path.exists():
+            return None
+            
         try:
-            file_path.parent.mkdir(parents=True, exist_ok=True)
-            with open(file_path, 'w', encoding='utf-8') as f:
-                logger.info(f"WRITING PROSPECT: {prospect_data.place_id} | processed_by: {prospect_data.processed_by}")
-                f.write(prospect_data.to_usv())
-            
-            return True
-        except Exception as e:
-            logger.error(f"Error writing prospect to index (place_id: {prospect_data.place_id}): {e}")
-            return False
-
-    def has_place_id(self, place_id: str) -> bool:
-        """Checks if a given Place_ID already exists in the index, using checkpoint baselines."""
-        if not place_id:
-            return False
-        
-        shard = get_place_id_shard(place_id)
-        if (self.index_dir / shard / f"{place_id}.usv").exists():
-            return True
-            
-        checkpoint = self._get_checkpoint_path()
-        if checkpoint.exists():
-            try:
-                with open(checkpoint, 'r') as f:
+            with open(file_path, 'r', encoding='utf-8') as f:
+                if file_path.suffix == ".usv":
+                    # Skip header if present
                     for line in f:
-                        if line.startswith(f"{place_id}{UNIT_SEP}"):
-                            return True
-            except Exception:
-                pass
-        
-        safe_filename = place_id.replace("/", "_").replace("\\", "_")
-        for ext in [".usv", ".csv"]:
-            if list(self.index_dir.rglob(f"{safe_filename}{ext}")):
-                return True
-        return False
+                        if line.strip():
+                            if "created_at" in line:
+                                continue
+                            return GoogleMapsProspect.from_usv(line)
+                else:
+                    reader = csv.DictReader(f)
+                    data = next(reader, None)
+                    if data:
+                        return GoogleMapsProspect.model_validate(data)
+        except Exception as e:
+            logger.error(f"Error reading prospect {place_id}: {e}")
+        return None

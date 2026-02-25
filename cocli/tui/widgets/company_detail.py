@@ -174,7 +174,6 @@ class CompanyDetail(Container):
     
     BINDINGS = [
         Binding("escape", "app.action_escape", "Back"),
-        Binding("h", "app.action_escape", "Back", show=False),
         Binding("q", "app.action_escape", "Back"),
         Binding("alt+s", "app.navigate_up", "Navigate Up"),
         Binding("meta+s", "app.navigate_up", "Navigate Up", show=False),
@@ -291,34 +290,63 @@ class CompanyDetail(Container):
             event.prevent_default()
             return
 
+        # If we are focused on a child (like a table), h should move focus to the panel first
+        # QuadrantTable handles this, but we want to ensure it doesn't escape to search
+        if isinstance(focused, DataTable):
+            if event.key == "h":
+                parent = focused.parent
+                if parent and isinstance(parent, DetailPanel):
+                    parent.focus()
+                    event.stop()
+                    event.prevent_default()
+                    return
+
         if isinstance(focused, DetailPanel):
             if event.key == "h":
                 if focused == self.panel_contacts:
                     self.panel_info.focus()
+                    event.stop()
+                    event.prevent_default()
                 elif focused == self.panel_notes:
                     self.panel_meetings.focus()
-                event.prevent_default()
+                    event.stop()
+                    event.prevent_default()
+                else:
+                    # Already in left column, trigger back navigation to trunk
+                    app = cast("CocliApp", self.app)
+                    app.action_navigate_up()
+                    event.stop()
+                    event.prevent_default()
                 return
             elif event.key == "l":
                 if focused == self.panel_info:
                     self.panel_contacts.focus()
+                    event.stop()
+                    event.prevent_default()
                 elif focused == self.panel_meetings:
                     self.panel_notes.focus()
-                event.prevent_default()
+                    event.stop()
+                    event.prevent_default()
                 return
             elif event.key == "j":
                 if focused == self.panel_info:
                     self.panel_meetings.focus()
+                    event.stop()
+                    event.prevent_default()
                 elif focused == self.panel_contacts:
                     self.panel_notes.focus()
-                event.prevent_default()
+                    event.stop()
+                    event.prevent_default()
                 return
             elif event.key == "k":
                 if focused == self.panel_meetings:
                     self.panel_info.focus()
+                    event.stop()
+                    event.prevent_default()
                 elif focused == self.panel_notes:
                     self.panel_contacts.focus()
-                event.prevent_default()
+                    event.stop()
+                    event.prevent_default()
                 return
 
         # Explicitly handle DataTable focus without swallowing other keys

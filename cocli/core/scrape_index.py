@@ -247,7 +247,6 @@ class ScrapeIndex:
                     from cocli.utils.usv_utils import USVWriter
                     with open(witness_path, 'w', encoding='utf-8') as wf:
                         writer = USVWriter(wf)
-                        writer.writerow(["scrape_date", "items_found", "processed_by"])
                         writer.writerow([(scrape_date or datetime.now(UTC)).isoformat(), str(items_found), processed_by or ""])
                     logger.debug(f"Saved witness file (USV): {witness_path}")
                     return witness_path

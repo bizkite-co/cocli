@@ -30,20 +30,18 @@ class BaseIndexModel(BaseUsvModel):
         return get_shard(str(identifier), strategy="place_id")
 
     def get_local_path(self, campaign_name: str) -> Path:
-        """Returns the path to the individual record file (sharded)."""
-        # Note: Index records are typically sharded USV files.
-        # This implementation assumes the record is stored in a campaign index.
-        index_path = self.get_index_dir(campaign_name)
+        """Returns the path to the individual record file in the WAL (sharded)."""
         shard_id = self.get_shard_id()
-        # Identity is usually place_id or slug
         identity = getattr(self, "place_id", None) or getattr(self, "company_slug", None) or getattr(self, "slug", "unknown")
-        return index_path / shard_id / f"{identity}.usv"
+        # Use paths authority: campaign -> index -> wal
+        return paths.campaign(campaign_name).index(self.INDEX_NAME).wal / shard_id / f"{identity}.usv"
 
     def get_remote_key(self, campaign_name: str) -> str:
-        """Returns the S3 key for this index record."""
+        """Returns the S3 key for this index record in the WAL."""
         shard_id = self.get_shard_id()
         identity = getattr(self, "place_id", None) or getattr(self, "company_slug", None) or getattr(self, "slug", "unknown")
-        return f"campaigns/{campaign_name}/indexes/{self.INDEX_NAME}/{shard_id}/{identity}.usv"
+        # Standard S3 WAL path: campaigns/{name}/indexes/{idx}/wal/{shard}/{identity}.usv
+        return f"campaigns/{campaign_name}/indexes/{self.INDEX_NAME}/wal/{shard_id}/{identity}.usv"
 
     @classmethod
     def get_datapackage_fields(cls) -> List[Dict[str, str]]:

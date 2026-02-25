@@ -285,7 +285,7 @@ class Company(BaseModel):
             return None
 
     def toggle_to_call(self) -> bool:
-        """Adds or removes the company from the filesystem queue. Returns True if added."""
+        """Adds or removes the company from the filesystem queue and toggles the 'to-call' tag. Returns True if added."""
         from cocli.models.campaigns.queues.to_call import ToCallTask
         from cocli.core.config import get_campaign
         
@@ -300,9 +300,15 @@ class Company(BaseModel):
 
         if task_path.exists():
             task_path.unlink()
+            if "to-call" in self.tags:
+                self.tags.remove("to-call")
+            self.save()
             return False
         else:
             task.save()
+            if "to-call" not in self.tags:
+                self.tags.append("to-call")
+            self.save()
             return True
 
     def merge_with(self, other: 'Company') -> None:
