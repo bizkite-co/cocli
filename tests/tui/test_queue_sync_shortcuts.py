@@ -9,25 +9,28 @@ async def test_queue_sync_shortcuts(mocker):
     """
     Verifies that 'sp' and 'sc' shortcuts in QueueDetail trigger sync.
     """
+    from tests.conftest import wait_for_widget
     mock_sync = mocker.patch("cocli.application.data_sync_service.DataSyncService.sync_queues")
     mocker.patch("cocli.application.reporting_service.ReportingService.get_campaign_stats")
     
     app = CocliApp()
     async with app.run_test() as pilot:
-        await pilot.press("space", "a")
-        await pilot.pause()
+        # Navigate to Application view (Space -> a)
+        await pilot.press("space")
+        await pilot.press("a")
         
-        nav_list = app.query_one("#app_nav_list", ListView)
+        # Wait for the ApplicationView and nav list to appear
+        nav_list = await wait_for_widget(pilot, ListView, "#app_nav_list")
         nav_list.index = 3 # Queues
         await pilot.press("enter")
-        await pilot.pause()
         
-        queue_list = app.query_one("#app_queue_list", QueueSelection)
+        # Wait for queues view
+        queue_list = await wait_for_widget(pilot, QueueSelection, "#app_queue_list")
         queue_list.index = 0
         await pilot.press("enter")
-        await pilot.pause()
         
-        detail = app.query_one(QueueDetail)
+        # Wait for detail view
+        detail = await wait_for_widget(pilot, QueueDetail)
         assert app.focused == detail
         
         # Test 's' then 'p' (Sync Pending)

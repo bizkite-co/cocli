@@ -26,8 +26,7 @@ class ValidatedPath(BaseModel):
 
 def get_validated_dir(path: Path, description: str) -> ValidatedPath:
     try:
-        resolved_path = path.resolve()
-        return ValidatedPath(path=resolved_path)
+        return ValidatedPath(path=path.absolute())
     except Exception:
         return ValidatedPath(path=path.absolute())
 

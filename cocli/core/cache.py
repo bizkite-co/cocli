@@ -167,18 +167,27 @@ def build_cache(campaign: Optional[str] = None) -> None:
     cache_dir = get_cache_path(campaign=campaign)
     cache_dir.mkdir(parents=True, exist_ok=True)
     cache_file = cache_dir / CACHE_FILE_NAME
+    tmp_cache_file = cache_file.with_suffix(".tmp")
     
     # Tiny sleep to ensure mtime > source files in fast tests
     import time
     time.sleep(0.01)
 
-    with open(cache_file, "w", encoding="utf-8") as f:
-        for item in items:
-            f.write(item.to_usv())
-            
-    # Save Frictionless schema
-    CompanyCacheItem.save_datapackage(cache_dir)
-    logger.info(f"Cache build complete. Saved {len(items)} items to {cache_file}")
+    try:
+        with open(tmp_cache_file, "w", encoding="utf-8") as f:
+            for item in items:
+                f.write(item.to_usv())
+        
+        # Atomic rename to ensure search never sees a partial file
+        tmp_cache_file.replace(cache_file)
+                
+        # Save Frictionless schema
+        CompanyCacheItem.save_datapackage(cache_dir)
+        logger.info(f"Cache build complete. Saved {len(items)} items to {cache_file}")
+    except Exception as e:
+        logger.error(f"Failed to build cache: {e}")
+        if tmp_cache_file.exists():
+            tmp_cache_file.unlink()
 
 def get_cached_items(filter_str: Optional[str] = None, campaign: Optional[str] = None, force_rebuild: bool = False) -> List[Dict[str, Any]]:
     """LEGACY ADAPTER: Still used by some CLI commands. Rebuilds USV if needed."""

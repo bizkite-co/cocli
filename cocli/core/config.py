@@ -47,21 +47,11 @@ def get_cocli_base_dir() -> Path:
 def get_config_dir() -> Path:
     """
     Determines the configuration directory for cocli.
+    Strictly follows paths.root to ensure test isolation.
     """
-    if "COCLI_CONFIG_HOME" in os.environ:
-        return Path(os.environ["COCLI_CONFIG_HOME"]).expanduser()
-    elif "COCLI_DATA_HOME" in os.environ: # Prioritize COCLI_DATA_HOME for config
-        return Path(os.environ["COCLI_DATA_HOME"]).expanduser() / "config"
-    elif "XDG_CONFIG_HOME" in os.environ:
-        return Path(os.environ["XDG_CONFIG_HOME"]).expanduser() / "cocli"
-    else:
-        # Default location based on OS
-        if platform.system() == "Windows":
-            return Path(os.environ.get("APPDATA", Path.home() / "AppData" / "Roaming")) / "cocli"
-        elif platform.system() == "Darwin": # macOS
-            return Path.home() / "Library" / "Preferences" / "cocli"
-        else: # Linux and other Unix-like
-            return Path.home() / ".config" / "cocli"
+    p = paths.root / "config"
+    p.mkdir(parents=True, exist_ok=True)
+    return p
 
 def get_companies_dir() -> Path:
     """DEPRECATED: Use paths.companies.ensure()"""

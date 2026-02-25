@@ -113,6 +113,12 @@ def mock_cocli_env(tmp_path, mocker):
     (cocli_base_dir / "companies").mkdir()
     (cocli_base_dir / "people").mkdir()
     (cocli_base_dir / "campaigns").mkdir()
+    (cocli_base_dir / "config").mkdir()
+
+    # Create a visual watermark company in the test environment
+    test_company_dir = cocli_base_dir / "companies" / "test-company"
+    test_company_dir.mkdir()
+    (test_company_dir / "_index.md").write_text("---\nname: TEST-COMPANY\ntags: [test]\n---")
 
     # 2. Redirect Global Paths
     # We patch the 'root' property of the 'paths' singleton
@@ -128,6 +134,9 @@ def mock_cocli_env(tmp_path, mocker):
     
     # Also patch cache getters to ensure they use our temp dir logic (via paths)
     mocker.patch('cocli.core.cache.get_cocli_base_dir', return_value=cocli_base_dir)
+    
+    # Ensure config path points to temp
+    mocker.patch('cocli.core.config.get_config_dir', return_value=cocli_base_dir / "config")
     
     return cocli_base_dir
     
