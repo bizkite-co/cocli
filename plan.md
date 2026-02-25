@@ -12,7 +12,8 @@ This document outlines the roadmap for transitioning `cocli` from a purely local
 1.  **Service Layer Infrastructure (Done):**
     *   [x] **ServiceContainer**: Implemented Dependency Injection for the TUI to decouple UI from business logic.
     *   [x] **SearchService**: Standardized DuckDB-based fuzzy search as the SSoT for both CLI (`fz`) and TUI.
-    *   [x] **High-Performance Indexing**: Optimized DuckDB to use native C++ JSON parsing with explicit schemas (reduced load times from 15s to <0.1s).
+    *   [x] **Atomic Data Rebuilding**: Implemented write-and-rename pattern to ensure search services never read partial or truncated indexes.
+    *   [x] **Path Authority Stabilization**: Standardized on `.absolute()` pathing to resolve symlink mismatches and ensure portability.
 
 2.  **High-Density VIM TUI (Done):**
     *   [x] **Cocli Theme**: Implemented a "Data-First" pure black theme with high-contrast grey/green highlights.
@@ -28,3 +29,8 @@ This document outlines the roadmap for transitioning `cocli` from a purely local
 4.  **Worker Orchestration Decoupling:**
     *   [ ] Extract `run_worker`, `run_supervisor`, and `run_details_worker` from CLI commands into `WorkerService`.
     *   [ ] Standardize worker heartbeats and status reports as Pydantic models.
+
+5.  **Automated Testing & Verification (Done):**
+    *   [x] **Frictionless Test Harness**: Implemented automated snapshot refreshing for Google Maps scraper verification.
+    *   [x] **Environment Shield**: Forced strict test re-rooting to prevent production data corruption.
+    *   [x] **UI Synchronization**: Standardized on `wait_for_widget` to eliminate race conditions in TUI integration tests.
