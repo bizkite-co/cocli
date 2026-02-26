@@ -605,8 +605,10 @@ class FilesystemGmListQueue(FilesystemQueue):
                 csv_path = Path(root) / file
                 task_id = str(csv_path.relative_to(self.target_tiles_dir))
                 
-                # OMAP Violation Check: Detect deep legacy paths (more than 3 parts: lat/lon/phrase)
-                if len(task_id.split(os.sep)) > 3:
+                # OMAP Violation Check: Detect deep legacy paths (more than 4 parts: shard/lat/lon/phrase)
+                # Blueprint: {lat_shard}/{lat}/{lon}/{phrase}.csv
+                parts = task_id.split(os.sep)
+                if len(parts) > 4:
                     logger.warning(f"DEPRECATED PATH DETECTED: {task_id}. Please run scripts/cleanup_queue_paths.py")
                     continue
 
@@ -619,14 +621,19 @@ class FilesystemGmListQueue(FilesystemQueue):
                 # Try to acquire lease
                 if self._create_lease(task_id):
                     parts = Path(task_id).parts
-                    if len(parts) < 3:
+                    # Support both 3-part (lat/lon/phrase) and 4-part (shard/lat/lon/phrase)
+                    if len(parts) == 3:
+                        lat_idx, lon_idx, phrase_idx = 0, 1, 2
+                    elif len(parts) == 4:
+                        lat_idx, lon_idx, phrase_idx = 1, 2, 3
+                    else:
                         continue
                     
                     try:
-                        lat = float(parts[0])
-                        lon = float(parts[1])
+                        lat = float(parts[lat_idx])
+                        lon = float(parts[lon_idx])
                         # Handle both .csv and .usv
-                        phrase = parts[2].replace(".csv", "").replace(".usv", "")
+                        phrase = parts[phrase_idx].replace(".csv", "").replace(".usv", "")
                         
                         task = ScrapeTask(
                             latitude=lat,

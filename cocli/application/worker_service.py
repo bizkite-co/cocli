@@ -49,6 +49,7 @@ class WorkerService:
         gm_list_item_queue: Any,
         s3_client: Any,
         debug: bool,
+        once: bool,
         tracker: Optional[Any] = None,
     ) -> None:
         while True:
@@ -64,6 +65,8 @@ class WorkerService:
 
             tasks: List[ScrapeTask] = await asyncio.to_thread(scrape_queue.poll, batch_size=1)
             if not tasks:
+                if once:
+                    return
                 await asyncio.sleep(5)
                 continue
 
@@ -174,6 +177,9 @@ class WorkerService:
                 # Capture result count for the receipt (Processor already does this, but for internal state)
                 task.result_count = len(discovered_items)
                 scrape_queue.ack(task)
+                
+                if once:
+                    return
             except Exception as e:
                 logger.error(f"Task Failed: {e}")
                 scrape_queue.nack(task)
@@ -431,6 +437,7 @@ class WorkerService:
         self,
         headless: bool,
         debug: bool,
+        once: bool = False,
         workers: int = 1,
         role: str = "full"
     ) -> None:
@@ -459,11 +466,13 @@ class WorkerService:
                 gm_list_item_queue = get_queue_manager("gm_list_item", use_cloud=True, queue_type="gm_list_item", campaign_name=self.campaign_name)
 
                 tasks = [
-                    self._run_scrape_task_loop(context, scrape_queue, gm_list_item_queue, s3_client, debug, tracker=tracker)
+                    self._run_scrape_task_loop(browser, scrape_queue, gm_list_item_queue, s3_client, debug, once, tracker=tracker)
                     for _ in range(workers)
                 ]
                 await asyncio.gather(*tasks)
                 await browser.close()
+                if once:
+                    break
                 await asyncio.sleep(5)
 
     async def run_enrichment_worker(
