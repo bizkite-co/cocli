@@ -2,10 +2,8 @@ import asyncio
 import os
 import sys
 import logging
-from pathlib import Path
+from typing import Any
 from cocli.models.campaigns.queues.gm_list import ScrapeTask
-from cocli.core.queue.factory import get_queue_manager
-from cocli.application.worker_service import WorkerService
 
 # Configure logging
 os.makedirs("temp", exist_ok=True)
@@ -20,7 +18,7 @@ console_handler = logging.StreamHandler(sys.stdout)
 console_handler.setLevel(logging.INFO)
 logging.getLogger().addHandler(console_handler)
 
-async def re_enqueue_targeted():
+async def re_enqueue_targeted() -> None:
     campaign = "roadmap"
     lat = 30.2
     lon = -81.2
@@ -29,7 +27,6 @@ async def re_enqueue_targeted():
     # 1. Manually trigger the scrape for this tile bypass regular polling
     print(f"--- TARGETED SCRAPE: {phrase} @ {lat}, {lon} ---")
     
-    service = WorkerService(campaign, role="full")
     # We'll use a dummy task to trigger the loop logic manually
     task = ScrapeTask(
         latitude=lat,
@@ -54,15 +51,15 @@ async def re_enqueue_targeted():
             user_agent=USER_AGENT, 
             extra_http_headers=ANTI_BOT_HEADERS
         )
-        tracker = await setup_optimized_context(context)
+        await setup_optimized_context(context)
         
         print("Starting targeted task execution...")
         # We call the loop logic directly for our specific task
         # We need a mock queue that doesn't poll but can ack
         class MockQueue:
-            def ack(self, t): print(f"ACK: {t.ack_token}")
-            def nack(self, t): print(f"NACK: {t.ack_token}")
-            def heartbeat(self, t): pass
+            def ack(self, t: Any) -> None: print(f"ACK: {t.ack_token}")
+            def nack(self, t: Any) -> None: print(f"NACK: {t.ack_token}")
+            def heartbeat(self, t: Any) -> None: pass
 
         # We need a dummy s3 client
         import boto3
@@ -85,7 +82,8 @@ async def re_enqueue_targeted():
         ):
             print(f"  [FOUND] {item.name} | Rating: {item.average_rating} ({item.reviews_count} reviews)")
             items.append(item)
-            if len(items) >= 10: break
+            if len(items) >= 10:
+                break
             
         if items:
             print(f"Captured {len(items)} items. Saving witness trace...")

@@ -834,7 +834,7 @@ class WorkerService:
 
                     while len(scrape_tasks) < target_scrape:
                         new_id = len(scrape_tasks)
-                        scrape_tasks[new_id] = asyncio.create_task(self._run_scrape_task_loop(browser, scrape_queue, gm_list_item_queue, s3_client, debug))
+                        scrape_tasks[new_id] = asyncio.create_task(self._run_scrape_task_loop(browser, scrape_queue, gm_list_item_queue, s3_client, debug, False))
                     while len(scrape_tasks) > target_scrape:
                         old_id = max(scrape_tasks.keys())
                         scrape_tasks[old_id].cancel()

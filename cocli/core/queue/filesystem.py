@@ -620,20 +620,20 @@ class FilesystemGmListQueue(FilesystemQueue):
                     
                 # Try to acquire lease
                 if self._create_lease(task_id):
-                    parts = Path(task_id).parts
+                    path_parts = Path(task_id).parts
                     # Support both 3-part (lat/lon/phrase) and 4-part (shard/lat/lon/phrase)
-                    if len(parts) == 3:
+                    if len(path_parts) == 3:
                         lat_idx, lon_idx, phrase_idx = 0, 1, 2
-                    elif len(parts) == 4:
+                    elif len(path_parts) == 4:
                         lat_idx, lon_idx, phrase_idx = 1, 2, 3
                     else:
                         continue
                     
                     try:
-                        lat = float(parts[lat_idx])
-                        lon = float(parts[lon_idx])
+                        lat = float(path_parts[lat_idx])
+                        lon = float(path_parts[lon_idx])
                         # Handle both .csv and .usv
-                        phrase = parts[phrase_idx].replace(".csv", "").replace(".usv", "")
+                        phrase = path_parts[phrase_idx].replace(".csv", "").replace(".usv", "")
                         
                         task = ScrapeTask(
                             latitude=lat,
