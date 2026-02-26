@@ -83,6 +83,9 @@ def gm_list(
     workers: int = typer.Option(
         1, "--workers", "-w", help="Number of concurrent workers."
     ),
+    role: str = typer.Option(
+        "full", "--role", help="Worker role: 'full', 'scraper', or 'processor'."
+    ),
 ) -> None:
     """
     Starts a worker node that polls for Google Maps List tasks and executes them.
@@ -94,13 +97,13 @@ def gm_list(
         raise typer.Exit(1)
 
     log_level = logging.DEBUG if debug else logging.INFO
-    setup_file_logging("worker_gm_list", console_level=log_level)
+    setup_file_logging(f"worker_gm_list_{role}", console_level=log_level)
 
     config = load_campaign_config(effective_campaign)
     final_workers = workers if workers != 1 else config.get("prospecting", {}).get("scrape_workers", 1)
 
-    service = WorkerService(effective_campaign)
-    asyncio.run(service.run_worker(not headed, debug, workers=final_workers))
+    service = WorkerService(effective_campaign, role=role)
+    asyncio.run(service.run_worker(not headed, debug, workers=final_workers, role=role))
 
 @app.command(name="gm-details")
 def gm_details(
@@ -112,6 +115,9 @@ def gm_details(
     workers: int = typer.Option(
         1, "--workers", "-w", help="Number of concurrent workers."
     ),
+    role: str = typer.Option(
+        "full", "--role", help="Worker role: 'full', 'scraper', or 'processor'."
+    ),
 ) -> None:
     """
     Starts a worker node that polls for Google Maps Details tasks (Place IDs) and scrapes them.
@@ -122,13 +128,13 @@ def gm_details(
         raise typer.Exit(1)
     
     log_level = logging.DEBUG if debug else logging.INFO
-    setup_file_logging("worker_gm_details", console_level=log_level)
+    setup_file_logging(f"worker_gm_details_{role}", console_level=log_level)
 
     config = load_campaign_config(effective_campaign)
     final_workers = workers if workers != 1 else config.get("prospecting", {}).get("details_workers", 1)
 
-    service = WorkerService(effective_campaign)
-    asyncio.run(service.run_details_worker(not headed, debug, workers=final_workers))
+    service = WorkerService(effective_campaign, role=role)
+    asyncio.run(service.run_details_worker(not headed, debug, workers=final_workers, role=role))
 
 @app.command()
 def enrichment(
@@ -140,6 +146,9 @@ def enrichment(
     workers: int = typer.Option(
         1, "--workers", "-w", help="Number of concurrent workers."
     ),
+    role: str = typer.Option(
+        "full", "--role", help="Worker role: 'full', 'scraper', or 'processor'."
+    ),
 ) -> None:
     """
     Starts a worker node that polls for enrichment tasks (Domains) and scrapes them.
@@ -150,13 +159,13 @@ def enrichment(
         raise typer.Exit(1)
     
     log_level = logging.DEBUG if debug else logging.INFO
-    setup_file_logging("worker_enrichment", console_level=log_level)
+    setup_file_logging(f"worker_enrichment_{role}", console_level=log_level)
 
     config = load_campaign_config(effective_campaign)
     final_workers = workers if workers != 1 else config.get("prospecting", {}).get("enrichment_workers", 1)
 
-    service = WorkerService(effective_campaign)
-    asyncio.run(service.run_enrichment_worker(not headed, debug, workers=final_workers))
+    service = WorkerService(effective_campaign, role=role)
+    asyncio.run(service.run_enrichment_worker(not headed, debug, workers=final_workers, role=role))
 
 @app.command()
 def gossip(

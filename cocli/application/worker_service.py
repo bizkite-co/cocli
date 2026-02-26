@@ -25,9 +25,10 @@ from ..core.text_utils import slugify
 logger = logging.getLogger(__name__)
 
 class WorkerService:
-    def __init__(self, campaign_name: str, processed_by: Optional[str] = None):
+    def __init__(self, campaign_name: str, processed_by: Optional[str] = None, role: str = "full"):
         self.campaign_name = campaign_name
         self.processed_by = processed_by or (os.getenv("COCLI_HOSTNAME") or socket.gethostname().split(".")[0])
+        self.role = role
         self.config = load_campaign_config(campaign_name)
         self.aws_config = self.config.get("aws", {})
         self.bucket_name = (
@@ -285,10 +286,30 @@ class WorkerService:
                 try:
                     page = await browser_or_context.new_page()
                     try:
-                        # Use the Modular Processor
-                        from .processors.google_maps import GoogleMapsDetailsProcessor
-                        processor = GoogleMapsDetailsProcessor(processed_by=self.processed_by)
-                        final_prospect_data = await processor.process(task, page, debug=debug)
+                        if self.role == "scraper":
+                            # SCRAPER ROLE: Just capture raw HTML witness
+                            from ..scrapers.google_maps_details import capture_google_maps_raw
+                            witness = await capture_google_maps_raw(
+                                page=page, 
+                                place_id=task.place_id, 
+                                campaign_name=task.campaign_name,
+                                processed_by=self.processed_by,
+                                debug=debug
+                            )
+                            if witness:
+                                witness.save(s3_client=s3_client, bucket_name=self.bucket_name)
+                                logger.info(f"Witness saved for {task.place_id}")
+                                final_prospect_data = None # Signal that we don't process further in this loop
+                                # We need to signal success so it can be acked
+                                scrape_success = True
+                            else:
+                                scrape_success = False
+                        else:
+                            # FULL or other roles: Use the Modular Processor
+                            from .processors.google_maps import GoogleMapsDetailsProcessor
+                            processor = GoogleMapsDetailsProcessor(processed_by=self.processed_by)
+                            final_prospect_data = await processor.process(task, page, debug=debug)
+                            scrape_success = final_prospect_data is not None
                     finally:
                         await page.close()
                 finally:
@@ -299,39 +320,46 @@ class WorkerService:
                         except Exception:
                             pass
 
-                if not final_prospect_data:
+                if not scrape_success and self.role != "processor":
                     gm_list_item_queue.nack(task)
                     if once:
                         return
                     continue
 
                 gm_list_item_queue.ack(task)
+                
+                if self.role == "scraper":
+                    # Scraper is done after acking the witness capture
+                    if once:
+                        return
+                    continue
 
-                # LINKAGE: Push to enrichment queue if domain found
-                if final_prospect_data.domain and final_prospect_data.name:
-                    enrichment_queue.push(QueueMessage(
-                        domain=final_prospect_data.domain, 
-                        company_slug=slugify(final_prospect_data.name), 
-                        campaign_name=task.campaign_name, 
-                        force_refresh=task.force_refresh, 
-                        ack_token=None
-                    ))
+                # LINKAGE (Only for Full/Processor roles)
+                if final_prospect_data:
+                    if final_prospect_data.domain and final_prospect_data.name:
+                        enrichment_queue.push(QueueMessage(
+                            domain=str(final_prospect_data.domain), 
+                            company_slug=slugify(final_prospect_data.name), 
+                            campaign_name=task.campaign_name, 
+                            force_refresh=task.force_refresh, 
+                            ack_token=None
+                        ))
 
-                if hasattr(final_prospect_data, "email") and final_prospect_data.email:
-                    try:
-                        from ..core.email_index_manager import EmailIndexManager
-                        from ..models.campaigns.indexes.email import EmailEntry
-                        email_manager = EmailIndexManager(task.campaign_name)
-                        entry = EmailEntry(
-                            email=final_prospect_data.email, 
-                            domain=final_prospect_data.domain or final_prospect_data.email.split("@")[-1], 
-                            company_slug=final_prospect_data.company_slug, 
-                            source="gmb_details_worker", 
-                            tags=[task.campaign_name]
-                        )
-                        email_manager.add_email(entry)
-                    except Exception:
-                        pass
+                    if hasattr(final_prospect_data, "email") and final_prospect_data.email:
+                        try:
+                            from ..core.email_index_manager import EmailIndexManager
+                            from ..models.campaigns.indexes.email import EmailEntry
+                            email_manager = EmailIndexManager(task.campaign_name)
+                            entry = EmailEntry(
+                                email=str(final_prospect_data.email), 
+                                domain=str(final_prospect_data.domain or final_prospect_data.email.split("@")[-1]), 
+                                company_slug=str(final_prospect_data.company_slug), 
+                                source="gmb_details_worker", 
+                                tags=[task.campaign_name]
+                            )
+                            email_manager.add_email(entry)
+                        except Exception:
+                            pass
 
                 if tracker:
                     logger.info(f"Detailing Complete for {task.place_id}. Bandwidth: {tracker.get_mb() - start_mb:.2f} MB")
@@ -354,7 +382,22 @@ class WorkerService:
         debug: bool,
         once: bool = False,
         workers: int = 1,
+        role: str = "full"
     ) -> None:
+        if role == "processor":
+            # Processor role doesn't need a browser
+            s3_client = self.get_s3_client()
+            gm_list_item_queue = get_queue_manager("details", use_cloud=True, queue_type="gm_list_item", campaign_name=self.campaign_name, s3_client=s3_client)
+            enrichment_queue = get_queue_manager("enrichment", use_cloud=True, queue_type="enrichment", campaign_name=self.campaign_name, s3_client=s3_client)
+            
+            logger.info("Starting GM Details PROCESSOR (No Browser)")
+            tasks = [
+                self._run_details_processor_loop(gm_list_item_queue, enrichment_queue, s3_client, debug, once)
+                for _ in range(workers)
+            ]
+            await asyncio.gather(*tasks)
+            return
+
         async with async_playwright() as p:
             while True:
                 browser = await p.chromium.launch(
@@ -389,7 +432,13 @@ class WorkerService:
         headless: bool,
         debug: bool,
         workers: int = 1,
+        role: str = "full"
     ) -> None:
+        if role == "processor":
+            logger.info("Starting GM List PROCESSOR (No Browser)")
+            # TODO: Implement list processor loop if needed
+            return
+
         async with async_playwright() as p:
             while True:
                 browser = await p.chromium.launch(
@@ -422,7 +471,13 @@ class WorkerService:
         headless: bool,
         debug: bool,
         workers: int = 1,
+        role: str = "full"
     ) -> None:
+        if role == "processor":
+            logger.info("Starting Enrichment PROCESSOR (No Browser)")
+            # TODO: Implement enrichment processor loop if needed
+            return
+
         async with async_playwright() as p:
             while True:
                 browser = await p.chromium.launch(
@@ -444,6 +499,98 @@ class WorkerService:
                 await asyncio.gather(*tasks)
                 await browser.close()
                 await asyncio.sleep(5)
+
+    async def _run_details_processor_loop(
+        self,
+        gm_list_item_queue: Any,
+        enrichment_queue: Any,
+        s3_client: Any,
+        debug: bool,
+        once: bool
+    ) -> None:
+        """
+        PROCESSOR ROLE: Watches raw witness landing zone and transforms to Gold.
+        Does NOT use a browser.
+        """
+        from ..core.paths import paths
+        from ..models.campaigns.raw_witness import RawWitness
+        from ..scrapers.google_maps_gmb_parser import parse_gmb_page
+        from .processors.google_maps import GoogleMapsDetailsProcessor
+
+        raw_dir = paths.campaign(self.campaign_name).path / "raw" / "gm-details"
+        raw_dir.mkdir(parents=True, exist_ok=True)
+
+        logger.info(f"Processor Role active. Monitoring: {raw_dir}")
+
+        while True:
+            # Find all JSON witness files in shards
+            witness_files = list(raw_dir.rglob("*.json"))
+            
+            if not witness_files:
+                if once:
+                    return
+                await asyncio.sleep(10)
+                continue
+
+            for file_path in witness_files:
+                try:
+                    logger.info(f"Processing Witness: {file_path.name}")
+                    
+                    # 1. Load Witness
+                    with open(file_path, "r", encoding="utf-8") as f:
+                        witness_data = json.load(f)
+                        witness = RawWitness.model_validate(witness_data)
+
+                    # 2. Parse HTML
+                    details_dict = parse_gmb_page(witness.html, debug=debug)
+                    
+                    # 3. Transform to Gold
+                    # We use the modular processor logic directly since we don't need a browser
+                    # For now, we'll manually apply the logic
+                    processor = GoogleMapsDetailsProcessor(processed_by=f"{self.processed_by}-processor")
+                    
+                    # Manually construct the prospect from healed data
+                    from cocli.models.campaigns.indexes.google_maps_raw import GoogleMapsRawResult
+                    from cocli.models.campaigns.indexes.google_maps_prospect import GoogleMapsProspect
+                    
+                    raw_result = GoogleMapsRawResult(
+                        Place_ID=witness.place_id,
+                        Name=details_dict.get("Name") or witness.place_id,
+                        Full_Address=details_dict.get("Full_Address", ""),
+                        Website=details_dict.get("Website", ""),
+                        Phone_1=details_dict.get("Phone", ""),
+                        Domain=details_dict.get("Domain", ""),
+                        Average_rating=details_dict.get("Average_rating"),
+                        Reviews_count=details_dict.get("Reviews_count"),
+                        GMB_URL=witness.url,
+                        processed_by=processor.processed_by
+                    )
+                    
+                    prospect = GoogleMapsProspect.from_raw(raw_result)
+                    
+                    # Save to WAL
+                    csv_manager = ProspectsIndexManager(self.campaign_name)
+                    if csv_manager.append_prospect(prospect):
+                        logger.info(f"Success: Saved {witness.place_id} to WAL")
+                        
+                        # Save Enrichment file
+                        prospect.save_enrichment()
+                        
+                        # Move witness to completed or delete
+                        completed_dir = raw_dir.parent / "completed" / file_path.parent.name
+                        completed_dir.mkdir(parents=True, exist_ok=True)
+                        file_path.rename(completed_dir / file_path.name)
+                    else:
+                        logger.error(f"Failed to save {witness.place_id} to WAL")
+
+                except Exception as e:
+                    logger.error(f"Error processing witness {file_path.name}: {e}", exc_info=True)
+                    # Move to failed or leave for retry? Leave for now.
+                    await asyncio.sleep(1)
+
+            if once:
+                break
+            await asyncio.sleep(5)
 
     async def _run_enrichment_task_loop(
         self,

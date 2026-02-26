@@ -5,8 +5,54 @@ from playwright.async_api import Page
 
 from cocli.models.campaigns.indexes.google_maps_prospect import GoogleMapsProspect
 from cocli.scrapers.google_maps_gmb_parser import parse_gmb_page
+from ..models.campaigns.raw_witness import RawWitness
 
 logger = logging.getLogger(__name__)
+
+async def capture_google_maps_raw(
+    page: Page,
+    place_id: str,
+    campaign_name: str,
+    processed_by: str = "local-scraper",
+    debug: bool = False
+) -> Optional[RawWitness]:
+    """
+    Navigates to a Google Maps place and captures the raw HTML and basic metadata.
+    Does NOT parse the HTML into a prospect model.
+    """
+    gmb_url = f"https://www.google.com/maps/place/?q=place_id:{place_id}"
+    logger.info(f"Capturing RAW for Place ID: {place_id}")
+
+    try:
+        await page.goto(gmb_url, wait_until="load", timeout=60000)
+        await page.wait_for_selector('h1, div[role="main"], .qBF1Pd', timeout=30000)
+        await asyncio.sleep(5) 
+
+        # SESSION-HEAL: If we want high-fidelity capture, we trigger hydration now
+        # so the 'Witness' contains the full review data for later processing.
+        rating_selector = 'div.F7nice, span[aria-label*="stars"]'
+        if await page.is_visible(rating_selector):
+            logger.debug(f"Triggering hydration click for high-fidelity witness: {place_id}")
+            await page.click(rating_selector)
+            await asyncio.sleep(5)
+
+        html_content = await page.content()
+        
+        return RawWitness(
+            place_id=place_id,
+            processed_by=processed_by,
+            campaign_name=campaign_name,
+            url=gmb_url,
+            html=html_content,
+            metadata={
+                "capture_strategy": "direct-place-id",
+                "viewport": str(page.viewport_size)
+            }
+        )
+
+    except Exception as e:
+        logger.error(f"Error capturing raw for {place_id}: {e}")
+        return None
 
 async def scrape_google_maps_details(
     page: Page,
