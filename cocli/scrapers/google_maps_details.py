@@ -72,14 +72,28 @@ async def scrape_google_maps_details(
                 
         raw_result = GoogleMapsRawResult(**raw_data)
         
+        logger.debug(f"Pre-Heal Check for {place_id}: Rating={raw_result.Average_rating}, Reviews={raw_result.Reviews_count}")
+        
         # --- SESSION-HEAL: Force Hydration if Limited View detected ---
         if not raw_result.Average_rating or not raw_result.Reviews_count:
             try:
-                # Target the rating container to force a click/load
-                rating_selector = 'div.F7nice, span[aria-label*="stars"]'
-                if await page.is_visible(rating_selector):
-                    logger.info(f"Limited View detected for {place_id}. Attempting hydration click...")
-                    await page.click(rating_selector)
+                # We try several possible triggers for the reviews pane
+                triggers = [
+                    'div.F7nice', 
+                    'span[aria-label*="stars"]',
+                    'button:has-text("reviews")',
+                    'button[aria-label*="reviews"]'
+                ]
+                
+                clicked = False
+                for selector in triggers:
+                    if await page.is_visible(selector):
+                        logger.info(f"CLOAK DETECTED for {place_id}. Triggering hydration via: {selector}")
+                        await page.click(selector)
+                        clicked = True
+                        break
+                
+                if clicked:
                     await asyncio.sleep(5) # Wait for dynamic load
                     
                     # Re-parse the healed page
@@ -87,11 +101,19 @@ async def scrape_google_maps_details(
                     healed_data = parse_gmb_page(new_html, debug=debug)
                     
                     # Update our raw_result with any new findings
+                    updated_fields = []
                     for k, v in healed_data.items():
-                        if v and hasattr(raw_result, k):
+                        if v and hasattr(raw_result, k) and not getattr(raw_result, k):
                             setattr(raw_result, k, v)
+                            updated_fields.append(k)
                     
-                    logger.info(f"Hydration complete. Rating: {raw_result.Average_rating}, Reviews: {raw_result.Reviews_count}")
+                    if updated_fields:
+                        logger.info(f"HYDRATION SUCCESS for {place_id}! Fields recovered: {', '.join(updated_fields)}")
+                    else:
+                        logger.warning(f"Hydration click executed for {place_id}, but no new data recovered.")
+                else:
+                    logger.warning(f"No hydration triggers found for {place_id}. Page may be severely cloaked.")
+                    
             except Exception as heal_err:
                 logger.debug(f"Hydration click failed: {heal_err}")
 

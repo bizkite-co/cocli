@@ -65,7 +65,7 @@ def extract_rating_reviews(soup: BeautifulSoup, inner_text: str, debug: bool = F
     # 4. TEXT NODE SCAN
     if not reviews_count:
         # Global search for "X reviews" in text nodes
-        nodes = soup.find_all(string=re.compile(r"[\d,]+\s*reviews", re.IGNORECASE))
+        nodes = soup.find_all(string=re.compile(r"[\d,]+\s*Reviews?", re.IGNORECASE))
         for node in nodes:
             match = re.search(r"([\d,]+)", node)
             if match:
