@@ -762,7 +762,9 @@ class CompanyDetail(Container):
         rating = c.get("average_rating")
         review_count = c.get("reviews_count")
         if rating is not None or review_count is not None:
-            rating_str = f"{rating if rating is not None else '?'}/5.0 ({review_count or 0} reviews)"
+            rating_str = f"{rating if rating is not None else '?'}"
+            if review_count is not None:
+                rating_str += f" ({review_count} reviews)"
             self.info_table.add_row("Rating", rating_str)
 
         self.info_table.add_row("Street", escape(str(c.get("street_address") or "")))

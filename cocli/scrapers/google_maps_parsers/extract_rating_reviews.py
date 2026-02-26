@@ -20,12 +20,46 @@ def extract_rating_reviews(soup: BeautifulSoup, inner_text: str, debug: bool = F
     rating = ""
     reviews_count = ""
 
-    # 1. SCAN ALL ARIA-LABELS AND TITLES (Highest Reliability)
+    # --- 1. JSACTION SCAN (User Provided) ---
+    # Specifically target the review chart container
+    chart_container = soup.find(attrs={"jsaction": re.compile(r"reviewChart\.moreReviews")})
+    if chart_container:
+        text = chart_container.get_text(separator=" ", strip=True)
+        # Look for "3.7" and "3 reviews"
+        r_match = re.search(r"(\d\.\d)", text)
+        if r_match:
+            rating = r_match.group(1)
+        
+        c_match = re.search(r"([\d,]+)\s*Reviews", text, re.IGNORECASE)
+        if c_match:
+            reviews_count = c_match.group(1).replace(",", "")
+
+    # --- 2. BREAKDOWN TABLE SCAN ---
+    # Look for "5 stars, 2 reviews" in aria-labels
+    if not reviews_count:
+        breakdown_els = soup.find_all(attrs={"role": "img", "aria-label": re.compile(r"stars,")})
+        total_from_breakdown = 0
+        found_breakdown = False
+        for el in breakdown_els:
+            label_val = el.get("aria-label")
+            if not label_val:
+                continue
+            label = str(label_val)
+            # Example: "5 stars, 2 reviews"
+            b_match = re.search(r"stars,\s*([\d,]+)\s*review", label, re.IGNORECASE)
+            if b_match:
+                found_breakdown = True
+                total_from_breakdown += int(b_match.group(1).replace(",", ""))
+        
+        if found_breakdown:
+            reviews_count = str(total_from_breakdown)
+
+    # --- 3. SCAN ALL ARIA-LABELS AND TITLES ---
     for el in soup.find_all(True):
-        label = el.get('aria-label') or el.get('title')
-        if not label:
+        label_val = el.get('aria-label') or el.get('title')
+        if not label_val:
             continue
-        label = str(label)
+        label = str(label_val)
         
         if not rating:
             r_match = RATING_STRICT_RE.search(label)
@@ -37,15 +71,31 @@ def extract_rating_reviews(soup: BeautifulSoup, inner_text: str, debug: bool = F
             if c_match:
                 reviews_count = c_match.group(1).replace(",", "")
 
-    # 2. SCAN ALL TEXT NODES FOR "REVIEWS" (Direct search)
+    # 2. SCAN ALL TEXT NODES AND CONTAINERS FOR "REVIEWS"
     if not reviews_count:
-        # Look for any text node containing the word "reviews" with a preceding number
+        # Search for elements whose text matches "[\d,]+ reviews"
+        # We use soup.find_all(string=...) but also check parent's text 
+        # in case Google splits the number and the word.
+        
+        # 2a. Direct string match
         review_nodes = soup.find_all(string=re.compile(r"[\d,]+\s*reviews", re.IGNORECASE))
         for node in review_nodes:
             match = re.search(r"([\d,]+)", node)
             if match:
                 reviews_count = match.group(1).replace(",", "")
                 break
+        
+        # 2b. Container text match (if 2a failed)
+        if not reviews_count:
+            # Look for any element that has "reviews" in its text and contains a number
+            for tag in soup.find_all(["span", "button", "div"]):
+                text = tag.get_text(separator=" ", strip=True)
+                if "reviews" in text.lower():
+                    # Look for the review pattern in the combined text
+                    match = re.search(r"([\d,]+)\s*Reviews", text, re.IGNORECASE)
+                    if match:
+                        reviews_count = match.group(1).replace(",", "")
+                        break
 
     # 3. PROXIMITY FALLBACK: Look for (X) near the rating in innerText
     if not reviews_count and rating:

@@ -41,10 +41,14 @@ class CompanyPreview(Container):
         has_rating = rating is not None and str(rating).strip() != ""
         has_reviews = reviews is not None and str(reviews).strip() != ""
         
-        rating_val = f"{rating}/5.0" if has_rating else "N/A"
-        reviews_val = f"{reviews} reviews" if has_reviews else "0 reviews"
-        
-        rating_str = f"{rating_val} ({reviews_val})"
+        if has_rating:
+            rating_str = f"{rating}"
+            if has_reviews:
+                rating_str += f" ({reviews} reviews)"
+        elif has_reviews:
+            rating_str = f"({reviews} reviews)"
+        else:
+            rating_str = "N/A"
 
         # Lifecycle dates
         scraped_at = company.list_found_at.strftime('%Y-%m-%d') if company.list_found_at else "N/A"

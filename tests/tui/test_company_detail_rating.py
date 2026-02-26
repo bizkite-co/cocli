@@ -51,8 +51,9 @@ async def test_company_detail_rating_display(mock_cocli_env, mocker):
         # Rating should be present
         rating_row = next((r for r in rows if r[0] == "Rating"), None)
         assert rating_row is not None, "Rating row not found in Info Table"
-        assert "4.8/5.0" in str(rating_row[1])
+        assert "4.8" in str(rating_row[1])
         assert "120 reviews" in str(rating_row[1])
+        assert "/5.0" not in str(rating_row[1])
 
 if __name__ == "__main__":
     import subprocess
