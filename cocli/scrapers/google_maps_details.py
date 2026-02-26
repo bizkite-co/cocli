@@ -50,15 +50,27 @@ async def scrape_google_maps_details(
             logger.error(f"IDENTITY SHIELD: No valid name found for {place_id} (Scraped: {details_dict.get('Name')}, Fallback: {name}). Blocking save.")
             return None
 
-        raw_result = GoogleMapsRawResult(
-            Place_ID=place_id,
-            Name=final_name,
-            Full_Address=details_dict.get("Full_Address", ""),
-            Website=details_dict.get("Website", ""),
-            Phone_1=details_dict.get("Phone", ""),
-            GMB_URL=gmb_url,
-            processed_by="details-worker"
-        )
+        # 1. Start with the dictionary from the parser
+        # Ensure we map GMB parser keys ('Phone', etc) to RawResult keys ('Phone_1', etc)
+        raw_data = {
+            "Place_ID": place_id,
+            "Name": final_name,
+            "Full_Address": details_dict.get("Full_Address", ""),
+            "Website": details_dict.get("Website", ""),
+            "Phone_1": details_dict.get("Phone", ""),
+            "Domain": details_dict.get("Domain", ""),
+            "Average_rating": details_dict.get("Average_rating"),
+            "Reviews_count": details_dict.get("Reviews_count"),
+            "GMB_URL": gmb_url,
+            "processed_by": "details-worker"
+        }
+        
+        # Add any other fields from details_dict that might be present
+        for k, v in details_dict.items():
+            if k not in raw_data and k in GoogleMapsRawResult.model_fields:
+                raw_data[k] = v
+                
+        raw_result = GoogleMapsRawResult(**raw_data)
         
         # EXPLICIT VALIDATION: This triggers the Pydantic Shield
         try:

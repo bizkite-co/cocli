@@ -96,12 +96,19 @@ class SidebarScraper:
                 from ...core.text_utils import slugify
                 processed_place_ids.add(place_id)
 
+                rev_count = business_data_dict.get("Reviews_count")
+                avg_rating = business_data_dict.get("Average_rating")
+
                 # Yield Discovery Item
                 yield GoogleMapsListItem(
                     place_id=place_id,
                     name=name,
                     company_slug=slugify(name),
                     phone=business_data_dict.get("Phone_1"),
+                    domain=business_data_dict.get("Domain"),
+                    reviews_count=int(rev_count) if rev_count and str(rev_count).strip() else None,
+                    average_rating=float(avg_rating) if avg_rating and str(avg_rating).strip() else None,
+                    street_address=business_data_dict.get("Street_Address"),
                     gmb_url=business_data_dict.get("GMB_URL"),
                     discovery_phrase=search_string,
                     discovery_tile_id=tile_id

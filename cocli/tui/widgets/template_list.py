@@ -16,6 +16,11 @@ class TemplateList(Container):
             super().__init__()
             self.template_id = template_id
 
+    class TemplateHighlighted(Message):
+        def __init__(self, template_id: str) -> None:
+            super().__init__()
+            self.template_id = template_id
+
     def compose(self) -> ComposeResult:
         yield Label("TEMPLATES", id="template_header", classes="pane-header")
         yield ListView(
@@ -54,6 +59,14 @@ class TemplateList(Container):
     def on_template_selected(self, event: ListView.Selected) -> None:
         if event.item and event.item.id:
             self.post_message(self.TemplateSelected(event.item.id))
+
+    @on(ListView.Highlighted, "#template_list")
+    def on_list_view_highlighted(self, event: ListView.Highlighted) -> None:
+        if event.item and event.item.id:
+            from ..app import tui_debug_log
+            style = event.item.styles
+            tui_debug_log(f"TEMPLATE: Highlighted {event.item.id} | Style: color={style.color}, bg={style.background}")
+            self.post_message(self.TemplateHighlighted(event.item.id))
 
     def on_key(self, event: events.Key) -> None:
         """Handle key events for the TemplateList widget."""

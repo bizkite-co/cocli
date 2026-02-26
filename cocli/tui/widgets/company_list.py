@@ -45,7 +45,7 @@ class CompanyList(Container):
         self.current_filters: Dict[str, Any] = {}
         self.current_sort: Optional[str] = "recent"
         self.search_offset: int = 0
-        self.search_limit: int = 30
+        self.search_limit: int = 50
         self._ignoring_input_change: bool = False
 
     def compose(self) -> ComposeResult:
@@ -159,6 +159,10 @@ class CompanyList(Container):
 
     def on_key(self, event: events.Key) -> None:
         """Handle key events for the CompanyList widget."""
+        # IF we are in leader mode, do NOT handle any keys here, let them bubble to App
+        if getattr(self.app, "leader_mode", False):
+            return
+
         list_views = self.query("#company_list_view")
         search_inputs = self.query("#company_search_input")
         
@@ -457,11 +461,12 @@ class CompanyList(Container):
 
         company = await asyncio.to_thread(Company.get, item.slug)
         if company:
-            # Supplement with search result data if missing on disk
-            if company.average_rating is None:
+            # Supplement with search result data if missing on disk OR prioritize search result rating
+            if item.average_rating is not None:
                 company.average_rating = item.average_rating
-            if company.reviews_count is None:
+            if item.reviews_count is not None:
                 company.reviews_count = item.reviews_count
+            
             if not company.street_address:
                 company.street_address = item.street_address
             if not company.city:

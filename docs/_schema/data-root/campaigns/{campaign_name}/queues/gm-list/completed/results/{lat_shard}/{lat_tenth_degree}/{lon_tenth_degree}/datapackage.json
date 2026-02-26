@@ -1,0 +1,28 @@
+{
+  "profile": "tabular-data-package",
+  "name": "gm_list_results",
+  "resources": [
+    {
+      "name": "results",
+      "path": "{search_slug}.usv",
+      "format": "usv",
+      "dialect": {
+        "delimiter": "\u001f",
+        "header": false
+      },
+      "schema": {
+        "fields": [
+          {"name": "place_id", "type": "string"},
+          {"name": "company_slug", "type": "string"},
+          {"name": "name", "type": "string"},
+          {"name": "phone", "type": "string"},
+          {"name": "domain", "type": "string"},
+          {"name": "reviews_count", "type": "integer"},
+          {"name": "average_rating", "type": "number"},
+          {"name": "street_address", "type": "string"},
+          {"name": "gmb_url", "type": "string"}
+        ]
+      }
+    }
+  ]
+}

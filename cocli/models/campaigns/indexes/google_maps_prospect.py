@@ -277,4 +277,28 @@ class GoogleMapsProspect(GoogleMapsIdx):
         with open(checkpoint_path, "a", encoding="utf-8") as f:
             f.write(prospect.to_usv())
 
+    def save_enrichment(self) -> Path:
+        """Saves this prospect data to the company's enrichment directory."""
+        from ....core.paths import paths
+        if not self.company_slug:
+            raise ValueError("Cannot save enrichment without company_slug")
+            
+        enrichment_dir = paths.companies.entry(self.company_slug).path / "enrichments"
+        enrichment_dir.mkdir(parents=True, exist_ok=True)
+        
+        # Save Datapackage for the enrichment
+        self.save_datapackage(enrichment_dir, resource_name="google_maps", resource_path="google_maps.usv")
+        
+        usv_path = enrichment_dir / "google_maps.usv"
+        # We overwrite the enrichment file with the latest scrape data
+        with open(usv_path, "w", encoding="utf-8") as f:
+            # We add a header to the enrichment USV for easy manual inspection, 
+            # though our internal readers will skip it if they see 'created_at'.
+            from cocli.utils.usv_utils import USVWriter
+            writer = USVWriter(f)
+            writer.writerow(list(self.model_fields.keys()))
+            f.write(self.to_usv())
+            
+        return usv_path
+
     

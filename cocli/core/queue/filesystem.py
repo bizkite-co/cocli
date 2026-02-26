@@ -705,28 +705,39 @@ class FilesystemGmListQueue(FilesystemQueue):
             if task_dir.exists():
                 shutil.rmtree(task_dir, ignore_errors=True)
             
-            # 3. S3 Cleanup & Completion (Immediate)
+            # 3. Completion Receipt (Local & S3)
+            from ..sharding import get_geo_shard, get_grid_tile_id
+            from ..text_utils import slugify
+            
+            lat_shard = get_geo_shard(task.latitude)
+            grid_id = get_grid_tile_id(task.latitude, task.longitude)
+            lat_tile, lon_tile = grid_id.split("_")
+            phrase_slug = slugify(task.search_phrase)
+            
+            completion_data = {
+                "task_id": task.ack_token,
+                "completed_at": datetime.now(UTC).isoformat(),
+                "worker_id": lease_data.get("worker_id", self.worker_id),
+                "lease_created_at": lease_data.get("created_at"),
+                "search_phrase": task.search_phrase,
+                "latitude": task.latitude,
+                "longitude": task.longitude,
+                "result_count": task.result_count
+            }
+            
+            # Local path
+            receipt_dir = self.queue_base / "completed" / "results" / lat_shard / lat_tile / lon_tile
+            receipt_dir.mkdir(parents=True, exist_ok=True)
+            receipt_path = receipt_dir / f"{phrase_slug}.json"
+            
+            with open(receipt_path, 'w') as f:
+                json.dump(completion_data, f, indent=2)
+
+            # S3 Mirror
             if self.s3_client and self.bucket_name:
                 try:
                     s3_lease_key = self._get_s3_lease_key(task.ack_token)
-                    
-                    # Mirror pending structure in completed/results
-                    # Pending: pending/{shard}/{lat}/{lon}/{phrase}.csv/task.json
-                    # Completed: completed/results/{shard}/{lat}/{lon}/{phrase}.json
-                    from ..sharding import get_geo_shard
-                    shard = get_geo_shard(task.latitude)
-                    base_id = task.ack_token.replace(".csv", "").replace(".usv", "")
-                    s3_completed_key = f"campaigns/{self.campaign_name}/queues/{self.queue_name}/completed/results/{shard}/{base_id}.json"
-                    
-                    completion_data = {
-                        "task_id": task.ack_token,
-                        "completed_at": datetime.now(UTC).isoformat(),
-                        "worker_id": lease_data.get("worker_id", self.worker_id),
-                        "lease_created_at": lease_data.get("created_at"),
-                        "search_phrase": task.search_phrase,
-                        "latitude": task.latitude,
-                        "longitude": task.longitude
-                    }
+                    s3_completed_key = f"campaigns/{self.campaign_name}/queues/{self.queue_name}/completed/results/{lat_shard}/{lat_tile}/{lon_tile}/{phrase_slug}.json"
                     
                     self.s3_client.put_object(
                         Bucket=self.bucket_name,

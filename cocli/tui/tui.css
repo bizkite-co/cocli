@@ -252,8 +252,11 @@ CompanySearchView {
 }
 
 #template_list > .listview--highlight {
-    background: #0a0a0a;
-    color: #00ff00;
+    background: black !important;
+}
+
+#template_list > .listview--highlight Label {
+    color: #00ff00 !important;
     text-style: bold;
 }
 

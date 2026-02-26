@@ -46,9 +46,9 @@ def consolidate_campaign_results(campaign_name: str) -> int:
                     _merge_usv(file_path, target_path)
                 else:
                     if not target_path.exists():
-                        shutil.move(str(file_path), str(target_path))
-                    else:
-                        file_path.unlink(missing_ok=True)
+                        shutil.copy2(str(file_path), str(target_path))
+                    # MANDATE: Never unlink the source trace file. 
+                    # It must remain as a witness of the session.
                 merged_count += 1
         except ValueError:
             continue
@@ -115,7 +115,7 @@ def _merge_usv(src: Path, dest: Path) -> None:
         with open(dest, "a", encoding="utf-8") as df:
             for row in new_rows:
                 df.write(row + "\n")
-    src.unlink(missing_ok=True)
+    # MANDATE: Never unlink the source trace file.
 
 def _cleanup_empty_dirs(root: Path) -> None:
     dirs = sorted([d for d in root.rglob("*") if d.is_dir()], key=lambda x: len(x.parts), reverse=True)

@@ -24,6 +24,7 @@ class ScrapeTask(BaseModel):
     # Queue mechanics (Transient)
     ack_token: Optional[str] = Field(None, exclude=True)
     attempts: int = 0
+    result_count: Optional[int] = None # Capture discovery count for receipt
 
     @property
     def collection(self) -> QueueName:
@@ -38,7 +39,9 @@ class ScrapeTask(BaseModel):
         """Unique ID for this scrape task."""
         if self.tile_id:
             return self.tile_id
-        return f"{self.latitude}_{self.longitude}_{self.zoom}"
+        
+        from ....core.sharding import get_grid_tile_id
+        return get_grid_tile_id(self.latitude, self.longitude)
 
     def get_local_path(self) -> Path:
         """Returns the local pending directory."""

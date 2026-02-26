@@ -1,101 +1,79 @@
-import os
-import sys
-import re
-from pathlib import Path
+# POLICY: frictionless-data-policy-enforcement
+import json
+import logging
+from cocli.core.paths import paths
+from cocli.core.constants import UNIT_SEP
 
-# Add project root to path
-sys.path.append(str(Path(__file__).parent.parent))
-from cocli.models.schema_placeholders import SchemaPlaceholders
+# Setup logging
+logging.basicConfig(level=logging.INFO, format='%(message)s')
+logger = logging.getLogger("check_compliance")
 
-def check_compliance(campaign_name: str) -> None:
-    schema_root = Path("docs/_schema/data-root/campaigns/{campaign_name}")
+def check_schema_compliance(campaign_name: str) -> None:
+    logger.info(f"--- Checking Schema Compliance for campaign: {campaign_name} ---")
     
-    # Use the current working directory 'data' symlink if it exists, otherwise fallback
-    data_dir = Path("data").resolve()
-    if not data_dir.exists():
-        data_dir = Path(os.getenv("COCLI_DATA_HOME", Path.home() / ".local/share/cocli_data")).resolve()
-    
-    campaign_dir = (data_dir / "campaigns" / campaign_name).resolve()
+    # 1. Target Index and Datapackage
+    prospect_idx = paths.campaign(campaign_name).index("google_maps_prospects")
+    checkpoint_path = prospect_idx.checkpoint
+    prospect_dp = prospect_idx.path / "datapackage.json"
 
-    if not campaign_dir.exists():
-        print(f"❌ Campaign directory not found: {campaign_dir}")
+    if not prospect_dp.exists():
+        logger.error(f"Datapackage not found: {prospect_dp}")
         return
 
-    print(f"--- Schema Compliance Report: {campaign_name} ---")
-    print(f"Data Root: {campaign_dir}\n")
+    with open(prospect_dp, "r") as f:
+        dp_data = json.load(f)
+        expected_cols = len(dp_data["resources"][0]["schema"]["fields"])
+        logger.info(f"Expected Columns: {expected_cols}")
 
-    def walk_schema(schema_path: Path, local_path: Path, indent: int = 0) -> None:
-        if schema_path.suffix in [".md", ".mmd"]:
-            return
+    if not checkpoint_path.exists():
+        logger.error(f"Checkpoint not found: {checkpoint_path}")
+        return
 
-        name = schema_path.name
-        # Match {variable} or {variable}.ext
-        placeholder_match = re.search(r"\{([a-z_]+)\}", name)
-        is_placeholder = bool(placeholder_match)
-        
-        prefix = "  " * indent
+    total_rows = 0
+    non_conforming = 0
+    
+    # Check Checkpoint
+    logger.info(f"Scanning {checkpoint_path.name}...")
+    with open(checkpoint_path, "r", encoding="utf-8") as f:
+        for i, line in enumerate(f, 1):
+            total_rows += 1
+            # Strip record separator and newline
+            clean_line = line.strip("\x1e\n")
+            if not clean_line:
+                continue
+                
+            parts = clean_line.split(UNIT_SEP)
+            if len(parts) != expected_cols:
+                non_conforming += 1
+                if non_conforming <= 10:
+                    logger.warning(f"Row {i}: Found {len(parts)} columns (Expected {expected_cols}) | PID: {parts[0] if parts else 'N/A'}")
+                elif non_conforming == 11:
+                    logger.warning("... more non-conforming rows found ...")
 
-        if not is_placeholder:
-            # Fixed directory or file
-            if local_path.exists():
-                print(f"{prefix}✅ {name}")
-                if schema_path.is_dir():
-                    # Recurse into schema children
-                    for child in sorted(schema_path.iterdir()):
-                        walk_schema(child, local_path / child.name, indent + 1)
-            else:
-                print(f"{prefix}⚠️ {name}")
-        elif placeholder_match:
-            # Placeholder validation
-            var_name = placeholder_match.group(1).upper()
-            
-            if var_name == "CAMPAIGN_NAME":
-                # Print the actual campaign name
-                print(f"{prefix}✅ {campaign_name} (as <{var_name}>)")
-                for child in sorted(schema_path.iterdir()):
-                    # When recursing from CAMPAIGN_NAME, we keep the same local_path 
-                    # but append the child's name from the schema
-                    walk_schema(child, local_path / child.name, indent + 1)
-                return
-
-            # Check parent for items matching the placeholder
-            parent_local = local_path.parent
-            if not parent_local.exists():
-                return
-
-            found_any = False
-            match_count = 0
-            try:
-                items = sorted(list(parent_local.iterdir()))
-                for item in items:
-                    if item.name.startswith(".") or item.name in ["README.md", "datapackage.json"]:
+    # Check WAL
+    wal_dir = prospect_idx.wal
+    if wal_dir.exists():
+        logger.info(f"Scanning WAL shards in {wal_dir}...")
+        for file_path in wal_dir.rglob("*.usv"):
+            with open(file_path, "r", encoding="utf-8") as f:
+                for line_num, line in enumerate(f, 1):
+                    clean_line = line.strip("\x1e\n")
+                    if not clean_line:
                         continue
-                    
-                    # Ensure type match (dir vs file)
-                    if schema_path.is_dir() != item.is_dir():
-                        continue
+                    parts = clean_line.split(UNIT_SEP)
+                    if len(parts) != expected_cols:
+                        non_conforming += 1
+                        logger.warning(f"File {file_path.name}, Line {line_num}: Found {len(parts)} columns (Expected {expected_cols})")
 
-                    val_name = item.name.split(".")[0]
-                    if SchemaPlaceholders.validate_placeholder(var_name, val_name):
-                        found_any = True
-                        match_count += 1
-                        
-                        if match_count <= 2: 
-                            print(f"{prefix}✅ {item.name} (matches <{var_name}>)")
-                            if schema_path.is_dir():
-                                for child in sorted(schema_path.iterdir()):
-                                    # Recurse: next schema child against this matched local item's child
-                                    walk_schema(child, item / child.name, indent + 1)
-                        elif match_count == 3:
-                            print(f"{prefix}... and more matches for <{var_name}>")
-            except Exception:
-                pass
-
-            if not found_any:
-                print(f"{prefix}⚠️ <{var_name}> (No matches found)")
-
-    walk_schema(schema_root, campaign_dir)
+    logger.info("\n--- Compliance Report ---")
+    logger.info(f"Total Rows Scanned: {total_rows}")
+    logger.info(f"Non-Conforming Rows: {non_conforming}")
+    
+    if total_rows > 0:
+        compliance_pct = ((total_rows - non_conforming) / total_rows) * 100
+        logger.info(f"Compliance Rating: {compliance_pct:.2f}%")
 
 if __name__ == "__main__":
+    import sys
     campaign = sys.argv[1] if len(sys.argv) > 1 else "roadmap"
-    check_compliance(campaign)
+    check_schema_compliance(campaign)

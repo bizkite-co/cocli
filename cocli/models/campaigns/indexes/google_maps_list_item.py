@@ -10,6 +10,10 @@ class GoogleMapsListItem(BaseModel):
     name: str = Field(..., description="Business name from the list view")
     company_slug: str = Field(..., description="Generated slug for the business")
     phone: Optional[str] = Field(None, description="Phone number from the list view")
+    domain: Optional[str] = Field(None, description="Extracted domain")
+    reviews_count: Optional[int] = Field(None, description="Number of reviews")
+    average_rating: Optional[float] = Field(None, description="Average rating")
+    street_address: Optional[str] = Field(None, description="Street address")
     gmb_url: Optional[str] = None
     discovery_phrase: Optional[str] = None
     discovery_tile_id: Optional[str] = None

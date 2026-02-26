@@ -11,7 +11,6 @@ from playwright.async_api import async_playwright
 
 from ..core.queue.factory import get_queue_manager
 from ..scrapers.google_maps import scrape_google_maps
-from ..scrapers.google_maps_details import scrape_google_maps_details
 from ..models.campaigns.queues.gm_list import ScrapeTask
 from ..models.campaigns.indexes.google_maps_prospect import GoogleMapsProspect
 from ..models.campaigns.indexes.google_maps_list_item import GoogleMapsListItem
@@ -22,7 +21,6 @@ from ..core.config import load_campaign_config, get_campaign_dir
 from ..utils.playwright_utils import setup_optimized_context
 from ..utils.headers import ANTI_BOT_HEADERS, USER_AGENT
 from ..core.text_utils import slugify
-from cocli.core.constants import UNIT_SEP
 
 logger = logging.getLogger(__name__)
 
@@ -153,31 +151,10 @@ class WorkerService:
                     
                     if discovered_items:
                         try:
-                            from ..core.paths import paths
-                            from ..core.sharding import get_geo_shard, get_grid_tile_id
-                            shard = get_geo_shard(task.latitude)
-                            
-                            # Standardized 0.1 degree tile ID
-                            tile_id = task.tile_id
-                            if not tile_id:
-                                tile_id = get_grid_tile_id(task.latitude, task.longitude)
-                            
-                            # Clean ID for path construction (removes any phrase suffix if present in task.tile_id)
-                            # Actually, we want the path to be {shard}/{tile_id}/{phrase}.usv
-                            base_tile = tile_id.split("_")[0] + "_" + tile_id.split("_")[1]
-                            
-                            local_results_dir = paths.queue(task.campaign_name, "gm-list") / "completed" / "results" / shard / base_tile
-                            local_results_dir.mkdir(parents=True, exist_ok=True)
-                            
-                            phrase_slug = slugify(task.search_phrase)
-                            result_file = local_results_dir / f"{phrase_slug}.usv"
-                            
-                            with open(result_file, "w") as rf:
-                                for item in discovered_items:
-                                    rf.write(f"{item.place_id}{UNIT_SEP}{item.company_slug}{UNIT_SEP}{item.name}{UNIT_SEP}{item.phone or ''}\n")
-                            
-                            s3_key = f"campaigns/{task.campaign_name}/queues/gm-list/completed/results/{shard}/{base_tile}/{phrase_slug}.usv"
-                            s3_client.upload_file(str(result_file), self.bucket_name, s3_key)
+                            # Use the Modular Processor
+                            from .processors.gm_list import GmListProcessor
+                            processor = GmListProcessor(processed_by=self.processed_by, bucket_name=self.bucket_name)
+                            await processor.process_results(task, discovered_items, s3_client=s3_client)
                         except Exception as res_err:
                             logger.warning(f"Failed to write batch result log: {res_err}")
                 finally:
@@ -192,6 +169,9 @@ class WorkerService:
                     logger.info(f"Task Complete. Found {prospect_count} prospects. Bandwidth: {tracker.get_mb() - start_mb:.2f} MB")
                 else:
                     logger.info(f"Task Complete. Found {prospect_count} prospects.")
+                
+                # Capture result count for the receipt (Processor already does this, but for internal state)
+                task.result_count = len(discovered_items)
                 scrape_queue.ack(task)
             except Exception as e:
                 logger.error(f"Task Failed: {e}")
@@ -305,11 +285,10 @@ class WorkerService:
                 try:
                     page = await browser_or_context.new_page()
                     try:
-                        detailed_prospect_data = await scrape_google_maps_details(
-                            page=page, place_id=task.place_id, campaign_name=task.campaign_name,
-                            name=getattr(task, "name", None), company_slug=getattr(task, "company_slug", None),
-                            debug=debug
-                        )
+                        # Use the Modular Processor
+                        from .processors.google_maps import GoogleMapsDetailsProcessor
+                        processor = GoogleMapsDetailsProcessor(processed_by=self.processed_by)
+                        final_prospect_data = await processor.process(task, page, debug=debug)
                     finally:
                         await page.close()
                 finally:
@@ -320,63 +299,15 @@ class WorkerService:
                         except Exception:
                             pass
 
-                if not detailed_prospect_data:
+                if not final_prospect_data:
                     gm_list_item_queue.nack(task)
                     if once:
                         return
                     continue
 
-                detailed_prospect_data.processed_by = self.processed_by
-                detailed_prospect_data.discovery_phrase = task.discovery_phrase
-                detailed_prospect_data.discovery_tile_id = task.discovery_tile_id
-                final_prospect_data = detailed_prospect_data
-                if existing_prospect:
-                    merged_data = existing_prospect.model_dump()
-                    new_data = detailed_prospect_data.model_dump(exclude_unset=True)
-                    merged_data.update({k: v for k, v in new_data.items() if v is not None})
-                    final_prospect_data = GoogleMapsProspect.model_validate(merged_data)
+                gm_list_item_queue.ack(task)
 
-                final_prospect_data.processed_by = self.processed_by
-                final_prospect_data.updated_at = datetime.now()
-
-                if csv_manager.append_prospect(final_prospect_data):
-                    try:
-                        s3_client.upload_file(str(file_path), self.bucket_name, s3_key)
-                    except Exception as e:
-                        logger.error(f"S3 Upload Error: {e}")
-                    
-                    # LINKAGE: Create/Update the company record immediately
-                    try:
-                        from ..models.companies.company import Company
-                        company_obj = Company.get(final_prospect_data.company_slug)
-                        if not company_obj:
-                            company_obj = Company(
-                                name=final_prospect_data.name or final_prospect_data.company_slug,
-                                slug=final_prospect_data.company_slug,
-                                tags=[task.campaign_name]
-                            )
-                        
-                        # Merge identifiers
-                        if not company_obj.place_id:
-                            company_obj.place_id = final_prospect_data.place_id
-                        
-                        if company_obj.latitude is None and final_prospect_data.latitude:
-                            company_obj.latitude = final_prospect_data.latitude
-                        
-                        if company_obj.longitude is None and final_prospect_data.longitude:
-                            company_obj.longitude = final_prospect_data.longitude
-                        
-                        if task.campaign_name not in company_obj.tags:
-                            company_obj.tags.append(task.campaign_name)
-                        
-                        if final_prospect_data.keyword and final_prospect_data.keyword not in company_obj.tags:
-                            company_obj.tags.append(final_prospect_data.keyword)
-                            
-                        # Save identity baseline
-                        company_obj.save(email_sync=False)
-                    except Exception as e:
-                        logger.error(f"Failed to create company linkage for {final_prospect_data.company_slug}: {e}")
-
+                # LINKAGE: Push to enrichment queue if domain found
                 if final_prospect_data.domain and final_prospect_data.name:
                     enrichment_queue.push(QueueMessage(
                         domain=final_prospect_data.domain, 

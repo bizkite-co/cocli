@@ -1,9 +1,11 @@
 {
-  "task_id": "37.5/-123.3/financial-advisor.csv",
-  "completed_at": "2026-02-05T23:55:00Z",
-  "worker_id": "cocli5x1",
-  "lease_created_at": "2026-02-05T23:45:00Z",
-  "search_phrase": "financial-advisor",
-  "latitude": 37.5,
-  "longitude": -123.3
+  "search_phrase": "financial-planner",
+  "search_slug": "financial-planner",
+  "latitude": 25.0,
+  "longitude": -80.5,
+  "zoom": 15,
+  "completed_at": "2026-02-25T23:57:19.674175+00:00",
+  "worker_id": "local-tui",
+  "result_count": 2,
+  "status": "success"
 }

@@ -118,6 +118,13 @@ class ApplicationView(Container):
                     yield Static("", id="op_description", classes="op-description")
                     yield Label("", id="op_last_run", classes="op-timestamp")
                     
+                    # Area for dynamic parameters (e.g. limit)
+                    with Vertical(id="op_params_area"):
+                        yield Label("Operation Parameters:", id="op_params_title")
+                        with Horizontal(id="op_limit_container"):
+                            yield Label("Limit (Target Amount):", id="op_limit_label")
+                            yield Input(placeholder="20", id="op_limit_input", value="20")
+                    
                     # Area for report content or operation output
                     yield Container(id="op_content_area")
                     
@@ -150,6 +157,7 @@ class ApplicationView(Container):
         nav_list = self.query_one("#app_nav_list", ListView)
         nav_list.index = 0
         nav_list.focus()
+        self.query_one("#op_params_area").display = False
         self.show_category("campaigns")
         self.update_recent_runs()
 
@@ -221,6 +229,7 @@ class ApplicationView(Container):
             elif event.key == "l" or event.key == "enter":
                 focused.action_select_cursor()
                 event.prevent_default()
+                event.stop()
 
     @on(ListView.Selected, "#app_nav_list")
     def handle_nav_selection(self, event: ListView.Selected) -> None:
@@ -329,6 +338,10 @@ class ApplicationView(Container):
             meta_table.add_column("Key", style="dim cyan", width=15)
             meta_table.add_column("Value")
             
+            # Parameter visibility
+            params_area = self.query_one("#op_params_area", Vertical)
+            params_area.display = (op_id == "op_compile_to_call")
+
             if op.source_path:
                 meta_table.add_row("Source", f"[bold yellow]{op.source_path.format(campaign=campaign)}[/]")
             if op.dest_path:
@@ -459,6 +472,15 @@ class ApplicationView(Container):
         if not op:
             return
 
+        # Extract parameters from UI
+        params = {}
+        if op_id == "op_compile_to_call":
+            try:
+                limit_str = self.query_one("#op_limit_input", Input).value
+                params["limit"] = int(limit_str) if limit_str.strip() else 20
+            except ValueError:
+                params["limit"] = 20
+
         def step_callback(step_name: str, status: str) -> None:
             # Refresh Index detail if we are looking at it
             if self.active_category == "indexes":
@@ -477,7 +499,8 @@ class ApplicationView(Container):
                 await app.services.operation_service.execute(
                     op_id, 
                     log_callback=self.log_callback,
-                    step_callback=step_callback
+                    step_callback=step_callback,
+                    params=params
                 )
             
             run_record.status = "success"

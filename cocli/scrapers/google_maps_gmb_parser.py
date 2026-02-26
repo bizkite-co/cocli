@@ -1,11 +1,14 @@
 from bs4 import BeautifulSoup
 from typing import Dict, Any, Optional
+from .google_maps_parsers.extract_rating_reviews import extract_rating_reviews
+from .google_maps_parsers.extract_website import extract_website
 
 def parse_gmb_page(html: str, debug: bool = False) -> Dict[str, Any]:
     """
     Parses the HTML of a Google My Business page to extract additional information.
     """
     soup = BeautifulSoup(html, "html.parser")
+    inner_text = soup.get_text(separator="\n", strip=True)
     data = {}
 
     # --- EXTRACT NAME (High Priority) ---
@@ -44,17 +47,24 @@ def parse_gmb_page(html: str, debug: bool = False) -> Dict[str, Any]:
     if name:
         data["Name"] = name
 
-    # --- EXTRACT WEBSITE ---
-    # Look for the 'authority' data-item-id which is standard for website links
-    website_element = soup.find("a", {"data-item-id": "authority"})
-    if not website_element:
-        # Fallback: Find any link with 'website' in the aria-label
-        def is_website_label(label: Optional[str]) -> bool:
-            return bool(label and 'website' in label.lower())
-        website_element = soup.find("a", attrs={"aria-label": is_website_label})
-        
-    if website_element and website_element.has_attr("href"):
-        data["Website"] = str(website_element["href"])
+    # --- EXTRACT RATING & REVIEWS ---
+    rating_reviews = extract_rating_reviews(soup, inner_text, debug)
+    data.update(rating_reviews)
+
+    # --- EXTRACT WEBSITE & DOMAIN ---
+    website_data = extract_website(soup, inner_text, debug)
+    data.update(website_data)
+
+    # Fallback for Website if extract_website fails but we find a link
+    if not data.get("Website"):
+        website_element = soup.find("a", {"data-item-id": "authority"})
+        if not website_element:
+            def is_website_label(label: Optional[str]) -> bool:
+                return bool(label and 'website' in label.lower())
+            website_element = soup.find("a", attrs={"aria-label": is_website_label})
+            
+        if website_element and website_element.has_attr("href"):
+            data["Website"] = str(website_element["href"])
 
     # --- EXTRACT PHONE ---
     def is_phone_id(item_id: Optional[str]) -> bool:
@@ -79,7 +89,6 @@ def parse_gmb_page(html: str, debug: bool = False) -> Dict[str, Any]:
 
     # --- EXTRACT REVIEWS ---
     reviews = []
-    # This class is often randomized, but review text often appears in specific spans
     review_elements = soup.find_all("div", {"class": "review-snippet"})
     for review_element in review_elements:
         reviews.append(review_element.get_text(strip=True))

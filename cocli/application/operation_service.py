@@ -141,6 +141,12 @@ class OperationService:
                 dest_path="data/companies/{slug}/_index.md",
                 process_details="Maps PlaceIDs to slugs, updates YAML 'name' field if current name is generic."
             ),
+            "op_scrape_details": OperationMetadata(
+                "op_scrape_details", "Scrape Company Details", 
+                "Runs a local browser to scrape full Google Maps details for a specific Place ID.", 
+                "maintenance",
+                process_details="Uses Playwright locally to fetch ratings, reviews, and social links for a given place_id."
+            ),
         }
 
     def get_details(self, op_id: str) -> Optional[OperationMetadata]:
@@ -150,12 +156,14 @@ class OperationService:
         self, 
         op_id: str, 
         log_callback: Optional[Callable[[str], None]] = None,
-        step_callback: Optional[Callable[[str, str], None]] = None
+        step_callback: Optional[Callable[[str, str], None]] = None,
+        params: Optional[Dict[str, Any]] = None
     ) -> Dict[str, Any]:
         """
         Executes the specified operation asynchronously.
         This is the shared logic used by both the TUI and CLI.
         """
+        params = params or {}
         from datetime import datetime, UTC
         from pathlib import Path
         op = self.get_details(op_id)
@@ -315,29 +323,60 @@ class OperationService:
                     log_step("identify_leads", "pending", "Identifying top leads via DuckDB...")
                     from .search_service import get_fuzzy_search_results
                     filters = {"has_contact_info": True}
+                    # Get candidates with contact info
                     results = await asyncio.to_thread(
                         get_fuzzy_search_results, 
                         "", 
                         item_type="company", 
                         campaign_name=self.campaign_name,
                         filters=filters,
-                        sort_by="rating",
-                        limit=1000
+                        limit=2000 # Larger pool to find the absolute best
                     )
-                    top_prospects = [r for r in results if (r.average_rating or 0) >= 4.5 and (r.reviews_count or 0) >= 20]
-                    log_step("identify_leads", "success", f"Found {len(top_prospects)} leads")
+                    
+                    # Sort by Rating * Reviews Count descending
+                    top_prospects = sorted(
+                        results, 
+                        key=lambda x: (x.average_rating or 0) * (x.reviews_count or 0), 
+                        reverse=True
+                    )
+                    
+                    log_step("identify_leads", "success", f"Identified {len(top_prospects)} candidates with contact info")
                     
                     log_step("tag_leads", "pending")
                     tagged = 0
+                    limit = params.get("limit")
                     from cocli.models.companies.company import Company
                     for p in top_prospects:
+                        if limit and tagged >= limit:
+                            break
+                            
                         if p.slug:
                             company = await asyncio.to_thread(Company.get, p.slug)
-                            if company and "to-call" not in company.tags:
-                                # toggle_to_call now handles both the tag and the filesystem queue USV
-                                await asyncio.to_thread(company.toggle_to_call)
-                                tagged += 1
-                    log_step("tag_leads", "success", f"Tagged {tagged} new leads")
+                            if company:
+                                score = (p.average_rating or 0) * (p.reviews_count or 0)
+                                logger.info(f"Processing Lead: {p.slug} | Score: {score:.1f} (R: {p.average_rating}, C: {p.reviews_count})")
+                                
+                                # Hydrate metadata from index if missing or messy
+                                if p.average_rating is not None and not company.average_rating:
+                                    company.average_rating = p.average_rating
+                                if p.reviews_count is not None and not company.reviews_count:
+                                    company.reviews_count = p.reviews_count
+                                
+                                # CLEAN NAME: Remove double quotes that often plague YAML frontmatter from messy USV imports
+                                if p.name:
+                                    clean_name = p.name.strip('"\'')
+                                    if clean_name and clean_name != company.name:
+                                        company.name = clean_name
+                                
+                                if "to-call" not in company.tags:
+                                    # toggle_to_call now handles both the tag and the filesystem queue USV
+                                    await asyncio.to_thread(company.toggle_to_call)
+                                    tagged += 1
+                                else:
+                                    # Already tagged, but might have updated metadata (rating/reviews/clean name)
+                                    await asyncio.to_thread(company.save)
+                                    
+                    log_step("tag_leads", "success", f"Processed {len(top_prospects)} leads, tagged {tagged} new")
                     
                     report["top_leads_found"] = len(top_prospects)
                     report["newly_tagged"] = tagged
@@ -369,6 +408,45 @@ class OperationService:
                 result = await asyncio.to_thread(run_compile)
             elif op_id == "op_analyze_emails":
                 result = await asyncio.to_thread(self.services.reporting_service.get_email_analysis)
+            elif op_id == "op_scrape_details":
+                async def run_local_scrape() -> Dict[str, Any]:
+                    place_id = params.get("place_id")
+                    slug = params.get("company_slug")
+                    if not place_id:
+                        raise ValueError("No place_id provided for scrape")
+                    
+                    from ..models.campaigns.queues.gm_details import GmItemTask
+                    from .processors.google_maps import GoogleMapsDetailsProcessor
+                    from playwright.async_api import async_playwright
+                    
+                    task = GmItemTask(
+                        place_id=place_id,
+                        company_slug=slug or "",
+                        campaign_name=self.campaign_name,
+                        force_refresh=True
+                    )
+                    
+                    log_step("browser_init", "pending")
+                    async with async_playwright() as p:
+                        browser = await p.chromium.launch(headless=True)
+                        context = await browser.new_context()
+                        page = await context.new_page()
+                        log_step("browser_init", "success")
+                        
+                        log_step("scrape", "pending")
+                        processor = GoogleMapsDetailsProcessor(processed_by="local-tui")
+                        prospect = await processor.process(task, page, debug=True)
+                        
+                        await browser.close()
+                        
+                        if prospect:
+                            log_step("scrape", "success", f"Captured Rating: {prospect.average_rating}")
+                            return prospect.model_dump()
+                        else:
+                            log_step("scrape", "error", "No data captured")
+                            return {"status": "error"}
+                            
+                result = await run_local_scrape()
             elif "op_scale_" in op_id:
                 count = int(op_id.replace("op_scale_", ""))
                 result = await asyncio.to_thread(self.services.deployment_service.scale_service, count)

@@ -158,12 +158,34 @@ def get_company_details_for_view(company_slug: str) -> Optional[Dict[str, Any]]:
             try:
                 from cocli.core.constants import UNIT_SEP
                 with open(maps_receipt, "r", encoding="utf-8") as rf:
-                    rf.readline() # skip header
-                    data_line = rf.readline()
+                    # Check if the first line is a header (contains 'created_at' or 'Place_ID')
+                    # or if it's already the data (starts with 'ChIJ')
+                    first_line = rf.readline()
+                    data_line = None
+                    if first_line.startswith("ChIJ"):
+                        data_line = first_line
+                    else:
+                        data_line = rf.readline()
+
                     if data_line:
                         parts = data_line.split(UNIT_SEP)
-                        if len(parts) > 0 and parts[0].startswith("ChIJ"):
+                        if len(parts) > 25 and parts[0].startswith("ChIJ"):
                             place_id = parts[0]
+                            # Rating is at index 25, reviews at 24
+                            rating_val = parts[25].strip()
+                            reviews_val = parts[24].strip()
+                            
+                            if rating_val:
+                                lifecycle_dates["average_rating"] = float(rating_val)
+                            if reviews_val:
+                                lifecycle_dates["reviews_count"] = int(reviews_val)
+                            
+                            # Extract details_at from index 5 (updated_at)
+                            if len(parts) > 5:
+                                details_at = parts[5].strip()
+                                if details_at:
+                                    lifecycle_dates["details_found_at"] = details_at
+
                             # 1. Look up in lifecycle.usv
                             lifecycle_path = paths.campaign(campaign).lifecycle
                             if lifecycle_path.exists():
@@ -178,25 +200,18 @@ def get_company_details_for_view(company_slug: str) -> Optional[Dict[str, Any]]:
                                             lifecycle_dates["enqueued_at"] = l_parts[3].strip() or None
                                             break
                             
-                            # 2. Look up in prospects checkpoint for missing ratings
-                            if not company.average_rating or not company.reviews_count:
-                                checkpoint_path = paths.campaign(campaign).index("google_maps_prospects").checkpoint
-                                if checkpoint_path.exists():
-                                    with open(checkpoint_path, "r", encoding="utf-8") as cf:
-                                        for line in cf:
-                                            # place_id is index 0
-                                            if line.startswith(place_id + UNIT_SEP):
-                                                c_parts = line.split(UNIT_SEP)
-                                                if len(c_parts) >= 30:
-                                                    # average_rating=29, reviews_count=28 in GoogleMapsProspect
-                                                    try:
-                                                        lifecycle_dates["reviews_count"] = int(c_parts[28]) if c_parts[28] else None
-                                                        lifecycle_dates["average_rating"] = float(c_parts[29]) if c_parts[29] else None
-                                                    except (ValueError, IndexError):
-                                                        pass
-                                                break
-            except Exception:
-                pass
+                            # 2. Look up in prospects index ONLY if still missing
+                            if lifecycle_dates["average_rating"] is None:
+                                from ..core.prospects_csv_manager import ProspectsIndexManager
+                                manager = ProspectsIndexManager(campaign)
+                                prospect = manager.get_prospect(place_id)
+                                if prospect:
+                                    if prospect.average_rating is not None:
+                                        lifecycle_dates["average_rating"] = prospect.average_rating
+                                    if prospect.reviews_count is not None:
+                                        lifecycle_dates["reviews_count"] = prospect.reviews_count
+            except Exception as e:
+                logger.warning(f"Error reading maps receipt for {company_slug}: {e}")
 
     # Load contacts
     contacts = []
@@ -230,9 +245,11 @@ def get_company_details_for_view(company_slug: str) -> Optional[Dict[str, Any]]:
                     notes.append(note.model_dump()) # Convert to dict for generic return
 
     comp_dict = company.model_dump()
-    # Merge lifecycle data if missing from disk
+    
+    # Merge lifecycle data - PRIORITIZE ENRICHMENT over disk/index
+    # This ensures manual scrapes are immediately visible in the TUI.
     for key, val in lifecycle_dates.items():
-        if val and not comp_dict.get(key):
+        if val is not None:
             comp_dict[key] = val
 
     return {

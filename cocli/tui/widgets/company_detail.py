@@ -188,6 +188,7 @@ class CompanyDetail(Container):
         Binding("v", "view_enrichment", "Enrichment"),
         Binding("p", "call_company", "Call"),
         Binding("t", "toggle_to_call", "To Call"),
+        Binding("R", "re_enqueue_scrape", "Re-enqueue Scrape"),
         Binding("D", "delete_company", "Delete Company"),
         Binding("e", "open_folder", "Explorer (NVim)"),
     ]
@@ -277,6 +278,10 @@ class CompanyDetail(Container):
             self.app.notify("Delete Meeting coming soon")
 
     def on_key(self, event: events.Key) -> None:
+        # IF we are in leader mode, do NOT handle any keys here, let them bubble to App
+        if getattr(self.app, "leader_mode", False):
+            return
+
         # Don't return early if it's NOT a nav key, allow bubbling
         focused = self.app.focused
         
@@ -424,6 +429,38 @@ class CompanyDetail(Container):
             # Update local data and refresh
             self.company_data["company"]["tags"] = company.tags
             self._refresh_info_table()
+
+    def action_re_enqueue_scrape(self) -> None:
+        """Triggers a local detail scrape for the current company."""
+        slug = self.company_data["company"].get("slug")
+        place_id = self.company_data["company"].get("place_id")
+        
+        if not place_id:
+            self.app.notify("Error: No Place ID found for this company", severity="error")
+            return
+            
+        self.app.notify(f"Starting local scrape for {slug or place_id}...")
+        
+        # We run this as a worker since it involves opening a browser
+        async def run_scrape() -> None:
+            app = cast("CocliApp", self.app)
+            result = await app.services.operation_service.execute(
+                "op_scrape_details",
+                params={"place_id": place_id, "company_slug": slug}
+            )
+            
+            if result.get("status") == "success":
+                self.app.notify("Scrape successful! Refreshing view...")
+                # The view needs to be re-hydrated to show the new data
+                if slug:
+                    new_data = app.services.get_company_details(slug)
+                    if new_data:
+                        self.company_data = new_data
+                        self._refresh_info_table()
+            else:
+                self.app.notify(f"Scrape failed: {result.get('message')}", severity="error")
+                
+        self.app.run_worker(run_scrape())
 
     async def action_delete_company(self) -> None:
         """Permanently deletes the entire company directory."""
@@ -724,8 +761,8 @@ class CompanyDetail(Container):
         
         rating = c.get("average_rating")
         review_count = c.get("reviews_count")
-        if rating or review_count:
-            rating_str = f"{rating or '?'}/5.0 ({review_count or 0} reviews)"
+        if rating is not None or review_count is not None:
+            rating_str = f"{rating if rating is not None else '?'}/5.0 ({review_count or 0} reviews)"
             self.info_table.add_row("Rating", rating_str)
 
         self.info_table.add_row("Street", escape(str(c.get("street_address") or "")))

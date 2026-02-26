@@ -34,7 +34,17 @@ class CompanyPreview(Container):
         location = f"{company.city or 'N/A'}, {company.state or 'N/A'}"
         
         # Rating info
-        rating_str = f"{company.average_rating or 'N/A'} ({company.reviews_count or 0} reviews)"
+        rating = company.average_rating
+        reviews = company.reviews_count
+        
+        # Robust check for missing data (handle None, empty string, etc.)
+        has_rating = rating is not None and str(rating).strip() != ""
+        has_reviews = reviews is not None and str(reviews).strip() != ""
+        
+        rating_val = f"{rating}/5.0" if has_rating else "N/A"
+        reviews_val = f"{reviews} reviews" if has_reviews else "0 reviews"
+        
+        rating_str = f"{rating_val} ({reviews_val})"
 
         # Lifecycle dates
         scraped_at = company.list_found_at.strftime('%Y-%m-%d') if company.list_found_at else "N/A"

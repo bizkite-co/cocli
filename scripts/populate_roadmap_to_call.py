@@ -34,11 +34,12 @@ async def main() -> None:
     # 3. Filters via DuckDB for rating >= 4.5, reviews >= 20, HAS email/phone
     # 4. Tags results as 'to-call' and adds to the filesystem queue
     
-    print("Starting 'op_compile_to_call' operation...")
+    print("Starting 'op_compile_to_call' operation (Limit: 20)...")
     result = await op_service.execute(
         "op_compile_to_call", 
         log_callback=log_callback,
-        step_callback=step_callback
+        step_callback=step_callback,
+        params={"limit": 20}
     )
     
     if result.get("status") == "success":

@@ -197,25 +197,18 @@ class CocliApp(App[None]):
     }
 
     async def on_key(self, event: events.Key) -> None:
-        # 1. CRITICAL Protection: If an Input is focused, do NOT handle any shortcuts
-        # unless they are explicit control keys.
-        if isinstance(self.focused, Input):
-            if event.key not in self.INPUT_CONTROL_KEYS:
-                # This is a typing character. Stop it from reaching ANY bindings
-                # or global logic like leader mode.
-                event.stop()
-                return
-
-        tui_debug_log(f"APP: on_key: {event.key} (focused={self.focused.__class__.__name__ if self.focused else 'None'})")
-        
+        # 1. HIGH PRIORITY: Leader mode must intercept keys before anyone else
         if event.key == LEADER_KEY:
             self.leader_mode = True
             self.leader_key_buffer = LEADER_KEY
+            tui_debug_log(f"APP: Leader mode active (key={event.key})")
+            event.stop()
             event.prevent_default()
             return
 
         if self.leader_mode:
             self.leader_key_buffer += event.key
+            tui_debug_log(f"APP: Leader buffer: {self.leader_key_buffer}")
             
             if self.leader_key_buffer == LEADER_KEY + "c":
                 await self.action_show_companies()
@@ -225,8 +218,20 @@ class CocliApp(App[None]):
                 await self.action_show_application()
             
             self.reset_leader_mode()
+            event.stop()
             event.prevent_default()
             return
+
+        # 2. CRITICAL Protection: If an Input is focused, do NOT handle any shortcuts
+        # unless they are explicit control keys.
+        if isinstance(self.focused, Input):
+            if event.key not in self.INPUT_CONTROL_KEYS:
+                # This is a typing character. Stop it from reaching ANY bindings
+                # or global logic.
+                event.stop()
+                return
+
+        tui_debug_log(f"APP: on_key: {event.key} (focused={self.focused.__class__.__name__ if self.focused else 'None'})")
 
     def reset_leader_mode(self) -> None:
         self.leader_mode = False
@@ -407,10 +412,10 @@ class CocliApp(App[None]):
         tui_debug_log("APP: action_show_application finished")
 
     @on(ApplicationView.CampaignActivated)
-    def on_application_view_campaign_activated(self, message: ApplicationView.CampaignActivated) -> None:
+    async def on_application_view_campaign_activated(self, message: ApplicationView.CampaignActivated) -> None:
         self.notify(f"Campaign Activated: {message.campaign_name}")
         self.query_one(MenuBar).refresh_campaign()
-        self.run_worker(self.action_show_companies())
+        await self.action_show_companies()
 
     def action_select_item(self) -> None:
         focused_widget = self.focused

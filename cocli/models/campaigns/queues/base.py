@@ -12,8 +12,9 @@ class QueueMessage(BaseUsvModel):
     Inherits authoritative USV serialization from BaseUsvModel.
     """
     # Payload - Essential pointers (Required fields first)
-    domain: str
+    # Sequence observed: [company_slug, domain, campaign_name, ...]
     company_slug: str
+    domain: str
     campaign_name: str
 
     id: str = Field(default_factory=lambda: str(uuid.uuid4()))

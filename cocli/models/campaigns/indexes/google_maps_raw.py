@@ -1,5 +1,16 @@
-from typing import Optional
-from pydantic import BaseModel, Field
+from typing import Optional, Any
+from pydantic import BaseModel, Field, BeforeValidator
+from typing_extensions import Annotated
+
+def empty_to_none(v: Any) -> Any:
+    if isinstance(v, str) and not v.strip():
+        return None
+    return v
+
+# Apply empty_to_none to numeric and optional fields
+OptionalInt = Annotated[Optional[int], BeforeValidator(empty_to_none)]
+OptionalFloat = Annotated[Optional[float], BeforeValidator(empty_to_none)]
+OptionalStr = Annotated[Optional[str], BeforeValidator(empty_to_none)]
 
 class GoogleMapsRawResult(BaseModel):
     """
@@ -8,48 +19,48 @@ class GoogleMapsRawResult(BaseModel):
     This is the landing zone for raw scraper data.
     """
     Keyword: str = ""
-    Name: Optional[str] = None
-    Full_Address: Optional[str] = None
-    Street_Address: Optional[str] = None
-    City: Optional[str] = None
-    Zip: Optional[str] = None
-    Municipality: Optional[str] = None
-    State: Optional[str] = None
-    Country: Optional[str] = None
-    Timezone: Optional[str] = None
-    Phone_1: Optional[str] = None
-    Phone_Standard_format: Optional[str] = None
-    Website: Optional[str] = None
-    Domain: Optional[str] = None
-    First_category: Optional[str] = None
-    Second_category: Optional[str] = None
-    Claimed_google_my_business: Optional[str] = None
-    Reviews_count: Optional[int] = None
-    Average_rating: Optional[float] = None
-    Hours: Optional[str] = None
-    Saturday: Optional[str] = None
-    Sunday: Optional[str] = None
-    Monday: Optional[str] = None
-    Tuesday: Optional[str] = None
-    Wednesday: Optional[str] = None
-    Thursday: Optional[str] = None
-    Friday: Optional[str] = None
-    Latitude: Optional[float] = None
-    Longitude: Optional[float] = None
-    Coordinates: Optional[str] = None
-    Plus_Code: Optional[str] = None
+    Name: OptionalStr = None
+    Full_Address: OptionalStr = None
+    Street_Address: OptionalStr = None
+    City: OptionalStr = None
+    Zip: OptionalStr = None
+    Municipality: OptionalStr = None
+    State: OptionalStr = None
+    Country: OptionalStr = None
+    Timezone: OptionalStr = None
+    Phone_1: OptionalStr = None
+    Phone_Standard_format: OptionalStr = None
+    Website: OptionalStr = None
+    Domain: OptionalStr = None
+    First_category: OptionalStr = None
+    Second_category: OptionalStr = None
+    Claimed_google_my_business: OptionalStr = None
+    Reviews_count: OptionalInt = None
+    Average_rating: OptionalFloat = None
+    Hours: OptionalStr = None
+    Saturday: OptionalStr = None
+    Sunday: OptionalStr = None
+    Monday: OptionalStr = None
+    Tuesday: OptionalStr = None
+    Wednesday: OptionalStr = None
+    Thursday: OptionalStr = None
+    Friday: OptionalStr = None
+    Latitude: OptionalFloat = None
+    Longitude: OptionalFloat = None
+    Coordinates: OptionalStr = None
+    Plus_Code: OptionalStr = None
     Place_ID: str = Field(..., description="The raw Place ID from Google")
-    GMB_URL: Optional[str] = None
-    CID: Optional[str] = None
-    Image_URL: Optional[str] = None
-    Favicon: Optional[str] = None
-    Review_URL: Optional[str] = None
-    Facebook_URL: Optional[str] = None
-    Linkedin_URL: Optional[str] = None
-    Instagram_URL: Optional[str] = None
-    Thumbnail_URL: Optional[str] = None
-    Reviews: Optional[str] = None
-    Quotes: Optional[str] = None
-    processed_by: Optional[str] = None
-    created_at: Optional[str] = None
-    updated_at: Optional[str] = None
+    GMB_URL: OptionalStr = None
+    CID: OptionalStr = None
+    Image_URL: OptionalStr = None
+    Favicon: OptionalStr = None
+    Review_URL: OptionalStr = None
+    Facebook_URL: OptionalStr = None
+    Linkedin_URL: OptionalStr = None
+    Instagram_URL: OptionalStr = None
+    Thumbnail_URL: OptionalStr = None
+    Reviews: OptionalStr = None
+    Quotes: OptionalStr = None
+    processed_by: OptionalStr = None
+    created_at: OptionalStr = None
+    updated_at: OptionalStr = None
