@@ -38,12 +38,28 @@ verify_node() {
     printf "[${BLUE}VERIFY${NC}] Checking $host stability (Campaign: $node_campaign)...\n"
     sleep 10
     
-    if ssh $RPI_USER@$host "docker ps --format '{{.Names}}' | grep -q cocli-supervisor"; then
-        printf "[${GREEN}SUCCESS${NC}] $host supervisor container is running.\n"
-        return 0
-    else
+    if ! ssh $RPI_USER@$host "docker ps --format '{{.Names}}' | grep -q cocli-supervisor"; then
         printf "[${RED}ERROR${NC}] $host supervisor container is NOT running.\n"
         ssh $RPI_USER@$host "docker logs --tail 20 cocli-supervisor"
+        return 1
+    fi
+
+    # 2. Log Content Check (Success Indicators)
+    printf "  [LOGS] Checking for success indicators...\n"
+    local logs=$(ssh $RPI_USER@$host "docker logs --tail 100 cocli-supervisor 2>&1")
+    
+    local has_errors=$(echo "$logs" | grep -Ei "ERROR|Traceback|Exception" | head -n 3)
+    local has_success=$(echo "$logs" | grep -Ei "Extracted|S3 Ack|Polling|Task found" | head -n 1)
+
+    if [ -n "$has_errors" ]; then
+        printf "[${RED}WARN${NC}] Errors detected in $host logs:\n$has_errors\n"
+    fi
+
+    if [ -n "$has_success" ]; then
+        printf "[${GREEN}SUCCESS${NC}] $host is processing tasks (Verified by logs).\n"
+        return 0
+    else
+        printf "[${RED}ERROR${NC}] $host is running but NO activity detected in logs.\n"
         return 1
     fi
 }

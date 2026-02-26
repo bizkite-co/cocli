@@ -65,24 +65,33 @@ def extract_rating_reviews(soup: BeautifulSoup, inner_text: str, debug: bool = F
     # 4. TEXT NODE SCAN
     if not reviews_count:
         # Global search for "X reviews" in text nodes
-        nodes = soup.find_all(string=re.compile(r"[\d,]+\s*Reviews?", re.IGNORECASE))
+        nodes = soup.find_all(string=re.compile(r"[\d,]+\s*(?:Reviews?|Opinions?)", re.IGNORECASE))
         for node in nodes:
             match = re.search(r"([\d,]+)", node)
             if match:
                 reviews_count = match.group(1).replace(",", "")
                 break
 
-    # 5. PROXIMITY FALLBACK (Inner Text)
+    # 5. SEMANTIC CLASS FALLBACK (fontDisplayLarge)
+    if not rating:
+        rating_el = soup.find(class_="fontDisplayLarge")
+        if rating_el:
+            r_text = rating_el.get_text(strip=True)
+            if re.match(r"\d\.\d", r_text):
+                rating = r_text
+
+    # 6. PROXIMITY FALLBACK (Inner Text - Body Wide)
     if not rating:
         r_match = STRICT_RATING_RE.search(inner_text)
         if r_match:
             rating = r_match.group(1)
         
     if not reviews_count and rating:
-        # Look for "(3)" within 50 chars of the rating
+        # Look for the rating followed by 'X reviews' or '(X)' within 100 chars
         # Dot-all to match across line breaks
-        pattern = re.compile(re.escape(rating) + r"[\s\S]{0,50}\(([\d,]+)\)")
-        match = pattern.search(inner_text)
+        escaped_rating = re.escape(rating)
+        prox_pattern = re.compile(escaped_rating + r"[\s\S]{0,100}?([\d,]+)\s*(?:Reviews?|Opinions?|\))", re.IGNORECASE)
+        match = prox_pattern.search(inner_text)
         if match:
             reviews_count = match.group(1).replace(",", "")
 

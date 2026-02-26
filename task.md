@@ -3,30 +3,30 @@
 ## Objective
 Isolate the data pipeline into role-based, least-privilege workers and implement immutable WASI-based transformers to ensure permanent field-level data integrity.
 
-## Phase 5: Verification & Safety ✅
-- [x] **Strict Test Isolation**: Implemented Atomic Root Authority in `paths.py`.
-- [x] **Automated Snapshot Refresh**: Integrated `playwright` for parser verification.
-- [x] **TUI Lead-Key INTERCEPTION**: Fixed leader-mode event bubbling to prevent focus-theft by child widgets.
-- [ ] **Ordinance Validation**: Add startup check verifying first record matches `docs/_schema/` blueprint.
-
 ## Phase 6: Queue Management & Transformation Visibility ✅
-- [x] **The "To Call" Pipeline**: Decoupled leads into sharded USV pointers in `queues/to-call/`.
-- [x] **Ultra-Robust Parser**: Captured Griffith (4.7) and Granite (3.7) ratings via ARIA/Text nodes.
+- [x] **The "To Call" Pipeline**: Decoupled leads into sharded USV pointers.
+- [x] **Ultra-Robust Parser**: Captured Griffith (4.7) and Granite (3.7) via ARIA/Text nodes.
 - [x] **Discovery "Witness" Mandate**:
     - [x] **Richer Discovery**: Expanded `gm-list` to 9 fields (domain, rating, gmb_url).
-    - [x] **Deep-Sharding**: Aligned `gm-list` trace paths with the 3-level geo blueprint.
-    - [x] **Anti-Destruction**: Updated compactor to NEVER unlink or delete session trace files.
+    - [x] **Deep-Sharding**: Aligned `gm-list` trace paths with 3-level geo blueprint.
+    - [x] **Anti-Destruction**: Compactor strictly preserves session trace files.
 
-## Phase 7: Role-Based Isolation (Active)
-- [x] **Modular Processors**: Extracted `GmListProcessor` and `GoogleMapsDetailsProcessor` from the Fat Worker.
-- [ ] **Docker Role-Splitting**: 
-    - [ ] Create `cocli-scraper-gmaps`: Read-only queue access, write-only S3 RAW access.
-    - [ ] Create `cocli-processor-gmb`: Read S3 RAW, write to sharded WAL (No browser).
-- [ ] **Local RE-ENQUEUE Testing**:
-    - [ ] **Manual Scrape**: Use `R` shortcut in TUI to verify `google_maps.usv` hydration.
-    - [ ] **Discovery Trace**: Run local tile-phrase scrape and verify 9-column trace USV.
+## Phase 7: Role-Based Isolation & Cluster Deployment ✅
+- [x] **Modular Processors**: Extracted `GmListProcessor` and `GoogleMapsDetailsProcessor`.
+- [x] **Role-Aware Workers**: Added `--role scraper` and `--role processor` modes.
+- [x] **Safe RPI Deployment**: Standardized `make hotfix-cluster-safe` (Hub-Registry-Propagation).
+- [x] **Bulk Recovery (10k Scrape)**:
+    - [x] Created `scripts/enqueue_bulk_recovery.py` with positional DuckDB query.
+    - [x] Enqueued 10,000 targets into `gm-details` queue on S3.
+    - [x] Swapped RPI fleet to `--role scraper` mode via `swap_cluster_role.sh`.
 
-## Phase 8: Immutable WASI Transformers (Future)
-- [ ] **Compaction Binary**: Compile USV-to-USV compactors to WebAssembly (WASI) to freeze transformation logic.
-- [ ] **Model Linker**: Implement company-to-identity linkage in a isolated WASM sandbox to prevent "careless field discarding."
-- [ ] **Gossip Sync**: Enable compact datagram propagation (`Q:` records) for real-time task status.
+## Phase 8: Hardened Security & WASI (Future)
+- [ ] **Least-Privilege AWS Roles**:
+    - [ ] **Scraper Policy**: Allow `s3:PutObject` to `raw/`, `s3:GetObject` from `queues/`.
+    - [ ] **Processor Policy**: Allow `s3:GetObject` from `raw/`, `s3:PutObject` to `wal/`.
+- [ ] **WASI Compaction**:
+    - [ ] Compile USV compactors to WASM to freeze transformation logic.
+    - [ ] Designated PI runner for compaction-only role.
+- [ ] **Gossip Data Bridge**: 
+    - [ ] Use gossip bridge to signal compaction completion.
+    - [ ] Stream compacted index data directly between nodes (P2P).
