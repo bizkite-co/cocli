@@ -72,6 +72,29 @@ async def scrape_google_maps_details(
                 
         raw_result = GoogleMapsRawResult(**raw_data)
         
+        # --- SESSION-HEAL: Force Hydration if Limited View detected ---
+        if not raw_result.Average_rating or not raw_result.Reviews_count:
+            try:
+                # Target the rating container to force a click/load
+                rating_selector = 'div.F7nice, span[aria-label*="stars"]'
+                if await page.is_visible(rating_selector):
+                    logger.info(f"Limited View detected for {place_id}. Attempting hydration click...")
+                    await page.click(rating_selector)
+                    await asyncio.sleep(5) # Wait for dynamic load
+                    
+                    # Re-parse the healed page
+                    new_html = await page.content()
+                    healed_data = parse_gmb_page(new_html, debug=debug)
+                    
+                    # Update our raw_result with any new findings
+                    for k, v in healed_data.items():
+                        if v and hasattr(raw_result, k):
+                            setattr(raw_result, k, v)
+                    
+                    logger.info(f"Hydration complete. Rating: {raw_result.Average_rating}, Reviews: {raw_result.Reviews_count}")
+            except Exception as heal_err:
+                logger.debug(f"Hydration click failed: {heal_err}")
+
         # EXPLICIT VALIDATION: This triggers the Pydantic Shield
         try:
             prospect = GoogleMapsProspect.from_raw(raw_result)

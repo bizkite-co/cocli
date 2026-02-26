@@ -5,56 +5,47 @@ import logging
 
 logger = logging.getLogger(__name__)
 
-# Pattern for Griffith-style: "4.7 stars 17,452 Reviews"
-# Pattern for Granite-style: "3.7\n(3)" or "3.7 (3)"
-# We use a broad scan but keep it tied to keywords
-RATING_STRICT_RE = re.compile(r"(\d\.\d)\s*stars?", re.IGNORECASE)
-# This captures Y in "X.X stars Y Reviews" OR "Y Reviews"
-REVIEWS_STRICT_RE = re.compile(r"(?:\d\.\d\s*stars\s+)?([\d,]+)\s*Reviews?", re.IGNORECASE)
+# Strict patterns to avoid false positives (like phone numbers)
+STRICT_RATING_RE = re.compile(r"(\d\.\d)\s*stars?", re.IGNORECASE)
+STRICT_REVIEWS_RE = re.compile(r"([\d,]+)\s*Reviews?", re.IGNORECASE)
+PROXIMITY_REVIEWS_RE = re.compile(r"\((\d+)\)")
 
 def extract_rating_reviews(soup: BeautifulSoup, inner_text: str, debug: bool = False) -> Dict[str, str]:
     """
-    ULTRA-ROBUST extraction of rating and reviews.
-    Scans ARIA labels, titles, and all text nodes with strict proximity checks.
+    BULLETPROOF extraction of rating and reviews.
+    Layers: JSACTION -> BREAKDOWN -> ARIA -> TEXT -> PROXIMITY
     """
     rating = ""
     reviews_count = ""
 
-    # --- 1. JSACTION SCAN (User Provided) ---
-    # Specifically target the review chart container
-    chart_container = soup.find(attrs={"jsaction": re.compile(r"reviewChart\.moreReviews")})
-    if chart_container:
-        text = chart_container.get_text(separator=" ", strip=True)
-        # Look for "3.7" and "3 reviews"
+    # 1. JSACTION SCAN (Specifically the review chart)
+    chart = soup.find(attrs={"jsaction": re.compile(r"reviewChart\.moreReviews")})
+    if chart:
+        text = chart.get_text(separator=" ", strip=True)
         r_match = re.search(r"(\d\.\d)", text)
         if r_match:
             rating = r_match.group(1)
         
-        c_match = re.search(r"([\d,]+)\s*Reviews", text, re.IGNORECASE)
+        c_match = STRICT_REVIEWS_RE.search(text)
         if c_match:
             reviews_count = c_match.group(1).replace(",", "")
 
-    # --- 2. BREAKDOWN TABLE SCAN ---
-    # Look for "5 stars, 2 reviews" in aria-labels
+    # 2. BREAKDOWN TABLE AGGREGATION
     if not reviews_count:
-        breakdown_els = soup.find_all(attrs={"role": "img", "aria-label": re.compile(r"stars,")})
-        total_from_breakdown = 0
-        found_breakdown = False
-        for el in breakdown_els:
-            label_val = el.get("aria-label")
-            if not label_val:
-                continue
-            label = str(label_val)
-            # Example: "5 stars, 2 reviews"
-            b_match = re.search(r"stars,\s*([\d,]+)\s*review", label, re.IGNORECASE)
-            if b_match:
-                found_breakdown = True
-                total_from_breakdown += int(b_match.group(1).replace(",", ""))
-        
-        if found_breakdown:
-            reviews_count = str(total_from_breakdown)
+        # Search for "5 stars, 2 reviews" style labels
+        breakdown = soup.find_all(attrs={"aria-label": re.compile(r"stars,")})
+        total = 0
+        found = False
+        for el in breakdown:
+            label = str(el.get("aria-label", ""))
+            match = re.search(r"stars,\s*([\d,]+)\s*review", label, re.IGNORECASE)
+            if match:
+                found = True
+                total += int(match.group(1).replace(",", ""))
+        if found:
+            reviews_count = str(total)
 
-    # --- 3. SCAN ALL ARIA-LABELS AND TITLES ---
+    # 3. GLOBAL ARIA & TITLE SCAN
     for el in soup.find_all(True):
         label_val = el.get('aria-label') or el.get('title')
         if not label_val:
@@ -62,53 +53,40 @@ def extract_rating_reviews(soup: BeautifulSoup, inner_text: str, debug: bool = F
         label = str(label_val)
         
         if not rating:
-            r_match = RATING_STRICT_RE.search(label)
+            r_match = STRICT_RATING_RE.search(label)
             if r_match:
                 rating = r_match.group(1)
             
         if not reviews_count:
-            c_match = REVIEWS_STRICT_RE.search(label)
+            c_match = STRICT_REVIEWS_RE.search(label)
             if c_match:
                 reviews_count = c_match.group(1).replace(",", "")
 
-    # 2. SCAN ALL TEXT NODES AND CONTAINERS FOR "REVIEWS"
+    # 4. TEXT NODE SCAN
     if not reviews_count:
-        # Search for elements whose text matches "[\d,]+ reviews"
-        # We use soup.find_all(string=...) but also check parent's text 
-        # in case Google splits the number and the word.
-        
-        # 2a. Direct string match
-        review_nodes = soup.find_all(string=re.compile(r"[\d,]+\s*reviews", re.IGNORECASE))
-        for node in review_nodes:
+        # Global search for "X reviews" in text nodes
+        nodes = soup.find_all(string=re.compile(r"[\d,]+\s*reviews", re.IGNORECASE))
+        for node in nodes:
             match = re.search(r"([\d,]+)", node)
             if match:
                 reviews_count = match.group(1).replace(",", "")
                 break
-        
-        # 2b. Container text match (if 2a failed)
-        if not reviews_count:
-            # Look for any element that has "reviews" in its text and contains a number
-            for tag in soup.find_all(["span", "button", "div"]):
-                text = tag.get_text(separator=" ", strip=True)
-                if "reviews" in text.lower():
-                    # Look for the review pattern in the combined text
-                    match = re.search(r"([\d,]+)\s*Reviews", text, re.IGNORECASE)
-                    if match:
-                        reviews_count = match.group(1).replace(",", "")
-                        break
 
-    # 3. PROXIMITY FALLBACK: Look for (X) near the rating in innerText
+    # 5. PROXIMITY FALLBACK (Inner Text)
+    if not rating:
+        r_match = STRICT_RATING_RE.search(inner_text)
+        if r_match:
+            rating = r_match.group(1)
+        
     if not reviews_count and rating:
-        # Look for the rating followed by a parenthesized number within 100 chars
-        # Example: "3.7\n...\n(3)"
-        escaped_rating = re.escape(rating)
-        # Use a dot-all regex to scan across lines
-        prox_pattern = re.compile(escaped_rating + r"[\s\S]{0,100}\(([\d,]+)\)")
-        match = prox_pattern.search(inner_text)
+        # Look for "(3)" within 50 chars of the rating
+        # Dot-all to match across line breaks
+        pattern = re.compile(re.escape(rating) + r"[\s\S]{0,50}\(([\d,]+)\)")
+        match = pattern.search(inner_text)
         if match:
             reviews_count = match.group(1).replace(",", "")
 
     if debug:
-        logger.debug(f"Extracted -> Rating: {rating}, Reviews: {reviews_count}")
+        logger.debug(f"Extracted Rating: {rating}, Reviews: {reviews_count}")
 
     return {"Average_rating": rating, "Reviews_count": reviews_count}
