@@ -203,7 +203,7 @@ def get_fuzzy_search_results(
                     # Batch insert
                     _con.executemany("INSERT INTO items_to_call VALUES (?)", to_call_items)
 
-                # E. Unified View
+                # E. Unified View with Deduplication
                 def table_has_col(table: str, col: str) -> bool:
                     try:
                         res = _con.execute(f"PRAGMA table_info('{table}')").fetchall()
@@ -219,7 +219,8 @@ def get_fuzzy_search_results(
                 t1_phone = "t1.phone_number" if table_has_col("items_checkpoint", "phone_number") else "t1.phone" if table_has_col("items_checkpoint", "phone") else "CAST(NULL AS VARCHAR)"
 
                 _con.execute(f"""
-                    CREATE VIEW items AS SELECT 
+                    CREATE VIEW items AS 
+                    SELECT DISTINCT ON (slug)
                         COALESCE({t1_slug}, t2.slug) as slug,
                         COALESCE(t1.name, t2.name) as name,
                         COALESCE(t2.type, CAST('company' AS VARCHAR)) as type,
@@ -244,6 +245,7 @@ def get_fuzzy_search_results(
                     FULL OUTER JOIN items_cache t2 ON t1.slug = t2.slug
                     LEFT JOIN items_lifecycle lc ON t1.place_id = lc.place_id
                     LEFT JOIN items_to_call tc ON COALESCE({t1_slug}, t2.slug) = tc.slug
+                    ORDER BY slug, last_modified DESC NULLS LAST
                 """)
 
                 _last_cache_mtime = current_cache_mtime
