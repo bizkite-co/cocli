@@ -51,8 +51,8 @@ async def bulk_enqueue(campaign_name: str, limit: int = 10000) -> None:
     if not targets:
         return
 
-    # 2. Initialize S3 Queue
-    queue_manager = get_queue_manager("details", use_cloud=True, queue_type="gm_list_item", campaign_name=campaign_name)
+    # 2. Initialize LOCAL Queue (Local-First Mandate)
+    queue_manager = get_queue_manager("details", use_cloud=False, queue_type="gm_list_item", campaign_name=campaign_name)
     
     # 3. Enqueue
     count = 0
@@ -75,6 +75,10 @@ async def bulk_enqueue(campaign_name: str, limit: int = 10000) -> None:
     logger.info(f"Finished bulk enqueue. Total: {count}")
 
 if __name__ == "__main__":
-    import sys
-    campaign = sys.argv[1] if len(sys.argv) > 1 else "roadmap"
-    asyncio.run(bulk_enqueue(campaign))
+    import argparse
+    parser = argparse.ArgumentParser(description="Bulk enqueue hollow targets.")
+    parser.add_argument("campaign", default="roadmap")
+    parser.add_argument("--limit", type=int, default=10000)
+    args = parser.parse_args()
+
+    asyncio.run(bulk_enqueue(args.campaign, args.limit))

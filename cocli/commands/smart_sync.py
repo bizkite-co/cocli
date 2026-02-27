@@ -370,6 +370,27 @@ def sync_active_leases(
     local_base = paths.queue(campaign_name, "enrichment") / "pending"
     run_smart_sync("active-leases", bucket_name, prefix, local_base, campaign_name, aws_config, workers, full, force)
 
+@app.command("raw")
+def sync_raw(
+    campaign_name: Optional[str] = typer.Option(None, "--campaign", "-c", help="Campaign name"),
+    workers: int = typer.Option(20, help="Number of concurrent download threads."),
+    full: bool = typer.Option(False, "--full", help="Perform a full integrity check."),
+    force: bool = typer.Option(False, "--force", help="Force download all files."),
+) -> None:
+    """Syncs raw HTML witnesses from S3."""
+    from ..core.config import get_campaign, load_campaign_config
+    campaign_name = campaign_name or get_campaign()
+    if not campaign_name:
+        console.print("[bold red]No campaign specified.[/bold red]")
+        raise typer.Exit(1)
+    config = load_campaign_config(campaign_name)
+    aws_config = config.get("aws", {})
+    bucket_name = aws_config.get("data_bucket_name") or f"cocli-data-{campaign_name}"
+    
+    prefix = f"campaigns/{campaign_name}/raw/gm-details/"
+    local_base = DATA_DIR / "campaigns" / campaign_name / "raw" / "gm-details"
+    run_smart_sync("raw-witnesses", bucket_name, prefix, local_base, campaign_name, aws_config, workers, full, force)
+
 @app.command("queues")
 def sync_queues(
     campaign_name: Optional[str] = typer.Option(None, "--campaign", "-c", help="Campaign name"),

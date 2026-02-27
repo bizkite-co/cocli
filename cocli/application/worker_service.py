@@ -532,7 +532,7 @@ class WorkerService:
         logger.info(f"Processor Role active. Monitoring: {raw_dir}")
 
         while True:
-            # Find all JSON witness files in shards
+            # 1. Discover Witnesses (Legacy .json files AND New directory structure)
             witness_files = list(raw_dir.rglob("*.json"))
             
             if not witness_files:
@@ -545,10 +545,36 @@ class WorkerService:
                 try:
                     logger.info(f"Processing Witness: {file_path.name}")
                     
-                    # 1. Load Witness
-                    with open(file_path, "r", encoding="utf-8") as f:
-                        witness_data = json.load(f)
-                        witness = RawWitness.model_validate(witness_data)
+                    # Determine if it's new directory format or legacy file format
+                    if file_path.name == "metadata.json":
+                        # New Format: raw/gm-details/{shard}/{place_id}/metadata.json
+                        witness_dir = file_path.parent
+                        html_path = witness_dir / "witness.html"
+                        if not html_path.exists():
+                            logger.warning(f"Metadata found but HTML missing for {witness_dir}")
+                            continue
+                            
+                        with open(file_path, "r", encoding="utf-8") as f:
+                            meta_data = json.load(f)
+                        with open(html_path, "r", encoding="utf-8") as f:
+                            html_content = f.read()
+                            
+                        # Reconstruct RawWitness for parser
+                        witness = RawWitness(
+                            place_id=meta_data["place_id"],
+                            captured_at=datetime.fromisoformat(meta_data["captured_at"]),
+                            processed_by=meta_data["processed_by"],
+                            campaign_name=meta_data["campaign_name"],
+                            url=meta_data["url"],
+                            html=html_content,
+                            metadata=meta_data.get("metadata", {}),
+                            version=meta_data.get("version", "1.1.0")
+                        )
+                    else:
+                        # Legacy Format: raw/gm-details/{shard}/{place_id}.json
+                        with open(file_path, "r", encoding="utf-8") as f:
+                            witness_data = json.load(f)
+                            witness = RawWitness.model_validate(witness_data)
 
                     # 2. Parse HTML
                     details_dict = parse_gmb_page(witness.html, debug=debug)
@@ -585,12 +611,27 @@ class WorkerService:
                         # Save Enrichment file
                         prospect.save_enrichment()
                         
-                        # Move witness to completed or delete
-                        completed_dir = raw_dir.parent / "completed" / file_path.parent.name
-                        completed_dir.mkdir(parents=True, exist_ok=True)
-                        file_path.rename(completed_dir / file_path.name)
-                    else:
-                        logger.error(f"Failed to save {witness.place_id} to WAL")
+                        # Move witness to completed
+                        if file_path.name == "metadata.json":
+                            # New Format: Move the whole directory
+                            witness_dir = file_path.parent
+                            shard_name = witness_dir.parent.name
+                            target_dir = raw_dir.parent / "completed" / shard_name / witness_dir.name
+                            target_dir.parent.mkdir(parents=True, exist_ok=True)
+                            
+                            # Clean up target if exists (retry case)
+                            if target_dir.exists():
+                                import shutil
+                                shutil.rmtree(target_dir)
+                            
+                            witness_dir.rename(target_dir)
+                        else:
+                            # Legacy Format: Move the single file
+                            completed_dir = raw_dir.parent / "completed" / file_path.parent.name
+                            completed_dir.mkdir(parents=True, exist_ok=True)
+                            file_path.rename(completed_dir / file_path.name)
+                        
+                        logger.info(f"Success: Processed {witness.place_id}")
 
                 except Exception as e:
                     logger.error(f"Error processing witness {file_path.name}: {e}", exc_info=True)

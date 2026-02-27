@@ -30,11 +30,23 @@ async def capture_google_maps_raw(
 
         # SESSION-HEAL: If we want high-fidelity capture, we trigger hydration now
         # so the 'Witness' contains the full review data for later processing.
-        rating_selector = 'div.F7nice, span[aria-label*="stars"]'
-        if await page.is_visible(rating_selector):
-            logger.debug(f"Triggering hydration click for high-fidelity witness: {place_id}")
-            await page.click(rating_selector)
-            await asyncio.sleep(5)
+        hydration_triggers = [
+            'div.F7nice', 
+            'button[jsaction*="pane.rating.moreReviews"]',
+            'div[jsaction*="reviewChart.moreReviews"]',
+            'span[aria-label*="stars"]'
+        ]
+        
+        for selector in hydration_triggers:
+            try:
+                # Use a short timeout to check each trigger
+                if await page.is_visible(selector):
+                    logger.debug(f"Triggering hydration click for high-fidelity witness: {place_id} via {selector}")
+                    await page.click(selector)
+                    await asyncio.sleep(3) # Wait for dynamic load
+                    break
+            except Exception:
+                continue
 
         html_content = await page.content()
         
