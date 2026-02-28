@@ -62,14 +62,18 @@ class GmListProcessor:
                     
                     # MANDATE: Save individual HTML witness for EACH item
                     if item.html:
-                        html_path = results_dir / f"{item.place_id}.html"
+                        # Save to raw/gm-list/ instead of queues/ to keep queue sync fast
+                        raw_list_dir = paths.campaign(task.campaign_name).path / "raw" / "gm-list" / lat_shard / lat_tile / lon_tile
+                        raw_list_dir.mkdir(parents=True, exist_ok=True)
+                        
+                        html_path = raw_list_dir / f"{item.place_id}.html"
                         with open(html_path, "w", encoding="utf-8") as hf:
                             hf.write(item.html)
                         
                         # Mirror HTML to S3
                         if s3_client and self.bucket_name:
-                            prefix = f"campaigns/{task.campaign_name}/queues/gm-list/completed/results/{lat_shard}/{lat_tile}/{lon_tile}"
-                            s3_client.upload_file(str(html_path), self.bucket_name, f"{prefix}/{item.place_id}.html")
+                            s3_raw_prefix = f"campaigns/{task.campaign_name}/raw/gm-list/{lat_shard}/{lat_tile}/{lon_tile}"
+                            s3_client.upload_file(str(html_path), self.bucket_name, f"{s3_raw_prefix}/{item.place_id}.html")
             
             # 2. Save JSON Receipt
             receipt_path = results_dir / f"{phrase_slug}.json"

@@ -377,7 +377,7 @@ def sync_raw(
     full: bool = typer.Option(False, "--full", help="Perform a full integrity check."),
     force: bool = typer.Option(False, "--force", help="Force download all files."),
 ) -> None:
-    """Syncs raw HTML witnesses from S3."""
+    """Syncs raw HTML witnesses (both details and list items) from S3."""
     from ..core.config import get_campaign, load_campaign_config
     campaign_name = campaign_name or get_campaign()
     if not campaign_name:
@@ -387,9 +387,15 @@ def sync_raw(
     aws_config = config.get("aws", {})
     bucket_name = aws_config.get("data_bucket_name") or f"cocli-data-{campaign_name}"
     
-    prefix = f"campaigns/{campaign_name}/raw/gm-details/"
-    local_base = DATA_DIR / "campaigns" / campaign_name / "raw" / "gm-details"
-    run_smart_sync("raw-witnesses", bucket_name, prefix, local_base, campaign_name, aws_config, workers, full, force)
+    # 1. Sync Details Raw
+    prefix_details = f"campaigns/{campaign_name}/raw/gm-details/"
+    local_base_details = DATA_DIR / "campaigns" / campaign_name / "raw" / "gm-details"
+    run_smart_sync("raw-details", bucket_name, prefix_details, local_base_details, campaign_name, aws_config, workers, full, force)
+
+    # 2. Sync List Raw
+    prefix_list = f"campaigns/{campaign_name}/raw/gm-list/"
+    local_base_list = DATA_DIR / "campaigns" / campaign_name / "raw" / "gm-list"
+    run_smart_sync("raw-list", bucket_name, prefix_list, local_base_list, campaign_name, aws_config, workers, full, force)
 
 @app.command("queues")
 def sync_queues(
