@@ -57,44 +57,75 @@ def consolidate_campaign_results(campaign_name: str) -> int:
     return merged_count
 
 def compact_prospects_to_checkpoint(campaign_name: str) -> int:
-    """Merges all sharded WAL prospects into the main campaign checkpoint."""
+    """
+    Merges all sharded WAL prospects into the main campaign checkpoint using DuckDB.
+    Performs a full deduplicated rewrite to eliminate bloat.
+    """
     from cocli.core.paths import paths
-    wal_dir = paths.campaign(campaign_name).index("google_maps_prospects").wal
-    
-    added = 0
+    idx_paths = paths.campaign(campaign_name).index("google_maps_prospects")
+    wal_dir = idx_paths.wal
+    checkpoint_path = idx_paths.checkpoint
     
     if not wal_dir.exists():
         logger.info("WAL directory does not exist. Nothing to compact.")
         return 0
             
-    logger.info("Compacting prospects from wal...")
+    logger.info("Compacting prospects with DuckDB deduplication...")
     
-    # rglob to catch sharded subdirectories in WAL
+    import duckdb
+    con = duckdb.connect(database=':memory:')
+    
+    # 1. Collect all sources (Checkpoint + all WAL files)
+    sources = []
+    if checkpoint_path.exists() and checkpoint_path.stat().st_size > 0:
+        sources.append(str(checkpoint_path))
+    
     for usv_file in wal_dir.rglob("*.usv"):
-        if usv_file.name == "prospects.checkpoint.usv":
-            continue
+        if usv_file.is_file() and usv_file.stat().st_size > 0:
+            sources.append(str(usv_file))
             
-        try:
-            with open(usv_file, "r") as f:
-                for line in f:
-                    if line.strip():
-                        # skip potential headers if they were missed by cleanup
-                        if "created_at" in line or "scrape_date" in line:
-                            continue
-                        try:
-                            prospect = GoogleMapsProspect.from_usv(line)
-                            if prospect and prospect.place_id:
-                                GoogleMapsProspect.append_to_checkpoint(campaign_name, prospect)
-                                added += 1
-                        except Exception as e:
-                            logger.warning(f"Failed to parse prospect in {usv_file}: {e}")
+    if not sources:
+        return 0
+
+    try:
+        # Create a combined view using read_csv on all paths
+        # column00: place_id, column05: updated_at (for sorting)
+        source_list_str = ", ".join([f"'{s}'" for s in sources])
+        
+        # Deduplication Strategy: Select the record with the newest updated_at for each place_id
+        # We use all_varchar=True to avoid parsing errors during the massive merge
+        con.execute(f"""
+            CREATE TABLE deduplicated_prospects AS
+            SELECT * FROM (
+                SELECT *, 
+                       row_number() OVER (PARTITION BY column00 ORDER BY column05 DESC) as rn
+                FROM read_csv([{source_list_str}], delim='\x1f', header=False, auto_detect=True, all_varchar=True)
+                WHERE column00 IS NOT NULL AND column00 LIKE 'ChIJ%'
+            ) WHERE rn = 1
+        """)
+        
+        # 2. Write the clean checkpoint to a temporary file
+        temp_checkpoint = checkpoint_path.with_suffix(".tmp.usv")
+        con.execute(f"COPY (SELECT * EXCLUDE (rn) FROM deduplicated_prospects) TO '{temp_checkpoint}' (DELIMITER '\x1f', HEADER FALSE)")
+        
+        # 3. Swap and Cleanup
+        new_count = con.execute("SELECT COUNT(*) FROM deduplicated_prospects").fetchone()[0]
+        
+        # Replace old checkpoint
+        if temp_checkpoint.exists():
+            temp_checkpoint.replace(checkpoint_path)
             
-            # Surgical cleanup: delete file after successful merge
-            usv_file.unlink(missing_ok=True)
-        except Exception as e:
-            logger.error(f"Failed to merge {usv_file}: {e}")
-            
-    return added
+        # Clear WAL files that were merged
+        for usv_file in wal_dir.rglob("*.usv"):
+            if usv_file.is_file():
+                usv_file.unlink()
+                
+        logger.info(f"Compaction successful. New unique prospects: {new_count}")
+        return int(new_count)
+
+    except Exception as e:
+        logger.error(f"DuckDB Compaction failed: {e}")
+        return 0
 
 def _merge_usv(src: Path, dest: Path) -> None:
     existing_pids: Set[str] = set()
