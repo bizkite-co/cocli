@@ -1,7 +1,6 @@
 # POLICY: frictionless-data-policy-enforcement
 import logging
 import asyncio
-from typing import List, Dict, Any
 from cocli.application.search_service import get_fuzzy_search_results
 from cocli.models.companies.company import Company
 from cocli.core.config import set_campaign
@@ -9,7 +8,7 @@ from cocli.core.config import set_campaign
 logging.basicConfig(level=logging.INFO, format='%(message)s')
 logger = logging.getLogger("to_call")
 
-async def populate_to_call(campaign_name: str, limit: int = 50):
+async def populate_to_call(campaign_name: str, limit: int = 50) -> None:
     set_campaign(campaign_name)
     logger.info(f"--- Populating To-Call for {campaign_name} (Limit: {limit}) ---")
     

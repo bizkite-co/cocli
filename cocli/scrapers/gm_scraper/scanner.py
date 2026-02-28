@@ -75,8 +75,8 @@ class SidebarScraper:
                 # Fetch HTML
                 html_content = ""
                 try:
-                    # Use outer_html to get the top-level div attributes (aria-label, etc)
-                    html_content = await listing_div.outer_html()
+                    # Use evaluate to get outerHTML since Locator doesn't have outer_html()
+                    html_content = await listing_div.evaluate("el => el.outerHTML")
                 except Exception:
                     continue
 

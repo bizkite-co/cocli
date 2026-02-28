@@ -1,9 +1,7 @@
 # POLICY: frictionless-data-policy-enforcement
 import logging
 import asyncio
-import os
 import shutil
-from pathlib import Path
 from cocli.core.paths import paths
 from cocli.core.queue.factory import get_queue_manager
 from cocli.models.campaigns.queues.gm_details import GmItemTask
@@ -11,7 +9,7 @@ from cocli.models.campaigns.queues.gm_details import GmItemTask
 logging.basicConfig(level=logging.INFO, format='%(message)s')
 logger = logging.getLogger("re_enqueue")
 
-async def re_enqueue_batch(campaign_name: str):
+async def re_enqueue_batch(campaign_name: str) -> None:
     batch_file = paths.campaign(campaign_name).path / "recovery" / "recovery_batch_200.txt"
     if not batch_file.exists():
         logger.error(f"Batch file not found: {batch_file}")

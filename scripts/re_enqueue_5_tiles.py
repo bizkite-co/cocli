@@ -1,6 +1,5 @@
 # POLICY: frictionless-data-policy-enforcement
 import logging
-from pathlib import Path
 from cocli.core.paths import paths
 from cocli.models.campaigns.queues.gm_list import ScrapeTask
 from cocli.core.queue.factory import get_queue_manager
@@ -8,7 +7,7 @@ from cocli.core.queue.factory import get_queue_manager
 logging.basicConfig(level=logging.INFO, format='%(message)s')
 logger = logging.getLogger("re_enqueue_tiles")
 
-def re_enqueue_5_tiles(campaign_name: str):
+def re_enqueue_5_tiles(campaign_name: str) -> None:
     output_path = paths.campaign(campaign_name).path / "recovery" / "recovery_list_tiles_5.txt"
     
     # 5 Tiles identified from completed results
@@ -44,7 +43,7 @@ def re_enqueue_5_tiles(campaign_name: str):
         queue_manager.push(task)
         logger.info(f"  [ENQUEUED] {t['phrase']} @ {t['lat']}, {t['lon']}")
 
-    logger.info(f"Successfully enqueued 5 discovery tasks locally.")
+    logger.info("Successfully enqueued 5 discovery tasks locally.")
 
 if __name__ == "__main__":
     re_enqueue_5_tiles("roadmap")

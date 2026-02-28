@@ -1,9 +1,8 @@
 # POLICY: frictionless-data-policy-enforcement
-import os
 from bs4 import BeautifulSoup
 from pathlib import Path
 
-def inspect_html_witnesses(directory: str):
+def inspect_html_witnesses(directory: str) -> None:
     root = Path(directory)
     for html_file in root.rglob("*.html"):
         print(f"--- File: {html_file} ---")

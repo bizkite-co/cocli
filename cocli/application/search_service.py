@@ -113,7 +113,6 @@ def get_fuzzy_search_results(
     cache_dp = cache_dir / "datapackage.json"
     
     checkpoint_path = None
-    prospect_dp = None
     lifecycle_path = None
     lifecycle_dp = None
     to_call_pending_dir = None
@@ -122,7 +121,6 @@ def get_fuzzy_search_results(
         campaign_node = paths.campaign(campaign)
         prospect_idx = campaign_node.index("google_maps_prospects")
         checkpoint_path = prospect_idx.checkpoint
-        prospect_dp = prospect_idx.path / "datapackage.json"
         lifecycle_path = campaign_node.lifecycle
         lifecycle_dp = campaign_node.path / "indexes" / "lifecycle" / "datapackage.json"
         to_call_pending_dir = paths.queue(campaign, "to-call") / "pending"

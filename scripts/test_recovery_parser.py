@@ -1,8 +1,6 @@
 # POLICY: frictionless-data-policy-enforcement
 import json
 import logging
-import re
-from pathlib import Path
 from bs4 import BeautifulSoup
 from cocli.scrapers.google_maps_parsers.extract_rating_reviews import extract_rating_reviews
 from cocli.core.paths import paths
@@ -10,7 +8,7 @@ from cocli.core.paths import paths
 logging.basicConfig(level=logging.INFO, format='%(message)s')
 logger = logging.getLogger("test_parser")
 
-def test_witnesses(campaign_name: str):
+def test_witnesses(campaign_name: str) -> None:
     completed_dir = paths.campaign(campaign_name).path / "raw" / "completed"
     batch_file = paths.campaign(campaign_name).path / "recovery" / "recovery_batch_200.txt"
     
@@ -33,7 +31,6 @@ def test_witnesses(campaign_name: str):
         # Legacy: completed/{shard}/{pid}.json
         # New: completed/{shard}/{pid}/metadata.json + witness.html
         
-        witness_data = None
         html = None
         
         # 1. Try Legacy
@@ -65,8 +62,10 @@ def test_witnesses(campaign_name: str):
         rating = res.get("Average_rating")
         reviews = res.get("Reviews_count")
         
-        if rating: stats["has_rating"] += 1
-        if reviews: stats["has_reviews"] += 1
+        if rating:
+            stats["has_rating"] += 1
+        if reviews:
+            stats["has_reviews"] += 1
         
         if rating and reviews: 
             stats["both"] += 1

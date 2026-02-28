@@ -8,7 +8,7 @@ from cocli.scrapers.google_maps_details import capture_google_maps_raw
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("final_test")
 
-async def run_final_test():
+async def run_final_test() -> None:
     # Griffith Observatory
     place_id = "ChIJywjU6WG_woAR3NrWwrEH_3M"
     campaign = "roadmap"

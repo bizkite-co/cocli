@@ -1,18 +1,13 @@
-import os
 import sys
 import logging
 import argparse
 from pathlib import Path
-from typing import List
 
 # Add project root to path
 sys.path.append(str(Path(__file__).parent.parent))
 
 from rich.console import Console
-from rich.progress import track
-from cocli.core.config import get_campaign, get_campaign_dir
-from cocli.core.prospects_csv_manager import ProspectsIndexManager
-from cocli.models.campaigns.indexes.google_maps_prospect import GoogleMapsProspect
+from cocli.core.config import get_campaign
 
 console = Console()
 logging.basicConfig(level=logging.INFO, format='%(levelname)s: %(message)s')
@@ -33,18 +28,18 @@ def compact_index(campaign_name: str, archive: bool = False) -> None:
 
     # 5. Write Frictionless DataPackage (Already handled by compactor, but we can re-verify)
     from cocli.core.paths import paths
-    checkpoint_path = paths.campaign(campaign_name).index("google_maps_prospects").checkpoint
+    idx_paths = paths.campaign(campaign_name).index("google_maps_prospects")
+    checkpoint_path = idx_paths.checkpoint
     console.print(f"[bold blue]Checkpoint Path:[/bold blue] {checkpoint_path} ({checkpoint_path.stat().st_size / 1024 / 1024:.2f} MB)")
 
     # 6. Optional Archive (Move hot files to an archive folder)
     if archive:
-        archive_dir = manager.index_dir / "archive" / datetime.now().strftime("%Y%m%d_%H%M%S")
+        archive_dir = idx_paths.path / "archive" / datetime.now().strftime("%Y%m%d_%H%M%S")
         archive_dir.mkdir(parents=True, exist_ok=True)
-        logger.info(f"Archiving hot-layer files to {archive_dir}...")
+        console.print(f"Archiving hot-layer files to {archive_dir}...")
         
         # We only archive files that are IN the shards (the WAL)
-        # Note: This list logic should be careful not to delete the checkpoint itself!
-        for shard_dir in manager.index_dir.iterdir():
+        for shard_dir in idx_paths.path.iterdir():
             if shard_dir.is_dir() and len(shard_dir.name) == 1:
                 # Move entire shard dir to archive
                 import shutil
