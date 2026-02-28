@@ -3,8 +3,9 @@ import asyncio
 import logging
 import os
 import sys
+import time
 from pathlib import Path
-from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, TaskProgressColumn
+from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, TaskProgressColumn, TimeElapsedColumn
 from cocli.application.worker_service import WorkerService
 from cocli.core.paths import paths
 
@@ -28,8 +29,9 @@ def get_pending_count(pending_dir: Path) -> int:
                 count += 1
     return count
 
-async def run_local_batch():
+async def run_local_batch() -> None:
     campaign = "roadmap"
+    start_time = time.time()
     
     # 2. Determine initial state
     queue_base = paths.queue(campaign, "gm-details")
@@ -38,6 +40,7 @@ async def run_local_batch():
     total_batch = 200 # Our target size
     
     print(f"--- RECOVERY BATCH START ---")
+    print(f"Start Time: {time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(start_time))}")
     print(f"Log: {LOG_FILE}")
     print(f"Pending tasks found: {initial_pending}")
 
@@ -53,6 +56,7 @@ async def run_local_batch():
         BarColumn(),
         TaskProgressColumn(),
         TextColumn("({task.completed}/{task.total})"),
+        TimeElapsedColumn(),
         refresh_per_second=1
     ) as progress:
         
@@ -93,7 +97,9 @@ async def run_local_batch():
             except asyncio.CancelledError:
                 pass
 
-    print("\n--- BATCH COMPLETE ---")
+    total_duration = time.time() - start_time
+    print(f"\n--- BATCH COMPLETE ---")
+    print(f"Total Duration: {total_duration/60:.1f} minutes")
     print(f"Processed results are in the WAL.")
     print("Next: Run 'python3 scripts/compact_shards.py roadmap' to finalize.")
 
