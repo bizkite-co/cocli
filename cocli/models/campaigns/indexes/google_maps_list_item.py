@@ -17,6 +17,7 @@ class GoogleMapsListItem(BaseModel):
     gmb_url: Optional[str] = None
     discovery_phrase: Optional[str] = None
     discovery_tile_id: Optional[str] = None
+    html: Optional[str] = Field(None, description="Raw HTML of the list item")
 
     def to_task(self, campaign_name: str, force_refresh: bool = False) -> GmItemTask:
         """Transforms this list item into a task for the details queue."""

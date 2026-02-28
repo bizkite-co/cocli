@@ -32,6 +32,8 @@ async def populate_to_call(campaign_name: str, limit: int = 50):
     )
     
     logger.info(f"Identified {len(top_prospects)} candidates with contact info.")
+    for p in top_prospects[:5]:
+        logger.info(f"  [CANDIDATE] {p.slug} | Rating: {p.average_rating} | Reviews: {p.reviews_count}")
     
     # 2. Tag and Hydrate
     tagged = 0

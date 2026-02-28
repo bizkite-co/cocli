@@ -111,7 +111,8 @@ class SidebarScraper:
                     street_address=business_data_dict.get("Street_Address"),
                     gmb_url=business_data_dict.get("GMB_URL"),
                     discovery_phrase=search_string,
-                    discovery_tile_id=tile_id
+                    discovery_tile_id=tile_id,
+                    html=html_content
                 )
 
             last_processed_div_count = len(listing_divs)

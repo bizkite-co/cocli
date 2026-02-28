@@ -267,6 +267,28 @@ class GoogleMapsProspect(GoogleMapsIdx):
                 values[field] = None
         return values
 
+    def to_usv(self) -> str:
+        """
+        STRICT CANONICAL SERIALIZATION: Ensures field order matches datapackage.json.
+        """
+        from cocli.core.constants import UNIT_SEP
+        field_names = list(self.__class__.model_fields.keys())
+        dump = self.model_dump(by_alias=False)
+        
+        values = []
+        for field in field_names:
+            val = dump.get(field)
+            if val is None:
+                values.append("")
+            elif isinstance(val, datetime):
+                values.append(val.isoformat())
+            else:
+                # Sanitize newlines and separators
+                s_val = str(val).replace("\r\n", "<br>").replace("\n", "<br>").replace("\r", "<br>").replace(UNIT_SEP, " ")
+                values.append(s_val)
+        
+        return UNIT_SEP.join(values) + "\n"
+
     @classmethod
     def append_to_checkpoint(cls, campaign_name: str, prospect: "GoogleMapsProspect") -> None:
         """Appends a prospect to the campaign's main checkpoint USV."""

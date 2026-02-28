@@ -92,14 +92,21 @@ def compact_prospects_to_checkpoint(campaign_name: str) -> int:
         # column00: place_id, column05: updated_at (for sorting)
         source_list_str = ", ".join([f"'{s}'" for s in sources])
         
+        # Define the exact schema from GoogleMapsProspect to prevent shifts
+        # Indices: 0:place_id, 1:slug, 2:name, 3:phone, 4:created, 5:updated, ..., 24:reviews, 25:rating
+        columns_def = {
+            f"column{i:02d}": "VARCHAR" for i in range(56)
+        }
+        columns_str = ", ".join([f"'{k}': '{v}'" for k, v in columns_def.items()])
+
         # Deduplication Strategy: Select the record with the newest updated_at for each place_id
-        # We use all_varchar=True to avoid parsing errors during the massive merge
         con.execute(f"""
             CREATE TABLE deduplicated_prospects AS
             SELECT * FROM (
                 SELECT *, 
                        row_number() OVER (PARTITION BY column00 ORDER BY column05 DESC) as rn
-                FROM read_csv([{source_list_str}], delim='\x1f', header=False, auto_detect=True, all_varchar=True)
+                FROM read_csv([{source_list_str}], delim='\x1f', header=False, auto_detect=False, 
+                              all_varchar=True, columns={{{columns_str}}}, quote='')
                 WHERE column00 IS NOT NULL AND column00 LIKE 'ChIJ%'
             ) WHERE rn = 1
         """)

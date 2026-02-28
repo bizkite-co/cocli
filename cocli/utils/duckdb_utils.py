@@ -53,9 +53,8 @@ def get_duckdb_schema_from_datapackage(datapackage_path: Path) -> Dict[str, str]
 def load_usv_to_duckdb(con: duckdb.DuckDBPyConnection, table_name: str, usv_path: Path, datapackage_path: Optional[Path] = None) -> None:
     """
     FDPE ENFORCEMENT: Loads a headerless USV file into DuckDB using datapackage.json 
-    as the sole authority for column names and types.
+    as the authority for column names and types.
     """
-    import csv
     if not usv_path.exists():
         logger.warning(f"USV file not found: {usv_path}")
         return
@@ -68,60 +67,31 @@ def load_usv_to_duckdb(con: duckdb.DuckDBPyConnection, table_name: str, usv_path
         except Exception as e:
             logger.error(f"Failed to parse datapackage for {table_name}: {e}")
 
-    # 2. Read raw headerless data
     try:
-        with open(usv_path, 'r', newline='', encoding='utf-8') as f:
-            reader = csv.reader(f, delimiter='\x1f', quotechar=None, quoting=csv.QUOTE_NONE)
-            rows = list(reader)
+        con.execute(f"DROP TABLE IF EXISTS {table_name}")
+        
+        if columns:
+            # FDPE: Use explicit column mapping for headerless file
+            # Map columns to VARCHAR first to prevent early casting errors
+            columns_def = ", ".join([f"'{name}': 'VARCHAR'" for name in columns.keys()])
             
-            if not rows:
-                if columns:
-                    col_def = ", ".join([f"{name} {dtype}" for name, dtype in columns.items()])
-                    con.execute(f"CREATE TABLE {table_name} ({col_def})")
-                return
-
-            # FDPE: Mapping headerless stream to names explicitly
-            if columns:
-                header = list(columns.keys())
-            else:
-                # Emergency fallback if no datapackage (violates FDPE but prevents crash)
-                logger.warning(f"FDPE VIOLATION: No schema for {table_name}. Defaulting to columnN.")
-                header = [f"column{i}" for i in range(len(rows[0]))]
-
-            # 3. Sanitize and Insert via Pandas/DuckDB
-            import pandas as pd
-            expected_len = len(header)
-            sanitized_data = []
-            for r in rows:
-                if len(r) == expected_len:
-                    sanitized_data.append(r)
-                else:
-                    # Pad or truncate to match schema
-                    sanitized_data.append((r + [""] * expected_len)[:expected_len])
-
-            df = pd.DataFrame(sanitized_data, columns=header)
+            # Use TRY_CAST for type safety (Requirement 3 of FDPE)
+            cast_sql = ", ".join([f"TRY_CAST(\"{name}\" AS {dtype}) as \"{name}\"" for name, dtype in columns.items()])
             
-            con.execute(f"DROP TABLE IF EXISTS {table_name}")
-            con.register("df_view", df)
+            con.execute(f"""
+                CREATE TABLE {table_name} AS 
+                SELECT {cast_sql} 
+                FROM read_csv('{usv_path}', delim='\x1f', header=False, auto_detect=False, 
+                              columns={{{columns_def}}}, quote='', escape='')
+            """)
+        else:
+            # Fallback to auto-detection (violates strict FDPE but allows operation)
+            logger.warning(f"FDPE VIOLATION: Loading {table_name} without schema.")
+            con.execute(f"CREATE TABLE {table_name} AS SELECT * FROM read_csv('{usv_path}', delim='\x1f', header=False, auto_detect=True, all_varchar=True, quote='', escape='')")
             
-            if columns:
-                # Cast values according to defined types (Requirement 3 of FDPE)
-                cast_cols = []
-                for col in header:
-                    if col in columns:
-                        cast_cols.append(f"TRY_CAST(\"{col}\" AS {columns[col]}) as \"{col}\"")
-                    else:
-                        cast_cols.append(f"\"{col}\"")
-                select_sql = ", ".join(cast_cols)
-                con.execute(f"CREATE TABLE {table_name} AS SELECT {select_sql} FROM df_view")
-            else:
-                con.execute(f"CREATE TABLE {table_name} AS SELECT * FROM df_view")
-                
-            con.unregister("df_view")
-            logger.debug(f"FDPE: Loaded {len(sanitized_data)} rows into {table_name}")
+        count = con.execute(f"SELECT COUNT(*) FROM {table_name}").fetchone()[0]
+        logger.debug(f"FDPE: Loaded {count} rows into {table_name}")
 
     except Exception as e:
         logger.error(f"FDPE Load failed for {table_name}: {e}")
-        # Final fallback to raw sniffing (Strict FDPE would fail here)
-        con.execute(f"DROP TABLE IF EXISTS {table_name}")
-        con.execute(f"CREATE TABLE {table_name} AS SELECT * FROM read_csv('{usv_path}', delim='\x1f', quote='', escape='', header=False, auto_detect=True, all_varchar=True)")
+        raise

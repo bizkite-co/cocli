@@ -178,10 +178,12 @@ def get_fuzzy_search_results(
 
                 # B. Load Prospect Checkpoint (Machine Scraping)
                 if checkpoint_path and checkpoint_path.exists():
-                    if prospect_dp:
-                        from cocli.models.campaigns.indexes.google_maps_prospect import GoogleMapsProspect
-                        GoogleMapsProspect.save_datapackage(prospect_dp.parent)
-                    load_usv_to_duckdb(_con, "items_checkpoint", checkpoint_path, prospect_dp)
+                    from cocli.models.campaigns.indexes.google_maps_prospect import GoogleMapsProspect
+                    # Ensure datapackage exists
+                    GoogleMapsProspect.save_datapackage(checkpoint_path.parent)
+                    # Pass the specific datapackage path to the loader
+                    prospect_dp_fixed = checkpoint_path.parent / "datapackage.json"
+                    load_usv_to_duckdb(_con, "items_checkpoint", checkpoint_path, prospect_dp_fixed)
                 else:
                     _con.execute("CREATE TABLE items_checkpoint (slug VARCHAR, name VARCHAR, email VARCHAR, phone_number VARCHAR, average_rating DOUBLE, reviews_count BIGINT, street_address VARCHAR, city VARCHAR, state VARCHAR, zip VARCHAR, place_id VARCHAR, domain VARCHAR, created_at VARCHAR, updated_at VARCHAR, tags VARCHAR)")
 
