@@ -75,7 +75,8 @@ class SidebarScraper:
                 # Fetch HTML
                 html_content = ""
                 try:
-                    html_content = await listing_div.inner_html(timeout=2000)
+                    # Use outer_html to get the top-level div attributes (aria-label, etc)
+                    html_content = await listing_div.outer_html()
                 except Exception:
                     continue
 

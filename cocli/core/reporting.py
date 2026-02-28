@@ -3,7 +3,7 @@ import json
 import boto3
 import logging
 import math
-from typing import Dict, Any, cast, Union
+from typing import Dict, Any, cast, Union, Optional
 from rich.console import Console
 
 from cocli.core.config import get_cocli_base_dir, load_campaign_config
@@ -17,14 +17,25 @@ console = Console()
 __all__ = ["get_campaign_stats", "get_boto3_session", "load_campaign_config", "get_exclusions_data", "get_queries_data", "get_locations_data"]
 
 
-def get_boto3_session(config: Dict[str, Any], max_pool_connections: int = 10) -> boto3.Session:
-    """Creates a boto3 session, prioritizing IoT profiles for automatic refresh."""
+def get_boto3_session(config: Dict[str, Any], max_pool_connections: int = 10, profile_name: Optional[str] = None) -> boto3.Session:
+    """Creates a boto3 session, prioritizing explicit profile_name if provided."""
     from botocore.config import Config
     boto_config = Config(max_pool_connections=max_pool_connections)
     aws_config = config.get("aws", {})
     campaign_name = config.get("campaign", {}).get("name")
     
-    # 0. Check current AWS_PROFILE environment variable first
+    # 0. Forced Profile Precedence (Maintenance Role)
+    if profile_name:
+        try:
+            session = boto3.Session(profile_name=profile_name)
+            session.client("sts", config=boto_config).get_caller_identity()
+            logger.info(f"Using forced AWS profile: {profile_name}")
+            return session
+        except Exception as e:
+            logger.error(f"Failed to use forced profile {profile_name}: {e}")
+            raise
+
+    # 1. Check current AWS_PROFILE environment variable
     env_profile = os.environ.get("AWS_PROFILE")
     
     # 1. Try candidates (Explicit config + Automatic campaign-iot)

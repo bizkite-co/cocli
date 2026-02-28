@@ -12,85 +12,71 @@ PROXIMITY_REVIEWS_RE = re.compile(r"\((\d+)\)")
 
 def extract_rating_reviews(soup: BeautifulSoup, inner_text: str, debug: bool = False) -> Dict[str, str]:
     """
-    BULLETPROOF extraction of rating and reviews.
-    Layers: JSACTION -> BREAKDOWN -> ARIA -> TEXT -> PROXIMITY
+    ULTRA-ROBUST extraction based on verified Google Maps summary snippet.
     """
     rating = ""
     reviews_count = ""
 
-    # 1. JSACTION SCAN (Specifically the review chart)
-    chart = soup.find(attrs={"jsaction": re.compile(r"reviewChart\.moreReviews")})
-    if chart:
-        text = chart.get_text(separator=" ", strip=True)
-        r_match = re.search(r"(\d\.\d)", text)
-        if r_match:
-            rating = r_match.group(1)
+    # 1. PRIMARY: Targeted Summary Block (jsaction containing reviewChart.moreReviews)
+    chart_summary = soup.find(attrs={"jsaction": re.compile(r"reviewChart\.moreReviews")})
+    if chart_summary:
+        # Rating is often in fontDisplayLarge
+        rating_el = chart_summary.find(class_="fontDisplayLarge")
+        if rating_el:
+            rating = rating_el.get_text(strip=True)
         
-        c_match = STRICT_REVIEWS_RE.search(text)
-        if c_match:
-            reviews_count = c_match.group(1).replace(",", "")
+        # Total Reviews is often in a span/button inside this block
+        # Look for "X reviews" or "X opinions"
+        total_match = re.search(r"([\d,]+)\s*(?:Reviews?|Opinions?)", chart_summary.get_text(separator=" ", strip=True), re.IGNORECASE)
+        if total_match:
+            reviews_count = total_match.group(1).replace(",", "")
 
-    # 2. BREAKDOWN TABLE AGGREGATION
+    # 2. SECONDARY: Breakdown Table Summation (Extremely reliable for 'Gold' views)
+    # Snippet: <tr class="BHOKXe" role="img" aria-label="5 stars, 13,894 reviews">
     if not reviews_count:
-        # Search for "5 stars, 2 reviews" style labels
-        breakdown = soup.find_all(attrs={"aria-label": re.compile(r"stars,")})
-        total = 0
-        found = False
-        for el in breakdown:
-            label = str(el.get("aria-label", ""))
-            match = re.search(r"stars,\s*([\d,]+)\s*review", label, re.IGNORECASE)
+        breakdown_rows = soup.find_all(attrs={"aria-label": re.compile(r"stars,.*reviews?", re.IGNORECASE)})
+        if breakdown_rows:
+            total = 0
+            for row in breakdown_rows:
+                label = str(row.get("aria-label", ""))
+                # Match: "5 stars, 13,894 reviews"
+                match = re.search(r"stars,\s*([\d,]+)\s*review", label, re.IGNORECASE)
+                if match:
+                    total += int(match.group(1).replace(",", ""))
+            if total > 0:
+                reviews_count = str(total)
+
+    # 3. FALLBACK: Global ARIA/Title scan for "X.X stars"
+    if not rating:
+        star_elements = soup.find_all(attrs={"aria-label": re.compile(r"^\d\.\d\s*stars?", re.IGNORECASE)})
+        if star_elements:
+            # Take the first one, usually the primary business rating
+            label = str(star_elements[0].get("aria-label", ""))
+            match = re.search(r"(\d\.\d)", label)
             if match:
-                found = True
-                total += int(match.group(1).replace(",", ""))
-        if found:
-            reviews_count = str(total)
+                rating = match.group(1)
 
-    # 3. GLOBAL ARIA & TITLE SCAN
-    for el in soup.find_all(True):
-        label_val = el.get('aria-label') or el.get('title')
-        if not label_val:
-            continue
-        label = str(label_val)
-        
-        if not rating:
-            r_match = STRICT_RATING_RE.search(label)
-            if r_match:
-                rating = r_match.group(1)
-            
-        if not reviews_count:
-            c_match = STRICT_REVIEWS_RE.search(label)
-            if c_match:
-                reviews_count = c_match.group(1).replace(",", "")
-
-    # 4. TEXT NODE SCAN
+    # 4. FALLBACK: Text node scan for "X reviews"
     if not reviews_count:
-        # Global search for "X reviews" in text nodes
         nodes = soup.find_all(string=re.compile(r"[\d,]+\s*(?:Reviews?|Opinions?)", re.IGNORECASE))
         for node in nodes:
-            match = re.search(r"([\d,]+)", node)
-            if match:
-                reviews_count = match.group(1).replace(",", "")
-                break
+            # Avoid long strings, look for short snippets like "17,059 reviews"
+            if len(node) < 50:
+                match = re.search(r"([\d,]+)", node)
+                if match:
+                    reviews_count = match.group(1).replace(",", "")
+                    break
 
-    # 5. SEMANTIC CLASS FALLBACK (fontDisplayLarge)
-    if not rating:
-        rating_el = soup.find(class_="fontDisplayLarge")
-        if rating_el:
-            r_text = rating_el.get_text(strip=True)
-            if re.match(r"\d\.\d", r_text):
-                rating = r_text
-
-    # 6. PROXIMITY FALLBACK (Inner Text - Body Wide)
+    # 5. FINAL: Proximity scan (Inner Text)
     if not rating:
         r_match = STRICT_RATING_RE.search(inner_text)
         if r_match:
             rating = r_match.group(1)
         
     if not reviews_count and rating:
-        # Look for the rating followed by 'X reviews' or '(X)' within 100 chars
-        # Dot-all to match across line breaks
         escaped_rating = re.escape(rating)
-        prox_pattern = re.compile(escaped_rating + r"[\s\S]{0,100}?([\d,]+)\s*(?:Reviews?|Opinions?|\))", re.IGNORECASE)
+        # Look for "(17,059)" or "17,059 reviews" within 30 chars of the rating
+        prox_pattern = re.compile(escaped_rating + r"[\s\S]{0,30}?\(?([\d,]+)\)?\s*(?:Reviews?|Opinions?)?", re.IGNORECASE)
         match = prox_pattern.search(inner_text)
         if match:
             reviews_count = match.group(1).replace(",", "")

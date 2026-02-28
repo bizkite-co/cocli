@@ -39,7 +39,8 @@ class WorkerService:
         
     def get_s3_client(self) -> Any:
         from ..core.reporting import get_boto3_session
-        session = get_boto3_session(self.config)
+        profile = f"{self.campaign_name}-iot"
+        session = get_boto3_session(self.config, profile_name=profile)
         return session.client("s3")
 
     async def _run_scrape_task_loop(
@@ -334,10 +335,10 @@ class WorkerService:
 
                 gm_list_item_queue.ack(task)
                 
+                if once:
+                    return
+
                 if self.role == "scraper":
-                    # Scraper is done after acking the witness capture
-                    if once:
-                        return
                     continue
 
                 # LINKAGE (Only for Full/Processor roles)
@@ -393,8 +394,9 @@ class WorkerService:
         if role == "processor":
             # Processor role doesn't need a browser
             s3_client = self.get_s3_client()
-            gm_list_item_queue = get_queue_manager("details", use_cloud=True, queue_type="gm_list_item", campaign_name=self.campaign_name, s3_client=s3_client)
-            enrichment_queue = get_queue_manager("enrichment", use_cloud=True, queue_type="enrichment", campaign_name=self.campaign_name, s3_client=s3_client)
+            # USE LOCAL QUEUE for local recovery verification
+            gm_list_item_queue = get_queue_manager("details", use_cloud=False, queue_type="gm_list_item", campaign_name=self.campaign_name, s3_client=s3_client)
+            enrichment_queue = get_queue_manager("enrichment", use_cloud=False, queue_type="enrichment", campaign_name=self.campaign_name, s3_client=s3_client)
             
             logger.info("Starting GM Details PROCESSOR (No Browser)")
             tasks = [
@@ -419,9 +421,16 @@ class WorkerService:
                 )
                 tracker = await setup_optimized_context(context)
                 
-                s3_client = self.get_s3_client()
-                gm_list_item_queue = get_queue_manager("details", use_cloud=True, queue_type="gm_list_item", campaign_name=self.campaign_name, s3_client=s3_client)
-                enrichment_queue = get_queue_manager("enrichment", use_cloud=True, queue_type="enrichment", campaign_name=self.campaign_name, s3_client=s3_client)
+                try:
+                    s3_client = self.get_s3_client()
+                    use_cloud = True
+                except Exception as e:
+                    logger.warning(f"Could not initialize S3 client: {e}. Falling back to LOCAL-ONLY mode.")
+                    s3_client = None
+                    use_cloud = False
+
+                gm_list_item_queue = get_queue_manager("details", use_cloud=use_cloud, queue_type="gm_list_item", campaign_name=self.campaign_name, s3_client=s3_client)
+                enrichment_queue = get_queue_manager("enrichment", use_cloud=use_cloud, queue_type="enrichment", campaign_name=self.campaign_name, s3_client=s3_client)
 
                 tasks = [
                     self._run_details_task_loop(context, gm_list_item_queue, enrichment_queue, s3_client, debug, once, tracker=tracker)
@@ -461,9 +470,16 @@ class WorkerService:
                 )
                 tracker = await setup_optimized_context(context)
                 
-                s3_client = self.get_s3_client()
-                scrape_queue = get_queue_manager("scrape_tasks", use_cloud=True, queue_type="scrape", campaign_name=self.campaign_name)
-                gm_list_item_queue = get_queue_manager("gm_list_item", use_cloud=True, queue_type="gm_list_item", campaign_name=self.campaign_name)
+                try:
+                    s3_client = self.get_s3_client()
+                    use_cloud = True
+                except Exception as e:
+                    logger.warning(f"Could not initialize S3 client: {e}. Falling back to LOCAL-ONLY mode.")
+                    s3_client = None
+                    use_cloud = False
+
+                scrape_queue = get_queue_manager("scrape_tasks", use_cloud=use_cloud, queue_type="scrape", campaign_name=self.campaign_name)
+                gm_list_item_queue = get_queue_manager("gm_list_item", use_cloud=use_cloud, queue_type="gm_list_item", campaign_name=self.campaign_name)
 
                 tasks = [
                     self._run_scrape_task_loop(browser, scrape_queue, gm_list_item_queue, s3_client, debug, once, tracker=tracker)

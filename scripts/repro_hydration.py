@@ -1,52 +1,51 @@
+# POLICY: frictionless-data-policy-enforcement
 import asyncio
 import logging
 from playwright.async_api import async_playwright
-from cocli.scrapers.google_maps_details import capture_google_maps_raw
 from cocli.utils.headers import ANTI_BOT_HEADERS, USER_AGENT
+from cocli.scrapers.google_maps_details import capture_google_maps_raw
 
 logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger("repro_hydration")
+logger = logging.getLogger("final_test")
 
-async def repro_hydration():
-    # Target: Griffith Observatory (DEFINITELY has ratings)
-    place_id = "ChIJ5X0j7DHDwogRvQgaGw0y4FM" 
+async def run_final_test():
+    # Griffith Observatory
+    place_id = "ChIJywjU6WG_woAR3NrWwrEH_3M"
     campaign = "roadmap"
     
+    print("\n--- FINAL PRODUCTION PIPELINE TEST ---")
+    print("Includes: Pre-Flight Warmup, Session-Heal, Ultra-Robust Parser")
+    
     async with async_playwright() as p:
-        browser = await p.chromium.launch(headless=True) # Headless for this environment
+        browser = await p.chromium.launch(headless=False)
         context = await browser.new_context(
             user_agent=USER_AGENT,
             extra_http_headers=ANTI_BOT_HEADERS,
-            viewport={'width': 1280, 'height': 720}
+            viewport={'width': 1920, 'height': 1080}
         )
         page = await context.new_page()
         
-        url = f"https://www.google.com/maps/place/?q=place_id:{place_id}"
-        logger.info(f"Navigating to {url}")
+        # Use our PRODUCTION capture function
+        witness = await capture_google_maps_raw(page, place_id, campaign, debug=True)
         
-        try:
-            # wait_until="networkidle" is often too slow/unreliable
-            await page.goto(url, wait_until="domcontentloaded", timeout=60000)
-            # Wait for the main pane to appear
-            await page.wait_for_selector('div[role="main"]', timeout=30000)
-            logger.info("Page loaded.")
+        if witness:
+            from bs4 import BeautifulSoup
+            from cocli.scrapers.google_maps_parsers.extract_rating_reviews import extract_rating_reviews
+            soup = BeautifulSoup(witness.html, "html.parser")
+            results = extract_rating_reviews(soup, soup.get_text(), debug=True)
             
-            # Try the capture logic
-            witness = await capture_google_maps_raw(page, place_id, campaign, debug=True)
-            
-            if witness:
-                from cocli.scrapers.google_maps_parsers.extract_rating_reviews import extract_rating_reviews
-                from bs4 import BeautifulSoup
-                soup = BeautifulSoup(witness.html, "html.parser")
-                results = extract_rating_reviews(soup, soup.get_text(), debug=True)
-                logger.info(f"Final Extraction: {results}")
+            print(f"\n[FINAL RESULTS] {results}")
+            if results.get("Reviews_count") == "17059":
+                print("✅ PIEPLINE VERIFIED: Full reviews captured!")
             else:
-                logger.error("Failed to capture raw witness.")
-                
-        except Exception as e:
-            logger.error(f"Repro failed: {e}")
-            
-        await browser.close()
+                print(f"❌ STILL LITE: Captured {results.get('Reviews_count')} reviews.")
+        else:
+            print("❌ CAPTURE FAILED.")
+
+        print("\nClose browser to finish.")
+        stop_event = asyncio.Event()
+        browser.on("disconnected", lambda: stop_event.set())
+        await stop_event.wait()
 
 if __name__ == "__main__":
-    asyncio.run(repro_hydration())
+    asyncio.run(run_final_test())

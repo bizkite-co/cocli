@@ -5,7 +5,7 @@ Centralized headers to prevent bot detection and maintain consistent scraping be
 """
 
 # Current Chromium version used for consistency
-CHROME_VERSION = "122"
+CHROME_VERSION = "133"
 
 USER_AGENT = f"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/{CHROME_VERSION}.0.0.0 Safari/537.36"
 
