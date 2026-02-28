@@ -1,3 +1,4 @@
+# POLICY: frictionless-data-policy-enforcement
 import pytest
 import logging
 from cocli.application.services import ServiceContainer
@@ -6,6 +7,7 @@ from cocli.core.config import set_campaign
 # Disable noise during production data load
 logging.getLogger("cocli").setLevel(logging.WARNING)
 
+@pytest.mark.use_prod_data
 def test_no_duplicates_in_all_leads_roadmap():
     """
     Reproduction test: Fails if 'All Leads' fuzzy search returns duplicate companies.
@@ -24,7 +26,6 @@ def test_no_duplicates_in_all_leads_roadmap():
     # We want a large enough limit to catch duplicates
     limit = 1000
     
-    print(f"\n--- Loading results for {campaign} (limit {limit}) ---")
     results = services.fuzzy_search(
         search_query="",
         item_type="company",
@@ -43,8 +44,6 @@ def test_no_duplicates_in_all_leads_roadmap():
         else:
             pytest.fail(f"No results returned for {campaign} even though checkpoint exists at {checkpoint}")
     
-    print(f"Loaded {len(results)} results.")
-    
     slugs = [r.slug for r in results if r.slug]
     
     # Identify duplicates
@@ -62,8 +61,6 @@ def test_no_duplicates_in_all_leads_roadmap():
         for slug, count in sorted_dupes[:10]:
             msg += f"  - {slug}: {count} occurrences\n"
         pytest.fail(msg)
-    else:
-        print("SUCCESS: No duplicates found in sample.")
 
 if __name__ == "__main__":
     test_no_duplicates_in_all_leads_roadmap()

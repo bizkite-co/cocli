@@ -1,13 +1,22 @@
-import asyncio
-import subprocess
-from textual.app import Screen
-from textual.widget import Widget
-from textual.css.query import NoMatches
-from typer.testing import CliRunner
-import pytest
-from cocli.main import app
-from cocli.core.config import load_campaign_config
-from playwright.async_api import async_playwright
+import os
+import tempfile
+from pathlib import Path
+
+# GLOBAL ISOLATION: Set this BEFORE any cocli imports
+# This ensures the DataPaths singleton initializes to a safe temp location
+_TEST_DATA_HOME = Path(tempfile.gettempdir()) / "cocli_test_data"
+os.environ["COCLI_DATA_HOME"] = str(_TEST_DATA_HOME)
+
+import asyncio  # noqa: E402
+import subprocess  # noqa: E402
+from textual.app import Screen  # noqa: E402
+from textual.widget import Widget  # noqa: E402
+from textual.css.query import NoMatches  # noqa: E402
+from typer.testing import CliRunner  # noqa: E402
+import pytest  # noqa: E402
+from cocli.main import app  # noqa: E402
+from cocli.core.config import load_campaign_config  # noqa: E402
+from playwright.async_api import async_playwright  # noqa: E402
 
 
 @pytest.fixture(scope="session")
