@@ -6,7 +6,6 @@ from typing import Set
 from cocli.core.config import get_campaigns_dir
 from cocli.core.sharding import get_grid_tile_id, get_geo_shard
 from cocli.core.constants import UNIT_SEP
-from cocli.models.campaigns.indexes.google_maps_prospect import GoogleMapsProspect
 
 logger = logging.getLogger(__name__)
 
@@ -106,7 +105,7 @@ def compact_prospects_to_checkpoint(campaign_name: str) -> int:
                 SELECT *, 
                        row_number() OVER (PARTITION BY column00 ORDER BY column05 DESC) as rn
                 FROM read_csv([{source_list_str}], delim='\x1f', header=False, auto_detect=False, 
-                              all_varchar=True, columns={{{columns_str}}}, quote='')
+                              all_varchar=True, columns={{{columns_str}}}, quote='', null_padding=True)
                 WHERE column00 IS NOT NULL AND column00 LIKE 'ChIJ%'
             ) WHERE rn = 1
         """)
@@ -116,7 +115,8 @@ def compact_prospects_to_checkpoint(campaign_name: str) -> int:
         con.execute(f"COPY (SELECT * EXCLUDE (rn) FROM deduplicated_prospects) TO '{temp_checkpoint}' (DELIMITER '\x1f', HEADER FALSE)")
         
         # 3. Swap and Cleanup
-        new_count = con.execute("SELECT COUNT(*) FROM deduplicated_prospects").fetchone()[0]
+        res = con.execute("SELECT COUNT(*) FROM deduplicated_prospects").fetchone()
+        new_count = res[0] if res else 0
         
         # Replace old checkpoint
         if temp_checkpoint.exists():

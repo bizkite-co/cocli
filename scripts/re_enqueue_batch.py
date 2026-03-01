@@ -3,7 +3,6 @@ import logging
 import asyncio
 import shutil
 import sys
-from pathlib import Path
 from cocli.core.paths import paths
 from cocli.core.queue.factory import get_queue_manager
 from cocli.models.campaigns.queues.gm_details import GmItemTask
@@ -25,7 +24,8 @@ async def re_enqueue_batch(campaign_name: str, target_file_name: str) -> None:
     pending_dir.mkdir(parents=True, exist_ok=True)
 
     # 2. Load Targets
-    targets = []
+    from typing import Dict, List, Union
+    targets: List[Dict[str, Union[str, None]]] = []
     with open(batch_file, "r") as f:
         for line in f:
             if line.strip():
@@ -53,12 +53,19 @@ async def re_enqueue_batch(campaign_name: str, target_file_name: str) -> None:
     queue_manager = get_queue_manager("details", use_cloud=False, queue_type="gm_list_item", campaign_name=campaign_name)
     
     for t in targets:
+        pid = t.get("place_id")
+        slug = t.get("slug")
+        name = t.get("name")
+        
+        if not pid or not slug or not name:
+            continue
+
         task = GmItemTask(
-            place_id=t["place_id"],
+            place_id=str(pid),
             campaign_name=campaign_name,
-            company_slug=t["slug"],
-            name=t["name"],
-            gmb_url=t["gmb_url"],
+            company_slug=str(slug),
+            name=str(name),
+            gmb_url=t.get("gmb_url"),
             force_refresh=True
         )
         queue_manager.push(task)

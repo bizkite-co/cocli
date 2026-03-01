@@ -15,6 +15,11 @@ Isolate the data pipeline into role-based, least-privilege workers and implement
 - [x] **Modular Processors**: Extracted `GmListProcessor` and `GoogleMapsDetailsProcessor`.
 - [x] **Role-Aware Workers**: Added `--role scraper` and `--role processor` modes.
 - [x] **Safe RPI Deployment**: Standardized `make hotfix-cluster-safe` (Hub-Registry-Propagation).
+- [x] **High-Fidelity Recovery Scraper**:
+    - [x] **State Machine Refactor**: Formalized `GoogleMapsDetailsScraper` with auditable phases (Warmup, Navigate, Heal, Capture).
+    - [x] **Pre-Flight Warmup**: Bypassed "Limited View" cloaking via `google.com/maps` session establishment.
+    - [x] **Session-Heal**: Implemented aggressive semantic hydration clicks (jsaction-based).
+    - [x] **Deduplicating Compactor**: DuckDB-powered clean index rewrite (Reduced 256MB -> 10MB).
 - [x] **Bulk Recovery (10k Scrape)**:
     - [x] Created `scripts/enqueue_bulk_recovery.py` with positional DuckDB query.
     - [x] Enqueued 10,000 targets into `gm-details` queue on S3.

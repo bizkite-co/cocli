@@ -304,10 +304,27 @@ class WorkerService:
                                 debug=debug
                             )
                             if witness:
-                                witness.save(s3_client=s3_client, bucket_name=self.bucket_name)
-                                logger.info(f"Witness saved for {task.place_id}")
-                                final_prospect_data = None # Signal that we don't process further in this loop
-                                # We need to signal success so it can be acked
+                                # MANDATE: Save to raw/gm-details/
+                                from ..core.paths import paths
+                                from ..core.sharding import get_place_id_shard
+                                shard = get_place_id_shard(task.place_id)
+                                
+                                # Local Save
+                                local_dir = paths.campaign(task.campaign_name).path / "raw" / "gm-details" / shard / task.place_id
+                                local_dir.mkdir(parents=True, exist_ok=True)
+                                
+                                with open(local_dir / "witness.html", "w", encoding="utf-8") as f:
+                                    f.write(witness.html)
+                                with open(local_dir / "metadata.json", "w", encoding="utf-8") as f:
+                                    f.write(json.dumps(witness.metadata, indent=2))
+                                
+                                # S3 Mirror
+                                if s3_client and self.bucket_name:
+                                    s3_prefix = f"campaigns/{task.campaign_name}/raw/gm-details/{shard}/{task.place_id}"
+                                    s3_client.upload_file(str(local_dir / "witness.html"), self.bucket_name, f"{s3_prefix}/witness.html")
+                                    s3_client.upload_file(str(local_dir / "metadata.json"), self.bucket_name, f"{s3_prefix}/metadata.json")
+
+                                logger.info(f"Witness saved to raw/gm-details for {task.place_id}")
                                 scrape_success = True
                             else:
                                 scrape_success = False

@@ -6,7 +6,7 @@ from cocli.core.paths import paths
 logging.basicConfig(level=logging.INFO, format='%(message)s')
 logger = logging.getLogger("debug_dupes")
 
-def check_duplicates(campaign_name: str):
+def check_duplicates(campaign_name: str) -> None:
     checkpoint_path = paths.campaign(campaign_name).index("google_maps_prospects").checkpoint
     if not checkpoint_path.exists():
         logger.error(f"Checkpoint not found: {checkpoint_path}")
@@ -46,8 +46,11 @@ def check_duplicates(campaign_name: str):
         total_q = f"SELECT COUNT(*) FROM read_csv('{checkpoint_path}', delim='\x1f', header=False, all_varchar=True)"
         unique_q = f"SELECT COUNT(DISTINCT column00) FROM read_csv('{checkpoint_path}', delim='\x1f', header=False, all_varchar=True)"
         
-        total = con.execute(total_q).fetchone()[0]
-        unique = con.execute(unique_q).fetchone()[0]
+        total_res = con.execute(total_q).fetchone()
+        unique_res = con.execute(unique_q).fetchone()
+        
+        total = total_res[0] if total_res else 0
+        unique = unique_res[0] if unique_res else 0
         
         logger.info("-" * 65)
         logger.info(f"Total Rows: {total}")

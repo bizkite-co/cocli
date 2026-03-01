@@ -1,13 +1,11 @@
 import asyncio
 import logging
-import os
-import sys
 from cocli.application.worker_service import WorkerService
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger("local_discovery")
 
-async def run_local_discovery():
+async def run_local_discovery() -> None:
     campaign = "roadmap"
     print("--- STARTING LOCAL DISCOVERY BATCH (5 TILES) ---")
     

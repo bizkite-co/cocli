@@ -117,10 +117,11 @@ class GoogleMapsDetailsScraper:
         """Action: Trigger hydration clicks (Session-Heal)."""
         logger.debug(f"[{self.place_id}] HYDRATING: Searching for triggers...")
         hydration_triggers = [
-            'div.F7nice', 
-            'button[jsaction*="pane.rating.moreReviews"]',
             'div[jsaction*="reviewChart.moreReviews"]',
-            'span[aria-label*="stars"]'
+            'button[jsaction*="pane.rating.moreReviews"]',
+            'div[jsaction*="pane.rating.moreReviews"]',
+            'span[aria-label*="stars"]',
+            'button[aria-label*="reviews"]'
         ]
         
         for selector in hydration_triggers:

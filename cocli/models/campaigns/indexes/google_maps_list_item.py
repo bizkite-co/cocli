@@ -27,6 +27,7 @@ class GoogleMapsListItem(BaseModel):
             name=self.name,
             company_slug=self.company_slug,
             force_refresh=force_refresh,
+            gmb_url=self.gmb_url,
             discovery_phrase=self.discovery_phrase,
             discovery_tile_id=self.discovery_tile_id
         )

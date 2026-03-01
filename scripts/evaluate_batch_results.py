@@ -1,14 +1,13 @@
 # POLICY: frictionless-data-policy-enforcement
 import duckdb
 import logging
-from pathlib import Path
 from cocli.core.paths import paths
 from cocli.utils.duckdb_utils import load_usv_to_duckdb
 
 logging.basicConfig(level=logging.INFO, format='%(message)s')
 logger = logging.getLogger("evaluate_batch")
 
-def evaluate_batch(campaign_name: str, target_file_name: str = "recovery_targets.txt"):
+def evaluate_batch(campaign_name: str, target_file_name: str = "recovery_targets.txt") -> None:
     idx_paths = paths.campaign(campaign_name).index("google_maps_prospects")
     checkpoint_path = idx_paths.checkpoint
     datapackage_path = idx_paths.path / "datapackage.json"

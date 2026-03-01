@@ -89,7 +89,8 @@ def load_usv_to_duckdb(con: duckdb.DuckDBPyConnection, table_name: str, usv_path
             logger.warning(f"FDPE VIOLATION: Loading {table_name} without schema.")
             con.execute(f"CREATE TABLE {table_name} AS SELECT * FROM read_csv('{usv_path}', delim='\x1f', header=False, auto_detect=True, all_varchar=True, quote='', escape='')")
             
-        count = con.execute(f"SELECT COUNT(*) FROM {table_name}").fetchone()[0]
+        res = con.execute(f"SELECT COUNT(*) FROM {table_name}").fetchone()
+        count = res[0] if res else 0
         logger.debug(f"FDPE: Loaded {count} rows into {table_name}")
 
     except Exception as e:

@@ -16,7 +16,7 @@ def inspect_html_witnesses(directory: str) -> None:
         # Look for stars/ratings
         stars = soup.find_all(attrs={"aria-label": True})
         for s in stars:
-            label = s.get("aria-label")
+            label = str(s.get("aria-label", ""))
             if "stars" in label or "reviews" in label:
                 print(f"  [ARIA] {label}")
 

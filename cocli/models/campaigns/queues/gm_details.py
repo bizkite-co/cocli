@@ -14,6 +14,7 @@ class GmItemTask(BaseModel):
     name: str = ""
     company_slug: str = ""
     force_refresh: bool = False
+    gmb_url: Optional[str] = None
     discovery_phrase: Optional[str] = None
     discovery_tile_id: Optional[str] = None
     

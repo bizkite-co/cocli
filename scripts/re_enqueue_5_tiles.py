@@ -32,13 +32,14 @@ def re_enqueue_5_tiles(campaign_name: str) -> None:
     # Enqueue
     for t in tiles:
         task = ScrapeTask(
-            latitude=t["lat"],
-            longitude=t["lon"],
+            latitude=float(str(t["lat"])),
+            longitude=float(str(t["lon"])),
             zoom=15,
-            search_phrase=t["phrase"],
+            search_phrase=str(t["phrase"]),
             campaign_name=campaign_name,
             tile_id=f"{t['lat']}_{t['lon']}",
-            force_refresh=True
+            force_refresh=True,
+            ack_token=None
         )
         queue_manager.push(task)
         logger.info(f"  [ENQUEUED] {t['phrase']} @ {t['lat']}, {t['lon']}")

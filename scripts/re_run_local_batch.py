@@ -2,7 +2,6 @@
 import asyncio
 import logging
 import os
-import sys
 import time
 from pathlib import Path
 from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, TaskProgressColumn, TimeElapsedColumn
@@ -39,7 +38,7 @@ async def run_local_batch() -> None:
     initial_pending = get_pending_count(pending_dir)
     total_batch = initial_pending # Dynamically set from current queue size
     
-    print(f"--- RECOVERY BATCH START ---")
+    print("--- RECOVERY BATCH START ---")
     print(f"Start Time: {time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(start_time))}")
     print(f"Log: {LOG_FILE}")
     print(f"Tasks to process: {total_batch}")
@@ -98,9 +97,9 @@ async def run_local_batch() -> None:
                 pass
 
     total_duration = time.time() - start_time
-    print(f"\n--- BATCH COMPLETE ---")
+    print("\n--- BATCH COMPLETE ---")
     print(f"Total Duration: {total_duration/60:.1f} minutes")
-    print(f"Processed results are in the WAL.")
+    print("Processed results are in the WAL.")
     print("Next: Run 'python3 scripts/compact_shards.py roadmap' to finalize.")
 
 if __name__ == "__main__":

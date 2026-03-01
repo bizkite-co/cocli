@@ -1,51 +1,67 @@
 # POLICY: frictionless-data-policy-enforcement
 import asyncio
 import logging
+import tempfile
+from pathlib import Path
 from playwright.async_api import async_playwright
 from cocli.utils.headers import ANTI_BOT_HEADERS, USER_AGENT
-from cocli.scrapers.google_maps_details import capture_google_maps_raw
 
 logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger("final_test")
+logger = logging.getLogger("fidelity_test")
 
-async def run_final_test() -> None:
-    # Griffith Observatory
-    place_id = "ChIJywjU6WG_woAR3NrWwrEH_3M"
-    campaign = "roadmap"
+async def run_fidelity_test() -> None:
+    # Target: Tax Wise Financial Services (One of your 5 examples)
+    place_id = "ChIJ68K10x1dtokRXQCb6Xvmz2k"
     
-    print("\n--- FINAL PRODUCTION PIPELINE TEST ---")
-    print("Includes: Pre-Flight Warmup, Session-Heal, Ultra-Robust Parser")
+    # Create a temporary profile directory
+    user_data_dir = Path(tempfile.gettempdir()) / "playwright_fidelity_profile"
+    user_data_dir.mkdir(parents=True, exist_ok=True)
+
+    print("\n--- OPENING FULL-FIDELITY BROWSER ---")
+    print(f"Target: {place_id}")
+    print("CSS/Images: ENABLED (No more crippling)")
+    print("Anti-Bot Headers: ENABLED (Your verified set)")
     
     async with async_playwright() as p:
-        browser = await p.chromium.launch(headless=False)
-        context = await browser.new_context(
+        # Launch persistent context to simulate a real session
+        context = await p.chromium.launch_persistent_context(
+            user_data_dir=str(user_data_dir),
+            headless=False,
             user_agent=USER_AGENT,
             extra_http_headers=ANTI_BOT_HEADERS,
-            viewport={'width': 1920, 'height': 1080}
+            args=["--start-maximized", "--no-sandbox"],
+            no_viewport=True 
         )
-        page = await context.new_page()
         
-        # Use our PRODUCTION capture function
-        witness = await capture_google_maps_raw(page, place_id, campaign, debug=True)
+        page = context.pages[0] if context.pages else await context.new_page()
         
-        if witness:
-            from bs4 import BeautifulSoup
-            from cocli.scrapers.google_maps_parsers.extract_rating_reviews import extract_rating_reviews
-            soup = BeautifulSoup(witness.html, "html.parser")
-            results = extract_rating_reviews(soup, soup.get_text(), debug=True)
-            
-            print(f"\n[FINAL RESULTS] {results}")
-            if results.get("Reviews_count") == "17059":
-                print("✅ PIEPLINE VERIFIED: Full reviews captured!")
-            else:
-                print(f"❌ STILL LITE: Captured {results.get('Reviews_count')} reviews.")
-        else:
-            print("❌ CAPTURE FAILED.")
+        # Use the URL format that redirect to the full canonical URL
+        url = f"https://www.google.com/maps/place/?q=place_id:{place_id}"
+        
+        logger.info(f"Navigating to {url}")
+        await page.goto(url, wait_until="load", timeout=60000)
+        
+        print("\n[INSPECTION READY]")
+        print("1. Confirm the Map is fully visible.")
+        print("2. Confirm the 4.8 Rating and Reviews are visible.")
+        print("3. Check if the URL redirected to the long canonical format.")
+        
+        # Capture and Parse using our PRODUCTION modular parser
+        await asyncio.to_thread(input, "\nPress ENTER here to capture HTML and parse...")
 
-        print("\nClose browser to finish.")
-        stop_event = asyncio.Event()
-        browser.on("disconnected", lambda: stop_event.set())
-        await stop_event.wait()
+        from bs4 import BeautifulSoup
+        from cocli.scrapers.google_maps_parsers.extract_rating_reviews import extract_rating_reviews
+        
+        html = await page.content()
+        soup = BeautifulSoup(html, "html.parser")
+        # Pass full HTML text for the proximity scan
+        results = extract_rating_reviews(soup, soup.get_text(), debug=True)
+        
+        print(f"\n[FINAL PARSE RESULTS] {results}")
+        
+        print("\nKeeping browser open for 30s. Close window or Ctrl+C to exit.")
+        await asyncio.sleep(30)
+        await context.close()
 
 if __name__ == "__main__":
-    asyncio.run(run_final_test())
+    asyncio.run(run_fidelity_test())
