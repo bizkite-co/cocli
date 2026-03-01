@@ -37,14 +37,14 @@ async def run_local_batch() -> None:
     queue_base = paths.queue(campaign, "gm-details")
     pending_dir = queue_base / "pending"
     initial_pending = get_pending_count(pending_dir)
-    total_batch = 200 # Our target size
+    total_batch = initial_pending # Dynamically set from current queue size
     
     print(f"--- RECOVERY BATCH START ---")
     print(f"Start Time: {time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(start_time))}")
     print(f"Log: {LOG_FILE}")
-    print(f"Pending tasks found: {initial_pending}")
+    print(f"Tasks to process: {total_batch}")
 
-    if initial_pending == 0:
+    if total_batch == 0:
         print("No tasks found in queue. Did you run re_enqueue_batch.py?")
         return
 
@@ -67,8 +67,8 @@ async def run_local_batch() -> None:
         worker_coro = service.run_details_worker(headless=True, debug=True, once=False, workers=1, role="full")
         worker_task = asyncio.create_task(worker_coro)
         
-        # Update current progress based on what's already done
-        progress.update(batch_task, completed=total_batch - initial_pending)
+        # Update current progress
+        progress.update(batch_task, completed=0)
         
         # Monitor Loop
         try:

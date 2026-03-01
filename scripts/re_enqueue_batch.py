@@ -2,6 +2,8 @@
 import logging
 import asyncio
 import shutil
+import sys
+from pathlib import Path
 from cocli.core.paths import paths
 from cocli.core.queue.factory import get_queue_manager
 from cocli.models.campaigns.queues.gm_details import GmItemTask
@@ -9,13 +11,13 @@ from cocli.models.campaigns.queues.gm_details import GmItemTask
 logging.basicConfig(level=logging.INFO, format='%(message)s')
 logger = logging.getLogger("re_enqueue")
 
-async def re_enqueue_batch(campaign_name: str) -> None:
-    batch_file = paths.campaign(campaign_name).path / "recovery" / "recovery_batch_200.txt"
+async def re_enqueue_batch(campaign_name: str, target_file_name: str) -> None:
+    batch_file = paths.campaign(campaign_name).path / "recovery" / target_file_name
     if not batch_file.exists():
-        logger.error(f"Batch file not found: {batch_file}")
+        logger.error(f"Target file not found: {batch_file}")
         return
 
-    # 1. Clear Local Pending Queue
+    # 1. Clear Local Pending Queue (Ensures a clean test run)
     pending_dir = paths.queue(campaign_name, "gm-details").pending
     if pending_dir.exists():
         logger.info(f"Clearing local pending queue: {pending_dir}")
@@ -28,15 +30,26 @@ async def re_enqueue_batch(campaign_name: str) -> None:
         for line in f:
             if line.strip():
                 parts = line.strip().split("|")
-                if len(parts) >= 3:
-                    pid = parts[0]
-                    slug = parts[1]
-                    name = "|".join(parts[2:]) # Recombine if name had |
-                    targets.append({"place_id": pid, "slug": slug, "name": name})
+                if len(parts) >= 4:
+                    # Canonical Format: pid|slug|name|gmb_url
+                    targets.append({
+                        "place_id": parts[0],
+                        "slug": parts[1],
+                        "name": parts[2],
+                        "gmb_url": parts[3]
+                    })
+                elif len(parts) >= 3:
+                    # Legacy Format: pid|slug|name
+                    targets.append({
+                        "place_id": parts[0],
+                        "slug": parts[1],
+                        "name": parts[2],
+                        "gmb_url": None
+                    })
 
     logger.info(f"Enqueuing {len(targets)} targets locally...")
     
-    # 3. Enqueue Locally (Local-First Mandate)
+    # 3. Enqueue (Forcing local filesystem mode)
     queue_manager = get_queue_manager("details", use_cloud=False, queue_type="gm_list_item", campaign_name=campaign_name)
     
     for t in targets:
@@ -45,11 +58,14 @@ async def re_enqueue_batch(campaign_name: str) -> None:
             campaign_name=campaign_name,
             company_slug=t["slug"],
             name=t["name"],
+            gmb_url=t["gmb_url"],
             force_refresh=True
         )
         queue_manager.push(task)
 
-    logger.info(f"Successfully enqueued {len(targets)} tasks for local run.")
+    logger.info(f"Successfully enqueued {len(targets)} tasks from {target_file_name}")
 
 if __name__ == "__main__":
-    asyncio.run(re_enqueue_batch("roadmap"))
+    # Usage: python3 scripts/re_enqueue_batch.py [filename]
+    batch_name = sys.argv[1] if len(sys.argv) > 1 else "recovery_targets.txt"
+    asyncio.run(re_enqueue_batch("roadmap", batch_name))
