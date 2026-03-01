@@ -1,93 +1,75 @@
-import typer
-import json
-from rich.console import Console
-from rich.table import Table
+# POLICY: frictionless-data-policy-enforcement
+import duckdb
+import logging
 from pathlib import Path
+from cocli.core.paths import paths
+from cocli.utils.duckdb_utils import load_usv_to_duckdb
 
-from cocli.models.companies.company import Company
+logging.basicConfig(level=logging.INFO, format='%(message)s')
+logger = logging.getLogger("evaluate_batch")
 
-app = typer.Typer()
-console = Console()
+def evaluate_batch(campaign_name: str, target_file_name: str = "recovery_targets.txt"):
+    idx_paths = paths.campaign(campaign_name).index("google_maps_prospects")
+    checkpoint_path = idx_paths.checkpoint
+    datapackage_path = idx_paths.path / "datapackage.json"
+    batch_file = paths.campaign(campaign_name).path / "recovery" / target_file_name
 
-@app.command()
-def main(
-    tag: str = typer.Argument("batch-v6-test-1", help="Tag used for the test batch."),
-) -> None:
-    """
-    Evaluates the results of a re-scrape batch by checking how many prospects now have emails.
-    """
-    console.print(f"[bold]Evaluating results for batch tag: {tag}[/bold]")
-    
-    # Load enqueued reference if it exists
-    from cocli.core.config import get_temp_dir
-    ref_path = get_temp_dir() / f"enqueued_{tag}.json"
-    if not ref_path.exists():
-        # Fallback to root
-        ref_path = Path(f"enqueued_{tag}.json")
-
-    enqueued_slugs = set()
-    if ref_path.exists():
-        enqueued_data = json.loads(ref_path.read_text())
-        enqueued_slugs = {item["slug"] for item in enqueued_data}
-        console.print(f"Found reference file with {len(enqueued_slugs)} prospects.")
-
-    all_companies = Company.get_all()
-    results = []
-    
-    found_email_count = 0
-    total_batch_count = 0
-    
-    for company in all_companies:
-        if tag in company.tags:
-            total_batch_count += 1
-            has_email = bool(company.email)
-            if has_email:
-                found_email_count += 1
-            
-            results.append({
-                "name": company.name,
-                "slug": company.slug,
-                "domain": company.domain,
-                "has_email": has_email,
-                "email": company.email,
-                "all_emails": company.all_emails,
-                "tech_stack": company.tech_stack
-            })
-
-    if not results:
-        console.print(f"[yellow]No companies found with tag: {tag}[/yellow]")
+    if not checkpoint_path.exists() or not batch_file.exists():
+        logger.error("Checkpoint or Target file missing.")
         return
 
-    # Display Summary
-    console.print("\n[bold underline]Batch Results Summary[/bold underline]")
-    console.print(f"Total prospects in batch: {total_batch_count}")
-    console.print(f"Prospects with new emails: [bold green]{found_email_count}[/bold green]")
-    if total_batch_count > 0:
-        success_rate = (found_email_count / total_batch_count) * 100
-        console.print(f"Success Rate: [bold]{success_rate:.1f}%[/bold]")
+    logger.info(f"Evaluating {target_file_name} against clean index...")
+    con = duckdb.connect(database=':memory:')
+    
+    try:
+        # 1. Load targets (Format: pid|slug|name|url)
+        con.execute(f"""
+            CREATE TABLE targets AS 
+            SELECT column0 as place_id 
+            FROM read_csv('{batch_file}', sep='|', header=False, auto_detect=True, all_varchar=True, ignore_errors=True)
+        """)
 
-    # Display Table of successes
-    if found_email_count > 0:
-        table = Table(title=f"Prospects with New Emails (Tag: {tag})")
-        table.add_column("Name", style="cyan")
-        table.add_column("Domain", style="magenta")
-        table.add_column("Primary Email", style="green")
-        table.add_column("Tech Stack", style="yellow")
-
-        for r in results:
-            if r["has_email"]:
-                tech_stack = r["tech_stack"]
-                tech_stack_str = ", ".join(tech_stack) if isinstance(tech_stack, list) else ""
-                table.add_row(
-                    str(r["name"]),
-                    str(r["domain"]),
-                    str(r["email"]),
-                    tech_stack_str
-                )
+        # 2. Load Checkpoint via FDPE schema
+        load_usv_to_duckdb(con, "checkpoint", checkpoint_path, datapackage_path)
         
-        console.print(table)
-    else:
-        console.print("\n[yellow]No new emails found in this batch yet. Processing may still be in progress.[/yellow]")
+        # 3. Join and Analyze
+        # Use model-defined names: place_id, average_rating, reviews_count
+        query = """
+            SELECT 
+                COUNT(*) as total_targeted,
+                COUNT(c.average_rating) FILTER (WHERE c.average_rating IS NOT NULL AND CAST(c.average_rating AS VARCHAR) != '') as with_rating,
+                COUNT(c.reviews_count) FILTER (WHERE c.reviews_count IS NOT NULL AND CAST(c.reviews_count AS VARCHAR) != '') as with_reviews,
+                COUNT(*) FILTER (WHERE (c.average_rating IS NOT NULL AND CAST(c.average_rating AS VARCHAR) != '') 
+                                 AND (c.reviews_count IS NOT NULL AND CAST(c.reviews_count AS VARCHAR) != '')) as with_both
+            FROM targets t
+            LEFT JOIN checkpoint c ON t.place_id = c.place_id
+        """
+        
+        res = con.execute(query).fetchone()
+        if not res:
+            logger.error("Analysis returned no results.")
+            return
+
+        total, ratings, reviews, both = res
+        
+        print("\n--- RECOVERY BATCH EVALUATION ---")
+        print(f"Target List:         {target_file_name}")
+        print(f"Total Targeted:      {total}")
+        print("-" * 30)
+        print(f"With Rating:         {ratings} ({ratings*100/max(1,total):.1f}%)")
+        print(f"With Review Count:   {reviews} ({reviews*100/max(1,total):.1f}%)")
+        print(f"With BOTH:           {both} ({both*100/max(1,total):.1f}%)")
+        print("-" * 30)
+        
+        if both / max(1,total) >= 0.6:
+            print("✅ SUCCESS: Exceeded 60% recovery goal!")
+        else:
+            print(f"⚠️  PROGRESS: Recovery at {both*100/max(1,total):.1f}%.")
+
+    except Exception as e:
+        logger.error(f"Evaluation failed: {e}")
 
 if __name__ == "__main__":
-    app()
+    import sys
+    batch = sys.argv[1] if len(sys.argv) > 1 else "recovery_targets.txt"
+    evaluate_batch("roadmap", batch)
