@@ -2,6 +2,7 @@
 import logging
 import asyncio
 import subprocess
+from pathlib import Path
 from typing import List, Dict
 from rich.console import Console
 
@@ -42,14 +43,28 @@ class ClusterService:
     def get_nodes(self) -> List[PiNodeConfig]:
         return self.cluster_config.nodes
 
+    def _verify_local_build(self) -> bool:
+        """Verifies that the local context is complete for a Docker build."""
+        project_root = Path(__file__).parent.parent.parent.resolve()
+        docker_file = project_root / "docker" / "rpi-worker" / "Dockerfile"
+        if not docker_file.exists():
+            logger.error(f"Missing Dockerfile at {docker_file}")
+            return False
+        return True
+
     async def deploy_hotfix_safe(self, user: str = "mstouffer") -> Dict[str, bool]:
         """
         PERFORMS SAFE HOTFIX:
-        1. Sync code to Registry Host.
-        2. Build image on Registry Host.
-        3. Push to local registry.
-        4. All nodes pull and restart with 'cocli worker orchestrate'.
+        1. Verify local build context.
+        2. Sync code to Registry Host.
+        3. Build image on Registry Host.
+        4. Push to local registry.
+        5. All nodes pull and restart with 'cocli worker orchestrate'.
         """
+        if not self._verify_local_build():
+            logger.error("Local build context verification failed. Aborting.")
+            return {"local": False}
+
         results = {}
         image_name = "cocli-worker-rpi:latest"
         registry_image = f"{self.registry_url}/{image_name}"
@@ -77,13 +92,16 @@ class ClusterService:
         return results
 
     async def _sync_and_build(self, host: str, image_name: str, registry_image: str, user: str) -> bool:
+        # Ensure we sync from the absolute project root
+        project_root = Path(__file__).parent.parent.parent.resolve()
+        
         try:
             # Sync
             subprocess.run(["ssh", f"{user}@{host}", f"mkdir -p {BUILD_DIR}"], check=True)
             rsync_cmd = [
                 "rsync", "-az", "--delete",
                 "--exclude", ".venv", "--exclude", ".git", "--exclude", "data", "--exclude", ".logs",
-                "./", f"{user}@{host}:{BUILD_DIR}/"
+                str(project_root) + "/", f"{user}@{host}:{BUILD_DIR}/"
             ]
             subprocess.run(rsync_cmd, check=True)
 
@@ -111,7 +129,6 @@ class ClusterService:
             return True
         except Exception as e:
             logger.info(f"Pull failed on {host}, falling back to local build: {e}")
-            # Optional: Add local build fallback here if desired
             return False
 
     async def _restart_node(self, host: str, image_name: str, user: str) -> None:
