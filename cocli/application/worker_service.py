@@ -400,6 +400,62 @@ class WorkerService:
                 if "Target page, context or browser has been closed" in str(e) or not connected:
                     break
 
+    async def run_orchestrated_workers(self, worker_definitions: List[Any], headless: bool = True, debug: bool = False) -> None:
+        """
+        Launches and manages multiple named worker instances as defined in the orchestration config.
+        """
+        logger.info(f"Launching {len(worker_definitions)} orchestrated workers on {self.processed_by}...")
+        
+        tasks = []
+        for wd in worker_definitions:
+            logger.info(f"Starting Orchestrated Worker: {wd.name} (Role: {wd.role}, Type: {wd.content_type}, Count: {wd.workers})")
+            
+            # Create a specialized service instance for this worker's role
+            worker_service = WorkerService(
+                campaign_name=self.campaign_name, 
+                role=wd.role, 
+                processed_by=f"{self.processed_by}-{wd.name}"
+            )
+            
+            if wd.content_type == "gm-list":
+                coro = worker_service.run_discovery_worker(
+                    headless=headless, 
+                    debug=debug, 
+                    once=False, 
+                    workers=wd.workers
+                )
+            elif wd.content_type == "gm-details":
+                coro = worker_service.run_details_worker(
+                    headless=headless, 
+                    debug=debug, 
+                    once=False, 
+                    workers=wd.workers,
+                    role=wd.role
+                )
+            elif wd.content_type == "enrichment":
+                coro = worker_service.run_enrichment_worker(
+                    headless=headless,
+                    debug=debug,
+                    workers=wd.workers,
+                    role=wd.role
+                )
+            else:
+                logger.error(f"Unknown content type for worker {wd.name}: {wd.content_type}")
+                continue
+                
+            tasks.append(asyncio.create_task(coro))
+
+        if not tasks:
+            logger.warning("No valid worker tasks to run.")
+            return
+
+        # Wait for all workers (they run indefinitely unless cancelled)
+        await asyncio.gather(*tasks)
+
+    async def run_discovery_worker(self, headless: bool = True, debug: bool = False, once: bool = False, workers: int = 1) -> None:
+        """Explicit alias for GM-List discovery worker."""
+        await self.run_worker(headless=headless, debug=debug, once=once, workers=workers, role="full")
+
     async def run_details_worker(
         self,
         headless: bool,
@@ -408,6 +464,8 @@ class WorkerService:
         workers: int = 1,
         role: str = "full"
     ) -> None:
+        # Ensure our role is set correctly for this run
+        self.role = role
         if role == "processor":
             # Processor role doesn't need a browser
             s3_client = self.get_s3_client()
@@ -467,46 +525,17 @@ class WorkerService:
         workers: int = 1,
         role: str = "full"
     ) -> None:
+        """
+        Main worker loop for GM List (Discovery).
+        """
+        # Ensure our role is set correctly for this run
+        self.role = role
+        logger.info(f"Starting GM List Worker (Role: {self.role}) on node {self.processed_by} for campaign {self.campaign_name}...")
+        
         if role == "processor":
             logger.info("Starting GM List PROCESSOR (No Browser)")
             # TODO: Implement list processor loop if needed
             return
-
-        async with async_playwright() as p:
-            while True:
-                browser = await p.chromium.launch(
-                    headless=headless,
-                    args=[
-                        "--no-sandbox", "--disable-setuid-sandbox", "--disable-dev-shm-usage",
-                        "--disable-accelerated-2d-canvas", "--no-first-run", "--no-zygote",
-                        "--disable-gpu", "--disable-software-rasterizer",
-                    ],
-                )
-                context = await browser.new_context(
-                    ignore_https_errors=True, user_agent=USER_AGENT, extra_http_headers=ANTI_BOT_HEADERS,
-                )
-                tracker = await setup_optimized_context(context)
-                
-                try:
-                    s3_client = self.get_s3_client()
-                    use_cloud = True
-                except Exception as e:
-                    logger.warning(f"Could not initialize S3 client: {e}. Falling back to LOCAL-ONLY mode.")
-                    s3_client = None
-                    use_cloud = False
-
-                scrape_queue = get_queue_manager("scrape_tasks", use_cloud=use_cloud, queue_type="scrape", campaign_name=self.campaign_name)
-                gm_list_item_queue = get_queue_manager("gm_list_item", use_cloud=use_cloud, queue_type="gm_list_item", campaign_name=self.campaign_name)
-
-                tasks = [
-                    self._run_scrape_task_loop(browser, scrape_queue, gm_list_item_queue, s3_client, debug, once, tracker=tracker)
-                    for _ in range(workers)
-                ]
-                await asyncio.gather(*tasks)
-                await browser.close()
-                if once:
-                    break
-                await asyncio.sleep(5)
 
     async def run_enrichment_worker(
         self,

@@ -168,6 +168,49 @@ def enrichment(
     asyncio.run(service.run_enrichment_worker(not headed, debug, workers=final_workers, role=role))
 
 @app.command()
+def orchestrate(
+    campaign: Optional[str] = typer.Option(None, "--campaign", "-c", help="Campaign name."),
+    headed: bool = typer.Option(False, "--headed", help="Run browser in headed mode."),
+    debug: bool = typer.Option(False, "--debug", help="Enable debug logging."),
+) -> None:
+    """
+    Starts orchestrated workers for this node as defined in the campaign cluster config.
+    """
+    import socket
+    from ..models.campaigns.worker_config import CampaignClusterConfig, WorkerDefinition
+    
+    effective_campaign = campaign or os.getenv("CAMPAIGN_NAME") or get_campaign()
+    if not effective_campaign:
+        logger.error("No campaign specified and no active context.")
+        raise typer.Exit(1)
+
+    log_level = logging.DEBUG if debug else logging.INFO
+    setup_file_logging("orchestration", console_level=log_level)
+
+    config = load_campaign_config(effective_campaign)
+    hostname = socket.gethostname().split(".")[0]
+    
+    # 1. Resolve Node Config
+    # We look for [cluster.nodes] in the campaign config
+    cluster_data = config.get("cluster", {})
+    cluster_config = CampaignClusterConfig(**cluster_data)
+    
+    node_config = next((n for n in cluster_config.nodes if n.hostname.startswith(hostname)), None)
+    
+    if not node_config:
+        logger.warning(f"No specific configuration found for node {hostname} in campaign {effective_campaign}.")
+        logger.info("Falling back to default single-worker mode.")
+        # Default: 1 gm-list worker
+        worker_defs = [WorkerDefinition(name="default", role="full", content_type="gm-list", workers=1, iot_profile=None)]
+    else:
+        logger.info(f"Found configuration for {node_config.hostname} with {len(node_config.workers)} workers.")
+        worker_defs = node_config.workers
+
+    # 2. Execute
+    service = WorkerService(effective_campaign)
+    asyncio.run(service.run_orchestrated_workers(worker_defs, headless=not headed, debug=debug))
+
+@app.command()
 def gossip(
     debug: bool = typer.Option(False, "--debug", help="Enable debug logging."),
 ) -> None:

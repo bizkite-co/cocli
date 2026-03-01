@@ -16,7 +16,6 @@ def register_commands(app: typer.Typer) -> None:
     from . import import_companies
     from . import import_customers
     from . import import_data
-    # from . import import_turboship # Removed to avoid pandas dependency on RPi
     from . import ingest_google_maps_csv
     from . import init
     from . import meetings
@@ -32,6 +31,7 @@ def register_commands(app: typer.Typer) -> None:
     from . import web
     from . import infrastructure
     from . import index
+    from . import cluster
 
 
     app.command(name="add")(add.add)
@@ -42,7 +42,6 @@ def register_commands(app: typer.Typer) -> None:
     app.command(name="google-maps-cache-to-company-files")(import_companies.google_maps_cache_to_company_files)
     app.command(name="import-customers")(import_customers.import_customers)
     app.command(name="import-data")(import_data.import_data)
-    # app.command(name="import-turboship")(import_turboship.import_turboship) # Removed
     app.command(name="google-maps-csv-to-google-maps-cache")(ingest_google_maps_csv.google_maps_csv_to_google_maps_cache)
     app.command(name="init")(init.init)
     app.command(name="next")(meetings.next_meetings)
@@ -69,3 +68,4 @@ def register_commands(app: typer.Typer) -> None:
     app.add_typer(web.app, name="web")
     app.add_typer(infrastructure.app, name="infrastructure")
     app.add_typer(index.app, name="index")
+    app.add_typer(cluster.app, name="cluster")

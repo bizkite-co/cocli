@@ -93,10 +93,10 @@ class GoogleMapsProspect(GoogleMapsIdx):
     uuid: Optional[str] = None
     discovery_phrase: Optional[str] = None
     discovery_tile_id: Optional[str] = None
-    email: Optional[str] = None
+    email: Optional[str] = Field(None, description="DEPRECATED: Google Maps does not provide email. Use website enrichment instead.")
 
     @classmethod
-    def get_datapackage_fields(cls) -> List[Dict[str, str]]:
+    def get_datapackage_fields(cls) -> List[Dict[str, Any]]:
         """Generates Frictionless Data field definitions from the model."""
         fields = []
         for name, field in cls.model_fields.items():
@@ -112,11 +112,17 @@ class GoogleMapsProspect(GoogleMapsIdx):
             elif "datetime" in type_str:
                 field_type = "datetime"
                 
-            fields.append({
+            f_def: Dict[str, Any] = {
                 "name": name,
                 "type": field_type,
                 "description": field.description or ""
-            })
+            }
+            
+            # Explicitly flag deprecated fields for Frictionless consumers
+            if "DEPRECATED" in (field.description or ""):
+                f_def["deprecated"] = True
+                
+            fields.append(f_def)
         return fields
 
     @classmethod

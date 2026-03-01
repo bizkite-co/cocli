@@ -77,6 +77,7 @@ def main(campaign_name: Optional[str] = typer.Argument(None, help="Campaign name
             average_rating=company.average_rating,
             reviews_count=company.reviews_count,
             company_slug=company.slug,
+            email=None,
             company_hash=calculate_company_hash(
                 str(company.name), 
                 str(company.street_address) if company.street_address else None,
