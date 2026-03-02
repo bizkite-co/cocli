@@ -24,15 +24,19 @@ class ClusterService:
         self.campaign_name = campaign_name
         self.config = load_campaign_config(campaign_name)
         
-        cluster_data = self.config.get("cluster", {})
+        # 1. Load Global Config (The Authority for Node List)
+        from ..core.config import load_global_config
+        global_config = load_global_config()
+        cluster_data = global_config.get("cluster", {})
         self.cluster_config = CampaignClusterConfig(**cluster_data)
         
-        # Resolve Registry Host (Default to cocli5x1.pi)
-        self.registry_host = self.config.get("cluster", {}).get("registry_host", "cocli5x1.pi")
+        # 2. Resolve Registry Host
+        self.registry_host = cluster_data.get("registry_host", "cocli5x1.pi")
         self.registry_url = f"{self.registry_host}:5000"
         
-        # Fallback to prospecting.scaling if cluster.nodes is empty
+        # 3. Fallback to prospecting.scaling ONLY if global node list is empty
         if not self.cluster_config.nodes:
+            logger.info("Global node list empty, falling back to campaign scaling config.")
             scaling = self.config.get("prospecting", {}).get("scaling", {})
             for host_key, workers_data in scaling.items():
                 if host_key == "fargate":
