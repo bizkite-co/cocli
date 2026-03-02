@@ -167,6 +167,45 @@ class ClusterService:
         subprocess.run(["ssh", f"{user}@{host}", run_cmd], check=True)
         logger.info(f"  Node {host} restarted with orchestrated workers.")
 
+    async def sync_and_audit(self, user: str = "mstouffer") -> None:
+        """
+        Pulls data from all cluster nodes and runs a quality audit.
+        """
+        project_root = Path(__file__).parent.parent.parent.resolve()
+        local_campaign_dir = project_root / "data" / "campaigns" / self.campaign_name
+        
+        logger.info(f"[bold cyan]Syncing data from cluster nodes for {self.campaign_name}...[/bold cyan]")
+        
+        for node in self.get_nodes():
+            host = node.hostname
+            logger.info(f"  Pulling from {host}...")
+            # Sync raw witness, traces, and queues (NOT the full /companies/ dir to save time)
+            # We target the specific campaign folder
+            remote_path = f"~/repos/data/campaigns/{self.campaign_name}/"
+            
+            rsync_cmd = [
+                "rsync", "-az", "--progress",
+                "--exclude", "companies", # Skip full company files for speed
+                f"{user}@{host}:{remote_path}", str(local_campaign_dir) + "/"
+            ]
+            
+            try:
+                subprocess.run(rsync_cmd, capture_output=True, text=True)
+            except Exception as e:
+                logger.warning(f"Could not sync from {host}: {e}")
+
+        # Now run the auditor logic via dynamic import to avoid mypy package collisions
+        import importlib.util
+        import sys
+        
+        script_path = project_root / "scripts" / "audit_prospect_quality.py"
+        spec = importlib.util.spec_from_file_location("audit_prospect_quality", str(script_path))
+        if spec and spec.loader:
+            module = importlib.util.module_from_spec(spec)
+            sys.modules["audit_prospect_quality"] = module
+            spec.loader.exec_module(module)
+            module.audit_quality(self.campaign_name)
+
     async def run_remote_command(self, node: PiNodeConfig, command: str, user: str = "mstouffer") -> str:
         res = subprocess.run(["ssh", f"{user}@{node.hostname}", command], capture_output=True, text=True)
         return res.stdout if res.returncode == 0 else res.stderr
