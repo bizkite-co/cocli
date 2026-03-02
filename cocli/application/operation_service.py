@@ -503,6 +503,7 @@ class OperationService:
 
                     log_step("cluster_propagate", "pending", "Syncing clean state to cluster nodes...")
                     cluster = ClusterService(self.campaign_name)
+                    # ClusterService.push_data already uses -rtz and timeout
                     await cluster.push_data(delete=True)
                     log_step("cluster_propagate", "success")
                     

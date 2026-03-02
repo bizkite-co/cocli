@@ -228,7 +228,8 @@ class ClusterService:
             logger.info(f"  Pushing to {host}...")
             remote_path = f"~/repos/data/campaigns/{self.campaign_name}/"
             
-            rsync_cmd = ["rsync", "-az"]
+            # Use -rtz instead of -az to avoid permission/ownership issues on remote PIs
+            rsync_cmd = ["rsync", "-rtz"]
             if delete:
                 rsync_cmd.append("--delete")
             
@@ -238,7 +239,10 @@ class ClusterService:
             ])
             
             try:
-                subprocess.run(rsync_cmd, check=True, capture_output=True, text=True)
+                # Add timeout to prevent hanging
+                subprocess.run(rsync_cmd, check=True, capture_output=True, text=True, timeout=60)
+            except subprocess.TimeoutExpired:
+                logger.warning(f"Push to {host} timed out after 60s.")
             except Exception as e:
                 logger.warning(f"Could not push to {host}: {e}")
 
