@@ -214,6 +214,34 @@ class ClusterService:
             spec.loader.exec_module(module)
             module.audit_quality(self.campaign_name)
 
+    async def push_data(self, user: str = "mstouffer", delete: bool = False) -> None:
+        """
+        Propagates local campaign data to all cluster nodes.
+        """
+        project_root = Path(__file__).parent.parent.parent.resolve()
+        local_campaign_dir = project_root / "data" / "campaigns" / self.campaign_name
+        
+        logger.info(f"[bold cyan]Pushing data to cluster nodes for {self.campaign_name}...[/bold cyan]")
+        
+        for node in self.get_nodes():
+            host = node.hostname
+            logger.info(f"  Pushing to {host}...")
+            remote_path = f"~/repos/data/campaigns/{self.campaign_name}/"
+            
+            rsync_cmd = ["rsync", "-az"]
+            if delete:
+                rsync_cmd.append("--delete")
+            
+            rsync_cmd.extend([
+                "--exclude", "companies", 
+                str(local_campaign_dir) + "/", f"{user}@{host}:{remote_path}"
+            ])
+            
+            try:
+                subprocess.run(rsync_cmd, check=True, capture_output=True, text=True)
+            except Exception as e:
+                logger.warning(f"Could not push to {host}: {e}")
+
     async def run_remote_command(self, node: PiNodeConfig, command: str, user: str = "mstouffer") -> str:
         res = subprocess.run(["ssh", f"{user}@{node.hostname}", command], capture_output=True, text=True)
         return res.stdout if res.returncode == 0 else res.stderr

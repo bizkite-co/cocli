@@ -57,6 +57,22 @@ def sync_audit(
     service = ClusterService(effective_campaign)
     asyncio.run(service.sync_and_audit())
 
+@app.command(name="push-data")
+def push_data(
+    campaign: Optional[str] = typer.Option(None, "--campaign", "-c", help="Campaign name."),
+    delete: bool = typer.Option(False, "--delete", help="Delete remote files not present locally."),
+) -> None:
+    """
+    Propagates local campaign data to all cluster nodes.
+    """
+    effective_campaign = campaign or os.getenv("CAMPAIGN_NAME") or get_campaign()
+    if not effective_campaign:
+        console.print("[red]No campaign specified.[/red]")
+        raise typer.Exit(1)
+
+    service = ClusterService(effective_campaign)
+    asyncio.run(service.push_data(delete=delete))
+
 @app.command(name="status")
 def status(
     campaign: Optional[str] = typer.Option(None, "--campaign", "-c", help="Campaign name."),

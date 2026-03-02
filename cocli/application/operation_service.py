@@ -1,7 +1,6 @@
 # POLICY: frictionless-data-policy-enforcement
 import logging
 import asyncio
-import subprocess
 from typing import Any, Dict, Optional, Callable, List
 from dataclasses import dataclass, field as dataclass_field
 
@@ -504,15 +503,7 @@ class OperationService:
 
                     log_step("cluster_propagate", "pending", "Syncing clean state to cluster nodes...")
                     cluster = ClusterService(self.campaign_name)
-                    for node in cluster.get_nodes():
-                        log_step("cluster_propagate", "pending", f"Syncing {node.hostname}...")
-                        cmd = [
-                            "rsync", "-az", "--delete",
-                            "--exclude", "companies", 
-                            f"data/campaigns/{self.campaign_name}/", 
-                            f"mstouffer@{node.hostname}:~/repos/data/campaigns/{self.campaign_name}/"
-                        ]
-                        await asyncio.to_thread(subprocess.run, cmd, capture_output=True, text=True)
+                    await cluster.push_data(delete=True)
                     log_step("cluster_propagate", "success")
                     
                     return {"status": "success"}
