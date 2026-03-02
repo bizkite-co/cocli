@@ -1,10 +1,11 @@
-from typing import Optional
+from typing import Optional, ClassVar
 from pathlib import Path
-from pydantic import BaseModel, Field
+from pydantic import Field
 from ....core.paths import paths
 from ....core.ordinant import QueueName, get_shard
+from ...base import BaseUsvModel
 
-class ScrapeTask(BaseModel):
+class ScrapeTask(BaseUsvModel):
     """
     Represents a task to scrape a specific geographic area on Google Maps.
     """
@@ -25,6 +26,8 @@ class ScrapeTask(BaseModel):
     ack_token: Optional[str] = Field(None, exclude=True)
     attempts: int = 0
     result_count: Optional[int] = None # Capture discovery count for receipt
+
+    SCHEMA_VERSION: ClassVar[str] = "1.0.0"
 
     @property
     def collection(self) -> QueueName:

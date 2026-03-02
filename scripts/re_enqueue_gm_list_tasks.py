@@ -15,10 +15,11 @@ async def re_enqueue_gm_list_tasks(campaign_name: str, target_file_name: str = "
         logger.error(f"Target file not found: {batch_file}")
         return
 
-    # 1. Clear Local Mission Index (Where GM List tasks live)
-    mission_dir = paths.campaign(campaign_name).path / "indexes" / "target-tiles"
+    # 1. Clear Local Discovery Gen Index (Where GM List tasks live)
+    discovery_gen = paths.campaign(campaign_name).queue("discovery-gen")
+    mission_dir = discovery_gen.completed
     if mission_dir.exists():
-        logger.info(f"Clearing local mission index: {mission_dir}")
+        logger.info(f"Clearing local discovery-gen completed index: {mission_dir}")
         shutil.rmtree(mission_dir)
     mission_dir.mkdir(parents=True, exist_ok=True)
 

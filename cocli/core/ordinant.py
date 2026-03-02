@@ -8,10 +8,10 @@ import hashlib
 CollectionName = Literal["companies", "people", "wal", "tasks"]
 
 # Campaign-specific sharded indexes
-IndexName = Union[Literal["google_maps_prospects", "target-tiles", "domains", "emails"], str]
+IndexName = Union[Literal["google_maps_prospects", "domains", "emails"], str]
 
 # Campaign-specific task queues
-QueueName = Union[Literal["enrichment", "gm-details", "gm-list", "gm-scrape", "to-call"], str]
+QueueName = Union[Literal["enrichment", "gm-details", "gm-list", "gm-scrape", "to-call", "discovery-gen"], str]
 
 # Standardized folder names for Queues/WAL
 StateFolder = Literal["pending", "completed", "sideline", "inbox", "processing"]

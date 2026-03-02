@@ -10,14 +10,14 @@ def test_filesystem_queue(tmp_path):
         campaign = "test/test_dfq_campaign"
         base_dir = tmp_path
         campaign_dir = base_dir / "campaigns" / campaign
-        
-        # Setup mock Mission Index
-        target_tiles = campaign_dir / "indexes" / "target-tiles"
-        tile_path = target_tiles / "29.5" / "-98.5"
+
+        # Setup mock Discovery Gen Active Pool (completed)
+        # OMAP: queues/discovery-gen/completed/{shard}/{lat}/{lon}/{phrase}.usv
+        target_tiles = campaign_dir / "queues" / "discovery-gen" / "completed"
+        tile_path = target_tiles / "2" / "29.5" / "-98.5"
         tile_path.mkdir(parents=True)
-        (tile_path / "dentist.csv").write_text("latitude,longitude\n29.5,-98.5")
-        (tile_path / "plumber.csv").write_text("latitude,longitude\n29.5,-98.5")
-        
+        (tile_path / "dentist.usv").write_text("29.5_-98.5\x1fdentist\x1f29.500000\x1f-98.500000")
+        (tile_path / "plumber.usv").write_text("29.5_-98.5\x1fplumber\x1f29.500000\x1f-98.500000")
         # Create Queue
         with patch.dict(os.environ, {"HOSTNAME": "worker-1"}):
             q1 = FilesystemGmListQueue(campaign)

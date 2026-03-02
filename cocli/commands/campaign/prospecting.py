@@ -5,13 +5,15 @@ import toml
 import json
 import csv
 import httpx
+from typing import Optional, List, Dict, Any, cast, Annotated
 from pathlib import Path
-from typing import Optional, List, Dict, Any, cast, Union
 from rich.console import Console
 from playwright.async_api import async_playwright
 import yaml
 
+from cocli.core.paths import paths
 from cocli.core.config import get_companies_dir, get_campaign_dir, get_campaign, get_enrichment_service_url
+
 from cocli.core.scrape_index import ScrapeIndex
 from cocli.core.text_utils import slugify
 from cocli.core.location_prospects_index import LocationProspectsIndex
@@ -439,7 +441,8 @@ def prepare_mission(
     tasks.sort(key=lambda x: (x["tile_id"], x["search_phrase"]))
 
     from ...models.campaigns.mission import MissionTask
-    mission_usv_path = campaign_dir / "mission.usv"
+    discovery_gen = paths.campaign(campaign_name).queue("discovery-gen")
+    mission_usv_path = discovery_gen.master # Root/mission.usv
     mission_tasks = [MissionTask(**t) for t in tasks]
     MissionTask.save_usv_with_datapackage(mission_tasks, mission_usv_path, "mission")
 
@@ -456,9 +459,9 @@ def prepare_mission(
             if not scrape_index.is_area_scraped(t["search_phrase"], bounds, overlap_threshold_percent=90.0):
                 pending_tasks.append(t)
 
-    pending_usv_path = campaign_dir / "indexes" / "pending_scrape_total.usv"
-    pending_model_tasks = [MissionTask(**t) for t in pending_tasks]
-    MissionTask.save_usv_with_datapackage(pending_model_tasks, pending_usv_path, "pending_scrape_total")
+    frontier_path = discovery_gen.pending / "frontier.usv"
+    frontier_model_tasks = [MissionTask(**t) for t in pending_tasks]
+    MissionTask.save_usv_with_datapackage(frontier_model_tasks, frontier_path, "frontier")
 
     # 6. Reset State
     state_path = campaign_dir / "mission_state.toml"
@@ -467,17 +470,19 @@ def prepare_mission(
 
     console.print("[bold green]Mission prepared![/bold green]")
     console.print(f"  Total mission tasks: [cyan]{len(tasks)}[/cyan]")
-    console.print(f"  [bold yellow]Pending (unscraped): {len(pending_tasks)}[/bold yellow]")
+    console.print(f"  [bold yellow]Pending frontier: {len(pending_tasks)}[/bold yellow]")
     console.print(f"  Saved master to: {mission_usv_path}")
-    console.print(f"  Saved frontier to: {pending_usv_path}")
+    console.print(f"  Saved frontier to: {frontier_path}")
     console.print("[dim]Offset reset to 0.[/dim]")
 
-@app.command(name="build-mission-index")
-def build_mission_index(
-    campaign_name: Optional[str] = typer.Argument(None),
+@app.command(name="create-batch")
+def create_batch(
+    campaign_name: Annotated[Optional[str], typer.Argument(help="The name of the campaign.")] = None,
+    name: str = typer.Option("batch", help="Name of the batch (e.g., 'canary')"),
+    limit: int = typer.Option(50, help="Number of items to include in the batch"),
 ) -> None:
     """
-    Explodes the mission into a nested file-per-object Target Tile index (shard/lat/lon/phrase.csv).
+    Creates a named batch subset from the pending frontier for controlled rollout.
     """
     if campaign_name is None:
         campaign_name = get_campaign()
@@ -486,23 +491,71 @@ def build_mission_index(
         console.print("[red]No campaign specified.[/red]")
         raise typer.Exit(1)
 
-    campaign_dir = get_campaign_dir(campaign_name)
-    if not campaign_dir:
-        console.print(f"[red]Campaign directory not found for {campaign_name}.[/red]")
-        raise typer.Exit(1)
-        
-    mission_path = campaign_dir / "mission.usv"
-    target_index_dir = campaign_dir / "indexes" / "target-tiles"
+    discovery_gen = paths.campaign(campaign_name).queue("discovery-gen")
+    frontier_path = discovery_gen.pending / "frontier.usv"
+    batch_dir = discovery_gen.pending / "batches"
+    batch_path = batch_dir / f"{name}.usv"
 
-    if not mission_path.exists():
-        console.print("[red]Mission list not found. Run 'prepare-mission' first.[/red]")
+    if not frontier_path.exists():
+        console.print(f"[red]Frontier file not found: {frontier_path}. Run 'prepare-mission' first.[/red]")
+        raise typer.Exit(1)
+
+    from ...models.campaigns.mission import MissionTask
+    
+    tasks = []
+    with open(frontier_path, "r", encoding="utf-8") as f:
+        for i, line in enumerate(f):
+            if i >= limit:
+                break
+            if line.strip():
+                try:
+                    tasks.append(MissionTask.from_usv(line))
+                except Exception:
+                    continue
+
+    if not tasks:
+        console.print("[yellow]No tasks found in frontier to batch.[/yellow]")
+        return
+
+    MissionTask.save_usv_with_datapackage(tasks, batch_path, name)
+    console.print(f"[bold green]Batch '{name}' created![/bold green]")
+    console.print(f"  Included {len(tasks)} tasks.")
+    console.print(f"  Saved to: {batch_path}")
+
+@app.command(name="build-mission-index")
+def build_mission_index(
+    campaign_name: Annotated[Optional[str], typer.Argument(help="The name of the campaign.")] = None,
+    batch: Optional[str] = typer.Option(None, help="Specific batch name to activate (from pending/batches/)"),
+) -> None:
+    """
+    Explodes a mission list into the Active Task Pool (discovery-gen/completed/).
+    Defaults to Root/mission.usv if no batch is specified.
+    """
+    if campaign_name is None:
+        campaign_name = get_campaign()
+    
+    if not campaign_name:
+        console.print("[red]No campaign specified.[/red]")
+        raise typer.Exit(1)
+
+    discovery_gen = paths.campaign(campaign_name).queue("discovery-gen")
+    
+    if batch:
+        source_path = discovery_gen.pending / "batches" / f"{batch}.usv"
+    else:
+        source_path = discovery_gen.master
+
+    target_index_dir = discovery_gen.completed
+
+    if not source_path.exists():
+        console.print(f"[red]Source list not found: {source_path}[/red]")
         raise typer.Exit(1)
 
     from ...core.sharding import get_geo_shard
     from ...models.campaigns.mission import MissionTask
     
     tasks = []
-    with open(mission_path, "r", encoding="utf-8") as f:
+    with open(source_path, "r", encoding="utf-8") as f:
         for line in f:
             if line.strip():
                 try:
@@ -511,12 +564,10 @@ def build_mission_index(
                 except Exception as e:
                     logger.warning(f"Failed to parse mission line: {e}")
 
-    # Build index datapackage for target-tiles (distributed)
-    # The user says USVs in sharded directories of files use Frictionless Data datapackage.json.
-    # Note: target-tiles files are now .usv
-    MissionTask.save_datapackage(target_index_dir, "target-tiles", "**/*.usv") # Recursive glob for resource path
+    # Build index datapackage for discovery-gen active pool
+    MissionTask.save_datapackage(target_index_dir, "discovery-gen-active", "**/*.usv")
 
-    console.print(f"Exploding {len(tasks)} tasks into {target_index_dir}...")
+    console.print(f"Activating {len(tasks)} tasks from {source_path.name} into {target_index_dir}...")
     
     count = 0
     for task in tasks:
@@ -525,16 +576,12 @@ def build_mission_index(
         lat_str, lon_str = tile_id.split("_")
         lat_shard = get_geo_shard(task.latitude)
         
-        # target-tiles/2/25.0/-79.9/phrase.usv
+        # discovery-gen/completed/2/25.0/-79.9/phrase.usv
         tile_dir = target_index_dir / lat_shard / lat_str / lon_str
         tile_dir.mkdir(parents=True, exist_ok=True)
         
         target_path = tile_dir / f"{slugify(phrase)}.usv"
         
-        # Write minimal metadata - Should we use headers or headerless?
-        # If we use headerless, we need datapackage.json.
-        # User said: "USV generator should force either headers OR a datapackage.json be generated."
-        # If we have a datapackage.json at the root of target-tiles, we can be headerless.
         if not target_path.exists():
             with open(target_path, "w") as f:
                 # Use standard model-based serialization
@@ -542,18 +589,14 @@ def build_mission_index(
             count += 1
 
     console.print("[bold green]Mission index built![/bold green]")
-    console.print(f"  Created {count} target tile files.")
+    console.print(f"  Created {count} active task files.")
 
 @app.command(name="queue-mission")
 def queue_mission(
-    campaign_name: Optional[str] = typer.Argument(None),
-    limit: int = typer.Option(100, help="Number of tasks to enqueue."),
-    sync: bool = typer.Option(True, help="Automatically sync scraped-tiles from S3 before enqueuing."),
-    dry_run: bool = typer.Option(False, "--dry-run"),
-    no_limit: bool = typer.Option(False, "--no-limit", help="Ignore the limit and process all unscraped areas."),
+    campaign_name: Annotated[Optional[str], typer.Argument(help="The name of the campaign.")] = None,
 ) -> None:
     """
-    Idempotently enqueues unscraped tasks by comparing the Target Index and the Global Scraped Index.
+    Reports the status of the Discovery Generation queue.
     """
     if campaign_name is None:
         campaign_name = get_campaign()
@@ -562,111 +605,32 @@ def queue_mission(
         console.print("[red]No campaign specified.[/red]")
         raise typer.Exit(1)
 
-    # 0. Auto-Sync State
-    if sync:
-        from cocli.commands.smart_sync import run_smart_sync
-        from cocli.core.config import load_campaign_config, get_scraped_tiles_index_dir
-        
-        console.print("[bold blue]Syncing scraped-tiles from S3...[/bold blue]")
-        config = load_campaign_config(campaign_name)
-        aws_config = config.get("aws", {})
-        bucket_name = aws_config.get("data_bucket_name") or f"cocli-data-{campaign_name}"
-        scraped_tiles_dir = get_scraped_tiles_index_dir()
-        
-        try:
-            run_smart_sync(
-                "scraped-tiles", 
-                bucket_name, 
-                "indexes/scraped-tiles/", 
-                scraped_tiles_dir, 
-                campaign_name, 
-                aws_config
-            )
-        except Exception as e:
-            console.print(f"[yellow]Warning: Auto-sync failed: {e}. Proceeding with local state.[/yellow]")
-
-    campaign_dir = get_campaign_dir(campaign_name)
-    if not campaign_dir:
-        console.print(f"[red]Campaign directory not found for {campaign_name}.[/red]")
-        raise typer.Exit(1)
-        
-    from cocli.core.config import get_scraped_tiles_index_dir
-    target_index_dir = campaign_dir / "indexes" / "target-tiles"
-    global_scraped_dir = get_scraped_tiles_index_dir()
-
-    if not target_index_dir.exists():
-        console.print(f"[red]Target Index not found at {target_index_dir}. Run 'build-mission-index' first.[/red]")
-        raise typer.Exit(1)
-
-    # 1. Find all target tiles
-    console.print(f"Scanning target index: {target_index_dir}...")
-    target_files = list(target_index_dir.glob("**/*.csv")) + list(target_index_dir.glob("**/*.usv"))
-    console.print(f"Found {len(target_files)} total targets.")
-
-    # 2. Filter for pending (Set Difference)
-    pending_tasks: List[Dict[str, Any]] = []
-    for tf in target_files:
-        # Relative path is lat/lon/phrase.ext
-        rel_path = tf.relative_to(target_index_dir)
-        
-        # Check both .csv and .usv in witness index
-        witness_csv = global_scraped_dir / rel_path.with_suffix(".csv")
-        witness_usv = global_scraped_dir / rel_path.with_suffix(".usv")
-        
-        if not witness_csv.exists() and not witness_usv.exists():
-            # Extract metadata from target file
-            try:
-                with open(tf, "r", encoding="utf-8") as f:
-                    from ...utils.usv_utils import USVDictReader
-                    reader: Union[USVDictReader, csv.DictReader[Any]]
-                    if tf.suffix == ".usv":
-                        reader = USVDictReader(f)
-                    else:
-                        reader = csv.DictReader(f)
-                    row = next(reader)
-                
-                # phrase is the filename stem
-                phrase_slug = str(tf.stem)
-                tile_id = f"{rel_path.parent.parent.name}_{rel_path.parent.name}"
-                
-                pending_tasks.append({
-                    "tile_id": tile_id,
-                    "search_phrase": phrase_slug,
-                    "latitude": float(row["latitude"]),
-                    "longitude": float(row["longitude"])
-                })
-            except Exception as e:
-                console.print(f"[red]Error reading {tf}: {e}[/red]")
-        
-        if not no_limit and len(pending_tasks) >= limit:
-            break
-
-    if not pending_tasks:
-        console.print("[bold green]All targets in the mission index have been scraped![/bold green]")
-        return
-
-    console.print(f"[bold]Dispatching {len(pending_tasks)} pending tasks...[/bold]")
-
-    if dry_run:
-        console.print(f"[blue]Dry Run: Would queue {len(pending_tasks)} tasks.[/blue]")
-        for t in pending_tasks:
-             console.print(f"  - {t['search_phrase']} @ {t['tile_id']}")
-        return
-
-    queue_manager = get_queue_manager("scrape_tasks", use_cloud=True, queue_type="scrape")
-    for t in pending_tasks:
-        queue_manager.push(ScrapeTask(
-            latitude=t["latitude"],
-            longitude=t["longitude"],
-            zoom=13,
-            search_phrase=t["search_phrase"], # Note: this will be re-slugified by the task, which is fine
-            campaign_name=campaign_name,
-            tile_id=t["tile_id"],
-            ack_token=None
-        ))
+    discovery_gen = paths.campaign(campaign_name).queue("discovery-gen")
     
-    console.print(f"[bold green]Successfully queued {len(pending_tasks)} tasks.[/bold green]")
-    console.print("[dim]Note: This command is now idempotent. No offset is needed.[/dim]")
+    # 1. Check Master
+    if not discovery_gen.master.exists():
+        console.print("[red]Mission not prepared. Run 'prepare-mission' first.[/red]")
+        return
+
+    master_count = sum(1 for _ in open(discovery_gen.master))
+    
+    # 2. Check Frontier
+    frontier_count = 0
+    if (discovery_gen.pending / "frontier.usv").exists():
+        frontier_count = sum(1 for _ in open(discovery_gen.pending / "frontier.usv"))
+
+    # 3. Check Active Pool
+    active_count = 0
+    if discovery_gen.completed.exists():
+        active_count = len(list(discovery_gen.completed.glob("**/*.usv")))
+
+    console.print(f"[bold cyan]Discovery Queue Status: {campaign_name}[/bold cyan]")
+    console.print(f"  Master Mission: {master_count} tiles")
+    console.print(f"  Pending Frontier: {frontier_count} tiles")
+    console.print(f"  Active Task Pool: {active_count} tiles")
+    
+    if active_count == 0 and frontier_count > 0:
+        console.print("\n[yellow]Tip: Run 'create-batch' and 'build-mission-index' to activate tasks.[/yellow]")
 
 @app.command()
 def achieve_goal(

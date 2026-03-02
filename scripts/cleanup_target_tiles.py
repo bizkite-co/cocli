@@ -9,7 +9,8 @@ from pathlib import Path
 # Add project root to path
 sys.path.append(str(Path(__file__).parent.parent))
 
-from cocli.core.config import get_campaign_dir, load_campaign_config
+from cocli.core.paths import paths
+from cocli.core.config import load_campaign_config
 
 logging.basicConfig(level=logging.INFO, format='%(levelname)s: %(message)s')
 logger = logging.getLogger(__name__)
@@ -27,17 +28,13 @@ def is_non_conforming(name: str) -> bool:
     return False
 
 def cleanup_target_tiles(campaign_name: str, execute: bool = False, push: bool = False) -> None:
-    campaign_dir = get_campaign_dir(campaign_name)
-    if not campaign_dir:
-        logger.error(f"Campaign {campaign_name} not found.")
-        return
-
-    tiles_dir = campaign_dir / "indexes" / "target-tiles"
+    discovery_gen = paths.campaign(campaign_name).queue("discovery-gen")
+    tiles_dir = discovery_gen.completed
     if not tiles_dir.exists():
-        logger.warning(f"No target-tiles found at {tiles_dir}")
+        logger.warning(f"No discovery-gen/completed found at {tiles_dir}")
         return
 
-    logger.info(f"--- Recursive Target Tiles Cleanup: {campaign_name} ---")
+    logger.info(f"--- Recursive Discovery Gen Cleanup: {campaign_name} ---")
     
     # 1. Recursive Scan for non-conforming directories
     non_conforming: list[Path] = []
@@ -109,7 +106,7 @@ def cleanup_target_tiles(campaign_name: str, execute: bool = False, push: bool =
             try:
                 config = load_campaign_config(campaign_name)
                 bucket = config['aws']['data_bucket_name']
-                prefix = f"campaigns/{campaign_name}/indexes/target-tiles/"
+                prefix = f"campaigns/{campaign_name}/queues/discovery-gen/completed/"
                 
                 cmd = [
                     "aws", "s3", "sync", 

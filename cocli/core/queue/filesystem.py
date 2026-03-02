@@ -512,7 +512,9 @@ class FilesystemGmListQueue(FilesystemQueue):
         super().__init__(campaign_name, "gm-list", s3_client=s3_client, bucket_name=bucket_name)
         self.campaign_dir = get_campaign_dir(campaign_name)
         if self.campaign_dir:
-            self.target_tiles_dir = self.campaign_dir / "indexes" / "target-tiles"
+            from ..paths import paths
+            self.discovery_gen_queue = paths.campaign(campaign_name).queue("discovery-gen")
+            self.target_tiles_dir = self.discovery_gen_queue.completed
         else:
             self.target_tiles_dir = Path("does-not-exist")
         self.witness_dir = get_cocli_base_dir() / "indexes" / "scraped-tiles"
@@ -537,36 +539,35 @@ class FilesystemGmListQueue(FilesystemQueue):
 
     def push(self, task: ScrapeTask) -> str: # type: ignore[override]
         """
-        Ensures the task exists in the Mission Index (target_tiles_dir).
-        Since FilesystemGmListQueue polls the Mission Index directly, 
-        pushing just means ensuring the file exists.
+        Ensures the task exists in the Discovery Gen completed index.
         """
-        # ID format: lat/lon/phrase.csv
+        from ..sharding import get_geo_shard, get_grid_tile_id
         from ..text_utils import slugify
         
-        # Use consistent 1-decimal formatting for directory structure
-        lat_dir = f"{task.latitude:.1f}"
-        lon_dir = f"{task.longitude:.1f}"
-        phrase_file = f"{slugify(task.search_phrase)}.csv"
+        # OMAP Shard: shard/lat/lon/phrase.usv
+        lat_shard = get_geo_shard(task.latitude)
+        grid_id = get_grid_tile_id(task.latitude, task.longitude)
+        lat_dir, lon_dir = grid_id.split("_")
+        phrase_file = f"{slugify(task.search_phrase)}.usv"
         
-        task_id = f"{lat_dir}/{lon_dir}/{phrase_file}"
+        task_id = f"{lat_shard}/{lat_dir}/{lon_dir}/{phrase_file}"
         target_path = self.target_tiles_dir / task_id
         
         if not target_path.exists():
             target_path.parent.mkdir(parents=True, exist_ok=True)
             with open(target_path, "w") as f:
-                f.write("latitude,longitude\n")
-                f.write(f"{task.latitude},{task.longitude}\n")
-            logger.debug(f"Pushed task to Mission Index: {task_id}")
+                # Use standard model-based serialization
+                f.write(task.to_usv())
+            logger.debug(f"Pushed task to Discovery Gen: {task_id}")
             
             # If we have S3, also push it there
             if self.s3_client and self.bucket_name:
                 try:
-                    s3_key = f"campaigns/{self.campaign_name}/indexes/target-tiles/{task_id}"
+                    s3_key = f"campaigns/{self.campaign_name}/queues/discovery-gen/completed/{task_id}"
                     self.s3_client.put_object(
                         Bucket=self.bucket_name, 
                         Key=s3_key, 
-                        Body=f"latitude,longitude\n{task.latitude},{task.longitude}\n",
+                        Body=task.to_usv(), # Use model's standardized USV
                         ContentType="text/csv"
                     )
                 except Exception as e:
@@ -655,11 +656,11 @@ class FilesystemGmListQueue(FilesystemQueue):
         return tasks
 
     def _discover_mission_from_s3(self, max_discovery: int = 50) -> None:
-        """Discovers unscraped tiles directly from the S3 Mission Index."""
+        """Discovers unscraped tiles directly from the S3 Discovery Gen Index."""
         if not self.s3_client or not self.bucket_name:
             return
 
-        prefix = f"campaigns/{self.campaign_name}/indexes/target-tiles/"
+        prefix = f"campaigns/{self.campaign_name}/queues/discovery-gen/completed/"
         try:
             # We list a small sample of the mission index on S3
             paginator = self.s3_client.get_paginator('list_objects_v2')
