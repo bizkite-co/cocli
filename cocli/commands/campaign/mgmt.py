@@ -2,7 +2,7 @@ import typer
 import subprocess
 import toml
 import logging
-from typing import Optional
+from typing import Optional, Dict, Any
 from rich.console import Console
 from rich.table import Table
 from typing_extensions import Annotated
@@ -458,6 +458,45 @@ def restore_names(
             
         if final_stats.get("errors", 0) > 0:
             console.print(f"[bold red]Encoutered {final_stats['errors']} errors.[/bold red]")
+    except Exception as e:
+        console.print(f"[bold red]Error: {e}[/bold red]")
+        raise typer.Exit(1)
+
+@app.command(name="sanitize-discovery")
+def sanitize_discovery(
+    campaign_name: Annotated[Optional[str], typer.Argument(help="The name of the campaign.")] = None,
+) -> None:
+    """
+    High-Fidelity Discovery Reset: Pulls from S3, purges junk/hollow USVs, and propagates to PIs.
+    """
+    if not campaign_name:
+        campaign_name = get_campaign()
+    if not campaign_name:
+        console.print("[bold red]Error: No campaign specified.[/bold red]")
+        raise typer.Exit(1)
+
+    try:
+        from ...application.operation_service import OperationService
+        
+        service = OperationService(campaign_name)
+        
+        console.print(f"[bold cyan]Starting Discovery Sanitization for: {campaign_name}[/bold cyan]")
+        
+        def log_cb(msg: str) -> None:
+            console.print(f"  {msg.strip()}")
+
+        async def run_op() -> Dict[str, Any]:
+            return await service.execute("op_sanitize_discovery", log_callback=log_cb)
+
+        import asyncio
+        result = asyncio.run(run_op())
+        
+        if result["status"] == "success":
+            console.print(f"\n[bold green]Successfully sanitized discovery for '{campaign_name}'.[/bold green]")
+        else:
+            console.print(f"\n[bold red]Sanitization failed: {result.get('message')}[/bold red]")
+            raise typer.Exit(1)
+            
     except Exception as e:
         console.print(f"[bold red]Error: {e}[/bold red]")
         raise typer.Exit(1)

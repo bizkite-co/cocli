@@ -438,9 +438,10 @@ def prepare_mission(
     # Sort by tile_id then phrase for stability
     tasks.sort(key=lambda x: (x["tile_id"], x["search_phrase"]))
 
-    mission_path = campaign_dir / "mission.json"
-    with open(mission_path, "w") as f:
-        json.dump(tasks, f, indent=2)
+    from ...models.campaigns.mission import MissionTask
+    mission_usv_path = campaign_dir / "mission.usv"
+    mission_tasks = [MissionTask(**t) for t in tasks]
+    MissionTask.save_usv_with_datapackage(mission_tasks, mission_usv_path, "mission")
 
     # 5. Filter for Pending Tasks (The Frontier)
     console.print("[bold]Filtering against ScrapeIndex to find the frontier...[/bold]")
@@ -455,13 +456,9 @@ def prepare_mission(
             if not scrape_index.is_area_scraped(t["search_phrase"], bounds, overlap_threshold_percent=90.0):
                 pending_tasks.append(t)
 
-    pending_csv_path = campaign_dir / "indexes" / "pending_scrape_total.csv"
-    pending_csv_path.parent.mkdir(exist_ok=True)
-    
-    with open(pending_csv_path, "w", newline="") as f:
-        writer = csv.DictWriter(f, fieldnames=["tile_id", "search_phrase", "latitude", "longitude"])
-        writer.writeheader()
-        writer.writerows(pending_tasks)
+    pending_usv_path = campaign_dir / "indexes" / "pending_scrape_total.usv"
+    pending_model_tasks = [MissionTask(**t) for t in pending_tasks]
+    MissionTask.save_usv_with_datapackage(pending_model_tasks, pending_usv_path, "pending_scrape_total")
 
     # 6. Reset State
     state_path = campaign_dir / "mission_state.toml"
@@ -471,7 +468,8 @@ def prepare_mission(
     console.print("[bold green]Mission prepared![/bold green]")
     console.print(f"  Total mission tasks: [cyan]{len(tasks)}[/cyan]")
     console.print(f"  [bold yellow]Pending (unscraped): {len(pending_tasks)}[/bold yellow]")
-    console.print(f"  Saved frontier to: {pending_csv_path}")
+    console.print(f"  Saved master to: {mission_usv_path}")
+    console.print(f"  Saved frontier to: {pending_usv_path}")
     console.print("[dim]Offset reset to 0.[/dim]")
 
 @app.command(name="build-mission-index")
@@ -479,7 +477,7 @@ def build_mission_index(
     campaign_name: Optional[str] = typer.Argument(None),
 ) -> None:
     """
-    Explodes the mission into a nested file-per-object Target Tile index.
+    Explodes the mission into a nested file-per-object Target Tile index (shard/lat/lon/phrase.csv).
     """
     if campaign_name is None:
         campaign_name = get_campaign()
@@ -493,35 +491,54 @@ def build_mission_index(
         console.print(f"[red]Campaign directory not found for {campaign_name}.[/red]")
         raise typer.Exit(1)
         
-    mission_path = campaign_dir / "mission.json"
+    mission_path = campaign_dir / "mission.usv"
     target_index_dir = campaign_dir / "indexes" / "target-tiles"
 
     if not mission_path.exists():
         console.print("[red]Mission list not found. Run 'prepare-mission' first.[/red]")
         raise typer.Exit(1)
 
-    with open(mission_path, "r") as f:
-        tasks = json.load(f)
+    from ...core.sharding import get_geo_shard
+    from ...models.campaigns.mission import MissionTask
+    
+    tasks = []
+    with open(mission_path, "r", encoding="utf-8") as f:
+        for line in f:
+            if line.strip():
+                try:
+                    task = MissionTask.from_usv(line)
+                    tasks.append(task)
+                except Exception as e:
+                    logger.warning(f"Failed to parse mission line: {e}")
+
+    # Build index datapackage for target-tiles (distributed)
+    # The user says USVs in sharded directories of files use Frictionless Data datapackage.json.
+    # Note: target-tiles files are now .usv
+    MissionTask.save_datapackage(target_index_dir, "target-tiles", "**/*.usv") # Recursive glob for resource path
 
     console.print(f"Exploding {len(tasks)} tasks into {target_index_dir}...")
     
     count = 0
-    for t in tasks:
-        tile_id = t["tile_id"]
-        phrase = t["search_phrase"]
+    for task in tasks:
+        tile_id = task.tile_id
+        phrase = task.search_phrase
         lat_str, lon_str = tile_id.split("_")
+        lat_shard = get_geo_shard(task.latitude)
         
-        # target-tiles/30.2/-97.7/phrase.csv
-        tile_dir = target_index_dir / lat_str / lon_str
+        # target-tiles/2/25.0/-79.9/phrase.usv
+        tile_dir = target_index_dir / lat_shard / lat_str / lon_str
         tile_dir.mkdir(parents=True, exist_ok=True)
         
-        target_path = tile_dir / f"{slugify(phrase)}.csv"
+        target_path = tile_dir / f"{slugify(phrase)}.usv"
         
-        # Write minimal metadata
+        # Write minimal metadata - Should we use headers or headerless?
+        # If we use headerless, we need datapackage.json.
+        # User said: "USV generator should force either headers OR a datapackage.json be generated."
+        # If we have a datapackage.json at the root of target-tiles, we can be headerless.
         if not target_path.exists():
             with open(target_path, "w") as f:
-                f.write("latitude,longitude\n")
-                f.write(f"{t['latitude']},{t['longitude']}\n")
+                # Use standard model-based serialization
+                f.write(task.to_usv())
             count += 1
 
     console.print("[bold green]Mission index built![/bold green]")

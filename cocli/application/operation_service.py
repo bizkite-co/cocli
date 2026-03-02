@@ -1,5 +1,7 @@
+# POLICY: frictionless-data-policy-enforcement
 import logging
 import asyncio
+import subprocess
 from typing import Any, Dict, Optional, Callable, List
 from dataclasses import dataclass, field as dataclass_field
 
@@ -146,6 +148,18 @@ class OperationService:
                 "Runs a local browser to scrape full Google Maps details for a specific Place ID.", 
                 "maintenance",
                 process_details="Uses Playwright locally to fetch ratings, reviews, and social links for a given place_id."
+            ),
+            "op_sanitize_discovery": OperationMetadata(
+                "op_sanitize_discovery", "Sanitize Discovery Results",
+                "Full workflow: Pulls from S3, purges non-conforming/hollow USVs, pushes to S3, and propagates to PIs.",
+                "maintenance",
+                source_path="data/campaigns/{campaign}/queues/gm-list/completed/results/",
+                steps=[
+                    OperationStep("s3_sync_down", "Pull latest results from S3 to ensure no data loss."),
+                    OperationStep("aggressive_cleanup", "Purge non-conforming paths and hollow USVs locally."),
+                    OperationStep("s3_sync_up", "Push deletions to S3 (Standardizing the cloud)."),
+                    OperationStep("cluster_propagate", "Propagate the sanitized state to all cluster nodes.")
+                ]
             ),
         }
 
@@ -447,6 +461,51 @@ class OperationService:
                             return {"status": "error"}
                             
                 result = await run_local_scrape()
+            elif op_id == "op_sanitize_discovery":
+                async def run_sanitization() -> Dict[str, Any]:
+                    from ..services.cluster_service import ClusterService
+                    from pathlib import Path
+                    import importlib.util
+                    import sys
+                    
+                    project_root = Path(__file__).parent.parent.parent.resolve()
+                    script_path = project_root / "scripts" / "cleanup_discovery_results.py"
+                    
+                    spec = importlib.util.spec_from_file_location("cleanup_discovery_results", str(script_path))
+                    if not spec or not spec.loader:
+                        raise ImportError(f"Could not load script at {script_path}")
+                    
+                    module = importlib.util.module_from_spec(spec)
+                    sys.modules["cleanup_discovery_results"] = module
+                    spec.loader.exec_module(module)
+                    
+                    log_step("s3_sync_down", "pending")
+                    await asyncio.to_thread(self.services.data_sync_service.sync_prospects)
+                    log_step("s3_sync_down", "success")
+
+                    log_step("aggressive_cleanup", "pending", "Purging non-conforming and hollow USVs...")
+                    await asyncio.to_thread(module.cleanup_discovery_results, self.campaign_name, execute=True, push=False, delete_hollow=True)
+                    log_step("aggressive_cleanup", "success")
+
+                    log_step("s3_sync_up", "pending", "Pushing deletions to S3...")
+                    await asyncio.to_thread(module.cleanup_discovery_results, self.campaign_name, execute=False, push=True)
+                    log_step("s3_sync_up", "success")
+
+                    log_step("cluster_propagate", "pending", "Syncing clean state to cluster nodes...")
+                    cluster = ClusterService(self.campaign_name)
+                    for node in cluster.get_nodes():
+                        log_step("cluster_propagate", "pending", f"Syncing {node.hostname}...")
+                        cmd = [
+                            "rsync", "-az", "--delete",
+                            "--exclude", "companies", 
+                            f"data/campaigns/{self.campaign_name}/", 
+                            f"mstouffer@{node.hostname}:~/repos/data/campaigns/{self.campaign_name}/"
+                        ]
+                        await asyncio.to_thread(subprocess.run, cmd, capture_output=True, text=True)
+                    log_step("cluster_propagate", "success")
+                    
+                    return {"status": "success"}
+                result = await run_sanitization()
             elif "op_scale_" in op_id:
                 count = int(op_id.replace("op_scale_", ""))
                 result = await asyncio.to_thread(self.services.deployment_service.scale_service, count)

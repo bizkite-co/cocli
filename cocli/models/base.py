@@ -3,7 +3,7 @@ import json
 import logging
 from datetime import datetime
 from pathlib import Path
-from typing import List, Dict, Any, Type, TypeVar
+from typing import List, Dict, Any, Type, TypeVar, Optional
 from pydantic import BaseModel
 
 from ..core.constants import UNIT_SEP
@@ -127,3 +127,18 @@ class BaseUsvModel(BaseModel):
         schema = cls.get_datapackage(resource_name, resource_path)
         with open(path / "datapackage.json", "w") as f:
             json.dump(schema, f, indent=2)
+
+    @classmethod
+    def save_usv_with_datapackage(cls: Type[T], items: List[T], output_path: Path, resource_name: Optional[str] = None) -> None:
+        """
+        Saves a list of models as a headerless USV file and ensures a co-located 
+        datapackage.json is present.
+        """
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        with open(output_path, "w", encoding="utf-8") as f:
+            for item in items:
+                f.write(item.to_usv())
+        
+        # Save datapackage.json in the same directory
+        res_name = resource_name or output_path.stem
+        cls.save_datapackage(output_path.parent, res_name, output_path.name)

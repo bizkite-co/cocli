@@ -12,11 +12,12 @@ try:
 except ImportError:
     SIMPLEKML_AVAILABLE = False
 
+from ..core.sharding import get_grid_tile_id
+
 console = Console()
 
-# 0.08 degrees is approximately 5.5 miles at the equator.
-# This results in tiles that are roughly 5.5 x 5.5 miles.
-DEFAULT_GRID_STEP_DEG = 0.08
+# 0.1 degrees is the standardized grid step for discovery.
+DEFAULT_GRID_STEP_DEG = 0.1
 
 def generate_global_grid(center_lat: float, center_lon: float, radius_miles: float, step_deg: float = DEFAULT_GRID_STEP_DEG) -> List[Dict[str, Any]]:
     """
@@ -31,12 +32,6 @@ def generate_global_grid(center_lat: float, center_lon: float, radius_miles: flo
     Returns:
         A list of tile dictionaries, each containing its bounds and center.
     """
-    # Rough conversion: 1 degree latitude is ~69 miles
-    # 1 degree longitude varies by latitude: 69 * cos(lat)
-    
-    lat_step = step_deg
-    lon_step = step_deg / math.cos(math.radians(center_lat))
-    
     # Calculate search bounds in degrees
     lat_buffer_deg = radius_miles / 69.0
     lon_buffer_deg = radius_miles / (69.0 * math.cos(math.radians(center_lat)))
@@ -46,9 +41,10 @@ def generate_global_grid(center_lat: float, center_lon: float, radius_miles: flo
     min_lon = center_lon - lon_buffer_deg
     max_lon = center_lon + lon_buffer_deg
     
-    # Align grid to steps
-    start_lat = math.floor(min_lat / lat_step) * lat_step
-    start_lon = math.floor(min_lon / lon_step) * lon_step
+    # Align grid to standardized 0.1-degree steps
+    # We round to 6 decimals first to handle floating point noise (e.g. -79.7999999999999)
+    start_lat = math.floor(round(min_lat, 6) * 10) / 10.0
+    start_lon = math.floor(round(min_lon, 6) * 10) / 10.0
     
     grid_tiles = []
     
@@ -57,31 +53,33 @@ def generate_global_grid(center_lat: float, center_lon: float, radius_miles: flo
         current_lon = start_lon
         while current_lon <= max_lon:
             # Check if tile center is within radius (using Haversine or simple approximation)
-            tile_center_lat = current_lat + (lat_step / 2)
-            tile_center_lon = current_lon + (lon_step / 2)
+            # Use 0.05 (half of 0.1) for exact center
+            tile_center_lat = round(current_lat + 0.05, 6)
+            tile_center_lon = round(current_lon + 0.05, 6)
             
             # Simple Euclidean distance in miles (approximation)
             d_lat = (tile_center_lat - center_lat) * 69.0
             d_lon = (tile_center_lon - center_lon) * 69.0 * math.cos(math.radians(center_lat))
             dist = math.sqrt(d_lat**2 + d_lon**2)
             
-            if dist <= radius_miles + (max(lat_step, lon_step) * 69.0): # Include partial tiles
-                tile_id = f"{current_lat:.4f}_{current_lon:.4f}"
+            if dist <= radius_miles + 7.0: # Buffer for partial tiles (~7 miles is diag of 0.1 deg tile)
+                # tile_id MUST be the Southwest Corner
+                tile_id = get_grid_tile_id(current_lat, current_lon)
                 grid_tiles.append({
                     "id": tile_id,
                     "south_west_lat": round(current_lat, 6),
                     "south_west_lon": round(current_lon, 6),
-                    "north_east_lat": round(current_lat + lat_step, 6),
-                    "north_east_lon": round(current_lon + lon_step, 6),
-                    "center_lat": round(tile_center_lat, 6),
-                    "center_lon": round(tile_center_lon, 6),
+                    "north_east_lat": round(current_lat + 0.1, 6),
+                    "north_east_lon": round(current_lon + 0.1, 6),
+                    "center_lat": tile_center_lat,
+                    "center_lon": tile_center_lon,
                     "step_deg": step_deg,
-                    "est_width_miles": round(lon_step * 69.0 * math.cos(math.radians(center_lat)), 2),
-                    "est_height_miles": round(lat_step * 69.0, 2)
+                    "est_width_miles": round(0.1 * 69.0 * math.cos(math.radians(center_lat)), 2),
+                    "est_height_miles": 6.9
                 })
             
-            current_lon += lon_step
-        current_lat += lat_step
+            current_lon = round(current_lon + 0.1, 6)
+        current_lat = round(current_lat + 0.1, 6)
         
     return grid_tiles
 

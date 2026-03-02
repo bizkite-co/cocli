@@ -81,6 +81,7 @@ class GmListProcessor:
                 "task_id": task.ack_token,
                 "completed_at": datetime.now(UTC).isoformat(),
                 "worker_id": self.processed_by,
+                "schema_version": 2,
                 "search_phrase": task.search_phrase,
                 "latitude": task.latitude,
                 "longitude": task.longitude,

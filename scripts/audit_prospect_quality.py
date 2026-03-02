@@ -63,6 +63,14 @@ def audit_quality(campaign_name: str) -> None:
         print("(Ready = Phone + City + Rating)")
         print("-" * 35)
 
+        # Safety Check: If rating coverage is < 10% in discovery-heavy campaigns, it's a failure
+        rating_pct = rating * 100 / total
+        if rating_pct < 10:
+            print("\n[bold red]CRITICAL WARNING: High-Fidelity Discovery Failure Detected![/bold red]")
+            print(f"Rating coverage is only {rating_pct:.1f}%. Google might be cloaking the sidebars.")
+            print("Check raw witness captures for 'Limited View' messages.")
+            print("-" * 35)
+
     except Exception as e:
         logger.error(f"Audit failed: {e}")
 
