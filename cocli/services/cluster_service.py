@@ -30,9 +30,13 @@ class ClusterService:
         cluster_data = global_config.get("cluster", {})
         self.cluster_config = CampaignClusterConfig(**cluster_data)
         
-        # 2. Resolve Registry Host
+        # 2. Resolve Registry Host and IP
         self.registry_host = cluster_data.get("registry_host", "cocli5x1.pi")
-        self.registry_url = f"{self.registry_host}:5000"
+        
+        # Use IP for registry URL to avoid DNS issues on spokes
+        registry_node = next((n for n in self.cluster_config.nodes if n.hostname == self.registry_host), None)
+        self.registry_ip = registry_node.ip_address if registry_node else self.registry_host
+        self.registry_url = f"{self.registry_ip}:5000"
         
         # 3. Fallback to prospecting.scaling ONLY if global node list is empty
         if not self.cluster_config.nodes:
@@ -56,7 +60,7 @@ class ClusterService:
                         ))
                 
                 if node_workers:
-                    self.cluster_config.nodes.append(PiNodeConfig(hostname=host, workers=node_workers))
+                    self.cluster_config.nodes.append(PiNodeConfig(host=host, ip=None, workers=node_workers))
 
     def get_nodes(self) -> List[PiNodeConfig]:
         return self.cluster_config.nodes
