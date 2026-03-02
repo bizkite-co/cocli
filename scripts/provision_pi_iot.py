@@ -120,17 +120,26 @@ except Exception as e:
         # 5. Configure AWS Profile for automatic refresh
         print(f"Configuring AWS profile '{args.campaign}-iot' on {args.host}...")
         
+        # Ensure ~/.aws exists and use dynamic home path for the credential_process
         setup_profile_cmd = f"""
-        python3 -c '
+        mkdir -p ~/.aws && python3 -c '
 import configparser, os
 p = os.path.expanduser("~/.aws/config")
 c = configparser.ConfigParser()
-c.read(p)
+if os.path.exists(p):
+    c.read(p)
 section = "profile {args.campaign}-iot"
-if not c.has_section(section): c.add_section(section)
-c.set(section, "credential_process", f"/root/.cocli/iot/get_tokens.sh {args.campaign}")
+if not c.has_section(section): 
+    c.add_section(section)
+
+# Use $HOME for the credential process path to be user-agnostic
+home = os.path.expanduser("~")
+script_path = os.path.join(home, ".cocli/iot/get_tokens.sh")
+
+c.set(section, "credential_process", f"{{script_path}} {args.campaign}")
 c.set(section, "region", "us-east-1")
-with open(p, "w") as f: c.write(f)
+with open(p, "w") as f: 
+    c.write(f)
 '
         """
         subprocess.run(["ssh", f"{args.user}@{args.host}", setup_profile_cmd], check=True)
