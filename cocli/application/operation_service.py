@@ -485,6 +485,17 @@ class OperationService:
 
                     log_step("aggressive_cleanup", "pending", "Purging non-conforming and hollow USVs...")
                     await asyncio.to_thread(module.cleanup_discovery_results, self.campaign_name, execute=True, push=False, delete_hollow=True)
+                    
+                    # Also cleanup the gm-list pending queue (leases/tasks)
+                    log_step("aggressive_cleanup", "pending", "Purging vestigial worker tasks...")
+                    import importlib.util
+                    pending_script = project_root / "scripts" / "cleanup_gm_list_pending.py"
+                    p_spec = importlib.util.spec_from_file_location("cleanup_gm_list_pending", str(pending_script))
+                    if p_spec and p_spec.loader:
+                        p_mod = importlib.util.module_from_spec(p_spec)
+                        p_spec.loader.exec_module(p_mod)
+                        await asyncio.to_thread(p_mod.cleanup_pending_queue, self.campaign_name, dry_run=False)
+                    
                     log_step("aggressive_cleanup", "success")
 
                     log_step("s3_sync_up", "pending", "Pushing deletions to S3...")

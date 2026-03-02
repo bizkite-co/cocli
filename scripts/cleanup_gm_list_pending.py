@@ -17,6 +17,18 @@ from cocli.core.text_utils import slugify
 logging.basicConfig(level=logging.INFO, format='%(levelname)s: %(message)s')
 logger = logging.getLogger(__name__)
 
+def is_non_conforming(name: str) -> bool:
+    """Checks if a directory name looks like a coordinate with > 1 decimal place."""
+    try:
+        if "." in name:
+            parts = name.split(".")
+            # If it's a coordinate-like name and has > 1 decimal digit
+            if parts[0].replace("-", "").isdigit() and len(parts[1]) > 1:
+                return True
+    except Exception:
+        pass
+    return False
+
 def cleanup_pending_queue(campaign_name: str, dry_run: bool = True) -> None:
     campaign_dir = get_campaign_dir(campaign_name)
     if not campaign_dir:
@@ -28,16 +40,39 @@ def cleanup_pending_queue(campaign_name: str, dry_run: bool = True) -> None:
         logger.warning(f"No pending queue found at {pending_dir}")
         return
 
-    logger.info(f"Cleaning up gm-list pending for {campaign_name} (Dry Run: {dry_run})")
+    logger.info(f"--- Deep Pending Queue Sanitization: {campaign_name} (Dry Run: {dry_run}) ---")
     
     moved = 0
     deleted_leases = 0
     removed_dirs = 0
     now = datetime.now(UTC)
 
-    # 1. Find all lease.json files (the anchor of active work)
+    # 1. Recursive Scan for non-conforming directories
+    non_conforming: list[Path] = []
+    for root_dir, dirs, files in os.walk(pending_dir, topdown=False):
+        for d_name in dirs:
+            if is_non_conforming(d_name):
+                non_conforming.append(Path(root_dir) / d_name)
+
+    logger.info(f"Found {len(non_conforming)} non-conforming directories in pending queue.")
+    
+    if not dry_run:
+        purged_count = 0
+        for d_item in non_conforming:
+            try:
+                shutil.rmtree(d_item)
+                purged_count += 1
+            except Exception as e:
+                logger.error(f"Failed to purge {d_item}: {e}")
+        logger.info(f"Purged {purged_count} non-conforming directories.")
+    else:
+        for d_item in non_conforming[:10]:
+            print(f"  [STALE] {d_item.relative_to(pending_dir)}")
+        if len(non_conforming) > 10:
+            print(f"  ... and {len(non_conforming) - 10} more")
+
+    # 2. Find and handle leases/tasks in conforming but expired paths
     all_leases = list(pending_dir.rglob("lease.json"))
-    logger.info(f"Found {len(all_leases)} leases to inspect.")
     
     for lease_path in all_leases:
         try:
