@@ -177,7 +177,7 @@ def orchestrate(
     Starts orchestrated workers for this node as defined in the campaign cluster config.
     """
     import socket
-    from ..models.campaigns.worker_config import CampaignClusterConfig, WorkerDefinition
+    from ..models.campaigns.worker_config import WorkerDefinition
     
     effective_campaign = campaign or os.getenv("CAMPAIGN_NAME") or get_campaign()
     if not effective_campaign:
@@ -187,19 +187,15 @@ def orchestrate(
     log_level = logging.DEBUG if debug else logging.INFO
     setup_file_logging("orchestration", console_level=log_level)
 
-    config = load_campaign_config(effective_campaign)
+    from ..services.cluster_service import ClusterService
+    service = ClusterService(effective_campaign)
     
     # Use environment variable if set (standard for our Docker runners), otherwise local hostname
     raw_hostname = os.getenv("COCLI_HOSTNAME") or socket.gethostname()
     hostname = raw_hostname.split(".")[0]
     
-    # 1. Resolve Node Config
-    # We look for [cluster.nodes] in the campaign config
-    cluster_data = config.get("cluster", {})
-    cluster_config = CampaignClusterConfig(**cluster_data)
-    
-    # Partial match to handle 'cocli5x1' vs 'cocli5x1.pi'
-    node_config = next((n for n in cluster_config.nodes if n.hostname.startswith(hostname)), None)
+    # 1. Resolve Node Config from ClusterService
+    node_config = next((n for n in service.get_nodes() if n.hostname.startswith(hostname)), None)
     
     if not node_config:
         logger.warning(f"No specific configuration found for node {hostname} in campaign {effective_campaign}.")
@@ -211,8 +207,8 @@ def orchestrate(
         worker_defs = node_config.workers
 
     # 2. Execute
-    service = WorkerService(effective_campaign)
-    asyncio.run(service.run_orchestrated_workers(worker_defs, headless=not headed, debug=debug))
+    worker_service = WorkerService(effective_campaign)
+    asyncio.run(worker_service.run_orchestrated_workers(worker_defs, headless=not headed, debug=debug))
 
 @app.command()
 def gossip(

@@ -7,7 +7,7 @@ from typing import List, Dict
 from rich.console import Console
 
 from ..core.config import load_campaign_config
-from ..models.campaigns.worker_config import CampaignClusterConfig, PiNodeConfig
+from ..models.campaigns.worker_config import CampaignClusterConfig, PiNodeConfig, WorkerDefinition
 
 logger = logging.getLogger(__name__)
 console = Console()
@@ -34,11 +34,25 @@ class ClusterService:
         # Fallback to prospecting.scaling if cluster.nodes is empty
         if not self.cluster_config.nodes:
             scaling = self.config.get("prospecting", {}).get("scaling", {})
-            for host_key in scaling.keys():
+            for host_key, workers_data in scaling.items():
                 if host_key == "fargate":
                     continue
                 host = host_key if "." in host_key else f"{host_key}.pi"
-                self.cluster_config.nodes.append(PiNodeConfig(hostname=host))
+                
+                # Create WorkerDefinitions from scaling data
+                node_workers = []
+                for content_type, count in workers_data.items():
+                    if count > 0:
+                        node_workers.append(WorkerDefinition(
+                            name=f"{host_key}-{content_type}",
+                            role="full",
+                            content_type=content_type,
+                            workers=count,
+                            iot_profile=None
+                        ))
+                
+                if node_workers:
+                    self.cluster_config.nodes.append(PiNodeConfig(hostname=host, workers=node_workers))
 
     def get_nodes(self) -> List[PiNodeConfig]:
         return self.cluster_config.nodes
