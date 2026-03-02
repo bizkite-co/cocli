@@ -198,6 +198,7 @@ def orchestrate(
     cluster_data = config.get("cluster", {})
     cluster_config = CampaignClusterConfig(**cluster_data)
     
+    # Partial match to handle 'cocli5x1' vs 'cocli5x1.pi'
     node_config = next((n for n in cluster_config.nodes if n.hostname.startswith(hostname)), None)
     
     if not node_config:
