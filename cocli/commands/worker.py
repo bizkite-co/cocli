@@ -188,7 +188,10 @@ def orchestrate(
     setup_file_logging("orchestration", console_level=log_level)
 
     config = load_campaign_config(effective_campaign)
-    hostname = socket.gethostname().split(".")[0]
+    
+    # Use environment variable if set (standard for our Docker runners), otherwise local hostname
+    raw_hostname = os.getenv("COCLI_HOSTNAME") or socket.gethostname()
+    hostname = raw_hostname.split(".")[0]
     
     # 1. Resolve Node Config
     # We look for [cluster.nodes] in the campaign config
