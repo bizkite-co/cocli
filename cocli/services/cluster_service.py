@@ -217,31 +217,36 @@ class ClusterService:
     async def push_data(self, user: str = "mstouffer", delete: bool = False) -> None:
         """
         Propagates local campaign data to all cluster nodes.
+        Surgically targets discovery-gen/completed to ensure fast and reliable 
+        task activation.
         """
-        project_root = Path(__file__).parent.parent.parent.resolve()
-        local_campaign_dir = project_root / "data" / "campaigns" / self.campaign_name
+        from ..core.paths import paths
         
-        logger.info(f"[bold cyan]Pushing data to cluster nodes for {self.campaign_name}...[/bold cyan]")
+        # 1. Discovery Gen Completed (The Active Task Pool)
+        # This is what workers actually need to see.
+        dg_queue = paths.campaign(self.campaign_name).queue("discovery-gen")
+        local_dg_completed = dg_queue.completed
+        
+        logger.info(f"[bold cyan]Surgical Push: discovery-gen tasks for {self.campaign_name}...[/bold cyan]")
         
         for node in self.get_nodes():
             host = node.hostname
             logger.info(f"  Pushing to {host}...")
-            remote_path = f"~/repos/data/campaigns/{self.campaign_name}/"
+            
+            # Use paths authority for remote path construction to ensure OMAP compliance
+            remote_dg_completed = f"~/repos/data/campaigns/{self.campaign_name}/queues/discovery-gen/completed/"
             
             try:
                 # 1. Ensure remote directory exists
-                subprocess.run(["ssh", f"{user}@{host}", f"mkdir -p {remote_path}"], check=True, capture_output=True, timeout=10)
+                subprocess.run(["ssh", f"{user}@{host}", f"mkdir -p {remote_dg_completed}"], check=True, capture_output=True, timeout=15)
                 
-                # 2. Sync queues (exclude companies and massive indexes)
-                # Use -rtz instead of -az to avoid permission/ownership issues on remote PIs
+                # 2. Sync JUST the active task pool
                 rsync_cmd = ["rsync", "-rtz"]
                 if delete:
                     rsync_cmd.append("--delete")
                 
                 rsync_cmd.extend([
-                    "--exclude", "companies", 
-                    "--exclude", "indexes", # Skip massive index data for fast discovery propagation
-                    str(local_campaign_dir) + "/", f"{user}@{host}:{remote_path}"
+                    str(local_dg_completed) + "/", f"{user}@{host}:{remote_dg_completed}"
                 ])
                 
                 # Add timeout to prevent hanging
