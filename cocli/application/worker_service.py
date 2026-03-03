@@ -4,7 +4,7 @@ import asyncio
 import json
 import logging
 import os
-from datetime import datetime
+from datetime import datetime, UTC
 from typing import Any, Dict, List, Optional
 
 from playwright.async_api import async_playwright
@@ -51,6 +51,8 @@ class WorkerService:
         s3_client: Any,
         debug: bool,
         once: bool,
+        headless: bool = True,
+        workers: int = 1,
     ) -> None:
         while True:
             try:
@@ -153,8 +155,22 @@ class WorkerService:
                         try:
                             # Use the Modular Processor
                             from .processors.gm_list import GmListProcessor
+                            from ..utils.headers import USER_AGENT, ANTI_BOT_HEADERS
+                            
+                            metadata = {
+                                "user_agent": USER_AGENT,
+                                "common_headers": ANTI_BOT_HEADERS,
+                                "browser_settings": {
+                                    "headless": headless,
+                                    "workers": workers,
+                                    "viewport": {"width": 2000, "height": 2000},
+                                    "version": "1.1.0"
+                                },
+                                "timestamp": datetime.now(UTC).isoformat()
+                            }
+                            
                             processor = GmListProcessor(processed_by=self.processed_by, bucket_name=self.bucket_name)
-                            await processor.process_results(task, discovered_items, s3_client=s3_client)
+                            await processor.process_results(task, discovered_items, s3_client=s3_client, metadata=metadata)
                         except Exception as res_err:
                             logger.warning(f"Failed to write batch result log: {res_err}")
                 finally:
@@ -552,7 +568,7 @@ class WorkerService:
                 gm_list_item_queue = get_queue_manager("details", use_cloud=use_cloud, queue_type="gm_list_item", campaign_name=self.campaign_name, s3_client=s3_client)
 
                 tasks = [
-                    self._run_scrape_task_loop(browser, scrape_queue, gm_list_item_queue, s3_client, debug, once)
+                    self._run_scrape_task_loop(browser, scrape_queue, gm_list_item_queue, s3_client, debug, once, headless=headless, workers=workers)
                     for _ in range(workers)
                 ]
                 await asyncio.gather(*tasks)

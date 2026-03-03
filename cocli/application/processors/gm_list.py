@@ -2,7 +2,7 @@
 import logging
 import json
 from datetime import datetime, UTC
-from typing import Any, List, Optional
+from typing import Any, List, Optional, Dict
 
 from ...models.campaigns.queues.gm_list import ScrapeTask
 from ...models.campaigns.indexes.google_maps_list_item import GoogleMapsListItem
@@ -25,7 +25,7 @@ class GmListProcessor:
         self.processed_by = processed_by
         self.bucket_name = bucket_name
 
-    async def process_results(self, task: ScrapeTask, items: List[GoogleMapsListItem], s3_client: Any = None) -> None:
+    async def process_results(self, task: ScrapeTask, items: List[GoogleMapsListItem], s3_client: Any = None, metadata: Optional[Dict[str, Any]] = None) -> None:
         """
         Saves discovery results to the deep-sharded trace path and writes the receipt.
         
@@ -86,7 +86,8 @@ class GmListProcessor:
                 "latitude": task.latitude,
                 "longitude": task.longitude,
                 "result_count": len(items),
-                "status": "success"
+                "status": "success",
+                "metadata": metadata or {}
             }
             with open(receipt_path, "w", encoding="utf-8") as jf:
                 json.dump(receipt_data, jf, indent=2)

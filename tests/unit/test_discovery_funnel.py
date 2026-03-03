@@ -1,5 +1,4 @@
 # POLICY: frictionless-data-policy-enforcement
-import pytest
 from cocli.core.geo_types import LatScale1, LonScale1, LatScale6
 from cocli.core.sharding import get_grid_tile_id, get_geo_shard
 from cocli.core.text_utils import slugify
