@@ -14,7 +14,12 @@ class GeoDegrees(RootModel[float]):
     @field_validator("root", mode="before")
     @classmethod
     def round_value(cls, v: Any) -> float:
-        return round(float(v), cls.DECIMALS)
+        val = float(v)
+        if cls.DECIMALS == 1:
+            import math
+            # Scale 1 is for Grid Tiles (Southwest Corner)
+            return math.floor(val * 10) / 10.0
+        return round(val, cls.DECIMALS)
 
     def __str__(self) -> str:
         return f"{self.root:.{self.DECIMALS}f}"

@@ -53,8 +53,8 @@ class ScrapeCoordinator:
         # This fixes 'Please use browser.new_context()' errors on some environments
         context = await self.browser.new_context(viewport={'width': self.viewport_width, 'height': self.viewport_height})
         
-        # Setup optimization (blocking images/css + tracking bandwidth)
-        self.bandwidth_tracker = await setup_optimized_context(context)
+        # Setup optimization (tracking bandwidth, but allow CSS/Fonts for better rendering)
+        self.bandwidth_tracker = await setup_optimized_context(context, block_resources=False)
         
         page = await context.new_page()
         

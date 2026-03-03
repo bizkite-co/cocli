@@ -584,8 +584,10 @@ class FilesystemGmListQueue(FilesystemQueue):
             self._discover_mission_from_s3()
 
         if not self.target_tiles_dir.exists():
+            logger.warning(f"Target tiles directory does not exist: {self.target_tiles_dir}")
             return []
 
+        logger.debug(f"Polling discovery-gen pool at: {self.target_tiles_dir}")
         count = 0
         import os
         import random

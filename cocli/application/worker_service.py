@@ -45,23 +45,20 @@ class WorkerService:
 
     async def _run_scrape_task_loop(
         self,
-        browser_or_context: Any,
+        browser: Any,
         scrape_queue: Any,
         gm_list_item_queue: Any,
         s3_client: Any,
         debug: bool,
         once: bool,
-        tracker: Optional[Any] = None,
     ) -> None:
         while True:
-            connected = True
-            if hasattr(browser_or_context, "is_connected"):
-                connected = browser_or_context.is_connected()
-            elif hasattr(browser_or_context, "browser") and browser_or_context.browser:
-                connected = browser_or_context.browser.is_connected()
-
-            if not connected:
-                logger.error("Browser is disconnected. Breaking task loop to restart.")
+            try:
+                if not browser.is_connected():
+                    logger.error("Browser is disconnected. Breaking task loop to restart.")
+                    break
+            except Exception as e:
+                logger.error(f"Browser check failed: {e}")
                 break
 
             tasks: List[ScrapeTask] = await asyncio.to_thread(scrape_queue.poll, batch_size=1)
@@ -86,8 +83,6 @@ class WorkerService:
             else:
                 logger.info(f"Point Task: {task.search_phrase} @ {task.latitude}, {task.longitude}")
 
-            start_mb = tracker.get_mb() if tracker else 0.0
-
             try:
                 location_param = {"latitude": str(task.latitude), "longitude": str(task.longitude)}
                 prospect_count = 0
@@ -106,7 +101,7 @@ class WorkerService:
                     discovered_items: List[GoogleMapsListItem] = []
                     async with asyncio.timeout(900):
                         async for list_item in scrape_google_maps(
-                            browser=browser_or_context,
+                            browser=browser,
                             location_param=location_param,
                             search_strings=[task.search_phrase],
                             campaign_name=task.campaign_name,
@@ -170,12 +165,9 @@ class WorkerService:
                         except Exception:
                             pass
 
-                if tracker:
-                    logger.info(f"Task Complete. Found {prospect_count} prospects. Bandwidth: {tracker.get_mb() - start_mb:.2f} MB")
-                else:
-                    logger.info(f"Task Complete. Found {prospect_count} prospects.")
+                logger.info(f"Task Complete. Found {prospect_count} prospects.")
                 
-                # Capture result count for the receipt (Processor already does this, but for internal state)
+                # Capture result count for the receipt
                 task.result_count = len(discovered_items)
                 scrape_queue.ack(task)
                 
@@ -184,7 +176,7 @@ class WorkerService:
             except Exception as e:
                 logger.error(f"Task Failed: {e}")
                 scrape_queue.nack(task)
-                if "Target page, context or browser has been closed" in str(e) or not connected:
+                if "Target page, context or browser has been closed" in str(e):
                     break
 
     async def _run_details_task_loop(
@@ -528,14 +520,46 @@ class WorkerService:
         """
         Main worker loop for GM List (Discovery).
         """
-        # Ensure our role is set correctly for this run
         self.role = role
         logger.info(f"Starting GM List Worker (Role: {self.role}) on node {self.processed_by} for campaign {self.campaign_name}...")
         
         if role == "processor":
             logger.info("Starting GM List PROCESSOR (No Browser)")
-            # TODO: Implement list processor loop if needed
+            # Processor role for GM List is currently a no-op as scraper handles results
             return
+
+        async with async_playwright() as p:
+            while True:
+                browser = await p.chromium.launch(
+                    headless=headless,
+                    args=[
+                        "--no-sandbox", "--disable-setuid-sandbox", "--disable-dev-shm-usage",
+                        "--disable-accelerated-2d-canvas", "--no-first-run", "--no-zygote",
+                        "--disable-gpu", "--disable-software-rasterizer",
+                    ],
+                )
+
+                try:
+                    s3_client = self.get_s3_client()
+                    use_cloud = True
+                except Exception as e:
+                    logger.warning(f"Could not initialize S3 client: {e}. Falling back to LOCAL-ONLY mode.")
+                    s3_client = None
+                    use_cloud = False
+
+                # We use local queue if cloud fails
+                scrape_queue = get_queue_manager("scrape", use_cloud=use_cloud, queue_type="scrape", campaign_name=self.campaign_name, s3_client=s3_client)
+                gm_list_item_queue = get_queue_manager("details", use_cloud=use_cloud, queue_type="gm_list_item", campaign_name=self.campaign_name, s3_client=s3_client)
+
+                tasks = [
+                    self._run_scrape_task_loop(browser, scrape_queue, gm_list_item_queue, s3_client, debug, once)
+                    for _ in range(workers)
+                ]
+                await asyncio.gather(*tasks)
+                await browser.close()
+                if once:
+                    break
+                await asyncio.sleep(5)
 
     async def run_enrichment_worker(
         self,

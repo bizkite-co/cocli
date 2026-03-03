@@ -533,6 +533,7 @@ def create_batch(
     campaign_name: Annotated[Optional[str], typer.Argument(help="The name of the campaign.")] = None,
     name: str = typer.Option("batch", help="Name of the batch (e.g., 'canary')"),
     limit: int = typer.Option(50, help="Number of items to include in the batch"),
+    offset: int = typer.Option(0, help="Number of items to skip from the frontier"),
 ) -> None:
     """
     Creates a named batch subset from the pending frontier for controlled rollout.
@@ -559,6 +560,8 @@ def create_batch(
     
     tasks: List[MissionTask] = []
     skipped_count = 0
+    passed_offset = 0
+    
     with open(frontier_path, "r", encoding="utf-8") as f:
         for line in f:
             if len(tasks) >= limit:
@@ -568,6 +571,9 @@ def create_batch(
                     task = MissionTask.from_usv(line)
                     match = scrape_index.is_tile_scraped(task.search_phrase, task.tile_id, ttl_days=30)
                     if not match:
+                        if passed_offset < offset:
+                            passed_offset += 1
+                            continue
                         tasks.append(task)
                     else:
                         skipped_count += 1
