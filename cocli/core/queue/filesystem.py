@@ -71,20 +71,33 @@ class FilesystemQueue:
         """Default sharding logic (PlaceID based). Overridden by subclasses."""
         return get_shard_id(task_id)
 
-    def _get_s3_lease_key(self, task_id: str) -> str:
-        # V2 S3 Path matches the local structure under the campaign
+    def _get_task_subpath(self, task_id: str) -> str:
+        """
+        Returns the sharded relative path for a task (e.g. 'a/ChIJ-123').
+        Ensures the shard is only added if not already present in the task_id.
+        """
+        # Sanitize task_id for directory name
+        safe_id = task_id.replace("\\", "/")
+        
+        # If task_id already looks like a sharded path (e.g. 2/25.0/...), return it as is
+        parts = safe_id.split("/")
+        if len(parts) > 1 and len(parts[0]) <= 2:
+            return safe_id
+            
         shard = self._get_shard(task_id)
-        return paths.s3.campaign(self.campaign_name).queue(self.queue_name).pending(shard, task_id) + "lease.json"
+        return f"{shard}/{safe_id}"
+
+    def _get_s3_lease_key(self, task_id: str) -> str:
+        subpath = self._get_task_subpath(task_id)
+        return f"campaigns/{self.campaign_name}/queues/{self.queue_name}/pending/{subpath}/lease.json"
 
     def _get_s3_task_key(self, task_id: str) -> str:
-        shard = self._get_shard(task_id)
-        return paths.s3.campaign(self.campaign_name).queue(self.queue_name).pending(shard, task_id) + "task.json"
+        subpath = self._get_task_subpath(task_id)
+        return f"campaigns/{self.campaign_name}/queues/{self.queue_name}/pending/{subpath}/task.json"
 
     def _get_task_dir(self, task_id: str) -> Path:
-        # Sanitize task_id for directory name
-        safe_id = task_id.replace("/", "_").replace("\\", "_")
-        shard = self._get_shard(task_id)
-        return self.pending_dir / shard / safe_id
+        subpath = self._get_task_subpath(task_id)
+        return self.pending_dir / subpath
 
     def _get_lease_path(self, task_id: str) -> Path:
         return self._get_task_dir(task_id) / "lease.json"
@@ -518,18 +531,6 @@ class FilesystemGmListQueue(FilesystemQueue):
         else:
             self.target_tiles_dir = Path("does-not-exist")
         self.witness_dir = get_cocli_base_dir() / "indexes" / "scraped-tiles"
-
-    def _get_s3_lease_key(self, task_id: str) -> str:
-        # task_id is already {shard}/{lat}/{lon}/{phrase}.usv
-        return f"campaigns/{self.campaign_name}/queues/{self.queue_name}/pending/{task_id}/lease.json"
-
-    def _get_s3_task_key(self, task_id: str) -> str:
-        # task_id is already {shard}/{lat}/{lon}/{phrase}.usv
-        return f"campaigns/{self.campaign_name}/queues/{self.queue_name}/pending/{task_id}/task.json"
-
-    def _get_task_dir(self, task_id: str) -> Path:
-        # task_id is already {shard}/{lat}/{lon}/{phrase}.usv
-        return self.pending_dir / task_id
 
     def _create_scrape_task(self, task_id: str) -> Optional[ScrapeTask]:
         """Reconstructs a ScrapeTask from a discovery-gen task_id."""
