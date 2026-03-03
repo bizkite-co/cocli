@@ -99,15 +99,21 @@ class CampaignPaths(PathObject):
     def indexes(self) -> Path:
         return self.path / "indexes"
     
-    def index(self, name: IndexName) -> IndexPaths:
-        return IndexPaths(lambda: self.indexes / name)
+    def index(self, name: IndexName, ensure: bool = False) -> IndexPaths:
+        obj = IndexPaths(lambda: self.indexes / name)
+        if ensure:
+            obj.ensure()
+        return obj
 
     @property
     def queues(self) -> Path:
         return self.path / "queues"
     
-    def queue(self, name: QueueName) -> QueuePaths:
-        return QueuePaths(lambda: self.queues / name)
+    def queue(self, name: QueueName, ensure: bool = False) -> QueuePaths:
+        obj = QueuePaths(lambda: self.queues / name)
+        if ensure:
+            obj.ensure()
+        return obj
 
     @property
     def exports(self) -> Path:
@@ -145,10 +151,15 @@ class EntryPaths(PathObject):
         return self.path / "meetings" / filename
 
 class CollectionPaths(PathObject):
-    def entry(self, slug_or_path: str | Path) -> EntryPaths:
+    def entry(self, slug_or_path: str | Path, ensure: bool = False) -> EntryPaths:
         if isinstance(slug_or_path, Path):
-            return EntryPaths(lambda: slug_or_path)
-        return EntryPaths(lambda: self.path / slug_or_path)
+            obj = EntryPaths(lambda: slug_or_path)
+        else:
+            obj = EntryPaths(lambda: self.path / slug_or_path)
+        
+        if ensure:
+            obj.ensure()
+        return obj
 
 class WalPaths(PathObject):
     @property

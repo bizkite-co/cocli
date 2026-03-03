@@ -33,6 +33,19 @@ else
     echo "Docker already installed."
 fi
 
+# 2b. Configure Insecure Registry (for Cluster Hub)
+HUB_REGISTRY="10.0.0.17:5000"
+echo "Configuring insecure registry $HUB_REGISTRY..."
+sudo mkdir -p /etc/docker
+# Use jq to merge or create if it doesn't exist
+if [ -f /etc/docker/daemon.json ]; then
+    sudo jq ". + {\"insecure-registries\": (.\"insecure-registries\" // []) + [\"$HUB_REGISTRY\"] | unique}" /etc/docker/daemon.json | sudo tee /etc/docker/daemon.json.tmp
+    sudo mv /etc/docker/daemon.json.tmp /etc/docker/daemon.json
+else
+    echo "{\"insecure-registries\": [\"$HUB_REGISTRY\"]}" | sudo tee /etc/docker/daemon.json
+fi
+sudo systemctl restart docker || true
+
 # 3. Install uv (Fast Python Package Manager)
 if ! command -v uv &> /dev/null; then
     echo "Installing uv..."

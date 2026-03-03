@@ -533,11 +533,12 @@ def create_batch(
     campaign_name: Annotated[Optional[str], typer.Argument(help="The name of the campaign.")] = None,
     name: str = typer.Option("batch", help="Name of the batch (e.g., 'canary')"),
     limit: int = typer.Option(50, help="Number of items to include in the batch"),
-    offset: int = typer.Option(0, help="Number of items to skip from the frontier"),
+    offset: Optional[int] = typer.Option(None, help="Manual override for the frontier offset"),
     query: Optional[str] = typer.Option(None, help="Manual task entry (format: 'tile_id;phrase;lat;lon')"),
 ) -> None:
     """
     Creates a named batch subset from the pending frontier for controlled rollout.
+    Sequential batches automatically track their offset in mission_state.toml.
     """
     if campaign_name is None:
         campaign_name = get_campaign()
@@ -546,17 +547,24 @@ def create_batch(
         console.print("[red]No campaign specified.[/red]")
         raise typer.Exit(1)
 
-    discovery_gen = paths.campaign(campaign_name).queue("discovery-gen")
-    frontier_path = discovery_gen.pending / "frontier.usv"
-    batch_dir = discovery_gen.pending / "batches"
+    campaign_dir = get_campaign_dir(campaign_name)
+    if not campaign_dir:
+        console.print(f"[red]Campaign directory not found for {campaign_name}[/red]")
+        raise typer.Exit(1)
+
+    dg = paths.campaign(campaign_name).queue("discovery-gen", ensure=True)
+    
+    frontier_path = dg.pending / "frontier.usv"
+    batch_dir = dg.pending / "batches"
     batch_path = batch_dir / f"{name}.usv"
+    state_path = campaign_dir / "mission_state.toml"
 
     from ...models.campaigns.mission import MissionTask
     
     tasks: List[MissionTask] = []
 
     if query:
-        # Manual Mode
+        # Manual Mode (Ignores offsets/state)
         parts = query.split(";")
         if len(parts) == 4:
             from ...core.geo_types import LatScale6, LonScale6
@@ -575,41 +583,55 @@ def create_batch(
             console.print(f"[red]Frontier file not found: {frontier_path}. Run 'prepare-mission' first.[/red]")
             raise typer.Exit(1)
 
+        # 1. Resolve Offset
+        current_offset = 0
+        if offset is not None:
+            current_offset = offset
+        elif state_path.exists():
+            state = toml.load(state_path)
+            current_offset = state.get("last_offset", 0)
+
         from ...core.scrape_index import ScrapeIndex
         scrape_index = ScrapeIndex()
         
         skipped_count = 0
-        passed_offset = 0
         
         with open(frontier_path, "r", encoding="utf-8") as f:
-            for line in f:
+            for i, line in enumerate(f):
+                if i < current_offset:
+                    continue
                 if len(tasks) >= limit:
                     break
                 if line.strip():
                     try:
                         task = MissionTask.from_usv(line)
+                        # Ensure we don't batch something that was JUST scraped (e.g. by another node)
                         match = scrape_index.is_tile_scraped(task.search_phrase, task.tile_id, ttl_days=30)
                         if not match:
-                            if passed_offset < offset:
-                                passed_offset += 1
-                                continue
                             tasks.append(task)
                         else:
                             skipped_count += 1
                     except Exception:
                         continue
 
-        if skipped_count > 0:
-            console.print(f"[dim]  Skipped {skipped_count} items that are already recent/valid in index.[/dim]")
+        if not tasks:
+            console.print("[yellow]No new tasks found in frontier to batch.[/yellow]")
+            return
 
-    if not tasks:
-        console.print("[yellow]No tasks found in frontier to batch.[/yellow]")
-        return
+        # 2. Update State (Only in Frontier Mode)
+        new_offset = current_offset + len(tasks) + skipped_count
+        with open(state_path, "w") as f:
+            toml.dump({"last_offset": new_offset}, f)
 
+        console.print(f"  Start Offset: {current_offset}")
+        console.print(f"  Skipped:      {skipped_count} (already valid in index)")
+        console.print(f"  Next Offset:  {new_offset}")
+
+    # 3. Save Batch
     MissionTask.save_usv_with_datapackage(tasks, batch_path, name)
     console.print(f"[bold green]Batch '{name}' created![/bold green]")
-    console.print(f"  Included {len(tasks)} tasks.")
-    console.print(f"  Saved to: {batch_path}")
+    console.print(f"  Included:     {len(tasks)} tasks")
+    console.print(f"  Saved to:     {batch_path}")
 
 @app.command(name="build-mission-index")
 def build_mission_index(
@@ -627,7 +649,7 @@ def build_mission_index(
         console.print("[red]No campaign specified.[/red]")
         raise typer.Exit(1)
 
-    discovery_gen = paths.campaign(campaign_name).queue("discovery-gen")
+    discovery_gen = paths.campaign(campaign_name).queue("discovery-gen", ensure=True)
     
     if batch:
         source_path = discovery_gen.pending / "batches" / f"{batch}.usv"
@@ -635,6 +657,7 @@ def build_mission_index(
         source_path = discovery_gen.master
 
     target_index_dir = discovery_gen.completed
+    target_index_dir.mkdir(parents=True, exist_ok=True)
 
     if not source_path.exists():
         console.print(f"[red]Source list not found: {source_path}[/red]")
