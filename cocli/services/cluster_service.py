@@ -250,7 +250,7 @@ class ClusterService:
                 ])
                 
                 # Add timeout to prevent hanging
-                subprocess.run(rsync_cmd, check=True, capture_output=True, text=True, timeout=60)
+                subprocess.run(rsync_cmd, check=True, capture_output=True, text=True, timeout=120)
             except subprocess.TimeoutExpired:
                 logger.warning(f"Push to {host} timed out.")
             except Exception as e:
