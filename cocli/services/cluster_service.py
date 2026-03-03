@@ -241,7 +241,8 @@ class ClusterService:
                 subprocess.run(["ssh", f"{user}@{host}", f"mkdir -p {remote_dg_completed}"], check=True, capture_output=True, timeout=15)
                 
                 # 2. Sync JUST the active task pool
-                rsync_cmd = ["rsync", "-rtz"]
+                # Use -rtWz (-W for whole-file, faster on slow SD cards)
+                rsync_cmd = ["rsync", "-rtWz"]
                 if delete:
                     rsync_cmd.append("--delete")
                 
