@@ -534,6 +534,7 @@ def create_batch(
     name: str = typer.Option("batch", help="Name of the batch (e.g., 'canary')"),
     limit: int = typer.Option(50, help="Number of items to include in the batch"),
     offset: int = typer.Option(0, help="Number of items to skip from the frontier"),
+    query: Optional[str] = typer.Option(None, help="Manual task entry (format: 'tile_id;phrase;lat;lon')"),
 ) -> None:
     """
     Creates a named batch subset from the pending frontier for controlled rollout.
@@ -550,38 +551,56 @@ def create_batch(
     batch_dir = discovery_gen.pending / "batches"
     batch_path = batch_dir / f"{name}.usv"
 
-    if not frontier_path.exists():
-        console.print(f"[red]Frontier file not found: {frontier_path}. Run 'prepare-mission' first.[/red]")
-        raise typer.Exit(1)
-
     from ...models.campaigns.mission import MissionTask
-    from ...core.scrape_index import ScrapeIndex
-    scrape_index = ScrapeIndex()
     
     tasks: List[MissionTask] = []
-    skipped_count = 0
-    passed_offset = 0
-    
-    with open(frontier_path, "r", encoding="utf-8") as f:
-        for line in f:
-            if len(tasks) >= limit:
-                break
-            if line.strip():
-                try:
-                    task = MissionTask.from_usv(line)
-                    match = scrape_index.is_tile_scraped(task.search_phrase, task.tile_id, ttl_days=30)
-                    if not match:
-                        if passed_offset < offset:
-                            passed_offset += 1
-                            continue
-                        tasks.append(task)
-                    else:
-                        skipped_count += 1
-                except Exception:
-                    continue
 
-    if skipped_count > 0:
-        console.print(f"[dim]  Skipped {skipped_count} items that are already recent/valid in index.[/dim]")
+    if query:
+        # Manual Mode
+        parts = query.split(";")
+        if len(parts) == 4:
+            from ...core.geo_types import LatScale6, LonScale6
+            tasks.append(MissionTask(
+                tile_id=parts[0],
+                search_phrase=parts[1],
+                latitude=LatScale6(float(parts[2])),
+                longitude=LonScale6(float(parts[3]))
+            ))
+        else:
+            console.print("[red]Invalid query format. Expected 'tile_id;phrase;lat;lon'[/red]")
+            raise typer.Exit(1)
+    else:
+        # Frontier Mode
+        if not frontier_path.exists():
+            console.print(f"[red]Frontier file not found: {frontier_path}. Run 'prepare-mission' first.[/red]")
+            raise typer.Exit(1)
+
+        from ...core.scrape_index import ScrapeIndex
+        scrape_index = ScrapeIndex()
+        
+        skipped_count = 0
+        passed_offset = 0
+        
+        with open(frontier_path, "r", encoding="utf-8") as f:
+            for line in f:
+                if len(tasks) >= limit:
+                    break
+                if line.strip():
+                    try:
+                        task = MissionTask.from_usv(line)
+                        match = scrape_index.is_tile_scraped(task.search_phrase, task.tile_id, ttl_days=30)
+                        if not match:
+                            if passed_offset < offset:
+                                passed_offset += 1
+                                continue
+                            tasks.append(task)
+                        else:
+                            skipped_count += 1
+                    except Exception:
+                        continue
+
+        if skipped_count > 0:
+            console.print(f"[dim]  Skipped {skipped_count} items that are already recent/valid in index.[/dim]")
 
     if not tasks:
         console.print("[yellow]No tasks found in frontier to batch.[/yellow]")

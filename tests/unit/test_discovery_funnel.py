@@ -3,6 +3,7 @@ from cocli.core.geo_types import LatScale1, LonScale1, LatScale6
 from cocli.core.sharding import get_grid_tile_id, get_geo_shard
 from cocli.core.text_utils import slugify
 from cocli.models.campaigns.mission import MissionTask
+from cocli.models.campaigns.queues.gm_list import ScrapeTask
 
 def test_tile_id_bucketing_logic():
     """
@@ -71,3 +72,26 @@ def test_omap_path_structure():
     assert grid_parts[0] == "25.0"
     assert grid_parts[1] == "-80.0"
     assert slugify(task.search_phrase) == "financial-advisor"
+
+def test_scrape_task_omap_path_resolution():
+    """
+    Critical Guard: Ensures ScrapeTask generates the correct OMAP sharded path
+    without redundant sharding (preventing 2/2/ regressions).
+    """
+    task = ScrapeTask(
+        latitude=25.05,
+        longitude=-80.05,
+        zoom=15,
+        search_phrase="financial advisor",
+        campaign_name="test_camp"
+    )
+    
+    local_path = task.get_local_path()
+    # Expected: .../queues/gm-list/pending/{shard}/{lat}/{lon}/{phrase}.usv
+    path_str = str(local_path)
+    
+    assert "pending/2/25.0/-80.1/financial-advisor.usv" in path_str
+    assert "pending/2/2/25.0" not in path_str # Double-shard regression check
+    
+    remote_key = task.get_remote_key()
+    assert remote_key == "campaigns/test_camp/queues/gm-list/pending/2/25.0/-80.1/financial-advisor.usv/task.json"

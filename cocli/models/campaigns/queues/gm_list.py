@@ -2,7 +2,7 @@ from typing import Optional, ClassVar
 from pathlib import Path
 from pydantic import Field
 from ....core.paths import paths
-from ....core.ordinant import QueueName, get_shard
+from ....core.ordinant import QueueName
 from ...base import BaseUsvModel
 
 class ScrapeTask(BaseUsvModel):
@@ -34,23 +34,34 @@ class ScrapeTask(BaseUsvModel):
         return "gm-list"
 
     def get_shard_id(self) -> str:
-        # Shard by latitude prefix for geographic grouping
-        return get_shard(str(self.latitude), strategy="geo_tile")
-
-    @property
-    def task_id(self) -> str:
-        """Unique ID for this scrape task."""
-        if self.tile_id:
-            return self.tile_id
-        
-        from ....core.sharding import get_grid_tile_id
-        return get_grid_tile_id(self.latitude, self.longitude)
+        """Standardized Geo Shard (first digit of latitude)."""
+        from ....core.sharding import get_geo_shard
+        return get_geo_shard(self.latitude)
 
     def get_local_path(self) -> Path:
-        """Returns the local pending directory."""
-        return paths.campaign(self.campaign_name).queue("gm-list").pending / self.get_shard_id() / self.task_id
+        """
+        Returns the OMAP-compliant local directory for the task lease.
+        Path: queues/gm-list/pending/{shard}/{lat}/{lon}/{phrase}.usv/
+        """
+        from ....core.text_utils import slugify
+        from ....core.geo_types import LatScale1, LonScale1
+        
+        shard = self.get_shard_id()
+        lat = LatScale1(self.latitude)
+        lon = LonScale1(self.longitude)
+        phrase = slugify(self.search_phrase)
+        
+        return paths.campaign(self.campaign_name).queue("gm-list").pending / shard / str(lat) / str(lon) / f"{phrase}.usv"
 
     def get_remote_key(self) -> str:
-        """Returns the S3 key for this task."""
-        return f"campaigns/{self.campaign_name}/queues/gm-list/pending/{self.get_shard_id()}/{self.task_id}/task.json"
+        """Returns the OMAP-compliant S3 key for this task."""
+        from ....core.text_utils import slugify
+        from ....core.geo_types import LatScale1, LonScale1
+        
+        shard = self.get_shard_id()
+        lat = LatScale1(self.latitude)
+        lon = LonScale1(self.longitude)
+        phrase = slugify(self.search_phrase)
+        
+        return f"campaigns/{self.campaign_name}/queues/gm-list/pending/{shard}/{lat}/{lon}/{phrase}.usv/task.json"
     

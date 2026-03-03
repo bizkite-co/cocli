@@ -31,6 +31,7 @@ class GmListProcessor:
         
         MANDATE: NEVER delete or unlink trace files.
         """
+        logger.info(f"!!! DEBUG: GmListProcessor.process_results called with metadata: {metadata is not None}")
         try:
             lat_shard = get_geo_shard(task.latitude)
             grid_id = get_grid_tile_id(task.latitude, task.longitude)

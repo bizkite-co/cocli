@@ -519,23 +519,42 @@ class FilesystemGmListQueue(FilesystemQueue):
             self.target_tiles_dir = Path("does-not-exist")
         self.witness_dir = get_cocli_base_dir() / "indexes" / "scraped-tiles"
 
-    def _get_shard(self, task_id: str) -> str:
-        """Extracts geo shard (first digit of latitude) from the task_id (lat/lon/phrase)."""
-        from ..sharding import get_geo_shard
-        lat = task_id.split("/")[0]
-        return get_geo_shard(lat)
-
     def _get_s3_lease_key(self, task_id: str) -> str:
-        shard = self._get_shard(task_id)
-        return f"campaigns/{self.campaign_name}/queues/{self.queue_name}/pending/{shard}/{task_id}/lease.json"
+        # task_id is already {shard}/{lat}/{lon}/{phrase}.usv
+        return f"campaigns/{self.campaign_name}/queues/{self.queue_name}/pending/{task_id}/lease.json"
 
     def _get_s3_task_key(self, task_id: str) -> str:
-        shard = self._get_shard(task_id)
-        return f"campaigns/{self.campaign_name}/queues/{self.queue_name}/pending/{shard}/{task_id}/task.json"
+        # task_id is already {shard}/{lat}/{lon}/{phrase}.usv
+        return f"campaigns/{self.campaign_name}/queues/{self.queue_name}/pending/{task_id}/task.json"
 
     def _get_task_dir(self, task_id: str) -> Path:
-        shard = self._get_shard(task_id)
-        return self.pending_dir / shard / task_id
+        # task_id is already {shard}/{lat}/{lon}/{phrase}.usv
+        return self.pending_dir / task_id
+
+    def _create_scrape_task(self, task_id: str) -> Optional[ScrapeTask]:
+        """Reconstructs a ScrapeTask from a discovery-gen task_id."""
+        path_parts = Path(task_id).parts
+        # Expected: {lat_shard}/{lat}/{lon}/{phrase}.usv
+        if len(path_parts) != 4:
+            return None
+            
+        try:
+            lat = float(path_parts[1])
+            lon = float(path_parts[2])
+            phrase = path_parts[3].replace(".usv", "").replace(".csv", "")
+            
+            return ScrapeTask(
+                latitude=lat,
+                longitude=lon,
+                zoom=15,
+                search_phrase=phrase,
+                campaign_name=self.campaign_name,
+                tile_id=f"{lat}_{lon}",
+                ack_token=task_id
+            )
+        except Exception as e:
+            logger.error(f"Error reconstructing ScrapeTask from {task_id}: {e}")
+            return None
 
     def push(self, task: ScrapeTask) -> str: # type: ignore[override]
         """
@@ -623,34 +642,11 @@ class FilesystemGmListQueue(FilesystemQueue):
                     
                 # Try to acquire lease
                 if self._create_lease(task_id):
-                    path_parts = Path(task_id).parts
-                    # Support both 3-part (lat/lon/phrase) and 4-part (shard/lat/lon/phrase)
-                    if len(path_parts) == 3:
-                        lat_idx, lon_idx, phrase_idx = 0, 1, 2
-                    elif len(path_parts) == 4:
-                        lat_idx, lon_idx, phrase_idx = 1, 2, 3
-                    else:
-                        continue
-                    
-                    try:
-                        lat = float(path_parts[lat_idx])
-                        lon = float(path_parts[lon_idx])
-                        # Handle both .csv and .usv
-                        phrase = path_parts[phrase_idx].replace(".csv", "").replace(".usv", "")
-                        
-                        task = ScrapeTask(
-                            latitude=lat,
-                            longitude=lon,
-                            zoom=15,
-                            search_phrase=phrase,
-                            campaign_name=self.campaign_name,
-                            tile_id=f"{lat}_{lon}_{phrase}",
-                            ack_token=task_id
-                        )
+                    task = self._create_scrape_task(task_id)
+                    if task:
                         tasks.append(task)
                         count += 1
-                    except Exception as e:
-                        logger.error(f"Error parsing task_id {task_id}: {e}")
+                    else:
                         self.nack(task_id)
                     
                 if count >= batch_size:
@@ -716,12 +712,12 @@ class FilesystemGmListQueue(FilesystemQueue):
                 shutil.rmtree(task_dir, ignore_errors=True)
             
             # 3. Completion Receipt (Local & S3)
-            from ..sharding import get_geo_shard, get_grid_tile_id
+            # Use model's own sharded path resolution
+            from ..geo_types import LatScale1, LonScale1
             from ..text_utils import slugify
             
-            lat_shard = get_geo_shard(task.latitude)
-            grid_id = get_grid_tile_id(task.latitude, task.longitude)
-            lat_tile, lon_tile = grid_id.split("_")
+            lat_t = LatScale1(task.latitude)
+            lon_t = LonScale1(task.longitude)
             phrase_slug = slugify(task.search_phrase)
             
             completion_data = {
@@ -732,11 +728,14 @@ class FilesystemGmListQueue(FilesystemQueue):
                 "search_phrase": task.search_phrase,
                 "latitude": task.latitude,
                 "longitude": task.longitude,
-                "result_count": task.result_count
+                "result_count": task.result_count,
+                "metadata": getattr(task, "metadata", {}) # Include audited metadata if present
             }
             
             # Local path
-            receipt_dir = self.queue_base / "completed" / "results" / lat_shard / lat_tile / lon_tile
+            from ..sharding import get_geo_shard
+            lat_shard = get_geo_shard(str(task.latitude))
+            receipt_dir = self.completed_dir / "results" / lat_shard / str(lat_t) / str(lon_t)
             receipt_dir.mkdir(parents=True, exist_ok=True)
             receipt_path = receipt_dir / f"{phrase_slug}.json"
             
@@ -747,7 +746,7 @@ class FilesystemGmListQueue(FilesystemQueue):
             if self.s3_client and self.bucket_name:
                 try:
                     s3_lease_key = self._get_s3_lease_key(task.ack_token)
-                    s3_completed_key = f"campaigns/{self.campaign_name}/queues/{self.queue_name}/completed/results/{lat_shard}/{lat_tile}/{lon_tile}/{phrase_slug}.json"
+                    s3_completed_key = f"campaigns/{self.campaign_name}/queues/{self.queue_name}/completed/results/{lat_shard}/{lat_t}/{lon_t}/{phrase_slug}.json"
                     
                     self.s3_client.put_object(
                         Bucket=self.bucket_name,
