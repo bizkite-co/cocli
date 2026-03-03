@@ -12,11 +12,12 @@ from cocli.core.text_utils import slugify
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
 
+
 class ScrapedArea(NamedTuple):
     """Represents a single entry in the scrape index."""
     phrase: str
     scrape_date: datetime
-    lat_min: float
+    lat_min: float # Note: Area bounds can stay float or use high-prec
     lat_max: float
     lon_min: float
     lon_max: float
@@ -108,12 +109,17 @@ class ScrapeIndex:
         try:
             # Robust split: handle tile_ids with attached phrases (lat_lon_phrase)
             parts = tile_id.split('_')
-            lat_str, lon_str = parts[0], parts[1]
-            
+            # FORCE 1-decimal precision for directory structure matching
+            lat_f = round(float(parts[0]), 1)
+            lon_f = round(float(parts[1]), 1)
+            lat_str, lon_str = f"{lat_f:.1f}", f"{lon_f:.1f}"
+
             # 1. Check Witness Index (Fast)
+
             # Check both .usv and .csv
             witness_path_usv = self.witness_dir / lat_str / lon_str / f"{phrase_slug}.usv"
             witness_path_csv = self.witness_dir / lat_str / lon_str / f"{phrase_slug}.csv"
+
             
             witness_path = witness_path_usv if witness_path_usv.exists() else (witness_path_csv if witness_path_csv.exists() else None)
             
@@ -121,15 +127,22 @@ class ScrapeIndex:
                 # Load minimal data from CSV/USV
                 try:
                     with open(witness_path, "r", encoding="utf-8") as f:
-                        from cocli.utils.usv_utils import USVDictReader
-                        from typing import Union
-                        reader: Union[USVDictReader, csv.DictReader[Any]]
                         if witness_path.suffix == ".usv":
-                            reader = USVDictReader(f)
+                            from cocli.utils.usv_utils import USVReader
+                            u_reader = USVReader(f)
+                            row = next(iter(u_reader))
+                            # Schema: 0: scrape_date, 1: items_found, 2: processed_by
+                            date_val = row[0]
+                            found_val = row[1] if len(row) > 1 else "0"
+                            worker_val = row[2] if len(row) > 2 else "unknown"
                         else:
-                            reader = csv.DictReader(f)
-                        row = next(reader)
-                    scrape_date = datetime.fromisoformat(row['scrape_date'])
+                            c_reader = csv.DictReader(f)
+                            row_dict = next(c_reader)
+                            date_val = row_dict['scrape_date']
+                            found_val = row_dict.get('items_found', '0')
+                            worker_val = row_dict.get('processed_by', 'unknown')
+
+                    scrape_date = datetime.fromisoformat(date_val.replace("Z", "+00:00"))
                     if scrape_date.tzinfo is None:
                         scrape_date = scrape_date.replace(tzinfo=UTC)
                         
@@ -146,9 +159,9 @@ class ScrapeIndex:
                         lat_min=lat-0.05, lat_max=lat+0.05,
                         lon_min=lon-0.05, lon_max=lon+0.05,
                         lat_miles=8.0, lon_miles=8.0,
-                        items_found=int(row.get('items_found', 0)),
+                        items_found=int(found_val),
                         tile_id=tile_id,
-                        processed_by=row.get('processed_by')
+                        processed_by=worker_val
                     )
                 except Exception:
                     pass
@@ -398,3 +411,41 @@ class ScrapeIndex:
                     phrases.update([f.stem for f in lon_dir.glob("*.usv")])
 
         return self.get_all_areas_for_phrases(list(phrases))
+
+    def generate_diagnostic_manifest(self, output_path: Path) -> int:
+        """
+        Crawls the witness index and produces a flat USV manifest for troubleshooting.
+        Schema: tile_id | phrase_slug | scrape_date | items_found | processed_by
+        """
+        from cocli.core.constants import UNIT_SEP
+        from cocli.utils.usv_utils import USVReader
+        
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        count = 0
+        
+        with open(output_path, 'w', encoding='utf-8') as f:
+            # Walk witness index: {lat}/{lon}/{phrase}.usv
+            for usv_path in self.witness_dir.rglob('*.usv'):
+                rel_parts = usv_path.relative_to(self.witness_dir).parts
+                if len(rel_parts) != 3:
+                    continue
+                
+                lat, lon, phrase_file = rel_parts
+                phrase_slug = phrase_file.replace('.usv', '')
+                tile_id = f"{lat}_{lon}"
+                
+                try:
+                    with open(usv_path, 'r', encoding='utf-8') as uf:
+                        reader = USVReader(uf)
+                        row = next(iter(reader))
+                        # Witness Schema: 0: scrape_date, 1: items_found, 2: processed_by
+                        date = row[0]
+                        found = row[1] if len(row) > 1 else "0"
+                        worker = row[2] if len(row) > 2 else "unknown"
+                        
+                        f.write(UNIT_SEP.join([tile_id, phrase_slug, date, found, worker]) + '\n')
+                        count += 1
+                except Exception:
+                    continue
+        
+        return count

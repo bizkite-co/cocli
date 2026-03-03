@@ -376,10 +376,12 @@ def queue_batch(
 
 @app.command(name="prepare-mission")
 def prepare_mission(
-    campaign_name: Optional[str] = typer.Argument(None),
+    campaign_name: Annotated[Optional[str], typer.Argument(help="The name of the campaign.")] = None,
+    ttl_days: int = typer.Option(30, "--ttl-days", help="Tiles scraped longer than this many days ago are considered stale and added to the frontier."),
+    debug: bool = typer.Option(False, "--debug", help="Enable diagnostic logging and generate scraped manifest."),
 ) -> None:
     """
-    Generates a deterministic master task list (mission.json) for the campaign.
+    Generates a deterministic master task list (mission.usv) and calculates the unscraped frontier.
     """
     if campaign_name is None:
         campaign_name = get_campaign()
@@ -405,11 +407,23 @@ def prepare_mission(
     # 2. Load Target Locations
     target_locations: List[Dict[str, Any]] = []
     if target_locations_csv:
-        csv_path = campaign_dir / target_locations_csv
-        if csv_path.exists():
-            with open(csv_path, 'r', encoding='utf-8') as f:
-                reader = csv.DictReader(f)
-                for row in reader:
+        # Search in campaign root OR resources/
+        path = campaign_dir / target_locations_csv
+        if not path.exists():
+            path = campaign_dir / "resources" / target_locations_csv
+            
+        if path.exists():
+            with open(path, 'r', encoding='utf-8') as f:
+                rows: List[Dict[str, Any]] = []
+                if path.suffix == ".usv":
+                    from ...utils.usv_utils import USVDictReader
+                    u_reader = USVDictReader(f)
+                    rows = list(u_reader)
+                else:
+                    c_reader = csv.DictReader(f)
+                    rows = list(c_reader)
+                    
+                for row in rows:
                     lat, lon = row.get("lat"), row.get("lon")
                     if lat and lon:
                         target_locations.append({
@@ -423,6 +437,7 @@ def prepare_mission(
     unique_tiles = get_campaign_grid_tiles(campaign_name, target_locations=target_locations)
 
     # 4. Build Deterministic Task List
+    from ...core.geo_types import LatScale6, LonScale6
     tasks = []
     for tile in unique_tiles:
         lat = tile.get("center_lat") or tile.get("center", {}).get("lat")
@@ -433,8 +448,8 @@ def prepare_mission(
                 tasks.append({
                     "tile_id": tile_id,
                     "search_phrase": phrase,
-                    "latitude": float(lat),
-                    "longitude": float(lon)
+                    "latitude": LatScale6(lat),
+                    "longitude": LonScale6(lon)
                 })
 
     # Sort by tile_id then phrase for stability
@@ -447,17 +462,55 @@ def prepare_mission(
     MissionTask.save_usv_with_datapackage(mission_tasks, mission_usv_path, "mission")
 
     # 5. Filter for Pending Tasks (The Frontier)
-    console.print("[bold]Filtering against ScrapeIndex to find the frontier...[/bold]")
+    console.print(f"[bold]Filtering against ScrapeIndex (TTL: {ttl_days} days) to find the frontier...[/bold]")
     scrape_index = ScrapeIndex()
+    
+    if debug:
+        temp_manifest = discovery_gen.path / "temp" / "scraped_manifest.usv"
+        count = scrape_index.generate_diagnostic_manifest(temp_manifest)
+        console.print(f"[dim]  Generated diagnostic manifest with {count} items at {temp_manifest}[/dim]")
+
     pending_tasks = []
     
+    match_count = 0
+    skipped_unproductive = 0
+    checked = 0
     for t in tasks:
-        if not scrape_index.is_tile_scraped(t["search_phrase"], t["tile_id"], ttl_days=30):
+        checked += 1
+        match = scrape_index.is_tile_scraped(t["search_phrase"], t["tile_id"], ttl_days=ttl_days)
+        
+        # If it's NOT a match (it's unscraped or stale), we might want it
+        if not match:
+            # But we must check if it was EVER scraped and found 0 items
+            forever_match = scrape_index.is_tile_scraped(t["search_phrase"], t["tile_id"], ttl_days=None)
+            if forever_match and forever_match.items_found == 0:
+                skipped_unproductive += 1
+                continue
+                
             # Double check with area bounds to be safe
             lat, lon = t["latitude"], t["longitude"]
             bounds = {"lat_min": lat-0.05, "lat_max": lat+0.05, "lon_min": lon-0.05, "lon_max": lon+0.05}
-            if not scrape_index.is_area_scraped(t["search_phrase"], bounds, overlap_threshold_percent=90.0):
+            area_match_res = scrape_index.is_area_scraped(t["search_phrase"], bounds, ttl_days=ttl_days, overlap_threshold_percent=90.0)
+            if area_match_res:
+                # Unproductive check for area matches
+                area_match, _ = area_match_res
+                if area_match.items_found == 0:
+                    skipped_unproductive += 1
+                    continue
+                match = area_match
+            
+            if not match:
                 pending_tasks.append(t)
+            else:
+                match_count += 1
+        else:
+            match_count += 1
+
+    console.print(f"[dim]  Checked {checked} tasks.[/dim]")
+    if match_count > 0:
+        console.print(f"[green]  Successfully identified {match_count} previously scraped tiles.[/green]")
+    if skipped_unproductive > 0:
+        console.print(f"[yellow]  Skipped {skipped_unproductive} previously unproductive tiles (0 results).[/yellow]")
 
     frontier_path = discovery_gen.pending / "frontier.usv"
     frontier_model_tasks = [MissionTask(**t) for t in pending_tasks]
@@ -501,17 +554,28 @@ def create_batch(
         raise typer.Exit(1)
 
     from ...models.campaigns.mission import MissionTask
+    from ...core.scrape_index import ScrapeIndex
+    scrape_index = ScrapeIndex()
     
-    tasks = []
+    tasks: List[MissionTask] = []
+    skipped_count = 0
     with open(frontier_path, "r", encoding="utf-8") as f:
-        for i, line in enumerate(f):
-            if i >= limit:
+        for line in f:
+            if len(tasks) >= limit:
                 break
             if line.strip():
                 try:
-                    tasks.append(MissionTask.from_usv(line))
+                    task = MissionTask.from_usv(line)
+                    match = scrape_index.is_tile_scraped(task.search_phrase, task.tile_id, ttl_days=30)
+                    if not match:
+                        tasks.append(task)
+                    else:
+                        skipped_count += 1
                 except Exception:
                     continue
+
+    if skipped_count > 0:
+        console.print(f"[dim]  Skipped {skipped_count} items that are already recent/valid in index.[/dim]")
 
     if not tasks:
         console.print("[yellow]No tasks found in frontier to batch.[/yellow]")
@@ -574,7 +638,7 @@ def build_mission_index(
         tile_id = task.tile_id
         phrase = task.search_phrase
         lat_str, lon_str = tile_id.split("_")
-        lat_shard = get_geo_shard(task.latitude)
+        lat_shard = get_geo_shard(float(task.latitude))
         
         # discovery-gen/completed/2/25.0/-79.9/phrase.usv
         tile_dir = target_index_dir / lat_shard / lat_str / lon_str

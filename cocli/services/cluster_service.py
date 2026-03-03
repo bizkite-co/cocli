@@ -228,21 +228,26 @@ class ClusterService:
             logger.info(f"  Pushing to {host}...")
             remote_path = f"~/repos/data/campaigns/{self.campaign_name}/"
             
-            # Use -rtz instead of -az to avoid permission/ownership issues on remote PIs
-            rsync_cmd = ["rsync", "-rtz"]
-            if delete:
-                rsync_cmd.append("--delete")
-            
-            rsync_cmd.extend([
-                "--exclude", "companies", 
-                str(local_campaign_dir) + "/", f"{user}@{host}:{remote_path}"
-            ])
-            
             try:
+                # 1. Ensure remote directory exists
+                subprocess.run(["ssh", f"{user}@{host}", f"mkdir -p {remote_path}"], check=True, capture_output=True, timeout=10)
+                
+                # 2. Sync queues (exclude companies and massive indexes)
+                # Use -rtz instead of -az to avoid permission/ownership issues on remote PIs
+                rsync_cmd = ["rsync", "-rtz"]
+                if delete:
+                    rsync_cmd.append("--delete")
+                
+                rsync_cmd.extend([
+                    "--exclude", "companies", 
+                    "--exclude", "indexes", # Skip massive index data for fast discovery propagation
+                    str(local_campaign_dir) + "/", f"{user}@{host}:{remote_path}"
+                ])
+                
                 # Add timeout to prevent hanging
                 subprocess.run(rsync_cmd, check=True, capture_output=True, text=True, timeout=60)
             except subprocess.TimeoutExpired:
-                logger.warning(f"Push to {host} timed out after 60s.")
+                logger.warning(f"Push to {host} timed out.")
             except Exception as e:
                 logger.warning(f"Could not push to {host}: {e}")
 

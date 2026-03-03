@@ -1,4 +1,5 @@
 from typing import Union
+from .geo_types import LatScale1, LonScale1
 
 def get_place_id_shard(place_id: str) -> str:
     """
@@ -41,14 +42,11 @@ def get_geo_shard(latitude: Union[float, str]) -> str:
 def get_grid_tile_id(latitude: float, longitude: float) -> str:
     """
     Returns a standardized 0.1-degree grid tile ID (southwest corner).
-    Example: (32.99, -117.99) -> "32.9_-118.0"
-    Note: Using math.floor / 10 to ensure we get the southwest corner correctly.
+    Strictly aligned to Scale 1 precision.
     """
-    import math
-    # tenth-of-a-degree precision
-    lat_tile = math.floor(latitude * 10) / 10.0
-    lon_tile = math.floor(longitude * 10) / 10.0
-    return f"{lat_tile:.1f}_{lon_tile:.1f}"
+    lat = LatScale1(latitude)
+    lon = LonScale1(longitude)
+    return f"{lat}_{lon}"
 
 # Legacy Alias
 def get_shard_id(identifier: str) -> str:
