@@ -420,20 +420,22 @@ class WorkerService:
         logger.info(f"Launching {len(worker_definitions)} orchestrated workers on {self.processed_by}...")
         
         # Start the Gossip Bridge for real-time cluster coordination
-        from ..core.gossip_bridge import bridge
+        from cocli.core.gossip_bridge import bridge
         if bridge:
             try:
                 bridge.start()
-                logger.info("Gossip Bridge started.")
+                logger.info(f"Gossip Bridge started on {self.processed_by} (Node: {bridge.node_id})")
             except Exception as e:
-                logger.warning(f"Gossip Bridge failed to start: {e}")
+                logger.error(f"Gossip Bridge failed to start: {e}", exc_info=True)
+        else:
+            logger.error("Gossip Bridge global 'bridge' not found during startup!")
 
         # 1. Heartbeat Task
         async def _heartbeat_loop() -> None:
             import os
             import psutil
-            from ..models.wal.record import HeartbeatDatagram
-            from ..core.gossip_bridge import bridge
+            from cocli.models.wal.record import HeartbeatDatagram
+            from cocli.core.gossip_bridge import bridge
             from datetime import datetime, UTC
             
             logger.info("Heartbeat loop started.")
@@ -456,7 +458,7 @@ class WorkerService:
                         bridge.broadcast_msg(msg)
                         logger.info(f"Heartbeat broadcasted (30s): Load {load:.2f}, Mem {mem:.1f}%")
                     else:
-                        logger.warning("Heartbeat loop: Bridge instance not found.")
+                        logger.error("Heartbeat loop: GossipBridge global 'bridge' is None!")
                 except Exception as e:
                     logger.error(f"Heartbeat loop error: {e}", exc_info=True)
                 await asyncio.sleep(30) # 30s interval
