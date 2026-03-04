@@ -412,6 +412,56 @@ class WorkerService:
                 if "Target page, context or browser has been closed" in str(e) or not connected:
                     break
 
+    async def _heartbeat_loop(self, worker_definitions: List[Any]) -> None:
+        """Background loop to broadcast system heartbeats via Gossip."""
+        import os
+        import psutil
+        from cocli.models.wal.record import HeartbeatDatagram
+        from cocli.core.gossip_bridge import bridge
+        from datetime import datetime, UTC
+        
+        logger.info(f"Heartbeat loop started on {self.processed_by}")
+        while True:
+            try:
+                if bridge:
+                    # Gather system stats
+                    load = os.getloadavg()[0] # 1-min load avg
+                    mem = psutil.virtual_memory().percent
+                    
+                    hb = HeartbeatDatagram(
+                        node_id=self.processed_by,
+                        timestamp=datetime.now(UTC).isoformat(),
+                        load_avg=load,
+                        memory_percent=mem,
+                        worker_count=len(worker_definitions),
+                        active_tasks=0
+                    )
+                    bridge.broadcast_msg(hb.to_usv())
+                    logger.info(f"Heartbeat broadcasted (30s): Load {load:.2f}, Mem {mem:.1f}%")
+                else:
+                    logger.error("Heartbeat loop: GossipBridge global 'bridge' is None!")
+            except Exception as e:
+                logger.error(f"Heartbeat loop error: {e}", exc_info=True)
+            await asyncio.sleep(30) # 30s interval
+
+    async def _config_watcher(self) -> None:
+        """Background loop to detect and apply remote configuration updates."""
+        from cocli.core.paths import paths
+        update_dir = paths.root / "remote_updates"
+        logger.info(f"Config watcher started on {self.processed_by}")
+        while True:
+            try:
+                if update_dir.exists():
+                    updates = list(update_dir.glob("config_*.json"))
+                    if updates:
+                        logger.info("[bold yellow]REMOTE CONFIG UPDATE DETECTED![/bold yellow]")
+                        # Consume updates for now
+                        for u in updates:
+                            u.unlink()
+            except Exception as e:
+                logger.debug(f"Config watcher error: {e}")
+            await asyncio.sleep(5)
+
     async def run_orchestrated_workers(self, worker_definitions: List[Any], headless: bool = True, debug: bool = False) -> None:
         """
         Launches and manages multiple named worker instances as defined in the orchestration config.
@@ -430,62 +480,10 @@ class WorkerService:
         else:
             logger.error("Gossip Bridge global 'bridge' not found during startup!")
 
-        # 1. Heartbeat Task
-        async def _heartbeat_loop() -> None:
-            import os
-            import psutil
-            from cocli.models.wal.record import HeartbeatDatagram
-            from cocli.core.gossip_bridge import bridge
-            from datetime import datetime, UTC
-            
-            logger.info("Heartbeat loop started.")
-            while True:
-                try:
-                    if bridge:
-                        # Gather system stats
-                        load = os.getloadavg()[0] # 1-min load avg
-                        mem = psutil.virtual_memory().percent
-                        
-                        hb = HeartbeatDatagram(
-                            node_id=self.processed_by,
-                            timestamp=datetime.now(UTC).isoformat(),
-                            load_avg=load,
-                            memory_percent=mem,
-                            worker_count=len(worker_definitions),
-                            active_tasks=0
-                        )
-                        msg = hb.to_usv()
-                        bridge.broadcast_msg(msg)
-                        logger.info(f"Heartbeat broadcasted (30s): Load {load:.2f}, Mem {mem:.1f}%")
-                    else:
-                        logger.error("Heartbeat loop: GossipBridge global 'bridge' is None!")
-                except Exception as e:
-                    logger.error(f"Heartbeat loop error: {e}", exc_info=True)
-                await asyncio.sleep(30) # 30s interval
-
-        # 2. Config Watcher (Hot-Reload)
-        async def _config_watcher() -> None:
-            from ..core.paths import paths
-            update_dir = paths.root / "remote_updates"
-            logger.info("Config watcher started.")
-            while True:
-                try:
-                    if update_dir.exists():
-                        updates = list(update_dir.glob("config_*.json"))
-                        if updates:
-                            logger.info("[bold yellow]REMOTE CONFIG UPDATE DETECTED![/bold yellow]")
-                            # TO IMPLEMENT: Process restart logic
-                            # For now, just log it. Real restart requires canceling all tasks and re-running orchestration.
-                            for u in updates:
-                                u.unlink() # Consume updates
-                except Exception as e:
-                    logger.debug(f"Config watcher error: {e}")
-                await asyncio.sleep(5)
-
         # Prepare background tasks
         bg_tasks = []
-        bg_tasks.append(asyncio.create_task(_heartbeat_loop()))
-        bg_tasks.append(asyncio.create_task(_config_watcher()))
+        bg_tasks.append(asyncio.create_task(self._heartbeat_loop(worker_definitions)))
+        bg_tasks.append(asyncio.create_task(self._config_watcher()))
 
         worker_tasks = []
         for wd in worker_definitions:
