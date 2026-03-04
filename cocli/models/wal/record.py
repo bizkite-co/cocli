@@ -55,3 +55,55 @@ class QueueDatagram(BaseModel):
             )
         except (IndexError, ValueError):
             return None
+
+class HeartbeatDatagram(BaseModel):
+    node_id: str
+    timestamp: str
+    load_avg: float
+    memory_percent: float
+    worker_count: int
+    active_tasks: int
+
+    def to_usv(self) -> str:
+        parts = ["H", self.node_id, self.timestamp, str(self.load_avg), str(self.memory_percent), str(self.worker_count), str(self.active_tasks)]
+        return US.join(parts) + RS
+
+    @classmethod
+    def from_usv(cls, usv_record: str) -> Optional["HeartbeatDatagram"]:
+        parts = usv_record.rstrip(RS).split(US)
+        if not parts or parts[0] != "H":
+            return None
+        try:
+            return cls(
+                node_id=parts[1],
+                timestamp=parts[2],
+                load_avg=float(parts[3]),
+                memory_percent=float(parts[4]),
+                worker_count=int(parts[5]),
+                active_tasks=int(parts[6])
+            )
+        except (IndexError, ValueError):
+            return None
+
+class ConfigDatagram(BaseModel):
+    node_id: str  # Target node (or '*' for all)
+    timestamp: str
+    config_json: str # Serialized worker configuration
+
+    def to_usv(self) -> str:
+        parts = ["C", self.node_id, self.timestamp, self.config_json]
+        return US.join(parts) + RS
+
+    @classmethod
+    def from_usv(cls, usv_record: str) -> Optional["ConfigDatagram"]:
+        parts = usv_record.rstrip(RS).split(US)
+        if not parts or parts[0] != "C":
+            return None
+        try:
+            return cls(
+                node_id=parts[1],
+                timestamp=parts[2],
+                config_json=parts[3]
+            )
+        except (IndexError, ValueError):
+            return None

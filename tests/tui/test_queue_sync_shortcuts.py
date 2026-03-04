@@ -20,9 +20,8 @@ async def test_queue_sync_shortcuts(mocker):
         
         # Wait for the ApplicationView and nav list to appear
         nav_list = await wait_for_widget(pilot, ListView, "#app_nav_list")
-        nav_list.index = 3 # Queues
+        nav_list.index = 4 # Queues is now index 4 (Campaigns, Cluster, Status, Indexes, Queues)
         await pilot.press("enter")
-        
         # Wait for queues view
         queue_list = await wait_for_widget(pilot, QueueSelection, "#app_queue_list")
         queue_list.index = 0

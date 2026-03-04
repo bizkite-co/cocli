@@ -12,6 +12,7 @@ from rich.panel import Panel
 from .campaign_selection import CampaignSelection
 from .campaign_detail import CampaignDetail
 from .status_view import StatusView
+from .cluster_view import ClusterView
 from .log_viewer import LogViewerModal, capture_logs
 from cocli.models.campaigns.campaign import Campaign
 
@@ -49,6 +50,7 @@ class ApplicationView(Container):
                     yield Label("[bold]Application[/bold]", classes="sidebar-title")
                     yield ListView(
                         ListItem(Label("Campaigns"), id="nav_campaigns"),
+                        ListItem(Label("Cluster Dashboard"), id="nav_cluster"),
                         ListItem(Label("Environment Status"), id="nav_status"),
                         ListItem(Label("Indexes"), id="nav_indexes"),
                         ListItem(Label("Queues"), id="nav_queues"),
@@ -148,6 +150,9 @@ class ApplicationView(Container):
                 # Status View
                 yield StatusView(id="status_view_root", classes="category-content-root")
 
+                # Cluster View
+                yield ClusterView(id="cluster_view_root", classes="category-content-root")
+
             # Right sidebar for Recent Operations
             with Vertical(id="app_recent_runs"):
                 yield Label("[bold]Recent Runs[/bold]", classes="sidebar-title")
@@ -178,6 +183,8 @@ class ApplicationView(Container):
             self.query_one("#app_queue_list", ListView).focus()
         elif self.active_category == "status":
             self.query_one("#status_view_root", StatusView).focus()
+        elif self.active_category == "cluster":
+            self.query_one("#cluster_view_root", ClusterView).focus()
 
     def on_key(self, event: events.Key) -> None:
         """Handle sidebar navigation keys."""
@@ -239,6 +246,9 @@ class ApplicationView(Container):
         elif event.item.id == "nav_status":
             self.show_category("status")
             self.query_one("#status_view_root", StatusView).focus()
+        elif event.item.id == "nav_cluster":
+            self.show_category("cluster")
+            self.query_one("#cluster_view_root", ClusterView).focus()
         elif event.item.id == "nav_indexes":
             self.show_category("indexes")
             self.query_one("#app_index_list", ListView).focus()
@@ -269,12 +279,13 @@ class ApplicationView(Container):
         campaign_list.display = (category == "campaigns")
         queue_list.display = (category == "queues")
         index_list.display = (category == "indexes")
-        self.query_one("#app_sub_nav_container").display = (category != "status")
+        self.query_one("#app_sub_nav_container").display = (category not in ["status", "cluster"])
 
         # Toggle Content Visibility
         self.query_one("#ops_detail_root").display = (category == "operations")
         self.query_one("#campaign_detail_root").display = (category == "campaigns")
         self.query_one("#status_view_root").display = (category == "status")
+        self.query_one("#cluster_view_root").display = (category == "cluster")
         self.query_one("#queue_detail_root").display = (category == "queues")
         self.query_one("#index_detail_root").display = (category == "indexes")
 
@@ -282,6 +293,8 @@ class ApplicationView(Container):
             title_label.update("[bold]Campaigns[/bold]")
         elif category == "status":
             title_label.update("[bold]Environment[/bold]")
+        elif category == "cluster":
+            title_label.update("[bold]Cluster[/bold]")
         elif category == "indexes":
             title_label.update("[bold]Indexes[/bold]")
             try:

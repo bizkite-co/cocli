@@ -28,7 +28,7 @@ async def test_application_sidebar_stacking():
         assert campaign_list.styles.display != "none"
         
         # 2. Test Operations
-        nav_list.index = 4 # Operations is now index 4
+        nav_list.index = 5 # Operations is now index 5
         nav_list.action_select_cursor()
         await driver.pause(0.2)
         
@@ -39,7 +39,7 @@ async def test_application_sidebar_stacking():
         assert campaign_list.styles.display == "none"
 
         # 3. Test Status
-        nav_list.index = 1
+        nav_list.index = 2 # Status is now index 2 (Campaigns, Cluster, Status)
         nav_list.action_select_cursor()
         await driver.pause(0.2)
         

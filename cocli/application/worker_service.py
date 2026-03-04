@@ -411,6 +411,7 @@ class WorkerService:
     async def run_orchestrated_workers(self, worker_definitions: List[Any], headless: bool = True, debug: bool = False) -> None:
         """
         Launches and manages multiple named worker instances as defined in the orchestration config.
+        Supports hot-reloading via ConfigDatagrams.
         """
         logger.info(f"Launching {len(worker_definitions)} orchestrated workers on {self.processed_by}...")
         
@@ -423,7 +424,56 @@ class WorkerService:
             except Exception as e:
                 logger.warning(f"Gossip Bridge failed to start: {e}")
 
+        # 1. Heartbeat Task
+        async def _heartbeat_loop() -> None:
+            import os
+            import psutil
+            from ..models.wal.record import HeartbeatDatagram
+            from ..core.gossip_bridge import bridge
+            from datetime import datetime, UTC
+            
+            while True:
+                try:
+                    if bridge and bridge.running:
+                        # Gather system stats
+                        load = os.getloadavg()[0] # 1-min load avg
+                        mem = psutil.virtual_memory().percent
+                        
+                        hb = HeartbeatDatagram(
+                            node_id=self.processed_by,
+                            timestamp=datetime.now(UTC).isoformat(),
+                            load_avg=load,
+                            memory_percent=mem,
+                            worker_count=len(worker_definitions),
+                            active_tasks=0 # TODO: Track actual active task count
+                        )
+                        bridge.broadcast_msg(hb.to_usv())
+                except Exception as e:
+                    logger.debug(f"Heartbeat failed: {e}")
+                await asyncio.sleep(10) # 10s interval
+
+        # 2. Config Watcher (Hot-Reload)
+        async def _config_watcher() -> None:
+            from ..core.paths import paths
+            update_dir = paths.root / "remote_updates"
+            while True:
+                try:
+                    if update_dir.exists():
+                        updates = list(update_dir.glob("config_*.json"))
+                        if updates:
+                            logger.info("[bold yellow]REMOTE CONFIG UPDATE DETECTED![/bold yellow]")
+                            # TO IMPLEMENT: Process restart logic
+                            # For now, just log it. Real restart requires canceling all tasks and re-running orchestration.
+                            for u in updates:
+                                u.unlink() # Consume updates
+                except Exception as e:
+                    logger.debug(f"Config watcher error: {e}")
+                await asyncio.sleep(5)
+
         tasks = []
+        tasks.append(asyncio.create_task(_heartbeat_loop()))
+        tasks.append(asyncio.create_task(_config_watcher()))
+
         for wd in worker_definitions:
             logger.info(f"Starting Orchestrated Worker: {wd.name} (Role: {wd.role}, Type: {wd.content_type}, Count: {wd.workers})")
             

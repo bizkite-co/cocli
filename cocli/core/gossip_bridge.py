@@ -10,7 +10,7 @@ from watchdog.observers import Observer
 from watchdog.events import FileSystemEventHandler
 
 from .wal import get_node_id
-from ..models.wal.record import DatagramRecord, RS, QueueDatagram
+from ..models.wal.record import DatagramRecord, RS, QueueDatagram, HeartbeatDatagram, ConfigDatagram
 from .paths import paths
 
 logger = logging.getLogger(__name__)
@@ -67,6 +67,9 @@ class GossipBridge:
         self.sock: Optional[socket.socket] = None
         self.observer = Observer()
         self.handler = WalEventHandler(self)
+        
+        # Real-time cluster status
+        self.heartbeats: Dict[str, Dict[str, Any]] = {}
 
     def broadcast_file(self, wal_path: Path) -> None:
         """Reads new records from a WAL file and sends them to all known peers via Unicast."""
@@ -165,7 +168,37 @@ class GossipBridge:
                         }, f)
                 return
 
-            # 2. Handle standard WAL Records
+            # 2. Handle Heartbeats
+            if msg.startswith("H"):
+                h_record = HeartbeatDatagram.from_usv(msg)
+                if not h_record or h_record.node_id == self.node_id:
+                    return
+                
+                # Update in-memory status
+                self.heartbeats[h_record.node_id] = h_record.model_dump()
+                logger.debug(f"Heartbeat from {h_record.node_id}: Load {h_record.load_avg}")
+                return
+
+            # 3. Handle Configuration Updates
+            if msg.startswith("C"):
+                c_record = ConfigDatagram.from_usv(msg)
+                if not c_record:
+                    return
+                
+                # Ignore if not for us (and not a broadcast)
+                if c_record.node_id != self.node_id and c_record.node_id != "*":
+                    return
+                
+                logger.info("Received remote config update from gossip.")
+                
+                # Save update to a dedicated location for WorkerService to pick up
+                update_path = paths.root / "remote_updates" / f"config_{int(time.time())}.json"
+                update_path.parent.mkdir(parents=True, exist_ok=True)
+                with open(update_path, "w") as f:
+                    f.write(c_record.config_json)
+                return
+
+            # 4. Handle standard WAL Records
             record = DatagramRecord.from_usv(msg)
             if record.node_id == self.node_id:
                 return # Ignore self
