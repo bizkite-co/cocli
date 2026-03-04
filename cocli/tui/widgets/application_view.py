@@ -1,4 +1,4 @@
-from typing import Any, TYPE_CHECKING, cast, List
+from typing import Any, TYPE_CHECKING, cast, List, Dict
 import logging
 from datetime import datetime
 from textual.app import ComposeResult
@@ -102,6 +102,7 @@ class ApplicationView(Container):
                         ListItem(Label("Push Local Queue"), id="op_push_queue"),
                         ListItem(Label("Audit Integrity"), id="op_audit_integrity"),
                         ListItem(Label("Audit Queue"), id="op_audit_queue"),
+                        ListItem(Label("Rollout Discovery Batch"), id="op_rollout_discovery"),
                         ListItem(Label("Cluster Path Check"), id="op_path_check"),
                         id="ops_list",
                         classes="sub-sidebar-list"
@@ -123,6 +124,9 @@ class ApplicationView(Container):
                     # Area for dynamic parameters (e.g. limit)
                     with Vertical(id="op_params_area"):
                         yield Label("Operation Parameters:", id="op_params_title")
+                        with Horizontal(id="op_name_container"):
+                            yield Label("Batch Name:", id="op_name_label")
+                            yield Input(placeholder="rollout_1", id="op_name_input", value="rollout_1")
                         with Horizontal(id="op_limit_container"):
                             yield Label("Limit (Target Amount):", id="op_limit_label")
                             yield Input(placeholder="20", id="op_limit_input", value="20")
@@ -353,7 +357,9 @@ class ApplicationView(Container):
             
             # Parameter visibility
             params_area = self.query_one("#op_params_area", Vertical)
-            params_area.display = (op_id == "op_compile_to_call")
+            params_area.display = (op_id in ["op_compile_to_call", "op_rollout_discovery"])
+            self.query_one("#op_name_container").display = (op_id == "op_rollout_discovery")
+            self.query_one("#op_limit_container").display = (op_id in ["op_compile_to_call", "op_rollout_discovery"])
 
             if op.source_path:
                 meta_table.add_row("Source", f"[bold yellow]{op.source_path.format(campaign=campaign)}[/]")
@@ -486,13 +492,20 @@ class ApplicationView(Container):
             return
 
         # Extract parameters from UI
-        params = {}
+        params: Dict[str, Any] = {}
         if op_id == "op_compile_to_call":
             try:
                 limit_str = self.query_one("#op_limit_input", Input).value
                 params["limit"] = int(limit_str) if limit_str.strip() else 20
             except ValueError:
                 params["limit"] = 20
+        elif op_id == "op_rollout_discovery":
+            try:
+                params["batch_name"] = self.query_one("#op_name_input", Input).value
+                limit_str = self.query_one("#op_limit_input", Input).value
+                params["limit"] = int(limit_str) if limit_str.strip() else 50
+            except ValueError:
+                params["limit"] = 50
 
         def step_callback(step_name: str, status: str) -> None:
             # Refresh Index detail if we are looking at it

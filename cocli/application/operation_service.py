@@ -160,6 +160,16 @@ class OperationService:
                     OperationStep("cluster_propagate", "Propagate the sanitized state to all cluster nodes.")
                 ]
             ),
+            "op_rollout_discovery": OperationMetadata(
+                "op_rollout_discovery", "Discovery Batch Rollout",
+                "Full discovery rollout: 1. Create named batch. 2. Build mission index. 3. Propagate tasks to cluster.",
+                "maintenance",
+                steps=[
+                    OperationStep("create_batch", "Extract fresh tasks from the frontier USV."),
+                    OperationStep("build_index", "Activate tasks into the discovery-gen completed pool."),
+                    OperationStep("cluster_push", "Propagate active tasks to all cluster PIs.")
+                ]
+            ),
         }
 
     def get_details(self, op_id: str) -> Optional[OperationMetadata]:
@@ -509,6 +519,88 @@ class OperationService:
                     
                     return {"status": "success"}
                 result = await run_sanitization()
+            elif op_id == "op_rollout_discovery":
+                async def run_rollout() -> Dict[str, Any]:
+                    batch_name = params.get("batch_name", f"rollout_{int(time.time())}")
+                    limit = int(params.get("limit", 50))
+                    
+                    log_step("create_batch", "pending", f"Creating batch '{batch_name}' (Limit: {limit})...")
+                    # We wrap the typer command or its internal logic
+                    # To keep it simple, we use the command's implementation pattern
+                    from ..models.campaigns.mission import MissionTask
+                    from ..core.scrape_index import ScrapeIndex
+                    from ..core.paths import paths
+                    import toml
+                    
+                    campaign_dir = paths.campaign(self.campaign_name).path
+                    dg = paths.campaign(self.campaign_name).queue("discovery-gen", ensure=True)
+                    frontier_path = dg.pending / "frontier.usv"
+                    batch_dir = dg.pending / "batches"
+                    batch_path = batch_dir / f"{batch_name}.usv"
+                    state_path = campaign_dir / "mission_state.toml"
+                    
+                    scrape_index = ScrapeIndex()
+                    current_offset = 0
+                    if state_path.exists():
+                        state = toml.load(state_path)
+                        current_offset = state.get("last_offset", 0)
+                    
+                    tasks: List[MissionTask] = []
+                    skipped_count = 0
+                    
+                    with open(frontier_path, "r", encoding="utf-8") as f:
+                        for i, line in enumerate(f):
+                            if i < current_offset:
+                                continue
+                            if len(tasks) >= limit:
+                                break
+                            if line.strip():
+                                try:
+                                    task = MissionTask.from_usv(line)
+                                    if not scrape_index.is_tile_scraped(task.search_phrase, task.tile_id, ttl_days=30):
+                                        tasks.append(task)
+                                    else:
+                                        skipped_count += 1
+                                except Exception:
+                                    continue
+                    
+                    if not tasks:
+                        log_step("create_batch", "error", "No new tasks found in frontier.")
+                        return {"status": "error"}
+                    
+                    MissionTask.save_usv_with_datapackage(tasks, batch_path, batch_name)
+                    new_offset = current_offset + len(tasks) + skipped_count
+                    with open(state_path, "w") as f:
+                        toml.dump({"last_offset": new_offset}, f)
+                    
+                    log_step("create_batch", "success", f"Created {len(tasks)} tasks (Offset: {new_offset})")
+
+                    log_step("build_index", "pending", "Activating tasks into mission index...")
+                    # Assuming we extracted the logic from the command
+                    # For now, we manually iterate
+                    target_dir = dg.completed
+                    target_dir.mkdir(parents=True, exist_ok=True)
+                    from ..core.sharding import get_geo_shard
+                    for task in tasks:
+                        shard = get_geo_shard(float(task.latitude))
+                        dest_dir = target_dir / shard / str(task.latitude) / str(task.longitude)
+                        dest_dir.mkdir(parents=True, exist_ok=True)
+                        from cocli.core.text_utils import slugify
+                        phrase_slug = slugify(task.search_phrase)
+                        task.save_usv(dest_dir / f"{phrase_slug}.usv")
+                    
+                    log_step("build_index", "success")
+
+                    log_step("cluster_push", "pending", "Pushing tasks to PI cluster...")
+                    from ..services.cluster_service import ClusterService
+                    cluster = ClusterService(self.campaign_name)
+                    await cluster.push_data(delete=True)
+                    log_step("cluster_push", "success")
+                    
+                    return {"status": "success", "batch": batch_name, "tasks": len(tasks)}
+                
+                import time
+                result = await run_rollout()
             elif "op_scale_" in op_id:
                 count = int(op_id.replace("op_scale_", ""))
                 result = await asyncio.to_thread(self.services.deployment_service.scale_service, count)

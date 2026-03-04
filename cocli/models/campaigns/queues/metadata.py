@@ -4,6 +4,7 @@ from .gm_list import ScrapeTask
 from .gm_details import GmItemTask
 from .enrichment import EnrichmentTask
 from .to_call import ToCallTask
+from ..mission import MissionTask
 from ....core.ordinant import QueueName
 
 class PropertyInfo(BaseModel):
@@ -24,6 +25,28 @@ class QueueMetadata(BaseModel):
     sharding_strategy: str
 
 QUEUES_METADATA: Dict[QueueName, QueueMetadata] = {
+    "discovery-gen": QueueMetadata(
+        name="discovery-gen",
+        label="Mission Control",
+        description="Generates the master grid of search tiles from campaign config. Acts as the source for all prospecting missions.",
+        model_class=MissionTask,
+        from_model_name="CampaignConfig",
+        to_model_name="MissionTask",
+        from_models=["CampaignConfig"],
+        to_models=["gm-list"],
+        from_property_map={
+            "target_locations": PropertyInfo(type="str", desc="Path to the list of center-point coordinates."),
+            "queries": PropertyInfo(type="list[str]", desc="Phrases to search for at each tile."),
+            "proximity": PropertyInfo(type="float", desc="Search radius in miles."),
+        },
+        to_property_map={
+            "tile_id": PropertyInfo(type="str", desc="Unique grid tile identifier."),
+            "search_phrase": PropertyInfo(type="str", desc="Specific phrase for this mission task."),
+            "latitude": PropertyInfo(type="float", desc="Precise search latitude."),
+            "longitude": PropertyInfo(type="float", desc="Precise search longitude.")
+        },
+        sharding_strategy="latitude (Scale 1 prefix)"
+    ),
     "gm-list": QueueMetadata(
         name="gm-list",
         label="Google Maps Search",

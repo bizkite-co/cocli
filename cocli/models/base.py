@@ -142,3 +142,9 @@ class BaseUsvModel(BaseModel):
         # Save datapackage.json in the same directory
         res_name = resource_name or output_path.stem
         cls.save_datapackage(output_path.parent, res_name, output_path.name)
+
+    def save_usv(self, path: Path) -> None:
+        """Saves this single instance as a USV record to the specified path."""
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with open(path, "w", encoding="utf-8") as f:
+            f.write(self.to_usv())
