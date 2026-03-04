@@ -146,8 +146,11 @@ class GossipBridge:
                     return
                 
                 # Write marker to local filesystem
-                q_dir = paths.campaign(campaign).queue(q_record.queue_name).path
-                dest = q_dir / q_record.status / f"{q_record.task_id}.json"
+                queue = paths.campaign(campaign).queue(q_record.queue_name)
+                if q_record.status == "completed":
+                    dest = queue.completed / "results" / f"{q_record.task_id}.json"
+                else:
+                    dest = queue.path / q_record.status / f"{q_record.task_id}.json"
                 
                 if not dest.exists():
                     dest.parent.mkdir(parents=True, exist_ok=True)

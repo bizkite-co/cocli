@@ -57,6 +57,22 @@ def sync_audit(
     service = ClusterService(effective_campaign)
     asyncio.run(service.sync_and_audit())
 
+@app.command(name="gossip-audit")
+def gossip_audit(
+    target: Optional[str] = typer.Option(None, "--target", "-t", help="Optional IP to send a test datagram to."),
+) -> None:
+    """
+    Diagnostic tool for the cluster Gossip Bridge.
+    Checks for received markers and optionally sends a test ping.
+    """
+    from ..utils.gossip_audit import audit_gossip, send_test_gossip
+    
+    if target:
+        send_test_gossip(target)
+    else:
+        # Note: audit_gossip has a hardcoded 30s listen if port is free
+        audit_gossip()
+
 @app.command(name="push-data")
 def push_data(
     campaign: Optional[str] = typer.Option(None, "--campaign", "-c", help="Campaign name."),
