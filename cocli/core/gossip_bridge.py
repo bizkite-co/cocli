@@ -134,6 +134,7 @@ class GossipBridge:
                 self.sock.settimeout(1.0)
                 data, addr = self.sock.recvfrom(65535)
                 msg = data.decode('utf-8')
+                logger.info(f"RAW GOSSIP RECEIVED from {addr}: {msg[:50]}...")
                 self.handle_gossip(msg, addr)
 
             except socket.timeout:
