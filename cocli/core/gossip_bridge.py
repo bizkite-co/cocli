@@ -98,8 +98,17 @@ class GossipBridge:
             if not records:
                 return
 
-            for msg in records:
+            # Rate Limit: Only send up to 50 records per file per cycle
+            # This prevents flooding during large backfills
+            send_limit = 50
+            for msg in records[:send_limit]:
                 self.broadcast_msg(msg)
+            
+            if len(records) > send_limit:
+                logger.debug(f"Rate limited {wal_path}: sent {send_limit}/{len(records)} records")
+                # Adjust offset to only what we actually sent to process rest next cycle
+                actual_sent_len = sum(len(r) for r in records[:send_limit])
+                self._sent_offsets[str(wal_path)] = offset + actual_sent_len
         except Exception as e:
             logger.error(f"Error broadcasting {wal_path}: {e}")
 
