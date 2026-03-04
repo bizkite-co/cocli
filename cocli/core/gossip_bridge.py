@@ -63,20 +63,48 @@ class GossipBridge:
         self.browser: Optional[ServiceBrowser] = None
         self.peers: Dict[str, str] = {} # node_id -> ip_address
         self.running = False
-        self._sent_offsets: Dict[str, int] = {} # track how much of each file we've sent
         self.sock: Optional[socket.socket] = None
         self.observer = Observer()
         self.handler = WalEventHandler(self)
         
+        # Persistent offsets to survive restarts
+        self.offset_file = self.wal_dir / ".gossip_offsets.json"
+        self._sent_offsets: Dict[str, int] = self._load_offsets()
+        
         # Real-time cluster status
         self.heartbeats: Dict[str, Dict[str, Any]] = {}
+
+    def _load_offsets(self) -> Dict[str, int]:
+        if self.offset_file.exists():
+            try:
+                import json
+                with open(self.offset_file, "r") as f:
+                    from typing import cast
+                    return cast(Dict[str, int], json.load(f))
+            except Exception:
+                pass
+        return {}
+
+    def _save_offsets(self) -> None:
+        try:
+            import json
+            with open(self.offset_file, "w") as f:
+                json.dump(self._sent_offsets, f)
+        except Exception:
+            pass
 
     def broadcast_file(self, wal_path: Path) -> None:
         """Reads new records from a WAL file and sends them to all known peers via Unicast."""
         if not self.sock or not self.peers:
             return
         
-        # Don't broadcast remote files we received from others (infinite loop prevention)
+        # 1. Freshness Check: Only gossip today's journals
+        from datetime import datetime
+        today_prefix = datetime.now().strftime("%Y%m%d")
+        if not wal_path.name.startswith(today_prefix):
+            return
+
+        # 2. Loop Prevention: Don't broadcast remote files
         if wal_path.name.startswith("remote_"):
             return
 
@@ -91,24 +119,28 @@ class GossipBridge:
                 f.seek(offset)
                 new_data = f.read()
                 
-            self._sent_offsets[str(wal_path)] = file_size
-            
             # Split into individual records
             records = [r + RS for r in new_data.split(RS) if r.strip()]
             if not records:
+                # Update offset even if no records to avoid re-reading empty space
+                self._sent_offsets[str(wal_path)] = file_size
                 return
 
-            # Rate Limit: Only send up to 50 records per file per cycle
-            # This prevents flooding during large backfills
+            # Rate Limit: Only send up to 50 records per cycle
             send_limit = 50
+            sent_count = 0
+            bytes_sent = 0
             for msg in records[:send_limit]:
                 self.broadcast_msg(msg)
+                sent_count += 1
+                bytes_sent += len(msg)
+            
+            # Update offset precisely based on how many records we actually sent
+            self._sent_offsets[str(wal_path)] = offset + bytes_sent
+            self._save_offsets()
             
             if len(records) > send_limit:
                 logger.debug(f"Rate limited {wal_path}: sent {send_limit}/{len(records)} records")
-                # Adjust offset to only what we actually sent to process rest next cycle
-                actual_sent_len = sum(len(r) for r in records[:send_limit])
-                self._sent_offsets[str(wal_path)] = offset + actual_sent_len
         except Exception as e:
             logger.error(f"Error broadcasting {wal_path}: {e}")
 
@@ -252,106 +284,49 @@ class GossipBridge:
 
         self.running = True
         
-        # Start Gossip Listener
+        # 1. Discover Peers from Config
+        self.discover_peers()
+
+        # 2. Send immediate 'hello' heartbeat to announce ourselves to all peers
+        try:
+            from datetime import datetime, UTC
+            from ..models.wal.record import HeartbeatDatagram
+            hello = HeartbeatDatagram(
+                node_id=self.node_id,
+                timestamp=datetime.now(UTC).isoformat(),
+                load_avg=0.0,
+                memory_percent=0.0,
+                worker_count=0,
+                active_tasks=0
+            )
+            self.broadcast_msg(hello.to_usv())
+            logger.info("Proactive 'hello' heartbeat broadcasted to announce node.")
+        except Exception as e:
+            logger.debug(f"Proactive hello skipped: {e}")
+
+        # 3. Start Gossip Listener
         self.listener_thread = threading.Thread(target=self._listen_loop, daemon=True)
         self.listener_thread.start()
         
-        # Start File Observer on the centralized WAL directory
+        # 4. Start File Observer on the centralized WAL directory
         if self.wal_dir.exists():
             try:
                 self.observer.schedule(self.handler, str(self.wal_dir), recursive=False)
                 self.observer.start()
                 
-                # Background WAL Scanner for the root directory (very fast now)
-                def _scan_wal_loop() -> None:
-                    while self.running:
-                        try:
-                            # Only scan files in the root wal_dir
-                            for wal_file in self.wal_dir.glob("*.usv"):
-                                self.broadcast_file(wal_file)
-                        except Exception as e:
-                            logger.error(f"WAL scanner error: {e}")
-                        time.sleep(30) # Scan every 30 seconds
-                
-                self.scanner_thread = threading.Thread(target=_scan_wal_loop, daemon=True)
-                self.scanner_thread.start()
-
+                # One-time startup catch-up for today's journals
+                from datetime import datetime
+                today_prefix = datetime.now().strftime("%Y%m%d")
+                logger.info(f"Startup catch-up: Scanning for today's journals ({today_prefix}*)...")
+                for wal_file in self.wal_dir.glob(f"{today_prefix}*.usv"):
+                    self.broadcast_file(wal_file)
                 
             except Exception as e:
                 logger.error(f"Gossip Bridge failed to start observer: {e}")
-        
-        # Static Peer Discovery from Config (Robust Fallback)
-        try:
-            from .config import load_campaign_config, get_campaign
-            
-            # HARDCODED CLUSTER DEFAULTS (The ultimate fallback)
-            for ip in ["10.0.0.12", "10.0.0.17", "10.0.0.16", "10.0.0.200"]:
-                self.peers[f"hardcoded_{ip.split('.')[-1]}"] = ip
-
-            campaign_name = os.getenv("CAMPAIGN_NAME") or get_campaign()
-            if campaign_name:
-                config = load_campaign_config(campaign_name)
-                scaling = config.get("prospecting", {}).get("scaling", {})
-                for host_key in scaling.keys():
-                    if host_key == "fargate" or host_key == self.node_id:
-                        continue
-                    
-                    # Resolve IP
-                    # Try a few common ways to resolve
-                    if host_key == "laptop":
-                        peer_ips = ["10.0.0.4"]
-                    else:
-                        peer_ips = []
-                        for suffix in [".pi", ".local", ""]:
-                            peer_host = host_key + suffix
-                            try:
-                                ip = socket.gethostbyname(peer_host)
-                                if ip and ip != "127.0.0.1":
-                                    peer_ips.append(ip)
-                            except socket.gaierror:
-                                continue
-                    
-                    if peer_ips:
-                        peer_ip = peer_ips[0]
-                        logger.info(f"Config-discovered peer: {host_key} at {peer_ip}")
-                        self.peers[host_key] = peer_ip
-                    else:
-                        logger.debug(f"Could not resolve static peer {host_key}")
-                
-                # FINAL FALLBACK: Active Subnet Scan (last resort)
-                if not self.peers:
-                    logger.info("Static discovery failed. Attempting active subnet scan for peers...")
-                    def _active_scan() -> None:
-                        # We only scan if we have NO peers
-                        import subprocess
-                        # PI common range is 10.0.0.x
-                        for i in range(2, 254):
-                            if not self.running or self.peers:
-                                break
-                            ip = f"10.0.0.{i}"
-                            # Very fast ping check
-                            try:
-                                res = subprocess.run(["ping", "-c", "1", "-W", "0.1", ip], capture_output=True)
-                                if res.returncode == 0:
-                                    # If it pings, we add it as a potential peer. 
-                                    # UDP doesn't care if they aren't listening.
-                                    self.peers[f"scanned_{i}"] = ip
-                            except Exception:
-                                pass
-                    
-                    # Run scan in a one-off thread
-                    threading.Thread(target=_active_scan, daemon=True).start()
-
-        except Exception as e:
-            logger.warning(f"Static peer discovery failed: {e}")
 
         # Register mDNS & Start Browser
         try:
             self.zeroconf = Zeroconf()
-            
-            # Use 0.0.0.0 if specific IP resolution is tricky, 
-            # zeroconf usually handles interface selection.
-            # But let's try to get a real one first.
             local_ip = "0.0.0.0"
             try:
                 s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -374,6 +349,39 @@ class GossipBridge:
             logger.warning(f"mDNS setup failed: {e}")
             
         logger.info(f"Gossip Bridge (Unicast) started on node {self.node_id}")
+
+    def discover_peers(self) -> None:
+        """Populates the peers list from config and hardcoded fallbacks."""
+        # HARDCODED CLUSTER DEFAULTS (The ultimate fallback)
+        for ip in ["10.0.0.12", "10.0.0.17", "10.0.0.16", "10.0.0.200"]:
+            self.peers[f"hardcoded_{ip.split('.')[-1]}"] = ip
+
+        try:
+            from .config import load_campaign_config, get_campaign
+            campaign_name = os.getenv("CAMPAIGN_NAME") or get_campaign()
+            if campaign_name:
+                config = load_campaign_config(campaign_name)
+                scaling = config.get("prospecting", {}).get("scaling", {})
+                for host_key in scaling.keys():
+                    if host_key == "fargate" or host_key == self.node_id:
+                        continue
+                    if host_key == "laptop":
+                        peer_ips = ["10.0.0.4"]
+                    else:
+                        peer_ips = []
+                        for suffix in [".pi", ".local", ""]:
+                            peer_host = host_key + suffix
+                            try:
+                                ip = socket.gethostbyname(peer_host)
+                                if ip and ip != "127.0.0.1":
+                                    peer_ips.append(ip)
+                            except socket.gaierror:
+                                continue
+                    if peer_ips:
+                        self.peers[host_key] = peer_ips[0]
+                        logger.info(f"Config-discovered peer: {host_key} at {peer_ips[0]}")
+        except Exception as e:
+            logger.debug(f"Static peer discovery failed: {e}")
 
     def stop(self) -> None:
         self.running = False
