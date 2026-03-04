@@ -287,16 +287,18 @@ class GossipBridge:
                     
                     # Resolve IP
                     # Try a few common ways to resolve
-                    peer_ips = []
-                    for suffix in [".pi", ".local", ""]:
-                        peer_host = host_key + suffix
-                        try:
-                            ip = socket.gethostbyname(peer_host)
-                            if ip and ip != "127.0.0.1":
-                                peer_ips.append(ip)
-                                break
-                        except Exception:
-                            continue
+                    if host_key == "laptop":
+                        peer_ips = ["10.0.0.4"]
+                    else:
+                        peer_ips = []
+                        for suffix in [".pi", ".local", ""]:
+                            peer_host = host_key + suffix
+                            try:
+                                ip = socket.gethostbyname(peer_host)
+                                if ip and ip != "127.0.0.1":
+                                    peer_ips.append(ip)
+                            except socket.gaierror:
+                                continue
                     
                     if peer_ips:
                         peer_ip = peer_ips[0]
