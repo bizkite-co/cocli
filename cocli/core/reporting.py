@@ -2,14 +2,14 @@ import os
 import json
 import boto3
 import logging
-import math
-from typing import Dict, Any, cast, Union, Optional
+from typing import Dict, Any, cast, Optional
 from rich.console import Console
+from datetime import datetime, UTC
 
 from cocli.core.config import get_cocli_base_dir, load_campaign_config
 from cocli.core.prospects_csv_manager import ProspectsIndexManager
 from cocli.core.exclusions import ExclusionManager
-
+from .paths import paths
 
 logger = logging.getLogger(__name__)
 console = Console()
@@ -22,30 +22,23 @@ def get_boto3_session(config: Dict[str, Any], max_pool_connections: int = 10, pr
     aws_config = config.get("aws", {})
     campaign_name = config.get("campaign", {}).get("name")
     
-    # 0. Forced Profile Precedence (Maintenance Role)
     if profile_name:
         try:
             session = boto3.Session(profile_name=profile_name)
-            # PASSIVE: We no longer call get_caller_identity() here to avoid blocking or login prompts
             logger.debug(f"Initialized forced AWS profile: {profile_name}")
             return session
         except Exception as e:
             logger.error(f"Failed to initialize forced profile {profile_name}: {e}")
             raise
 
-    # 1. Check current AWS_PROFILE environment variable
     env_profile = os.environ.get("AWS_PROFILE")
-    
-    # Try candidates (Explicit config + Automatic campaign-iot)
     iot_profiles = aws_config.get("iot_profiles", [])
     if isinstance(iot_profiles, str):
         iot_profiles = [iot_profiles]
     
-    # Automatic candidate based on campaign
     if campaign_name:
         iot_profiles.insert(0, f"{campaign_name}-iot")
     
-    # If env_profile is in our candidate lists, try it FIRST
     profile_name = aws_config.get("profile") or aws_config.get("aws_profile")
     all_candidates = iot_profiles + ([profile_name] if profile_name else [])
     
@@ -68,12 +61,10 @@ def get_boto3_session(config: Dict[str, Any], max_pool_connections: int = 10, pr
             logger.debug(f"get_boto3_session: IoT profile {p} initialization failed: {e}")
             continue
 
-    # 2. Fallback to IoT script directly (Legacy/One-off)
     try:
         from ..utils.aws_iot_auth import get_iot_sts_credentials
         iot_creds = get_iot_sts_credentials()
         if iot_creds:
-            logger.info("Using AWS IoT STS credentials via script fallback")
             return boto3.Session(
                 aws_access_key_id=iot_creds["access_key"],
                 aws_secret_access_key=iot_creds["secret_key"],
@@ -82,9 +73,7 @@ def get_boto3_session(config: Dict[str, Any], max_pool_connections: int = 10, pr
     except Exception as e:
         logger.debug(f"get_boto3_session: IoT script fallback failed: {e}")
 
-    # 3. Fallback to Profile in config
     profile_name = aws_config.get("profile") or aws_config.get("aws_profile")
-    
     if profile_name and profile_name != env_profile:
         try:
             session = boto3.Session(profile_name=profile_name)
@@ -94,7 +83,6 @@ def get_boto3_session(config: Dict[str, Any], max_pool_connections: int = 10, pr
             logger.debug(f"get_boto3_session: profile from config {profile_name} initialization failed: {e}")
             pass
 
-    # Final fallback: Default session
     return boto3.Session()
 
 
@@ -103,9 +91,7 @@ def get_active_fargate_tasks(
     cluster_name: str = "ScraperCluster",
     service_name: str = "EnrichmentService",
 ) -> int:
-    """
-    Returns the number of running tasks for the specified ECS service.
-    """
+    """Returns the number of running tasks for the specified ECS service."""
     try:
         ecs = session.client("ecs")
         response = ecs.describe_services(cluster=cluster_name, services=[service_name])
@@ -137,9 +123,6 @@ def get_locations_data(campaign_name: str) -> Dict[str, Any]:
     config = load_campaign_config(campaign_name)
     prospecting_config = config.get("prospecting", {})
     proximity = prospecting_config.get("proximity", 30)
-    
-    # We'll reuse the logic from get_campaign_stats but just for locations
-    # (Extracting this to a helper function later would be cleaner)
     stats = get_campaign_stats(campaign_name)
     return {
         "proximity": proximity,
@@ -147,52 +130,29 @@ def get_locations_data(campaign_name: str) -> Dict[str, Any]:
     }
 
 def get_campaign_stats(campaign_name: str) -> Dict[str, Any]:
-    """
-    Collects statistics for a campaign, including local file counts and cloud resource status.
-    """
+    """Collects statistics for a campaign, including local file counts and cloud status."""
     from cocli.core.text_utils import slugify
-    from datetime import datetime, timedelta, UTC
-    import csv
-
+    import duckdb
+    
     stats: Dict[str, Any] = {}
-
-    # Load Config
     config = load_campaign_config(campaign_name)
     prospecting_config = config.get("prospecting", {})
     queries = prospecting_config.get("queries", [])
     stats["queries"] = queries
 
-    # Initialize Tile Stats
-    all_target_tiles: set[str] = set()
-    all_scraped_tiles: set[str] = set()
-    scraped_tiles_by_phrase: Dict[str, set[str]] = {q: set() for q in queries}
     witness_root = get_cocli_base_dir() / "indexes" / "scraped-tiles"
 
-    # 0. Exclusions
     stats.update(get_exclusions_data(campaign_name))
 
-    # 1. Local Prospects Count & Sources
     manager = ProspectsIndexManager(campaign_name)
     total_prospects = 0
     source_counts = {"local-worker": 0, "fargate-worker": 0, "unknown": 0}
-    
-    # Pre-calculate tile-to-prospect mapping for efficient location stats
-    tile_prospect_counts: Dict[str, int] = {}
 
     if manager.index_dir.exists():
-        # Use DuckDB to count and group prospects without loading objects
-        import duckdb
         con = duckdb.connect(database=':memory:')
         checkpoint_path = manager.index_dir / "prospects.checkpoint.usv"
-        
         if checkpoint_path.exists():
-            q = f"""
-                SELECT 
-                    count(*),
-                    count(CASE WHEN column24 = 'local-worker' THEN 1 END),
-                    count(CASE WHEN column24 = 'fargate-worker' THEN 1 END)
-                FROM read_csv('{checkpoint_path}', delim='\x1f', header=False, auto_detect=True, all_varchar=True)
-            """
+            q = f"SELECT count(*), count(CASE WHEN column24 = 'local-worker' THEN 1 END), count(CASE WHEN column24 = 'fargate-worker' THEN 1 END) FROM read_csv('{checkpoint_path}', delim='\x1f', header=False, auto_detect=True, all_varchar=True)"
             res = con.execute(q).fetchone()
             if res:
                 total_prospects, source_counts['local-worker'], source_counts['fargate-worker'] = res
@@ -200,483 +160,134 @@ def get_campaign_stats(campaign_name: str) -> Dict[str, Any]:
 
     stats["prospects_count"] = total_prospects
     stats["worker_stats"] = source_counts
-    stats["prospect_validation_errors"] = {
-        "count": getattr(manager, "validation_error_count", 0),
-        "log_path": str(getattr(manager, "error_log_path", ""))
-    }
     
-    # 2. Queue Stats (Cloud vs Local)
     aws_config = config.get("aws", {})
-    command_queue_url = aws_config.get("cocli_command_queue_url")
+    data_bucket = aws_config.get("data_bucket_name") or aws_config.get("cocli_data_bucket_name")
 
-    if aws_config.get("data_bucket_name") or aws_config.get("cocli_data_bucket_name"):
+    if data_bucket:
         stats["using_cloud_queue"] = True
         session = get_boto3_session(config)
-
-        # Command Queue (Still used for remote commands via SQS for now)
-        if command_queue_url:
-            try:
-                sqs = session.client("sqs")
-                cmd_attrs = sqs.get_queue_attributes(
-                    QueueUrl=command_queue_url, 
-                    AttributeNames=["ApproximateNumberOfMessages", "ApproximateNumberOfMessagesNotVisible"]
-                ).get("Attributes", {})
-                stats["command_tasks_pending"] = int(cmd_attrs.get("ApproximateNumberOfMessages", 0))
-                stats["command_tasks_inflight"] = int(cmd_attrs.get("ApproximateNumberOfMessagesNotVisible", 0))
-            except Exception:
-                pass
-
-        # Active Workers
+        s3 = session.client("s3")
+        
         stats["active_fargate_tasks"] = get_active_fargate_tasks(session)
 
-        # Cluster Capacity (DuckDB Live Analytics)
-        from .analytics import get_cluster_capacity_stats
-        try:
-            stats["cluster_capacity"] = get_cluster_capacity_stats(campaign_name)
-        except Exception as e:
-            logger.warning(f"Failed to fetch live capacity stats: {e}")
-            stats["cluster_capacity"] = {}
-
-        # S3 Counts
-        data_bucket = aws_config.get("data_bucket_name") or aws_config.get("cocli_data_bucket_name")
-        if data_bucket:
-            s3 = session.client("s3")
-            
-            # --- S3 Queue Progress (V2 Filesystem) ---
-            s3_queues = {}
-            for q in ["discovery-gen", "gm-list", "gm-details", "enrichment", "to-call"]:
-                try:
-                    paginator = s3.get_paginator("list_objects_v2")
-                    pending_count = 0
-                    inflight_count = 0
-                    prefix_pending = f"campaigns/{campaign_name}/queues/{q}/pending/"
-                    for page in paginator.paginate(Bucket=data_bucket, Prefix=prefix_pending):
-                        for obj in page.get("Contents", []):
-                            key = obj["Key"]
-                            if key.endswith("task.json") or (q == "discovery-gen" and key.endswith(".usv")):
-                                pending_count += 1
-                            elif key.endswith("lease.json"):
-                                inflight_count += 1
-                    
-                    completed_count = 0
-                    last_completed_at = None
-                    prefix_completed = f"campaigns/{campaign_name}/queues/{q}/completed/"
-                    for page in paginator.paginate(Bucket=data_bucket, Prefix=prefix_completed):
-                        for obj in page.get("Contents", []):
-                            completed_count += 1
-                            mtime = obj["LastModified"]
-                            if last_completed_at is None or mtime > last_completed_at:
-                                last_completed_at = mtime
-                    
-                    s3_queues[q] = {
-                        "pending": pending_count,
-                        "inflight": inflight_count,
-                        "completed": completed_count,
-                        "last_completed_at": last_completed_at.isoformat() if last_completed_at else None
-                    }
-                except Exception as e:
-                    logger.warning(f"Could not count S3 queue tasks for {q}: {e}")
-            
-            stats["s3_queues"] = s3_queues
-            # ----------------------------------------
-
-            # --- Heartbeats ---
-            try:
-                heartbeats = []
-                response = s3.list_objects_v2(Bucket=data_bucket, Prefix="status/")
-                for obj in response.get("Contents", []):
-                    if obj["Key"].endswith(".json"):
-                        try:
-                            hb_data = s3.get_object(Bucket=data_bucket, Key=obj["Key"])
-                            hb_json = json.loads(hb_data["Body"].read().decode("utf-8"))
-                            # Add last_seen from S3 metadata
-                            hb_json["last_seen"] = obj["LastModified"].isoformat()
-                            heartbeats.append(hb_json)
-                        except Exception as hb_err:
-                            logger.warning(f"Failed to read heartbeat {obj['Key']}: {hb_err}")
-                stats["worker_heartbeats"] = heartbeats
-            except Exception as e:
-                logger.warning(f"Could not fetch worker heartbeats: {e}")
-                stats["worker_heartbeats"] = []
-
-        # 3. Add Real-time Gossip Heartbeats
-        from .gossip_bridge import bridge
-        if bridge and bridge.heartbeats:
-            stats["gossip_heartbeats"] = bridge.heartbeats
-
-            # --- Global Scraped Tiles from S3 ---
+        # 1. S3 Queue Progress
+        s3_queues = {}
+        for q in ["discovery-gen", "gm-list", "gm-details", "enrichment", "to-call"]:
             try:
                 paginator = s3.get_paginator("list_objects_v2")
-                prefix = f"campaigns/{campaign_name}/indexes/scraped-tiles/"
-                remote_scraped_by_phrase: Dict[str, set[str]] = {slugify(q): set() for q in queries}
-                
-                for page in paginator.paginate(Bucket=data_bucket, Prefix=prefix):
+                pending = 0
+                inflight = 0
+                prefix_pending = f"campaigns/{campaign_name}/queues/{q}/pending/"
+                for page in paginator.paginate(Bucket=data_bucket, Prefix=prefix_pending):
                     for obj in page.get("Contents", []):
                         key = obj["Key"]
-                        if key.endswith(".csv") or key.endswith(".usv"):
-                            parts = key.split("/")
-                            if len(parts) >= 3:
-                                phrase_slug = parts[-1].replace(".csv", "").replace(".usv", "")
-                                lat_str = parts[-3]
-                                lon_str = parts[-2]
-                                tile_id = f"{lat_str}_{lon_str}"
-                                if phrase_slug in remote_scraped_by_phrase:
-                                    remote_scraped_by_phrase[phrase_slug].add(tile_id)
+                        if key.endswith("task.json") or (q == "discovery-gen" and key.endswith(".usv")):
+                            pending += 1
+                        elif key.endswith("lease.json"):
+                            inflight += 1
                 
-                for q in queries:
-                    q_slug = slugify(q)
-                    if q_slug in remote_scraped_by_phrase:
-                        for tid in remote_scraped_by_phrase[q_slug]:
-                            all_scraped_tiles.add(tid)
-                            scraped_tiles_by_phrase[q].add(tid)
-
+                completed = 0
+                last_completed = None
+                prefix_completed = f"campaigns/{campaign_name}/queues/{q}/completed/"
+                for page in paginator.paginate(Bucket=data_bucket, Prefix=prefix_completed):
+                    for obj in page.get("Contents", []):
+                        completed += 1
+                        mtime = obj["LastModified"]
+                        if last_completed is None or mtime > last_completed:
+                            last_completed = mtime
+                
+                s3_queues[q] = {"pending": pending, "inflight": inflight, "completed": completed, "last_completed_at": last_completed.isoformat() if last_completed else None}
             except Exception as e:
-                logger.warning(f"Could not fetch global scraped tiles from S3: {e}")
-    else:
-        stats["using_cloud_queue"] = False
+                logger.warning(f"S3 stats failed for {q}: {e}")
+        stats["s3_queues"] = s3_queues
 
-    # Always check Local queue stats (for RPI cluster / Filesystem mode)
-    from .paths import paths
+        # 2. S3 Worker Heartbeats
+        try:
+            heartbeats = []
+            response = s3.list_objects_v2(Bucket=data_bucket, Prefix="status/")
+            for obj in response.get("Contents", []):
+                if obj["Key"].endswith(".json"):
+                    try:
+                        hb_data = s3.get_object(Bucket=data_bucket, Key=obj["Key"])
+                        hb_json = json.loads(hb_data["Body"].read().decode("utf-8"))
+                        hb_json["last_seen"] = obj["LastModified"].isoformat()
+                        heartbeats.append(hb_json)
+                    except Exception:
+                        continue
+            stats["worker_heartbeats"] = heartbeats
+        except Exception:
+            stats["worker_heartbeats"] = []
+
+    # 3. Local Real-time Gossip Heartbeats
+    from .gossip_bridge import bridge
+    if bridge and bridge.heartbeats:
+        stats["gossip_heartbeats"] = bridge.heartbeats
+
+    # 4. Local Queue Stats
     local_stats = {}
     for q_name in ["discovery-gen", "gm-list", "gm-details", "enrichment", "to-call"]:
         queue_base = paths.queue(campaign_name, q_name)
-        pending_dir = queue_base / "pending"
-        completed_dir = queue_base / "completed"
-        scheduled_dir = queue_base / "scheduled"
-
         q_pending = 0
         q_inflight = 0
         q_completed = 0
-        q_scheduled = 0
-        last_completed_at = None
+        last_completed = None
 
-        if pending_dir.exists():
-            # Recursive count for sharded pending
-            for root, dirs, files in os.walk(pending_dir):
+        p_dir = queue_base / "pending"
+        if p_dir.exists():
+            for root, dirs, files in os.walk(p_dir):
                 for f in files:
                     if f == "task.json" or f.endswith(".usv"):
                         q_pending += 1
                     elif f == "lease.json":
                         q_inflight += 1
 
-        if scheduled_dir.exists():
-            # Recursive count for date-sharded scheduled
-            for root, dirs, files in os.walk(scheduled_dir):
-                for f in files:
-                    if f.endswith(".usv") or f.endswith(".json"):
-                        q_scheduled += 1
-
-        if completed_dir.exists():
-            for completed_file in completed_dir.iterdir():
-                if completed_file.suffix in [".json", ".usv"]:
+        c_dir = queue_base / "completed"
+        if c_dir.exists():
+            for cf in c_dir.iterdir():
+                if cf.suffix in [".json", ".usv"]:
                     q_completed += 1
-                    mtime = datetime.fromtimestamp(completed_file.stat().st_mtime, tz=UTC)
-                    if last_completed_at is None or mtime > last_completed_at:
-                        last_completed_at = mtime
+                    mtime = datetime.fromtimestamp(cf.stat().st_mtime, tz=UTC)
+                    if last_completed is None or mtime > last_completed:
+                        last_completed = mtime
         
-        local_stats[q_name] = {
-            "pending": q_pending,
-            "inflight": q_inflight,
-            "scheduled": q_scheduled,
-            "completed": q_completed,
-            "last_completed_at": last_completed_at.isoformat() if last_completed_at else None
-        }
+        local_stats[q_name] = {"pending": q_pending, "inflight": q_inflight, "completed": q_completed, "last_completed_at": last_completed.isoformat() if last_completed else None}
+
+    # 5. Mission Index Awareness for local gm-list
+    dg_completed = paths.campaign(campaign_name).queue("discovery-gen").completed
+    if dg_completed.exists():
+        mission_pending = 0
+        for tf in dg_completed.glob("**/*.usv"):
+            rel_path = tf.relative_to(dg_completed)
+            if not (witness_root / rel_path).exists() and not (witness_root / rel_path.with_suffix(".csv")).exists():
+                mission_pending += 1
+        existing = local_stats.get("gm-list", {}).get("pending", 0)
+        if isinstance(existing, (int, float)):
+            local_stats["gm-list"]["pending"] = int(existing) + mission_pending
+        else:
+            local_stats["gm-list"]["pending"] = mission_pending
 
     stats["local_queues"] = local_stats
-    
-    # --- Mission Index Awareness for gm-list ---
-    # The active task pool is in discovery-gen/completed/
-    discovery_gen_completed = paths.campaign(campaign_name).queue("discovery-gen").completed
-    if discovery_gen_completed.exists():
-        mission_pending: int = 0
-        # Iterate through sharded .usv tasks
-        for tf in discovery_gen_completed.glob("**/*.usv"):
-            # Check if this tile+phrase has a result yet
-            rel_path = tf.relative_to(discovery_gen_completed)
-            witness_usv = witness_root / rel_path
-            witness_csv = witness_root / rel_path.with_suffix(".csv")
-            if not witness_csv.exists() and not witness_usv.exists():
-                mission_pending += 1
-        
-        # Merge mission pending into the gm-list pending count
-        if "gm-list" in local_stats:
-            existing_pending = local_stats["gm-list"].get("pending", 0)
-            if isinstance(existing_pending, int):
-                local_stats["gm-list"]["pending"] = existing_pending + mission_pending
-        else:
-            local_stats["gm-list"] = {"pending": mission_pending, "inflight": 0, "completed": 0}
-    # --------------------------------------------
 
-    # Legacy compatibility for enrichment stats
-    stats["local_enrichment_pending"] = local_stats["enrichment"]["pending"]
-    stats["local_enrichment_inflight"] = local_stats["enrichment"]["inflight"]
-    stats["local_enrichment_completed"] = local_stats["enrichment"]["completed"]
+    # 6. Legacy compatibility and summarization
+    stats["enrichment_pending"] = local_stats["enrichment"]["pending"]
+    stats["completed_count"] = local_stats["enrichment"]["completed"]
 
-    # For simplicity in the combined report table, prefer S3 (Global) stats if available
-    s3_stats = stats.get("s3_queues", {}).get("enrichment", {})
-    if stats.get("using_cloud_queue") and s3_stats:
-        stats["enrichment_pending"] = s3_stats.get("pending", 0)
-        stats["enrichment_inflight"] = s3_stats.get("inflight", 0)
-        stats["completed_count"] = s3_stats.get("completed", 0)
-        stats["remote_enrichment_completed"] = s3_stats.get("completed", 0)
-    else:
-        stats["enrichment_pending"] = local_stats["enrichment"]["pending"]
-        stats["enrichment_inflight"] = local_stats["enrichment"]["inflight"]
-        stats["completed_count"] = local_stats["enrichment"]["completed"]
-
-    # Old path stats (for cleanup monitoring)
-    from .config import get_campaigns_dir
-    campaign_dir = get_campaigns_dir() / campaign_name
-    
-    # GM Details stats
-    details_frontier = campaign_dir / "frontier" / "gm-details"
-    if details_frontier.exists():
-        stats["local_gm_list_item_pending"] = len(
-            list(details_frontier.glob("*.json"))
-        )
-
-    # 3. Enriched Companies & Emails (OPTIMIZED via Sharded Indexes)
-    from cocli.core.email_index_manager import EmailIndexManager
-    from cocli.core.domain_index_manager import DomainIndexManager
-    from ..models.campaigns.campaign import Campaign as CampaignModel
-
-    email_index = EmailIndexManager(campaign_name)
-    domain_index = DomainIndexManager(CampaignModel.load(campaign_name))
-    
-    # 1. Count from sharded email index (DuckDB)
-    # We only need the counts, no need to load objects
-    import duckdb
-    con = duckdb.connect(database=':memory:')
-    
-    email_shards = [str(p) for p in email_index.shards_dir.glob("*.usv")]
-    emails_count = 0
-    domains_with_emails_count = 0
-    
-    if email_shards:
-        path_list = "', '".join(email_shards)
-        q = f"""
-            SELECT count(DISTINCT lower(email)), count(DISTINCT lower(domain))
-            FROM read_csv(['{path_list}'], delim='\x1f', header=False, auto_detect=False, 
-                          columns={{'email':'VARCHAR','domain':'VARCHAR','c':'VARCHAR','s':'VARCHAR','f':'VARCHAR','fs':'VARCHAR','ls':'VARCHAR','v':'VARCHAR','t':'VARCHAR'}})
-        """
-        res = con.execute(q).fetchone()
-        if res:
-            emails_count, domains_with_emails_count = res
-
-    # 2. Count from sharded domain index (Enriched Companies)
-    # This represents the total pool of successfully enriched domains for this campaign
-    enriched_count = 0
-    try:
-        # Filter global index by campaign tag using DuckDB
-        tag = config.get("campaign", {}).get("tag") or campaign_name
-        
-        # We reuse the DomainIndexManager's query capability
-        # but we need to ensure it's looking at shards correctly.
-        all_enriched = domain_index.query(sql_where=f"list_contains(tags, '{tag}')")
-        enriched_count = len(all_enriched)
-    except Exception as e:
-        logger.warning(f"Could not fetch enriched count from global index: {e}")
-
-    stats["enriched_count"] = enriched_count
-    stats["deep_enriched_count"] = 0 # Placeholder: needs separate index or manifest flag
-    stats["companies_with_emails_count"] = domains_with_emails_count
-    stats["emails_found_count"] = emails_count
-    stats["total_enriched_global"] = enriched_count
-
-    # 5. Anomaly Detection (Bot Detection Monitoring) using new Witness Index
-    total_scraped_tiles_witness = 0
-    empty_scraped_tiles_witness = 0
-
-    phrase_slugs = [slugify(q) for q in queries]
-    seven_days_ago = datetime.now(UTC) - timedelta(days=7)
-
-    # Nested Witness Index Check
+    # 7. Anomaly and Location stats
+    total_scraped_witness = 0
+    empty_scraped_witness = 0
     if witness_root.exists():
-        for phrase_slug in phrase_slugs:
-            witness_files = list(witness_root.glob(f"**/{phrase_slug}.csv")) + list(witness_root.glob(f"**/{phrase_slug}.usv"))
-            for phrase_file in witness_files:
+        for phrase_slug in [slugify(q) for q in queries]:
+            for pf in witness_root.glob(f"**/{phrase_slug}.usv"):
                 try:
-                    with open(phrase_file, "r", encoding="utf-8") as fh:
+                    with open(pf, "r", encoding="utf-8") as fh:
                         from ..utils.usv_utils import USVDictReader
-                        reader: Union[USVDictReader, csv.DictReader[Any]]
-                        if phrase_file.suffix == ".usv":
-                            reader = USVDictReader(fh)
-                        else:
-                            reader = csv.DictReader(fh)
-                        
-                        try:
-                            row = next(reader)
-                        except (StopIteration, Exception):
-                            continue
-
-                        scrape_date_str = row.get("scrape_date")
-                        if not scrape_date_str:
-                            continue
-                        scrape_date = datetime.fromisoformat(scrape_date_str)
-                        if scrape_date.tzinfo is None:
-                            scrape_date = scrape_date.replace(tzinfo=UTC)
-
-                        if scrape_date > seven_days_ago:
-                            total_scraped_tiles_witness += 1
-                            if int(row.get("items_found", 0)) == 0:
-                                empty_scraped_tiles_witness += 1
+                        row = next(USVDictReader(fh))
+                        total_scraped_witness += 1
+                        if int(row.get("items_found", 0)) == 0:
+                            empty_scraped_witness += 1
                 except Exception:
                     continue
-
-    stats["anomaly_stats"] = {
-        "total_scrapes": total_scraped_tiles_witness,
-        "empty_scrapes": empty_scraped_tiles_witness,
-        "shadow_ban_risk": "HIGH"
-        if total_scraped_tiles_witness > 10
-        and (empty_scraped_tiles_witness / total_scraped_tiles_witness) > 0.4
-        else "LOW",
-    }
-
-    # 6. Configuration Data (Queries & Locations)
-    proximity = prospecting_config.get("proximity", 30)
-    stats["proximity"] = proximity
-
-    detailed_locations = []
-    explicit_locations = prospecting_config.get("locations", [])
-    
-    # Track which names we've seen to avoid duplicates between list and CSV
-    seen_names: set[str] = set()
-
-    # Load Grid Definition to find tiles associated with each location
-    target_locations_csv = prospecting_config.get("target-locations-csv")
-    if target_locations_csv:
-        csv_path = (
-            get_cocli_base_dir() / "campaigns" / campaign_name / target_locations_csv
-        )
-        if csv_path.exists():
-            try:
-                with open(csv_path, "r") as fh:
-                    grid_reader: csv.DictReader[Any] = csv.DictReader(fh)
-                    for row in grid_reader:
-                        name = row.get("name") or row.get("city")
-                        if not name:
-                            continue
-
-                        lat_val = row.get("lat")
-                        lon_val = row.get("lon")
-
-                        if not lat_val or not lon_val:
-                            detailed_locations.append(
-                                {
-                                    "name": name,
-                                    "lat": None,
-                                    "lon": None,
-                                    "proximity": proximity,
-                                    "valid_geocode": False,
-                                    "tile_id": None,
-                                    "tiles_count": 0,
-                                    "scraped_tiles_count": 0,
-                                    "prospects_count": 0,
-                                }
-                            )
-                            seen_names.add(name)
-                            continue
-
-                        lat, lon = float(lat_val), float(lon_val)
-
-                        # Calculate tiles for this location (Proximity-based)
-                        deg_range = (proximity / 69.0) + 0.1
-                        lat_min, lat_max = lat - deg_range, lat + deg_range
-                        lon_min, lon_max = lon - deg_range, lon + deg_range
-
-                        loc_tiles: list[str] = []
-                        scraped_count = 0
-                        loc_prospects = 0
-
-                        # Iterate through possible tiles in range
-                        curr_lat = math.floor(lat_min * 10) / 10
-                        while curr_lat <= lat_max:
-                            curr_lon = math.floor(lon_min * 10) / 10
-                            while curr_lon <= lon_max:
-                                t_id = f"{curr_lat:.1f}_{curr_lon:.1f}"
-                                t_center_lat = curr_lat + 0.05
-                                t_center_lon = curr_lon + 0.05
-                                dist_deg = math.sqrt((t_center_lat - lat) ** 2 + (t_center_lon - lon) ** 2)
-                                
-                                if (dist_deg * 69.0) <= proximity:
-                                    loc_tiles.append(t_id)
-                                    all_target_tiles.add(t_id)
-                                    
-                                    # Check if ANY query has scraped this tile
-                                    is_scraped_any = False
-                                    lat_dir, lon_dir = t_id.split("_")
-                                    tile_witness_dir = witness_root / lat_dir / lon_dir
-
-                                    for q in queries:
-                                        q_slug = slugify(q)
-                                        if (tile_witness_dir / f"{q_slug}.csv").exists() or (tile_witness_dir / f"{q_slug}.usv").exists():
-                                            is_scraped_any = True
-                                            all_scraped_tiles.add(t_id)
-                                            scraped_tiles_by_phrase[q].add(t_id)
-                                            
-                                    if is_scraped_any:
-                                        scraped_count += 1
-                                    loc_prospects += tile_prospect_counts.get(t_id, 0)
-
-                                curr_lon += 0.1
-                            curr_lat += 0.1
-
-                        detailed_locations.append(
-                            {
-                                "name": name,
-                                "lat": lat,
-                                "lon": lon,
-                                "proximity": proximity,
-                                "valid_geocode": True,
-                                "tile_id": f"{(lat // 0.1) * 0.1:.1f}_{(lon // 0.1) * 0.1:.1f}",
-                                "tiles_count": len(loc_tiles),
-                                "scraped_tiles_count": scraped_count,
-                                "prospects_count": loc_prospects,
-                            }
-                        )
-                        seen_names.add(name)
-            except Exception as e:
-                logger.warning(f"Could not read target locations CSV: {e}")
-
-    # Add explicit locations from config.toml
-    for loc_name in explicit_locations:
-        if loc_name not in seen_names:
-            detailed_locations.append(
-                {
-                    "name": loc_name,
-                    "lat": None,
-                    "lon": None,
-                    "proximity": proximity,
-                    "valid_geocode": False,
-                    "tile_id": None,
-                    "tiles_count": 0,
-                    "scraped_tiles_count": 0,
-                    "prospects_count": 0,
-                }
-            )
-
-    stats["locations"] = detailed_locations
-    stats["total_target_tiles"] = len(all_target_tiles)
-    stats["total_scraped_tiles"] = len(all_scraped_tiles)
-    stats["scraped_per_phrase"] = {q: len(tiles) for q, tiles in scraped_tiles_by_phrase.items()}
-
-    # Update summary keys for gm-list and gm-details if using cloud
-    if stats.get("using_cloud_queue") and "s3_queues" in stats:
-        s3_list = stats["s3_queues"].get("gm-list", {})
-        s3_details = stats["s3_queues"].get("gm-details", {})
-        
-        # We keep the 'scrape_tasks' naming for dashboard compatibility
-        stats["scrape_tasks_pending"] = s3_list.get("pending", 0)
-        stats["scrape_tasks_inflight"] = s3_list.get("inflight", 0)
-        
-        stats["gm_list_item_pending"] = s3_details.get("pending", 0)
-        stats["gm_list_item_inflight"] = s3_details.get("inflight", 0)
-
-    # Update S3 Queue Pending count for gm-list if using cloud (re-calculate based on tiles)
-    if stats.get("using_cloud_queue") and "gm-list" in stats.get("s3_queues", {}):
-        # Pending = Target - Scraped - Inflight
-        inflight = stats["s3_queues"]["gm-list"]["inflight"]
-        pending = max(0, len(all_target_tiles) - len(all_scraped_tiles) - inflight)
-        stats["s3_queues"]["gm-list"]["pending"] = pending
+    stats["anomaly_stats"] = {"total_scrapes": total_scraped_witness, "empty_scrapes": empty_scraped_witness}
 
     return stats
