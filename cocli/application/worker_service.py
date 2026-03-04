@@ -480,6 +480,9 @@ class WorkerService:
         bg_tasks = []
         bg_tasks.append(asyncio.create_task(_heartbeat_loop()))
         bg_tasks.append(asyncio.create_task(_config_watcher()))
+        
+        # Yield briefly to let background tasks register
+        await asyncio.sleep(0.1)
 
         worker_tasks = []
         for wd in worker_definitions:
