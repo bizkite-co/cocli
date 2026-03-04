@@ -534,7 +534,7 @@ class WorkerService:
 
         # Main orchestration wait loop (only for workers)
         try:
-            await asyncio.gather(*worker_tasks)
+            await asyncio.gather(*worker_tasks, *bg_tasks)
         finally:
             # Clean up background tasks on exit
             for bt in bg_tasks:
