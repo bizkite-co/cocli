@@ -26,24 +26,27 @@ Updates follow a USV (Unit Separated Values) format using `\x1f` as the delimite
 
 ---
 
-## 2. Propagation Strategies: Unicast UDP & mDNS [VERIFIED]
+## 2. Propagation Strategies: Unicast UDP & S3 Registry [VERIFIED]
 
-We have implemented a **Unicast UDP Gossip Bridge** optimized for the local `10.0.0.0/8` PI cluster. Unicast was chosen over Multicast to bypass Docker bridge network limitations.
+We have implemented a **Unicast UDP Gossip Bridge** optimized for the local `10.0.0.0/8` PI cluster. 
 
 ### 2.1 Layered Peer Discovery [VERIFIED]
-1. **Self-Learning Discovery**: Automatically adds any unknown `10.0.0.x` IP to the peer list upon receiving a valid datagram. This allows nodes (like mobile laptops) to join the cluster dynamically by sending a "hello" or heartbeat.
-2. **Static Config**: Fallback that resolves hostnames (e.g. `cocli5x1`, `laptop`) from the campaign's scaling configuration.
-3. **mDNS (Zeroconf)**: Background discovery for automatic peer detection on the local subnet.
+1. **S3 Registry (Primary)**: Nodes register their local IP at `cluster/registry/{node_id}.json` in S3 on startup. Peers fetch this registry to enable dynamic discovery across subnets without hardcoded lists.
+2. **Self-Learning Discovery**: Automatically adds unknown `10.0.0.x` IPs to the peer list upon receiving a valid datagram. This allows mobile nodes (laptops) to join the cluster natively.
+3. **Static Config**: Fallback that resolves hostnames (e.g. `cocli5x1`, `laptop`) from the campaign configuration.
+4. **mDNS (Zeroconf)**: Native subnet discovery for automatic peer detection.
 
 ### 2.2 Control Plane Datagrams [IMPLEMENTED]
 Beyond WAL records, the bridge supports specialized coordination datagrams:
 - **`H` (Heartbeat)**: Broadcasts system load, memory, and worker counts every 60s for real-time monitoring.
-- **`C` (Config)**: Broadcasts remote configuration updates (JSON) for hot-reloading worker roles without restarts.
+- **`C` (Config)**: Broadcasts remote configuration updates (JSON) for hot-reloading worker roles.
 - **`Q` (Queue Sync)**: Near-instant signaling of task completion markers.
 
 ### 2.3 Efficiency & Starvation Prevention [OPTIMIZED]
-- **Rate-Limiting**: Standard WAL gossip is limited to 50 records per file per cycle to prevent network flooding and ensure the event loop isn't starved.
-- **Threaded Isolation**: Heartbeats and Config watchers run in dedicated daemon threads, ensuring they fire even during heavy worker load or asyncio congestion.
+- **Persistent Offsets**: Last-sent file positions are saved to `.gossip_offsets.json`, preventing redundant history broadcasts on restart.
+- **Freshness Mandate**: Bridge only scans journals matching today's date (`YYYYMMDD`).
+- **Rate-Limiting**: Standard WAL gossip is limited to 50 records per cycle to prevent network flooding.
+- **Threaded Isolation**: Heartbeats and Config watchers run in dedicated daemon threads to ensure they fire even during heavy worker load or asyncio congestion.
 - **Network Host**: Containers use `--network host` to share the host's IP and enable native mDNS/UDP coordination.
 
 ---
@@ -55,10 +58,10 @@ Companies and People are no longer siloed inside campaign folders. They live in 
 - **Standardized Pathing**: All models implement the `Ordinant` protocol for deterministic path resolution.
 - **Reference-Only Campaigns**: Campaign folders now contain only **Indexes** (lists of pointers) and **Queues**, referencing the global entities.
 
-### 3.2 Tiered S3 Update Strategy [UPDATED]
-1.  **Real-Time Tier (Gossip)**: All nodes broadcast new WAL records via UDP. Fastest coordination path.
-2.  **Durability Tier (Nodes -> S3)**: RPi nodes sync their centralized WAL journals to S3 (`wal/{node_id}/`).
-3.  **Consolidation Tier (Hub -> S3)**: The Laptop (Hub) pulls all raw datagrams and रिसीव receiving Gossip. It runs `compact_all_companies()` locally to merge updates into `_index.md` files, then uploads the consolidated pool back to S3.
+### 3.2 Tiered Synchronization
+1.  **Real-Time Tier (Gossip)**: All nodes broadcast event-based datagrams via UDP. Fastest coordination path.
+2.  **Bulk Tier (rsync)**: Used for periodic state synchronization of sharded discovery results and large indexes.
+3.  **Durability Tier (S3)**: Nodes sync their centralized WAL journals to S3 (`wal/{node_id}/`). Laptop pulls and compacts into the global pool.
 
 ---
 
@@ -81,7 +84,7 @@ We accept **Last-Write-Wins (LWW)** as the primary conflict resolution strategy.
 5. [x] **Centralized Journaling**: Moved WAL to `data/wal/` root.
 6. [x] **Global Shared Data**: Migrated companies to top-level pool.
 7. [x] **OMAP Alignment**: Hierarchical dot-notation pathing (`paths.campaign.index`).
-8. [ ] **Cluster Monitoring**: Add `heartbeat` records to WAL and implement `cocli status --cluster`.
+8. [x] **Cluster Monitoring**: Implemented `HeartbeatDatagram` and real-time TUI Cluster Dashboard.
 9. [ ] **S3 Durability Tier**: Automate journal sync from workers to S3.
 10. [ ] **Convos Refactor**: Move Meetings/Notes into the centralized WAL/Journal model.
 
@@ -90,11 +93,12 @@ We accept **Last-Write-Wins (LWW)** as the primary conflict resolution strategy.
 ## 6. Context Handoff (For New Chat Session)
 
 ### Current State
-- **Architecture**: Screaming Architecture (OMAP) is 100% active. Code models mirror the Data Ordinance.
-- **WAL System**: Bidirectional gossip verified between PIs. journals are centralized in `data/wal/`.
-- **Data Pool**: Companies migrated from campaign siloes to the global pool.
-- **Performance**: DuckDB-powered reporting and exports are fully integrated and high-performance.
+- **Cluster Control**: Live heartbeats and S3-backed registry verified. TUI dashboard active.
+- **Networking**: WSL Mirror Mode and Docker host networking enable native coordination.
+- **Performance**: Persistent offsets and rate-limiting ensure low-overhead event propagation.
+- **Architecture**: Screaming Architecture (OMAP) is 100% active.
+- **UI**: TUI startup optimized; non-blocking search and cluster monitoring integrated.
 
 ### Immediate Focus for Next Session
-1. **Heartbeat Integration**: Implement the cluster monitoring dashboard.
+1. **Dynamic Config**: Implement role-switching via `ConfigDatagram` in the TUI Cluster View.
 2. **Journaled Convos**: Transition `notes/` and `meetings/` to the append-only journal format.

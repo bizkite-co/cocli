@@ -135,7 +135,12 @@ class StatusView(VerticalScroll):
         # 1. Environment Panel
         body.mount(Static(status_renderer.render_environment_panel(self.status_data)))
 
-        # 2. Cluster Health (SSH)
+        # 2. Gossip Cluster Status (Real-time)
+        from cocli.core.gossip_bridge import bridge
+        if bridge and bridge.heartbeats:
+            body.mount(Static(status_renderer.render_gossip_status_table(bridge.heartbeats)))
+
+        # 3. Cluster Health (SSH)
         if self.cluster_health:
             body.mount(Static(status_renderer.render_cluster_health_table(self.cluster_health)))
 

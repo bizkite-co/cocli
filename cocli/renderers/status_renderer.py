@@ -30,7 +30,17 @@ def render_queue_table(stats: Dict[str, Any]) -> Table:
     table.add_column("Completed", justify="right", style="green")
     table.add_column("Last Completion", style="yellow")
 
+    # Mapping for user-friendly labels
+    labels = {
+        "discovery-gen": "Mission Control",
+        "gm-list": "Maps Search",
+        "gm-details": "Maps Details",
+        "enrichment": "Enrichment",
+        "to-call": "To Call"
+    }
+
     for name, metrics in q_data.items():
+        label = labels.get(name, name)
         last_ts = metrics.get("last_completed_at")
         age_str = "N/A"
         if last_ts:
@@ -51,12 +61,45 @@ def render_queue_table(stats: Dict[str, Any]) -> Table:
                 age_str = last_ts
 
         table.add_row(
-            name, 
+            label, 
             str(metrics.get("pending", 0)), 
             str(metrics.get("inflight", 0)), 
             str(metrics.get("scheduled", 0)),
             str(metrics.get("completed", 0)), 
             age_str
+        )
+    return table
+
+def render_gossip_status_table(heartbeats: Dict[str, Dict[str, Any]]) -> Table:
+    """Renders the real-time gossip heartbeat table."""
+    table = Table(title="Real-time Cluster Status (Gossip)", expand=True)
+    table.add_column("Node ID", style="cyan")
+    table.add_column("CPU Load", justify="right", style="magenta")
+    table.add_column("Memory %", justify="right", style="blue")
+    table.add_column("Workers", justify="right", style="green")
+    table.add_column("Last Seen", style="yellow")
+
+    now = datetime.now(UTC)
+    for node_id, hb in sorted(heartbeats.items()):
+        ts_str = hb.get("timestamp", "")
+        freshness = "Unknown"
+        if ts_str:
+            try:
+                ts = datetime.fromisoformat(ts_str.replace("Z", "+00:00"))
+                diff = (now - ts).total_seconds()
+                if diff < 15:
+                    freshness = "[bold green]LIVE[/bold green]"
+                else:
+                    freshness = f"{int(diff)}s ago"
+            except Exception:
+                pass
+
+        table.add_row(
+            node_id,
+            f"{hb.get('load_avg', 0.0):.2f}",
+            f"{hb.get('memory_percent', 0.0):.1f}%",
+            str(hb.get("worker_count", 0)),
+            freshness
         )
     return table
 
