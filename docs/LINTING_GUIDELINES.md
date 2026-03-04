@@ -24,5 +24,14 @@ Always assume DuckDB or S3 operations might return `None`. Use `getattr`, `get`,
 - Avoid numeric iteration for script names (e.g., `debug_v1`, `debug_v2`).
 - Script names should reflect their specific function (e.g., `verify_fdpe_search_stack.py`).
 
+### 6. Avoid E701 warning Multiple statements on one line 
+- **BAD:** `if not bucket: return`
+- **GOOD:** 
+    ```python
+    if not bucket:
+        return
+    ```
+
 ## Enforcement
 Run `make lint` after EVERY code change. Do not submit code or create PRs if linting fails. If a script is temporary and doesn't pass linting, fix it—do not delete it unless it is truly obsolete.
+

@@ -284,34 +284,35 @@ class GossipBridge:
 
         self.running = True
         
-        # 1. Discover Peers from Config
-        self.discover_peers()
+        # 1. Start Peer Discovery and Registration in a background thread
+        def _bg_init() -> None:
+            try:
+                self.discover_peers()
+                self.register_self()
+                
+                # Send immediate 'hello' heartbeat
+                from datetime import datetime, UTC
+                from ..models.wal.record import HeartbeatDatagram
+                hello = HeartbeatDatagram(
+                    node_id=self.node_id,
+                    timestamp=datetime.now(UTC).isoformat(),
+                    load_avg=0.0,
+                    memory_percent=0.0,
+                    worker_count=0,
+                    active_tasks=0
+                )
+                self.broadcast_msg(hello.to_usv())
+                logger.info("Background gossip initialization complete.")
+            except Exception as e:
+                logger.error(f"Gossip background init failed: {e}")
 
-        # 2. Send immediate 'hello' heartbeat to announce ourselves to all peers
-        try:
-            from datetime import datetime, UTC
-            from ..models.wal.record import HeartbeatDatagram
-            hello = HeartbeatDatagram(
-                node_id=self.node_id,
-                timestamp=datetime.now(UTC).isoformat(),
-                load_avg=0.0,
-                memory_percent=0.0,
-                worker_count=0,
-                active_tasks=0
-            )
-            self.broadcast_msg(hello.to_usv())
-            logger.info("Proactive 'hello' heartbeat broadcasted to announce node.")
-        except Exception as e:
-            logger.debug(f"Proactive hello skipped: {e}")
+        threading.Thread(target=_bg_init, daemon=True, name="GossipInit").start()
 
-        # 3. Start Gossip Listener
+        # 2. Start Gossip Listener
         self.listener_thread = threading.Thread(target=self._listen_loop, daemon=True)
         self.listener_thread.start()
-
-        # 4. Register ourselves in S3
-        self.register_self()
         
-        # 5. Start File Observer on the centralized WAL directory
+        # 3. Start File Observer on the centralized WAL directory
         if self.wal_dir.exists():
             try:
                 self.observer.schedule(self.handler, str(self.wal_dir), recursive=False)

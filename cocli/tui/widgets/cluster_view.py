@@ -44,15 +44,20 @@ class ClusterView(VerticalScroll):
         r_table.add_columns("Node ID", "IP Address", "Last Registered")
         r_table.cursor_type = "row"
         
-        # Start the live refresh loop
+        # Start the live refresh loop (non-blocking)
         self.run_worker(self._refresh_loop())
 
     async def _refresh_loop(self) -> None:
         """Background loop to update the table from GossipBridge.heartbeats."""
+        # Small delay to ensure UI is fully interactive before first heavy S3 call
+        await asyncio.sleep(0.5)
+        
         while True:
             self.update_table()
-            await self._refresh_registry()
-            await asyncio.sleep(5) # Refresh every 5s
+            # The registry fetch is the slow part (S3)
+            # We run it in a worker so it doesn't block this loop or the UI
+            self.run_worker(self._refresh_registry())
+            await asyncio.sleep(10) # Refresh every 60s (matching heartbeat) or 10s for UI
 
     async def _refresh_registry(self) -> None:
         """Fetch registry from S3."""
