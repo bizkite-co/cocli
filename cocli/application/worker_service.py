@@ -432,6 +432,7 @@ class WorkerService:
             from ..core.gossip_bridge import bridge
             from datetime import datetime, UTC
             
+            logger.info("Heartbeat loop started.")
             while True:
                 try:
                     if bridge and bridge.running:
@@ -457,6 +458,7 @@ class WorkerService:
         async def _config_watcher() -> None:
             from ..core.paths import paths
             update_dir = paths.root / "remote_updates"
+            logger.info("Config watcher started.")
             while True:
                 try:
                     if update_dir.exists():
