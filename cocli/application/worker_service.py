@@ -445,7 +445,7 @@ class WorkerService:
                         logger.error("Heartbeat thread: bridge NOT found!")
                 except Exception as e:
                     logger.error(f"Heartbeat thread error: {e}")
-                time.sleep(30)
+                time.sleep(60) # 1 minute interval
 
         def config_thread_loop() -> None:
             logger.info(f"Config thread (entry) on {self.processed_by}")

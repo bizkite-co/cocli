@@ -31,13 +31,20 @@ Updates follow a USV (Unit Separated Values) format using `\x1f` as the delimite
 We have implemented a **Unicast UDP Gossip Bridge** optimized for the local `10.0.0.0/8` PI cluster. Unicast was chosen over Multicast to bypass Docker bridge network limitations.
 
 ### 2.1 Layered Peer Discovery [VERIFIED]
-1. **mDNS (Zeroconf)**: Preferred method for automatic peer discovery on the local subnet.
-2. **Static Config**: Fallback that resolves `.pi` hostnames from the campaign's `scaling` configuration.
-3. **Hardcoded Cluster IPs**: Final fallback for known nodes ensuring immediate connectivity.
+1. **Self-Learning Discovery**: Automatically adds any unknown `10.0.0.x` IP to the peer list upon receiving a valid datagram. This allows nodes (like mobile laptops) to join the cluster dynamically by sending a "hello" or heartbeat.
+2. **Static Config**: Fallback that resolves hostnames (e.g. `cocli5x1`, `laptop`) from the campaign's scaling configuration.
+3. **mDNS (Zeroconf)**: Background discovery for automatic peer detection on the local subnet.
 
-### 2.2 Networking & Docker Config [RESOLVED]
-- **Network Host**: Containers now use `--network host` to share the host's IP and allow mDNS/UDP to function natively.
-- **Gossip Bridge**: A background daemon (`cocli/core/gossip_bridge.py`) watches the centralized `data/wal/` folder using `watchdog` and broadcasts new records via Unicast UDP (Port 9999).
+### 2.2 Control Plane Datagrams [IMPLEMENTED]
+Beyond WAL records, the bridge supports specialized coordination datagrams:
+- **`H` (Heartbeat)**: Broadcasts system load, memory, and worker counts every 60s for real-time monitoring.
+- **`C` (Config)**: Broadcasts remote configuration updates (JSON) for hot-reloading worker roles without restarts.
+- **`Q` (Queue Sync)**: Near-instant signaling of task completion markers.
+
+### 2.3 Efficiency & Starvation Prevention [OPTIMIZED]
+- **Rate-Limiting**: Standard WAL gossip is limited to 50 records per file per cycle to prevent network flooding and ensure the event loop isn't starved.
+- **Threaded Isolation**: Heartbeats and Config watchers run in dedicated daemon threads, ensuring they fire even during heavy worker load or asyncio congestion.
+- **Network Host**: Containers use `--network host` to share the host's IP and enable native mDNS/UDP coordination.
 
 ---
 
