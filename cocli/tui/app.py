@@ -54,10 +54,12 @@ class MenuBar(Horizontal):
         # Spacer to push following items to the right
         yield Static("", id="menu-spacer")
         
-        # Right-aligned Application item with campaign name
-        app = cast("CocliApp", self.app)
-        campaign_name = app.services.campaign_service.campaign_name
-        yield Label(f"{campaign_name} ( A)", id="menu-application", classes="menu-item")
+        # Right-aligned Application item with placeholder (updated on mount)
+        yield Label("Application ( A)", id="menu-application", classes="menu-item")
+
+    def on_mount(self) -> None:
+        """Update the campaign name label on mount to avoid blocking compose."""
+        self.refresh_campaign()
 
     def set_active(self, section: str) -> None:
         for label in self.query(Label):

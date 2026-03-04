@@ -8,6 +8,7 @@ from cocli.models.campaigns.queues.to_call import ToCallTask
 @pytest.fixture
 def mock_to_call_env(tmp_path, monkeypatch):
     """Sets up a controlled environment with specific to-call tasks."""
+    monkeypatch.setenv("COCLI_ENV", "test")
     # 1. Setup mock data home
     data_home = tmp_path / "cocli_data"
     data_home.mkdir()

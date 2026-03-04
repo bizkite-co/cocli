@@ -19,8 +19,6 @@ __all__ = ["get_campaign_stats", "get_boto3_session", "load_campaign_config", "g
 
 def get_boto3_session(config: Dict[str, Any], max_pool_connections: int = 10, profile_name: Optional[str] = None) -> boto3.Session:
     """Creates a boto3 session, prioritizing explicit profile_name if provided."""
-    from botocore.config import Config
-    boto_config = Config(max_pool_connections=max_pool_connections)
     aws_config = config.get("aws", {})
     campaign_name = config.get("campaign", {}).get("name")
     
@@ -28,17 +26,17 @@ def get_boto3_session(config: Dict[str, Any], max_pool_connections: int = 10, pr
     if profile_name:
         try:
             session = boto3.Session(profile_name=profile_name)
-            session.client("sts", config=boto_config).get_caller_identity()
-            logger.info(f"Using forced AWS profile: {profile_name}")
+            # PASSIVE: We no longer call get_caller_identity() here to avoid blocking or login prompts
+            logger.debug(f"Initialized forced AWS profile: {profile_name}")
             return session
         except Exception as e:
-            logger.error(f"Failed to use forced profile {profile_name}: {e}")
+            logger.error(f"Failed to initialize forced profile {profile_name}: {e}")
             raise
 
     # 1. Check current AWS_PROFILE environment variable
     env_profile = os.environ.get("AWS_PROFILE")
     
-    # 1. Try candidates (Explicit config + Automatic campaign-iot)
+    # Try candidates (Explicit config + Automatic campaign-iot)
     iot_profiles = aws_config.get("iot_profiles", [])
     if isinstance(iot_profiles, str):
         iot_profiles = [iot_profiles]
@@ -47,30 +45,27 @@ def get_boto3_session(config: Dict[str, Any], max_pool_connections: int = 10, pr
     if campaign_name:
         iot_profiles.insert(0, f"{campaign_name}-iot")
     
-    # If env_profile is in our candidate lists, try it FIRST without loop
+    # If env_profile is in our candidate lists, try it FIRST
     profile_name = aws_config.get("profile") or aws_config.get("aws_profile")
     all_candidates = iot_profiles + ([profile_name] if profile_name else [])
     
     if env_profile and env_profile in all_candidates:
         try:
             session = boto3.Session(profile_name=env_profile)
-            session.client("sts", config=boto_config).get_caller_identity()
-            logger.info(f"Using AWS profile from environment: {env_profile}")
+            logger.debug(f"Initialized AWS profile from environment: {env_profile}")
             return session
         except Exception as e:
-            logger.debug(f"get_boto3_session: Env profile {env_profile} failed: {e}")
+            logger.debug(f"get_boto3_session: Env profile {env_profile} initialization failed: {e}")
 
     for p in iot_profiles:
         if p == env_profile:
-            continue # Already tried
+            continue
         try:
             session = boto3.Session(profile_name=p)
-            # Test if it works
-            session.client("sts", config=boto_config).get_caller_identity()
-            logger.info(f"Using AWS IoT profile: {p}")
+            logger.debug(f"Initialized AWS IoT profile: {p}")
             return session
         except Exception as e:
-            logger.debug(f"get_boto3_session: IoT profile {p} failed: {e}")
+            logger.debug(f"get_boto3_session: IoT profile {p} initialization failed: {e}")
             continue
 
     # 2. Fallback to IoT script directly (Legacy/One-off)
@@ -87,21 +82,19 @@ def get_boto3_session(config: Dict[str, Any], max_pool_connections: int = 10, pr
     except Exception as e:
         logger.debug(f"get_boto3_session: IoT script fallback failed: {e}")
 
-    # 3. Fallback to Profile in config (ONLY if it exists and we don't already have a session)
+    # 3. Fallback to Profile in config
     profile_name = aws_config.get("profile") or aws_config.get("aws_profile")
     
     if profile_name and profile_name != env_profile:
         try:
             session = boto3.Session(profile_name=profile_name)
-            session.client("sts", config=boto_config).get_caller_identity()
-            logger.info(f"Using AWS profile from config: {profile_name}")
+            logger.debug(f"Initialized AWS profile from config: {profile_name}")
             return session
         except Exception as e:
-            logger.debug(f"get_boto3_session: profile from config {profile_name} failed: {e}")
+            logger.debug(f"get_boto3_session: profile from config {profile_name} initialization failed: {e}")
             pass
 
-    # Final fallback: Default session (uses env vars like AWS_PROFILE or IAM roles)
-    logger.info("Using default AWS session")
+    # Final fallback: Default session
     return boto3.Session()
 
 
