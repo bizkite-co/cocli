@@ -25,7 +25,22 @@ Isolate the data pipeline into role-based, least-privilege workers and implement
     - [x] Enqueued 10,000 targets into `gm-details` queue on S3.
     - [x] Swapped RPI fleet to `--role scraper` mode via `swap_cluster_role.sh`.
 
-## Phase 8: Hardened Security & WASI (Future)
+## Phase 8: High-Fidelity Discovery & Gossip Activation ✅
+- [x] **OMAP Pathing Authority**:
+    - [x] **Double-Sharding Fix**: Eliminated the `2/2/` path regression by centralizing resolution in `FilesystemQueue`.
+    - [x] **Proactive Path Ensuring**: Added `.queue(..., ensure=True)` to the paths authority for self-healing directory creation.
+    - [x] **Coordinate Scales**: Enforced explicit precision (Scale 1 for sharding, Scale 6 for points) via `GeoDegrees`.
+- [x] **Automated Funnel Orchestration**:
+    - [x] **State-Aware Batching**: `create-batch` now tracks `last_offset` in `mission_state.toml` for effortless sequential rollouts.
+    - [x] **Metadata Auditing**: Receipts now capture `user_agent`, `viewport`, and `browser_settings` for 100% auditable results.
+- [x] **Real-Time Gossip Bridge**:
+    - [x] **Cluster-Wide Sync**: Activated `QueueDatagram` broadcasts in `FilesystemQueue.ack`.
+    - [x] **Native Networking**: Enabled **WSL Mirror Mode** and Docker `--network host` for seamless laptop-to-PI communication.
+    - [x] **Diagnostic CLI**: Implemented `cocli cluster gossip-audit` and integrated `monitor-batch` with a `--cluster` flag.
+- [x] **Surgical Cluster Sync**:
+    - [x] Optimized `rsync` to target only active task/result folders, bypassing massive legacy datasets.
+
+## Phase 9: Hardened Security & WASI (Future)
 - [ ] **Least-Privilege AWS Roles**:
     - [ ] **Scraper Policy**: Allow `s3:PutObject` to `raw/`, `s3:GetObject` from `queues/`.
     - [ ] **Processor Policy**: Allow `s3:GetObject` from `raw/`, `s3:PutObject` to `wal/`.

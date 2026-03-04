@@ -26,9 +26,10 @@ This document outlines the roadmap for transitioning `cocli` from a purely local
     *   [ ] **Person Detail Parity**: Refactor Person Detail to use the same 2x2 high-density quadrant layout.
     *   [ ] **Campaign Activation**: Move AWS profile and `.envrc` switching logic into `CampaignService.activate_campaign()`.
 
-4.  **Worker Orchestration Decoupling:**
-    *   [ ] Extract `run_worker`, `run_supervisor`, and `run_details_worker` from CLI commands into `WorkerService`.
-    *   [ ] Standardize worker heartbeats and status reports as Pydantic models.
+4.  **Worker Orchestration Decoupling (Done):**
+    *   [x] **WorkerService Core**: Extracted `run_worker` and `run_orchestrated_workers` into a dedicated service layer.
+    *   [x] **Real-Time Status**: Standardized `QueueDatagram` via Gossip Bridge for near-instant status reports.
+    *   [x] **Container Networking**: Standardized on `--network host` for reliable cluster-wide discovery.
 
 5.  **Automated Testing & Verification (Done):**
     *   [x] **Frictionless Test Harness**: Implemented automated snapshot refreshing for Google Maps scraper verification.
