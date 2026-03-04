@@ -185,7 +185,7 @@ class GossipBridge:
                 
                 # Update in-memory status
                 self.heartbeats[h_record.node_id] = h_record.model_dump()
-                logger.debug(f"Heartbeat from {h_record.node_id}: Load {h_record.load_avg}")
+                logger.info(f"Received heartbeat from {h_record.node_id}: Load {h_record.load_avg:.2f}")
                 return
 
             # 3. Handle Configuration Updates
