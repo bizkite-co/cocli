@@ -419,13 +419,15 @@ class WorkerService:
         import os
         import psutil
         from cocli.models.wal.record import HeartbeatDatagram
-        from cocli.core.gossip_bridge import bridge
         from datetime import datetime, UTC
 
+        logger.info(f"Background thread manager started on {self.processed_by}")
+
         def heartbeat_thread_loop() -> None:
-            logger.info(f"Heartbeat thread started on {self.processed_by}")
+            logger.info(f"Heartbeat thread (entry) on {self.processed_by}")
             while True:
                 try:
+                    from cocli.core.gossip_bridge import bridge
                     if bridge:
                         load = os.getloadavg()[0]
                         mem = psutil.virtual_memory().percent
@@ -439,14 +441,16 @@ class WorkerService:
                         )
                         bridge.broadcast_msg(hb.to_usv())
                         logger.info(f"Heartbeat broadcasted (Thread): Load {load:.2f}, Mem {mem:.1f}%")
+                    else:
+                        logger.error("Heartbeat thread: bridge NOT found!")
                 except Exception as e:
                     logger.error(f"Heartbeat thread error: {e}")
                 time.sleep(30)
 
         def config_thread_loop() -> None:
+            logger.info(f"Config thread (entry) on {self.processed_by}")
             from cocli.core.paths import paths
             update_dir = paths.root / "remote_updates"
-            logger.info(f"Config watcher thread started on {self.processed_by}")
             while True:
                 try:
                     if update_dir.exists():
@@ -459,10 +463,11 @@ class WorkerService:
                     logger.debug(f"Config thread error: {e}")
                 time.sleep(5)
 
-        t1 = threading.Thread(target=heartbeat_thread_loop, daemon=True)
-        t2 = threading.Thread(target=config_thread_loop, daemon=True)
+        t1 = threading.Thread(target=heartbeat_thread_loop, daemon=True, name="ClusterHeartbeat")
+        t2 = threading.Thread(target=config_thread_loop, daemon=True, name="ConfigWatcher")
         t1.start()
         t2.start()
+        logger.info("Background status threads launched successfully.")
         return [t1, t2]
 
     async def run_orchestrated_workers(self, worker_definitions: List[Any], headless: bool = True, debug: bool = False) -> None:

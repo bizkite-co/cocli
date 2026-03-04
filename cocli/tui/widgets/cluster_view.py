@@ -43,7 +43,12 @@ class ClusterView(VerticalScroll):
             await asyncio.sleep(2) # Refresh UI every 2s
 
     def update_table(self) -> None:
-        table = self.query_one("#cluster_table", DataTable)
+        try:
+            table = self.query_one("#cluster_table", DataTable)
+        except Exception:
+            # Table not mounted yet
+            return
+            
         table.clear()
         
         if not bridge or not bridge.heartbeats:
