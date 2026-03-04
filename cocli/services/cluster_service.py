@@ -178,29 +178,36 @@ class ClusterService:
     async def sync_and_audit(self, user: str = "mstouffer") -> None:
         """
         Pulls data from all cluster nodes and runs a quality audit.
+        Surgically targets queues/ and raw/ witness data for speed.
         """
         project_root = Path(__file__).parent.parent.parent.resolve()
         local_campaign_dir = project_root / "data" / "campaigns" / self.campaign_name
-        
-        logger.info(f"[bold cyan]Syncing data from cluster nodes for {self.campaign_name}...[/bold cyan]")
-        
+
+        logger.info(f"[bold cyan]Surgical Pull: cluster results for {self.campaign_name}...[/bold cyan]")
+
         for node in self.get_nodes():
             host = node.hostname
             logger.info(f"  Pulling from {host}...")
-            # Sync raw witness, traces, and queues (NOT the full /companies/ dir to save time)
-            # We target the specific campaign folder
-            remote_path = f"~/repos/data/campaigns/{self.campaign_name}/"
-            
-            rsync_cmd = [
-                "rsync", "-az", "--progress",
-                "--exclude", "companies", # Skip full company files for speed
-                f"{user}@{host}:{remote_path}", str(local_campaign_dir) + "/"
-            ]
-            
-            try:
-                subprocess.run(rsync_cmd, capture_output=True, text=True)
-            except Exception as e:
-                logger.warning(f"Could not sync from {host}: {e}")
+            # We only pull the dynamic worker output: queues and raw witness captures
+            remote_base = f"~/repos/data/campaigns/{self.campaign_name}/"
+
+            for folder in ["queues", "raw"]:
+                remote_path = f"{remote_base}{folder}/"
+                local_path = local_campaign_dir / folder
+                local_path.mkdir(parents=True, exist_ok=True)
+
+                # Use -rtWz for fastest SD card performance
+                rsync_cmd = [
+                    "rsync", "-rtWz",
+                    f"{user}@{host}:{remote_path}", str(local_path) + "/"
+                ]
+
+                try:
+                    subprocess.run(rsync_cmd, capture_output=True, text=True, timeout=120)
+                except subprocess.TimeoutExpired:
+                    logger.warning(f"  Pull from {host}:{folder} timed out.")
+                except Exception as e:
+                    logger.warning(f"  Could not pull from {host}:{folder}: {e}")
 
         # Now run the auditor logic via dynamic import to avoid mypy package collisions
         import importlib.util
