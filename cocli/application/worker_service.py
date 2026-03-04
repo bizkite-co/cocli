@@ -414,6 +414,15 @@ class WorkerService:
         """
         logger.info(f"Launching {len(worker_definitions)} orchestrated workers on {self.processed_by}...")
         
+        # Start the Gossip Bridge for real-time cluster coordination
+        from ..core.gossip_bridge import bridge
+        if bridge:
+            try:
+                bridge.start()
+                logger.info("Gossip Bridge started.")
+            except Exception as e:
+                logger.warning(f"Gossip Bridge failed to start: {e}")
+
         tasks = []
         for wd in worker_definitions:
             logger.info(f"Starting Orchestrated Worker: {wd.name} (Role: {wd.role}, Type: {wd.content_type}, Count: {wd.workers})")

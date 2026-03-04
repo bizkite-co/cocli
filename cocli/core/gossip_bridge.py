@@ -95,15 +95,23 @@ class GossipBridge:
             if not records:
                 return
 
-            for node_id, ip in list(self.peers.items()):
-                for msg in records:
-                    try:
-                        self.sock.sendto(msg.encode('utf-8'), (ip, GOSSIP_PORT))
-                        logger.debug(f"Sent record to {node_id} ({ip})")
-                    except Exception as send_err:
-                        logger.warning(f"Failed to send to {node_id} at {ip}: {send_err}")
+            for msg in records:
+                self.broadcast_msg(msg)
         except Exception as e:
             logger.error(f"Error broadcasting {wal_path}: {e}")
+
+    def broadcast_msg(self, msg: str) -> None:
+        """Sends a raw message to all known peers via Unicast UDP."""
+        if not self.sock or not self.peers:
+            return
+            
+        data = msg.encode('utf-8')
+        for node_id, ip in list(self.peers.items()):
+            try:
+                self.sock.sendto(data, (ip, GOSSIP_PORT))
+                logger.debug(f"Sent record to {node_id} ({ip})")
+            except Exception as send_err:
+                logger.warning(f"Failed to send to {node_id} at {ip}: {send_err}")
 
     def _listen_loop(self) -> None:
         """Background thread to receive unicast gossip."""
@@ -322,6 +330,9 @@ class GossipBridge:
                 pass
         if self.sock:
             self.sock.close()
+
+# Authoritative Global Instance
+bridge = GossipBridge()
 
 if __name__ == "__main__":
     # Standalone test mode

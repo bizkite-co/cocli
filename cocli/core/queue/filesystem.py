@@ -449,6 +449,23 @@ class FilesystemQueue:
                     }
                 )
                 logger.debug(f"Immediate S3 Ack for {task_id} completed.")
+            
+            # 3. Broadcast progress via Gossip
+            try:
+                from ..gossip_bridge import bridge
+                if bridge and bridge.running:
+                    from ...models.wal.record import QueueDatagram
+                    datagram = QueueDatagram(
+                        queue_name=self.queue_name,
+                        task_id=task_id,
+                        status="completed",
+                        timestamp=datetime.now(UTC).isoformat(),
+                        node_id=self.worker_id
+                    )
+                    bridge.broadcast_msg(datagram.to_usv())
+                    logger.debug(f"Broadcasted completion for {task_id}")
+            except Exception as gossip_err:
+                logger.debug(f"Gossip broadcast skipped: {gossip_err}")
                 
         except Exception as e:
             logger.error(f"Error acking for {task_id}: {e}")
