@@ -172,6 +172,16 @@ class CocliApp(App[None]):
         self.main_content = self.query_one("#app_content", Container)
         self.menu_bar = self.query_one(MenuBar)
         create_default_config_file()
+        
+        # Start the Gossip Bridge for real-time cluster coordination in the TUI
+        from ..core.gossip_bridge import bridge
+        if bridge:
+            try:
+                bridge.start()
+                tui_debug_log("APP: Gossip Bridge started.")
+            except Exception as e:
+                tui_debug_log(f"APP: Gossip Bridge failed to start: {e}")
+
         if self.auto_show:
             await self.action_show_companies()
 
