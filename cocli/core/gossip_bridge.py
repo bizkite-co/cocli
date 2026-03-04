@@ -112,7 +112,7 @@ class GossipBridge:
         for node_id, ip in list(self.peers.items()):
             try:
                 self.sock.sendto(data, (ip, GOSSIP_PORT))
-                logger.debug(f"Sent record to {node_id} ({ip})")
+                logger.info(f"Broadcasted gossip msg ({msg[0]}) to {node_id} ({ip})")
             except Exception as send_err:
                 logger.warning(f"Failed to send to {node_id} at {ip}: {send_err}")
 
