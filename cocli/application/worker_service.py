@@ -477,7 +477,6 @@ class WorkerService:
                     logger.debug(f"Config watcher error: {e}")
                 await asyncio.sleep(5)
 
-        # Prepare background tasks
         bg_tasks = []
         bg_tasks.append(asyncio.create_task(_heartbeat_loop()))
         bg_tasks.append(asyncio.create_task(_config_watcher()))
@@ -521,14 +520,12 @@ class WorkerService:
                 
             worker_tasks.append(asyncio.create_task(coro))
 
-        if not worker_tasks:
-            logger.warning("No valid worker tasks to run.")
-            for bt in bg_tasks:
-                bt.cancel()
-            return
-
         # Combine all tasks and wait
         all_tasks = bg_tasks + worker_tasks
+        if not all_tasks:
+            logger.warning("No valid tasks to run.")
+            return
+
         await asyncio.gather(*all_tasks)
 
     async def run_discovery_worker(self, headless: bool = True, debug: bool = False, once: bool = False, workers: int = 1) -> None:
