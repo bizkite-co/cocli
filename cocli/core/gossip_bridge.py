@@ -132,18 +132,28 @@ class GossipBridge:
         while self.running:
             try:
                 self.sock.settimeout(1.0)
-                data, addr = self.sock.recvfrom(1024 * 64)
+                data, addr = self.sock.recvfrom(65535)
                 msg = data.decode('utf-8')
-                self.handle_gossip(msg)
+                self.handle_gossip(msg, addr)
+
             except socket.timeout:
                 continue
             except Exception as e:
                 if self.running:
                     logger.error(f"Gossip listen error: {e}")
 
-    def handle_gossip(self, msg: str) -> None:
+    def handle_gossip(self, msg: str, addr: tuple[str, int]) -> None:
         """Processes an incoming USV datagram and writes it locally via paths authority."""
         try:
+            sender_ip = addr[0]
+            
+            # 0. Self-Learning Discovery: Add unknown peers from our subnet
+            if sender_ip.startswith("10.0.0.") and sender_ip not in self.peers.values():
+                # We don't have a hostname, so we use a synthetic node_id
+                node_hint = f"discovered_{sender_ip.split('.')[-1]}"
+                self.peers[node_hint] = sender_ip
+                logger.info(f"Learned new gossip peer: {node_hint} at {sender_ip}")
+
             # 1. Handle Queue Synchronization
             if msg.startswith("Q"):
                 q_record = QueueDatagram.from_usv(msg)
