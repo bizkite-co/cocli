@@ -412,55 +412,58 @@ class WorkerService:
                 if "Target page, context or browser has been closed" in str(e) or not connected:
                     break
 
-    async def _heartbeat_loop(self, worker_definitions: List[Any]) -> None:
-        """Background loop to broadcast system heartbeats via Gossip."""
+    def _start_background_tasks(self, worker_definitions: List[Any]) -> List[Any]:
+        """Starts the heartbeat and config watcher in dedicated background threads."""
+        import threading
+        import time
         import os
         import psutil
         from cocli.models.wal.record import HeartbeatDatagram
         from cocli.core.gossip_bridge import bridge
         from datetime import datetime, UTC
-        
-        logger.info(f"Heartbeat loop started on {self.processed_by}")
-        while True:
-            try:
-                if bridge:
-                    # Gather system stats
-                    load = os.getloadavg()[0] # 1-min load avg
-                    mem = psutil.virtual_memory().percent
-                    
-                    hb = HeartbeatDatagram(
-                        node_id=self.processed_by,
-                        timestamp=datetime.now(UTC).isoformat(),
-                        load_avg=load,
-                        memory_percent=mem,
-                        worker_count=len(worker_definitions),
-                        active_tasks=0
-                    )
-                    bridge.broadcast_msg(hb.to_usv())
-                    logger.info(f"Heartbeat broadcasted (30s): Load {load:.2f}, Mem {mem:.1f}%")
-                else:
-                    logger.error("Heartbeat loop: GossipBridge global 'bridge' is None!")
-            except Exception as e:
-                logger.error(f"Heartbeat loop error: {e}", exc_info=True)
-            await asyncio.sleep(30) # 30s interval
 
-    async def _config_watcher(self) -> None:
-        """Background loop to detect and apply remote configuration updates."""
-        from cocli.core.paths import paths
-        update_dir = paths.root / "remote_updates"
-        logger.info(f"Config watcher started on {self.processed_by}")
-        while True:
-            try:
-                if update_dir.exists():
-                    updates = list(update_dir.glob("config_*.json"))
-                    if updates:
-                        logger.info("[bold yellow]REMOTE CONFIG UPDATE DETECTED![/bold yellow]")
-                        # Consume updates for now
-                        for u in updates:
-                            u.unlink()
-            except Exception as e:
-                logger.debug(f"Config watcher error: {e}")
-            await asyncio.sleep(5)
+        def heartbeat_thread_loop() -> None:
+            logger.info(f"Heartbeat thread started on {self.processed_by}")
+            while True:
+                try:
+                    if bridge:
+                        load = os.getloadavg()[0]
+                        mem = psutil.virtual_memory().percent
+                        hb = HeartbeatDatagram(
+                            node_id=self.processed_by,
+                            timestamp=datetime.now(UTC).isoformat(),
+                            load_avg=load,
+                            memory_percent=mem,
+                            worker_count=len(worker_definitions),
+                            active_tasks=0
+                        )
+                        bridge.broadcast_msg(hb.to_usv())
+                        logger.info(f"Heartbeat broadcasted (Thread): Load {load:.2f}, Mem {mem:.1f}%")
+                except Exception as e:
+                    logger.error(f"Heartbeat thread error: {e}")
+                time.sleep(30)
+
+        def config_thread_loop() -> None:
+            from cocli.core.paths import paths
+            update_dir = paths.root / "remote_updates"
+            logger.info(f"Config watcher thread started on {self.processed_by}")
+            while True:
+                try:
+                    if update_dir.exists():
+                        updates = list(update_dir.glob("config_*.json"))
+                        if updates:
+                            logger.info("[bold yellow]REMOTE CONFIG UPDATE DETECTED![/bold yellow]")
+                            for u in updates:
+                                u.unlink()
+                except Exception as e:
+                    logger.debug(f"Config thread error: {e}")
+                time.sleep(5)
+
+        t1 = threading.Thread(target=heartbeat_thread_loop, daemon=True)
+        t2 = threading.Thread(target=config_thread_loop, daemon=True)
+        t1.start()
+        t2.start()
+        return [t1, t2]
 
     async def run_orchestrated_workers(self, worker_definitions: List[Any], headless: bool = True, debug: bool = False) -> None:
         """
@@ -480,10 +483,8 @@ class WorkerService:
         else:
             logger.error("Gossip Bridge global 'bridge' not found during startup!")
 
-        # Prepare background tasks
-        bg_tasks = []
-        bg_tasks.append(asyncio.create_task(self._heartbeat_loop(worker_definitions)))
-        bg_tasks.append(asyncio.create_task(self._config_watcher()))
+        # Start dedicated background threads for status reporting
+        self._start_background_tasks(worker_definitions)
 
         worker_tasks = []
         for wd in worker_definitions:
@@ -526,17 +527,13 @@ class WorkerService:
 
         if not worker_tasks:
             logger.warning("No valid worker tasks to run.")
-            for bt in bg_tasks:
-                bt.cancel()
             return
 
         # Main orchestration wait loop (only for workers)
         try:
-            await asyncio.gather(*worker_tasks, *bg_tasks)
+            await asyncio.gather(*worker_tasks)
         finally:
-            # Clean up background tasks on exit
-            for bt in bg_tasks:
-                bt.cancel()
+            logger.info("Orchestration finished. Background threads will exit with process.")
 
     async def run_discovery_worker(self, headless: bool = True, debug: bool = False, once: bool = False, workers: int = 1) -> None:
         """Explicit alias for GM-List discovery worker."""
