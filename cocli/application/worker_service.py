@@ -526,15 +526,19 @@ class WorkerService:
                 
             worker_tasks.append(asyncio.create_task(coro))
 
-        # Combine all tasks and wait
-        all_tasks = bg_tasks + worker_tasks
-        if not all_tasks:
-            logger.warning("No valid tasks to run.")
+        if not worker_tasks:
+            logger.warning("No valid worker tasks to run.")
+            for bt in bg_tasks:
+                bt.cancel()
             return
 
-        # Give background tasks a head start
-        await asyncio.sleep(0.1)
-        await asyncio.gather(*all_tasks)
+        # Main orchestration wait loop (only for workers)
+        try:
+            await asyncio.gather(*worker_tasks)
+        finally:
+            # Clean up background tasks on exit
+            for bt in bg_tasks:
+                bt.cancel()
 
     async def run_discovery_worker(self, headless: bool = True, debug: bool = False, once: bool = False, workers: int = 1) -> None:
         """Explicit alias for GM-List discovery worker."""
