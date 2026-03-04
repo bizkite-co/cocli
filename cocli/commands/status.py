@@ -16,6 +16,7 @@ def status(
     ctx: typer.Context,
     campaign: Optional[str] = typer.Option(None, help="The campaign to check."),
     refresh: bool = typer.Option(False, "--refresh", "-r", help="Force a fresh stats generation (slow)."),
+    local: bool = typer.Option(False, "--local", "-l", help="Force local filesystem reporting (skips S3)."),
 ) -> None:
     """
     Displays the current status of the cocli environment and campaign metrics.
@@ -26,10 +27,22 @@ def status(
     effective_campaign = campaign or get_campaign() or "default"
     services = ServiceContainer(campaign_name=effective_campaign)
     
+    # Start Gossip Bridge to collect real-time heartbeats
+    from ..core.gossip_bridge import bridge
+    if bridge:
+        try:
+            bridge.start()
+        except Exception:
+            pass
+
     with console.status("[bold green]Fetching status..."):
         # 1. Get basic environment info
         env = services.reporting_service.get_environment_status()
         
+        # Give gossip bridge a moment to hear from peers if starting fresh
+        import time
+        time.sleep(1.0)
+
         # 2. Get stats (either from cache or fresh)
         stats: Optional[Dict[str, Any]] = None
         if refresh:
@@ -40,12 +53,21 @@ def status(
                 console.print("[yellow]No cached report found. Generating fresh stats...[/yellow]")
                 stats = services.reporting_service.get_campaign_stats(effective_campaign)
 
+    if local and stats:
+        # Filter out S3 queues to force local rendering
+        if "s3_queues" in stats:
+            del stats["s3_queues"]
+
     # 3. Render
     console.print(status_renderer.render_environment_panel(env))
     
     if stats and not stats.get("error"):
         console.print(status_renderer.render_queue_table(stats))
         
+        # Real-time Gossip Status
+        if stats.get("gossip_heartbeats"):
+            console.print(status_renderer.render_gossip_status_table(stats["gossip_heartbeats"]))
+
         hb_table = status_renderer.render_worker_heartbeat_table(stats)
         if hb_table:
             console.print(hb_table)

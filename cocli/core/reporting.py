@@ -252,9 +252,10 @@ def get_campaign_stats(campaign_name: str) -> Dict[str, Any]:
                     prefix_pending = f"campaigns/{campaign_name}/queues/{q}/pending/"
                     for page in paginator.paginate(Bucket=data_bucket, Prefix=prefix_pending):
                         for obj in page.get("Contents", []):
-                            if obj["Key"].endswith("task.json"):
+                            key = obj["Key"]
+                            if key.endswith("task.json") or (q == "discovery-gen" and key.endswith(".usv")):
                                 pending_count += 1
-                            elif obj["Key"].endswith("lease.json"):
+                            elif key.endswith("lease.json"):
                                 inflight_count += 1
                     
                     completed_count = 0
@@ -297,6 +298,11 @@ def get_campaign_stats(campaign_name: str) -> Dict[str, Any]:
             except Exception as e:
                 logger.warning(f"Could not fetch worker heartbeats: {e}")
                 stats["worker_heartbeats"] = []
+
+        # 3. Add Real-time Gossip Heartbeats
+        from .gossip_bridge import bridge
+        if bridge and bridge.heartbeats:
+            stats["gossip_heartbeats"] = bridge.heartbeats
 
             # --- Global Scraped Tiles from S3 ---
             try:
@@ -379,16 +385,16 @@ def get_campaign_stats(campaign_name: str) -> Dict[str, Any]:
     stats["local_queues"] = local_stats
     
     # --- Mission Index Awareness for gm-list ---
-    # If the virtual queue (target-tiles) has items, count them as pending
-    # unless they are already in the witness index.
-    campaign_dir_path = paths.campaign(campaign_name)
-    target_tiles_dir = campaign_dir_path / "indexes" / "target-tiles"
-    if target_tiles_dir.exists():
+    # The active task pool is in discovery-gen/completed/
+    discovery_gen_completed = paths.campaign(campaign_name).queue("discovery-gen").completed
+    if discovery_gen_completed.exists():
         mission_pending: int = 0
-        for tf in list(target_tiles_dir.glob("**/*.csv")) + list(target_tiles_dir.glob("**/*.usv")):
-            rel_path = tf.relative_to(target_tiles_dir)
+        # Iterate through sharded .usv tasks
+        for tf in discovery_gen_completed.glob("**/*.usv"):
+            # Check if this tile+phrase has a result yet
+            rel_path = tf.relative_to(discovery_gen_completed)
+            witness_usv = witness_root / rel_path
             witness_csv = witness_root / rel_path.with_suffix(".csv")
-            witness_usv = witness_root / rel_path.with_suffix(".usv")
             if not witness_csv.exists() and not witness_usv.exists():
                 mission_pending += 1
         
