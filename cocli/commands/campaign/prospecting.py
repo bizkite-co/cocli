@@ -744,6 +744,137 @@ def queue_mission(
     if active_count == 0 and frontier_count > 0:
         console.print("\n[yellow]Tip: Run 'create-batch' and 'build-mission-index' to activate tasks.[/yellow]")
 
+@app.command(name="monitor-batch")
+def monitor_batch(
+    campaign_name: Annotated[Optional[str], typer.Argument(help="The name of the campaign.")] = None,
+    name: str = typer.Option("canary_500", help="Name of the batch to monitor."),
+    recent: bool = typer.Option(False, "--recent", help="Only show recent or pending tasks."),
+) -> None:
+    """
+    Monitor the progress of a discovery batch.
+    """
+    if campaign_name is None:
+        campaign_name = get_campaign()
+    
+    if not campaign_name:
+        console.print("[red]No campaign specified.[/red]")
+        raise typer.Exit(1)
+
+    discovery_gen = paths.campaign(campaign_name).queue("discovery-gen")
+    batch_file = discovery_gen.pending / "batches" / f"{name}.usv"
+    results_dir = paths.campaign(campaign_name).queue("gm-list").completed / "results"
+    pending_queue_dir = paths.campaign(campaign_name).queue("gm-list").pending
+
+    if not batch_file.exists():
+        console.print(f"[red]Batch file not found: {batch_file}[/red]")
+        raise typer.Exit(1)
+
+    from ...models.campaigns.mission import MissionTask
+    from ...core.sharding import get_geo_shard, get_grid_tile_id
+    from ...core.text_utils import slugify
+    from rich.table import Table
+    from datetime import datetime, UTC, timedelta
+    import json
+
+    # 1. Load Batch
+    tasks: List[MissionTask] = []
+    with open(batch_file, "r", encoding="utf-8") as f:
+        for line in f:
+            if line.strip():
+                try:
+                    tasks.append(MissionTask.from_usv(line))
+                except Exception:
+                    continue
+
+    if not tasks:
+        console.print("[yellow]No valid tasks found in batch.[/yellow]")
+        return
+
+    # 2. Build Status Table
+    table = Table(title=f"Monitoring Batch: {name} ({campaign_name})")
+    table.add_column("Tile ID", style="cyan")
+    table.add_column("Phrase", style="magenta")
+    table.add_column("Status", justify="center")
+    table.add_column("Details", style="dim")
+
+    completed_count = 0
+    in_progress_count = 0
+    pending_count = 0
+    legacy_count = 0
+
+    now = datetime.now(UTC)
+    threshold = now - timedelta(hours=4)
+
+    for task in tasks:
+        lat_shard = get_geo_shard(float(task.latitude))
+        grid_id = get_grid_tile_id(float(task.latitude), float(task.longitude))
+        lat_tile, lon_tile = grid_id.split("_")
+        phrase_slug = slugify(task.search_phrase)
+        
+        # Check for results (Completed)
+        receipt_file = results_dir / lat_shard / lat_tile / lon_tile / f"{phrase_slug}.json"
+        
+        # Check for lease (In Progress)
+        task_sub_path = f"{lat_shard}/{lat_tile}/{lon_tile}/{phrase_slug}.usv"
+        lease_file = pending_queue_dir / task_sub_path / "lease.json"
+        
+        status = "[white]PENDING[/white]"
+        details = "-"
+        is_legacy = False
+        
+        if receipt_file.exists():
+            try:
+                with open(receipt_file, "r") as f:
+                    data = json.load(f)
+                    count = data.get("result_count", 0)
+                    worker = data.get("worker_id", "unknown")
+                    comp_at_str = data.get("completed_at")
+                    
+                    if comp_at_str:
+                        comp_at = datetime.fromisoformat(comp_at_str.replace("Z", "+00:00"))
+                        if comp_at > threshold:
+                            status = "[bold green]DONE[/bold green]"
+                            details = f"[bold]{count}[/bold] by {worker} (RECENT)"
+                            completed_count += 1
+                        else:
+                            status = "[green]DONE[/green]"
+                            details = f"{count} by {worker} (Legacy: {comp_at.strftime('%m-%d')})"
+                            is_legacy = True
+                            legacy_count += 1
+                    else:
+                        status = "[green]DONE[/green]"
+                        details = f"{count} by {worker}"
+                        completed_count += 1
+            except Exception:
+                status = "[green]DONE[/green]"
+                details = "Result exists"
+                completed_count += 1
+        elif lease_file.exists():
+            status = "[yellow]ACTIVE[/yellow]"
+            try:
+                with open(lease_file, "r") as f:
+                    data = json.load(f)
+                    worker = data.get("worker_id", "unknown")
+                    details = f"Worker: {worker}"
+            except Exception:
+                details = "Leased"
+            in_progress_count += 1
+        else:
+            pending_count += 1
+
+        if not recent or not is_legacy:
+            table.add_row(task.tile_id, task.search_phrase, status, details)
+
+    console.print(table)
+    
+    # Summary
+    console.print("\n[bold]Summary:[/bold]")
+    console.print(f"  [bold green]Recent Done:  {completed_count}[/bold green]")
+    console.print(f"  [green]Legacy Done:  {legacy_count}[/green]")
+    console.print(f"  [yellow]Active:       {in_progress_count}[/yellow]")
+    console.print(f"  [white]Pending:      {pending_count}[/white]")
+    console.print(f"  Total:        {len(tasks)}")
+
 @app.command()
 def achieve_goal(
     goal_emails: int = typer.Option(10, "--emails"),
