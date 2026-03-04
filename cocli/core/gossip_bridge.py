@@ -307,8 +307,11 @@ class GossipBridge:
         # 3. Start Gossip Listener
         self.listener_thread = threading.Thread(target=self._listen_loop, daemon=True)
         self.listener_thread.start()
+
+        # 4. Register ourselves in S3
+        self.register_self()
         
-        # 4. Start File Observer on the centralized WAL directory
+        # 5. Start File Observer on the centralized WAL directory
         if self.wal_dir.exists():
             try:
                 self.observer.schedule(self.handler, str(self.wal_dir), recursive=False)
@@ -351,11 +354,45 @@ class GossipBridge:
         logger.info(f"Gossip Bridge (Unicast) started on node {self.node_id}")
 
     def discover_peers(self) -> None:
-        """Populates the peers list from config and hardcoded fallbacks."""
-        # HARDCODED CLUSTER DEFAULTS (The ultimate fallback)
-        for ip in ["10.0.0.12", "10.0.0.17", "10.0.0.16", "10.0.0.200"]:
-            self.peers[f"hardcoded_{ip.split('.')[-1]}"] = ip
+        """Populates the peers list from S3 registry and campaign config."""
+        # 1. S3 Registry Discovery (Primary)
+        try:
+            from .config import load_campaign_config, get_campaign
+            from .reporting import get_boto3_session
+            campaign_name = os.getenv("CAMPAIGN_NAME") or get_campaign()
+            if campaign_name:
+                config = load_campaign_config(campaign_name)
+                bucket = config.get("aws", {}).get("data_bucket_name")
+                if bucket:
+                    # Use IoT profile if available, else default
+                    profile = f"{campaign_name}-iot" if os.path.exists("/home/mstouffer/.cocli/iot/get_tokens.sh") else None
+                    session = get_boto3_session(config, profile_name=profile)
+                    s3 = session.client("s3")
 
+                    prefix = "cluster/registry/"
+                    response = s3.list_objects_v2(Bucket=bucket, Prefix=prefix)
+
+                    for obj in response.get("Contents", []):
+                        key = obj["Key"]
+                        if not key.endswith(".json"):
+                            continue
+
+                        peer_id = key.replace(prefix, "").replace(".json", "")
+                        if peer_id == self.node_id:
+                            continue
+
+                        # Fetch IP from small JSON file
+                        data_resp = s3.get_object(Bucket=bucket, Key=key)
+                        import json
+                        peer_data = json.loads(data_resp["Body"].read().decode("utf-8"))
+                        ip = peer_data.get("ip")
+                        if ip:
+                            self.peers[peer_id] = ip
+                            logger.info(f"S3-discovered peer: {peer_id} at {ip}")
+        except Exception as e:
+            logger.debug(f"S3 peer discovery skipped: {e}")
+
+        # 2. Static Config Fallback
         try:
             from .config import load_campaign_config, get_campaign
             campaign_name = os.getenv("CAMPAIGN_NAME") or get_campaign()
@@ -363,25 +400,69 @@ class GossipBridge:
                 config = load_campaign_config(campaign_name)
                 scaling = config.get("prospecting", {}).get("scaling", {})
                 for host_key in scaling.keys():
-                    if host_key == "fargate" or host_key == self.node_id:
+                    if host_key == "fargate" or host_key == self.node_id or host_key in self.peers:
                         continue
+
+                    # Resolve IP
+                    peer_ips = []
                     if host_key == "laptop":
                         peer_ips = ["10.0.0.4"]
                     else:
-                        peer_ips = []
                         for suffix in [".pi", ".local", ""]:
-                            peer_host = host_key + suffix
                             try:
-                                ip = socket.gethostbyname(peer_host)
+                                ip = socket.gethostbyname(host_key + suffix)
                                 if ip and ip != "127.0.0.1":
                                     peer_ips.append(ip)
                             except socket.gaierror:
                                 continue
+
                     if peer_ips:
                         self.peers[host_key] = peer_ips[0]
                         logger.info(f"Config-discovered peer: {host_key} at {peer_ips[0]}")
         except Exception as e:
             logger.debug(f"Static peer discovery failed: {e}")
+
+    def register_self(self) -> None:
+        """Registers the local IP in the S3 cluster registry."""
+        try:
+            from .config import load_campaign_config, get_campaign
+            from .reporting import get_boto3_session
+            import json
+
+            campaign_name = os.getenv("CAMPAIGN_NAME") or get_campaign()
+            if not campaign_name:
+                return
+
+            config = load_campaign_config(campaign_name)
+            bucket = config.get("aws", {}).get("data_bucket_name")
+            if not bucket:
+                return
+
+            # Determine local IP
+            local_ip = "0.0.0.0"
+            try:
+                s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+                s.connect(('8.8.8.8', 1))
+                local_ip = s.getsockname()[0]
+                s.close()
+            except Exception:
+                pass
+
+            if local_ip == "0.0.0.0":
+                return
+
+            # Use IoT profile if available, else default
+            profile = f"{campaign_name}-iot" if os.path.exists("/home/mstouffer/.cocli/iot/get_tokens.sh") else None
+            session = get_boto3_session(config, profile_name=profile)
+            s3 = session.client("s3")
+
+            key = f"cluster/registry/{self.node_id}.json"
+            payload = json.dumps({"ip": local_ip, "timestamp": time.time()})
+            s3.put_object(Bucket=bucket, Key=key, Body=payload)
+            logger.info(f"Registered node {self.node_id} at {local_ip} in S3 registry.")
+        except Exception as e:
+            logger.warning(f"Failed to register node in S3: {e}")
+
 
     def stop(self) -> None:
         self.running = False
