@@ -55,8 +55,12 @@ class WorkerService:
         workers: int = 1,
     ) -> None:
         while True:
+            # Yield control to allow heartbeat/other tasks to run
+            await asyncio.sleep(0.1)
+
             try:
                 if not browser.is_connected():
+
                     logger.error("Browser is disconnected. Breaking task loop to restart.")
                     break
             except Exception as e:
