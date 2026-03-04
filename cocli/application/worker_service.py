@@ -448,6 +448,7 @@ class WorkerService:
                             active_tasks=0 # TODO: Track actual active task count
                         )
                         bridge.broadcast_msg(hb.to_usv())
+                        logger.info(f"Heartbeat broadcasted: Load {load:.2f}, Mem {mem:.1f}%")
                 except Exception as e:
                     logger.debug(f"Heartbeat failed: {e}")
                 await asyncio.sleep(10) # 10s interval
