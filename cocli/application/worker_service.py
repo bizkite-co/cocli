@@ -439,7 +439,7 @@ class WorkerService:
             logger.info("Heartbeat loop started.")
             while True:
                 try:
-                    if bridge and bridge.running:
+                    if bridge:
                         # Gather system stats
                         load = os.getloadavg()[0] # 1-min load avg
                         mem = psutil.virtual_memory().percent
@@ -450,13 +450,16 @@ class WorkerService:
                             load_avg=load,
                             memory_percent=mem,
                             worker_count=len(worker_definitions),
-                            active_tasks=0 # TODO: Track actual active task count
+                            active_tasks=0
                         )
-                        bridge.broadcast_msg(hb.to_usv())
-                        logger.info(f"Heartbeat broadcasted: Load {load:.2f}, Mem {mem:.1f}%")
+                        msg = hb.to_usv()
+                        bridge.broadcast_msg(msg)
+                        logger.info(f"Heartbeat broadcasted (30s): Load {load:.2f}, Mem {mem:.1f}%")
+                    else:
+                        logger.warning("Heartbeat loop: Bridge instance not found.")
                 except Exception as e:
-                    logger.debug(f"Heartbeat failed: {e}")
-                await asyncio.sleep(10) # 10s interval
+                    logger.error(f"Heartbeat loop error: {e}", exc_info=True)
+                await asyncio.sleep(30) # 30s interval
 
         # 2. Config Watcher (Hot-Reload)
         async def _config_watcher() -> None:
