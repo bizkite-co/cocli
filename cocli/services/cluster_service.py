@@ -161,6 +161,7 @@ class ClusterService:
         subprocess.run(["ssh", f"{user}@{host}", stop_cmd], capture_output=True)
         
         run_cmd = f"""docker run -d --restart always --name cocli-supervisor \
+            --network host \
             --shm-size=2gb \
             -e TZ=America/Los_Angeles \
             -e CAMPAIGN_NAME='{self.campaign_name}' \
