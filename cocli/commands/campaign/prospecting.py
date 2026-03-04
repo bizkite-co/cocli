@@ -749,9 +749,11 @@ def monitor_batch(
     campaign_name: Annotated[Optional[str], typer.Argument(help="The name of the campaign.")] = None,
     name: str = typer.Option("canary_500", help="Name of the batch to monitor."),
     recent: bool = typer.Option(False, "--recent", help="Only show recent or pending tasks."),
+    cluster: bool = typer.Option(False, "--cluster", help="Run report remotely on the cluster Hub for real-time data."),
 ) -> None:
     """
     Monitor the progress of a discovery batch.
+    Use --cluster to see live results from the gossip network authority (cocli5x1.pi).
     """
     if campaign_name is None:
         campaign_name = get_campaign()
@@ -759,6 +761,21 @@ def monitor_batch(
     if not campaign_name:
         console.print("[red]No campaign specified.[/red]")
         raise typer.Exit(1)
+
+    if cluster:
+        # Remote execution on Hub
+        import subprocess
+        hub = "cocli5x1.pi"
+        cmd = f"docker exec cocli-supervisor cocli campaign monitor-batch {campaign_name} --name {name}"
+        if recent:
+            cmd += " --recent"
+        
+        console.print(f"[bold cyan]Querying Cluster Authority: {hub}...[/bold cyan]")
+        try:
+            subprocess.run(["ssh", f"mstouffer@{hub}", cmd], check=True)
+        except Exception as e:
+            console.print(f"[red]Could not reach Hub: {e}[/red]")
+        return
 
     discovery_gen = paths.campaign(campaign_name).queue("discovery-gen")
     batch_file = discovery_gen.pending / "batches" / f"{name}.usv"
