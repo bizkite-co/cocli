@@ -1,0 +1,42 @@
+
+[campaign]
+name = "austin-test"
+tag = "austin-test"
+domain = "test.com"
+company-slug = "austin-test"
+workflows = ["import", "prospecting", "outreach"]
+import = { format = "csv" }
+timezone="America/Los_Angeles"
+
+[aws]
+profile = "turboship-support"
+hosted-zone-id = "Z0754885WA4ZOH1QH7PJ"
+
+cocli_sqs_queue_url = "https://sqs.us-east-1.amazonaws.com/193481341784/CdkScraperDeploymentStack-EnrichmentQueue4D4E619F-srLGUESiUDYU"
+cocli_enrichment_service_url = "https://enrich.turboheat.net"
+aws_profile = "turboship-support"
+
+[google_maps]
+email = "admin@turboheatweldingtools.com"
+one_password_path = "op://TurboHeatWelding/GMail_TurboHeatWeldingTools/password"
+
+[prospecting]
+zoom-out-button-selector = "div#zoomOutButton"
+omit-zoom-feature = true
+proximity = 30
+panning-distance-miles = 2
+initial-zoom-out-level = 1
+target-locations-csv = "target_locations.csv"
+locations = [
+    "Austin, TX",
+    "Wells Branch, TX"
+]
+tools = [
+    "google-pmaps",
+    "yelp"
+]
+queries = ["commercial vinyl flooring contractor", "rubber flooring contractor", "sports flooring contractor"]
+criteria = [
+    "commercial installs",
+    "sheet flooring"
+]

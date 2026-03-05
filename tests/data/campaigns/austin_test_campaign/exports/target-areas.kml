@@ -1,0 +1,656 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<kml xmlns="http://www.opengis.net/kml/2.2" xmlns:gx="http://www.google.com/kml/ext/2.2">
+    <Document id="1">
+        <Document id="2">
+            <Style id="9">
+                <LineStyle id="11">
+                    <colorMode>normal</colorMode>
+                    <width>2</width>
+                </LineStyle>
+                <PolyStyle id="10">
+                    <color>64ff0000</color>
+                    <colorMode>normal</colorMode>
+                    <fill>1</fill>
+                    <outline>1</outline>
+                </PolyStyle>
+            </Style>
+            <Style id="18">
+                <LineStyle id="20">
+                    <colorMode>normal</colorMode>
+                    <width>2</width>
+                </LineStyle>
+                <PolyStyle id="19">
+                    <color>64ff0000</color>
+                    <colorMode>normal</colorMode>
+                    <fill>1</fill>
+                    <outline>1</outline>
+                </PolyStyle>
+            </Style>
+            <Style id="27">
+                <LineStyle id="29">
+                    <colorMode>normal</colorMode>
+                    <width>2</width>
+                </LineStyle>
+                <PolyStyle id="28">
+                    <color>64ff0000</color>
+                    <colorMode>normal</colorMode>
+                    <fill>1</fill>
+                    <outline>1</outline>
+                </PolyStyle>
+            </Style>
+            <Style id="36">
+                <LineStyle id="38">
+                    <colorMode>normal</colorMode>
+                    <width>2</width>
+                </LineStyle>
+                <PolyStyle id="37">
+                    <color>64ff0000</color>
+                    <colorMode>normal</colorMode>
+                    <fill>1</fill>
+                    <outline>1</outline>
+                </PolyStyle>
+            </Style>
+            <Style id="45">
+                <LineStyle id="47">
+                    <colorMode>normal</colorMode>
+                    <width>2</width>
+                </LineStyle>
+                <PolyStyle id="46">
+                    <color>64ff0000</color>
+                    <colorMode>normal</colorMode>
+                    <fill>1</fill>
+                    <outline>1</outline>
+                </PolyStyle>
+            </Style>
+            <Style id="54">
+                <LineStyle id="56">
+                    <colorMode>normal</colorMode>
+                    <width>2</width>
+                </LineStyle>
+                <PolyStyle id="55">
+                    <color>64ff0000</color>
+                    <colorMode>normal</colorMode>
+                    <fill>1</fill>
+                    <outline>1</outline>
+                </PolyStyle>
+            </Style>
+            <Style id="63">
+                <LineStyle id="65">
+                    <colorMode>normal</colorMode>
+                    <width>2</width>
+                </LineStyle>
+                <PolyStyle id="64">
+                    <color>64ff0000</color>
+                    <colorMode>normal</colorMode>
+                    <fill>1</fill>
+                    <outline>1</outline>
+                </PolyStyle>
+            </Style>
+            <Style id="72">
+                <LineStyle id="74">
+                    <colorMode>normal</colorMode>
+                    <width>2</width>
+                </LineStyle>
+                <PolyStyle id="73">
+                    <color>64ff0000</color>
+                    <colorMode>normal</colorMode>
+                    <fill>1</fill>
+                    <outline>1</outline>
+                </PolyStyle>
+            </Style>
+            <Style id="81">
+                <LineStyle id="83">
+                    <colorMode>normal</colorMode>
+                    <width>2</width>
+                </LineStyle>
+                <PolyStyle id="82">
+                    <color>64ff0000</color>
+                    <colorMode>normal</colorMode>
+                    <fill>1</fill>
+                    <outline>1</outline>
+                </PolyStyle>
+            </Style>
+            <Style id="90">
+                <LineStyle id="92">
+                    <colorMode>normal</colorMode>
+                    <width>2</width>
+                </LineStyle>
+                <PolyStyle id="91">
+                    <color>64ff0000</color>
+                    <colorMode>normal</colorMode>
+                    <fill>1</fill>
+                    <outline>1</outline>
+                </PolyStyle>
+            </Style>
+            <Style id="99">
+                <LineStyle id="101">
+                    <colorMode>normal</colorMode>
+                    <width>2</width>
+                </LineStyle>
+                <PolyStyle id="100">
+                    <color>64ff0000</color>
+                    <colorMode>normal</colorMode>
+                    <fill>1</fill>
+                    <outline>1</outline>
+                </PolyStyle>
+            </Style>
+            <Style id="108">
+                <LineStyle id="110">
+                    <colorMode>normal</colorMode>
+                    <width>2</width>
+                </LineStyle>
+                <PolyStyle id="109">
+                    <color>64ff0000</color>
+                    <colorMode>normal</colorMode>
+                    <fill>1</fill>
+                    <outline>1</outline>
+                </PolyStyle>
+            </Style>
+            <Style id="117">
+                <LineStyle id="119">
+                    <colorMode>normal</colorMode>
+                    <width>2</width>
+                </LineStyle>
+                <PolyStyle id="118">
+                    <color>64ff0000</color>
+                    <colorMode>normal</colorMode>
+                    <fill>1</fill>
+                    <outline>1</outline>
+                </PolyStyle>
+            </Style>
+            <Style id="126">
+                <LineStyle id="128">
+                    <colorMode>normal</colorMode>
+                    <width>2</width>
+                </LineStyle>
+                <PolyStyle id="127">
+                    <color>64ff0000</color>
+                    <colorMode>normal</colorMode>
+                    <fill>1</fill>
+                    <outline>1</outline>
+                </PolyStyle>
+            </Style>
+            <Style id="135">
+                <LineStyle id="137">
+                    <colorMode>normal</colorMode>
+                    <width>2</width>
+                </LineStyle>
+                <PolyStyle id="136">
+                    <color>64ff0000</color>
+                    <colorMode>normal</colorMode>
+                    <fill>1</fill>
+                    <outline>1</outline>
+                </PolyStyle>
+            </Style>
+            <Style id="144">
+                <LineStyle id="146">
+                    <colorMode>normal</colorMode>
+                    <width>2</width>
+                </LineStyle>
+                <PolyStyle id="145">
+                    <color>64ff0000</color>
+                    <colorMode>normal</colorMode>
+                    <fill>1</fill>
+                    <outline>1</outline>
+                </PolyStyle>
+            </Style>
+            <Style id="153">
+                <LineStyle id="155">
+                    <colorMode>normal</colorMode>
+                    <width>2</width>
+                </LineStyle>
+                <PolyStyle id="154">
+                    <color>64ff0000</color>
+                    <colorMode>normal</colorMode>
+                    <fill>1</fill>
+                    <outline>1</outline>
+                </PolyStyle>
+            </Style>
+            <Style id="162">
+                <LineStyle id="164">
+                    <colorMode>normal</colorMode>
+                    <width>2</width>
+                </LineStyle>
+                <PolyStyle id="163">
+                    <color>64ff0000</color>
+                    <colorMode>normal</colorMode>
+                    <fill>1</fill>
+                    <outline>1</outline>
+                </PolyStyle>
+            </Style>
+            <Style id="171">
+                <LineStyle id="173">
+                    <colorMode>normal</colorMode>
+                    <width>2</width>
+                </LineStyle>
+                <PolyStyle id="172">
+                    <color>64ff0000</color>
+                    <colorMode>normal</colorMode>
+                    <fill>1</fill>
+                    <outline>1</outline>
+                </PolyStyle>
+            </Style>
+            <Style id="180">
+                <LineStyle id="182">
+                    <colorMode>normal</colorMode>
+                    <width>2</width>
+                </LineStyle>
+                <PolyStyle id="181">
+                    <color>64ff0000</color>
+                    <colorMode>normal</colorMode>
+                    <fill>1</fill>
+                    <outline>1</outline>
+                </PolyStyle>
+            </Style>
+            <Style id="189">
+                <LineStyle id="191">
+                    <colorMode>normal</colorMode>
+                    <width>2</width>
+                </LineStyle>
+                <PolyStyle id="190">
+                    <color>64ff0000</color>
+                    <colorMode>normal</colorMode>
+                    <fill>1</fill>
+                    <outline>1</outline>
+                </PolyStyle>
+            </Style>
+            <Style id="198">
+                <LineStyle id="200">
+                    <colorMode>normal</colorMode>
+                    <width>2</width>
+                </LineStyle>
+                <PolyStyle id="199">
+                    <color>64ff0000</color>
+                    <colorMode>normal</colorMode>
+                    <fill>1</fill>
+                    <outline>1</outline>
+                </PolyStyle>
+            </Style>
+            <Style id="207">
+                <LineStyle id="209">
+                    <colorMode>normal</colorMode>
+                    <width>2</width>
+                </LineStyle>
+                <PolyStyle id="208">
+                    <color>64ff0000</color>
+                    <colorMode>normal</colorMode>
+                    <fill>1</fill>
+                    <outline>1</outline>
+                </PolyStyle>
+            </Style>
+            <Style id="216">
+                <LineStyle id="218">
+                    <colorMode>normal</colorMode>
+                    <width>2</width>
+                </LineStyle>
+                <PolyStyle id="217">
+                    <color>64ff0000</color>
+                    <colorMode>normal</colorMode>
+                    <fill>1</fill>
+                    <outline>1</outline>
+                </PolyStyle>
+            </Style>
+            <name>austin_test_campaign - All Targets Global Grid</name>
+            <Placemark id="4">
+                <name>30.1_-98.0</name>
+                <description>ID: 30.1_-98.0
+Grid Step: 0.1 deg
+Approx Size: 5.97mi (W) x 6.9mi (H)
+Center: 30.15, -97.95</description>
+                <styleUrl>#9</styleUrl>
+                <Polygon id="3">
+                    <outerBoundaryIs>
+                        <LinearRing id="7">
+                            <coordinates>-98.0,30.1,0.0 -97.9,30.1,0.0 -97.9,30.2,0.0 -98.0,30.2,0.0 -98.0,30.1,0.0</coordinates>
+                        </LinearRing>
+                    </outerBoundaryIs>
+                </Polygon>
+            </Placemark>
+            <Placemark id="13">
+                <name>30.1_-97.9</name>
+                <description>ID: 30.1_-97.9
+Grid Step: 0.1 deg
+Approx Size: 5.97mi (W) x 6.9mi (H)
+Center: 30.15, -97.85</description>
+                <styleUrl>#18</styleUrl>
+                <Polygon id="12">
+                    <outerBoundaryIs>
+                        <LinearRing id="16">
+                            <coordinates>-97.9,30.1,0.0 -97.8,30.1,0.0 -97.8,30.2,0.0 -97.9,30.2,0.0 -97.9,30.1,0.0</coordinates>
+                        </LinearRing>
+                    </outerBoundaryIs>
+                </Polygon>
+            </Placemark>
+            <Placemark id="22">
+                <name>30.1_-97.8</name>
+                <description>ID: 30.1_-97.8
+Grid Step: 0.1 deg
+Approx Size: 5.97mi (W) x 6.9mi (H)
+Center: 30.15, -97.75</description>
+                <styleUrl>#27</styleUrl>
+                <Polygon id="21">
+                    <outerBoundaryIs>
+                        <LinearRing id="25">
+                            <coordinates>-97.8,30.1,0.0 -97.7,30.1,0.0 -97.7,30.2,0.0 -97.8,30.2,0.0 -97.8,30.1,0.0</coordinates>
+                        </LinearRing>
+                    </outerBoundaryIs>
+                </Polygon>
+            </Placemark>
+            <Placemark id="31">
+                <name>30.1_-97.7</name>
+                <description>ID: 30.1_-97.7
+Grid Step: 0.1 deg
+Approx Size: 5.97mi (W) x 6.9mi (H)
+Center: 30.15, -97.65</description>
+                <styleUrl>#36</styleUrl>
+                <Polygon id="30">
+                    <outerBoundaryIs>
+                        <LinearRing id="34">
+                            <coordinates>-97.7,30.1,0.0 -97.6,30.1,0.0 -97.6,30.2,0.0 -97.7,30.2,0.0 -97.7,30.1,0.0</coordinates>
+                        </LinearRing>
+                    </outerBoundaryIs>
+                </Polygon>
+            </Placemark>
+            <Placemark id="40">
+                <name>30.1_-97.6</name>
+                <description>ID: 30.1_-97.6
+Grid Step: 0.1 deg
+Approx Size: 5.97mi (W) x 6.9mi (H)
+Center: 30.15, -97.55</description>
+                <styleUrl>#45</styleUrl>
+                <Polygon id="39">
+                    <outerBoundaryIs>
+                        <LinearRing id="43">
+                            <coordinates>-97.6,30.1,0.0 -97.5,30.1,0.0 -97.5,30.2,0.0 -97.6,30.2,0.0 -97.6,30.1,0.0</coordinates>
+                        </LinearRing>
+                    </outerBoundaryIs>
+                </Polygon>
+            </Placemark>
+            <Placemark id="49">
+                <name>30.2_-98.0</name>
+                <description>ID: 30.2_-98.0
+Grid Step: 0.1 deg
+Approx Size: 5.96mi (W) x 6.9mi (H)
+Center: 30.25, -97.95</description>
+                <styleUrl>#54</styleUrl>
+                <Polygon id="48">
+                    <outerBoundaryIs>
+                        <LinearRing id="52">
+                            <coordinates>-98.0,30.2,0.0 -97.9,30.2,0.0 -97.9,30.3,0.0 -98.0,30.3,0.0 -98.0,30.2,0.0</coordinates>
+                        </LinearRing>
+                    </outerBoundaryIs>
+                </Polygon>
+            </Placemark>
+            <Placemark id="58">
+                <name>30.2_-97.9</name>
+                <description>ID: 30.2_-97.9
+Grid Step: 0.1 deg
+Approx Size: 5.96mi (W) x 6.9mi (H)
+Center: 30.25, -97.85</description>
+                <styleUrl>#63</styleUrl>
+                <Polygon id="57">
+                    <outerBoundaryIs>
+                        <LinearRing id="61">
+                            <coordinates>-97.9,30.2,0.0 -97.8,30.2,0.0 -97.8,30.3,0.0 -97.9,30.3,0.0 -97.9,30.2,0.0</coordinates>
+                        </LinearRing>
+                    </outerBoundaryIs>
+                </Polygon>
+            </Placemark>
+            <Placemark id="67">
+                <name>30.2_-97.8</name>
+                <description>ID: 30.2_-97.8
+Grid Step: 0.1 deg
+Approx Size: 5.96mi (W) x 6.9mi (H)
+Center: 30.25, -97.75</description>
+                <styleUrl>#72</styleUrl>
+                <Polygon id="66">
+                    <outerBoundaryIs>
+                        <LinearRing id="70">
+                            <coordinates>-97.8,30.2,0.0 -97.7,30.2,0.0 -97.7,30.3,0.0 -97.8,30.3,0.0 -97.8,30.2,0.0</coordinates>
+                        </LinearRing>
+                    </outerBoundaryIs>
+                </Polygon>
+            </Placemark>
+            <Placemark id="76">
+                <name>30.2_-97.7</name>
+                <description>ID: 30.2_-97.7
+Grid Step: 0.1 deg
+Approx Size: 5.96mi (W) x 6.9mi (H)
+Center: 30.25, -97.65</description>
+                <styleUrl>#81</styleUrl>
+                <Polygon id="75">
+                    <outerBoundaryIs>
+                        <LinearRing id="79">
+                            <coordinates>-97.7,30.2,0.0 -97.6,30.2,0.0 -97.6,30.3,0.0 -97.7,30.3,0.0 -97.7,30.2,0.0</coordinates>
+                        </LinearRing>
+                    </outerBoundaryIs>
+                </Polygon>
+            </Placemark>
+            <Placemark id="85">
+                <name>30.2_-97.6</name>
+                <description>ID: 30.2_-97.6
+Grid Step: 0.1 deg
+Approx Size: 5.96mi (W) x 6.9mi (H)
+Center: 30.25, -97.55</description>
+                <styleUrl>#90</styleUrl>
+                <Polygon id="84">
+                    <outerBoundaryIs>
+                        <LinearRing id="88">
+                            <coordinates>-97.6,30.2,0.0 -97.5,30.2,0.0 -97.5,30.3,0.0 -97.6,30.3,0.0 -97.6,30.2,0.0</coordinates>
+                        </LinearRing>
+                    </outerBoundaryIs>
+                </Polygon>
+            </Placemark>
+            <Placemark id="94">
+                <name>30.3_-98.0</name>
+                <description>ID: 30.3_-98.0
+Grid Step: 0.1 deg
+Approx Size: 5.95mi (W) x 6.9mi (H)
+Center: 30.35, -97.95</description>
+                <styleUrl>#99</styleUrl>
+                <Polygon id="93">
+                    <outerBoundaryIs>
+                        <LinearRing id="97">
+                            <coordinates>-98.0,30.3,0.0 -97.9,30.3,0.0 -97.9,30.4,0.0 -98.0,30.4,0.0 -98.0,30.3,0.0</coordinates>
+                        </LinearRing>
+                    </outerBoundaryIs>
+                </Polygon>
+            </Placemark>
+            <Placemark id="103">
+                <name>30.3_-97.9</name>
+                <description>ID: 30.3_-97.9
+Grid Step: 0.1 deg
+Approx Size: 5.95mi (W) x 6.9mi (H)
+Center: 30.35, -97.85</description>
+                <styleUrl>#108</styleUrl>
+                <Polygon id="102">
+                    <outerBoundaryIs>
+                        <LinearRing id="106">
+                            <coordinates>-97.9,30.3,0.0 -97.8,30.3,0.0 -97.8,30.4,0.0 -97.9,30.4,0.0 -97.9,30.3,0.0</coordinates>
+                        </LinearRing>
+                    </outerBoundaryIs>
+                </Polygon>
+            </Placemark>
+            <Placemark id="112">
+                <name>30.3_-97.8</name>
+                <description>ID: 30.3_-97.8
+Grid Step: 0.1 deg
+Approx Size: 5.95mi (W) x 6.9mi (H)
+Center: 30.35, -97.75</description>
+                <styleUrl>#117</styleUrl>
+                <Polygon id="111">
+                    <outerBoundaryIs>
+                        <LinearRing id="115">
+                            <coordinates>-97.8,30.3,0.0 -97.7,30.3,0.0 -97.7,30.4,0.0 -97.8,30.4,0.0 -97.8,30.3,0.0</coordinates>
+                        </LinearRing>
+                    </outerBoundaryIs>
+                </Polygon>
+            </Placemark>
+            <Placemark id="121">
+                <name>30.3_-97.7</name>
+                <description>ID: 30.3_-97.7
+Grid Step: 0.1 deg
+Approx Size: 5.95mi (W) x 6.9mi (H)
+Center: 30.35, -97.65</description>
+                <styleUrl>#126</styleUrl>
+                <Polygon id="120">
+                    <outerBoundaryIs>
+                        <LinearRing id="124">
+                            <coordinates>-97.7,30.3,0.0 -97.6,30.3,0.0 -97.6,30.4,0.0 -97.7,30.4,0.0 -97.7,30.3,0.0</coordinates>
+                        </LinearRing>
+                    </outerBoundaryIs>
+                </Polygon>
+            </Placemark>
+            <Placemark id="130">
+                <name>30.3_-97.6</name>
+                <description>ID: 30.3_-97.6
+Grid Step: 0.1 deg
+Approx Size: 5.95mi (W) x 6.9mi (H)
+Center: 30.35, -97.55</description>
+                <styleUrl>#135</styleUrl>
+                <Polygon id="129">
+                    <outerBoundaryIs>
+                        <LinearRing id="133">
+                            <coordinates>-97.6,30.3,0.0 -97.5,30.3,0.0 -97.5,30.4,0.0 -97.6,30.4,0.0 -97.6,30.3,0.0</coordinates>
+                        </LinearRing>
+                    </outerBoundaryIs>
+                </Polygon>
+            </Placemark>
+            <Placemark id="139">
+                <name>30.4_-98.0</name>
+                <description>ID: 30.4_-98.0
+Grid Step: 0.1 deg
+Approx Size: 5.95mi (W) x 6.9mi (H)
+Center: 30.45, -97.95</description>
+                <styleUrl>#144</styleUrl>
+                <Polygon id="138">
+                    <outerBoundaryIs>
+                        <LinearRing id="142">
+                            <coordinates>-98.0,30.4,0.0 -97.9,30.4,0.0 -97.9,30.5,0.0 -98.0,30.5,0.0 -98.0,30.4,0.0</coordinates>
+                        </LinearRing>
+                    </outerBoundaryIs>
+                </Polygon>
+            </Placemark>
+            <Placemark id="148">
+                <name>30.4_-97.9</name>
+                <description>ID: 30.4_-97.9
+Grid Step: 0.1 deg
+Approx Size: 5.95mi (W) x 6.9mi (H)
+Center: 30.45, -97.85</description>
+                <styleUrl>#153</styleUrl>
+                <Polygon id="147">
+                    <outerBoundaryIs>
+                        <LinearRing id="151">
+                            <coordinates>-97.9,30.4,0.0 -97.8,30.4,0.0 -97.8,30.5,0.0 -97.9,30.5,0.0 -97.9,30.4,0.0</coordinates>
+                        </LinearRing>
+                    </outerBoundaryIs>
+                </Polygon>
+            </Placemark>
+            <Placemark id="157">
+                <name>30.4_-97.8</name>
+                <description>ID: 30.4_-97.8
+Grid Step: 0.1 deg
+Approx Size: 5.95mi (W) x 6.9mi (H)
+Center: 30.45, -97.75</description>
+                <styleUrl>#162</styleUrl>
+                <Polygon id="156">
+                    <outerBoundaryIs>
+                        <LinearRing id="160">
+                            <coordinates>-97.8,30.4,0.0 -97.7,30.4,0.0 -97.7,30.5,0.0 -97.8,30.5,0.0 -97.8,30.4,0.0</coordinates>
+                        </LinearRing>
+                    </outerBoundaryIs>
+                </Polygon>
+            </Placemark>
+            <Placemark id="166">
+                <name>30.4_-97.7</name>
+                <description>ID: 30.4_-97.7
+Grid Step: 0.1 deg
+Approx Size: 5.95mi (W) x 6.9mi (H)
+Center: 30.45, -97.65</description>
+                <styleUrl>#171</styleUrl>
+                <Polygon id="165">
+                    <outerBoundaryIs>
+                        <LinearRing id="169">
+                            <coordinates>-97.7,30.4,0.0 -97.6,30.4,0.0 -97.6,30.5,0.0 -97.7,30.5,0.0 -97.7,30.4,0.0</coordinates>
+                        </LinearRing>
+                    </outerBoundaryIs>
+                </Polygon>
+            </Placemark>
+            <Placemark id="175">
+                <name>30.4_-97.6</name>
+                <description>ID: 30.4_-97.6
+Grid Step: 0.1 deg
+Approx Size: 5.95mi (W) x 6.9mi (H)
+Center: 30.45, -97.55</description>
+                <styleUrl>#180</styleUrl>
+                <Polygon id="174">
+                    <outerBoundaryIs>
+                        <LinearRing id="178">
+                            <coordinates>-97.6,30.4,0.0 -97.5,30.4,0.0 -97.5,30.5,0.0 -97.6,30.5,0.0 -97.6,30.4,0.0</coordinates>
+                        </LinearRing>
+                    </outerBoundaryIs>
+                </Polygon>
+            </Placemark>
+            <Placemark id="184">
+                <name>30.5_-97.9</name>
+                <description>ID: 30.5_-97.9
+Grid Step: 0.1 deg
+Approx Size: 5.94mi (W) x 6.9mi (H)
+Center: 30.55, -97.85</description>
+                <styleUrl>#189</styleUrl>
+                <Polygon id="183">
+                    <outerBoundaryIs>
+                        <LinearRing id="187">
+                            <coordinates>-97.9,30.5,0.0 -97.8,30.5,0.0 -97.8,30.6,0.0 -97.9,30.6,0.0 -97.9,30.5,0.0</coordinates>
+                        </LinearRing>
+                    </outerBoundaryIs>
+                </Polygon>
+            </Placemark>
+            <Placemark id="193">
+                <name>30.5_-97.8</name>
+                <description>ID: 30.5_-97.8
+Grid Step: 0.1 deg
+Approx Size: 5.94mi (W) x 6.9mi (H)
+Center: 30.55, -97.75</description>
+                <styleUrl>#198</styleUrl>
+                <Polygon id="192">
+                    <outerBoundaryIs>
+                        <LinearRing id="196">
+                            <coordinates>-97.8,30.5,0.0 -97.7,30.5,0.0 -97.7,30.6,0.0 -97.8,30.6,0.0 -97.8,30.5,0.0</coordinates>
+                        </LinearRing>
+                    </outerBoundaryIs>
+                </Polygon>
+            </Placemark>
+            <Placemark id="202">
+                <name>30.5_-97.7</name>
+                <description>ID: 30.5_-97.7
+Grid Step: 0.1 deg
+Approx Size: 5.94mi (W) x 6.9mi (H)
+Center: 30.55, -97.65</description>
+                <styleUrl>#207</styleUrl>
+                <Polygon id="201">
+                    <outerBoundaryIs>
+                        <LinearRing id="205">
+                            <coordinates>-97.7,30.5,0.0 -97.6,30.5,0.0 -97.6,30.6,0.0 -97.7,30.6,0.0 -97.7,30.5,0.0</coordinates>
+                        </LinearRing>
+                    </outerBoundaryIs>
+                </Polygon>
+            </Placemark>
+            <Placemark id="211">
+                <name>30.5_-97.6</name>
+                <description>ID: 30.5_-97.6
+Grid Step: 0.1 deg
+Approx Size: 5.94mi (W) x 6.9mi (H)
+Center: 30.55, -97.55</description>
+                <styleUrl>#216</styleUrl>
+                <Polygon id="210">
+                    <outerBoundaryIs>
+                        <LinearRing id="214">
+                            <coordinates>-97.6,30.5,0.0 -97.5,30.5,0.0 -97.5,30.6,0.0 -97.6,30.6,0.0 -97.6,30.5,0.0</coordinates>
+                        </LinearRing>
+                    </outerBoundaryIs>
+                </Polygon>
+            </Placemark>
+        </Document>
+    </Document>
+</kml>

@@ -19,7 +19,7 @@ __pycache__/
 .venv
 cocli.egg-info/
 .gemini/
-data
+/data
 .gz
 .tar
 dist

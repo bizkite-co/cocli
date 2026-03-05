@@ -1,0 +1,59 @@
+{
+  "profile": "tabular-data-package",
+  "name": "company_search_cache",
+  "resources": [
+    {
+      "name": "company_search_cache",
+      "path": "company_cache.usv",
+      "format": "usv",
+      "dialect": {
+        "delimiter": "\u001f",
+        "header": false
+      },
+      "schema": {
+        "fields": [
+          {
+            "name": "slug",
+            "type": "string",
+            "description": "Filesystem slug"
+          },
+          {
+            "name": "name",
+            "type": "string",
+            "description": "Business name from Markdown"
+          },
+          {
+            "name": "type",
+            "type": "string",
+            "description": "Entity type (company/person)"
+          },
+          {
+            "name": "domain",
+            "type": "string",
+            "description": ""
+          },
+          {
+            "name": "email",
+            "type": "string",
+            "description": ""
+          },
+          {
+            "name": "phone_number",
+            "type": "string",
+            "description": ""
+          },
+          {
+            "name": "tags",
+            "type": "string",
+            "description": ""
+          },
+          {
+            "name": "display",
+            "type": "string",
+            "description": "Pre-formatted fzf display string"
+          }
+        ]
+      }
+    }
+  ]
+}

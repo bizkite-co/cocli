@@ -1,0 +1,59 @@
+{
+  "profile": "tabular-data-package",
+  "name": "google_maps_golden",
+  "resources": [
+    {
+      "name": "google_maps_golden",
+      "path": "golden_set.usv",
+      "format": "usv",
+      "dialect": {
+        "delimiter": "\u001f",
+        "header": false
+      },
+      "schema": {
+        "fields": [
+          {
+            "name": "name",
+            "type": "string",
+            "description": "Business name"
+          },
+          {
+            "name": "address",
+            "type": "string",
+            "description": "Full address"
+          },
+          {
+            "name": "phone",
+            "type": "string",
+            "description": "Phone number"
+          },
+          {
+            "name": "website",
+            "type": "string",
+            "description": "Website URL"
+          },
+          {
+            "name": "place_id",
+            "type": "string",
+            "description": "Google Maps Place ID"
+          },
+          {
+            "name": "search_phrase",
+            "type": "string",
+            "description": "The phrase used to find it"
+          },
+          {
+            "name": "lat",
+            "type": "number",
+            "description": "Latitude"
+          },
+          {
+            "name": "lon",
+            "type": "number",
+            "description": "Longitude"
+          }
+        ]
+      }
+    }
+  ]
+}

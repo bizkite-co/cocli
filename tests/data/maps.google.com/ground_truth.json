@@ -1,0 +1,16 @@
+{
+  "search_url": "https://www.google.com/maps/search/auto+parts/@34.2499124,-118.2605756,2882m/data=!3m1!1e3?hl=en-US",
+  "min_results": 5,
+  "expectations": [
+    {
+      "name_regex": "AutoZone",
+      "min_reviews": 300,
+      "min_rating": 4.0
+    },
+    {
+      "name_regex": "O'Reilly",
+      "min_reviews": 150,
+      "min_rating": 4.0
+    }
+  ]
+}

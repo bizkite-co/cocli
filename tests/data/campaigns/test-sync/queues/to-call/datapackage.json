@@ -1,0 +1,94 @@
+{
+  "profile": "tabular-data-package",
+  "name": "to_call_queue",
+  "resources": [
+    {
+      "name": "to_call_queue",
+      "path": "pending/*.usv",
+      "format": "usv",
+      "dialect": {
+        "delimiter": "\u001f",
+        "header": false
+      },
+      "schema": {
+        "fields": [
+          {
+            "name": "domain",
+            "type": "string",
+            "description": ""
+          },
+          {
+            "name": "company_slug",
+            "type": "string",
+            "description": ""
+          },
+          {
+            "name": "campaign_name",
+            "type": "string",
+            "description": ""
+          },
+          {
+            "name": "id",
+            "type": "string",
+            "description": ""
+          },
+          {
+            "name": "schema_version",
+            "type": "integer",
+            "description": ""
+          },
+          {
+            "name": "aws_profile_name",
+            "type": "string",
+            "description": ""
+          },
+          {
+            "name": "force_refresh",
+            "type": "boolean",
+            "description": ""
+          },
+          {
+            "name": "ttl_days",
+            "type": "integer",
+            "description": ""
+          },
+          {
+            "name": "attempts",
+            "type": "integer",
+            "description": ""
+          },
+          {
+            "name": "http_500_attempts",
+            "type": "integer",
+            "description": ""
+          },
+          {
+            "name": "created_at",
+            "type": "datetime",
+            "description": ""
+          },
+          {
+            "name": "updated_at",
+            "type": "datetime",
+            "description": ""
+          },
+          {
+            "name": "ack_token",
+            "type": "string",
+            "description": ""
+          },
+          {
+            "name": "priority",
+            "type": "integer",
+            "description": ""
+          },
+          {
+            "name": "callback_at",
+            "type": "datetime",
+            "description": ""
+          }
+        ]
+      }
+    }
+  ]
+}
