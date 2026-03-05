@@ -54,12 +54,25 @@ class MenuBar(Horizontal):
         # Spacer to push following items to the right
         yield Static("", id="menu-spacer")
         
+        # Activity Indicator
+        yield Label("", id="menu-activity", classes="menu-item")
+
         # Right-aligned Application item with placeholder (updated on mount)
         yield Label("Application ( A)", id="menu-application", classes="menu-item")
 
     def on_mount(self) -> None:
         """Update the campaign name label on mount to avoid blocking compose."""
         self.refresh_campaign()
+
+    def set_activity(self, msg: str) -> None:
+        try:
+            label = self.query_one("#menu-activity", Label)
+            if msg:
+                label.update(f"[bold yellow] {msg}...[/bold yellow]")
+            else:
+                label.update("")
+        except Exception:
+            pass
 
     def set_active(self, section: str) -> None:
         for label in self.query(Label):
@@ -371,6 +384,7 @@ class CocliApp(App[None]):
 
     async def action_show_companies(self) -> None:
         """Show the company list view."""
+        self.menu_bar.set_activity("Switching")
         self.menu_bar.set_active("companies")
         self.main_content.remove_children()
         
@@ -398,6 +412,7 @@ class CocliApp(App[None]):
                 company_list.query_one("#company_list_view").focus()
             except Exception:
                 pass
+            self.menu_bar.set_activity("")
         
         # Ensure company list has focus if we are returning from a detail view
         self.call_after_refresh(focus_list)
@@ -411,16 +426,20 @@ class CocliApp(App[None]):
 
     async def action_show_people(self) -> None:
         """Show the person list view."""
+        self.menu_bar.set_activity("Switching")
         self.menu_bar.set_active("people")
         self.main_content.remove_children()
         await self.main_content.mount(PersonList())
+        self.menu_bar.set_activity("")
 
     async def action_show_application(self) -> None:
         """Show the application view."""
         tui_debug_log("APP: action_show_application starting")
+        self.menu_bar.set_activity("Loading")
         self.menu_bar.set_active("application")
         self.main_content.remove_children()
         await self.main_content.mount(ApplicationView())
+        self.menu_bar.set_activity("")
         tui_debug_log("APP: action_show_application finished")
 
     @on(ApplicationView.CampaignActivated)

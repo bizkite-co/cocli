@@ -42,6 +42,9 @@ class StatusView(VerticalScroll):
         if not hasattr(app, "services"):
             return
 
+        indicator = self.query_one("#status_refresh_indicator", Static)
+        indicator.update("[bold yellow] Hydrating...[/bold yellow]")
+
         campaign = app.services.reporting_service.campaign_name
         
         # 1. Fetch Environment (Fast, but do it in thread just in case of I/O)
@@ -55,6 +58,13 @@ class StatusView(VerticalScroll):
         
         # 3. Update the UI
         self.call_after_refresh(self.update_view)
+        
+        # 4. Trigger a full refresh in the background if data is stale or missing
+        # This will update the UI again when done
+        if not cached_stats:
+            self.trigger_refresh()
+        else:
+            indicator.update("")
 
     def action_refresh_status(self) -> None:
         """Triggered by Shift+R."""
