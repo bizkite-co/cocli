@@ -42,21 +42,6 @@ def deploy_hotfix(
     asyncio.run(run_deploy())
     console.print("\n[bold green]Deployment process complete.[/bold green]")
 
-@app.command(name="sync-audit")
-def sync_audit(
-    campaign: Optional[str] = typer.Option(None, "--campaign", "-c", help="Campaign name."),
-) -> None:
-    """
-    Pulls results from all cluster nodes and runs a quality audit (The 'Watchdog' loop).
-    """
-    effective_campaign = campaign or os.getenv("CAMPAIGN_NAME") or get_campaign()
-    if not effective_campaign:
-        console.print("[red]No campaign specified.[/red]")
-        raise typer.Exit(1)
-
-    service = ClusterService(effective_campaign)
-    asyncio.run(service.sync_and_audit())
-
 @app.command(name="gossip-audit")
 def gossip_audit(
     target: Optional[str] = typer.Option(None, "--target", "-t", help="Optional IP to send a test datagram to."),
@@ -73,13 +58,12 @@ def gossip_audit(
         # Note: audit_gossip has a hardcoded 30s listen if port is free
         audit_gossip()
 
-@app.command(name="push-data")
-def push_data(
+@app.command(name="top")
+def top(
     campaign: Optional[str] = typer.Option(None, "--campaign", "-c", help="Campaign name."),
-    delete: bool = typer.Option(False, "--delete", help="Delete remote files not present locally."),
 ) -> None:
     """
-    Propagates local campaign data to all cluster nodes.
+    Real-time performance monitor for the cluster (CPU, Temp, Workers).
     """
     effective_campaign = campaign or os.getenv("CAMPAIGN_NAME") or get_campaign()
     if not effective_campaign:
@@ -87,7 +71,36 @@ def push_data(
         raise typer.Exit(1)
 
     service = ClusterService(effective_campaign)
-    asyncio.run(service.push_data(delete=delete))
+    nodes = service.get_nodes()
+    
+    table = Table(title=f"Cluster Top: {effective_campaign}")
+    table.add_column("Node", style="cyan")
+    table.add_column("Load")
+    table.add_column("Temp")
+    table.add_column("MEM Usage")
+    table.add_column("PIDs")
+    table.add_column("Status")
+
+    async def check_all() -> None:
+        for node in nodes:
+            # Combined command for speed
+            cmd = "uptime && vcgencmd measure_temp && docker stats cocli-supervisor --no-stream --format '{{.MemUsage}} | {{.PIDs}}'"
+            res = await service.run_remote_command(node, cmd)
+            
+            lines = res.strip().split("\n")
+            if len(lines) >= 3:
+                load = lines[0].split("average:")[1].strip() if "average:" in lines[0] else "N/A"
+                temp = lines[1].replace("temp=", "")
+                mem_pids = lines[2].split("|")
+                mem = mem_pids[0].strip() if len(mem_pids) > 0 else "N/A"
+                pids = mem_pids[1].strip() if len(mem_pids) > 1 else "N/A"
+                
+                table.add_row(node.hostname, load, temp, mem, pids, "[green]OK[/green]")
+            else:
+                table.add_row(node.hostname, "OFFLINE", "-", "-", "-", "[red]ERR[/red]")
+
+    asyncio.run(check_all())
+    console.print(table)
 
 @app.command(name="status")
 def status(

@@ -523,20 +523,29 @@ class OperationService:
                 async def run_rollout() -> Dict[str, Any]:
                     batch_name = params.get("batch_name", f"rollout_{int(time.time())}")
                     limit = int(params.get("limit", 50))
+                    ttl_days = int(params.get("ttl_days", 30))
+                    purge = params.get("purge", False)
                     
-                    log_step("create_batch", "pending", f"Creating batch '{batch_name}' (Limit: {limit})...")
-                    # We wrap the typer command or its internal logic
-                    # To keep it simple, we use the command's implementation pattern
+                    log_step("create_batch", "pending", f"Creating batch '{batch_name}' (Limit: {limit}, TTL: {ttl_days}d)...")
+                    
                     from ..models.campaigns.mission import MissionTask
                     from ..core.scrape_index import ScrapeIndex
                     from ..core.paths import paths
                     import toml
+                    import shutil
                     
                     campaign_dir = paths.campaign(self.campaign_name).path
                     dg = paths.campaign(self.campaign_name).queue("discovery-gen", ensure=True)
+                    
+                    if purge:
+                        log_step("purge_active", "pending", "Purging existing active task pool...")
+                        if dg.completed.exists():
+                            shutil.rmtree(dg.completed)
+                        dg.completed.mkdir(parents=True, exist_ok=True)
+                        log_step("purge_active", "success")
+
                     frontier_path = dg.pending / "frontier.usv"
-                    batch_dir = dg.pending / "batches"
-                    batch_path = batch_dir / f"{batch_name}.usv"
+                    batch_path = dg.pending / "batches" / f"{batch_name}.usv"
                     state_path = campaign_dir / "mission_state.toml"
                     
                     scrape_index = ScrapeIndex()
@@ -548,6 +557,10 @@ class OperationService:
                     tasks: List[MissionTask] = []
                     skipped_count = 0
                     
+                    if not frontier_path.exists():
+                        log_step("create_batch", "error", "Frontier file not found.")
+                        return {"status": "error", "message": "Frontier file not found. Run prepare-mission first."}
+
                     with open(frontier_path, "r", encoding="utf-8") as f:
                         for i, line in enumerate(f):
                             if i < current_offset:
@@ -557,7 +570,7 @@ class OperationService:
                             if line.strip():
                                 try:
                                     task = MissionTask.from_usv(line)
-                                    if not scrape_index.is_tile_scraped(task.search_phrase, task.tile_id, ttl_days=30):
+                                    if not scrape_index.is_tile_scraped(task.search_phrase, task.tile_id, ttl_days=ttl_days):
                                         tasks.append(task)
                                     else:
                                         skipped_count += 1
@@ -566,7 +579,7 @@ class OperationService:
                     
                     if not tasks:
                         log_step("create_batch", "error", "No new tasks found in frontier.")
-                        return {"status": "error"}
+                        return {"status": "error", "message": "No new tasks found in frontier."}
                     
                     MissionTask.save_usv_with_datapackage(tasks, batch_path, batch_name)
                     new_offset = current_offset + len(tasks) + skipped_count
@@ -576,26 +589,34 @@ class OperationService:
                     log_step("create_batch", "success", f"Created {len(tasks)} tasks (Offset: {new_offset})")
 
                     log_step("build_index", "pending", "Activating tasks into mission index...")
-                    # Assuming we extracted the logic from the command
-                    # For now, we manually iterate
-                    target_dir = dg.completed
-                    target_dir.mkdir(parents=True, exist_ok=True)
                     from ..core.sharding import get_geo_shard
-                    for task in tasks:
-                        shard = get_geo_shard(float(task.latitude))
-                        dest_dir = target_dir / shard / str(task.latitude) / str(task.longitude)
-                        dest_dir.mkdir(parents=True, exist_ok=True)
-                        from cocli.core.text_utils import slugify
-                        phrase_slug = slugify(task.search_phrase)
-                        task.save_usv(dest_dir / f"{phrase_slug}.usv")
+                    from cocli.core.text_utils import slugify
                     
-                    log_step("build_index", "success")
+                    activated_count = 0
+                    for task in tasks:
+                        tile_id = task.tile_id
+                        phrase = task.search_phrase
+                        lat_str, lon_str = tile_id.split("_")
+                        lat_shard = get_geo_shard(float(task.latitude))
+                        
+                        tile_dir = dg.completed / lat_shard / lat_str / lon_str
+                        tile_dir.mkdir(parents=True, exist_ok=True)
+                        
+                        target_path = tile_dir / f"{slugify(phrase)}.usv"
+                        if not target_path.exists():
+                            with open(target_path, "w") as f:
+                                f.write(task.to_usv())
+                            activated_count += 1
+                    
+                    log_step("build_index", "success", f"Activated {activated_count} task files.")
 
                     log_step("cluster_push", "pending", "Pushing tasks to PI cluster...")
                     from ..services.cluster_service import ClusterService
                     cluster = ClusterService(self.campaign_name)
                     await cluster.push_data(delete=True)
                     log_step("cluster_push", "success")
+                    
+                    return {"status": "success", "batch": batch_name, "tasks": len(tasks)}
                     
                     return {"status": "success", "batch": batch_name, "tasks": len(tasks)}
                 

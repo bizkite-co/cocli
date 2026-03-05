@@ -47,11 +47,28 @@ def audit_discovery(campaign_name: str) -> None:
 
     logger.info("-" * 40)
     logger.info(f"Total Prospects Discovered: {stats['total_records']}")
-    logger.info(f"With Rating:               {stats['with_rating']} ({stats['with_rating']*100/max(1,stats['total_records']):.1f}%)")
-    logger.info(f"With Review Count:         {stats['with_reviews']} ({stats['with_reviews']*100/max(1,stats['total_records']):.1f}%)")
+    
+    rating_pct = (stats["with_rating"] * 100 / max(1, stats["total_records"]))
+    review_pct = (stats["with_reviews"] * 100 / max(1, stats["total_records"]))
+    
+    # Canary Thresholds
+    RATINGS_GOAL = 60.0
+    REVIEWS_GOAL = 40.0
+    
+    rating_status = "[PASS]" if rating_pct >= RATINGS_GOAL else "[FAIL]"
+    review_status = "[PASS]" if review_pct >= REVIEWS_GOAL else "[FAIL]"
+
+    logger.info(f"With Rating:               {stats['with_rating']} ({rating_pct:.1f}%) {rating_status}")
+    logger.info(f"With Review Count:         {stats['with_reviews']} ({review_pct:.1f}%) {review_status}")
     logger.info(f"With GMB URL:              {stats['with_gmb_url']} ({stats['with_gmb_url']*100/max(1,stats['total_records']):.1f}%)")
     logger.info(f"With Long Canonical URL:   {stats['with_long_gmb_url']} ({stats['with_long_gmb_url']*100/max(1,stats['total_records']):.1f}%)")
     logger.info("-" * 40)
+    
+    if rating_pct < RATINGS_GOAL or review_pct < REVIEWS_GOAL:
+        logger.warning(f"CANARY AUDIT FAILED: High-Fidelity coverage below thresholds (Ratings: {RATINGS_GOAL}%, Reviews: {REVIEWS_GOAL}%)")
+        logger.warning("Potential 'Limited View' anti-bot detection active.")
+    else:
+        logger.info("CANARY AUDIT PASSED: High-Fidelity coverage meets quality standards.")
 
 if __name__ == "__main__":
     audit_discovery("roadmap")

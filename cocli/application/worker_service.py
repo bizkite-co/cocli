@@ -27,14 +27,125 @@ class WorkerService:
         self.campaign_name = campaign_name
         self.processed_by = processed_by or (os.getenv("COCLI_HOSTNAME") or socket.gethostname().split(".")[0])
         self.role = role
-        self.config = load_campaign_config(campaign_name)
+        self._load_config()
+        self.worker_tasks: List[asyncio.Task[Any]] = []
+        self._running = False
+
+    def _load_config(self) -> None:
+        self.config = load_campaign_config(self.campaign_name)
         self.aws_config = self.config.get("aws", {})
         self.bucket_name = (
             self.aws_config.get("data_bucket_name") 
             or self.aws_config.get("cocli_data_bucket_name") 
-            or f"cocli-data-{campaign_name}"
+            or f"cocli-data-{self.campaign_name}"
         )
+
+    async def _watch_remote_config(self) -> None:
+        """Watches for config updates received via gossip."""
+        from ..core.paths import paths
+        update_dir = paths.root / "remote_updates"
+        update_dir.mkdir(parents=True, exist_ok=True)
         
+        logger.info(f"WorkerService: Watching for config updates in {update_dir}")
+        
+        last_processed = 0
+        while self._running:
+            try:
+                # Find the latest config file
+                updates = sorted(update_dir.glob("config_*.json"))
+                if updates:
+                    latest = updates[-1]
+                    # Format: config_TIMESTAMP.json
+                    try:
+                        ts = int(latest.stem.split("_")[1])
+                        if ts > last_processed:
+                            logger.info(f"Applying hot config update from gossip: {latest.name}")
+                            with open(latest, "r") as f:
+                                new_scaling = json.load(f)
+                            
+                            # Update local campaign config.toml for persistence
+                            from ..core.paths import paths
+                            config_path = paths.campaign(self.campaign_name).path / "config.toml"
+                            if config_path.exists():
+                                import toml
+                                with open(config_path, "r") as f:
+                                    full_config = toml.load(f)
+                                
+                                # Merge scaling update
+                                if "prospecting" not in full_config:
+                                    full_config["prospecting"] = {}
+                                full_config["prospecting"]["scaling"] = new_scaling
+                                
+                                with open(config_path, "w") as f:
+                                    toml.dump(full_config, f)
+                                
+                                logger.info("Local config.toml updated with gossip scaling.")
+                                self._load_config()
+                                await self._rebalance_workers()
+                            
+                            last_processed = ts
+                    except (IndexError, ValueError):
+                        pass
+            except Exception as e:
+                logger.error(f"Error in config watcher: {e}")
+            
+            await asyncio.sleep(5)
+
+    async def _rebalance_workers(self) -> None:
+        """Restarts workers based on updated scaling config."""
+        logger.info("Rebalancing workers due to config update...")
+        # Cancel current tasks
+        for task in self.worker_tasks:
+            if not task.done():
+                task.cancel()
+        
+        if self.worker_tasks:
+            await asyncio.gather(*self.worker_tasks, return_exceptions=True)
+            self.worker_tasks = []
+        
+        # Resolve Host-Specific Worker Definitions
+        from ..models.campaigns.worker_config import WorkerDefinition
+        hostname = self.processed_by.split("-")[0] # Strip previous worker suffixes if present
+        
+        scaling = self.config.get("prospecting", {}).get("scaling", {})
+        node_scaling = {}
+        for h, s in scaling.items():
+            if h.startswith(hostname):
+                node_scaling = s
+                break
+        
+        if not node_scaling:
+            logger.warning(f"No scaling config found for host: {hostname}")
+            return
+
+        # Resolve default IoT profile from campaign config
+        default_iot_profile = self.aws_config.get("iot_profiles", ["roadmap-iot"])[0]
+
+        worker_defs = []
+        for c_type, count in node_scaling.items():
+            if count > 0:
+                worker_defs.append(WorkerDefinition(
+                    name=f"{hostname}-{c_type}",
+                    role="full",
+                    content_type=c_type,
+                    workers=count,
+                    iot_profile=default_iot_profile
+                ))
+        
+        # Restart
+        for wd in worker_defs:
+            if wd.content_type == "gm-list":
+                coro = self.run_worker(headless=True, debug=False, once=False, workers=wd.workers)
+            elif wd.content_type == "gm-details":
+                coro = self.run_details_worker(headless=True, debug=False, once=False, workers=wd.workers, role=wd.role)
+            elif wd.content_type == "enrichment":
+                coro = self.run_enrichment_worker(headless=True, debug=False, once=False, workers=wd.workers)
+            else:
+                continue
+            self.worker_tasks.append(asyncio.create_task(coro))
+        
+        logger.info(f"Rebalance complete. Now running {len(self.worker_tasks)} worker tasks.")
+
     def get_s3_client(self) -> Any:
         from ..core.reporting import get_boto3_session
         profile = f"{self.campaign_name}-iot"
@@ -300,6 +411,7 @@ class WorkerService:
         """
         Launches and manages multiple named worker instances.
         """
+        self._running = True
         from cocli.core.gossip_bridge import bridge
         if bridge:
             try:
@@ -307,7 +419,10 @@ class WorkerService:
             except Exception:
                 pass
 
-        worker_tasks = []
+        # Start Config Watcher
+        asyncio.create_task(self._watch_remote_config())
+
+        self.worker_tasks = []
         for wd in worker_definitions:
             worker_service = WorkerService(campaign_name=self.campaign_name, role=wd.role, processed_by=f"{self.processed_by}-{wd.name}")
             if wd.content_type == "gm-list":
@@ -318,10 +433,10 @@ class WorkerService:
                 coro = worker_service.run_enrichment_worker(headless=headless, debug=debug, once=False, workers=wd.workers)
             else:
                 continue
-            worker_tasks.append(asyncio.create_task(coro))
+            self.worker_tasks.append(asyncio.create_task(coro))
 
-        if worker_tasks:
-            await asyncio.gather(*worker_tasks)
+        if self.worker_tasks:
+            await asyncio.gather(*self.worker_tasks)
 
     async def get_cluster_health(self) -> List[Dict[str, Any]]:
         """

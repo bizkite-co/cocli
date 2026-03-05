@@ -160,6 +160,9 @@ class ClusterService:
         stop_cmd = "docker stop cocli-supervisor && docker rm cocli-supervisor"
         subprocess.run(["ssh", f"{user}@{host}", stop_cmd], capture_output=True)
         
+        # We map .cocli to both /root/ and the host user's home path
+        # This ensures that 'credential_process' paths in ~/.aws/config (which use host absolute paths)
+        # work correctly inside the container.
         run_cmd = f"""docker run -d --restart always --name cocli-supervisor \
             --network host \
             --shm-size=2gb \
@@ -170,6 +173,7 @@ class ClusterService:
             -v ~/repos/data:/app/data \
             -v ~/.aws:/root/.aws:ro \
             -v ~/.cocli:/root/.cocli:ro \
+            -v ~/.cocli:/home/{user}/.cocli:ro \
             {image_name} \
             cocli worker orchestrate --campaign {self.campaign_name}"""
         
@@ -225,41 +229,54 @@ class ClusterService:
     async def push_data(self, user: str = "mstouffer", delete: bool = False) -> None:
         """
         Propagates local campaign data to all cluster nodes.
-        Surgically targets discovery-gen/completed to ensure fast and reliable 
-        task activation.
+        Surgically targets discovery-gen/completed, pending/batches, and config.toml
+        to ensure fast and reliable task activation, monitoring, and hot-reloading.
         """
         from ..core.paths import paths
         
-        # 1. Discovery Gen Completed (The Active Task Pool)
-        # This is what workers actually need to see.
+        campaign_dir = paths.campaign(self.campaign_name).path
         dg_queue = paths.campaign(self.campaign_name).queue("discovery-gen")
+        
+        # 1. Discovery Gen Completed (The Active Task Pool)
         local_dg_completed = dg_queue.completed
         
-        logger.info(f"[bold cyan]Surgical Push: discovery-gen tasks for {self.campaign_name}...[/bold cyan]")
+        # 2. Pending Batches (Required for monitor-batch)
+        local_dg_batches = dg_queue.pending / "batches"
+        
+        # 3. Campaign Config (Required for hot-reloading scaling)
+        local_config = campaign_dir / "config.toml"
+        
+        logger.info(f"[bold cyan]Surgical Push: discovery-gen tasks, batches and config for {self.campaign_name}...[/bold cyan]")
         
         for node in self.get_nodes():
             host = node.hostname
             logger.info(f"  Pushing to {host}...")
             
-            # Use paths authority for remote path construction to ensure OMAP compliance
-            remote_dg_completed = f"~/repos/data/campaigns/{self.campaign_name}/queues/discovery-gen/completed/"
+            remote_campaign_root = f"~/repos/data/campaigns/{self.campaign_name}/"
+            remote_dg_completed = f"{remote_campaign_root}queues/discovery-gen/completed/"
+            remote_dg_batches = f"{remote_campaign_root}queues/discovery-gen/pending/batches/"
+            remote_config = f"{remote_campaign_root}config.toml"
             
             try:
-                # 1. Ensure remote directory exists
-                subprocess.run(["ssh", f"{user}@{host}", f"mkdir -p {remote_dg_completed}"], check=True, capture_output=True, timeout=15)
+                # Ensure remote directories exist
+                subprocess.run(["ssh", f"{user}@{host}", f"mkdir -p {remote_dg_completed} {remote_dg_batches}"], check=True, capture_output=True, timeout=15)
                 
-                # 2. Sync JUST the active task pool
-                # Use -rtWz (-W for whole-file, faster on slow SD cards)
-                rsync_cmd = ["rsync", "-rtWz"]
+                # Sync Active Task Pool
+                rsync_cmd_tasks = ["rsync", "-rtWz"]
                 if delete:
-                    rsync_cmd.append("--delete")
+                    rsync_cmd_tasks.append("--delete")
+                rsync_cmd_tasks.extend([str(local_dg_completed) + "/", f"{user}@{host}:{remote_dg_completed}"])
+                subprocess.run(rsync_cmd_tasks, check=True, capture_output=True, text=True, timeout=120)
+
+                # Sync Batches (Always sync, small files)
+                rsync_cmd_batches = ["rsync", "-rtWz", str(local_dg_batches) + "/", f"{user}@{host}:{remote_dg_batches}"]
+                subprocess.run(rsync_cmd_batches, check=True, capture_output=True, text=True, timeout=60)
+
+                # Sync Config (Crucial for hot-reloading)
+                if local_config.exists():
+                    rsync_cmd_config = ["rsync", "-rtWz", str(local_config), f"{user}@{host}:{remote_config}"]
+                    subprocess.run(rsync_cmd_config, check=True, capture_output=True, text=True, timeout=30)
                 
-                rsync_cmd.extend([
-                    str(local_dg_completed) + "/", f"{user}@{host}:{remote_dg_completed}"
-                ])
-                
-                # Add timeout to prevent hanging
-                subprocess.run(rsync_cmd, check=True, capture_output=True, text=True, timeout=120)
             except subprocess.TimeoutExpired:
                 logger.warning(f"Push to {host} timed out.")
             except Exception as e:
