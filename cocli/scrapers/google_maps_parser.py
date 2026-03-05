@@ -5,7 +5,7 @@ from typing import Dict, Any, Optional
 from bs4 import BeautifulSoup
 
 from .google_maps_parsers.extract_name import extract_name
-from .google_maps_parsers.extract_rating_reviews import extract_rating_reviews
+from .google_maps_parsers.extract_rating_reviews_gm_list import extract_rating_reviews_gm_list
 from .google_maps_parsers.extract_address import extract_address
 from .google_maps_parsers.extract_phone_number import extract_phone_number
 from .google_maps_parsers.extract_website import extract_website
@@ -90,7 +90,7 @@ def parse_business_listing_html(
     # Extract data using modular functions
     data["Name"] = extract_name(soup, inner_text, debug)
 
-    rating_reviews = extract_rating_reviews(soup, inner_text, debug)
+    rating_reviews = extract_rating_reviews_gm_list(soup, inner_text, debug)
     data.update(rating_reviews)
 
     address_data = extract_address(soup, inner_text, debug)

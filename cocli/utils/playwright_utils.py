@@ -1,58 +1,61 @@
+# POLICY: frictionless-data-policy-enforcement
 import logging
-from playwright.async_api import BrowserContext, Response, Route
+from playwright.async_api import BrowserContext
+from .headers import ANTI_BOT_HEADERS
 
 logger = logging.getLogger(__name__)
 
-class BandwidthTracker:
-    def __init__(self) -> None:
-        self.total_bytes = 0
-        self.request_count = 0
+async def setup_stealth_context(
+    context: BrowserContext,
+) -> None:
+    """
+    Applies absolute high-fidelity anti-bot measures to a Playwright context.
+    Uses centralized project ANTI_BOT_HEADERS.
+    """
+    # 1. Comprehensive Stealth Script (Fingerprint Masking)
+    await context.add_init_script("""
+        # Mask WebDriver
+        Object.defineProperty(navigator, 'webdriver', { get: () => false });
+        
+        # Mask Languages & Platform
+        Object.defineProperty(navigator, 'languages', { get: () => ['en-US', 'en'] });
+        Object.defineProperty(navigator, 'platform', { get: () => 'Win32' });
+        
+        # Mask Hardware Specs
+        Object.defineProperty(navigator, 'hardwareConcurrency', { get: () => 16 });
+        Object.defineProperty(navigator, 'deviceMemory', { get: () => 8 });
+        
+        # WebGL Unmasking (CRITICAL for Maps)
+        const getParameter = WebGLRenderingContext.prototype.getParameter;
+        WebGLRenderingContext.prototype.getParameter = function(parameter) {
+            if (parameter === 37445) return 'Google Inc. (Intel)';
+            if (parameter === 37446) return 'ANGLE (Intel, Intel(R) UHD Graphics 630 Direct3D11 vs_5_0 ps_5_0)';
+            return getParameter.apply(this, arguments);
+        };
 
-    def reset(self) -> None:
-        self.total_bytes = 0
-        self.request_count = 0
+        if (window.WebGL2RenderingContext) {
+            const getParameter2 = WebGL2RenderingContext.prototype.getParameter;
+            WebGL2RenderingContext.prototype.getParameter = function(parameter) {
+                if (parameter === 37445) return 'Google Inc. (Intel)';
+                if (parameter === 37446) return 'ANGLE (Intel, Intel(R) UHD Graphics 630 Direct3D11 vs_5_0 ps_5_0)';
+                return getParameter2.apply(this, arguments);
+            };
+        }
 
-    def get_mb(self) -> float:
-        return self.total_bytes / (1024 * 1024)
+        const originalToDataURL = HTMLCanvasElement.prototype.toDataURL;
+        HTMLCanvasElement.prototype.toDataURL = function(type) {
+            return originalToDataURL.apply(this, arguments);
+        };
+    """)
 
-    def log_response(self, response: Response) -> None:
-        self.request_count += 1
-        # Try to get content-length from headers
-        headers = response.headers
-        length = headers.get("content-length")
-        if length:
-            try:
-                self.total_bytes += int(length)
-            except ValueError:
-                pass
-        else:
-            # Fallback: Approximate from body size if available (optional, can be expensive)
-            pass
+    # 2. Set Centralized Extra Headers
+    await context.set_extra_http_headers(ANTI_BOT_HEADERS)
 
 async def setup_optimized_context(
     context: BrowserContext, 
-    block_resources: bool = True,
-    track_bandwidth: bool = True
-) -> BandwidthTracker:
+) -> None:
     """
-    Configures a Playwright context with resource blocking and bandwidth tracking.
+    No-op for maximum fidelity. 
+    Efficiency considerations are strictly prohibited during this troubleshooting phase.
     """
-    tracker = BandwidthTracker()
-
-    if block_resources:
-        # Block unnecessary resources to save bandwidth and CPU
-        excluded_resource_types = ["image", "media", "font", "stylesheet"]
-        
-        async def intercept_request(route: Route) -> None:
-            request = route.request
-            if request.resource_type in excluded_resource_types:
-                await route.abort()
-            else:
-                await route.continue_()
-
-        await context.route("**/*", intercept_request)
-
-    if track_bandwidth:
-        context.on("response", lambda response: tracker.log_response(response))
-
-    return tracker
+    pass

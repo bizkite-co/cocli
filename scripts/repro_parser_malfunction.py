@@ -1,7 +1,7 @@
 import asyncio
 import os
 from playwright.async_api import async_playwright
-from cocli.scrapers.google_maps_parsers.extract_rating_reviews import extract_rating_reviews
+from cocli.scrapers.google_maps_parsers.extract_rating_reviews_gm_details import extract_rating_reviews_gm_details
 from cocli.utils.headers import ANTI_BOT_HEADERS, USER_AGENT
 from bs4 import BeautifulSoup
 
@@ -26,7 +26,7 @@ async def capture_and_test(name: str, url: str) -> None:
             inner_text = await page.evaluate("() => document.body.innerText")
             
             soup = BeautifulSoup(html, "html.parser")
-            result = extract_rating_reviews(soup, inner_text, debug=True)
+            result = extract_rating_reviews_gm_details(soup, inner_text, debug=True)
             
             print("Captured Result: " + str(result))
             

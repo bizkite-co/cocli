@@ -4,7 +4,7 @@ from bs4 import BeautifulSoup
 
 sys.path.append(os.getcwd())
 
-from cocli.scrapers.google_maps_parsers.extract_rating_reviews import extract_rating_reviews
+from cocli.scrapers.google_maps_parsers.extract_rating_reviews_gm_details import extract_rating_reviews_gm_details
 
 def test_on_saved_files() -> None:
     for name in ["granite", "griffith", "final"]:
@@ -22,7 +22,7 @@ def test_on_saved_files() -> None:
         soup = BeautifulSoup(html, "html.parser")
         inner_text = soup.get_text(separator="\n", strip=True)
         
-        result = extract_rating_reviews(soup, inner_text, debug=True)
+        result = extract_rating_reviews_gm_details(soup, inner_text, debug=True)
         print("RESULT: " + str(result))
 
 if __name__ == "__main__":

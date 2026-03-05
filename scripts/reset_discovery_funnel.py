@@ -1,5 +1,4 @@
 # POLICY: frictionless-data-policy-enforcement
-import os
 import shutil
 import argparse
 import logging

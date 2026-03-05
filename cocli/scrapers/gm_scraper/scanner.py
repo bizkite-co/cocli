@@ -1,10 +1,12 @@
+# POLICY: frictionless-data-policy-enforcement
 import logging
+import re
 from typing import AsyncIterator, Set, Optional
-from playwright.async_api import Page
+from playwright.async_api import Page, Locator
 
 from ...core.config import load_scraper_settings
+from ...core.text_utils import slugify
 from ...models.campaigns.indexes.google_maps_list_item import GoogleMapsListItem
-from ..google_maps_parser import parse_business_listing_html
 
 logger = logging.getLogger(__name__)
 
@@ -13,6 +15,31 @@ class SidebarScraper:
         self.page = page
         self.debug = debug
         self.settings = load_scraper_settings()
+
+    async def wait_for_hydration(self, listing_locator: Locator) -> bool:
+        """
+        Production-grade hydration wait. 
+        Waits for the high-fidelity semantic ARIA label (stars + reviews) to appear.
+        """
+        combined_pattern = re.compile(r"\d\.\d\s*stars?\s*[\d,]+\s*Reviews?", re.IGNORECASE)
+        
+        try:
+            await listing_locator.get_by_text(combined_pattern).first.wait_for(timeout=10000)
+            return True
+        except Exception:
+            try:
+                await listing_locator.locator('span[aria-label*="stars"]').first.wait_for(timeout=2000)
+                return True
+            except Exception:
+                return False
+
+    async def capture_listing_html(self, listing_locator: Locator) -> str:
+        """Production method to capture the outerHTML of a listing div."""
+        try:
+            html = await listing_locator.evaluate("el => el.outerHTML")
+            return str(html)
+        except Exception:
+            return ""
 
     async def scrape(
         self,
@@ -26,19 +53,13 @@ class SidebarScraper:
         Scrapes the sidebar results for the current map view.
         Yields GoogleMapsListItem for each found business.
         """
-        delay_seconds = self.settings.google_maps_delay_seconds
+        from ..google_maps_parser import parse_business_listing_html
 
         logger.info(f"Scanning sidebar for: '{search_string}'")
 
         if self.page.is_closed():
             return
 
-        # Ensure search box is filled and search is triggered
-        # Note: If we navigated via URL with query, this might already be populated,
-        # but pressing Enter ensures the specific list is active?
-        # Actually, navigating to /search/query/... usually opens the list automatically.
-        # But we need to find the scrollable div.
-        
         try:
             scrollable_div_selector = 'div[role="feed"]'
             await self.page.wait_for_selector(scrollable_div_selector, timeout=20000)
@@ -65,66 +86,61 @@ class SidebarScraper:
             else:
                 consecutive_no_new_results = 0
 
-            # Process new divs
             for i in range(last_processed_div_count, len(listing_divs)):
                 if self.page.is_closed():
                     break
                     
                 listing_div = listing_divs[i]
                 
-                # Fetch HTML
-                html_content = ""
                 try:
-                    # Use evaluate to get outerHTML since Locator doesn't have outer_html()
-                    html_content = await listing_div.evaluate("el => el.outerHTML")
+                    box = await listing_div.bounding_box()
+                    if box:
+                        await self.page.mouse.move(box['x'] + box['width']/2, box['y'] + box['height']/2)
+                        await self.page.mouse.wheel(0, 100)
+                        await self.page.wait_for_timeout(500)
                 except Exception:
-                    continue
+                    pass
+
+                await self.wait_for_hydration(listing_div)
+                html_content = await self.capture_listing_html(listing_div)
 
                 if not html_content or "All filters" in html_content or "Prices come from Google" in html_content:
                     continue
 
-                # Parse
-                try:
-                    business_data_dict = parse_business_listing_html(html_content, search_string, debug=self.debug)
-                except Exception:
-                    continue
+                data = parse_business_listing_html(html_content, search_string, debug=self.debug)
+                place_id = data.get("Place_ID")
 
-                place_id = business_data_dict.get("Place_ID")
-                name = business_data_dict.get("Name")
-                if not place_id or not name or name == "Unknown" or len(name) < 3 or place_id in processed_place_ids:
-                    continue
+                if place_id and place_id not in processed_place_ids:
+                    processed_place_ids.add(place_id)
+                    
+                    # Type-safe field extraction
+                    raw_revs = data.get("Reviews_count")
+                    revs = int(str(raw_revs).replace(",", "")) if raw_revs else None
+                    
+                    raw_rating = data.get("Average_rating")
+                    rating = float(str(raw_rating)) if raw_rating else None
 
-                from ...core.text_utils import slugify
-                processed_place_ids.add(place_id)
-
-                rev_count = business_data_dict.get("Reviews_count")
-                avg_rating = business_data_dict.get("Average_rating")
-
-                # Yield Discovery Item
-                yield GoogleMapsListItem(
-                    place_id=place_id,
-                    name=name,
-                    company_slug=slugify(name),
-                    phone=business_data_dict.get("Phone_1"),
-                    domain=business_data_dict.get("Domain"),
-                    reviews_count=int(rev_count) if rev_count and str(rev_count).strip() else None,
-                    average_rating=float(avg_rating) if avg_rating and str(avg_rating).strip() else None,
-                    street_address=business_data_dict.get("Street_Address"),
-                    gmb_url=business_data_dict.get("GMB_URL"),
-                    discovery_phrase=search_string,
-                    discovery_tile_id=tile_id,
-                    html=html_content
-                )
+                    item = GoogleMapsListItem(
+                        place_id=place_id,
+                        name=data.get("Name", "Unknown"),
+                        company_slug=data.get("company_slug", slugify(data.get("Name", place_id))),
+                        phone=data.get("Phone_1"),
+                        domain=data.get("Domain"),
+                        reviews_count=revs,
+                        average_rating=rating,
+                        street_address=data.get("Street_Address"),
+                        gmb_url=data.get("GMB_URL"),
+                        discovery_phrase=search_string,
+                        discovery_tile_id=tile_id,
+                        html=html_content
+                    )
+                    yield item
 
             last_processed_div_count = len(listing_divs)
-
-            # Check for "End of list"
-            if await self.page.get_by_text("You've reached the end of the list").is_visible():
-                break
-
+            
             try:
                 await scrollable_div.hover()
                 await self.page.mouse.wheel(0, 5000)
-                await self.page.wait_for_timeout(delay_seconds * 1000)
+                await self.page.wait_for_timeout(2000)
             except Exception:
                 break

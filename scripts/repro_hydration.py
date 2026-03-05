@@ -43,11 +43,11 @@ async def run_alignment_test() -> None:
 
         # Capture and Parse with our PRODUCTION logic
         from bs4 import BeautifulSoup
-        from cocli.scrapers.google_maps_parsers.extract_rating_reviews import extract_rating_reviews
+        from cocli.scrapers.google_maps_parsers.extract_rating_reviews_gm_details import extract_rating_reviews_gm_details
         
         html = await page.content()
         soup = BeautifulSoup(html, "html.parser")
-        results = extract_rating_reviews(soup, soup.get_text(), debug=True)
+        results = extract_rating_reviews_gm_details(soup, soup.get_text(), debug=True)
         
         print(f"\n[PARSER RESULTS] {results}")
         

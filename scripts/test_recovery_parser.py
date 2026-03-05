@@ -2,7 +2,7 @@
 import json
 import logging
 from bs4 import BeautifulSoup
-from cocli.scrapers.google_maps_parsers.extract_rating_reviews import extract_rating_reviews
+from cocli.scrapers.google_maps_parsers.extract_rating_reviews_gm_details import extract_rating_reviews_gm_details
 from cocli.core.paths import paths
 
 logging.basicConfig(level=logging.INFO, format='%(message)s')
@@ -58,7 +58,7 @@ def test_witnesses(campaign_name: str) -> None:
         soup = BeautifulSoup(html, "html.parser")
         inner_text = soup.get_text(separator="\n", strip=True)
         
-        res = extract_rating_reviews(soup, inner_text, debug=False)
+        res = extract_rating_reviews_gm_details(soup, inner_text, debug=False)
         rating = res.get("Average_rating")
         reviews = res.get("Reviews_count")
         

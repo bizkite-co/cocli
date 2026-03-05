@@ -6,7 +6,7 @@ from bs4 import BeautifulSoup
 # Ensure we can import from cocli
 sys.path.append(os.getcwd())
 
-from cocli.scrapers.google_maps_parsers.extract_rating_reviews import extract_rating_reviews
+from cocli.scrapers.google_maps_parsers.extract_rating_reviews_gm_details import extract_rating_reviews_gm_details
 
 TEST_CASES: List[Dict[str, Any]] = [
     {
@@ -39,7 +39,7 @@ def run_tests() -> None:
     print("--- Running Parser Regression Suite ---")
     for case in TEST_CASES:
         soup = BeautifulSoup(str(case["html"]), "html.parser")
-        result = extract_rating_reviews(soup, "", debug=False)
+        result = extract_rating_reviews_gm_details(soup, "", debug=False)
         
         expected = cast(Dict[str, str], case["expected"])
         rating_match = result["Average_rating"] == expected["rating"]
@@ -60,7 +60,7 @@ def run_tests() -> None:
             with open(path, "r", encoding="utf-8") as f:
                 html = f.read()
             soup = BeautifulSoup(html, "html.parser")
-            result = extract_rating_reviews(soup, soup.get_text(separator=" "), debug=False)
+            result = extract_rating_reviews_gm_details(soup, soup.get_text(separator=" "), debug=False)
             print(f"   Result: {result}")
 
 if __name__ == "__main__":

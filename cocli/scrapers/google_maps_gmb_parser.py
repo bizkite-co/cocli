@@ -1,6 +1,6 @@
 from bs4 import BeautifulSoup
 from typing import Dict, Any, Optional
-from .google_maps_parsers.extract_rating_reviews import extract_rating_reviews
+from .google_maps_parsers.extract_rating_reviews_gm_details import extract_rating_reviews_gm_details
 from .google_maps_parsers.extract_website import extract_website
 
 def parse_gmb_page(html: str, debug: bool = False) -> Dict[str, Any]:
@@ -48,7 +48,7 @@ def parse_gmb_page(html: str, debug: bool = False) -> Dict[str, Any]:
         data["Name"] = name
 
     # --- EXTRACT RATING & REVIEWS ---
-    rating_reviews = extract_rating_reviews(soup, inner_text, debug)
+    rating_reviews = extract_rating_reviews_gm_details(soup, inner_text, debug)
     data.update(rating_reviews)
 
     # --- EXTRACT WEBSITE & DOMAIN ---

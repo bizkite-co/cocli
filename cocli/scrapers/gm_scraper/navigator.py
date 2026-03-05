@@ -1,7 +1,6 @@
 import logging
 import re
 from playwright.async_api import Page
-from .utils import calculate_zoom_level
 
 logger = logging.getLogger(__name__)
 
@@ -11,49 +10,57 @@ class Navigator:
 
     async def goto(self, lat: float, lon: float, width_miles: float, height_miles: float, query: str = "") -> bool:
         """
-        Navigates the browser to the specified location and zoom level.
-        If a query is provided, uses the /search/ URL structure.
-        Otherwise, uses the basic view URL.
+        Navigates the browser using a high-fidelity 'Human' flow.
         """
-        viewport = self.page.viewport_size
-        width_px = viewport['width'] if viewport else 1920
-        
-        zoom_level = calculate_zoom_level(lat, width_miles, width_px)
-        
-        # Ensure zoom is within reasonable Google Maps bounds (approx 3 to 21)
-        # 15z is standard "Streets"
-        # Google Maps often rejects decimal zoom levels in the URL, resetting to default (e.g. 9z).
-        # We round to the nearest integer to ensure stability.
-        zoom_level = max(3, min(21, round(zoom_level)))
-        
-        if query:
-            # URL encode query if needed (basic replacement, better to use urllib)
-            safe_query = query.replace(" ", "+")
-            url = f"https://www.google.com/maps/search/{safe_query}/@{lat},{lon},{zoom_level}z?entry=ttu"
-        else:
-            url = f"https://www.google.com/maps/@{lat},{lon},{zoom_level}z?entry=ttu"
-
-        logger.debug(f"Navigating to: {url} (Calculated Zoom: {zoom_level})")
-
+        # 1. Go to Home Page first to establish session
+        home_url = "https://www.google.com/maps/@34.2499124,-118.2605756,13z?hl=en-US"
         try:
-            await self.page.goto(url, wait_until="commit", timeout=60000)
-            
-            # Wait for meaningful content
-            # If searching, wait for the results feed or "no results" message
-            if query:
-                try:
-                    # Either the feed appears OR "No results found" OR "Google Maps" canvas
-                    # We'll wait for the canvas as a baseline
-                    await self.page.wait_for_selector("canvas", timeout=30000)
-                except Exception:
-                     logger.warning("Map canvas not detected after navigation.")
-            else:
-                 await self.page.wait_for_selector("canvas", timeout=30000)
-                 
-            return True
+            logger.info("Navigating to Google Maps Home...")
+            # We use 'load' here because 'networkidle' can take too long on Maps
+            await self.page.goto(home_url, wait_until="load", timeout=60000)
+            # Wait for either the search box OR the map canvas to be ready
+            await self.page.locator("#searchboxinput, canvas").first.wait_for(timeout=30000)
         except Exception as e:
-            logger.error(f"Navigation failed: {e}")
+            logger.error(f"Home navigation failed: {e}")
             return False
+
+        if query:
+            try:
+                # 2. Find search box and type query
+                search_box = self.page.locator('#searchboxinput, input[aria-label*="Search"], input[name="q"]').first
+                await search_box.wait_for(state="visible", timeout=10000)
+                await search_box.fill(query)
+                
+                # 3. Trigger Search
+                await self.keyboard_search()
+                
+                # Wait for feed OR articles
+                try:
+                    await self.page.locator('div[role="feed"], div[role="article"]').first.wait_for(state="visible", timeout=15000)
+                    return True
+                except Exception:
+                    logger.info("Search simulation didn't show results quickly. Falling back to direct URL...")
+                    # FALLBACK: Direct URL Jump if simulation hangs
+                    safe_query = query.replace(" ", "+")
+                    search_url = f"https://www.google.com/maps/search/{safe_query}/@{lat},{lon},13z"
+                    await self.page.goto(search_url, wait_until="load", timeout=60000)
+                    await self.page.locator('div[role="feed"], div[role="article"]').first.wait_for(state="visible", timeout=30000)
+                    return True
+            except Exception as e:
+                logger.error(f"Search flow failed: {e}")
+                try:
+                    safe_query = query.replace(" ", "+")
+                    search_url = f"https://www.google.com/maps/search/{safe_query}/@{lat},{lon},13z"
+                    await self.page.goto(search_url, wait_until="load", timeout=60000)
+                    return True
+                except Exception:
+                    return False
+        
+        return True
+
+    async def keyboard_search(self) -> None:
+        """Helper to press Enter."""
+        await self.page.keyboard.press("Enter")
             
     async def click_search_this_area(self) -> bool:
         """

@@ -165,7 +165,7 @@ def enrichment(
     final_workers = workers if workers != 1 else config.get("prospecting", {}).get("enrichment_workers", 1)
 
     service = WorkerService(effective_campaign, role=role)
-    asyncio.run(service.run_enrichment_worker(not headed, debug, workers=final_workers, role=role))
+    asyncio.run(service.run_enrichment_worker(not headed, debug, workers=final_workers))
 
 @app.command()
 def orchestrate(

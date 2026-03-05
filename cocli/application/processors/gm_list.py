@@ -8,7 +8,6 @@ from ...models.campaigns.queues.gm_list import ScrapeTask
 from ...models.campaigns.indexes.google_maps_list_item import GoogleMapsListItem
 from ...core.paths import paths
 from ...core.sharding import get_geo_shard, get_grid_tile_id
-from ...core.constants import UNIT_SEP
 from ...core.text_utils import slugify
 
 logger = logging.getLogger(__name__)
@@ -45,21 +44,8 @@ class GmListProcessor:
             usv_path = results_dir / f"{phrase_slug}.usv"
             with open(usv_path, "w", encoding="utf-8") as rf:
                 for item in items:
-                    # Blueprint Schema (9 fields):
-                    # 0: place_id, 1: company_slug, 2: name, 3: phone, 4: domain, 
-                    # 5: reviews_count, 6: average_rating, 7: street_address, 8: gmb_url
-                    row = [
-                        str(item.place_id),
-                        str(item.company_slug),
-                        str(item.name),
-                        str(item.phone or ""),
-                        str(item.domain or ""),
-                        str(item.reviews_count if item.reviews_count is not None else ""),
-                        str(item.average_rating if item.average_rating is not None else ""),
-                        str(item.street_address or ""),
-                        str(item.gmb_url or "")
-                    ]
-                    rf.write(UNIT_SEP.join(row) + "\n")
+                    # Model-based serialization ensures canonical field order
+                    rf.write(item.to_usv())
                     
                     # MANDATE: Save individual HTML witness for EACH item
                     if item.html:
@@ -76,6 +62,9 @@ class GmListProcessor:
                             s3_raw_prefix = f"campaigns/{task.campaign_name}/raw/gm-list/{lat_shard}/{lat_tile}/{lon_tile}"
                             s3_client.upload_file(str(html_path), self.bucket_name, f"{s3_raw_prefix}/{item.place_id}.html")
             
+            # Save Datapackage for the results (Frictionless Mandate)
+            GoogleMapsListItem.save_datapackage(results_dir, f"gm-list-{phrase_slug}", f"{phrase_slug}.usv")
+
             # 2. Save JSON Receipt
             receipt_path = results_dir / f"{phrase_slug}.json"
             receipt_data = {

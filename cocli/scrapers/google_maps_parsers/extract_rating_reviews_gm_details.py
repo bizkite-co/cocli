@@ -10,7 +10,7 @@ STRICT_RATING_RE = re.compile(r"(\d\.\d)\s*stars?", re.IGNORECASE)
 STRICT_REVIEWS_RE = re.compile(r"([\d,]+)\s*Reviews?", re.IGNORECASE)
 PROXIMITY_REVIEWS_RE = re.compile(r"\((\d+)\)")
 
-def extract_rating_reviews(soup: BeautifulSoup, inner_text: str, debug: bool = False) -> Dict[str, str]:
+def extract_rating_reviews_gm_details(soup: BeautifulSoup, inner_text: str, debug: bool = False) -> Dict[str, str]:
     """
     ULTRA-ROBUST extraction based on verified Google Maps summary snippet.
     """

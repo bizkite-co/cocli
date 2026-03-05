@@ -9,7 +9,7 @@ from .strategy import SpiralStrategy, GridStrategy
 from .wilderness import WildernessManager
 from .scanner import SidebarScraper
 from .utils import get_viewport_bounds
-from ...utils.playwright_utils import setup_optimized_context, BandwidthTracker
+from ...utils.playwright_utils import setup_optimized_context
 
 logger = logging.getLogger(__name__)
 
@@ -34,7 +34,6 @@ class ScrapeCoordinator:
         self.viewport_height = viewport_height
         self.debug = debug
         self.wilderness = WildernessManager(s3_client=s3_client, s3_bucket=s3_bucket)
-        self.bandwidth_tracker: Optional[BandwidthTracker] = None
 
     async def run(
         self,
@@ -50,11 +49,20 @@ class ScrapeCoordinator:
     ) -> AsyncIterator[GoogleMapsListItem]:
         
         # Create a new context explicitly for this session
-        # This fixes 'Please use browser.new_context()' errors on some environments
-        context = await self.browser.new_context(viewport={'width': self.viewport_width, 'height': self.viewport_height})
+        from ...utils.headers import USER_AGENT
         
-        # Setup optimization (tracking bandwidth, but allow CSS/Fonts for better rendering)
-        self.bandwidth_tracker = await setup_optimized_context(context, block_resources=False)
+        # We launch a fresh context but the browser instance was already launched by the caller.
+        # However, to support channel selection, we ensure the coordinator's browser is 
+        # launched with 'msedge' if possible.
+        context = await self.browser.new_context(
+            viewport={'width': self.viewport_width, 'height': self.viewport_height},
+            user_agent=USER_AGENT
+        )
+        
+        # Apply Stealth (No resource blocking)
+        from ...utils.playwright_utils import setup_stealth_context
+        await setup_stealth_context(context)
+        await setup_optimized_context(context)
         
         page = await context.new_page()
         
@@ -89,9 +97,6 @@ class ScrapeCoordinator:
                         break
                 
                 logger.info(f"Processing location: {lat:.4f}, {lon:.4f} (Dist: {dist:.1f} mi)")
-                
-                # Reset bandwidth tracker for this location to see per-task usage
-                start_mb = self.bandwidth_tracker.get_mb() if self.bandwidth_tracker else 0.0
                 
                 # 2. Determine Scope (Expand-Out)
                 # We attempt to define the largest effective box for this center point
@@ -131,10 +136,6 @@ class ScrapeCoordinator:
                         
                     # Mark Index
                     self.wilderness.mark_scraped(bounds, query, items_found, record_width, record_height, tile_id=tile_id, processed_by=processed_by)
-                
-                # Log bandwidth usage for this location
-                end_mb = self.bandwidth_tracker.get_mb() if self.bandwidth_tracker else 0.0
-                logger.info(f"Bandwidth used for location: {end_mb - start_mb:.2f} MB (Total: {end_mb:.2f} MB)")
                     
         finally:
             await context.close()

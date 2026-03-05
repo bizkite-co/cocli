@@ -95,6 +95,57 @@ class GoogleMapsProspect(GoogleMapsIdx):
     discovery_tile_id: Optional[str] = None
     email: Optional[str] = Field(None, description="DEPRECATED: Google Maps does not provide email. Use website enrichment instead.")
 
+    def merge_with_existing(self, existing: "GoogleMapsProspect") -> "GoogleMapsProspect":
+        """
+        Merges this (newly scraped) prospect with an existing one.
+        Mandate: Only overwrite fields if the new value is NOT null/empty.
+        """
+        new_data = self.model_dump(exclude_unset=True)
+        existing_data = existing.model_dump()
+        
+        merged_data = existing_data.copy()
+        for key, val in new_data.items():
+            # Only overwrite if new value is non-null and non-empty string
+            if val is not None and val != "":
+                merged_data[key] = val
+        
+        # Ensure updated_at is refreshed
+        merged_data["updated_at"] = datetime.now(UTC)
+        
+        return self.__class__(**merged_data)
+
+    @classmethod
+    def get_by_place_id(cls, campaign_name: str, place_id: str) -> Optional["GoogleMapsProspect"]:
+        """
+        Attempts to find an existing prospect in the campaign index by Place ID.
+        """
+        from cocli.core.prospects_csv_manager import ProspectsIndexManager
+        manager = ProspectsIndexManager(campaign_name)
+        # Use DuckDB for fast lookup in checkpoint + WAL shards
+        import duckdb
+        con = duckdb.connect(database=':memory:')
+        
+        checkpoint = manager.index_dir / "prospects.checkpoint.usv"
+        if not checkpoint.exists():
+            return None
+            
+        try:
+            # We only need to check the checkpoint for now as a baseline
+            # In a full cluster, we might check local WAL shards too
+            q = f"SELECT * FROM read_csv('{checkpoint}', delim='\x1f', header=False, auto_detect=True, all_varchar=True) WHERE column1 = '{place_id}' LIMIT 1"
+            res = con.execute(q).df()
+            if not res.empty:
+                # USV columns are 1-indexed in DuckDB result here
+                # Better to use USVDictReader for robustness if performance allows
+                from cocli.utils.usv_utils import USVDictReader
+                with open(checkpoint, "r", encoding="utf-8") as f:
+                    reader = USVDictReader(f)
+                    for r in reader:
+                        if r.get("place_id") == place_id:
+                            return cls.model_validate(r)
+        except Exception:
+            pass
+        return None
     @classmethod
     def get_datapackage_fields(cls) -> List[Dict[str, Any]]:
         """Generates Frictionless Data field definitions from the model."""

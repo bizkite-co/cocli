@@ -46,13 +46,20 @@ class GoogleMapsDetailsProcessor:
                 logger.warning(f"No data returned for Place ID: {task.place_id}")
                 return None
 
-            # 2. Metadata Hydration
+            # 2. Non-Destructive Merge with Existing Data
+            # If we already have data for this place, don't overwrite good fields with nulls
+            existing = GoogleMapsProspect.get_by_place_id(task.campaign_name, task.place_id)
+            if existing:
+                logger.info(f"Merging new data with existing prospect: {task.place_id}")
+                prospect = prospect.merge_with_existing(existing)
+
+            # 3. Metadata Hydration
             prospect.processed_by = self.processed_by
             prospect.updated_at = datetime.now(UTC)
             prospect.discovery_phrase = task.discovery_phrase
             prospect.discovery_tile_id = task.discovery_tile_id
 
-            # 3. Save to Hot Index (WAL)
+            # 4. Save to Hot Index (WAL)
             # This is the sharded campaign-level storage for DuckDB/Compaction
             csv_manager = ProspectsIndexManager(task.campaign_name)
             if csv_manager.append_prospect(prospect):

@@ -11,7 +11,7 @@ console = Console()
 
 def audit_canary() -> None:
     campaign = "roadmap"
-    batch_file = paths.campaign(campaign).queue("discovery-gen").pending / "batches/canary_50.usv"
+    batch_file = paths.campaign(campaign).queue("discovery-gen").pending / "batches/canary_10.usv"
     results_dir = paths.campaign(campaign).queue("gm-list").completed / "results"
     
     tasks = []
