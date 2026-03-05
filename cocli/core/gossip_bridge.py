@@ -274,7 +274,7 @@ class GossipBridge:
             return
             
         try:
-            # Setup Unicast UDP Socket
+            # Setup Unicast UDP Socket (This is fast)
             self.sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
             self.sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
             self.sock.bind(('0.0.0.0', GOSSIP_PORT))
@@ -284,13 +284,53 @@ class GossipBridge:
 
         self.running = True
         
-        # 1. Start Peer Discovery and Registration in a background thread
+        # Start Peer Discovery, Registration, Zeroconf, and Observer in a background thread
         def _bg_init() -> None:
             try:
+                # 1. Peer Discovery
                 self.discover_peers()
                 self.register_self()
                 
-                # Send immediate 'hello' heartbeat
+                # 2. Start File Observer on the centralized WAL directory
+                if self.wal_dir.exists():
+                    try:
+                        self.observer.schedule(self.handler, str(self.wal_dir), recursive=False)
+                        self.observer.start()
+                        
+                        # One-time startup catch-up for today's journals
+                        from datetime import datetime
+                        today_prefix = datetime.now().strftime("%Y%m%d")
+                        logger.info(f"Startup catch-up: Scanning for today's journals ({today_prefix}*)...")
+                        for wal_file in self.wal_dir.glob(f"{today_prefix}*.usv"):
+                            self.broadcast_file(wal_file)
+                    except Exception as e:
+                        logger.error(f"Gossip Bridge failed to start observer: {e}")
+
+                # 3. Register mDNS & Start Browser
+                try:
+                    self.zeroconf = Zeroconf()
+                    local_ip = "0.0.0.0"
+                    try:
+                        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+                        s.connect(('8.8.8.8', 1))
+                        local_ip = s.getsockname()[0]
+                        s.close()
+                    except Exception:
+                        pass
+
+                    info = ServiceInfo(
+                        SERVICE_TYPE,
+                        f"{self.node_id}.{SERVICE_TYPE}",
+                        addresses=[socket.inet_aton(local_ip)],
+                        port=GOSSIP_PORT,
+                        properties={"node_id": self.node_id}
+                    )
+                    self.zeroconf.register_service(info)
+                    self.browser = ServiceBrowser(self.zeroconf, SERVICE_TYPE, GossipListener(self))
+                except Exception as e:
+                    logger.warning(f"mDNS setup failed: {e}")
+
+                # 4. Send immediate 'hello' heartbeat
                 from datetime import datetime, UTC
                 from ..models.wal.record import HeartbeatDatagram
                 hello = HeartbeatDatagram(
@@ -308,49 +348,9 @@ class GossipBridge:
 
         threading.Thread(target=_bg_init, daemon=True, name="GossipInit").start()
 
-        # 2. Start Gossip Listener
+        # Start Gossip Listener
         self.listener_thread = threading.Thread(target=self._listen_loop, daemon=True)
         self.listener_thread.start()
-        
-        # 3. Start File Observer on the centralized WAL directory
-        if self.wal_dir.exists():
-            try:
-                self.observer.schedule(self.handler, str(self.wal_dir), recursive=False)
-                self.observer.start()
-                
-                # One-time startup catch-up for today's journals
-                from datetime import datetime
-                today_prefix = datetime.now().strftime("%Y%m%d")
-                logger.info(f"Startup catch-up: Scanning for today's journals ({today_prefix}*)...")
-                for wal_file in self.wal_dir.glob(f"{today_prefix}*.usv"):
-                    self.broadcast_file(wal_file)
-                
-            except Exception as e:
-                logger.error(f"Gossip Bridge failed to start observer: {e}")
-
-        # Register mDNS & Start Browser
-        try:
-            self.zeroconf = Zeroconf()
-            local_ip = "0.0.0.0"
-            try:
-                s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-                s.connect(('8.8.8.8', 1))
-                local_ip = s.getsockname()[0]
-                s.close()
-            except Exception:
-                pass
-
-            info = ServiceInfo(
-                SERVICE_TYPE,
-                f"{self.node_id}.{SERVICE_TYPE}",
-                addresses=[socket.inet_aton(local_ip)],
-                port=GOSSIP_PORT,
-                properties={"node_id": self.node_id}
-            )
-            self.zeroconf.register_service(info)
-            self.browser = ServiceBrowser(self.zeroconf, SERVICE_TYPE, GossipListener(self))
-        except Exception as e:
-            logger.warning(f"mDNS setup failed: {e}")
             
         logger.info(f"Gossip Bridge (Unicast) started on node {self.node_id}")
 

@@ -384,13 +384,40 @@ class WorkerService:
     async def _push_supervisor_heartbeat(self, s3_client: Any, s: Dict[int, asyncio.Task[Any]], d: Dict[int, asyncio.Task[Any]], e: Dict[int, asyncio.Task[Any]]) -> None:
         import psutil
         from ..core.paths import paths
+        from ..models.wal.record import HeartbeatDatagram
+        from ..core.gossip_bridge import bridge
+        
+        cpu_usage = psutil.cpu_percent()
+        mem_usage = psutil.virtual_memory().percent
+        worker_count = len(s) + len(d) + len(e)
+        
         stats = {
             "timestamp": datetime.now(UTC).isoformat(), 
             "hostname": self.processed_by, 
-            "system": {"cpu": psutil.cpu_percent(), "mem": psutil.virtual_memory().percent}, 
+            "system": {"cpu": cpu_usage, "mem": mem_usage}, 
             "workers": {"s": len(s), "d": len(d), "e": len(e)}
         }
-        s3_client.put_object(Bucket=self.bucket_name, Key=paths.s3.heartbeat(self.processed_by), Body=json.dumps(stats), ContentType="application/json")
+        
+        # 1. Durability Tier (S3)
+        try:
+            s3_client.put_object(Bucket=self.bucket_name, Key=paths.s3.heartbeat(self.processed_by), Body=json.dumps(stats), ContentType="application/json")
+        except Exception as s3_err:
+            logger.debug(f"S3 Heartbeat failed: {s3_err}")
+
+        # 2. Real-Time Tier (Gossip)
+        if bridge and bridge.running:
+            try:
+                hb = HeartbeatDatagram(
+                    node_id=self.processed_by,
+                    timestamp=str(stats["timestamp"]),
+                    load_avg=cpu_usage, # We use CPU % as a proxy for load in the datagram
+                    memory_percent=mem_usage,
+                    worker_count=worker_count,
+                    active_tasks=worker_count # For now, assume all workers are active if in the loop
+                )
+                bridge.broadcast_msg(hb.to_usv())
+            except Exception as gossip_err:
+                logger.debug(f"Gossip Heartbeat failed: {gossip_err}")
 
     async def run_supervisor(self, headless: bool, debug: bool, interval: int) -> None:
         async with async_playwright() as p:

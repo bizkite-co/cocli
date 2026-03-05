@@ -43,7 +43,41 @@ def audit_gossip() -> None:
 
     # 2. Network Listener (Passive)
     console.print("\n[bold]2. Listening for Live Gossip (15s timeout)...[/bold]")
-    # ... (existing listener logic)
+    
+    sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    try:
+        sock.bind(('0.0.0.0', 9999))
+    except Exception as e:
+        console.print(f"[red]Could not bind to port 9999: {e}[/red]")
+        return
+
+    sock.settimeout(15.0)
+    received_count = 0
+    
+    try:
+        while True:
+            data, addr = sock.recvfrom(65535)
+            msg = data.decode('utf-8', errors='replace')
+            received_count += 1
+            
+            # Identify record type
+            rtype = "WAL"
+            if msg.startswith("H"):
+                rtype = "Heartbeat"
+            elif msg.startswith("C"):
+                rtype = "Config"
+            elif msg.startswith("Q"):
+                rtype = "Queue"
+            
+            console.print(f"[green]Received {rtype} from {addr}:[/green] [dim]{msg.strip()[:100]}...[/dim]")
+    except socket.timeout:
+        if received_count == 0:
+            console.print("[yellow]Timed out with no gossip received.[/yellow]")
+        else:
+            console.print(f"\n[bold green]Audit complete. Received {received_count} datagrams.[/bold green]")
+    finally:
+        sock.close()
 
 def send_test_gossip(target_ip: str) -> None:
     """Sends a test QueueDatagram to a specific IP."""
