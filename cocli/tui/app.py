@@ -1,8 +1,10 @@
 import logging
 import os
 import asyncio
+import time
 from datetime import datetime
-from typing import Any, Optional, Type, List, cast, Dict
+from contextlib import contextmanager
+from typing import Any, Optional, Type, List, cast, Dict, Generator
 
 from textual.app import App, ComposeResult
 from textual.binding import Binding
@@ -39,6 +41,13 @@ def tui_debug_log(msg: str) -> None:
             f.flush()
     except Exception:
         pass
+
+@contextmanager
+def time_perf(label: str) -> Generator[None, None, None]:
+    start = time.perf_counter()
+    yield
+    end = time.perf_counter()
+    tui_debug_log(f"PERF: {label} took {end - start:.4f}s")
 
 class MenuBar(Horizontal):
     """A custom menu bar that highlights the active section."""
@@ -183,22 +192,26 @@ class CocliApp(App[None]):
         }
 
     async def on_mount(self) -> None:
-        tui_debug_log("--- APP START ---")
-        self.main_content = self.query_one("#app_content", Container)
-        self.menu_bar = self.query_one(MenuBar)
-        create_default_config_file()
-        
-        # Start the Gossip Bridge for real-time cluster coordination in the TUI
-        from ..core.gossip_bridge import bridge
-        if bridge:
-            try:
-                bridge.start()
-                tui_debug_log("APP: Gossip Bridge started.")
-            except Exception as e:
-                tui_debug_log(f"APP: Gossip Bridge failed to start: {e}")
+        with time_perf("APP: on_mount"):
+            tui_debug_log("--- APP START ---")
+            self.main_content = self.query_one("#app_content", Container)
+            self.menu_bar = self.query_one(MenuBar)
+            
+            with time_perf("APP: create_default_config_file"):
+                create_default_config_file()
+            
+            # Start the Gossip Bridge for real-time cluster coordination in the TUI
+            from ..core.gossip_bridge import bridge
+            if bridge:
+                try:
+                    with time_perf("APP: bridge.start()"):
+                        bridge.start()
+                    tui_debug_log("APP: Gossip Bridge started.")
+                except Exception as e:
+                    tui_debug_log(f"APP: Gossip Bridge failed to start: {e}")
 
-        if self.auto_show:
-            await self.action_show_companies()
+            if self.auto_show:
+                await self.action_show_companies()
 
     def action_focus_sidebar(self) -> None:
         """Focus the sidebar in views that have one (like ApplicationView)."""
@@ -384,38 +397,41 @@ class CocliApp(App[None]):
 
     async def action_show_companies(self) -> None:
         """Show the company list view."""
-        self.menu_bar.set_activity("Switching")
-        self.menu_bar.set_active("companies")
-        self.main_content.remove_children()
-        
-        template_list = TemplateList(id="search-templates-pane", classes="search-pane")
-        company_list = CompanyList(id="search-companies-pane", classes="search-pane")
-        company_preview = CompanyPreview(Static("Select a company to see details."), id="search-preview-pane", classes="search-pane")
-        
-        search_view = CompanySearchView(
-                template_list=template_list,
-                company_list=company_list,
-                company_preview=company_preview
-            )
-        await self.main_content.mount(search_view)
-        
-        # Default to 'All Leads' to ensure new global entries are visible
-        # For synchronous tests, we need results ready immediately
-        if self.services.sync_search:
-            # We already awaited mount, so widgets should be ready
-            await company_list.perform_search("")
-        else:
-            self.call_after_refresh(company_list.apply_template, "tpl_all")
-        
-        def focus_list() -> None:
-            try:
-                company_list.query_one("#company_list_view").focus()
-            except Exception:
-                pass
-            self.menu_bar.set_activity("")
-        
-        # Ensure company list has focus if we are returning from a detail view
-        self.call_after_refresh(focus_list)
+        with time_perf("APP: action_show_companies"):
+            self.menu_bar.set_activity("Switching")
+            self.menu_bar.set_active("companies")
+            self.main_content.remove_children()
+            
+            template_list = TemplateList(id="search-templates-pane", classes="search-pane")
+            company_list = CompanyList(id="search-companies-pane", classes="search-pane")
+            company_preview = CompanyPreview(Static("Select a company to see details."), id="search-preview-pane", classes="search-pane")
+            
+            search_view = CompanySearchView(
+                    template_list=template_list,
+                    company_list=company_list,
+                    company_preview=company_preview
+                )
+            
+            with time_perf("APP: mount(CompanySearchView)"):
+                await self.main_content.mount(search_view)
+            
+            # Default to 'All Leads' to ensure new global entries are visible
+            # For synchronous tests, we need results ready immediately
+            if self.services.sync_search:
+                # We already awaited mount, so widgets should be ready
+                await company_list.perform_search("")
+            else:
+                self.call_after_refresh(company_list.apply_template, "tpl_all")
+            
+            def focus_list() -> None:
+                try:
+                    company_list.query_one("#company_list_view").focus()
+                except Exception:
+                    pass
+                self.menu_bar.set_activity("")
+            
+            # Ensure company list has focus if we are returning from a detail view
+            self.call_after_refresh(focus_list)
 
     def action_focus_templates(self) -> None:
         """Focus the template list in search view."""
@@ -426,27 +442,30 @@ class CocliApp(App[None]):
 
     async def action_show_people(self) -> None:
         """Show the person list view."""
-        self.menu_bar.set_activity("Switching")
-        self.menu_bar.set_active("people")
-        self.main_content.remove_children()
-        await self.main_content.mount(PersonList())
-        self.menu_bar.set_activity("")
+        with time_perf("APP: action_show_people"):
+            self.menu_bar.set_activity("Switching")
+            self.menu_bar.set_active("people")
+            self.main_content.remove_children()
+            await self.main_content.mount(PersonList())
+            self.menu_bar.set_activity("")
 
     async def action_show_application(self) -> None:
         """Show the application view."""
-        tui_debug_log("APP: action_show_application starting")
-        self.menu_bar.set_activity("Loading")
-        self.menu_bar.set_active("application")
-        self.main_content.remove_children()
-        await self.main_content.mount(ApplicationView())
-        self.menu_bar.set_activity("")
-        tui_debug_log("APP: action_show_application finished")
+        with time_perf("APP: action_show_application"):
+            tui_debug_log("APP: action_show_application starting")
+            self.menu_bar.set_activity("Loading")
+            self.menu_bar.set_active("application")
+            self.main_content.remove_children()
+            await self.main_content.mount(ApplicationView())
+            self.menu_bar.set_activity("")
+            tui_debug_log("APP: action_show_application finished")
 
     @on(ApplicationView.CampaignActivated)
     async def on_application_view_campaign_activated(self, message: ApplicationView.CampaignActivated) -> None:
-        self.notify(f"Campaign Activated: {message.campaign_name}")
-        self.query_one(MenuBar).refresh_campaign()
-        await self.action_show_companies()
+        with time_perf("APP: on_application_view_campaign_activated"):
+            self.notify(f"Campaign Activated: {message.campaign_name}")
+            self.query_one(MenuBar).refresh_campaign()
+            await self.action_show_companies()
 
     def action_select_item(self) -> None:
         focused_widget = self.focused

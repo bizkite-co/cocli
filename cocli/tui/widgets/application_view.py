@@ -163,12 +163,14 @@ class ApplicationView(Container):
                 yield ListView(id="recent_runs_list")
 
     def on_mount(self) -> None:
-        nav_list = self.query_one("#app_nav_list", ListView)
-        nav_list.index = 0
-        nav_list.focus()
-        self.query_one("#op_params_area").display = False
-        self.show_category("campaigns")
-        self.update_recent_runs()
+        from ..app import time_perf
+        with time_perf("TUI: ApplicationView.on_mount"):
+            nav_list = self.query_one("#app_nav_list", ListView)
+            nav_list.index = 0
+            nav_list.focus()
+            self.query_one("#op_params_area").display = False
+            self.show_category("campaigns")
+            self.update_recent_runs()
 
     def action_reset_view(self) -> None:
         self.query_one("#app_nav_list", ListView).focus()
@@ -270,54 +272,56 @@ class ApplicationView(Container):
             self.run_operation(str(event.item.id))
 
     def show_category(self, category: str) -> None:
-        self.active_category = category
-        title_label = self.query_one("#sub_sidebar_title", Label)
-        
-        # Toggle Sidebar Visibility
-        ops_list = self.query_one("#ops_list")
-        campaign_list = self.query_one("#app_campaign_list")
-        queue_list = self.query_one("#app_queue_list")
-        index_list = self.query_one("#app_index_list")
-        
-        ops_list.display = (category == "operations")
-        campaign_list.display = (category == "campaigns")
-        queue_list.display = (category == "queues")
-        index_list.display = (category == "indexes")
-        self.query_one("#app_sub_nav_container").display = (category not in ["status", "cluster"])
+        from ..app import time_perf
+        with time_perf(f"TUI: ApplicationView.show_category ({category})"):
+            self.active_category = category
+            title_label = self.query_one("#sub_sidebar_title", Label)
+            
+            # Toggle Sidebar Visibility
+            ops_list = self.query_one("#ops_list")
+            campaign_list = self.query_one("#app_campaign_list")
+            queue_list = self.query_one("#app_queue_list")
+            index_list = self.query_one("#app_index_list")
+            
+            ops_list.display = (category == "operations")
+            campaign_list.display = (category == "campaigns")
+            queue_list.display = (category == "queues")
+            index_list.display = (category == "indexes")
+            self.query_one("#app_sub_nav_container").display = (category not in ["status", "cluster"])
 
-        # Toggle Content Visibility
-        self.query_one("#ops_detail_root").display = (category == "operations")
-        self.query_one("#campaign_detail_root").display = (category == "campaigns")
-        self.query_one("#status_view_root").display = (category == "status")
-        self.query_one("#cluster_view_root").display = (category == "cluster")
-        self.query_one("#queue_detail_root").display = (category == "queues")
-        self.query_one("#index_detail_root").display = (category == "indexes")
+            # Toggle Content Visibility
+            self.query_one("#ops_detail_root").display = (category == "operations")
+            self.query_one("#campaign_detail_root").display = (category == "campaigns")
+            self.query_one("#status_view_root").display = (category == "status")
+            self.query_one("#cluster_view_root").display = (category == "cluster")
+            self.query_one("#queue_detail_root").display = (category == "queues")
+            self.query_one("#index_detail_root").display = (category == "indexes")
 
-        if category == "campaigns":
-            title_label.update("[bold]Campaigns[/bold]")
-        elif category == "status":
-            title_label.update("[bold]Environment[/bold]")
-        elif category == "cluster":
-            title_label.update("[bold]Cluster[/bold]")
-        elif category == "indexes":
-            title_label.update("[bold]Indexes[/bold]")
-            try:
-                self.query_one("#app_index_list", ListView).index = 0
-            except Exception:
-                pass
-        elif category == "operations":
-            title_label.update("[bold]Operations[/bold]")
-            # Index 0 is a disabled header "--- Reporting ---", so we select index 1
-            try:
-                self.query_one("#ops_list", ListView).index = 1
-            except Exception:
-                pass
-        elif category == "queues":
-            title_label.update("[bold]Queues[/bold]")
-            try:
-                self.query_one("#app_queue_list", ListView).index = 0
-            except Exception:
-                pass
+            if category == "campaigns":
+                title_label.update("[bold]Campaigns[/bold]")
+            elif category == "status":
+                title_label.update("[bold]Environment[/bold]")
+            elif category == "cluster":
+                title_label.update("[bold]Cluster[/bold]")
+            elif category == "indexes":
+                title_label.update("[bold]Indexes[/bold]")
+                try:
+                    self.query_one("#app_index_list", ListView).index = 0
+                except Exception:
+                    pass
+            elif category == "operations":
+                title_label.update("[bold]Operations[/bold]")
+                # Index 0 is a disabled header "--- Reporting ---", so we select index 1
+                try:
+                    self.query_one("#ops_list", ListView).index = 1
+                except Exception:
+                    pass
+            elif category == "queues":
+                title_label.update("[bold]Queues[/bold]")
+                try:
+                    self.query_one("#app_queue_list", ListView).index = 0
+                except Exception:
+                    pass
 
     def update_recent_runs(self) -> None:
         try:
@@ -567,14 +571,19 @@ class ApplicationView(Container):
     @on(CampaignSelection.CampaignHighlighted)
     def handle_campaign_highlight(self, message: CampaignSelection.CampaignHighlighted) -> None:
         """Update detail pane on highlight (browsing)."""
-        try:
-            detail = self.query_one("#campaign-detail", CampaignDetail)
-            campaign = Campaign.load(message.campaign_name)
-            detail.update_detail(campaign)
-        except Exception as e:
-            logger.error(f"Failed to load campaign {message.campaign_name}: {e}")
+        from ..app import time_perf
+        with time_perf(f"TUI: handle_campaign_highlight ({message.campaign_name})"):
             try:
+                # 1. Blocking Load (but now cached via lru_cache)
+                campaign = Campaign.load(message.campaign_name)
+                
+                # 2. UI Update
                 detail = self.query_one("#campaign-detail", CampaignDetail)
-                detail.display_error("Error Loading Campaign", f"Invalid Campaign: {message.campaign_name}\n\n{str(e)}")
-            except Exception:
-                pass
+                detail.update_detail(campaign)
+            except Exception as e:
+                logger.error(f"Failed to load campaign {message.campaign_name}: {e}")
+                try:
+                    detail = self.query_one("#campaign-detail", CampaignDetail)
+                    detail.display_error("Error Loading Campaign", f"Invalid Campaign: {message.campaign_name}\n\n{str(e)}")
+                except Exception:
+                    pass

@@ -2,6 +2,7 @@ from pydantic import BaseModel, Field, model_validator
 from typing import List, Optional, Any
 import toml
 from pathlib import Path
+from functools import lru_cache
 from cocli.core.text_utils import slugify
 
 class CampaignImport(BaseModel):
@@ -46,6 +47,7 @@ class Prospecting(BaseModel):
                 data['tools'] = []
         return data
 
+
 class Campaign(BaseModel):
     name: str
     tag: str
@@ -58,6 +60,7 @@ class Campaign(BaseModel):
     aws: Optional[AwsSettings] = None
 
     @classmethod
+    @lru_cache(maxsize=32)
     def load(cls, name: str, data_home: Optional[Path] = None) -> 'Campaign':
         from cocli.core.config import load_campaign_config
         config_data = load_campaign_config(name)
