@@ -8,7 +8,7 @@ from typing import Any, Optional, Type, List, cast, Dict, Generator
 
 from textual.app import App, ComposeResult
 from textual.binding import Binding
-from textual.widgets import Static, ListView, Input, Label, Footer
+from textual.widgets import Static, ListView, Input, Label, Footer, ContentSwitcher
 from textual.containers import Container, Horizontal
 from textual import events, on
 
@@ -390,17 +390,19 @@ class CocliApp(App[None]):
         return None
 
     def on_person_list_person_selected(self, message: PersonList.PersonSelected) -> None:
-        self.main_content.remove_children()
-        self.main_content.mount(PersonDetail(person_slug=message.person_slug))
+        content = self.query_one("#app_content")
+        content.remove_children()
+        content.mount(PersonDetail(person_slug=message.person_slug))
 
     def on_company_list_company_selected(self, message: CompanyList.CompanySelected) -> None:
         company_slug = message.company_slug
         try:
             company_data = self.services.get_company_details(company_slug)
             if company_data:
-                self.main_content.remove_children()
+                content = self.query_one("#app_content")
+                content.remove_children()
                 company_detail = CompanyDetail(company_data)
-                self.main_content.mount(company_detail)
+                content.mount(company_detail)
                 company_detail.styles.display = "block"
             else:
                 self.bell()
@@ -412,7 +414,8 @@ class CocliApp(App[None]):
         with time_perf("APP: action_show_companies"):
             self.menu_bar.set_activity("Switching")
             self.menu_bar.set_active("companies")
-            self.main_content.remove_children()
+            
+            await self.main_content.remove_children()
             
             template_list = TemplateList(id="search-templates-pane", classes="search-pane")
             company_list = CompanyList(id="search-companies-pane", classes="search-pane")
@@ -428,17 +431,21 @@ class CocliApp(App[None]):
                 await self.main_content.mount(search_view)
             
             # Default to 'All Leads' to ensure new global entries are visible
-            if self.services.sync_search:
-                await company_list.perform_search("")
-            else:
-                self.call_after_refresh(company_list.apply_template, "tpl_all")
+            if search_view.visible:
+                if self.services.sync_search:
+                    await company_list.perform_search("")
+                else:
+                    self.call_after_refresh(company_list.apply_template, "tpl_all")
             
             def focus_list() -> None:
                 try:
-                    company_list.query_one("#company_list_view").focus()
+                    # ONLY focus if search_view is still the one visible
+                    if search_view.visible:
+                        company_list.query_one("#company_list_view").focus()
                 except Exception:
                     pass
                 self.menu_bar.set_activity("")
+
             
             self.call_after_refresh(focus_list)
 
@@ -454,7 +461,8 @@ class CocliApp(App[None]):
         with time_perf("APP: action_show_people"):
             self.menu_bar.set_activity("Switching")
             self.menu_bar.set_active("people")
-            self.main_content.remove_children()
+            
+            await self.main_content.remove_children()
             await self.main_content.mount(PersonList())
             self.menu_bar.set_activity("")
 
@@ -464,7 +472,9 @@ class CocliApp(App[None]):
             tui_debug_log("APP: action_show_application starting")
             self.menu_bar.set_activity("Loading")
             self.menu_bar.set_active("application")
-            self.main_content.remove_children()
+            
+            await self.main_content.remove_children()
+            
             view = ApplicationView()
             await self.main_content.mount(view)
             self.menu_bar.set_activity("")
@@ -472,9 +482,11 @@ class CocliApp(App[None]):
             # Aggressive focus
             def do_focus() -> None:
                 try:
-                    view.query_one("#app_nav_list").focus()
-                except Exception:
-                    pass
+                    view = self.query_one(ApplicationView)
+                    view.action_focus_sidebar()
+                except Exception as e:
+                    tui_debug_log(f"APP: Failed to focus ApplicationView: {e}")
+            
             self.call_after_refresh(do_focus)
 
     @on(ApplicationView.CampaignActivated)
