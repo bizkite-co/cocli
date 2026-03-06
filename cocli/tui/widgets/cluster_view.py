@@ -17,7 +17,40 @@ class ClusterView(VerticalScroll):
         ("R", "refresh_cluster", "Refresh Now"),
         ("D", "delete_node", "Delete Selected Registry"),
         ("P", "prune_heartbeat", "Prune Selected Heartbeat"),
+        ("alt+p", "provision_cluster", "Provision Cluster"),
+        ("alt+s", "start_cluster", "Start Cluster"),
+        ("alt+k", "stop_cluster", "Stop Cluster"),
     ]
+
+    async def action_provision_cluster(self) -> None:
+        from cocli.core.config import get_campaign
+        campaign = get_campaign()
+        if not campaign:
+            return
+        self.notify(f"Provisioning IoT for {campaign} cluster...")
+        # Use existing script logic
+        cmd = f"python3 scripts/provision_pi_iot.py --host cocli5x1.pi --campaign {campaign}"
+        await asyncio.create_subprocess_shell(cmd)
+
+    async def action_start_cluster(self) -> None:
+        from cocli.core.config import get_campaign
+        campaign = get_campaign()
+        if not campaign:
+            return
+        self.notify(f"Starting {campaign} cluster workers...")
+        cmd = f"cocli cluster deploy-hotfix --campaign {campaign}"
+        await asyncio.create_subprocess_shell(cmd)
+
+    async def action_stop_cluster(self) -> None:
+        from cocli.core.config import get_campaign
+        campaign = get_campaign()
+        if not campaign:
+            return
+        self.notify(f"Stopping {campaign} cluster workers...")
+        # We need a 'cocli cluster stop' command, but for now we can use ssh
+        # to stop the supervisor containers
+        cmd = f"make stop-rpi-all CAMPAIGN={campaign}"
+        await asyncio.create_subprocess_shell(cmd)
 
     def __init__(self, *args: Any, **kwargs: Any) -> None:
         super().__init__(*args, **kwargs)

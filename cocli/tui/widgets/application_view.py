@@ -3,7 +3,7 @@ import logging
 from datetime import datetime
 from textual.app import ComposeResult
 from textual.containers import Container, VerticalScroll, Horizontal, Vertical
-from textual.widgets import Label, ListView, ListItem, Static, Input
+from textual.widgets import Label, ListView, ListItem, Static, Input, LoadingIndicator
 from textual.message import Message
 from textual import on, work, events
 from rich.table import Table
@@ -112,6 +112,8 @@ class ApplicationView(Container):
             
             # Center: The main content area
             with Container(id="app_main_content"):
+                yield LoadingIndicator(id="app_loading")
+
                 # Operations Detail
                 with VerticalScroll(id="ops_detail_root", classes="category-content-root"):
                     with Horizontal(id="op_header_row"):
@@ -165,6 +167,9 @@ class ApplicationView(Container):
     def on_mount(self) -> None:
         from ..app import time_perf
         with time_perf("TUI: ApplicationView.on_mount"):
+            # Hide loading initially
+            self.query_one("#app_loading").display = False
+            
             nav_list = self.query_one("#app_nav_list", ListView)
             nav_list.index = 0
             nav_list.focus()
@@ -275,53 +280,63 @@ class ApplicationView(Container):
         from ..app import time_perf
         with time_perf(f"TUI: ApplicationView.show_category ({category})"):
             self.active_category = category
-            title_label = self.query_one("#sub_sidebar_title", Label)
             
-            # Toggle Sidebar Visibility
-            ops_list = self.query_one("#ops_list")
-            campaign_list = self.query_one("#app_campaign_list")
-            queue_list = self.query_one("#app_queue_list")
-            index_list = self.query_one("#app_index_list")
+            # 1. Show Loading
+            loading = self.query_one("#app_loading")
+            loading.display = True
             
-            ops_list.display = (category == "operations")
-            campaign_list.display = (category == "campaigns")
-            queue_list.display = (category == "queues")
-            index_list.display = (category == "indexes")
-            self.query_one("#app_sub_nav_container").display = (category not in ["status", "cluster"])
+            def perform_switch() -> None:
+                title_label = self.query_one("#sub_sidebar_title", Label)
+                
+                # Toggle Sidebar Visibility
+                ops_list = self.query_one("#ops_list")
+                campaign_list = self.query_one("#app_campaign_list")
+                queue_list = self.query_one("#app_queue_list")
+                index_list = self.query_one("#app_index_list")
+                
+                ops_list.display = (category == "operations")
+                campaign_list.display = (category == "campaigns")
+                queue_list.display = (category == "queues")
+                index_list.display = (category == "indexes")
+                self.query_one("#app_sub_nav_container").display = (category not in ["status", "cluster"])
 
-            # Toggle Content Visibility
-            self.query_one("#ops_detail_root").display = (category == "operations")
-            self.query_one("#campaign_detail_root").display = (category == "campaigns")
-            self.query_one("#status_view_root").display = (category == "status")
-            self.query_one("#cluster_view_root").display = (category == "cluster")
-            self.query_one("#queue_detail_root").display = (category == "queues")
-            self.query_one("#index_detail_root").display = (category == "indexes")
+                # Toggle Content Visibility
+                self.query_one("#ops_detail_root").display = (category == "operations")
+                self.query_one("#campaign_detail_root").display = (category == "campaigns")
+                self.query_one("#status_view_root").display = (category == "status")
+                self.query_one("#cluster_view_root").display = (category == "cluster")
+                self.query_one("#queue_detail_root").display = (category == "queues")
+                self.query_one("#index_detail_root").display = (category == "indexes")
 
-            if category == "campaigns":
-                title_label.update("[bold]Campaigns[/bold]")
-            elif category == "status":
-                title_label.update("[bold]Environment[/bold]")
-            elif category == "cluster":
-                title_label.update("[bold]Cluster[/bold]")
-            elif category == "indexes":
-                title_label.update("[bold]Indexes[/bold]")
-                try:
-                    self.query_one("#app_index_list", ListView).index = 0
-                except Exception:
-                    pass
-            elif category == "operations":
-                title_label.update("[bold]Operations[/bold]")
-                # Index 0 is a disabled header "--- Reporting ---", so we select index 1
-                try:
-                    self.query_one("#ops_list", ListView).index = 1
-                except Exception:
-                    pass
-            elif category == "queues":
-                title_label.update("[bold]Queues[/bold]")
-                try:
-                    self.query_one("#app_queue_list", ListView).index = 0
-                except Exception:
-                    pass
+                if category == "campaigns":
+                    title_label.update("[bold]Campaigns[/bold]")
+                elif category == "status":
+                    title_label.update("[bold]Environment[/bold]")
+                elif category == "cluster":
+                    title_label.update("[bold]Cluster[/bold]")
+                elif category == "indexes":
+                    title_label.update("[bold]Indexes[/bold]")
+                    try:
+                        self.query_one("#app_index_list", ListView).index = 0
+                    except Exception:
+                        pass
+                elif category == "operations":
+                    title_label.update("[bold]Operations[/bold]")
+                    try:
+                        self.query_one("#ops_list", ListView).index = 1
+                    except Exception:
+                        pass
+                elif category == "queues":
+                    title_label.update("[bold]Queues[/bold]")
+                    try:
+                        self.query_one("#app_queue_list", ListView).index = 0
+                    except Exception:
+                        pass
+                
+                loading.display = False
+
+            # Use call_after_refresh to ensure the loading indicator paints before the heavy work
+            self.call_after_refresh(perform_switch)
 
     def update_recent_runs(self) -> None:
         try:
