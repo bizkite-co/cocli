@@ -126,7 +126,7 @@ class CocliApp(App[None]):
 
     def compose(self) -> ComposeResult:
         """Create child widgets for the app."""
-        yield MenuBar()
+        yield MenuBar(id="menu_bar")
         yield Container(id="app_content")
         yield Footer()
 
@@ -235,6 +235,15 @@ class CocliApp(App[None]):
     }
 
     async def on_key(self, event: events.Key) -> None:
+        # 0. CRITICAL Protection: If an Input is focused, do NOT intercept shortcuts
+        # or Leader mode unless they are explicit control keys.
+        if isinstance(self.focused, Input):
+            if event.key not in self.INPUT_CONTROL_KEYS:
+                # This is a typing character (including 'space'). 
+                # Let it bubble to the Input widget by NOT calling event.stop()
+                # but we must also NOT handle it as a shortcut.
+                return
+
         # 1. HIGH PRIORITY: Leader mode must intercept keys before anyone else
         if event.key == LEADER_KEY:
             self.leader_mode = True
@@ -259,15 +268,6 @@ class CocliApp(App[None]):
             event.stop()
             event.prevent_default()
             return
-
-        # 2. CRITICAL Protection: If an Input is focused, do NOT handle any shortcuts
-        # unless they are explicit control keys.
-        if isinstance(self.focused, Input):
-            if event.key not in self.INPUT_CONTROL_KEYS:
-                # This is a typing character. Stop it from reaching ANY bindings
-                # or global logic.
-                event.stop()
-                return
 
         tui_debug_log(f"APP: on_key: {event.key} (focused={self.focused.__class__.__name__ if self.focused else 'None'})")
 

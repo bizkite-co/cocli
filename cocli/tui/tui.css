@@ -20,6 +20,10 @@ Screen {
     width: 100%;
 }
 
+#menu_bar Horizontal, #menu_bar Static, #menu_bar Label {
+    height: 1;
+}
+
 .menu-item {
     width: auto;
     padding: 0 2;

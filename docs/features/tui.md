@@ -11,24 +11,83 @@ The primary purpose of the TUI is to:
 3.  **Streamlined Workflow Interaction:** Allow users to interact with and manage campaign-related tasks directly from the terminal, without needing to remember complex CLI commands. This includes actions like viewing details, triggering workflow steps, inspecting intermediate data, and editing configuration.
 4.  **Improved User Experience:** Provide a more intuitive and engaging way to interact with `cocli`, especially for users who prefer a visual interface over pure command-line interaction.
 
-## Current Understanding of TUI Functionality (as of current development)
-
-Based on the code and recent interactions, the TUI now features a master-detail layout for key data entities:
-
-*   **Master-Detail Layout:** The main content area of the TUI is structured into two panes: a master list on the left and a detail/preview pane on the right.
-*   **Company View:** Displays a searchable list of companies in the master pane, with a real-time preview of the highlighted company's details in the detail pane.
-*   **Campaign View:** Presents a navigable list of campaigns in the master pane. Selecting a campaign displays its full details in the detail pane. A searchable list is a planned enhancement.
-*   **Person View:** (Planned) Will feature a searchable list of people in the master pane, with a real-time preview of the highlighted person's details in the detail pane.
-*   **Error Handling:** Validation errors or issues during data loading are displayed directly within the detail pane of the respective view, providing immediate feedback to the user.
-
 ## Master-Detail Navigation
 
-The TUI utilizes a master-detail pattern to efficiently browse and manage data:
+The TUI utilizes a master-detail pattern to efficiently browse and manage data, typically using a three-column layout.
 
-*   **Master Pane (Left):** Contains a list of items (e.g., Companies, Campaigns, People). Users can navigate this list using keyboard shortcuts (e.g., `j`, `k`, arrow keys) and often filter it via a search input.
-*   **Detail Pane (Right):** Displays detailed information about the currently selected or highlighted item from the master pane. For searchable lists (like Companies), this updates in real-time as items are highlighted. For navigable lists (like Campaigns), details are shown upon selection.
+## TUI Layout Structure
+
+The `cocli` TUI uses a hierarchical layout composed of various Textual containers and widgets. Below is the conceptual layout DSL representing the application structure:
+
+```text
+Screen {
+    MenuBar
+
+    Container(id="app_content") {
+        # One of the following views:
+
+        CompanySearchView {
+            Horizontal {
+                TemplateList(id="search-templates-pane")
+                CompanyList(id="search-companies-pane") {
+                    Input(id="company_search_input")
+                    ListView(id="company_list_view")
+                }
+                CompanyPreview(id="search-preview-pane")
+            }
+        }
+
+        PersonList {
+            ListView
+        }
+
+        ApplicationView {
+            Horizontal {
+                # Left Column: Navigation
+                Vertical(id="app_sidebar_column") {
+                    Vertical(id="app_nav_container") {
+                        Label("Application")
+                        ListView(id="app_nav_list")
+                    }
+                    Vertical(id="app_sub_nav_container") {
+                        Label("Menu")
+                        # One of:
+                        CampaignSelection
+                        QueueSelection
+                        IndexSelection
+                        # Or Operation List
+                        ListView(id="sidebar_operations")
+                    }
+                }
+
+                # Center: Main Content
+                Container(id="app_main_content") {
+                    LoadingIndicator(id="app_loading")
+                    
+                    # One of:
+                    VerticalScroll(id="view_operations")
+                    QueueDetail(id="queue_detail")
+                    IndexDetail(id="index_detail")
+                    CampaignDetail(id="campaign-detail")
+                    StatusView(id="view_status")
+                    ClusterView(id="view_cluster")
+                }
+
+                # Right Column: Performance/History
+                Vertical(id="app_recent_runs") {
+                    Label("Recent Runs")
+                    ListView(id="recent_runs_list")
+                }
+            }
+        }
+    }
+
+    Footer
+}
+```
 
 ## Implemented Navigation Schemes
+
 
 The TUI now supports several keyboard-centric navigation methods, integrated with the master-detail paradigm:
 
