@@ -5,7 +5,7 @@ import json
 import logging
 import os
 from datetime import datetime, UTC
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Set
 
 from playwright.async_api import async_playwright, Browser, BrowserContext
 
@@ -90,6 +90,19 @@ class WorkerService:
                 logger.error(f"Error in config watcher: {e}")
             
             await asyncio.sleep(5)
+
+    async def _heartbeat_loop(self, interval: int = 30) -> None:
+        """Periodic heartbeat broadcast."""
+        logger.info(f"WorkerService: Starting heartbeat loop ({interval}s)")
+        s3_client = self.get_s3_client()
+        while self._running:
+            try:
+                # We pass empty dicts because WorkerService isn't the supervisor, 
+                # but it still needs to report its own existence.
+                await self._push_supervisor_heartbeat(s3_client, {}, {}, {})
+            except Exception as e:
+                logger.error(f"Error in heartbeat loop: {e}")
+            await asyncio.sleep(interval)
 
     async def _rebalance_workers(self) -> None:
         """Restarts workers based on updated scaling config."""
@@ -209,6 +222,9 @@ class WorkerService:
             try:
                 location_param = {"latitude": str(task.latitude), "longitude": str(task.longitude)}
                 discovered_items: List[GoogleMapsListItem] = []
+                # Keep track of Place IDs in this specific search to avoid redundant enqueuing
+                pushed_place_ids: Set[str] = set()
+                
                 async with asyncio.timeout(900):
                     async for list_item in scrape_google_maps(
                         browser=browser,
@@ -223,8 +239,12 @@ class WorkerService:
                     ):
                         if not list_item.place_id:
                             continue
+                        
                         discovered_items.append(list_item)
-                        gm_list_item_queue.push(list_item.to_task(task.campaign_name, force_refresh=False))
+                        
+                        if list_item.place_id not in pushed_place_ids:
+                            gm_list_item_queue.push(list_item.to_task(task.campaign_name, force_refresh=False))
+                            pushed_place_ids.add(list_item.place_id)
 
                 if discovered_items:
                     try:
@@ -448,6 +468,9 @@ class WorkerService:
 
         # Start Config Watcher
         asyncio.create_task(self._watch_remote_config())
+        
+        # Start Heartbeat Loop
+        asyncio.create_task(self._heartbeat_loop())
 
         self.worker_tasks = []
         for wd in worker_definitions:

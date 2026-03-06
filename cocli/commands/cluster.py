@@ -45,6 +45,7 @@ def deploy_hotfix(
 @app.command(name="gossip-audit")
 def gossip_audit(
     target: Optional[str] = typer.Option(None, "--target", "-t", help="Optional IP to send a test datagram to."),
+    timeout: float = typer.Option(60.0, "--timeout", help="How many seconds to listen for live gossip."),
 ) -> None:
     """
     Diagnostic tool for the cluster Gossip Bridge.
@@ -55,8 +56,7 @@ def gossip_audit(
     if target:
         send_test_gossip(target)
     else:
-        # Note: audit_gossip has a hardcoded 30s listen if port is free
-        audit_gossip()
+        audit_gossip(timeout_seconds=timeout)
 
 @app.command(name="top")
 def top(

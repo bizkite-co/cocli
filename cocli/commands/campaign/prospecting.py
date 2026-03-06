@@ -817,10 +817,11 @@ def monitor_batch(
     completed_count = 0
     in_progress_count = 0
     pending_count = 0
-    legacy_count = 0
+    stale_count = 0
 
     now = datetime.now(UTC)
-    threshold = now - timedelta(hours=4)
+    # Threshold for 'RECENT': Completions within the last 24 hours
+    threshold = now - timedelta(hours=24)
 
     for task in tasks:
         lat_shard = get_geo_shard(float(task.latitude))
@@ -837,7 +838,7 @@ def monitor_batch(
         
         status = "[white]PENDING[/white]"
         details = "-"
-        is_legacy = False
+        is_stale = False
         
         if receipt_file.exists():
             try:
@@ -854,10 +855,10 @@ def monitor_batch(
                             details = f"[bold]{count}[/bold] by {worker} (RECENT)"
                             completed_count += 1
                         else:
-                            status = "[green]DONE[/green]"
-                            details = f"{count} by {worker} (Legacy: {comp_at.strftime('%m-%d')})"
-                            is_legacy = True
-                            legacy_count += 1
+                            status = "[blue]STALE[/blue]"
+                            details = f"{count} by {worker} (Pending Refresh: {comp_at.strftime('%m-%d')})"
+                            is_stale = True
+                            stale_count += 1
                     else:
                         status = "[green]DONE[/green]"
                         details = f"{count} by {worker}"
@@ -879,7 +880,7 @@ def monitor_batch(
         else:
             pending_count += 1
 
-        if not recent or not is_legacy:
+        if not recent or not is_stale:
             table.add_row(task.tile_id, task.search_phrase, status, details)
 
     console.print(table)
@@ -887,7 +888,7 @@ def monitor_batch(
     # Summary
     console.print("\n[bold]Summary:[/bold]")
     console.print(f"  [bold green]Recent Done:  {completed_count}[/bold green]")
-    console.print(f"  [green]Legacy Done:  {legacy_count}[/green]")
+    console.print(f"  [blue]Stale (Pending Refresh):  {stale_count}[/blue]")
     console.print(f"  [yellow]Active:       {in_progress_count}[/yellow]")
     console.print(f"  [white]Pending:      {pending_count}[/white]")
     console.print(f"  Total:        {len(tasks)}")
