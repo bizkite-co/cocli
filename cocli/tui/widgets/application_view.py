@@ -205,9 +205,11 @@ class ApplicationView(Container):
             if event.key == "j":
                 focused.action_cursor_down()
                 event.prevent_default()
+                event.stop()
             elif event.key == "k":
                 focused.action_cursor_up()
                 event.prevent_default()
+                event.stop()
             elif event.key == "l" or event.key == "enter":
                 if focused.id == "sidebar_operations":
                     self.action_run_active_operation()
