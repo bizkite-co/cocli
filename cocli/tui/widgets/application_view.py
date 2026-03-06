@@ -333,17 +333,24 @@ class ApplicationView(Container):
                 self.call_after_refresh(shift_focus)
 
     def update_recent_runs(self) -> None:
-        try:
-            app = cast("CocliApp", self.app)
-            runs_list = self.query_one("#recent_runs_list", ListView)
-            runs_list.clear()
-            for run in reversed(app.process_runs[-15:]):
-                status_color = "green" if run.status == "success" else "yellow" if run.status == "running" else "red"
-                timestamp = run.start_time.strftime("%H:%M:%S")
-                label = f"[{status_color}]{run.title}[/] [dim]({timestamp})[/]"
-                runs_list.append(ListItem(Static(label)))
-        except Exception as e:
-            logger.error(f"Failed to update recent runs: {e}")
+        from ..app import time_perf
+        with time_perf("TUI: ApplicationView.update_recent_runs"):
+            try:
+                app = cast("CocliApp", self.app)
+                runs_list = self.query_one("#recent_runs_list", ListView)
+                
+                # Simple optimization: only rebuild if the count has changed
+                if len(runs_list.children) == len(app.process_runs) and len(app.process_runs) > 0:
+                    return
+                
+                runs_list.clear()
+                for run in reversed(app.process_runs[-15:]):
+                    status_color = "green" if run.status == "success" else "yellow" if run.status == "running" else "red"
+                    timestamp = run.start_time.strftime("%H:%M:%S")
+                    label = f"[{status_color}]{run.title}[/] [dim]({timestamp})[/]"
+                    runs_list.append(ListItem(Static(label)))
+            except Exception as e:
+                logger.error(f"Failed to update recent runs: {e}")
 
     @on(ListView.Highlighted, "#sidebar_operations")
     @work(exclusive=True)

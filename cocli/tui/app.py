@@ -213,6 +213,18 @@ class CocliApp(App[None]):
             if self.auto_show:
                 await self.action_show_companies()
 
+    async def on_unmount(self) -> None:
+        """Handle cleanup on application exit."""
+        from ..core.gossip_bridge import bridge
+        if bridge:
+            try:
+                self.notify("Stopping Gossip Bridge...", timeout=2)
+                with time_perf("APP: bridge.stop()"):
+                    bridge.stop()
+                tui_debug_log("APP: Gossip Bridge stopped.")
+            except Exception as e:
+                tui_debug_log(f"APP: Gossip Bridge failed to stop: {e}")
+
     def action_focus_sidebar(self) -> None:
         """Focus the sidebar in views that have one (like ApplicationView)."""
         for widget in self.query(ApplicationView):

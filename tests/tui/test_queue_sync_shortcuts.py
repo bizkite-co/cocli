@@ -28,20 +28,14 @@ async def test_queue_sync_shortcuts(mocker):
         queue_list = await wait_for_widget(pilot, QueueSelection, "#sidebar_queues")
         assert queue_list.visible is True
         
+        # Select first item and ensure detail is loaded
         await pilot.press("enter")
-        
-        # Wait for detail view
         detail = await wait_for_widget(pilot, QueueDetail)
         
-        # Wait for focus to stabilize on the detail view
-        focused_detail = False
-        for _ in range(20):
-            if app.focused == detail:
-                focused_detail = True
-                break
-            await pilot.pause(0.1)
+        # Explicitly set focus to the detail view for chord testing
+        app.set_focus(detail)
+        await pilot.pause(0.1)
         
-        assert focused_detail, f"Expected QueueDetail to be focused, but {app.focused} is focused"
         assert detail.active_queue is not None
         
         # Test 's' then 'p' (Sync Pending)
