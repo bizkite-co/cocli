@@ -33,8 +33,14 @@ class StatusView(VerticalScroll):
         yield Container(Static("[bold yellow]Loading environment status...[/]"), id="status_body")
 
     def on_mount(self) -> None:
-        # Spawn background hydration immediately
-        self.run_worker(self.hydrate_view())
+        # We NO LONGER hydrate automatically on mount.
+        # It will be triggered when visible via watch_display
+        pass
+
+    def watch_display(self, display: bool) -> None:
+        """Called when visibility changes."""
+        if display and self.status_data is None:
+            self.run_worker(self.hydrate_view())
 
     async def hydrate_view(self) -> None:
         """Hydrate the view with initial data without blocking the UI thread."""
@@ -58,13 +64,10 @@ class StatusView(VerticalScroll):
         
         # 3. Update the UI
         self.call_after_refresh(self.update_view)
+        indicator.update("")
         
-        # 4. Trigger a full refresh in the background if data is stale or missing
-        # This will update the UI again when done
-        if not cached_stats:
-            self.trigger_refresh()
-        else:
-            indicator.update("")
+        # Note: We NO LONGER trigger a full refresh automatically.
+        # User must press 'R' to get fresh S3 data if they want it.
 
     def action_refresh_status(self) -> None:
         """Triggered by Shift+R."""

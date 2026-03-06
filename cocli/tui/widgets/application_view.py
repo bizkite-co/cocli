@@ -364,14 +364,19 @@ class ApplicationView(Container):
                 logger.error(f"Failed to update recent runs: {e}")
 
     @on(ListView.Highlighted, "#sidebar_operations")
+    @work(exclusive=True)
     async def handle_op_highlight(self, event: ListView.Highlighted) -> None:
         from ..app import time_perf
         if not event.item or not event.item.id:
             return
         
+        # Debounce
+        app = cast("CocliApp", self.app)
+        if not app.services.sync_search:
+            await asyncio.sleep(0.25)
+
         op_id = str(event.item.id)
         with time_perf(f"TUI: handle_op_highlight ({op_id})"):
-            app = cast("CocliApp", self.app)
             op = await asyncio.to_thread(app.services.operation_service.get_details, op_id)
             if not op:
                 return
@@ -390,11 +395,17 @@ class ApplicationView(Container):
                 logger.error(f"Error updating op header: {e}")
 
     @on(ListView.Highlighted, "#sidebar_indexes")
+    @work(exclusive=True)
     async def handle_index_highlight(self, event: ListView.Highlighted) -> None:
         from ..app import time_perf
         if not event.item or not event.item.id:
             return
         
+        # Debounce
+        app = cast("CocliApp", self.app)
+        if not app.services.sync_search:
+            await asyncio.sleep(0.25)
+
         index_id = str(event.item.id).replace("idx_", "")
         with time_perf(f"TUI: handle_index_highlight ({index_id})"):
             try:
@@ -412,11 +423,17 @@ class ApplicationView(Container):
             pass
 
     @on(ListView.Highlighted, "#sidebar_queues")
+    @work(exclusive=True)
     async def handle_queue_highlight(self, event: ListView.Highlighted) -> None:
         from ..app import time_perf
         if not event.item or not event.item.id:
             return
         
+        # Debounce
+        app = cast("CocliApp", self.app)
+        if not app.services.sync_search:
+            await asyncio.sleep(0.25)
+
         queue_id = str(event.item.id).replace("q_", "")
         with time_perf(f"TUI: handle_queue_highlight ({queue_id})"):
             try:

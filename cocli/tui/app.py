@@ -8,7 +8,7 @@ from typing import Any, Optional, Type, List, cast, Dict, Generator
 
 from textual.app import App, ComposeResult
 from textual.binding import Binding
-from textual.widgets import Static, ListView, Input, Label, Footer, ContentSwitcher
+from textual.widgets import Static, ListView, Input, Label, Footer
 from textual.containers import Container, Horizontal
 from textual import events, on
 
@@ -438,10 +438,11 @@ class CocliApp(App[None]):
                     self.call_after_refresh(company_list.apply_template, "tpl_all")
             
             def focus_list() -> None:
+                # ONLY focus if search_view is still the one visible
+                if not search_view.visible:
+                    return
                 try:
-                    # ONLY focus if search_view is still the one visible
-                    if search_view.visible:
-                        company_list.query_one("#company_list_view").focus()
+                    company_list.query_one("#company_list_view").focus()
                 except Exception:
                     pass
                 self.menu_bar.set_activity("")

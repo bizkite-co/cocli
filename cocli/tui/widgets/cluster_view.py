@@ -88,17 +88,34 @@ class ClusterView(VerticalScroll):
         s_table.add_columns("Node ID", "Workers (S/D/E)", "Last Seen")
         s_table.cursor_type = "row"
         
-        # Start the live refresh loop (non-blocking)
-        self.run_worker(self._refresh_loop())
+        # We NO LONGER start the loop on mount.
+        # It will be started when the widget becomes visible via watch_display
+
+    def watch_display(self, display: bool) -> None:
+        """Called when visibility changes. Start/stop the refresh loop."""
+        if display:
+            self.run_worker(self._refresh_loop(), name="cluster_refresh_loop", exclusive=True)
+        else:
+            # The worker will be cancelled automatically if it's named and exclusive?
+            # Actually better to just let it run one more cycle or check visibility inside the loop
+            pass
 
     async def _refresh_loop(self) -> None:
         """Background loop to update the tables."""
-        await asyncio.sleep(0.5)
-        while True:
+        # Initial delay to let UI paint
+        await asyncio.sleep(0.1)
+        
+        while self.display:
             self.update_table()
+            # These trigger AWS auth
             self.run_worker(self._refresh_registry())
             self.run_worker(self._refresh_s3_status())
-            await asyncio.sleep(10)
+            
+            # Wait 10 seconds, but check visibility frequently to stop faster
+            for _ in range(100):
+                if not self.display:
+                    break
+                await asyncio.sleep(0.1)
 
     async def _refresh_registry(self) -> None:
         """Fetch registry from S3."""

@@ -18,69 +18,58 @@ __all__ = ["get_campaign_stats", "get_boto3_session", "load_campaign_config", "g
 
 
 def get_boto3_session(config: Dict[str, Any], max_pool_connections: int = 10, profile_name: Optional[str] = None) -> boto3.Session:
-    """Creates a boto3 session, prioritizing explicit profile_name if provided."""
+    """Creates a boto3 session, prioritizing non-interactive IoT auth for TUI/Background tasks."""
     aws_config = config.get("aws", {})
     campaign_name = config.get("campaign", {}).get("name")
     
     if profile_name:
         try:
-            session = boto3.Session(profile_name=profile_name)
-            logger.debug(f"Initialized forced AWS profile: {profile_name}")
-            return session
-        except Exception as e:
-            logger.error(f"Failed to initialize forced profile {profile_name}: {e}")
+            return boto3.Session(profile_name=profile_name)
+        except Exception:
             raise
 
-    env_profile = os.environ.get("AWS_PROFILE")
-    iot_profiles = aws_config.get("iot_profiles", [])
-    if isinstance(iot_profiles, str):
-        iot_profiles = [iot_profiles]
-    
-    if campaign_name:
-        iot_profiles.insert(0, f"{campaign_name}-iot")
-    
-    profile_name = aws_config.get("profile") or aws_config.get("aws_profile")
-    all_candidates = iot_profiles + ([profile_name] if profile_name else [])
-    
-    if env_profile and env_profile in all_candidates:
-        try:
-            session = boto3.Session(profile_name=env_profile)
-            logger.debug(f"Initialized AWS profile from environment: {env_profile}")
-            return session
-        except Exception as e:
-            logger.debug(f"get_boto3_session: Env profile {env_profile} initialization failed: {e}")
-
-    for p in iot_profiles:
-        if p == env_profile:
-            continue
-        try:
-            session = boto3.Session(profile_name=p)
-            logger.debug(f"Initialized AWS IoT profile: {p}")
-            return session
-        except Exception as e:
-            logger.debug(f"get_boto3_session: IoT profile {p} initialization failed: {e}")
-            continue
-
+    # 1. Try IoT STS Credentials First (Non-interactive, File-based)
     try:
         from ..utils.aws_iot_auth import get_iot_sts_credentials
         iot_creds = get_iot_sts_credentials()
         if iot_creds:
+            logger.debug("Initialized AWS session via IoT STS credentials")
             return boto3.Session(
                 aws_access_key_id=iot_creds["access_key"],
                 aws_secret_access_key=iot_creds["secret_key"],
                 aws_session_token=iot_creds["token"]
             )
-    except Exception as e:
-        logger.debug(f"get_boto3_session: IoT script fallback failed: {e}")
+    except Exception:
+        pass
+
+    # 2. Try IoT Profile (Should be non-interactive in most setups)
+    iot_profiles = aws_config.get("iot_profiles", [])
+    if isinstance(iot_profiles, str):
+        iot_profiles = [iot_profiles]
+    if campaign_name:
+        iot_profiles.insert(0, f"{campaign_name}-iot")
+    
+    for p in iot_profiles:
+        try:
+            session = boto3.Session(profile_name=p)
+            logger.debug(f"Initialized AWS session via IoT profile: {p}")
+            return session
+        except Exception:
+            continue
+
+    # 3. Fallback to Environment or Config Profile (May trigger interactive prompts like 1Password)
+    env_profile = os.environ.get("AWS_PROFILE")
+    if env_profile:
+        try:
+            return boto3.Session(profile_name=env_profile)
+        except Exception:
+            pass
 
     profile_name = aws_config.get("profile") or aws_config.get("aws_profile")
-    if profile_name and profile_name != env_profile:
+    if profile_name:
         try:
-            session = boto3.Session(profile_name=profile_name)
-            logger.debug(f"Initialized AWS profile from config: {profile_name}")
-            return session
-        except Exception as e:
-            logger.debug(f"get_boto3_session: profile from config {profile_name} initialization failed: {e}")
+            return boto3.Session(profile_name=profile_name)
+        except Exception:
             pass
 
     return boto3.Session()
