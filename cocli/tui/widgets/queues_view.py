@@ -22,6 +22,10 @@ class QueueSelection(ListView):
         for q_id, meta in QUEUES_METADATA.items():
             yield ListItem(Label(meta.label), id=f"q_{q_id}")
 
+    def on_mount(self) -> None:
+        if self.children:
+            self.index = 0
+
 class QueueDetail(VerticalScroll):
     """
     Detailed view for a specific queue.
@@ -44,11 +48,13 @@ class QueueDetail(VerticalScroll):
                 self.action_sync_pending()
                 self.last_key = ""
                 event.prevent_default()
+                event.stop()
                 return
             elif event.key == "c":
                 self.action_sync_completed()
                 self.last_key = ""
                 event.prevent_default()
+                event.stop()
                 return
         
         self.last_key = event.key

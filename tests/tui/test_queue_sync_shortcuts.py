@@ -2,6 +2,7 @@
 import pytest
 from textual.widgets import ListView
 from cocli.tui.app import CocliApp
+from cocli.application.services import ServiceContainer
 from cocli.tui.widgets.queues_view import QueueSelection, QueueDetail
 
 @pytest.mark.asyncio
@@ -13,7 +14,8 @@ async def test_queue_sync_shortcuts(mocker):
     mock_sync = mocker.patch("cocli.application.data_sync_service.DataSyncService.sync_queues")
     mocker.patch("cocli.application.reporting_service.ReportingService.get_campaign_stats")
     
-    app = CocliApp(auto_show=False)
+    services = ServiceContainer(sync_search=True)
+    app = CocliApp(services=services, auto_show=False)
     async with app.run_test() as pilot:
         # Manually show application view
         await app.action_show_application()
@@ -25,12 +27,22 @@ async def test_queue_sync_shortcuts(mocker):
         # Wait for queues view
         queue_list = await wait_for_widget(pilot, QueueSelection, "#sidebar_queues")
         assert queue_list.visible is True
-
+        
         await pilot.press("enter")
         
         # Wait for detail view
         detail = await wait_for_widget(pilot, QueueDetail)
-        assert app.focused == detail
+        
+        # Wait for focus to stabilize on the detail view
+        focused_detail = False
+        for _ in range(20):
+            if app.focused == detail:
+                focused_detail = True
+                break
+            await pilot.pause(0.1)
+        
+        assert focused_detail, f"Expected QueueDetail to be focused, but {app.focused} is focused"
+        assert detail.active_queue is not None
         
         # Test 's' then 'p' (Sync Pending)
         await pilot.press("s")

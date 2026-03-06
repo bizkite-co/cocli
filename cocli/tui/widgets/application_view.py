@@ -1,5 +1,6 @@
 from typing import Any, TYPE_CHECKING, cast, Dict, Optional
 import logging
+import asyncio
 from datetime import datetime
 from textual.app import ComposeResult
 from textual.containers import Container, VerticalScroll, Horizontal, Vertical
@@ -276,7 +277,13 @@ class ApplicationView(Container):
             elif category == "indexes":
                 title_label.update("[bold]Indexes[/bold]")
                 try:
-                    self.query_one("#sidebar_indexes", ListView).index = 0
+                    sidebar = self.query_one("#sidebar_indexes", ListView)
+                    sidebar.index = 0
+                    # Force detail update for initial selection
+                    item = sidebar.highlighted_child
+                    if item and item.id:
+                        idx_id = str(item.id).replace("idx_", "")
+                        self.app.query_one("#index_detail", IndexDetail).update_detail(idx_id)
                 except Exception:
                     pass
             elif category == "operations":
@@ -288,7 +295,13 @@ class ApplicationView(Container):
             elif category == "queues":
                 title_label.update("[bold]Queues[/bold]")
                 try:
-                    self.query_one("#sidebar_queues", ListView).index = 0
+                    sidebar = self.query_one("#sidebar_queues", ListView)
+                    sidebar.index = 0
+                    # Force detail update for initial selection
+                    item = sidebar.highlighted_child
+                    if item and item.id:
+                        q_id = str(item.id).replace("q_", "")
+                        self.app.query_one("#queue_detail", QueueDetail).update_detail(q_id)
                 except Exception:
                     pass
             
@@ -324,12 +337,19 @@ class ApplicationView(Container):
             logger.error(f"Failed to update recent runs: {e}")
 
     @on(ListView.Highlighted, "#sidebar_operations")
-    def handle_op_highlight(self, event: ListView.Highlighted) -> None:
+    @work(exclusive=True)
+    async def handle_op_highlight(self, event: ListView.Highlighted) -> None:
         if not event.item or not event.item.id:
             return
+        
+        # Debounce
+        app = cast("CocliApp", self.app)
+        if not app.services.sync_search:
+            await asyncio.sleep(0.25)
+
         op_id = str(event.item.id)
         app = cast("CocliApp", self.app)
-        op = app.services.operation_service.get_details(op_id)
+        op = await asyncio.to_thread(app.services.operation_service.get_details, op_id)
         if not op:
             return
         
@@ -347,9 +367,16 @@ class ApplicationView(Container):
             logger.error(f"Error updating op header: {e}")
 
     @on(ListView.Highlighted, "#sidebar_indexes")
-    def handle_index_highlight(self, event: ListView.Highlighted) -> None:
+    @work(exclusive=True)
+    async def handle_index_highlight(self, event: ListView.Highlighted) -> None:
         if not event.item or not event.item.id:
             return
+        
+        # Debounce
+        app = cast("CocliApp", self.app)
+        if not app.services.sync_search:
+            await asyncio.sleep(0.25)
+
         index_id = str(event.item.id).replace("idx_", "")
         try:
             detail = self.app.query_one("#index_detail", IndexDetail)
@@ -366,9 +393,16 @@ class ApplicationView(Container):
             pass
 
     @on(ListView.Highlighted, "#sidebar_queues")
-    def handle_queue_highlight(self, event: ListView.Highlighted) -> None:
+    @work(exclusive=True)
+    async def handle_queue_highlight(self, event: ListView.Highlighted) -> None:
         if not event.item or not event.item.id:
             return
+        
+        # Debounce
+        app = cast("CocliApp", self.app)
+        if not app.services.sync_search:
+            await asyncio.sleep(0.25)
+
         queue_id = str(event.item.id).replace("q_", "")
         try:
             detail = self.app.query_one("#queue_detail", QueueDetail)
@@ -467,11 +501,18 @@ class ApplicationView(Container):
             self.app.notify(f"Activation Failed: {e}", severity="error")
 
     @on(CampaignSelection.CampaignHighlighted)
-    def handle_campaign_highlight(self, message: CampaignSelection.CampaignHighlighted) -> None:
+    @work(exclusive=True)
+    async def handle_campaign_highlight(self, message: CampaignSelection.CampaignHighlighted) -> None:
         from ..app import time_perf
+        
+        # Debounce to prevent rapid navigation stutter
+        app = cast("CocliApp", self.app)
+        if not app.services.sync_search:
+            await asyncio.sleep(0.25)
+        
         with time_perf(f"TUI: handle_campaign_highlight ({message.campaign_name})"):
             try:
-                campaign = Campaign.load(message.campaign_name)
+                campaign = await asyncio.to_thread(Campaign.load, message.campaign_name)
                 detail = self.app.query_one("#campaign-detail", CampaignDetail)
                 detail.update_detail(campaign)
             except Exception as e:
