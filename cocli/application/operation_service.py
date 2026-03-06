@@ -170,6 +170,16 @@ class OperationService:
                     OperationStep("cluster_push", "Propagate active tasks to all cluster PIs.")
                 ]
             ),
+            "op_purge_pending": OperationMetadata(
+                "op_purge_pending", "Purge Pending Tasks",
+                "Forcefully clears expired leases and vestigial tasks from the GM list queue.",
+                "maintenance",
+                steps=[
+                    OperationStep("s3_sync_down", "Pull latest queue state from S3."),
+                    OperationStep("aggressive_cleanup", "Purge expired leases and non-conforming tasks."),
+                    OperationStep("s3_sync_up", "Push cleaned state to S3.")
+                ]
+            ),
         }
 
     def get_details(self, op_id: str) -> Optional[OperationMetadata]:
@@ -519,6 +529,34 @@ class OperationService:
                     
                     return {"status": "success"}
                 result = await run_sanitization()
+            elif op_id == "op_purge_pending":
+                async def run_purge() -> Dict[str, Any]:
+                    from pathlib import Path
+                    import importlib.util
+                    project_root = Path(__file__).parent.parent.parent.resolve()
+                    pending_script = project_root / "scripts" / "cleanup_gm_list_pending.py"
+                    
+                    p_spec = importlib.util.spec_from_file_location("cleanup_gm_list_pending", str(pending_script))
+                    if not p_spec or not p_spec.loader:
+                        raise ImportError(f"Could not load script at {pending_script}")
+                    p_mod = importlib.util.module_from_spec(p_spec)
+                    p_spec.loader.exec_module(p_mod)
+                    
+                    log_step("s3_sync_down", "pending", "Pulling latest queue from S3...")
+                    await asyncio.to_thread(self.services.data_sync_service.sync_queues, "gm-list")
+                    log_step("s3_sync_down", "success")
+
+                    log_step("aggressive_cleanup", "pending", "Purging expired leases and vestigial tasks...")
+                    await asyncio.to_thread(p_mod.cleanup_pending_queue, self.campaign_name, dry_run=False)
+                    log_step("aggressive_cleanup", "success")
+
+                    log_step("s3_sync_up", "pending", "Pushing clean queue to S3...")
+                    # Sync logic inside cleanup script is better than bulk sync for deletions
+                    await asyncio.to_thread(self.services.data_sync_service.push_queue)
+                    log_step("s3_sync_up", "success")
+                    
+                    return {"status": "success"}
+                result = await run_purge()
             elif op_id == "op_rollout_discovery":
                 async def run_rollout() -> Dict[str, Any]:
                     batch_name = params.get("batch_name", f"rollout_{int(time.time())}")

@@ -7,6 +7,7 @@ from textual.containers import Container, VerticalScroll, Horizontal, Vertical
 from textual.widgets import Label, ListView, ListItem, Static, Input, LoadingIndicator
 from textual.message import Message
 from textual.widget import Widget
+from textual.binding import Binding
 from textual import on, work, events
 
 from .campaign_selection import CampaignSelection
@@ -35,6 +36,8 @@ class ApplicationView(Container):
         ("[", "focus_sidebar", "Focus Sidebar"),
         ("]", "focus_content", "Focus Content"),
         ("v", "view_full_log", "View Full Log"),
+        ("ctrl+r", "run_active_operation", "Run Operation"),
+        Binding("enter", "run_active_operation", "Run Operation", show=False),
     ]
 
     def __init__(self, *args: Any, **kwargs: Any) -> None:
@@ -94,6 +97,7 @@ class ApplicationView(Container):
                         ListItem(Label("Push Local Queue"), id="op_push_queue"),
                         ListItem(Label("Audit Integrity"), id="op_audit_integrity"),
                         ListItem(Label("Audit Queue"), id="op_audit_queue"),
+                        ListItem(Label("Purge Pending"), id="op_purge_pending"),
                         ListItem(Label("Rollout Discovery Batch"), id="op_rollout_discovery"),
                         ListItem(Label("Cluster Path Check"), id="op_path_check"),
                         id="sidebar_operations",
@@ -205,7 +209,10 @@ class ApplicationView(Container):
                 focused.action_cursor_up()
                 event.prevent_default()
             elif event.key == "l" or event.key == "enter":
-                focused.action_select_cursor()
+                if focused.id == "sidebar_operations":
+                    self.action_run_active_operation()
+                else:
+                    focused.action_select_cursor()
                 event.prevent_default()
                 event.stop()
 
@@ -217,9 +224,11 @@ class ApplicationView(Container):
             if index is not None and 0 <= index < len(categories):
                 self.show_category(categories[index])
         elif event.list_view.id == "sidebar_operations":
-            item = event.item or event.list_view.highlighted_child
-            if item and item.id:
-                self.run_operation(str(item.id))
+            try:
+                # Selection in sidebar just shifts focus to detail for editing
+                self.query_one("#view_operations").focus()
+            except Exception:
+                pass
         elif event.list_view.id == "sidebar_queues":
             try:
                 q_detail = self.app.query_one("#queue_detail", QueueDetail)
@@ -429,6 +438,20 @@ class ApplicationView(Container):
                     op = app.services.operation_service.get_details(op_id)
                     self.app.push_screen(LogViewerModal(op.title if op else "Log", self.current_log_content))
 
+    def action_run_active_operation(self) -> None:
+        """Standardized shortcut to run the operation currently highlighted in the sidebar.
+        Works whether focus is in sidebar or content area.
+        """
+        if self.active_category == "operations":
+            try:
+                # Find the sidebar, even if not focused
+                sidebar = self.query_one("#sidebar_operations", ListView)
+                item = sidebar.highlighted_child
+                if item and item.id:
+                    self.run_operation(str(item.id))
+            except Exception as e:
+                logger.error(f"Failed to run active operation: {e}")
+
     def get_last_run_info(self, op_id: str) -> str:
         app = cast("CocliApp", self.app)
         runs = [r for r in app.process_runs if r.op_id == op_id and r.status == "success"]
@@ -466,6 +489,9 @@ class ApplicationView(Container):
                 params["limit"] = int(self.query_one("#op_limit_input", Input).value or 50)
             except ValueError:
                 params["limit"] = 50
+        elif op_id == "op_purge_pending":
+            # No special params needed for purge for now
+            pass
 
         from ..navigation import ProcessRun
         run_record = ProcessRun(op_id, op.title)
