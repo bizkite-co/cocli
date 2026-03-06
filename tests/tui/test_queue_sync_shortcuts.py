@@ -23,8 +23,9 @@ async def test_queue_sync_shortcuts(mocker):
         nav_list.index = 4 # Queues is now index 4 (Campaigns, Cluster, Status, Indexes, Queues)
         await pilot.press("enter")
         # Wait for queues view
-        queue_list = await wait_for_widget(pilot, QueueSelection, "#app_queue_list")
-        queue_list.index = 0
+        queue_list = await wait_for_widget(pilot, QueueSelection, "#sidebar_queues")
+        assert queue_list.visible is True
+
         await pilot.press("enter")
         
         # Wait for detail view

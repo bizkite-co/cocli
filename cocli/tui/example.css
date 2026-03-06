@@ -1,0 +1,178 @@
+/* 
+   IMAGE ANNEX - STANDARD THEME
+   Strict Black Backgrounds (#000000)
+*/
+
+Screen {
+  background: #000000;
+  color: #ffffff;
+}
+
+#nav-col {
+  width: 30;
+  background: #000000 !important;
+  border-right: solid #333333;
+}
+
+#detail-col {
+  width: 1fr;
+  background: #000000 !important;
+  border-right: solid #333333;
+}
+
+#log-col {
+  width: 40;
+  background: #000000 !important;
+}
+
+#detail-content {
+  height: 1fr;
+  layout: vertical;
+  background: #000000 !important;
+}
+
+ListView {
+  background: #000000 !important;
+}
+
+ListItem {
+  background: #000000 !important;
+  height: 1;
+}
+
+ListItem.-highlight {
+  background: #111111 !important;
+}
+
+#primary-nav ListItem.-highlight Static {
+  color: #00ff00 !important;
+  text-style: bold !important;
+}
+
+.section-header {
+  width: 100%;
+  background: #111111;
+  color: #00ff00;
+  text-style: bold;
+  padding: 0 1;
+  border-bottom: solid #333333;
+}
+
+.detail-header {
+  color: #ffffff;
+  text-style: bold;
+  padding: 0 1;
+  margin-bottom: 1;
+}
+
+.action-hint {
+  color: #00ff00;
+  background: #111111;
+  padding: 0 1;
+  text-style: italic;
+  height: 1;
+}
+
+#lifecycle-info {
+  height: auto;
+  padding: 1 2;
+  border-bottom: solid #333333;
+  background: #000000;
+}
+
+#candidate-list {
+  height: 1fr;
+  background: #000000 !important;
+}
+
+CandidateItem {
+  background: #000000 !important;
+  height: 1;
+}
+
+.selected-item {
+  color: #00ff00 !important;
+}
+
+.status-icon {
+  width: 4;
+}
+
+.expand-icon {
+  width: 2;
+  color: #767676;
+}
+
+.vault-tag {
+  color: #00ff00;
+  margin-left: 1;
+}
+
+.folder-name {
+  color: #ffffff;
+}
+
+.folder-size {
+  color: #767676;
+  margin-left: 1;
+}
+
+#loading-overlay {
+  width: 100%;
+  height: 100%;
+  background: #000000 50%;
+  color: #00ff00;
+  text-align: center;
+  content-align: center middle;
+  text-style: bold;
+  display: none;
+}
+
+Log {
+  background: #000000 !important;
+  color: #cccccc;
+  border: none;
+}
+
+/* Archive Viewer Status Colors */
+.status-synced {
+  color: #00ff00;
+  text-style: bold;
+}
+
+.status-partial {
+  color: #ffff00;
+}
+
+.status-local {
+  color: #ffffff;
+}
+
+.vaulted-item {
+  color: #767676;
+}
+
+.archive-label {
+  padding: 0 1;
+}
+
+/* Config Editor */
+#config-editor {
+  background: #000000;
+}
+
+.config-label {
+  color: #767676;
+  text-style: bold;
+}
+
+.config-val {
+  color: #ffffff;
+}
+
+TextArea {
+  height: 5;
+  border: none;
+  background: #111111;
+  color: #ffffff;
+}

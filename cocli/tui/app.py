@@ -52,7 +52,7 @@ def time_perf(label: str) -> Generator[None, None, None]:
 class MenuBar(Horizontal):
     """A custom menu bar that highlights the active section."""
     def __init__(self, *args: Any, **kwargs: Any) -> None:
-        super().__init__(id="menu_bar", *args, **kwargs)
+        super().__init__(*args, **kwargs)
         self.active_section: str = ""
 
     def compose(self) -> ComposeResult:
@@ -215,16 +215,16 @@ class CocliApp(App[None]):
 
     def action_focus_sidebar(self) -> None:
         """Focus the sidebar in views that have one (like ApplicationView)."""
-        for widget in self.query("ApplicationView"):
+        for widget in self.query(ApplicationView):
             if widget.visible:
-                cast(ApplicationView, widget).action_focus_sidebar()
+                widget.action_focus_sidebar()
                 return
 
     def action_focus_content(self) -> None:
         """Focus the main content area."""
-        for widget in self.query("ApplicationView"):
+        for widget in self.query(ApplicationView):
             if widget.visible:
-                cast(ApplicationView, widget).action_focus_content()
+                widget.action_focus_content()
                 return
 
     # Keys allowed to bubble and trigger shortcuts even when typing
@@ -378,17 +378,17 @@ class CocliApp(App[None]):
         return None
 
     def on_person_list_person_selected(self, message: PersonList.PersonSelected) -> None:
-        self.query_one("#app_content").remove_children()
-        self.query_one("#app_content").mount(PersonDetail(person_slug=message.person_slug))
+        self.main_content.remove_children()
+        self.main_content.mount(PersonDetail(person_slug=message.person_slug))
 
     def on_company_list_company_selected(self, message: CompanyList.CompanySelected) -> None:
         company_slug = message.company_slug
         try:
             company_data = self.services.get_company_details(company_slug)
             if company_data:
-                self.query_one("#app_content").remove_children()
+                self.main_content.remove_children()
                 company_detail = CompanyDetail(company_data)
-                self.query_one("#app_content").mount(company_detail)
+                self.main_content.mount(company_detail)
                 company_detail.styles.display = "block"
             else:
                 self.bell()
@@ -416,9 +416,7 @@ class CocliApp(App[None]):
                 await self.main_content.mount(search_view)
             
             # Default to 'All Leads' to ensure new global entries are visible
-            # For synchronous tests, we need results ready immediately
             if self.services.sync_search:
-                # We already awaited mount, so widgets should be ready
                 await company_list.perform_search("")
             else:
                 self.call_after_refresh(company_list.apply_template, "tpl_all")
@@ -430,7 +428,6 @@ class CocliApp(App[None]):
                     pass
                 self.menu_bar.set_activity("")
             
-            # Ensure company list has focus if we are returning from a detail view
             self.call_after_refresh(focus_list)
 
     def action_focus_templates(self) -> None:
@@ -456,9 +453,17 @@ class CocliApp(App[None]):
             self.menu_bar.set_activity("Loading")
             self.menu_bar.set_active("application")
             self.main_content.remove_children()
-            await self.main_content.mount(ApplicationView())
+            view = ApplicationView()
+            await self.main_content.mount(view)
             self.menu_bar.set_activity("")
             tui_debug_log("APP: action_show_application finished")
+            # Aggressive focus
+            def do_focus() -> None:
+                try:
+                    view.query_one("#app_nav_list").focus()
+                except Exception:
+                    pass
+            self.call_after_refresh(do_focus)
 
     @on(ApplicationView.CampaignActivated)
     async def on_application_view_campaign_activated(self, message: ApplicationView.CampaignActivated) -> None:

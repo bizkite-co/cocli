@@ -33,11 +33,10 @@ async def test_application_sidebar_stacking():
         await driver.pause(0.2)
         
         # Operations list should now be visible
-        ops_list = application_view.query_one("#ops_list", ListView)
+        ops_list = application_view.query_one("#sidebar_operations", ListView)
         assert ops_list.styles.display != "none"
         # Campaign list should be hidden
         assert campaign_list.styles.display == "none"
-
         # 3. Test Status
         nav_list.index = 2 # Status is now index 2 (Campaigns, Cluster, Status)
         nav_list.action_select_cursor()
