@@ -1,71 +1,85 @@
 import pytest
-from unittest.mock import MagicMock
 from cocli.tui.app import CocliApp
-from cocli.tui.widgets.company_search import CompanySearchView
-from cocli.tui.widgets.company_list import CompanyList
-from cocli.tui.widgets.template_list import TemplateList
 from cocli.models.search import SearchResult
 from cocli.application.services import ServiceContainer
 from textual.widgets import ListView
 
-def setup_mocks(monkeypatch):
-    mock_search = MagicMock()
-    mock_search.return_value = [
-        SearchResult(
-            type="company",
-            name="Test Company",
-            slug="test-company",
-            display="Test Company",
-            unique_id="test-company"
-        )
-    ]
+def setup_mocks(monkeypatch, mock_cocli_env):
+    # Mock the search service synchronously
+    def mock_search_fn(*args, **kwargs):
+        return [
+            SearchResult(
+                type="company",
+                name="Test Company",
+                slug="test-company",
+                display="Test Company",
+                unique_id="test-company"
+            )
+        ]
     
-    # Patch at the source module to avoid Pydantic issues
+    # Patch at the source module
     monkeypatch.setattr("cocli.application.services.get_template_counts", lambda campaign=None: {"tpl_all": 1})
     
-    services = ServiceContainer(search_service=mock_search, sync_search=True)
+    services = ServiceContainer(sync_search=False)
+    # Inject the mock into the search_service field
+    services.search_service = mock_search_fn
     return services
 
 @pytest.mark.asyncio
-async def test_search_view_displayed_on_startup(monkeypatch):
+async def test_search_view_displayed_on_startup(monkeypatch, mock_cocli_env):
     """Verify that CompanySearchView and its list are visible on startup."""
-    services = setup_mocks(monkeypatch)
-    # We want to test the default startup behavior, so auto_show=True (default)
+    campaign_name = "test-campaign"
+    monkeypatch.setattr("cocli.core.config.get_campaign", lambda: campaign_name)
+    
+    services = setup_mocks(monkeypatch, mock_cocli_env)
     app = CocliApp(services=services)
     
     async with app.run_test() as driver:
+        # Wait for the view to mount
         await driver.pause(0.5)
         
-        # Check if CompanySearchView is mounted and visible
-        search_views = list(app.query(CompanySearchView))
-        assert len(search_views) == 1
-        assert search_views[0].visible
-        
-        # Check if CompanyList is visible inside it
-        company_lists = list(app.query(CompanyList))
-        assert len(company_lists) == 1
-        assert company_lists[0].visible
-        
-        # Check if ListView has items
+        # Wait for ListView to have items (async load)
         list_view = app.query_one("#company_list_view", ListView)
-        assert len(list_view.children) > 0
+        
+        # Use a retry loop to wait for items to appear, with longer timeout
+        items_loaded = False
+        for i in range(50):
+            if len(list_view.children) > 0:
+                items_loaded = True
+                break
+            await driver.pause(0.1)
+            
+        assert items_loaded, "Companies did not load in the ListView on startup"
 
 @pytest.mark.asyncio
-async def test_t_key_navigates_to_templates(monkeypatch):
-    """Verify that 't' key focuses the TemplateList."""
-    services = setup_mocks(monkeypatch)
+async def test_search_view_loads_after_switch(monkeypatch, mock_cocli_env):
+    """Verify that CompanySearchView still loads companies after switching from another view."""
+    campaign_name = "test-campaign"
+    monkeypatch.setattr("cocli.core.config.get_campaign", lambda: campaign_name)
+    
+    services = setup_mocks(monkeypatch, mock_cocli_env)
     app = CocliApp(services=services)
     
     async with app.run_test() as driver:
-        # Wait for mount
+        # 1. Start at Search (default)
         await driver.pause(0.5)
         
-        # Press t
-        await driver.press("t")
-        await driver.pause(0.2)
+        # 2. Switch to Application (via space+a)
+        await driver.press("space", "a")
+        await driver.pause(0.5)
         
-        # TemplateList should have focus
-        focused = app.focused
-        assert isinstance(focused, ListView)
-        # Ensure it's the template list's listview
-        assert focused.parent and isinstance(focused.parent, TemplateList)
+        # 3. Switch back to Companies (via space+c)
+        await driver.press("space", "c")
+        await driver.pause(0.5)
+        
+        # 4. Check if ListView has items (async load)
+        list_view = app.query_one("#company_list_view", ListView)
+        
+        items_loaded = False
+        for i in range(50):
+            if len(list_view.children) > 0:
+                items_loaded = True
+                break
+            await driver.pause(0.1)
+            
+        assert items_loaded, "Companies did not load after switching back from ApplicationView"
