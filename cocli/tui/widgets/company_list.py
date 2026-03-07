@@ -312,6 +312,9 @@ class CompanyList(Container):
         Runs the fuzzy search in a background thread to avoid blocking the UI.
         Exclusive=True ensures only the latest search task runs.
         """
+        if not self.is_mounted:
+            return
+
         app = cast("CocliApp", self.app)
         
         # Ensure loading state is visible
@@ -323,6 +326,7 @@ class CompanyList(Container):
             pass
 
         # Skip delay for synchronous/test searches to avoid race conditions
+        # Note: We check app.services.sync_search
         if not app.services.sync_search:
             await asyncio.sleep(0.1)
         
@@ -330,20 +334,22 @@ class CompanyList(Container):
             if not self.is_running or not self.app:
                 return
             
-            sort_by = self.current_sort or ("recent" if self.sort_recent else None)
-            
-            search_filters = dict(self.current_filters)
-            if self.filter_contact and not search_filters.get("no_email"):
-                search_filters["has_contact_info"] = True
+            from ..app import time_perf
+            with time_perf(f"TUI: fuzzy_search (query='{query}')"):
+                sort_by = self.current_sort or ("recent" if self.sort_recent else None)
+                
+                search_filters = dict(self.current_filters)
+                if self.filter_contact and not search_filters.get("no_email"):
+                    search_filters["has_contact_info"] = True
 
-            results = app.services.fuzzy_search(
-                search_query=query, 
-                item_type="company",
-                filters=search_filters,
-                sort_by=sort_by,
-                limit=self.search_limit,
-                offset=self.search_offset
-            )
+                results = app.services.fuzzy_search(
+                    search_query=query, 
+                    item_type="company",
+                    filters=search_filters,
+                    sort_by=sort_by,
+                    limit=self.search_limit,
+                    offset=self.search_offset
+                )
             
             if not self.is_running:
                 return

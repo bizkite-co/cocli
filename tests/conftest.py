@@ -11,7 +11,7 @@ import asyncio  # noqa: E402
 import subprocess  # noqa: E402
 from textual.app import Screen  # noqa: E402
 from textual.widget import Widget  # noqa: E402
-from textual.css.query import NoMatches  # noqa: E402
+  # noqa: E402
 from typer.testing import CliRunner  # noqa: E402
 import pytest  # noqa: E402
 from cocli.main import app  # noqa: E402
@@ -91,13 +91,30 @@ async def wait_for_widget(driver, widget_type: type[Widget], selector: str | Non
         if issubclass(widget_type, Screen) and isinstance(driver.app.screen, widget_type):
             return driver.app.screen
         try:
-            query = f"{widget_type.__name__}{selector or ''}"
-            if parent_widget:
-                return parent_widget.query_one(query, widget_type)
+            # If selector is provided, use it (optionally with type)
+            # If no selector, use just the type name
+            if selector:
+                query = selector
             else:
-                return driver.app.query_one(query, widget_type)
-        except NoMatches:
-            await asyncio.sleep(0.01) # Give Textual a chance to update the DOM
+                query = widget_type.__name__
+            
+            if parent_widget:
+                # Use query() + first() to be more robust than query_one()
+                results = parent_widget.query(query)
+                if results:
+                    node = results.first()
+                    if isinstance(node, widget_type):
+                        return node
+            else:
+                results = driver.app.query(query)
+                if results:
+                    node = results.first()
+                    if isinstance(node, widget_type):
+                        return node
+        except Exception:
+            pass
+        
+        await asyncio.sleep(0.01) # Give Textual a chance to update the DOM
     raise TimeoutError(f"Widget of type {widget_type.__name__} with selector '{selector}' did not appear within {timeout} seconds")
 
 async def wait_for_campaign_detail_update(detail_widget, timeout: float = 5.0):

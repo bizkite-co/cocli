@@ -127,9 +127,14 @@ class ApplicationView(Container):
                     with VerticalScroll(id="op_log_preview_container"):
                         yield Static("", id="op_log_preview")
 
-                yield QueueDetail(id="view_queues", classes="category-content-root")
-                yield IndexDetail(id="view_indexes", classes="category-content-root")
-                yield CampaignDetail(id="view_campaigns", classes="category-content-root")
+                with VerticalScroll(id="view_queues", classes="category-content-root"):
+                    yield QueueDetail(id="queue_detail")
+
+                with VerticalScroll(id="view_indexes", classes="category-content-root"):
+                    yield IndexDetail(id="index_detail")
+
+                with VerticalScroll(id="view_campaigns", classes="category-content-root"):
+                    yield CampaignDetail(id="campaign-detail")
 
                 yield StatusView(id="view_status", classes="category-content-root")
                 yield ClusterView(id="view_cluster", classes="category-content-root")
@@ -232,13 +237,13 @@ class ApplicationView(Container):
                 pass
         elif event.list_view.id == "sidebar_queues":
             try:
-                q_detail = self.app.query_one("#view_queues", QueueDetail)
+                q_detail = self.app.query_one("#queue_detail", QueueDetail)
                 q_detail.focus()
             except Exception:
                 pass
         elif event.list_view.id == "sidebar_indexes":
             try:
-                idx_detail = self.app.query_one("#view_indexes", IndexDetail)
+                idx_detail = self.app.query_one("#index_detail", IndexDetail)
                 idx_detail.focus()
             except Exception:
                 pass
@@ -265,16 +270,16 @@ class ApplicationView(Container):
 
             # 1. Update Sidebars
             for sidebar in self.query(".sub-sidebar-list"):
-                sidebar.set_styles(display="block" if sidebar.id == target_sidebar_id else "none")
+                sidebar.display = (sidebar.id == target_sidebar_id)
             
-            self.query_one("#app_sub_nav_container").set_styles(display="block" if category not in ["status", "cluster"] else "none")
+            self.query_one("#app_sub_nav_container").display = (category not in ["status", "cluster"])
 
             # 2. Update Content
             main_content = self.query_one("#app_main_content")
             for child in main_content.children:
                 if child.id == "app_loading":
                     continue
-                child.set_styles(display="block" if child.id == target_view_id else "none")
+                child.display = (child.id == target_view_id)
 
             # 3. Category Specific UI Updates
             title_label = self.query_one("#sub_sidebar_title", Label)
@@ -300,7 +305,7 @@ class ApplicationView(Container):
                     item = sidebar.highlighted_child
                     if item and item.id:
                         idx_id = str(item.id).replace("idx_", "")
-                        self.app.query_one("#view_indexes", IndexDetail).update_detail(idx_id)
+                        self.app.query_one("#index_detail", IndexDetail).update_detail(idx_id)
                 except Exception:
                     pass
             elif category == "operations":
@@ -321,7 +326,7 @@ class ApplicationView(Container):
                     item = sidebar.highlighted_child
                     if item and item.id:
                         q_id = str(item.id).replace("q_", "")
-                        self.app.query_one("#view_queues", QueueDetail).update_detail(q_id)
+                        self.app.query_one("#queue_detail", QueueDetail).update_detail(q_id)
                 except Exception:
                     pass
             
@@ -409,7 +414,7 @@ class ApplicationView(Container):
         index_id = str(event.item.id).replace("idx_", "")
         with time_perf(f"TUI: handle_index_highlight ({index_id})"):
             try:
-                detail = self.app.query_one("#view_indexes", IndexDetail)
+                detail = self.app.query_one("#index_detail", IndexDetail)
                 detail.update_detail(index_id)
             except Exception:
                 pass
@@ -417,7 +422,7 @@ class ApplicationView(Container):
     @on(ListView.Selected, "#sidebar_indexes")
     def handle_index_selection(self, event: ListView.Selected) -> None:
         try:
-            detail = self.app.query_one("#view_indexes", IndexDetail)
+            detail = self.app.query_one("#index_detail", IndexDetail)
             detail.focus()
         except Exception:
             pass
@@ -437,7 +442,7 @@ class ApplicationView(Container):
         queue_id = str(event.item.id).replace("q_", "")
         with time_perf(f"TUI: handle_queue_highlight ({queue_id})"):
             try:
-                detail = self.app.query_one("#view_queues", QueueDetail)
+                detail = self.app.query_one("#queue_detail", QueueDetail)
                 detail.update_detail(queue_id)
             except Exception:
                 pass
@@ -445,7 +450,7 @@ class ApplicationView(Container):
     @on(ListView.Selected, "#sidebar_queues")
     def handle_queue_selection(self, event: ListView.Selected) -> None:
         try:
-            detail = self.app.query_one("#view_queues", QueueDetail)
+            detail = self.app.query_one("#queue_detail", QueueDetail)
             detail.focus()
         except Exception:
             pass
@@ -553,7 +558,7 @@ class ApplicationView(Container):
     async def handle_campaign_selection(self, message: CampaignSelection.CampaignSelected) -> None:
         try:
             campaign = await asyncio.to_thread(Campaign.load, message.campaign_name)
-            detail = self.app.query_one("#view_campaigns", CampaignDetail)
+            detail = self.app.query_one("#campaign-detail", CampaignDetail)
             detail.update_detail(campaign)
             detail.focus()
         except Exception as e:
@@ -572,12 +577,12 @@ class ApplicationView(Container):
         with time_perf(f"TUI: handle_campaign_highlight ({message.campaign_name})"):
             try:
                 campaign = await asyncio.to_thread(Campaign.load, message.campaign_name)
-                detail = self.app.query_one("#view_campaigns", CampaignDetail)
+                detail = self.app.query_one("#campaign-detail", CampaignDetail)
                 detail.update_detail(campaign)
             except Exception as e:
                 logger.error(f"Failed to load campaign {message.campaign_name}: {e}")
                 try:
-                    detail = self.app.query_one("#view_campaigns", CampaignDetail)
+                    detail = self.app.query_one("#campaign-detail", CampaignDetail)
                     detail.display_error("Error Loading Campaign", f"Invalid Campaign: {message.campaign_name}\n\n{str(e)}")
                 except Exception:
                     pass

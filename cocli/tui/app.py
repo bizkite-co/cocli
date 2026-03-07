@@ -430,24 +430,21 @@ class CocliApp(App[None]):
             with time_perf("APP: mount(CompanySearchView)"):
                 await self.main_content.mount(search_view)
             
-            # Default to 'All Leads' to ensure new global entries are visible
-            if search_view.visible:
-                if self.services.sync_search:
-                    await company_list.perform_search("")
-                else:
-                    self.call_after_refresh(company_list.apply_template, "tpl_all")
+            # 1. Start the search
+            if self.services.sync_search:
+                await company_list.perform_search("")
+            else:
+                self.run_worker(company_list.perform_search(""))
             
+            # 2. Focus the list after paint
             def focus_list() -> None:
-                # ONLY focus if search_view is still the one visible
-                if not search_view.visible:
-                    return
                 try:
-                    company_list.query_one("#company_list_view").focus()
+                    if search_view.is_mounted:
+                        company_list.query_one("#company_list_view").focus()
                 except Exception:
                     pass
                 self.menu_bar.set_activity("")
 
-            
             self.call_after_refresh(focus_list)
 
     def action_focus_templates(self) -> None:
@@ -477,18 +474,21 @@ class CocliApp(App[None]):
             await self.main_content.remove_children()
             
             view = ApplicationView()
-            await self.main_content.mount(view)
-            self.menu_bar.set_activity("")
-            tui_debug_log("APP: action_show_application finished")
-            # Aggressive focus
-            def do_focus() -> None:
-                try:
-                    view = self.query_one(ApplicationView)
-                    view.action_focus_sidebar()
-                except Exception as e:
-                    tui_debug_log(f"APP: Failed to focus ApplicationView: {e}")
             
-            self.call_after_refresh(do_focus)
+            async def do_mount() -> None:
+                await self.main_content.mount(view)
+                tui_debug_log("APP: action_show_application finished")
+                
+                def do_focus() -> None:
+                    try:
+                        view.action_focus_sidebar()
+                    except Exception as e:
+                        tui_debug_log(f"APP: Failed to focus ApplicationView: {e}")
+                
+                self.call_after_refresh(do_focus)
+                self.menu_bar.set_activity("")
+
+            self.call_after_refresh(do_mount)
 
     @on(ApplicationView.CampaignActivated)
     async def on_application_view_campaign_activated(self, message: ApplicationView.CampaignActivated) -> None:
