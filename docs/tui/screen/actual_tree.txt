@@ -1,0 +1,243 @@
+=== CocliApp Top Level ===
+CocliApp
+    Screen (id="_default")
+        MenuBar (id="menu_bar")
+            Label (id="menu-companies")
+            Label (id="menu-people")
+            Static (id="menu-spacer")
+            Label (id="menu-activity")
+            Label (id="menu-application")
+        Container (id="app_content")
+        Footer
+
+=== ApplicationView ===
+Container (id="app_content")
+    ApplicationView
+        Horizontal
+            Vertical (id="app_sidebar_column")
+                Vertical (id="app_nav_container")
+                    Label
+                    ListView (id="app_nav_list")
+                        ListItem (id="nav_campaigns")
+                            Label
+                        ListItem (id="nav_cluster")
+                            Label
+                        ListItem (id="nav_status")
+                            Label
+                        ListItem (id="nav_indexes")
+                            Label
+                        ListItem (id="nav_queues")
+                            Label
+                        ListItem (id="nav_operations")
+                            Label
+                Vertical (id="app_sub_nav_container")
+                    Label (id="sub_sidebar_title")
+                    QueueSelection (id="sidebar_queues")
+                        ListItem (id="q_discovery-gen")
+                            Label
+                        ListItem (id="q_gm-list")
+                            Label
+                        ListItem (id="q_gm-details")
+                            Label
+                        ListItem (id="q_enrichment")
+                            Label
+                        ListItem (id="q_to-call")
+                            Label
+                    IndexSelection (id="sidebar_indexes")
+                        ListItem (id="idx_gm_prospects")
+                            Label
+                        ListItem (id="idx_email_index")
+                            Label
+                        ListItem (id="idx_domain_index")
+                            Label
+                        ListItem (id="idx_lifecycle")
+                            Label
+                        ListItem (id="idx_exclusions")
+                            Label
+                    CampaignSelection (id="sidebar_campaigns")
+                        Label
+                        VerticalScroll
+                            ListView (id="campaign_list_view")
+                    ListView (id="sidebar_operations")
+                        ListItem
+                            Label
+                        ListItem (id="op_report")
+                            Label
+                        ListItem (id="op_analyze_emails")
+                            Label
+                        ListItem
+                            Label
+                        ListItem (id="op_sync_all")
+                            Label
+                        ListItem (id="op_sync_gm_list")
+                            Label
+                        ListItem (id="op_sync_gm_details")
+                            Label
+                        ListItem (id="op_sync_enrichment")
+                            Label
+                        ListItem (id="op_sync_indexes")
+                            Label
+                        ListItem
+                            Label
+                        ListItem (id="op_scale_0")
+                            Label
+                        ListItem (id="op_scale_1")
+                            Label
+                        ListItem (id="op_scale_5")
+                            Label
+                        ListItem (id="op_scale_10")
+                            Label
+                        ListItem
+                            Label
+                        ListItem (id="op_compact_index")
+                            Label
+                        ListItem (id="op_compact_prospects")
+                            Label
+                        ListItem (id="op_compile_lifecycle")
+                            Label
+                        ListItem (id="op_compile_to_call")
+                            Label
+                        ListItem (id="op_restore_names")
+                            Label
+                        ListItem (id="op_push_queue")
+                            Label
+                        ListItem (id="op_audit_integrity")
+                            Label
+                        ListItem (id="op_audit_queue")
+                            Label
+                        ListItem (id="op_purge_pending")
+                            Label
+                        ListItem (id="op_rollout_discovery")
+                            Label
+                        ListItem (id="op_path_check")
+                            Label
+            Container (id="app_main_content")
+                LoadingIndicator (id="app_loading")
+                VerticalScroll (id="view_operations")
+                    Horizontal (id="op_header_row")
+                        Label (id="op_title")
+                        Static (id="op_status_indicator")
+                    Static (id="op_description")
+                    Label (id="op_last_run")
+                    Vertical (id="op_params_area")
+                        Label (id="op_params_title")
+                        Horizontal (id="op_name_container")
+                            Label (id="op_name_label")
+                            Input (id="op_name_input")
+                        Horizontal (id="op_limit_container")
+                            Label (id="op_limit_label")
+                            Input (id="op_limit_input")
+                    Container (id="op_content_area")
+                    VerticalScroll (id="op_log_preview_container")
+                        Static (id="op_log_preview")
+                QueueDetail (id="queue_detail")
+                    Horizontal (id="queue_header")
+                        Label (id="queue_title")
+                        Label (id="queue_sync_indicator")
+                    LoadingIndicator (id="queue_sync_loading")
+                    Vertical (id="queue_info_panel")
+                        Label
+                        Static (id="queue_info_content")
+                    Container (id="queue_transform_grid")
+                        Vertical (id="source_panel")
+                            Label
+                            Label (id="from_model_label")
+                            Label (id="count_pending_label")
+                            Vertical (id="source_props_list")
+                        Vertical (id="dest_panel")
+                            Label
+                            Label (id="to_model_label")
+                            Label (id="count_completed_label")
+                            Vertical (id="dest_props_list")
+                IndexDetail (id="index_detail")
+                    Horizontal (id="index_header")
+                        Label (id="index_title")
+                    Vertical (id="index_info_panel")
+                        Label
+                        Static (id="index_info_content")
+                    Vertical (id="index_dynamic_content")
+                CampaignDetail (id="campaign-detail")
+                StatusView (id="view_status")
+                    Horizontal (id="status_header")
+                        Label (id="status_title")
+                        Label (id="status_last_updated")
+                        Static (id="status_refresh_indicator")
+                    Container (id="status_body")
+                        Static
+                ClusterView (id="view_cluster")
+                    Horizontal (id="cluster_header")
+                        Label (id="cluster_title")
+                        Label (id="cluster_last_updated")
+                    DataTable (id="cluster_table")
+                    Horizontal (id="registry_header")
+                        Label (id="registry_title")
+                    DataTable (id="registry_table")
+                    Horizontal (id="status_header")
+                        Label (id="status_title")
+                    DataTable (id="status_table")
+            Vertical (id="app_recent_runs")
+                Label
+                ListView (id="recent_runs_list")
+
+=== CompanySearchView ===
+Container (id="app_content")
+    CompanySearchView
+        Horizontal
+            TemplateList (id="search-templates-pane")
+                Label (id="template_header")
+                ListView (id="template_list")
+                    ListItem (id="tpl_all")
+                        Label
+                    ListItem (id="tpl_to_call")
+                        Label
+                    ListItem (id="tpl_with_email")
+                        Label
+                    ListItem (id="tpl_no_email")
+                        Label
+                    ListItem (id="tpl_actionable")
+                        Label
+                    ListItem (id="tpl_no_address")
+                        Label
+                    ListItem (id="tpl_top_rated")
+                        Label
+                    ListItem (id="tpl_most_reviewed")
+                        Label
+            CompanyList (id="search-companies-pane")
+                Label (id="search_header")
+                CocliSearchInput (id="company_search_input")
+                Container (id="list_container")
+                    ListView (id="company_list_view")
+                        ListItem
+                            Label
+                        ListItem
+                            Label
+                        ListItem
+                            Label
+                        ... and 47 more ListItem items
+                    LoadingIndicator (id="search_loading")
+            CompanyPreview (id="search-preview-pane")
+                Label (id="preview_header")
+                VerticalScroll (id="preview_content")
+                    Static
+                    Static
+                    Static
+                    Static
+                    Static
+                    Horizontal
+                        Label
+                        Phone
+                    Horizontal
+                        Label
+                        Email
+                    Static
+                    Static
+                    Static
+                    Static
+
+=== PersonList ===
+Container (id="app_content")
+    PersonList
+        Label
+        Input (id="person_search_input")
+        VerticalScroll
+            ListView (id="person_list_view")

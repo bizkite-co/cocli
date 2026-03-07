@@ -15,14 +15,10 @@ app.add_typer(enrich.app, name="enrich", help="Commands for enriching company da
 app.add_typer(query.app, name="query", help="Commands for querying company data.")
 
 try:
-    from cocli.commands.tui import run_tui_app # New import
-    @app.command(name="tui", help="Launches the Textual TUI for cocli.") # New command
-    def tui_command() -> None:
-        run_tui_app()
+    from cocli.commands.tui import app as tui_app # Use the app (Typer instance)
+    app.add_typer(tui_app, name="tui", help="Launches the Textual TUI for cocli.")
 except ImportError as e:
     console.print(f"[yellow]Textual TUI commands not available: {e}[/yellow]")
-    # Optionally, provide a placeholder command or just omit it.
-    # For now, we'll just omit it by not registering the command.
 
 app.add_typer(companies.app, name="companies", help="Commands for managing companies.")
 

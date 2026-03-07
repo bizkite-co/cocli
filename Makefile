@@ -888,4 +888,12 @@ clean-html: ## Convert HTML source to clean Markdown (Usage: make clean-html FIL
 path-check: install ## Audit paths across cluster and S3 (Usage: make path-check PATHS="wal/,indexes/scraped_areas/" [CAMPAIGNS="roadmap,turboship"])
 	@$(VENV_DIR)/bin/python scripts/audit_cluster_paths.py --paths "$(PATHS)" --campaigns "$(or $(CAMPAIGNS), $(CAMPAIGN))"
 
+.PHONY: tui-tree
+tui-tree: install ## Dump the TUI widget tree for Screaming Architecture comparison
+	@PYTHONPATH=. $(VENV_DIR)/bin/cocli tui --dump-tree docs/tui/screen/actual_tree.txt
+
+.PHONY: task
+task: install ## Show the current task.md and its linked documents
+	@PYTHONPATH=. $(VENV_DIR)/bin/python scripts/show_task.py task.md
+
 include mk/cluster.mk
