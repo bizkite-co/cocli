@@ -21,7 +21,7 @@ def test_gmlist_queue_path_fidelity(tmp_path):
         # Note: _get_task_dir is internal but we use it to verify the bug
         task_dir = queue._get_task_dir(task_id)
         path_str = str(task_dir)
-        print(f"\n[DIAGNOSTIC] Generated Path: {path_str}")
+        pass # Removed diagnostic print
         
         # FAILURE CONDITION: If the shard '2' appears twice consecutively
         assert "/2/2/" not in path_str, f"Double-sharding detected in queue path: {path_str}"

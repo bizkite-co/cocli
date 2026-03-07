@@ -10,7 +10,7 @@ logger = logging.getLogger(__name__)
 
 class ReportingService:
     def __init__(self, campaign_name: Optional[str] = None):
-        self.campaign_name = campaign_name or get_campaign() or "default"
+        self.campaign_name = campaign_name or get_campaign() or ""
 
     def get_environment_status(self) -> Dict[str, Any]:
         """

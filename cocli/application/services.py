@@ -20,7 +20,19 @@ class ServiceContainer(BaseModel):
     class Config:
         arbitrary_types_allowed = True
 
-    campaign_name: str = Field(default_factory=lambda: get_campaign() or "default")
+    campaign_name: str = Field(default_factory=lambda: get_campaign() or "")
+
+    def set_campaign(self, name: str) -> None:
+        """Updates the campaign name and invalidates cached lazy services."""
+        if self.campaign_name != name:
+            self.campaign_name = name
+            self._campaign_service = None
+            self._worker_service = None
+            self._reporting_service = None
+            self._audit_service = None
+            self._data_sync_service = None
+            self._deployment_service = None
+            self._operation_service = None
     
     search_service: Any = Field(default_factory=lambda: get_fuzzy_search_results)
     company_service: Any = Field(default_factory=lambda: get_company_details_for_view)

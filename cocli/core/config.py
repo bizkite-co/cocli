@@ -39,7 +39,7 @@ def get_cocli_base_dir() -> Path:
     Determines the root data directory for cocli user business data.
     Delegates to the central paths authority.
     """
-    p = paths.root
+    p = paths.root.resolve()
     v_path = get_validated_dir(p, "User Business Data Root")
     v_path.path.mkdir(parents=True, exist_ok=True)
     return v_path.path
@@ -162,22 +162,30 @@ def get_all_campaign_dirs() -> list[Path]:
     """
     campaigns_root = paths.campaigns
     if not (campaigns_root.exists() and campaigns_root.is_dir()):
+        logger.debug(f"Campaigns root not found: {campaigns_root}")
         return []
 
     unique_dirs = []
     seen_slugs = set()
 
     # Find all config.toml files and use their parent directories
-    for config_file in sorted(campaigns_root.glob("**/config.toml")):
+    # We search recursively to allow for nested campaign structures
+    for config_file in sorted(campaigns_root.rglob("config.toml")):
         campaign_dir = config_file.parent
         # Calculate the relative path from the campaigns root to use as the name
         try:
             rel_path = campaign_dir.relative_to(campaigns_root)
             campaign_name = str(rel_path)
+            
+            # Skip templates or READMEs if they somehow matched
+            if campaign_name == "." or campaign_name == "":
+                continue
+                
             # Use the full relative path as the unique key
             if campaign_name not in seen_slugs:
                 seen_slugs.add(campaign_name)
                 unique_dirs.append(campaign_dir)
+                logger.debug(f"Discovered campaign: {campaign_name} at {campaign_dir}")
         except ValueError:
             continue
 

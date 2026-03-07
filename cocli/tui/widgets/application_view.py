@@ -127,14 +127,9 @@ class ApplicationView(Container):
                     with VerticalScroll(id="op_log_preview_container"):
                         yield Static("", id="op_log_preview")
 
-                with VerticalScroll(id="view_queues", classes="category-content-root"):
-                    yield QueueDetail(id="queue_detail")
-
-                with VerticalScroll(id="view_indexes", classes="category-content-root"):
-                    yield IndexDetail(id="index_detail")
-
-                with VerticalScroll(id="view_campaigns", classes="category-content-root"):
-                    yield CampaignDetail(id="campaign-detail")
+                yield QueueDetail(id="queue_detail", classes="category-content-root")
+                yield IndexDetail(id="index_detail", classes="category-content-root")
+                yield CampaignDetail(id="campaign-detail", classes="category-content-root")
 
                 yield StatusView(id="view_status", classes="category-content-root")
                 yield ClusterView(id="view_cluster", classes="category-content-root")
@@ -256,11 +251,11 @@ class ApplicationView(Container):
             
             # Map categories to their sidebar and content view IDs
             category_map: Dict[str, Dict[str, Optional[str]]] = {
-                "campaigns":  {"sidebar": "sidebar_campaigns",  "view": "view_campaigns"},
+                "campaigns":  {"sidebar": "sidebar_campaigns",  "view": "campaign-detail"},
                 "cluster":    {"sidebar": None,                 "view": "view_cluster"},
                 "status":     {"sidebar": None,                 "view": "view_status"},
-                "indexes":    {"sidebar": "sidebar_indexes",    "view": "view_indexes"},
-                "queues":     {"sidebar": "sidebar_queues",     "view": "view_queues"},
+                "indexes":    {"sidebar": "sidebar_indexes",    "view": "index_detail"},
+                "queues":     {"sidebar": "sidebar_queues",     "view": "queue_detail"},
                 "operations": {"sidebar": "sidebar_operations", "view": "view_operations"}
             }
 
@@ -270,16 +265,17 @@ class ApplicationView(Container):
 
             # 1. Update Sidebars
             for sidebar in self.query(".sub-sidebar-list"):
-                sidebar.display = (sidebar.id == target_sidebar_id)
+                sidebar.styles.display = "block" if sidebar.id == target_sidebar_id else "none"
             
-            self.query_one("#app_sub_nav_container").display = (category not in ["status", "cluster"])
+            self.query_one("#app_sub_nav_container").styles.display = "block" if category not in ["status", "cluster"] else "none"
 
             # 2. Update Content
             main_content = self.query_one("#app_main_content")
             for child in main_content.children:
                 if child.id == "app_loading":
                     continue
-                child.display = (child.id == target_view_id)
+                is_target = (child.id == target_view_id)
+                child.styles.display = "block" if is_target else "none"
 
             # 3. Category Specific UI Updates
             title_label = self.query_one("#sub_sidebar_title", Label)
@@ -547,22 +543,21 @@ class ApplicationView(Container):
             campaign_name = message.campaign_name
             app = cast("CocliApp", self.app)
             if hasattr(app, "services"):
+                # 1. Activate in Core
                 app.services.campaign_service.campaign_name = campaign_name
                 app.services.campaign_service.activate()
+
+                # 2. Update Detail View
+                campaign = await asyncio.to_thread(Campaign.load, campaign_name)
+                detail = self.app.query_one("#campaign-detail", CampaignDetail)
+                detail.update_detail(campaign)
+                detail.focus()
+
                 self.app.notify(f"Activated Campaign: {campaign_name}")
                 self.post_message(self.CampaignActivated(campaign_name))
         except Exception as e:
-            self.app.notify(f"Activation Failed: {e}", severity="error")
+            logger.error(f"Failed to activate campaign: {e}")
 
-    @on(CampaignSelection.CampaignSelected)
-    async def handle_campaign_selection(self, message: CampaignSelection.CampaignSelected) -> None:
-        try:
-            campaign = await asyncio.to_thread(Campaign.load, message.campaign_name)
-            detail = self.app.query_one("#campaign-detail", CampaignDetail)
-            detail.update_detail(campaign)
-            detail.focus()
-        except Exception as e:
-            logger.error(f"Failed to select campaign {message.campaign_name}: {e}")
 
     @on(CampaignSelection.CampaignHighlighted)
     @work(exclusive=True)

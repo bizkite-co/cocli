@@ -1,23 +1,37 @@
 import os
 import tempfile
+import sys
+import subprocess
+import asyncio
+import importlib
 from pathlib import Path
+from unittest.mock import MagicMock, patch as module_patch
+
+import pytest
+from textual.app import Screen
+from textual.widget import Widget
+from typer.testing import CliRunner
+from playwright.async_api import async_playwright
 
 # GLOBAL ISOLATION: Set this BEFORE any cocli imports
 # This ensures the DataPaths singleton initializes to a safe temp location
 _TEST_DATA_HOME = Path(tempfile.gettempdir()) / "cocli_test_data"
 os.environ["COCLI_DATA_HOME"] = str(_TEST_DATA_HOME)
 
-import asyncio  # noqa: E402
-import subprocess  # noqa: E402
-from textual.app import Screen  # noqa: E402
-from textual.widget import Widget  # noqa: E402
-  # noqa: E402
-from typer.testing import CliRunner  # noqa: E402
-import pytest  # noqa: E402
-from cocli.main import app  # noqa: E402
-from cocli.core.config import load_campaign_config  # noqa: E402
-from playwright.async_api import async_playwright  # noqa: E402
-
+# DISABLE Zeroconf/Gossip globally for ALL tests
+# Prevent any zeroconf background activity
+sys.modules['zeroconf'] = MagicMock()
+# Mock Gossip Bridge components before they are imported by anything else
+# Use a mock object with heartbeats attribute to support TUI tests
+mock_bridge = MagicMock()
+mock_bridge.heartbeats = {}
+module_patch('cocli.core.gossip_bridge.bridge', mock_bridge).start()
+module_patch('cocli.core.gossip_bridge.GossipBridge', MagicMock()).start()
+# Also stub start/stop on the class level if anything tries to instantiate it
+module_patch('cocli.core.gossip_bridge.GossipBridge.start', lambda x: None).start()
+module_patch('cocli.core.gossip_bridge.GossipBridge.stop', lambda x: None).start()
+module_patch('cocli.core.gossip_bridge.Zeroconf', MagicMock()).start()
+module_patch('cocli.core.gossip_bridge.ServiceBrowser', MagicMock()).start()
 
 @pytest.fixture(scope="session")
 def runner():
@@ -25,7 +39,9 @@ def runner():
 
 @pytest.fixture(scope="session")
 def cli_app():
-    return app
+    # Lazy import to satisfy lint while maintaining isolation
+    main_mod = importlib.import_module("cocli.main")
+    return main_mod.app
 
 def get_op_secret(op_path):
     """Fetches a secret from 1Password CLI."""
@@ -36,7 +52,8 @@ def get_op_secret(op_path):
 
 @pytest.fixture(scope="session")
 def campaign_config():
-    return load_campaign_config("roadmap")
+    config_mod = importlib.import_module("cocli.core.config")
+    return config_mod.load_campaign_config("roadmap")
 
 @pytest.fixture(scope="session")
 def auth_creds(campaign_config):
@@ -91,21 +108,33 @@ async def wait_for_widget(driver, widget_type: type[Widget], selector: str | Non
         if issubclass(widget_type, Screen) and isinstance(driver.app.screen, widget_type):
             return driver.app.screen
         try:
-            # If selector is provided, use it (optionally with type)
-            # If no selector, use just the type name
+            # If selector is provided, use it. Try exact match first, then broader query.
             if selector:
-                query = selector
+                # First try direct query on the app
+                node = None
+                try:
+                    # Look for the exact selector
+                    results = driver.app.query(selector)
+                    if results:
+                        node = results.first()
+                except Exception:
+                    pass
+                
+                # If not found, try searching children of parent_widget if provided
+                if not node and parent_widget:
+                    try:
+                        results = parent_widget.query(selector)
+                        if results:
+                            node = results.first()
+                    except Exception:
+                        pass
+                
+                # If found, check type
+                if node and isinstance(node, widget_type):
+                    return node
             else:
+                # No selector, search by type
                 query = widget_type.__name__
-            
-            if parent_widget:
-                # Use query() + first() to be more robust than query_one()
-                results = parent_widget.query(query)
-                if results:
-                    node = results.first()
-                    if isinstance(node, widget_type):
-                        return node
-            else:
                 results = driver.app.query(query)
                 if results:
                     node = results.first()
@@ -148,22 +177,27 @@ def mock_cocli_env(tmp_path, mocker):
 
     # 2. Redirect Global Paths
     # We patch the 'root' property of the 'paths' singleton
-    from cocli.core.paths import paths
-    mocker.patch.object(paths, 'root', cocli_base_dir)
+    paths_mod = importlib.import_module("cocli.core.paths")
+    mocker.patch.object(paths_mod.paths, 'root', cocli_base_dir)
+    
+    # Also redirect COCLI_CONFIG_HOME via environment
+    os.environ["COCLI_CONFIG_HOME"] = str(cocli_base_dir / "config")
     
     # 3. Mock Configuration
     # Ensure get_campaign returns a predictable value ('test/default')
     # We use a nested name to verify namespace awareness in tests
     test_campaign_name = "test/default"
-    mocker.patch('cocli.core.config.get_campaign', return_value=test_campaign_name)
-    mocker.patch('cocli.application.search_service.get_campaign', return_value=test_campaign_name)
+    config_mod = importlib.import_module("cocli.core.config")
+    mocker.patch.object(config_mod, 'get_campaign', return_value=test_campaign_name)
+    
+    search_mod = importlib.import_module("cocli.application.search_service")
+    mocker.patch.object(search_mod, 'get_campaign', return_value=test_campaign_name)
     
     # Also patch cache getters to ensure they use our temp dir logic (via paths)
-    mocker.patch('cocli.core.cache.get_cocli_base_dir', return_value=cocli_base_dir)
+    cache_mod = importlib.import_module("cocli.core.cache")
+    mocker.patch.object(cache_mod, 'get_cocli_base_dir', return_value=cocli_base_dir)
     
     # Ensure config path points to temp
-    mocker.patch('cocli.core.config.get_config_dir', return_value=cocli_base_dir / "config")
-    
-    return cocli_base_dir
+    mocker.patch.object(config_mod, 'get_config_dir', return_value=cocli_base_dir / "config")
     
     return cocli_base_dir

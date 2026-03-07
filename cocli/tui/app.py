@@ -96,7 +96,7 @@ class MenuBar(Horizontal):
     def refresh_campaign(self) -> None:
         """Updates the campaign name label in the menu bar."""
         app = cast("CocliApp", self.app)
-        campaign_name = app.services.campaign_service.campaign_name
+        campaign_name = app.services.campaign_name or "[No Campaign]"
         try:
             self.query_one("#menu-application", Label).update(f"{campaign_name} ( A)")
         except Exception:
@@ -473,27 +473,26 @@ class CocliApp(App[None]):
             
             await self.main_content.remove_children()
             
-            view = ApplicationView()
+            app_view = ApplicationView()
+            await self.main_content.mount(app_view)
+            tui_debug_log("APP: action_show_application finished")
             
-            async def do_mount() -> None:
-                await self.main_content.mount(view)
-                tui_debug_log("APP: action_show_application finished")
-                
-                def do_focus() -> None:
-                    try:
-                        view.action_focus_sidebar()
-                    except Exception as e:
-                        tui_debug_log(f"APP: Failed to focus ApplicationView: {e}")
-                
-                self.call_after_refresh(do_focus)
-                self.menu_bar.set_activity("")
-
-            self.call_after_refresh(do_mount)
+            # Aggressive focus
+            def do_focus() -> None:
+                try:
+                    app_view.action_focus_sidebar()
+                except Exception as e:
+                    tui_debug_log(f"APP: Failed to focus ApplicationView: {e}")
+            
+            self.call_after_refresh(do_focus)
+            self.menu_bar.set_activity("")
 
     @on(ApplicationView.CampaignActivated)
     async def on_application_view_campaign_activated(self, message: ApplicationView.CampaignActivated) -> None:
         with time_perf("APP: on_application_view_campaign_activated"):
             self.notify(f"Campaign Activated: {message.campaign_name}")
+            # Refresh the service container's campaign-dependent services
+            self.services.set_campaign(message.campaign_name)
             self.query_one(MenuBar).refresh_campaign()
             await self.action_show_companies()
 

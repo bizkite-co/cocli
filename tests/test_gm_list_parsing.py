@@ -58,7 +58,7 @@ async def test_gm_list_ground_truth_and_parsing():
         with open(run_dir / "run_metadata.json", "w") as f:
             json.dump(metadata, f, indent=2)
 
-        print(f"\n[INFO] Refreshing ground truth (Run: {run_id})...")
+
         async with async_playwright() as p:
             # HEADLESS for automated tests
             browser = await p.chromium.launch(headless=True)
@@ -80,7 +80,7 @@ async def test_gm_list_ground_truth_and_parsing():
             scraper = SidebarScraper(page)
             listings = await page.locator('div[role="article"]').all()
             
-            print(f"[INFO] Found {len(listings)} listings. Capturing hydrated HTML (optimized)...")
+
             
             captured_html_blocks = []
             for i, div in enumerate(listings):
@@ -104,18 +104,18 @@ async def test_gm_list_ground_truth_and_parsing():
             with open(HTML_PATH, "w", encoding="utf-8") as f:
                 f.write(full_doc)
             
-            print(f"[RECORD] Run artifacts saved to {run_dir}")
+
             await browser.close()
     else:
         with open(HTML_PATH, "r", encoding="utf-8") as f:
             full_doc = f.read()
-        print(f"\n[INFO] Using cached ground truth (captured {datetime.fromtimestamp(HTML_PATH.stat().st_mtime).strftime('%Y-%m-%d')})")
+
 
     # --- PHASE 3: Validate RECORDED Fidelity ---
     high_fidelity_pattern = re.compile(r'aria-label="\d\.\d\s*stars?\s*[\d,]+\s*Reviews?"', re.IGNORECASE)
     matches = high_fidelity_pattern.findall(full_doc)
     
-    print(f"[INFO] Ground Truth Fidelity: Found {len(matches)} listings with semantic 'Stars + Reviews' labels.")
+
     assert len(matches) > 0, "Current settings failed to hydrate reviews. See snapshot in run dir."
 
     # --- PHASE 4: Verify Parser against the recorded HTML ---
@@ -129,5 +129,5 @@ async def test_gm_list_ground_truth_and_parsing():
         if parsed["Average_rating"] and parsed["Reviews_count"]:
             results_found += 1
             
-    print(f"[INFO] Parser Verification: Successfully extracted BOTH rating and reviews from {results_found}/{len(listing_divs)} listings.")
+
     assert results_found >= 1, f"Parser failed to extract data even from hydrated items. Found only {results_found}."
