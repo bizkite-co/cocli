@@ -1,11 +1,11 @@
 # POLICY: frictionless-data-policy-enforcement
 import pytest
-import asyncio
 from pathlib import Path
 from bs4 import BeautifulSoup
 from cocli.scrapers.google_maps_gmb_parser import parse_gmb_page
 from cocli.scrapers.google_maps_parser import parse_business_listing_html
 from cocli.core.text_utils import slugify
+from cocli.core.constants import UNIT_SEP
 
 # Standardize snapshot and golden set locations
 GOLDEN_SET_PATH = Path("tests/data/maps.google.com/golden_set.usv")
@@ -22,8 +22,8 @@ def get_golden_data():
             line = line.strip()
             if not line:
                 continue
-            parts = line.split("\x1f")
-            if len(parts) >= 8:
+            parts = line.split(UNIT_SEP)
+            if len(parts) >= 6:
                 test_cases.append({
                     "name": parts[0],
                     "address": parts[1],
@@ -35,25 +35,12 @@ def get_golden_data():
                 })
     return test_cases
 
-@pytest.fixture(scope="session", autouse=True)
-def ensure_snapshots():
-    """
-    Automatic session-scoped fixture that ensures snapshots are fresh.
-    Triggers the capture script if they are missing or > 24h old.
-    """
-    from scripts.capture_maps_snapshot import run_capture
-    # Use sync wrapper for asyncio run_capture
-    try:
-        asyncio.run(run_capture(force=False))
-    except Exception as e:
-        pytest.fail(f"Failed to ensure snapshots: {e}")
-
 @pytest.mark.parametrize("expected", get_golden_data())
 def test_detail_parser_against_snapshots(expected):
     """Test the 'gm-details' parser against item.html snapshots."""
     snapshot_path = SNAPSHOT_DIR / expected["slug"] / "item.html"
     if not snapshot_path.exists():
-        pytest.skip(f"Snapshot missing for {expected['name']}")
+        pytest.skip(f"Snapshot missing for {expected['name']} at {snapshot_path}")
     
     html = snapshot_path.read_text(encoding="utf-8")
     parsed = parse_gmb_page(html)
@@ -73,7 +60,7 @@ def test_list_parser_against_snapshots(expected):
     """Test the 'gm-list' parser against list.html snapshots."""
     snapshot_path = SNAPSHOT_DIR / expected["slug"] / "list.html"
     if not snapshot_path.exists():
-        pytest.skip(f"Snapshot missing for {expected['name']}")
+        pytest.skip(f"Snapshot missing for {expected['name']} at {snapshot_path}")
     
     html = snapshot_path.read_text(encoding="utf-8")
     soup = BeautifulSoup(html, "html.parser")

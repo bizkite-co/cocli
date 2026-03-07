@@ -1,5 +1,5 @@
 from typing import Optional, List, Any, cast, Dict
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ConfigDict
 
 from cocli.application.search_service import get_fuzzy_search_results, get_template_counts
 from cocli.application.campaign_service import CampaignService
@@ -17,8 +17,7 @@ class ServiceContainer(BaseModel):
     A container for application services, enabling dependency injection
     and easier mocking in tests.
     """
-    class Config:
-        arbitrary_types_allowed = True
+    model_config = ConfigDict(arbitrary_types_allowed=True)
 
     campaign_name: str = Field(default_factory=lambda: get_campaign() or "")
 

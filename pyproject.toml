@@ -57,6 +57,7 @@ full = [
 ]
 dev = [
     "pytest",
+    "pytest-env",
     "pytest-mock",
     "pytest-asyncio",
     "pytest-playwright",
