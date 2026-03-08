@@ -55,8 +55,18 @@ class ScrapedTilesStore:
         pass
 
     def verify_sentinel(self) -> bool:
-        sentinel = self.root / "datapackage.json"
-        if not sentinel.exists():
+        """
+        Verifies the directory identity via datapackage.json sentinel.
+        """
+        import json
+        from ..ordinant import IndexIdentity
+        sentinel_path = self.root / "datapackage.json"
+        if not sentinel_path.exists():
             return False
-        # In a real implementation, we'd check the JSON content
-        return True
+            
+        try:
+            with open(sentinel_path, "r", encoding="utf-8") as f:
+                data = json.load(f)
+                return bool(data.get("name") == IndexIdentity.SCRAPED_TILES)
+        except Exception:
+            return False

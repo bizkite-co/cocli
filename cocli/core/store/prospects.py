@@ -54,5 +54,18 @@ class ProspectsStore:
         pass
 
     def verify_sentinel(self) -> bool:
-        sentinel = self.root / "datapackage.json"
-        return sentinel.exists()
+        """
+        Verifies the directory identity via datapackage.json sentinel.
+        """
+        import json
+        from ..ordinant import IndexIdentity
+        sentinel_path = self.root / "datapackage.json"
+        if not sentinel_path.exists():
+            return False
+            
+        try:
+            with open(sentinel_path, "r", encoding="utf-8") as f:
+                data = json.load(f)
+                return bool(data.get("name") == IndexIdentity.PROSPECTS)
+        except Exception:
+            return False
