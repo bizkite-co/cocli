@@ -1,7 +1,9 @@
 import typer
 import logging
 import json
+from typing import Optional, Dict
 from pathlib import Path
+
 from datetime import datetime
 from rich.console import Console
 
@@ -241,31 +243,57 @@ def backfill_domains(
 
 @app.command(name="write-datapackage")
 def write_datapackage(
-    campaign: str = typer.Option("roadmap", help="Campaign name"),
-    index_model: str = typer.Option("google_maps_prospects", help="Index model to use (google_maps_prospects, domains)")
+    index: str = typer.Argument(..., help="Index name (e.g. domains, google_maps_prospects)"),
+    campaign: Optional[str] = typer.Option(None, "--campaign", "-c", help="Campaign name for campaign-specific indexes."),
 ) -> None:
     """
-    Generates Frictionless Data 'datapackage.json' for the specified index.
+    Generates Frictionless Data 'datapackage.json' for the specified index based on its Pydantic model.
     """
-    from typing import Type, Union
-    model_cls: Union[Type['GoogleMapsProspect'], Type['WebsiteDomainCsv']]
+    from ..core.paths import paths
+    from ..models.campaigns.indexes.domains import WebsiteDomainCsv
+    from ..models.campaigns.indexes.google_maps_prospect import GoogleMapsProspect
+    from ..models.campaigns.indexes.email import EmailEntry
+    from ..models.base import BaseUsvModel
+    from typing import Type
+    
+    # Map index names to models
+    model_map: Dict[str, Type[BaseUsvModel]] = {
+        "domains": WebsiteDomainCsv,
+        "google_maps_prospects": GoogleMapsProspect,
+        "emails": EmailEntry
+    }
+    
+    model_class = model_map.get(index)
+    if not model_class:
+        console.print(f"[red]Unknown index type: {index}[/red]")
+        raise typer.Exit(1)
 
-    if index_model == "google_maps_prospects":
-        from ..models.campaigns.indexes.google_maps_prospect import GoogleMapsProspect
-        model_cls = GoogleMapsProspect
-    elif index_model == "domains":
-        from ..models.campaigns.indexes.domains import WebsiteDomainCsv
-        model_cls = WebsiteDomainCsv
+    # Determine directory
+    if index == "domains":
+        target_dir = paths.root / "indexes" / "domains"
+    elif campaign:
+        target_dir = paths.campaign(campaign).index(index).path
     else:
-        console.print(f"[bold red]Unknown index model: {index_model}[/bold red]")
-        raise typer.Exit(code=1)
+        console.print(f"[red]Campaign required for index: {index}[/red]")
+        raise typer.Exit(1)
+
+    if not target_dir.exists():
+        console.print(f"[yellow]Directory {target_dir} does not exist. Creating...[/yellow]")
+        target_dir.mkdir(parents=True, exist_ok=True)
 
     try:
-        path = model_cls.write_datapackage(campaign)
-        console.print(f"[bold green]Successfully wrote datapackage.json to: {path}[/bold green]")
+        # Determine resource path based on common patterns
+        resource_name = index.replace("_", "-")
+        resource_path = "*.usv"
+        if index == "google_maps_prospects":
+            resource_path = "prospects.checkpoint.usv"
+        
+        # Use existing model-driven logic
+        model_class.save_datapackage(target_dir, resource_name, resource_path)
+        console.print(f"[green]Successfully wrote datapackage.json to {target_dir}[/green]")
     except Exception as e:
-        console.print(f"[bold red]Failed to write datapackage: {e}[/bold red]")
-        raise typer.Exit(code=1)
+        console.print(f"[red]Failed to write datapackage: {e}[/red]")
+        raise typer.Exit(1)
 
 if __name__ == "__main__":
     app()

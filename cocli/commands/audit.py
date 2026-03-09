@@ -58,43 +58,27 @@ def audit_cli(
 @app.command(name="fs")
 def audit_fs(
     campaign: Optional[str] = typer.Option(None, "--campaign", "-c", help="Specific campaign to audit."),
-    output: Optional[Path] = typer.Option(None, "--output", "-o", help="Output file path.")
+    output: Optional[Path] = typer.Option(None, "--output", "-o", help="Output file path."),
+    fix: bool = typer.Option(False, "--fix", help="Remove orphan files and directories.")
 ) -> None:
     """
     Audits the filesystem for OMAP compliance and Screaming Architecture.
     """
-    from ..core.audit.fs_auditor import FsAuditor, AuditNode, AuditStatus, dump_audit_tree
-    from ..core.paths import paths
+    from ..core.audit.fs_auditor import FsAuditor, dump_audit_tree
     from io import StringIO
     
     auditor = FsAuditor()
     
-    # 1. Audit Root (top level components)
-    root_node = AuditNode(name="data_root", path=paths.root, is_dir=True, status=AuditStatus.VALID)
-    root_node.children.append(auditor.audit_campaigns(campaign))
-    root_node.children.append(auditor.audit_queues())
+    # Perform full audit using schema source of truth
+    root_node = auditor.audit_full(campaign_name=campaign)
     
-    # Add indexes and companies
-    from ..core.ordinant import IndexIdentity
-    indexes_root = paths.root / "indexes"
-    idx_node = AuditNode(
-        name="indexes", path=indexes_root, is_dir=True,
-        status=AuditStatus.VALID if indexes_root.exists() else AuditStatus.MISSING
-    )
-    if indexes_root.exists():
-        for sub in [IndexIdentity.SCRAPED_AREAS, IndexIdentity.SCRAPED_TILES, IndexIdentity.DOMAINS]:
-            p = indexes_root / sub
-            idx_node.children.append(AuditNode(
-                name=sub, path=p, is_dir=True,
-                status=AuditStatus.VALID if p.exists() else AuditStatus.MISSING
-            ))
-    root_node.children.append(idx_node)
-    
-    root_node.children.append(AuditNode(
-        name="companies", path=paths.root / "companies", is_dir=True,
-        status=AuditStatus.VALID if (paths.root / "companies").exists() else AuditStatus.MISSING
-    ))
-    
+    if fix:
+        console.print("[yellow]Fix mode enabled. Removing orphans...[/yellow]")
+        removed_count = auditor.fix_orphans(root_node, dry_run=False)
+        console.print(f"[green]Successfully removed {removed_count} orphans.[/green]")
+        # Re-audit after fix
+        root_node = auditor.audit_full(campaign_name=campaign)
+
     tree = dump_audit_tree(root_node)
     
     if output:
