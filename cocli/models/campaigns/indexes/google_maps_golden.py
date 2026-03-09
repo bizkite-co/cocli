@@ -21,6 +21,6 @@ class GoogleMapsGoldenItem(BaseIndexModel):
     lon: float = Field(..., description="Longitude")
 
     @classmethod
-    def save_datapackage(cls, path: Path, resource_name: str = "google_maps_golden", resource_path: str = "golden_set.usv") -> None:
+    def save_datapackage(cls, path: Path, resource_name: str = "google_maps_golden", resource_path: str = "golden_set.usv", force: bool = False) -> None:
         """Saves the datapackage.json to the specified directory."""
-        super().save_datapackage(path, resource_name, resource_path)
+        super().save_datapackage(path, resource_name, resource_path, force=force)

@@ -20,6 +20,6 @@ class CompanyCacheItem(BaseUsvModel):
     display: str = Field(..., description="Pre-formatted fzf display string")
 
     @classmethod
-    def save_datapackage(cls, path: Path, resource_name: str = "company_search_cache", resource_path: str = "company_cache.usv") -> None:
+    def save_datapackage(cls, path: Path, resource_name: str = "company_search_cache", resource_path: str = "company_cache.usv", force: bool = False) -> None:
         """Saves the datapackage.json to the specified directory."""
-        super().save_datapackage(path, resource_name, resource_path)
+        super().save_datapackage(path, resource_name, resource_path, force=force)

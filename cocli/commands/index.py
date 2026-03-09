@@ -245,6 +245,7 @@ def backfill_domains(
 def write_datapackage(
     index: str = typer.Argument(..., help="Index name (e.g. domains, google_maps_prospects)"),
     campaign: Optional[str] = typer.Option(None, "--campaign", "-c", help="Campaign name for campaign-specific indexes."),
+    force: bool = typer.Option(False, "--force", "-f", help="Force overwrite even if schema change is breaking.")
 ) -> None:
     """
     Generates Frictionless Data 'datapackage.json' for the specified index based on its Pydantic model.
@@ -253,7 +254,7 @@ def write_datapackage(
     from ..models.campaigns.indexes.domains import WebsiteDomainCsv
     from ..models.campaigns.indexes.google_maps_prospect import GoogleMapsProspect
     from ..models.campaigns.indexes.email import EmailEntry
-    from ..models.base import BaseUsvModel
+    from ..models.base import BaseUsvModel, SchemaConflictError
     from typing import Type
     
     # Map index names to models
@@ -289,8 +290,17 @@ def write_datapackage(
             resource_path = "prospects.checkpoint.usv"
         
         # Use existing model-driven logic
-        model_class.save_datapackage(target_dir, resource_name, resource_path)
+        model_class.save_datapackage(target_dir, resource_name, resource_path, force=force)
         console.print(f"[green]Successfully wrote datapackage.json to {target_dir}[/green]")
+    except SchemaConflictError as e:
+        console.print("[bold red]SCHEMA CONFLICT ERROR[/bold red]")
+        console.print(f"[red]{e}[/red]")
+        console.print("[yellow]Detected Positional Drift:[/yellow]")
+        for line in e.diff:
+            console.print(f"  [red]{line}[/red]")
+        console.print("\n[bold]Prevention:[/bold] USV is positional. Only add new fields to the END of the model.")
+        console.print("[dim]Use --force if you are performing a planned migration.[/dim]")
+        raise typer.Exit(1)
     except Exception as e:
         console.print(f"[red]Failed to write datapackage: {e}[/red]")
         raise typer.Exit(1)

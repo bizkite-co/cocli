@@ -10,6 +10,12 @@ from ..core.constants import UNIT_SEP
 
 logger = logging.getLogger(__name__)
 
+class SchemaConflictError(Exception):
+    """Raised when a Pydantic model change would break existing USV data positioning."""
+    def __init__(self, message: str, diff: List[str]):
+        super().__init__(message)
+        self.diff = diff
+
 T = TypeVar("T", bound="BaseUsvModel")
 
 class BaseUsvModel(BaseModel):
@@ -121,12 +127,53 @@ class BaseUsvModel(BaseModel):
         }
 
     @classmethod
-    def save_datapackage(cls, path: Path, resource_name: str, resource_path: str) -> None:
-        """Saves the datapackage.json to the specified directory."""
+    def save_datapackage(cls, path: Path, resource_name: str, resource_path: str, force: bool = False) -> None:
+        """
+        Saves the datapackage.json to the specified directory.
+        Enforces strict schema compliance (Append-Only) unless force=True.
+        """
         path.mkdir(parents=True, exist_ok=True)
-        schema = cls.get_datapackage(resource_name, resource_path)
-        with open(path / "datapackage.json", "w") as f:
-            json.dump(schema, f, indent=2)
+        new_schema = cls.get_datapackage(resource_name, resource_path)
+        new_fields = new_schema["resources"][0]["schema"]["fields"]
+        
+        sentinel_path = path / "datapackage.json"
+        if sentinel_path.exists() and not force:
+            try:
+                with open(sentinel_path, "r") as f:
+                    old_schema = json.load(f)
+                    old_fields = old_schema["resources"][0]["schema"]["fields"]
+                    
+                # 1. Compare field count
+                if len(new_fields) < len(old_fields):
+                    raise SchemaConflictError(
+                        f"Field count decreased ({len(old_fields)} -> {len(new_fields)}). This will break existing USV records.",
+                        [f"- {f['name']}" for f in old_fields[len(new_fields):]]
+                    )
+                
+                # 2. Compare existing field order and types
+                diff = []
+                for i, old_f in enumerate(old_fields):
+                    new_f = new_fields[i]
+                    if old_f["name"] != new_f["name"]:
+                        diff.append(f"Position {i}: Expected '{old_f['name']}', found '{new_f['name']}'")
+                    elif old_f["type"] != new_f["type"]:
+                        diff.append(f"Position {i} ({old_f['name']}): Expected type '{old_f['type']}', found '{new_f['type']}'")
+                
+                if diff:
+                    raise SchemaConflictError(
+                        "Schema change detected in existing columns. USV data is positional; you must only APPEND new fields.",
+                        diff
+                    )
+                    
+            except (KeyError, IndexError) as e:
+                logger.warning(f"Existing datapackage.json is malformed or incompatible: {e}. Overwriting.")
+            except SchemaConflictError:
+                raise
+            except Exception as e:
+                logger.error(f"Error validating schema against {sentinel_path}: {e}")
+
+        with open(sentinel_path, "w") as f:
+            json.dump(new_schema, f, indent=2)
 
     @classmethod
     def save_usv_with_datapackage(cls: Type[T], items: List[T], output_path: Path, resource_name: Optional[str] = None) -> None:

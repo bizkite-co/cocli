@@ -177,9 +177,9 @@ class GoogleMapsProspect(GoogleMapsIdx):
         return fields
 
     @classmethod
-    def save_datapackage(cls, path: Path, resource_name: str = "google_maps_prospects", resource_path: str = "prospects.checkpoint.usv") -> None:
+    def save_datapackage(cls, path: Path, resource_name: str = "google_maps_prospects", resource_path: str = "prospects.checkpoint.usv", force: bool = False) -> None:
         """Saves the datapackage.json to the specified directory."""
-        super().save_datapackage(path, resource_name, resource_path)
+        super().save_datapackage(path, resource_name, resource_path, force=force)
 
     @classmethod
     def from_raw(cls, raw: GoogleMapsRawResult) -> "GoogleMapsProspect":
