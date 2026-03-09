@@ -1,8 +1,8 @@
 import logging
 from pathlib import Path
 from typing import Optional
+from .models import TilePath
 from ..paths import paths
-from ..text_utils import slugify
 
 logger = logging.getLogger(__name__)
 
@@ -28,17 +28,18 @@ class ScrapedTilesStore:
 
     def resolve(self, identity: str) -> Path:
         """
-        identity: 'latitude_longitude_phrase' (e.g. '25.0_-79.9_wealth manager')
-        Returns: root / lat / lon / phrase.usv
+        identity: 'latitude_longitude_phrase'
         """
         parts = identity.split("_", 2)
         if len(parts) < 3:
             raise ValueError(f"Invalid identity for ScrapedTilesStore: {identity}")
         
-        lat_str, lon_str, phrase = parts
-        phrase_slug = slugify(phrase)
-        
-        return self.root / lat_str / lon_str / f"{phrase_slug}.usv"
+        return TilePath(
+            root=self.root,
+            latitude=float(parts[0]),
+            longitude=float(parts[1]),
+            phrase=parts[2]
+        ).to_path()
 
     def get_s3_key(self, local_path: Path) -> str:
         try:

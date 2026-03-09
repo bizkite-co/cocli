@@ -1,6 +1,7 @@
 import logging
 import hashlib
 from pathlib import Path
+from .models import ShardIDPath
 from ..paths import paths
 
 logger = logging.getLogger(__name__)
@@ -38,15 +39,17 @@ class EmailStore:
             return self.root / "shards" / f"{shard_id}.usv"
             
         # For inbox, we assume identity is the email address
-        # We need the domain to find the shard_id for the sub-folder
         if "@" in identity:
             domain = identity.split("@")[-1]
         else:
             domain = identity
             
         shard_id = self.get_shard_id(domain)
-        email_filename = identity.lower().strip()
-        return self.root / "inbox" / shard_id / f"{email_filename}.usv"
+        return ShardIDPath(
+            root=self.root / "inbox",
+            shard_id=shard_id,
+            identity=identity.lower().strip()
+        ).to_path()
 
     def get_s3_key(self, local_path: Path) -> str:
         try:

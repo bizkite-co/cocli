@@ -1,5 +1,6 @@
 import logging
 from pathlib import Path
+from .models import ShardPath
 from ..paths import paths
 from ..sharding import get_place_id_shard
 
@@ -34,8 +35,11 @@ class ProspectsStore:
             return self.root / "prospects.checkpoint.usv"
             
         shard = get_place_id_shard(identity)
-        # Authoritative WAL path from paths.py
-        return paths.campaign(self.campaign_name).index("google_maps_prospects").wal / shard / f"{identity}.usv"
+        return ShardPath(
+            root=paths.campaign(self.campaign_name).index("google_maps_prospects").wal,
+            shard_char=shard,
+            identity=identity
+        ).to_path()
 
     def get_s3_key(self, local_path: Path) -> str:
         try:
