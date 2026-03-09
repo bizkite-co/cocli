@@ -13,16 +13,17 @@ CAMPAIGN=$1
 if [ -z "$CAMPAIGN" ]; then
     # Fallback to legacy path if no campaign provided
     if [ -d "$HOME/.cocli/iot" ]; then IOT_DIR="$HOME/.cocli/iot"; else IOT_DIR="/root/.cocli/iot"; fi
+    CONFIG="$IOT_DIR/iot_config.json"
 else
     # New campaign-specific path
     if [ -d "$HOME/.cocli/iot/$CAMPAIGN" ]; then IOT_DIR="$HOME/.cocli/iot/$CAMPAIGN"; else IOT_DIR="/root/.cocli/iot/$CAMPAIGN"; fi
+    CONFIG="$IOT_DIR/iot_config.json"
 fi
 
 CURL=$(which curl 2>/dev/null || echo curl)
 CERT="$IOT_DIR/cert.pem"
 KEY="$IOT_DIR/private.key"
 ROOT_CA="$IOT_DIR/root-CA.crt"
-CONFIG="$IOT_DIR/iot_config.json"
 
 if [ ! -f "$CONFIG" ]; then
     echo "Error: Config not found at $CONFIG" >&2
@@ -52,7 +53,7 @@ except Exception as e:
 "
 """
 
-def _configure_local_aws_profile(campaign: str) -> None:
+def _configure_local_aws_profile(campaign: str, role: str) -> None:
     import configparser
     import os
     p = os.path.expanduser("~/.aws/config")
@@ -60,23 +61,29 @@ def _configure_local_aws_profile(campaign: str) -> None:
     if os.path.exists(p):
         c.read(p)
     
-    for suffix in ["-iot", ""]:
-        section = f"profile {campaign}{suffix}"
-        if suffix == "" and c.has_section(section):
-            # Don't overwrite main campaign profile if it exists
-            continue
-        if not c.has_section(section):
-            c.add_section(section)
-        
-        home = os.path.expanduser("~")
-        script_path = os.path.join(home, ".cocli/iot/get_tokens.sh")
-        c.set(section, "credential_process", f"{script_path} {campaign}")
-        c.set(section, "region", "us-east-1")
+    # We create profile: <campaign>-<role>-iot
+    # e.g. roadmap-scraper-iot
+    section = f"profile {campaign}-{role}-iot"
+    if not c.has_section(section):
+        c.add_section(section)
     
+    home = os.path.expanduser("~")
+    script_path = os.path.join(home, ".cocli/iot/get_tokens.sh")
+    c.set(section, "credential_process", f"{script_path} {campaign}")
+    c.set(section, "region", "us-east-1")
+    
+    # Also maintain legacy 'roadmap-iot' as an alias for the primary role
+    if role == "scraper":
+        legacy_section = f"profile {campaign}-iot"
+        if not c.has_section(legacy_section):
+            c.add_section(legacy_section)
+        c.set(legacy_section, "credential_process", f"{script_path} {campaign}")
+        c.set(legacy_section, "region", "us-east-1")
+
     with open(p, "w") as f:
         c.write(f)
 
-def _configure_remote_aws_profile(host: str, user: str, campaign: str) -> None:
+def _configure_remote_aws_profile(host: str, user: str, campaign: str, role: str) -> None:
     setup_profile_cmd = f"""
     mkdir -p ~/.aws && python3 -c '
 import configparser, os
@@ -84,17 +91,23 @@ p = os.path.expanduser("~/.aws/config")
 c = configparser.ConfigParser()
 if os.path.exists(p):
     c.read(p)
-for suffix in ["-iot", ""]:
-    section = f"profile {campaign}{{suffix}}"
-    if suffix == "" and c.has_section(section): continue
-    if not c.has_section(section): 
-        c.add_section(section)
 
-    home = os.path.expanduser("~")
-    script_path = os.path.join(home, ".cocli/iot/get_tokens.sh")
+section = f"profile {campaign}-{role}-iot"
+if not c.has_section(section): 
+    c.add_section(section)
 
-    c.set(section, "credential_process", f"{{script_path}} {campaign}")
-    c.set(section, "region", "us-east-1")
+home = os.path.expanduser("~")
+script_path = os.path.join(home, ".cocli/iot/get_tokens.sh")
+
+c.set(section, "credential_process", f"{{script_path}} {campaign}")
+c.set(section, "region", "us-east-1")
+
+if "{role}" == "scraper":
+    legacy = f"profile {campaign}-iot"
+    if not c.has_section(legacy): c.add_section(legacy)
+    c.set(legacy, "credential_process", f"{{script_path}} {campaign}")
+    c.set(legacy, "region", "us-east-1")
+
 with open(p, "w") as f: 
     c.write(f)
 '
@@ -105,6 +118,7 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Provision a Raspberry Pi with an IoT Certificate identity.")
     parser.add_argument("--host", required=True, help="RPi hostname (e.g. cocli5x0.pi)")
     parser.add_argument("--campaign", required=True, help="Campaign name.")
+    parser.add_argument("--role", choices=["scraper", "processor"], default="scraper", help="The granular role for this worker.")
     parser.add_argument("--user", default="mstouffer", help="SSH user.")
     parser.add_argument("--profile", default="westmonroe-support", help="Admin AWS profile.")
     
@@ -113,7 +127,10 @@ def main() -> None:
     session = boto3.Session(profile_name=args.profile)
     iot = session.client("iot")
     
-    print(f"--- Provisioning {args.host} for Campaign: {args.campaign} ---")
+    role_title = args.role.capitalize()
+    role_alias = f"Cocli{role_title}Alias-{args.campaign}"
+    
+    print(f"--- Provisioning {args.host} as {role_title} for Campaign: {args.campaign} ---")
     
     # 1. Create Keys and Certificate
     print("Generating unique certificate...")
@@ -164,7 +181,8 @@ def main() -> None:
             # Save Metadata
             metadata = {
                 "campaign": args.campaign,
-                "role_alias": f"CocliScraperAlias-{args.campaign}",
+                "role": args.role,
+                "role_alias": role_alias,
                 "endpoint": iot.describe_endpoint(endpointType='iot:CredentialProvider')['endpointAddress']
             }
             (local_dir / "iot_config.json").write_text(json.dumps(metadata, indent=2))
@@ -174,8 +192,8 @@ def main() -> None:
             (local_root / "get_tokens.sh").write_text(get_tokens_content)
             (local_root / "get_tokens.sh").chmod(0o755)
             
-            _configure_local_aws_profile(args.campaign)
-            print("\n[SUCCESS] Local machine is now provisioned with IoT credentials.")
+            _configure_local_aws_profile(args.campaign, args.role)
+            print(f"\n[SUCCESS] Local machine is now provisioned as {role_title}.")
         else:
             print(f"Pushing certs to {args.user}@{args.host}:{remote_dir}...")
             subprocess.run(["ssh", f"{args.user}@{args.host}", f"mkdir -p {remote_dir} && chmod 700 {remote_root} && chmod 700 {remote_dir}"], check=True)
@@ -187,7 +205,8 @@ def main() -> None:
             # Save Metadata
             metadata = {
                 "campaign": args.campaign,
-                "role_alias": f"CocliScraperAlias-{args.campaign}",
+                "role": args.role,
+                "role_alias": role_alias,
                 "endpoint": iot.describe_endpoint(endpointType='iot:CredentialProvider')['endpointAddress']
             }
             (tmp_dir / "iot_config.json").write_text(json.dumps(metadata, indent=2))
@@ -202,9 +221,9 @@ def main() -> None:
 
             # 5. Configure AWS Profile for automatic refresh
             print(f"Configuring AWS profile '{args.campaign}-iot' on {args.host}...")
-            _configure_remote_aws_profile(args.host, args.user, args.campaign)
+            _configure_remote_aws_profile(args.host, args.user, args.campaign, args.role)
             
-            print("\n[SUCCESS] Pi is now uniquely identified via IoT Core.")
+            print(f"\n[SUCCESS] Pi ({args.host}) is now provisioned as {role_title}.")
             print(f"AWS profiles '{args.campaign}-iot' and 'roadmap-iot' configured for automatic refresh.")
             
     except Exception as e:

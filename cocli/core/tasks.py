@@ -53,10 +53,10 @@ class TaskIndexManager:
                     logger.error(f"Failed to parse task line: {line.strip()}. Error: {e}")
         self.tasks = tasks
 
-    def save(self) -> None:
+    def save(self, wasi_hash: Optional[str] = None) -> None:
         """Saves non-completed tasks to mission.usv in current list order."""
         self.issues_root.mkdir(parents=True, exist_ok=True)
-        MissionTask.save_datapackage(self.issues_root, "mission-index", "mission.usv")
+        MissionTask.save_datapackage(self.issues_root, "mission-index", "mission.usv", wasi_hash=wasi_hash)
         
         # Filter: Only keep active queue items in the index
         active_queue = [t for t in self.tasks if t.status != TaskStatus.COMPLETED]

@@ -235,76 +235,91 @@ class CdkScraperDeploymentStack(Stack):  # type: ignore[misc]
                 description="URL of the enrichment service"
             )
 
-        # --- IoT Core Credential Provider (The Gold Standard) ---
+        # --- Granular IAM Roles for Scrapers and Processors ---
+        from aws_cdk import aws_iot as iot
         
-        # 1. IAM Role for PIs to assume
-        iot_role = iam.Role(self, "CocliIoTScraperRole",
+        # 1. Scraper Role (Least Privilege for Data Collection)
+        scraper_role = iam.Role(self, "CocliScraperRole",
             assumed_by=iam.ServicePrincipal("credentials.iot.amazonaws.com"),
-            description=f"Role assumed by Raspberry Pi workers for campaign {campaign_config['name']}"
+            description=f"Granular Scraper Role for campaign {campaign_config['name']}"
         )
 
-        # Create the Gold Standard Worker Policy
-        worker_policy = iam.ManagedPolicy(self, "CocliIoTScraperWorkerPolicy",
-            managed_policy_name=f"CocliIoTScraperWorkerPolicy-{campaign_config['name']}",
+        scraper_managed_policy = iam.ManagedPolicy(self, "CocliScraperManagedPolicy",
+            managed_policy_name=f"CocliScraperPolicy-{campaign_config['name']}",
             statements=[
+                # Scraper: Can only PUT to raw/ and GET from queues/
                 iam.PolicyStatement(
+                    sid="AllowRawUpload",
                     effect=iam.Effect.ALLOW,
-                    actions=[
-                        "s3:PutObject",
-                        "s3:GetObject",
-                        "s3:ListBucket",
-                        "s3:DeleteObject",
-                        "s3:GetBucketLocation"
-                    ],
+                    actions=["s3:PutObject"],
+                    resources=[f"arn:aws:s3:::{data_bucket_name}/campaigns/{campaign_config['name']}/raw/*"]
+                ),
+                iam.PolicyStatement(
+                    sid="AllowQueueConsumption",
+                    effect=iam.Effect.ALLOW,
+                    actions=["s3:GetObject", "s3:ListBucket"],
                     resources=[
                         f"arn:aws:s3:::{data_bucket_name}",
-                        f"arn:aws:s3:::{data_bucket_name}/*"
+                        f"arn:aws:s3:::{data_bucket_name}/campaigns/{campaign_config['name']}/queues/*"
                     ]
                 ),
                 iam.PolicyStatement(
+                    sid="AllowSqsWorker",
                     effect=iam.Effect.ALLOW,
-                    actions=[
-                        "sqs:SendMessage",
-                        "sqs:ReceiveMessage",
-                        "sqs:DeleteMessage",
-                        "sqs:GetQueueAttributes",
-                        "sqs:ChangeMessageVisibility"
-                    ],
+                    actions=["sqs:ReceiveMessage", "sqs:DeleteMessage", "sqs:ChangeMessageVisibility", "sqs:GetQueueAttributes"],
+                    resources=[f"arn:aws:sqs:{self.region}:{self.account}:CdkScraperDeploymentStack-*"]
+                )
+            ]
+        )
+        scraper_role.add_managed_policy(scraper_managed_policy)
+
+        # 2. Processor Role (Least Privilege for Data Transformation)
+        processor_role = iam.Role(self, "CocliProcessorRole",
+            assumed_by=iam.ServicePrincipal("credentials.iot.amazonaws.com"),
+            description=f"Granular Processor Role for campaign {campaign_config['name']}"
+        )
+
+        processor_managed_policy = iam.ManagedPolicy(self, "CocliProcessorManagedPolicy",
+            managed_policy_name=f"CocliProcessorPolicy-{campaign_config['name']}",
+            statements=[
+                # Processor: Can GET from raw/ and PUT/GET to wal/ and indexes/
+                iam.PolicyStatement(
+                    sid="AllowRawConsumption",
+                    effect=iam.Effect.ALLOW,
+                    actions=["s3:GetObject", "s3:ListBucket"],
                     resources=[
-                        f"arn:aws:sqs:{self.region}:{self.account}:CdkScraperDeploymentStack-*"
+                        f"arn:aws:s3:::{data_bucket_name}",
+                        f"arn:aws:s3:::{data_bucket_name}/campaigns/{campaign_config['name']}/raw/*"
+                    ]
+                ),
+                iam.PolicyStatement(
+                    sid="AllowWalAndIndexUpdate",
+                    effect=iam.Effect.ALLOW,
+                    actions=["s3:PutObject", "s3:GetObject", "s3:ListBucket"],
+                    resources=[
+                        f"arn:aws:s3:::{data_bucket_name}",
+                        f"arn:aws:s3:::{data_bucket_name}/campaigns/{campaign_config['name']}/indexes/*"
                     ]
                 )
             ]
         )
-        iot_role.add_managed_policy(worker_policy)
+        processor_role.add_managed_policy(processor_managed_policy)
 
-        # Add explicit self-discovery and logging permissions
-        iot_role.add_to_policy(iam.PolicyStatement(
-            actions=[
-                "iot:DescribeEndpoint",
-                "logs:CreateLogGroup",
-                "logs:CreateLogStream",
-                "logs:PutLogEvents",
-                "logs:DescribeLogStreams"
-            ],
-            resources=["*"]
-        ))
-        
-        data_bucket.grant_read_write(iot_role)
-        web_bucket.grant_read_write(iot_role)
-        campaign_updates_queue.grant_send_messages(iot_role)
-        campaign_updates_queue.grant_consume_messages(iot_role)
-
-        # 2. IoT Role Alias
-        from aws_cdk import aws_iot as iot
-        role_alias = iot.CfnRoleAlias(self, "CocliScraperRoleAlias",
-            role_arn=iot_role.role_arn,
+        # --- IoT Core Role Aliases ---
+        scraper_alias = iot.CfnRoleAlias(self, "CocliScraperRoleAlias",
+            role_arn=scraper_role.role_arn,
             role_alias=f"CocliScraperAlias-{campaign_config['name']}",
             credential_duration_seconds=3600
         )
 
-        # 3. IoT Policy to allow AssumeRoleWithCertificate
-        iot_policy = iot.CfnPolicy(self, "CocliIoTAssumeRolePolicy",
+        processor_alias = iot.CfnRoleAlias(self, "CocliProcessorRoleAlias",
+            role_arn=processor_role.role_arn,
+            role_alias=f"CocliProcessorAlias-{campaign_config['name']}",
+            credential_duration_seconds=3600
+        )
+
+        # Update IoT Policy to allow AssumeRole for both aliases
+        iot_policy = iot.CfnPolicy(self, "CocliIoTAssumeRolePolicyV2",
             policy_name=f"CocliIoTAssumeRolePolicy-{campaign_config['name']}",
             policy_document={
                 "Version": "2012-10-17",
@@ -312,27 +327,30 @@ class CdkScraperDeploymentStack(Stack):  # type: ignore[misc]
                     {
                         "Effect": "Allow",
                         "Action": "iot:AssumeRoleWithCertificate",
-                        "Resource": role_alias.attr_role_alias_arn
+                        "Resource": [
+                            scraper_alias.attr_role_alias_arn,
+                            processor_alias.attr_role_alias_arn
+                        ]
                     }
                 ]
             }
         )
 
         # 4. IAM User for local development / Gemini Agent
-        # This user will be used to generate the credentials for the roadmap-iot profile
         agent_user = iam.User(self, "CocliAgentUser",
             user_name=f"cocli-agent-{campaign_config['name']}"
         )
-        # Grant the agent user permission to use the IoT Role Alias via a certificate if needed,
-        # or just give it direct AssumeRole if we want a shortcut, but let's stick to the IoT path.
         agent_user.add_to_policy(iam.PolicyStatement(
             actions=["iot:AssumeRoleWithCertificate"],
-            resources=[role_alias.attr_role_alias_arn]
+            resources=[
+                scraper_alias.attr_role_alias_arn,
+                processor_alias.attr_role_alias_arn
+            ]
         ))
 
-        CfnOutput(self, "IoTRoleAlias", value=role_alias.role_alias)
+        CfnOutput(self, "ScraperRoleAlias", value=scraper_alias.role_alias)
+        CfnOutput(self, "ProcessorRoleAlias", value=processor_alias.role_alias)
         CfnOutput(self, "IoTPolicyName", value=iot_policy.policy_name)
-        CfnOutput(self, "IoTRoleArn", value=iot_role.role_arn)
         CfnOutput(self, "AgentUserName", value=agent_user.user_name)
 
         # --- Cognito User Pool and Client ---
