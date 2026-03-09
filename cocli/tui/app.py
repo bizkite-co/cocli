@@ -436,16 +436,16 @@ class CocliApp(App[None]):
             else:
                 self.run_worker(company_list.perform_search(""))
             
-            # 2. Focus the list after paint
-            def focus_list() -> None:
+            # 2. Focus the template list after paint
+            def focus_templates() -> None:
                 try:
                     if search_view.is_mounted:
-                        company_list.query_one("#company_list_view").focus()
+                        template_list.focus_list()
                 except Exception:
                     pass
                 self.menu_bar.set_activity("")
 
-            self.call_after_refresh(focus_list)
+            self.call_after_refresh(focus_templates)
 
     def action_focus_templates(self) -> None:
         """Focus the template list in search view."""

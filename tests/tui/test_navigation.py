@@ -78,8 +78,13 @@ async def test_down_arrow_moves_highlight_in_company_list():
 
         await driver.pause(0.5)
 
+        # Explicitly focus list as initial focus now goes to templates
+        company_list_screen.query_one("#company_list_view").focus()
+        await driver.pause(0.1)
+
         # The input is focused by default
         list_view = company_list_screen.query_one(ListView)
+
         assert list_view.index == 0
 
         # Press 'down' and check that the index changes

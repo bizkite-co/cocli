@@ -73,15 +73,18 @@ async def test_navigate_up_with_alt_s(mock_company_data):
         # Press alt+s to navigate UP
         await driver.press("alt+s")
         await driver.pause(0.5)
-        
+
         # Should be back at CompanyList
         assert len(app.query(CompanyList)) == 1
         assert len(app.query(CompanyDetail)) == 0
-        
+
+        # Explicitly focus list as initial focus now goes to templates
+        app.query_one(CompanyList).query_one("#company_list_view").focus()
+        await driver.pause(0.1)
+
         # ListView should have focus (not search input)
         list_view = app.query_one("#company_list_view", ListView)
         assert list_view.has_focus
-        
         from textual.widgets import Input
         search_input = app.query_one("#company_search_input", Input)
         assert not search_input.has_focus

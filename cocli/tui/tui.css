@@ -135,10 +135,19 @@ CompanySearchView {
 /* Section Headers (Status, Queue, etc) */
 .pane-header {
     background: #111111;
-    color: #00ff00;
+    color: #555555; /* Dimmer text for unfocused */
     text-style: bold;
     padding: 0 1;
     border-bottom: solid #333333;
+}
+
+.search-pane:focus-within {
+    background: #080808; /* Slightly lighter than black */
+}
+
+.search-pane:focus-within .pane-header {
+    background: #00ff00;
+    color: #000000;
 }
 
 /* Detail Views */
