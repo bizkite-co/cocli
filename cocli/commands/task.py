@@ -1,52 +1,18 @@
 import typer
 from pathlib import Path
-from typing import Optional, List, Set
+from typing import Optional, Set
 from rich.console import Console
 from rich.table import Table
 from rich.markdown import Markdown
 from rich.rule import Rule
+from rich.tree import Tree
+
+from ..core.tasks import TaskIndexManager, TaskStatus
 
 app = typer.Typer(help="Manage development tasks and architectural issues.", no_args_is_help=True)
 console = Console()
 
 ISSUES_ROOT = Path("docs/issues")
-PENDING = ISSUES_ROOT / "pending"
-ACTIVE = ISSUES_ROOT / "active"
-COMPLETED = ISSUES_ROOT / "completed" / "2026"
-
-def get_pending_tasks() -> List[Path]:
-    """Returns sorted list of pending task files."""
-    if not PENDING.exists():
-        return []
-    return sorted(list(PENDING.glob("*.md")))
-
-def get_active_tasks() -> List[Path]:
-    """Returns list of active task files."""
-    if not ACTIVE.exists():
-        return []
-    return list(ACTIVE.glob("*.md"))
-
-@app.command(name="list")
-def list_tasks() -> None:
-    """List all pending and active tasks."""
-    active = get_active_tasks()
-    pending = get_pending_tasks()
-    
-    table = Table(title="Task Queue")
-    table.add_column("Status", justify="center")
-    table.add_column("ID/Priority", justify="right")
-    table.add_column("Slug")
-    
-    for task in active:
-        table.add_row("[bold yellow]ACTIVE[/]", "-", task.name, style="yellow")
-        
-    for task in pending:
-        parts = task.stem.split("_", 1)
-        priority = parts[0] if len(parts) > 1 else "-"
-        slug = parts[1] if len(parts) > 1 else task.stem
-        table.add_row("[white]PENDING[/]", priority, slug)
-        
-    console.print(table)
 
 def render_markdown_with_links(path: Path, seen: Optional[Set[Path]] = None) -> None:
     """Renders a markdown file and recursively renders any local .md links found within it."""
@@ -73,74 +39,173 @@ def render_markdown_with_links(path: Path, seen: Optional[Set[Path]] = None) -> 
         if link_path.exists():
             render_markdown_with_links(link_path, seen)
 
+@app.command(name="sync")
+def sync_index() -> None:
+    """Sync the task index with the filesystem."""
+    manager = TaskIndexManager()
+    changes = manager.sync()
+    console.print(f"[green]Index synced. {changes} changes detected.[/green]")
+
+@app.command(name="list")
+def list_tasks() -> None:
+    """List all tasks from the mission index."""
+    manager = TaskIndexManager()
+    if not manager.tasks:
+        console.print("[yellow]Index is empty. Run 'cocli task sync' to discover tasks.[/yellow]")
+        return
+
+    table = Table(title="Mission Task Index")
+    table.add_column("Pri", justify="right")
+    table.add_column("Status", justify="center")
+    table.add_column("Slug")
+    table.add_column("Title")
+    table.add_column("Deps")
+    
+    for i, task in enumerate(manager.tasks):
+        status_color = "white"
+        if task.status == TaskStatus.ACTIVE:
+            status_color = "bold yellow"
+        elif task.status == TaskStatus.COMPLETED:
+            status_color = "green"
+        elif task.status == TaskStatus.BLOCKED:
+            status_color = "red"
+        
+        deps_str = ";".join(task.dependencies) if task.dependencies else "-"
+        table.add_row(
+            str(i + 1),
+            f"[{status_color}]{task.status}[/]",
+            task.slug,
+            task.title,
+            deps_str
+        )
+        
+    console.print(table)
+
 @app.command(name="next")
 def show_next() -> None:
-    """Show the current highest priority development task and follow its links."""
+    """Show the current objective and follow links."""
     # 1. Authoritative Pointer
     task_ptr = Path("task.md")
     if task_ptr.exists():
         render_markdown_with_links(task_ptr)
         return
 
-    # 2. Frontier Pointer
-    frontier = ISSUES_ROOT / "frontier.md"
-    if frontier.exists():
-        render_markdown_with_links(frontier)
-        return
-
-    # Fallback to queue if frontier is missing
-    active = get_active_tasks()
-    if active:
-        render_markdown_with_links(active[0])
+    # 2. Index Lookup
+    manager = TaskIndexManager()
+    next_task = manager.get_next_task()
+    if next_task:
+        render_markdown_with_links(ISSUES_ROOT / next_task.file_path)
     else:
-        pending = get_pending_tasks()
-        if not pending:
-            console.print("[green]No pending tasks found![/green]")
-            return
-        render_markdown_with_links(pending[0])
+        console.print("[green]No pending or active tasks found in index![/green]")
+
+@app.command(name="prioritize")
+def prioritize_task(slug: str, position: int) -> None:
+    """Update the ordinal position of a task."""
+    manager = TaskIndexManager()
+    if manager.prioritize(slug, position):
+        console.print(f"[green]Task '{slug}' moved to position {position}.[/green]")
+    else:
+        console.print(f"[red]Task '{slug}' not found.[/red]")
+
+@app.command(name="tree")
+def show_tree() -> None:
+    """Show a visual dependency tree of tasks."""
+    manager = TaskIndexManager()
+    root = Tree("[bold blue]Development Roadmap[/bold blue]")
+    
+    # Simple dependency tree (only 1 level deep for now)
+    added = set()
+    
+    # 1. Add Completed tasks as foundation
+    completed = root.add("[green]Completed[/green]")
+    for task in manager.tasks:
+        if task.status == TaskStatus.COMPLETED:
+            completed.add(f"[dim]{task.slug}[/dim]")
+            added.add(task.slug)
+            
+    # 2. Add Active/Pending with dependencies
+    for task in manager.tasks:
+        if task.slug in added:
+            continue
+        
+        label = task.slug
+        if task.status == TaskStatus.ACTIVE:
+            label = f"[bold yellow]{label} (ACTIVE)[/bold yellow]"
+        elif task.status == TaskStatus.BLOCKED:
+            label = f"[red]{label} (BLOCKED by {';'.join(task.dependencies)})[/red]"
+        
+        root.add(label)
+        
+    console.print(root)
 
 @app.command(name="start")
-def start_task(slug_or_priority: str) -> None:
-    """Move a task from pending to active."""
-    pending = get_pending_tasks()
-    target = None
+def start_task(slug: str) -> None:
+    """Move a task to ACTIVE in the index and on disk."""
+    manager = TaskIndexManager()
     
-    for task in pending:
-        if slug_or_priority in task.name:
-            target = task
+    # Find by slug or priority
+    task = None
+    for i, t in enumerate(manager.tasks):
+        if t.slug == slug or str(i + 1) == slug:
+            task = t
             break
             
-    if not target:
-        console.print(f"[red]Task not found matching '{slug_or_priority}'[/red]")
+    if not task:
+        console.print(f"[red]Task '{slug}' not found.[/red]")
         return
+
+    if task.status == TaskStatus.BLOCKED:
+        console.print(f"[red]Task '{task.slug}' is BLOCKED by {';'.join(task.dependencies)}[/red]")
+        return
+
+    # Move file on disk
+    old_path = ISSUES_ROOT / task.file_path
+    new_rel_name = old_path.name
+    if "pending" in task.file_path and "_" in old_path.name:
+        new_rel_name = old_path.name.split("_", 1)[1]
         
-    ACTIVE.mkdir(parents=True, exist_ok=True)
-    # Remove prefix like 01_ for active state
-    new_name = target.name
-    if "_" in new_name:
-        new_name = new_name.split("_", 1)[1]
-        
-    target.rename(ACTIVE / new_name)
-    console.print(f"[green]Task '{new_name}' is now ACTIVE[/green]")
+    new_rel_path = f"active/{new_rel_name}"
+    new_path = ISSUES_ROOT / new_rel_path
+    new_path.parent.mkdir(parents=True, exist_ok=True)
+    
+    old_path.rename(new_path)
+    
+    # Update index
+    task.status = TaskStatus.ACTIVE
+    task.file_path = new_rel_path
+    manager.save()
+    console.print(f"[green]Task '{task.slug}' is now ACTIVE.[/green]")
 
 @app.command(name="done")
 def complete_task(slug: str) -> None:
-    """Move a task from active to completed."""
-    active = get_active_tasks()
-    target = None
+    """Move a task to COMPLETED."""
+    manager = TaskIndexManager()
     
-    for task in active:
-        if slug in task.name:
-            target = task
+    # Find by slug or priority
+    task = None
+    for i, t in enumerate(manager.tasks):
+        if t.slug == slug or str(i + 1) == slug:
+            task = t
             break
             
-    if not target:
-        console.print(f"[red]Active task matching '{slug}' not found.[/red]")
+    if not task:
+        console.print(f"[red]Task '{slug}' not found.[/red]")
         return
-        
-    COMPLETED.mkdir(parents=True, exist_ok=True)
-    target.rename(COMPLETED / target.name)
-    console.print(f"[green]Task '{target.name}' marked as COMPLETED[/green]")
+
+    old_path = ISSUES_ROOT / task.file_path
+    new_rel_path = f"completed/2026/{old_path.name}"
+    new_path = ISSUES_ROOT / new_rel_path
+    new_path.parent.mkdir(parents=True, exist_ok=True)
+    
+    old_path.rename(new_path)
+    
+    task.status = TaskStatus.COMPLETED
+    task.file_path = new_rel_path
+    
+    # Update blocked states of others
+    manager.update_blocked_states()
+    manager.save()
+    console.print(f"[green]Task '{task.slug}' marked as COMPLETED.[/green]")
 
 if __name__ == "__main__":
     app()

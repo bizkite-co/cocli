@@ -1,6 +1,7 @@
 # POLICY: frictionless-data-policy-enforcement
 import json
 import logging
+from enum import Enum
 from datetime import datetime
 from pathlib import Path
 from typing import List, Dict, Any, Type, TypeVar, Optional
@@ -39,6 +40,8 @@ class BaseUsvModel(BaseModel):
             val = dump.get(field)
             if val is None:
                 values.append("")
+            elif isinstance(val, Enum):
+                values.append(str(val.value))
             elif isinstance(val, (list, tuple)):
                 # Lists are semicolon-separated within the field
                 # Replace newlines and UNIT_SEP to prevent record breakage

@@ -1,0 +1,44 @@
+{
+  "profile": "tabular-data-package",
+  "name": "mission-index",
+  "resources": [
+    {
+      "name": "mission-index",
+      "path": "mission.usv",
+      "format": "usv",
+      "dialect": {
+        "delimiter": "\u001f",
+        "header": false
+      },
+      "schema": {
+        "fields": [
+          {
+            "name": "slug",
+            "type": "string",
+            "description": "Unique URL-friendly name"
+          },
+          {
+            "name": "title",
+            "type": "string",
+            "description": "Human-readable title"
+          },
+          {
+            "name": "status",
+            "type": "string",
+            "description": "Current state"
+          },
+          {
+            "name": "dependencies",
+            "type": "string",
+            "description": "List of required task slugs"
+          },
+          {
+            "name": "file_path",
+            "type": "string",
+            "description": "Relative path to the markdown requirement"
+          }
+        ]
+      }
+    }
+  ]
+}
