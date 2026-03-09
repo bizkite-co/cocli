@@ -200,16 +200,19 @@ def get_company_details_for_view(company_slug: str) -> Optional[Dict[str, Any]]:
                                             lifecycle_dates["enqueued_at"] = l_parts[3].strip() or None
                                             break
                             
-                            # 2. Look up in prospects index ONLY if still missing
-                            if lifecycle_dates["average_rating"] is None:
-                                from ..core.prospects_csv_manager import ProspectsIndexManager
-                                manager = ProspectsIndexManager(campaign)
-                                prospect = manager.get_prospect(place_id)
-                                if prospect:
-                                    if prospect.average_rating is not None:
-                                        lifecycle_dates["average_rating"] = prospect.average_rating
-                                    if prospect.reviews_count is not None:
-                                        lifecycle_dates["reviews_count"] = prospect.reviews_count
+                            # 2. Look up in prospects index if missing
+                            if lifecycle_dates["average_rating"] is None or lifecycle_dates["reviews_count"] is None:
+                                try:
+                                    from ..core.prospects_csv_manager import ProspectsIndexManager
+                                    manager = ProspectsIndexManager(campaign)
+                                    prospect = manager.get_prospect(place_id)
+                                    if prospect:
+                                        if lifecycle_dates["average_rating"] is None and prospect.average_rating is not None:
+                                            lifecycle_dates["average_rating"] = prospect.average_rating
+                                        if lifecycle_dates["reviews_count"] is None and prospect.reviews_count is not None:
+                                            lifecycle_dates["reviews_count"] = prospect.reviews_count
+                                except Exception:
+                                    pass
             except Exception as e:
                 logger.warning(f"Error reading maps receipt for {company_slug}: {e}")
 

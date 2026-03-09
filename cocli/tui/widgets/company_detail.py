@@ -752,13 +752,12 @@ class CompanyDetail(Container):
 
         self.info_table.add_row("Name", escape(str(c.get("name", "Unknown"))))
         
+        # Rating & Reviews (Always shown)
         rating = c.get("average_rating")
         review_count = c.get("reviews_count")
-        if rating is not None or review_count is not None:
-            rating_str = f"{rating if rating is not None else '?'}"
-            if review_count is not None:
-                rating_str += f" ({review_count} reviews)"
-            self.info_table.add_row("Rating", rating_str)
+        rating_val = f"{rating}" if rating is not None else "0.0"
+        reviews_val = f"({review_count} reviews)" if review_count is not None else "(0 reviews)"
+        self.info_table.add_row("Rating", f"{rating_val} {reviews_val}")
 
         self.info_table.add_row("Domain", escape(str(c.get("domain") or "")))
         self.info_table.add_row("Email", format_email_display(c.get("email")))
@@ -769,24 +768,30 @@ class CompanyDetail(Container):
         self.info_table.add_row("State", escape(str(c.get("state") or "")))
         self.info_table.add_row("Zip", escape(str(c.get("zip_code") or "")))
 
-        # Lifecycle Status (Screaming architecture compliance)
+        # Lifecycle Status (Always shown to emphasize OMAP pipeline)
         scraped_at = c.get("list_found_at")
+        scraped_val = "-"
         if scraped_at:
             dt = datetime.fromisoformat(scraped_at) if isinstance(scraped_at, str) else scraped_at
-            self.info_table.add_row("gm-list", dt.strftime("%Y-%m-%d"))
+            scraped_val = dt.strftime("%Y-%m-%d")
+        self.info_table.add_row("gm-list", scraped_val)
         
         details_at = c.get("details_found_at")
+        details_val = "-"
         if details_at:
             dt = datetime.fromisoformat(details_at) if isinstance(details_at, str) else details_at
-            self.info_table.add_row("gm-detail", dt.strftime("%Y-%m-%d"))
+            details_val = dt.strftime("%Y-%m-%d")
+        self.info_table.add_row("gm-detail", details_val)
 
         enqueued_at = c.get("enqueued_at")
+        enrich_val = "No"
         if enrichment_mtime:
             dt = datetime.fromisoformat(enrichment_mtime)
-            self.info_table.add_row("enrichment", f"[bold green]{dt.strftime('%Y-%m-%d %H:%M')}[/]")
+            enrich_val = f"[bold green]{dt.strftime('%Y-%m-%d %H:%M')}[/]"
         elif enqueued_at:
             dt = datetime.fromisoformat(enqueued_at) if isinstance(enqueued_at, str) else enqueued_at
-            self.info_table.add_row("enrichment", f"[bold yellow]{dt.strftime('%Y-%m-%d')} (pending)[/]")
+            enrich_val = f"[bold yellow]{dt.strftime('%Y-%m-%d')} (pending)[/]"
+        self.info_table.add_row("enrichment", enrich_val)
 
         if tags:
             display_tags = []
@@ -800,7 +805,7 @@ class CompanyDetail(Container):
         if keywords:
             self.info_table.add_row("Keywords", ", ".join(keywords))
         
-        # Social Media
+        # Social Media (Keep conditional to avoid empty rows cluttering the dense view)
         socials = []
         if c.get("facebook_url") or (website_data and website_data.get("facebook_url")):
             socials.append("FB")
