@@ -107,13 +107,28 @@ class ContactsTable(QuadrantTable):
     """Specific bindings for the Contacts quadrant."""
     BINDINGS = QuadrantTable.BINDINGS + [
         Binding("a", "add_contact", "Add Contact"),
+        Binding("i", "edit_item", "Edit Contact"),
+        Binding("enter", "edit_item", "Edit Contact"),
     ]
+
+    def action_edit_item(self) -> None:
+        detail_view = next((a for a in self.ancestors if isinstance(a, CompanyDetail)), None)
+        if detail_view:
+             # detail_view.action_edit_contact() # TODO
+             detail_view.app.notify("Edit Contact coming soon")
 
 class MeetingsTable(QuadrantTable):
     """Specific bindings for the Meetings quadrant."""
     BINDINGS = QuadrantTable.BINDINGS + [
         Binding("a", "add_meeting", "Add Meeting"),
+        Binding("i", "edit_item", "Edit Meeting"),
+        Binding("enter", "edit_item", "Edit Meeting"),
     ]
+
+    def action_edit_item(self) -> None:
+        detail_view = next((a for a in self.ancestors if isinstance(a, CompanyDetail)), None)
+        if detail_view:
+             detail_view.action_edit_meeting()
 
 class NotesTable(QuadrantTable):
     """Specific bindings for the Notes quadrant."""
@@ -710,12 +725,14 @@ class CompanyDetail(Container):
             state = str(c.get("state") or "")
             zip_code = str(c.get("zip_code") or "")
             
-            with Horizontal(id="edit-csz-container"):
-                city_input = EditInput(field_name="city", value=city, placeholder="City", id="edit-city")
-                state_input = EditInput(field_name="state", value=state, placeholder="State", id="edit-state")
-                zip_input = EditInput(field_name="zip_code", value=zip_code, placeholder="Zip", id="edit-zip_code")
-                panel.mount(city_input, state_input, zip_input)
-                city_input.focus()
+            container = Horizontal(id="edit-csz-container")
+            city_input = EditInput(field_name="city", value=city, placeholder="City", id="edit-city")
+            state_input = EditInput(field_name="state", value=state, placeholder="State", id="edit-state")
+            zip_input = EditInput(field_name="zip_code", value=zip_code, placeholder="Zip", id="edit-zip_code")
+            
+            panel.mount(container)
+            container.mount(city_input, state_input, zip_input)
+            city_input.focus()
         else:
             input_widget = EditInput(field_name=model_field, value=current_value, id=f"edit-{model_field}")
             panel.mount(input_widget)
