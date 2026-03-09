@@ -133,7 +133,7 @@ CompanySearchView {
 }
 
 /* Section Headers (Status, Queue, etc) */
-.pane-header {
+.pane-header, .sidebar-title {
     background: #111111;
     color: #555555; /* Dimmer text for unfocused */
     text-style: bold;
@@ -142,11 +142,20 @@ CompanySearchView {
     border: none;
 }
 
-.search-pane:focus-within {
-    background: #080808; /* Slightly lighter than black */
+/* Common focus highlighting for all panes */
+.search-pane:focus-within, 
+#app_nav_container:focus-within, 
+#app_sub_nav_container:focus-within,
+#app_main_content:focus-within,
+#app_recent_runs:focus-within {
+    background: #161616; /* More distinct background for focused pane */
 }
 
-.search-pane:focus-within .pane-header {
+.search-pane:focus-within .pane-header,
+#app_nav_container:focus-within .sidebar-title,
+#app_sub_nav_container:focus-within .sidebar-title,
+#app_main_content:focus-within .pane-header,
+#app_recent_runs:focus-within .sidebar-title {
     background: #008700; /* Softer green for reverse video */
     color: #000000;
 }

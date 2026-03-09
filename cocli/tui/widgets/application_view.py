@@ -151,8 +151,8 @@ class ApplicationView(Container):
                 nav_list.focus()
             
             self.query_one("#op_params_area").display = False
-            # Initial switch
-            self.call_after_refresh(self.show_category, "campaigns")
+            # Initial switch - don't steal focus from top nav
+            self.call_after_refresh(self.show_category, "campaigns", focus=False)
             self.call_after_refresh(initial_focus)
             self.update_recent_runs()
 
@@ -248,7 +248,7 @@ class ApplicationView(Container):
             except Exception:
                 pass
 
-    def show_category(self, category: str) -> None:
+    def show_category(self, category: str, focus: bool = True) -> None:
         """Exclusively switch the visible content and sidebars for a category."""
         from ..app import time_perf
         with time_perf(f"TUI: ApplicationView.show_category ({category})"):
@@ -348,10 +348,11 @@ class ApplicationView(Container):
                     pass
             
             app = cast("CocliApp", self.app)
-            if app.services.sync_search:
-                shift_focus()
-            else:
-                self.call_after_refresh(shift_focus)
+            if focus:
+                if app.services.sync_search:
+                    shift_focus()
+                else:
+                    self.call_after_refresh(shift_focus)
 
     def update_recent_runs(self) -> None:
         from ..app import time_perf
