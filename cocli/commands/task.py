@@ -1,6 +1,6 @@
 import typer
 from pathlib import Path
-from typing import List
+from typing import Optional, List, Set
 from rich.console import Console
 from rich.table import Table
 from rich.markdown import Markdown
@@ -48,22 +48,56 @@ def list_tasks() -> None:
         
     console.print(table)
 
+def render_markdown_with_links(path: Path, seen: Optional[Set[Path]] = None) -> None:
+    """Renders a markdown file and recursively renders any local .md links found within it."""
+    if seen is None:
+        seen = set()
+    
+    abs_path = path.resolve()
+    if abs_path in seen or not path.exists():
+        return
+    
+    seen.add(abs_path)
+    
+    content = path.read_text(encoding="utf-8")
+    console.print(Rule(f"File: {path.name}", style="bold blue"))
+    console.print(Markdown(content))
+    
+    # Extract local markdown links: [text](path/to/file.md)
+    import re
+    links = re.findall(r'\[(?:[^\]]+)\]\(([^)]+\.md)\)', content)
+    
+    for link in links:
+        # Resolve relative to the current file's directory
+        link_path = (path.parent / link).resolve()
+        if link_path.exists():
+            render_markdown_with_links(link_path, seen)
+
 @app.command(name="next")
 def show_next() -> None:
-    """Show the highest priority pending task."""
+    """Show the current highest priority development task and follow its links."""
+    # 1. Authoritative Pointer
+    task_ptr = Path("task.md")
+    if task_ptr.exists():
+        render_markdown_with_links(task_ptr)
+        return
+
+    # 2. Frontier Pointer
+    frontier = ISSUES_ROOT / "frontier.md"
+    if frontier.exists():
+        render_markdown_with_links(frontier)
+        return
+
+    # Fallback to queue if frontier is missing
     active = get_active_tasks()
     if active:
-        console.print("[yellow]Currently Active Task:[/yellow]")
-        task_file = active[0]
+        render_markdown_with_links(active[0])
     else:
         pending = get_pending_tasks()
         if not pending:
             console.print("[green]No pending tasks found![/green]")
             return
-        task_file = pending[0]
-        
-    console.print(Rule(f"Task: {task_file.name}", style="bold blue"))
-    console.print(Markdown(task_file.read_text(encoding="utf-8")))
+        render_markdown_with_links(pending[0])
 
 @app.command(name="start")
 def start_task(slug_or_priority: str) -> None:
