@@ -7,7 +7,7 @@ from datetime import datetime
 from pathlib import Path
 
 from textual.widgets import DataTable, Label, Input
-from textual.containers import Container
+from textual.containers import Container, Horizontal, Vertical
 from textual.app import ComposeResult
 from textual import events, on
 from textual.widget import Widget
@@ -213,11 +213,12 @@ class CompanyDetail(Container):
         self.panels = [self.panel_info, self.panel_contacts, self.panel_meetings, self.panel_notes]
 
     def compose(self) -> ComposeResult:
-        with Container(classes="detail-grid"):
+        with Horizontal(id="company-detail-container"):
             yield self.panel_info
-            yield self.panel_contacts
-            yield self.panel_meetings
-            yield self.panel_notes
+            with Vertical(id="engagement-column"):
+                yield self.panel_contacts
+                yield self.panel_meetings
+                yield self.panel_notes
 
     def on_mount(self) -> None:
         self.panel_info.focus()
@@ -308,12 +309,8 @@ class CompanyDetail(Container):
 
         if isinstance(focused, DetailPanel):
             if event.key == "h":
-                if focused == self.panel_contacts:
+                if focused in (self.panel_contacts, self.panel_meetings, self.panel_notes):
                     self.panel_info.focus()
-                    event.stop()
-                    event.prevent_default()
-                elif focused == self.panel_notes:
-                    self.panel_meetings.focus()
                     event.stop()
                     event.prevent_default()
                 else:
@@ -328,30 +325,28 @@ class CompanyDetail(Container):
                     self.panel_contacts.focus()
                     event.stop()
                     event.prevent_default()
-                elif focused == self.panel_meetings:
-                    self.panel_notes.focus()
-                    event.stop()
-                    event.prevent_default()
                 return
             elif event.key == "j":
-                if focused == self.panel_info:
+                if focused == self.panel_contacts:
                     self.panel_meetings.focus()
-                    event.stop()
-                    event.prevent_default()
-                elif focused == self.panel_contacts:
+                elif focused == self.panel_meetings:
                     self.panel_notes.focus()
-                    event.stop()
-                    event.prevent_default()
-                return
-            elif event.key == "k":
-                if focused == self.panel_meetings:
-                    self.panel_info.focus()
-                    event.stop()
-                    event.prevent_default()
                 elif focused == self.panel_notes:
                     self.panel_contacts.focus()
-                    event.stop()
-                    event.prevent_default()
+                
+                event.stop()
+                event.prevent_default()
+                return
+            elif event.key == "k":
+                if focused == self.panel_contacts:
+                    self.panel_notes.focus()
+                elif focused == self.panel_meetings:
+                    self.panel_contacts.focus()
+                elif focused == self.panel_notes:
+                    self.panel_meetings.focus()
+                
+                event.stop()
+                event.prevent_default()
                 return
 
         # Explicitly handle DataTable focus without swallowing other keys

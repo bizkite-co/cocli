@@ -245,16 +245,17 @@ Container (id="app_content")
 === CompanyDetail ===
 Container (id="app_content")
     CompanyDetail
-        Container
+        Horizontal (id="company-detail-container")
             DetailPanel (id="panel-info")
                 Label
                 InfoTable (id="info-table")
-            DetailPanel (id="panel-contacts")
-                Label
-                ContactsTable (id="contacts-table")
-            DetailPanel (id="panel-meetings")
-                Label
-                MeetingsTable (id="meetings-table")
-            DetailPanel (id="panel-notes")
-                Label
-                NotesTable (id="notes-table")
+            Vertical (id="engagement-column")
+                DetailPanel (id="panel-contacts")
+                    Label
+                    ContactsTable (id="contacts-table")
+                DetailPanel (id="panel-meetings")
+                    Label
+                    MeetingsTable (id="meetings-table")
+                DetailPanel (id="panel-notes")
+                    Label
+                    NotesTable (id="notes-table")

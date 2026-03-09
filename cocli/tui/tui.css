@@ -163,3 +163,50 @@ DataTable > .datatable--cursor {
     background: #222222;
     color: #ffffff;
 }
+
+/* Company Detail Two-Column Layout */
+#company-detail-container {
+    width: 100%;
+    height: 100%;
+    background: #000000;
+}
+
+#panel-info {
+    width: 1fr;
+    border-right: solid #333333;
+}
+
+#engagement-column {
+    width: 40;
+    background: #000000;
+}
+
+#engagement-column > .panel {
+    height: 1fr;
+    border-bottom: solid #222222;
+}
+
+#engagement-column > .panel:last-child {
+    border-bottom: none;
+}
+
+.panel {
+    padding: 1 1;
+}
+
+.panel:focus {
+    background: #111111;
+}
+
+.panel-header {
+    background: #111111;
+    color: #00ff00;
+    text-style: bold;
+    padding: 0 1;
+    width: 100%;
+}
+
+.panel:focus .panel-header {
+    background: #00ff00;
+    color: #000000;
+}

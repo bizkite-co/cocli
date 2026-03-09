@@ -2,35 +2,20 @@
 
 View for managing a single company's details, contacts, meetings, and notes.
 
-## Current Structure (Implementation)
+## Structure
 
-Currently, the view uses a 2x2 grid (`detail-grid`) where all panels are of equal size.
-
-```text
-CompanyDetail {
-    Container(classes="detail-grid") {
-        DetailPanel(id="panel-info")      # Top-Left
-        DetailPanel(id="panel-contacts")  # Top-Right
-        DetailPanel(id="panel-meetings")  # Bottom-Left
-        DetailPanel(id="panel-notes")     # Bottom-Right
-    }
-}
-```
-
-## Proposed Structure (Refactor)
-
-The new layout will feature two primary vertical columns to give more space to company information.
+The view features two primary vertical columns. The left column is dedicated to core company information, providing flexible space for long names and URLs. The right column contains stacked panels for engagement data.
 
 ```text
 CompanyDetail {
-    Horizontal {
+    Horizontal(id="company-detail-container") {
         # Left Column: Detailed Info
         DetailPanel(id="panel-info") {
             InfoTable(id="info-table")
         }
 
         # Right Column: Engagement & Notes
-        Vertical {
+        Vertical(id="engagement-column") {
             DetailPanel(id="panel-contacts") {
                 ContactsTable(id="contacts-table")
             }
@@ -47,6 +32,8 @@ CompanyDetail {
 
 ## Strategy
 
-- **Navigation:** Maintain VIM-like navigation (`h`, `j`, `k`, `l`) between panels.
-- **Visuals:** Use a 40/60 or 50/50 split for the main columns. The right column panels will stack vertically.
-- **Flexibility:** Ensure the `InfoTable` has enough width to display long names and URLs without excessive truncating.
+- **Navigation:** Supports VIM-like navigation between panels.
+    - `h`: Focus Info Panel.
+    - `l`: Focus Engagement Column (Contacts).
+    - `j`/`k`: Cycle vertically through engagement panels.
+- **Visuals:** Uses a flexible split where company info takes the remaining space (`1fr`) and the engagement column has a fixed width (`40`).
