@@ -54,32 +54,41 @@ def audit_cli(
         console.print(f"[green]CLI structure dumped to {output}[/green]")
     else:
         console.print(report)
-
 @app.command(name="fs")
 def audit_fs(
     campaign: Optional[str] = typer.Option(None, "--campaign", "-c", help="Specific campaign to audit."),
     output: Optional[Path] = typer.Option(None, "--output", "-o", help="Output file path."),
-    fix: bool = typer.Option(False, "--fix", help="Remove orphan files and directories.")
+    gen_cleanup: bool = typer.Option(False, "--gen-cleanup", help="Generate a distributed cleanup report for orphans.")
 ) -> None:
     """
     Audits the filesystem for OMAP compliance and Screaming Architecture.
     """
     from ..core.audit.fs_auditor import FsAuditor, dump_audit_tree
     from io import StringIO
-    
+    from datetime import datetime
+
     auditor = FsAuditor()
-    
+
     # Perform full audit using schema source of truth
     root_node = auditor.audit_full(campaign_name=campaign)
-    
-    if fix:
-        console.print("[yellow]Fix mode enabled. Removing orphans...[/yellow]")
-        removed_count = auditor.fix_orphans(root_node, dry_run=False)
-        console.print(f"[green]Successfully removed {removed_count} orphans.[/green]")
-        # Re-audit after fix
-        root_node = auditor.audit_full(campaign_name=campaign)
+
+    if gen_cleanup:
+        orphans = auditor.get_orphans(root_node)
+        if not orphans:
+            console.print("[green]No orphans found. Nothing to clean.[/green]")
+        else:
+            ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+            report_path = Path(".logs") / f"orphan_cleanup_{ts}.txt"
+            report_path.parent.mkdir(parents=True, exist_ok=True)
+            auditor.generate_removal_report(orphans, report_path)
+
+            console.print(f"[bold yellow]Cleanup report generated:[/bold yellow] [cyan]{report_path}[/cyan]")
+            console.print(f"[yellow]Found {len(orphans)} orphans.[/yellow]")
+            console.print("\n[bold]To execute distributed removal (S3 + Cluster + Local):[/bold]")
+            console.print(f"  python scripts/execute_cleanup.py --report {report_path} --campaign {campaign or 'roadmap'}")
 
     tree = dump_audit_tree(root_node)
+
     
     if output:
         # For file output, we'll use a plain text version

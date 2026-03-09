@@ -23,11 +23,12 @@ class TilePath(OmapPathModel):
     extension: str = ".usv"
 
     def to_path(self) -> Path:
-        from ..sharding import get_grid_tile_id
+        from ..sharding import get_grid_tile_id, get_geo_shard
         tile_id = get_grid_tile_id(self.latitude, self.longitude)
+        geo_shard = get_geo_shard(self.latitude)
         lat_tile, lon_tile = tile_id.split("_")
         phrase_slug = slugify(self.phrase)
-        return self.root / lat_tile / lon_tile / f"{phrase_slug}{self.extension}"
+        return self.root / geo_shard / lat_tile / lon_tile / f"{phrase_slug}{self.extension}"
 
 class ShardPath(OmapPathModel):
     """

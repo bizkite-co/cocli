@@ -113,6 +113,10 @@ report: ## Show the report for the current campaign (Usage: make report [CAMPAIG
 audit-campaign: ## Audit campaign for cross-contamination (Usage: make audit-campaign [CAMPAIGN=name] [FIX=--fix])
 	@$(VENV_DIR)/bin/python scripts/audit_campaign_integrity.py $(CAMPAIGN) $(FIX)
 
+cleanse: ## Distributed removal of orphans from audit report (Usage: make cleanse REPORT=.logs/orphan_cleanup_xxx.txt [CAMPAIGN=name])
+	@if [ -z "$(REPORT)" ]; then echo "ERROR: REPORT parameter is required. Generate one with: cocli audit fs --gen-cleanup"; exit 1; fi
+	$(VENV_DIR)/bin/python scripts/execute_cleanup.py --report $(REPORT) --campaign $(or $(CAMPAIGN), roadmap)
+
 coverage-gap: ## Generate a report of unscraped target areas
 	@COCLI_DATA_HOME=$(shell pwd)/data ./.venv/bin/cocli campaign coverage-gap $(CAMPAIGN)
 

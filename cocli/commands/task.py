@@ -175,10 +175,14 @@ def start_task(slug: Optional[str] = typer.Argument(None)) -> None:
     console.print(f"[green]Task '{task.slug}' is now ACTIVE.[/green]")
 
 @app.command(name="done")
-def complete_task(slug: Optional[str] = typer.Argument(None)) -> None:
-    """Move a task to COMPLETED and remove from index. Defaults to the ACTIVE task."""
+def complete_task(
+    slug: Optional[str] = typer.Argument(None),
+    message: Optional[str] = typer.Option(None, "--message", "-m", help="Git commit message subject."),
+    body: Optional[str] = typer.Option(None, "--body", "-b", help="Git commit message body.")
+) -> None:
+    """Move a task to COMPLETED and create a Git commit."""
     manager = TaskIndexManager()
-    
+
     # Find task
     task = None
     if slug:
@@ -192,10 +196,16 @@ def complete_task(slug: Optional[str] = typer.Argument(None)) -> None:
             if t.status == TaskStatus.ACTIVE:
                 task = t
                 break
-            
+
     if not task:
         console.print("[red]No active task to complete.[/red]")
         return
+
+    # Prompt for commit message if not provided
+    if not message:
+        message = typer.prompt("Commit message subject")
+    if not body:
+        body = typer.prompt("Commit message body (optional)", default="")
 
     old_path = manager.resolve_file(task.slug)
     if not old_path:
@@ -204,15 +214,30 @@ def complete_task(slug: Optional[str] = typer.Argument(None)) -> None:
 
     new_path = ISSUES_ROOT / "completed" / "2026" / old_path.name
     new_path.parent.mkdir(parents=True, exist_ok=True)
-    
+
     old_path.rename(new_path)
-    
+
     # Removing from index happens automatically on save because we filter by status != COMPLETED
     task.status = TaskStatus.COMPLETED
-    
+
     manager.update_blocked_states()
     manager.save()
+
+    # Git Commit
+    import subprocess
+    try:
+        subprocess.run(["git", "add", "."], check=True)
+        commit_cmd = ["git", "commit", "-m", message]
+        if body:
+            commit_cmd.extend(["-m", body])
+        subprocess.run(commit_cmd, check=True)
+        console.print("[green]Changes committed to git.[/green]")
+    except subprocess.CalledProcessError as e:
+        console.print(f"[red]Git commit failed: {e}[/red]")
+        raise typer.Exit(1)
+
     console.print(f"[green]Task '{task.slug}' marked as COMPLETED and removed from index.[/green]")
+
 
 if __name__ == "__main__":
     app()

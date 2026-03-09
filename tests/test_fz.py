@@ -34,11 +34,22 @@ def test_fz_finds_and_views_company(setup_test_environment, mocker):
     """
     company_name, _ = setup_test_environment
     company_slug = slugify(company_name)
+    display_str = f'COMPANY:{company_name}'
+
+    from cocli.models.search import SearchResult
+    mock_item = SearchResult(
+        type="company",
+        name=company_name,
+        slug=company_slug,
+        display=display_str,
+        unique_id=company_slug
+    )
+    mocker.patch('cocli.commands.fz.get_fuzzy_search_results', return_value=[mock_item])
 
     mock_view_company = mocker.patch('cocli.commands.fz.view_company')
     # We MUST patch the run_fzf in the correct module
     mock_run_fzf = mocker.patch('cocli.commands.fz.run_fzf')
-    mock_run_fzf.return_value = f'COMPANY:{company_name} -- {company_slug}'
+    mock_run_fzf.return_value = display_str
 
     # Get the click object from typer for CliRunner
     click_app = typer.main.get_command(app)
@@ -54,11 +65,22 @@ def test_fz_with_none_filter_in_config(setup_test_environment, mocker):
     """
     company_name, _ = setup_test_environment
     company_slug = slugify(company_name)
+    display_str = f'COMPANY:{company_name}'
+
+    from cocli.models.search import SearchResult
+    mock_item = SearchResult(
+        type="company",
+        name=company_name,
+        slug=company_slug,
+        display=display_str,
+        unique_id=company_slug
+    )
+    mocker.patch('cocli.commands.fz.get_fuzzy_search_results', return_value=[mock_item])
 
     mocker.patch('cocli.commands.fz.get_context', return_value="None")
     mock_view_company = mocker.patch('cocli.commands.fz.view_company')
     mock_run_fzf = mocker.patch('cocli.commands.fz.run_fzf')
-    mock_run_fzf.return_value = f'COMPANY:{company_name} -- {company_slug}'
+    mock_run_fzf.return_value = display_str
 
     click_app = typer.main.get_command(app)
     result = runner.invoke(click_app, ["fz"])

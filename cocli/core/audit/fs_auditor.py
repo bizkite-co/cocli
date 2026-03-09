@@ -1,6 +1,5 @@
 import json
 import logging
-import shutil
 from pathlib import Path
 from typing import List, Optional, Any, Dict
 from pydantic import BaseModel, Field
@@ -136,25 +135,26 @@ class FsAuditor:
         except Exception as e:
             logger.debug(f"Failed to audit USV rows for {usv_path}: {e}")
 
-    def fix_orphans(self, node: AuditNode, dry_run: bool = True) -> int:
-        """Removes items marked as ORPHAN."""
-        count = 0
+    def get_orphans(self, node: AuditNode) -> List[Path]:
+        """Recursively collects paths of all items marked as ORPHAN."""
+        orphans = []
         for child in node.children:
             if child.status == AuditStatus.ORPHAN:
-                if not dry_run:
-                    try:
-                        if child.is_dir:
-                            shutil.rmtree(child.path)
-                        else:
-                            child.path.unlink()
-                        logger.info(f"FIXED: Removed orphan {child.path}")
-                    except Exception as e:
-                        logger.error(f"FAILED to remove orphan {child.path}: {e}")
-                count += 1
-            
-            # Recurse
-            count += self.fix_orphans(child, dry_run)
-        return count
+                orphans.append(child.path)
+            # Recurse into valid directories to find nested orphans
+            # but don't recurse into orphans themselves
+            elif child.is_dir:
+                orphans.extend(self.get_orphans(child))
+        return orphans
+
+    def generate_removal_report(self, orphans: List[Path], output_path: Path) -> None:
+        """
+        Generates a text file containing absolute local paths of orphans.
+        This report can be fed into scripts/execute_cleanup.py for distributed removal.
+        """
+        with open(output_path, "w", encoding="utf-8") as f:
+            for p in orphans:
+                f.write(f"{p.absolute()}\n")
 
 def dump_audit_tree(node: AuditNode, console: Optional[Any] = None, tree: Optional[Any] = None) -> Any:
     """Renders the audit tree using Rich's Tree widget."""

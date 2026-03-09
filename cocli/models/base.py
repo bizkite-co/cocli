@@ -31,6 +31,7 @@ class BaseUsvModel(BaseModel):
         Follows field definition order strictly.
         Handles datetimes, lists, and special character sanitization.
         """
+        from ..core.constants import UNIT_SEP
         field_names = list(self.__class__.model_fields.keys())
         # Use by_alias=False to ensure we use internal field names
         dump = self.model_dump(by_alias=False)
@@ -57,7 +58,8 @@ class BaseUsvModel(BaseModel):
                 s_val = str(val).replace("\r\n", "<br>").replace("\n", "<br>").replace("\r", "<br>").replace(UNIT_SEP, " ")
                 values.append(s_val)
         
-        return UNIT_SEP.join(values) + "\n"
+        from ..core.constants import UNIT_SEP, RECORD_SEP
+        return UNIT_SEP.join(values) + RECORD_SEP + "\n"
 
     @classmethod
     def from_usv(cls: Type[T], usv_str: str) -> T:

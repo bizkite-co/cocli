@@ -56,17 +56,14 @@ def fz(
 
     # The get_fuzzy_search_results function now handles campaign context and filtering
     all_searchable_items = get_fuzzy_search_results(
-        search_query=filter_str if filter_str is not None else "", # Pass filter_str as search_query
-        campaign_name=get_campaign(), # Pass campaign explicitly
+        search_query="", 
+        campaign_name=get_campaign(),
         force_rebuild_cache=force_rebuild_cache
     )
 
     logger.debug(f"Found {len(all_searchable_items)} searchable items.")
     if not all_searchable_items:
-        if filter_str:
-            console.print(f"No companies or people found with filter '{filter_str}'.")
-        else:
-            console.print("No companies or people found to search.")
+        console.print("No companies or people found to search.")
         raise typer.Exit()
 
     fzf_input_lines = [item.display for item in all_searchable_items]
