@@ -3,48 +3,11 @@
 ## Objective
 Isolate the data pipeline into role-based, least-privilege workers and implement immutable WASI-based transformers to ensure permanent field-level data integrity.
 
-## Phase 6: Queue Management & Transformation Visibility ✅
-- [x] **The "To Call" Pipeline**: Decoupled leads into sharded USV pointers.
-- [x] **Ultra-Robust Parser**: Captured Griffith (4.7) and Granite (3.7) via ARIA/Text nodes.
-- [x] **Discovery "Witness" Mandate**:
-    - [x] **Richer Discovery**: Expanded `gm-list` to 9 fields (domain, rating, gmb_url).
-    - [x] **Deep-Sharding**: Aligned `gm-list` trace paths with 3-level geo blueprint.
-    - [x] **Anti-Destruction**: Compactor strictly preserves session trace files.
-
-## Phase 7: Role-Based Isolation & Cluster Deployment ✅
-- [x] **Modular Processors**: Extracted `GmListProcessor` and `GoogleMapsDetailsProcessor`.
-- [x] **Role-Aware Workers**: Added `--role scraper` and `--role processor` modes.
-- [x] **Safe RPI Deployment**: Standardized `make hotfix-cluster-safe` (Hub-Registry-Propagation).
-- [x] **High-Fidelity Recovery Scraper**:
-    - [x] **State Machine Refactor**: Formalized `GoogleMapsDetailsScraper` with auditable phases (Warmup, Navigate, Heal, Capture).
-    - [x] **Pre-Flight Warmup**: Bypassed "Limited View" cloaking via `google.com/maps` session establishment.
-    - [x] **Session-Heal**: Implemented aggressive semantic hydration clicks (jsaction-based).
-    - [x] **Deduplicating Compactor**: DuckDB-powered clean index rewrite (Reduced 256MB -> 10MB).
-- [x] **Bulk Recovery (10k Scrape)**:
-    - [x] Created `scripts/enqueue_bulk_recovery.py` with positional DuckDB query.
-    - [x] Enqueued 10,000 targets into `gm-details` queue on S3.
-    - [x] Swapped RPI fleet to `--role scraper` mode via `swap_cluster_role.sh`.
-
-## Phase 8: High-Fidelity Discovery & Gossip Activation ✅
-- [x] **OMAP Pathing Authority**:
-    - [x] **Double-Sharding Fix**: Eliminated the `2/2/` path regression by centralizing resolution in `FilesystemQueue`.
-    - [x] **Proactive Path Ensuring**: Added `.queue(..., ensure=True)` to the paths authority for self-healing directory creation.
-    - [x] **Coordinate Scales**: Enforced explicit precision (Scale 1 for sharding, Scale 6 for points) via `GeoDegrees`.
-- [x] **Automated Funnel Orchestration**:
-    - [x] **State-Aware Batching**: `create-batch` now tracks `last_offset` in `mission_state.toml` for effortless sequential rollouts.
-    - [x] **Metadata Auditing**: Receipts now capture `user_agent`, `viewport`, and `browser_settings` for 100% auditable results.
-- [x] **Real-Time Gossip Bridge**:
-    - [x] **Cluster-Wide Sync**: Activated `QueueDatagram` broadcasts in `FilesystemQueue.ack`.
-    - [x] **Native Networking**: Enabled **WSL Mirror Mode** and Docker `--network host` for seamless laptop-to-PI communication.
-    - [x] **Diagnostic CLI**: Implemented `cocli cluster gossip-audit` and integrated `monitor-batch` with a `--cluster` flag.
-- [x] **Surgical Cluster Sync**:
-    - [x] Optimized `rsync` to target only active task/result folders, bypassing massive legacy datasets.
-
-## Phase 9: Hardened Security & WASI (Future)
+## Phase 9: Hardened Security & WASI
 - [ ] **Least-Privilege AWS Roles**:
     - [ ] **Scraper Policy**: Allow `s3:PutObject` to `raw/`, `s3:GetObject` from `queues/`.
     - [ ] **Processor Policy**: Allow `s3:GetObject` from `raw/`, `s3:PutObject` to `wal/`.
-- [ ] WASI Compaction:
+- [ ] **WASI Compaction**:
     - [ ] Compile USV compactors to WASM to freeze transformation logic.
     - [ ] Designated PI runner for compaction-only role.
 - [ ] **Gossip Data Bridge**: 
@@ -52,8 +15,14 @@ Isolate the data pipeline into role-based, least-privilege workers and implement
     - [ ] Stream compacted index data directly between nodes (P2P).
 
 ## Phase 10: Structural Audit & Screaming Architecture
-- [x] **Universal Structure Dump**:
-    - [x] Implement TUI tree dumper with "Smart Condensing" logic.
-    - [x] Integrate into `cocli tui --dump-tree`.
-    - [x] Document strategy in [screaming-architecture-implemented-output.md](docs/issues/screaming-architecture-implemented-output.md).
-
+- [x] **CLI Structure Dump**:
+    - [x] Implement command hierarchy dumper for Typer in `cocli audit cli`.
+    - [x] Documented in [docs/cli/README.md](docs/cli/README.md).
+- [x] **Project Integrity**:
+    - [x] Decouple CLI commands and TUI from `make` dependencies (Cluster stop, Infra deploy).
+    - [x] Implement and install Git `pre-commit` hook requiring `make test`.
+- [ ] **Filesystem Audit**:
+    - [ ] Implement directory structure reporter for 'Screaming' compliance.
+- [ ] **TUI Dev Enhancements**:
+    - [ ] Add runtime "Structure Save" hotkey (`ctrl+s` in dev mode).
+    - [ ] Link TUI dumper to the universal [screaming-architecture-implemented-output.md](docs/issues/screaming-architecture-implemented-output.md) strategy.

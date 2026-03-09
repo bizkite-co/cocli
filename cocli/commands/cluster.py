@@ -102,6 +102,35 @@ def top(
     asyncio.run(check_all())
     console.print(table)
 
+@app.command(name="stop")
+def stop(
+    campaign: Optional[str] = typer.Option(None, "--campaign", "-c", help="Campaign name."),
+) -> None:
+    """
+    Stops all cocli worker containers across all cluster nodes.
+    """
+    effective_campaign = campaign or os.getenv("CAMPAIGN_NAME") or get_campaign()
+    if not effective_campaign:
+        console.print("[red]No campaign specified.[/red]")
+        raise typer.Exit(1)
+
+    service = ClusterService(effective_campaign)
+    nodes = service.get_nodes()
+    
+    console.print(f"[bold red]Stopping all workers for campaign: {effective_campaign}[/bold red]")
+    
+    async def stop_all() -> None:
+        for node in nodes:
+            console.print(f"  Stopping workers on {node.hostname}...")
+            # Stop any container starting with cocli-
+            cmd = "docker stop $(docker ps -q --filter name=cocli-) 2>/dev/null || true"
+            await service.run_remote_command(node, cmd)
+            cmd_rm = "docker rm $(docker ps -a -q --filter name=cocli-) 2>/dev/null || true"
+            await service.run_remote_command(node, cmd_rm)
+
+    asyncio.run(stop_all())
+    console.print("[bold green]Cluster stopped.[/bold green]")
+
 @app.command(name="status")
 def status(
     campaign: Optional[str] = typer.Option(None, "--campaign", "-c", help="Campaign name."),

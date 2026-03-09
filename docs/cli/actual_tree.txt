@@ -1,0 +1,413 @@
+cocli
+    add - Add a new company or a person to an existing company.
+        --company/-c (text) [required]
+        --person/-p (text)
+    add-email - Adds an email address to a company and records it in the campaign index.
+        company_name (text) [required]
+        email (text) [required]
+        --campaign/-c (text)
+    add-meeting - Add a new meeting for a company.
+        --company/-c (text) [required]
+        --date/-d (text)
+        --time/-t (text)
+        --title/-T (text)
+    audit - Auditing tools for the cocli system structure and integrity.
+        cli - Dumps the CLI command hierarchy.
+            --output/-o (path)
+        tui - Dumps the TUI widget hierarchy.
+            --output/-o (path)
+    campaign - Manage campaigns.
+        achieve-goal
+            --emails (integer)
+            campaign_name (text)
+            --force/-f (boolean)
+            --ttl-days (integer)
+            --proximity (float)
+            --grid (boolean)
+        add - Adds a new campaign.
+            name (text) [required]
+            company (text) [required]
+        add-location - Adds a target location to the campaign.
+            location (text) [required]
+            --campaign/-c (text)
+        add-query - Adds a search query to the campaign configuration.
+            query (text) [required]
+            --campaign/-c (text)
+        bucket - Displays the S3 bucket root and campaign path.
+            --campaign/-c (text)
+        build-mission-index - Explodes a mission list into the Active Task Pool (discovery-gen/completed/).
+            campaign_name (text)
+            --batch (text)
+        compile-lifecycle - Compiles the lifecycle index from local completed queues.
+            campaign_name (text)
+        coverage-gap - Generates a report matching every target area to its most recent scrape date.
+            campaign_name (text)
+            --output (path)
+        create-batch - Creates a named batch subset from the pending frontier for controlled rollout.
+            campaign_name (text)
+            --name (text)
+            --limit (integer)
+            --offset (integer)
+            --query (text)
+        edit - Edits an existing campaign's configuration.
+            campaign_name (text)
+        exclude - Manage campaign-specific exclusions
+            add - Excludes a company (by slug or domain) from a campaign.
+                target (text) [required]
+                --campaign/-c (text) [required]
+                --reason/-r (text)
+            list - Lists all exclusions for a campaign.
+                --campaign/-c (text) [required]
+            remove - Removes an exclusion from a campaign.
+                target (text) [required]
+                --campaign/-c (text) [required]
+        generate-grid - Generates a 0.1-degree aligned scrape grid for each target location in the campaign.
+            campaign_name (text)
+            --proximity (float)
+        geocode-locations - Scans the campaign's target locations CSV and fills in missing geocoordinates.
+            campaign_name (text)
+        import-contacts - Imports contacts from a CSV file into a campaign.
+            csv_path (path) [required]
+            campaign_name (text)
+        import-prospects - Imports prospects from a campaign's prospects.csv into the canonical company structure.
+            campaign_name (text)
+        monitor-batch - Monitor the progress of a discovery batch.
+            campaign_name (text)
+            --name (text)
+            --recent (boolean)
+            --cluster (boolean)
+        next-step - Advances the campaign workflow to the next logical step.
+            campaign_name (text)
+        path-check - Audits specific data paths across the local machine, PI cluster, and S3.
+            paths (text) [required]
+            --campaigns/-c (text)
+        prepare-mission - Generates a deterministic master task list (mission.usv) and calculates the unscraped frontier.
+            campaign_name (text)
+            --ttl-days (integer)
+            --debug (boolean)
+        prospects - Manage prospects within a campaign
+            enrich - Enriches prospects for the current campaign with website data.
+                --force/-f (boolean)
+                --ttl-days (integer)
+                --runner (text)
+                --workers (integer)
+            enrich-from-queue - Consumes enrichment tasks from the campaign's queue.
+                campaign_name (text)
+                --runner (text)
+                --batch-size (integer)
+                --cloud-queue (boolean)
+                --dual-purpose (boolean)
+            tag-from-csv - Updates company tags based on the prospects.csv file for the current campaign.
+            to-hubspot-csv - Exports campaign prospects to a HubSpot CSV file.
+                --with-email (boolean)
+                --city (text)
+                --state (text)
+        publish-kml - Generates all KMLs (Customers, Prospects, Coverage) and uploads them to S3.
+            campaign_name (text)
+            --bucket (text)
+            --domain (text)
+            --profile (text)
+        queue-batch - Enqueues or exports a batch of scrape tasks for the campaign.
+            campaign_name (text)
+            --limit (integer)
+            --force (boolean)
+            --dry-run (boolean)
+            --output/-o (path)
+            --no-limit (boolean)
+        queue-enrichment - Enqueues companies from the campaign for website enrichment into the DFQ.
+            campaign_name (text)
+            --force/-f (boolean)
+            --limit/-l (integer)
+            --has-email (boolean)
+        queue-mission - Reports the status of the Discovery Generation queue.
+            campaign_name (text)
+        queue-scrapes
+            campaign_name (text)
+            --include-legacy (boolean)
+            --force (boolean)
+            --dry-run (boolean)
+        remove-location - Removes a target location from the campaign.
+            location (text) [required]
+            --campaign/-c (text)
+        remove-query - Removes a search query from the campaign configuration.
+            query (text) [required]
+            --campaign/-c (text)
+        restore-names - Restores company names from the Google Maps index and writes provenance receipts.
+            campaign_name (text)
+            --dry-run (boolean)
+        rollout - Standardized campaign rollout management
+            audit - Pulls results from all cluster nodes and runs a quality audit.
+                --campaign/-c (text)
+            broadcast-config - Broadcasts the current scaling configuration to all cluster nodes via Gossip.
+                --campaign/-c (text)
+            push - Propagates local campaign discovery tasks and batches to the cluster.
+                --campaign/-c (text)
+                --delete (boolean)
+            run - Executes a standardized discovery rollout:
+                campaign_name (text)
+                --name (text)
+                --limit (integer)
+                --ttl-days (integer)
+                --force/-f (boolean)
+                --purge (boolean)
+                --monitor (boolean)
+        sanitize-discovery - High-Fidelity Discovery Reset: Pulls from S3, purges junk/hollow USVs, and propagates to PIs.
+            campaign_name (text)
+        set - Sets the current campaign context.
+            campaign_name (text) [required]
+        show - Displays the current campaign context.
+        start-workflow - Starts the campaign workflow.
+            campaign_name (text)
+        status - Displays the current state of the campaign workflow.
+            campaign_name (text)
+        unset - Clears the current campaign context.
+        upload-kml-coverage - Legacy command for manual placement into turboship repo.
+            campaign_name (text)
+            --turboship-kml-exports-path (path)
+            --filename (text)
+            --type (text)
+        visualize-coverage - Generates KML files to visualize the scraped areas for a campaign.
+            campaign_name (text)
+        visualize-legacy-scrapes - Generates a KML file for all legacy (non-grid-aligned) scraped areas.
+            campaign_name (text)
+    cluster - Manage the Raspberry Pi worker cluster.
+        deploy-hotfix - Safe Cluster Deployment: Builds on Hub (cocli5x1), pushes to registry, and spokes pull.
+            --campaign/-c (text)
+        gossip-audit - Diagnostic tool for the cluster Gossip Bridge.
+            --target/-t (text)
+            --timeout (float)
+        status - Checks health and container status of all nodes in the cluster.
+            --campaign/-c (text)
+        top - Real-time performance monitor for the cluster (CPU, Temp, Workers).
+            --campaign/-c (text)
+    companies - Commands for managing companies.
+        list-recent - Lists the most recently created companies.
+            --count/-c (integer)
+    compile-enrichment - Compiles enrichment data from various sources into the main company _index.md files.
+        --campaign/-c (text)
+    context - Sets, shows, or clears the current context.
+        filter_str (text)
+    deduplicate
+        deduplicate - Deduplicates company data by generating a stable hash for each company and removing duplicates.
+            --dry-run (boolean)
+    enrich - Commands for enriching company data.
+        contacts - Scrape contact information from a company's website and add/update them in the CRM.
+            company_name (text) [required]
+        list - List all available enrichment scripts.
+            --data-dir/-d (path)
+        run - Run a specific enrichment script on one or all companies.
+            script_name (text)
+            --company/-c (text)
+            --all/-a (boolean)
+            --unenriched-only/-u (boolean)
+            --data-dir/-d (path)
+    enrich-customers - Enrich existing customers for a campaign with Google Maps data.
+        campaign_name (text) [required]
+    enrich-shopify-data - Enriches company data from a list of Shopify domains.
+        --input/-i (text)
+        --force/-f (boolean)
+        --headed (boolean)
+        --devtools (boolean)
+        --debug (boolean)
+    exclude - Manage campaign-specific exclusions
+        add - Excludes a company (by slug or domain) from a campaign.
+            target (text) [required]
+            --campaign/-c (text) [required]
+            --reason/-r (text)
+        list - Lists all exclusions for a campaign.
+            --campaign/-c (text) [required]
+        remove - Removes an exclusion from a campaign.
+            target (text) [required]
+            --campaign/-c (text) [required]
+    flag-email-providers - Flags a list of domains as email providers in the website cache.
+        domains (text) [required]
+    fz - Fuzzy search for companies and people using fzf and open the selection.
+        --filter/-f (text)
+        --force-rebuild-cache (boolean)
+    google-maps-cache-to-company-files - Imports prospects from a CSV file, creating or updating companies and their enrichments.
+        prospects_csv_path (file)
+        --tag (text)
+        --campaign/-c (text)
+        --companies-dir (path)
+        --match-threshold (integer)
+    google-maps-csv-to-google-maps-cache - Ingests a CSV file with Google Maps data into the Google Maps cache.
+        csv_path (file)
+        --campaign/-c (text)
+    import-customers - Imports customers and their addresses from CSV files, creating companies and people.
+        customers_csv_path (file) [required]
+        addresses_csv_path (file) [required]
+        --tag (text) [required]
+        --campaign/-c (text)
+    import-data - Import data using a specified importer.
+        importer_name (text) [required]
+        file_path (path)
+        --debug (boolean)
+    index - Commands for managing sharded indexes.
+        backfill-domains - Backfill the Domain Index from local website enrichment files.
+            --campaign (text)
+            --limit/-l (integer)
+            --compact (boolean)
+        compact - Compact the Write-Ahead Log (WAL) into the main Checkpoint.
+            --campaign (text)
+            --index (text)
+            --debug (boolean)
+        status - Show the status of the index tiers (WAL, Processing, Checkpoint).
+            --campaign (text)
+            --index (text)
+        write-datapackage - Generates Frictionless Data 'datapackage.json' for the specified index.
+            --campaign (text)
+            --index-model (text)
+    infrastructure - Manage cocli infrastructure (Raspberry Pis, AWS).
+        start-worker - Starts a cocli worker role on a specific host.
+            host (text) [required]
+            --role (text)
+            --count/-n (integer)
+            --campaign/-c (text)
+            --user/-u (text)
+        stop-workers - Stops all cocli workers on a specific host.
+            host (text) [required]
+            --user/-u (text)
+    init - Initializes the cocli configuration file.
+    next - Lists upcoming meetings and allows interactive selection.
+    open-company-folder - Open the company's folder in nvim.
+        company_name (text) [required]
+    process-shopify-scrapes - Compiles and deduplicates scraped Shopify data from multiple CSV files into a single index file.
+        --output/-o (text)
+    query - Commands for querying company data.
+        query-prospects-location - Find prospects within a certain radius of a city, using the prospects CSV for speed.
+            city (text) [required]
+            --radius/-r (float)
+            --campaign/-c (text)
+    recent - Lists recent meetings and allows interactive selection.
+    render
+        kml - Render a KML file for a campaign.
+            campaign_name (text) [required]
+            --output-dir/-o (path)
+        kml-coverage - Render a KML file for the 'turboship' campaign and place it in the turboship project's
+            campaign_name (text)
+            --turboship-kml-exports-path (path)
+    render-prospects-kml - Generates a KML file for prospects from a CSV file for a specific campaign,
+        campaign_name (text) [required]
+    scrape-shopify-myip - Scrapes Shopify store information from myip.ms.
+        --ip-index/-i (integer)
+        --start-page/-s (integer)
+        --end-page/-e (integer)
+        --output-dir/-o (path)
+        --debug (boolean)
+    smart-sync
+        active-leases
+            --campaign/-c (text)
+            --workers (integer)
+            --full (boolean)
+            --force (boolean)
+        all - Syncs everything for a campaign (Config, Prospects, Emails, and Queues).
+            --campaign/-c (text)
+            --workers (integer)
+            --full (boolean)
+            --force (boolean)
+        campaign-config
+            --campaign/-c (text)
+        companies
+            --campaign/-c (text)
+            --workers (integer)
+            --full (boolean)
+            --force (boolean)
+        emails
+            --campaign/-c (text)
+            --workers (integer)
+            --full (boolean)
+            --force (boolean)
+        enrichment-queue
+            --campaign/-c (text)
+            --workers (integer)
+            --full (boolean)
+            --force (boolean)
+        prospects
+            --campaign/-c (text)
+            --workers (integer)
+            --full (boolean)
+            --force (boolean)
+        queues
+            --campaign/-c (text)
+            --workers (integer)
+            --full (boolean)
+            --force (boolean)
+        raw - Syncs raw HTML witnesses (both details and list items) from S3.
+            --campaign/-c (text)
+            --workers (integer)
+            --full (boolean)
+            --force (boolean)
+        scraped-areas
+            --campaign/-c (text)
+            --workers (integer)
+            --full (boolean)
+            --force (boolean)
+        scraped-tiles
+            --campaign/-c (text)
+            --workers (integer)
+            --full (boolean)
+            --force (boolean)
+    status - Displays the current status of the cocli environment and campaign metrics.
+        --campaign (text)
+        --refresh/-r (boolean)
+        --local/-l (boolean)
+    sync - Commands for syncing data with S3.
+        config - Syncs the campaign config.toml file with S3.
+            campaign_name (text) [required]
+            --direction (text)
+            --dry-run (boolean)
+        indexes - Bidirectional sync of indexes with S3.
+            campaign_name (text)
+            --dry-run (boolean)
+        queue - Syncs a specific campaign queue with S3.
+            campaign_name (text) [required]
+            queue_name (text) [required]
+            --direction (text)
+            --delete (boolean)
+            --limit/-l (integer)
+            --dry-run (boolean)
+    tui - Launches the Textual TUI for cocli.
+        --dump-tree (path)
+    view-company - View details of a specific company.
+        company_slug (text) [required]
+    view-meetings - View all meetings for a specific company.
+        company_name (text) [required]
+    web - Manage web deployment.
+        deploy - Deploys the web dashboard (shell) and campaign data (KMLs, Report) to S3.
+            --campaign-name/--campaign (text)
+            --profile (text)
+            --bucket (text)
+            --domain (text)
+        report - Generates a JSON report for the campaign.
+            --campaign-name/--campaign (text)
+            --output (path)
+    worker
+        enrichment - Starts a worker node that polls for enrichment tasks (Domains) and scrapes them.
+            --campaign/-c (text)
+            --headed (boolean)
+            --debug (boolean)
+            --workers/-w (integer)
+            --role (text)
+        gm-details - Starts a worker node that polls for Google Maps Details tasks (Place IDs) and scrapes them.
+            --campaign/-c (text)
+            --headed (boolean)
+            --debug (boolean)
+            --workers/-w (integer)
+            --role (text)
+        gm-list - Starts a worker node that polls for Google Maps List tasks and executes them.
+            --campaign/-c (text)
+            --headed (boolean)
+            --debug (boolean)
+            --workers/-w (integer)
+            --role (text)
+        gossip - Starts the Gossip Bridge to propagate WAL datagrams across the cluster.
+            --debug (boolean)
+        orchestrate - Starts orchestrated workers for this node as defined in the campaign cluster config.
+            --campaign/-c (text)
+            --headed (boolean)
+            --debug (boolean)
+        supervisor - Starts a supervisor that dynamically manages scrape and details workers based on config.
+            --campaign/-c (text)
+            --headed (boolean)
+            --debug (boolean)
+            --interval (integer)

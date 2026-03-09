@@ -4,8 +4,9 @@ help: ## Display this help screen
 	@awk 'BEGIN {FS = ":.*?## "}; /^[a-zA-Z_-]+:.*?## / {printf "  \033[32m%-20s\033[0m %s\n", $$1, $$2}' $(MAKEFILE_LIST)
 
 .PHONY: init
-init: ## Initialize the cocli configuration file
+init: ## Initialize the cocli configuration file and install git hooks
 	./.venv/bin/cocli init
+	$(VENV_DIR)/bin/python scripts/install_hooks.py
 
 # ==============================================================================
 # Application Tasks
@@ -891,6 +892,10 @@ path-check: install ## Audit paths across cluster and S3 (Usage: make path-check
 .PHONY: tui-tree
 tui-tree: install ## Dump the TUI widget tree for Screaming Architecture comparison
 	@PYTHONPATH=. $(VENV_DIR)/bin/cocli tui --dump-tree docs/tui/screen/actual_tree.txt
+
+.PHONY: cli-tree
+cli-tree: install ## Dump the CLI command tree for Screaming Architecture comparison
+	@PYTHONPATH=. $(VENV_DIR)/bin/cocli audit cli --output docs/cli/actual_tree.txt
 
 .PHONY: task
 task: install ## Show the current task.md and its linked documents

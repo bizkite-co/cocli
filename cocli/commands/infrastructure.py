@@ -49,5 +49,44 @@ def start_worker(
 
     start_rpi_worker(host, campaign_name, role, profile, queues, user, workers)
 
+@app.command()
+def deploy_infra(
+    campaign: Optional[str] = typer.Option(None, "--campaign", "-c", help="Campaign name.")
+) -> None:
+    """Deploys AWS Infrastructure using CDK."""
+    import subprocess
+    campaign_name = campaign or get_campaign()
+    if not campaign_name:
+        console.print("[bold red]Error:[/bold red] No campaign specified.")
+        raise typer.Exit(1)
+
+    config = load_campaign_config(campaign_name)
+    aws_config = config.get("aws", {})
+    profile = aws_config.get("profile") or aws_config.get("aws_profile") or "default"
+    region = aws_config.get("region") or "us-east-1"
+
+    console.print(f"[bold cyan]Deploying infrastructure for campaign: {campaign_name}[/bold cyan]")
+    console.print(f"Using AWS Profile: [yellow]{profile}[/yellow]")
+
+    # Check/Create ECR
+    repo_name = "cocli-enrichment-service"
+    ecr_cmd = ["aws", "ecr", "describe-repositories", "--repository-names", repo_name, "--region", region, "--profile", profile]
+    if subprocess.run(ecr_cmd, capture_output=True).returncode != 0:
+        console.print(f"Creating ECR repository: {repo_name}...")
+        subprocess.run(["aws", "ecr", "create-repository", "--repository-name", repo_name, "--region", region, "--profile", profile], check=True)
+
+    # Run CDK
+    cdk_cmd = [
+        "cd", "cdk_scraper_deployment", "&&",
+        "uv", "pip", "install", "-r", "requirements.txt", "&&",
+        "cdk", "deploy", "--require-approval", "never", "--profile", profile, "-c", f"campaign={campaign_name}"
+    ]
+    subprocess.run(" ".join(cdk_cmd), shell=True, check=True)
+    
+    # Update config
+    console.print("Updating campaign config with latest infrastructure details...")
+    subprocess.run(["python", "scripts/update_campaign_infra_config.py", campaign_name], check=True)
+    console.print("[bold green]Infrastructure deployment complete.[/bold green]")
+
 if __name__ == "__main__":
     app()

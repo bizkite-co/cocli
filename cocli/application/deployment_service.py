@@ -13,12 +13,9 @@ class DeploymentService:
     def deploy_infra(self) -> Dict[str, Any]:
         """
         Deploys AWS Infrastructure using CDK.
-        Corresponds to 'make deploy-infra'.
         """
         try:
-            # We can't easily run interactive CDK from here, but we can trigger it
-            # This is a simplification.
-            cmd = f"make deploy-infra CAMPAIGN={self.campaign_name}"
+            cmd = f"cocli infrastructure deploy-infra --campaign {self.campaign_name}"
             subprocess.run(cmd, shell=True, check=True)
             return {"status": "success", "message": "Infra deployment triggered."}
         except Exception as e:

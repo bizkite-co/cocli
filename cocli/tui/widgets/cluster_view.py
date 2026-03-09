@@ -47,9 +47,8 @@ class ClusterView(VerticalScroll):
         if not campaign:
             return
         self.notify(f"Stopping {campaign} cluster workers...")
-        # We need a 'cocli cluster stop' command, but for now we can use ssh
-        # to stop the supervisor containers
-        cmd = f"make stop-rpi-all CAMPAIGN={campaign}"
+        # Use cocli cluster stop command
+        cmd = f"cocli cluster stop --campaign {campaign}"
         await asyncio.create_subprocess_shell(cmd)
 
     def __init__(self, *args: Any, **kwargs: Any) -> None:
