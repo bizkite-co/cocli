@@ -12,19 +12,21 @@ We are implementing a "Universal Structure Dump" capability across the `cocli` e
 ## Implementation Status
 
 ### TUI Domain
-- **Mechanism:** `cocli tui --dump-tree [PATH]`
+- **Mechanism:** `cocli tui --dump-tree [PATH]` or `cocli audit tui`
 - **DSL:** Indented text tree representing the Textual widget hierarchy.
 - **Logic:** "Smart Condensing" in `cocli/tui/utils.py` summarizes repetitive items (like ListItems) while preserving unique structural components (widgets with IDs).
 - **Trigger:** Integrated into `Makefile` via `make tui-tree`.
 
-### CLI Domain (Planned)
-- **Mechanism:** `cocli audit --cli`
+### CLI Domain
+- **Mechanism:** `cocli audit cli`
 - **DSL:** Indented tree of Typer commands, subcommands, and options.
 - **Goal:** Align CLI command hierarchy with the modular logic in `cocli/commands/`.
+- **Trigger:** Integrated into `Makefile` via `make cli-tree`.
 
-### Filesystem Domain (Planned)
-- **Mechanism:** `cocli audit --fs`
+### Filesystem Domain
+- **Mechanism:** `cocli audit fs`
 - **DSL:** Indented tree of the `data/` and `docs/` hierarchies, highlighting "Screaming Architecture" compliance.
+- **Trigger:** Integrated into `Makefile` via `make fs-tree`.
 
 ### Boundary Definitions (Guidance)
 As we separate Scraper Workers from CRM UI, we will need to identify "Domain Boundaries" in the reports:
@@ -33,7 +35,7 @@ As we separate Scraper Workers from CRM UI, we will need to identify "Domain Bou
 - **Visual Separation:** Group components in the report by their deployment target (e.g., "Fargate-Ready" vs. "Residential-Only").
 
 ## Future Tasks
-- [ ] Implement CLI structure dumper.
-- [ ] Implement Filesystem structure auditor.
+- [x] Implement CLI structure dumper.
+- [x] Implement Filesystem structure auditor.
 - [ ] Add runtime TUI "Structure Save" hotkey (e.g., `ctrl+s` in dev mode).
-- [ ] Implement `make task` for enhanced Markdown-based task management.
+- [x] Implement `make task` for enhanced Markdown-based task management.

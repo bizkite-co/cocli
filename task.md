@@ -21,8 +21,9 @@ Isolate the data pipeline into role-based, least-privilege workers and implement
 - [x] **Project Integrity**:
     - [x] Decouple CLI commands and TUI from `make` dependencies (Cluster stop, Infra deploy).
     - [x] Implement and install Git `pre-commit` hook requiring `make test`.
-- [ ] **Filesystem Audit**:
-    - [ ] Implement directory structure reporter for 'Screaming' compliance.
+- [x] **Filesystem Audit**:
+    - [x] Implement directory structure reporter for 'Screaming' compliance in `cocli audit fs`.
+    - [x] Documented in [docs/fs/README.md](docs/fs/README.md).
 - [ ] **TUI Dev Enhancements**:
     - [ ] Add runtime "Structure Save" hotkey (`ctrl+s` in dev mode).
     - [ ] Link TUI dumper to the universal [screaming-architecture-implemented-output.md](docs/issues/screaming-architecture-implemented-output.md) strategy.

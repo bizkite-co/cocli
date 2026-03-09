@@ -1,0 +1,62 @@
+[AuditStatus.VALID] data_root
+├── [AuditStatus.VALID] campaigns
+│   ├── [AuditStatus.VALID] roadmap
+│   │   ├── [AuditStatus.VALID] config.toml
+│   │   ├── [AuditStatus.VALID] queues
+│   │   ├── [AuditStatus.VALID] indexes
+│   │   ├── [AuditStatus.VALID] recovery
+│   │   ├── [AuditStatus.ORPHAN] mission_state.toml (Unknown campaign component)
+│   │   ├── [AuditStatus.ORPHAN] roadmap_customers.kml (Unknown campaign component)
+│   │   ├── [AuditStatus.ORPHAN] samantha-mckenna.html (Unknown campaign component)
+│   │   ├── [AuditStatus.ORPHAN] migration_plan.txt (Unknown campaign component)
+│   │   ├── [AuditStatus.ORPHAN] target_locations.usv (Unknown campaign component)
+│   │   ├── [AuditStatus.ORPHAN] getretirementtaxanalyzer.com (Unknown campaign 
+│   │   │   component)
+│   │   ├── [AuditStatus.ORPHAN] paladin-indigo.html (Unknown campaign component)
+│   │   ├── [AuditStatus.ORPHAN] samantha-mckenna.md (Unknown campaign component)
+│   │   ├── [AuditStatus.ORPHAN] migration_audit_20260206_135039.txt (Unknown campaign 
+│   │   │   component)
+│   │   ├── [AuditStatus.ORPHAN] hardware (Unknown campaign component)
+│   │   ├── [AuditStatus.ORPHAN] testimonials (Unknown campaign component)
+│   │   ├── [AuditStatus.ORPHAN] migration_audit_20260206_134955.txt (Unknown campaign 
+│   │   │   component)
+│   │   ├── [AuditStatus.ORPHAN] coverage.kml (Unknown campaign component)
+│   │   ├── [AuditStatus.ORPHAN] BJ-MEYER-INTRO.md (Unknown campaign component)
+│   │   ├── [AuditStatus.ORPHAN] prospects (Unknown campaign component)
+│   │   ├── [AuditStatus.ORPHAN] README.md (Unknown campaign component)
+│   │   ├── [AuditStatus.ORPHAN] paladin-indigo.md (Unknown campaign component)
+│   │   ├── [AuditStatus.ORPHAN] hollow_prospects.log (Unknown campaign component)
+│   │   ├── [AuditStatus.ORPHAN] roadmap_prospects.kml (Unknown campaign component)
+│   │   ├── [AuditStatus.ORPHAN] exports (Unknown campaign component)
+│   │   ├── [AuditStatus.ORPHAN] prs-roadmap-email-funnel.md (Unknown campaign component)
+│   │   ├── [AuditStatus.ORPHAN] testimonial_users.csv (Unknown campaign component)
+│   │   ├── [AuditStatus.ORPHAN] initiatives (Unknown campaign component)
+│   │   ├── [AuditStatus.ORPHAN] migration_audit.log (Unknown campaign component)
+│   │   └── [AuditStatus.ORPHAN] raw (Unknown campaign component)
+│   ├── [AuditStatus.ORPHAN] README.md (Files not allowed in campaigns root)
+│   ├── [AuditStatus.VALID] turboship
+│   │   ├── [AuditStatus.VALID] config.toml
+│   │   ├── [AuditStatus.VALID] queues
+│   │   ├── [AuditStatus.VALID] indexes
+│   │   ├── [AuditStatus.VALID] recovery
+│   │   ├── [AuditStatus.ORPHAN] mission_state.toml (Unknown campaign component)
+│   │   ├── [AuditStatus.ORPHAN] customers (Unknown campaign component)
+│   │   ├── [AuditStatus.ORPHAN] hardware (Unknown campaign component)
+│   │   ├── [AuditStatus.ORPHAN] 
+│   │   │   Structures_Medical_Emergency_Response_v1_5487209263076931915.csv (Unknown 
+│   │   │   campaign component)
+│   │   ├── [AuditStatus.ORPHAN] prospects (Unknown campaign component)
+│   │   ├── [AuditStatus.ORPHAN] README.md (Unknown campaign component)
+│   │   ├── [AuditStatus.ORPHAN] frontier (Unknown campaign component)
+│   │   ├── [AuditStatus.ORPHAN] largest-hospitals.md (Unknown campaign component)
+│   │   ├── [AuditStatus.ORPHAN] exports (Unknown campaign component)
+│   │   ├── [AuditStatus.ORPHAN] scraped_data (Unknown campaign component)
+│   │   ├── [AuditStatus.ORPHAN] target_locations.csv (Unknown campaign component)
+│   │   ├── [AuditStatus.ORPHAN] turboship_customers.kml (Unknown campaign component)
+│   │   ├── [AuditStatus.ORPHAN] mission.json (Unknown campaign component)
+│   │   ├── [AuditStatus.ORPHAN] turboship_prospects.kml (Unknown campaign component)
+│   │   └── [AuditStatus.ORPHAN] initiatives (Unknown campaign component)
+│   └── [AuditStatus.ORPHAN] config-template.toml (Files not allowed in campaigns root)
+├── [AuditStatus.MISSING] queues
+├── [AuditStatus.VALID] indexes
+└── [AuditStatus.VALID] companies

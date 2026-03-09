@@ -4,7 +4,7 @@ from pathlib import Path
 
 from rich.console import Console
 
-app = typer.Typer(help="Auditing tools for the cocli system structure and integrity.")
+app = typer.Typer(help="Auditing tools for the cocli system structure and integrity.", no_args_is_help=True)
 console = Console()
 
 def dump_cli_tree(command: Any, out: Any, indent: int = 0) -> None:
@@ -54,6 +54,48 @@ def audit_cli(
         console.print(f"[green]CLI structure dumped to {output}[/green]")
     else:
         console.print(report)
+
+@app.command(name="fs")
+def audit_fs(
+    campaign: Optional[str] = typer.Option(None, "--campaign", "-c", help="Specific campaign to audit."),
+    output: Optional[Path] = typer.Option(None, "--output", "-o", help="Output file path.")
+) -> None:
+    """
+    Audits the filesystem for OMAP compliance and Screaming Architecture.
+    """
+    from ..core.audit.fs_auditor import FsAuditor, AuditNode, AuditStatus, dump_audit_tree
+    from ..core.paths import paths
+    from io import StringIO
+    
+    auditor = FsAuditor()
+    
+    # 1. Audit Root (top level components)
+    root_node = AuditNode(name="data_root", path=paths.root, is_dir=True, status=AuditStatus.VALID)
+    root_node.children.append(auditor.audit_campaigns(campaign))
+    root_node.children.append(auditor.audit_queues())
+    
+    # Add indexes and companies as placeholders for now
+    root_node.children.append(AuditNode(
+        name="indexes", path=paths.root / "indexes", is_dir=True,
+        status=AuditStatus.VALID if (paths.root / "indexes").exists() else AuditStatus.MISSING
+    ))
+    root_node.children.append(AuditNode(
+        name="companies", path=paths.root / "companies", is_dir=True,
+        status=AuditStatus.VALID if (paths.root / "companies").exists() else AuditStatus.MISSING
+    ))
+    
+    tree = dump_audit_tree(root_node)
+    
+    if output:
+        # For file output, we'll use a plain text version
+        out = StringIO()
+        file_console = Console(file=out, force_terminal=False, color_system=None)
+        file_console.print(tree)
+        output.parent.mkdir(parents=True, exist_ok=True)
+        output.write_text(out.getvalue(), encoding="utf-8")
+        console.print(f"[green]Filesystem audit dumped to {output}[/green]")
+    else:
+        console.print(tree)
 
 @app.command(name="tui")
 def audit_tui(

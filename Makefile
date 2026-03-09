@@ -897,6 +897,10 @@ tui-tree: install ## Dump the TUI widget tree for Screaming Architecture compari
 cli-tree: install ## Dump the CLI command tree for Screaming Architecture comparison
 	@PYTHONPATH=. $(VENV_DIR)/bin/cocli audit cli --output docs/cli/actual_tree.txt
 
+.PHONY: fs-tree
+fs-tree: install ## Audit the filesystem structure for Screaming Architecture comparison
+	@PYTHONPATH=. $(VENV_DIR)/bin/cocli audit fs --output docs/fs/actual_tree.txt
+
 .PHONY: task
 task: install ## Show the current task.md and its linked documents
 	@PYTHONPATH=. $(VENV_DIR)/bin/python scripts/show_task.py task.md
