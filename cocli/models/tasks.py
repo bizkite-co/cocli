@@ -35,3 +35,20 @@ class MissionTask(BaseUsvModel):
     def get_header(cls) -> str:
         from ..core.constants import UNIT_SEP
         return UNIT_SEP.join(cls.model_fields.keys())
+
+class MigrationTask(BaseUsvModel):
+    """
+    Orchestrates a distributed data migration across the cluster.
+    Pairs an immutable reader with an immutable writer/transformer.
+    """
+    slug: str = Field(..., description="Unique migration identifier")
+    target_store: str = Field(..., description="The StoreIdentity to migrate")
+    old_wasi_hash: str = Field(..., description="The SHA-256 hash of the current reader")
+    new_wasi_hash: str = Field(..., description="The SHA-256 hash of the new writer")
+    transformer_wasm: str = Field(..., description="Path to the WASM transformer binary")
+    status: TaskStatus = Field(TaskStatus.PENDING)
+
+    @classmethod
+    def get_header(cls) -> str:
+        from ..core.constants import UNIT_SEP
+        return UNIT_SEP.join(cls.model_fields.keys())

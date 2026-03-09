@@ -1,5 +1,6 @@
 import logging
 from pathlib import Path
+from typing import Optional
 from .models import ShardPath
 from ..paths import paths
 from ..sharding import get_place_id_shard
@@ -52,6 +53,32 @@ class ProspectsStore:
     async def sync(self, direction: str = "up") -> None:
         """S3 parity sync for the prospect index."""
         pass
+
+    @property
+    def wasi_hash(self) -> Optional[str]:
+        """Loads wasi_hash from datapackage.json."""
+        import json
+        sentinel_path = self.root / "datapackage.json"
+        if not sentinel_path.exists():
+            return None
+        try:
+            with open(sentinel_path, "r") as f:
+                data = json.load(f)
+                val = data.get("cocli:wasi_hash")
+                return str(val) if val is not None else None
+        except Exception:
+            return None
+
+    def enforce_integrity(self, current_wasi_hash: str) -> bool:
+        sentinel_hash = self.wasi_hash
+        if sentinel_hash and current_wasi_hash != sentinel_hash:
+            raise RuntimeError(
+                f"WASI Integrity Violation for {self.root}\n"
+                f"Expected Hash: {sentinel_hash}\n"
+                f"Current Hash:  {current_wasi_hash}\n"
+                "Data position shifts prevented. Please perform a formal migration."
+            )
+        return True
 
     def verify_sentinel(self) -> bool:
         """

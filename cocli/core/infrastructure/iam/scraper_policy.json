@@ -1,0 +1,42 @@
+{
+    "Version": "2012-10-17",
+    "Statement": [
+        {
+            "Sid": "AllowQueueDiscovery",
+            "Effect": "Allow",
+            "Action": [
+                "s3:ListBucket"
+            ],
+            "Resource": [
+                "arn:aws:s3:::${BUCKET_NAME}"
+            ],
+            "Condition": {
+                "StringLike": {
+                    "s3:prefix": [
+                        "campaigns/*/queues/*"
+                    ]
+                }
+            }
+        },
+        {
+            "Sid": "AllowQueueConsumption",
+            "Effect": "Allow",
+            "Action": [
+                "s3:GetObject"
+            ],
+            "Resource": [
+                "arn:aws:s3:::${BUCKET_NAME}/campaigns/*/queues/*"
+            ]
+        },
+        {
+            "Sid": "AllowRawUpload",
+            "Effect": "Allow",
+            "Action": [
+                "s3:PutObject"
+            ],
+            "Resource": [
+                "arn:aws:s3:::${BUCKET_NAME}/campaigns/*/raw/*"
+            ]
+        }
+    ]
+}

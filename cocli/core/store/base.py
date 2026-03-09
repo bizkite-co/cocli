@@ -1,4 +1,4 @@
-from typing import Protocol
+from typing import Protocol, Optional
 from pathlib import Path
 
 class ManagedStore(Protocol):
@@ -33,6 +33,18 @@ class ManagedStore(Protocol):
         Enforces parity between Local and S3.
         'up': Push local changes to S3.
         'down': Pull remote changes to Local.
+        """
+        ...
+
+    @property
+    def wasi_hash(self) -> Optional[str]:
+        """The SHA-256 hash of the authoritative WASI module for this store."""
+        ...
+
+    def enforce_integrity(self, current_wasi_hash: str) -> bool:
+        """
+        Ensures that the current execution context matches the store's sentinel.
+        Raises error if current_wasi_hash != sentinel_wasi_hash.
         """
         ...
 

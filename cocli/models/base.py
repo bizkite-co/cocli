@@ -130,13 +130,18 @@ class BaseUsvModel(BaseModel):
         }
 
     @classmethod
-    def save_datapackage(cls, path: Path, resource_name: str, resource_path: str, force: bool = False) -> None:
+    def save_datapackage(cls, path: Path, resource_name: str, resource_path: str, force: bool = False, wasi_hash: Optional[str] = None) -> None:
         """
         Saves the datapackage.json to the specified directory.
         Enforces strict schema compliance (Append-Only) unless force=True.
         """
         path.mkdir(parents=True, exist_ok=True)
         new_schema = cls.get_datapackage(resource_name, resource_path)
+        
+        # Add WASI sentinel if provided
+        if wasi_hash:
+            new_schema["cocli:wasi_hash"] = wasi_hash
+            
         new_fields = new_schema["resources"][0]["schema"]["fields"]
         
         sentinel_path = path / "datapackage.json"

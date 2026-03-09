@@ -40,6 +40,7 @@ dependencies = [
     "duckdb",
     "zeroconf>=0.148.0",
     "watchdog>=6.0.0",
+    "wasmtime>=29.0.0",
 ]
 
 [project.scripts]
