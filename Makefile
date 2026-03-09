@@ -915,7 +915,7 @@ sync-clocks: install ## Synchronize clocks across the cluster nodes
 	@PYTHONPATH=. $(VENV_DIR)/bin/cocli cluster sync-clocks
 
 .PHONY: task
-task: install ## Show the current task.md and its linked documents
-	@PYTHONPATH=. $(VENV_DIR)/bin/python scripts/show_task.py task.md
+task: install ## Show the current highest priority development task
+	@PYTHONPATH=. $(VENV_DIR)/bin/cocli task next
 
 include mk/cluster.mk

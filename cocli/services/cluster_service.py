@@ -291,7 +291,7 @@ class ClusterService:
         local_tiles_dir = paths.indexes / "scraped-tiles"
         local_tiles_dir.mkdir(parents=True, exist_ok=True)
 
-        logger.info(f"[bold cyan]Direct Pull: high-speed witness data from cluster...[/bold cyan]")
+        logger.info("[bold cyan]Direct Pull: high-speed witness data from cluster...[/bold cyan]")
 
         for node in self.get_nodes():
             host = node.hostname

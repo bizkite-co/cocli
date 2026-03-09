@@ -234,7 +234,7 @@ def audit_rollout(
     # 4. Remote Health Check
     hub = "cocli5x1.pi"
     console.print(f"\n[bold]Cluster Hub ({hub}) Health Check:[/bold]")
-    log_cmd = f"docker logs --tail 100 cocli-supervisor 2>&1 | grep -i 'error' | head -n 5"
+    log_cmd = "docker logs --tail 100 cocli-supervisor 2>&1 | grep -i 'error' | head -n 5"
     try:
         res = subprocess.run(["ssh", f"mstouffer@{hub}", log_cmd], capture_output=True, text=True)
         if res.stdout:
