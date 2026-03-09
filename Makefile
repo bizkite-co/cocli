@@ -13,8 +13,13 @@ init: ## Initialize the cocli configuration file and install git hooks
 # ==============================================================================
 .PHONY: build
 build: install ## Build the application distributables (wheel and sdist)
-	@echo "Building the application..."
-	uv run python -m build
+	@if python3 scripts/check_code_signature.py --check --task build $(if $(FORCE),--force); then \
+		echo "Code signature matches for task 'build'. Skipping build."; \
+	else \
+		echo "Building the application..."; \
+		uv run python -m build && \
+		python3 scripts/check_code_signature.py --update --task build; \
+	fi
 
 SHELL := /bin/bash
 
