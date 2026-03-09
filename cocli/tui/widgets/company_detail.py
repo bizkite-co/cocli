@@ -746,13 +746,11 @@ class CompanyDetail(Container):
         self.info_table.clear()
         c = self.company_data["company"]
         tags = self.company_data.get("tags", [])
+        keywords = c.get("keywords", [])
         website_data = self.company_data.get("website_data")
         enrichment_mtime = self.company_data.get("enrichment_mtime")
 
         self.info_table.add_row("Name", escape(str(c.get("name", "Unknown"))))
-        self.info_table.add_row("Domain", escape(str(c.get("domain") or "")))
-        self.info_table.add_row("Email", format_email_display(c.get("email")))
-        self.info_table.add_row("Phone", format_phone_display(c.get("phone_number")))
         
         rating = c.get("average_rating")
         review_count = c.get("reviews_count")
@@ -762,38 +760,33 @@ class CompanyDetail(Container):
                 rating_str += f" ({review_count} reviews)"
             self.info_table.add_row("Rating", rating_str)
 
+        self.info_table.add_row("Domain", escape(str(c.get("domain") or "")))
+        self.info_table.add_row("Email", format_email_display(c.get("email")))
+        self.info_table.add_row("Phone", format_phone_display(c.get("phone_number")))
+        
         self.info_table.add_row("Street", escape(str(c.get("street_address") or "")))
         self.info_table.add_row("City", escape(str(c.get("city") or "")))
         self.info_table.add_row("State", escape(str(c.get("state") or "")))
         self.info_table.add_row("Zip", escape(str(c.get("zip_code") or "")))
 
-        # Lifecycle
+        # Lifecycle Status (Screaming architecture compliance)
         scraped_at = c.get("list_found_at")
         if scraped_at:
             dt = datetime.fromisoformat(scraped_at) if isinstance(scraped_at, str) else scraped_at
-            self.info_table.add_row("Scraped", dt.strftime("%Y-%m-%d"))
+            self.info_table.add_row("gm-list", dt.strftime("%Y-%m-%d"))
         
         details_at = c.get("details_found_at")
         if details_at:
             dt = datetime.fromisoformat(details_at) if isinstance(details_at, str) else details_at
-            self.info_table.add_row("Details", dt.strftime("%Y-%m-%d"))
+            self.info_table.add_row("gm-detail", dt.strftime("%Y-%m-%d"))
 
-        # Consolidate Enriched/Enqueued status
         enqueued_at = c.get("enqueued_at")
         if enrichment_mtime:
             dt = datetime.fromisoformat(enrichment_mtime)
-            self.info_table.add_row("Enriched", f"[bold green]{dt.strftime('%Y-%m-%d %H:%M')}[/]")
+            self.info_table.add_row("enrichment", f"[bold green]{dt.strftime('%Y-%m-%d %H:%M')}[/]")
         elif enqueued_at:
             dt = datetime.fromisoformat(enqueued_at) if isinstance(enqueued_at, str) else enqueued_at
-            self.info_table.add_row("Enriched", f"[bold yellow]{dt.strftime('%Y-%m-%d')} (pending)[/]")
-        else:
-            self.info_table.add_row("Enriched", "No")
-
-        # Callback date
-        callback_at = c.get("callback_at")
-        if callback_at:
-            dt = datetime.fromisoformat(callback_at) if isinstance(callback_at, str) else callback_at
-            self.info_table.add_row("Callback", f"[bold cyan]{dt.strftime('%Y-%m-%d')}[/]")
+            self.info_table.add_row("enrichment", f"[bold yellow]{dt.strftime('%Y-%m-%d')} (pending)[/]")
 
         if tags:
             display_tags = []
@@ -803,21 +796,28 @@ class CompanyDetail(Container):
                 else:
                     display_tags.append(t)
             self.info_table.add_row("Tags", ", ".join(display_tags))
+
+        if keywords:
+            self.info_table.add_row("Keywords", ", ".join(keywords))
         
-        if website_data:
-            socials = []
-            if website_data.get("linkedin_url"):
-                socials.append("LinkedIn")
-            if website_data.get("facebook_url"):
-                socials.append("FB")
-            if website_data.get("instagram_url"):
-                socials.append("IG")
-            if socials:
-                self.info_table.add_row("Socials", " | ".join(socials))
-            
-            desc = website_data.get("description")
-            if desc:
-                self.info_table.add_row("Desc", escape(desc[:100] + "..."))
+        # Social Media
+        socials = []
+        if c.get("facebook_url") or (website_data and website_data.get("facebook_url")):
+            socials.append("FB")
+        if c.get("linkedin_url") or (website_data and website_data.get("linkedin_url")):
+            socials.append("LI")
+        if c.get("instagram_url") or (website_data and website_data.get("instagram_url")):
+            socials.append("IG")
+        if c.get("twitter_url") or (website_data and website_data.get("twitter_url")):
+            socials.append("TW")
+        
+        if socials:
+            self.info_table.add_row("Socials", " | ".join(socials))
+
+        # Desc
+        desc = c.get("description") or (website_data and website_data.get("description"))
+        if desc:
+            self.info_table.add_row("Desc", escape(str(desc)[:100].replace("\n", " ") + "..."))
 
     def _create_info_table(self) -> InfoTable:
         table = InfoTable(id="info-table")
