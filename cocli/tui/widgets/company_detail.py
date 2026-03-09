@@ -694,17 +694,32 @@ class CompanyDetail(Container):
             current_value = ""
         field_map = {
             "Email": "email", "Phone": "phone_number", "Domain": "domain", "Name": "name",
-            "Street": "street_address", "City": "city", "State": "state", "Zip": "zip_code"
+            "Street": "street_address", "CSZ": "csz"
         }
         model_field = field_map.get(field_name)
         if not model_field:
             self.app.notify(f"Cannot edit {field_name} yet.", severity="warning")
             return
-        input_widget = EditInput(field_name=model_field, value=current_value, id=f"edit-{model_field}")
+        
         panel = self.query_one("#panel-info", DetailPanel)
         self.info_table.display = False
-        panel.mount(input_widget)
-        input_widget.focus()
+
+        if model_field == "csz":
+            c = self.company_data["company"]
+            city = str(c.get("city") or "")
+            state = str(c.get("state") or "")
+            zip_code = str(c.get("zip_code") or "")
+            
+            with Horizontal(id="edit-csz-container"):
+                city_input = EditInput(field_name="city", value=city, placeholder="City", id="edit-city")
+                state_input = EditInput(field_name="state", value=state, placeholder="State", id="edit-state")
+                zip_input = EditInput(field_name="zip_code", value=zip_code, placeholder="Zip", id="edit-zip_code")
+                panel.mount(city_input, state_input, zip_input)
+                city_input.focus()
+        else:
+            input_widget = EditInput(field_name=model_field, value=current_value, id=f"edit-{model_field}")
+            panel.mount(input_widget)
+            input_widget.focus()
 
     def action_cancel_edit(self) -> None:
         """Cancel the current inline edit and restore the table."""
@@ -722,24 +737,51 @@ class CompanyDetail(Container):
     async def handle_edit_submitted(self, event: Input.Submitted) -> None:
         if not isinstance(event.input, EditInput):
             return
-        field_name = event.input.field_name
-        new_value = event.value
+        
         company_slug = self.company_data["company"].get("slug")
-        if company_slug:
-            try:
-                company = Company.get(company_slug)
-                if company:
-                    setattr(company, field_name, new_value)
-                    company.save()
-                    self.app.notify(f"Updated {field_name}")
-                    self.company_data["company"][field_name] = new_value
-                    event.input.remove()
-                    # Re-render info table content (identity/address)
-                    self._refresh_info_table()
-                    self.info_table.display = True
-                    self.info_table.focus()
-            except Exception as e:
-                self.app.notify(f"Save failed: {e}", severity="error")
+        if not company_slug:
+            return
+
+        panel = self.query_one("#panel-info", DetailPanel)
+        csz_container = panel.query_one("#edit-csz-container", Horizontal) if "csz" in str(event.input.id) or "city" in str(event.input.id) or "state" in str(event.input.id) or "zip" in str(event.input.id) else None
+
+        try:
+            company = Company.get(company_slug)
+            if not company:
+                return
+
+            if csz_container:
+                # Save all 3 fields at once
+                city_val = csz_container.query_one("#edit-city", EditInput).value
+                state_val = csz_container.query_one("#edit-state", EditInput).value
+                zip_val = csz_container.query_one("#edit-zip_code", EditInput).value
+                
+                company.city = city_val
+                company.state = state_val
+                company.zip_code = zip_val
+                company.save()
+                
+                self.app.notify("Updated City, State, and Zip")
+                self.company_data["company"]["city"] = city_val
+                self.company_data["company"]["state"] = state_val
+                self.company_data["company"]["zip_code"] = zip_val
+                csz_container.remove()
+            else:
+                field_name = event.input.field_name
+                new_value = event.value
+                setattr(company, field_name, new_value)
+                company.save()
+                self.app.notify(f"Updated {field_name}")
+                self.company_data["company"][field_name] = new_value
+                event.input.remove()
+
+            # Restore table
+            self._refresh_info_table()
+            self.info_table.display = True
+            self.info_table.focus()
+
+        except Exception as e:
+            self.app.notify(f"Save failed: {e}", severity="error")
 
     def _refresh_info_table(self) -> None:
         """Repopulate info table content."""
@@ -764,9 +806,11 @@ class CompanyDetail(Container):
         self.info_table.add_row("Phone", format_phone_display(c.get("phone_number")))
         
         self.info_table.add_row("Street", escape(str(c.get("street_address") or "")))
-        self.info_table.add_row("City", escape(str(c.get("city") or "")))
-        self.info_table.add_row("State", escape(str(c.get("state") or "")))
-        self.info_table.add_row("Zip", escape(str(c.get("zip_code") or "")))
+        
+        city = c.get("city") or ""
+        state = c.get("state") or ""
+        zip_code = c.get("zip_code") or ""
+        self.info_table.add_row("CSZ", f"{city}, {state} {zip_code}")
 
         # Lifecycle Status (Always shown to emphasize OMAP pipeline)
         scraped_at = c.get("list_found_at")

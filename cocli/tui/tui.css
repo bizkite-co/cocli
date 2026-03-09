@@ -210,3 +210,17 @@ DataTable > .datatable--cursor {
     background: #00ff00;
     color: #000000;
 }
+
+#edit-csz-container {
+    height: auto;
+    width: 100%;
+}
+
+#edit-csz-container EditInput {
+    width: 1fr;
+    margin-right: 1;
+}
+
+#edit-csz-container EditInput:last-child {
+    margin-right: 0;
+}
