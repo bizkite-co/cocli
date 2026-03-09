@@ -212,29 +212,31 @@ def complete_task(
         console.print(f"[red]Requirement file for '{task.slug}' not found.[/red]")
         return
 
-    new_path = ISSUES_ROOT / "completed" / "2026" / old_path.name
-    new_path.parent.mkdir(parents=True, exist_ok=True)
-
-    old_path.rename(new_path)
-
-    # Removing from index happens automatically on save because we filter by status != COMPLETED
-    task.status = TaskStatus.COMPLETED
-
-    manager.update_blocked_states()
-    manager.save()
-
-    # Git Commit
+    # 1. Prepare Git Commit
     import subprocess
     try:
+        console.print("[yellow]Staging changes and running pre-commit tests...[/yellow]")
         subprocess.run(["git", "add", "."], check=True)
         commit_cmd = ["git", "commit", "-m", message]
         if body:
             commit_cmd.extend(["-m", body])
+        
+        # This will trigger the pre-commit hook (tests/lint)
         subprocess.run(commit_cmd, check=True)
-        console.print("[green]Changes committed to git.[/green]")
-    except subprocess.CalledProcessError as e:
-        console.print(f"[red]Git commit failed: {e}[/red]")
+        console.print("[green]Changes committed to git successfully.[/green]")
+    except subprocess.CalledProcessError:
+        console.print("[red]Git commit failed (tests or lint likely failed). Task remains ACTIVE.[/red]")
         raise typer.Exit(1)
+
+    # 2. Update Filesystem and Index ONLY if commit succeeded
+    new_path = ISSUES_ROOT / "completed" / "2026" / old_path.name
+    new_path.parent.mkdir(parents=True, exist_ok=True)
+    old_path.rename(new_path)
+
+    # Removing from index happens automatically on save because we filter by status != COMPLETED
+    task.status = TaskStatus.COMPLETED
+    manager.update_blocked_states()
+    manager.save()
 
     console.print(f"[green]Task '{task.slug}' marked as COMPLETED and removed from index.[/green]")
 
