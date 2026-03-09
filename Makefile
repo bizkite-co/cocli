@@ -907,9 +907,12 @@ fs-tree: install ## Audit the filesystem structure for Screaming Architecture co
 	@PYTHONPATH=. $(VENV_DIR)/bin/cocli audit fs --output docs/fs/actual_tree.txt
 
 .PHONY: rollout-audit
-rollout-audit: install ## Run automated diagnostic for the active canary rollouts
-	@PYTHONPATH=. $(VENV_DIR)/bin/cocli audit rollout --name canary_100
-	@PYTHONPATH=. $(VENV_DIR)/bin/cocli audit rollout --name rollout_5000
+rollout-audit: install sync-clocks ## Run automated diagnostic for the active canary rollouts (direct from cluster)
+	@PYTHONPATH=. $(VENV_DIR)/bin/cocli audit rollout --cluster
+
+.PHONY: sync-clocks
+sync-clocks: install ## Synchronize clocks across the cluster nodes
+	@PYTHONPATH=. $(VENV_DIR)/bin/cocli cluster sync-clocks
 
 .PHONY: task
 task: install ## Show the current task.md and its linked documents

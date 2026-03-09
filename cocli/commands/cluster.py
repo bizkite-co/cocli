@@ -102,6 +102,42 @@ def top(
     asyncio.run(check_all())
     console.print(table)
 
+@app.command(name="sync-clocks")
+def sync_clocks(
+    authoritative_node: str = typer.Option("cocli5x1.pi", "--source", help="Node to use as the time authority."),
+) -> None:
+    """
+    Synchronizes clocks across the cluster using the Hub as the authority.
+    """
+    from ..services.cluster_service import ClusterService
+    import subprocess
+    
+    # 1. Get current time from authority
+    try:
+        res = subprocess.run(["ssh", f"mstouffer@{authoritative_node}", "date -u +'%Y-%m-%d %H:%M:%S'"], capture_output=True, text=True, check=True)
+        auth_time = res.stdout.strip()
+        console.print(f"[cyan]Authority ({authoritative_node}) time: {auth_time} UTC[/cyan]")
+    except Exception as e:
+        console.print(f"[red]Could not get time from authority: {e}[/red]")
+        raise typer.Exit(1)
+
+    service = ClusterService("roadmap") # Campaign doesn't matter for clock sync
+    nodes = service.get_nodes()
+    
+    async def sync_all() -> None:
+        for node in nodes:
+            if node.hostname == authoritative_node:
+                continue
+            console.print(f"  Syncing {node.hostname}...")
+            # Force update time using date -s (requires sudo/root in container or host)
+            # Since workers run as root in container, and we want to affect the HOST, 
+            # this is best done via SSH to the host.
+            cmd = f"sudo date -s '{auth_time}'"
+            await service.run_remote_command(node, cmd)
+
+    asyncio.run(sync_all())
+    console.print("[bold green]Clock synchronization complete.[/bold green]")
+
 @app.command(name="stop")
 def stop(
     campaign: Optional[str] = typer.Option(None, "--campaign", "-c", help="Campaign name."),

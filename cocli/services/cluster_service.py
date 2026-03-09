@@ -282,6 +282,36 @@ class ClusterService:
             except Exception as e:
                 logger.warning(f"Could not push to {host}: {e}")
 
+    async def pull_scraped_tiles(self, user: str = "mstouffer") -> None:
+        """
+        Directly pulls high-speed witness files from cluster nodes.
+        Bypasses S3 for rapid local diagnostic updates.
+        """
+        from ..core.paths import paths
+        local_tiles_dir = paths.indexes / "scraped-tiles"
+        local_tiles_dir.mkdir(parents=True, exist_ok=True)
+
+        logger.info(f"[bold cyan]Direct Pull: high-speed witness data from cluster...[/bold cyan]")
+
+        for node in self.get_nodes():
+            host = node.hostname
+            logger.info(f"  Pulling tiles from {host}...")
+            # Witness files are stored in global indexes/scraped-tiles on the host
+            remote_path = "~/repos/data/indexes/scraped-tiles/"
+
+            # Use -rtWz for fastest performance
+            rsync_cmd = [
+                "rsync", "-rtWz",
+                f"{user}@{host}:{remote_path}", str(local_tiles_dir) + "/"
+            ]
+
+            try:
+                subprocess.run(rsync_cmd, capture_output=True, text=True, timeout=120)
+            except subprocess.TimeoutExpired:
+                logger.warning(f"  Pull from {host} timed out.")
+            except Exception as e:
+                logger.warning(f"  Could not pull from {host}: {e}")
+
     async def run_remote_command(self, node: PiNodeConfig, command: str, user: str = "mstouffer") -> str:
         res = subprocess.run(["ssh", f"{user}@{node.hostname}", command], capture_output=True, text=True)
         return res.stdout if res.returncode == 0 else res.stderr

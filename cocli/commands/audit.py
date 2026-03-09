@@ -110,109 +110,131 @@ def audit_fs(
 @app.command(name="rollout")
 def audit_rollout(
     campaign: Optional[str] = typer.Option(None, "--campaign", "-c", help="Campaign name."),
-    name: str = typer.Option("canary_100", "--name", "-n", help="Name of the batch to audit."),
+    name: Optional[str] = typer.Option(None, "--name", "-n", help="Specific batch to audit. If omitted, audits all active batches."),
+    cluster: bool = typer.Option(True, "--cluster/--no-cluster", help="Pull latest results directly from cluster nodes via rsync."),
 ) -> None:
     """
-    Automated diagnostic for a rollout batch across the cluster.
-    Combines batch status, cluster task count, and health check.
+    Automated diagnostic for active rollout batches across the cluster.
     """
     from ..core.config import get_campaign
     from ..core.paths import paths
     from ..core.sharding import get_geo_shard, get_grid_tile_id
     from ..core.text_utils import slugify
     from ..models.campaigns.mission import MissionTask
+    from ..services.cluster_service import ClusterService
     from rich.table import Table
     from datetime import datetime, UTC, timedelta
     import json
     import subprocess
+    import asyncio
 
     campaign_name = campaign or get_campaign()
     if not campaign_name:
         console.print("[red]No campaign specified.[/red]")
         return
 
-    # 1. Locate Batch
+    # 1. Direct Cluster Pull
+    if cluster:
+        service = ClusterService(campaign_name)
+        asyncio.run(service.pull_scraped_tiles())
+
+    # 2. Locate Batches
     discovery_gen = paths.campaign(campaign_name).queue("discovery-gen")
-    batch_file = discovery_gen.pending / "batches" / f"{name}.usv"
-    if not batch_file.exists():
-        console.print(f"[red]Batch file not found: {batch_file}[/red]")
-        return
-
-    # 2. Query Cluster for live counts
-    hub = "cocli5x1.pi"
-    console.print(f"[cyan]Analyzing rollout '{name}' for campaign '{campaign_name}'...[/cyan]")
+    batches_dir = discovery_gen.pending / "batches"
     
-    tasks: List[MissionTask] = []
-    with open(batch_file, "r", encoding="utf-8") as f:
-        for line in f:
-            if line.strip():
-                try:
-                    tasks.append(MissionTask.from_usv(line))
-                except Exception:
-                    continue
+    if name:
+        batch_files = [batches_dir / f"{name}.usv"]
+    else:
+        # Automatically find active-looking batches (rollout_*, canary_*)
+        batch_files = sorted(list(batches_dir.glob("canary_*.usv")) + list(batches_dir.glob("rollout_*.usv")))
 
-    if not tasks:
-        console.print("[yellow]No valid tasks found in batch.[/yellow]")
+    if not batch_files:
+        console.print(f"[yellow]No active batches found in {batches_dir}[/yellow]")
         return
 
-    # 3. Build Detailed Report
-    table = Table(title=f"Rollout Audit: {name}")
-    table.add_column("Status", justify="center")
-    table.add_column("Count", justify="right")
-    table.add_column("Description")
-
-    # Local Checks (Summary only for speed)
     results_dir = paths.campaign(campaign_name).queue("gm-list").completed / "results"
+    witness_dir = paths.root / "indexes" / "scraped-tiles"
     pending_queue_dir = paths.campaign(campaign_name).queue("gm-list").pending
     
-    done = 0
-    stale = 0
-    active = 0
-    pending = 0
-    
     now = datetime.now(UTC)
-    threshold = now - timedelta(hours=24)
+    threshold = now - timedelta(hours=48)
 
-    for task in tasks:
-        lat_shard = get_geo_shard(float(task.latitude))
-        grid_id = get_grid_tile_id(float(task.latitude), float(task.longitude))
-        lat_tile, lon_tile = grid_id.split("_")
-        phrase_slug = slugify(task.search_phrase)
+    for batch_file in batch_files:
+        if not batch_file.exists():
+            continue
+            
+        console.print(f"\n[bold cyan]Auditing Batch: {batch_file.name}[/bold cyan]")
         
-        receipt_file = results_dir / lat_shard / lat_tile / lon_tile / f"{phrase_slug}.json"
-        task_sub_path = f"{lat_shard}/{lat_tile}/{lon_tile}/{phrase_slug}.usv"
-        lease_file = pending_queue_dir / task_sub_path / "lease.json"
-        
-        if receipt_file.exists():
-            try:
-                with open(receipt_file, "r") as f:
-                    data = json.load(f)
-                    comp_at_str = data.get("completed_at")
-                    if comp_at_str:
-                        comp_at = datetime.fromisoformat(comp_at_str.replace("Z", "+00:00"))
-                        if comp_at > threshold:
-                            done += 1
-                        else:
-                            stale += 1
-                    else:
-                        done += 1
-            except Exception:
-                done += 1
-        elif lease_file.exists():
-            active += 1
-        else:
-            pending += 1
+        tasks: List[MissionTask] = []
+        with open(batch_file, "r", encoding="utf-8") as f:
+            for line in f:
+                if line.strip():
+                    try:
+                        tasks.append(MissionTask.from_usv(line))
+                    except Exception:
+                        continue
 
-    table.add_row("[bold green]DONE[/]", str(done), "Completed within last 24h")
-    table.add_row("[blue]STALE[/]", str(stale), "Completed > 24h ago (Pending Refresh)")
-    table.add_row("[yellow]ACTIVE[/]", str(active), "Currently being scraped by workers")
-    table.add_row("[white]PENDING[/]", str(pending), "Waiting in queue")
-    
-    console.print(table)
+        if not tasks:
+            continue
 
-    # 4. Remote Health Check (Logs)
+        done = 0
+        stale = 0
+        active = 0
+        pending = 0
+
+        for task in tasks:
+            lat_shard = get_geo_shard(float(task.latitude))
+            grid_id = get_grid_tile_id(float(task.latitude), float(task.longitude))
+            lat_tile, lon_tile = grid_id.split("_")
+            phrase_slug = slugify(task.search_phrase)
+            
+            receipt_file = results_dir / lat_shard / lat_tile / lon_tile / f"{phrase_slug}.json"
+            witness_usv = witness_dir / lat_tile / lon_tile / f"{phrase_slug}.usv"
+            witness_csv = witness_dir / lat_tile / lon_tile / f"{phrase_slug}.csv"
+            
+            task_sub_path = f"{lat_shard}/{lat_tile}/{lon_tile}/{phrase_slug}.usv"
+            lease_file = pending_queue_dir / task_sub_path / "lease.json"
+            
+            is_done = False
+            comp_at = None
+            
+            if witness_usv.exists() or witness_csv.exists():
+                is_done = True
+            elif receipt_file.exists():
+                is_done = True
+                try:
+                    with open(receipt_file, "r") as f:
+                        data = json.load(f)
+                        comp_at_str = data.get("completed_at")
+                        if comp_at_str:
+                            comp_at = datetime.fromisoformat(comp_at_str.replace("Z", "+00:00"))
+                except Exception:
+                    pass
+
+            if is_done:
+                if comp_at and comp_at > threshold:
+                    done += 1
+                else:
+                    stale += 1
+            elif lease_file.exists():
+                active += 1
+            else:
+                pending += 1
+
+        table = Table(title=f"Results: {batch_file.name}")
+        table.add_column("Status", justify="center")
+        table.add_column("Count", justify="right")
+        table.add_column("Description")
+        table.add_row("[bold green]DONE[/]", str(done), "Recently completed")
+        table.add_row("[blue]STALE[/]", str(stale), "Indexed/Witnessed (Synced)")
+        table.add_row("[yellow]ACTIVE[/]", str(active), "Being scraped")
+        table.add_row("[white]PENDING[/]", str(pending), "Waiting in queue")
+        console.print(table)
+
+    # 4. Remote Health Check
+    hub = "cocli5x1.pi"
     console.print(f"\n[bold]Cluster Hub ({hub}) Health Check:[/bold]")
-    log_cmd = "docker logs --tail 100 cocli-supervisor 2>&1 | grep -i 'error' | head -n 5"
+    log_cmd = f"docker logs --tail 100 cocli-supervisor 2>&1 | grep -i 'error' | head -n 5"
     try:
         res = subprocess.run(["ssh", f"mstouffer@{hub}", log_cmd], capture_output=True, text=True)
         if res.stdout:
