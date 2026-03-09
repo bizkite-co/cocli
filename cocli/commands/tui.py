@@ -54,6 +54,17 @@ def run_tui_app(
                     await tui_app.action_show_people()
                     await pilot.pause()
                     dump_tree_util(app_content, file=f)
+
+                    f.write("\n=== CompanyDetail ===\n")
+                    # Manually trigger a company selection
+                    company_slug = "first-command-financial-advisor-michael-hager-mba"
+                    company_data = services.get_company_details(company_slug)
+                    if company_data:
+                        from ..tui.widgets.company_detail import CompanyDetail
+                        await app_content.remove_children()
+                        await app_content.mount(CompanyDetail(company_data))
+                        await pilot.pause()
+                        dump_tree_util(app_content, file=f)
             
             print(f"TUI tree dumped to {output_path}")
 

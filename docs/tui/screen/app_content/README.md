@@ -8,6 +8,7 @@ The main content area of the application, which switches between different prima
 Container(id="app_content") {
     # One of the following views:
     CompanySearchView
+    CompanyDetail
     PersonList
     ApplicationView
 }

@@ -241,3 +241,20 @@ Container (id="app_content")
         Input (id="person_search_input")
         VerticalScroll
             ListView (id="person_list_view")
+
+=== CompanyDetail ===
+Container (id="app_content")
+    CompanyDetail
+        Container
+            DetailPanel (id="panel-info")
+                Label
+                InfoTable (id="info-table")
+            DetailPanel (id="panel-contacts")
+                Label
+                ContactsTable (id="contacts-table")
+            DetailPanel (id="panel-meetings")
+                Label
+                MeetingsTable (id="meetings-table")
+            DetailPanel (id="panel-notes")
+                Label
+                NotesTable (id="notes-table")
