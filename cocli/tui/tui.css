@@ -135,7 +135,7 @@ CompanySearchView {
 /* Section Headers (Status, Queue, etc) */
 .pane-header, .sidebar-title {
     background: #111111;
-    color: #555555; /* Dimmer text for unfocused */
+    color: #888888; /* Grey text for unfocused as requested */
     text-style: bold;
     padding: 0 1;
     height: 1; /* Force single line */
@@ -147,7 +147,8 @@ CompanySearchView {
 #app_nav_container:focus-within, 
 #app_sub_nav_container:focus-within,
 #app_main_content:focus-within,
-#app_recent_runs:focus-within {
+#app_recent_runs:focus-within,
+.category-content-root:focus-within {
     background: #161616; /* More distinct background for focused pane */
 }
 
@@ -155,7 +156,8 @@ CompanySearchView {
 #app_nav_container:focus-within .sidebar-title,
 #app_sub_nav_container:focus-within .sidebar-title,
 #app_main_content:focus-within .pane-header,
-#app_recent_runs:focus-within .sidebar-title {
+#app_recent_runs:focus-within .sidebar-title,
+.category-content-root:focus-within .pane-header {
     background: #008700; /* Softer green for reverse video */
     color: #000000;
 }

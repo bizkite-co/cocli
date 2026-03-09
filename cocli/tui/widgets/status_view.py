@@ -25,7 +25,7 @@ class StatusView(VerticalScroll):
         self.can_focus = True
 
     def compose(self) -> ComposeResult:
-        with Horizontal(id="status_header"):
+        with Horizontal(id="status_header", classes="pane-header"):
             yield Label("Environment Status", id="status_title")
             yield Label("", id="status_last_updated")
             yield Static("", id="status_refresh_indicator")

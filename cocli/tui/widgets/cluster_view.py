@@ -58,18 +58,18 @@ class ClusterView(VerticalScroll):
         self.heartbeat_data: Dict[str, Any] = {}
 
     def compose(self) -> ComposeResult:
-        with Horizontal(id="cluster_header"):
+        with Horizontal(id="cluster_header", classes="pane-header"):
             yield Label("Live Status (Gossip)", id="cluster_title")
             yield Label("", id="cluster_last_updated")
         
         yield DataTable(id="cluster_table")
 
-        with Horizontal(id="registry_header"):
+        with Horizontal(id="registry_header", classes="pane-header"):
             yield Label("S3 Cluster Registry (Persistent)", id="registry_title")
         
         yield DataTable(id="registry_table")
 
-        with Horizontal(id="status_header"):
+        with Horizontal(id="status_header", classes="pane-header"):
             yield Label("Legacy S3 Status (Heartbeats)", id="status_title")
         
         yield DataTable(id="status_table")

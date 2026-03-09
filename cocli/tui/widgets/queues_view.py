@@ -60,7 +60,7 @@ class QueueDetail(VerticalScroll):
         self.last_key = event.key
 
     def compose(self) -> ComposeResult:
-        with Horizontal(id="queue_header"):
+        with Horizontal(id="queue_header", classes="pane-header"):
             yield Label("Select a queue to view details.", id="queue_title")
             yield Label("", id="queue_sync_indicator")
         

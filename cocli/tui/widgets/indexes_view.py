@@ -58,7 +58,7 @@ class IndexDetail(VerticalScroll):
         self.can_focus = True
 
     def compose(self) -> ComposeResult:
-        with Horizontal(id="index_header"):
+        with Horizontal(id="index_header", classes="pane-header"):
             yield Label("Select an index to view details.", id="index_title")
         
         with Vertical(classes="panel", id="index_info_panel"):

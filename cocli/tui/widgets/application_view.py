@@ -51,7 +51,7 @@ class ApplicationView(Container):
             # Left Column: Stacked Sidebar
             with Vertical(id="app_sidebar_column"):
                 with Vertical(id="app_nav_container"):
-                    yield Label("[bold]Application[/bold]", classes="sidebar-title")
+                    yield Label("Application", classes="sidebar-title")
                     yield ListView(
                         ListItem(Label("Campaigns"), id="nav_campaigns"),
                         ListItem(Label("Cluster Dashboard"), id="nav_cluster"),
@@ -63,7 +63,7 @@ class ApplicationView(Container):
                     )
                 
                 with Vertical(id="app_sub_nav_container"):
-                    yield Label("[bold]Menu[/bold]", id="sub_sidebar_title", classes="sidebar-title")
+                    yield Label("Menu", id="sub_sidebar_title", classes="sidebar-title")
                     yield QueueSelection(id="sidebar_queues", classes="sub-sidebar-list")
                     yield IndexSelection(id="sidebar_indexes", classes="sub-sidebar-list")
                     yield CampaignSelection(id="sidebar_campaigns", classes="sub-sidebar-list")
@@ -79,13 +79,6 @@ class ApplicationView(Container):
                         ListItem(Label("Sync GM Details Queue"), id="op_sync_gm_details"),
                         ListItem(Label("Sync Enrichment Queue"), id="op_sync_enrichment"),
                         ListItem(Label("Sync Indexes"), id="op_sync_indexes"),
-
-                        # Scaling
-                        ListItem(Label("[dim]--- Cloud Scaling ---[/dim]"), disabled=True),
-                        ListItem(Label("Scale to 0 (Stop)"), id="op_scale_0"),
-                        ListItem(Label("Scale to 1 (Slow)"), id="op_scale_1"),
-                        ListItem(Label("Scale to 5 (Standard)"), id="op_scale_5"),
-                        ListItem(Label("Scale to 10 (Fast)"), id="op_scale_10"),
 
                         # Maintenance
                         ListItem(Label("[dim]--- Maintenance ---[/dim]"), disabled=True),
@@ -110,7 +103,7 @@ class ApplicationView(Container):
 
                 # Content Roots
                 with VerticalScroll(id="view_operations", classes="category-content-root"):
-                    with Horizontal(id="op_header_row"):
+                    with Horizontal(id="op_header_row", classes="pane-header"):
                         yield Label("Select an operation.", id="op_title", classes="op-title")
                         yield Static("", id="op_status_indicator")
                     yield Static("", id="op_description", classes="op-description")
@@ -136,7 +129,7 @@ class ApplicationView(Container):
 
             # Right sidebar for Recent Operations
             with Vertical(id="app_recent_runs"):
-                yield Label("[bold]Recent Runs[/bold]", classes="sidebar-title")
+                yield Label("Recent Runs", classes="sidebar-title")
                 yield ListView(id="recent_runs_list")
 
     async def on_mount(self) -> None:

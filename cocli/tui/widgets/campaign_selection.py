@@ -42,7 +42,7 @@ class CampaignSelection(Static):
         self.can_focus = True
 
     def compose(self) -> ComposeResult:
-        yield Label("Select a Campaign")
+        yield Label("Select a Campaign", classes="sidebar-title")
         with VerticalScroll():
             yield ListView(id="campaign_list_view")
     
