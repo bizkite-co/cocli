@@ -85,14 +85,7 @@ def list_tasks() -> None:
 
 @app.command(name="next")
 def show_next() -> None:
-    """Show the current objective and follow links."""
-    # 1. Authoritative Pointer
-    task_ptr = Path("task.md")
-    if task_ptr.exists():
-        render_markdown_with_links(task_ptr)
-        return
-
-    # 2. Index Lookup
+    """Show the current objective from the top of the mission index."""
     manager = TaskIndexManager()
     next_task = manager.get_next_task()
     if next_task:
@@ -106,7 +99,7 @@ def show_next() -> None:
 
 @app.command(name="prioritize")
 def prioritize_task(slug: str, position: int) -> None:
-    """Update the ordinal position of a task."""
+    """Update the ordinal position of a task in the mission index."""
     manager = TaskIndexManager()
     if manager.prioritize(slug, position):
         console.print(f"[green]Task '{slug}' moved to position {position}.[/green]")
@@ -134,19 +127,27 @@ def show_tree() -> None:
     console.print(root)
 
 @app.command(name="start")
-def start_task(slug: str) -> None:
-    """Move a task to ACTIVE in the index and on disk."""
+def start_task(slug: Optional[str] = typer.Argument(None)) -> None:
+    """Move a task to ACTIVE. Defaults to the first PENDING task."""
     manager = TaskIndexManager()
     
-    # Find by slug or priority
+    # Find task
     task = None
-    for i, t in enumerate(manager.tasks):
-        if t.slug == slug or str(i + 1) == slug:
-            task = t
-            break
+    if slug:
+        # Find by slug or priority
+        for i, t in enumerate(manager.tasks):
+            if t.slug == slug or str(i + 1) == slug:
+                task = t
+                break
+    else:
+        # Get first PENDING or DRAFT task
+        for t in manager.tasks:
+            if t.status in [TaskStatus.PENDING, TaskStatus.DRAFT]:
+                task = t
+                break
             
     if not task:
-        console.print(f"[red]Task '{slug}' not found.[/red]")
+        console.print("[red]No startable task found.[/red]")
         return
 
     if task.status == TaskStatus.BLOCKED:
@@ -160,7 +161,6 @@ def start_task(slug: str) -> None:
         return
 
     new_rel_name = old_path.name
-    # Strip numeric prefix if moving from pending
     if old_path.parent.name == "pending" and "_" in old_path.name:
         new_rel_name = old_path.name.split("_", 1)[1]
         
@@ -175,19 +175,26 @@ def start_task(slug: str) -> None:
     console.print(f"[green]Task '{task.slug}' is now ACTIVE.[/green]")
 
 @app.command(name="done")
-def complete_task(slug: str) -> None:
-    """Move a task to COMPLETED and remove from index."""
+def complete_task(slug: Optional[str] = typer.Argument(None)) -> None:
+    """Move a task to COMPLETED and remove from index. Defaults to the ACTIVE task."""
     manager = TaskIndexManager()
     
-    # Find by slug or priority
+    # Find task
     task = None
-    for i, t in enumerate(manager.tasks):
-        if t.slug == slug or str(i + 1) == slug:
-            task = t
-            break
+    if slug:
+        for i, t in enumerate(manager.tasks):
+            if t.slug == slug or str(i + 1) == slug:
+                task = t
+                break
+    else:
+        # Default to ACTIVE task
+        for t in manager.tasks:
+            if t.status == TaskStatus.ACTIVE:
+                task = t
+                break
             
     if not task:
-        console.print(f"[red]Task '{slug}' not found.[/red]")
+        console.print("[red]No active task to complete.[/red]")
         return
 
     old_path = manager.resolve_file(task.slug)

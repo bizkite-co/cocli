@@ -33,4 +33,5 @@ class MissionTask(BaseUsvModel):
 
     @classmethod
     def get_header(cls) -> str:
-        return "\x1f".join(cls.model_fields.keys())
+        from ..core.constants import UNIT_SEP
+        return UNIT_SEP.join(cls.model_fields.keys())
