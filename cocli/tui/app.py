@@ -483,9 +483,9 @@ class CocliApp(App[None]):
                     app_view.action_focus_sidebar()
                 except Exception as e:
                     tui_debug_log(f"APP: Failed to focus ApplicationView: {e}")
+                self.menu_bar.set_activity("")
             
             self.call_after_refresh(do_focus)
-            self.menu_bar.set_activity("")
 
     @on(ApplicationView.CampaignActivated)
     async def on_application_view_campaign_activated(self, message: ApplicationView.CampaignActivated) -> None:

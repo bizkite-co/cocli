@@ -145,10 +145,15 @@ class ApplicationView(Container):
             self.query_one("#app_loading").display = False
             nav_list = self.query_one("#app_nav_list", ListView)
             nav_list.index = 0
-            nav_list.focus()
+            
+            # Use call_after_refresh to ensure focus sticks
+            def initial_focus() -> None:
+                nav_list.focus()
+            
             self.query_one("#op_params_area").display = False
             # Initial switch
             self.call_after_refresh(self.show_category, "campaigns")
+            self.call_after_refresh(initial_focus)
             self.update_recent_runs()
 
     def action_focus_sidebar(self) -> None:
@@ -267,7 +272,11 @@ class ApplicationView(Container):
             for sidebar in self.query(".sub-sidebar-list"):
                 sidebar.styles.display = "block" if sidebar.id == target_sidebar_id else "none"
             
-            self.query_one("#app_sub_nav_container").styles.display = "block" if category not in ["status", "cluster"] else "none"
+            sub_nav = self.query_one("#app_sub_nav_container")
+            if category in ["status", "cluster"]:
+                sub_nav.styles.display = "none"
+            else:
+                sub_nav.styles.display = "block"
 
             # 2. Update Content
             main_content = self.query_one("#app_main_content")

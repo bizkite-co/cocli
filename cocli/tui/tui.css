@@ -138,7 +138,8 @@ CompanySearchView {
     color: #555555; /* Dimmer text for unfocused */
     text-style: bold;
     padding: 0 1;
-    border-bottom: solid #333333;
+    height: 1; /* Force single line */
+    border: none;
 }
 
 .search-pane:focus-within {
@@ -146,7 +147,26 @@ CompanySearchView {
 }
 
 .search-pane:focus-within .pane-header {
-    background: #00ff00;
+    background: #008700; /* Softer green for reverse video */
+    color: #000000;
+}
+
+/* Detail Panels */
+.panel:focus-within {
+    background: #080808;
+}
+
+.panel-header {
+    background: #111111;
+    color: #555555;
+    text-style: bold;
+    padding: 0 1;
+    width: 100%;
+    height: 1; /* Force single line */
+}
+
+.panel:focus-within .panel-header {
+    background: #008700; /* Softer green */
     color: #000000;
 }
 
@@ -154,7 +174,6 @@ CompanySearchView {
 .category-content-root {
     width: 100%;
     height: 100%;
-    padding: 1 2;
 }
 
 /* Table Style */
@@ -165,7 +184,7 @@ DataTable {
 
 DataTable > .datatable--header {
     background: #111111;
-    color: #00ff00;
+    color: #008700;
 }
 
 DataTable > .datatable--cursor {
@@ -200,24 +219,7 @@ DataTable > .datatable--cursor {
 }
 
 .panel {
-    padding: 1 1;
-}
-
-.panel:focus {
-    background: #111111;
-}
-
-.panel-header {
-    background: #111111;
-    color: #00ff00;
-    text-style: bold;
     padding: 0 1;
-    width: 100%;
-}
-
-.panel:focus .panel-header {
-    background: #00ff00;
-    color: #000000;
 }
 
 #edit-csz-container {
