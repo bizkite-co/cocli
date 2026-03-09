@@ -31,11 +31,6 @@
             "name": "dependencies",
             "type": "string",
             "description": "List of required task slugs"
-          },
-          {
-            "name": "file_path",
-            "type": "string",
-            "description": "Relative path to the markdown requirement"
           }
         ]
       }

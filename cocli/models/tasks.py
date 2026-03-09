@@ -4,6 +4,7 @@ from enum import Enum
 from .base import BaseUsvModel
 
 class TaskStatus(str, Enum):
+    DRAFT = "DRAFT"
     PENDING = "PENDING"
     ACTIVE = "ACTIVE"
     COMPLETED = "COMPLETED"
@@ -13,12 +14,12 @@ class MissionTask(BaseUsvModel):
     """
     Represents a single development task in the mission index.
     Priority is determined by the ordinal position in the USV file.
+    File paths are resolved dynamically by slug.
     """
     slug: str = Field(..., description="Unique URL-friendly name")
     title: str = Field(..., description="Human-readable title")
     status: TaskStatus = Field(TaskStatus.PENDING, description="Current state")
     dependencies: List[str] = Field(default_factory=list, description="List of required task slugs")
-    file_path: str = Field(..., description="Relative path to the markdown requirement")
 
     model_config = {
         "use_enum_values": True

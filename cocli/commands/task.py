@@ -41,7 +41,7 @@ def render_markdown_with_links(path: Path, seen: Optional[Set[Path]] = None) -> 
 
 @app.command(name="sync")
 def sync_index() -> None:
-    """Sync the task index with the filesystem."""
+    """Sync the task index with the filesystem (discovering active/pending/draft)."""
     manager = TaskIndexManager()
     changes = manager.sync()
     console.print(f"[green]Index synced. {changes} changes detected.[/green]")
@@ -69,6 +69,8 @@ def list_tasks() -> None:
             status_color = "green"
         elif task.status == TaskStatus.BLOCKED:
             status_color = "red"
+        elif task.status == TaskStatus.DRAFT:
+            status_color = "dim white"
         
         deps_str = ";".join(task.dependencies) if task.dependencies else "-"
         table.add_row(
@@ -94,7 +96,11 @@ def show_next() -> None:
     manager = TaskIndexManager()
     next_task = manager.get_next_task()
     if next_task:
-        render_markdown_with_links(ISSUES_ROOT / next_task.file_path)
+        task_file = manager.resolve_file(next_task.slug)
+        if task_file:
+            render_markdown_with_links(task_file)
+        else:
+            console.print(f"[red]Requirement file for '{next_task.slug}' not found![/red]")
     else:
         console.print("[green]No pending or active tasks found in index![/green]")
 
@@ -113,26 +119,15 @@ def show_tree() -> None:
     manager = TaskIndexManager()
     root = Tree("[bold blue]Development Roadmap[/bold blue]")
     
-    # Simple dependency tree (only 1 level deep for now)
-    added = set()
-    
-    # 1. Add Completed tasks as foundation
-    completed = root.add("[green]Completed[/green]")
+    # Active/Pending with dependencies
     for task in manager.tasks:
-        if task.status == TaskStatus.COMPLETED:
-            completed.add(f"[dim]{task.slug}[/dim]")
-            added.add(task.slug)
-            
-    # 2. Add Active/Pending with dependencies
-    for task in manager.tasks:
-        if task.slug in added:
-            continue
-        
         label = task.slug
         if task.status == TaskStatus.ACTIVE:
             label = f"[bold yellow]{label} (ACTIVE)[/bold yellow]"
         elif task.status == TaskStatus.BLOCKED:
             label = f"[red]{label} (BLOCKED by {';'.join(task.dependencies)})[/red]"
+        elif task.status == TaskStatus.DRAFT:
+            label = f"[dim white]{label} (DRAFT)[/dim white]"
         
         root.add(label)
         
@@ -158,27 +153,30 @@ def start_task(slug: str) -> None:
         console.print(f"[red]Task '{task.slug}' is BLOCKED by {';'.join(task.dependencies)}[/red]")
         return
 
-    # Move file on disk
-    old_path = ISSUES_ROOT / task.file_path
+    # Find file
+    old_path = manager.resolve_file(task.slug)
+    if not old_path:
+        console.print(f"[red]Requirement file for '{task.slug}' not found.[/red]")
+        return
+
     new_rel_name = old_path.name
-    if "pending" in task.file_path and "_" in old_path.name:
+    # Strip numeric prefix if moving from pending
+    if old_path.parent.name == "pending" and "_" in old_path.name:
         new_rel_name = old_path.name.split("_", 1)[1]
         
-    new_rel_path = f"active/{new_rel_name}"
-    new_path = ISSUES_ROOT / new_rel_path
+    new_path = ISSUES_ROOT / "active" / new_rel_name
     new_path.parent.mkdir(parents=True, exist_ok=True)
     
     old_path.rename(new_path)
     
     # Update index
     task.status = TaskStatus.ACTIVE
-    task.file_path = new_rel_path
     manager.save()
     console.print(f"[green]Task '{task.slug}' is now ACTIVE.[/green]")
 
 @app.command(name="done")
 def complete_task(slug: str) -> None:
-    """Move a task to COMPLETED."""
+    """Move a task to COMPLETED and remove from index."""
     manager = TaskIndexManager()
     
     # Find by slug or priority
@@ -192,20 +190,22 @@ def complete_task(slug: str) -> None:
         console.print(f"[red]Task '{slug}' not found.[/red]")
         return
 
-    old_path = ISSUES_ROOT / task.file_path
-    new_rel_path = f"completed/2026/{old_path.name}"
-    new_path = ISSUES_ROOT / new_rel_path
+    old_path = manager.resolve_file(task.slug)
+    if not old_path:
+        console.print(f"[red]Requirement file for '{task.slug}' not found.[/red]")
+        return
+
+    new_path = ISSUES_ROOT / "completed" / "2026" / old_path.name
     new_path.parent.mkdir(parents=True, exist_ok=True)
     
     old_path.rename(new_path)
     
+    # Removing from index happens automatically on save because we filter by status != COMPLETED
     task.status = TaskStatus.COMPLETED
-    task.file_path = new_rel_path
     
-    # Update blocked states of others
     manager.update_blocked_states()
     manager.save()
-    console.print(f"[green]Task '{task.slug}' marked as COMPLETED.[/green]")
+    console.print(f"[green]Task '{task.slug}' marked as COMPLETED and removed from index.[/green]")
 
 if __name__ == "__main__":
     app()

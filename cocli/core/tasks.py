@@ -10,13 +10,29 @@ logger = logging.getLogger(__name__)
 class TaskIndexManager:
     """
     Manages the docs/issues/mission.usv file.
-    Handles prioritization (via file order), dependencies, and state syncing.
+    Only tracks ACTIVE, PENDING, and DRAFT tasks.
+    Completed tasks are moved to filesystem but removed from index.
     """
     def __init__(self, issues_root: Path = Path("docs/issues")):
         self.issues_root = issues_root
         self.index_path = issues_root / "mission.usv"
         self.tasks: List[MissionTask] = []
         self.load()
+
+    def resolve_file(self, slug: str) -> Optional[Path]:
+        """Dynamically finds the markdown file for a slug in active queue folders."""
+        for folder in ["active", "pending", "draft"]:
+            path = self.issues_root / folder
+            if not path.exists():
+                continue
+            # Check exact slug
+            exact = path / f"{slug}.md"
+            if exact.exists():
+                return exact
+            # Check with numeric prefix
+            for f in path.glob(f"*_{slug}.md"):
+                return f
+        return None
 
     def load(self) -> None:
         """Loads tasks from mission.usv preserving file order."""
@@ -26,8 +42,7 @@ class TaskIndexManager:
 
         tasks = []
         with open(self.index_path, "r", encoding="utf-8") as f:
-            # Skip header
-            f.readline()
+            f.readline() # header
             for line in f:
                 if not line.strip():
                     continue
@@ -39,70 +54,56 @@ class TaskIndexManager:
         self.tasks = tasks
 
     def save(self) -> None:
-        """Saves tasks to mission.usv in current list order."""
+        """Saves non-completed tasks to mission.usv in current list order."""
         self.issues_root.mkdir(parents=True, exist_ok=True)
-        # Ensure co-located datapackage
         MissionTask.save_datapackage(self.issues_root, "mission-index", "mission.usv")
+        
+        # Filter: Only keep active queue items in the index
+        active_queue = [t for t in self.tasks if t.status != TaskStatus.COMPLETED]
         
         with open(self.index_path, "w", encoding="utf-8") as f:
             f.write(MissionTask.get_header() + "\n")
-            for task in self.tasks:
+            for task in active_queue:
                 f.write(task.to_usv())
 
     def sync(self) -> int:
         """
-        Scans filesystem folders and ensures the index is up to date.
-        Discovers new tasks and removes stale ones.
+        Discovers new tasks in draft, pending, and active.
+        Syncs state and purges deleted or completed tasks from the index.
         """
-        found_files = {}
-        for folder in ["pending", "active", "completed/2026"]:
+        found_stems = {}
+        for folder in ["active", "pending", "draft"]:
             path = self.issues_root / folder
             if not path.exists():
                 continue
             for f in path.glob("*.md"):
-                found_files[f.stem] = f
+                stem = f.stem
+                slug = stem.split("_", 1)[1] if "_" in stem and stem.split("_", 1)[0].isdigit() else stem
+                found_stems[slug] = folder
 
         new_tasks_list = []
         changes = 0
         
-        # 1. Preserve order of existing tasks that still exist on disk
+        # 1. Preserve order of existing tasks that still exist in active queue folders
         for task in self.tasks:
-            # Find the disk stem (it might have a numeric prefix)
-            stem_found = None
-            for stem in found_files:
-                slug = stem
-                if "_" in stem and stem.split("_", 1)[0].isdigit():
-                    slug = stem.split("_", 1)[1]
-                if slug == task.slug:
-                    stem_found = stem
-                    break
-            
-            if stem_found:
-                rel_path = str(found_files[stem_found].relative_to(self.issues_root))
-                status = self._get_status_from_path(rel_path)
-                if task.status != status or task.file_path != rel_path:
+            if task.slug in found_stems:
+                folder = found_stems[task.slug]
+                status = self._get_status_from_folder(folder)
+                if task.status != status:
                     task.status = status
-                    task.file_path = rel_path
                     changes += 1
                 new_tasks_list.append(task)
-                del found_files[stem_found]
+                del found_stems[task.slug]
             else:
-                # Task file was deleted
+                # Task either completed or deleted from active folders
                 changes += 1
 
-        # 2. Append new tasks at the end
-        sorted_new_stems = sorted(found_files.keys())
-        for stem in sorted_new_stems:
-            slug = stem
-            if "_" in stem and stem.split("_", 1)[0].isdigit():
-                slug = stem.split("_", 1)[1]
-            
-            rel_path = str(found_files[stem].relative_to(self.issues_root))
+        # 2. Append new tasks discovered in active folders
+        for slug, folder in found_stems.items():
             new_task = MissionTask(
                 slug=slug,
                 title=slug.replace("-", " ").title(),
-                status=self._get_status_from_path(rel_path),
-                file_path=rel_path
+                status=self._get_status_from_folder(folder)
             )
             new_tasks_list.append(new_task)
             changes += 1
@@ -112,15 +113,14 @@ class TaskIndexManager:
         self.save()
         return changes
 
-    def _get_status_from_path(self, rel_path: str) -> TaskStatus:
-        if "active" in rel_path:
+    def _get_status_from_folder(self, folder: str) -> TaskStatus:
+        if folder == "active":
             return TaskStatus.ACTIVE
-        if "completed" in rel_path:
-            return TaskStatus.COMPLETED
+        if folder == "draft":
+            return TaskStatus.DRAFT
         return TaskStatus.PENDING
 
     def prioritize(self, slug: str, position: int) -> bool:
-        """Moves a task to a new ordinal position (1-based)."""
         idx = -1
         for i, t in enumerate(self.tasks):
             if t.slug == slug:
@@ -137,25 +137,41 @@ class TaskIndexManager:
         return True
 
     def update_blocked_states(self) -> None:
-        """Automatically sets tasks to BLOCKED if dependencies are incomplete."""
-        status_map = {t.slug: t.status for t in self.tasks}
+        """
+        Sets tasks to BLOCKED if dependencies are missing from the index.
+        (Since we purge COMPLETED from index, missing == completed or nonexistent).
+        """
+        # We need a way to check if a dependency is completed (filesystem check)
         for task in self.tasks:
-            if task.status == TaskStatus.COMPLETED:
-                continue
-                
             is_blocked = False
             for dep_slug in task.dependencies:
-                if status_map.get(dep_slug) != TaskStatus.COMPLETED:
+                # If dep exists in active queue, it's not completed -> BLOCKED
+                if any(t.slug == dep_slug for t in self.tasks):
+                    is_blocked = True
+                    break
+                
+                # If dep NOT in index, verify it exists in completed/
+                if not self._is_task_completed(dep_slug):
                     is_blocked = True
                     break
             
             if is_blocked:
                 task.status = TaskStatus.BLOCKED
             elif task.status == TaskStatus.BLOCKED:
-                task.status = TaskStatus.PENDING
+                # Restore status based on current folder
+                task_file = self.resolve_file(task.slug)
+                if task_file:
+                    task.status = self._get_status_from_folder(task_file.parent.name)
+
+    def _is_task_completed(self, slug: str) -> bool:
+        """Checks completed/ directory recursively for the slug."""
+        completed_root = self.issues_root / "completed"
+        # Check all years/subfolders
+        for f in completed_root.rglob(f"*{slug}.md"):
+            return True
+        return False
 
     def get_next_task(self) -> Optional[MissionTask]:
-        """Returns the first non-completed, non-blocked task."""
         for task in self.tasks:
             if task.status == TaskStatus.ACTIVE:
                 return task

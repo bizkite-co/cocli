@@ -1,12 +1,3 @@
-slugtitlestatusdependenciesfile_path
-mission-driven-task-indexMission Driven Task IndexCOMPLETEDcompleted/2026/mission-driven-task-index.md
-phase9-security-wasiPhase9 Security WasiPENDINGpending/06_phase9-security-wasi.md
-anti-bot-detectionAnti Bot DetectionCOMPLETEDcompleted/2026/anti-bot-detection.md
-identity-enumsIdentity EnumsCOMPLETEDcompleted/2026/identity-enums.md
-managed-store-protocolsManaged Store ProtocolsCOMPLETEDcompleted/2026/managed-store-protocols.md
-phase10-structural-auditPhase10 Structural AuditCOMPLETEDcompleted/2026/phase10-structural-audit.md
-pydantic-path-modelsPydantic Path ModelsCOMPLETEDcompleted/2026/pydantic-path-models.md
-screaming-architecture-implemented-outputScreaming Architecture Implemented OutputCOMPLETEDcompleted/2026/screaming-architecture-implemented-output.md
-sentinel-complianceSentinel ComplianceCOMPLETEDcompleted/2026/sentinel-compliance.md
-strict-usv-schema-enforcementStrict Usv Schema EnforcementCOMPLETEDcompleted/2026/strict-usv-schema-enforcement.md
-universal-fs-auditUniversal Fs AuditCOMPLETEDcompleted/2026/universal-fs-audit.md
+slugtitlestatusdependencies
+phase9-security-wasiPhase9 Security WasiPENDING
+implement-service-protocolsImplement Service ProtocolsDRAFT
