@@ -26,6 +26,7 @@ def run_tui_app(
         import asyncio
         from ..tui.utils import dump_tree as dump_tree_util
         from ..application.services import ServiceContainer
+        from ..core.paths import paths
 
         async def _dump() -> None:
             services = ServiceContainer()
@@ -56,15 +57,23 @@ def run_tui_app(
                     dump_tree_util(app_content, file=f)
 
                     f.write("\n=== CompanyDetail ===\n")
-                    # Manually trigger a company selection
-                    company_slug = "first-command-financial-advisor-michael-hager-mba"
-                    company_data = services.get_company_details(company_slug)
-                    if company_data:
-                        from ..tui.widgets.company_detail import CompanyDetail
-                        await app_content.remove_children()
-                        await app_content.mount(CompanyDetail(company_data))
-                        await pilot.pause()
-                        dump_tree_util(app_content, file=f)
+                    # Dynamically find a sample company to show the detail view structure
+                    sample_slug = None
+                    companies_dir = paths.root / "companies"
+                    if companies_dir.exists():
+                        for item in companies_dir.iterdir():
+                            if item.is_dir() and (item / "_index.md").exists():
+                                sample_slug = item.name
+                                break
+                    
+                    if sample_slug:
+                        company_data = services.get_company_details(sample_slug)
+                        if company_data:
+                            from ..tui.widgets.company_detail import CompanyDetail
+                            await app_content.remove_children()
+                            await app_content.mount(CompanyDetail(company_data))
+                            await pilot.pause()
+                            dump_tree_util(app_content, file=f)
             
             print(f"TUI tree dumped to {output_path}")
 

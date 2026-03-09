@@ -162,23 +162,40 @@ class ProspectsIndexManager:
     def get_prospect(self, place_id: str) -> Optional[GoogleMapsProspect]:
         """Retrieves a single prospect by place_id."""
         file_path = self.get_file_path(place_id)
-        if not file_path.exists():
-            return None
-            
-        try:
-            with open(file_path, 'r', encoding='utf-8') as f:
-                if file_path.suffix == ".usv":
-                    # Skip header if present
+        if file_path.exists():
+            try:
+                with open(file_path, 'r', encoding='utf-8') as f:
+                    if file_path.suffix == ".usv":
+                        # Skip header if present
+                        for line in f:
+                            if line.strip():
+                                if "created_at" in line:
+                                    continue
+                                return GoogleMapsProspect.from_usv(line)
+                    else:
+                        reader = csv.DictReader(f)
+                        data = next(reader, None)
+                        if data:
+                            return GoogleMapsProspect.model_validate(data)
+            except Exception as e:
+                logger.error(f"Error reading prospect {place_id} from {file_path}: {e}")
+
+        # 2. Check Checkpoint if individual file not found
+        checkpoint_path = self._get_checkpoint_path()
+        if checkpoint_path.exists():
+            try:
+                # Fast check before parsing
+                with open(checkpoint_path, 'r', encoding='utf-8') as f:
+                    # Checkpoint might be large, but we need to find the specific line
                     for line in f:
-                        if line.strip():
-                            if "created_at" in line:
+                        if place_id in line:
+                            try:
+                                prospect = GoogleMapsProspect.from_usv(line)
+                                if prospect.place_id == place_id:
+                                    return prospect
+                            except Exception:
                                 continue
-                            return GoogleMapsProspect.from_usv(line)
-                else:
-                    reader = csv.DictReader(f)
-                    data = next(reader, None)
-                    if data:
-                        return GoogleMapsProspect.model_validate(data)
-        except Exception as e:
-            logger.error(f"Error reading prospect {place_id}: {e}")
+            except Exception as e:
+                logger.error(f"Error searching checkpoint for {place_id}: {e}")
+                
         return None
