@@ -906,6 +906,11 @@ cli-tree: install ## Dump the CLI command tree for Screaming Architecture compar
 fs-tree: install ## Audit the filesystem structure for Screaming Architecture comparison
 	@PYTHONPATH=. $(VENV_DIR)/bin/cocli audit fs --output docs/fs/actual_tree.txt
 
+.PHONY: rollout-audit
+rollout-audit: install ## Run automated diagnostic for the active canary rollouts
+	@PYTHONPATH=. $(VENV_DIR)/bin/cocli audit rollout --name canary_100
+	@PYTHONPATH=. $(VENV_DIR)/bin/cocli audit rollout --name rollout_5000
+
 .PHONY: task
 task: install ## Show the current task.md and its linked documents
 	@PYTHONPATH=. $(VENV_DIR)/bin/python scripts/show_task.py task.md

@@ -1,4 +1,5 @@
 import logging
+from pathlib import Path
 from typing import Dict, Optional, Any
 from ...core.scrape_index import ScrapeIndex
 from ...core.config import get_scraped_areas_index_dir
@@ -51,25 +52,33 @@ class WildernessManager:
             try:
                 # 1. Upload legacy JSON
                 # Calculate S3 Key: indexes/scraped_areas/{phrase}/{grid}/{file}
-                relative_path = file_path.relative_to(self.base_dir)
-                s3_key = f"indexes/scraped_areas/{relative_path}"
-                self.s3_client.upload_file(str(file_path), self.s3_bucket, s3_key)
-                logger.info(f"Uploaded scraped area to s3://{self.s3_bucket}/{s3_key}")
+                try:
+                    relative_path = file_path.relative_to(self.base_dir)
+                    s3_key = f"indexes/scraped_areas/{relative_path}"
+                    self.s3_client.upload_file(str(file_path), self.s3_bucket, s3_key)
+                    logger.info(f"Uploaded scraped area to s3://{self.s3_bucket}/{s3_key}")
+                except ValueError:
+                    # If not under base_dir, it might be in a different root (e.g. tests)
+                    logger.warning(f"Skipping legacy upload for {file_path} as it is outside {self.base_dir}")
 
                 # 2. Upload Witness CSV/USV (Phase 10)
                 if tile_id:
                     from cocli.core.text_utils import slugify
+                    from cocli.core.config import get_scraped_tiles_index_dir
                     parts = tile_id.split("_")
                     lat_str, lon_str = parts[0], parts[1]
                     phrase_slug = slugify(query)
-                    
+
+                    witness_root = get_scraped_tiles_index_dir()
+
                     # Try both USV and CSV
                     for ext in [".usv", ".csv"]:
-                        witness_rel_path = f"scraped-tiles/{lat_str}/{lon_str}/{phrase_slug}{ext}"
-                        witness_local_path = self.base_dir.parent / witness_rel_path
-                        
+                        witness_rel_path = Path(lat_str) / lon_str / f"{phrase_slug}{ext}"
+                        witness_local_path = witness_root / witness_rel_path
+
                         if witness_local_path.exists():
-                            witness_s3_key = f"indexes/{witness_rel_path}"
+                            # S3 key should match the local relative structure: indexes/scraped-tiles/...
+                            witness_s3_key = f"indexes/scraped-tiles/{witness_rel_path}"
                             self.s3_client.upload_file(str(witness_local_path), self.s3_bucket, witness_s3_key)
                             logger.info(f"Uploaded witness file to s3://{self.s3_bucket}/{witness_s3_key}")
                             break

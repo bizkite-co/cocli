@@ -25,3 +25,7 @@ Isolate the data pipeline into role-based, least-privilege workers and implement
 - [x] **Filesystem Audit**:
     - [x] Implement directory structure reporter for 'Screaming' compliance in `cocli audit fs`.
     - [x] Documented in [docs/fs/README.md](docs/fs/README.md).
+- [x] **Rollout Audit**:
+    - [x] Fix S3 path mismatch bug in `WildernessManager`.
+    - [x] Implement `cocli audit rollout` for automated batch diagnostics.
+    - [x] Integrated into `make rollout-audit`.
