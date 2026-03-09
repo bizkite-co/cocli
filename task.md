@@ -1,7 +1,7 @@
-# Current Task: Strict USV Schema Enforcement
+# Current Task: Implement Mission-Driven Task Index
 
 ## Objective
-Establish automated validation to ensure new fields are only appended to USV models, preventing positional data corruption.
+Establish a robust, index-based system for managing the development frontier, replacing brittle filename-based prioritization.
 
 ## Task Details
-- [ ] [Task 07: Strict USV Schema Enforcement](docs/issues/active/strict-usv-schema-enforcement.md)
+- [ ] [Task 08: Mission-Driven Task Index](docs/issues/pending/08_mission-driven-task-index.md)
