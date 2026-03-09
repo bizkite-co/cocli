@@ -75,13 +75,14 @@ def audit_fs(
     root_node.children.append(auditor.audit_queues())
     
     # Add indexes and companies
+    from ..core.ordinant import IndexIdentity
     indexes_root = paths.root / "indexes"
     idx_node = AuditNode(
         name="indexes", path=indexes_root, is_dir=True,
         status=AuditStatus.VALID if indexes_root.exists() else AuditStatus.MISSING
     )
     if indexes_root.exists():
-        for sub in ["scraped_areas", "scraped-tiles", "domains"]:
+        for sub in [IndexIdentity.SCRAPED_AREAS, IndexIdentity.SCRAPED_TILES, IndexIdentity.DOMAINS]:
             p = indexes_root / sub
             idx_node.children.append(AuditNode(
                 name=sub, path=p, is_dir=True,

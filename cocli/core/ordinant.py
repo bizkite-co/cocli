@@ -1,17 +1,37 @@
+from enum import Enum
 from typing import Protocol, Literal, runtime_checkable, Union
 from pathlib import Path
 import hashlib
 
-# --- The Known Universe (Literals) ---
+# --- The Known Universe (Identities) ---
 
-# Top-level global collections
-CollectionName = Literal["companies", "people", "wal", "tasks"]
+class CollectionIdentity(str, Enum):
+    COMPANIES = "companies"
+    PEOPLE = "people"
+    WAL = "wal"
+    TASKS = "tasks"
 
-# Campaign-specific sharded indexes
-IndexName = Union[Literal["google_maps_prospects", "domains", "emails"], str]
+class IndexIdentity(str, Enum):
+    PROSPECTS = "google_maps_prospects"
+    DOMAINS = "domains"
+    EMAILS = "emails"
+    SCRAPED_AREAS = "scraped_areas"
+    SCRAPED_TILES = "scraped-tiles"
+    LIFECYCLE = "lifecycle"
+    EXCLUSIONS = "exclude"
 
-# Campaign-specific task queues
-QueueName = Union[Literal["enrichment", "gm-details", "gm-list", "gm-scrape", "to-call", "discovery-gen"], str]
+class QueueIdentity(str, Enum):
+    ENRICHMENT = "enrichment"
+    GM_DETAILS = "gm-details"
+    GM_LIST = "gm-list"
+    GM_SCRAPE = "gm-scrape"
+    TO_CALL = "to-call"
+    DISCOVERY_GEN = "discovery-gen"
+
+# Legacy Type Aliases for compatibility
+CollectionName = Union[CollectionIdentity, str]
+IndexName = Union[IndexIdentity, str]
+QueueName = Union[QueueIdentity, str]
 
 # Standardized folder names for Queues/WAL
 StateFolder = Literal["pending", "completed", "sideline", "inbox", "processing"]

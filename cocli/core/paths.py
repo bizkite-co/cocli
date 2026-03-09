@@ -4,7 +4,7 @@ import os
 import platform
 import logging
 from typing import Optional, Iterator, Callable
-from .ordinant import IndexName, QueueName, StateFolder
+from .ordinant import IndexName, QueueName, StateFolder, IndexIdentity
 from pydantic import BaseModel
 
 logger = logging.getLogger(__name__)
@@ -82,7 +82,7 @@ class IndexPaths(PathObject):
     
     @property
     def checkpoint(self) -> Path:
-        if self.path.name == "google_maps_prospects":
+        if self.path.name == IndexIdentity.PROSPECTS:
             return self.path / "prospects.checkpoint.usv"
         return self.path / f"{self.path.name}.checkpoint.usv"
 
@@ -277,7 +277,7 @@ class DataPaths:
         return self.campaign(campaign_slug).indexes / "exclude"
 
     def campaign_prospect_index(self, campaign_slug: str) -> Path:
-        return self.campaign(campaign_slug).index("google_maps_prospects").path
+        return self.campaign(campaign_slug).index(IndexIdentity.PROSPECTS).path
 
     def wal_journal(self, node_id: str, date_str: Optional[str] = None) -> Path:
         return self.wal.journal(node_id, date_str)
