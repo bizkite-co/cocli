@@ -96,17 +96,15 @@ section = f"profile {campaign}-{role}-iot"
 if not c.has_section(section): 
     c.add_section(section)
 
-home = os.path.expanduser("~")
-script_path = os.path.join(home, ".cocli/iot/get_tokens.sh")
-
-c.set(section, "credential_process", f"{{script_path}} {campaign}")
+c.set(section, "credential_process", f"/home/mstouffer/.cocli/iot/get_tokens.sh {campaign}")
 c.set(section, "region", "us-east-1")
 
 if "{role}" == "scraper":
     legacy = f"profile {campaign}-iot"
     if not c.has_section(legacy): c.add_section(legacy)
-    c.set(legacy, "credential_process", f"{{script_path}} {campaign}")
+    c.set(legacy, "credential_process", f"/home/mstouffer/.cocli/iot/get_tokens.sh {campaign}")
     c.set(legacy, "region", "us-east-1")
+
 
 with open(p, "w") as f: 
     c.write(f)

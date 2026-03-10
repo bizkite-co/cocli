@@ -255,6 +255,12 @@ class CdkScraperDeploymentStack(Stack):  # type: ignore[misc]
                     resources=[f"arn:aws:s3:::{data_bucket_name}/campaigns/{campaign_config['name']}/raw/*"]
                 ),
                 iam.PolicyStatement(
+                    sid="AllowStatusUpdate",
+                    effect=iam.Effect.ALLOW,
+                    actions=["s3:PutObject"],
+                    resources=[f"arn:aws:s3:::{data_bucket_name}/status/*"]
+                ),
+                iam.PolicyStatement(
                     sid="AllowQueueConsumption",
                     effect=iam.Effect.ALLOW,
                     actions=["s3:GetObject", "s3:PutObject", "s3:DeleteObject"],
@@ -293,6 +299,12 @@ class CdkScraperDeploymentStack(Stack):  # type: ignore[misc]
             managed_policy_name=f"CocliProcessorPolicy-{campaign_config['name']}",
             statements=[
                 # Processor: Can GET from raw/ and PUT/GET to wal/ and indexes/
+                iam.PolicyStatement(
+                    sid="AllowStatusUpdate",
+                    effect=iam.Effect.ALLOW,
+                    actions=["s3:PutObject"],
+                    resources=[f"arn:aws:s3:::{data_bucket_name}/status/*"]
+                ),
                 iam.PolicyStatement(
                     sid="AllowRawConsumption",
                     effect=iam.Effect.ALLOW,
