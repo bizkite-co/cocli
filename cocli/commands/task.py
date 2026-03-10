@@ -204,8 +204,11 @@ def complete_task(
     # Prompt for commit message if not provided
     if not message:
         message = typer.prompt("Commit message subject")
-    if not body:
-        body = typer.prompt("Commit message body (optional)", default="")
+        if not body:
+            body = typer.prompt("Commit message body (optional)", default="")
+    
+    if body is None:
+        body = ""
 
     old_path = manager.resolve_file(task.slug)
     if not old_path:

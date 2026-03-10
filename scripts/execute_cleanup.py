@@ -90,19 +90,37 @@ def remove_from_cluster(file_list: List[str]) -> None:
 
 def remove_local(file_list: List[str]) -> None:
     """
-    Removes files or directories from the local filesystem.
+    Removes files or directories from the local filesystem and cleans up empty parents.
     """
     logger.info("--- Removing local stale items ---")
+    affected_parents = set()
     for file_path in file_list:
         try:
             p = Path(file_path)
             if p.exists():
+                affected_parents.add(p.parent)
                 if p.is_dir():
                     shutil.rmtree(p)
                 else:
                     p.unlink()
         except Exception as e:
             logger.error(f"Local removal failed for {file_path}: {e}")
+            
+    # Clean up empty parents recursively up to data root
+    for parent in sorted(affected_parents, key=lambda x: len(str(x)), reverse=True):
+        while parent and parent.exists() and parent.is_dir():
+            # Stop if directory is not empty
+            if list(parent.iterdir()):
+                break
+            # Don't delete beyond the data root
+            if parent == paths.root or parent.name in ["indexes", "campaigns", "companies"]:
+                break
+            logger.info(f"Removing empty parent directory: {parent}")
+            try:
+                parent.rmdir()
+            except Exception:
+                break
+            parent = parent.parent
 
 if __name__ == "__main__":
     import argparse
