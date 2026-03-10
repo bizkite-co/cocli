@@ -39,7 +39,7 @@ echo "Configuring insecure registry $HUB_REGISTRY..."
 sudo mkdir -p /etc/docker
 # Use jq to merge or create if it doesn't exist
 if [ -f /etc/docker/daemon.json ]; then
-    sudo jq ". + {\"insecure-registries\": (.\"insecure-registries\" // []) + [\"$HUB_REGISTRY\"] | unique}" /etc/docker/daemon.json | sudo tee /etc/docker/daemon.json.tmp
+    sudo jq --arg reg "$HUB_REGISTRY" '. + {"insecure-registries": (."insecure-registries" // []) + [$reg] | unique}' /etc/docker/daemon.json | sudo tee /etc/docker/daemon.json.tmp
     sudo mv /etc/docker/daemon.json.tmp /etc/docker/daemon.json
 else
     echo "{\"insecure-registries\": [\"$HUB_REGISTRY\"]}" | sudo tee /etc/docker/daemon.json
@@ -58,16 +58,22 @@ fi
 if ! command -v mise &> /dev/null; then
     echo "Installing mise..."
     curl https://mise.jdx.dev/install.sh | sh
-    eval "$(~/.local/bin/mise activate bash)"
-else
-    echo "mise already installed."
+fi
+
+# Ensure mise is in path for this session
+export PATH="$HOME/.local/bin:$PATH"
+eval "$(~/.local/bin/mise activate bash)"
+
+# Trust the local config if it exists
+if [ -f "$HOME/repos/cocli/.mise.toml" ]; then
+    mise trust "$HOME/repos/cocli/.mise.toml"
 fi
 
 # 5. Install NeoVim & Core Tools via mise
 echo "Installing NeoVim and dependencies via mise..."
-~/.local/bin/mise use --global neovim@latest
-~/.local/bin/mise use --global usage@latest
-~/.local/bin/mise use --global awscli@latest
+mise use --global neovim@latest
+mise use --global usage@latest
+mise use --global awscli@latest
 
 # 6. Install zoxide (Better cd)
 if ! command -v zoxide &> /dev/null; then

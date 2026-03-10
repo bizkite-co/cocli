@@ -31,6 +31,15 @@ else
     echo "Cloning cocli repo..."
     cd ~/repos
     git clone https://github.com/bizkite-co/cocli.git
+    cd ~/repos/cocli
+fi
+
+# Run high-efficiency tool provisioning
+echo "Running tool provisioning..."
+if [ -f "$HOME/provision_pi_tools.sh" ]; then
+    bash "$HOME/provision_pi_tools.sh"
+else
+    bash scripts/provision_pi_tools.sh
 fi
 
 echo "Setup complete!"

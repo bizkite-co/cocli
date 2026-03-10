@@ -257,11 +257,21 @@ class CdkScraperDeploymentStack(Stack):  # type: ignore[misc]
                 iam.PolicyStatement(
                     sid="AllowQueueConsumption",
                     effect=iam.Effect.ALLOW,
-                    actions=["s3:GetObject", "s3:ListBucket"],
-                    resources=[
-                        f"arn:aws:s3:::{data_bucket_name}",
-                        f"arn:aws:s3:::{data_bucket_name}/campaigns/{campaign_config['name']}/queues/*"
-                    ]
+                    actions=["s3:GetObject"],
+                    resources=[f"arn:aws:s3:::{data_bucket_name}/campaigns/{campaign_config['name']}/queues/*"]
+                ),
+                iam.PolicyStatement(
+                    sid="AllowQueueListing",
+                    effect=iam.Effect.ALLOW,
+                    actions=["s3:ListBucket"],
+                    resources=[f"arn:aws:s3:::{data_bucket_name}"],
+                    conditions={
+                        "StringLike": {
+                            "s3:prefix": [
+                                f"campaigns/{campaign_config['name']}/queues/*"
+                            ]
+                        }
+                    }
                 ),
                 iam.PolicyStatement(
                     sid="AllowSqsWorker",
@@ -286,20 +296,28 @@ class CdkScraperDeploymentStack(Stack):  # type: ignore[misc]
                 iam.PolicyStatement(
                     sid="AllowRawConsumption",
                     effect=iam.Effect.ALLOW,
-                    actions=["s3:GetObject", "s3:ListBucket"],
-                    resources=[
-                        f"arn:aws:s3:::{data_bucket_name}",
-                        f"arn:aws:s3:::{data_bucket_name}/campaigns/{campaign_config['name']}/raw/*"
-                    ]
+                    actions=["s3:GetObject"],
+                    resources=[f"arn:aws:s3:::{data_bucket_name}/campaigns/{campaign_config['name']}/raw/*"]
                 ),
                 iam.PolicyStatement(
                     sid="AllowWalAndIndexUpdate",
                     effect=iam.Effect.ALLOW,
-                    actions=["s3:PutObject", "s3:GetObject", "s3:ListBucket"],
-                    resources=[
-                        f"arn:aws:s3:::{data_bucket_name}",
-                        f"arn:aws:s3:::{data_bucket_name}/campaigns/{campaign_config['name']}/indexes/*"
-                    ]
+                    actions=["s3:PutObject", "s3:GetObject"],
+                    resources=[f"arn:aws:s3:::{data_bucket_name}/campaigns/{campaign_config['name']}/indexes/*"]
+                ),
+                iam.PolicyStatement(
+                    sid="AllowScopedListing",
+                    effect=iam.Effect.ALLOW,
+                    actions=["s3:ListBucket"],
+                    resources=[f"arn:aws:s3:::{data_bucket_name}"],
+                    conditions={
+                        "StringLike": {
+                            "s3:prefix": [
+                                f"campaigns/{campaign_config['name']}/raw/*",
+                                f"campaigns/{campaign_config['name']}/indexes/*"
+                            ]
+                        }
+                    }
                 )
             ]
         )

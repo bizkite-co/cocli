@@ -641,9 +641,8 @@ CLUSTER_NODES ?= cocli5x1.pi,octoprint.pi,coclipi.pi
 
 .PHONY: setup-rpi
 setup-rpi: ## Bootstap the Raspberry Pi with Docker and Git
-	scp scripts/setup_rpi.sh $(RPI_USER)@$(RPI_HOST):~/setup_rpi.sh
-	ssh $(RPI_USER)@$(RPI_HOST) "chmod +x ~/setup_rpi.sh && ~/setup_rpi.sh"
-
+	scp scripts/setup_rpi.sh scripts/provision_pi_tools.sh $(RPI_USER)@$(RPI_HOST):~/
+	ssh $(RPI_USER)@$(RPI_HOST) "chmod +x ~/setup_rpi.sh ~/provision_pi_tools.sh && ~/setup_rpi.sh"
 .PHONY: boardcheck
 boardcheck: ## Copy boardcheck.sh to the Pi and run it
 	scp docker/rpi-worker/boardcheck.sh $(RPI_USER)@$(RPI_HOST):~/boardcheck.sh
@@ -890,23 +889,25 @@ provision-pi-iot: ## Provision a Pi with a specific granular role (Usage: make p
 	./scripts/provision_pi_iot.py --host $(HOST) --campaign $(CAMPAIGN) --profile $(AWS_PROFILE) --role $(or $(ROLE), scraper)
 
 .PHONY: verify-iam
-verify-iam: ## Verify that the current IoT profile respects granular prefix restrictions (Usage: make verify-iam CAMPAIGN=roadmap [PROFILE=xxx])
+verify-iam: ## Verify that the current IoT profile respects granular prefix restrictions (Usage: make verify-iam CAMPAIGN=roadmap [PROFILE=xxx] [AWS_BIN=xxx])
 	@$(call validate_campaign)
 	@echo "Verifying IAM prefix restrictions for $(CAMPAIGN)..."
 	@EFFECTIVE_PROFILE=$(or $(PROFILE), $(IOT_PROFILE)); \
+	BIN=$(or $(AWS_BIN), aws); \
 	if [ -z "$$EFFECTIVE_PROFILE" ]; then \
-		if aws configure list-profiles 2>/dev/null | grep -q "$(CAMPAIGN)-iot"; then \
+		if $$BIN configure list-profiles 2>/dev/null | grep -q "$(CAMPAIGN)-iot"; then \
 			EFFECTIVE_PROFILE="$(CAMPAIGN)-iot"; \
 		fi; \
 	fi; \
 	if [ -z "$$EFFECTIVE_PROFILE" ]; then echo "Error: IoT profile not found for $(CAMPAIGN)."; exit 1; fi; \
 	echo "Using Profile: $$EFFECTIVE_PROFILE"; \
+	echo "Using AWS Bin: $$BIN"; \
 	echo "Testing Scraper path (should work for PUT)..."; \
 	echo "test" > .tmp_iam_test; \
 	BUCKET=$$(./$(VENV_DIR)/bin/python -c "from cocli.core.config import load_campaign_config; print(load_campaign_config('$(CAMPAIGN)').get('aws', {}).get('data_bucket_name', ''))" 2>/dev/null || echo "roadmap-cocli-data-use1"); \
-	aws s3 cp .tmp_iam_test s3://$$BUCKET/campaigns/$(CAMPAIGN)/raw/iam_test.txt --profile $$EFFECTIVE_PROFILE && echo "  [OK] raw/ prefix accessible" || echo "  [FAIL] raw/ prefix blocked"; \
+	$$BIN s3 cp .tmp_iam_test s3://$$BUCKET/campaigns/$(CAMPAIGN)/raw/iam_test.txt --profile $$EFFECTIVE_PROFILE && echo "  [OK] raw/ prefix accessible" || echo "  [FAIL] raw/ prefix blocked"; \
 	echo "Testing restricted path (should fail)..."; \
-	aws s3 ls s3://$$BUCKET/status/ --profile $$EFFECTIVE_PROFILE > /dev/null 2>&1 && echo "  [FAIL] Restricted prefix accessible!" || echo "  [OK] Restricted prefix blocked"; \
+	$$BIN s3 ls s3://$$BUCKET/status/ --profile $$EFFECTIVE_PROFILE > /dev/null 2>&1 && echo "  [FAIL] Restricted prefix accessible!" || echo "  [OK] Restricted prefix blocked"; \
 	rm -f .tmp_iam_test
 
 # ==============================================================================
