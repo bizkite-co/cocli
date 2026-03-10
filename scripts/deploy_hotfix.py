@@ -92,11 +92,21 @@ def main() -> None:
         deploy_to_host("mstouffer", target_arg)
         return
 
-    campaign_name = get_campaign() or "turboship"
+    campaign_name = get_campaign() or "roadmap"
     config = load_campaign_config(campaign_name)
     
+    # 1. Try campaign config first
     cluster_config = config.get("cluster", {})
     nodes = cluster_config.get("nodes", [])
+
+    # 2. Fallback to global config
+    if not nodes:
+        from cocli.core.paths import paths
+        global_config_path = paths.root / "config" / "cocli_config.toml"
+        if global_config_path.exists():
+            import toml
+            global_config = toml.load(global_config_path)
+            nodes = global_config.get("cluster", {}).get("nodes", [])
 
     if not nodes:
         console.print("[yellow]No worker nodes configured for this campaign.[/yellow]")

@@ -91,19 +91,16 @@ hotfix_node() {
     if [ "$needs_build" == "BUILD" ]; then
         if [ "$host" == "$REGISTRY_HOST" ]; then
             printf "  [BUILD] Hub node changed. Running Docker build...\n"
-            ssh $RPI_USER@$host "cd ~/repos/cocli_build && docker build -t $image_name -f docker/rpi-worker/Dockerfile . && docker tag $image_name $registry_image && docker push $registry_image && python3 scripts/check_code_signature.py --update --task docker_build"
+            ssh $RPI_USER@$host "cd ~/repos/cocli_build && docker build -t $image_name -f docker/rpi-worker/Dockerfile . && python3 scripts/check_code_signature.py --update --task docker_build"
         else
             printf "  [PULL] Code changed. Pulling from registry hub ($REGISTRY_HOST)...\n"
-            if ssh $RPI_USER@$host "docker pull $registry_image && docker tag $registry_image $image_name"; then
-                # Update signature locally so we know we are in sync with the hub
-                rsync -az .code_signatures.json $RPI_USER@$host:~/repos/cocli_build/
-            else
+            if ! ssh $RPI_USER@$host "docker pull $registry_image && docker tag $registry_image $image_name"; then
                 printf "  [WARN] Pull failed. Falling back to local build on $host...\n"
                 ssh $RPI_USER@$host "cd ~/repos/cocli_build && docker build -t $image_name -f docker/rpi-worker/Dockerfile . && python3 scripts/check_code_signature.py --update --task docker_build"
             fi
         fi
     else
-        printf "  [SKIP] Code identical to last build. Skipping image update.\n"
+        printf "  [SKIP] Code identical to last build.\n"
     fi
 
     # 3. Restart
@@ -114,6 +111,7 @@ hotfix_node() {
         --shm-size=2gb \
         -e TZ=America/Los_Angeles \
         -e CAMPAIGN_NAME='$node_campaign' \
+        -e AWS_PROFILE='${node_campaign}-iot' \
         -e COCLI_HOSTNAME=$short_name \
         -e COCLI_QUEUE_TYPE=filesystem \
         -v ~/repos/data:/app/data \
@@ -123,21 +121,42 @@ hotfix_node() {
         cocli worker supervisor --debug" >/dev/null
     
     # 4. Verify
-    verify_node $host
+    if verify_node $host; then
+        # 5. IF Hub was verified, push to registry for others
+        if [ "$host" == "$REGISTRY_HOST" ] && [ "$needs_build" == "BUILD" ]; then
+            printf "  [PUBLISH] Hub verified. Pushing to local registry...\n"
+            ssh $RPI_USER@$host "docker tag $image_name $registry_image && docker push $registry_image"
+        fi
+        return 0
+    else
+        return 1
+    fi
 }
 
 target=$1
-if [ -n "$target" ]; then
+nodes=$(python3 -c "import toml; c = toml.load('$CONFIG_FILE'); nodes = c.get('cluster', {}).get('nodes', []); print(' '.join([n['host'] for n in nodes]))")
+
+if [ "$target" == "--children" ]; then
+    # Deploy to ALL child nodes (Hub must be done already)
+    for node in $nodes; do
+        if [ "$node" != "$REGISTRY_HOST" ]; then
+            hotfix_node $node
+        fi
+    done
+elif [ -n "$target" ]; then
+    # Single target
     hotfix_node $target
 else
-    # Deploy to ALL nodes in global config
-    nodes=$(python3 -c "import toml; c = toml.load('$CONFIG_FILE'); nodes = c.get('cluster', {}).get('nodes', []); print(' '.join([n['host'] for n in nodes]))")
-    
-    # ALWAYS do Registry Host first to ensure image is available
+    # Default: Staged Rollout
+    # 1. ALWAYS do Registry Host first and wait for verification
     if [[ "$nodes" == *"$REGISTRY_HOST"* ]]; then
-        hotfix_node $REGISTRY_HOST
+        if ! hotfix_node $REGISTRY_HOST; then
+            printf "[${RED}FATAL${NC}] Hub verification failed. Aborting cluster rollout.\n"
+            exit 1
+        fi
     fi
 
+    # 2. Deploy to others ONLY if Hub succeeded
     for node in $nodes; do
         if [ "$node" != "$REGISTRY_HOST" ]; then
             hotfix_node $node

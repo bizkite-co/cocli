@@ -39,7 +39,7 @@ echo "Configuring insecure registry $HUB_REGISTRY..."
 sudo mkdir -p /etc/docker
 # Use jq to merge or create if it doesn't exist
 if [ -f /etc/docker/daemon.json ]; then
-    sudo jq --arg reg "$HUB_REGISTRY" '. + {"insecure-registries": (."insecure-registries" // []) + [$reg] | unique}' /etc/docker/daemon.json | sudo tee /etc/docker/daemon.json.tmp
+    sudo jq --arg reg "$HUB_REGISTRY" '.["insecure-registries"] = ((.["insecure-registries"] // []) + [$reg] | unique)' /etc/docker/daemon.json | sudo tee /etc/docker/daemon.json.tmp
     sudo mv /etc/docker/daemon.json.tmp /etc/docker/daemon.json
 else
     echo "{\"insecure-registries\": [\"$HUB_REGISTRY\"]}" | sudo tee /etc/docker/daemon.json

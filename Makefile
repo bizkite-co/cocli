@@ -624,12 +624,13 @@ hotfix-rpi: ## Push code hotfix to a single RPi (Usage: make hotfix-rpi RPI_HOST
 	fi
 
 .PHONY: hotfix-hub
-hotfix-hub: ## Apply hotfix ONLY to the cluster Hub (cocli5x1.pi)
-	@python3 scripts/deploy_hotfix.py cocli5x1.pi
+hotfix-hub: ## Apply hotfix ONLY to the cluster Hub (registry host) and verify
+	@$(eval REGISTRY_HOST := $(shell python3 -c "import toml; c = toml.load('data/config/cocli_config.toml'); print(c.get('cluster', {}).get('registry_host', ''))"))
+	@bash scripts/hotfix_cluster.sh $(REGISTRY_HOST)
 
 .PHONY: hotfix-child-nodes
 hotfix-child-nodes: ## Apply hotfix to all child nodes (excluding Hub)
-	@python3 scripts/deploy_hotfix.py --children
+	@bash scripts/hotfix_cluster.sh --children
 
 # ==============================================================================
 # Raspberry Pi Worker Management
