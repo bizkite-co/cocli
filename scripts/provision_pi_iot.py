@@ -92,12 +92,18 @@ c = configparser.ConfigParser()
 if os.path.exists(p):
     c.read(p)
 
+section = f"profile {campaign}-{role}-iot"
+if not c.has_section(section): 
+    c.add_section(section)
+
+if c.has_option(section, "credential_process"): c.remove_option(section, "credential_process")
 c.set(section, "credential_process", f"/root/.cocli/iot/get_tokens.sh {campaign}")
 c.set(section, "region", "us-east-1")
 
 if "{role}" == "scraper":
     legacy = f"profile {campaign}-iot"
     if not c.has_section(legacy): c.add_section(legacy)
+    if c.has_option(legacy, "credential_process"): c.remove_option(legacy, "credential_process")
     c.set(legacy, "credential_process", f"/root/.cocli/iot/get_tokens.sh {campaign}")
     c.set(legacy, "region", "us-east-1")
 
