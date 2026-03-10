@@ -67,6 +67,7 @@ fi
 echo "Installing NeoVim and dependencies via mise..."
 ~/.local/bin/mise use --global neovim@latest
 ~/.local/bin/mise use --global usage@latest
+~/.local/bin/mise use --global awscli@latest
 
 # 6. Install zoxide (Better cd)
 if ! command -v zoxide &> /dev/null; then

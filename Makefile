@@ -623,9 +623,13 @@ hotfix-rpi: ## Push code hotfix to a single RPi (Usage: make hotfix-rpi RPI_HOST
 		ts=$$(date +%H:%M:%S); printf "[$$ts] \033[0;31m%s is OFFLINE or slow (10s timeout). Skipping.\033[0m\n" "$(RPI_HOST)"; \
 	fi
 
-.PHONY: hotfix-cluster
-hotfix-cluster: ## Apply high-speed rsync hotfix to all cluster nodes
-	@python3 scripts/deploy_hotfix.py
+.PHONY: hotfix-hub
+hotfix-hub: ## Apply hotfix ONLY to the cluster Hub (cocli5x1.pi)
+	@python3 scripts/deploy_hotfix.py cocli5x1.pi
+
+.PHONY: hotfix-child-nodes
+hotfix-child-nodes: ## Apply hotfix to all child nodes (excluding Hub)
+	@python3 scripts/deploy_hotfix.py --children
 
 # ==============================================================================
 # Raspberry Pi Worker Management
@@ -873,18 +877,37 @@ show-kmls: ## Show KML files online (Usage: make show-kmls [BUCKET=cocli-web-ass
 	aws s3 ls s3://$(or $(BUCKET), cocli-web-assets)/kml/ --profile $(or $(PROFILE), bizkite-support)
 
 .PHONY: deploy-iot-cdk
-deploy-iot-cdk: install ## Deploy IoT Core Credential Provider infrastructure (Usage: make deploy-iot-cdk CAMPAIGN=roadmap)
+deploy-iot-cdk: install ## Deploy granular IAM roles and IoT aliases via CDK (Usage: make deploy-iot-cdk CAMPAIGN=roadmap)
 	@$(call validate_campaign)
-	@$(eval PROFILE := $(shell python3 -c "from cocli.core.config import load_campaign_config; print(load_campaign_config('$(CAMPAIGN)').get('aws', {}).get('aws_profile', 'default'))"))
-	@echo "Deploying IoT infrastructure for $(CAMPAIGN) using profile $(PROFILE)..."
-	cd cdk_scraper_deployment && uv pip install -r requirements.txt && cdk deploy --require-approval never --profile $(PROFILE) -c campaign=$(CAMPAIGN)
+	@echo "Deploying granular IAM infrastructure for $(CAMPAIGN) using profile $(AWS_PROFILE)..."
+	cd cdk_scraper_deployment && uv pip install -r requirements.txt && cdk deploy --require-approval never --profile $(AWS_PROFILE) -c campaign=$(CAMPAIGN)
+	@$(MAKE) update-infra-config CAMPAIGN=$(CAMPAIGN)
 
 .PHONY: provision-pi-iot
-provision-pi-iot: ## Provision a Pi with unique IoT certificate (Usage: make provision-pi-iot HOST=xxx.pi CAMPAIGN=roadmap)
+provision-pi-iot: ## Provision a Pi with a specific granular role (Usage: make provision-pi-iot HOST=xxx.pi CAMPAIGN=roadmap [ROLE=scraper|processor])
 	@$(call validate_campaign)
 	@if [ -z "$(HOST)" ]; then echo "Error: HOST is required. Usage: make provision-pi-iot HOST=cocli5x0.pi CAMPAIGN=roadmap"; exit 1; fi
-	@$(eval PROFILE := $(shell python3 -c "from cocli.core.config import load_campaign_config; print(load_campaign_config('$(CAMPAIGN)').get('aws', {}).get('aws_profile', 'default'))"))
-	./scripts/provision_pi_iot.py --host $(HOST) --campaign $(CAMPAIGN) --profile $(PROFILE)
+	./scripts/provision_pi_iot.py --host $(HOST) --campaign $(CAMPAIGN) --profile $(AWS_PROFILE) --role $(or $(ROLE), scraper)
+
+.PHONY: verify-iam
+verify-iam: ## Verify that the current IoT profile respects granular prefix restrictions (Usage: make verify-iam CAMPAIGN=roadmap [PROFILE=xxx])
+	@$(call validate_campaign)
+	@echo "Verifying IAM prefix restrictions for $(CAMPAIGN)..."
+	@EFFECTIVE_PROFILE=$(or $(PROFILE), $(IOT_PROFILE)); \
+	if [ -z "$$EFFECTIVE_PROFILE" ]; then \
+		if aws configure list-profiles 2>/dev/null | grep -q "$(CAMPAIGN)-iot"; then \
+			EFFECTIVE_PROFILE="$(CAMPAIGN)-iot"; \
+		fi; \
+	fi; \
+	if [ -z "$$EFFECTIVE_PROFILE" ]; then echo "Error: IoT profile not found for $(CAMPAIGN)."; exit 1; fi; \
+	echo "Using Profile: $$EFFECTIVE_PROFILE"; \
+	echo "Testing Scraper path (should work for PUT)..."; \
+	echo "test" > .tmp_iam_test; \
+	BUCKET=$$(./$(VENV_DIR)/bin/python -c "from cocli.core.config import load_campaign_config; print(load_campaign_config('$(CAMPAIGN)').get('aws', {}).get('data_bucket_name', ''))" 2>/dev/null || echo "roadmap-cocli-data-use1"); \
+	aws s3 cp .tmp_iam_test s3://$$BUCKET/campaigns/$(CAMPAIGN)/raw/iam_test.txt --profile $$EFFECTIVE_PROFILE && echo "  [OK] raw/ prefix accessible" || echo "  [FAIL] raw/ prefix blocked"; \
+	echo "Testing restricted path (should fail)..."; \
+	aws s3 ls s3://$$BUCKET/status/ --profile $$EFFECTIVE_PROFILE > /dev/null 2>&1 && echo "  [FAIL] Restricted prefix accessible!" || echo "  [OK] Restricted prefix blocked"; \
+	rm -f .tmp_iam_test
 
 # ==============================================================================
 # Documentation

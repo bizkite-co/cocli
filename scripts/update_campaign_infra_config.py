@@ -76,7 +76,9 @@ def update_config(
         "IdentityPoolId": "cocli_identity_pool_id",
         "UserPoolId": "cocli_user_pool_id",
         "UserPoolClientId": "cocli_user_pool_client_id",
-        "UserPoolDomain": "cocli_user_pool_domain"
+        "UserPoolDomain": "cocli_user_pool_domain",
+        "ScraperRoleAlias": "scraper_role_alias",
+        "ProcessorRoleAlias": "processor_role_alias"
     }
 
     updates_made = False

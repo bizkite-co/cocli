@@ -38,7 +38,7 @@ class FsAuditor:
         self.schema_root = schema_root or (Path(__file__).parent.parent.parent.parent / "docs" / "_schema" / "data-root")
         self.schema = SchemaSource(self.schema_root)
         
-    def audit_full(self, campaign_name: Optional[str] = None) -> AuditNode:
+    def audit_full(self, campaign_name: Optional[str] = None, skip_companies: bool = True) -> AuditNode:
         """Performs a full recursive audit of the data root."""
         root_node = AuditNode(
             name="data_root",
@@ -48,10 +48,10 @@ class FsAuditor:
         )
         
         # We walk the real filesystem and match against schema
-        self._recursive_audit(self.root, root_node, campaign_name)
+        self._recursive_audit(self.root, root_node, campaign_name, skip_companies=skip_companies)
         return root_node
 
-    def _recursive_audit(self, current_path: Path, parent_node: AuditNode, campaign_filter: Optional[str] = None) -> None:
+    def _recursive_audit(self, current_path: Path, parent_node: AuditNode, campaign_filter: Optional[str] = None, skip_companies: bool = False) -> None:
         try:
             for item in current_path.iterdir():
                 # Skip hidden files
@@ -59,6 +59,10 @@ class FsAuditor:
                     continue
                     
                 rel_path = item.relative_to(self.root)
+                
+                # OPTIMIZATION: Skip companies if requested
+                if skip_companies and "companies" in rel_path.parts:
+                    continue
                 
                 # Apply campaign filter if at top level
                 if campaign_filter and str(rel_path).startswith("campaigns/"):
@@ -85,11 +89,11 @@ class FsAuditor:
 
                 parent_node.children.append(node)
                 
-                # Only recurse into valid directories or campaigns
-                # (We don't want to crawl massive orphan directories)
-                if item.is_dir() and (is_compliant or item.name == "campaigns"):
-                    # Limit depth for very large collections to keep report usable
-                    if "companies" not in rel_path.parts:
+                # Recurse into directories
+                if item.is_dir():
+                    # Optimization: Limit depth for very large valid collections
+                    # but ALWAYS recurse into orphans to find every misplaced file.
+                    if not is_compliant or "companies" not in rel_path.parts:
                         self._recursive_audit(item, node, campaign_filter)
                         
         except Exception as e:

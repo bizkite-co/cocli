@@ -15,6 +15,7 @@ from aws_cdk import (
     aws_certificatemanager as acm,
     aws_logs as logs,
     aws_cognito as cognito,
+    aws_iot as iot,
     Duration,
     CfnOutput,
     RemovalPolicy,
@@ -236,7 +237,6 @@ class CdkScraperDeploymentStack(Stack):  # type: ignore[misc]
             )
 
         # --- Granular IAM Roles for Scrapers and Processors ---
-        from aws_cdk import aws_iot as iot
         
         # 1. Scraper Role (Least Privilege for Data Collection)
         scraper_role = iam.Role(self, "CocliScraperRole",

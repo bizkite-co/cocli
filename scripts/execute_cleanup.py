@@ -44,7 +44,7 @@ def remove_from_s3(file_list: List[str], campaign: str) -> None:
         for k in keys:
             f.write(f"{k}\n")
     
-    cmd = f"cat {temp_list} | xargs -n 1 -P 10 aws s3 rm"
+    cmd = f"cat {temp_list} | xargs -n 1 -P 10 aws s3 rm --recursive"
     try:
         subprocess.run(cmd, shell=True, check=True)
     except Exception as e:

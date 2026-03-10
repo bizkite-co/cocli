@@ -58,7 +58,8 @@ def audit_cli(
 def audit_fs(
     campaign: Optional[str] = typer.Option(None, "--campaign", "-c", help="Specific campaign to audit."),
     output: Optional[Path] = typer.Option(None, "--output", "-o", help="Output file path."),
-    gen_cleanup: bool = typer.Option(False, "--gen-cleanup", help="Generate a distributed cleanup report for orphans.")
+    gen_cleanup: bool = typer.Option(False, "--gen-cleanup", help="Generate a distributed cleanup report for orphans."),
+    skip_companies: bool = typer.Option(True, "--skip-companies/--no-skip-companies", help="Skip the massive companies directory for speed.")
 ) -> None:
     """
     Audits the filesystem for OMAP compliance and Screaming Architecture.
@@ -70,7 +71,7 @@ def audit_fs(
     auditor = FsAuditor()
 
     # Perform full audit using schema source of truth
-    root_node = auditor.audit_full(campaign_name=campaign)
+    root_node = auditor.audit_full(campaign_name=campaign, skip_companies=skip_companies)
 
     if gen_cleanup:
         orphans = auditor.get_orphans(root_node)

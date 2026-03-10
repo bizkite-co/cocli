@@ -19,14 +19,19 @@ def deploy_to_host(user: str, host: str) -> bool:
     # Ensure remote tmp dir exists
     subprocess.run(["ssh", f"{user}@{host}", f"mkdir -p {REMOTE_TMP_DIR}"], capture_output=True)
 
-    # 1. Sync the entire cocli directory, pyproject.toml, and VERSION to the host's temp dir
-    # WE REMOVE TRAILING SLASH from cocli so rsync creates /tmp/cocli_hotfix/cocli/
-    rsync_cmd = f"rsync -avz --delete cocli pyproject.toml VERSION {user}@{host}:{REMOTE_TMP_DIR}/"
-    console.print("  Syncing package files...")
+    # 1. Sync the entire cocli directory, pyproject.toml, VERSION, Makefile, and mk/ to the host's temp dir
+    rsync_cmd = f"rsync -avz --delete cocli pyproject.toml VERSION Makefile mk {user}@{host}:{REMOTE_TMP_DIR}/"
+    console.print("  Syncing package files to temp...")
     res = subprocess.run(rsync_cmd, shell=True, capture_output=True, text=True)
     if res.returncode != 0:
         console.print(f"  [red]Rsync failed: {res.stderr}[/red]")
         return False
+
+    # 1.1 Also sync the Makefile and mk/ directly to the repo dir for CLI use
+    repo_dir = "repos/cocli"
+    rsync_repo_cmd = f"rsync -avz Makefile mk {user}@{host}:{repo_dir}/"
+    console.print(f"  Updating remote repository at {repo_dir}...")
+    subprocess.run(rsync_repo_cmd, shell=True, capture_output=True)
 
     # 2. Find all cocli containers
     res = run_ssh(user, host, "docker ps -a --format '{{.Names}}' | grep cocli")
@@ -64,7 +69,7 @@ def deploy_to_host(user: str, host: str) -> bool:
         run_ssh(user, host, f"docker restart {container}")
         
         # 6. Final Verification: Use a simpler command to avoid quoting hell
-        verify_cmd = f"docker exec {container} python3 -c \"import cocli.core.utils as u; print('UNIT_SEP=' + repr(u.UNIT_SEP))\""
+        verify_cmd = f"docker exec {container} python3 -c \"import cocli.core.constants as c; print('UNIT_SEP=' + repr(c.UNIT_SEP))\""
         verify_res = run_ssh(user, host, verify_cmd)
         
         if verify_res.returncode == 0 and "UNIT_SEP=" in verify_res.stdout:
@@ -81,25 +86,17 @@ def main() -> None:
     from cocli.core.config import get_campaign, load_campaign_config
     
     # Allow command line host override
-    target_host = sys.argv[1] if len(sys.argv) > 1 else None
+    target_arg = sys.argv[1] if len(sys.argv) > 1 else None
     
-    if target_host:
-        deploy_to_host("mstouffer", target_host)
+    if target_arg and target_arg != "--children":
+        deploy_to_host("mstouffer", target_arg)
         return
 
     campaign_name = get_campaign() or "turboship"
     config = load_campaign_config(campaign_name)
     
-    scaling = config.get("prospecting", {}).get("scaling", {})
     cluster_config = config.get("cluster", {})
-    
     nodes = cluster_config.get("nodes", [])
-    if not nodes:
-        for host_key in scaling.keys():
-            if host_key == "fargate":
-                continue
-            host = host_key if "." in host_key else f"{host_key}.pi"
-            nodes.append({"host": host, "label": host_key.capitalize()})
 
     if not nodes:
         console.print("[yellow]No worker nodes configured for this campaign.[/yellow]")
@@ -107,7 +104,18 @@ def main() -> None:
 
     for node in nodes:
         host = node["host"]
-        user = "mstouffer" # Default user
+        user = "mstouffer"
+        
+        # Logic for staged deployment
+        is_hub = host == "cocli5x1.pi"
+        
+        if target_arg == "--children":
+            if is_hub:
+                continue
+        else:
+            # Legacy default: all nodes
+            pass
+            
         try:
             deploy_to_host(user, host)
         except Exception as e:
