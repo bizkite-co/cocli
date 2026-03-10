@@ -337,8 +337,9 @@ class CdkScraperDeploymentStack(Stack):  # type: ignore[misc]
         )
 
         # Update IoT Policy to allow AssumeRole for both aliases
+        # Note: We reuse the established policy name but update its document
         iot_policy = iot.CfnPolicy(self, "CocliIoTAssumeRolePolicyV2",
-            policy_name=f"CocliIoTAssumeRolePolicy-{campaign_config['name']}",
+            policy_name=f"CocliIoTAssumeRolePolicyV2-{campaign_config['name']}",
             policy_document={
                 "Version": "2012-10-17",
                 "Statement": [
