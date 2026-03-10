@@ -257,7 +257,7 @@ class CdkScraperDeploymentStack(Stack):  # type: ignore[misc]
                 iam.PolicyStatement(
                     sid="AllowQueueConsumption",
                     effect=iam.Effect.ALLOW,
-                    actions=["s3:GetObject"],
+                    actions=["s3:GetObject", "s3:PutObject", "s3:DeleteObject"],
                     resources=[f"arn:aws:s3:::{data_bucket_name}/campaigns/{campaign_config['name']}/queues/*"]
                 ),
                 iam.PolicyStatement(
@@ -296,13 +296,13 @@ class CdkScraperDeploymentStack(Stack):  # type: ignore[misc]
                 iam.PolicyStatement(
                     sid="AllowRawConsumption",
                     effect=iam.Effect.ALLOW,
-                    actions=["s3:GetObject"],
+                    actions=["s3:GetObject", "s3:DeleteObject"],
                     resources=[f"arn:aws:s3:::{data_bucket_name}/campaigns/{campaign_config['name']}/raw/*"]
                 ),
                 iam.PolicyStatement(
                     sid="AllowWalAndIndexUpdate",
                     effect=iam.Effect.ALLOW,
-                    actions=["s3:PutObject", "s3:GetObject"],
+                    actions=["s3:PutObject", "s3:GetObject", "s3:DeleteObject"],
                     resources=[f"arn:aws:s3:::{data_bucket_name}/campaigns/{campaign_config['name']}/indexes/*"]
                 ),
                 iam.PolicyStatement(
