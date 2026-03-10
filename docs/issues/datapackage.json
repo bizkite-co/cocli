@@ -1,36 +1,20 @@
 {
-  "profile": "tabular-data-package",
-  "name": "mission-index",
+  "name": "mission-control",
   "resources": [
     {
-      "name": "mission-index",
+      "name": "mission",
       "path": "mission.usv",
-      "format": "usv",
-      "dialect": {
-        "delimiter": "\u001f",
-        "header": false
-      },
+      "format": "csv",
+      "delimiter": "\u001f",
       "schema": {
         "fields": [
           {
             "name": "slug",
-            "type": "string",
-            "description": "Unique URL-friendly name"
-          },
-          {
-            "name": "title",
-            "type": "string",
-            "description": "Human-readable title"
-          },
-          {
-            "name": "status",
-            "type": "string",
-            "description": "Current state"
+            "type": "string"
           },
           {
             "name": "dependencies",
-            "type": "string",
-            "description": "List of required task slugs"
+            "type": "string"
           }
         ]
       }

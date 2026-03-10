@@ -132,6 +132,7 @@ exclude = [
     "cdk.out",
     "quickbooks-search",
     "mutt-setup",
+    "fullertonian-site",
 ]
 follow_imports = "normal"
 
@@ -142,6 +143,7 @@ exclude = [
     "data",
     "build",
     "dist",
+    "fullertonian-site",
 ]
 
 [[tool.mypy.overrides]]
