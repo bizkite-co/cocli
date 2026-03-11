@@ -1,5 +1,5 @@
 import typer
-from cocli.commands.campaign import mgmt, workflow, planning, viz, prospecting, enrichment, rollout
+from cocli.commands.campaign import mgmt, workflow, planning, viz, prospecting, enrichment, rollout, curation
 from cocli.commands import prospects, exclude
 
 # Re-export core functions for backward compatibility and testing
@@ -16,6 +16,7 @@ app.add_typer(planning.app, name="", help="Planning and importing")
 app.add_typer(viz.app, name="", help="Visualization")
 app.add_typer(prospecting.app, name="", help="Prospecting and scraping")
 app.add_typer(enrichment.app, name="", help="Website Enrichment")
+app.add_typer(curation.app, name="", help="Event Curation")
 app.add_typer(rollout.app, name="rollout", help="Standardized campaign rollout management")
 
 # Add the prospects sub-typer

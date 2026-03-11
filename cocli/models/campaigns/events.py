@@ -32,6 +32,10 @@ class Event(BaseUsvModel):
     category: Optional[str] = None
     tags: List[str] = Field(default_factory=list)
     
+    # Curation Flags
+    is_excluded: bool = Field(default=False, description="Manually marked for exclusion")
+    is_highlighted: bool = Field(default=False, description="Manually marked for highlight")
+    
     # Metadata
     campaign_name: str = "fullertonian"
     source_url: Optional[str] = None
@@ -97,7 +101,9 @@ class Event(BaseUsvModel):
         event_dir.mkdir(parents=True, exist_ok=True)
         
         # Download assets if they haven't been downloaded yet
-        self.download_assets()
+        # Only download if not excluded
+        if not self.is_excluded:
+            self.download_assets()
         
         readme_path = event_dir / "README.md"
         
