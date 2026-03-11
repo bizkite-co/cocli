@@ -112,6 +112,10 @@ class CampaignPaths(PathObject):
     def queues(self) -> Path:
         return self.path / "queues"
     
+    @property
+    def raw(self) -> Path:
+        return self.path / "raw"
+    
     def queue(self, name: QueueName, ensure: bool = False) -> QueuePaths:
         obj = QueuePaths(lambda: self.queues / name)
         if ensure:
