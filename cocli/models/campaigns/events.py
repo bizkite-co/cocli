@@ -7,6 +7,9 @@ import yaml
 from ..base import BaseUsvModel
 from ...core.paths import paths
 from ...core.ordinant import QueueIdentity, QueueName
+import logging
+
+logger = logging.getLogger(__name__)
 
 class Event(BaseUsvModel):
     """
@@ -25,6 +28,7 @@ class Event(BaseUsvModel):
     fee: Optional[str] = "Free"
     description: Optional[str] = None
     url: Optional[str] = None
+    image_url: Optional[str] = None
     category: Optional[str] = None
     tags: List[str] = Field(default_factory=list)
     
@@ -57,12 +61,43 @@ class Event(BaseUsvModel):
         ts = self.start_time.strftime("%Y%m%dT%H%M%S")
         return f"{ts}_{self.host_slug}_{self.event_slug}"
 
+    def download_assets(self) -> None:
+        """
+        Downloads the event image if an image_url is provided.
+        Saves it as 'hero.jpg' (or appropriate extension) in the event directory.
+        """
+        if not self.image_url:
+            return
+            
+        import httpx
+        event_dir = self.get_local_path()
+        event_dir.mkdir(parents=True, exist_ok=True)
+        
+        # Determine extension
+        ext = self.image_url.split('.')[-1].split('?')[0].lower()
+        if ext not in ['jpg', 'jpeg', 'png', 'webp', 'gif']:
+            ext = 'jpg'
+            
+        asset_path = event_dir / f"hero.{ext}"
+        
+        try:
+            with httpx.Client(follow_redirects=True) as client:
+                resp = client.get(self.image_url)
+                resp.raise_for_status()
+                asset_path.write_bytes(resp.content)
+                logger.info(f"Downloaded asset: {asset_path}")
+        except Exception as e:
+            logger.error(f"Failed to download asset from {self.image_url}: {e}")
+
     def save(self) -> Path:
         """
         Saves the event to its canonical location as a directory with a README.md file.
         """
         event_dir = self.get_local_path()
         event_dir.mkdir(parents=True, exist_ok=True)
+        
+        # Download assets if they haven't been downloaded yet
+        self.download_assets()
         
         readme_path = event_dir / "README.md"
         

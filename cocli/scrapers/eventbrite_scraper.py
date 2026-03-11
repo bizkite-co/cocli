@@ -2,8 +2,9 @@ import logging
 import asyncio
 import re
 from datetime import datetime
-from typing import List, Optional, Union
+from typing import List, Optional, cast, Union
 from playwright.async_api import async_playwright
+
 from bs4 import BeautifulSoup, Tag
 
 from ..models.campaigns.events import Event
@@ -76,6 +77,10 @@ class EventbriteScraper:
         date_elem = card.find(string=re.compile(r'(Sun|Mon|Tue|Wed|Thu|Fri|Sat),'))
         date_str = str(date_elem).strip() if date_elem else "Unknown Date"
         
+        # Image URL
+        img_elem = card.find('img')
+        image_url = cast(str, img_elem.get('src')) if img_elem else None
+
         # Host/Organizer - Usually near the location or at the bottom
         # We can look for specific footer classes or common patterns
         host_name = "Various Hosts"
@@ -108,6 +113,7 @@ class EventbriteScraper:
             host_name=host_name,
             location="Fullerton, CA", # Default for now
             url=url if url else None,
+            image_url=image_url,
             category="EventBrite",
             source_url=self.base_url
         )
