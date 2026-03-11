@@ -16,6 +16,7 @@ class EventScrapeTask(BaseUsvModel):
     host_slug: str
     campaign_name: str = "fullertonian"
     scraper_type: Literal["eventbrite", "fullerton-observer", "fullerton-library", "web-search", "generic-calendar"] = "generic-calendar"
+    is_active: bool = Field(default=True, description="Whether this source is currently active for scraping")
     
     # Queue mechanics (Transient)
     ack_token: Optional[str] = Field(None, exclude=True)

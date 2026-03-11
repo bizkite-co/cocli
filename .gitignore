@@ -34,3 +34,4 @@ mutt-setup
 .gwt/
 gemini-cli
 fullertonian-site
+.playwright/

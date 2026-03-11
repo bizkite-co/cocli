@@ -911,6 +911,61 @@ def monitor_batch(
     console.print(f"  [white]Pending:      {pending_count}[/white]")
     console.print(f"  Total:        {len(tasks)}")
 
+@app.command(name="discover-venues")
+def discover_venues(
+    campaign_name: Optional[str] = typer.Argument(None),
+    force: bool = typer.Option(False, "--force", "-f"),
+) -> None:
+    """
+    Discovers local community venues and institutions via Google Maps.
+    Populates the events discovery pipeline.
+    """
+    if campaign_name is None:
+        campaign_name = get_campaign()
+    
+    if not campaign_name:
+        console.print("[red]No campaign specified.[/red]")
+        raise typer.Exit(1)
+
+    # Standard venue queries for Fullertonian
+    venue_queries = [
+        "community centers Fullerton CA",
+        "public parks Fullerton CA",
+        "museums Fullerton CA",
+        "art galleries Fullerton CA",
+        "live music venues Fullerton CA",
+        "recreation centers Fullerton CA"
+    ]
+
+    console.print(f"[bold blue]Starting Venue Discovery for {campaign_name}...[/bold blue]")
+    
+    # We leverage the existing pipeline but focus on venues
+    asyncio.run(pipeline(
+        locations=[], 
+        search_phrases=venue_queries, 
+        goal_limit=20, 
+        headed=False, 
+        devtools=False,
+        campaign_name=campaign_name, 
+        existing_companies_map={}, # No dedupe for venues yet
+        overlap_threshold_percent=30.0,
+        zoom_out_button_selector="div#zoomOutButton", 
+        panning_distance_miles=8, 
+        initial_zoom_out_level=3,
+        omit_zoom_feature=False, 
+        force=force, 
+        ttl_days=30, 
+        debug=False, 
+        console=console,
+        browser_width=2000, 
+        browser_height=2000, 
+        location_prospects_index=LocationProspectsIndex(campaign_name),
+        use_cloud_queue=False, 
+        max_proximity_miles=10.0, 
+        grid_tiles=None,
+        resource_discovery=True # Important: Use our new heuristic!
+    ))
+
 @app.command()
 def achieve_goal(
     goal_limit: int = typer.Option(10, "--emails", "--limit", help="Number of resources (or emails) to find before stopping."),

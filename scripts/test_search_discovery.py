@@ -12,7 +12,7 @@ async def test_search_live() -> None:
     query = "Current local events and restaurant openings in Fullerton CA March 2026"
     print(f"\n--- RUNNING WEB SEARCH DISCOVERY: '{query}' ---")
     
-    events = await scraper.search_and_extract(query)
+    events = await scraper.search_and_extract(query, engine="google")
     print(f"Found {len(events)} potential events.")
     
     for event in events:
