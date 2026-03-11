@@ -34,7 +34,7 @@ app = typer.Typer(no_args_is_help=True)
 async def pipeline(
     locations: list[str],
     search_phrases: list[str],
-    goal_emails: int,
+    goal_limit: int,
     headed: bool,
     devtools: bool,
     campaign_name: str,
@@ -59,6 +59,7 @@ async def pipeline(
     navigation_timeout_ms: Optional[int] = None,
     proxy_url: Optional[str] = None,
     grid_tiles: Optional[List[Dict[str, Any]]] = None,
+    resource_discovery: bool = False,
 ) -> None:
     
     queue_manager = get_queue_manager(f"{campaign_name}_enrichment", use_cloud=use_cloud_queue)
@@ -133,7 +134,7 @@ async def pipeline(
                         compiler.compile(company_dir)
                         if website_data.email:
                             emails_found_count += 1
-                        if emails_found_count >= goal_emails:
+                        if emails_found_count >= goal_limit:
                             stop_event.set()
                         queue_manager.ack(msg)
             
@@ -141,6 +142,8 @@ async def pipeline(
         async def producer_task(existing_companies_map: Dict[str, str]) -> None: 
             # Discovery-only in producer task
             from ...models.campaigns.queues.base import QueueMessage
+            from ...models.campaigns.indexes.google_maps_prospect import GoogleMapsProspect
+            nonlocal emails_found_count
             
             enrichment_queue = get_queue_manager(
                 f"{campaign_name}_enrichment", 
@@ -169,8 +172,23 @@ async def pipeline(
                         debug=debug
                     )
                     
-                    if detailed_data and detailed_data.domain:
-                        msg = QueueMessage(
+                    if detailed_data:
+                        # Resource Discovery Filtering
+                        if resource_discovery and not detailed_data.is_value_resource:
+                            logger.info(f"RESOURCE DISCOVERY: Skipping {detailed_data.name} (Not a value resource: {detailed_data.rationale})")
+                            continue
+
+                        # If it's a value resource, save it to the checkpoint immediately
+                        # (achieve-goal normally waits for enrichment, but resources might not have domains)
+                        if resource_discovery and detailed_data.is_value_resource:
+                            GoogleMapsProspect.append_to_checkpoint(campaign_name, detailed_data)
+                            logger.info(f"RESOURCE DISCOVERY: Captured {detailed_data.name} ({detailed_data.fee_category})")
+                            emails_found_count += 1
+                            if emails_found_count >= goal_limit:
+                                stop_event.set()
+
+                        if detailed_data.domain:
+                            msg = QueueMessage(
                             domain=detailed_data.domain,
                             company_slug=detailed_data.company_slug or list_item.company_slug,
                             campaign_name=campaign_name,
@@ -895,12 +913,13 @@ def monitor_batch(
 
 @app.command()
 def achieve_goal(
-    goal_emails: int = typer.Option(10, "--emails"),
+    goal_limit: int = typer.Option(10, "--emails", "--limit", help="Number of resources (or emails) to find before stopping."),
     campaign_name: Optional[str] = typer.Argument(None),
     force: bool = typer.Option(False, "--force", "-f"),
     ttl_days: int = typer.Option(30, "--ttl-days"),
     proximity_miles: float = typer.Option(10.0, "--proximity"),
     grid_mode: bool = typer.Option(False, "--grid"),
+    resource_discovery: bool = typer.Option(False, "--resource-discovery", help="Prioritize and filter for public/value resources."),
 ) -> None:
     if campaign_name is None:
         campaign_name = get_campaign()
@@ -930,12 +949,34 @@ def achieve_goal(
             with open(grid_file, "r") as f:
                 grid_tiles = json.load(f)
 
-    existing_companies_map = {c.domain: c.slug for c in Company.get_all() if c.domain and c.slug}
+    from rich.progress import Progress, SpinnerColumn, TextColumn
+    
+    with Progress(
+        SpinnerColumn(),
+        TextColumn("[progress.description]{task.description}"),
+        console=console
+    ) as progress:
+        task = progress.add_task("Scanning database...", total=None)
+        existing_companies_map = {}
+        loaded = 0
+        skipped = 0
+        for c in Company.get_all():
+            if c:
+                loaded += 1
+                if c.domain and c.slug:
+                    existing_companies_map[c.domain] = c.slug
+            else:
+                skipped += 1
+            
+            if (loaded + skipped) % 10 == 0:
+                progress.update(task, description=f"Scanning database... ([green]{loaded} loaded[/green], [yellow]{skipped} skipped[/yellow])")
+
     asyncio.run(pipeline(
-        locations=[], search_phrases=search_phrases, goal_emails=goal_emails, headed=False, devtools=False,
+        locations=[], search_phrases=search_phrases, goal_limit=goal_limit, headed=False, devtools=False,
         campaign_name=campaign_name, existing_companies_map=existing_companies_map, overlap_threshold_percent=30.0,
         zoom_out_button_selector="div#zoomOutButton", panning_distance_miles=8, initial_zoom_out_level=3,
         omit_zoom_feature=False, force=force, ttl_days=ttl_days, debug=False, console=console,
         browser_width=2000, browser_height=2000, location_prospects_index=LocationProspectsIndex(campaign_name),
-        use_cloud_queue=False, max_proximity_miles=proximity_miles, grid_tiles=grid_tiles
+        use_cloud_queue=False, max_proximity_miles=proximity_miles, grid_tiles=grid_tiles,
+        resource_discovery=resource_discovery
     ))

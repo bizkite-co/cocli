@@ -138,4 +138,7 @@ class ScrapeCoordinator:
                     self.wilderness.mark_scraped(bounds, query, items_found, record_width, record_height, tile_id=tile_id, processed_by=processed_by)
                     
         finally:
-            await context.close()
+            try:
+                await context.close()
+            except Exception:
+                pass

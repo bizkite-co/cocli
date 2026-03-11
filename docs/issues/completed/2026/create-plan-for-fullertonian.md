@@ -7,3 +7,6 @@ We will have to use the 1Password credentials from the campaign config to log in
 We have over 2,000 current subsribers and we expect to gain more with a little targetted advertising.
 
 
+
+---
+**Completed in commit:** `72acc66`

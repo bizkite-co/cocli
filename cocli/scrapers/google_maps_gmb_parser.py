@@ -47,6 +47,24 @@ def parse_gmb_page(html: str, debug: bool = False) -> Dict[str, Any]:
     if name:
         data["Name"] = name
 
+    # --- EXTRACT CATEGORIES ---
+    # Usually right after the rating or under the Name
+    # Look for the primary category string
+    category_element = soup.find("button", {"jsaction": "pane.rating.category"})
+    if category_element:
+        data["First_category"] = category_element.get_text(strip=True)
+    
+    # --- EXTRACT DESCRIPTION ---
+    # Google often provides a short "from the business" or "description" snippet
+    description_element = soup.find("div", {"class": "PYv6u"}) # Common class for description snippets
+    if not description_element:
+        # Fallback to looking for meta description if it exists
+        desc_meta = soup.find("meta", {"property": "og:description"})
+        if desc_meta and desc_meta.has_attr("content"):
+            data["Description"] = str(desc_meta["content"])
+    else:
+        data["Description"] = description_element.get_text(strip=True)
+
     # --- EXTRACT RATING & REVIEWS ---
     rating_reviews = extract_rating_reviews_gm_details(soup, inner_text, debug)
     data.update(rating_reviews)

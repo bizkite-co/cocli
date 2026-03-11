@@ -48,6 +48,15 @@ async def scrape_google_maps_details(
     # Parse with GMB parser
     details_dict = parse_gmb_page(witness.html, debug=debug)
     
+    # --- Resource Discovery Analysis ---
+    from .resource_analyzer import analyze_resource_value
+    analysis = analyze_resource_value(
+        name=details_dict.get("Name") or name or "",
+        category=details_dict.get("First_category") or "",
+        description=details_dict.get("Description") or "", # We might need to extract this too
+        reviews=details_dict.get("Reviews") or ""
+    )
+
     # Merge parsed data with provided fallbacks
     final_name = details_dict.get("Name") or name
     if not final_name:
@@ -60,10 +69,16 @@ async def scrape_google_maps_details(
         Full_Address=details_dict.get("Full_Address", ""),
         Website=details_dict.get("Website", ""),
         Phone_1=details_dict.get("Phone", ""),
+        First_category=details_dict.get("First_category"),
+        Second_category=details_dict.get("Second_category"),
         Reviews_count=details_dict.get("Reviews_count"),
         Average_rating=details_dict.get("Average_rating"),
+        Reviews=details_dict.get("Reviews"),
         GMB_URL=witness.url,
-        processed_by=witness.processed_by
+        processed_by=witness.processed_by,
+        is_value_resource=analysis["is_value_resource"],
+        fee_category=analysis["fee_category"],
+        rationale=analysis["rationale"]
     )
     
     try:

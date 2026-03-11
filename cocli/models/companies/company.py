@@ -151,12 +151,18 @@ class Company(BaseModel):
         companies_dir = paths.companies.path
         if not companies_dir.exists():
             return
+        
+        # We can store state on the class for the duration of the scan if needed
+        # but for now we just yield and let the caller count.
         for company_dir in sorted(companies_dir.iterdir()):
             if company_dir.is_dir():
                 company = cls.from_directory(company_dir)
                 if company:
-                    logger.debug(f"Yielding company with slug: {company.slug}") # Debug print
                     yield company
+                else:
+                    # We can't easily pass the count back via iterator without changing API
+                    # so we'll just yield None for skipped items to allow counting.
+                    yield None # type: ignore
 
     @classmethod
     def get(cls, slug: str) -> Optional["Company"]:
@@ -178,7 +184,7 @@ class Company(BaseModel):
             tags_path = entry.tags
 
             if not index_path.exists():
-                logger.warning(f"Skipping {company_dir.name}: _index.md not found.") # More explicit message
+                logger.debug(f"Skipping {company_dir.name}: _index.md not found.") 
                 return None
 
             # logger.info(f"Start reading indexes: {index_path}")

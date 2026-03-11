@@ -64,3 +64,8 @@ class GoogleMapsRawResult(BaseModel):
     processed_by: OptionalStr = None
     created_at: OptionalStr = None
     updated_at: OptionalStr = None
+    
+    # --- Resource Discovery Extension ---
+    is_value_resource: Optional[bool] = None
+    fee_category: OptionalStr = None
+    rationale: OptionalStr = None

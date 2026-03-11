@@ -1,4 +1,7 @@
-create-plan-for-fullertonianCreate Plan for the Fullertonian
-implement-service-protocolsImplement Service Protocols
-google-maps-resource-discovery-modeGoogle Maps Resource Discovery Mode
-lead-to-wal-lambda-bridgeLead To Wal Lambda Bridge
+identify-fullerton-local-event-sources
+implement-eventbrite-scraper-for-fullerton
+implement-general-calendar-scraper-for-local-institutions
+implement-service-protocolsImplement Service Protocols
+lead-to-wal-lambda-bridgeLead To Wal Lambda Bridge
+eliminate-brute-force-company-scan-in-prospecting-pipeline
+

@@ -336,3 +336,62 @@ def upload_kml_coverage_for_turboship(
     if source_path.exists():
         shutil.copy(str(source_path), str(final_kml_path))
         console.print(f"[green]KML placed at {final_kml_path}[/green]")
+
+@app.command(name="export-resources")
+def export_resources(
+    campaign_name: Optional[str] = typer.Argument(None),
+) -> None:
+    """
+    Aggregates and exports "Value-First" resources from the campaign index.
+    Optimized for Astro site ingestion.
+    """
+    if campaign_name is None:
+        campaign_name = get_campaign()
+    
+    if not campaign_name:
+        console.print("[red]No campaign specified.[/red]")
+        raise typer.Exit(1)
+
+    campaign_dir = get_campaign_dir(campaign_name)
+    if not campaign_dir:
+        console.print(f"[red]Campaign directory not found for {campaign_name}[/red]")
+        raise typer.Exit(1)
+
+    from cocli.core.prospects_csv_manager import ProspectsIndexManager
+    from cocli.models.campaigns.indexes.google_maps_prospect import GoogleMapsProspect
+    from cocli.utils.usv_utils import USVDictReader
+
+    manager = ProspectsIndexManager(campaign_name)
+    checkpoint = manager.index_dir / "prospects.checkpoint.usv"
+    
+    if not checkpoint.exists():
+        console.print("[yellow]No prospects index found. Run achieve-goal first.[/yellow]")
+        return
+
+    resources = []
+    with open(checkpoint, "r", encoding="utf-8") as f:
+        reader = USVDictReader(f)
+        for row in reader:
+            try:
+                prospect = GoogleMapsProspect.model_validate(row)
+                if prospect.is_value_resource:
+                    resources.append({
+                        "name": prospect.name,
+                        "category": prospect.first_category,
+                        "fee_category": prospect.fee_category,
+                        "address": prospect.full_address,
+                        "url": prospect.website or prospect.gmb_url,
+                        "description": prospect.rationale,
+                        "rating": prospect.average_rating,
+                        "reviews": prospect.reviews_count
+                    })
+            except Exception:
+                continue
+
+    export_path = campaign_dir / "exports" / "resources.json"
+    export_path.parent.mkdir(exist_ok=True)
+    
+    with open(export_path, "w") as f:
+        json.dump(resources, f, indent=2)
+
+    console.print(f"[bold green]Exported {len(resources)} value resources to {export_path}[/bold green]")

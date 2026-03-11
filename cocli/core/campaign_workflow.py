@@ -123,7 +123,7 @@ class CampaignWorkflow:
                 pipeline(
                     locations=locations,
                     search_phrases=search_phrases,
-                    goal_emails=10,  # Default goal, can be made configurable
+                    goal_limit=10,  # Default goal, can be made configurable
                     headed=False,
                     devtools=False,
                     campaign_name=self.name,

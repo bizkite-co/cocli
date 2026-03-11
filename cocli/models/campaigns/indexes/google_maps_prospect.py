@@ -94,6 +94,11 @@ class GoogleMapsProspect(GoogleMapsIdx):
     discovery_phrase: Optional[str] = None
     discovery_tile_id: Optional[str] = None
     email: Optional[str] = Field(None, description="DEPRECATED: Google Maps does not provide email. Use website enrichment instead.")
+    
+    # --- Resource Discovery Extension ---
+    is_value_resource: Optional[bool] = None
+    fee_category: Optional[str] = None
+    rationale: Optional[str] = None
 
     def merge_with_existing(self, existing: "GoogleMapsProspect") -> "GoogleMapsProspect":
         """
@@ -230,7 +235,10 @@ class GoogleMapsProspect(GoogleMapsIdx):
             "quotes": raw.Quotes,
             "processed_by": raw.processed_by or "local-worker",
             "list_found_at": raw.created_at,
-            "details_found_at": raw.updated_at
+            "details_found_at": raw.updated_at,
+            "is_value_resource": raw.is_value_resource,
+            "fee_category": raw.fee_category,
+            "rationale": raw.rationale
         }
         
         if data["name"]:
