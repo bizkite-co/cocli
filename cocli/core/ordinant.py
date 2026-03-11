@@ -27,6 +27,7 @@ class QueueIdentity(str, Enum):
     GM_SCRAPE = "gm-scrape"
     TO_CALL = "to-call"
     DISCOVERY_GEN = "discovery-gen"
+    EVENTS = "events"
 
 # Legacy Type Aliases for compatibility
 CollectionName = Union[CollectionIdentity, str]
@@ -34,7 +35,7 @@ IndexName = Union[IndexIdentity, str]
 QueueName = Union[QueueIdentity, str]
 
 # Standardized folder names for Queues/WAL
-StateFolder = Literal["pending", "completed", "sideline", "inbox", "processing"]
+StateFolder = Literal["pending", "completed", "sideline", "inbox", "processing", "wal"]
 
 # --- Deterministic Sharding ---
 

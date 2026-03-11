@@ -1,10 +1,12 @@
 # POLICY: frictionless-data-policy-enforcement
 from datetime import datetime
-from typing import Optional, List, Any
+from typing import Optional, List
 from pydantic import Field
 from pathlib import Path
 import yaml
 from ..base import BaseUsvModel
+from ...core.paths import paths
+from ...core.ordinant import QueueIdentity, QueueName
 
 class Event(BaseUsvModel):
     """
@@ -30,6 +32,22 @@ class Event(BaseUsvModel):
     campaign_name: str = "fullertonian"
     source_url: Optional[str] = None
     created_at: datetime = Field(default_factory=lambda: datetime.now())
+
+    @property
+    def collection(self) -> QueueName:
+        return QueueIdentity.EVENTS
+
+    def get_shard_id(self) -> str:
+        """Returns the shard ID based on event start time (YYYYMM)."""
+        return self.start_time.strftime("%Y%m")
+
+    def get_local_path(self) -> Path:
+        """Returns the canonical local path in the events WAL."""
+        return paths.campaign(self.campaign_name).queue(QueueIdentity.EVENTS).wal / self.get_shard_id() / self.get_event_dir_name()
+
+    def get_remote_key(self) -> str:
+        """Returns the S3 key for this event."""
+        return f"campaigns/{self.campaign_name}/queues/events/wal/{self.get_shard_id()}/{self.get_event_dir_name()}/README.md"
     
     def get_event_dir_name(self) -> str:
         """
@@ -39,11 +57,11 @@ class Event(BaseUsvModel):
         ts = self.start_time.strftime("%Y%m%dT%H%M%S")
         return f"{ts}_{self.host_slug}_{self.event_slug}"
 
-    def save_to_wal(self, wal_dir: Path) -> Path:
+    def save(self) -> Path:
         """
-        Saves the event as a directory with a README.md file.
+        Saves the event to its canonical location as a directory with a README.md file.
         """
-        event_dir = wal_dir / self.get_event_dir_name()
+        event_dir = self.get_local_path()
         event_dir.mkdir(parents=True, exist_ok=True)
         
         readme_path = event_dir / "README.md"
@@ -60,3 +78,9 @@ class Event(BaseUsvModel):
                 f.write(f"\n{description}\n")
                 
         return event_dir
+
+    def save_to_wal(self, wal_dir: Path) -> Path:
+        """
+        Legacy/Manual save method. Prefer .save() for canonical pathing.
+        """
+        return self.save()

@@ -1,7 +1,4 @@
-identify-fullerton-local-event-sources
-implement-eventbrite-scraper-for-fullerton
 implement-general-calendar-scraper-for-local-institutions
-implement-service-protocolsImplement Service Protocols
-lead-to-wal-lambda-bridgeLead To Wal Lambda Bridge
-eliminate-brute-force-company-scan-in-prospecting-pipeline
-
+eliminate-brute-force-company-scan-in-prospecting-pipeline
+implement-service-protocols
+lead-to-wal-lambda-bridge

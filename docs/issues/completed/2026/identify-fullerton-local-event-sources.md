@@ -15,3 +15,6 @@ We will have to start compiling a list of types of places that would have calend
 * Activity centers
 * Museums
 * Add to this list when new source types are found in our searches.
+
+---
+**Completed in commit:** `f457a5f`

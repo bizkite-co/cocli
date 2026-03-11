@@ -71,6 +71,9 @@ class QueuePaths(PathObject):
     def sideline(self) -> Path: return self.state("sideline")
 
     @property
+    def wal(self) -> Path: return self.state("wal")
+
+    @property
     def master(self) -> Path:
         """Returns the master mission file for the discovery-gen queue."""
         return self.path / "mission.usv"
