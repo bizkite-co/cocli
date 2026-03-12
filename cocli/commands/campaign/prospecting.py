@@ -24,6 +24,8 @@ from cocli.scrapers.google_maps import scrape_google_maps
 from cocli.scrapers.google_maps_details import scrape_google_maps_details
 from cocli.compilers.website_compiler import WebsiteCompiler
 from cocli.core.enrichment import enrich_company_website
+from cocli.models.campaigns.indexes.google_maps_prospect import GoogleMapsProspect
+from cocli.models.campaigns.indexes.google_maps_venue import GoogleMapsVenue
 
 logger = logging.getLogger(__name__)
 console = Console()
@@ -66,11 +68,11 @@ async def pipeline(
     results_found_count = 0
     
     # --- PRE-FLIGHT: Ensure output directory and file are ready ---
-    from ...models.campaigns.indexes.google_maps_prospect import GoogleMapsProspect
-    from ...core.paths import paths
-    
-    filename = "venues.checkpoint.usv" if prospect_type == "venue" else "prospects.checkpoint.usv"
-    checkpoint_path = paths.campaign(campaign_name).index(GoogleMapsProspect.INDEX_NAME).path / filename
+    model_cls = GoogleMapsVenue if prospect_type == "venue" else GoogleMapsProspect
+    checkpoint_path = paths.campaign(campaign_name).index(model_cls.INDEX_NAME).checkpoint
+    if prospect_type == "venue":
+        checkpoint_path = paths.campaign(campaign_name).index(model_cls.INDEX_NAME).path / "venues.checkpoint.usv"
+
     checkpoint_path.parent.mkdir(parents=True, exist_ok=True)
     if not checkpoint_path.exists():
         checkpoint_path.touch()
@@ -140,7 +142,6 @@ async def pipeline(
 
             async def producer_task(existing_companies_map: Dict[str, str]) -> None: 
                 from ...models.campaigns.queues.base import QueueMessage
-                from ...models.campaigns.indexes.google_maps_prospect import GoogleMapsProspect
                 from ...scrapers.resource_analyzer import is_likely_non_commercial
                 nonlocal results_found_count
                 
@@ -168,17 +169,22 @@ async def pipeline(
                     
                     page = await browser.new_page()
                     try:
-                        detailed_data = await scrape_google_maps_details(
+                        detailed_data_raw = await scrape_google_maps_details(
                             page=page, place_id=list_item.place_id, campaign_name=campaign_name,
                             name=list_item.name, company_slug=list_item.company_slug, debug=debug
                         )
                         
-                        if detailed_data:
-                            detailed_data.prospect_type = prospect_type # type: ignore
+                        if detailed_data_raw:
+                            # Transform to correct domain model
+                            from cocli.models.campaigns.indexes.google_maps_raw import GoogleMapsRawResult
+                            raw_typed = cast(GoogleMapsRawResult, detailed_data_raw)
+                            detailed_data = model_cls.from_raw(raw_typed)
                             
                             # For VENUES, we capture and increment goal immediately after detailing
-                            if prospect_type == "venue" and (not resource_discovery or detailed_data.is_value_resource):
-                                GoogleMapsProspect.append_to_checkpoint(campaign_name, detailed_data)
+                            is_val = getattr(detailed_data, "is_value_resource", False)
+                            if prospect_type == "venue" and (not resource_discovery or is_val):
+                                # Cast to Any to satisfy mypy's strict class-method checking on Union types
+                                cast(Any, model_cls).append_to_checkpoint(campaign_name, detailed_data)
                                 console.print(f"[bold green]VENUE CAPTURED:[/bold green] {detailed_data.name}")
                                 results_found_count += 1
                                 progress.advance(goal_task_id)

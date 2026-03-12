@@ -7,7 +7,43 @@ import duckdb
 
 logger = logging.getLogger(__name__)
 
-def get_duckdb_schema_from_datapackage(datapackage_path: Path) -> Dict[str, str]:
+def find_datapackage(file_path: Path) -> Optional[Path]:
+    """
+    DISCOVERY: Navigates up the directory tree to find the authoritative 
+    datapackage.json that manages the given file.
+    
+    The datapackage must contain a resource whose 'path' matches the filename.
+    """
+    current_dir = file_path.parent
+    filename = file_path.name
+    
+    # Safety: Don't traverse beyond the project or system root
+    # We assume data is within a 'campaigns' or 'data' folder
+    while current_dir and current_dir != current_dir.parent:
+        dp_path = current_dir / "datapackage.json"
+        if dp_path.exists():
+            try:
+                with open(dp_path, "r") as f:
+                    pkg = json.load(f)
+                    resources = pkg.get("resources", [])
+                    for res in resources:
+                        res_path = res.get("path")
+                        # Match filename or glob pattern
+                        if res_path == filename:
+                            logger.debug(f"FDPE: Found matching datapackage for {filename} at {dp_path}")
+                            return dp_path
+            except Exception as e:
+                logger.warning(f"FDPE: Error reading potential datapackage at {dp_path}: {e}")
+        
+        # Stop if we hit a known root boundary
+        if (current_dir / ".git").exists() or current_dir.name == "campaigns":
+            break
+            
+        current_dir = current_dir.parent
+        
+    return None
+
+def get_duckdb_schema_from_datapackage(datapackage_path: Path, resource_name: Optional[str] = None) -> Dict[str, str]:
     """
     Parses a Frictionless Data datapackage.json and returns a dictionary 
     mapping column names to DuckDB types.
@@ -18,8 +54,17 @@ def get_duckdb_schema_from_datapackage(datapackage_path: Path) -> Dict[str, str]
     with open(datapackage_path, "r") as f:
         data = json.load(f)
 
-    # We assume one resource for now
-    resource = data["resources"][0]
+    # Find the right resource
+    resource = None
+    if resource_name:
+        for r in data.get("resources", []):
+            if r.get("name") == resource_name:
+                resource = r
+                break
+    
+    if not resource:
+        resource = data["resources"][0]
+        
     fields = resource["schema"]["fields"]
     
     type_map = {
@@ -33,18 +78,6 @@ def get_duckdb_schema_from_datapackage(datapackage_path: Path) -> Dict[str, str]
     duck_cols = {}
     for field in fields:
         name = field["name"]
-        orig_name = name
-        # Standardizing on internal DuckDB names for join consistency
-        if name == "company_slug":
-            name = "slug"
-        elif name == "phone":
-            name = "phone_number"
-        elif name == "keyword":
-            name = "tags"
-            
-        if name != orig_name:
-            logger.debug(f"FDPE: Renaming column {orig_name} -> {name}")
-            
         f_type = field.get("type", "string")
         duck_cols[name] = type_map.get(f_type, "VARCHAR")
         
@@ -52,37 +85,61 @@ def get_duckdb_schema_from_datapackage(datapackage_path: Path) -> Dict[str, str]
 
 def load_usv_to_duckdb(con: duckdb.DuckDBPyConnection, table_name: str, usv_path: Path, datapackage_path: Optional[Path] = None) -> None:
     """
-    FDPE ENFORCEMENT: Loads a headerless USV file into DuckDB using datapackage.json 
-    as the authority for column names and types.
+    FDPE ENFORCEMENT: Loads a headerless USV file into DuckDB using a 
+    datapackage.json (discovered or provided) as the authority.
     """
-    if not usv_path.exists():
-        logger.warning(f"USV file not found: {usv_path}")
-        return
-
-    # 1. Determine schema from datapackage (MANDATORY for FDPE)
+    # 1. Discover datapackage if not provided
+    dp_path = datapackage_path or find_datapackage(usv_path)
+    
     columns: Dict[str, str] = {}
-    if datapackage_path and datapackage_path.exists():
+    if dp_path and dp_path.exists():
         try:
-            columns = get_duckdb_schema_from_datapackage(datapackage_path)
+            # Note: We use the filename as the resource hint
+            columns = get_duckdb_schema_from_datapackage(dp_path)
         except Exception as e:
             logger.error(f"Failed to parse datapackage for {table_name}: {e}")
 
     try:
         con.execute(f"DROP TABLE IF EXISTS {table_name}")
         
+        # Check if file exists and is a regular file (not /dev/null)
+        if not usv_path.exists() or not usv_path.is_file():
+            logger.debug(f"USV file not found or special: {usv_path}. Creating empty table.")
+            if columns:
+                cols_sql = ", ".join([f"\"{name}\" {dtype}" for name, dtype in columns.items()])
+                con.execute(f"CREATE TABLE {table_name} ({cols_sql})")
+            else:
+                # Robust fallback for map-based tables
+                con.execute(f"""
+                    CREATE TABLE {table_name} (
+                        place_id VARCHAR, slug VARCHAR, name VARCHAR, phone VARCHAR,
+                        created_at VARCHAR, updated_at VARCHAR, version BIGINT, processed_by VARCHAR,
+                        company_hash VARCHAR, keyword VARCHAR, full_address VARCHAR, street_address VARCHAR,
+                        city VARCHAR, zip VARCHAR, municipality VARCHAR, state VARCHAR, country VARCHAR,
+                        timezone VARCHAR, phone_standard_format VARCHAR, website VARCHAR, domain VARCHAR,
+                        first_category VARCHAR, second_category VARCHAR, claimed_google_my_business VARCHAR,
+                        reviews_count BIGINT, average_rating DOUBLE, hours VARCHAR, saturday VARCHAR,
+                        sunday VARCHAR, monday VARCHAR, tuesday VARCHAR, wednesday VARCHAR, thursday VARCHAR,
+                        friday VARCHAR, latitude DOUBLE, longitude DOUBLE, coordinates VARCHAR, plus_code VARCHAR,
+                        menu_link VARCHAR, gmb_url VARCHAR, cid VARCHAR, google_knowledge_url VARCHAR,
+                        kgmid VARCHAR, image_url VARCHAR, favicon VARCHAR, review_url VARCHAR,
+                        facebook_url VARCHAR, linkedin_url VARCHAR, instagram_url VARCHAR, thumbnail_url VARCHAR,
+                        reviews VARCHAR, quotes VARCHAR, uuid VARCHAR, discovery_phrase VARCHAR,
+                        discovery_tile_id VARCHAR, email VARCHAR, type VARCHAR, display VARCHAR
+                    )
+                """)
+            return
+
         if columns:
-            # FDPE: Use explicit column mapping for headerless file
-            # Map columns to VARCHAR first to prevent early casting errors
-            columns_def = ", ".join([f"'{name}': 'VARCHAR'" for name in columns.keys()])
-            
-            # Use TRY_CAST for type safety (Requirement 3 of FDPE)
+            columns_def = ", ".join([f"\"{name}\": '{dtype}'" for name, dtype in columns.items()])
             cast_sql = ", ".join([f"TRY_CAST(\"{name}\" AS {dtype}) as \"{name}\"" for name, dtype in columns.items()])
             
             con.execute(f"""
                 CREATE TABLE {table_name} AS 
                 SELECT {cast_sql} 
                 FROM read_csv('{usv_path}', delim='\x1f', header=False, auto_detect=False, 
-                              columns={{{columns_def}}}, quote='', escape='')
+                              columns={{{columns_def}}}, quote='', escape='', 
+                              null_padding=True)
             """)
         else:
             # Fallback to auto-detection (violates strict FDPE but allows operation)

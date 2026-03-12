@@ -84,7 +84,7 @@ async def scrape_google_maps_details(
     try:
         prospect = GoogleMapsProspect.from_raw(raw_result)
         if company_slug:
-            prospect.company_slug = company_slug 
+            prospect.slug = company_slug 
         return prospect
     except Exception as val_err:
         logger.error(f"IDENTITY SHIELD: Validation failed for {place_id}: {val_err}")

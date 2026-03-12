@@ -404,15 +404,23 @@ class CompanyDetail(Container):
         # Prefer phone_1 which is our primary standardized field
         phone = self.company_data["company"].get("phone_1") or self.company_data["company"].get("phone_number")
         slug = self.company_data["company"].get("slug")
+        domain = self.company_data["company"].get("domain")
         
         if phone and slug:
-            import webbrowser
             cleaned = re.sub(r'\D', '', str(phone))
             if not cleaned.startswith('1') and len(cleaned) == 10:
                 cleaned = '1' + cleaned
-            url = f"https://voice.google.com/u/0/calls?a=nc,%2B{cleaned}"
-            webbrowser.open(url)
-            self.app.notify(f"Calling {phone}...")
+            
+            # 1. Open Google Voice
+            voice_url = f"https://voice.google.com/u/0/calls?a=nc,%2B{cleaned}"
+            webbrowser.open(voice_url)
+            
+            # 2. Open Company Website if it exists
+            if domain:
+                webbrowser.open(f"http://{domain}")
+                self.app.notify(f"Calling {phone} & Opening Website...")
+            else:
+                self.app.notify(f"Calling {phone}...")
             
             # Push the embedded call logger
             from .call_log_modal import CallLogModal
@@ -425,13 +433,32 @@ class CompanyDetail(Container):
         else:
             self.app.notify("Phone number or slug missing", severity="warning")
 
-    def action_toggle_to_call(self) -> None:
+    async def action_toggle_to_call(self) -> None:
         slug = self.company_data["company"].get("slug")
         if not slug:
             return
         
         company = Company.get(slug)
         if company:
+            # Check if it is already in the to-call list (by tag or task file)
+            # toggle_to_call uses task_path.exists() as the source of truth
+            from cocli.models.campaigns.queues.to_call import ToCallTask
+            from cocli.core.config import get_campaign
+            campaign = get_campaign() or "default"
+            task = ToCallTask(
+                company_slug=company.slug,
+                domain=company.domain or "unknown",
+                campaign_name=campaign,
+                ack_token=None
+            )
+            is_already_to_call = task.get_local_path().exists()
+
+            if is_already_to_call:
+                from .confirm_screen import ConfirmScreen
+                confirm = await self.app.push_screen(ConfirmScreen(f"Remove '{company.name}' from To-Call list?"))
+                if not confirm:
+                    return
+
             is_added = company.toggle_to_call()
             status = "Added to" if is_added else "Removed from"
             self.app.notify(f"{status} To-Call Queue")

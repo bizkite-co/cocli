@@ -377,6 +377,7 @@ class CompanyList(Container):
                 return
             
             list_view = list_views.first()
+            old_index = list_view.index
             list_view.clear()
             
             if not self.filtered_fz_items:
@@ -398,9 +399,15 @@ class CompanyList(Container):
                     return
                 # Only set index if there are children
                 if list_view.children:
-                    list_view.index = 0
+                    # Restore index if it still makes sense for the new result set
+                    if old_index is not None and old_index < len(new_items):
+                        list_view.index = old_index
+                    else:
+                        list_view.index = 0
+                        
                     if self.filtered_fz_items:
-                        item = self.filtered_fz_items[0]
+                        idx = list_view.index or 0
+                        item = self.filtered_fz_items[idx]
                         if item.slug:
                             # For tests, trigger highlight immediately
                             if app.services.sync_search:

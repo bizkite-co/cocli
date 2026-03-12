@@ -359,34 +359,46 @@ def export_resources(
 
     from cocli.core.prospects_csv_manager import ProspectsIndexManager
     from cocli.models.campaigns.indexes.google_maps_prospect import GoogleMapsProspect
+    from cocli.models.campaigns.indexes.google_maps_venue import GoogleMapsVenue
     from cocli.utils.usv_utils import USVDictReader
+
 
     manager = ProspectsIndexManager(campaign_name)
     checkpoint = manager.index_dir / "prospects.checkpoint.usv"
+    venue_checkpoint = manager.index_dir.parent / "google_maps_venues" / "venues.checkpoint.usv"
     
-    if not checkpoint.exists():
-        console.print("[yellow]No prospects index found. Run achieve-goal first.[/yellow]")
+    targets: List[tuple[Path, Any]] = []
+    if checkpoint.exists():
+        targets.append((checkpoint, GoogleMapsProspect))
+    if venue_checkpoint.exists():
+        targets.append((venue_checkpoint, GoogleMapsVenue))
+        
+    if not targets:
+        console.print("[yellow]No index found. Run achieve-goal first.[/yellow]")
         return
 
     resources = []
-    with open(checkpoint, "r", encoding="utf-8") as f:
-        reader = USVDictReader(f)
-        for row in reader:
-            try:
-                prospect = GoogleMapsProspect.model_validate(row)
-                if prospect.is_value_resource:
-                    resources.append({
-                        "name": prospect.name,
-                        "category": prospect.first_category,
-                        "fee_category": prospect.fee_category,
-                        "address": prospect.full_address,
-                        "url": prospect.website or prospect.gmb_url,
-                        "description": prospect.rationale,
-                        "rating": prospect.average_rating,
-                        "reviews": prospect.reviews_count
-                    })
-            except Exception:
-                continue
+    for path, model_cls in targets:
+        with open(path, "r", encoding="utf-8") as f:
+            reader = USVDictReader(f)
+            for row in reader:
+                try:
+                    item = model_cls.model_validate(row)
+                    # Only Venues or Prospects flagged as 'value resource'
+                    is_val = getattr(item, "is_value_resource", False)
+                    if is_val:
+                        resources.append({
+                            "name": item.name,
+                            "category": item.first_category,
+                            "fee_category": getattr(item, "fee_category", "Unknown"),
+                            "address": item.full_address,
+                            "url": item.website or item.gmb_url,
+                            "description": getattr(item, "rationale", ""),
+                            "rating": item.average_rating,
+                            "reviews": item.reviews_count
+                        })
+                except Exception:
+                    continue
 
     export_path = campaign_dir / "exports" / "resources.json"
     export_path.parent.mkdir(exist_ok=True)

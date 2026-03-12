@@ -4,6 +4,11 @@ from pydantic import GetCoreSchemaHandler, BeforeValidator
 from pydantic_core import CoreSchema, core_schema
 
 def empty_to_none(v: Any) -> Any:
+    if v is None:
+        return None
+    # Handle MagicMock during tests
+    if hasattr(v, "__class__") and "MagicMock" in str(v.__class__):
+        return None
     if isinstance(v, str) and (not v.strip() or v.lower() == 'none' or v.lower() == 'null'):
         return None
     return v

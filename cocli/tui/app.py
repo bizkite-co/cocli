@@ -327,17 +327,20 @@ class CocliApp(App[None]):
                 
                 # Use local capture to ensure target_node isn't None in closure
                 if r_widget_class:
-                    tui_debug_log(f"APP: Resetting view for {r_widget_class.__name__}")
-                    try:
-                        target = self.query_one(r_widget_class)
-                        if hasattr(target, "action_reset_view"):
-                            target.action_reset_view()
-                        elif hasattr(target, "action_focus_sidebar"):
-                            target.action_focus_sidebar()
-                        elif hasattr(target, "action_focus_template"): # For SearchView
-                            target.action_focus_template()
-                    except Exception as e:
-                        tui_debug_log(f"APP: Failed to reset root: {e}")
+                    # Skip auto-reset if returning from a detail view to preserve search state
+                    is_detail = any(leaf in w_class.__name__.lower() for leaf in ["detail", "modal"])
+                    if not is_detail:
+                        tui_debug_log(f"APP: Resetting view for {r_widget_class.__name__}")
+                        try:
+                            target = self.query_one(r_widget_class)
+                            if hasattr(target, "action_reset_view"):
+                                target.action_reset_view()
+                            elif hasattr(target, "action_focus_sidebar"):
+                                target.action_focus_sidebar()
+                            elif hasattr(target, "action_focus_template"): # For SearchView
+                                target.action_focus_template()
+                        except Exception as e:
+                            tui_debug_log(f"APP: Failed to reset root: {e}")
             
             self.call_later(do_nav_up)
         else:
@@ -391,7 +394,13 @@ class CocliApp(App[None]):
 
     def on_person_list_person_selected(self, message: PersonList.PersonSelected) -> None:
         content = self.query_one("#app_content")
-        content.remove_children()
+        # Hide Branch Roots, Remove Details
+        for child in content.children:
+            if isinstance(child, (CompanySearchView, PersonList, ApplicationView)):
+                child.display = False
+            else:
+                child.remove()
+        
         content.mount(PersonDetail(person_slug=message.person_slug))
 
     def on_company_list_company_selected(self, message: CompanyList.CompanySelected) -> None:
@@ -400,7 +409,13 @@ class CocliApp(App[None]):
             company_data = self.services.get_company_details(company_slug)
             if company_data:
                 content = self.query_one("#app_content")
-                content.remove_children()
+                # Hide Branch Roots, Remove Details
+                for child in content.children:
+                    if isinstance(child, (CompanySearchView, PersonList, ApplicationView)):
+                        child.display = False
+                    else:
+                        child.remove()
+
                 company_detail = CompanyDetail(company_data)
                 content.mount(company_detail)
                 company_detail.styles.display = "block"
@@ -415,8 +430,26 @@ class CocliApp(App[None]):
             self.menu_bar.set_activity("Switching")
             self.menu_bar.set_active("companies")
             
-            await self.main_content.remove_children()
+            content = self.main_content
+            search_view = None
             
+            # 1. Find or Hide children
+            for child in content.children:
+                if isinstance(child, CompanySearchView):
+                    search_view = child
+                    child.display = True
+                elif isinstance(child, (PersonList, ApplicationView)):
+                    child.display = False
+                else:
+                    child.remove() # Remove detail views
+            
+            if search_view:
+                # Restore focus to company list instead of template list to preserve flow
+                search_view.company_list.query_one(ListView).focus()
+                self.menu_bar.set_activity("")
+                return
+
+            # 2. Create fresh if not found (initial startup)
             template_list = TemplateList(id="search-templates-pane", classes="search-pane")
             company_list = CompanyList(id="search-companies-pane", classes="search-pane")
             company_preview = CompanyPreview(Static("Select a company to see details."), id="search-preview-pane", classes="search-pane")
@@ -430,13 +463,13 @@ class CocliApp(App[None]):
             with time_perf("APP: mount(CompanySearchView)"):
                 await self.main_content.mount(search_view)
             
-            # 1. Start the search
+            # Start the search
             if self.services.sync_search:
                 await company_list.perform_search("")
             else:
                 self.run_worker(company_list.perform_search(""))
             
-            # 2. Focus the template list after paint
+            # Focus the template list after initial paint
             def focus_templates() -> None:
                 try:
                     if search_view.is_mounted:
@@ -460,7 +493,23 @@ class CocliApp(App[None]):
             self.menu_bar.set_activity("Switching")
             self.menu_bar.set_active("people")
             
-            await self.main_content.remove_children()
+            content = self.main_content
+            person_list = None
+            
+            for child in content.children:
+                if isinstance(child, PersonList):
+                    person_list = child
+                    child.display = True
+                elif isinstance(child, (CompanySearchView, ApplicationView)):
+                    child.display = False
+                else:
+                    child.remove()
+            
+            if person_list:
+                person_list.focus()
+                self.menu_bar.set_activity("")
+                return
+
             await self.main_content.mount(PersonList())
             self.menu_bar.set_activity("")
 
@@ -471,8 +520,23 @@ class CocliApp(App[None]):
             self.menu_bar.set_activity("Loading")
             self.menu_bar.set_active("application")
             
-            await self.main_content.remove_children()
+            content = self.main_content
+            app_view = None
             
+            for child in content.children:
+                if isinstance(child, ApplicationView):
+                    app_view = child
+                    child.display = True
+                elif isinstance(child, (CompanySearchView, PersonList)):
+                    child.display = False
+                else:
+                    child.remove()
+            
+            if app_view:
+                app_view.action_focus_sidebar()
+                self.menu_bar.set_activity("")
+                return
+
             app_view = ApplicationView()
             await self.main_content.mount(app_view)
             tui_debug_log("APP: action_show_application finished")
