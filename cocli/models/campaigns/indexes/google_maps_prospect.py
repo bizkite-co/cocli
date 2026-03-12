@@ -1,5 +1,5 @@
 from pydantic import Field, model_validator
-from typing import Optional, Dict, Any, Annotated, List, ClassVar
+from typing import Optional, Dict, Any, Annotated, List, ClassVar, Literal
 from datetime import datetime, UTC
 from pathlib import Path
 import logging
@@ -99,6 +99,7 @@ class GoogleMapsProspect(GoogleMapsIdx):
     is_value_resource: Optional[bool] = None
     fee_category: Optional[str] = None
     rationale: Optional[str] = None
+    prospect_type: Literal["prospect", "venue"] = "prospect"
 
     def merge_with_existing(self, existing: "GoogleMapsProspect") -> "GoogleMapsProspect":
         """
@@ -356,9 +357,17 @@ class GoogleMapsProspect(GoogleMapsIdx):
 
     @classmethod
     def append_to_checkpoint(cls, campaign_name: str, prospect: "GoogleMapsProspect") -> None:
-        """Appends a prospect to the campaign's main checkpoint USV."""
+        """Appends a prospect to the campaign's checkpoint USV."""
         from ....core.paths import paths
-        checkpoint_path = paths.campaign(campaign_name).index(cls.INDEX_NAME).checkpoint
+        
+        # Select index/filename based on prospect type
+        idx_name = cls.INDEX_NAME
+        filename = "prospects.checkpoint.usv"
+        
+        if prospect.prospect_type == "venue":
+            filename = "venues.checkpoint.usv"
+            
+        checkpoint_path = paths.campaign(campaign_name).index(idx_name).path / filename
         checkpoint_path.parent.mkdir(parents=True, exist_ok=True)
         
         with open(checkpoint_path, "a", encoding="utf-8") as f:

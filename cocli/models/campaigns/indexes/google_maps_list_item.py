@@ -12,6 +12,7 @@ class GoogleMapsListItem(BaseUsvModel):
     place_id: str = Field(..., description="Google Place ID")
     company_slug: str = Field(..., description="Generated slug for the business")
     name: str = Field(..., description="Business name from the list view")
+    category: Optional[str] = Field(None, description="Primary category from the list view")
     phone: Optional[str] = Field(None, description="Phone number from the list view")
     domain: Optional[str] = Field(None, description="Extracted domain")
     reviews_count: Optional[int] = Field(None, description="Number of reviews")

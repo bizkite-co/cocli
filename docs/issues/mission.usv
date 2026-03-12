@@ -6,3 +6,4 @@ implement-service-protocols
 lead-to-wal-lambda-bridge
 transition-to-1password-python-sdk
 create-promo-graphic-with-image-of-calendar-page
+gossip-bridge-respects-current-campaign-too-much

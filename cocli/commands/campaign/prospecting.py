@@ -4,15 +4,14 @@ import logging
 import toml
 import json
 import csv
-import httpx
 from typing import Optional, List, Dict, Any, cast, Annotated
 from pathlib import Path
 from rich.console import Console
+from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, TaskProgressColumn
 from playwright.async_api import async_playwright
-import yaml
 
 from cocli.core.paths import paths
-from cocli.core.config import get_companies_dir, get_campaign_dir, get_campaign, get_enrichment_service_url
+from cocli.core.config import get_campaign_dir, get_campaign, get_enrichment_service_url
 
 from cocli.core.scrape_index import ScrapeIndex
 from cocli.core.text_utils import slugify
@@ -21,7 +20,6 @@ from cocli.core.queue.factory import get_queue_manager
 from cocli.planning.generate_grid import get_campaign_grid_tiles
 from cocli.models.campaigns.queues.gm_list import ScrapeTask
 from cocli.models.companies.company import Company
-from cocli.models.companies.website import Website
 from cocli.scrapers.google_maps import scrape_google_maps
 from cocli.scrapers.google_maps_details import scrape_google_maps_details
 from cocli.compilers.website_compiler import WebsiteCompiler
@@ -60,154 +58,149 @@ async def pipeline(
     proxy_url: Optional[str] = None,
     grid_tiles: Optional[List[Dict[str, Any]]] = None,
     resource_discovery: bool = False,
+    prospect_type: str = "prospect",
 ) -> None:
     
     queue_manager = get_queue_manager(f"{campaign_name}_enrichment", use_cloud=use_cloud_queue)
     stop_event = asyncio.Event()
-    emails_found_count = 0
+    results_found_count = 0
     
-    launch_proxy = {"server": proxy_url} if proxy_url else None
+    # --- PRE-FLIGHT: Ensure output directory and file are ready ---
+    from ...models.campaigns.indexes.google_maps_prospect import GoogleMapsProspect
+    from ...core.paths import paths
+    
+    filename = "venues.checkpoint.usv" if prospect_type == "venue" else "prospects.checkpoint.usv"
+    checkpoint_path = paths.campaign(campaign_name).index(GoogleMapsProspect.INDEX_NAME).path / filename
+    checkpoint_path.parent.mkdir(parents=True, exist_ok=True)
+    if not checkpoint_path.exists():
+        checkpoint_path.touch()
 
-    async with async_playwright() as p:
-        browser = await p.chromium.launch(
-            headless=not headed,
-            devtools=devtools,
-            proxy=cast(Any, launch_proxy),
-            args=['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage']
-        )
+    # Resolve seeding location
+    location_param = {"latitude": "0", "longitude": "0"}
+    if locations:
+        location_param = {"city": locations[0]}
+    elif target_locations:
+        location_param = target_locations[0]
+
+    with Progress(
+        SpinnerColumn(),
+        TextColumn("[progress.description]{task.description}"),
+        BarColumn(),
+        TaskProgressColumn(),
+        console=console
+    ) as progress:
+        goal_task_id = progress.add_task(f"[cyan]Finding {prospect_type}s...", total=goal_limit)
+        scan_task_id = progress.add_task("[dim]Scanning Google Maps...", total=None)
         
-        async def consumer_task() -> None: 
-            nonlocal emails_found_count
-            enrichment_url = get_enrichment_service_url()
-            use_cloud_enrichment = enrichment_url != "http://localhost:8000"
-            consumer_context = await browser.new_context() if not use_cloud_enrichment else None
-            compiler = WebsiteCompiler()
+        launch_proxy = {"server": proxy_url} if proxy_url else None
+
+        async with async_playwright() as p:
+            browser = await p.chromium.launch(
+                headless=not headed,
+                devtools=devtools,
+                proxy=cast(Any, launch_proxy),
+                args=['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage']
+            )
             
-            while not stop_event.is_set():
-                messages = await asyncio.to_thread(queue_manager.poll, batch_size=1)
-                if not messages:
-                    await asyncio.sleep(1)
-                    continue
+            async def consumer_task() -> None: 
+                nonlocal results_found_count
+                enrichment_url = get_enrichment_service_url()
+                use_cloud_enrichment = enrichment_url != "http://localhost:8000"
+                consumer_context = await browser.new_context() if not use_cloud_enrichment else None
+                compiler = WebsiteCompiler()
                 
-                for msg in messages:
+                while not stop_event.is_set():
+                    messages = await asyncio.to_thread(queue_manager.poll, batch_size=1)
+                    if not messages:
+                        await asyncio.sleep(2)
+                        continue
+                    
+                    for msg in messages:
+                        if stop_event.is_set():
+                            break
+                        progress.update(scan_task_id, description=f"[dim]Enriching: {msg.domain}[/dim]")
+                        
+                        website_data = None
+                        if not use_cloud_enrichment and consumer_context:
+                            dummy_company = Company(name=msg.domain, domain=msg.domain, slug=msg.company_slug)
+                            try:
+                                website_data = await enrich_company_website(browser=consumer_context, company=dummy_company, force=msg.force_refresh, ttl_days=msg.ttl_days)
+                            except Exception:
+                                pass
+                        
+                        if prospect_type == "prospect" and website_data and website_data.email:
+                            results_found_count += 1
+                            progress.advance(goal_task_id)
+                            if results_found_count >= goal_limit:
+                                stop_event.set()
+                        
+                        queue_manager.ack(msg)
+                
+                compiler.save_audit_report()
+
+            async def producer_task(existing_companies_map: Dict[str, str]) -> None: 
+                from ...models.campaigns.queues.base import QueueMessage
+                from ...models.campaigns.indexes.google_maps_prospect import GoogleMapsProspect
+                from ...scrapers.resource_analyzer import is_likely_non_commercial
+                nonlocal results_found_count
+                
+                enrichment_queue = get_queue_manager(f"{campaign_name}_enrichment", use_cloud=use_cloud_queue)
+
+                prospect_generator = scrape_google_maps(
+                    browser=browser, location_param=location_param,
+                    search_strings=search_phrases, campaign_name=campaign_name, grid_tiles=grid_tiles,
+                    force_refresh=force, ttl_days=ttl_days, debug=debug, max_proximity_miles=max_proximity_miles,
+                    overlap_threshold_percent=overlap_threshold_percent
+                )
+                
+                async for list_item in prospect_generator:
                     if stop_event.is_set():
                         break
-                    console.print(f"[dim]Processing: {msg.domain}[/dim]")
-                    website_data = None
                     
-                    if use_cloud_enrichment:
-                        async with httpx.AsyncClient() as client:
-                            try:
-                                response = await client.post(f"{enrichment_url}/enrich", json={
-                                    "domain": msg.domain, "force": msg.force_refresh, "ttl_days": msg.ttl_days,
-                                    "campaign_name": msg.campaign_name, "company_slug": msg.company_slug,
-                                    "navigation_timeout_ms": navigation_timeout_ms
-                                }, timeout=120.0)
-                                response.raise_for_status()
-                                website_data = Website(**response.json())
-                            except Exception as e:
-                                logger.error(f"Enrichment failed for {msg.domain}: {e}")
-                                queue_manager.nack(msg)
-                                continue
-                    else:
-                        dummy_company = Company(name=msg.domain, domain=msg.domain, slug=msg.company_slug)
-                        try:
-                            if consumer_context:
-                                website_data = await enrich_company_website(browser=consumer_context, company=dummy_company, force=msg.force_refresh, ttl_days=msg.ttl_days)
-                            else:
-                                logger.error("No browser context available for consumer task")
-                                queue_manager.nack(msg)
-                                continue
-                        except Exception:
-                            queue_manager.nack(msg)
-                            continue
-
-                    if website_data:
-                        company_dir = get_companies_dir() / msg.company_slug
-                        company_dir.mkdir(parents=True, exist_ok=True)
-                        enrichment_dir = company_dir / "enrichments"
-                        enrichment_dir.mkdir(parents=True, exist_ok=True)
-                        with open(enrichment_dir / "website.md", "w") as f:
-                            f.write("---\n")
-                            yaml.dump(website_data.model_dump(exclude_none=True), f)
-                            f.write("---\n")
-                        compiler.compile(company_dir)
-                        if website_data.email:
-                            emails_found_count += 1
-                        if emails_found_count >= goal_limit:
-                            stop_event.set()
-                        queue_manager.ack(msg)
-            
-            compiler.save_audit_report()
-        async def producer_task(existing_companies_map: Dict[str, str]) -> None: 
-            # Discovery-only in producer task
-            from ...models.campaigns.queues.base import QueueMessage
-            from ...models.campaigns.indexes.google_maps_prospect import GoogleMapsProspect
-            nonlocal emails_found_count
-            
-            enrichment_queue = get_queue_manager(
-                f"{campaign_name}_enrichment", 
-                use_cloud=use_cloud_queue
-            )
-
-            prospect_generator = scrape_google_maps(
-                browser=browser, location_param={"latitude": "0", "longitude": "0"},
-                search_strings=search_phrases, campaign_name=campaign_name, grid_tiles=grid_tiles,
-                force_refresh=force, ttl_days=ttl_days, debug=debug, max_proximity_miles=max_proximity_miles,
-                overlap_threshold_percent=overlap_threshold_percent
-            )
-            async for list_item in prospect_generator:
-                if stop_event.is_set():
-                    break
-                
-                # In-process Detailing for achieve-goal
-                page = await browser.new_page()
-                try:
-                    detailed_data = await scrape_google_maps_details(
-                        page=page,
-                        place_id=list_item.place_id,
-                        campaign_name=campaign_name,
-                        name=list_item.name,
-                        company_slug=list_item.company_slug,
-                        debug=debug
-                    )
+                    # --- FAST FILTERING ---
+                    is_venue_match = is_likely_non_commercial(list_item.category or "") or \
+                                     any(k in list_item.name.lower() for k in ["park", "library", "center", "museum", "gallery"])
                     
-                    if detailed_data:
-                        # Resource Discovery Filtering
-                        if resource_discovery and not detailed_data.is_value_resource:
-                            logger.info(f"RESOURCE DISCOVERY: Skipping {detailed_data.name} (Not a value resource: {detailed_data.rationale})")
-                            continue
+                    if resource_discovery and not is_venue_match:
+                        continue
 
-                        # If it's a value resource, save it to the checkpoint immediately
-                        # (achieve-goal normally waits for enrichment, but resources might not have domains)
-                        if resource_discovery and detailed_data.is_value_resource:
-                            GoogleMapsProspect.append_to_checkpoint(campaign_name, detailed_data)
-                            logger.info(f"RESOURCE DISCOVERY: Captured {detailed_data.name} ({detailed_data.fee_category})")
-                            emails_found_count += 1
-                            if emails_found_count >= goal_limit:
-                                stop_event.set()
-
-                        if detailed_data.domain:
-                            msg = QueueMessage(
-                            domain=detailed_data.domain,
-                            company_slug=detailed_data.company_slug or list_item.company_slug,
-                            campaign_name=campaign_name,
-                            force_refresh=force,
-                            ack_token=None
+                    progress.update(scan_task_id, description=f"[bold blue]Detailing:[/bold blue] {list_item.name}")
+                    
+                    page = await browser.new_page()
+                    try:
+                        detailed_data = await scrape_google_maps_details(
+                            page=page, place_id=list_item.place_id, campaign_name=campaign_name,
+                            name=list_item.name, company_slug=list_item.company_slug, debug=debug
                         )
-                        enrichment_queue.push(msg)
-                finally:
-                    await page.close()
-                
-                await asyncio.sleep(0.01)
+                        
+                        if detailed_data:
+                            detailed_data.prospect_type = prospect_type # type: ignore
+                            
+                            # For VENUES, we capture and increment goal immediately after detailing
+                            if prospect_type == "venue" and (not resource_discovery or detailed_data.is_value_resource):
+                                GoogleMapsProspect.append_to_checkpoint(campaign_name, detailed_data)
+                                console.print(f"[bold green]VENUE CAPTURED:[/bold green] {detailed_data.name}")
+                                results_found_count += 1
+                                progress.advance(goal_task_id)
+                                if results_found_count >= goal_limit:
+                                    stop_event.set()
 
-        try:
-            async with asyncio.timeout(300): # 5-minute watchdog
-                await asyncio.gather(producer_task(existing_companies_map), consumer_task())
-        except asyncio.TimeoutError:
-            console.print("[yellow]Pipeline timed out after 5 minutes.[/yellow]")
-        finally:
-            stop_event.set()
+                            if detailed_data.domain:
+                                enrichment_queue.push(QueueMessage(
+                                    domain=detailed_data.domain, company_slug=detailed_data.company_slug,
+                                    campaign_name=campaign_name, force_refresh=force, ack_token=None
+                                ))
+                    finally:
+                        await page.close()
+                    await asyncio.sleep(0.1)
+
+            try:
+                async with asyncio.timeout(1800): # 30-minute watchdog
+                    await asyncio.gather(producer_task(existing_companies_map), consumer_task())
+            except asyncio.TimeoutError:
+                console.print("[yellow]Pipeline timed out after 30 minutes.[/yellow]")
+            finally:
+                stop_event.set()
 
 @app.command(name="queue-scrapes")
 def queue_scrapes(
@@ -914,7 +907,9 @@ def monitor_batch(
 @app.command(name="discover-venues")
 def discover_venues(
     campaign_name: Optional[str] = typer.Argument(None),
+    goal_limit: int = typer.Option(20, "--limit", "-l", help="Number of venues to find."),
     force: bool = typer.Option(False, "--force", "-f"),
+    headed: bool = typer.Option(False, "--headed", help="Run with a visible browser window."),
 ) -> None:
     """
     Discovers local community venues and institutions via Google Maps.
@@ -927,27 +922,40 @@ def discover_venues(
         console.print("[red]No campaign specified.[/red]")
         raise typer.Exit(1)
 
-    # Standard venue queries for Fullertonian
-    venue_queries = [
-        "community centers Fullerton CA",
-        "public parks Fullerton CA",
-        "museums Fullerton CA",
-        "art galleries Fullerton CA",
-        "live music venues Fullerton CA",
-        "recreation centers Fullerton CA"
-    ]
+    campaign_dir = get_campaign_dir(campaign_name)
+    if not campaign_dir:
+        console.print(f"[red]Campaign directory not found for {campaign_name}[/red]")
+        raise typer.Exit(1)
 
+    with open(campaign_dir / "config.toml", "r") as f:
+        config = toml.load(f)
+    
+    prospecting_config = config.get("prospecting", {})
+    search_phrases = prospecting_config.get("queries", [])
+    locations = prospecting_config.get("locations", [])
+
+    if not search_phrases:
+        console.print("[yellow]No queries found in campaign config.[/yellow]")
+        return
+
+    if locations:
+        console.print(f"[dim]Seeding search from location: {locations[0]}[/dim]")
+
+    from cocli.core.paths import paths
+    from cocli.models.campaigns.indexes.google_maps_prospect import GoogleMapsProspect
+    checkpoint_path = paths.campaign(campaign_name).index(GoogleMapsProspect.INDEX_NAME).path / "venues.checkpoint.usv"
     console.print(f"[bold blue]Starting Venue Discovery for {campaign_name}...[/bold blue]")
+    console.print(f"[dim]Output file: {checkpoint_path}[/dim]\n")
     
     # We leverage the existing pipeline but focus on venues
     asyncio.run(pipeline(
         locations=[], 
-        search_phrases=venue_queries, 
-        goal_limit=20, 
-        headed=False, 
+        search_phrases=search_phrases, 
+        goal_limit=goal_limit, 
+        headed=headed, 
         devtools=False,
         campaign_name=campaign_name, 
-        existing_companies_map={}, # No dedupe for venues yet
+        existing_companies_map={}, 
         overlap_threshold_percent=30.0,
         zoom_out_button_selector="div#zoomOutButton", 
         panning_distance_miles=8, 
@@ -963,7 +971,9 @@ def discover_venues(
         use_cloud_queue=False, 
         max_proximity_miles=10.0, 
         grid_tiles=None,
-        resource_discovery=True # Important: Use our new heuristic!
+        resource_discovery=True,
+        target_locations=[{"city": loc} for loc in locations] if locations else None,
+        prospect_type="venue"
     ))
 
 @app.command()
@@ -1004,14 +1014,16 @@ def achieve_goal(
             with open(grid_file, "r") as f:
                 grid_tiles = json.load(f)
 
-    from rich.progress import Progress, SpinnerColumn, TextColumn
-    
+    # Resolve headed mode
+    is_headed = config.get("prospecting", {}).get("headed", False)
+
+    # Build existing companies map with progress
     with Progress(
         SpinnerColumn(),
         TextColumn("[progress.description]{task.description}"),
         console=console
-    ) as progress:
-        task = progress.add_task("Scanning database...", total=None)
+    ) as scan_progress:
+        task = scan_progress.add_task("Scanning existing database...", total=None)
         existing_companies_map = {}
         loaded = 0
         skipped = 0
@@ -1022,16 +1034,16 @@ def achieve_goal(
                     existing_companies_map[c.domain] = c.slug
             else:
                 skipped += 1
-            
-            if (loaded + skipped) % 10 == 0:
-                progress.update(task, description=f"Scanning database... ([green]{loaded} loaded[/green], [yellow]{skipped} skipped[/yellow])")
+            if (loaded + skipped) % 50 == 0:
+                scan_progress.update(task, description=f"Scanning database... ({loaded} loaded, {skipped} skipped)")
 
     asyncio.run(pipeline(
-        locations=[], search_phrases=search_phrases, goal_limit=goal_limit, headed=False, devtools=False,
+        locations=[], search_phrases=search_phrases, goal_limit=goal_limit, headed=is_headed, devtools=False,
         campaign_name=campaign_name, existing_companies_map=existing_companies_map, overlap_threshold_percent=30.0,
         zoom_out_button_selector="div#zoomOutButton", panning_distance_miles=8, initial_zoom_out_level=3,
         omit_zoom_feature=False, force=force, ttl_days=ttl_days, debug=False, console=console,
         browser_width=2000, browser_height=2000, location_prospects_index=LocationProspectsIndex(campaign_name),
         use_cloud_queue=False, max_proximity_miles=proximity_miles, grid_tiles=grid_tiles,
-        resource_discovery=resource_discovery
+        resource_discovery=resource_discovery,
+        prospect_type="prospect"
     ))

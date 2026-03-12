@@ -123,6 +123,7 @@ class SidebarScraper:
                     item = GoogleMapsListItem(
                         place_id=place_id,
                         name=data.get("Name", "Unknown"),
+                        category=data.get("First_category"),
                         company_slug=data.get("company_slug", slugify(data.get("Name", place_id))),
                         phone=data.get("Phone_1"),
                         domain=data.get("Domain"),
