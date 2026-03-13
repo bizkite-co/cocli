@@ -183,18 +183,27 @@ class WalPaths(PathObject):
         return self.path.glob(pattern)
 
 def get_data_home() -> Path:
-    """Determines the root data directory, respecting COCLI_DATA_HOME."""
-    if "COCLI_DATA_HOME" in os.environ:
-        return Path(os.environ["COCLI_DATA_HOME"]).expanduser()
+    """Determines the root data directory, respecting COCLI_DATA_HOME and COCLI_ENV."""
+    from .environment import get_environment, Environment
     
-    if platform.system() == "Windows":
-        base = Path(os.environ.get("LOCALAPPDATA", Path.home() / "AppData" / "Local"))
-    elif platform.system() == "Darwin":
-        base = Path.home() / "Library" / "Application Support"
+    if "COCLI_DATA_HOME" in os.environ:
+        # Resolve the path to follow symlinks to the actual data location
+        prod_base = Path(os.environ["COCLI_DATA_HOME"]).expanduser().resolve()
     else:
-        base = Path.home() / ".local" / "share"
-        
-    return base / "data"
+        if platform.system() == "Windows":
+            base = Path(os.environ.get("LOCALAPPDATA", Path.home() / "AppData" / "Local")) / "cocli"
+        elif platform.system() == "Darwin":
+            base = Path.home() / "Library" / "Application Support" / "cocli"
+        else:
+            base = Path.home() / ".local" / "share" / "cocli"
+        prod_base = base / "data"
+    
+    env = get_environment()
+    if env == Environment.PROD:
+        return prod_base
+    else:
+        # Parallel sibling: e.g., .../cocli_data -> .../cocli_data_dev
+        return prod_base.parent / f"{prod_base.name}_{env.value}"
 
 class S3QueuePaths:
     def __init__(self, c_slug: str, q_name: QueueName):

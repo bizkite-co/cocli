@@ -56,10 +56,18 @@ class MenuBar(Horizontal):
         self.active_section: str = ""
 
     def compose(self) -> ComposeResult:
+        from ..core.environment import get_environment, Environment
+        env = get_environment()
+        
         # Left-aligned items
         yield Label("Companies ( C)", id="menu-companies", classes="menu-item")
         yield Label("People ( P)", id="menu-people", classes="menu-item")
         
+        # Environment Indicator (Visible only if not PROD)
+        if env != Environment.PROD:
+            color = "bold green" if env == Environment.DEV else "bold yellow"
+            yield Label(f"[{color}] {env.value.upper()} [/]", id="menu-environment", classes="menu-item")
+
         # Spacer to push following items to the right
         yield Static("", id="menu-spacer")
         

@@ -20,15 +20,23 @@ def get_cocli_app_data_dir() -> Path:
     Determines the root data directory for cocli application-specific files (logs, caches).
     This is distinct from the user's business data directory.
     """
+    from .environment import get_environment, Environment
+    env = get_environment()
+
     if "XDG_DATA_HOME" in os.environ:
-        cocli_app_data_dir = Path(os.environ["XDG_DATA_HOME"]).expanduser() / "cocli"
+        base = Path(os.environ["XDG_DATA_HOME"]).expanduser() / "cocli"
     else:
         if platform.system() == "Windows":
-            cocli_app_data_dir = Path(os.environ.get("LOCALAPPDATA", Path.home() / "AppData" / "Local")) / "cocli"
+            base = Path(os.environ.get("LOCALAPPDATA", Path.home() / "AppData" / "Local")) / "cocli"
         elif platform.system() == "Darwin": # macOS
-            cocli_app_data_dir = Path.home() / "Library" / "Application Support" / "cocli"
+            base = Path.home() / "Library" / "Application Support" / "cocli"
         else: # Linux and other Unix-like
-            cocli_app_data_dir = Path.home() / ".local" / "share" / "cocli"
+            base = Path.home() / ".local" / "share" / "cocli"
+
+    if env == Environment.PROD:
+        cocli_app_data_dir = base
+    else:
+        cocli_app_data_dir = base / env.value
 
     v_path = get_validated_dir(cocli_app_data_dir, "App Data Root (Logs/Cache)")
     v_path.path.mkdir(parents=True, exist_ok=True)
