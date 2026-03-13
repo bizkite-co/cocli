@@ -6,8 +6,42 @@ from rich.console import Console
 from rich.prompt import Confirm
 from cocli.core.environment import get_environment, Environment
 
+from cocli.services.sync_service import SyncService
+
 app = typer.Typer(help="Administrative commands for system management.")
 console = Console()
+
+@app.command(name="archive-campaign")
+def archive_campaign(
+    campaign_name: str = typer.Argument(..., help="Name of the campaign to archive."),
+    upload: bool = typer.Option(True, help="Whether to upload to S3 after archiving."),
+    keep_local: bool = typer.Option(False, help="Whether to keep the local archive after upload.")
+) -> None:
+    """
+    Creates a compressed archive of a campaign and uploads it to S3.
+    """
+    try:
+        service = SyncService(campaign_name)
+        console.print(f"[bold cyan]Archiving campaign: {campaign_name}[/bold cyan]")
+        
+        with console.status("Creating archive..."):
+            archive_path = service.archive_campaign()
+            console.print(f"[green]Archive created:[/green] {archive_path}")
+            
+        if upload:
+            with console.status("Uploading to S3..."):
+                s3_uri = service.upload_archive(archive_path)
+                console.print(f"[green]Successfully uploaded to:[/green] {s3_uri}")
+                
+            if not keep_local:
+                archive_path.unlink()
+                console.print("[dim]Removed local archive.[/dim]")
+                
+        console.print("[bold green]Campaign archive operation complete![/bold green]")
+        
+    except Exception as e:
+        console.print(f"[bold red]Archive failed:[/bold red] {e}")
+        raise typer.Exit(1)
 
 def get_prod_root() -> Path:
     """Returns the absolute root for PROD data."""

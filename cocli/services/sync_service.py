@@ -139,6 +139,45 @@ class SyncService:
             logger.error(f"Boto3 config sync failed: {e}")
             raise
 
+    def archive_campaign(self, output_path: Optional[Path] = None) -> Path:
+        """
+        Creates a compressed tarball of the campaign directory.
+        """
+        import tarfile
+        from datetime import datetime
+        
+        campaign_path = paths.campaign(self.campaign_name).path
+        if not campaign_path.exists():
+            raise FileNotFoundError(f"Campaign directory not found: {campaign_path}")
+            
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        if not output_path:
+            output_path = Path("temp") / f"{self.campaign_name}-{timestamp}.tar.gz"
+            
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        
+        logger.info(f"Archiving campaign {self.campaign_name} to {output_path}")
+        with tarfile.open(output_path, "w:gz") as tar:
+            # We archive the contents, but relative to the campaign root to keep it clean
+            tar.add(campaign_path, arcname=self.campaign_name)
+            
+        return output_path
+
+    def upload_archive(self, archive_path: Path) -> str:
+        """
+        Uploads a campaign archive to the archives/ prefix in S3.
+        """
+        from ..core.reporting import get_boto3_session
+        session = get_boto3_session(self.config)
+        s3 = session.client("s3")
+        
+        s3_key = f"archives/{archive_path.name}"
+        
+        logger.info(f"Uploading archive to s3://{self.bucket}/{s3_key}")
+        s3.upload_file(str(archive_path), self.bucket, s3_key)
+        
+        return f"s3://{self.bucket}/{s3_key}"
+
     def _run_sync(
         self, 
         source: str, 
