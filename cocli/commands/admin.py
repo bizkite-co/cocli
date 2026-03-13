@@ -8,7 +8,7 @@ from cocli.core.environment import get_environment, Environment
 
 from cocli.services.sync_service import SyncService
 
-app = typer.Typer(help="Administrative commands for system management.")
+app = typer.Typer(help="Administrative commands for system management.", no_args_is_help=True)
 console = Console()
 
 @app.command(name="archive-campaign")
