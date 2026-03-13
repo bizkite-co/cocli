@@ -3,6 +3,9 @@ help: ## Display this help screen
 	@echo "Available commands:"
 	@awk 'BEGIN {FS = ":.*?## "}; /^[a-zA-Z_-]+:.*?## / {printf "  \033[32m%-20s\033[0m %s\n", $$1, $$2}' $(MAKEFILE_LIST)
 
+# Tool for code signature hashing (prevents redundant lint/test runs)
+TASKHASH := tools/taskhash/taskhash
+
 .PHONY: init
 init: ## Initialize the cocli configuration file and install git hooks
 	./.venv/bin/cocli init
@@ -13,12 +16,12 @@ init: ## Initialize the cocli configuration file and install git hooks
 # ==============================================================================
 .PHONY: build
 build: install ## Build the application distributables (wheel and sdist)
-	@if python3 scripts/check_code_signature.py --check --task build $(if $(FORCE),--force); then \
+	@if $(TASKHASH) --check --task build $(if $(FORCE),--force); then \
 		echo "Code signature matches for task 'build'. Skipping build."; \
 	else \
 		echo "Building the application..."; \
 		uv run python -m build && \
-		python3 scripts/check_code_signature.py --update --task build; \
+		$(TASKHASH) --update --task build; \
 	fi
 
 SHELL := /bin/bash
@@ -88,19 +91,19 @@ logname: ## Get the latest log file name
 # Note: TUI integration tests are run separately due to terminal driver conflicts.
 # Use 'make test-tui-integration' to run them.
 test: install lint ## Run all non-TUI tests using pytest (incremental)
-	@if python3 scripts/check_code_signature.py --check --task test $(if $(FORCE),--force); then \
+	@if $(TASKHASH) --check --task test $(if $(FORCE),--force); then \
 		echo "Code signature matches for task 'test'. Skipping tests."; \
 	else \
 		source $(VENV_DIR)/bin/activate && PYTHONPATH=. pytest -s tests/ --quiet --ignore=tests/e2e && \
-		python3 scripts/check_code_signature.py --update --task test; \
+		$(TASKHASH) --update --task test; \
 	fi
 
 test-unit: install lint ## Run unit tests (incremental)
-	@if python3 scripts/check_code_signature.py --check --task test-unit $(if $(FORCE),--force); then \
+	@if $(TASKHASH) --check --task test-unit $(if $(FORCE),--force); then \
 		echo "Code signature matches for task 'test-unit'. Skipping unit tests."; \
 	else \
 		source $(VENV_DIR)/bin/activate && PYTHONPATH=. pytest -s tests/ --ignore=tests/tui --ignore=tests/e2e && \
-		python3 scripts/check_code_signature.py --update --task test-unit; \
+		$(TASKHASH) --update --task test-unit; \
 	fi
 
 test-tui-integration: install ## Run only the TUI integration tests
@@ -134,13 +137,13 @@ textual: ## Run the app in textual
 	textual run cocli.tui.app
 
 lint: ## Run ruff and mypy to perform static type checking (incremental)
-	@if python3 scripts/check_code_signature.py --check --task lint $(if $(FORCE),--force); then \
+	@if $(TASKHASH) --check --task lint $(if $(FORCE),--force); then \
 		echo "Code signature matches for task 'lint'. Skipping lint."; \
 	else \
 		echo "Code changed. Running lint..."; \
 		$(VENV_DIR)/bin/ruff check . --fix && \
 		$(VENV_DIR)/bin/python -m mypy --config-file pyproject.toml . && \
-		python3 scripts/check_code_signature.py --update --task lint; \
+		$(TASKHASH) --update --task lint; \
 	fi
 
 # Data Management Targets
