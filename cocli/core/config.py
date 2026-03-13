@@ -371,13 +371,30 @@ def set_context(filter_str: Optional[str]) -> None:
             config.context = None
     save_config(config.model_dump())
 
+def is_campaign_overridden() -> bool:
+    """Returns True if the campaign is currently overridden via environment or CLI."""
+    return "COCLI_CAMPAIGN" in os.environ
+
 def get_campaign() -> Optional[str]:
+    # 1. Check for transient environment variable override
+    if "COCLI_CAMPAIGN" in os.environ:
+        return os.environ["COCLI_CAMPAIGN"]
+
+    # 2. Fallback to global config file
     config = load_config(get_config_path())
     if config.campaign:
         return config.campaign.get("name")
     return None
 
 def set_campaign(name: Optional[str]) -> None:
+    # 1. Update transient environment variable to ensure consistency in the current process
+    if name:
+        os.environ["COCLI_CAMPAIGN"] = name
+    else:
+        if "COCLI_CAMPAIGN" in os.environ:
+            del os.environ["COCLI_CAMPAIGN"]
+
+    # 2. Update global config file
     config = load_config(get_config_path())
     if config.campaign is None:
         config.campaign = {}

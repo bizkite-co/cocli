@@ -29,3 +29,6 @@ Implement a hierarchical campaign resolution strategy that allows for transient,
 3. **CLI Consistency**: All commands (e.g., `cocli add`, `cocli audit`, `cocli sync`) correctly target the specified campaign when passed the `-c` flag.
 4. **Gossip Integrity**: Ensure that gossip datagrams generated from a transiently-specified campaign are correctly tagged with that campaign name.
 5. **No Regression**: Standard `cocli` commands still work using the global default if no override is provided.
+
+---
+**Completed in commit:** `2a1b302`

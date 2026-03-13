@@ -25,7 +25,7 @@ from .widgets.company_search import CompanySearchView
 from .widgets.template_list import TemplateList
 from .navigation import NavNode, ProcessRun
 from ..application.services import ServiceContainer
-from ..core.config import create_default_config_file
+from ..core.config import create_default_config_file, is_campaign_overridden
 
 logger = logging.getLogger(__name__)
 
@@ -105,8 +105,15 @@ class MenuBar(Horizontal):
         """Updates the campaign name label in the menu bar."""
         app = cast("CocliApp", self.app)
         campaign_name = app.services.campaign_name or "[No Campaign]"
+        
+        # Add visual indicator if the campaign is overridden (from CLI or Environment)
+        if is_campaign_overridden():
+             display_text = f"[bold white on blue] {campaign_name} [/] ( A)"
+        else:
+             display_text = f"{campaign_name} ( A)"
+
         try:
-            self.query_one("#menu-application", Label).update(f"{campaign_name} ( A)")
+            self.query_one("#menu-application", Label).update(display_text)
         except Exception:
             pass
 

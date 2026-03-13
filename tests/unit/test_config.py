@@ -1,6 +1,9 @@
 import pytest
-from cocli.core.config import load_campaign_config
+import os
 import tomli_w
+from cocli.core.config import (
+    load_campaign_config, get_campaign, set_campaign, is_campaign_overridden
+)
 
 @pytest.fixture
 def hierarchical_env(mock_cocli_env):
@@ -38,6 +41,42 @@ def hierarchical_env(mock_cocli_env):
         }, f)
 
     return mock_cocli_env
+
+def test_campaign_resolution_hierarchy(mock_cocli_env, monkeypatch):
+    """
+    Verifies the Hierarchy of Truth for campaign resolution:
+    1. Environment Override (COCLI_CAMPAIGN)
+    2. Global Config (cocli_config.toml)
+    """
+    # 1. Start with no campaign
+    monkeypatch.delenv("COCLI_CAMPAIGN", raising=False)
+    assert get_campaign() is None
+    assert is_campaign_overridden() is False
+
+    # 2. Set Global Config
+    set_campaign("global_camp")
+    # set_campaign automatically sets the env var for the current process
+    # for consistency. Let's clear it to test the fallback.
+    monkeypatch.delenv("COCLI_CAMPAIGN", raising=False)
+    
+    assert get_campaign() == "global_camp"
+    assert is_campaign_overridden() is False
+
+    # 3. Set Environment Override
+    monkeypatch.setenv("COCLI_CAMPAIGN", "env_override")
+    assert get_campaign() == "env_override"
+    assert is_campaign_overridden() is True
+
+def test_set_campaign_updates_environment(mock_cocli_env, monkeypatch):
+    """
+    Ensures that calling set_campaign (e.g. from TUI) updates 
+    the environment variable to maintain process-wide consistency.
+    """
+    monkeypatch.delenv("COCLI_CAMPAIGN", raising=False)
+    set_campaign("new_context")
+    assert os.environ["COCLI_CAMPAIGN"] == "new_context"
+    assert get_campaign() == "new_context"
+    assert is_campaign_overridden() is True
 
 def test_load_campaign_config_inheritance(hierarchical_env):
     # Load the deep campaign

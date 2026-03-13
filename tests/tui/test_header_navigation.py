@@ -1,3 +1,4 @@
+from textual.widgets import Label
 import pytest
 from unittest.mock import MagicMock
 from cocli.tui.app import CocliApp, MenuBar
@@ -61,3 +62,24 @@ async def test_leader_c_shows_companies():
         await driver.pause(0.1)
         company_list = await wait_for_widget(driver, CompanyList)
         assert isinstance(company_list, CompanyList)
+
+@pytest.mark.asyncio
+async def test_campaign_override_display(monkeypatch):
+    """Test that campaign override is indicated in the MenuBar with rich markup."""
+    monkeypatch.setenv("COCLI_CAMPAIGN", "test_override")
+    
+    # We need to ensure ServiceContainer picks it up
+    # In real app, it calls get_campaign() which reads the env var.
+    app = CocliApp(services=create_mock_services(), auto_show=False)
+    async with app.run_test() as driver:
+        await driver.pause(0.5)
+        menu_bar = await wait_for_widget(driver, MenuBar)
+        
+        # Find the application label in the menu bar
+        app_label = menu_bar.query_one("#menu-application", Label)
+        
+        # In Textual, Static content is private
+        markup = str(getattr(app_label, "_Static__content", ""))
+        
+        assert "test_override" in markup
+        assert "bold white on blue" in markup

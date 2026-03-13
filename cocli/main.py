@@ -1,5 +1,7 @@
 from cocli.commands import companies
 
+import os
+from typing import Optional
 import typer
 
 from cocli.commands import enrich
@@ -17,7 +19,14 @@ console = Console()
 app = typer.Typer(no_args_is_help=True)
 
 @app.callback()
-def main_callback() -> None:
+def main_callback(
+    campaign: Optional[str] = typer.Option(
+        None, "--campaign", "-c", help="Override the active campaign context for this command."
+    )
+) -> None:
+    if campaign:
+        os.environ["COCLI_CAMPAIGN"] = campaign
+    
     from cocli.core.environment import get_environment, Environment
     env = get_environment()
     if env != Environment.PROD:
