@@ -1,5 +1,5 @@
-from typing import List
-from pydantic import Field
+from typing import List, Any
+from pydantic import Field, model_validator
 from enum import Enum
 from .base import BaseUsvModel
 
@@ -16,20 +16,32 @@ class MissionTask(BaseUsvModel):
     Priority is determined by the ordinal position in the USV file.
     File paths are resolved dynamically by slug.
     """
+    # ORDER MATTERS FOR USV (Positional)
     slug: str = Field(..., description="Unique URL-friendly name")
-    title: str = Field(..., description="Human-readable title")
-    status: TaskStatus = Field(TaskStatus.PENDING, description="Current state")
     dependencies: List[str] = Field(default_factory=list, description="List of required task slugs")
+    title: str = Field("", description="Human-readable title")
+    status: TaskStatus = Field(TaskStatus.PENDING, description="Current state")
 
     model_config = {
         "use_enum_values": True
     }
 
+    @model_validator(mode="before")
+    @classmethod
+    def handle_legacy_usv(cls, data: Any) -> Any:
+        if isinstance(data, dict):
+            # If title or status are missing, they will use defaults
+            if "title" not in data or not data["title"]:
+                data["title"] = data.get("slug", "").replace("-", " ").title()
+            if "status" not in data:
+                data["status"] = TaskStatus.PENDING
+        return data
+
     @classmethod
     def from_usv(cls, usv_str: str) -> "MissionTask":
         """Overridden to ensure status string is correctly mapped to Enum."""
-        instance = super().from_usv(usv_str)
-        return instance
+        # BaseUsvModel.from_usv uses positional parsing
+        return super().from_usv(usv_str)
 
     @classmethod
     def get_header(cls) -> str:

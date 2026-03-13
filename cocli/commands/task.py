@@ -244,5 +244,61 @@ def complete_task(
     console.print(f"[green]Task '{task.slug}' marked as COMPLETED and removed from index.[/green]")
 
 
+@app.command(name="create")
+def create_task(
+    title: str = typer.Argument(..., help="The title of the new task."),
+    slug: Optional[str] = typer.Option(None, "--slug", "-s", help="The slug for the new task. If not provided, it will be generated from the title."),
+    body: Optional[str] = typer.Option(None, "--body", "-b", help="The initial description for the task file."),
+    draft: bool = typer.Option(False, "--draft", help="Create the task as a DRAFT instead of PENDING."),
+    depends_on: Optional[str] = typer.Option(None, "--depends-on", "-d", help="Comma-separated list of existing task slugs this task depends on.")
+) -> None:
+    """Create a new task in the mission queue."""
+    from ..utils.textual_utils import sanitize_id
+    
+    # 1. Prepare slug and title
+    if not slug:
+        slug = sanitize_id(title)
+    
+    manager = TaskIndexManager()
+    
+    # Check if task already exists
+    if any(t.slug == slug for t in manager.tasks) or manager._is_task_completed(slug):
+        console.print(f"[red]Task with slug '{slug}' already exists.[/red]")
+        raise typer.Exit(1)
+        
+    # 2. Prepare dependencies
+    dependencies = []
+    if depends_on:
+        dependencies = [d.strip() for d in depends_on.split(",")]
+        # Validate dependencies exist
+        for dep in dependencies:
+            if not any(t.slug == dep for t in manager.tasks) and not manager._is_task_completed(dep):
+                console.print(f"[yellow]Warning: Dependency '{dep}' not found in index or completed history.[/yellow]")
+    
+    # 3. Create markdown file
+    status = TaskStatus.DRAFT if draft else TaskStatus.PENDING
+    folder = "draft" if draft else "pending"
+    task_file = ISSUES_ROOT / folder / f"{slug}.md"
+    task_file.parent.mkdir(parents=True, exist_ok=True)
+    
+    markdown_content = f"# {title}\n"
+    if body:
+        markdown_content += f"\n{body}\n"
+    
+    task_file.write_text(markdown_content, encoding="utf-8")
+    
+    # 4. Add to index
+    from ..models.tasks import MissionTask
+    new_task = MissionTask(
+        slug=slug,
+        title=title,
+        status=status,
+        dependencies=dependencies
+    )
+    manager.tasks.append(new_task)
+    manager.save()
+    
+    console.print(f"[green]Created {status.value} task '{slug}' at {task_file}[/green]")
+
 if __name__ == "__main__":
     app()

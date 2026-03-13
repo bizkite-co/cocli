@@ -9,6 +9,7 @@ from cocli.application.audit_service import AuditService
 from cocli.application.data_sync_service import DataSyncService
 from cocli.application.deployment_service import DeploymentService
 from cocli.application.company_service import get_company_details_for_view
+from cocli.application.event_service import EventService
 from cocli.models.search import SearchResult
 from cocli.core.config import get_campaign
 
@@ -16,7 +17,7 @@ from .protocols import (
     SearchProvider, CompanyServiceProvider, TemplateCountsProvider,
     CampaignServiceProvider, WorkerServiceProvider, ReportingServiceProvider,
     AuditServiceProvider, DataSyncServiceProvider, DeploymentServiceProvider,
-    OperationServiceProvider
+    OperationServiceProvider, EventServiceProvider
 )
 
 class ServiceContainer(BaseModel):
@@ -39,6 +40,7 @@ class ServiceContainer(BaseModel):
             self._data_sync_service = None
             self._deployment_service = None
             self._operation_service = None
+            self._event_service = None
     
     # Provider overrides (can be injected via constructor or setters)
     injected_search_service: Optional[Any] = Field(default=None, alias="search_service")
@@ -53,6 +55,7 @@ class ServiceContainer(BaseModel):
     _data_sync_service: Optional[Any] = PrivateAttr(default=None)
     _deployment_service: Optional[Any] = PrivateAttr(default=None)
     _operation_service: Optional[Any] = PrivateAttr(default=None)
+    _event_service: Optional[Any] = PrivateAttr(default=None)
 
     @property
     def search_service(self) -> SearchProvider:
@@ -148,6 +151,16 @@ class ServiceContainer(BaseModel):
     @operation_service.setter
     def operation_service(self, value: OperationServiceProvider) -> None:
         self._operation_service = value
+
+    @property
+    def event_service(self) -> EventServiceProvider:
+        if not self._event_service:
+            self._event_service = EventService(campaign_name=self.campaign_name)
+        return cast(EventServiceProvider, self._event_service)
+
+    @event_service.setter
+    def event_service(self, value: EventServiceProvider) -> None:
+        self._event_service = value
 
     # If True, the TUI will perform searches synchronously (useful for tests)
     sync_search: bool = False

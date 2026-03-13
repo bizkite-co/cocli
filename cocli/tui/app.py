@@ -4,14 +4,15 @@ import asyncio
 import time
 from datetime import datetime
 from contextlib import contextmanager
-from typing import Any, Optional, Type, List, cast, Dict, Generator
+from typing import Any, Optional, Type, List, cast, Dict, Generator, AsyncGenerator
 
 from textual.app import App, ComposeResult
 from textual.binding import Binding
 from textual.widgets import Static, ListView, Input, Label, Footer
 from textual.containers import Container, Horizontal
 from textual import events, on
-
+from textual.command import Provider, Hit
+from textual.screen import ModalScreen
 
 from .widgets.company_list import CompanyList
 from .widgets.person_list import PersonList
@@ -23,6 +24,7 @@ from .widgets.status_view import StatusView
 from .widgets.campaign_selection import CampaignSelection
 from .widgets.company_search import CompanySearchView
 from .widgets.template_list import TemplateList
+from .widgets.event_curation import EventCurationView
 from .navigation import NavNode, ProcessRun
 from ..application.services import ServiceContainer
 from ..core.config import create_default_config_file, is_campaign_overridden
@@ -62,6 +64,7 @@ class MenuBar(Horizontal):
         # Left-aligned items
         yield Label("Companies ( C)", id="menu-companies", classes="menu-item")
         yield Label("People ( P)", id="menu-people", classes="menu-item")
+        yield Label("Events ( E)", id="menu-events", classes="menu-item")
         
         # Environment Indicator (Visible only if not PROD)
         if env != Environment.PROD:
@@ -117,12 +120,138 @@ class MenuBar(Horizontal):
         except Exception:
             pass
 
+class CreateTaskModal(ModalScreen[bool]):
+    """A modal screen for creating a new task."""
+    def compose(self) -> ComposeResult:
+        yield Container(
+            Label("Create New Task", id="modal-title"),
+            Input(placeholder="Task Title", id="task-title"),
+            Input(placeholder="Slug (optional)", id="task-slug"),
+            Input(placeholder="Description (optional)", id="task-body"),
+            Horizontal(
+                Static("Create as DRAFT?"),
+                Static("  "),
+                Label("NO", id="draft-toggle"),
+                id="draft-row"
+            ),
+            Horizontal(
+                Static("Enter to Create, ESC to Cancel"),
+                id="modal-footer"
+            ),
+            id="create-task-modal"
+        )
+
+    def on_mount(self) -> None:
+        self.is_draft = False
+        self.query_one("#task-title").focus()
+
+    def on_key(self, event: events.Key) -> None:
+        if event.key == "escape":
+            self.dismiss(False)
+        elif event.key == "enter":
+            self._create_task()
+        elif event.key == "d" and not isinstance(self.focused, Input):
+            self._toggle_draft()
+
+    def _toggle_draft(self) -> None:
+        self.is_draft = not self.is_draft
+        label = self.query_one("#draft-toggle", Label)
+        label.update("YES" if self.is_draft else "NO")
+        label.styles.color = "yellow" if self.is_draft else "white"
+
+    def _create_task(self) -> None:
+        title = self.query_one("#task-title", Input).value
+        if not title:
+            self.app.notify("Task title is required", severity="error")
+            return
+        
+        slug = self.query_one("#task-slug", Input).value
+        body = self.query_one("#task-body", Input).value
+        
+        try:
+            # We call the command logic directly. 
+            # Note: create_task uses typer.Exit so we might need to handle it
+            # but for TUI we can just call the manager directly if needed.
+            from ..core.tasks import TaskIndexManager
+            from ..models.tasks import MissionTask, TaskStatus
+            from ..utils.textual_utils import sanitize_id
+            
+            if not slug:
+                slug = sanitize_id(title)
+                
+            manager = TaskIndexManager()
+            if any(t.slug == slug for t in manager.tasks) or manager._is_task_completed(slug):
+                self.app.notify(f"Task '{slug}' already exists", severity="error")
+                return
+
+            status = TaskStatus.DRAFT if self.is_draft else TaskStatus.PENDING
+            folder = "draft" if self.is_draft else "pending"
+            
+            # Use issues_root from manager to ensure consistency
+            task_file = manager.issues_root / folder / f"{slug}.md"
+            task_file.parent.mkdir(parents=True, exist_ok=True)
+            task_file.write_text(f"# {title}\n\n{body or ''}", encoding="utf-8")
+            
+            new_task = MissionTask(slug=slug, title=title, status=status)
+            manager.tasks.append(new_task)
+            manager.save()
+            
+            self.app.notify(f"Task created: {slug}")
+            self.dismiss(True)
+        except Exception as e:
+            self.app.notify(f"Error creating task: {e}", severity="error")
+
+class CocliCommandProvider(Provider):
+    """Provides Cocli-specific commands to the Textual Command Palette."""
+    async def search(self, query: str) -> AsyncGenerator[Hit, None]:
+        """Search for commands matching the query."""
+        matcher = self.matcher(query)
+        app = cast("CocliApp", self.app)
+        
+        # 1. Navigation Commands
+        nav_commands = [
+            ("Show Companies", app.action_show_companies, "Switch to the companies search and list view."),
+            ("Show People", app.action_show_people, "Switch to the people list view."),
+            ("Show Events", app.action_show_events, "Switch to the community event curation view."),
+            ("Show Application", app.action_show_application, "Switch to the application status and campaign view."),
+            ("Focus Sidebar", app.action_focus_sidebar, "Focus the sidebar/template pane in the current view."),
+            ("Focus Content", app.action_focus_content, "Focus the main content/list pane in the current view."),
+        ]
+
+        for name, action, help_text in nav_commands:
+            score = matcher.match(name)
+            if score > 0:
+                yield Hit(
+                    score,
+                    matcher.highlight(name),
+                    action,
+                    help=help_text
+                )
+
+        # 2. Functional Commands
+        name = "Create Task"
+        score = matcher.match(name)
+        if score > 0:
+            yield Hit(
+                score,
+                matcher.highlight(name),
+                self.action_create_task,
+                help="Create a new task in the mission queue."
+            )
+
+    def action_create_task(self) -> None:
+        """Action to show the create task modal."""
+        self.app.push_screen(CreateTaskModal())
+
 class CocliApp(App[None]):
     """A Textual app to manage cocli."""
 
     dark: bool = False
     CSS_PATH = "tui.css"
     
+    # Command palette providers
+    COMMANDS = {CocliCommandProvider}
+
     BINDINGS = [
         ("l", "select_item", "Select"),
         ("h", "navigate_up", "Back"),
@@ -134,6 +263,7 @@ class CocliApp(App[None]):
         ("[", "focus_sidebar", "Focus Sidebar"),
         ("]", "focus_content", "Focus Content"),
         ("t", "focus_templates", "Templates"),
+        Binding("ctrl+p", "command_palette", "Commands", show=True),
     ]
 
     leader_mode: bool = False
@@ -202,6 +332,11 @@ class CocliApp(App[None]):
             ),
             ApplicationView: NavNode(
                 widget_class=ApplicationView,
+                is_branch_root=True
+            ),
+            # --- Events Branch ---
+            EventCurationView: NavNode(
+                widget_class=EventCurationView,
                 is_branch_root=True
             )
         }
@@ -288,6 +423,8 @@ class CocliApp(App[None]):
                 await self.action_show_companies()
             elif self.leader_key_buffer == LEADER_KEY + "p":
                 await self.action_show_people()
+            elif self.leader_key_buffer == LEADER_KEY + "e":
+                await self.action_show_events()
             elif self.leader_key_buffer == LEADER_KEY + "a":
                 await self.action_show_application()
             
@@ -442,8 +579,12 @@ class CocliApp(App[None]):
     async def action_show_companies(self) -> None:
         """Show the company list view."""
         with time_perf("APP: action_show_companies"):
-            self.menu_bar.set_activity("Switching")
-            self.menu_bar.set_active("companies")
+            try:
+                menu_bar = self.query_one(MenuBar)
+                menu_bar.set_activity("Switching")
+                menu_bar.set_active("companies")
+            except Exception:
+                pass
             
             content = self.main_content
             search_view = None
@@ -505,8 +646,12 @@ class CocliApp(App[None]):
     async def action_show_people(self) -> None:
         """Show the person list view."""
         with time_perf("APP: action_show_people"):
-            self.menu_bar.set_activity("Switching")
-            self.menu_bar.set_active("people")
+            try:
+                menu_bar = self.query_one(MenuBar)
+                menu_bar.set_activity("Switching")
+                menu_bar.set_active("people")
+            except Exception:
+                pass
             
             content = self.main_content
             person_list = None
@@ -528,12 +673,43 @@ class CocliApp(App[None]):
             await self.main_content.mount(PersonList())
             self.menu_bar.set_activity("")
 
+    async def action_show_events(self) -> None:
+        """Show the community event curation view."""
+        with time_perf("APP: action_show_events"):
+            self.menu_bar.set_activity("Switching")
+            self.menu_bar.set_active("events")
+            
+            content = self.main_content
+            event_view = None
+            
+            for child in content.children:
+                if isinstance(child, EventCurationView):
+                    event_view = child
+                    child.display = True
+                elif isinstance(child, (CompanySearchView, PersonList, ApplicationView)):
+                    child.display = False
+                else:
+                    child.remove()
+            
+            if event_view:
+                event_view.action_focus_master()
+                self.menu_bar.set_activity("")
+                return
+
+            event_view = EventCurationView()
+            await self.main_content.mount(event_view)
+            self.menu_bar.set_activity("")
+
     async def action_show_application(self) -> None:
         """Show the application view."""
         with time_perf("APP: action_show_application"):
             tui_debug_log("APP: action_show_application starting")
-            self.menu_bar.set_activity("Loading")
-            self.menu_bar.set_active("application")
+            try:
+                menu_bar = self.query_one(MenuBar)
+                menu_bar.set_activity("Loading")
+                menu_bar.set_active("application")
+            except Exception:
+                pass
             
             content = self.main_content
             app_view = None

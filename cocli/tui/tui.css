@@ -246,3 +246,91 @@ DataTable > .datatable--cursor {
 #edit-csz-container EditInput:last-child {
     margin-right: 0;
 }
+
+/* Modal Screens */
+ModalScreen {
+    align: center middle;
+    background: rgba(0, 0, 0, 0.7);
+}
+
+#create-task-modal {
+    width: 60;
+    height: auto;
+    background: #111111;
+    border: double #00ff00;
+    padding: 1 2;
+}
+
+#modal-title {
+    width: 100%;
+    content-align: center middle;
+    text-style: bold;
+    color: #00ff00;
+    margin-bottom: 1;
+}
+
+#create-task-modal Input {
+    width: 100%;
+    margin-bottom: 1;
+    background: #000000;
+    border: tall #333333;
+}
+
+#create-task-modal Input:focus {
+    border: tall #00ff00;
+}
+
+#draft-row {
+    height: 1;
+    margin-bottom: 1;
+}
+
+#draft-toggle {
+    text-style: bold;
+}
+
+#modal-footer {
+    height: 1;
+    content-align: center middle;
+    color: #555555;
+    text-style: italic;
+}
+
+/* Event Curation View */
+#event-list {
+    background: #000000;
+}
+
+#event-detail {
+    padding: 1 2;
+    background: #050505;
+}
+
+#event-detail-empty {
+    width: 100%;
+    height: 100%;
+    content-align: center middle;
+    color: #555555;
+}
+
+#event-detail-title {
+    text-style: bold;
+    margin-bottom: 1;
+    color: #00ff00;
+}
+
+.detail-row {
+    height: 1;
+    margin-bottom: 0;
+}
+
+.detail-label {
+    width: 12;
+    color: #888888;
+    text-style: bold;
+}
+
+#event-detail-description {
+    margin-top: 1;
+    color: #cccccc;
+}
