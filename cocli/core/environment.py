@@ -16,11 +16,8 @@ def _get_git_branch() -> Optional[str]:
     Detects the current git branch. 
     Cached to avoid repeated subprocess calls.
     """
-    # Quick check for .git folder to avoid unnecessary process spawning
-    # We walk up from current file to find the project root roughly
     try:
         # Basic check: is there a .git folder in the current or parent directory?
-        # This is a heuristic to save time.
         if not os.path.exists(".git") and not os.path.exists("../.git"):
             return None
 
