@@ -7,3 +7,6 @@ Create a DEV environment from PROD
 - We will need to be able to refresh the minimized DEV env from PROD, overwriting whatever was in DEV, at any time
 - We should always be doing dev work in the DEV data. We will need some kind of DEV mode, that we should indicate in the CLI and TUI. There may one day be a UAT also, so we should create an environment enum, I think.
 
+
+---
+**Completed in commit:** `<pending-commit-id>`

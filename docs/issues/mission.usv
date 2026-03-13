@@ -1,11 +1,11 @@
-create-dev-environment-refresh
+make-the-dev-branch-always-use-the-dev-env
 create-campaign-archiver-to-s3
-implement-event-curation-tui
 collect-google-scrapers-into-a-folder
+implement-event-curation-tui
 refactor-event-discovery-to-source-driven-pipeline
-eliminate-brute-force-company-scan-in-prospecting-pipeline
-implement-service-protocols
-lead-to-wal-lambda-bridge
 transition-to-1password-python-sdk
+implement-service-protocols
+eliminate-brute-force-company-scan-in-prospecting-pipeline
+lead-to-wal-lambda-bridge
 create-promo-graphic-with-image-of-calendar-page
 gossip-bridge-respects-current-campaign-too-much
