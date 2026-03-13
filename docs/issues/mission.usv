@@ -1,8 +1,7 @@
-create-campaign-archiver-to-s3
 collect-google-scrapers-into-a-folder
-implement-event-curation-tui
 refactor-event-discovery-to-source-driven-pipeline
 transition-to-1password-python-sdk
+implement-event-curation-tui
 implement-service-protocols
 eliminate-brute-force-company-scan-in-prospecting-pipeline
 lead-to-wal-lambda-bridge

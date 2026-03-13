@@ -2,8 +2,8 @@
 import pytest
 from pathlib import Path
 from bs4 import BeautifulSoup
-from cocli.scrapers.google_maps_gmb_parser import parse_gmb_page
-from cocli.scrapers.google_maps_parser import parse_business_listing_html
+from cocli.scrapers.google.google_maps_gmb_parser import parse_gmb_page
+from cocli.scrapers.google.google_maps_parser import parse_business_listing_html
 from cocli.core.text_utils import slugify
 from cocli.core.constants import UNIT_SEP
 

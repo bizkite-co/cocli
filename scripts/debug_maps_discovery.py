@@ -1,7 +1,7 @@
 import asyncio
 import logging
 from playwright.async_api import async_playwright
-from cocli.scrapers.google_maps import scrape_google_maps
+from cocli.scrapers.google.google_maps import scrape_google_maps
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)

@@ -20,8 +20,8 @@ from cocli.core.queue.factory import get_queue_manager
 from cocli.planning.generate_grid import get_campaign_grid_tiles
 from cocli.models.campaigns.queues.gm_list import ScrapeTask
 from cocli.models.companies.company import Company
-from cocli.scrapers.google_maps import scrape_google_maps
-from cocli.scrapers.google_maps_details import scrape_google_maps_details
+from cocli.scrapers.google.google_maps import scrape_google_maps
+from cocli.scrapers.google.google_maps_details import scrape_google_maps_details
 from cocli.compilers.website_compiler import WebsiteCompiler
 from cocli.core.enrichment import enrich_company_website
 from cocli.models.campaigns.indexes.google_maps_prospect import GoogleMapsProspect

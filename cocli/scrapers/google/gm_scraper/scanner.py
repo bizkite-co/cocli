@@ -4,9 +4,9 @@ import re
 from typing import AsyncIterator, Set, Optional
 from playwright.async_api import Page, Locator
 
-from ...core.config import load_scraper_settings
-from ...core.text_utils import slugify
-from ...models.campaigns.indexes.google_maps_list_item import GoogleMapsListItem
+from ....core.config import load_scraper_settings
+from ....core.text_utils import slugify
+from ....models.campaigns.indexes.google_maps_list_item import GoogleMapsListItem
 
 logger = logging.getLogger(__name__)
 

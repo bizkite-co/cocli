@@ -99,6 +99,15 @@ class ProspectsIndexManager:
             logger.error(f"Failed to append prospect {prospect.place_id}: {e}")
             return False
 
+    def add_to_wal(self, prospect: GoogleMapsProspect) -> Path:
+        """
+        Durability Tier Alias: Appends to the Write-Ahead Log.
+        Returns the path to the written file.
+        """
+        path = self.get_file_path(prospect.place_id, for_write=True)
+        self.append_prospect(prospect)
+        return path
+
     def read_all_prospects(self) -> Iterator[GoogleMapsProspect]:
         """Iterates through all prospects in the index."""
         all_files = []

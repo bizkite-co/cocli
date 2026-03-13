@@ -5,7 +5,7 @@ from typing import Any, Optional
 
 from ...models.campaigns.queues.gm_details import GmItemTask
 from ...models.campaigns.indexes.google_maps_prospect import GoogleMapsProspect
-from ...scrapers.google_maps_details import scrape_google_maps_details
+from ...scrapers.google.google_maps_details import scrape_google_maps_details
 from ...core.prospects_csv_manager import ProspectsIndexManager
 
 logger = logging.getLogger(__name__)
@@ -34,10 +34,10 @@ class GoogleMapsDetailsProcessor:
         try:
             # 1. Scrape Raw Data -> Model (GoogleMapsProspect)
             prospect = await scrape_google_maps_details(
-                page=page, 
-                place_id=task.place_id, 
+                page=page,
+                place_id=task.place_id,
                 campaign_name=task.campaign_name,
-                name=task.name, 
+                name=task.name,
                 company_slug=task.company_slug,
                 debug=debug
             )
@@ -47,7 +47,7 @@ class GoogleMapsDetailsProcessor:
                 return None
 
             # 2. Non-Destructive Merge with Existing Data
-            # If we already have data for this place, don't overwrite good fields with nulls
+            # Note: merge_with_existing handles updated_at refresh
             existing = GoogleMapsProspect.get_by_place_id(task.campaign_name, task.place_id)
             if existing:
                 logger.info(f"Merging new data with existing prospect: {task.place_id}")
@@ -56,28 +56,22 @@ class GoogleMapsDetailsProcessor:
             # 3. Metadata Hydration
             prospect.processed_by = self.processed_by
             prospect.updated_at = datetime.now(UTC)
-            prospect.discovery_phrase = task.discovery_phrase
-            prospect.discovery_tile_id = task.discovery_tile_id
 
-            # 4. Save to Hot Index (WAL)
-            # This is the sharded campaign-level storage for DuckDB/Compaction
-            csv_manager = ProspectsIndexManager(task.campaign_name)
-            if csv_manager.append_prospect(prospect):
-                logger.info(f"Saved to Campaign WAL: {task.place_id}")
-            else:
-                logger.error(f"Failed to save to Campaign WAL: {task.place_id}")
+            # 4. Durability Tier (WAL)
+            # We append to the Write-Ahead Log for later compaction
+            index_manager = ProspectsIndexManager(task.campaign_name)
+            wal_path = index_manager.add_to_wal(prospect)
+            logger.info(f"Appended to WAL: {wal_path}")
 
-            # 4. Save to Company Enrichment
-            # This is the company-level isolated storage
-            if prospect.company_slug:
-                try:
-                    enrich_path = prospect.save_enrichment()
-                    logger.info(f"Saved to Company Enrichment: {enrich_path}")
-                except Exception as e:
-                    logger.error(f"Failed to save Company Enrichment for {prospect.company_slug}: {e}")
+            # 5. Save to Company Enrichment
+            # This ensures the business data is attached to the company for the TUI/Frontend
+            enrichment_path = prospect.save_enrichment()
+            logger.info(f"Saved company enrichment: {enrichment_path}")
 
             return prospect
 
         except Exception as e:
-            logger.error(f"Processor error for {task.place_id}: {e}", exc_info=True)
+            logger.error(f"Error processing detail task for {task.place_id}: {e}")
+            import traceback
+            logger.debug(traceback.format_exc())
             return None

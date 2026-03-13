@@ -68,7 +68,7 @@ async def re_enqueue_targeted() -> None:
         # We wrap our task in a list so poll logic would see it
         # Actually, let's just use the internal method with a tiny modification
         # Or better: just use ScrapeCoordinator directly like the worker does
-        from cocli.scrapers.gm_scraper.coordinator import ScrapeCoordinator
+        from cocli.scrapers.google.gm_scraper.coordinator import ScrapeCoordinator
         from cocli.application.processors.gm_list import GmListProcessor
         
         coordinator = ScrapeCoordinator(browser, campaign_name=campaign, debug=True)

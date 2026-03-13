@@ -10,7 +10,7 @@ from typing import Any, Dict, List, Optional, Set
 from playwright.async_api import async_playwright, Browser, BrowserContext
 
 from ..core.queue.factory import get_queue_manager
-from ..scrapers.google_maps import scrape_google_maps
+from ..scrapers.google.google_maps import scrape_google_maps
 from ..models.campaigns.queues.gm_list import ScrapeTask
 from ..models.campaigns.indexes.google_maps_list_item import GoogleMapsListItem
 from ..models.campaigns.queues.gm_details import GmItemTask

@@ -3,7 +3,7 @@ from typing import Optional, TYPE_CHECKING
 from playwright.async_api import Page
 
 from cocli.models.campaigns.raw_witness import RawWitness
-from .gm_details_scraper import GoogleMapsDetailsScraper
+from ..gm_details_scraper import GoogleMapsDetailsScraper
 
 if TYPE_CHECKING:
     from cocli.models.campaigns.indexes.google_maps_prospect import GoogleMapsProspect
@@ -38,7 +38,7 @@ async def scrape_google_maps_details(
     """
     from cocli.models.campaigns.indexes.google_maps_prospect import GoogleMapsProspect
     from cocli.models.campaigns.indexes.google_maps_raw import GoogleMapsRawResult
-    from cocli.scrapers.google_maps_gmb_parser import parse_gmb_page
+    from cocli.scrapers.google.google_maps_gmb_parser import parse_gmb_page
 
     # Execute state-machine capture
     witness = await capture_google_maps_raw(page, place_id, campaign_name, debug=debug)
@@ -49,7 +49,7 @@ async def scrape_google_maps_details(
     details_dict = parse_gmb_page(witness.html, debug=debug)
     
     # --- Resource Discovery Analysis ---
-    from .resource_analyzer import analyze_resource_value
+    from ..resource_analyzer import analyze_resource_value
     analysis = analyze_resource_value(
         name=details_dict.get("Name") or name or "",
         category=details_dict.get("First_category") or "",

@@ -1,4 +1,4 @@
-from ..core.utils import generate_company_hash
+from ...core.utils import generate_company_hash
 
 import re
 from typing import Dict, Any, Optional

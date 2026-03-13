@@ -7,8 +7,8 @@ from datetime import datetime, timedelta, UTC
 from playwright.async_api import async_playwright
 from bs4 import BeautifulSoup
 
-from cocli.scrapers.gm_scraper.scanner import SidebarScraper
-from cocli.scrapers.google_maps_parsers.extract_rating_reviews_gm_list import extract_rating_reviews_gm_list
+from cocli.scrapers.google.gm_scraper.scanner import SidebarScraper
+from cocli.scrapers.google.google_maps_parsers.extract_rating_reviews_gm_list import extract_rating_reviews_gm_list
 
 GROUND_TRUTH_DIR = Path("tests/data/maps.google.com")
 HTML_PATH = GROUND_TRUTH_DIR / "gm-list.html"
@@ -71,7 +71,7 @@ async def test_gm_list_ground_truth_and_parsing():
             await setup_stealth_context(context)
             
             page = await context.new_page()
-            from cocli.scrapers.gm_scraper.navigator import Navigator
+            from cocli.scrapers.google.gm_scraper.navigator import Navigator
             nav = Navigator(page)
             
             success = await nav.goto(34.2499, -118.2605, 2.0, 1.0, query="auto parts")

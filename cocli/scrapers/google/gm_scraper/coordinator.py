@@ -3,13 +3,13 @@ from typing import List, AsyncIterator, Optional, Dict, Any, Union
 from playwright.async_api import Browser
 from geopy.distance import geodesic # type: ignore
 
-from ...models.campaigns.indexes.google_maps_list_item import GoogleMapsListItem
+from ....models.campaigns.indexes.google_maps_list_item import GoogleMapsListItem
 from .navigator import Navigator
 from .strategy import SpiralStrategy, GridStrategy
 from .wilderness import WildernessManager
 from .scanner import SidebarScraper
 from .utils import get_viewport_bounds
-from ...utils.playwright_utils import setup_optimized_context
+from ....utils.playwright_utils import setup_optimized_context
 
 logger = logging.getLogger(__name__)
 
@@ -49,7 +49,7 @@ class ScrapeCoordinator:
     ) -> AsyncIterator[GoogleMapsListItem]:
         
         # Create a new context explicitly for this session
-        from ...utils.headers import USER_AGENT
+        from ....utils.headers import USER_AGENT
         
         # We launch a fresh context but the browser instance was already launched by the caller.
         # However, to support channel selection, we ensure the coordinator's browser is 
@@ -60,7 +60,7 @@ class ScrapeCoordinator:
         )
         
         # Apply Stealth (No resource blocking)
-        from ...utils.playwright_utils import setup_stealth_context
+        from ....utils.playwright_utils import setup_stealth_context
         await setup_stealth_context(context)
         await setup_optimized_context(context)
         

@@ -1,7 +1,7 @@
 import asyncio
 import os
 from playwright.async_api import async_playwright
-from cocli.scrapers.google_maps_parsers.extract_rating_reviews_gm_details import extract_rating_reviews_gm_details
+from cocli.scrapers.google.google_maps_parsers.extract_rating_reviews_gm_details import extract_rating_reviews_gm_details
 from cocli.utils.headers import ANTI_BOT_HEADERS, USER_AGENT
 from bs4 import BeautifulSoup
 

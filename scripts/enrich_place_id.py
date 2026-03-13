@@ -6,7 +6,7 @@ from rich.console import Console
 from rich.progress import track
 from cocli.core.config import get_companies_dir, get_campaign, get_campaigns_dir
 from cocli.models.companies.company import Company
-from cocli.scrapers.google_maps_finder import find_business_on_google_maps
+from cocli.scrapers.google.google_maps_finder import find_business_on_google_maps
 from cocli.core.utils import create_company_files
 
 app = typer.Typer()

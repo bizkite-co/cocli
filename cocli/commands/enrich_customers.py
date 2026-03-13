@@ -4,7 +4,7 @@ import yaml
 import logging
 
 from ..core.config import get_companies_dir, get_people_dir, get_campaign_dir
-from ..scrapers.google_maps_finder import find_business_on_google_maps
+from ..scrapers.google.google_maps_finder import find_business_on_google_maps
 from ..models.people.person import Person
 from cocli.core.text_utils import slugify
 

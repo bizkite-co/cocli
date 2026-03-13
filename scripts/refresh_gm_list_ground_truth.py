@@ -8,7 +8,7 @@ from playwright.async_api import async_playwright
 import sys
 sys.path.append(str(Path(__file__).parent.parent))
 
-from cocli.scrapers.google_maps_parser import parse_business_listing_html
+from cocli.scrapers.google.google_maps_parser import parse_business_listing_html
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)

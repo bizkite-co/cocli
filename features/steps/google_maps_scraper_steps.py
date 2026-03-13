@@ -6,8 +6,8 @@ from pathlib import Path
 from behave import given, when, then
 import logging
 
-from cocli.scrapers.google_maps import scrape_google_maps
-from cocli.scrapers.google_maps_parser import GOOGLE_MAPS_HEADERS
+from cocli.scrapers.google.google_maps import scrape_google_maps
+from cocli.scrapers.google.google_maps_parser import GOOGLE_MAPS_HEADERS
 
 logger = logging.getLogger(__name__)
 

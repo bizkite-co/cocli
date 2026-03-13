@@ -1,8 +1,8 @@
 import logging
 from pathlib import Path
 from typing import Dict, Optional, Any
-from ...core.scrape_index import ScrapeIndex
-from ...core.config import get_scraped_areas_index_dir
+from ....core.scrape_index import ScrapeIndex
+from ....core.config import get_scraped_areas_index_dir
 
 logger = logging.getLogger(__name__)
 
