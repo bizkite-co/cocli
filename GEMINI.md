@@ -143,3 +143,9 @@ The enrichment service is implemented with a "dual-purpose" mode to maximize res
 - **Index-First Mandate**: ALWAYS prioritize discovery via DuckDB or USV indices over brute-force filesystem directory scans (`os.walk`, `rglob`). Loading full Pydantic models from raw Markdown is a high-cost operation; only perform it on identified targets.
 - **Sync-then-Process**: For cloud-stored datasets (S3), always perform a bulk `aws s3 sync` to a local directory before running analysis or compilation scripts.
 - **Process Spawning**: Minimize `subprocess.run` calls inside loops. Use Python native libraries or batch CLI tools (like `qsv` or `xargs`) on local files.
+
+### Protocol-First Mandate (Schema Evolution)
+To maintain a production-ready system as schemas evolve across different campaigns:
+- **The Rule of Two**: The moment code requires `isinstance()` checks or `getattr()` guards to handle two or more similar models (e.g., Prospect vs Venue, Meeting vs Event), you MUST implement a `typing.Protocol`.
+- **Interface Stability**: Always type-hint services and UI components with Protocols (e.g., `GoogleMapsPlaceProtocol`) rather than concrete classes. This ensures polymorphism without model bloat.
+- **Mock Safety**: When using narrow, strictly validated types (like `PlaceID`), ensure they include a `BeforeValidator` to gracefully handle `MagicMock` objects in the test suite.

@@ -1,8 +1,8 @@
+create-dev-environment-refresh
+create-campaign-archiver-to-s3
 implement-event-curation-tui
 collect-google-scrapers-into-a-folder
 refactor-event-discovery-to-source-driven-pipeline
-create-dev-environment-refresh
-create-campaign-archiver-to-s3
 eliminate-brute-force-company-scan-in-prospecting-pipeline
 implement-service-protocols
 lead-to-wal-lambda-bridge
