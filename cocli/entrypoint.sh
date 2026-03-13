@@ -3,11 +3,10 @@ set -e
 
 if [ -z "$LOCAL_DEV" ]; then
   # Only attempt 1Password retrieval if a valid token is provided and it's not the placeholder
-  if [ -n "$OP_SESSION_TOKEN" ] && [ "$OP_SESSION_TOKEN" != "placeholder_for_now" ]; then
-    # Retrieve the 1Password item
+  if [ -n "$OP_SESSION_TOKEN" ] && [ "$OP_SESSION_TOKEN" != "placeholder_for_now" ] || [ -n "$OP_SERVICE_ACCOUNT_TOKEN" ]; then
+    # Retrieve the 1Password item using our unified helper
     OP_ITEM_ID="4lcddpkk5ytnvemniodqmfxq3i"
-    # Correct command syntax: op item get
-    ITEM_DETAILS=$(op item get $OP_ITEM_ID --format json)
+    ITEM_DETAILS=$(python3 -m cocli.utils.op_helper $OP_ITEM_ID)
 
     # Extract credentials from the 1Password item
     export ACCOUNT_ID=$(echo "$ITEM_DETAILS" | jq -r '.fields[] | select(.label == "account_id").value')

@@ -101,7 +101,8 @@ class EventSearchScraper:
         if not password:
             print("\n" + "!"*60)
             print("LOGIN ERROR: 1Password secret could not be retrieved.")
-            print("Please run 'op signin' in your terminal.")
+            print("Please ensure you are signed in ('op signin') or")
+            print("have a valid OP_SERVICE_ACCOUNT_TOKEN configured.")
             print("OR: Log in manually in the browser window NOW.")
             print("!"*60 + "\n")
             await asyncio.sleep(10) # Give them a moment to read

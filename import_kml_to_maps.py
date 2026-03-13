@@ -1,6 +1,5 @@
 
 import os
-import subprocess
 import toml
 from playwright.sync_api import sync_playwright
 import logging
@@ -37,15 +36,11 @@ def main(campaign_name: str = typer.Argument(..., help="The name of the campaign
         return
         
     # Get password from 1Password
-    try:
-        password = subprocess.check_output(["op", "read", one_password_path]).strip().decode("utf-8")
-    except FileNotFoundError:
-        logger.error("The 'op' command-line tool is not installed or not in your PATH.")
-        logger.error("Please install the 1Password CLI and ensure you are logged in.")
-        return
-    except subprocess.CalledProcessError:
+    from cocli.utils.op_utils import get_op_secret
+    password = get_op_secret(one_password_path)
+    
+    if not password:
         logger.error("Could not retrieve the password from 1Password.")
-        logger.error("Please ensure you are logged in to the 'op' CLI.")
         return
 
     with sync_playwright() as p:

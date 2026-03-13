@@ -1,28 +1,10 @@
 import argparse
-import json
 import subprocess
 import sys
-from typing import Optional, Any, cast
 from rich.console import Console
+from cocli.utils.op_utils import get_op_item
 
 console = Console()
-
-def check_op_signin() -> bool:
-    """Checks if the user is signed in to 1Password CLI."""
-    try:
-        subprocess.run(["op", "whoami"], check=True, capture_output=True)
-        return True
-    except subprocess.CalledProcessError:
-        return False
-
-def get_op_item(item_id: str) -> Optional[dict[str, Any]]:
-    """Fetches item details from 1Password."""
-    try:
-        result = subprocess.run(["op", "item", "get", item_id, "--format", "json"], check=True, capture_output=True, text=True)
-        return cast(dict[str, Any], json.loads(result.stdout))
-    except subprocess.CalledProcessError as e:
-        console.print(f"[bold red]Error fetching 1Password item:[/bold red] {e.stderr}")
-        return None
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Setup WiFi on a Raspberry Pi using 1Password credentials.")
@@ -30,13 +12,10 @@ def main() -> None:
     parser.add_argument("--user", default="mstouffer", help="SSH user for the Pi.")
     args = parser.parse_args()
 
-    if not check_op_signin():
-        console.print("[bold red]Error:[/bold red] You are not signed in to 1Password. Please run 'op signin' first.")
-        sys.exit(1)
-
     item_id = "bs3pts5vnyagrjnypklhv2t7mi"
     item = get_op_item(item_id)
     if not item:
+        console.print("[bold red]Error:[/bold red] Could not retrieve 1Password item. Please ensure you are signed in or have a valid service account.")
         sys.exit(1)
 
     # Extract fields

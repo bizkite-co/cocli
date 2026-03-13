@@ -14,7 +14,7 @@ A portable, zero-dependency tool for code signature hashing and task bypass. It 
 ```json
 {
   "includes": ["src", "Makefile"],
-  "excludes": [".git", "dist", ".code_signatures.json"],
+  "excludes": [".git", "dist", "docs", ".code_signatures.json"],
   "store": ".code_signatures.json"
 }
 ```

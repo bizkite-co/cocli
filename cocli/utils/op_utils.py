@@ -1,7 +1,8 @@
 import os
 import subprocess
 import logging
-from typing import Optional, cast
+import json
+from typing import Optional, cast, Any, Dict
 
 logger = logging.getLogger(__name__)
 
@@ -57,5 +58,35 @@ def get_op_secret(op_path: str) -> Optional[str]:
         return None
     except Exception as e:
         logger.error(f"Unexpected error retrieving 1Password secret via CLI: {e}")
+        return None
+
+def get_op_item(item_id: str, vault: Optional[str] = None) -> Optional[Dict[str, Any]]:
+    """
+    Retrieves a full item from 1Password as a dictionary.
+    Currently only supports CLI fallback for complex item retrieval.
+    """
+    # 1. SDK Implementation (To be added when needed/supported by SDK for full items)
+    
+    # 2. Fallback to 'op' CLI
+    try:
+        cmd = ["op", "item", "get", item_id, "--format", "json"]
+        if vault:
+            cmd.extend(["--vault", vault])
+            
+        result = subprocess.run(
+            cmd,
+            capture_output=True,
+            text=True,
+            check=True
+        )
+        return cast(Dict[str, Any], json.loads(result.stdout))
+    except subprocess.CalledProcessError as e:
+        logger.error(f"Failed to get 1Password item '{item_id}' via CLI: {e.stderr}")
+        return None
+    except FileNotFoundError:
+        logger.error("The 'op' CLI was not found in the system path.")
+        return None
+    except Exception as e:
+        logger.error(f"Unexpected error retrieving 1Password item via CLI: {e}")
         return None
 

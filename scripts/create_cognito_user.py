@@ -1,17 +1,8 @@
-import subprocess
 import sys
 import boto3
 from typing import Optional
 from cocli.core.config import load_campaign_config
-
-def get_op_value(uri: str) -> str:
-    """Fetch a single value from 1Password using its URI."""
-    try:
-        result = subprocess.run(["op", "read", uri], capture_output=True, text=True, check=True)
-        return result.stdout.strip()
-    except subprocess.CalledProcessError as e:
-        print(f"Error resolving 1Password URI {uri}: {e.stderr}")
-        sys.exit(1)
+from cocli.utils.op_utils import get_op_secret
 
 def main() -> None:
     if len(sys.argv) < 2:
@@ -38,8 +29,12 @@ def main() -> None:
         sys.exit(1)
         
     print(f"Resolving credentials for {campaign_name} in {region}...")
-    username = get_op_value(user_uri)
-    password = get_op_value(pass_uri)
+    username = get_op_secret(user_uri)
+    password = get_op_secret(pass_uri)
+    
+    if not username or not password:
+        print("Error: Could not resolve one or more credentials from 1Password.")
+        sys.exit(1)
     
     session = boto3.Session(profile_name=profile, region_name=region)
     client = session.client("cognito-idp")

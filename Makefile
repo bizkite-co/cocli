@@ -65,8 +65,11 @@ open: activate ##Activate the venv and open
 	@cocli
 
 op-check: ## Check 1Password auth status
-	op whoami
-
+	@if [ -n "$$OP_SERVICE_ACCOUNT_TOKEN" ]; then \
+		echo "1Password Service Account is active."; \
+	else \
+		op whoami; \
+	fi
 create-cognito-user: op-check ## Create a Cognito user using credentials referenced in campaign config (Usage: make create-cognito-user CAMPAIGN=yyy)
 	@if [ "$(CAMPAIGN)" = "ERROR" ]; then echo "Error: CAMPAIGN is required"; exit 1; fi
 	./.venv/bin/python scripts/create_cognito_user.py "$(CAMPAIGN)"

@@ -1,7 +1,6 @@
 import os
 import tempfile
 import sys
-import subprocess
 import asyncio
 import importlib
 from pathlib import Path
@@ -44,11 +43,12 @@ def cli_app():
     return main_mod.app
 
 def get_op_secret(op_path):
-    """Fetches a secret from 1Password CLI."""
-    result = subprocess.run(["op", "read", op_path], capture_output=True, text=True)
-    if result.returncode != 0:
-        raise Exception(f"Failed to read secret from OP: {result.stderr}")
-    return result.stdout.strip()
+    """Fetches a secret from 1Password using unified utility."""
+    from cocli.utils.op_utils import get_op_secret as unified_get_secret
+    secret = unified_get_secret(op_path)
+    if not secret:
+        raise Exception(f"Failed to read secret from 1Password: {op_path}")
+    return secret
 
 @pytest.fixture(scope="session")
 def campaign_config():
