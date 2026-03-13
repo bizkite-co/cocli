@@ -148,6 +148,12 @@ class OperationService:
                 "maintenance",
                 process_details="Uses Playwright locally to fetch ratings, reviews, and social links for a given place_id."
             ),
+            "op_re_enrich": OperationMetadata(
+                "op_re_enrich", "Re-enrich Company Website", 
+                "Runs a local browser to perform website-level enrichment (emails, socials) for a specific domain.", 
+                "maintenance",
+                process_details="Uses Playwright locally to crawl the company's website and extract contact info."
+            ),
             "op_sanitize_discovery": OperationMetadata(
                 "op_sanitize_discovery", "Sanitize Discovery Results",
                 "Full workflow: Pulls from S3, purges non-conforming/hollow USVs, pushes to S3, and propagates to PIs.",
@@ -480,6 +486,48 @@ class OperationService:
                             return {"status": "error"}
                             
                 result = await run_local_scrape()
+            elif op_id == "op_re_enrich":
+                async def run_local_enrichment() -> Dict[str, Any]:
+                    slug = params.get("company_slug")
+                    domain = params.get("domain")
+                    if not slug or not domain:
+                        raise ValueError("company_slug and domain are required for re-enrichment")
+                    
+                    from ..core.enrichment import enrich_company_website
+                    from ..models.companies.company import Company
+                    from ..models.campaigns.campaign import Campaign
+                    from playwright.async_api import async_playwright
+                    
+                    log_step("browser_init", "pending")
+                    async with async_playwright() as p:
+                        browser = await p.chromium.launch(headless=True)
+                        context = await browser.new_context()
+                        log_step("browser_init", "success")
+                        
+                        try:
+                            campaign_obj = Campaign.load(self.campaign_name)
+                            company = Company.get(slug) or Company(name=slug, domain=domain, slug=slug)
+                            
+                            log_step("enrich", "pending", f"Enriching website for {domain}...")
+                            website_data = await enrich_company_website(
+                                browser=context, 
+                                company=company, 
+                                campaign=campaign_obj, 
+                                force=True, 
+                                debug=True
+                            )
+                            
+                            if website_data:
+                                website_data.save(slug)
+                                log_step("enrich", "success", f"Captured {len(website_data.all_emails)} emails")
+                                return website_data.model_dump()
+                            else:
+                                log_step("enrich", "error", "No data captured")
+                                return {"status": "error"}
+                        finally:
+                            await browser.close()
+                            
+                result = await run_local_enrichment()
             elif op_id == "op_sanitize_discovery":
                 async def run_sanitization() -> Dict[str, Any]:
                     from ..services.cluster_service import ClusterService

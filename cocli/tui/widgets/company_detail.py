@@ -204,6 +204,7 @@ class CompanyDetail(Container):
         Binding("p", "call_company", "Call"),
         Binding("t", "toggle_to_call", "To Call"),
         Binding("R", "re_enqueue_scrape", "Re-enqueue Scrape"),
+        Binding("E", "re_enrich", "Re-enrich"),
         Binding("D", "delete_company", "Delete Company"),
         Binding("e", "open_folder", "Explorer (NVim)"),
     ]
@@ -498,6 +499,36 @@ class CompanyDetail(Container):
                 self.app.notify(f"Scrape failed: {result.get('message')}", severity="error")
                 
         self.app.run_worker(run_scrape())
+
+    def action_re_enrich(self) -> None:
+        """Triggers a local website enrichment for the current company."""
+        slug = self.company_data["company"].get("slug")
+        domain = self.company_data["company"].get("domain")
+        
+        if not domain:
+            self.app.notify("Error: No domain found for this company", severity="error")
+            return
+            
+        self.app.notify(f"Starting local re-enrichment for {domain}...")
+        
+        async def run_enrichment() -> None:
+            app = cast("CocliApp", self.app)
+            result = await app.services.operation_service.execute(
+                "op_re_enrich",
+                params={"domain": domain, "company_slug": slug}
+            )
+            
+            if result.get("status") == "success":
+                self.app.notify("Enrichment successful! Refreshing view...")
+                if slug:
+                    new_data = app.services.get_company_details(slug)
+                    if new_data:
+                        self.company_data = new_data
+                        self._refresh_info_table()
+            else:
+                self.app.notify(f"Enrichment failed: {result.get('message')}", severity="error")
+                
+        self.app.run_worker(run_enrichment())
 
     async def action_delete_company(self) -> None:
         """Permanently deletes the entire company directory."""
