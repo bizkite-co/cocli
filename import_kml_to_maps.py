@@ -36,8 +36,9 @@ def main(campaign_name: str = typer.Argument(..., help="The name of the campaign
         return
         
     # Get password from 1Password
-    from cocli.utils.op_utils import get_op_secret
-    password = get_op_secret(one_password_path)
+    from cocli.application.services import ServiceContainer
+    services = ServiceContainer(campaign_name=campaign_name)
+    password = services.secret_service.get_secret(one_password_path)
     
     if not password:
         logger.error("Could not retrieve the password from 1Password.")

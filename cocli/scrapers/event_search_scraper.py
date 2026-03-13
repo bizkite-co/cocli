@@ -10,7 +10,7 @@ from ..models.campaigns.events import Event
 from ..core.text_utils import slugify
 from ..utils.playwright_utils import setup_stealth_context
 from ..utils.headers import USER_AGENT
-from ..utils.op_utils import get_op_secret
+from ..application.services import ServiceContainer
 from ..models.campaigns.campaign import Campaign
 
 logger = logging.getLogger(__name__)
@@ -96,7 +96,8 @@ class EventSearchScraper:
 
         logger.info("Starting robust Google login flow...")
         email = campaign.google_maps.email
-        password = get_op_secret(campaign.google_maps.one_password_path)
+        services = ServiceContainer(campaign_name=campaign.name)
+        password = services.secret_service.get_secret(campaign.google_maps.one_password_path)
         
         if not password:
             print("\n" + "!"*60)

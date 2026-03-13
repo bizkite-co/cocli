@@ -10,6 +10,7 @@ from cocli.application.data_sync_service import DataSyncService
 from cocli.application.deployment_service import DeploymentService
 from cocli.application.company_service import get_company_details_for_view
 from cocli.application.event_service import EventService
+from cocli.core.secrets import get_secret_provider
 from cocli.models.search import SearchResult
 from cocli.core.config import get_campaign
 
@@ -17,7 +18,7 @@ from .protocols import (
     SearchProvider, CompanyServiceProvider, TemplateCountsProvider,
     CampaignServiceProvider, WorkerServiceProvider, ReportingServiceProvider,
     AuditServiceProvider, DataSyncServiceProvider, DeploymentServiceProvider,
-    OperationServiceProvider, EventServiceProvider
+    OperationServiceProvider, EventServiceProvider, SecretServiceProvider
 )
 
 class ServiceContainer(BaseModel):
@@ -41,6 +42,7 @@ class ServiceContainer(BaseModel):
             self._deployment_service = None
             self._operation_service = None
             self._event_service = None
+            self._secret_service = None
     
     # Provider overrides (can be injected via constructor or setters)
     injected_search_service: Optional[Any] = Field(default=None, alias="search_service")
@@ -56,6 +58,7 @@ class ServiceContainer(BaseModel):
     _deployment_service: Optional[Any] = PrivateAttr(default=None)
     _operation_service: Optional[Any] = PrivateAttr(default=None)
     _event_service: Optional[Any] = PrivateAttr(default=None)
+    _secret_service: Optional[Any] = PrivateAttr(default=None)
 
     @property
     def search_service(self) -> SearchProvider:
@@ -161,6 +164,16 @@ class ServiceContainer(BaseModel):
     @event_service.setter
     def event_service(self, value: EventServiceProvider) -> None:
         self._event_service = value
+
+    @property
+    def secret_service(self) -> SecretServiceProvider:
+        if not self._secret_service:
+            self._secret_service = get_secret_provider()
+        return cast(SecretServiceProvider, self._secret_service)
+
+    @secret_service.setter
+    def secret_service(self, value: SecretServiceProvider) -> None:
+        self._secret_service = value
 
     # If True, the TUI will perform searches synchronously (useful for tests)
     sync_search: bool = False

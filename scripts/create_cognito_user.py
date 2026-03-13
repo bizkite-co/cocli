@@ -1,8 +1,7 @@
 import sys
 import boto3
 from typing import Optional
-from cocli.core.config import load_campaign_config
-from cocli.utils.op_utils import get_op_secret
+from cocli.application.services import ServiceContainer
 
 def main() -> None:
     if len(sys.argv) < 2:
@@ -10,7 +9,8 @@ def main() -> None:
         sys.exit(1)
         
     campaign_name = sys.argv[1]
-    config = load_campaign_config(campaign_name)
+    services = ServiceContainer(campaign_name=campaign_name)
+    config = services.campaign_service.get_config()
     
     aws_config = config.get("aws", {})
     user_pool_id: Optional[str] = aws_config.get("cocli_user_pool_id") or aws_config.get("user_pool_id")
@@ -29,8 +29,8 @@ def main() -> None:
         sys.exit(1)
         
     print(f"Resolving credentials for {campaign_name} in {region}...")
-    username = get_op_secret(user_uri)
-    password = get_op_secret(pass_uri)
+    username = services.secret_service.get_secret(user_uri)
+    password = services.secret_service.get_secret(pass_uri)
     
     if not username or not password:
         print("Error: Could not resolve one or more credentials from 1Password.")

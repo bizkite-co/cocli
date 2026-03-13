@@ -44,8 +44,9 @@ def cli_app():
 
 def get_op_secret(op_path):
     """Fetches a secret from 1Password using unified utility."""
-    from cocli.utils.op_utils import get_op_secret as unified_get_secret
-    secret = unified_get_secret(op_path)
+    from cocli.application.services import ServiceContainer
+    services = ServiceContainer()
+    secret = services.secret_service.get_secret(op_path)
     if not secret:
         raise Exception(f"Failed to read secret from 1Password: {op_path}")
     return secret

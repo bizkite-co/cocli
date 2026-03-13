@@ -1,6 +1,6 @@
 import sys
 import json
-from cocli.utils.op_utils import get_op_item
+from cocli.core.secrets import get_secret_provider
 
 def main() -> None:
     if len(sys.argv) < 2:
@@ -8,7 +8,8 @@ def main() -> None:
         sys.exit(1)
         
     item_id = sys.argv[1]
-    item = get_op_item(item_id)
+    provider = get_secret_provider()
+    item = provider.get_item(item_id)
     if not item:
         sys.exit(1)
         

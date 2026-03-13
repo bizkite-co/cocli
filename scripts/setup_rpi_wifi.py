@@ -2,7 +2,7 @@ import argparse
 import subprocess
 import sys
 from rich.console import Console
-from cocli.utils.op_utils import get_op_item
+from cocli.application.services import ServiceContainer
 
 console = Console()
 
@@ -12,8 +12,9 @@ def main() -> None:
     parser.add_argument("--user", default="mstouffer", help="SSH user for the Pi.")
     args = parser.parse_args()
 
+    services = ServiceContainer()
     item_id = "bs3pts5vnyagrjnypklhv2t7mi"
-    item = get_op_item(item_id)
+    item = services.secret_service.get_item(item_id)
     if not item:
         console.print("[bold red]Error:[/bold red] Could not retrieve 1Password item. Please ensure you are signed in or have a valid service account.")
         sys.exit(1)
