@@ -24,6 +24,8 @@ from ..core.exceptions import EnrichmentError
 from ..core.email_index_manager import EmailIndexManager
 from ..models.campaigns.indexes.email import EmailEntry
 from ..models.email_address import EmailAddress
+from ..utils.playwright_utils import setup_stealth_context
+from ..models.campaigns.raw_witness import RawWebsiteWitness
 from ..core.text_utils import is_valid_email
 from ..utils.headers import ANTI_BOT_HEADERS, USER_AGENT
 
@@ -32,9 +34,10 @@ logger = logging.getLogger(__name__)
 
 
 class WebsiteScraper:
-    def __init__(self) -> None:
+    def __init__(self, processed_by: Optional[str] = None) -> None:
         self.headers = ANTI_BOT_HEADERS
         self.user_agent = USER_AGENT
+        self.processed_by = processed_by or socket.gethostname().split(".")[0]
 
     def _index_emails(self, website_data: Website, campaign_name: str) -> None:
         """Helper to record all found emails in the centralized email index."""
@@ -113,10 +116,14 @@ class WebsiteScraper:
         campaign: Optional[Campaign] = None,
         navigation_timeout_ms: int = 30000,
         site_timeout_seconds: int = 120,
+        processed_by: Optional[str] = None,
     ) -> Website:
         """
         Scrapes a website for company information.
         """
+        if processed_by:
+            self.processed_by = processed_by
+            
         website_data = Website(url=domain, scraper_version=CURRENT_SCRAPER_VERSION)
         if company_slug:
             website_data.associated_company_folder = company_slug
@@ -135,6 +142,7 @@ class WebsiteScraper:
                     debug,
                     campaign,
                     navigation_timeout_ms,
+                    company_slug,
                 ),
                 timeout=site_timeout_seconds,
             )
@@ -248,6 +256,7 @@ class WebsiteScraper:
         debug: bool = False,
         campaign: Optional[Campaign] = None,
         navigation_timeout_ms: int = 30000,
+        company_slug: Optional[str] = None,
     ) -> Website:
         """
         Internal implementation of website scraping.
@@ -309,6 +318,7 @@ class WebsiteScraper:
                 user_agent=self.user_agent,
                 extra_http_headers=self.headers,
             )
+            await setup_stealth_context(context)
         else:
             context = browser
 
@@ -334,6 +344,43 @@ class WebsiteScraper:
                 target_keywords = campaign.prospecting.queries + campaign.prospecting.keywords
 
             await self._scrape_page(page, website_data, context, target_keywords)
+
+            # --- Capture Raw Witness ---
+            try:
+                html_content = await page.content()
+                witness = RawWebsiteWitness(
+                    domain=domain,
+                    company_slug=company_slug or "unknown",
+                    processed_by=self.processed_by,
+                    campaign_name=campaign.name if campaign else "default",
+                    url=page.url,
+                    html=html_content,
+                    metadata={
+                        "user_agent": self.user_agent,
+                        "headers": self.headers,
+                        "navigation_timeout": navigation_timeout_ms,
+                        "viewport": str(page.viewport_size),
+                        "captured_at": datetime.now(UTC).isoformat()
+                    }
+                )
+                # Sync to S3 if campaign has AWS config
+                s3_client = None
+                bucket = os.getenv("COCLI_S3_BUCKET_NAME")
+                if campaign and campaign.aws:
+                    from ..core.reporting import get_boto3_session
+                    try:
+                        session = get_boto3_session(campaign.model_dump())
+                        s3_client = session.client("s3")
+                        if not bucket:
+                             bucket = campaign.model_dump().get("aws", {}).get("data_bucket_name") or f"cocli-data-{campaign.name}"
+                    except Exception:
+                        pass
+                
+                witness.save(s3_client=s3_client, bucket_name=bucket)
+                logger.info(f"Saved Raw Witness for {domain}")
+            except Exception as witness_err:
+                logger.debug(f"Failed to capture raw witness for {domain}: {witness_err}")
+            # ---------------------------
 
             if not (website_data.email and not target_keywords):
                 sitemap_pages, sitemap_xml = await self._get_sitemap_urls(

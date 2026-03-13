@@ -335,7 +335,14 @@ class WorkerService:
             task = tasks[0]
             try:
                 company = Company.get(task.company_slug) or Company(name=task.company_slug, domain=task.domain, slug=task.company_slug)
-                website_data = await enrich_company_website(browser=context, company=company, campaign=campaign_obj, force=task.force_refresh, debug=debug)
+                website_data = await enrich_company_website(
+                    browser=context, 
+                    company=company, 
+                    campaign=campaign_obj, 
+                    force=task.force_refresh, 
+                    debug=debug,
+                    processed_by=self.processed_by
+                )
                 if website_data:
                     website_data.save(task.company_slug)
                 enrichment_queue.ack(task)
@@ -394,7 +401,8 @@ class WorkerService:
         async with async_playwright() as p:
             browser = await self._launch_browser(p, headless)
             context = await browser.new_context(user_agent=USER_AGENT, extra_http_headers=ANTI_BOT_HEADERS)
-            await setup_optimized_context(context)
+            from ..utils.playwright_utils import setup_stealth_context
+            await setup_stealth_context(context)
             s3_client = self.get_s3_client()
             enrich_q = get_queue_manager("enrichment", use_cloud=True, queue_type="enrichment", campaign_name=self.campaign_name, s3_client=s3_client)
             tasks = [self._run_enrichment_task_loop(context, enrich_q, debug, once, s3_client) for _ in range(workers)]

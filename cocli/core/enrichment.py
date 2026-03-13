@@ -4,7 +4,7 @@ from typing import Optional
 from playwright.async_api import Browser, BrowserContext
 
 from ..models.companies.company import Company
-from ..models.campaigns.campaign import Campaign # New import
+from ..models.campaigns.campaign import Campaign
 from ..enrichment.website_scraper import WebsiteScraper
 from ..models.companies.website import Website
 
@@ -17,7 +17,8 @@ async def enrich_company_website(
     force: bool = False,
     ttl_days: int = 30,
     debug: bool = False,
-    navigation_timeout_ms: Optional[int] = None # New parameter
+    navigation_timeout_ms: Optional[int] = None,
+    processed_by: Optional[str] = None
 ) -> Optional[Website]:
     """
     Enriches a single Company object with data scraped from its website.
@@ -34,6 +35,8 @@ async def enrich_company_website(
         force: Force re-scraping even if fresh data is in the cache.
         ttl_days: Time-to-live for cached data in days.
         debug: Enable debug mode with breakpoints.
+        navigation_timeout_ms: Timeout for page navigation.
+        processed_by: The name of the node/worker performing the enrichment.
 
     Returns:
         A Website object if enrichment is successful, otherwise None.
@@ -43,16 +46,17 @@ async def enrich_company_website(
         return None
 
     logger.info(f"Enriching website for {company.name}")
-    scraper = WebsiteScraper()
+    scraper = WebsiteScraper(processed_by=processed_by)
     website_data = await scraper.run(
         browser=browser,
         domain=company.domain,
         company_slug=company.slug,
-        campaign=campaign, # Pass the campaign object
+        campaign=campaign,
         force_refresh=force,
         ttl_days=ttl_days,
         debug=debug,
-        navigation_timeout_ms=navigation_timeout_ms or 30000 # Pass new param
+        navigation_timeout_ms=navigation_timeout_ms or 30000,
+        processed_by=processed_by
     )
 
     return website_data

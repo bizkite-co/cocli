@@ -30,8 +30,11 @@ class OperationService:
     Enables sharing operation logic between the TUI and CLI.
     """
     def __init__(self, campaign_name: str, services: Optional[ServiceContainer] = None):
+        import socket
+        import os
         self.campaign_name = campaign_name
         self.services = services or ServiceContainer(campaign_name=campaign_name)
+        self.processed_by = os.getenv("COCLI_HOSTNAME") or socket.gethostname().split(".")[0]
         
         # Define the Registry
         self.operations: Dict[str, OperationMetadata] = {
@@ -514,7 +517,8 @@ class OperationService:
                                 company=company, 
                                 campaign=campaign_obj, 
                                 force=True, 
-                                debug=True
+                                debug=True,
+                                processed_by=self.processed_by
                             )
                             
                             if website_data:
