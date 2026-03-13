@@ -35,3 +35,6 @@ class SearchServiceProvider(Protocol):
 ## Context Links
 - **Documentation**: [docs/reference/api.md](docs/reference/api.md)
 - **Current Entrypoint**: `cocli/application/services.py`
+
+---
+**Completed in commit:** `<pending-commit-id>`

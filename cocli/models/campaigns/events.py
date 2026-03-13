@@ -11,6 +11,71 @@ import logging
 
 logger = logging.getLogger(__name__)
 
+class EventSource(BaseUsvModel):
+    """
+    A permanent template for event discovery.
+    Stored in sources/ directory.
+    """
+    host_slug: str = Field(..., description="Slug of the hosting organization/venue")
+    url_template: str = Field(..., description="URL with date placeholders (e.g. {YYYY-MM})")
+    search_phrase_template: str = Field(..., description="Phrase with date placeholders (e.g. {month})")
+    scraper_type: str = Field(default="eventbrite", description="Type of scraper to use")
+    frequency: str = Field(default="monthly", description="Generation frequency (weekly, monthly)")
+    
+    # Metadata
+    campaign_name: str = "fullertonian"
+    is_active: bool = Field(default=True)
+    created_at: datetime = Field(default_factory=lambda: datetime.now())
+
+    @property
+    def collection(self) -> QueueName:
+        return QueueIdentity.EVENTS
+
+    def get_source_path(self) -> Path:
+        """Returns the local path for this source template."""
+        return paths.campaign(self.campaign_name).queue(QueueIdentity.EVENTS).path / "sources" / f"{self.host_slug}.json"
+
+    def save_source(self) -> Path:
+        """Saves the source template as JSON."""
+        p = self.get_source_path()
+        p.parent.mkdir(parents=True, exist_ok=True)
+        with open(p, "w") as f:
+            f.write(self.model_dump_json(indent=2))
+        return p
+
+class EventScrapeTask(BaseUsvModel):
+    """
+    A specific instance of an event discovery task for a time window.
+    Generated from an EventSource.
+    """
+    source_id: str = Field(..., description="Slug of the parent EventSource")
+    target_window: str = Field(..., description="The time window ID (e.g. 202604 for April 2026)")
+    
+    hydrated_url: str = Field(..., description="The URL with placeholders replaced")
+    hydrated_phrase: str = Field(..., description="The phrase with placeholders replaced")
+    scraper_type: str = Field(..., description="Copied from source")
+    
+    # Metadata
+    campaign_name: str = "fullertonian"
+    status: str = Field(default="pending")
+    generated_at: datetime = Field(default_factory=lambda: datetime.now())
+
+    @property
+    def collection(self) -> QueueName:
+        return QueueIdentity.EVENTS
+
+    def get_task_path(self) -> Path:
+        """Returns the canonical path in the pending queue sharded by window."""
+        return paths.campaign(self.campaign_name).queue(QueueIdentity.EVENTS).path / "pending" / self.target_window / f"{self.source_id}.json"
+
+    def save_task(self) -> Path:
+        """Saves the task instance as JSON."""
+        p = self.get_task_path()
+        p.parent.mkdir(parents=True, exist_ok=True)
+        with open(p, "w") as f:
+            f.write(self.model_dump_json(indent=2))
+        return p
+
 class Event(BaseUsvModel):
     """
     Standard model for Fullertonian community events.
