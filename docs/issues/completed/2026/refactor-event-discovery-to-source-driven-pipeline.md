@@ -44,3 +44,6 @@ Transition the event discovery system from static, manually-seeded tasks to a "S
 - **Complexity**: Medium-High (Requires state management across multiple filesystem directories).
 - **Time Estimate**: ~2-3 development sessions.
 - **Risk**: Low (Purely additive/refactoring, doesn't break existing company scrapers).
+
+---
+**Completed in commit:** `<pending-commit-id>`
