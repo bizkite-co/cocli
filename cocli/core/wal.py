@@ -2,7 +2,7 @@ import socket
 import logging
 from datetime import datetime, UTC
 from pathlib import Path
-from typing import Any, List
+from typing import Any, List, Optional
 
 from .paths import paths
 from ..models.wal.record import DatagramRecord, RS
@@ -12,13 +12,18 @@ logger = logging.getLogger(__name__)
 def get_node_id() -> str:
     return socket.gethostname()
 
-def append_update(target_dir: Path, field: str, value: Any) -> None:
+def append_update(target_dir: Path, field: str, value: Any, campaign_name: Optional[str] = None) -> None:
     """
     Appends a field update to the centralized WAL journal via the paths authority.
     """
+    from .config import get_campaign
+    
     node_id = get_node_id()
     wal_file = paths.wal_journal(node_id)
     target_id = paths.wal_target_id(target_dir)
+
+    # Infer campaign if not provided
+    effective_campaign = campaign_name or get_campaign() or "unknown"
 
     # Convert value to string representation (JSON if complex)
     if isinstance(value, (list, dict)):
@@ -30,6 +35,7 @@ def append_update(target_dir: Path, field: str, value: Any) -> None:
     record = DatagramRecord(
         timestamp=datetime.now(UTC).isoformat(),
         node_id=node_id,
+        campaign_name=effective_campaign,
         target=target_id,
         field=field,
         value=value_str

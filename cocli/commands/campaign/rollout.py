@@ -96,6 +96,7 @@ def broadcast_config(
 
     # Create Broadcast Datagram
     datagram = ConfigDatagram(
+        campaign_name=effective_campaign,
         node_id="*", # Broadcast to all
         config_json=json.dumps(scaling),
         timestamp=str(int(time.time()))

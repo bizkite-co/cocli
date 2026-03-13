@@ -193,15 +193,14 @@ class GossipBridge:
                 if not q_record or q_record.node_id == self.node_id:
                     return
                 
-                logger.info(f"Received queue sync: {q_record.queue_name}/{q_record.task_id} [{q_record.status}] from {q_record.node_id}")
-                
+                # ROUTING FIX: Prioritize datagram's campaign name
                 from .config import get_campaign
-                campaign = get_campaign()
-                if not campaign:
-                    return
+                effective_campaign = q_record.campaign_name if q_record.campaign_name != "unknown" else (get_campaign() or "unknown")
+                
+                logger.info(f"Received queue sync: {q_record.queue_name}/{q_record.task_id} [{q_record.status}] from {q_record.node_id} (Campaign: {effective_campaign})")
                 
                 # Write marker to local filesystem
-                queue = paths.campaign(campaign).queue(q_record.queue_name)
+                queue = paths.campaign(effective_campaign).queue(q_record.queue_name)
                 if q_record.status == "completed":
                     dest = queue.completed / "results" / f"{q_record.task_id}.json"
                 else:
@@ -215,6 +214,7 @@ class GossipBridge:
                             "id": q_record.task_id, 
                             "status": q_record.status, 
                             "synced_via": "gossip", 
+                            "campaign": effective_campaign,
                             "remote_node": q_record.node_id,
                             "timestamp": q_record.timestamp
                         }, f)
@@ -228,7 +228,7 @@ class GossipBridge:
                 
                 # Update in-memory status
                 self.heartbeats[h_record.node_id] = h_record.model_dump()
-                logger.info(f"Received heartbeat from {h_record.node_id}: Load {h_record.load_avg:.2f}")
+                logger.info(f"Received heartbeat from {h_record.node_id} [{h_record.campaign_name}]: Load {h_record.load_avg:.2f}")
                 return
 
             # 3. Handle Configuration Updates
@@ -241,7 +241,7 @@ class GossipBridge:
                 if c_record.node_id != self.node_id and c_record.node_id != "*":
                     return
                 
-                logger.info("Received remote config update from gossip.")
+                logger.info(f"Received remote config update from gossip ({c_record.campaign_name}).")
                 
                 # Save update to a dedicated location for WorkerService to pick up
                 update_path = paths.root / "remote_updates" / f"config_{int(time.time())}.json"
@@ -333,7 +333,9 @@ class GossipBridge:
                 # 4. Send immediate 'hello' heartbeat
                 from datetime import datetime, UTC
                 from ..models.wal.record import HeartbeatDatagram
+                from .config import get_campaign
                 hello = HeartbeatDatagram(
+                    campaign_name=get_campaign() or "unknown",
                     node_id=self.node_id,
                     timestamp=datetime.now(UTC).isoformat(),
                     load_avg=0.0,

@@ -428,6 +428,7 @@ class WorkerService:
         if bridge and bridge.running:
             try:
                 hb = HeartbeatDatagram(
+                    campaign_name=self.campaign_name,
                     node_id=self.processed_by,
                     timestamp=str(stats["timestamp"]),
                     load_avg=cpu_usage, # We use CPU % as a proxy for load in the datagram

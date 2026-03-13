@@ -456,6 +456,7 @@ class FilesystemQueue:
                 if bridge and bridge.running:
                     from ...models.wal.record import QueueDatagram
                     datagram = QueueDatagram(
+                        campaign_name=self.campaign_name,
                         queue_name=self.queue_name,
                         task_id=task_id,
                         status="completed",

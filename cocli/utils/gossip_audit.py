@@ -143,6 +143,7 @@ def send_test_gossip(target_ip: str) -> None:
     from datetime import datetime, UTC
     
     datagram = QueueDatagram(
+        campaign_name="audit-test",
         queue_name="test-queue",
         task_id="test-task",
         status="completed",

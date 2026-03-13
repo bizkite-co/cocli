@@ -1,4 +1,3 @@
-collect-google-scrapers-into-a-folder
 refactor-event-discovery-to-source-driven-pipeline
 transition-to-1password-python-sdk
 implement-event-curation-tui
