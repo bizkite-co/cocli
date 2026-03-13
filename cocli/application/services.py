@@ -1,5 +1,5 @@
 from typing import Optional, List, Any, cast, Dict
-from pydantic import BaseModel, Field, ConfigDict
+from pydantic import BaseModel, Field, ConfigDict, PrivateAttr
 
 from cocli.application.search_service import get_fuzzy_search_results, get_template_counts
 from cocli.application.campaign_service import CampaignService
@@ -11,6 +11,13 @@ from cocli.application.deployment_service import DeploymentService
 from cocli.application.company_service import get_company_details_for_view
 from cocli.models.search import SearchResult
 from cocli.core.config import get_campaign
+
+from .protocols import (
+    SearchProvider, CompanyServiceProvider, TemplateCountsProvider,
+    CampaignServiceProvider, WorkerServiceProvider, ReportingServiceProvider,
+    AuditServiceProvider, DataSyncServiceProvider, DeploymentServiceProvider,
+    OperationServiceProvider
+)
 
 class ServiceContainer(BaseModel):
     """
@@ -33,61 +40,114 @@ class ServiceContainer(BaseModel):
             self._deployment_service = None
             self._operation_service = None
     
-    search_service: Any = Field(default_factory=lambda: get_fuzzy_search_results)
-    company_service: Any = Field(default_factory=lambda: get_company_details_for_view)
-    template_counts_service: Any = Field(default_factory=lambda: get_template_counts)
+    # Provider overrides (can be injected via constructor or setters)
+    injected_search_service: Optional[Any] = Field(default=None, alias="search_service")
+    injected_company_service: Optional[Any] = Field(default=None, alias="company_service")
+    injected_template_counts_service: Optional[Any] = Field(default=None, alias="template_counts_service")
     
-    # Lazy properties for services that need campaign_name
-    _campaign_service: Optional[CampaignService] = None
-    _worker_service: Optional[WorkerService] = None
-    _reporting_service: Optional[ReportingService] = None
-    _audit_service: Optional[AuditService] = None
-    _data_sync_service: Optional[DataSyncService] = None
-    _deployment_service: Optional[DeploymentService] = None
-    _operation_service: Optional[Any] = None
+    # Lazy attributes (PrivateAttr)
+    _campaign_service: Optional[Any] = PrivateAttr(default=None)
+    _worker_service: Optional[Any] = PrivateAttr(default=None)
+    _reporting_service: Optional[Any] = PrivateAttr(default=None)
+    _audit_service: Optional[Any] = PrivateAttr(default=None)
+    _data_sync_service: Optional[Any] = PrivateAttr(default=None)
+    _deployment_service: Optional[Any] = PrivateAttr(default=None)
+    _operation_service: Optional[Any] = PrivateAttr(default=None)
 
     @property
-    def campaign_service(self) -> CampaignService:
+    def search_service(self) -> SearchProvider:
+        return cast(SearchProvider, self.injected_search_service or get_fuzzy_search_results)
+
+    @search_service.setter
+    def search_service(self, value: SearchProvider) -> None:
+        self.injected_search_service = value
+
+    @property
+    def company_service(self) -> CompanyServiceProvider:
+        return cast(CompanyServiceProvider, self.injected_company_service or get_company_details_for_view)
+
+    @company_service.setter
+    def company_service(self, value: CompanyServiceProvider) -> None:
+        self.injected_company_service = value
+
+    @property
+    def template_counts_service(self) -> TemplateCountsProvider:
+        return cast(TemplateCountsProvider, self.injected_template_counts_service or get_template_counts)
+
+    @template_counts_service.setter
+    def template_counts_service(self, value: TemplateCountsProvider) -> None:
+        self.injected_template_counts_service = value
+
+    @property
+    def campaign_service(self) -> CampaignServiceProvider:
         if not self._campaign_service:
             self._campaign_service = CampaignService(campaign_name=self.campaign_name)
-        return self._campaign_service
+        return cast(CampaignServiceProvider, self._campaign_service)
+
+    @campaign_service.setter
+    def campaign_service(self, value: CampaignServiceProvider) -> None:
+        self._campaign_service = value
 
     @property
-    def worker_service(self) -> WorkerService:
+    def worker_service(self) -> WorkerServiceProvider:
         if not self._worker_service:
             self._worker_service = WorkerService(campaign_name=self.campaign_name)
-        return self._worker_service
+        return cast(WorkerServiceProvider, self._worker_service)
+
+    @worker_service.setter
+    def worker_service(self, value: WorkerServiceProvider) -> None:
+        self._worker_service = value
 
     @property
-    def reporting_service(self) -> ReportingService:
+    def reporting_service(self) -> ReportingServiceProvider:
         if not self._reporting_service:
             self._reporting_service = ReportingService(campaign_name=self.campaign_name)
-        return self._reporting_service
+        return cast(ReportingServiceProvider, self._reporting_service)
+
+    @reporting_service.setter
+    def reporting_service(self, value: ReportingServiceProvider) -> None:
+        self._reporting_service = value
 
     @property
-    def audit_service(self) -> AuditService:
+    def audit_service(self) -> AuditServiceProvider:
         if not self._audit_service:
             self._audit_service = AuditService(campaign_name=self.campaign_name)
-        return self._audit_service
+        return cast(AuditServiceProvider, self._audit_service)
+
+    @audit_service.setter
+    def audit_service(self, value: AuditServiceProvider) -> None:
+        self._audit_service = value
 
     @property
-    def data_sync_service(self) -> DataSyncService:
+    def data_sync_service(self) -> DataSyncServiceProvider:
         if not self._data_sync_service:
             self._data_sync_service = DataSyncService(campaign_name=self.campaign_name)
-        return self._data_sync_service
+        return cast(DataSyncServiceProvider, self._data_sync_service)
+
+    @data_sync_service.setter
+    def data_sync_service(self, value: DataSyncServiceProvider) -> None:
+        self._data_sync_service = value
 
     @property
-    def deployment_service(self) -> DeploymentService:
+    def deployment_service(self) -> DeploymentServiceProvider:
         if not self._deployment_service:
             self._deployment_service = DeploymentService(campaign_name=self.campaign_name)
-        return self._deployment_service
+        return cast(DeploymentServiceProvider, self._deployment_service)
+
+    @deployment_service.setter
+    def deployment_service(self, value: DeploymentServiceProvider) -> None:
+        self._deployment_service = value
 
     @property
-    def operation_service(self) -> Any:
+    def operation_service(self) -> OperationServiceProvider:
         if not self._operation_service:
             from .operation_service import OperationService
             self._operation_service = OperationService(campaign_name=self.campaign_name, services=self)
-        return self._operation_service
+        return cast(OperationServiceProvider, self._operation_service)
+
+    @operation_service.setter
+    def operation_service(self, value: OperationServiceProvider) -> None:
+        self._operation_service = value
 
     # If True, the TUI will perform searches synchronously (useful for tests)
     sync_search: bool = False
@@ -103,8 +163,7 @@ class ServiceContainer(BaseModel):
         limit: int = 100,
         offset: int = 0
     ) -> List[SearchResult]:
-        # Wrap the function call to match the expected signature
-        results = self.search_service(
+        return self.search_service(
             search_query=search_query,
             item_type=item_type,
             campaign_name=campaign_name,
@@ -114,10 +173,9 @@ class ServiceContainer(BaseModel):
             limit=limit,
             offset=offset
         )
-        return cast(List[SearchResult], results)
 
     def get_template_counts(self, campaign_name: Optional[str] = None) -> Dict[str, int]:
-        return self.template_counts_service(campaign_name) # type: ignore
+        return self.template_counts_service(campaign_name)
 
     def get_company_details(self, company_slug: str) -> Optional[Dict[str, Any]]:
-        return self.company_service(company_slug) # type: ignore
+        return self.company_service(company_slug)

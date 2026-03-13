@@ -1,8 +1,7 @@
+implement-service-protocols
 refactor-event-discovery-to-source-driven-pipeline
 transition-to-1password-python-sdk
 implement-event-curation-tui
-implement-service-protocols
 eliminate-brute-force-company-scan-in-prospecting-pipeline
 lead-to-wal-lambda-bridge
 create-promo-graphic-with-image-of-calendar-page
-gossip-bridge-respects-current-campaign-too-much
