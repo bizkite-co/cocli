@@ -49,12 +49,25 @@ class ReportingService:
 
         queue_url = os.getenv("COCLI_ENRICHMENT_QUEUE_URL")
         
+        from ..core.paths import paths
+        from ..core.config import load_campaign_config
+        
+        s3_bucket = "N/A"
+        if campaign_name:
+            try:
+                config = load_campaign_config(campaign_name)
+                s3_bucket = f"s3://{config.get('aws', {}).get('data_bucket_name', 'unknown')}"
+            except Exception:
+                pass
+
         return {
             "campaign": campaign_name,
             "context": context_filter,
             "strategy": strategy,
             "strategy_details": details,
-            "enrichment_queue_url": queue_url
+            "enrichment_queue_url": queue_url,
+            "data_root": str(paths.root),
+            "s3_data_root": s3_bucket
         }
 
     def get_campaign_stats(self, campaign_name: Optional[str] = None) -> Dict[str, Any]:

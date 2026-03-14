@@ -10,7 +10,9 @@ def render_environment_panel(status_data: Dict[str, Any]) -> Panel:
     env_text = Text.assemble(
         ("Campaign: ", "bold cyan"), (f"{status_data.get('campaign', 'None')}\n", "green"),
         ("Context:  ", "bold cyan"), (f"{status_data.get('context', 'None')}\n", "green"),
-        ("Strategy: ", "bold cyan"), (f"{status_data.get('strategy', 'Unknown')}\n", "yellow")
+        ("Strategy: ", "bold cyan"), (f"{status_data.get('strategy', 'Unknown')}\n", "yellow"),
+        ("Data Root: ", "bold cyan"), (f"{status_data.get('data_root', 'N/A')}\n", "magenta"),
+        ("S3 Remote: ", "bold cyan"), (f"{status_data.get('s3_data_root', 'N/A')}\n", "blue")
     )
     for detail in status_data.get("strategy_details", []):
         env_text.append(f"  - {detail}\n", "dim")
