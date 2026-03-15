@@ -19,7 +19,7 @@ class ReportingService:
         """
         import os
         
-        campaign_name = get_campaign()
+        campaign_name = self.campaign_name
         context_filter = get_context()
         
         # Scrape Strategy Detection

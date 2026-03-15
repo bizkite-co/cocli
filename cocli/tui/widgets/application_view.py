@@ -277,7 +277,7 @@ class ApplicationView(Container):
                 if child.id == "app_loading":
                     continue
                 is_target = (child.id == target_view_id)
-                child.styles.display = "block" if is_target else "none"
+                child.display = is_target
 
             # 3. Category Specific UI Updates
             title_label = self.query_one("#sub_sidebar_title", Label)

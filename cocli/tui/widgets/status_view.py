@@ -5,8 +5,11 @@ from textual import work
 from typing import Any, Dict, Optional, List, TYPE_CHECKING, cast
 import asyncio
 from datetime import datetime
+import logging
 
 from cocli.renderers import status_renderer
+
+logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
     from ..app import CocliApp
@@ -33,41 +36,60 @@ class StatusView(VerticalScroll):
         yield Container(Static("[bold yellow]Loading environment status...[/]"), id="status_body")
 
     def on_mount(self) -> None:
-        # We NO LONGER hydrate automatically on mount.
-        # It will be triggered when visible via watch_display
-        pass
+        # If we start visible, trigger hydration
+        if self.display and self.status_data is None:
+            self.run_worker(self.hydrate_view())
 
     def watch_display(self, display: bool) -> None:
-        """Called when visibility changes."""
+        """Called when display reactive changes."""
         if display and self.status_data is None:
+            self.run_worker(self.hydrate_view())
+
+    def on_show(self) -> None:
+        """Triggered when the widget is shown."""
+        if self.status_data is None:
             self.run_worker(self.hydrate_view())
 
     async def hydrate_view(self) -> None:
         """Hydrate the view with initial data without blocking the UI thread."""
-        app = cast("CocliApp", self.app)
-        if not hasattr(app, "services"):
+        logger.debug("StatusView: Hydrating view...")
+        
+        # Wait for services with a timeout
+        try:
+            async with asyncio.timeout(5.0):
+                while not hasattr(self.app, "services"):
+                    await asyncio.sleep(0.1)
+        except asyncio.TimeoutError:
+            logger.error("StatusView: Services not found on app instance after 5s")
+            self.query_one("#status_body", Container).mount(Static("[bold red]Error: System services not initialized. Check logs.[/]"))
             return
 
-        indicator = self.query_one("#status_refresh_indicator", Static)
-        indicator.update("[bold yellow] Hydrating...[/bold yellow]")
+        app = cast("CocliApp", self.app)
+        try:
+            indicator = self.query_one("#status_refresh_indicator", Static)
+            indicator.update("[bold yellow] Hydrating...[/bold yellow]")
 
-        campaign = app.services.reporting_service.campaign_name
-        
-        # 1. Fetch Environment (Fast, but do it in thread just in case of I/O)
-        env = await asyncio.to_thread(app.services.reporting_service.get_environment_status)
-        self.status_data = env
-        
-        # 2. Try to load cached stats (Fast)
-        cached_stats = app.services.reporting_service.load_cached_report(campaign, "status")
-        if cached_stats:
-            self.status_data["stats"] = cached_stats
-        
-        # 3. Update the UI
-        self.call_after_refresh(self.update_view)
-        indicator.update("")
-        
-        # Note: We NO LONGER trigger a full refresh automatically.
-        # User must press 'R' to get fresh S3 data if they want it.
+            # 1. Fetch Environment
+            env = await asyncio.to_thread(app.services.reporting_service.get_environment_status)
+            self.status_data = env
+            
+            # 2. Try to load cached stats
+            campaign = app.services.reporting_service.campaign_name
+            cached_stats = app.services.reporting_service.load_cached_report(campaign, "status")
+            if cached_stats:
+                self.status_data["stats"] = cached_stats
+            
+            # 3. Update the UI
+            await self.update_view()
+            indicator.update("")
+            logger.debug("StatusView: Hydration complete.")
+        except Exception as e:
+            logger.error(f"StatusView: Hydration failed: {e}")
+            import traceback
+            logger.debug(traceback.format_exc())
+            body = self.query_one("#status_body", Container)
+            await body.remove_children()
+            await body.mount(Static(f"[bold red]Error hydrating view: {e}[/]"))
 
     def action_refresh_status(self) -> None:
         """Triggered by Shift+R."""
@@ -86,6 +108,7 @@ class StatusView(VerticalScroll):
         app.process_runs.append(run_record)
         
         # Update parent sidebar if possible
+        parent_view = None
         try:
             from .application_view import ApplicationView
             parent_view = next((a for a in self.ancestors if isinstance(a, ApplicationView)), None)
@@ -112,7 +135,9 @@ class StatusView(VerticalScroll):
             self.cluster_health = health
             
             run_record.status = "success"
-            self.call_after_refresh(self.update_view)
+            # Trigger UI update back on main loop
+            self.app.call_from_thread(self.run_worker, self.update_view())
+            
             indicator.update("[bold green] Done[/bold green]")
             self.app.notify("Environment refresh complete")
             await asyncio.sleep(2)
@@ -126,12 +151,12 @@ class StatusView(VerticalScroll):
             if parent_view:
                 parent_view.call_after_refresh(parent_view.update_recent_runs)
 
-    def update_view(self) -> None:
+    async def update_view(self) -> None:
         if not self.status_data:
             return
 
         body = self.query_one("#status_body", Container)
-        body.remove_children()
+        await body.remove_children()
         
         # Update Timestamp in Header
         stats = self.status_data.get("stats", {})
@@ -146,23 +171,23 @@ class StatusView(VerticalScroll):
         self.query_one("#status_last_updated", Label).update(last_upd)
 
         # 1. Environment Panel
-        body.mount(Static(status_renderer.render_environment_panel(self.status_data)))
+        await body.mount(Static(status_renderer.render_environment_panel(self.status_data)))
 
         # 2. Gossip Cluster Status (Real-time)
         from cocli.core.gossip_bridge import bridge
         if bridge and bridge.heartbeats:
-            body.mount(Static(status_renderer.render_gossip_status_table(bridge.heartbeats)))
+            await body.mount(Static(status_renderer.render_gossip_status_table(bridge.heartbeats)))
 
         # 3. Cluster Health (SSH)
         if self.cluster_health:
-            body.mount(Static(status_renderer.render_cluster_health_table(self.cluster_health)))
+            await body.mount(Static(status_renderer.render_cluster_health_table(self.cluster_health)))
 
         # 3. Stats Panel
         if stats and not stats.get("error"):
             # Queues Table
-            body.mount(Static(status_renderer.render_queue_table(stats)))
+            await body.mount(Static(status_renderer.render_queue_table(stats)))
 
             # Worker Heartbeats
             hb_table = status_renderer.render_worker_heartbeat_table(stats)
             if hb_table:
-                body.mount(Static(hb_table))
+                await body.mount(Static(hb_table))

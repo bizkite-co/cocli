@@ -4,7 +4,7 @@ import asyncio
 import time
 from datetime import datetime
 from contextlib import contextmanager
-from typing import Any, Optional, Type, List, cast, Dict, Generator, AsyncGenerator
+from typing import Any, Optional, Type, List, cast, Dict, Generator, Callable, AsyncGenerator
 
 from textual.app import App, ComposeResult
 from textual.binding import Binding
@@ -203,41 +203,68 @@ class CreateTaskModal(ModalScreen[bool]):
 
 class CocliCommandProvider(Provider):
     """Provides Cocli-specific commands to the Textual Command Palette."""
+    
+    def get_commands(self) -> Dict[str, tuple[Callable[[], Any], str]]:
+        """Returns a registry of all available commands."""
+        app = cast("CocliApp", self.app)
+        return {
+            "Show Companies": (app.action_show_companies, "Switch to the companies search and list view."),
+            "Show People": (app.action_show_people, "Switch to the people list view."),
+            "Show Events": (app.action_show_events, "Switch to the community event curation view."),
+            "Show Application": (app.action_show_application, "Switch to the application status and campaign view."),
+            "Focus Sidebar": (app.action_focus_sidebar, "Focus the sidebar/template pane in the current view."),
+            "Focus Content": (app.action_focus_content, "Focus the main content/list pane in the current view."),
+            "Create Task": (self.action_create_task, "Create a new task in the mission queue.")
+        }
+
     async def search(self, query: str) -> AsyncGenerator[Hit, None]:
         """Search for commands matching the query."""
         matcher = self.matcher(query)
         app = cast("CocliApp", self.app)
+        commands = self.get_commands()
         
-        # 1. Navigation Commands
-        nav_commands = [
-            ("Show Companies", app.action_show_companies, "Switch to the companies search and list view."),
-            ("Show People", app.action_show_people, "Switch to the people list view."),
-            ("Show Events", app.action_show_events, "Switch to the community event curation view."),
-            ("Show Application", app.action_show_application, "Switch to the application status and campaign view."),
-            ("Focus Sidebar", app.action_focus_sidebar, "Focus the sidebar/template pane in the current view."),
-            ("Focus Content", app.action_focus_content, "Focus the main content/list pane in the current view."),
-        ]
+        # 1. Handle Empty Query (Show 5 Most Recent)
+        if not query:
+            from rich.text import Text
+            # Yield top 5 from history
+            count = 0
+            for name in app.command_history:
+                if name in commands:
+                    action, help_text = commands[name]
+                    # Score of 1.0 ensures they are sorted by history order
+                    yield Hit(
+                        1.0,
+                        Text(name), # Use plain text if query is empty to avoid fuzzy highlighter crash
+                        self.wrap_action(name, action),
+                        help=help_text
+                    )
+                    count += 1
+                    if count >= 5:
+                        break
+            return
 
-        for name, action, help_text in nav_commands:
+        # 2. Handle Search Query
+        for name, (action, help_text) in commands.items():
             score = matcher.match(name)
             if score > 0:
                 yield Hit(
                     score,
                     matcher.highlight(name),
-                    action,
+                    self.wrap_action(name, action),
                     help=help_text
                 )
 
-        # 2. Functional Commands
-        name = "Create Task"
-        score = matcher.match(name)
-        if score > 0:
-            yield Hit(
-                score,
-                matcher.highlight(name),
-                self.action_create_task,
-                help="Create a new task in the mission queue."
-            )
+    def wrap_action(self, name: str, action: Callable[[], Any]) -> Callable[[], Any]:
+        """Wraps an action to record its use in history before execution."""
+        app = cast("CocliApp", self.app)
+        
+        def wrapper() -> Any:
+            app.record_command(name)
+            if asyncio.iscoroutinefunction(action):
+                return app.run_worker(action())
+            return action()
+            
+        return wrapper
 
     def action_create_task(self) -> None:
         """Action to show the create task modal."""
@@ -281,6 +308,15 @@ class CocliApp(App[None]):
         self.auto_show = auto_show
         self.process_runs: List[ProcessRun] = []
         
+        # Command Palette History (Last used commands at the top)
+        self.command_history: List[str] = [
+            "Show Companies",
+            "Show People",
+            "Show Events",
+            "Show Application",
+            "Create Task"
+        ]
+
         # Explicitly ensure the OperationService uses our shared services container
         # to prevent it from spawning its own ServiceContainer (which breaks mocks)
         if hasattr(self.services, "operation_service"):
@@ -340,6 +376,15 @@ class CocliApp(App[None]):
                 is_branch_root=True
             )
         }
+
+    def record_command(self, name: str) -> None:
+        """Records a command use in history, moving it to the top."""
+        if name in self.command_history:
+            self.command_history.remove(name)
+        self.command_history.insert(0, name)
+        # Limit history size
+        if len(self.command_history) > 15:
+            self.command_history = self.command_history[:15]
 
     async def on_mount(self) -> None:
         with time_perf("APP: on_mount"):
