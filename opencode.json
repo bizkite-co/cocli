@@ -1,0 +1,25 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "mcp": {
+    "task-agent": {
+      "type": "local",
+      "command": ["ta", "mcp"],
+      "enabled": true
+    },
+    "ups-mcp": {
+      "type": "local",
+      "command": [
+        "uvx",
+        "--from",
+        "git+https://github.com/UPS-API/ups-mcp",
+        "ups-mcp"
+      ],
+      "enabled": true,
+      "environment": {
+        "CLIENT_ID": "{env:OP_SECRET_UPS_CLIENT_ID}",
+        "CLIENT_SECRET": "{env:OP_SECRET_UPS_CLIENT_SECRET}",
+        "ENVIRONMENT": "test"
+      }
+    }
+  }
+}

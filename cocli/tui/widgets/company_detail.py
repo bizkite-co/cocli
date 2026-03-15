@@ -2,6 +2,7 @@ import logging
 import webbrowser
 import subprocess
 import re
+import textwrap
 from typing import Dict, Optional, Any, Union, cast, TYPE_CHECKING
 from datetime import datetime
 from pathlib import Path
@@ -29,6 +30,22 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
+PREVIEW_WIDTH = 40
+PREVIEW_MAX_LINES = 3
+
+
+def wrap_content(
+    content: str, width: int = PREVIEW_WIDTH, max_lines: int = PREVIEW_MAX_LINES
+) -> Text:
+    """Wrap content to a specified width and max lines, returning Rich Text."""
+    lines = textwrap.wrap(content, width=width)
+    if lines is None:
+        return Text(content)
+    if len(lines) > max_lines:
+        lines = lines[: max_lines - 1] + [lines[max_lines - 1] + "…"]
+    return Text("\n".join(lines))
+
+
 def format_phone_display(value: Any) -> Union[Text, str]:
     """Helper to consistently format phone numbers for display."""
     if not value:
@@ -41,17 +58,20 @@ def format_phone_display(value: Any) -> Union[Text, str]:
         pass
     return str(value)
 
+
 def format_email_display(value: Any) -> Union[Text, str]:
     """Helper to consistently format email addresses for display."""
     if not value:
         return ""
     return Text(str(value), style="cyan")
 
+
 class QuadrantTable(DataTable[Any]):
     """
-    A specialized DataTable for quadrants that supports VIM keys 
+    A specialized DataTable for quadrants that supports VIM keys
     and escaping back to the panel level.
     """
+
     BINDINGS = [
         Binding("j", "cursor_down", "Down", show=False),
         Binding("k", "cursor_up", "Up", show=False),
@@ -76,6 +96,7 @@ class QuadrantTable(DataTable[Any]):
                 event.prevent_default()
         elif event.key in ("alt+s", "meta+s"):
             from ..app import tui_debug_log
+
             tui_debug_log(f"DETAIL: Table bubbling {event.key} to app")
             app = cast("CocliApp", self.app)
             app.action_navigate_up()
@@ -87,24 +108,31 @@ class QuadrantTable(DataTable[Any]):
     def action_exit_quadrant(self) -> None:
         """Move focus back up to the DetailPanel."""
         from ..app import tui_debug_log
+
         tui_debug_log(f"DETAIL: Exit quadrant triggered from {self.__class__.__name__}")
         if self.parent and isinstance(self.parent, DetailPanel):
             self.parent.focus()
 
+
 class InfoTable(QuadrantTable):
     """Specific bindings for the Info quadrant."""
+
     BINDINGS = QuadrantTable.BINDINGS + [
         Binding("i", "edit_row", "Edit Field"),
         Binding("enter", "edit_row", "Edit Field"),
     ]
 
     def action_edit_row(self) -> None:
-        detail_view = next((a for a in self.ancestors if isinstance(a, CompanyDetail)), None)
+        detail_view = next(
+            (a for a in self.ancestors if isinstance(a, CompanyDetail)), None
+        )
         if detail_view:
             detail_view.trigger_row_edit(self)
 
+
 class ContactsTable(QuadrantTable):
     """Specific bindings for the Contacts quadrant."""
+
     BINDINGS = QuadrantTable.BINDINGS + [
         Binding("a", "add_contact", "Add Contact"),
         Binding("i", "edit_item", "Edit Contact"),
@@ -112,13 +140,17 @@ class ContactsTable(QuadrantTable):
     ]
 
     def action_edit_item(self) -> None:
-        detail_view = next((a for a in self.ancestors if isinstance(a, CompanyDetail)), None)
+        detail_view = next(
+            (a for a in self.ancestors if isinstance(a, CompanyDetail)), None
+        )
         if detail_view:
-             # detail_view.action_edit_contact() # TODO
-             detail_view.app.notify("Edit Contact coming soon")
+            # detail_view.action_edit_contact() # TODO
+            detail_view.app.notify("Edit Contact coming soon")
+
 
 class MeetingsTable(QuadrantTable):
     """Specific bindings for the Meetings quadrant."""
+
     BINDINGS = QuadrantTable.BINDINGS + [
         Binding("a", "add_meeting", "Add Meeting"),
         Binding("i", "edit_item", "Edit Meeting"),
@@ -126,12 +158,16 @@ class MeetingsTable(QuadrantTable):
     ]
 
     def action_edit_item(self) -> None:
-        detail_view = next((a for a in self.ancestors if isinstance(a, CompanyDetail)), None)
+        detail_view = next(
+            (a for a in self.ancestors if isinstance(a, CompanyDetail)), None
+        )
         if detail_view:
-             detail_view.action_edit_meeting()
+            detail_view.action_edit_meeting()
+
 
 class NotesTable(QuadrantTable):
     """Specific bindings for the Notes quadrant."""
+
     BINDINGS = QuadrantTable.BINDINGS + [
         Binding("a", "add_note", "Add Note"),
         Binding("i", "edit_item", "Edit Note"),
@@ -140,22 +176,30 @@ class NotesTable(QuadrantTable):
     ]
 
     def action_edit_item(self) -> None:
-        detail_view = next((a for a in self.ancestors if isinstance(a, CompanyDetail)), None)
+        detail_view = next(
+            (a for a in self.ancestors if isinstance(a, CompanyDetail)), None
+        )
         if detail_view:
-             detail_view.action_edit_note()
+            detail_view.action_edit_note()
 
     def action_add_note(self) -> None:
-        detail_view = next((a for a in self.ancestors if isinstance(a, CompanyDetail)), None)
+        detail_view = next(
+            (a for a in self.ancestors if isinstance(a, CompanyDetail)), None
+        )
         if detail_view:
-             detail_view.action_add_note()
+            detail_view.action_add_note()
 
     def action_delete_item(self) -> None:
-        detail_view = next((a for a in self.ancestors if isinstance(a, CompanyDetail)), None)
+        detail_view = next(
+            (a for a in self.ancestors if isinstance(a, CompanyDetail)), None
+        )
         if detail_view:
-             detail_view.app.run_worker(detail_view.action_delete_note())
+            detail_view.app.run_worker(detail_view.action_delete_note())
+
 
 class EditInput(Input):
     """Custom Input widget that carries field metadata."""
+
     def __init__(self, field_name: str, *args: Any, **kwargs: Any):
         super().__init__(*args, **kwargs)
         self.field_name = field_name
@@ -163,15 +207,20 @@ class EditInput(Input):
     def on_key(self, event: events.Key) -> None:
         if event.key in ("escape", "alt+s", "meta+s"):
             from ..app import tui_debug_log
+
             tui_debug_log(f"DETAIL: Cancel edit for {self.field_name} via {event.key}")
-            detail_view = next((a for a in self.ancestors if isinstance(a, CompanyDetail)), None)
+            detail_view = next(
+                (a for a in self.ancestors if isinstance(a, CompanyDetail)), None
+            )
             if detail_view:
                 detail_view.action_cancel_edit()
             event.stop()
             event.prevent_default()
 
+
 class DetailPanel(Container):
     """A focusable panel containing a title and a widget."""
+
     def __init__(self, title: str, child: Widget, id: str):
         super().__init__(id=id, classes="panel")
         self.can_focus = True
@@ -182,11 +231,12 @@ class DetailPanel(Container):
         yield Label(self.title, classes="panel-header")
         yield self.child
 
+
 class CompanyDetail(Container):
     """
     Highly dense company detail view with Layered VIM-like navigation.
     """
-    
+
     BINDINGS = [
         Binding("escape", "app.action_escape", "Back"),
         Binding("q", "app.action_escape", "Back"),
@@ -209,24 +259,39 @@ class CompanyDetail(Container):
         Binding("e", "open_folder", "Explorer (NVim)"),
     ]
 
-    def __init__(self, company_data: Dict[str, Any], name: Optional[str] = None, id: Optional[str] = None, classes: Optional[str] = None):
+    def __init__(
+        self,
+        company_data: Dict[str, Any],
+        name: Optional[str] = None,
+        id: Optional[str] = None,
+        classes: Optional[str] = None,
+    ):
         super().__init__(name=name, id=id, classes=classes)
         self.company_data = company_data
-        
+
         # Initialize tables
         self.info_table = self._create_info_table()
         self.contacts_table = self._create_contacts_table()
         self.meetings_table = self._create_meetings_table()
         self.notes_table = self._create_notes_table()
-        
+
         # Initialize panels
         self.panel_info = DetailPanel("COMPANY INFO", self.info_table, id="panel-info")
-        self.panel_contacts = DetailPanel("CONTACTS", self.contacts_table, id="panel-contacts")
-        self.panel_meetings = DetailPanel("MEETINGS", self.meetings_table, id="panel-meetings")
+        self.panel_contacts = DetailPanel(
+            "CONTACTS", self.contacts_table, id="panel-contacts"
+        )
+        self.panel_meetings = DetailPanel(
+            "MEETINGS", self.meetings_table, id="panel-meetings"
+        )
         self.panel_notes = DetailPanel("NOTES", self.notes_table, id="panel-notes")
-        
+
         # Define panel order for navigation
-        self.panels = [self.panel_info, self.panel_contacts, self.panel_meetings, self.panel_notes]
+        self.panels = [
+            self.panel_info,
+            self.panel_contacts,
+            self.panel_meetings,
+            self.panel_notes,
+        ]
 
     def compose(self) -> ComposeResult:
         with Horizontal(id="company-detail-container"):
@@ -301,10 +366,11 @@ class CompanyDetail(Container):
 
         # Don't return early if it's NOT a nav key, allow bubbling
         focused = self.app.focused
-        
+
         # Handle alt+s/meta+s explicitly to ensure it reaches app if not handled by children
         if event.key in ("alt+s", "meta+s"):
             from ..app import tui_debug_log
+
             tui_debug_log(f"DETAIL: CompanyDetail bubbling {event.key} to app")
             app = cast("CocliApp", self.app)
             app.action_navigate_up()
@@ -325,7 +391,11 @@ class CompanyDetail(Container):
 
         if isinstance(focused, DetailPanel):
             if event.key == "h":
-                if focused in (self.panel_contacts, self.panel_meetings, self.panel_notes):
+                if focused in (
+                    self.panel_contacts,
+                    self.panel_meetings,
+                    self.panel_notes,
+                ):
                     self.panel_info.focus()
                     event.stop()
                     event.prevent_default()
@@ -349,7 +419,7 @@ class CompanyDetail(Container):
                     self.panel_notes.focus()
                 elif focused == self.panel_notes:
                     self.panel_contacts.focus()
-                
+
                 event.stop()
                 event.prevent_default()
                 return
@@ -360,7 +430,7 @@ class CompanyDetail(Container):
                     self.panel_contacts.focus()
                 elif focused == self.panel_notes:
                     self.panel_meetings.focus()
-                
+
                 event.stop()
                 event.prevent_default()
                 return
@@ -369,6 +439,7 @@ class CompanyDetail(Container):
         if isinstance(focused, DataTable):
             if event.key == "escape":
                 from ..app import tui_debug_log
+
                 tui_debug_log("DETAIL: DataTable escape to Panel")
                 parent = focused.parent
                 if parent and hasattr(parent, "focus"):
@@ -403,30 +474,35 @@ class CompanyDetail(Container):
 
     async def action_call_company(self) -> None:
         # Prefer phone_1 which is our primary standardized field
-        phone = self.company_data["company"].get("phone_1") or self.company_data["company"].get("phone_number")
+        phone = self.company_data["company"].get("phone_1") or self.company_data[
+            "company"
+        ].get("phone_number")
         slug = self.company_data["company"].get("slug")
         domain = self.company_data["company"].get("domain")
-        
+
         if phone and slug:
-            cleaned = re.sub(r'\D', '', str(phone))
-            if not cleaned.startswith('1') and len(cleaned) == 10:
-                cleaned = '1' + cleaned
-            
+            cleaned = re.sub(r"\D", "", str(phone))
+            if not cleaned.startswith("1") and len(cleaned) == 10:
+                cleaned = "1" + cleaned
+
             # 1. Open Google Voice
             voice_url = f"https://voice.google.com/u/0/calls?a=nc,%2B{cleaned}"
             webbrowser.open(voice_url)
-            
+
             # 2. Open Company Website if it exists
             if domain:
                 webbrowser.open(f"http://{domain}")
                 self.app.notify(f"Calling {phone} & Opening Website...")
             else:
                 self.app.notify(f"Calling {phone}...")
-            
+
             # Push the embedded call logger
             from .call_log_modal import CallLogModal
-            await self.app.push_screen(CallLogModal(company_slug=slug, phone=str(phone)))
-            
+
+            await self.app.push_screen(
+                CallLogModal(company_slug=slug, phone=str(phone))
+            )
+
             # Refresh data after modal dismiss
             self.refresh_notes_data()
             self.refresh_meetings_data()
@@ -438,32 +514,36 @@ class CompanyDetail(Container):
         slug = self.company_data["company"].get("slug")
         if not slug:
             return
-        
+
         company = Company.get(slug)
         if company:
             # Check if it is already in the to-call list (by tag or task file)
             # toggle_to_call uses task_path.exists() as the source of truth
             from cocli.models.campaigns.queues.to_call import ToCallTask
             from cocli.core.config import get_campaign
+
             campaign = get_campaign() or "default"
             task = ToCallTask(
                 company_slug=company.slug,
                 domain=company.domain or "unknown",
                 campaign_name=campaign,
-                ack_token=None
+                ack_token=None,
             )
             is_already_to_call = task.get_local_path().exists()
 
             if is_already_to_call:
                 from .confirm_screen import ConfirmScreen
-                confirm = await self.app.push_screen(ConfirmScreen(f"Remove '{company.name}' from To-Call list?"))
+
+                confirm = await self.app.push_screen(
+                    ConfirmScreen(f"Remove '{company.name}' from To-Call list?")
+                )
                 if not confirm:
                     return
 
             is_added = company.toggle_to_call()
             status = "Added to" if is_added else "Removed from"
             self.app.notify(f"{status} To-Call Queue")
-            
+
             # Update local data and refresh
             self.company_data["company"]["tags"] = company.tags
             self._refresh_info_table()
@@ -472,21 +552,22 @@ class CompanyDetail(Container):
         """Triggers a local detail scrape for the current company."""
         slug = self.company_data["company"].get("slug")
         place_id = self.company_data["company"].get("place_id")
-        
+
         if not place_id:
-            self.app.notify("Error: No Place ID found for this company", severity="error")
+            self.app.notify(
+                "Error: No Place ID found for this company", severity="error"
+            )
             return
-            
+
         self.app.notify(f"Starting local scrape for {slug or place_id}...")
-        
+
         # We run this as a worker since it involves opening a browser
         async def run_scrape() -> None:
             app = cast("CocliApp", self.app)
             result = await app.services.operation_service.execute(
-                "op_scrape_details",
-                params={"place_id": place_id, "company_slug": slug}
+                "op_scrape_details", params={"place_id": place_id, "company_slug": slug}
             )
-            
+
             if result.get("status") == "success":
                 self.app.notify("Scrape successful! Refreshing view...")
                 # The view needs to be re-hydrated to show the new data
@@ -496,28 +577,29 @@ class CompanyDetail(Container):
                         self.company_data = new_data
                         self._refresh_info_table()
             else:
-                self.app.notify(f"Scrape failed: {result.get('message')}", severity="error")
-                
+                self.app.notify(
+                    f"Scrape failed: {result.get('message')}", severity="error"
+                )
+
         self.app.run_worker(run_scrape())
 
     def action_re_enrich(self) -> None:
         """Triggers a local website enrichment for the current company."""
         slug = self.company_data["company"].get("slug")
         domain = self.company_data["company"].get("domain")
-        
+
         if not domain:
             self.app.notify("Error: No domain found for this company", severity="error")
             return
-            
+
         self.app.notify(f"Starting local re-enrichment for {domain}...")
-        
+
         async def run_enrichment() -> None:
             app = cast("CocliApp", self.app)
             result = await app.services.operation_service.execute(
-                "op_re_enrich",
-                params={"domain": domain, "company_slug": slug}
+                "op_re_enrich", params={"domain": domain, "company_slug": slug}
             )
-            
+
             if result.get("status") == "success":
                 self.app.notify("Enrichment successful! Refreshing view...")
                 if slug:
@@ -526,8 +608,10 @@ class CompanyDetail(Container):
                         self.company_data = new_data
                         self._refresh_info_table()
             else:
-                self.app.notify(f"Enrichment failed: {result.get('message')}", severity="error")
-                
+                self.app.notify(
+                    f"Enrichment failed: {result.get('message')}", severity="error"
+                )
+
         self.app.run_worker(run_enrichment())
 
     async def action_delete_company(self) -> None:
@@ -538,24 +622,32 @@ class CompanyDetail(Container):
             return
 
         from .confirm_screen import ConfirmScreen
-        confirm = await self.app.push_screen(ConfirmScreen(f"Are you sure you want to PERMANENTLY DELETE '{name}'?"))
-        
+
+        confirm = await self.app.push_screen(
+            ConfirmScreen(f"Are you sure you want to PERMANENTLY DELETE '{name}'?")
+        )
+
         if confirm:
             try:
                 import shutil
                 from cocli.core.paths import paths
                 from cocli.core.cache import build_cache
                 import threading
-                
+
                 path = paths.companies.entry(slug).path
                 if path.exists():
                     shutil.rmtree(path)
                     self.app.notify(f"Deleted company: {name}")
-                    
+
                     # Rebuild cache so it's gone from search
                     from cocli.core.config import get_campaign
-                    threading.Thread(target=build_cache, kwargs={"campaign": get_campaign()}, daemon=True).start()
-                    
+
+                    threading.Thread(
+                        target=build_cache,
+                        kwargs={"campaign": get_campaign()},
+                        daemon=True,
+                    ).start()
+
                     # Go back to list
                     self.app.action_show_companies()
                 else:
@@ -582,10 +674,10 @@ class CompanyDetail(Container):
         new_note = Note(title="New Note", content="")
         notes_dir = paths.companies.entry(slug) / "notes"
         notes_dir.mkdir(parents=True, exist_ok=True)
-        
+
         timestamp_str = new_note.timestamp.strftime("%Y-%m-%dT%H-%M-%SZ")
         temp_path = notes_dir / f"{timestamp_str}-new-note.md"
-        
+
         new_note.to_file(notes_dir)
         self._edit_with_nvim(temp_path)
 
@@ -605,15 +697,15 @@ class CompanyDetail(Container):
         row_idx = self.notes_table.cursor_row
         num_notes = len(self.company_data.get("notes", []))
         logger.debug(f"action_edit_note: row_idx={row_idx}, num_notes={num_notes}")
-        
+
         if row_idx is None or row_idx >= num_notes:
             self.app.notify("No note selected", severity="warning")
             return
-        
+
         note_data = self.company_data["notes"][row_idx]
         file_path = note_data.get("file_path")
         logger.debug(f"action_edit_note: selected note file_path={file_path}")
-        
+
         if file_path:
             self._edit_with_nvim(Path(file_path))
 
@@ -621,14 +713,14 @@ class CompanyDetail(Container):
         """Edit an existing meeting using NVim."""
         row_idx = self.meetings_table.cursor_row
         num_meetings = len(self.company_data.get("meetings", []))
-        
+
         if row_idx is None or row_idx >= num_meetings:
             self.app.notify("No meeting selected", severity="warning")
             return
-        
+
         meeting_data = self.company_data["meetings"][row_idx]
         file_path = meeting_data.get("file_path")
-        
+
         if file_path:
             self._edit_with_nvim(Path(file_path))
 
@@ -637,21 +729,23 @@ class CompanyDetail(Container):
         row_idx = self.notes_table.cursor_row
         num_notes = len(self.company_data.get("notes", []))
         logger.debug(f"action_delete_note: row_idx={row_idx}, num_notes={num_notes}")
-        
+
         if row_idx is None or row_idx >= num_notes:
             self.app.notify("No note selected", severity="warning")
             return
-        
+
         note_data = self.company_data["notes"][row_idx]
         file_path = note_data.get("file_path")
         logger.debug(f"action_delete_note: selected note file_path={file_path}")
-        
+
         if not file_path:
             return
-            
-        confirm = await self.app.push_screen(ConfirmScreen("Are you sure you want to delete this note?"))
+
+        confirm = await self.app.push_screen(
+            ConfirmScreen("Are you sure you want to delete this note?")
+        )
         logger.debug(f"action_delete_note: confirmation result={confirm}")
-        
+
         if confirm:
             try:
                 Path(file_path).unlink()
@@ -664,11 +758,11 @@ class CompanyDetail(Container):
     def _edit_with_nvim(self, path: Path) -> None:
         """Suspend the TUI and open NVim."""
         editor = get_editor_command() or "nvim"
-        
+
         try:
             with self.app.suspend():
                 subprocess.run([editor, str(path)], check=False)
-            
+
             self.app.notify("Item saved")
             # Reload data from disk
             self.refresh_notes_data()
@@ -682,9 +776,10 @@ class CompanyDetail(Container):
         slug = self.company_data["company"].get("slug")
         if not slug:
             return
-            
+
         try:
             from ...application.company_service import get_company_details_for_view
+
             reloaded = get_company_details_for_view(slug)
             if reloaded:
                 self.company_data["notes"] = reloaded["notes"]
@@ -702,9 +797,10 @@ class CompanyDetail(Container):
                 ts_str = ts.strftime("%Y-%m-%d")
             else:
                 ts_str = str(ts)[:10]
-            content_preview = escape(n.get("content", "")[:100].replace("\n", " "))
-            self.notes_table.add_row(ts_str, content_preview)
-        
+            content = n.get("content", "")[:100].replace("\n", " ")
+            preview_text = wrap_content(content)
+            self.notes_table.add_row(ts_str, preview_text)
+
         # Only re-focus if we had focus before
         if self.notes_table.has_focus:
             self.notes_table.focus()
@@ -714,9 +810,10 @@ class CompanyDetail(Container):
         slug = self.company_data["company"].get("slug")
         if not slug:
             return
-            
+
         try:
             from ...application.company_service import get_company_details_for_view
+
             reloaded = get_company_details_for_view(slug)
             if reloaded:
                 self.company_data["meetings"] = reloaded["meetings"]
@@ -734,16 +831,21 @@ class CompanyDetail(Container):
             time_str = ""
             if raw_dt:
                 try:
-                    dt = datetime.fromisoformat(raw_dt) if isinstance(raw_dt, str) else raw_dt
+                    dt = (
+                        datetime.fromisoformat(raw_dt)
+                        if isinstance(raw_dt, str)
+                        else raw_dt
+                    )
                     dt_str = dt.strftime("%Y-%m-%d")
                     time_str = dt.strftime("%H:%M")
                 except (ValueError, TypeError):
                     dt_str = str(raw_dt)[:10]
-            
-            content_preview = escape(m.get("content", "")[:100].replace("\n", " "))
+
+            content = m.get("content", "")[:100].replace("\n", " ")
             m_type = m.get("type", "meeting")
-            self.meetings_table.add_row(dt_str, time_str, f"[{m_type}] {content_preview}")
-        
+            preview_text = wrap_content(f"[{m_type}] {content}")
+            self.meetings_table.add_row(dt_str, time_str, preview_text)
+
         if self.meetings_table.has_focus:
             self.meetings_table.focus()
 
@@ -766,14 +868,18 @@ class CompanyDetail(Container):
         if current_value == "None" or current_value == "N/A":
             current_value = ""
         field_map = {
-            "Email": "email", "Phone": "phone_number", "Domain": "domain", "Name": "name",
-            "Street": "street_address", "CSZ": "csz"
+            "Email": "email",
+            "Phone": "phone_number",
+            "Domain": "domain",
+            "Name": "name",
+            "Street": "street_address",
+            "CSZ": "csz",
         }
         model_field = field_map.get(field_name)
         if not model_field:
             self.app.notify(f"Cannot edit {field_name} yet.", severity="warning")
             return
-        
+
         panel = self.query_one("#panel-info", DetailPanel)
         self.info_table.display = False
 
@@ -782,23 +888,35 @@ class CompanyDetail(Container):
             city = str(c.get("city") or "")
             state = str(c.get("state") or "")
             zip_code = str(c.get("zip_code") or "")
-            
+
             container = Horizontal(id="edit-csz-container")
-            city_input = EditInput(field_name="city", value=city, placeholder="City", id="edit-city")
-            state_input = EditInput(field_name="state", value=state, placeholder="State", id="edit-state")
-            zip_input = EditInput(field_name="zip_code", value=zip_code, placeholder="Zip", id="edit-zip_code")
-            
+            city_input = EditInput(
+                field_name="city", value=city, placeholder="City", id="edit-city"
+            )
+            state_input = EditInput(
+                field_name="state", value=state, placeholder="State", id="edit-state"
+            )
+            zip_input = EditInput(
+                field_name="zip_code",
+                value=zip_code,
+                placeholder="Zip",
+                id="edit-zip_code",
+            )
+
             panel.mount(container)
             container.mount(city_input, state_input, zip_input)
             city_input.focus()
         else:
-            input_widget = EditInput(field_name=model_field, value=current_value, id=f"edit-{model_field}")
+            input_widget = EditInput(
+                field_name=model_field, value=current_value, id=f"edit-{model_field}"
+            )
             panel.mount(input_widget)
             input_widget.focus()
 
     def action_cancel_edit(self) -> None:
         """Cancel the current inline edit and restore the table."""
         from ..app import tui_debug_log
+
         tui_debug_log("DETAIL: action_cancel_edit triggered")
         panel = self.query_one("#panel-info", DetailPanel)
         edit_inputs = panel.query(EditInput)
@@ -812,13 +930,20 @@ class CompanyDetail(Container):
     async def handle_edit_submitted(self, event: Input.Submitted) -> None:
         if not isinstance(event.input, EditInput):
             return
-        
+
         company_slug = self.company_data["company"].get("slug")
         if not company_slug:
             return
 
         panel = self.query_one("#panel-info", DetailPanel)
-        csz_container = panel.query_one("#edit-csz-container", Horizontal) if "csz" in str(event.input.id) or "city" in str(event.input.id) or "state" in str(event.input.id) or "zip" in str(event.input.id) else None
+        csz_container = (
+            panel.query_one("#edit-csz-container", Horizontal)
+            if "csz" in str(event.input.id)
+            or "city" in str(event.input.id)
+            or "state" in str(event.input.id)
+            or "zip" in str(event.input.id)
+            else None
+        )
 
         try:
             company = Company.get(company_slug)
@@ -830,12 +955,12 @@ class CompanyDetail(Container):
                 city_val = csz_container.query_one("#edit-city", EditInput).value
                 state_val = csz_container.query_one("#edit-state", EditInput).value
                 zip_val = csz_container.query_one("#edit-zip_code", EditInput).value
-                
+
                 company.city = city_val
                 company.state = state_val
                 company.zip_code = zip_val
                 company.save()
-                
+
                 self.app.notify("Updated City, State, and Zip")
                 self.company_data["company"]["city"] = city_val
                 self.company_data["company"]["state"] = state_val
@@ -868,20 +993,22 @@ class CompanyDetail(Container):
         enrichment_mtime = self.company_data.get("enrichment_mtime")
 
         self.info_table.add_row("Name", escape(str(c.get("name", "Unknown"))))
-        
+
         # Rating & Reviews (Always shown)
         rating = c.get("average_rating")
         review_count = c.get("reviews_count")
         rating_val = f"{rating}" if rating is not None else "0.0"
-        reviews_val = f"({review_count} reviews)" if review_count is not None else "(0 reviews)"
+        reviews_val = (
+            f"({review_count} reviews)" if review_count is not None else "(0 reviews)"
+        )
         self.info_table.add_row("Rating", f"{rating_val} {reviews_val}")
 
         self.info_table.add_row("Domain", escape(str(c.get("domain") or "")))
         self.info_table.add_row("Email", format_email_display(c.get("email")))
         self.info_table.add_row("Phone", format_phone_display(c.get("phone_number")))
-        
+
         self.info_table.add_row("Street", escape(str(c.get("street_address") or "")))
-        
+
         city = c.get("city") or ""
         state = c.get("state") or ""
         zip_code = c.get("zip_code") or ""
@@ -891,14 +1018,22 @@ class CompanyDetail(Container):
         scraped_at = c.get("list_found_at")
         scraped_val = "-"
         if scraped_at:
-            dt = datetime.fromisoformat(scraped_at) if isinstance(scraped_at, str) else scraped_at
+            dt = (
+                datetime.fromisoformat(scraped_at)
+                if isinstance(scraped_at, str)
+                else scraped_at
+            )
             scraped_val = dt.strftime("%Y-%m-%d")
         self.info_table.add_row("gm-list", scraped_val)
-        
+
         details_at = c.get("details_found_at")
         details_val = "-"
         if details_at:
-            dt = datetime.fromisoformat(details_at) if isinstance(details_at, str) else details_at
+            dt = (
+                datetime.fromisoformat(details_at)
+                if isinstance(details_at, str)
+                else details_at
+            )
             details_val = dt.strftime("%Y-%m-%d")
         self.info_table.add_row("gm-detail", details_val)
 
@@ -908,7 +1043,11 @@ class CompanyDetail(Container):
             dt = datetime.fromisoformat(enrichment_mtime)
             enrich_val = f"[bold green]{dt.strftime('%Y-%m-%d %H:%M')}[/]"
         elif enqueued_at:
-            dt = datetime.fromisoformat(enqueued_at) if isinstance(enqueued_at, str) else enqueued_at
+            dt = (
+                datetime.fromisoformat(enqueued_at)
+                if isinstance(enqueued_at, str)
+                else enqueued_at
+            )
             enrich_val = f"[bold yellow]{dt.strftime('%Y-%m-%d')} (pending)[/]"
         self.info_table.add_row("enrichment", enrich_val)
 
@@ -923,32 +1062,38 @@ class CompanyDetail(Container):
 
         if keywords:
             self.info_table.add_row("Keywords", ", ".join(keywords))
-        
+
         # Social Media (Keep conditional to avoid empty rows cluttering the dense view)
         socials = []
         if c.get("facebook_url") or (website_data and website_data.get("facebook_url")):
             socials.append("FB")
         if c.get("linkedin_url") or (website_data and website_data.get("linkedin_url")):
             socials.append("LI")
-        if c.get("instagram_url") or (website_data and website_data.get("instagram_url")):
+        if c.get("instagram_url") or (
+            website_data and website_data.get("instagram_url")
+        ):
             socials.append("IG")
         if c.get("twitter_url") or (website_data and website_data.get("twitter_url")):
             socials.append("TW")
-        
+
         if socials:
             self.info_table.add_row("Socials", " | ".join(socials))
 
         # Desc
-        desc = c.get("description") or (website_data and website_data.get("description"))
+        desc = c.get("description") or (
+            website_data and website_data.get("description")
+        )
         if desc:
-            self.info_table.add_row("Desc", escape(str(desc)[:100].replace("\n", " ") + "..."))
+            self.info_table.add_row(
+                "Desc", escape(str(desc)[:100].replace("\n", " ") + "...")
+            )
 
     def _create_info_table(self) -> InfoTable:
         table = InfoTable(id="info-table")
         table.add_column("Attribute", width=10)
         table.add_column("Value")
         # Initialize content
-        self.info_table = table # Temporarily assign so _refresh works
+        self.info_table = table  # Temporarily assign so _refresh works
         self._refresh_info_table()
         return table
 
@@ -959,14 +1104,18 @@ class CompanyDetail(Container):
         table.add_column("Email")
         contacts = self.company_data.get("contacts", [])
         for c in contacts:
-            table.add_row(escape(c.get("name", "Unknown")), escape(c.get("role", "")), str(c.get("email", "")))
+            table.add_row(
+                escape(c.get("name", "Unknown")),
+                escape(c.get("role", "")),
+                str(c.get("email", "")),
+            )
         return table
 
     def _create_meetings_table(self) -> MeetingsTable:
         table = MeetingsTable(id="meetings-table")
         table.add_column("Date", width=12)
         table.add_column("Time", width=8)
-        table.add_column("Preview")
+        table.add_column("Preview", width=PREVIEW_WIDTH)
         meetings = self.company_data.get("meetings", [])
         for m in meetings:
             # Handle local time display
@@ -982,16 +1131,17 @@ class CompanyDetail(Container):
                     time_str = dt.strftime("%H:%M")
                 except (ValueError, TypeError):
                     dt_str = str(raw_dt)[:10]
-            
-            content_preview = escape(m.get("content", "")[:100].replace("\n", " "))
+
+            content = m.get("content", "")[:100].replace("\n", " ")
             m_type = m.get("type", "meeting")
-            table.add_row(dt_str, time_str, f"[{m_type}] {content_preview}")
+            preview_text = wrap_content(f"[{m_type}] {content}")
+            table.add_row(dt_str, time_str, preview_text)
         return table
 
     def _create_notes_table(self) -> NotesTable:
         table = NotesTable(id="notes-table")
         table.add_column("Date", width=12)
-        table.add_column("Preview")
+        table.add_column("Preview", width=PREVIEW_WIDTH)
         notes = self.company_data.get("notes", [])
         for n in notes:
             ts = n.get("timestamp")
@@ -999,6 +1149,7 @@ class CompanyDetail(Container):
                 ts_str = ts.strftime("%Y-%m-%d")
             else:
                 ts_str = str(ts)[:10]
-            content_preview = escape(n.get("content", "")[:100].replace("\n", " "))
-            table.add_row(ts_str, content_preview)
+            content = n.get("content", "")[:100].replace("\n", " ")
+            preview_text = wrap_content(content)
+            table.add_row(ts_str, preview_text)
         return table
