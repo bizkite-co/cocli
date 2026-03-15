@@ -157,6 +157,12 @@ class OperationService:
                 "maintenance",
                 process_details="Uses Playwright locally to crawl the company's website and extract contact info."
             ),
+            "op_refresh_dev": OperationMetadata(
+                "op_refresh_dev", "Refresh DEV from PROD",
+                "Clones local PROD data into the DEV environment using rsync.",
+                "maintenance",
+                process_details="Safe, isolated refresh of local development data. Excludes transient logs and WAL files."
+            ),
             "op_sanitize_discovery": OperationMetadata(
                 "op_sanitize_discovery", "Sanitize Discovery Results",
                 "Full workflow: Pulls from S3, purges non-conforming/hollow USVs, pushes to S3, and propagates to PIs.",
@@ -532,6 +538,55 @@ class OperationService:
                             await browser.close()
                             
                 result = await run_local_enrichment()
+            elif op_id == "op_refresh_dev":
+                async def run_refresh() -> Dict[str, Any]:
+                    from ..core.environment import get_environment, Environment
+                    import subprocess
+                    import os
+                    from pathlib import Path
+                    
+                    env = get_environment()
+                    if env == Environment.PROD:
+                        raise ValueError("Cannot refresh-dev while in PROD mode.")
+                    
+                    # 1. Resolve Roots
+                    # We need the real PROD root
+                    if "COCLI_DATA_HOME" in os.environ:
+                        prod_root = Path(os.environ["COCLI_DATA_HOME"]).expanduser().resolve()
+                    else:
+                        # Fallback to standard prod path logic
+                        import platform
+                        if platform.system() == "Windows":
+                            base = Path(os.environ.get("LOCALAPPDATA", Path.home() / "AppData" / "Local")) / "cocli"
+                        elif platform.system() == "Darwin":
+                            base = Path.home() / "Library" / "Application Support" / "cocli"
+                        else:
+                            base = Path.home() / ".local" / "share" / "cocli"
+                        prod_root = base / "data"
+                    
+                    target_root = prod_root.parent / f"{prod_root.name}_{env.value}"
+                    
+                    log_step("env_check", "success", f"Refreshing {env.value} from {prod_root}")
+                    
+                    # 2. Execute rsync
+                    log_step("rsync", "pending", "Syncing local files...")
+                    excludes = ["wal", "logs", "recovery", "*.usv.wal", "temp"]
+                    cmd = ["rsync", "-av", "--delete"]
+                    for ex in excludes:
+                        cmd.extend(["--exclude", ex])
+                    
+                    cmd.append(str(prod_root) + "/")
+                    cmd.append(str(target_root) + "/")
+                    
+                    try:
+                        res = subprocess.run(cmd, capture_output=True, text=True, check=True)
+                        log_step("rsync", "success", "Local refresh complete")
+                        return {"status": "success", "rsync_output": res.stdout}
+                    except subprocess.CalledProcessError as e:
+                        log_step("rsync", "error", f"rsync failed: {e.stderr}")
+                        return {"status": "error", "message": e.stderr}
+
+                result = await run_refresh()
             elif op_id == "op_sanitize_discovery":
                 async def run_sanitization() -> Dict[str, Any]:
                     from ..services.cluster_service import ClusterService

@@ -80,6 +80,7 @@ class MenuBar(Horizontal):
         yield Label("Companies ( C)", id="menu-companies", classes="menu-item")
         yield Label("People ( P)", id="menu-people", classes="menu-item")
         yield Label("Events ( E)", id="menu-events", classes="menu-item")
+        yield Label("Admin ( A)", id="menu-admin", classes="menu-item")
 
         # Environment Indicator (Visible only if not PROD)
         if env != Environment.PROD:
@@ -263,9 +264,12 @@ class CocliCommandProvider(Provider):
         """Search for commands matching the query."""
         matcher = self.matcher(query)
         app = cast("CocliApp", self.app)
-        _ = self.get_commands()  # Ensure commands are registered
 
-        commands_list = [
+        from ..core.environment import get_environment, Environment
+
+        env = get_environment()
+
+        commands = [
             (
                 "Show Companies",
                 app.action_show_companies,
@@ -278,9 +282,9 @@ class CocliCommandProvider(Provider):
                 "Switch to the community event curation view.",
             ),
             (
-                "Show Application",
-                app.action_show_application,
-                "Switch to the application status and campaign view.",
+                "Show Admin",
+                app.action_show_admin,
+                "Switch to the system admin and campaign view.",
             ),
             (
                 "Focus Sidebar",
@@ -300,6 +304,15 @@ class CocliCommandProvider(Provider):
             ("Quit", app.action_quit, "Exit the application."),
         ]
 
+        if env != Environment.PROD:
+            commands.append(
+                (
+                    "Refresh DEV from PROD",
+                    app.action_refresh_dev,
+                    "Clones PROD data into the current DEV environment.",
+                )
+            )
+
         # Sort by MRU (Most Recent First)
         def get_mru_score(cmd_name: str) -> int:
             if cmd_name in app.command_mru:
@@ -308,7 +321,7 @@ class CocliCommandProvider(Provider):
 
         # Primary sort by MRU, secondary sort by Name (alphabetical)
         sorted_commands = sorted(
-            commands_list, key=lambda x: (get_mru_score(x[0]), x[0]), reverse=True
+            commands, key=lambda x: (get_mru_score(x[0]), x[0]), reverse=True
         )
 
         if not query:
@@ -442,15 +455,15 @@ class CocliApp(App[None]):
             PersonList: NavNode(
                 widget_class=PersonList, model_type="people", is_branch_root=True
             ),
-            # --- Application Branch ---
+            # --- Admin Branch ---
             StatusView: NavNode(
                 widget_class=StatusView,
-                parent_action="action_reset_view",
+                parent_action="action_show_admin",
                 root_widget=ApplicationView,
             ),
             CampaignSelection: NavNode(
                 widget_class=CampaignSelection,
-                parent_action="action_reset_view",
+                parent_action="action_show_admin",
                 root_widget=ApplicationView,
             ),
             ApplicationView: NavNode(widget_class=ApplicationView, is_branch_root=True),
@@ -572,7 +585,7 @@ class CocliApp(App[None]):
             elif self.leader_key_buffer == LEADER_KEY + "e":
                 await self.action_show_events()
             elif self.leader_key_buffer == LEADER_KEY + "a":
-                await self.action_show_application()
+                await self.action_show_admin()
 
             self.reset_leader_mode()
             event.stop()
@@ -885,14 +898,14 @@ class CocliApp(App[None]):
             await self.main_content.mount(event_view)
             self.menu_bar.set_activity("")
 
-    async def action_show_application(self) -> None:
-        """Show the application view."""
-        with time_perf("APP: action_show_application"):
-            tui_debug_log("APP: action_show_application starting")
+    async def action_show_admin(self) -> None:
+        """Show the system admin and campaign view."""
+        with time_perf("APP: action_show_admin"):
+            tui_debug_log("APP: action_show_admin starting")
             try:
                 menu_bar = self.query_one(MenuBar)
                 menu_bar.set_activity("Loading")
-                menu_bar.set_active("application")
+                menu_bar.set_active("admin")
             except Exception:
                 pass
 
@@ -915,7 +928,7 @@ class CocliApp(App[None]):
 
             app_view = ApplicationView()
             await self.main_content.mount(app_view)
-            tui_debug_log("APP: action_show_application finished")
+            tui_debug_log("APP: action_show_admin finished")
 
             # Aggressive focus
             def do_focus() -> None:
@@ -926,6 +939,31 @@ class CocliApp(App[None]):
                 self.menu_bar.set_activity("")
 
             self.call_after_refresh(do_focus)
+
+    # Alias for backward compatibility
+    async def action_show_application(self) -> None:
+        await self.action_show_admin()
+
+    async def action_refresh_dev(self) -> None:
+        """Triggers a local DEV data refresh from PROD."""
+        from ..core.environment import get_environment, Environment
+
+        if get_environment() == Environment.PROD:
+            self.notify("Cannot refresh-dev while in PROD mode.", severity="error")
+            return
+
+        self.notify("Refreshing DEV data from PROD... (rsync)")
+
+        async def run_refresh() -> None:
+            result = await self.services.operation_service.execute("op_refresh_dev")
+            if result.get("status") == "success":
+                self.notify("DEV environment refreshed successfully!")
+            else:
+                self.notify(
+                    f"Refresh failed: {result.get('message')}", severity="error"
+                )
+
+        self.run_worker(run_refresh())
 
     @on(ApplicationView.CampaignActivated)
     async def on_application_view_campaign_activated(

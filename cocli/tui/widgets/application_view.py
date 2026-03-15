@@ -51,7 +51,7 @@ class ApplicationView(Container):
             # Left Column: Stacked Sidebar
             with Vertical(id="app_sidebar_column"):
                 with Vertical(id="app_nav_container"):
-                    yield Label("Application", classes="sidebar-title")
+                    yield Label("Admin", classes="sidebar-title")
                     yield ListView(
                         ListItem(Label("Campaigns"), id="nav_campaigns"),
                         ListItem(Label("Cluster Dashboard"), id="nav_cluster"),
@@ -75,6 +75,7 @@ class ApplicationView(Container):
                         # Sync
                         ListItem(Label("[dim]--- Data Sync ---[/dim]"), disabled=True),
                         ListItem(Label("Sync All"), id="op_sync_all"),
+                        ListItem(Label("Refresh DEV from PROD"), id="op_refresh_dev"),
                         ListItem(Label("Sync GM List Queue"), id="op_sync_gm_list"),
                         ListItem(Label("Sync GM Details Queue"), id="op_sync_gm_details"),
                         ListItem(Label("Sync Enrichment Queue"), id="op_sync_enrichment"),
