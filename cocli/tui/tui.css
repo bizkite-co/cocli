@@ -332,5 +332,37 @@ ModalScreen {
 
 #event-detail-description {
     margin-top: 1;
-    color: #cccccc;
+}
+
+/* Content Viewer Modal */
+#content_viewer {
+    width: 60;
+    height: auto;
+    background: #111111;
+    border: double #00ffff;
+    padding: 1 2;
+}
+
+#viewer_title {
+    width: 100%;
+    content-align: center middle;
+    text-style: bold;
+    color: #00ffff;
+    margin-bottom: 1;
+}
+
+#viewer_content {
+    width: 100%;
+    height: auto;
+    background: #000000;
+    border: solid #333333;
+    padding: 1;
+    margin-bottom: 1;
+}
+
+#viewer_help {
+    width: 100%;
+    content-align: center middle;
+    color: #555555;
+    text-style: italic;
 }

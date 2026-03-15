@@ -155,6 +155,7 @@ class MeetingsTable(QuadrantTable):
         Binding("a", "add_meeting", "Add Meeting"),
         Binding("i", "edit_item", "Edit Meeting"),
         Binding("enter", "edit_item", "Edit Meeting"),
+        Binding("v", "view_item", "View Meeting"),
     ]
 
     def action_edit_item(self) -> None:
@@ -163,6 +164,13 @@ class MeetingsTable(QuadrantTable):
         )
         if detail_view:
             detail_view.action_edit_meeting()
+
+    def action_view_item(self) -> None:
+        detail_view = next(
+            (a for a in self.ancestors if isinstance(a, CompanyDetail)), None
+        )
+        if detail_view:
+            detail_view.action_view_meeting()
 
 
 class NotesTable(QuadrantTable):
@@ -173,6 +181,7 @@ class NotesTable(QuadrantTable):
         Binding("i", "edit_item", "Edit Note"),
         Binding("enter", "edit_item", "Edit Note"),
         Binding("d", "delete_item", "Delete Note"),
+        Binding("v", "view_item", "View Note"),
     ]
 
     def action_edit_item(self) -> None:
@@ -195,6 +204,13 @@ class NotesTable(QuadrantTable):
         )
         if detail_view:
             detail_view.app.run_worker(detail_view.action_delete_note())
+
+    def action_view_item(self) -> None:
+        detail_view = next(
+            (a for a in self.ancestors if isinstance(a, CompanyDetail)), None
+        )
+        if detail_view:
+            detail_view.action_view_note()
 
 
 class EditInput(Input):
@@ -723,6 +739,42 @@ class CompanyDetail(Container):
 
         if file_path:
             self._edit_with_nvim(Path(file_path))
+
+    def action_view_meeting(self) -> None:
+        """View meeting content in a modal."""
+        row_idx = self.meetings_table.cursor_row
+        num_meetings = len(self.company_data.get("meetings", []))
+
+        if row_idx is None or row_idx >= num_meetings:
+            self.app.notify("No meeting selected", severity="warning")
+            return
+
+        meeting_data = self.company_data["meetings"][row_idx]
+        content = meeting_data.get("content", "")
+        title = meeting_data.get("title", "Meeting")
+
+        self._show_content_viewer(title, content)
+
+    def action_view_note(self) -> None:
+        """View note content in a modal."""
+        row_idx = self.notes_table.cursor_row
+        num_notes = len(self.company_data.get("notes", []))
+
+        if row_idx is None or row_idx >= num_notes:
+            self.app.notify("No note selected", severity="warning")
+            return
+
+        note_data = self.company_data["notes"][row_idx]
+        content = note_data.get("content", "")
+        title = note_data.get("title", "Note")
+
+        self._show_content_viewer(title, content)
+
+    def _show_content_viewer(self, title: str, content: str) -> None:
+        """Show content in a modal viewer."""
+        from .content_viewer_modal import ContentViewerModal
+
+        self.app.push_screen(ContentViewerModal(title=title, content=content))
 
     async def action_delete_note(self) -> None:
         """Delete an existing note with confirmation."""
