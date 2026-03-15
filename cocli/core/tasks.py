@@ -42,12 +42,18 @@ class TaskIndexManager:
 
         tasks = []
         with open(self.index_path, "r", encoding="utf-8") as f:
-            f.readline() # header
             for line in f:
                 if not line.strip():
                     continue
+                # Skip header if present (legacy or accidentally added)
+                if line.startswith("slug") and "dependencies" in line:
+                    continue
                 try:
                     task = MissionTask.from_usv(line)
+                    # Hydrate status from filesystem location
+                    task_file = self.resolve_file(task.slug)
+                    if task_file:
+                        task.status = self._get_status_from_folder(task_file.parent.name)
                     tasks.append(task)
                 except Exception as e:
                     logger.error(f"Failed to parse task line: {line.strip()}. Error: {e}")
@@ -56,13 +62,13 @@ class TaskIndexManager:
     def save(self, wasi_hash: Optional[str] = None) -> None:
         """Saves non-completed tasks to mission.usv in current list order."""
         self.issues_root.mkdir(parents=True, exist_ok=True)
-        MissionTask.save_datapackage(self.issues_root, "mission-index", "mission.usv", wasi_hash=wasi_hash)
+        # We don't use save_datapackage here because it might try to write headers
         
-        # Filter: Only keep active queue items in the index
+        # Filter: Only keep non-completed tasks in the index
         active_queue = [t for t in self.tasks if t.status != TaskStatus.COMPLETED]
         
         with open(self.index_path, "w", encoding="utf-8") as f:
-            f.write(MissionTask.get_header() + "\n")
+            # NO HEADER as per datapackage.json
             for task in active_queue:
                 f.write(task.to_usv())
 
@@ -100,11 +106,9 @@ class TaskIndexManager:
 
         # 2. Append new tasks discovered in active folders
         for slug, folder in found_stems.items():
-            new_task = MissionTask(
-                slug=slug,
-                title=slug.replace("-", " ").title(),
-                status=self._get_status_from_folder(folder)
-            )
+            new_task = MissionTask(slug=slug)
+            new_task.title = slug.replace("-", " ").title()
+            new_task.status = self._get_status_from_folder(folder)
             new_tasks_list.append(new_task)
             changes += 1
 

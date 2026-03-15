@@ -12,11 +12,18 @@ from watchdog.events import FileSystemEventHandler
 from .wal import get_node_id
 from ..models.wal.record import DatagramRecord, RS, QueueDatagram, HeartbeatDatagram, ConfigDatagram
 from .paths import paths
+from .environment import get_environment, Environment
 
 logger = logging.getLogger(__name__)
 
-GOSSIP_PORT = 9999
-SERVICE_TYPE = "_cocli-gossip._udp.local."
+def get_gossip_port() -> int:
+    env = get_environment()
+    if env == Environment.PROD:
+        return 9999
+    return 9998
+
+GOSSIP_PORT = get_gossip_port()
+SERVICE_TYPE = f"_cocli-gossip-{get_environment().value}._udp.local." if get_environment() != Environment.PROD else "_cocli-gossip._udp.local."
 
 class GossipListener(ServiceListener):
     def __init__(self, bridge: "GossipBridge") -> None:
@@ -179,6 +186,7 @@ class GossipBridge:
         """Processes an incoming USV datagram and writes it locally via paths authority."""
         try:
             sender_ip = addr[0]
+            current_env = get_environment().value
             
             # 0. Self-Learning Discovery: Add unknown peers from our subnet
             if sender_ip.startswith("10.0.0.") and sender_ip not in self.peers.values():
@@ -191,6 +199,11 @@ class GossipBridge:
             if msg.startswith("Q"):
                 q_record = QueueDatagram.from_usv(msg)
                 if not q_record or q_record.node_id == self.node_id:
+                    return
+                
+                # ENVIRONMENT FILTER
+                if q_record.environment != current_env:
+                    logger.debug(f"Discarding cross-environment gossip: {q_record.environment} != {current_env}")
                     return
                 
                 # ROUTING FIX: Prioritize datagram's campaign name
@@ -226,6 +239,10 @@ class GossipBridge:
                 if not h_record or h_record.node_id == self.node_id:
                     return
                 
+                # ENVIRONMENT FILTER
+                if h_record.environment != current_env:
+                    return
+                
                 # Update in-memory status
                 self.heartbeats[h_record.node_id] = h_record.model_dump()
                 logger.info(f"Received heartbeat from {h_record.node_id} [{h_record.campaign_name}]: Load {h_record.load_avg:.2f}")
@@ -235,6 +252,10 @@ class GossipBridge:
             if msg.startswith("C"):
                 c_record = ConfigDatagram.from_usv(msg)
                 if not c_record:
+                    return
+                
+                # ENVIRONMENT FILTER
+                if c_record.environment != current_env:
                     return
                 
                 # Ignore if not for us (and not a broadcast)
@@ -255,6 +276,10 @@ class GossipBridge:
             if record.node_id == self.node_id:
                 return # Ignore self
             
+            # ENVIRONMENT FILTER
+            if record.environment != current_env:
+                return
+
             logger.info(f"Received gossip for {record.target}.{record.field} from {record.node_id}")
             
             # Save received updates in a remote-node specific file via paths authority
@@ -341,7 +366,8 @@ class GossipBridge:
                     load_avg=0.0,
                     memory_percent=0.0,
                     worker_count=0,
-                    active_tasks=0
+                    active_tasks=0,
+                    environment=get_environment().value
                 )
                 self.broadcast_msg(hello.to_usv())
                 logger.info("Background gossip initialization complete.")
@@ -361,18 +387,18 @@ class GossipBridge:
         # 1. S3 Registry Discovery (Primary)
         try:
             from .config import load_campaign_config, get_campaign
-            from .reporting import get_boto3_session
+            from .reporting import get_boto3_session, get_data_bucket_name, get_s3_client
             campaign_name = os.getenv("CAMPAIGN_NAME") or get_campaign()
             if campaign_name:
                 config = load_campaign_config(campaign_name)
-                bucket = config.get("aws", {}).get("data_bucket_name")
+                bucket = get_data_bucket_name(config, campaign_name)
                 if bucket:
                     # Use IoT profile if available, else default
                     profile = f"{campaign_name}-iot" if os.path.exists("/home/mstouffer/.cocli/iot/get_tokens.sh") else None
                     session = get_boto3_session(config, profile_name=profile)
-                    s3 = session.client("s3")
+                    s3 = get_s3_client(session=session)
 
-                    prefix = "cluster/registry/"
+                    prefix = f"{paths.s3.status_root}registry/"
                     response = s3.list_objects_v2(Bucket=bucket, Prefix=prefix)
 
                     for obj in response.get("Contents", []):
@@ -429,7 +455,7 @@ class GossipBridge:
         """Registers the local IP in the S3 cluster registry."""
         try:
             from .config import load_campaign_config, get_campaign
-            from .reporting import get_boto3_session
+            from .reporting import get_boto3_session, get_data_bucket_name, get_s3_client
             import json
 
             campaign_name = os.getenv("CAMPAIGN_NAME") or get_campaign()
@@ -437,7 +463,7 @@ class GossipBridge:
                 return
 
             config = load_campaign_config(campaign_name)
-            bucket = config.get("aws", {}).get("data_bucket_name")
+            bucket = get_data_bucket_name(config, campaign_name)
             if not bucket:
                 return
 
@@ -457,12 +483,12 @@ class GossipBridge:
             # Use IoT profile if available, else default
             profile = f"{campaign_name}-iot" if os.path.exists("/home/mstouffer/.cocli/iot/get_tokens.sh") else None
             session = get_boto3_session(config, profile_name=profile)
-            s3 = session.client("s3")
+            s3 = get_s3_client(session=session)
 
-            key = f"cluster/registry/{self.node_id}.json"
+            key = f"{paths.s3.status_root}registry/{self.node_id}.json"
             payload = json.dumps({"ip": local_ip, "timestamp": time.time()})
             s3.put_object(Bucket=bucket, Key=key, Body=payload)
-            logger.info(f"Registered node {self.node_id} at {local_ip} in S3 registry.")
+            logger.info(f"Registered node {self.node_id} at {local_ip} in S3 registry ({bucket}).")
         except Exception as e:
             logger.warning(f"Failed to register node in S3: {e}")
 

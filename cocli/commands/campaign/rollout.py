@@ -95,11 +95,13 @@ def broadcast_config(
         return
 
     # Create Broadcast Datagram
+    from cocli.core.environment import get_environment
     datagram = ConfigDatagram(
         campaign_name=effective_campaign,
         node_id="*", # Broadcast to all
         config_json=json.dumps(scaling),
-        timestamp=str(int(time.time()))
+        timestamp=str(int(time.time())),
+        environment=get_environment().value
     )
 
     console.print(f"[bold cyan]Broadcasting scaling update for {effective_campaign}...[/bold cyan]")

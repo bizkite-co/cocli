@@ -14,7 +14,42 @@ from .paths import paths
 logger = logging.getLogger(__name__)
 console = Console()
 
-__all__ = ["get_campaign_stats", "get_boto3_session", "load_campaign_config", "get_exclusions_data", "get_queries_data", "get_locations_data"]
+__all__ = ["get_campaign_stats", "get_boto3_session", "get_s3_client", "get_data_bucket_name", "load_campaign_config", "get_exclusions_data", "get_queries_data", "get_locations_data"]
+
+
+def get_data_bucket_name(config: Dict[str, Any], campaign_name: str) -> str:
+    """Returns the environment-aware data bucket name."""
+    aws_config = config.get("aws", {})
+    base_name = aws_config.get("data_bucket_name") or aws_config.get("cocli_data_bucket_name") or f"cocli-data-{campaign_name}"
+    return paths.s3.bucket(base_name)
+
+
+def get_s3_client(session: Optional[boto3.Session] = None, session_config: Optional[Dict[str, Any]] = None, **kwargs: Any) -> Any:
+    """Returns a configured S3 client, respecting COCLI_S3_ENDPOINT."""
+    if not session and session_config:
+        session = get_boto3_session(session_config)
+    elif not session:
+        session = boto3.Session()
+    
+    endpoint_url = os.environ.get("COCLI_S3_ENDPOINT")
+    if endpoint_url:
+        if "endpoint_url" not in kwargs:
+            kwargs["endpoint_url"] = endpoint_url
+        
+        # Verify connectivity if in DEV mode
+        from .environment import get_environment, Environment
+        if get_environment() != Environment.PROD:
+            try:
+                import socket
+                from urllib.parse import urlparse
+                parsed = urlparse(endpoint_url)
+                # Simple TCP check
+                socket.create_connection((parsed.hostname or "localhost", parsed.port or 80), timeout=1)
+            except Exception:
+                logger.warning(f"S3 Endpoint {endpoint_url} is not reachable. Is the mock running? (Try 'make s3-mock-start')")
+                console.print(f"[bold yellow]Warning:[/bold yellow] S3 Endpoint {endpoint_url} is unreachable. (Run [bold white]make s3-mock-start[/bold white])")
+        
+    return session.client("s3", **kwargs)
 
 
 def get_boto3_session(config: Dict[str, Any], max_pool_connections: int = 10, profile_name: Optional[str] = None) -> boto3.Session:
@@ -22,6 +57,17 @@ def get_boto3_session(config: Dict[str, Any], max_pool_connections: int = 10, pr
     aws_config = config.get("aws", {})
     campaign_name = config.get("campaign", {}).get("name")
     
+    # Check for custom endpoint (e.g. LocalStack)
+    custom_endpoint = os.environ.get("COCLI_S3_ENDPOINT")
+    if custom_endpoint:
+        logger.debug(f"Using custom S3 endpoint: {custom_endpoint}")
+        # When using custom endpoint, we usually don't need real AWS auth
+        # or we might use dummy credentials.
+        if "AWS_ACCESS_KEY_ID" not in os.environ:
+            os.environ["AWS_ACCESS_KEY_ID"] = "test"
+        if "AWS_SECRET_ACCESS_KEY" not in os.environ:
+            os.environ["AWS_SECRET_ACCESS_KEY"] = "test"
+
     if profile_name:
         try:
             return boto3.Session(profile_name=profile_name)
@@ -150,13 +196,12 @@ def get_campaign_stats(campaign_name: str) -> Dict[str, Any]:
     stats["prospects_count"] = total_prospects
     stats["worker_stats"] = source_counts
     
-    aws_config = config.get("aws", {})
-    data_bucket = aws_config.get("data_bucket_name") or aws_config.get("cocli_data_bucket_name")
+    data_bucket = get_data_bucket_name(config, campaign_name)
 
     if data_bucket:
         stats["using_cloud_queue"] = True
         session = get_boto3_session(config)
-        s3 = session.client("s3")
+        s3 = get_s3_client(session=session)
         
         stats["active_fargate_tasks"] = get_active_fargate_tasks(session)
 
@@ -194,7 +239,7 @@ def get_campaign_stats(campaign_name: str) -> Dict[str, Any]:
         # 2. S3 Worker Heartbeats
         try:
             heartbeats = []
-            response = s3.list_objects_v2(Bucket=data_bucket, Prefix="status/")
+            response = s3.list_objects_v2(Bucket=data_bucket, Prefix=paths.s3.status_root)
             for obj in response.get("Contents", []):
                 if obj["Key"].endswith(".json"):
                     try:

@@ -32,14 +32,17 @@ def append_update(target_dir: Path, field: str, value: Any, campaign_name: Optio
     else:
         value_str = str(value)
     
+    from .environment import get_environment
     record = DatagramRecord(
         timestamp=datetime.now(UTC).isoformat(),
         node_id=node_id,
         campaign_name=effective_campaign,
+        environment=get_environment().value,
         target=target_id,
         field=field,
         value=value_str
     )
+
     
     # Ensure WAL directory exists
     wal_file.parent.mkdir(parents=True, exist_ok=True)

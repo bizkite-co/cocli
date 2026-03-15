@@ -10,6 +10,7 @@ from typing import List, Tuple, Dict, Any, Optional
 
 from ..core.logging_config import setup_file_logging
 from ..core.config import get_cocli_base_dir
+from ..core.reporting import get_data_bucket_name
 
 console = Console()
 app = typer.Typer()
@@ -69,7 +70,7 @@ def run_smart_sync(
     logger.info(f"Starting smart sync for {target_name} in campaign {campaign_name}")
 
     try:
-        from ..core.reporting import get_boto3_session
+        from ..core.reporting import get_boto3_session, get_s3_client
         from botocore.config import Config
         # Prepare a config object for get_boto3_session
         config_obj = {"aws": aws_config, "campaign": {"name": campaign_name}}
@@ -77,7 +78,7 @@ def run_smart_sync(
         
         # MUST pass Config to the client to actually use the larger pool!
         s3_config = Config(max_pool_connections=workers)
-        s3 = session.client("s3", config=s3_config)
+        s3 = get_s3_client(session=session, config=s3_config)
     except Exception as e:
          logger.exception("Failed to create AWS session")
          console.print(f"[bold red]Failed to create AWS session: {e}[/bold red]")
@@ -251,7 +252,7 @@ def sync_companies(
         raise typer.Exit(1)
     config = load_campaign_config(campaign_name)
     aws_config = config.get("aws", {})
-    bucket_name = aws_config.get("data_bucket_name") or f"cocli-data-{campaign_name}"
+    bucket_name = get_data_bucket_name(config, campaign_name)
     run_smart_sync("companies", bucket_name, "companies/", DATA_DIR / "companies", campaign_name, aws_config, workers, full, force)
 
 @app.command("prospects")
@@ -268,7 +269,7 @@ def sync_prospects(
         raise typer.Exit(1)
     config = load_campaign_config(campaign_name)
     aws_config = config.get("aws", {})
-    bucket_name = aws_config.get("data_bucket_name") or f"cocli-data-{campaign_name}"
+    bucket_name = get_data_bucket_name(config, campaign_name)
     prefix = f"campaigns/{campaign_name}/indexes/google_maps_prospects/"
     local_base = DATA_DIR / "campaigns" / campaign_name / "indexes" / "google_maps_prospects"
     run_smart_sync("prospects", bucket_name, prefix, local_base, campaign_name, aws_config, workers, full, force)
@@ -287,7 +288,7 @@ def sync_emails(
         raise typer.Exit(1)
     config = load_campaign_config(campaign_name)
     aws_config = config.get("aws", {})
-    bucket_name = aws_config.get("data_bucket_name") or f"cocli-data-{campaign_name}"
+    bucket_name = get_data_bucket_name(config, campaign_name)
     prefix = f"campaigns/{campaign_name}/indexes/emails/"
     local_base = DATA_DIR / "campaigns" / campaign_name / "indexes" / "emails"
     run_smart_sync("emails", bucket_name, prefix, local_base, campaign_name, aws_config, workers, full, force)
@@ -306,7 +307,7 @@ def sync_scraped_areas(
         raise typer.Exit(1)
     config = load_campaign_config(campaign_name)
     aws_config = config.get("aws", {})
-    bucket_name = aws_config.get("data_bucket_name") or f"cocli-data-{campaign_name}"
+    bucket_name = get_data_bucket_name(config, campaign_name)
     run_smart_sync("scraped-areas", bucket_name, "indexes/scraped_areas/", DATA_DIR / "indexes" / "scraped_areas", campaign_name, aws_config, workers, full, force)
 
 @app.command("scraped-tiles")
@@ -323,7 +324,7 @@ def sync_scraped_tiles(
         raise typer.Exit(1)
     config = load_campaign_config(campaign_name)
     aws_config = config.get("aws", {})
-    bucket_name = aws_config.get("data_bucket_name") or f"cocli-data-{campaign_name}"
+    bucket_name = get_data_bucket_name(config, campaign_name)
     run_smart_sync("scraped-tiles", bucket_name, "indexes/scraped-tiles/", DATA_DIR / "indexes" / "scraped-tiles", campaign_name, aws_config, workers, full, force)
 
 @app.command("enrichment-queue")
@@ -340,7 +341,7 @@ def sync_enrichment_queue(
         raise typer.Exit(1)
     config = load_campaign_config(campaign_name)
     aws_config = config.get("aws", {})
-    bucket_name = aws_config.get("data_bucket_name") or f"cocli-data-{campaign_name}"
+    bucket_name = get_data_bucket_name(config, campaign_name)
     
     # V2 Path
     from ..core.paths import paths
@@ -362,7 +363,7 @@ def sync_active_leases(
         raise typer.Exit(1)
     config = load_campaign_config(campaign_name)
     aws_config = config.get("aws", {})
-    bucket_name = aws_config.get("data_bucket_name") or f"cocli-data-{campaign_name}"
+    bucket_name = get_data_bucket_name(config, campaign_name)
     
     # V2 Path - In V2, leases are mixed in with pending tasks
     from ..core.paths import paths
@@ -385,7 +386,7 @@ def sync_raw(
         raise typer.Exit(1)
     config = load_campaign_config(campaign_name)
     aws_config = config.get("aws", {})
-    bucket_name = aws_config.get("data_bucket_name") or f"cocli-data-{campaign_name}"
+    bucket_name = get_data_bucket_name(config, campaign_name)
     
     # 1. Sync Details Raw
     prefix_details = f"campaigns/{campaign_name}/raw/gm-details/"
@@ -411,7 +412,7 @@ def sync_queues(
         raise typer.Exit(1)
     config = load_campaign_config(campaign_name)
     aws_config = config.get("aws", {})
-    bucket_name = aws_config.get("data_bucket_name") or f"cocli-data-{campaign_name}"
+    bucket_name = get_data_bucket_name(config, campaign_name)
     
     from ..core.paths import paths
     for q in ["gm-list", "gm-details", "enrichment"]:
@@ -440,7 +441,7 @@ def sync_campaign_config(
     # Try to load existing config to get the correct bucket name
     config = load_campaign_config(campaign_name)
     aws_config = config.get("aws", {})
-    bucket_name = aws_config.get("data_bucket_name") or aws_config.get("cocli_data_bucket_name") or f"cocli-data-{campaign_name}"
+    bucket_name = get_data_bucket_name(config, campaign_name)
     
     prefix = f"campaigns/{campaign_name}/"
     local_base = DATA_DIR / "campaigns" / campaign_name

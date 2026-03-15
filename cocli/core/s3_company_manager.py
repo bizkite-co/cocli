@@ -21,18 +21,10 @@ class S3CompanyManager:
         # Determine S3 bucket: env var > campaign config > default
         import os
         from .config import load_campaign_config
-        from .reporting import get_boto3_session
+        from .reporting import get_boto3_session, get_data_bucket_name, get_s3_client
 
-        self.s3_bucket_name = os.environ.get("COCLI_S3_BUCKET_NAME") or ""
         config = load_campaign_config(self.campaign.name)
-
-        if not self.s3_bucket_name:
-            aws_config = config.get("aws", {})
-            self.s3_bucket_name = (
-                aws_config.get("data_bucket_name") or 
-                aws_config.get("cocli_data_bucket_name") or 
-                f"cocli-data-{self.campaign.name}"
-            )
+        self.s3_bucket_name = os.environ.get("COCLI_S3_BUCKET_NAME") or get_data_bucket_name(config, self.campaign.name)
         
         if not self.s3_bucket_name:
             raise ValueError(f"S3 bucket name could not be resolved for campaign {self.campaign.name}")
@@ -42,7 +34,7 @@ class S3CompanyManager:
             session = get_boto3_session(config)
             # Increase pool size to handle concurrent requests without noise
             s3_config: Config = Config(max_pool_connections=50)
-            self.s3_client = session.client("s3", config=s3_config)
+            self.s3_client = get_s3_client(session=session, config=s3_config)
         except Exception as e:
             logger.error(f"Failed to create S3 client: {e}")
             raise

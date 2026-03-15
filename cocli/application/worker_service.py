@@ -435,6 +435,7 @@ class WorkerService:
         # 2. Real-Time Tier (Gossip)
         if bridge and bridge.running:
             try:
+                from ..core.environment import get_environment
                 hb = HeartbeatDatagram(
                     campaign_name=self.campaign_name,
                     node_id=self.processed_by,
@@ -442,7 +443,8 @@ class WorkerService:
                     load_avg=cpu_usage, # We use CPU % as a proxy for load in the datagram
                     memory_percent=mem_usage,
                     worker_count=worker_count,
-                    active_tasks=worker_count # For now, assume all workers are active if in the loop
+                    active_tasks=worker_count, # For now, assume all workers are active if in the loop
+                    environment=get_environment().value
                 )
                 bridge.broadcast_msg(hb.to_usv())
             except Exception as gossip_err:

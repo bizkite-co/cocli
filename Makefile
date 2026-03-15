@@ -953,4 +953,18 @@ sync-clocks: install ## Synchronize clocks across the cluster nodes
 task: install ## Show the current highest priority development task
 	@PYTHONPATH=. $(VENV_DIR)/bin/cocli task next
 
+# ==============================================================================
+# S3 Mock Management (LocalStack)
+# ==============================================================================
+.PHONY: s3-mock-start s3-mock-stop s3-mock-status
+
+s3-mock-start: ## Start LocalStack S3 mock
+	docker compose -f tools/s3mock/docker-compose.yml up -d
+
+s3-mock-stop: ## Stop LocalStack S3 mock
+	docker compose -f tools/s3mock/docker-compose.yml down
+
+s3-mock-status: ## Check LocalStack S3 mock status
+	docker compose -f tools/s3mock/docker-compose.yml ps
+
 include mk/cluster.mk

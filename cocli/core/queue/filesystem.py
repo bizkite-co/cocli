@@ -455,13 +455,15 @@ class FilesystemQueue:
                 from ..gossip_bridge import bridge
                 if bridge and bridge.running:
                     from ...models.wal.record import QueueDatagram
+                    from ..environment import get_environment
                     datagram = QueueDatagram(
                         campaign_name=self.campaign_name,
                         queue_name=self.queue_name,
                         task_id=task_id,
                         status="completed",
                         timestamp=datetime.now(UTC).isoformat(),
-                        node_id=self.worker_id
+                        node_id=self.worker_id,
+                        environment=get_environment().value
                     )
                     bridge.broadcast_msg(datagram.to_usv())
                     logger.debug(f"Broadcasted completion for {task_id}")

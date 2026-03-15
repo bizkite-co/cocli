@@ -226,13 +226,30 @@ class S3CampaignPaths:
         return S3QueuePaths(self.slug, name)
 
 class S3DataPaths:
+    def bucket(self, base_name: str) -> str:
+        """Returns the environment-aware bucket name."""
+        from .environment import get_environment, Environment
+        env = get_environment()
+        if env == Environment.PROD:
+            return base_name
+        
+        # Suffix with environment name for isolation
+        if base_name.endswith(f"-{env.value}"):
+            return base_name
+        return f"{base_name}-{env.value}"
+
     def campaign(self, slug: str) -> S3CampaignPaths:
         return S3CampaignPaths(slug)
     def company(self, slug: str) -> str: return f"companies/{slug}/"
     def company_index(self, slug: str) -> str: return f"companies/{slug}/_index.md"
     def website_enrichment(self, slug: str) -> str: return f"companies/{slug}/enrichments/website.md"
     @property
-    def status_root(self) -> str: return "status/"
+    def status_root(self) -> str:
+        from .environment import get_environment, Environment
+        env = get_environment()
+        if env == Environment.PROD:
+            return "status/"
+        return f"{env.value}/status/"
     def heartbeat(self, hostname: str) -> str: return f"{self.status_root}{hostname}.json"
 
 class DataPaths:

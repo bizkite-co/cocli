@@ -291,10 +291,10 @@ def create_task(
     from ..models.tasks import MissionTask
     new_task = MissionTask(
         slug=slug,
-        title=title,
-        status=status,
         dependencies=dependencies
     )
+    new_task.title = title
+    new_task.status = status
     manager.tasks.append(new_task)
     manager.save()
     
