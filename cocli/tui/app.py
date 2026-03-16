@@ -84,7 +84,7 @@ class MenuBar(Horizontal):
 
         # Environment Indicator (Visible only if not PROD)
         if env != Environment.PROD:
-            color = "bold green" if env == Environment.DEV else "bold yellow"
+            color = "bold yellow"
             yield Label(
                 f"[{color}] {env.value.upper()} [/]",
                 id="menu-environment",
