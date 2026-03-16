@@ -156,6 +156,7 @@ class MeetingsTable(QuadrantTable):
         Binding("i", "edit_item", "Edit Meeting"),
         Binding("enter", "edit_item", "Edit Meeting"),
         Binding("v", "view_item", "View Meeting"),
+        Binding("P", "promote_item", "Promote"),
     ]
 
     def action_edit_item(self) -> None:
@@ -172,6 +173,13 @@ class MeetingsTable(QuadrantTable):
         if detail_view:
             detail_view.action_view_meeting()
 
+    def action_promote_item(self) -> None:
+        detail_view = next(
+            (a for a in self.ancestors if isinstance(a, CompanyDetail)), None
+        )
+        if detail_view:
+            detail_view.action_promote_meeting()
+
 
 class NotesTable(QuadrantTable):
     """Specific bindings for the Notes quadrant."""
@@ -182,6 +190,7 @@ class NotesTable(QuadrantTable):
         Binding("enter", "edit_item", "Edit Note"),
         Binding("d", "delete_item", "Delete Note"),
         Binding("v", "view_item", "View Note"),
+        Binding("P", "promote_item", "Promote"),
     ]
 
     def action_edit_item(self) -> None:
@@ -211,6 +220,13 @@ class NotesTable(QuadrantTable):
         )
         if detail_view:
             detail_view.action_view_note()
+
+    def action_promote_item(self) -> None:
+        detail_view = next(
+            (a for a in self.ancestors if isinstance(a, CompanyDetail)), None
+        )
+        if detail_view:
+            detail_view.action_promote_note()
 
 
 class EditInput(Input):
@@ -806,6 +822,80 @@ class CompanyDetail(Container):
             except Exception as e:
                 logger.error(f"Failed to delete note: {e}")
                 self.app.notify(f"Delete failed: {e}", severity="error")
+
+    def action_promote_meeting(self) -> None:
+        """Toggle promote flag on the selected meeting."""
+        row_idx = self.meetings_table.cursor_row
+        num_meetings = len(self.company_data.get("meetings", []))
+
+        if row_idx is None or row_idx >= num_meetings:
+            self.app.notify("No meeting selected", severity="warning")
+            return
+
+        meeting_data = self.company_data["meetings"][row_idx]
+        file_path = meeting_data.get("file_path")
+
+        if not file_path:
+            return
+
+        self._toggle_promote_flag(Path(file_path))
+
+    def action_promote_note(self) -> None:
+        """Toggle promote flag on the selected note."""
+        row_idx = self.notes_table.cursor_row
+        num_notes = len(self.company_data.get("notes", []))
+
+        if row_idx is None or row_idx >= num_notes:
+            self.app.notify("No note selected", severity="warning")
+            return
+
+        note_data = self.company_data["notes"][row_idx]
+        file_path = note_data.get("file_path")
+
+        if not file_path:
+            return
+
+        self._toggle_promote_flag(Path(file_path))
+
+    def _toggle_promote_flag(self, file_path: Path) -> None:
+        """Toggle the promote flag in a note/meeting file's frontmatter."""
+        import yaml
+
+        if not file_path.exists():
+            self.app.notify("File not found", severity="warning")
+            return
+
+        content = file_path.read_text()
+        frontmatter_data: Dict[str, Any] = {}
+        markdown_content = content
+
+        if content.startswith("---") and "---" in content[3:]:
+            parts = content.split("---", 2)
+            if len(parts) >= 3:
+                frontmatter_str = parts[1]
+                markdown_content = parts[2]
+                try:
+                    frontmatter_data = yaml.safe_load(frontmatter_str) or {}
+                except yaml.YAMLError as e:
+                    logger.warning(f"Error parsing YAML frontmatter: {e}")
+
+        current_promote = frontmatter_data.get("promote", False)
+        frontmatter_data["promote"] = not current_promote
+
+        frontmatter = yaml.dump(
+            frontmatter_data,
+            sort_keys=False,
+            default_flow_style=False,
+            allow_unicode=True,
+        )
+        new_content = f"---\n{frontmatter}---\n{markdown_content}"
+
+        file_path.write_text(new_content)
+
+        status = "flagged for promotion" if frontmatter_data["promote"] else "unflagged"
+        self.app.notify(f"Item {status}")
+        self.refresh_notes_data()
+        self.refresh_meetings_data()
 
     def _edit_with_nvim(self, path: Path) -> None:
         """Suspend the TUI and open NVim."""

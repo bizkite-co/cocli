@@ -1,6 +1,7 @@
 import logging
 import asyncio
 from datetime import datetime
+from pathlib import Path
 from typing import List, TYPE_CHECKING, cast, Dict, Any, Optional
 
 from textual.containers import Container
@@ -18,25 +19,28 @@ from .inputs import CocliSearchInput
 
 logger = logging.getLogger(__name__)
 
-class CompanyList(Container):
 
+class CompanyList(Container):
     class CompanyHighlighted(Message):
         def __init__(self, company: Company) -> None:
             super().__init__()
             self.company = company
 
-
     class CompanySelected(Message):
         """Posted when a company is selected from the list."""
+
         def __init__(self, company_slug: str) -> None:
             super().__init__()
             self.company_slug = company_slug
 
     BINDINGS = [
         ("alt+s", "reset_view", "Return to List"),
+        ("d", "remove_from_to_call", "Remove from To-Call"),
     ]
 
-    def __init__(self, name: str | None = None, id: str | None = None, classes: str | None = None):
+    def __init__(
+        self, name: str | None = None, id: str | None = None, classes: str | None = None
+    ):
         super().__init__(name=name, id=id, classes=classes)
         self.filtered_fz_items: List[SearchResult] = []
         self.filter_contact: bool = True
@@ -50,7 +54,9 @@ class CompanyList(Container):
 
     def compose(self) -> ComposeResult:
         yield Label("SEARCH", id="search_header", classes="pane-header")
-        yield CocliSearchInput(placeholder="Search companies...", id="company_search_input")
+        yield CocliSearchInput(
+            placeholder="Search companies...", id="company_search_input"
+        )
         with Container(id="list_container"):
             yield ListView(id="company_list_view")
             yield LoadingIndicator(id="search_loading")
@@ -60,7 +66,7 @@ class CompanyList(Container):
         self.current_filters = {}
         self.current_sort = None
         self.search_offset = 0
-        
+
         if tpl_id == "tpl_all":
             self.filter_contact = False
             self.sort_recent = True
@@ -79,7 +85,7 @@ class CompanyList(Container):
             self.current_sort = "reviews"
         elif tpl_id == "tpl_to_call":
             self.current_filters = {"to_call": True}
-        
+
         # Clear search without triggering redundant update
         search_inputs = self.query("#company_search_input")
         if search_inputs:
@@ -90,11 +96,11 @@ class CompanyList(Container):
                     setattr(search_input, "value", "")
             finally:
                 self._ignoring_input_change = False
-            
+
         # FORCE search update for the new template
         self.search_offset = 0
         self.run_search("")
-        
+
         # Focus list after template application
         list_views = self.query("#company_list_view")
         if list_views:
@@ -122,6 +128,7 @@ class CompanyList(Container):
     def action_add_company(self) -> None:
         """Pushes the Add Company modal."""
         from .company_add_modal import CompanyAddModal
+
         self.app.push_screen(CompanyAddModal())
 
     def action_toggle_filter(self) -> None:
@@ -130,7 +137,7 @@ class CompanyList(Container):
         # Notification of state change might be nice since header is gone
         status = "Actionable Only" if self.filter_contact else "All Leads"
         self.app.notify(f"Filter: {status}")
-        
+
         query = self.query_one("#company_search_input", CocliSearchInput).value
         self.run_search(query)
 
@@ -139,7 +146,7 @@ class CompanyList(Container):
         self.sort_recent = not self.sort_recent
         status = "Recent" if self.sort_recent else "Alphabetical"
         self.app.notify(f"Sorting: {status}")
-        
+
         query = self.query_one("#company_search_input", CocliSearchInput).value
         self.run_search(query)
 
@@ -154,7 +161,7 @@ class CompanyList(Container):
         """Called after 250ms of inactivity after typing."""
         if self._ignoring_input_change:
             return
-        self.search_offset = 0 
+        self.search_offset = 0
         self.run_search(event.value)
 
     def on_key(self, event: events.Key) -> None:
@@ -165,13 +172,13 @@ class CompanyList(Container):
 
         list_views = self.query("#company_list_view")
         search_inputs = self.query("#company_search_input")
-        
+
         if not list_views or not search_inputs:
             return
-            
+
         list_view = cast(ListView, list_views.first())
         search_input = cast(CocliSearchInput, search_inputs.first())
-        
+
         # 1. Protection & Passthrough: If search is focused
         if search_input.has_focus:
             if event.key == "escape":
@@ -215,15 +222,19 @@ class CompanyList(Container):
             if list_view.has_focus:
                 list_view.action_cursor_up()
                 event.prevent_default()
-        elif event.key == "]": # Next Page
+        elif event.key == "]":  # Next Page
             if list_view.has_focus:
                 self.search_offset += self.search_limit
-                self.run_search(self.query_one("#company_search_input", CocliSearchInput).value)
+                self.run_search(
+                    self.query_one("#company_search_input", CocliSearchInput).value
+                )
                 event.prevent_default()
-        elif event.key == "[": # Prev Page
+        elif event.key == "[":  # Prev Page
             if list_view.has_focus and self.search_offset >= self.search_limit:
                 self.search_offset -= self.search_limit
-                self.run_search(self.query_one("#company_search_input", CocliSearchInput).value)
+                self.run_search(
+                    self.query_one("#company_search_input", CocliSearchInput).value
+                )
                 event.prevent_default()
         elif event.key == "escape":
             # If search is focused, return focus to list
@@ -242,13 +253,13 @@ class CompanyList(Container):
     def run_search(self, query: str) -> None:
         app = cast("CocliApp", self.app)
         sort_by = self.current_sort or ("recent" if self.sort_recent else None)
-        
+
         # Merge template filters with contact filter
         search_filters = dict(self.current_filters)
-        
+
         # If 'Actionable Only' is on, we normally require email OR phone.
-        # But if the user specifically asked for 'Missing Email' template, 
-        # we should respect that and NOT force the global actionable filter 
+        # But if the user specifically asked for 'Missing Email' template,
+        # we should respect that and NOT force the global actionable filter
         # to require an email if it conflicts.
         if self.filter_contact and not search_filters.get("no_email"):
             search_filters["has_contact_info"] = True
@@ -262,12 +273,12 @@ class CompanyList(Container):
         if app.services.sync_search:
             # Synchronous search for tests
             results = app.services.fuzzy_search(
-                search_query=query, 
+                search_query=query,
                 item_type="company",
                 filters=search_filters,
                 sort_by=sort_by,
                 limit=self.search_limit,
-                offset=self.search_offset
+                offset=self.search_offset,
             )
             self.filtered_fz_items = results
             # For synchronous tests, we need immediate update
@@ -279,7 +290,7 @@ class CompanyList(Container):
         """Helper for on_mount and other direct calls."""
         app = cast("CocliApp", self.app)
         sort_by = self.current_sort or ("recent" if self.sort_recent else None)
-        
+
         search_filters = dict(self.current_filters)
         if self.filter_contact and not search_filters.get("no_email"):
             search_filters["has_contact_info"] = True
@@ -292,15 +303,15 @@ class CompanyList(Container):
             pass
 
         results = app.services.fuzzy_search(
-            search_query=query, 
+            search_query=query,
             item_type="company",
             filters=search_filters,
             sort_by=sort_by,
             limit=self.search_limit,
-            offset=self.search_offset
+            offset=self.search_offset,
         )
         self.filtered_fz_items = results
-        
+
         if app.services.sync_search:
             self.update_company_list_view()
         else:
@@ -316,11 +327,13 @@ class CompanyList(Container):
             return
 
         app = cast("CocliApp", self.app)
-        
+
         # Ensure loading state is visible
         try:
+
             def show_loading() -> None:
                 self.query_one("#search_loading").display = True
+
             self.call_after_refresh(show_loading)
         except Exception:
             pass
@@ -329,28 +342,29 @@ class CompanyList(Container):
         # Note: We check app.services.sync_search
         if not app.services.sync_search:
             await asyncio.sleep(0.1)
-        
+
         try:
             if not self.is_running or not self.app:
                 return
-            
+
             from ..app import time_perf
+
             with time_perf(f"TUI: fuzzy_search (query='{query}')"):
                 sort_by = self.current_sort or ("recent" if self.sort_recent else None)
-                
+
                 search_filters = dict(self.current_filters)
                 if self.filter_contact and not search_filters.get("no_email"):
                     search_filters["has_contact_info"] = True
 
                 results = app.services.fuzzy_search(
-                    search_query=query, 
+                    search_query=query,
                     item_type="company",
                     filters=search_filters,
                     sort_by=sort_by,
                     limit=self.search_limit,
-                    offset=self.search_offset
+                    offset=self.search_offset,
                 )
-            
+
             if not self.is_running:
                 return
 
@@ -358,10 +372,12 @@ class CompanyList(Container):
             self.app.call_after_refresh(self.update_company_list_view)
         except Exception as e:
             logger.error(f"Search worker failed: {e}", exc_info=True)
+
             def hide_loading() -> None:
                 loading = self.query("#search_loading")
                 if loading:
                     loading.first().display = False
+
             self.app.call_after_refresh(hide_loading)
 
     def update_company_list_view(self) -> None:
@@ -370,16 +386,16 @@ class CompanyList(Container):
         loading = self.query("#search_loading")
         if loading:
             loading.first().display = False
-        
+
         try:
             list_views = self.query(ListView)
             if not list_views:
                 return
-            
+
             list_view = list_views.first()
             old_index = list_view.index
             list_view.clear()
-            
+
             if not self.filtered_fz_items:
                 list_view.index = None
                 return
@@ -387,12 +403,12 @@ class CompanyList(Container):
             new_items = []
             for item in self.filtered_fz_items:
                 new_items.append(ListItem(Label(item.name), name=item.name))
-            
+
             # extend() is more synchronous for small lists and helps tests
             list_view.extend(new_items)
-            
+
             app = cast("CocliApp", self.app)
-            
+
             # Atomic selection and highlight trigger
             def select_and_highlight() -> None:
                 if not list_view.is_mounted:
@@ -404,7 +420,7 @@ class CompanyList(Container):
                         list_view.index = old_index
                     else:
                         list_view.index = 0
-                        
+
                     if self.filtered_fz_items:
                         idx = list_view.index or 0
                         item = self.filtered_fz_items[idx]
@@ -416,7 +432,7 @@ class CompanyList(Container):
                                     self.post_message(self.CompanyHighlighted(company))
                             else:
                                 self.debounce_highlight(item)
-            
+
             # For tests, we need immediate synchronization
             if app.services.sync_search:
                 select_and_highlight()
@@ -429,7 +445,9 @@ class CompanyList(Container):
     def on_list_view_selected(self, event: ListView.Selected) -> None:
         if event.item and hasattr(event.item, "name"):
             name = getattr(event.item, "name")
-            selected_item = next((item for item in self.filtered_fz_items if item.name == name), None)
+            selected_item = next(
+                (item for item in self.filtered_fz_items if item.name == name), None
+            )
             if selected_item and selected_item.slug:
                 self.post_message(self.CompanySelected(selected_item.slug))
                 return
@@ -448,7 +466,9 @@ class CompanyList(Container):
     def on_list_view_highlighted(self, event: ListView.Highlighted) -> None:
         if event.item and hasattr(event.item, "name"):
             name = getattr(event.item, "name")
-            highlighted_item = next((item for item in self.filtered_fz_items if item.name == name), None)
+            highlighted_item = next(
+                (item for item in self.filtered_fz_items if item.name == name), None
+            )
             if highlighted_item and highlighted_item.slug:
                 self.debounce_highlight(highlighted_item)
                 return
@@ -468,7 +488,7 @@ class CompanyList(Container):
         """Wait for a brief pause before loading company details for the preview."""
         # 250ms is usually the "sweet spot" for UI debouncing
         await asyncio.sleep(0.25)
-        
+
         if not item.slug:
             return
 
@@ -479,24 +499,26 @@ class CompanyList(Container):
                 company.average_rating = item.average_rating
             if item.reviews_count is not None:
                 company.reviews_count = item.reviews_count
-            
+
             if not company.street_address:
                 company.street_address = item.street_address
             if not company.city:
                 company.city = item.city
             if not company.state:
                 company.state = item.state
-            
+
             # Map lifecycle fields
             if not company.list_found_at and item.list_found_at:
                 try:
                     company.list_found_at = datetime.fromisoformat(item.list_found_at)
                 except (ValueError, TypeError):
                     pass
-            
+
             if not company.details_found_at and item.details_found_at:
                 try:
-                    company.details_found_at = datetime.fromisoformat(item.details_found_at)
+                    company.details_found_at = datetime.fromisoformat(
+                        item.details_found_at
+                    )
                 except (ValueError, TypeError):
                     pass
 
@@ -516,3 +538,60 @@ class CompanyList(Container):
             setattr(company, "_enqueued_at", item.enqueued_at)
 
             self.post_message(self.CompanyHighlighted(company))
+
+    def action_remove_from_to_call(self) -> None:
+        """Remove the highlighted company from the To-Call list."""
+        list_view = self.query_one("#company_list_view", ListView)
+        idx = list_view.index
+
+        if idx is None or idx >= len(self.filtered_fz_items):
+            self.app.notify("No company selected", severity="warning")
+            return
+
+        selected_item = self.filtered_fz_items[idx]
+        if not selected_item or not selected_item.slug:
+            self.app.notify("No company selected", severity="warning")
+            return
+
+        # Check if this is the To-Call filter view
+        if not self.current_filters.get("to_call"):
+            self.app.notify("Only available in To-Call view", severity="warning")
+            return
+
+        # Import here to avoid circular imports
+        from cocli.models.campaigns.queues.to_call import ToCallTask
+        from cocli.core.config import get_campaign
+
+        campaign = get_campaign()
+        if not campaign:
+            self.app.notify("No campaign set", severity="error")
+            return
+
+        task = ToCallTask(
+            company_slug=selected_item.slug,
+            domain=selected_item.name or "unknown",
+            campaign_name=campaign,
+            ack_token=None,
+        )
+
+        task_path = task.get_local_path()
+        if not task_path.exists():
+            self.app.notify("Not in To-Call list", severity="warning")
+            return
+
+        # Run async deletion in background
+        self.app.run_worker(
+            self._remove_from_to_call_async(task_path, selected_item.slug)
+        )
+
+    async def _remove_from_to_call_async(self, task_path: Path, slug: str) -> None:
+        """Async method to remove from To-Call list."""
+        try:
+            task_path.unlink()
+            self.app.notify(f"Removed {slug} from To-Call list")
+            # Refresh the list
+            self.search_offset = 0
+            self.run_search("")
+        except Exception as e:
+            logger.error(f"Failed to remove from To-Call: {e}")
+            self.app.notify(f"Failed to remove: {e}", severity="error")

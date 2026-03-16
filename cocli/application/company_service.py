@@ -5,7 +5,7 @@ from ..models.companies.company import Company
 from ..models.people.person import Person
 from ..models.companies.note import Note
 from ..models.companies.meeting import Meeting
-from ..core.website_cache import WebsiteCache # Corrected import
+from ..core.website_cache import WebsiteCache  # Corrected import
 
 from ..models.companies.website import Website
 from ..core.s3_company_manager import S3CompanyManager
@@ -13,10 +13,9 @@ import logging
 
 logger = logging.getLogger(__name__)
 
+
 async def update_company_from_website_data(
-    company: Company, 
-    website_data: Website, 
-    campaign: Optional[Any] = None
+    company: Company, website_data: Website, campaign: Optional[Any] = None
 ) -> bool:
     """
     Updates a Company record with data from a website scrape.
@@ -24,17 +23,21 @@ async def update_company_from_website_data(
     Returns True if the company was modified and saved.
     """
     modified = False
-    
+
     # 1. Handle Redirects / Website URL
     final_url = str(website_data.url) if website_data.url else None
     if final_url and company.website_url != final_url:
-        logger.info(f"Updating website_url for {company.slug}: {company.website_url} -> {final_url}")
+        logger.info(
+            f"Updating website_url for {company.slug}: {company.website_url} -> {final_url}"
+        )
         company.website_url = final_url
         modified = True
 
     # 2. Handle Email
     if website_data.email and company.email != website_data.email:
-        logger.info(f"Updating email for {company.slug}: {company.email} -> {website_data.email}")
+        logger.info(
+            f"Updating email for {company.slug}: {company.email} -> {website_data.email}"
+        )
         company.email = website_data.email
         modified = True
 
@@ -66,12 +69,14 @@ async def update_company_from_website_data(
             # Local modification for the company index is already tracked by 'modified' flag,
             # but we always want the enrichment file to be fresh.
         except Exception as e:
-            logger.warning(f"Failed to save website enrichment locally for {company.slug}: {e}")
+            logger.warning(
+                f"Failed to save website enrichment locally for {company.slug}: {e}"
+            )
 
     if modified:
         # Save Company Index locally
         company.save()
-        
+
         # Sync both to S3 if campaign context is provided
         if campaign:
             try:
@@ -80,13 +85,16 @@ async def update_company_from_website_data(
                 await s3_manager.save_company_index(company)
                 # Sync website.md
                 await s3_manager.save_website_enrichment(company.slug, website_data)
-                logger.info(f"Synced updated company {company.slug} and enrichment to S3")
+                logger.info(
+                    f"Synced updated company {company.slug} and enrichment to S3"
+                )
             except Exception as e:
                 logger.warning(f"Failed to sync company update to S3: {e}")
 
     return modified
 
     return modified
+
 
 def get_company_details_for_view(company_slug: str) -> Optional[Dict[str, Any]]:
     """
@@ -100,7 +108,7 @@ def get_company_details_for_view(company_slug: str) -> Optional[Dict[str, Any]]:
         and website data, or None if the company is not found.
     """
     from ..core.paths import paths
-    
+
     entry = paths.companies.entry(company_slug)
 
     if not entry.exists():
@@ -134,8 +142,10 @@ def get_company_details_for_view(company_slug: str) -> Optional[Dict[str, Any]]:
     enrichment_path = entry.enrichment("website")
     enrichment_mtime = None
     if enrichment_path.exists():
-        enrichment_mtime = datetime.datetime.fromtimestamp(enrichment_path.stat().st_mtime, tz=datetime.timezone.utc)
-    
+        enrichment_mtime = datetime.datetime.fromtimestamp(
+            enrichment_path.stat().st_mtime, tz=datetime.timezone.utc
+        )
+
     # Load website data using WebsiteCache (legacy fallback)
     website_data = None
     if company.domain:
@@ -144,19 +154,21 @@ def get_company_details_for_view(company_slug: str) -> Optional[Dict[str, Any]]:
 
     # Load lifecycle data for status display
     lifecycle_dates: Dict[str, Any] = {
-        "list_found_at": None, 
-        "details_found_at": None, 
+        "list_found_at": None,
+        "details_found_at": None,
         "enqueued_at": None,
         "average_rating": None,
-        "reviews_count": None
+        "reviews_count": None,
     }
     from ..core.config import get_campaign
+
     campaign = get_campaign()
     if campaign:
         maps_receipt = entry / "enrichments" / "google_maps.usv"
         if maps_receipt.exists():
             try:
                 from cocli.core.constants import UNIT_SEP
+
                 with open(maps_receipt, "r", encoding="utf-8") as rf:
                     # Check if the first line is a header (contains 'created_at' or 'Place_ID')
                     # or if it's already the data (starts with 'ChIJ')
@@ -174,12 +186,12 @@ def get_company_details_for_view(company_slug: str) -> Optional[Dict[str, Any]]:
                             # Rating is at index 25, reviews at 24
                             rating_val = parts[25].strip()
                             reviews_val = parts[24].strip()
-                            
+
                             if rating_val:
                                 lifecycle_dates["average_rating"] = float(rating_val)
                             if reviews_val:
                                 lifecycle_dates["reviews_count"] = int(reviews_val)
-                            
+
                             # Extract details_at from index 5 (updated_at)
                             if len(parts) > 5:
                                 details_at = parts[5].strip()
@@ -191,26 +203,48 @@ def get_company_details_for_view(company_slug: str) -> Optional[Dict[str, Any]]:
                             if lifecycle_path.exists():
                                 with open(lifecycle_path, "r", encoding="utf-8") as lf:
                                     # Header: place_id, scraped_at, details_at, enqueued_at, enriched_at
-                                    lf.readline() # skip header
+                                    lf.readline()  # skip header
                                     for line in lf:
                                         l_parts = line.split(UNIT_SEP)
                                         if len(l_parts) >= 4 and l_parts[0] == place_id:
-                                            lifecycle_dates["list_found_at"] = l_parts[1].strip() or None
-                                            lifecycle_dates["details_found_at"] = l_parts[2].strip() or None
-                                            lifecycle_dates["enqueued_at"] = l_parts[3].strip() or None
+                                            lifecycle_dates["list_found_at"] = (
+                                                l_parts[1].strip() or None
+                                            )
+                                            lifecycle_dates["details_found_at"] = (
+                                                l_parts[2].strip() or None
+                                            )
+                                            lifecycle_dates["enqueued_at"] = (
+                                                l_parts[3].strip() or None
+                                            )
                                             break
-                            
+
                             # 2. Look up in prospects index if missing
-                            if lifecycle_dates["average_rating"] is None or lifecycle_dates["reviews_count"] is None:
+                            if (
+                                lifecycle_dates["average_rating"] is None
+                                or lifecycle_dates["reviews_count"] is None
+                            ):
                                 try:
-                                    from ..core.prospects_csv_manager import ProspectsIndexManager
+                                    from ..core.prospects_csv_manager import (
+                                        ProspectsIndexManager,
+                                    )
+
                                     manager = ProspectsIndexManager(campaign)
                                     prospect = manager.get_prospect(place_id)
                                     if prospect:
-                                        if lifecycle_dates["average_rating"] is None and prospect.average_rating is not None:
-                                            lifecycle_dates["average_rating"] = prospect.average_rating
-                                        if lifecycle_dates["reviews_count"] is None and prospect.reviews_count is not None:
-                                            lifecycle_dates["reviews_count"] = prospect.reviews_count
+                                        if (
+                                            lifecycle_dates["average_rating"] is None
+                                            and prospect.average_rating is not None
+                                        ):
+                                            lifecycle_dates["average_rating"] = (
+                                                prospect.average_rating
+                                            )
+                                        if (
+                                            lifecycle_dates["reviews_count"] is None
+                                            and prospect.reviews_count is not None
+                                        ):
+                                            lifecycle_dates["reviews_count"] = (
+                                                prospect.reviews_count
+                                            )
                                 except Exception:
                                     pass
             except Exception as e:
@@ -224,7 +258,9 @@ def get_company_details_for_view(company_slug: str) -> Optional[Dict[str, Any]]:
                 person_dir = contact_symlink.resolve()
                 person = Person.from_directory(person_dir)
                 if person:
-                    contacts.append(person.model_dump()) # Convert to dict for generic return
+                    contacts.append(
+                        person.model_dump()
+                    )  # Convert to dict for generic return
 
     # Load meetings
     meetings = []
@@ -237,7 +273,7 @@ def get_company_details_for_view(company_slug: str) -> Optional[Dict[str, Any]]:
                     m_data["datetime_utc"] = meeting.timestamp.isoformat()
                     m_data["file_path"] = str(meeting_file)
                     meetings.append(m_data)
-    
+
     # Load notes
     notes = []
     if notes_dir.exists():
@@ -245,10 +281,12 @@ def get_company_details_for_view(company_slug: str) -> Optional[Dict[str, Any]]:
             if note_file.is_file() and note_file.suffix == ".md":
                 note = Note.from_file(note_file)
                 if note:
-                    notes.append(note.model_dump()) # Convert to dict for generic return
+                    n_data = note.model_dump()
+                    n_data["file_path"] = str(note_file)
+                    notes.append(n_data)  # Convert to dict for generic return
 
     comp_dict = company.model_dump()
-    
+
     # Merge lifecycle data - PRIORITIZE ENRICHMENT over disk/index
     # This ensures manual scrapes are immediately visible in the TUI.
     for key, val in lifecycle_dates.items():
