@@ -269,6 +269,29 @@ ModalScreen {
     background: rgba(0, 0, 0, 0.7);
 }
 
+#confirm-dialog {
+    width: 40;
+    height: auto;
+    background: #111111;
+    border: double #00ff00;
+    padding: 1 2;
+}
+
+#confirm-message {
+    width: 100%;
+    content-align: center middle;
+    margin-bottom: 1;
+    color: #ffffff;
+    text-style: bold;
+}
+
+#confirm-prompt {
+    width: 100%;
+    content-align: center middle;
+    color: #ffffff;
+    text-style: bold;
+}
+
 #create-task-modal {
     width: 60;
     height: auto;

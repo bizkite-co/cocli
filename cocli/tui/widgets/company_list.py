@@ -583,7 +583,8 @@ class CompanyList(Container):
         self.app.run_worker(
             self._remove_from_to_call_with_confirm(
                 task_path, selected_item.slug, selected_item.name
-            )
+            ),
+            exclusive=True,
         )
 
     async def _remove_from_to_call_with_confirm(
@@ -592,7 +593,8 @@ class CompanyList(Container):
         """Async method to confirm and remove from To-Call list."""
         from .confirm_screen import ConfirmScreen
 
-        confirm = await self.app.push_screen(  # type: ignore[func-returns-value]
+        # Use push_screen and wait for the modal to be closed
+        confirm = await self.app.push_screen_wait(
             ConfirmScreen(f"Remove '{name}' from To-Call list?")
         )
         if not confirm:
