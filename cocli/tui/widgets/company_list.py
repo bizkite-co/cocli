@@ -579,13 +579,25 @@ class CompanyList(Container):
             self.app.notify("Not in To-Call list", severity="warning")
             return
 
-        # Run async deletion in background
+        # Run confirmation and deletion in background
         self.app.run_worker(
-            self._remove_from_to_call_async(task_path, selected_item.slug)
+            self._remove_from_to_call_with_confirm(
+                task_path, selected_item.slug, selected_item.name
+            )
         )
 
-    async def _remove_from_to_call_async(self, task_path: Path, slug: str) -> None:
-        """Async method to remove from To-Call list."""
+    async def _remove_from_to_call_with_confirm(
+        self, task_path: Path, slug: str, name: str
+    ) -> None:
+        """Async method to confirm and remove from To-Call list."""
+        from .confirm_screen import ConfirmScreen
+
+        confirm = await self.app.push_screen(  # type: ignore[func-returns-value]
+            ConfirmScreen(f"Remove '{name}' from To-Call list?")
+        )
+        if not confirm:
+            return
+
         try:
             task_path.unlink()
             self.app.notify(f"Removed {slug} from To-Call list")
