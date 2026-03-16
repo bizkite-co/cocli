@@ -1168,35 +1168,29 @@ class CompanyDetail(Container):
 
     def _create_meetings_table(self) -> MeetingsTable:
         table = MeetingsTable(id="meetings-table")
-        table.add_column("Date", width=12)
-        table.add_column("Time", width=8)
-        table.add_column("Preview", width=PREVIEW_WIDTH)
+        table.add_column("Date/Time", width=20)
+        table.add_column("Preview", width=60)
         meetings = self.company_data.get("meetings", [])
         for m in meetings:
-            # Handle local time display
             raw_dt = m.get("datetime_utc")
             dt_str = "Unknown"
-            time_str = ""
             if raw_dt:
                 try:
                     dt = datetime.fromisoformat(raw_dt)
-                    # Convert to local for display? Textual apps usually stay local.
-                    # For now, just show the HH:MM
-                    dt_str = dt.strftime("%Y-%m-%d")
-                    time_str = dt.strftime("%H:%M")
+                    dt_str = dt.strftime("%Y-%m-%d %H:%M")
                 except (ValueError, TypeError):
-                    dt_str = str(raw_dt)[:10]
+                    dt_str = str(raw_dt)[:16]
 
             content = m.get("content", "")[:100].replace("\n", " ")
             m_type = m.get("type", "meeting")
             preview_text = wrap_content(f"[{m_type}] {content}")
-            table.add_row(dt_str, time_str, preview_text)
+            table.add_row(dt_str, preview_text)
         return table
 
     def _create_notes_table(self) -> NotesTable:
         table = NotesTable(id="notes-table")
         table.add_column("Date", width=12)
-        table.add_column("Preview", width=PREVIEW_WIDTH)
+        table.add_column("Preview", width=60)
         notes = self.company_data.get("notes", [])
         for n in notes:
             ts = n.get("timestamp")
