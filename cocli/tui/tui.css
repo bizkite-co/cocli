@@ -142,6 +142,22 @@ CompanySearchView {
     border: none;
 }
 
+/* Search Input - remove border to prevent text being pushed out */
+CocliInput {
+    border: none;
+    background: #1a1a1a;
+    color: #ffffff;
+}
+
+CocliInput:focus {
+    border: none;
+    background: #2a2a2a;
+}
+
+CocliInput > .text-input--placeholder {
+    color: #666666;
+}
+
 /* Common focus highlighting for all panes */
 .search-pane:focus-within, 
 #app_nav_container:focus-within, 
