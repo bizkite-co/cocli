@@ -266,7 +266,7 @@ class CompanyDetail(Container):
         Binding("[", "prev_panel", "Prev Panel"),
         Binding("w", "open_website", "Website"),
         Binding("g", "open_gmb", "Google Maps"),
-        Binding("v", "view_enrichment", "Enrichment"),
+        Binding("V", "view_enrichment", "Enrichment"),
         Binding("p", "call_company", "Call"),
         Binding("t", "toggle_to_call", "To Call"),
         Binding("R", "re_enqueue_scrape", "Re-enqueue Scrape"),
@@ -809,14 +809,17 @@ class CompanyDetail(Container):
 
     def _edit_with_nvim(self, path: Path) -> None:
         """Suspend the TUI and open NVim."""
+        import time
+
         editor = get_editor_command() or "nvim"
 
         try:
             with self.app.suspend():
                 subprocess.run([editor, str(path)], check=False)
 
+            self.app.refresh()
+            time.sleep(0.1)
             self.app.notify("Item saved")
-            # Reload data from disk
             self.refresh_notes_data()
             self.refresh_meetings_data()
         except Exception as e:
