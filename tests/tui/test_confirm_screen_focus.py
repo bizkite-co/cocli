@@ -1,40 +1,43 @@
 import pytest
 from unittest.mock import MagicMock
 from cocli.tui.widgets.confirm_screen import ConfirmScreen
-from textual.events import Key
+from textual.app import App
 
 
 @pytest.mark.asyncio
 async def test_confirm_screen_captures_keys_when_focused():
-    """
-    Test that ConfirmScreen captures keys when focused,
-    preventing bubbling to underlying widgets like ListView.
-    """
-    # Create the screen
-    screen = ConfirmScreen("Remove Company?")
+    """Test that ConfirmScreen captures keys when focused."""
+    app = App()
+    async with app.run_test() as pilot:
+        screen = ConfirmScreen("Remove Company?")
+        await pilot.app.push_screen(screen)
 
-    # Mock the dismiss method to check if it's called
-    screen.dismiss = MagicMock()
+        # Mock the dismiss method
+        screen.dismiss = MagicMock()
 
-    # Simulate a key press
-    # Using 'y' which should dismiss with True
-    screen.on_key(Key(key="y", character="y"))
+        # Simulate 'y'
+        await pilot.press("y")
 
-    # Verify the dismiss was called
-    screen.dismiss.assert_called_once_with(True)
+        # Verify
+        screen.dismiss.assert_called_once_with(True)
 
 
 @pytest.mark.asyncio
 async def test_confirm_screen_focus_on_mount():
     """Test that ConfirmScreen gains focus when mounted."""
-    screen = ConfirmScreen("Remove Company?")
+    app = App()
+    async with app.run_test() as pilot:
+        screen = ConfirmScreen("Remove Company?")
 
-    # We need to simulate the mount event
-    # Using a spy to check if focus() was called
-    screen.focus = MagicMock()
+        # Push the modal
+        await pilot.app.push_screen(screen)
+        await pilot.pause()
 
-    # Trigger the on_mount method directly
-    screen.on_mount()
+        dialog = screen.query_one("#confirm-dialog")
+        dialog.focus = MagicMock()
 
-    # Verify focus was called
-    screen.focus.assert_called_once()
+        # Trigger on_mount
+        screen.on_mount()
+
+        # Verify focus was called
+        dialog.focus.assert_called_once()
