@@ -301,6 +301,14 @@ class CompanyDetail(Container):
         super().__init__(name=name, id=id, classes=classes)
         self.company_data = company_data
 
+        # Debugging the data discrepancy
+        company_info = self.company_data.get("company", {})
+        logger.info(
+            f"DEBUG DETAIL: Company={company_info.get('name')}, "
+            f"Phone={company_info.get('phone_number')}, "
+            f"Reviews={company_info.get('reviews_count')}"
+        )
+
         # Initialize tables
         self.info_table = self._create_info_table()
         self.contacts_table = self._create_contacts_table()
