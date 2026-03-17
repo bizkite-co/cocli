@@ -1,15 +1,15 @@
 import logging
+from typing import Any
 from textual import events
-from textual.screen import ModalScreen
 from textual.widgets import Static
 from textual.containers import Vertical
 from textual.app import ComposeResult
-from typing import Any
+from ..base import BaseModalScreen
 
 logger = logging.getLogger(__name__)
 
 
-class ConfirmScreen(ModalScreen[bool]):
+class ConfirmScreen(BaseModalScreen[bool]):
     """A modal screen for confirmation dialogs."""
 
     def __init__(self, message: str, *args: Any, **kwargs: Any):
@@ -17,6 +17,7 @@ class ConfirmScreen(ModalScreen[bool]):
         self.message = message
 
     def on_mount(self) -> None:
+        super().on_mount()
         dialog = self.query_one("#confirm-dialog")
         dialog.can_focus = True
         dialog.focus()
@@ -29,8 +30,6 @@ class ConfirmScreen(ModalScreen[bool]):
 
     def on_key(self, event: events.Key) -> None:
         # Prevent key events from bubbling up
-        event.stop()
-        event.prevent_default()
 
         if event.key == "y":
             self.dismiss(True)

@@ -1,11 +1,11 @@
 from typing import Any
 from textual.app import ComposeResult
-from textual.screen import ModalScreen
 from textual.widgets import Static
 from textual.containers import Container
+from ..base import BaseModalScreen
 
 
-class ContentViewerModal(ModalScreen[None]):
+class ContentViewerModal(BaseModalScreen[None]):
     """A modal to view meeting or note content."""
 
     BINDINGS = [
