@@ -24,6 +24,7 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
+
 class ApplicationView(Container):
     """A consolidated view for Application-level tasks."""
 
@@ -38,11 +39,13 @@ class ApplicationView(Container):
         ("v", "view_full_log", "View Full Log"),
         ("ctrl+r", "run_active_operation", "Run Operation"),
         Binding("enter", "run_active_operation", "Run Operation", show=False),
+        Binding("i", "edit_op_params", "Edit Operation Parameters"),
     ]
 
     def __init__(self, *args: Any, **kwargs: Any) -> None:
         super().__init__(*args, **kwargs)
         self.active_category: str = "operations"
+        self.active_op_id: Optional[str] = None
         self.can_focus = True
         self.current_log_content: str = ""
 
@@ -59,53 +62,71 @@ class ApplicationView(Container):
                         ListItem(Label("Indexes"), id="nav_indexes"),
                         ListItem(Label("Queues"), id="nav_queues"),
                         ListItem(Label("Operations"), id="nav_operations"),
-                        id="app_nav_list"
+                        id="app_nav_list",
                     )
-                
+
                 with Vertical(id="app_sub_nav_container"):
                     yield Label("Menu", id="sub_sidebar_title", classes="sidebar-title")
-                    yield QueueSelection(id="sidebar_queues", classes="sub-sidebar-list")
-                    yield IndexSelection(id="sidebar_indexes", classes="sub-sidebar-list")
-                    yield CampaignSelection(id="sidebar_campaigns", classes="sub-sidebar-list")
+                    yield QueueSelection(
+                        id="sidebar_queues", classes="sub-sidebar-list"
+                    )
+                    yield IndexSelection(
+                        id="sidebar_indexes", classes="sub-sidebar-list"
+                    )
+                    yield CampaignSelection(
+                        id="sidebar_campaigns", classes="sub-sidebar-list"
+                    )
                     yield ListView(
                         ListItem(Label("[dim]--- Reporting ---[/dim]"), disabled=True),
                         ListItem(Label("Generate Report"), id="op_report"),
                         ListItem(Label("Analyze Emails"), id="op_analyze_emails"),
-                        
                         # Sync
                         ListItem(Label("[dim]--- Data Sync ---[/dim]"), disabled=True),
                         ListItem(Label("Sync All"), id="op_sync_all"),
                         ListItem(Label("Refresh DEV from PROD"), id="op_refresh_dev"),
                         ListItem(Label("Sync GM List Queue"), id="op_sync_gm_list"),
-                        ListItem(Label("Sync GM Details Queue"), id="op_sync_gm_details"),
-                        ListItem(Label("Sync Enrichment Queue"), id="op_sync_enrichment"),
+                        ListItem(
+                            Label("Sync GM Details Queue"), id="op_sync_gm_details"
+                        ),
+                        ListItem(
+                            Label("Sync Enrichment Queue"), id="op_sync_enrichment"
+                        ),
                         ListItem(Label("Sync Indexes"), id="op_sync_indexes"),
-
                         # Maintenance
-                        ListItem(Label("[dim]--- Maintenance ---[/dim]"), disabled=True),
+                        ListItem(
+                            Label("[dim]--- Maintenance ---[/dim]"), disabled=True
+                        ),
                         ListItem(Label("Compact Email Index"), id="op_compact_index"),
                         ListItem(Label("Compact Prospects"), id="op_compact_prospects"),
                         ListItem(Label("Compile Lifecycle"), id="op_compile_lifecycle"),
-                        ListItem(Label("Compile To-Call List"), id="op_compile_to_call"),
+                        ListItem(
+                            Label("Compile To-Call List"), id="op_compile_to_call"
+                        ),
                         ListItem(Label("Restore Company Names"), id="op_restore_names"),
                         ListItem(Label("Push Local Queue"), id="op_push_queue"),
                         ListItem(Label("Audit Integrity"), id="op_audit_integrity"),
                         ListItem(Label("Audit Queue"), id="op_audit_queue"),
                         ListItem(Label("Purge Pending"), id="op_purge_pending"),
-                        ListItem(Label("Rollout Discovery Batch"), id="op_rollout_discovery"),
+                        ListItem(
+                            Label("Rollout Discovery Batch"), id="op_rollout_discovery"
+                        ),
                         ListItem(Label("Cluster Path Check"), id="op_path_check"),
                         id="sidebar_operations",
-                        classes="sub-sidebar-list"
+                        classes="sub-sidebar-list",
                     )
-            
+
             # Center: The main content area
             with Container(id="app_main_content"):
                 yield LoadingIndicator(id="app_loading", classes="hidden")
 
                 # Content Roots
-                with VerticalScroll(id="view_operations", classes="category-content-root"):
+                with VerticalScroll(
+                    id="view_operations", classes="category-content-root"
+                ):
                     with Horizontal(id="op_header_row", classes="pane-header"):
-                        yield Label("Select an operation.", id="op_title", classes="op-title")
+                        yield Label(
+                            "Select an operation.", id="op_title", classes="op-title"
+                        )
                         yield Static("", id="op_status_indicator")
                     yield Static("", id="op_description", classes="op-description")
                     yield Label("", id="op_last_run", classes="op-timestamp")
@@ -113,17 +134,25 @@ class ApplicationView(Container):
                         yield Label("Operation Parameters:", id="op_params_title")
                         with Horizontal(id="op_name_container"):
                             yield Label("Batch Name:", id="op_name_label")
-                            yield Input(placeholder="rollout_1", id="op_name_input", value="rollout_1")
+                            yield Input(
+                                placeholder="rollout_1",
+                                id="op_name_input",
+                                value="rollout_1",
+                            )
                         with Horizontal(id="op_limit_container"):
                             yield Label("Limit (Target Amount):", id="op_limit_label")
-                            yield Input(placeholder="20", id="op_limit_input", value="20")
+                            yield Input(
+                                placeholder="20", id="op_limit_input", value="20"
+                            )
                     yield Container(id="op_content_area")
                     with VerticalScroll(id="op_log_preview_container"):
                         yield Static("", id="op_log_preview")
 
                 yield QueueDetail(id="queue_detail", classes="category-content-root")
                 yield IndexDetail(id="index_detail", classes="category-content-root")
-                yield CampaignDetail(id="campaign-detail", classes="category-content-root")
+                yield CampaignDetail(
+                    id="campaign-detail", classes="category-content-root"
+                )
 
                 yield StatusView(id="view_status", classes="category-content-root")
                 yield ClusterView(id="view_cluster", classes="category-content-root")
@@ -135,15 +164,16 @@ class ApplicationView(Container):
 
     async def on_mount(self) -> None:
         from ..app import time_perf
+
         with time_perf("TUI: ApplicationView.on_mount"):
             self.query_one("#app_loading").display = False
             nav_list = self.query_one("#app_nav_list", ListView)
             nav_list.index = 0
-            
+
             # Use call_after_refresh to ensure focus sticks
             def initial_focus() -> None:
                 nav_list.focus()
-            
+
             self.query_one("#op_params_area").display = False
             # Initial switch - don't steal focus from top nav
             self.call_after_refresh(self.show_category, "campaigns", focus=False)
@@ -163,7 +193,7 @@ class ApplicationView(Container):
             "operations": "#sidebar_operations",
             "campaigns": "#sidebar_campaigns",
             "indexes": "#sidebar_indexes",
-            "queues": "#sidebar_queues"
+            "queues": "#sidebar_queues",
         }
         sel = cmap.get(self.active_category)
         if sel:
@@ -179,13 +209,20 @@ class ApplicationView(Container):
             return
 
         if event.key == "h":
-            if self.active_category in ["queues", "indexes"] and focused.id in ["queue_detail", "index_detail"]:
+            if self.active_category in ["queues", "indexes"] and focused.id in [
+                "queue_detail",
+                "index_detail",
+            ]:
                 sw = self._get_active_sidebar_widget()
                 if sw:
                     sw.focus()
                 event.stop()
                 return
-            if isinstance(focused, ListView) and focused.id and str(focused.id).startswith("sidebar_"):
+            if (
+                isinstance(focused, ListView)
+                and focused.id
+                and str(focused.id).startswith("sidebar_")
+            ):
                 self.query_one("#app_nav_list", ListView).focus()
                 event.stop()
                 return
@@ -195,7 +232,10 @@ class ApplicationView(Container):
                 event.stop()
                 return
 
-        if isinstance(focused, ListView) and (focused.id == "app_nav_list" or (focused.id and str(focused.id).startswith("sidebar_"))):
+        if isinstance(focused, ListView) and (
+            focused.id == "app_nav_list"
+            or (focused.id and str(focused.id).startswith("sidebar_"))
+        ):
             if event.key == "j":
                 focused.action_cursor_down()
                 event.prevent_default()
@@ -220,13 +260,24 @@ class ApplicationView(Container):
         """Handle selection in any of our ListViews."""
         if event.list_view.id == "app_nav_list":
             index = event.list_view.index
-            categories = ["campaigns", "cluster", "status", "indexes", "queues", "operations"]
+            categories = [
+                "campaigns",
+                "cluster",
+                "status",
+                "indexes",
+                "queues",
+                "operations",
+            ]
             if index is not None and 0 <= index < len(categories):
                 self.show_category(categories[index])
         elif event.list_view.id == "sidebar_operations":
             try:
                 # Selection in sidebar just shifts focus to detail for editing
                 self.query_one("#view_operations").focus()
+
+                # If editable, jump straight into edit mode
+                if self.active_op_id in ["op_compile_to_call", "op_rollout_discovery"]:
+                    self.action_edit_op_params()
             except Exception:
                 pass
         elif event.list_view.id == "sidebar_queues":
@@ -245,17 +296,24 @@ class ApplicationView(Container):
     def show_category(self, category: str, focus: bool = True) -> None:
         """Exclusively switch the visible content and sidebars for a category."""
         from ..app import time_perf
+
         with time_perf(f"TUI: ApplicationView.show_category ({category})"):
             self.active_category = category
-            
+
             # Map categories to their sidebar and content view IDs
             category_map: Dict[str, Dict[str, Optional[str]]] = {
-                "campaigns":  {"sidebar": "sidebar_campaigns",  "view": "campaign-detail"},
-                "cluster":    {"sidebar": None,                 "view": "view_cluster"},
-                "status":     {"sidebar": None,                 "view": "view_status"},
-                "indexes":    {"sidebar": "sidebar_indexes",    "view": "index_detail"},
-                "queues":     {"sidebar": "sidebar_queues",     "view": "queue_detail"},
-                "operations": {"sidebar": "sidebar_operations", "view": "view_operations"}
+                "campaigns": {
+                    "sidebar": "sidebar_campaigns",
+                    "view": "campaign-detail",
+                },
+                "cluster": {"sidebar": None, "view": "view_cluster"},
+                "status": {"sidebar": None, "view": "view_status"},
+                "indexes": {"sidebar": "sidebar_indexes", "view": "index_detail"},
+                "queues": {"sidebar": "sidebar_queues", "view": "queue_detail"},
+                "operations": {
+                    "sidebar": "sidebar_operations",
+                    "view": "view_operations",
+                },
             }
 
             target = category_map.get(category, {})
@@ -264,8 +322,10 @@ class ApplicationView(Container):
 
             # 1. Update Sidebars
             for sidebar in self.query(".sub-sidebar-list"):
-                sidebar.styles.display = "block" if sidebar.id == target_sidebar_id else "none"
-            
+                sidebar.styles.display = (
+                    "block" if sidebar.id == target_sidebar_id else "none"
+                )
+
             sub_nav = self.query_one("#app_sub_nav_container")
             if category in ["status", "cluster"]:
                 sub_nav.styles.display = "none"
@@ -277,7 +337,7 @@ class ApplicationView(Container):
             for child in main_content.children:
                 if child.id == "app_loading":
                     continue
-                is_target = (child.id == target_view_id)
+                is_target = child.id == target_view_id
                 child.display = is_target
 
             # 3. Category Specific UI Updates
@@ -304,7 +364,9 @@ class ApplicationView(Container):
                     item = sidebar.highlighted_child
                     if item and item.id:
                         idx_id = str(item.id).replace("idx_", "")
-                        self.app.query_one("#index_detail", IndexDetail).update_detail(idx_id)
+                        self.app.query_one("#index_detail", IndexDetail).update_detail(
+                            idx_id
+                        )
                 except Exception:
                     pass
             elif category == "operations":
@@ -325,10 +387,12 @@ class ApplicationView(Container):
                     item = sidebar.highlighted_child
                     if item and item.id:
                         q_id = str(item.id).replace("q_", "")
-                        self.app.query_one("#queue_detail", QueueDetail).update_detail(q_id)
+                        self.app.query_one("#queue_detail", QueueDetail).update_detail(
+                            q_id
+                        )
                 except Exception:
                     pass
-            
+
             def shift_focus() -> None:
                 try:
                     if category in ["status", "cluster"]:
@@ -340,7 +404,7 @@ class ApplicationView(Container):
                             sw.focus()
                 except Exception:
                     pass
-            
+
             app = cast("CocliApp", self.app)
             if focus:
                 if app.services.sync_search:
@@ -350,18 +414,28 @@ class ApplicationView(Container):
 
     def update_recent_runs(self) -> None:
         from ..app import time_perf
+
         with time_perf("TUI: ApplicationView.update_recent_runs"):
             try:
                 app = cast("CocliApp", self.app)
                 runs_list = self.query_one("#recent_runs_list", ListView)
-                
+
                 # Simple optimization: only rebuild if the count has changed
-                if len(runs_list.children) == len(app.process_runs) and len(app.process_runs) > 0:
+                if (
+                    len(runs_list.children) == len(app.process_runs)
+                    and len(app.process_runs) > 0
+                ):
                     return
-                
+
                 runs_list.clear()
                 for run in reversed(app.process_runs[-15:]):
-                    status_color = "green" if run.status == "success" else "yellow" if run.status == "running" else "red"
+                    status_color = (
+                        "green"
+                        if run.status == "success"
+                        else "yellow"
+                        if run.status == "running"
+                        else "red"
+                    )
                     timestamp = run.start_time.strftime("%H:%M:%S")
                     label = f"[{status_color}]{run.title}[/] [dim]({timestamp})[/]"
                     runs_list.append(ListItem(Static(label)))
@@ -372,30 +446,45 @@ class ApplicationView(Container):
     @work(exclusive=True)
     async def handle_op_highlight(self, event: ListView.Highlighted) -> None:
         from ..app import time_perf
+
         if not event.item or not event.item.id:
             return
-        
+
+        op_id = str(event.item.id)
+        self.active_op_id = op_id
+
         # Debounce
         app = cast("CocliApp", self.app)
         if not app.services.sync_search:
             await asyncio.sleep(0.25)
 
-        op_id = str(event.item.id)
         with time_perf(f"TUI: handle_op_highlight ({op_id})"):
-            op = await asyncio.to_thread(app.services.operation_service.get_details, op_id)
+            op = await asyncio.to_thread(
+                app.services.operation_service.get_details, op_id
+            )
             if not op:
                 return
-            
+
             try:
                 self.query_one("#op_title", Label).update(op.title)
                 self.query_one("#op_description", Static).update(op.description)
                 params_area = self.query_one("#op_params_area", Vertical)
-                params_area.display = (op_id in ["op_compile_to_call", "op_rollout_discovery"])
-                self.query_one("#op_name_container").display = (op_id == "op_rollout_discovery")
-                self.query_one("#op_limit_container").display = (op_id in ["op_compile_to_call", "op_rollout_discovery"])
+                params_area.display = op_id in [
+                    "op_compile_to_call",
+                    "op_rollout_discovery",
+                ]
+                self.query_one("#op_name_container").display = (
+                    op_id == "op_rollout_discovery"
+                )
+                self.query_one("#op_limit_container").display = op_id in [
+                    "op_compile_to_call",
+                    "op_rollout_discovery",
+                ]
                 content_area = self.query_one("#op_content_area", Container)
                 content_area.remove_children()
-                self.query_one("#op_last_run", Label).update(f"Last Run: {self.get_last_run_info(op_id)}")
+                self.query_one("#op_last_run", Label).update(
+                    f"Last Run: {self.get_last_run_info(op_id)}"
+                )
             except Exception as e:
                 logger.error(f"Error updating op header: {e}")
 
@@ -403,9 +492,10 @@ class ApplicationView(Container):
     @work(exclusive=True)
     async def handle_index_highlight(self, event: ListView.Highlighted) -> None:
         from ..app import time_perf
+
         if not event.item or not event.item.id:
             return
-        
+
         # Debounce
         app = cast("CocliApp", self.app)
         if not app.services.sync_search:
@@ -431,9 +521,10 @@ class ApplicationView(Container):
     @work(exclusive=True)
     async def handle_queue_highlight(self, event: ListView.Highlighted) -> None:
         from ..app import time_perf
+
         if not event.item or not event.item.id:
             return
-        
+
         # Debounce
         app = cast("CocliApp", self.app)
         if not app.services.sync_search:
@@ -455,6 +546,19 @@ class ApplicationView(Container):
         except Exception:
             pass
 
+    def action_edit_op_params(self) -> None:
+        """Action to focus the operation parameters."""
+        if self.active_op_id == "op_compile_to_call":
+            try:
+                self.query_one("#op_limit_input", Input).focus()
+            except Exception:
+                pass
+        elif self.active_op_id == "op_rollout_discovery":
+            try:
+                self.query_one("#op_name_input", Input).focus()
+            except Exception:
+                pass
+
     def action_view_full_log(self) -> None:
         if self.current_log_content:
             focused = self.app.focused
@@ -464,7 +568,11 @@ class ApplicationView(Container):
                     op_id = str(item.id)
                     app = cast("CocliApp", self.app)
                     op = app.services.operation_service.get_details(op_id)
-                    self.app.push_screen(LogViewerModal(op.title if op else "Log", self.current_log_content))
+                    self.app.push_screen(
+                        LogViewerModal(
+                            op.title if op else "Log", self.current_log_content
+                        )
+                    )
 
     def action_run_active_operation(self) -> None:
         """Standardized shortcut to run the operation currently highlighted in the sidebar.
@@ -482,9 +590,13 @@ class ApplicationView(Container):
 
     def get_last_run_info(self, op_id: str) -> str:
         app = cast("CocliApp", self.app)
-        runs = [r for r in app.process_runs if r.op_id == op_id and r.status == "success"]
+        runs = [
+            r for r in app.process_runs if r.op_id == op_id and r.status == "success"
+        ]
         if runs:
-            return max(runs, key=lambda r: r.start_time).start_time.strftime("%Y-%m-%d %H:%M:%S")
+            return max(runs, key=lambda r: r.start_time).start_time.strftime(
+                "%Y-%m-%d %H:%M:%S"
+            )
         return "Never"
 
     def log_callback(self, text: str) -> None:
@@ -508,13 +620,17 @@ class ApplicationView(Container):
         params: Dict[str, Any] = {}
         if op_id == "op_compile_to_call":
             try:
-                params["limit"] = int(self.query_one("#op_limit_input", Input).value or 20)
+                params["limit"] = int(
+                    self.query_one("#op_limit_input", Input).value or 20
+                )
             except ValueError:
                 params["limit"] = 20
         elif op_id == "op_rollout_discovery":
             try:
                 params["batch_name"] = self.query_one("#op_name_input", Input).value
-                params["limit"] = int(self.query_one("#op_limit_input", Input).value or 50)
+                params["limit"] = int(
+                    self.query_one("#op_limit_input", Input).value or 50
+                )
             except ValueError:
                 params["limit"] = 50
         elif op_id == "op_purge_pending":
@@ -522,13 +638,16 @@ class ApplicationView(Container):
             pass
 
         from ..navigation import ProcessRun
+
         run_record = ProcessRun(op_id, op.title)
         app.process_runs.append(run_record)
         self.call_after_refresh(self.update_recent_runs)
 
         try:
             with capture_logs(self.log_callback):
-                await app.services.operation_service.execute(op_id, log_callback=self.log_callback, params=params)
+                await app.services.operation_service.execute(
+                    op_id, log_callback=self.log_callback, params=params
+                )
             run_record.status = "success"
             indicator.update("[bold green]Success[/bold green]")
             self.app.notify(f"{op.title} Complete")
@@ -539,10 +658,16 @@ class ApplicationView(Container):
         finally:
             run_record.end_time = datetime.now()
             self.call_after_refresh(self.update_recent_runs)
-            self.call_after_refresh(lambda: self.app.query_one("#op_last_run", Label).update(f"Last Run: {self.get_last_run_info(op_id)}"))
+            self.call_after_refresh(
+                lambda: self.app.query_one("#op_last_run", Label).update(
+                    f"Last Run: {self.get_last_run_info(op_id)}"
+                )
+            )
 
     @on(CampaignSelection.CampaignSelected)
-    async def handle_campaign_activation(self, message: CampaignSelection.CampaignSelected) -> None:
+    async def handle_campaign_activation(
+        self, message: CampaignSelection.CampaignSelected
+    ) -> None:
         try:
             campaign_name = message.campaign_name
             app = cast("CocliApp", self.app)
@@ -562,17 +687,18 @@ class ApplicationView(Container):
         except Exception as e:
             logger.error(f"Failed to activate campaign: {e}")
 
-
     @on(CampaignSelection.CampaignHighlighted)
     @work(exclusive=True)
-    async def handle_campaign_highlight(self, message: CampaignSelection.CampaignHighlighted) -> None:
+    async def handle_campaign_highlight(
+        self, message: CampaignSelection.CampaignHighlighted
+    ) -> None:
         from ..app import time_perf
-        
+
         # Debounce to prevent rapid navigation stutter
         app = cast("CocliApp", self.app)
         if not app.services.sync_search:
             await asyncio.sleep(0.25)
-        
+
         with time_perf(f"TUI: handle_campaign_highlight ({message.campaign_name})"):
             try:
                 campaign = await asyncio.to_thread(Campaign.load, message.campaign_name)
@@ -582,6 +708,9 @@ class ApplicationView(Container):
                 logger.error(f"Failed to load campaign {message.campaign_name}: {e}")
                 try:
                     detail = self.app.query_one("#campaign-detail", CampaignDetail)
-                    detail.display_error("Error Loading Campaign", f"Invalid Campaign: {message.campaign_name}\n\n{str(e)}")
+                    detail.display_error(
+                        "Error Loading Campaign",
+                        f"Invalid Campaign: {message.campaign_name}\n\n{str(e)}",
+                    )
                 except Exception:
                     pass
