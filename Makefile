@@ -162,6 +162,16 @@ commit-indexes:
 commit-data: commit-campaigns commit-companies commit-indexes
 	cd data && git add . && git commit -m "chore: snapshot data directory" || echo "No changes to commit" ; cd -
 
+.PHONY: review-count-list
+review-count-list: install ## Produce lists of companies with mismatched review counts
+	@python3 scripts/review_count/identify_bad_review_count.py
+	@python3 scripts/review_count/identify_bad_company_index_data.py
+
+.PHONY: review-count-update
+review-count-update: install ## Update companies with mismatched review counts
+	@python3 scripts/review_count/clean_bad_review_count.py
+	@python3 scripts/review_count/apply_bad_review_count.py
+
 clean-logs: ## Remove logs and journals older than 7 days
 	find .logs/ -name "*.log" -mtime +7 -delete
 	find .logs/ -name "*.usv" -mtime +7 -delete

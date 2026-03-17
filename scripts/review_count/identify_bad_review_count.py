@@ -31,4 +31,5 @@ with open(output_path, "w", encoding="utf-8") as f:
         writer.writerow(row)
 
 print(f"Found {len(results)} problematic records.")
-print(f"Wrote report to {output_path}")
+print(f"Path: {output_path.absolute()}")
+print(f"Content:\n{output_path.read_text(encoding='utf-8')}")

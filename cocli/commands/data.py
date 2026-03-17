@@ -1,10 +1,12 @@
-import typer
+import duckdb
+import json
 from pathlib import Path
 from rich.console import Console
 from rich.table import Table
-import json
-import duckdb
+import typer
+from cocli.utils.usv_utils import USVReader
 from ..utils.duckdb_utils import find_datapackage, load_usv_to_duckdb
+
 
 app = typer.Typer(no_args_is_help=True)
 console = Console()
@@ -106,3 +108,106 @@ def search(
     except Exception as e:
         console.print(f"[red]Error querying data: {e}[/red]")
         raise typer.Exit(1)
+
+
+@app.command()
+def inspect(
+    file_path: Path,
+    row_number: int = typer.Option(
+        1, "--row-number", "-r", help="Row number to inspect (1-indexed)."
+    ),
+) -> None:
+    """Show the index, name, and content for a specific row in a USV file."""
+    if not file_path.exists():
+        console.print(f"[red]Error: File not found: {file_path}[/red]")
+        raise typer.Exit(1)
+
+    dp_path = find_datapackage(file_path)
+    if not dp_path:
+        console.print(
+            f"[red]Error: Could not find authoritative datapackage.json for: {file_path}[/red]"
+        )
+        raise typer.Exit(1)
+
+    with open(dp_path, "r") as f:
+        pkg = json.load(f)
+
+    resource = None
+    filename = file_path.name
+    for res in pkg.get("resources", []):
+        if res.get("path") == filename:
+            resource = res
+            break
+
+    if not resource:
+        console.print(
+            f"[red]Error: No resource found in {dp_path} for: {filename}[/red]"
+        )
+        raise typer.Exit(1)
+
+    fields = resource.get("schema", {}).get("fields", [])
+
+    # Read row
+    with open(file_path, "r", encoding="utf-8") as f:
+        reader = USVReader(f)
+        row = None
+        for i, r in enumerate(reader):
+            if i == row_number - 1:
+                row = r
+                break
+
+        if row is None:
+            console.print(
+                f"[red]Error: Row {row_number} not found in {file_path.name}[/red]"
+            )
+            raise typer.Exit(1)
+
+    console.print(f"[bold]Inspection for {file_path.name}, Row {row_number}:[/bold]")
+    for i, field in enumerate(fields):
+        val = row[i] if i < len(row) else ""
+        console.print(f"{i}: {field['name']:<20} | {val}")
+
+    dp_path = find_datapackage(file_path)
+    if not dp_path:
+        console.print(
+            f"[red]Error: Could not find authoritative datapackage.json for: {file_path}[/red]"
+        )
+        raise typer.Exit(1)
+
+    with open(dp_path, "r") as f:
+        pkg = json.load(f)
+
+    resource = None
+    filename = file_path.name
+    for res in pkg.get("resources", []):
+        if res.get("path") == filename:
+            resource = res
+            break
+
+    if not resource:
+        console.print(
+            f"[red]Error: No resource found in {dp_path} for: {filename}[/red]"
+        )
+        raise typer.Exit(1)
+
+    fields = resource.get("schema", {}).get("fields", [])
+
+    # Read row
+    with open(file_path, "r", encoding="utf-8") as f:
+        reader = USVReader(f)
+        row = None
+        for i, r in enumerate(reader):
+            if i == row_number - 1:
+                row = r
+                break
+
+        if row is None:
+            console.print(
+                f"[red]Error: Row {row_number} not found in {file_path.name}[/red]"
+            )
+            raise typer.Exit(1)
+
+    console.print(f"[bold]Inspection for {file_path.name}, Row {row_number}:[/bold]")
+    for i, field in enumerate(fields):
+        val = row[i] if i < len(row) else ""
+        console.print(f"{i}: {field['name']:<20} | {val}")
