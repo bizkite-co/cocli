@@ -6,11 +6,11 @@ import json
 import duckdb
 from ..utils.duckdb_utils import find_datapackage, load_usv_to_duckdb
 
-app = typer.Typer()
+app = typer.Typer(no_args_is_help=True)
 console = Console()
 
 
-@app.command()
+@app.command(name="list")
 def list_schemas() -> None:
     """List all known frictionless data schemas (datapackage.json files) in the project."""
     root = Path.cwd()
@@ -21,10 +21,15 @@ def list_schemas() -> None:
     table.add_column("Resources")
 
     for dp in dps:
-        with open(dp, "r") as f:
-            pkg = json.load(f)
-            resources = [res.get("name", "unknown") for res in pkg.get("resources", [])]
-            table.add_row(str(dp.relative_to(root)), ", ".join(resources))
+        try:
+            with open(dp, "r") as f:
+                pkg = json.load(f)
+                resources = [
+                    res.get("name", "unknown") for res in pkg.get("resources", [])
+                ]
+                table.add_row(str(dp.relative_to(root)), ", ".join(resources))
+        except Exception as e:
+            console.print(f"[red]Error reading {dp}: {e}[/red]")
 
     console.print(table)
 

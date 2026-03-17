@@ -33,7 +33,7 @@ columns = [row[1] for row in con.execute("PRAGMA table_info(prospects)").fetchal
 with open(output_usv, "w", encoding="utf-8") as f:
     writer = USVWriter(f)  # USVWriter uses UNIT_SEP
     # Fetch all data, selecting columns to guarantee order
-    query = f"SELECT {', '.join([f'"{c}"' for c in columns])} FROM prospects"
+    query = "SELECT " + ", ".join([f'"{c}"' for c in columns]) + " FROM prospects"
     data = con.execute(query).fetchall()
 
     for row in data:

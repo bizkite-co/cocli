@@ -27,7 +27,7 @@ with open(usv_path, "r", encoding="utf-8") as f:
 
             # Print remaining USV row elements if they exist
             if len(row) > len(fields):
-                print(f"--- Extra elements found ---")
+                print("--- Extra elements found ---")
                 for i in range(len(fields), len(row)):
                     print(f"{i:02}: EXTRA                 | {row[i]}")
             break

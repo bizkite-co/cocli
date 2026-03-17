@@ -1,8 +1,6 @@
 import pytest
 from unittest.mock import MagicMock
 from cocli.tui.widgets.confirm_screen import ConfirmScreen
-from textual.app import ComposeResult
-from textual.widgets import Static
 
 
 @pytest.mark.asyncio

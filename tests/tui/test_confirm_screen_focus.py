@@ -1,9 +1,6 @@
 import pytest
 from unittest.mock import MagicMock
 from cocli.tui.widgets.confirm_screen import ConfirmScreen
-from cocli.tui.widgets.company_list import CompanyList
-from textual.app import ComposeResult
-from textual.widgets import Static
 from textual.events import Key
 
 

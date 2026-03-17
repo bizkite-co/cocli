@@ -1,10 +1,8 @@
 import pytest
-from unittest.mock import MagicMock, AsyncMock
+from unittest.mock import MagicMock
 from textual.app import App, ComposeResult
 from textual.widgets import ListView, ListItem, Label
 from cocli.tui.widgets.confirm_screen import ConfirmScreen
-from cocli.tui.widgets.company_list import CompanyList
-from textual.events import Key
 
 
 # Mocking the app structure to test event propagation
