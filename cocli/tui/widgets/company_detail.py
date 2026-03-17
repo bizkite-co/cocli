@@ -1267,7 +1267,7 @@ class CompanyDetail(Container):
     def _create_meetings_table(self) -> MeetingsTable:
         table = MeetingsTable(id="meetings-table")
         table.add_column("Date/Time", width=20)
-        table.add_column("Preview", width=60)
+        table.add_column("Preview", width=40)
         meetings = self.company_data.get("meetings", [])
         for m in meetings:
             raw_dt = m.get("datetime_utc")
@@ -1282,13 +1282,13 @@ class CompanyDetail(Container):
             content = m.get("content", "")[:100].replace("\n", " ")
             m_type = m.get("type", "meeting")
             preview_text = wrap_content(f"[{m_type}] {content}")
-            table.add_row(dt_str, preview_text)
+            table.add_row(dt_str, preview_text, height=PREVIEW_MAX_LINES)
         return table
 
     def _create_notes_table(self) -> NotesTable:
         table = NotesTable(id="notes-table")
         table.add_column("Date", width=12)
-        table.add_column("Preview", width=60)
+        table.add_column("Preview", width=40)
         notes = self.company_data.get("notes", [])
         for n in notes:
             ts = n.get("timestamp")
@@ -1298,5 +1298,5 @@ class CompanyDetail(Container):
                 ts_str = str(ts)[:10]
             content = n.get("content", "")[:100].replace("\n", " ")
             preview_text = wrap_content(content)
-            table.add_row(ts_str, preview_text)
+            table.add_row(ts_str, preview_text, height=PREVIEW_MAX_LINES)
         return table
