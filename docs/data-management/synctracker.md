@@ -114,9 +114,9 @@ nodes = [
 
 ## Implementation Tasks
 
-- [ ] Update `docs/_schema/rpi-worker/README.md` to reflect data path
-- [ ] Create `scripts/sync_pi_results.py`
-- [ ] Create `cocli/core/sync_tracker.py`
-- [ ] Add CLI command to `cocli/commands/sync.py`
-- [ ] Create `cocli/application/pi_sync_service.py`
+- [x] Update `docs/_schema/rpi-worker/README.md` to reflect data path
+- [x] Create `scripts/sync_pi_results.py`
+- [x] Create `cocli/core/sync_tracker.py`
+- [x] Add CLI command to `cocli/commands/sync.py`
+- [x] Create `cocli/application/pi_sync_service.py`
 - [ ] Integrate auto-sync into TUI startup
