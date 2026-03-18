@@ -7,7 +7,7 @@ manager = ProspectsIndexManager(campaign)
 
 
 # Robust area code extractor
-def get_area_code(phone_str):
+def get_area_code(phone_str: str) -> str:
     if not phone_str:
         return ""
     match = re.search(r"^1?(\d{3})", str(phone_str))
