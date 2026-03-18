@@ -119,4 +119,4 @@ nodes = [
 - [x] Create `cocli/core/sync_tracker.py`
 - [x] Add CLI command to `cocli/commands/sync.py`
 - [x] Create `cocli/application/pi_sync_service.py`
-- [ ] Integrate auto-sync into TUI startup
+- [x] Integrate auto-sync into TUI startup

@@ -482,6 +482,50 @@ class CocliApp(App[None]):
         if len(self.command_history) > 15:
             self.command_history = self.command_history[:15]
 
+    def _start_pi_sync_background(self) -> None:
+        """
+        Check if PI sync is needed and run it in a background thread.
+        This is non-blocking and updates the timestamp on completion.
+        """
+        from ..core.config import get_campaign
+        from cocli.core.sync_tracker import SyncTracker
+        import threading
+        import logging
+
+        logger = logging.getLogger(__name__)
+        campaign = get_campaign()
+
+        if not campaign:
+            return
+
+        tracker = SyncTracker(campaign)
+        if not tracker.needs_sync():
+            return
+
+        def _run_sync() -> None:
+            try:
+                from cocli.application.pi_sync_service import PiSyncService
+
+                service = PiSyncService(campaign)
+                service.sync_all_nodes(blocking=True)
+                summary = service.get_summary()
+
+                if summary["failed"] == 0:
+                    tracker.update_last_sync()
+                    logger.info(
+                        f"PI sync completed: {summary['total_files_synced']} files synced"
+                    )
+                else:
+                    logger.warning(
+                        f"PI sync completed with {summary['failed']} failures"
+                    )
+            except Exception as e:
+                logger.error(f"PI sync failed: {e}")
+
+        thread = threading.Thread(target=_run_sync, daemon=True)
+        thread.start()
+        tui_debug_log(f"APP: Started background PI sync for campaign: {campaign}")
+
     async def on_mount(self) -> None:
         with time_perf("APP: on_mount"):
             tui_debug_log("--- APP START ---")
@@ -501,6 +545,9 @@ class CocliApp(App[None]):
                     tui_debug_log("APP: Gossip Bridge started.")
                 except Exception as e:
                     tui_debug_log(f"APP: Gossip Bridge failed to start: {e}")
+
+            # Start PI sync check in background (non-blocking)
+            self._start_pi_sync_background()
 
             if self.auto_show:
                 await self.action_show_companies()
