@@ -16,12 +16,12 @@ init: ## Initialize the cocli configuration file and install git hooks
 # ==============================================================================
 .PHONY: build
 build: install ## Build the application distributables (wheel and sdist)
-	@if $(TASKHASH) --check --task build $(if $(FORCE),--force); then \
+	@if $(TASKHASH) check build; then \
 		echo "Code signature matches for task 'build'. Skipping build."; \
 	else \
 		echo "Building the application..."; \
 		uv run python -m build && \
-		$(TASKHASH) --update --task build; \
+		$(TASKHASH) update build; \
 	fi
 
 SHELL := /bin/bash
@@ -94,19 +94,19 @@ logname: ## Get the latest log file name
 # Note: TUI integration tests are run separately due to terminal driver conflicts.
 # Use 'make test-tui-integration' to run them.
 test: install lint ## Run all non-TUI tests using pytest (incremental)
-	@if $(TASKHASH) --check --task test $(if $(FORCE),--force); then \
+	@if $(TASKHASH) check test; then \
 		echo "Code signature matches for task 'test'. Skipping tests."; \
 	else \
 		source $(VENV_DIR)/bin/activate && PYTHONPATH=. pytest -s tests/ --quiet --ignore=tests/e2e && \
-		$(TASKHASH) --update --task test; \
+		$(TASKHASH) update test; \
 	fi
 
 test-unit: install lint ## Run unit tests (incremental)
-	@if $(TASKHASH) --check --task test-unit $(if $(FORCE),--force); then \
+	@if $(TASKHASH) check test-unit; then \
 		echo "Code signature matches for task 'test-unit'. Skipping unit tests."; \
 	else \
 		source $(VENV_DIR)/bin/activate && PYTHONPATH=. pytest -s tests/ --ignore=tests/tui --ignore=tests/e2e && \
-		$(TASKHASH) --update --task test-unit; \
+		$(TASKHASH) update test-unit; \
 	fi
 
 test-tui-integration: install ## Run only the TUI integration tests
@@ -140,13 +140,13 @@ textual: ## Run the app in textual
 	textual run cocli.tui.app
 
 lint: ## Run ruff and mypy to perform static type checking (incremental)
-	@if $(TASKHASH) --check --task lint $(if $(FORCE),--force); then \
+	@if $(TASKHASH) check lint; then \
 		echo "Code signature matches for task 'lint'. Skipping lint."; \
 	else \
 		echo "Code changed. Running lint..."; \
 		$(VENV_DIR)/bin/ruff check . --fix && \
 		$(VENV_DIR)/bin/python -m mypy --config-file pyproject.toml . && \
-		$(TASKHASH) --update --task lint; \
+		$(TASKHASH) update lint; \
 	fi
 
 # Data Management Targets

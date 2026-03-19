@@ -1,5 +1,0 @@
-{
-  "includes": ["cocli", "scripts", "tests", "features", "Makefile", "pyproject.toml"],
-  "excludes": ["__pycache__", ".pyc", ".pyo", ".git", "data", "recovery", ".logs", ".code_signatures.json", "tools/taskhash/taskhash", "tools/taskhash/taskhash.go", "tools/taskhash/go.mod"],
-  "store": ".code_signatures.json"
-}

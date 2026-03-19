@@ -36,3 +36,5 @@ gemini-cli
 fullertonian-site
 .playwright/
 docs/issues
+tools/taskhash
+tools/taskhash/
