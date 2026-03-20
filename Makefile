@@ -210,7 +210,7 @@ install-global: ## Install the latest version of the app using pipx
 	pipx install .
 
 # Default Data Home (can be overridden by environment variable)
-COCLI_DATA_HOME ?= /home/mstouffer/.local/share/data
+COCLI_DATA_HOME ?= $(HOME)/.local/share/cocli_data
 
 .PHONY: import-turboship
 import-turboship: install ## Import turboship customers

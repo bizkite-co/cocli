@@ -1,43 +1,44 @@
 import duckdb
-from pathlib import Path
-from cocli.utils.duckdb_utils import find_datapackage, load_usv_to_duckdb
+from cocli.core.paths import paths
+from cocli.utils.duckdb_utils import load_usv_to_duckdb
 from cocli.utils.usv_utils import USVWriter
 
-# 1. Initialize DuckDB and load the data using the authoritative schema
 con = duckdb.connect(database=":memory:")
-usv_path = Path(
-    "data/campaigns/roadmap/indexes/google_maps_prospects/prospects.checkpoint.usv"
-)
-dp_path = find_datapackage(usv_path)
+
+campaign_name = "roadmap"
+usv_path = paths.campaign(campaign_name).index("google_maps_prospects").checkpoint
+dp_path = usv_path.parent / "datapackage.json"
 load_usv_to_duckdb(con, "prospects", usv_path, datapackage_path=dp_path)
 
-# 2. Fix the data using SQL by column name
-# Update rows where reviews_count matches the area code (digits 2, 3, 4 of the phone string)
-# Use REGEXP_EXTRACT for robust area code detection
+# Count affected rows before update
+res = con.execute("""
+    SELECT COUNT(*) FROM prospects
+    WHERE CAST(reviews_count AS VARCHAR) = REGEXP_EXTRACT(phone, '^1?[^\\d]*(\\d{3})', 1)
+      AND reviews_count IS NOT NULL
+""").fetchone()
+cleaned_count = res[0] if res else 0
+
+# Update
 con.execute("""
     UPDATE prospects 
     SET reviews_count = NULL 
-    WHERE CAST(reviews_count AS VARCHAR) = REGEXP_EXTRACT(phone, '^1?(\\d{3})', 1) 
+    WHERE CAST(reviews_count AS VARCHAR) = REGEXP_EXTRACT(phone, '^1?[^\\d]*(\\d{3})', 1)
       AND reviews_count IS NOT NULL
 """)
 
-# 3. Export back to USV
-# Must match the original USV format: delimiter '\x1f', no header
-output_usv = Path(
-    "data/campaigns/roadmap/indexes/google_maps_prospects/prospects.checkpoint.cleaned.usv"
-)
+print(f"Cleaned {cleaned_count} records.")
 
-# Get column names to ensure order
-columns = [row[1] for row in con.execute("PRAGMA table_info(prospects)").fetchall()]
+# Export
+output_usv = usv_path.parent / "prospects.checkpoint.cleaned.usv"
+
+columns = [row[1] for row in con.execute("PRAGMA table_info('prospects')").fetchall()]
 
 with open(output_usv, "w", encoding="utf-8") as f:
-    writer = USVWriter(f)  # USVWriter uses UNIT_SEP
-    # Fetch all data, selecting columns to guarantee order
+    writer = USVWriter(f)
     query = "SELECT " + ", ".join([f'"{c}"' for c in columns]) + " FROM prospects"
     data = con.execute(query).fetchall()
 
     for row in data:
-        # Trim strings
         trimmed_row = [str(cell).strip() if cell is not None else "" for cell in row]
         writer.writerow(trimmed_row)
 

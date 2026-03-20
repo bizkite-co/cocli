@@ -9,6 +9,7 @@ from pydantic import BaseModel
 
 logger = logging.getLogger(__name__)
 
+
 class ValidatedPath(BaseModel):
     path: Path
 
@@ -24,14 +25,17 @@ class ValidatedPath(BaseModel):
     def __str__(self) -> str:
         return str(self.path)
 
+
 def get_validated_dir(path: Path, description: str) -> ValidatedPath:
     try:
         return ValidatedPath(path=path.absolute())
     except Exception:
         return ValidatedPath(path=path.absolute())
 
+
 class PathObject:
     """Base class for hierarchical path objects with .ensure() support."""
+
     def __init__(self, path_factory: Callable[[], Path]):
         self._path_factory = path_factory
 
@@ -59,30 +63,38 @@ class PathObject:
     def is_dir(self) -> bool:
         return self.path.is_dir()
 
+
 class QueuePaths(PathObject):
     def state(self, folder: StateFolder) -> Path:
         return self.path / folder
-    
-    @property
-    def pending(self) -> Path: return self.state("pending")
-    @property
-    def completed(self) -> Path: return self.state("completed")
-    @property
-    def sideline(self) -> Path: return self.state("sideline")
 
     @property
-    def wal(self) -> Path: return self.state("wal")
+    def pending(self) -> Path:
+        return self.state("pending")
+
+    @property
+    def completed(self) -> Path:
+        return self.state("completed")
+
+    @property
+    def sideline(self) -> Path:
+        return self.state("sideline")
+
+    @property
+    def wal(self) -> Path:
+        return self.state("wal")
 
     @property
     def master(self) -> Path:
         """Returns the master mission file for the discovery-gen queue."""
         return self.path / "mission.usv"
 
+
 class IndexPaths(PathObject):
     @property
     def wal(self) -> Path:
         return self.path / "wal"
-    
+
     @property
     def checkpoint(self) -> Path:
         if self.path.name == IndexIdentity.PROSPECTS:
@@ -97,11 +109,12 @@ class IndexPaths(PathObject):
     def datapackage(self) -> Path:
         return self.path / "datapackage.json"
 
+
 class CampaignPaths(PathObject):
     @property
     def indexes(self) -> Path:
         return self.path / "indexes"
-    
+
     def index(self, name: IndexName, ensure: bool = False) -> IndexPaths:
         obj = IndexPaths(lambda: self.indexes / name)
         if ensure:
@@ -111,11 +124,11 @@ class CampaignPaths(PathObject):
     @property
     def queues(self) -> Path:
         return self.path / "queues"
-    
+
     @property
     def raw(self) -> Path:
         return self.path / "raw"
-    
+
     def queue(self, name: QueueName, ensure: bool = False) -> QueuePaths:
         obj = QueuePaths(lambda: self.queues / name)
         if ensure:
@@ -134,6 +147,7 @@ class CampaignPaths(PathObject):
     def config(self) -> Path:
         return self.path / "config.toml"
 
+
 class EntryPaths(PathObject):
     @property
     def index(self) -> Path:
@@ -146,7 +160,7 @@ class EntryPaths(PathObject):
     @property
     def enrichments(self) -> Path:
         return self.path / "enrichments"
-    
+
     def enrichment(self, name: str) -> Path:
         if not name.endswith(".md") and not name.endswith(".html"):
             name = f"{name}.md"
@@ -157,16 +171,18 @@ class EntryPaths(PathObject):
             filename = f"{filename}.md"
         return self.path / "meetings" / filename
 
+
 class CollectionPaths(PathObject):
     def entry(self, slug_or_path: str | Path, ensure: bool = False) -> EntryPaths:
         if isinstance(slug_or_path, Path):
             obj = EntryPaths(lambda: slug_or_path)
         else:
             obj = EntryPaths(lambda: self.path / slug_or_path)
-        
+
         if ensure:
             obj.ensure()
         return obj
+
 
 class WalPaths(PathObject):
     @property
@@ -176,38 +192,53 @@ class WalPaths(PathObject):
     def journal(self, node_id: str, date_str: Optional[str] = None) -> Path:
         if not date_str:
             from datetime import datetime, UTC
+
             date_str = datetime.now(UTC).strftime("%Y%m%d")
         return self.path / f"{date_str}_{node_id}.usv"
 
     def glob(self, pattern: str) -> Iterator[Path]:
         return self.path.glob(pattern)
 
+
 def get_data_home() -> Path:
-    """Determines the root data directory, respecting COCLI_DATA_HOME and COCLI_ENV."""
+    """Determines the root data directory, respecting COCLI_DATA_HOME.
+
+    When COCLI_DATA_HOME is set, it is used AS-IS. The symlink already
+    handles which data environment is desired. No suffix manipulation.
+
+    When COCLI_DATA_HOME is not set, platform defaults are used:
+    - PROD environment: uses platform default directly
+    - Non-PROD environments: append _env suffix to platform default
+    """
     from .environment import get_environment, Environment
-    
+
     if "COCLI_DATA_HOME" in os.environ:
-        # Resolve the path to follow symlinks to the actual data location
-        prod_base = Path(os.environ["COCLI_DATA_HOME"]).expanduser().resolve()
+        # Use COCLI_DATA_HOME as-is, no symlink resolution or suffix manipulation
+        return Path(os.environ["COCLI_DATA_HOME"]).expanduser().resolve()
+
+    # Platform defaults
+    if platform.system() == "Windows":
+        base = (
+            Path(os.environ.get("LOCALAPPDATA", Path.home() / "AppData" / "Local"))
+            / "cocli"
+        )
+    elif platform.system() == "Darwin":
+        base = Path.home() / "Library" / "Application Support" / "cocli"
     else:
-        if platform.system() == "Windows":
-            base = Path(os.environ.get("LOCALAPPDATA", Path.home() / "AppData" / "Local")) / "cocli"
-        elif platform.system() == "Darwin":
-            base = Path.home() / "Library" / "Application Support" / "cocli"
-        else:
-            base = Path.home() / ".local" / "share" / "cocli"
-        prod_base = base / "data"
-    
+        base = Path.home() / ".local" / "share" / "cocli"
+    prod_base = base / "data"
+
     env = get_environment()
     if env == Environment.PROD:
         return prod_base
     else:
-        # Parallel sibling: e.g., .../cocli_data -> .../cocli_data_dev
         return prod_base.parent / f"{prod_base.name}_{env.value}"
+
 
 class S3QueuePaths:
     def __init__(self, c_slug: str, q_name: QueueName):
         self.base = f"campaigns/{c_slug}/queues/{q_name}/"
+
     def pending(self, shard: str = "", task_id: str = "") -> str:
         res = self.base + "pending/"
         if shard:
@@ -216,23 +247,28 @@ class S3QueuePaths:
                 res += f"{task_id}/"
         return res
 
+
 class S3CampaignPaths:
     def __init__(self, campaign_slug: str):
         self.slug = campaign_slug
         self.root = f"campaigns/{campaign_slug}/"
+
     def index(self, name: IndexName) -> str:
         return f"{self.root}indexes/{name}/"
+
     def queue(self, name: QueueName) -> S3QueuePaths:
         return S3QueuePaths(self.slug, name)
+
 
 class S3DataPaths:
     def bucket(self, base_name: str) -> str:
         """Returns the environment-aware bucket name."""
         from .environment import get_environment, Environment
+
         env = get_environment()
         if env == Environment.PROD:
             return base_name
-        
+
         # Suffix with environment name for isolation
         if base_name.endswith(f"-{env.value}"):
             return base_name
@@ -240,23 +276,35 @@ class S3DataPaths:
 
     def campaign(self, slug: str) -> S3CampaignPaths:
         return S3CampaignPaths(slug)
-    def company(self, slug: str) -> str: return f"companies/{slug}/"
-    def company_index(self, slug: str) -> str: return f"companies/{slug}/_index.md"
-    def website_enrichment(self, slug: str) -> str: return f"companies/{slug}/enrichments/website.md"
+
+    def company(self, slug: str) -> str:
+        return f"companies/{slug}/"
+
+    def company_index(self, slug: str) -> str:
+        return f"companies/{slug}/_index.md"
+
+    def website_enrichment(self, slug: str) -> str:
+        return f"companies/{slug}/enrichments/website.md"
+
     @property
     def status_root(self) -> str:
         from .environment import get_environment, Environment
+
         env = get_environment()
         if env == Environment.PROD:
             return "status/"
         return f"{env.value}/status/"
-    def heartbeat(self, hostname: str) -> str: return f"{self.status_root}{hostname}.json"
+
+    def heartbeat(self, hostname: str) -> str:
+        return f"{self.status_root}{hostname}.json"
+
 
 class DataPaths:
     """
     Central Authority for Data Directory Paths (OMAP Implementation).
     Uses lazy factories to ensure paths always reflect current environment.
     """
+
     def __init__(self) -> None:
         self.s3 = S3DataPaths()
         self._root: Optional[Path] = None
@@ -323,6 +371,7 @@ class DataPaths:
             return str(entity_path.relative_to(self.root))
         except ValueError:
             return f"{entity_path.parent.name}/{entity_path.name}"
+
 
 # Authoritative Global Instance
 paths = DataPaths()

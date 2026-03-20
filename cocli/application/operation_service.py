@@ -565,12 +565,12 @@ class OperationService:
                     )
 
                     log_step("tag_leads", "pending")
-                    tagged = 0
+                    created = 0
                     limit = params.get("limit")
                     from cocli.models.companies.company import Company
 
                     for p in top_prospects:
-                        if limit and tagged >= limit:
+                        if limit and created >= limit:
                             break
 
                         if p.slug:
@@ -599,28 +599,53 @@ class OperationService:
                                     if clean_name and clean_name != company.name:
                                         company.name = clean_name
 
-                                if "to-call" not in company.tags:
-                                    # toggle_to_call now handles both the tag and the filesystem queue USV
-                                    await asyncio.to_thread(company.toggle_to_call)
-                                    tagged += 1
-                                    logger.info(f"Tagged {p.slug}")
-                                else:
-                                    # Already tagged, but might have updated metadata (rating/reviews/clean name)
-                                    await asyncio.to_thread(company.save)
-                                    logger.info(f"Already tagged {p.slug}")
+                                # Save updated metadata (no tagging)
+                                await asyncio.to_thread(company.save)
+                                logger.info(f"Updated {p.slug}")
+                                created += 1
                             else:
-                                logger.warning(f"Could not load company {p.slug}")
+                                # Company doesn't exist - create from prospect data
+                                logger.info(
+                                    f"Creating new company from prospect: {p.slug}"
+                                )
+                                from cocli.models.companies.company import Company
+                                from cocli.core.utils import create_company_files
+
+                                company_name = (
+                                    p.name.strip("\"'")
+                                    if p.name
+                                    else p.slug.replace("-", " ").title()
+                                )
+                                new_company = Company(
+                                    name=company_name,
+                                    slug=p.slug,
+                                    phone_1=p.phone_number,  # type: ignore[arg-type]
+                                    phone_number=p.phone_number,  # type: ignore[arg-type]
+                                    average_rating=p.average_rating,
+                                    reviews_count=p.reviews_count,
+                                    street_address=p.street_address,
+                                    city=p.city,
+                                    state=p.state,
+                                    zip_code=p.zip,
+                                    domain=p.domain,
+                                )
+                                company_dir = create_company_files(
+                                    new_company, new_company.get_local_path()
+                                )
+                                logger.info(f"Created company at {company_dir}")
+                                created += 1
+                                logger.info(f"Created company: {p.slug}")
                         else:
                             logger.warning(f"Prospect {p} has no slug")
 
                     log_step(
                         "tag_leads",
                         "success",
-                        f"Processed {len(top_prospects)} leads, tagged {tagged} new",
+                        f"Processed {len(top_prospects)} leads, created {created} companies",
                     )
 
                     report["top_leads_found"] = len(top_prospects)
-                    report["newly_tagged"] = tagged
+                    report["companies_created"] = created
                     return report
 
                 result = await run_workflow()

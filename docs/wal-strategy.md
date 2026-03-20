@@ -12,18 +12,18 @@ In a distributed scraping environment, multiple worker nodes (Raspberry Pis, clo
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
-│                    Distributed Workers                             │
-│  ┌──────────┐   ┌──────────┐   ┌──────────┐                   │
-│  │  Worker  │   │  Worker  │   │  Worker  │                   │
-│  │    1     │   │    2     │   │    3     │                   │
-│  └────┬─────┘   └────┬─────┘   └────┬─────┘                   │
-│       │              │              │                            │
-│       ▼              ▼              ▼                            │
+│                    Distributed Workers                          │
+│  ┌──────────┐   ┌──────────┐   ┌──────────┐                     │
+│  │  Worker  │   │  Worker  │   │  Worker  │                     │
+│  │    1     │   │    2     │   │    3     │                     │
+│  └────┬─────┘   └────┬─────┘   └────┬─────┘                     │
+│       │              │              │                           │
+│       ▼              ▼              ▼                           │
 │  ┌─────────────────────────────────────────┐                    │
-│  │           WAL Append-Only Files           │                    │
-│  │  wal/YYYYMMDD_worker1.usv              │                    │
-│  │  wal/YYYYMMDD_worker2.usv              │                    │
-│  │  wal/YYYYMMDD_worker3.usv              │                    │
+│  │        WAL Append-Only Files            │                    │
+│  │   wal/YYYYMMDD_worker1.usv              │                    │
+│  │   wal/YYYYMMDD_worker2.usv              │                    │
+│  │   wal/YYYYMMDD_worker3.usv              │                    │
 │  └─────────────────────────────────────────┘                    │
 │                      │                                          │
 │                      ▼                                          │
@@ -33,10 +33,10 @@ In a distributed scraping environment, multiple worker nodes (Raspberry Pis, clo
 │              └───────┬───────┘                                  │
 │                      │                                          │
 │                      ▼                                          │
-│        ┌─────────────────────────┐                             │
+│        ┌─────────────────────────┐                              │
 │        │  Deduplicated Index      │                             │
 │        │  indexes/checkpoint.usv  │                             │
-│        └─────────────────────────┘                             │
+│        └─────────────────────────┘                              │
 └─────────────────────────────────────────────────────────────────┘
 ```
 
