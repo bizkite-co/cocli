@@ -13,7 +13,8 @@ load_usv_to_duckdb(con, "prospects", usv_path, datapackage_path=dp_path)
 # Count affected rows before update
 res = con.execute("""
     SELECT COUNT(*) FROM prospects
-    WHERE CAST(reviews_count AS VARCHAR) = REGEXP_EXTRACT(phone, '^1?[^\\d]*(\\d{3})', 1)
+    WHERE (CAST(reviews_count AS VARCHAR) = REGEXP_EXTRACT(phone, '^1?[^\\d]*(\\d{3})', 1)
+           OR CAST(reviews_count AS VARCHAR) = REGEXP_EXTRACT(street_address, '^(\\d+)', 1))
       AND reviews_count IS NOT NULL
 """).fetchone()
 cleaned_count = res[0] if res else 0
@@ -22,7 +23,8 @@ cleaned_count = res[0] if res else 0
 con.execute("""
     UPDATE prospects 
     SET reviews_count = NULL 
-    WHERE CAST(reviews_count AS VARCHAR) = REGEXP_EXTRACT(phone, '^1?[^\\d]*(\\d{3})', 1)
+    WHERE (CAST(reviews_count AS VARCHAR) = REGEXP_EXTRACT(phone, '^1?[^\\d]*(\\d{3})', 1)
+           OR CAST(reviews_count AS VARCHAR) = REGEXP_EXTRACT(street_address, '^(\\d+)', 1))
       AND reviews_count IS NOT NULL
 """)
 

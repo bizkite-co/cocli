@@ -3,7 +3,9 @@ from cocli.models.companies.company import Company
 from cocli.utils.usv_utils import USVReader
 import re
 
-recovery_file = paths.companies.path / "recovery" / "bad-company-index-records.usv"
+recovery_file = (
+    paths.companies.path / "recovery" / "misaligned-review-count-records.usv"
+)
 
 slugs_to_fix = []
 if recovery_file.exists():
@@ -22,10 +24,17 @@ for slug in slugs_to_fix:
     company = Company.get(slug)
     if company:
         phone_str = str(company.phone_number or company.phone_1 or "")
-        match = re.search(r"^1?[^\\d]*(\\d{3})", phone_str)
-        area_code = match.group(1) if match else ""
+        match_phone = re.search(r"^1?[^\\d]*(\\d{3})", phone_str)
+        area_code = match_phone.group(1) if match_phone else ""
 
-        if str(company.reviews_count) == area_code:
+        street_addr = str(company.street_address or "")
+        match_addr = re.search(r"^(\d+)", street_addr)
+        street_number = match_addr.group(1) if match_addr else ""
+
+        if (
+            str(company.reviews_count) == area_code
+            or str(company.reviews_count) == street_number
+        ):
             print(f"UPDATING {slug}: reviews_count={company.reviews_count} -> None")
             company.reviews_count = None
             company.save()
