@@ -268,15 +268,16 @@ def _load_gm_list_results_auto(
                 NULLIF(column0, '')::VARCHAR AS place_id,
                 NULLIF(column1, '')::VARCHAR AS company_slug,
                 NULLIF(column2, '')::VARCHAR AS name,
-                NULLIF(column3, '')::VARCHAR AS phone,
-                NULLIF(column4, '')::VARCHAR AS domain,
-                TRY_CAST(NULLIF(column5, '') AS BIGINT) AS reviews_count,
-                TRY_CAST(NULLIF(column6, '') AS DOUBLE) AS average_rating,
-                NULLIF(column7, '')::VARCHAR AS street_address,
-                NULLIF(column8, '')::VARCHAR AS gmb_url,
-                NULLIF(column9, '')::VARCHAR AS discovery_phrase,
-                NULLIF(column10, '')::VARCHAR AS discovery_tile_id,
-                NULLIF(column11, '')::VARCHAR AS html
+                NULLIF(column3, '')::VARCHAR AS category,
+                NULLIF(column4, '')::VARCHAR AS phone,
+                NULLIF(column5, '')::VARCHAR AS domain,
+                TRY_CAST(NULLIF(column6, '') AS BIGINT) AS reviews_count,
+                TRY_CAST(NULLIF(column7, '') AS DOUBLE) AS average_rating,
+                NULLIF(column8, '')::VARCHAR AS street_address,
+                NULLIF(column9, '')::VARCHAR AS gmb_url,
+                NULLIF(column10, '')::VARCHAR AS discovery_phrase,
+                NULLIF(column11, '')::VARCHAR AS discovery_tile_id,
+                NULLIF(column12, '')::VARCHAR AS html
             FROM read_csv('{temp_path}',
                 delim='{sep}',
                 header=False,
@@ -293,7 +294,8 @@ def _load_gm_list_results_auto(
                     'column8': 'VARCHAR',
                     'column9': 'VARCHAR',
                     'column10': 'VARCHAR',
-                    'column11': 'VARCHAR'
+                    'column11': 'VARCHAR',
+                    'column12': 'VARCHAR'
                 }},
                 null_padding=True,
                 ignore_errors=True)
