@@ -2,7 +2,6 @@ import logging
 import duckdb
 import json
 import typer
-import fnmatch
 from pathlib import Path
 from rich.console import Console
 from rich.table import Table
@@ -150,7 +149,6 @@ def metrics(
         raise typer.Exit(1)
 
     usv_path = file_path
-    dp_path = None
 
     if file_path.name == "datapackage.json":
         with open(file_path, "r") as f:
@@ -182,14 +180,59 @@ def metrics(
             raise typer.Exit(1)
 
         usv_path = matches[0]  # Use first match
-        dp_path = file_path
         console.print(
             f"[dim]Using resource: {resource.get('name', 'unknown')} ({usv_path.name})[/dim]"
         )
 
     con = duckdb.connect(database=":memory:")
     try:
-        load_usv_to_duckdb(con, "metrics_table", usv_path, datapackage_path=dp_path)
+        # Load directly to avoid column name mismatch during raw load
+        # Use auto_detect=False to prevent DuckDB from guessing wrong
+        con.execute(f"""
+            CREATE TABLE raw_data AS 
+            SELECT * FROM read_csv('{usv_path}', delim='\x1f', header=False, auto_detect=False, 
+                                   columns={{
+                                       'place_id': 'VARCHAR', 'company_slug': 'VARCHAR', 'name': 'VARCHAR',
+                                       'category': 'VARCHAR', 'phone': 'VARCHAR', 'domain': 'VARCHAR',
+                                       'reviews_count': 'VARCHAR', 'average_rating': 'VARCHAR', 
+                                       'street_address': 'VARCHAR', 'gmb_url': 'VARCHAR'
+                                   }}, 
+                                   quote='', escape='', null_padding=True)
+        """)
+
+        # Force column renaming to match schema names
+        # DuckDB might have auto-assigned column names if not mapped correctly,
+        # but our read_csv call *should* work if the table is created correctly.
+        # Let's verify and fix:
+
+        # Reloading data correctly *should* already have named columns.
+        # Check current table_info:
+        cols_info = con.execute("PRAGMA table_info('raw_data')").fetchall()
+        print(f"DEBUG: Columns after creation: {[c[1] for c in cols_info]}")
+
+        # 1. Clean misaligned review_count
+        con.execute("""
+            UPDATE raw_data
+            SET reviews_count = NULL
+            WHERE TRY_CAST(reviews_count AS BIGINT) IS NULL 
+               OR reviews_count = REGEXP_EXTRACT(phone, '^1?[^\\d]*(\\d{3})', 1)
+               OR reviews_count = REGEXP_EXTRACT(street_address, '^(\\d+)', 1)
+        """)
+
+        # 2. Dedupe
+        con.execute("""
+            CREATE TABLE metrics_table AS
+            SELECT * FROM (
+                SELECT *, ROW_NUMBER() OVER (
+                    PARTITION BY place_id 
+                    ORDER BY TRY_CAST(reviews_count AS BIGINT) DESC NULLS LAST
+                ) as rn
+                FROM raw_data
+            ) WHERE rn = 1
+        """)
+
+        # Drop the row number
+        con.execute("ALTER TABLE metrics_table DROP rn")
 
         total = con.execute("SELECT COUNT(*) FROM metrics_table").fetchone()[0]
 
@@ -199,7 +242,7 @@ def metrics(
             for col in con.execute("PRAGMA table_info('metrics_table')").fetchall()
         ]
 
-        table = Table(title=f"Metrics: {usv_path.name}")
+        table = Table(title=f"Metrics: {usv_path.name} (compacted)")
         table.add_column("Metric")
         table.add_column("Count")
 
@@ -214,7 +257,7 @@ def metrics(
         ]:
             if col in cols:
                 count = con.execute(
-                    f"SELECT COUNT(*) FROM metrics_table WHERE {col} IS NOT NULL"
+                    f'SELECT COUNT(*) FROM metrics_table WHERE "{col}" IS NOT NULL AND "{col}" != \'\''
                 ).fetchone()[0]
                 table.add_row(col, str(count))
 

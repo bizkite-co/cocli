@@ -1,6 +1,5 @@
 import duckdb
 import argparse
-import sys
 from pathlib import Path
 from cocli.core.paths import paths
 from cocli.utils.duckdb_utils import load_usv_to_duckdb

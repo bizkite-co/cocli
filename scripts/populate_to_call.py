@@ -1,6 +1,4 @@
-import sys
 import argparse
-from pathlib import Path
 from typing import Set, Dict, Any, List
 
 from cocli.utils.usv_utils import USVReader
@@ -33,7 +31,7 @@ def populate_to_call(
     campaign = paths.campaign(campaign_name)
     checkpoint_path = campaign.index("google_maps_prospects").checkpoint
     wal_dir = campaign.index("google_maps_prospects").wal
-    email_shards_dir = campaign.index("emails").shards
+    email_shards_dir = campaign.index("emails").path / "shards"
 
     if not checkpoint_path.exists():
         print(f"Error: Checkpoint not found at {checkpoint_path}")

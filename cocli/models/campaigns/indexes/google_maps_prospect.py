@@ -8,54 +8,63 @@ from .google_maps_raw import GoogleMapsRawResult
 
 logger = logging.getLogger(__name__)
 
+
 class GoogleMapsProspect(GoogleMapsPlace):
     """
     GOLD STANDARD MODEL: Standardized model for Google Maps sales prospects.
     Strictly follows the 56-column canonical USV format.
     """
+
     SCHEMA_VERSION: ClassVar[str] = "1.0.0"
     INDEX_NAME: ClassVar[str] = "google_maps_prospects"
 
-    def merge_with_existing(self, existing: "GoogleMapsProspect") -> "GoogleMapsProspect":
+    def merge_with_existing(
+        self, existing: "GoogleMapsProspect"
+    ) -> "GoogleMapsProspect":
         """
         Merges this (newly scraped) prospect with an existing one.
         Mandate: Only overwrite fields if the new value is NOT null/empty.
         """
         new_data = self.model_dump(exclude_unset=True)
         existing_data = existing.model_dump()
-        
+
         merged_data = existing_data.copy()
         for key, val in new_data.items():
             # Only overwrite if new value is non-null and non-empty string
             if val is not None and val != "":
                 merged_data[key] = val
-        
+
         # Ensure updated_at is refreshed
         merged_data["updated_at"] = datetime.now(UTC)
-        
+
         return self.__class__(**merged_data)
 
     @classmethod
-    def get_by_place_id(cls, campaign_name: str, place_id: str) -> Optional["GoogleMapsProspect"]:
+    def get_by_place_id(
+        cls, campaign_name: str, place_id: str
+    ) -> Optional["GoogleMapsProspect"]:
         """
         Attempts to find an existing prospect in the campaign index by Place ID.
         """
         from cocli.core.prospects_csv_manager import ProspectsIndexManager
+
         manager = ProspectsIndexManager(campaign_name)
         # Use DuckDB for fast lookup in checkpoint + WAL shards
         import duckdb
-        con = duckdb.connect(database=':memory:')
-        
+
+        con = duckdb.connect(database=":memory:")
+
         checkpoint = manager.index_dir / "prospects.checkpoint.usv"
         if not checkpoint.exists():
             return None
-            
+
         try:
             # We only need to check the checkpoint for now as a baseline
             q = f"SELECT * FROM read_csv('{checkpoint}', delim='\x1f', header=False, auto_detect=True, all_varchar=True) WHERE column1 = '{place_id}' LIMIT 1"
             res = con.execute(q).df()
             if not res.empty:
                 from cocli.utils.usv_utils import USVDictReader
+
                 with open(checkpoint, "r", encoding="utf-8") as f:
                     reader = USVDictReader(f)
                     for r in reader:
@@ -66,13 +75,23 @@ class GoogleMapsProspect(GoogleMapsPlace):
         return None
 
     @classmethod
-    def save_datapackage(cls, path: Path, resource_name: str = "google_maps_prospects", resource_path: str = "prospects.checkpoint.usv", force: bool = False, wasi_hash: Optional[str] = None) -> None:
+    def save_datapackage(
+        cls,
+        path: Path,
+        resource_name: str = "google_maps_prospects",
+        resource_path: str = "prospects.checkpoint.usv",
+        force: bool = True,
+        wasi_hash: Optional[str] = None,
+    ) -> None:
         """Saves the datapackage.json to the specified directory."""
-        super().save_datapackage(path, resource_name, resource_path, force=force, wasi_hash=wasi_hash)
+        super().save_datapackage(
+            path, resource_name, resource_path, force=force, wasi_hash=wasi_hash
+        )
 
     @classmethod
     def from_raw(cls, raw: GoogleMapsRawResult) -> "GoogleMapsProspect":
         from cocli.core.text_utils import slugify
+
         data = {
             "place_id": raw.Place_ID,
             "name": raw.Name,
@@ -119,21 +138,24 @@ class GoogleMapsProspect(GoogleMapsPlace):
             "quotes": raw.Quotes,
             "processed_by": raw.processed_by or "local-worker",
             "list_found_at": raw.created_at,
-            "details_found_at": raw.updated_at
+            "details_found_at": raw.updated_at,
         }
-        
+
         if data["name"]:
             name_str = str(data["name"])
             data["slug"] = slugify(name_str)
-            
-        return cls(**data) # type: ignore
+
+        return cls(**data)  # type: ignore
 
     @classmethod
-    def append_to_checkpoint(cls, campaign_name: str, prospect: "GoogleMapsProspect") -> None:
+    def append_to_checkpoint(
+        cls, campaign_name: str, prospect: "GoogleMapsProspect"
+    ) -> None:
         """Appends a prospect to the campaign's main checkpoint USV."""
         from ....core.paths import paths
+
         checkpoint_path = paths.campaign(campaign_name).index(cls.INDEX_NAME).checkpoint
         checkpoint_path.parent.mkdir(parents=True, exist_ok=True)
-        
+
         with open(checkpoint_path, "a", encoding="utf-8") as f:
             f.write(prospect.to_usv())

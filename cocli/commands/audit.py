@@ -4,49 +4,85 @@ from pathlib import Path
 
 from rich.console import Console
 
-app = typer.Typer(help="Auditing tools for the cocli system structure and integrity.", no_args_is_help=True)
+app = typer.Typer(
+    help="Auditing tools for the cocli system structure and integrity.",
+    no_args_is_help=True,
+)
+queue_app = typer.Typer(help="Audit specific queues.")
+app.add_typer(queue_app, name="queue")
 console = Console()
+
+
+@queue_app.command(name="gm-list")
+def audit_queue_gm_list(
+    campaign: Optional[str] = typer.Option(
+        None, "--campaign", "-c", help="Campaign name."
+    ),
+) -> None:
+    """
+    Run full end-to-end audit for the gm-list queue (compile, compact, report).
+    """
+    from ..core.auditors.audit_workflow import DataAuditWorkflow
+    from ..core.config import get_campaign
+
+    campaign_name = campaign or get_campaign()
+    if not campaign_name:
+        console.print("[red]No campaign specified.[/red]")
+        raise typer.Exit(1)
+
+    workflow = DataAuditWorkflow(campaign=campaign_name, queue="gm-list")
+    workflow.start()
+
+    if workflow.state == "completed":
+        console.print("[green]Audit completed successfully.[/green]")
+    else:
+        console.print(f"[red]Audit failed in state: {workflow.state}[/red]")
+        raise typer.Exit(1)
+
 
 def dump_cli_tree(command: Any, out: Any, indent: int = 0) -> None:
     name = command.name or "cocli"
     help_text = f" - {command.help.splitlines()[0]}" if command.help else ""
     out.write(" " * indent + f"{name}{help_text}\n")
-    
+
     for param in command.params:
         if getattr(param, "hidden", False):
             continue
         # Typer adds these by default
         if param.name in ["install_completion", "show_completion"]:
             continue
-            
+
         param_name = "/".join(param.opts) if param.opts else param.name
-        param_type = f" ({param.type.name})" if hasattr(param.type, 'name') else ""
+        param_type = f" ({param.type.name})" if hasattr(param.type, "name") else ""
         required = " [required]" if param.required else ""
         out.write(" " * (indent + 4) + f"{param_name}{param_type}{required}\n")
 
-    if hasattr(command, 'commands'):
+    if hasattr(command, "commands"):
         for sub_name, sub_command in sorted(command.commands.items()):
             dump_cli_tree(sub_command, out, indent + 4)
+
 
 @app.command(name="cli")
 def audit_cli(
     ctx: typer.Context,
-    output: Optional[Path] = typer.Option(None, "--output", "-o", help="Output file path.")
+    output: Optional[Path] = typer.Option(
+        None, "--output", "-o", help="Output file path."
+    ),
 ) -> None:
     """
     Dumps the CLI command hierarchy.
     """
     from typer.main import get_command
     from io import StringIO
-    
+
     # Late import main_app to avoid circular dependency
     from ..main import app as main_app
-    
+
     click_command = get_command(main_app)
-    
+
     out = StringIO()
     dump_cli_tree(click_command, out)
-    
+
     report = out.getvalue()
     if output:
         output.parent.mkdir(parents=True, exist_ok=True)
@@ -54,12 +90,26 @@ def audit_cli(
         console.print(f"[green]CLI structure dumped to {output}[/green]")
     else:
         console.print(report)
+
+
 @app.command(name="fs")
 def audit_fs(
-    campaign: Optional[str] = typer.Option(None, "--campaign", "-c", help="Specific campaign to audit."),
-    output: Optional[Path] = typer.Option(None, "--output", "-o", help="Output file path."),
-    gen_cleanup: bool = typer.Option(False, "--gen-cleanup", help="Generate a distributed cleanup report for orphans."),
-    skip_companies: bool = typer.Option(True, "--skip-companies/--no-skip-companies", help="Skip the massive companies directory for speed.")
+    campaign: Optional[str] = typer.Option(
+        None, "--campaign", "-c", help="Specific campaign to audit."
+    ),
+    output: Optional[Path] = typer.Option(
+        None, "--output", "-o", help="Output file path."
+    ),
+    gen_cleanup: bool = typer.Option(
+        False,
+        "--gen-cleanup",
+        help="Generate a distributed cleanup report for orphans.",
+    ),
+    skip_companies: bool = typer.Option(
+        True,
+        "--skip-companies/--no-skip-companies",
+        help="Skip the massive companies directory for speed.",
+    ),
 ) -> None:
     """
     Audits the filesystem for OMAP compliance and Screaming Architecture.
@@ -71,7 +121,9 @@ def audit_fs(
     auditor = FsAuditor()
 
     # Perform full audit using schema source of truth
-    root_node = auditor.audit_full(campaign_name=campaign, skip_companies=skip_companies)
+    root_node = auditor.audit_full(
+        campaign_name=campaign, skip_companies=skip_companies
+    )
 
     if gen_cleanup:
         orphans = auditor.get_orphans(root_node)
@@ -83,14 +135,19 @@ def audit_fs(
             report_path.parent.mkdir(parents=True, exist_ok=True)
             auditor.generate_removal_report(orphans, report_path)
 
-            console.print(f"[bold yellow]Cleanup report generated:[/bold yellow] [cyan]{report_path}[/cyan]")
+            console.print(
+                f"[bold yellow]Cleanup report generated:[/bold yellow] [cyan]{report_path}[/cyan]"
+            )
             console.print(f"[yellow]Found {len(orphans)} orphans.[/yellow]")
-            console.print("\n[bold]To execute distributed removal (S3 + Cluster + Local):[/bold]")
-            console.print(f"  python scripts/execute_cleanup.py --report {report_path} --campaign {campaign or 'roadmap'}")
+            console.print(
+                "\n[bold]To execute distributed removal (S3 + Cluster + Local):[/bold]"
+            )
+            console.print(
+                f"  python scripts/execute_cleanup.py --report {report_path} --campaign {campaign or 'roadmap'}"
+            )
 
     tree = dump_audit_tree(root_node)
 
-    
     if output:
         # For file output, we'll use a plain text version
         out = StringIO()
@@ -102,11 +159,23 @@ def audit_fs(
     else:
         console.print(tree)
 
+
 @app.command(name="rollout")
 def audit_rollout(
-    campaign: Optional[str] = typer.Option(None, "--campaign", "-c", help="Campaign name."),
-    name: Optional[str] = typer.Option(None, "--name", "-n", help="Specific batch to audit. If omitted, audits all active batches."),
-    cluster: bool = typer.Option(True, "--cluster/--no-cluster", help="Pull latest results directly from cluster nodes via rsync."),
+    campaign: Optional[str] = typer.Option(
+        None, "--campaign", "-c", help="Campaign name."
+    ),
+    name: Optional[str] = typer.Option(
+        None,
+        "--name",
+        "-n",
+        help="Specific batch to audit. If omitted, audits all active batches.",
+    ),
+    cluster: bool = typer.Option(
+        True,
+        "--cluster/--no-cluster",
+        help="Pull latest results directly from cluster nodes via rsync.",
+    ),
 ) -> None:
     """
     Automated diagnostic for active rollout batches across the cluster.
@@ -136,12 +205,15 @@ def audit_rollout(
     # 2. Locate Batches
     discovery_gen = paths.campaign(campaign_name).queue("discovery-gen")
     batches_dir = discovery_gen.pending / "batches"
-    
+
     if name:
         batch_files = [batches_dir / f"{name}.usv"]
     else:
         # Automatically find active-looking batches (rollout_*, canary_*)
-        batch_files = sorted(list(batches_dir.glob("canary_*.usv")) + list(batches_dir.glob("rollout_*.usv")))
+        batch_files = sorted(
+            list(batches_dir.glob("canary_*.usv"))
+            + list(batches_dir.glob("rollout_*.usv"))
+        )
 
     if not batch_files:
         console.print(f"[yellow]No active batches found in {batches_dir}[/yellow]")
@@ -150,16 +222,16 @@ def audit_rollout(
     results_dir = paths.campaign(campaign_name).queue("gm-list").completed / "results"
     witness_dir = paths.root / "indexes" / "scraped-tiles"
     pending_queue_dir = paths.campaign(campaign_name).queue("gm-list").pending
-    
+
     now = datetime.now(UTC)
     threshold = now - timedelta(hours=48)
 
     for batch_file in batch_files:
         if not batch_file.exists():
             continue
-            
+
         console.print(f"\n[bold cyan]Auditing Batch: {batch_file.name}[/bold cyan]")
-        
+
         tasks: List[MissionTask] = []
         with open(batch_file, "r", encoding="utf-8") as f:
             for line in f:
@@ -182,17 +254,19 @@ def audit_rollout(
             grid_id = get_grid_tile_id(float(task.latitude), float(task.longitude))
             lat_tile, lon_tile = grid_id.split("_")
             phrase_slug = slugify(task.search_phrase)
-            
-            receipt_file = results_dir / lat_shard / lat_tile / lon_tile / f"{phrase_slug}.json"
+
+            receipt_file = (
+                results_dir / lat_shard / lat_tile / lon_tile / f"{phrase_slug}.json"
+            )
             witness_usv = witness_dir / lat_tile / lon_tile / f"{phrase_slug}.usv"
             witness_csv = witness_dir / lat_tile / lon_tile / f"{phrase_slug}.csv"
-            
+
             task_sub_path = f"{lat_shard}/{lat_tile}/{lon_tile}/{phrase_slug}.usv"
             lease_file = pending_queue_dir / task_sub_path / "lease.json"
-            
+
             is_done = False
             comp_at = None
-            
+
             if witness_usv.exists() or witness_csv.exists():
                 is_done = True
             elif receipt_file.exists():
@@ -202,7 +276,9 @@ def audit_rollout(
                         data = json.load(f)
                         comp_at_str = data.get("completed_at")
                         if comp_at_str:
-                            comp_at = datetime.fromisoformat(comp_at_str.replace("Z", "+00:00"))
+                            comp_at = datetime.fromisoformat(
+                                comp_at_str.replace("Z", "+00:00")
+                            )
                 except Exception:
                     pass
 
@@ -229,9 +305,13 @@ def audit_rollout(
     # 4. Remote Health Check
     hub = "cocli5x1.pi"
     console.print(f"\n[bold]Cluster Hub ({hub}) Health Check:[/bold]")
-    log_cmd = "docker logs --tail 100 cocli-supervisor 2>&1 | grep -i 'error' | head -n 5"
+    log_cmd = (
+        "docker logs --tail 100 cocli-supervisor 2>&1 | grep -i 'error' | head -n 5"
+    )
     try:
-        res = subprocess.run(["ssh", f"mstouffer@{hub}", log_cmd], capture_output=True, text=True)
+        res = subprocess.run(
+            ["ssh", f"mstouffer@{hub}", log_cmd], capture_output=True, text=True
+        )
         if res.stdout:
             console.print("[red]Recent Hub Errors found:[/red]")
             console.print(res.stdout)
@@ -240,11 +320,15 @@ def audit_rollout(
     except Exception as e:
         console.print(f"[yellow]Could not check Hub logs: {e}[/yellow]")
 
+
 @app.command(name="tui")
 def audit_tui(
     output: Optional[Path] = typer.Option(
-        Path("docs/tui/screen/actual_tree.txt"), "--output", "-o", help="Output file path."
-    )
+        Path("docs/tui/screen/actual_tree.txt"),
+        "--output",
+        "-o",
+        help="Output file path.",
+    ),
 ) -> None:
     """
     Dumps the TUI widget hierarchy.
