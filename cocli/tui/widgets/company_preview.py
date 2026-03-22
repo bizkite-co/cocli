@@ -7,6 +7,7 @@ from textual.app import ComposeResult
 from .phone import Phone
 from .email import Email
 
+
 class CompanyPreview(Container):
     """A widget to display a preview of a company."""
 
@@ -29,18 +30,18 @@ class CompanyPreview(Container):
         """Update the preview with the given company."""
         content = self.query_one("#preview_content", VerticalScroll)
         content.remove_children()
-        
+
         # Location info
         location = f"{company.city or 'N/A'}, {company.state or 'N/A'}"
-        
+
         # Rating info
         rating = company.average_rating
         reviews = company.reviews_count
-        
+
         # Robust check for missing data (handle None, empty string, etc.)
         has_rating = rating is not None and str(rating).strip() != ""
         has_reviews = reviews is not None and str(reviews).strip() != ""
-        
+
         if has_rating:
             rating_str = f"{rating}"
             if has_reviews:
@@ -51,14 +52,26 @@ class CompanyPreview(Container):
             rating_str = "N/A"
 
         # Lifecycle dates
-        scraped_at = company.list_found_at.strftime('%Y-%m-%d') if company.list_found_at else "N/A"
-        details_at = company.details_found_at.strftime('%Y-%m-%d') if company.details_found_at else "N/A"
-        
+        scraped_at = (
+            company.list_found_at.strftime("%Y-%m-%d")
+            if company.list_found_at
+            else "N/A"
+        )
+        details_at = (
+            company.details_found_at.strftime("%Y-%m-%d")
+            if company.details_found_at
+            else "N/A"
+        )
+
         # Enriched status logic
         if company.last_enriched:
-            enriched_str = f"[bold green]{company.last_enriched.strftime('%Y-%m-%d')}[/]"
+            enriched_str = (
+                f"[bold green]{company.last_enriched.strftime('%Y-%m-%d')}[/]"
+            )
         elif company.enqueued_at:
-            enriched_str = f"[bold yellow]{company.enqueued_at.strftime('%Y-%m-%d')} (pending)[/]"
+            enriched_str = (
+                f"[bold yellow]{company.enqueued_at.strftime('%Y-%m-%d')} (pending)[/]"
+            )
         elif hasattr(company, "_enqueued_at") and getattr(company, "_enqueued_at"):
             # Fallback for transient SearchResult data
             val = getattr(company, "_enqueued_at")
@@ -71,16 +84,15 @@ class CompanyPreview(Container):
             Static(f"[b]Domain:[/b] {escape(str(company.domain or 'N/A'))}"),
             Static(f"[b]Type:[/b] {escape(company.type)}"),
             Static(f"[b]Location:[/b] {escape(location)}"),
+            Static(f"[b]Address:[/b] {escape(company.street_address or 'N/A')}"),
             Static(f"[b]Rating:[/b] {escape(rating_str)}"),
             Horizontal(
                 Label("[b]Phone:[/b] "),
                 Phone(company.phone_number),
-                classes="preview-line"
+                classes="preview-line",
             ),
             Horizontal(
-                Label("[b]Email:[/b] "),
-                Email(company.email),
-                classes="preview-line"
+                Label("[b]Email:[/b] "), Email(company.email), classes="preview-line"
             ),
             Static(f"[b]Scraped:[/b] {scraped_at}"),
             Static(f"[b]Details:[/b] {details_at}"),
