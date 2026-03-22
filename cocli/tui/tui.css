@@ -132,6 +132,10 @@ CompanySearchView {
     color: #00ff00;
 }
 
+.preview-line {
+    height: auto;
+}
+
 /* Section Headers (Status, Queue, etc) */
 .pane-header, .sidebar-title {
     background: #111111;
