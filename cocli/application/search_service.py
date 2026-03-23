@@ -314,9 +314,63 @@ def get_fuzzy_search_results(
                     if table_has_col("items_cache", "average_rating")
                     else "CAST(NULL AS DOUBLE)"
                 )
+                t2_rev = (
+                    "TRY_CAST(t2.reviews_count AS BIGINT)"
+                    if table_has_col("items_cache", "reviews_count")
+                    else "CAST(NULL AS BIGINT)"
+                )
+
+                t2_avg = (
+                    "TRY_CAST(t2.average_rating AS DOUBLE)"
+                    if table_has_col("items_cache", "average_rating")
+                    else "CAST(NULL AS DOUBLE)"
+                )
 
                 t1_rev = (
-                    "COALESCE(TRY_CAST(tc.reviews_count AS BIGINT), TRY_CAST(t1.reviews_count AS BIGINT))"
+                    "COALESCE(TRY_CAST(compacted.reviews_count AS BIGINT), TRY_CAST(t1.reviews_count AS BIGINT))"
+                    if table_has_col("items_checkpoint", "reviews_count")
+                    or table_has_col("items_compacted", "reviews_count")
+                    else "CAST(NULL AS BIGINT)"
+                )
+                t2_rev = (
+                    "TRY_CAST(t2.reviews_count AS BIGINT)"
+                    if table_has_col("items_cache", "reviews_count")
+                    else "CAST(NULL AS BIGINT)"
+                )
+
+                t1_rev = (
+                    "COALESCE(TRY_CAST(compacted.reviews_count AS BIGINT), TRY_CAST(t1.reviews_count AS BIGINT))"
+                    if table_has_col("items_checkpoint", "reviews_count")
+                    or table_has_col("items_compacted", "reviews_count")
+                    else "CAST(NULL AS BIGINT)"
+                )
+
+                t2_avg = (
+                    "TRY_CAST(t2.average_rating AS DOUBLE)"
+                    if table_has_col("items_cache", "average_rating")
+                    else "CAST(NULL AS DOUBLE)"
+                )
+                t2_rev = (
+                    "TRY_CAST(t2.reviews_count AS BIGINT)"
+                    if table_has_col("items_cache", "reviews_count")
+                    else "CAST(NULL AS BIGINT)"
+                )
+
+                t1_rev = (
+                    "COALESCE(TRY_CAST(compacted.reviews_count AS BIGINT), TRY_CAST(t1.reviews_count AS BIGINT))"
+                    if table_has_col("items_checkpoint", "reviews_count")
+                    or table_has_col("items_compacted", "reviews_count")
+                    else "CAST(NULL AS BIGINT)"
+                )
+
+                t2_avg = (
+                    "TRY_CAST(t2.average_rating AS DOUBLE)"
+                    if table_has_col("items_cache", "average_rating")
+                    else "CAST(NULL AS DOUBLE)"
+                )
+
+                t1_rev = (
+                    "COALESCE(TRY_CAST(compacted.reviews_count AS BIGINT), TRY_CAST(t1.reviews_count AS BIGINT))"
                     if table_has_col("items_checkpoint", "reviews_count")
                     or table_has_col("items_compacted", "reviews_count")
                     else "CAST(NULL AS BIGINT)"
@@ -361,7 +415,7 @@ def get_fuzzy_search_results(
                         COALESCE(t1.type, t2.type, CAST('company' AS VARCHAR)) as type,
                         COALESCE(t1.domain, t2.domain) as domain,
                         COALESCE(t2.email, t1.email) as email,
-                        COALESCE(t1.phone, t2.phone_number) as phone_number,
+                        COALESCE(compacted.phone, t1.phone, t2.phone_number) as phone_number,
                         COALESCE(string_to_array(t2.tags, ';'), string_to_array(t1.keyword, ';'), CAST([] AS VARCHAR[])) as tags,
                         COALESCE(t2.display, 'COMPANY:' || COALESCE(t1.name, t2.name)) as display,
                         COALESCE(t1.updated_at, CAST(NULL AS VARCHAR)) as last_modified,
