@@ -551,42 +551,40 @@ class CompanyDetail(Container):
             self.app.notify("Phone number or slug missing", severity="warning")
 
     async def action_toggle_to_call(self) -> None:
-        slug = self.company_data["company"].get("slug")
-        if not slug:
+        """Toggles the company in the 'to-call' queue."""
+        company = Company.get(self.company_data["company"]["slug"])
+        if not company:
+            self.app.notify("Company not found", severity="error")
             return
 
-        company = Company.get(slug)
-        if company:
-            # Check if it is already in the to-call list (by tag or task file)
-            # toggle_to_call uses task_path.exists() as the source of truth
-            from cocli.models.campaigns.queues.to_call import ToCallTask
-            from cocli.core.config import get_campaign
+        from cocli.models.campaigns.queues.to_call import ToCallTask
+        from cocli.core.config import get_campaign
 
-            campaign = get_campaign() or "default"
-            task = ToCallTask(
-                company_slug=company.slug,
-                domain=company.domain or "unknown",
-                campaign_name=campaign,
-                ack_token=None,
+        campaign = get_campaign() or "default"
+        task = ToCallTask(
+            company_slug=company.slug,
+            domain=company.domain or "unknown",
+            campaign_name=campaign,
+            ack_token=None,
+        )
+        task_path = task.get_local_path()
+
+        if task_path.exists():
+            from .confirm_screen import ConfirmScreen
+
+            confirm = await self.app.push_screen(
+                ConfirmScreen(f"Remove '{company.name}' from To-Call list?")
             )
-            is_already_to_call = task.get_local_path().exists()
+            if not confirm:
+                return
+            task_path.unlink()
+            status = "Removed from"
+        else:
+            task.save()
+            status = "Added to"
 
-            if is_already_to_call:
-                from .confirm_screen import ConfirmScreen
-
-                confirm = await self.app.push_screen(
-                    ConfirmScreen(f"Remove '{company.name}' from To-Call list?")
-                )
-                if not confirm:
-                    return
-
-            is_added = company.toggle_to_call()
-            status = "Added to" if is_added else "Removed from"
-            self.app.notify(f"{status} To-Call Queue")
-
-            # Update local data and refresh
-            self.company_data["company"]["tags"] = company.tags
-            self._refresh_info_table()
+        self.app.notify(f"{status} To-Call Queue")
+        self._refresh_info_table()
 
     def action_re_enqueue_scrape(self) -> None:
         """Triggers a local detail scrape for the current company."""
@@ -1205,13 +1203,7 @@ class CompanyDetail(Container):
         self.info_table.add_row("enrichment", enrich_val)
 
         if tags:
-            display_tags = []
-            for t in tags:
-                if t == "to-call":
-                    display_tags.append("[bold yellow]to-call[/]")
-                else:
-                    display_tags.append(t)
-            self.info_table.add_row("Tags", ", ".join(display_tags))
+            self.info_table.add_row("Tags", ", ".join(tags))
 
         if keywords:
             self.info_table.add_row("Keywords", ", ".join(keywords))

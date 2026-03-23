@@ -610,7 +610,7 @@ def compile_to_call(
     1. Consolidates GM results and compacts index.
     2. Compacts email index.
     3. Identifies top leads (rating >= 4.5, reviews >= 20, has contact info).
-    4. Tags top leads with 'to-call' and adds to call queue.
+    4. Adds top leads to the 'to-call' queue.
     """
     if not campaign_name:
         campaign_name = get_campaign()

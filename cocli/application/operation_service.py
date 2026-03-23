@@ -169,7 +169,7 @@ class OperationService:
                 "maintenance",
                 source_path="data/campaigns/{campaign}/indexes/",
                 dest_path="data/companies/{slug}/",
-                process_details="1. Compacts GM results. 2. Compacts Email shards. 3. Filters rating >= 4.5, reviews >= 20, HAS email/phone. 4. Tags results as 'to-call'.",
+                process_details="1. Compacts GM results. 2. Compacts Email shards. 3. Filters rating >= 4.5, reviews >= 20, HAS email/phone. 4. Enqueues top leads to 'to-call' queue.",
                 steps=[
                     OperationStep(
                         "compact_gm", "Run full Google Maps index compaction."
@@ -180,7 +180,7 @@ class OperationService:
                         "Filter DuckDB for high-rating/reviewed leads with contact info.",
                     ),
                     OperationStep(
-                        "tag_leads", "Add 'to-call' tag to matching companies."
+                        "enqueue_leads", "Add matching companies to 'to-call' queue."
                     ),
                 ],
             ),
@@ -191,7 +191,7 @@ class OperationService:
                 "maintenance",
                 source_path="data/campaigns/{campaign}/indexes/google_maps_prospects/",
                 dest_path="data/companies/{slug}/",
-                process_details="Filters DuckDB 'items' view for rating >= 4.5 and reviews >= 20. Tags matches with 'to-call'.",
+                process_details="Filters DuckDB 'items' view for rating >= 4.5 and reviews >= 20. Enqueues matches to 'to-call'.",
             ),
             "op_restore_names": OperationMetadata(
                 "op_restore_names",
@@ -670,18 +670,22 @@ class OperationService:
                         and (r.reviews_count or 0) >= 20
                     ]
                     tagged = 0
-                    from cocli.models.companies.company import Company
+                    from cocli.models.campaigns.queues.to_call import ToCallTask
 
                     for p in top_prospects:
                         if p.slug:
-                            company = Company.get(p.slug)
-                            if company and "to-call" not in company.tags:
-                                company.tags.append("to-call")
-                                company.save()
-                                tagged += 1
+                            # Instead of tagging, enqueue
+                            task = ToCallTask(
+                                company_slug=p.slug,
+                                domain=p.domain or "unknown",
+                                campaign_name=self.campaign_name,
+                                ack_token=None,
+                            )
+                            task.save()
+                            tagged += 1
                     return {
                         "top_candidates_found": len(top_prospects),
-                        "newly_tagged": tagged,
+                        "newly_enqueued": tagged,
                     }
 
                 result = await asyncio.to_thread(run_compile)
