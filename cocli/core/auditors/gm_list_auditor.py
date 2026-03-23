@@ -39,13 +39,31 @@ def run_compilation(campaign: str, queue: str, results_dir: Path) -> Path:
                     )
                     skipped += 1
                     continue
-                if not rows or len(rows[0]) != 10:
+                if not rows:
                     console.print(
-                        f"[yellow]Skipping {usv_file.relative_to(results_dir)}: {len(rows[0]) if rows else 0} fields[/yellow]"
+                        f"[yellow]Skipping {usv_file.relative_to(results_dir)}: Empty file[/yellow]"
                     )
                     skipped += 1
                     continue
+
+                num_fields = len(rows[0])
+                if num_fields < 9 or num_fields > 10:
+                    console.print(
+                        f"[yellow]Skipping {usv_file.relative_to(results_dir)}: {num_fields} fields[/yellow]"
+                    )
+                    skipped += 1
+                    continue
+
                 for row in rows:
+                    # Pad to 10 fields if necessary
+                    if len(row) == 9:
+                        row.insert(3, None)  # Insert category at index 3
+                    elif len(row) > 10:
+                        row = row[:10]
+                    elif len(row) < 9:
+                        # Skip malformed rows
+                        continue
+
                     writer.writerow(row)
                     count += 1
 
@@ -148,6 +166,7 @@ def run_reporting(results_dir: Path) -> Path:
 
     # We can just call the metrics function directly by passing the file path
     compacted_usv = results_dir / "compacted.usv"
-    metrics(file_path=compacted_usv)
+    output_report = results_dir / "metrics.md"
+    metrics(file_path=compacted_usv, output_path=output_report)
 
-    return results_dir / "metrics.md"
+    return output_report

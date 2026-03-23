@@ -2,6 +2,7 @@ import logging
 import duckdb
 import json
 import typer
+from typing import Optional
 from pathlib import Path
 from rich.console import Console
 from rich.table import Table
@@ -40,8 +41,27 @@ def list_schemas() -> None:
                 table.add_row(str(dp.relative_to(root)), ", ".join(resources))
         except Exception as e:
             console.print(f"[red]Error reading {dp}: {e}[/red]")
+        console.print(table)
 
-    console.print(table)
+        if output_path:
+            with open(output_path, "w", encoding="utf-8") as f:
+                f.write(f"# Metrics: {usv_path.name} (compacted)\n\n")
+                f.write("| Metric | Count |\n")
+                f.write("| :--- | :--- |\n")
+                f.write(f"| Total Records | {total} |\n")
+                for col in [
+                    "phone",
+                    "domain",
+                    "reviews_count",
+                    "average_rating",
+                    "street_address",
+                ]:
+                    if col in cols:
+                        count = con.execute(
+                            f'SELECT COUNT(*) FROM metrics_table WHERE "{col}" IS NOT NULL AND "{col}" != \'\''
+                        ).fetchone()[0]
+                        f.write(f"| {col} | {count} |\n")
+            console.print(f"[green]Metrics report written to {output_path}[/green]")
 
 
 @app.command()
@@ -127,7 +147,27 @@ def sample(
                 table.add_column(col)
             for row in results:
                 table.add_row(*[str(val) for val in row])
-            console.print(table)
+        console.print(table)
+
+        if output_path:
+            with open(output_path, "w", encoding="utf-8") as f:
+                f.write(f"# Metrics: {usv_path.name} (compacted)\n\n")
+                f.write("| Metric | Count |\n")
+                f.write("| :--- | :--- |\n")
+                f.write(f"| Total Records | {total} |\n")
+                for col in [
+                    "phone",
+                    "domain",
+                    "reviews_count",
+                    "average_rating",
+                    "street_address",
+                ]:
+                    if col in cols:
+                        count = con.execute(
+                            f'SELECT COUNT(*) FROM metrics_table WHERE "{col}" IS NOT NULL AND "{col}" != \'\''
+                        ).fetchone()[0]
+                        f.write(f"| {col} | {count} |\n")
+            console.print(f"[green]Metrics report written to {output_path}[/green]")
 
     except Exception as e:
         console.print(f"[red]Error: {e}[/red]")
@@ -142,8 +182,12 @@ def metrics(
         "--resource",
         help="Resource name to use if file_path is a datapackage.json.",
     ),
+    output_path: Optional[Path] = typer.Option(
+        None, "--output", "-o", help="Write report to file (Markdown)."
+    ),
 ) -> None:
     """Compute data quality metrics for a USV dataset (or datapackage)."""
+    console.print(f"DEBUG: metrics called with output_path={output_path}")
     if not file_path.exists():
         console.print(f"[red]Error: File not found: {file_path}[/red]")
         raise typer.Exit(1)
@@ -262,6 +306,26 @@ def metrics(
                 table.add_row(col, str(count))
 
         console.print(table)
+
+        if output_path:
+            with open(output_path, "w", encoding="utf-8") as f:
+                f.write(f"# Metrics: {usv_path.name} (compacted)\n\n")
+                f.write("| Metric | Count |\n")
+                f.write("| :--- | :--- |\n")
+                f.write(f"| Total Records | {total} |\n")
+                for col in [
+                    "phone",
+                    "domain",
+                    "reviews_count",
+                    "average_rating",
+                    "street_address",
+                ]:
+                    if col in cols:
+                        count = con.execute(
+                            f'SELECT COUNT(*) FROM metrics_table WHERE "{col}" IS NOT NULL AND "{col}" != \'\''
+                        ).fetchone()[0]
+                        f.write(f"| {col} | {count} |\n")
+            console.print(f"[green]Metrics report written to {output_path}[/green]")
 
     except Exception as e:
         console.print(f"[red]Error: {e}[/red]")

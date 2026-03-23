@@ -50,31 +50,23 @@ with open(compiled_path, "w", encoding="utf-8") as f_out:
                 skipped += 1
                 continue
 
-            if len(rows[0]) < 9 or len(rows[0]) > 10:
-                console.print(
-                    f"[yellow]Skipping {usv_file.relative_to(results_dir)}: {len(rows[0])} fields[/yellow]"
-                )
-                skipped += 1
-                continue
-
             num_fields = len(rows[0])
-            if num_fields < 9 or num_fields > 10:
-                console.print(
-                    f"[yellow]Skipping {usv_file.relative_to(results_dir)}: {num_fields} fields[/yellow]"
-                )
+
+            # The files have 9 fields. If we add category, it becomes 10.
+            # We want to support 9 or 10.
+            if num_fields < 8 or num_fields > 10:
                 skipped += 1
                 continue
 
             for row in rows:
                 # Pad to 10 fields if necessary
-                # Re-check row length inside the row loop
-                if len(row) == 9:
-                    row.insert(3, None)  # Insert category at index 3
+                if len(row) == 8:
+                    row.insert(3, None)  # Category
+                    row.insert(5, None)  # Domain
+                elif len(row) == 9:
+                    row.insert(3, None)  # Category
                 elif len(row) > 10:
                     row = row[:10]
-                elif len(row) < 9:
-                    # Skip rows that are too short even if the first row was 9
-                    continue
 
                 writer.writerow(row)
                 count += 1
