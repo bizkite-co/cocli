@@ -159,14 +159,44 @@ def run_compaction(results_dir: Path) -> Path:
 def run_reporting(results_dir: Path) -> Path:
     from cocli.commands.data import metrics
 
-    # Run the existing metrics command logic
+    # 1. Generate missing_review_count.usv
+    missing_path = results_dir.parent / "missing_review_count.usv"
+    compacted_path = results_dir / "compacted.usv"
+
+    # Use DuckDB to extract records
+    con = duckdb.connect(database=":memory:")
+    con.execute(f"""
+        CREATE TABLE compacted AS 
+        SELECT * FROM read_csv('{compacted_path}', delim='\x1f', header=False, auto_detect=False, 
+                               columns={{
+                                   'place_id': 'VARCHAR', 'company_slug': 'VARCHAR', 'name': 'VARCHAR',
+                                   'category': 'VARCHAR', 'phone': 'VARCHAR', 'domain': 'VARCHAR',
+                                   'reviews_count': 'VARCHAR', 'average_rating': 'VARCHAR', 
+                                   'street_address': 'VARCHAR', 'gmb_url': 'VARCHAR'
+                               }}, 
+                               quote='', escape='', null_padding=True)
+    """)
+
+    records = con.execute(
+        "SELECT place_id, reviews_count FROM compacted WHERE reviews_count IS NULL OR reviews_count = ''"
+    ).fetchall()
+
+    with open(missing_path, "w", encoding="utf-8") as f_out:
+        writer = USVWriter(f_out)
+        writer.writerow(["place_id", "reviews_count"])
+        for row in records:
+            writer.writerow(row)
+
+    console.print(
+        f"[green]Generated {missing_path} with {len(records)} records.[/green]"
+    )
+
+    # 2. Run existing metrics command logic
     console.print(
         f"[bold blue]Reporting: Generating metrics for {results_dir.parent}[/bold blue]"
     )
 
-    # We can just call the metrics function directly by passing the file path
-    compacted_usv = results_dir / "compacted.usv"
     output_report = results_dir / "metrics.md"
-    metrics(file_path=compacted_usv, output_path=output_report)
+    metrics(file_path=compacted_path, output_path=output_report)
 
     return output_report

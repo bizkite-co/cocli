@@ -41,27 +41,7 @@ def list_schemas() -> None:
                 table.add_row(str(dp.relative_to(root)), ", ".join(resources))
         except Exception as e:
             console.print(f"[red]Error reading {dp}: {e}[/red]")
-        console.print(table)
-
-        if output_path:
-            with open(output_path, "w", encoding="utf-8") as f:
-                f.write(f"# Metrics: {usv_path.name} (compacted)\n\n")
-                f.write("| Metric | Count |\n")
-                f.write("| :--- | :--- |\n")
-                f.write(f"| Total Records | {total} |\n")
-                for col in [
-                    "phone",
-                    "domain",
-                    "reviews_count",
-                    "average_rating",
-                    "street_address",
-                ]:
-                    if col in cols:
-                        count = con.execute(
-                            f'SELECT COUNT(*) FROM metrics_table WHERE "{col}" IS NOT NULL AND "{col}" != \'\''
-                        ).fetchone()[0]
-                        f.write(f"| {col} | {count} |\n")
-            console.print(f"[green]Metrics report written to {output_path}[/green]")
+    console.print(table)
 
 
 @app.command()
@@ -148,26 +128,6 @@ def sample(
             for row in results:
                 table.add_row(*[str(val) for val in row])
         console.print(table)
-
-        if output_path:
-            with open(output_path, "w", encoding="utf-8") as f:
-                f.write(f"# Metrics: {usv_path.name} (compacted)\n\n")
-                f.write("| Metric | Count |\n")
-                f.write("| :--- | :--- |\n")
-                f.write(f"| Total Records | {total} |\n")
-                for col in [
-                    "phone",
-                    "domain",
-                    "reviews_count",
-                    "average_rating",
-                    "street_address",
-                ]:
-                    if col in cols:
-                        count = con.execute(
-                            f'SELECT COUNT(*) FROM metrics_table WHERE "{col}" IS NOT NULL AND "{col}" != \'\''
-                        ).fetchone()[0]
-                        f.write(f"| {col} | {count} |\n")
-            console.print(f"[green]Metrics report written to {output_path}[/green]")
 
     except Exception as e:
         console.print(f"[red]Error: {e}[/red]")
