@@ -188,7 +188,7 @@ class BaseUsvModel(BaseModel):
         data: Dict[str, Any] = {}
         for i, field_name in enumerate(field_names):
             if i < len(parts):
-                val = parts[i]
+                val: Any = parts[i]
                 if val == "":
                     # Skip empty strings, letting Pydantic handle defaults
                     continue

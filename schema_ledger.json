@@ -11,5 +11,14 @@
         "timestamp": "2026-03-22T20:00:00+00:00"
       }
     ]
+  },
+  "company_search_cache": {
+    "current_hash": "2b8c8da9e0fbef14",
+    "history": [
+      {
+        "hash": "2b8c8da9e0fbef14",
+        "timestamp": "2026-03-23T01:01:50.421103+00:00"
+      }
+    ]
   }
 }
