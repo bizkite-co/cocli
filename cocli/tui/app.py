@@ -487,6 +487,13 @@ class CocliApp(App[None]):
         Check if PI sync is needed and run it in a background thread.
         This is non-blocking and updates the timestamp on completion.
         """
+        import os
+
+        # Skip auto-sync if environment variable is set
+        if os.environ.get("COCLI_SKIP_AUTO_SYNC", "").lower() in ("1", "true", "yes"):
+            tui_debug_log("APP: Skipping PI sync (COCLI_SKIP_AUTO_SYNC=1)")
+            return
+
         from ..core.config import get_campaign
         from cocli.core.sync_tracker import SyncTracker
         import threading
@@ -500,6 +507,7 @@ class CocliApp(App[None]):
 
         tracker = SyncTracker(campaign)
         if not tracker.needs_sync():
+            tui_debug_log(f"APP: PI sync not needed for {campaign}")
             return
 
         def _run_sync() -> None:
@@ -535,16 +543,20 @@ class CocliApp(App[None]):
             with time_perf("APP: create_default_config_file"):
                 create_default_config_file()
 
-            # Start the Gossip Bridge for real-time cluster coordination in the TUI
+            # Start the Gossip Bridge in background (non-blocking)
+            import threading
             from ..core.gossip_bridge import bridge
 
-            if bridge:
+            def start_bridge() -> None:
                 try:
-                    with time_perf("APP: bridge.start()"):
+                    if bridge:
                         bridge.start()
-                    tui_debug_log("APP: Gossip Bridge started.")
+                        tui_debug_log("APP: Gossip Bridge started.")
                 except Exception as e:
                     tui_debug_log(f"APP: Gossip Bridge failed to start: {e}")
+
+            bridge_thread = threading.Thread(target=start_bridge, daemon=True)
+            bridge_thread.start()
 
             # Start PI sync check in background (non-blocking)
             self._start_pi_sync_background()

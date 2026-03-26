@@ -49,7 +49,7 @@ QUEUES_METADATA: Dict[QueueName, QueueMetadata] = {
     ),
     "gm-list": QueueMetadata(
         name="gm-list",
-        label="Google Maps Search",
+        label="gm-list",
         description="Geographic search areas to be scraped for company results. Acts as the entry point for geo-prospecting.",
         model_class=ScrapeTask,
         from_model_name="cocli.models.campaigns.config.CampaignConfig",
@@ -76,7 +76,7 @@ QUEUES_METADATA: Dict[QueueName, QueueMetadata] = {
     ),
     "gm-details": QueueMetadata(
         name="gm-details",
-        label="Google Maps Details",
+        label="gm-details",
         description="Individual Place IDs to be scraped for full business details. Bridges raw results to canonical company files.",
         model_class=GmItemTask,
         from_model_name="cocli.models.campaigns.queues.gm_list.ScrapeTask",

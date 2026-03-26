@@ -4,7 +4,7 @@ help: ## Display this help screen
 	@awk 'BEGIN {FS = ":.*?## "}; /^[a-zA-Z_-]+:.*?## / {printf "  \033[32m%-20s\033[0m %s\n", $$1, $$2}' $(MAKEFILE_LIST)
 
 # Tool for code signature hashing (prevents redundant lint/test runs)
-TASKHASH := tools/taskhash/taskhash
+TASKHASH := taskhash
 
 .PHONY: init
 init: ## Initialize the cocli configuration file and install git hooks
@@ -97,7 +97,7 @@ test: install lint ## Run all non-TUI tests using pytest (incremental)
 	@if $(TASKHASH) check test; then \
 		echo "Code signature matches for task 'test'. Skipping tests."; \
 	else \
-		source $(VENV_DIR)/bin/activate && PYTHONPATH=. pytest -s tests/ --quiet --ignore=tests/e2e && \
+		source $(VENV_DIR)/bin/activate && PYTHONPATH=. pytest -s tests/ --quiet --ignore=tests/e2e --ignore=tests/data && \
 		$(TASKHASH) update test; \
 	fi
 
@@ -976,5 +976,8 @@ s3-mock-stop: ## Stop LocalStack S3 mock
 
 s3-mock-status: ## Check LocalStack S3 mock status
 	docker compose -f tools/s3mock/docker-compose.yml ps
+
+tui: ## Run the TUI
+	COCLI_SKIP_AUTO_SYNC=1 cocli tui
 
 include mk/cluster.mk

@@ -3,7 +3,7 @@ from typing import List, Iterable, Iterator, Any, Dict, Optional
 
 from cocli.core.constants import UNIT_SEP
 
-# Record Separator - using standard newline for broad tool compatibility
+# Use standard newline for compatibility with grep, sed, awk, wc
 RECORD_SEPARATOR = "\n"
 
 

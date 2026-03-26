@@ -17,6 +17,22 @@ from cocli.models.campaigns.indexes.google_maps_place import GoogleMapsPlace
 
 logger = logging.getLogger(__name__)
 
+
+def _get_compacted_fallback_columns() -> Dict[str, str]:
+    """Return fallback columns for items_compacted table when no data exists."""
+    return {
+        "place_id": "VARCHAR",
+        "slug": "VARCHAR",
+        "phone": "VARCHAR",
+        "average_rating": "VARCHAR",
+        "reviews_count": "VARCHAR",
+        "street_address": "VARCHAR",
+        "city": "VARCHAR",
+        "state": "VARCHAR",
+        "zip": "VARCHAR",
+    }
+
+
 # Module-level cache for DuckDB connection and state
 _con: Optional[duckdb.DuckDBPyConnection] = None
 _last_cache_mtime: float = -1.0
@@ -208,6 +224,7 @@ def get_fuzzy_search_results(
                     "items_venues",
                     "items_lifecycle",
                     "items_to_call",
+                    "items_compacted",
                 ]:
                     _con.execute(f"DROP TABLE IF EXISTS {table}")
 
@@ -235,17 +252,37 @@ def get_fuzzy_search_results(
                         )
 
                     # Load Compacted Data (Schema-Validated Source of Truth)
+                    # ALWAYS run this to ensure items_compacted table exists, even with no campaign
                     if campaign:
                         compacted_path = (
                             paths.campaign(campaign).queue("gm-list").completed
                             / "results"
                             / "compacted.usv"
                         )
+                        compacted_dp = compacted_path.parent / "datapackage.json"
+
+                        # Ensure table always exists, even if file doesn't
                         if compacted_path.exists():
-                            compacted_dp = compacted_path.parent / "datapackage.json"
                             load_usv_to_duckdb(
-                                _con, "items_compacted", compacted_path, compacted_dp
+                                _con,
+                                "items_compacted",
+                                compacted_path,
+                                compacted_dp,
                             )
+                        else:
+                            # Create empty table with correct schema if file missing
+                            columns = _get_compacted_fallback_columns()
+                            cols_sql = ", ".join(
+                                [f'"{name}" {dtype}' for name, dtype in columns.items()]
+                            )
+                            _con.execute(f"CREATE TABLE items_compacted ({cols_sql})")
+                    else:
+                        # Even with no campaign, create the table with fallback schema
+                        columns = _get_compacted_fallback_columns()
+                        cols_sql = ", ".join(
+                            [f'"{name}" {dtype}' for name, dtype in columns.items()]
+                        )
+                        _con.execute(f"CREATE TABLE items_compacted ({cols_sql})")
 
                     has_v = False
                     if venue_checkpoint_path and venue_checkpoint_path.exists():
@@ -295,87 +332,32 @@ def get_fuzzy_search_results(
                     except Exception:
                         return False
 
-                # Coalesce with items_compacted (high priority source of truth for metrics)
-                t1_avg = (
+                # Rating and reviews from checkpoint (prioritizes compacted, falls back to checkpoint)
+                # Priority: compacted > checkpoint
+                RATING_FROM_CHECKPOINT = (
                     "COALESCE(TRY_CAST(compacted.average_rating AS DOUBLE), TRY_CAST(t1.average_rating AS DOUBLE))"
-                    if table_has_col("items_checkpoint", "average_rating")
-                    or table_has_col("items_compacted", "average_rating")
+                    if (
+                        table_has_col("items_checkpoint", "average_rating")
+                        or table_has_col("items_compacted", "average_rating")
+                    )
                     else "CAST(NULL AS DOUBLE)"
                 )
-                t1_rev = (
+                REVIEWS_FROM_CHECKPOINT = (
                     "COALESCE(TRY_CAST(compacted.reviews_count AS BIGINT), TRY_CAST(t1.reviews_count AS BIGINT))"
-                    if table_has_col("items_checkpoint", "reviews_count")
-                    or table_has_col("items_compacted", "reviews_count")
+                    if (
+                        table_has_col("items_checkpoint", "reviews_count")
+                        or table_has_col("items_compacted", "reviews_count")
+                    )
                     else "CAST(NULL AS BIGINT)"
                 )
 
-                t2_avg = (
+                # Rating and reviews from cache (human-edited company data)
+                RATING_FROM_CACHE = (
                     "TRY_CAST(t2.average_rating AS DOUBLE)"
                     if table_has_col("items_cache", "average_rating")
                     else "CAST(NULL AS DOUBLE)"
                 )
-                t2_rev = (
-                    "TRY_CAST(t2.reviews_count AS BIGINT)"
-                    if table_has_col("items_cache", "reviews_count")
-                    else "CAST(NULL AS BIGINT)"
-                )
-
-                t2_avg = (
-                    "TRY_CAST(t2.average_rating AS DOUBLE)"
-                    if table_has_col("items_cache", "average_rating")
-                    else "CAST(NULL AS DOUBLE)"
-                )
-
-                t1_rev = (
-                    "COALESCE(TRY_CAST(compacted.reviews_count AS BIGINT), TRY_CAST(t1.reviews_count AS BIGINT))"
-                    if table_has_col("items_checkpoint", "reviews_count")
-                    or table_has_col("items_compacted", "reviews_count")
-                    else "CAST(NULL AS BIGINT)"
-                )
-                t2_rev = (
-                    "TRY_CAST(t2.reviews_count AS BIGINT)"
-                    if table_has_col("items_cache", "reviews_count")
-                    else "CAST(NULL AS BIGINT)"
-                )
-
-                t1_rev = (
-                    "COALESCE(TRY_CAST(compacted.reviews_count AS BIGINT), TRY_CAST(t1.reviews_count AS BIGINT))"
-                    if table_has_col("items_checkpoint", "reviews_count")
-                    or table_has_col("items_compacted", "reviews_count")
-                    else "CAST(NULL AS BIGINT)"
-                )
-
-                t2_avg = (
-                    "TRY_CAST(t2.average_rating AS DOUBLE)"
-                    if table_has_col("items_cache", "average_rating")
-                    else "CAST(NULL AS DOUBLE)"
-                )
-                t2_rev = (
-                    "TRY_CAST(t2.reviews_count AS BIGINT)"
-                    if table_has_col("items_cache", "reviews_count")
-                    else "CAST(NULL AS BIGINT)"
-                )
-
-                t1_rev = (
-                    "COALESCE(TRY_CAST(compacted.reviews_count AS BIGINT), TRY_CAST(t1.reviews_count AS BIGINT))"
-                    if table_has_col("items_checkpoint", "reviews_count")
-                    or table_has_col("items_compacted", "reviews_count")
-                    else "CAST(NULL AS BIGINT)"
-                )
-
-                t2_avg = (
-                    "TRY_CAST(t2.average_rating AS DOUBLE)"
-                    if table_has_col("items_cache", "average_rating")
-                    else "CAST(NULL AS DOUBLE)"
-                )
-
-                t1_rev = (
-                    "COALESCE(TRY_CAST(compacted.reviews_count AS BIGINT), TRY_CAST(t1.reviews_count AS BIGINT))"
-                    if table_has_col("items_checkpoint", "reviews_count")
-                    or table_has_col("items_compacted", "reviews_count")
-                    else "CAST(NULL AS BIGINT)"
-                )
-                t2_rev = (
+                REVIEWS_FROM_CACHE = (
                     "TRY_CAST(t2.reviews_count AS BIGINT)"
                     if table_has_col("items_cache", "reviews_count")
                     else "CAST(NULL AS BIGINT)"
@@ -419,8 +401,8 @@ def get_fuzzy_search_results(
                         COALESCE(string_to_array(t2.tags, ';'), string_to_array(t1.keyword, ';'), CAST([] AS VARCHAR[])) as tags,
                         COALESCE(t2.display, 'COMPANY:' || COALESCE(t1.name, t2.name)) as display,
                         COALESCE(t1.updated_at, CAST(NULL AS VARCHAR)) as last_modified,
-                        COALESCE({t1_avg}, {t2_avg}) as average_rating,
-                        COALESCE({t1_rev}, {t2_rev}) as reviews_count,
+                        COALESCE({RATING_FROM_CHECKPOINT}, {RATING_FROM_CACHE}) as average_rating,
+                        COALESCE({REVIEWS_FROM_CHECKPOINT}, {REVIEWS_FROM_CACHE}) as reviews_count,
                         COALESCE(t1.street_address, CAST(NULL AS VARCHAR)) as street_address,
                         COALESCE(t1.city, CAST(NULL AS VARCHAR)) as city,
                         COALESCE(t1.state, CAST(NULL AS VARCHAR)) as state,

@@ -67,7 +67,6 @@ class PiSyncService:
             cmd = [
                 "rsync",
                 "-avz",
-                "--progress",
                 "--delete",
                 remote_path,
                 local_path + "/",

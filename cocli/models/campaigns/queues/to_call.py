@@ -5,14 +5,16 @@ from typing import Optional
 from .base import QueueMessage
 from ....core.ordinant import QueueName
 
+
 class ToCallTask(QueueMessage):
     """
     Represents a company to be contacted.
     Supports scheduling via callback_at.
     """
+
     priority: int = 1
     callback_at: Optional[datetime] = None
-    
+
     @property
     def collection(self) -> QueueName:
         return "to-call"
@@ -29,25 +31,30 @@ class ToCallTask(QueueMessage):
         """
         # FDPE: Local import to ensure we respect current re-rooted paths authority
         from ....core.paths import paths
+
         base_queue = paths.campaign(self.campaign_name).path / "queues" / "to-call"
-        
+
+        # Sanitize company_slug to avoid path issues (e.g., "/" in "24/7" becomes subdirectory)
+        safe_slug = self.company_slug.replace("/", "-").replace("\\", "-")
+
         if self.callback_at:
             # Date-sharded: scheduled/YYYY/MM/DD/TIMESTAMP_slug.usv
             date_dir = self.callback_at.strftime("%Y/%m/%d")
             ts_prefix = self.callback_at.strftime("%Y%m%d_%H%M%S")
-            return base_queue / "scheduled" / date_dir / f"{ts_prefix}_{self.company_slug}.usv"
+            return base_queue / "scheduled" / date_dir / f"{ts_prefix}_{safe_slug}.usv"
         else:
             # Active: pending/slug.usv
-            return base_queue / "pending" / f"{self.company_slug}.usv"
+            return base_queue / "pending" / f"{safe_slug}.usv"
 
     def save(self) -> None:
         """Saves the task to its sharded local path in USV format."""
         path = self.get_local_path()
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(self.to_usv(), encoding="utf-8")
-        
+
         # Ensure datapackage exists in the collection root
         # FDPE: Local import to ensure we respect current re-rooted paths authority
         from ....core.paths import paths
+
         base_queue = paths.campaign(self.campaign_name).path / "queues" / "to-call"
         self.save_datapackage(base_queue, "to_call_queue", "pending/*.usv")

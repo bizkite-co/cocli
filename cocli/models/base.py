@@ -4,7 +4,18 @@ import logging
 from enum import Enum
 from datetime import datetime
 from pathlib import Path
-from typing import List, Dict, Any, Type, TypeVar, Optional, Tuple
+from typing import (
+    List,
+    Dict,
+    Any,
+    Type,
+    TypeVar,
+    Optional,
+    Tuple,
+    Protocol,
+    runtime_checkable,
+    ClassVar,
+)
 
 from pydantic import BaseModel, ValidationError
 
@@ -24,6 +35,44 @@ class SchemaConflictError(Exception):
     def __init__(self, message: str, diff: List[str]):
         super().__init__(message)
         self.diff = diff
+
+
+@runtime_checkable
+class SchemaGenerator(Protocol):
+    """
+    Protocol enforcing canonical datapackage.json generation.
+
+    Any model that generates datapackage.json files MUST implement this Protocol.
+    This ensures consistent schema management and prevents schema drift.
+
+    Usage:
+        def save_derived_file(path: Path, model: type[SchemaGenerator]):
+            # Model must implement SchemaGenerator to be used here
+            model.save_datapackage(path.parent, "resource", path.name)
+    """
+
+    SCHEMA_UPDATED_AT: ClassVar[str]
+
+    @classmethod
+    def get_schema_hash(cls) -> str: ...
+
+    @classmethod
+    def get_datapackage_fields(cls) -> List[Dict[str, Any]]: ...
+
+    @classmethod
+    def get_datapackage(
+        cls, resource_name: str, resource_path: str | None = None
+    ) -> Dict[str, Any]: ...
+
+    @classmethod
+    def save_datapackage(
+        cls,
+        path: Path,
+        resource_name: str,
+        resource_path: str,
+        force: bool = False,
+        wasi_hash: str | None = None,
+    ) -> None: ...
 
 
 T = TypeVar("T", bound="BaseUsvModel")
@@ -131,7 +180,7 @@ class BaseUsvModel(BaseModel):
                 if "List" in str(field_info.annotation):
                     data[field_name] = [t.strip() for t in val.split(";") if t.strip()]
                 else:
-                    data[field_name] = val
+                    data[field_name] = val  # type: ignore[assignment]
 
         try:
             model = cls.model_validate(data)
@@ -253,7 +302,7 @@ class BaseUsvModel(BaseModel):
                     constraints["maximum"] = meta.le
 
             if constraints:
-                field_def["constraints"] = constraints
+                field_def["constraints"] = constraints  # type: ignore[assignment]
 
             fields.append(field_def)
         return fields
@@ -298,6 +347,12 @@ class BaseUsvModel(BaseModel):
         """
         Saves the datapackage.json to the specified directory.
         Enforces strict schema compliance (Append-Only) unless force=True.
+
+        Auto-Validation:
+        - If existing datapackage.json has NO schema_hash, it's an old schema
+          (from before ledger system). Auto-regenerate with new hash.
+        - If existing datapackage.json HAS schema_hash, validate it matches model.
+        - Mismatches raise SchemaConflictError unless force=True.
         """
         path.mkdir(parents=True, exist_ok=True)
         new_schema = cls.get_datapackage(resource_name, resource_path)
@@ -343,37 +398,88 @@ class BaseUsvModel(BaseModel):
         new_fields = new_schema["resources"][0]["schema"]["fields"]
 
         sentinel_path = path / "datapackage.json"
+
+        # Check existing datapackage.json
         if sentinel_path.exists() and not force:
             try:
                 with open(sentinel_path, "r") as f:
                     old_schema = json.load(f)
+
+                # AUTO-VALIDATION: Check for old schema without hash
+                existing_hash = old_schema.get("cocli:schema_hash")
+
+                if existing_hash is None:
+                    # OLD SCHEMA DETECTED - Auto-regenerate with new hash
+                    logger.warning(
+                        f"Old datapackage.json without schema_hash detected for {resource_name}. "
+                        f"Auto-regenerating with current model hash ({current_hash[:8]}...)."
+                    )
+                    # Skip validation, allow overwrite
+                else:
+                    # Has hash - validate matches model
+                    if existing_hash != current_hash:
+                        old_fields = old_schema["resources"][0]["schema"]["fields"]
+                        old_field_names = ", ".join([f["name"] for f in old_fields])
+                        new_field_names = ", ".join([f["name"] for f in new_fields])
+
+                        # Check if this is an append-only change (new fields added at end)
+                        is_append_only = True
+                        if len(new_fields) < len(old_fields):
+                            is_append_only = False  # Field count decreased
+                        else:
+                            # Check that existing fields haven't changed
+                            for i, old_f in enumerate(old_fields):
+                                if i >= len(new_fields):
+                                    break
+                                new_f = new_fields[i]
+                                if (
+                                    old_f["name"] != new_f["name"]
+                                    or old_f["type"] != new_f["type"]
+                                ):
+                                    is_append_only = False
+                                    break
+
+                        if not is_append_only:
+                            raise SchemaConflictError(
+                                f"Model: {cls.__name__} | Schema hash mismatch! Model: {current_hash[:8]}, File: {existing_hash[:8]}. "
+                                f"Old fields: {old_field_names} | New fields: {new_field_names}",
+                                [
+                                    f"Hash changed: {existing_hash[:8]} -> {current_hash[:8]}"
+                                ],
+                            )
+
+                    # Hash matches or append-only change - validate field structure (Append-Only)
                     old_fields = old_schema["resources"][0]["schema"]["fields"]
 
-                # 1. Compare field count
-                if len(new_fields) < len(old_fields):
-                    raise SchemaConflictError(
-                        f"Field count decreased ({len(old_fields)} -> {len(new_fields)}). This will break existing USV records.",
-                        [f"- {f['name']}" for f in old_fields[len(new_fields) :]],
-                    )
-
-                # 2. Compare existing field order and types
-                diff = []
-                for i, old_f in enumerate(old_fields):
-                    new_f = new_fields[i]
-                    if old_f["name"] != new_f["name"]:
-                        diff.append(
-                            f"Position {i}: Expected '{old_f['name']}', found '{new_f['name']}'"
-                        )
-                    elif old_f["type"] != new_f["type"]:
-                        diff.append(
-                            f"Position {i} ({old_f['name']}): Expected type '{old_f['type']}', found '{new_f['type']}'"
+                    # 1. Compare field count
+                    if len(new_fields) < len(old_fields):
+                        old_field_names = ", ".join([f["name"] for f in old_fields])
+                        new_field_names = ", ".join([f["name"] for f in new_fields])
+                        raise SchemaConflictError(
+                            f"Model: {cls.__name__} | Field count decreased ({len(old_fields)} -> {len(new_fields)}). This will break existing USV records. | Old fields: {old_field_names} | New fields: {new_field_names}",
+                            [f"- {f['name']}" for f in old_fields[len(new_fields) :]],
                         )
 
-                if diff:
-                    raise SchemaConflictError(
-                        "Schema change detected in existing columns. USV data is positional; you must only APPEND new fields.",
-                        diff,
-                    )
+                    # 2. Compare existing field order and types
+                    diff = []
+                    for i, old_f in enumerate(old_fields):
+                        if i >= len(new_fields):
+                            break
+                        new_f = new_fields[i]
+                        if old_f["name"] != new_f["name"]:
+                            diff.append(
+                                f"Position {i}: Expected '{old_f['name']}', found '{new_f['name']}'"
+                            )
+                        elif old_f["type"] != new_f["type"]:
+                            diff.append(
+                                f"Position {i} ({old_f['name']}): Expected type '{old_f['type']}', found '{new_f['type']}'"
+                            )
+
+                    if diff:
+                        raise SchemaConflictError(
+                            "Schema change detected in existing columns. USV data is positional; you must only APPEND new fields.",
+                            diff,
+                        )
 
             except (KeyError, IndexError) as e:
                 logger.warning(

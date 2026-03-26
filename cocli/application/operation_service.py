@@ -313,12 +313,33 @@ class OperationService:
         index_map = {
             "op_compact_index": "emails",
             "op_compact_prospects": "google_maps_prospects",
-            "op_compile_to_call": "google_maps_prospects",  # Primary anchor
         }
 
         from ..core.paths import paths
 
-        if op_id in index_map:
+        job_start_time = datetime.now(UTC)
+        job_id = job_start_time.strftime("%Y%m%d%H%M%S")
+
+        if op_id == "op_compile_to_call":
+            run_dir = paths.campaign(self.campaign_name).queue("to-call").ensure()
+            run_file = run_dir / "compile-run-log.usv"
+            logger.info(f"Durable Run Log: {run_file}")
+
+            # Write header (overwrites any existing file)
+            from cocli.core.constants import UNIT_SEP
+
+            try:
+                with open(run_file, "w") as f:
+                    f.write(
+                        UNIT_SEP.join(
+                            ["jobid", "timestamp", "step", "status", "details"]
+                        )
+                        + "\n"
+                    )
+            except Exception as e:
+                logger.error(f"Failed to create run log file: {e}")
+                run_file = None
+        elif op_id in index_map:
             idx_name = index_map[op_id]
             run_dir = paths.campaign(self.campaign_name).index(idx_name).runs
             run_dir.mkdir(parents=True, exist_ok=True)
@@ -342,9 +363,20 @@ class OperationService:
                 ts = datetime.now(UTC).isoformat()
                 from cocli.core.constants import UNIT_SEP
 
+                # Calculate duration for job-end
+                final_details = details
+                if step_name == "job-end":
+                    duration = (datetime.now(UTC) - job_start_time).total_seconds()
+                    final_details = f"duration={duration:.1f}s"
+
                 try:
                     with open(run_file, "a") as f:
-                        f.write(UNIT_SEP.join([ts, step_name, status, details]) + "\n")
+                        f.write(
+                            UNIT_SEP.join(
+                                [job_id, ts, step_name, status, final_details]
+                            )
+                            + "\n"
+                        )
                 except Exception as e:
                     logger.error(f"Failed to write to run log: {e}")
 
@@ -505,7 +537,9 @@ class OperationService:
 
                 async def run_workflow() -> Dict[str, Any]:
                     report: Dict[str, Any] = {"steps": []}
+                    log_step("job-start", "success")
 
+                    log_step("compact_gm", "task-start")
                     log_step("compact_gm", "pending", "Running GM index compaction...")
                     from cocli.core.prospect_compactor import (
                         consolidate_campaign_results,
@@ -519,7 +553,9 @@ class OperationService:
                         compact_prospects_to_checkpoint, self.campaign_name
                     )
                     log_step("compact_gm", "success", f"{m_count} records merged")
+                    log_step("compact_gm", "task-end")
 
+                    log_step("compact_emails", "task-start")
                     log_step(
                         "compact_emails", "pending", "Running Email index compaction..."
                     )
@@ -528,7 +564,9 @@ class OperationService:
                     email_manager = EmailIndexManager(self.campaign_name)
                     await asyncio.to_thread(email_manager.compact)
                     log_step("compact_emails", "success")
+                    log_step("compact_emails", "task-end")
 
+                    log_step("identify_leads", "task-start")
                     log_step(
                         "identify_leads",
                         "pending",
@@ -553,6 +591,10 @@ class OperationService:
                         for p in results
                         if p.average_rating is not None and p.reviews_count is not None
                     ]
+                    logger.info(
+                        f"DEBUG: Found {len(results)} results, {len(top_prospects)} after filtering."
+                    )
+
                     top_prospects.sort(
                         key=lambda x: (x.average_rating or 0) * (x.reviews_count or 0),
                         reverse=True,
@@ -563,11 +605,14 @@ class OperationService:
                         "success",
                         f"Identified {len(top_prospects)} candidates (filtered)",
                     )
+                    log_step("identify_leads", "task-end")
 
+                    log_step("tag_leads", "task-start")
                     log_step("tag_leads", "pending")
                     created = 0
                     limit = params.get("limit")
                     from cocli.models.companies.company import Company
+                    from cocli.models.campaigns.queues.to_call import ToCallTask
 
                     for p in top_prospects:
                         if limit and created >= limit:
@@ -593,22 +638,20 @@ class OperationService:
                                 ):
                                     company.reviews_count = p.reviews_count
 
-                                # CLEAN NAME: Remove double quotes that often plague YAML frontmatter from messy USV imports
+                                # CLEAN NAME: Remove double quotes
                                 if p.name:
                                     clean_name = p.name.strip("\"'")
                                     if clean_name and clean_name != company.name:
                                         company.name = clean_name
 
-                                # Save updated metadata (no tagging)
+                                # Save updated metadata
                                 await asyncio.to_thread(company.save)
                                 logger.info(f"Updated {p.slug}")
-                                created += 1
                             else:
                                 # Company doesn't exist - create from prospect data
                                 logger.info(
                                     f"Creating new company from prospect: {p.slug}"
                                 )
-                                from cocli.models.companies.company import Company
                                 from cocli.core.utils import create_company_files
 
                                 company_name = (
@@ -633,48 +676,8 @@ class OperationService:
                                     new_company, new_company.get_local_path()
                                 )
                                 logger.info(f"Created company at {company_dir}")
-                                created += 1
-                                logger.info(f"Created company: {p.slug}")
-                        else:
-                            logger.warning(f"Prospect {p} has no slug")
 
-                    log_step(
-                        "tag_leads",
-                        "success",
-                        f"Processed {len(top_prospects)} leads, created {created} companies",
-                    )
-
-                    report["top_leads_found"] = len(top_prospects)
-                    report["companies_created"] = created
-                    return report
-
-                result = await run_workflow()
-            elif op_id == "op_compile_top_prospects":
-
-                def run_compile() -> Dict[str, Any]:
-                    from .search_service import get_fuzzy_search_results
-
-                    filters = {"has_contact_info": True}
-                    results = get_fuzzy_search_results(
-                        "",
-                        item_type="company",
-                        campaign_name=self.campaign_name,
-                        filters=filters,
-                        sort_by="rating",
-                        limit=500,
-                    )
-                    top_prospects = [
-                        r
-                        for r in results
-                        if (r.average_rating or 0) >= 4.5
-                        and (r.reviews_count or 0) >= 20
-                    ]
-                    tagged = 0
-                    from cocli.models.campaigns.queues.to_call import ToCallTask
-
-                    for p in top_prospects:
-                        if p.slug:
-                            # Instead of tagging, enqueue
+                            # ADD TO QUEUE
                             task = ToCallTask(
                                 company_slug=p.slug,
                                 domain=p.domain or "unknown",
@@ -682,13 +685,21 @@ class OperationService:
                                 ack_token=None,
                             )
                             task.save()
-                            tagged += 1
-                    return {
-                        "top_candidates_found": len(top_prospects),
-                        "newly_enqueued": tagged,
-                    }
+                            created += 1
+                            logger.info(f"Enqueued to-call: {p.slug}")
+                        else:
+                            logger.warning(f"Prospect {p} has no slug")
+                    log_step("tag_leads", "success")
+                    log_step("tag_leads", "task-end")
+                    log_step("job-end", "success")
 
-                result = await asyncio.to_thread(run_compile)
+                    return report
+
+                try:
+                    result = await run_workflow()
+                except Exception:
+                    log_step("job-end", "error")
+                    raise
             elif op_id == "op_analyze_emails":
                 result = await asyncio.to_thread(
                     self.services.reporting_service.get_email_analysis
@@ -1154,7 +1165,6 @@ class OperationService:
                 result = await asyncio.to_thread(
                     self.services.deployment_service.scale_service, count
                 )
-            else:
                 raise NotImplementedError(
                     f"Logic for {op_id} not implemented in OperationService"
                 )

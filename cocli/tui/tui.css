@@ -1,7 +1,7 @@
 /* 
    cocli simplified theme
    Based on strict black aesthetic from example.css
-*/
+ */
 
 * {
     transition: none; /* Disable all transitions for maximum responsiveness */
@@ -251,6 +251,26 @@ DataTable > .datatable--cursor {
 
 .panel {
     padding: 0 1;
+}
+
+#queue_info_panel {
+    height: auto;
+    max-height: 12;
+}
+
+#queue_info_panel .panel-content {
+    height: auto;
+    max-height: 8;
+    overflow-y: auto;
+}
+
+#audit_panel {
+    height: 1fr;
+}
+
+#audit_panel .panel-content {
+    height: 1fr;
+    overflow-y: auto;
 }
 
 #edit-csz-container {

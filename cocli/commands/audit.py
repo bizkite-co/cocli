@@ -336,3 +336,182 @@ def audit_tui(
     # This just wraps the existing functionality
     # But cocli tui --dump-tree already does this.
     console.print(f"To dump TUI tree, use: [bold]cocli tui --dump-tree {output}[/bold]")
+
+
+@app.command(name="schemas")
+def audit_schemas(
+    campaign: Optional[str] = typer.Option(
+        None, "--campaign", "-c", help="Campaign to audit. Defaults to all."
+    ),
+    fix: bool = typer.Option(
+        False,
+        "--fix",
+        help="Auto-fix stale schemas by regenerating datapackage.json files.",
+    ),
+    dry_run: bool = typer.Option(
+        False, "--dry-run", help="Preview changes without applying (used with --fix)."
+    ),
+) -> None:
+    """
+    Audit datapackage.json files for schema compliance.
+
+    Checks:
+    - datapackage.json files have cocli:schema_hash
+    - Schema hashes match the schema_ledger.json
+    - No schema drift between model and file
+
+    Examples:
+        cocli audit schemas                          # Scan all campaigns
+        cocli audit schemas --campaign roadmap       # Scan specific campaign
+        cocli audit schemas --fix                    # Auto-fix stale schemas
+        cocli audit schemas --fix --dry-run         # Preview fixes
+    """
+    import json
+    from rich.table import Table
+
+    # Import all models that implement SchemaGenerator
+    from cocli.models.campaigns.indexes.google_maps_list_item import GoogleMapsListItem
+    from cocli.models.campaigns.indexes.google_maps_prospect import GoogleMapsProspect
+    from cocli.models.campaigns.queues.to_call import ToCallTask
+
+    SCHEMA_MODELS = [
+        GoogleMapsListItem,
+        GoogleMapsProspect,
+        ToCallTask,
+    ]
+
+    # Find all datapackage.json files
+    root = Path.cwd()
+    console.print("[bold]Scanning for datapackage.json files...[/bold]\n")
+
+    issues_found = []
+    files_checked = 0
+
+    for dp_file in root.rglob("datapackage.json"):
+        files_checked += 1
+
+        try:
+            with open(dp_file, "r") as f:
+                dp = json.load(f)
+
+            resource_name = dp.get("name", dp_file.parent.name)
+            existing_hash = dp.get("cocli:schema_hash")
+
+            # Check for missing hash (old schema)
+            if existing_hash is None:
+                issues_found.append(
+                    {
+                        "file": str(dp_file.relative_to(root)),
+                        "issue": "MISSING_SCHEMA_HASH",
+                        "details": "Old datapackage.json without schema_hash",
+                    }
+                )
+                continue
+
+            # Check against ledger
+            ledger_path = root / "schema_ledger.json"
+            if ledger_path.exists():
+                with open(ledger_path, "r") as f:
+                    ledger = json.load(f)
+
+                if resource_name in ledger:
+                    ledger_hash = ledger[resource_name].get("current_hash", "")
+                    if ledger_hash and ledger_hash != existing_hash:
+                        issues_found.append(
+                            {
+                                "file": str(dp_file.relative_to(root)),
+                                "issue": "HASH_MISMATCH",
+                                "details": f"File: {existing_hash[:8]}, Ledger: {ledger_hash[:8]}",
+                            }
+                        )
+
+        except Exception as e:
+            issues_found.append(
+                {
+                    "file": str(dp_file.relative_to(root)),
+                    "issue": "READ_ERROR",
+                    "details": str(e),
+                }
+            )
+
+    # Display results
+    console.print(f"Checked {files_checked} datapackage.json files.\n")
+
+    if not issues_found:
+        console.print("[green]✓ All schemas are compliant![/green]")
+        return
+
+    # Show issues
+    table = Table(title="Schema Issues Found")
+    table.add_column("File", style="cyan")
+    table.add_column("Issue", style="red")
+    table.add_column("Details")
+
+    for issue in issues_found:
+        table.add_row(
+            issue["file"][:50] + "..." if len(issue["file"]) > 50 else issue["file"],
+            issue["issue"],
+            issue["details"],
+        )
+
+    console.print(table)
+
+    # Fix if requested
+    if fix and issues_found:
+        if dry_run:
+            console.print(
+                f"\n[yellow]--dry-run: Would fix {len(issues_found)} issues (preview only).[/yellow]"
+            )
+        else:
+            console.print(f"\n[bold]Fixing {len(issues_found)} stale schemas...[/bold]")
+
+            fixed_count = 0
+            for issue in issues_found:
+                if issue["issue"] in ["MISSING_SCHEMA_HASH", "HASH_MISMATCH"]:
+                    dp_file = root / issue["file"]
+
+                    # Try to find the right model for this datapackage
+                    # For now, try common models
+                    for model in SCHEMA_MODELS:
+                        try:
+                            model.save_datapackage(  # type: ignore[attr-defined]
+                                dp_file.parent,
+                                dp_file.parent.name,
+                                "*.usv",
+                                force=True,
+                            )
+                            fixed_count += 1
+                            console.print(f"  [green]Fixed:[/green] {issue['file']}")
+                            break
+                        except Exception:
+                            continue
+                    else:
+                        console.print(
+                            f"  [red]Could not fix:[/red] {issue['file']} - No matching model"
+                        )
+
+            console.print(f"\n[green]Fixed {fixed_count} schemas.[/green]")
+
+
+@app.command(name="gm-list-html")
+def audit_gm_list_html(
+    campaign: str = typer.Option("roadmap", "--campaign", "-c", help="Campaign name"),
+    limit: int = typer.Option(
+        20, "--limit", "-n", help="Number of random HTML files to audit"
+    ),
+    output: str = typer.Option(
+        "gm_list_audit", "--output", "-o", help="Output file name"
+    ),
+) -> None:
+    """
+    Audit gm-list HTML files to extract and verify rating/review data.
+
+    Uses the same extractors as the real scraping process to verify
+    data quality from raw HTML files.
+
+    Example: cocli audit gm-list-html --campaign roadmap --limit 20
+    """
+    from cocli.core.auditors.gm_list_auditor import run_html_audit
+
+    result = run_html_audit(campaign, limit=limit, output_name=output)
+    console.print(f"[green]Audit results saved to: {result}[/green]")

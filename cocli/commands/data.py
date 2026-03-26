@@ -20,6 +20,10 @@ logger = logging.getLogger(__name__)
 app = typer.Typer(no_args_is_help=True)
 console = Console()
 
+# Queue sub-commands for data operations
+queue_app = typer.Typer(help="Queue management commands")
+app.add_typer(queue_app, name="queue")
+
 
 @app.command(name="list")
 def list_schemas() -> None:
@@ -384,3 +388,28 @@ def inspect(
     for i, field in enumerate(fields):
         val = row[i] if i < len(row) else ""
         console.print(f"{i}: {field['name']:<20} | {val}")
+
+
+@queue_app.command(name="compact")
+def queue_compact(
+    campaign: str = typer.Option("roadmap", "--campaign", "-c", help="Campaign name"),
+    queue_name: str = typer.Argument(..., help="Queue name to compact (e.g., gm-list)"),
+) -> None:
+    """Compact a queue's results into a unified dataset.
+
+    Example: cocli data queue compact gm-list
+    """
+    from cocli.core.transformers.gm_list_to_checkpoint import compact_gm_list_results
+
+    console.print(
+        f"[cyan]Compacting queue '{queue_name}' for campaign '{campaign}'...[/cyan]"
+    )
+
+    if queue_name == "gm-list":
+        count = compact_gm_list_results(campaign)
+        console.print(f"[green]Compaction complete. Merged {count} records.[/green]")
+    else:
+        console.print(
+            f"[red]Error: Unknown queue '{queue_name}'. Currently supported: gm-list[/red]"
+        )
+        raise typer.Exit(1)

@@ -8,6 +8,7 @@ from textual import on, events, work
 if TYPE_CHECKING:
     from ..app import CocliApp
 
+
 class TemplateList(Container):
     """A list of search templates."""
 
@@ -32,10 +33,14 @@ class TemplateList(Container):
             ListItem(Label("Missing Address"), id="tpl_no_address"),
             ListItem(Label("Top Rated"), id="tpl_top_rated"),
             ListItem(Label("Most Reviewed"), id="tpl_most_reviewed"),
-            id="template_list"
+            id="template_list",
         )
 
     async def on_mount(self) -> None:
+        pass
+
+    def trigger_counts_update(self) -> None:
+        """Manually trigger counts update (deferred from on_mount for faster startup)."""
         self.update_counts()
 
     @work(exclusive=True, thread=True)
@@ -64,14 +69,21 @@ class TemplateList(Container):
     def on_list_view_highlighted(self, event: ListView.Highlighted) -> None:
         if event.item and event.item.id:
             from ..app import tui_debug_log
+
             style = event.item.styles
-            tui_debug_log(f"TEMPLATE: Highlighted {event.item.id} | Style: color={style.color}, bg={style.background}")
+            tui_debug_log(
+                f"TEMPLATE: Highlighted {event.item.id} | Style: color={style.color}, bg={style.background}"
+            )
             self.post_message(self.TemplateHighlighted(event.item.id))
+
+    def on_focus(self) -> None:
+        """Trigger counts update on first focus for faster startup."""
+        self.trigger_counts_update()
 
     def on_key(self, event: events.Key) -> None:
         """Handle key events for the TemplateList widget."""
         list_view = self.query_one("#template_list", ListView)
-        
+
         if event.key == "j":
             list_view.action_cursor_down()
             event.prevent_default()

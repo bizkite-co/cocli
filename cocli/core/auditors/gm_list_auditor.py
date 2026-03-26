@@ -1,4 +1,5 @@
 from pathlib import Path
+import typer
 from cocli.utils.usv_utils import USVReader, USVWriter
 from rich.console import Console
 import duckdb
@@ -57,7 +58,7 @@ def run_compilation(campaign: str, queue: str, results_dir: Path) -> Path:
                 for row in rows:
                     # Pad to 10 fields if necessary
                     if len(row) == 9:
-                        row.insert(3, None)  # Insert category at index 3
+                        row.insert(3, None)  # type: ignore[arg-type]
                     elif len(row) > 10:
                         row = row[:10]
                     elif len(row) < 9:
@@ -200,3 +201,134 @@ def run_reporting(results_dir: Path) -> Path:
     metrics(file_path=compacted_path, output_path=output_report)
 
     return output_report
+
+
+def run_html_audit(
+    campaign: str,
+    limit: int = 20,
+    output_name: str = "gm_list_audit",
+) -> Path:
+    """
+    Audit gm-list HTML files to extract and verify rating/review data.
+
+    Uses the same extractors as the real scraping process to verify
+    data quality from raw HTML files.
+
+    Args:
+        campaign: Campaign name
+        limit: Number of random HTML files to audit (default 20)
+        output_name: Name for output files
+
+    Returns:
+        Path to the audit results USV file
+    """
+    import random
+    from bs4 import BeautifulSoup
+
+    from cocli.core.paths import paths
+    from cocli.models.campaigns.indexes.gm_list_audit_item import GmListAuditItem
+    from cocli.scrapers.google.google_maps_parsers.extract_rating_reviews_gm_list import (
+        extract_rating_reviews_gm_list,
+    )
+    from cocli.scrapers.google.google_maps_parsers.extract_name import extract_name
+    from cocli.scrapers.google.google_maps_parsers.extract_gmb_url_coordinates_place_id import (
+        extract_gmb_url_coordinates_place_id,
+    )
+
+    campaign_paths = paths.campaign(campaign)
+    raw_dir = campaign_paths.path / "raw" / "gm-list"
+
+    if not raw_dir.exists():
+        console.print(f"[red]Raw gm-list directory not found: {raw_dir}[/red]")
+        raise typer.Exit(1)
+
+    # Find all HTML files
+    html_files = list(raw_dir.rglob("*.html"))
+    if not html_files:
+        console.print(f"[red]No HTML files found in {raw_dir}[/red]")
+        raise typer.Exit(1)
+
+    console.print(f"Found {len(html_files)} HTML files. Sampling {limit}...")
+
+    # Random sample
+    sample_files = random.sample(html_files, min(limit, len(html_files)))
+
+    audit_items = []
+
+    for html_file in sample_files:
+        try:
+            with open(html_file, "r", encoding="utf-8") as f:
+                html_content = f.read()
+
+            soup = BeautifulSoup(html_content, "html.parser")
+            inner_text = soup.get_text()
+
+            # Extract using same functions as real scraper
+            name_result = extract_name(soup, inner_text, debug=False)
+            rating_result = extract_rating_reviews_gm_list(
+                soup, inner_text, debug=False
+            )
+            url_result = extract_gmb_url_coordinates_place_id(soup, debug=False)
+
+            # Parse rating and reviews
+            rating_str = rating_result.get("Average_rating", "")
+            reviews_str = rating_result.get("Reviews_count", "")
+
+            rating = float(rating_str) if rating_str else None
+            reviews = int(reviews_str) if reviews_str else None
+
+            item = GmListAuditItem(
+                place_id=url_result.get("Place_ID", ""),
+                name=name_result,
+                average_rating=rating,
+                reviews_count=reviews,
+                gmb_url=url_result.get("GMB_URL", ""),
+            )
+            audit_items.append(item)
+
+        except Exception as e:
+            console.print(f"[yellow]Skipping {html_file.name}: {e}[/yellow]")
+            continue
+
+    if not audit_items:
+        console.print("[red]No items extracted.[/red]")
+        raise typer.Exit(1)
+
+    # Save results
+    output_dir = campaign_paths.queue("gm-list").completed / "results"
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    output_usv = output_dir / f"{output_name}.usv"
+
+    # Use BaseUsvModel's save method
+    with open(output_usv, "w", encoding="utf-8") as f:
+        for item in audit_items:
+            f.write(item.to_usv())
+
+    # Save datapackage
+    GmListAuditItem.save_datapackage(
+        output_dir,
+        output_name,
+        f"{output_name}.usv",
+    )
+
+    console.print(
+        f"[green]Audit complete. {len(audit_items)} items saved to {output_usv}[/green]"
+    )
+
+    # Print summary
+    with_rating = sum(1 for i in audit_items if i.average_rating is not None)
+    with_reviews = sum(1 for i in audit_items if i.reviews_count is not None)
+    with_both = sum(
+        1
+        for i in audit_items
+        if i.average_rating is not None and i.reviews_count is not None
+    )
+
+    console.print("\n[bold]Audit Summary:[/bold]")
+    console.print(f"  Total items: {len(audit_items)}")
+    console.print(f"  With rating: {with_rating}")
+    console.print(f"  With reviews: {with_reviews}")
+    console.print(f"  With both: {with_both}")
+
+    return output_usv
