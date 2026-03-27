@@ -118,7 +118,9 @@ class QueueDetail(VerticalScroll):
                 "AUDIT RESULTS (a=run audit, r=refresh, l=reviewed, g=open url)",
                 classes="panel-header-yellow",
             )
-            yield Label("Path: Loading...", id="audit_path_label", classes="dim")
+            yield Label("Source: Loading...", id="audit_source_label", classes="dim")
+            yield Label("Output: Loading...", id="audit_output_label", classes="dim")
+            yield Label("Count: Loading...", id="audit_count_label", classes="dim")
             yield Label("j/k=navigate, l=reviewed", id="audit_status")
             yield Vertical(id="audit_results_content", classes="panel-content")
 
@@ -508,6 +510,24 @@ class QueueDetail(VerticalScroll):
             ).services.reporting_service.campaign_name
             logger.warning(f"load_audit_results: campaign={campaign}")
 
+            # Source: raw HTML files
+            raw_dir = paths.campaign(campaign).path / "raw" / "gm-list"
+            html_count = 0
+            if raw_dir.exists():
+                html_files = list(raw_dir.rglob("*.html"))
+                html_count = len(html_files)
+
+            # Try to show relative path
+            try:
+                raw_display = f"data/{raw_dir.relative_to(paths.root)}/*.html"
+            except ValueError:
+                raw_display = str(raw_dir)
+
+            self.query_one("#audit_source_label", Label).update(
+                f"Source: {raw_display} ({html_count} files)"
+            )
+
+            # Output: audit results file
             audit_path = (
                 paths.campaign(campaign).queue("gm-list").completed
                 / "results"
@@ -517,8 +537,14 @@ class QueueDetail(VerticalScroll):
             logger.warning(f"load_audit_results: Full Path={audit_path}")
             logger.warning(f"load_audit_results: Path Exists={audit_path.exists()}")
 
-            # Update path label
-            self.query_one("#audit_path_label", Label).update(f"Path: {audit_path}")
+            # Update output label
+            try:
+                audit_display = f"data/{audit_path.relative_to(paths.root)}"
+            except ValueError:
+                audit_display = str(audit_path)
+            self.query_one("#audit_output_label", Label).update(
+                f"Output: {audit_display}"
+            )
 
             container = self.query_one("#audit_results_content", Vertical)
             container.remove_children()
@@ -528,6 +554,7 @@ class QueueDetail(VerticalScroll):
                 self.query_one("#audit_status", Label).update(
                     f"[dim]No audit data. Path does not exist: {audit_path}[/]"
                 )
+                self.query_one("#audit_count_label", Label).update("Count: -")
                 return
 
             items = []
@@ -550,6 +577,11 @@ class QueueDetail(VerticalScroll):
                                 }
                             )
             logger.warning(f"load_audit_results: Loaded {len(items)} items")
+
+            # Update count label
+            self.query_one("#audit_count_label", Label).update(
+                f"Count: {len(items)} items"
+            )
 
             if not items:
                 logger.warning("load_audit_results: No items in file")
