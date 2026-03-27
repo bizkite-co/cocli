@@ -1,9 +1,5 @@
 {
-  "includes": [
-    "src",
-    "tests",
-    "pyproject.toml"
-  ],
+  "includes": ["src", "tests", "pyproject.toml"],
   "excludes": [
     ".git",
     "__pycache__",
@@ -23,6 +19,12 @@
   "tasks": {
     "build": {},
     "lint": {},
-    "test": {}
+    "test": {},
+    "test-data": {},
+    "test-e2e": {},
+    "test-tui": {},
+    "test-tui-integration": {},
+    "test-unit": {}
   }
 }
+

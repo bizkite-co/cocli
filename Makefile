@@ -91,6 +91,10 @@ logname: ## Get the latest log file name
 	@latest_log=$$(ls -t .logs/ | head -n 1); \
 	echo ".logs/$$latest_log"
 
+#################################
+# TESTS: Linting and testing
+#################################
+
 # Note: TUI integration tests are run separately due to terminal driver conflicts.
 # Use 'make test-tui-integration' to run them.
 test: install lint ## Run all non-TUI tests using pytest (incremental)
@@ -101,17 +105,43 @@ test: install lint ## Run all non-TUI tests using pytest (incremental)
 		$(TASKHASH) update test; \
 	fi
 
+test-e2e: install ## Run end-to-end tests (requires 1Password CLI)
+	source $(VENV_DIR)/bin/activate && PYTHONPATH=. pytest tests/e2e
+
+test-data: install ## Run end-to-end tests (requires 1Password CLI)
+	source $(VENV_DIR)/bin/activate && PYTHONPATH=. pytest tests/data
+
 test-unit: install lint ## Run unit tests (incremental)
 	@if $(TASKHASH) check test-unit; then \
 		echo "Code signature matches for task 'test-unit'. Skipping unit tests."; \
 	else \
-		source $(VENV_DIR)/bin/activate && PYTHONPATH=. pytest -s tests/ --ignore=tests/tui --ignore=tests/e2e && \
+		source $(VENV_DIR)/bin/activate && PYTHONPATH=. pytest -s tests/ --ignore=tests/tui --ignore=tests/e2e --ignore=tests/data && \
 		$(TASKHASH) update test-unit; \
 	fi
 
 test-tui-integration: install ## Run only the TUI integration tests
 	source $(VENV_DIR)/bin/activate && pytest tests/tui/test_navigation_steps.py
 	cat .logs/tui.log
+
+test-tui: install lint ## Run TUI test with names
+	@if $(TASKHASH) check test-tui; then \
+		echo "Code signature matches for task 'test-tui'. Skipping test-tui."; \
+	else \
+		source $(VENV_DIR)/bin/activate && pytest -s tests/tui; \
+	fi
+
+lint: ## Run ruff and mypy to perform static type checking (incremental)
+	@if $(TASKHASH) check lint; then \
+		echo "Code signature matches for task 'lint'. Skipping lint."; \
+	else \
+		echo "Code changed. Running lint..."; \
+		$(VENV_DIR)/bin/ruff check . --fix && \
+		$(VENV_DIR)/bin/python -m mypy --config-file pyproject.toml . && \
+		$(TASKHASH) update lint; \
+	fi
+################################
+# /TESTS
+################################
 
 report: ## Show the report for the current campaign (Usage: make report [CAMPAIGN=name])
 	@PYTHONPATH=. ./.venv/bin/python scripts/campaign_report.py $(CAMPAIGN)
@@ -126,28 +156,12 @@ cleanse: ## Distributed removal of orphans from audit report (Usage: make cleans
 coverage-gap: ## Generate a report of unscraped target areas
 	@COCLI_DATA_HOME=$(shell pwd)/data ./.venv/bin/cocli campaign coverage-gap $(CAMPAIGN)
 
-test-tui: install lint ## Run TUI test with names
-	source $(VENV_DIR)/bin/activate && pytest -v tests/tui
-
-test-e2e: install op-check ## Run end-to-end tests (requires 1Password CLI)
-	source $(VENV_DIR)/bin/activate && PYTHONPATH=. pytest tests/e2e
-
 playwright-install: install ## Install Playwright browsers
 	source $(VENV_DIR)/bin/activate && playwright install chromium
 
 textual: ## Run the app in textual
 	@uv tool install textual-dev
 	textual run cocli.tui.app
-
-lint: ## Run ruff and mypy to perform static type checking (incremental)
-	@if $(TASKHASH) check lint; then \
-		echo "Code signature matches for task 'lint'. Skipping lint."; \
-	else \
-		echo "Code changed. Running lint..."; \
-		$(VENV_DIR)/bin/ruff check . --fix && \
-		$(VENV_DIR)/bin/python -m mypy --config-file pyproject.toml . && \
-		$(TASKHASH) update lint; \
-	fi
 
 # Data Management Targets
 commit-campaigns:

@@ -27,7 +27,7 @@ class QueueMetadata(BaseModel):
 QUEUES_METADATA: Dict[QueueName, QueueMetadata] = {
     "discovery-gen": QueueMetadata(
         name="discovery-gen",
-        label="Mission Control",
+        label="discovery-gen/",
         description="Generates the master grid of search tiles from campaign config. Acts as the source for all prospecting missions.",
         model_class=MissionTask,
         from_model_name="CampaignConfig",
@@ -49,7 +49,7 @@ QUEUES_METADATA: Dict[QueueName, QueueMetadata] = {
     ),
     "gm-list": QueueMetadata(
         name="gm-list",
-        label="gm-list",
+        label="gm-list/",
         description="Geographic search areas to be scraped for company results. Acts as the entry point for geo-prospecting.",
         model_class=ScrapeTask,
         from_model_name="cocli.models.campaigns.config.CampaignConfig",
@@ -76,7 +76,7 @@ QUEUES_METADATA: Dict[QueueName, QueueMetadata] = {
     ),
     "gm-details": QueueMetadata(
         name="gm-details",
-        label="gm-details",
+        label="gm-details/",
         description="Individual Place IDs to be scraped for full business details. Bridges raw results to canonical company files.",
         model_class=GmItemTask,
         from_model_name="cocli.models.campaigns.queues.gm_list.ScrapeTask",
@@ -100,7 +100,7 @@ QUEUES_METADATA: Dict[QueueName, QueueMetadata] = {
     ),
     "enrichment": QueueMetadata(
         name="enrichment",
-        label="Website Enrichment",
+        label="enrichment/",
         description="Domains to be scraped for emails, social links, and tech stacks. Deep-dives into digital footprint.",
         model_class=EnrichmentTask,
         from_model_name="cocli.models.campaigns.queues.gm_details.GmItemTask",
@@ -126,7 +126,7 @@ QUEUES_METADATA: Dict[QueueName, QueueMetadata] = {
     ),
     "to-call": QueueMetadata(
         name="to-call",
-        label="To Call",
+        label="to-call/",
         description="High-priority leads ready for human outreach. Final stage of the enrichment pipeline.",
         model_class=ToCallTask,
         from_model_name="cocli.models.companies.company.Company",

@@ -1,19 +1,20 @@
 from typing import Any, Dict, Optional, TYPE_CHECKING, cast
 import logging
 import asyncio
-import webbrowser
 from textual.app import ComposeResult
 from textual.containers import Vertical, Horizontal, VerticalScroll
 from textual.widgets import Label, ListView, ListItem, Static
 from textual import work, events
-from rich.table import Table
 
+from rich.table import Table
 from cocli.models.campaigns.queues.metadata import (
     QUEUES_METADATA,
     QueueMetadata,
     PropertyInfo,
 )
 from cocli.core.paths import paths
+from cocli.tui.widgets.mark_reviewed_dialog import MarkReviewedDialog
+
 
 if TYPE_CHECKING:
     from ..app import CocliApp
@@ -48,12 +49,17 @@ class QueueDetail(VerticalScroll):
                 self.action_run_audit()
                 event.prevent_default()
                 return
+            if event.key == "r":
+                self.load_audit_results()
+                self.app.notify("Audit results refreshed.")
+                event.prevent_default()
+                return
             if event.key == "l":
-                self.action_verify_item()
+                self.action_mark_reviewed()
                 event.prevent_default()
                 return
             if event.key == "g":
-                self.action_open_audit_gmb()
+                asyncio.create_task(self.action_open_audit_gmb())
                 event.prevent_default()
                 return
             if event.key == "j":
@@ -109,15 +115,18 @@ class QueueDetail(VerticalScroll):
         # 3. Bottom Section: Audit Results (for gm-list)
         with Vertical(classes="panel", id="audit_panel"):
             yield Label(
-                "AUDIT RESULTS (a=run audit, l=verify, g=open url)",
+                "AUDIT RESULTS (a=run audit, r=refresh, l=reviewed, g=open url)",
                 classes="panel-header-yellow",
             )
-            yield Label("j/k=navigate, l=verify", id="audit_status")
+            yield Label("Path: Loading...", id="audit_path_label", classes="dim")
+            yield Label("j/k=navigate, l=reviewed", id="audit_status")
             yield Vertical(id="audit_results_content", classes="panel-content")
 
     def update_detail(self, queue_id: str) -> None:
+        logger.warning(f"update_detail called for queue: {queue_id}")
         meta = QUEUES_METADATA.get(queue_id)
         if not meta:
+            logger.warning(f"No metadata for {queue_id}")
             return
 
         self.active_queue = meta
@@ -140,7 +149,10 @@ class QueueDetail(VerticalScroll):
 
         # 3. Auto-load audit results for gm-list
         if queue_id == "gm-list":
+            logger.warning("Calling load_audit_results for gm-list")
             self.load_audit_results()
+        else:
+            logger.warning(f"Not calling load_audit_results, queue_id={queue_id}")
 
     def _render_property_table(
         self, widget_id: str, props: Dict[str, PropertyInfo], color: str
@@ -169,6 +181,9 @@ class QueueDetail(VerticalScroll):
 
         app_cast = cast("CocliApp", app)
         campaign = app_cast.services.reporting_service.campaign_name
+        logger.warning(
+            f"refresh_counts: campaign={campaign}, queue={self.active_queue.name if self.active_queue else 'None'}"
+        )
         local_path = paths.campaign(campaign).queue(self.active_queue.name).path
 
         try:
@@ -248,80 +263,190 @@ class QueueDetail(VerticalScroll):
         indicator.update("")
 
     # Audit methods
-    def action_run_audit(self) -> None:
+    @work(exclusive=True)
+    async def action_run_audit(self) -> None:
         """Run gm-list audit."""
+        logger.warning(f"action_run_audit: active_queue={self.active_queue}")
         if not self.active_queue or self.active_queue.name != "gm-list":
+            logger.warning("action_run_audit: not gm-list")
             return
-        self.app.notify("Run: cocli audit gm-list-html")
 
-    def action_verify_item(self) -> None:
-        """Verify selected audit item - saves with current values."""
+        self.app.notify("Running audit for gm-list...")
+
+        try:
+            campaign = cast(
+                "CocliApp", self.app
+            ).services.reporting_service.campaign_name
+
+            import sys
+
+            # Use the currently running python executable to call cocli as a module
+            # This is safer than relying on PATH
+            cmd = [
+                sys.executable,
+                "-m",
+                "cocli.main",
+                "audit",
+                "gm-list-html",
+                "--campaign",
+                campaign,
+            ]
+            logger.warning(f"action_run_audit: Executing {' '.join(cmd)}")
+
+            proc = await asyncio.create_subprocess_exec(
+                *cmd,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+            )
+            stdout, stderr = await proc.communicate()
+
+            logger.warning(f"action_run_audit: stdout={stdout.decode()}")
+            logger.warning(f"action_run_audit: stderr={stderr.decode()}")
+
+            if proc.returncode == 0:
+                self.app.notify("Audit completed successfully.")
+                self.load_audit_results()
+            else:
+                logger.error(f"Audit failed: {stderr.decode()}")
+                self.app.notify(
+                    f"Audit failed: {stderr.decode()[:50]}", severity="error"
+                )
+
+        except Exception as e:
+            logger.error(f"Error running audit: {e}", exc_info=True)
+            self.app.notify(f"Error running audit: {e}", severity="error")
+
+    def _get_reviewed_data(self) -> dict[str, tuple[str, str]]:
+        """Read gm_list_reviewed.usv and return dict keyed by place_id with (rating, reviews)."""
+        reviewed_data: dict[str, tuple[str, str]] = {}
+        try:
+            campaign = cast(
+                "CocliApp", self.app
+            ).services.reporting_service.campaign_name
+            reviewed_path = (
+                paths.campaign(campaign).queue("gm-list").completed
+                / "results"
+                / "gm_list_reviewed.usv"
+            )
+            if reviewed_path.exists():
+                with open(reviewed_path, "r", encoding="utf-8") as f:
+                    for line in f:
+                        if line.strip():
+                            parts = line.strip().split("\x1f")
+                            if len(parts) >= 3:
+                                pid = parts[0]
+                                rating = str(parts[1]) if parts[1] else "-"
+                                reviews = str(parts[2]) if parts[2] else "-"
+                                reviewed_data[pid] = (rating, reviews)
+        except Exception as e:
+            logger.error(f"Error reading reviewed data: {e}")
+        return reviewed_data
+
+    def action_mark_reviewed(self) -> None:
+        """Mark selected audit item as reviewed - shows dialog to enter rating/reviews."""
         if not self.active_queue or self.active_queue.name != "gm-list":
-            logger.warning("verify_item: not active gm-list queue")
+            logger.warning("mark_reviewed: not active gm-list queue")
             return
         if not self.audit_items:
             logger.warning(
-                f"verify_item: no audit items (count={len(self.audit_items) if self.audit_items else 'None'}, idx={self.audit_selected_idx})"
+                f"mark_reviewed: no audit items (count={len(self.audit_items) if self.audit_items else 'None'}, idx={self.audit_selected_idx})"
             )
             self.app.notify("No audit data. Run audit first.")
             return
         if self.audit_selected_idx >= len(self.audit_items):
             logger.warning(
-                f"verify_item: index out of range (idx={self.audit_selected_idx}, len={len(self.audit_items)})"
+                f"mark_reviewed: index out of range (idx={self.audit_selected_idx}, len={len(self.audit_items)})"
             )
             self.app.notify("No audit item selected.")
             return
 
-        # Save with current values
         idx = self.audit_selected_idx
         item = self.audit_items[idx]
         place_id = item.get("place_id", "")
         biz_name = item.get("name", "Unknown")
-        rating = item.get("rating", "-")
-        reviews = item.get("reviews", "-")
+
+        reviewed_data = self._get_reviewed_data()
+        if place_id in reviewed_data:
+            rating, reviews = reviewed_data[place_id]
+        else:
+            rating = item.get("rating", "-")
+            reviews = item.get("reviews", "-")
 
         logger.warning(
-            f"verify_item: rating='{rating}', reviews='{reviews}', item={item}"
+            f"mark_reviewed: rating='{rating}', reviews='{reviews}', item={item}"
         )
 
-        if not rating or not reviews or rating == "-" or reviews == "-":
-            self.app.notify(
-                f"No data to verify (rating='{rating}', reviews='{reviews}')",
-                severity="error",
-            )
+        cast("CocliApp", self.app).nav_manager.save_focus(
+            self.query_one("#audit_results_content", Vertical)
+        )
+        self.app.push_screen(
+            MarkReviewedDialog(
+                place_id=place_id,
+                biz_name=biz_name,
+                current_rating=rating,
+                current_reviews=reviews,
+            ),
+            self._on_review_dialog_complete,
+        )
+
+    def _on_review_dialog_complete(self, result: Optional[dict[str, Any]]) -> None:
+        """Callback when the review dialog closes."""
+        if result is None:
+            cast("CocliApp", self.app).nav_manager.restore_focus()
             return
 
+        rating = result.get("rating", "-")
+        reviews = result.get("reviews", "-")
+
+        if not rating or not reviews:
+            self.app.notify("Rating and reviews are required.", severity="error")
+            return
+
+        idx = self.audit_selected_idx
+        item = self.audit_items[idx]
+        place_id = item.get("place_id", "")
+        biz_name = item.get("name", "Unknown")
+
         try:
-            from cocli.models.campaigns.indexes.gm_list_verified_item import (
-                GmListVerifiedItem,
+            from cocli.models.campaigns.indexes.gm_list_reviewed_item import (
+                GmListReviewedItem,
             )
 
             campaign = cast(
                 "CocliApp", self.app
             ).services.reporting_service.campaign_name
-            verified_path = (
+            reviewed_path = (
                 paths.campaign(campaign).queue("gm-list").completed
                 / "results"
-                / "gm_list_verified.usv"
+                / "gm_list_reviewed.usv"
             )
-            verified_path.parent.mkdir(parents=True, exist_ok=True)
+            reviewed_path.parent.mkdir(parents=True, exist_ok=True)
 
-            verified_item = GmListVerifiedItem.create(
+            rating_val = float(rating) if rating != "-" else 0.0
+            reviews_val = int(reviews) if reviews != "-" else 0
+
+            reviewed_item = GmListReviewedItem.create(
                 place_id=place_id,
-                average_rating=float(rating),
-                reviews_count=int(reviews),
+                average_rating=rating_val,
+                reviews_count=reviews_val,
             )
-            with open(verified_path, "a", encoding="utf-8") as f:
-                f.write(verified_item.to_usv())
+            with open(reviewed_path, "a", encoding="utf-8") as f:
+                f.write(reviewed_item.to_usv())
 
-            self.app.notify(f"Verified: {biz_name[:30]} | {rating} ({reviews})")
+            self.app.notify(f"Reviewed: {biz_name[:30]} | {rating} ({reviews})")
+            saved_idx = self.audit_selected_idx
             self.load_audit_results()
+            if saved_idx < len(self.audit_items):
+                self.audit_selected_idx = saved_idx
+                self._render_audit_items()
+
+            cast("CocliApp", self.app).nav_manager.restore_focus()
         except Exception as e:
-            logger.error(f"verify_item error: {e}")
+            logger.error(f"mark_reviewed error: {e}")
             self.app.notify(f"Error: {e}", severity="error")
 
-    def action_open_audit_gmb(self) -> None:
-        """Open gmb_url in browser."""
+    async def action_open_audit_gmb(self) -> None:
+        """Open gmb_url in browser using Playwright."""
         if not self.active_queue or self.active_queue.name != "gm-list":
             return
         if not self.audit_items:
@@ -347,24 +472,33 @@ class QueueDetail(VerticalScroll):
             selected_item = self.audit_items[self.audit_selected_idx]
             place_id = selected_item.get("place_id", "")
 
+            gmb_url = None
             with open(audit_path, "r", encoding="utf-8") as f:
                 for line in f:
                     if line.strip() and line.startswith(place_id + "\x1f"):
                         parts = line.strip().split("\x1f")
                         if len(parts) >= 5:
                             gmb_url = parts[4]
-                            if gmb_url:
-                                webbrowser.open(gmb_url)
-                                self.app.notify(
-                                    f"Opening: {selected_item.get('name', 'Google Maps')}"
-                                )
-                                return
-            self.app.notify("No URL found.")
+                            break
+
+            if not gmb_url:
+                self.app.notify("No URL found.")
+                return
+
+            self.app.notify(f"Opening: {selected_item.get('name', 'Google Maps')}")
+
+            # Use BrowserManager to launch a browser
+            browser_manager = cast("CocliApp", self.app).browser_manager
+            await browser_manager.open_url(gmb_url)
+
         except Exception as e:
             self.app.notify(f"Error: {e}", severity="error")
 
     def load_audit_results(self) -> None:
         """Load and display audit results for gm-list."""
+        logger.warning(
+            f"load_audit_results: active_queue={self.active_queue.name if self.active_queue else 'None'}"
+        )
         if not self.active_queue or self.active_queue.name != "gm-list":
             return
 
@@ -372,22 +506,32 @@ class QueueDetail(VerticalScroll):
             campaign = cast(
                 "CocliApp", self.app
             ).services.reporting_service.campaign_name
+            logger.warning(f"load_audit_results: campaign={campaign}")
+
             audit_path = (
                 paths.campaign(campaign).queue("gm-list").completed
                 / "results"
                 / "gm_list_audit.usv"
             )
 
+            logger.warning(f"load_audit_results: Full Path={audit_path}")
+            logger.warning(f"load_audit_results: Path Exists={audit_path.exists()}")
+
+            # Update path label
+            self.query_one("#audit_path_label", Label).update(f"Path: {audit_path}")
+
             container = self.query_one("#audit_results_content", Vertical)
             container.remove_children()
 
             if not audit_path.exists():
+                logger.warning("load_audit_results: Path does not exist")
                 self.query_one("#audit_status", Label).update(
-                    "[dim]No audit data. Press 'a' to run audit.[/]"
+                    f"[dim]No audit data. Path does not exist: {audit_path}[/]"
                 )
                 return
 
             items = []
+            logger.warning(f"load_audit_results: Reading file {audit_path}")
             with open(audit_path, "r", encoding="utf-8") as f:
                 for line in f:
                     if line.strip():
@@ -405,8 +549,10 @@ class QueueDetail(VerticalScroll):
                                     else "-",
                                 }
                             )
+            logger.warning(f"load_audit_results: Loaded {len(items)} items")
 
             if not items:
+                logger.warning("load_audit_results: No items in file")
                 self.query_one("#audit_status", Label).update(
                     "[dim]No items in audit.[/]"
                 )
@@ -417,11 +563,11 @@ class QueueDetail(VerticalScroll):
             self._render_audit_items()
 
             self.query_one("#audit_status", Label).update(
-                f"[green]{len(items)} items[/] | j/k=navigate, l=verify"
+                f"[green]{len(items)} items[/] | j/k=navigate, l=reviewed"
             )
 
         except Exception as e:
-            logger.error(f"Error loading audit: {e}")
+            logger.error(f"Error loading audit: {e}", exc_info=True)
             self.query_one("#audit_status", Label).update(f"[red]Error: {e}[/]")
 
     def _render_audit_items(self) -> None:

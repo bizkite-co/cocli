@@ -36,6 +36,8 @@ from .widgets.company_search import CompanySearchView
 from .widgets.template_list import TemplateList
 from .widgets.event_curation import EventCurationView
 from .navigation import NavNode, ProcessRun
+from .navigation_manager import NavigationStateManager
+from ..utils.browser_manager import BrowserManager
 from ..application.services import ServiceContainer
 from ..core.config import create_default_config_file, is_campaign_overridden
 
@@ -411,6 +413,8 @@ class CocliApp(App[None]):
         self.auto_show = auto_show
         self.process_runs: List[ProcessRun] = []
         self.command_mru: List[str] = []
+        self.nav_manager = NavigationStateManager(self)
+        self.browser_manager = BrowserManager()
 
         # Command Palette History (Last used commands at the top)
         self.command_history: List[str] = [

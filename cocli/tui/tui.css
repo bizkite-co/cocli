@@ -253,14 +253,26 @@ DataTable > .datatable--cursor {
     padding: 0 1;
 }
 
+#queue_header {
+    height: 1;
+}
+
+#queue_title {
+    height: 1;
+}
+
+#queue_sync_indicator {
+    height: 1;
+}
+
 #queue_info_panel {
     height: auto;
-    max-height: 12;
+    max-height: 6;
 }
 
 #queue_info_panel .panel-content {
     height: auto;
-    max-height: 8;
+    max-height: 4;
     overflow-y: auto;
 }
 

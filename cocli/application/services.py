@@ -1,7 +1,11 @@
 from typing import Optional, List, Any, cast, Dict
 from pydantic import BaseModel, Field, ConfigDict, PrivateAttr
+import logging
 
-from cocli.application.search_service import get_fuzzy_search_results, get_template_counts
+from cocli.application.search_service import (
+    get_fuzzy_search_results,
+    get_template_counts,
+)
 from cocli.application.campaign_service import CampaignService
 from cocli.application.worker_service import WorkerService
 from cocli.application.reporting_service import ReportingService
@@ -15,23 +19,36 @@ from cocli.models.search import SearchResult
 from cocli.core.config import get_campaign
 
 from .protocols import (
-    SearchProvider, CompanyServiceProvider, TemplateCountsProvider,
-    CampaignServiceProvider, WorkerServiceProvider, ReportingServiceProvider,
-    AuditServiceProvider, DataSyncServiceProvider, DeploymentServiceProvider,
-    OperationServiceProvider, EventServiceProvider, SecretServiceProvider
+    SearchProvider,
+    CompanyServiceProvider,
+    TemplateCountsProvider,
+    CampaignServiceProvider,
+    WorkerServiceProvider,
+    ReportingServiceProvider,
+    AuditServiceProvider,
+    DataSyncServiceProvider,
+    DeploymentServiceProvider,
+    OperationServiceProvider,
+    EventServiceProvider,
+    SecretServiceProvider,
 )
+
+logger = logging.getLogger(__name__)
+
 
 class ServiceContainer(BaseModel):
     """
     A container for application services, enabling dependency injection
     and easier mocking in tests.
     """
+
     model_config = ConfigDict(arbitrary_types_allowed=True)
 
     campaign_name: str = Field(default_factory=lambda: get_campaign() or "")
 
     def set_campaign(self, name: str) -> None:
         """Updates the campaign name and invalidates cached lazy services."""
+        logger.warning(f"set_campaign called: {self.campaign_name} -> {name}")
         if self.campaign_name != name:
             self.campaign_name = name
             self._campaign_service = None
@@ -43,12 +60,17 @@ class ServiceContainer(BaseModel):
             self._operation_service = None
             self._event_service = None
             self._secret_service = None
-    
+            logger.warning(f"Services invalidated for campaign: {name}")
+
     # Provider overrides (can be injected via constructor or setters)
     injected_search_service: Optional[Any] = Field(default=None, alias="search_service")
-    injected_company_service: Optional[Any] = Field(default=None, alias="company_service")
-    injected_template_counts_service: Optional[Any] = Field(default=None, alias="template_counts_service")
-    
+    injected_company_service: Optional[Any] = Field(
+        default=None, alias="company_service"
+    )
+    injected_template_counts_service: Optional[Any] = Field(
+        default=None, alias="template_counts_service"
+    )
+
     # Lazy attributes (PrivateAttr)
     _campaign_service: Optional[Any] = PrivateAttr(default=None)
     _worker_service: Optional[Any] = PrivateAttr(default=None)
@@ -62,7 +84,9 @@ class ServiceContainer(BaseModel):
 
     @property
     def search_service(self) -> SearchProvider:
-        return cast(SearchProvider, self.injected_search_service or get_fuzzy_search_results)
+        return cast(
+            SearchProvider, self.injected_search_service or get_fuzzy_search_results
+        )
 
     @search_service.setter
     def search_service(self, value: SearchProvider) -> None:
@@ -70,7 +94,10 @@ class ServiceContainer(BaseModel):
 
     @property
     def company_service(self) -> CompanyServiceProvider:
-        return cast(CompanyServiceProvider, self.injected_company_service or get_company_details_for_view)
+        return cast(
+            CompanyServiceProvider,
+            self.injected_company_service or get_company_details_for_view,
+        )
 
     @company_service.setter
     def company_service(self, value: CompanyServiceProvider) -> None:
@@ -78,7 +105,10 @@ class ServiceContainer(BaseModel):
 
     @property
     def template_counts_service(self) -> TemplateCountsProvider:
-        return cast(TemplateCountsProvider, self.injected_template_counts_service or get_template_counts)
+        return cast(
+            TemplateCountsProvider,
+            self.injected_template_counts_service or get_template_counts,
+        )
 
     @template_counts_service.setter
     def template_counts_service(self, value: TemplateCountsProvider) -> None:
@@ -137,7 +167,9 @@ class ServiceContainer(BaseModel):
     @property
     def deployment_service(self) -> DeploymentServiceProvider:
         if not self._deployment_service:
-            self._deployment_service = DeploymentService(campaign_name=self.campaign_name)
+            self._deployment_service = DeploymentService(
+                campaign_name=self.campaign_name
+            )
         return cast(DeploymentServiceProvider, self._deployment_service)
 
     @deployment_service.setter
@@ -148,7 +180,10 @@ class ServiceContainer(BaseModel):
     def operation_service(self) -> OperationServiceProvider:
         if not self._operation_service:
             from .operation_service import OperationService
-            self._operation_service = OperationService(campaign_name=self.campaign_name, services=self)
+
+            self._operation_service = OperationService(
+                campaign_name=self.campaign_name, services=self
+            )
         return cast(OperationServiceProvider, self._operation_service)
 
     @operation_service.setter
@@ -187,7 +222,7 @@ class ServiceContainer(BaseModel):
         filters: Optional[Dict[str, Any]] = None,
         sort_by: Optional[str] = None,
         limit: int = 100,
-        offset: int = 0
+        offset: int = 0,
     ) -> List[SearchResult]:
         return self.search_service(
             search_query=search_query,
@@ -197,10 +232,12 @@ class ServiceContainer(BaseModel):
             filters=filters,
             sort_by=sort_by,
             limit=limit,
-            offset=offset
+            offset=offset,
         )
 
-    def get_template_counts(self, campaign_name: Optional[str] = None) -> Dict[str, int]:
+    def get_template_counts(
+        self, campaign_name: Optional[str] = None
+    ) -> Dict[str, int]:
         return self.template_counts_service(campaign_name)
 
     def get_company_details(self, company_slug: str) -> Optional[Dict[str, Any]]:

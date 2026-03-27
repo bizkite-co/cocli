@@ -16,6 +16,7 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
+
 class CampaignListItem(ListItem):
     def __init__(self, name: str) -> None:
         super().__init__(Label(name), id=slugify(name))
@@ -27,12 +28,14 @@ class CampaignSelection(Static):
 
     class CampaignSelected(Message):
         """Triggered by ENTER/l - implies action (Activation)."""
+
         def __init__(self, campaign_name: str) -> None:
             super().__init__()
             self.campaign_name = campaign_name
 
     class CampaignHighlighted(Message):
         """Triggered by Cursor movement - implies browsing."""
+
         def __init__(self, campaign_name: str) -> None:
             super().__init__()
             self.campaign_name = campaign_name
@@ -40,12 +43,13 @@ class CampaignSelection(Static):
     def __init__(self, *args: Any, **kwargs: Any) -> None:
         super().__init__(*args, **kwargs)
         self.can_focus = True
+        self._initial_load = True
 
     def compose(self) -> ComposeResult:
         yield Label("Select a Campaign", classes="sidebar-title")
         with VerticalScroll():
             yield ListView(id="campaign_list_view")
-    
+
     def on_mount(self) -> None:
         self.run_worker(self.load_campaigns())
 
@@ -53,15 +57,14 @@ class CampaignSelection(Static):
         try:
             campaign_dirs = await asyncio.to_thread(get_all_campaign_dirs)
             campaign_names = sorted([d.name for d in campaign_dirs])
-            
+
             list_view = self.query_one("#campaign_list_view", ListView)
             items = [CampaignListItem(name) for name in campaign_names]
-            
+
             def populate() -> None:
                 list_view.mount_all(items)
-                if items:
-                    list_view.index = 0
-            
+                self._initial_load = False
+
             self.call_after_refresh(populate)
         except Exception as e:
             logger.error(f"Failed to load campaigns: {e}")
@@ -73,13 +76,15 @@ class CampaignSelection(Static):
 
     @on(ListView.Highlighted, "#campaign_list_view")
     def handle_highlight(self, event: ListView.Highlighted) -> None:
+        if self._initial_load:
+            return
         if isinstance(event.item, CampaignListItem):
             self.post_message(self.CampaignHighlighted(event.item.campaign_name))
 
     def on_key(self, event: events.Key) -> None:
         """Handle navigation keys for the campaign list."""
         list_view = self.query_one("#campaign_list_view", ListView)
-        
+
         if event.key == "j":
             list_view.action_cursor_down()
             event.prevent_default()

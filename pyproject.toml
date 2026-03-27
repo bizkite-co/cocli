@@ -148,6 +148,11 @@ exclude = [
     "fullertonian-site",
 ]
 
+[dependency-groups]
+dev = [
+    "frictionless>=5.18.1",
+]
+
 [[tool.mypy.overrides]]
 module = "cocli.core.website_cache"
 disable_error_code = ["call-overload"]

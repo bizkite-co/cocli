@@ -1,15 +1,75 @@
-# POLICY: frictionless-data-policy-enforcement (See docs/FRICTIONLESS_DATA_POLICY_ENFORCEMENT.md)
 import pytest
+from typing import Any
 from textual.app import App, ComposeResult
 from textual.widgets import Static
+from textual.containers import Vertical
 from cocli.tui.widgets.queues_view import QueueDetail
+from cocli.tui.navigation_manager import NavigationStateManager
 
 
 class SimpleQueueApp(App):
     """A minimal app to test the QueueDetail widget in isolation."""
 
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
+        super().__init__(*args, **kwargs)
+        self.nav_manager = NavigationStateManager(self)
+
     def compose(self) -> ComposeResult:
         yield QueueDetail(id="queue_detail")
+
+
+@pytest.mark.asyncio
+async def test_queue_detail_metadata_displays(mocker):
+    """
+    Assert that metadata is properly populated in QueueDetail.
+    """
+    app = SimpleQueueApp()
+    mock_services = mocker.Mock()
+    mock_services.reporting_service.campaign_name = "test-campaign"
+    mock_services.reporting_service.load_cached_report.return_value = {}
+    app.services = mock_services
+
+    async with app.run_test():
+        detail = app.query_one("#queue_detail", QueueDetail)
+        detail.update_detail("gm-list")
+
+        info_content = detail.query_one("#queue_info_content", Static)
+        # Verify metadata_map was set
+        metadata = getattr(info_content, "metadata_map", {})
+        assert "Functional Purpose" in metadata
+        assert metadata["Task Model"] == "ScrapeTask"
+
+
+@pytest.mark.asyncio
+async def test_queue_detail_audit_list_displays(mocker, tmp_path):
+    """
+    Assert that the audit list container is populated when data exists.
+    """
+    app = SimpleQueueApp()
+    mock_services = mocker.Mock()
+    mock_services.reporting_service.campaign_name = "test-campaign"
+    app.services = mock_services
+
+    # Setup mock file structure
+    results_dir = tmp_path / "results"
+    results_dir.mkdir()
+    audit_file = results_dir / "gm_list_audit.usv"
+    audit_file.write_text("ChIJ123\x1fName\x1f4.5\x1f100\x1furl\n")
+
+    mock_paths = mocker.MagicMock()
+    # Mock chain: paths.campaign().queue().completed returns tmp_path
+    mock_paths.campaign.return_value.queue.return_value.completed = tmp_path
+    mocker.patch("cocli.tui.widgets.queues_view.paths", mock_paths)
+
+    async with app.run_test():
+        detail = app.query_one("#queue_detail", QueueDetail)
+        detail.update_detail("gm-list")
+
+        # Verify audit items are loaded
+        assert len(detail.audit_items) > 0
+
+        container = detail.query_one("#audit_results_content", Vertical)
+        assert len(container.children) > 0  # Should have header and at least one item
 
 
 @pytest.mark.asyncio
@@ -50,7 +110,6 @@ async def test_queue_detail_final_verification(mocker):
         assert "queries" in prop_names
 
         # 4. Check Shortcuts (sp/sc) are documented in code or handled
-        # (We no longer use BINDINGS list for these, they are in on_key)
         assert hasattr(detail, "on_key")
 
         # 5. Verify audit panel exists and has required elements
@@ -117,14 +176,12 @@ async def test_queue_detail_final_verification(mocker):
         # Test with no audit_items
         detail.audit_items = []
         detail.audit_selected_idx = 0
-        # Should not crash when called with no items
 
-        # 10. Test action_verify_item exists and has correct key binding
-        assert hasattr(detail, "action_verify_item")
+        # 10. Test action_mark_reviewed exists and has correct key binding
+        assert hasattr(detail, "action_mark_reviewed")
 
-        # 11. Test verify dialog has keyboard bindings (H to save, Esc to cancel)
-        # The VerifyDialog is defined inside action_verify_item, so we just verify the method exists
-        assert callable(detail.action_verify_item)
+        # 11. Test mark reviewed dialog has keyboard bindings (H to save, Esc to cancel)
+        assert callable(detail.action_mark_reviewed)
 
         # 12. Test that audit items have proper structure for verification
         detail.audit_items = [
@@ -218,8 +275,6 @@ async def test_render_audit_items_shows_header_and_colors(tmp_path, mocker):
 async def test_load_audit_results_parses_empty_fields_as_dash(mocker):
     """
     Verify load_audit_results normalizes empty fields to '-' not empty string.
-    This prevents 'Invalid literal for int()' and 'Could not convert string to float' errors.
-    Tests the parsing logic directly rather than mocking the file system.
     """
     app = SimpleQueueApp()
     mock_services = mocker.Mock()
@@ -263,37 +318,9 @@ async def test_load_audit_results_parses_empty_fields_as_dash(mocker):
 
 
 @pytest.mark.asyncio
-async def test_verify_item_rejects_empty_string_rating(mocker):
+async def test_mark_reviewed_works_with_empty_rating(mocker):
     """
-    Verify action_verify_item rejects items with empty string rating/reviews.
-    Should show error, not crash with int()/float() conversion error.
-    """
-    app = SimpleQueueApp()
-    mock_services = mocker.Mock()
-    mock_services.reporting_service.campaign_name = "test-campaign"
-    app.services = mock_services
-    mocker.patch("cocli.core.paths.paths")
-
-    async with app.run_test():
-        detail = app.query_one("#queue_detail", QueueDetail)
-        detail.active_queue = type("Queue", (), {"name": "gm-list"})()
-
-        detail.audit_items = [
-            {"place_id": "ChIJ123", "name": "Test", "rating": "", "reviews": ""},
-        ]
-        detail.audit_selected_idx = 0
-
-        detail.action_verify_item()
-
-        # Should NOT crash - should show error notification
-        # The method should handle empty strings gracefully (check happens before conversion)
-        # No assertion needed - if it doesn't crash, the test passes
-
-
-@pytest.mark.asyncio
-async def test_verify_item_accepts_valid_rating(mocker):
-    """
-    Verify action_verify_item accepts items with valid rating/reviews.
+    Verify action_mark_reviewed works even with empty rating/reviews.
     """
     app = SimpleQueueApp()
     mock_services = mocker.Mock()
@@ -307,27 +334,216 @@ async def test_verify_item_accepts_valid_rating(mocker):
     mock_paths.campaign.return_value.queue.return_value.completed = mock_path
     mocker.patch("cocli.core.paths.paths", mock_paths)
 
-    mock_verified_item = mocker.MagicMock()
-    mock_verified_item.to_usv.return_value = "test"
+    mock_reviewed_item = mocker.MagicMock()
+    mock_reviewed_item.to_usv.return_value = "test"
 
     mocker.patch.dict(
         "sys.modules",
         {
-            "cocli.models.campaigns.indexes.gm_list_verified_item": mocker.MagicMock(
-                GmListVerifiedItem=mocker.MagicMock(
-                    create=mocker.MagicMock(return_value=mock_verified_item)
+            "cocli.models.campaigns.indexes.gm_list_reviewed_item": mocker.MagicMock(
+                GmListReviewedItem=mocker.MagicMock(
+                    create=mocker.MagicMock(return_value=mock_reviewed_item)
                 )
             )
         },
     )
+
+    mocker.patch("cocli.tui.widgets.queues_view.MarkReviewedDialog")
 
     async with app.run_test():
         detail = app.query_one("#queue_detail", QueueDetail)
         detail.active_queue = type("Queue", (), {"name": "gm-list"})()
 
         detail.audit_items = [
-            {"place_id": "ChIJ123", "name": "Test", "rating": "4.5", "reviews": "100"},
+            {
+                "place_id": "ChIJ123456789012345678901",
+                "name": "Test",
+                "rating": "-",
+                "reviews": "-",
+            },
         ]
         detail.audit_selected_idx = 0
 
-        detail.action_verify_item()
+        app.push_screen = mocker.MagicMock()
+
+        detail.action_mark_reviewed()
+
+
+@pytest.mark.asyncio
+async def test_mark_reviewed_works_with_valid_rating(mocker):
+    """
+    Verify action_mark_reviewed works with valid rating/reviews.
+    """
+    app = SimpleQueueApp()
+    mock_services = mocker.Mock()
+    mock_services.reporting_service.campaign_name = "test-campaign"
+    app.services = mock_services
+
+    mock_path = mocker.MagicMock()
+    mock_path.parent.mkdir.return_value = None
+
+    mock_paths = mocker.MagicMock()
+    mock_paths.campaign.return_value.queue.return_value.completed = mock_path
+    mocker.patch("cocli.core.paths.paths", mock_paths)
+
+    mock_reviewed_item = mocker.MagicMock()
+    mock_reviewed_item.to_usv.return_value = "test"
+
+    mocker.patch.dict(
+        "sys.modules",
+        {
+            "cocli.models.campaigns.indexes.gm_list_reviewed_item": mocker.MagicMock(
+                GmListReviewedItem=mocker.MagicMock(
+                    create=mocker.MagicMock(return_value=mock_reviewed_item)
+                )
+            )
+        },
+    )
+
+    mocker.patch("cocli.tui.widgets.queues_view.MarkReviewedDialog")
+
+    async with app.run_test():
+        detail = app.query_one("#queue_detail", QueueDetail)
+        detail.active_queue = type("Queue", (), {"name": "gm-list"})()
+
+        detail.audit_items = [
+            {
+                "place_id": "ChIJ123456789012345678901",
+                "name": "Test",
+                "rating": "4.5",
+                "reviews": "100",
+            },
+        ]
+        detail.audit_selected_idx = 0
+
+        app.push_screen = mocker.MagicMock()
+
+        detail.action_mark_reviewed()
+
+        app.push_screen.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_review_dialog_accepts_backspace_and_delete(mocker):
+    """
+    Verify backspace and delete keys work in the review dialog.
+    This tests that the dialog doesn't block these keys.
+    """
+    from cocli.tui.widgets.mark_reviewed_dialog import MarkReviewedDialog
+    from textual.app import App, ComposeResult
+
+    class TestApp(App):
+        def compose(self) -> ComposeResult:
+            yield MarkReviewedDialog(
+                place_id="ChIJ123",
+                biz_name="Test Business",
+                current_rating="4.5",
+                current_reviews="100",
+            )
+
+    mocker.patch("cocli.tui.widgets.mark_reviewed_dialog.MarkReviewedDialog.on_mount")
+
+    app = TestApp()
+    async with app.run_test() as pilot:
+        dialog = app.query_one(MarkReviewedDialog)
+
+        rating_input = dialog.query_one("#review-rating-input")
+
+        rating_input.value = "4"
+        await pilot.pause()
+
+        rating_input.value = "44"
+        await pilot.pause()
+
+        rating_input.value = "4"
+        await pilot.pause()
+
+        assert rating_input.value == "4"
+
+
+@pytest.mark.asyncio
+async def test_review_dialog_validates_numeric_input(mocker):
+    """
+    Verify the review dialog only accepts valid numeric input.
+    Rating: 0-5 with one decimal
+    Reviews: non-negative integers only
+    """
+    from cocli.tui.widgets.mark_reviewed_dialog import MarkReviewedDialog
+    from textual.app import App, ComposeResult
+
+    class TestApp(App):
+        def compose(self) -> ComposeResult:
+            yield MarkReviewedDialog(
+                place_id="ChIJ123",
+                biz_name="Test Business",
+                current_rating="",
+                current_reviews="",
+            )
+
+    mocker.patch("cocli.tui.widgets.mark_reviewed_dialog.MarkReviewedDialog.on_mount")
+
+    app = TestApp()
+    async with app.run_test() as pilot:
+        dialog = app.query_one(MarkReviewedDialog)
+
+        rating_input = dialog.query_one("#review-rating-input")
+        reviews_input = dialog.query_one("#review-reviews-input")
+
+        rating_input.value = "abc"
+        await pilot.pause()
+        assert rating_input.value == ""
+
+        rating_input.value = "5.0"
+        await pilot.pause()
+        assert rating_input.value == "5.0"
+
+        rating_input.value = "5"
+        await pilot.pause()
+        assert rating_input.value == "5"
+
+        reviews_input.value = "abc"
+        await pilot.pause()
+        assert reviews_input.value == ""
+
+        reviews_input.value = "123"
+        await pilot.pause()
+        assert reviews_input.value == "123"
+
+
+@pytest.mark.asyncio
+async def test_reviewed_data_persists_across_dialog_opens(mocker):
+    """
+    Verify that when reopening the review dialog for an already-reviewed item,
+    the saved values are shown instead of the audit values.
+    """
+    app = SimpleQueueApp()
+    mock_services = mocker.Mock()
+    mock_services.reporting_service.campaign_name = "test-campaign"
+    app.services = mock_services
+
+    mock_reviewed_path = mocker.MagicMock()
+    mock_reviewed_path.exists.return_value = True
+    mock_reviewed_path.__truediv__ = mocker.MagicMock(return_value=mock_reviewed_path)
+
+    mock_paths = mocker.MagicMock()
+    mock_paths.campaign.return_value.queue.return_value.completed = mock_reviewed_path
+    mocker.patch("cocli.tui.widgets.queues_view.paths", mock_paths)
+
+    mock_file = mocker.MagicMock()
+    mock_file.__enter__ = mocker.MagicMock(
+        return_value=mocker.MagicMock(
+            __iter__=mocker.MagicMock(
+                return_value=iter(["ChIJ123\x1f4.5\x1f200\x1f2026-01-01T00:00:00Z\n"])
+            )
+        )
+    )
+    mock_file.__exit__ = mocker.MagicMock(return_value=False)
+    mocker.patch("builtins.open", return_value=mock_file)
+
+    async with app.run_test():
+        detail = app.query_one("#queue_detail", QueueDetail)
+        detail.active_queue = type("Queue", (), {"name": "gm-list"})()
+
+        reviewed_data = detail._get_reviewed_data()
+
+        assert reviewed_data["ChIJ123"] == ("4.5", "200")

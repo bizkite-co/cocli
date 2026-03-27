@@ -531,11 +531,13 @@ class ApplicationView(Container):
             await asyncio.sleep(0.25)
 
         queue_id = str(event.item.id).replace("q_", "")
+        logger.warning(f"handle_queue_highlight: queue_id={queue_id}")
         with time_perf(f"TUI: handle_queue_highlight ({queue_id})"):
             try:
                 detail = self.app.query_one("#queue_detail", QueueDetail)
                 detail.update_detail(queue_id)
-            except Exception:
+            except Exception as e:
+                logger.error(f"Error updating queue detail: {e}")
                 pass
 
     @on(ListView.Selected, "#sidebar_queues")
@@ -673,7 +675,7 @@ class ApplicationView(Container):
             app = cast("CocliApp", self.app)
             if hasattr(app, "services"):
                 # 1. Activate in Core
-                app.services.campaign_service.campaign_name = campaign_name
+                app.services.set_campaign(campaign_name)
                 app.services.campaign_service.activate()
 
                 # 2. Update Detail View
@@ -686,6 +688,14 @@ class ApplicationView(Container):
                 self.post_message(self.CampaignActivated(campaign_name))
         except Exception as e:
             logger.error(f"Failed to activate campaign: {e}")
+            try:
+                detail = self.app.query_one("#campaign-detail", CampaignDetail)
+                detail.display_error(
+                    "Error Loading Campaign",
+                    f"Invalid Campaign: {message.campaign_name}\n\n{str(e)}",
+                )
+            except Exception:
+                pass
 
     @on(CampaignSelection.CampaignHighlighted)
     @work(exclusive=True)
