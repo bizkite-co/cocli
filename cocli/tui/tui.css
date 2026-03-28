@@ -284,6 +284,7 @@ DataTable > .datatable--cursor {
 }
 
 #audit_panel {
+    dock: top;
     height: auto;
     min-height: 10;
 }
