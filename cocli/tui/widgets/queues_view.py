@@ -633,13 +633,15 @@ class QueueDetail(VerticalScroll):
 
             if is_selected:
                 prefix = "[yellow]>[/] "
+                rating_val = str(rating).rjust(5) if rating != "-" else "    -"
+                reviews_val = str(reviews).rjust(5) if reviews != "-" else "    -"
                 rating_input = Input(
-                    value=str(rating),
+                    value=rating_val,
                     classes="inline-input edit_rating",
                     placeholder="⭐",
                 )
                 reviews_input = Input(
-                    value=str(reviews),
+                    value=reviews_val,
                     classes="inline-input edit_reviews",
                     placeholder="📋",
                 )
