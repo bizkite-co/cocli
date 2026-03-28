@@ -444,4 +444,11 @@ ModalScreen {
 
 .inline-input {
     width: 6;
+    border: none;
+    padding: 0 0;
+    margin: 0 0;
+}
+
+.inline-input:focus {
+    border: none;
 }

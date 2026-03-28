@@ -14,7 +14,6 @@ from cocli.models.campaigns.queues.metadata import (
     PropertyInfo,
 )
 from cocli.core.paths import paths
-from cocli.tui.widgets.mark_reviewed_dialog import MarkReviewedDialog
 
 
 if TYPE_CHECKING:
@@ -647,7 +646,8 @@ class QueueDetail(VerticalScroll):
                 self._edit_rating_input = rating_input
                 self._edit_reviews_input = reviews_input
                 row = Horizontal(
-                    Label(prefix + name[:35]),
+                    Label(prefix + name[:32]),
+                    Label("   "),
                     Label(f" {status} "),
                     rating_input,
                     reviews_input,
