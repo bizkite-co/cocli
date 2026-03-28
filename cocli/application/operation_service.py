@@ -907,16 +907,19 @@ class OperationService:
 
                     log_step(
                         "aggressive_cleanup",
-                        "pending",
-                        "Purging non-conforming and hollow USVs...",
+                        "skipped",
+                        "Skipping cleanup (disabled for review)...",
                     )
-                    await asyncio.to_thread(
-                        module.cleanup_discovery_results,
-                        self.campaign_name,
-                        execute=True,
-                        push=False,
-                        delete_hollow=True,
-                    )
+                    # TEMPORARILY DISABLED: cleanup_discovery_results was deleting
+                    # legitimate audit files (gm_list_audit.usv, gm_list_reviewed.usv).
+                    # See ticket: Review cleanup_discovery_results.py script
+                    # await asyncio.to_thread(
+                    #     module.cleanup_discovery_results,
+                    #     self.campaign_name,
+                    #     execute=True,
+                    #     push=False,
+                    #     delete_hollow=True,
+                    # )
 
                     # Also cleanup the gm-list pending queue (leases/tasks)
                     log_step(
