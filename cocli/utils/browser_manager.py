@@ -16,7 +16,8 @@ class BrowserManager:
         if self.browser is None:
             self.playwright = await async_playwright().start()
             self.browser = await self.playwright.chromium.launch(
-                headless=False, args=["--start-maximized"]
+                headless=False,
+                args=["--window-size=1920,1920"],
             )
         return self.browser
 
@@ -24,7 +25,10 @@ class BrowserManager:
         async with self._lock:
             browser = await self._ensure_browser()
             if self.page is None or self.page.is_closed():
-                self.page = await browser.new_page()
+                context = await browser.new_context(
+                    viewport={"width": 1920, "height": 1920}
+                )
+                self.page = await context.new_page()
             await self.page.goto(url)
             await self.page.bring_to_front()
 

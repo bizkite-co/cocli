@@ -87,5 +87,7 @@ class MarkReviewedDialog(ModalScreen[dict[str, Any]]):
                     "reviews": reviews_input.value,
                 }
             )
-        elif event.key == "escape":
+            event.stop()
+        elif event.key == "escape" or event.key == "h":
             self.dismiss(None)
+            event.stop()

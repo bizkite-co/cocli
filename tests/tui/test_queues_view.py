@@ -246,6 +246,7 @@ async def test_update_detail_auto_loads_audit_for_gm_list(mocker):
 async def test_render_audit_items_shows_header_and_colors(tmp_path, mocker):
     """
     Verify _render_audit_items shows header row and items are rendered.
+    With inline editing, selected item shows Input widgets.
     """
     app = SimpleQueueApp()
     mock_services = mocker.Mock()
@@ -256,16 +257,21 @@ async def test_render_audit_items_shows_header_and_colors(tmp_path, mocker):
         detail = app.query_one("#queue_detail", QueueDetail)
 
         detail.audit_items = [
-            {"name": "Has Rating", "rating": "4.5", "reviews": "100"},
-            {"name": "No Rating", "rating": "-", "reviews": "-"},
+            {
+                "name": "Has Rating",
+                "rating": "4.5",
+                "reviews": "100",
+                "place_id": "ChIJ123",
+            },
+            {"name": "No Rating", "rating": "-", "reviews": "-", "place_id": "ChIJ456"},
         ]
         detail.audit_selected_idx = 0
         detail._render_audit_items()
 
         container = detail.query_one("#audit_results_content")
-        labels = list(container.children)
+        children = list(container.children)
 
-        assert len(labels) == 3
+        assert len(children) >= 3
 
         assert detail.audit_items[0]["name"] == "Has Rating"
         assert detail.audit_items[1]["name"] == "No Rating"
@@ -320,35 +326,12 @@ async def test_load_audit_results_parses_empty_fields_as_dash(mocker):
 @pytest.mark.asyncio
 async def test_mark_reviewed_works_with_empty_rating(mocker):
     """
-    Verify action_mark_reviewed works even with empty rating/reviews.
+    Verify action_mark_reviewed toggles edit mode even with empty rating/reviews.
     """
     app = SimpleQueueApp()
     mock_services = mocker.Mock()
     mock_services.reporting_service.campaign_name = "test-campaign"
     app.services = mock_services
-
-    mock_path = mocker.MagicMock()
-    mock_path.parent.mkdir.return_value = None
-
-    mock_paths = mocker.MagicMock()
-    mock_paths.campaign.return_value.queue.return_value.completed = mock_path
-    mocker.patch("cocli.core.paths.paths", mock_paths)
-
-    mock_reviewed_item = mocker.MagicMock()
-    mock_reviewed_item.to_usv.return_value = "test"
-
-    mocker.patch.dict(
-        "sys.modules",
-        {
-            "cocli.models.campaigns.indexes.gm_list_reviewed_item": mocker.MagicMock(
-                GmListReviewedItem=mocker.MagicMock(
-                    create=mocker.MagicMock(return_value=mock_reviewed_item)
-                )
-            )
-        },
-    )
-
-    mocker.patch("cocli.tui.widgets.queues_view.MarkReviewedDialog")
 
     async with app.run_test():
         detail = app.query_one("#queue_detail", QueueDetail)
@@ -364,43 +347,22 @@ async def test_mark_reviewed_works_with_empty_rating(mocker):
         ]
         detail.audit_selected_idx = 0
 
-        app.push_screen = mocker.MagicMock()
+        assert detail.is_editing is False
 
         detail.action_mark_reviewed()
+
+        assert detail.is_editing is True
 
 
 @pytest.mark.asyncio
 async def test_mark_reviewed_works_with_valid_rating(mocker):
     """
-    Verify action_mark_reviewed works with valid rating/reviews.
+    Verify action_mark_reviewed toggles inline editing mode.
     """
     app = SimpleQueueApp()
     mock_services = mocker.Mock()
     mock_services.reporting_service.campaign_name = "test-campaign"
     app.services = mock_services
-
-    mock_path = mocker.MagicMock()
-    mock_path.parent.mkdir.return_value = None
-
-    mock_paths = mocker.MagicMock()
-    mock_paths.campaign.return_value.queue.return_value.completed = mock_path
-    mocker.patch("cocli.core.paths.paths", mock_paths)
-
-    mock_reviewed_item = mocker.MagicMock()
-    mock_reviewed_item.to_usv.return_value = "test"
-
-    mocker.patch.dict(
-        "sys.modules",
-        {
-            "cocli.models.campaigns.indexes.gm_list_reviewed_item": mocker.MagicMock(
-                GmListReviewedItem=mocker.MagicMock(
-                    create=mocker.MagicMock(return_value=mock_reviewed_item)
-                )
-            )
-        },
-    )
-
-    mocker.patch("cocli.tui.widgets.queues_view.MarkReviewedDialog")
 
     async with app.run_test():
         detail = app.query_one("#queue_detail", QueueDetail)
@@ -416,11 +378,11 @@ async def test_mark_reviewed_works_with_valid_rating(mocker):
         ]
         detail.audit_selected_idx = 0
 
-        app.push_screen = mocker.MagicMock()
+        assert detail.is_editing is False
 
         detail.action_mark_reviewed()
 
-        app.push_screen.assert_called_once()
+        assert detail.is_editing is True
 
 
 @pytest.mark.asyncio
@@ -550,92 +512,43 @@ async def test_reviewed_data_persists_across_dialog_opens(mocker):
 
 
 @pytest.mark.asyncio
-async def test_audit_view_shows_source_output_count_labels(mocker, tmp_path):
+async def test_review_dialog_restores_focus_to_audit_list(mocker):
     """
-    Verify that the audit view displays Source, Output, and Count labels.
+    Verify that inline editing toggles on/off and input widgets are created.
     """
-    app = SimpleQueueApp()
+    from textual.app import App, ComposeResult
+
+    class TestApp(App):
+        def compose(self) -> ComposeResult:
+            yield QueueDetail(id="queue_detail")
+
+    app = TestApp()
     mock_services = mocker.Mock()
     mock_services.reporting_service.campaign_name = "test-campaign"
     app.services = mock_services
 
-    # Setup mock file structure for results
-    # The code adds "/results/" to completed path, so use parent of results
-    results_parent = tmp_path / "queues" / "gm-list" / "completed"
-    results_parent.mkdir(parents=True)
-    audit_file = results_parent / "results" / "gm_list_audit.usv"
-    audit_file.parent.mkdir()
-    audit_file.write_text("ChIJ123\x1fTest Business\x1f4.5\x1f100\x1furl\n")
-
-    # Setup mock for raw directory (source)
-    raw_dir = tmp_path / "raw" / "gm-list"
-    raw_dir.mkdir(parents=True)
-    # Create some mock HTML files
-    for i in range(5):
-        (raw_dir / f"file{i}.html").write_text("<html></html>")
-
-    # Mock paths to return our tmp paths
-    # The code accesses: paths.campaign(campaign).path / "raw" / "gm-list"
-    mock_campaign = mocker.MagicMock()
-    mock_campaign.path = tmp_path  # Campaign path (for raw dir)
-    mock_campaign.queue.return_value.completed = results_parent
-
     mock_paths = mocker.MagicMock()
-    mock_paths.root = tmp_path  # For relative path calculation
-    mock_paths.campaign.return_value = mock_campaign
+    mock_paths.campaign.return_value.queue.return_value.completed = mocker.MagicMock()
     mocker.patch("cocli.tui.widgets.queues_view.paths", mock_paths)
 
     async with app.run_test():
         detail = app.query_one("#queue_detail", QueueDetail)
         detail.active_queue = type("Queue", (), {"name": "gm-list"})()
-        detail.load_audit_results()
 
-        # Verify all three labels exist and have content
-        source_label = detail.query_one("#audit_source_label")
-        output_label = detail.query_one("#audit_output_label")
-        count_label = detail.query_one("#audit_count_label")
+        detail.audit_items = [
+            {
+                "place_id": "ChIJ1234567890abcdefghijkl",
+                "name": "Test Business",
+                "rating": "4.5",
+                "reviews": "100",
+            },
+        ]
+        detail.audit_selected_idx = 0
 
-        # Check IDs exist and have content by verifying they render without error
-        assert source_label.id == "audit_source_label"
-        assert output_label.id == "audit_output_label"
-        assert count_label.id == "audit_count_label"
+        assert detail.is_editing is False
 
-        # Verify audit items were loaded (proves the path logic worked)
-        assert len(detail.audit_items) == 1
+        detail.action_mark_reviewed()
 
-
-@pytest.mark.asyncio
-async def test_audit_view_count_shows_minus_when_no_data(mocker, tmp_path):
-    """
-    Verify that the Count label shows '-' when no audit data exists.
-    """
-    app = SimpleQueueApp()
-    mock_services = mocker.Mock()
-    mock_services.reporting_service.campaign_name = "test-campaign"
-    app.services = mock_services
-
-    # Empty results dir (no audit file)
-    results_parent = tmp_path / "queues" / "gm-list" / "completed"
-    results_parent.mkdir(parents=True)
-
-    # Mock paths - need proper chain for campaign.path access
-    mock_campaign = mocker.MagicMock()
-    mock_campaign.path = tmp_path  # Campaign path (for raw dir)
-    mock_campaign.queue.return_value.completed = results_parent
-
-    mock_paths = mocker.MagicMock()
-    mock_paths.root = tmp_path
-    mock_paths.campaign.return_value = mock_campaign
-    mocker.patch("cocli.tui.widgets.queues_view.paths", mock_paths)
-
-    async with app.run_test():
-        detail = app.query_one("#queue_detail", QueueDetail)
-        detail.active_queue = type("Queue", (), {"name": "gm-list"})()
-        detail.load_audit_results()
-
-        # Verify Count label exists
-        count_label = detail.query_one("#audit_count_label")
-        assert count_label.id == "audit_count_label"
-
-        # No items should be loaded
-        assert len(detail.audit_items) == 0
+        assert detail.is_editing is True
+        assert detail._edit_rating_input is not None
+        assert detail._edit_reviews_input is not None

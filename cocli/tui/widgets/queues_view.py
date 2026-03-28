@@ -1,9 +1,10 @@
 from typing import Any, Dict, Optional, TYPE_CHECKING, cast
 import logging
 import asyncio
+import webbrowser
 from textual.app import ComposeResult
 from textual.containers import Vertical, Horizontal, VerticalScroll
-from textual.widgets import Label, ListView, ListItem, Static
+from textual.widgets import Label, ListView, ListItem, Static, Input
 from textual import work, events
 
 from rich.table import Table
@@ -43,6 +44,17 @@ class QueueDetail(VerticalScroll):
     ]
 
     def on_key(self, event: events.Key) -> None:
+        # Handle inline edit save/cancel
+        if self.is_editing:
+            if event.key == "enter":
+                self._save_inline_edit()
+                event.prevent_default()
+                return
+            if event.key == "escape":
+                self._cancel_inline_edit()
+                event.prevent_default()
+                return
+
         # Audit keys for gm-list
         if self.active_queue and self.active_queue.name == "gm-list":
             if event.key == "a":
@@ -70,6 +82,8 @@ class QueueDetail(VerticalScroll):
                 self.action_audit_up()
                 event.prevent_default()
                 return
+                event.prevent_default()
+                return
 
     def __init__(self, *args: Any, **kwargs: Any) -> None:
         super().__init__(*args, **kwargs)
@@ -77,6 +91,9 @@ class QueueDetail(VerticalScroll):
         self.can_focus = True
         self.audit_items: list[dict[str, str]] = []
         self.audit_selected_idx: int = 0
+        self.is_editing: bool = False
+        self._edit_rating_input: Optional[Input] = None
+        self._edit_reviews_input: Optional[Input] = None
 
     def compose(self) -> ComposeResult:
         with Horizontal(id="queue_header"):
@@ -345,7 +362,7 @@ class QueueDetail(VerticalScroll):
         return reviewed_data
 
     def action_mark_reviewed(self) -> None:
-        """Mark selected audit item as reviewed - shows dialog to enter rating/reviews."""
+        """Toggle inline editing for selected audit item."""
         if not self.active_queue or self.active_queue.name != "gm-list":
             logger.warning("mark_reviewed: not active gm-list queue")
             return
@@ -362,39 +379,21 @@ class QueueDetail(VerticalScroll):
             self.app.notify("No audit item selected.")
             return
 
-        idx = self.audit_selected_idx
-        item = self.audit_items[idx]
-        place_id = item.get("place_id", "")
-        biz_name = item.get("name", "Unknown")
+        self.is_editing = not self.is_editing
+        self._render_audit_items()
 
-        reviewed_data = self._get_reviewed_data()
-        if place_id in reviewed_data:
-            rating, reviews = reviewed_data[place_id]
-        else:
-            rating = item.get("rating", "-")
-            reviews = item.get("reviews", "-")
-
-        logger.warning(
-            f"mark_reviewed: rating='{rating}', reviews='{reviews}', item={item}"
-        )
-
-        cast("CocliApp", self.app).nav_manager.save_focus(
-            self.query_one("#audit_results_content", Vertical)
-        )
-        self.app.push_screen(
-            MarkReviewedDialog(
-                place_id=place_id,
-                biz_name=biz_name,
-                current_rating=rating,
-                current_reviews=reviews,
-            ),
-            self._on_review_dialog_complete,
-        )
+        if self.is_editing and self._edit_rating_input:
+            self._edit_rating_input.focus()
 
     def _on_review_dialog_complete(self, result: Optional[dict[str, Any]]) -> None:
         """Callback when the review dialog closes."""
         if result is None:
-            cast("CocliApp", self.app).nav_manager.restore_focus()
+            app = cast("CocliApp", self.app)
+            app.nav_manager.restore_focus()
+            try:
+                self.query_one("#audit_results_content", Vertical).focus()
+            except Exception:
+                pass
             return
 
         rating = result.get("rating", "-")
@@ -448,7 +447,7 @@ class QueueDetail(VerticalScroll):
             self.app.notify(f"Error: {e}", severity="error")
 
     async def action_open_audit_gmb(self) -> None:
-        """Open gmb_url in browser using Playwright."""
+        """Open gmb_url in browser using system browser (same as Company Details)."""
         if not self.active_queue or self.active_queue.name != "gm-list":
             return
         if not self.audit_items:
@@ -489,9 +488,7 @@ class QueueDetail(VerticalScroll):
 
             self.app.notify(f"Opening: {selected_item.get('name', 'Google Maps')}")
 
-            # Use BrowserManager to launch a browser
-            browser_manager = cast("CocliApp", self.app).browser_manager
-            await browser_manager.open_url(gmb_url)
+            webbrowser.open(gmb_url)
 
         except Exception as e:
             self.app.notify(f"Error: {e}", severity="error")
@@ -603,31 +600,123 @@ class QueueDetail(VerticalScroll):
             self.query_one("#audit_status", Label).update(f"[red]Error: {e}[/]")
 
     def _render_audit_items(self) -> None:
-        """Render audit items with selection highlight."""
+        """Render audit items with selection highlight, reviewed status, and inline editing."""
         container = self.query_one("#audit_results_content", Vertical)
         container.remove_children()
 
-        header = f"  {'Name':<40} {'⭐':>3} {'📋':>4}"
+        reviewed_data = self._get_reviewed_data()
+
+        header = f"  {'Name':<40} {'✓':>2} {'⭐':>3} {'📋':>4}"
         container.mount(Label("[dim]" + header + "[/]"))
 
         for i, item in enumerate(self.audit_items):
             is_selected = i == self.audit_selected_idx
             name = item.get("name", "Unknown")
-            rating = item.get("rating", "-")
-            reviews = item.get("reviews", "-")
+            place_id = item.get("place_id", "")
+            audit_rating = item.get("rating", "-")
+            audit_reviews = item.get("reviews", "-")
 
-            if rating and rating != "-":
-                color = "green"
+            is_reviewed = place_id in reviewed_data
+            if is_reviewed:
+                rating, reviews = reviewed_data[place_id]
+                status = "[green]✓[/]"
+                color = "cyan"
+            elif audit_rating and audit_rating != "-":
+                rating = audit_rating
+                reviews = audit_reviews
+                status = "  "
+                color = "white"
             else:
+                rating = audit_rating
+                reviews = audit_reviews
+                status = "  "
                 color = "red"
 
             if is_selected:
                 prefix = "[yellow]>[/] "
+                rating_input = Input(
+                    value=str(rating),
+                    classes="inline-input edit_rating",
+                    placeholder="⭐",
+                )
+                reviews_input = Input(
+                    value=str(reviews),
+                    classes="inline-input edit_reviews",
+                    placeholder="📋",
+                )
+                self._edit_rating_input = rating_input
+                self._edit_reviews_input = reviews_input
+                row = Horizontal(
+                    Label(prefix + name[:35]),
+                    Label(f" {status} "),
+                    rating_input,
+                    reviews_input,
+                )
+                container.mount(row)
             else:
                 prefix = "  "
+                line = f"{prefix}[{color}]{name:<40}[/{color}]{status}{rating:>5}{reviews:>5}"
+                container.mount(Label(line))
 
-            line = f"{prefix}[{color}]{name:<40}[/{color}]{rating:>5}{reviews:>5}"
-            container.mount(Label(line))
+    def _save_inline_edit(self) -> bool:
+        """Save the inline edit for the selected item."""
+        if (
+            not self.is_editing
+            or not self._edit_rating_input
+            or not self._edit_reviews_input
+        ):
+            return False
+
+        rating = self._edit_rating_input.value.strip()
+        reviews = self._edit_reviews_input.value.strip()
+
+        if not rating or not reviews:
+            self.app.notify("Rating and reviews are required.", severity="error")
+            return False
+
+        try:
+            item = self.audit_items[self.audit_selected_idx]
+            place_id = item.get("place_id", "")
+            biz_name = item.get("name", "Unknown")
+
+            from cocli.models.campaigns.indexes.gm_list_reviewed_item import (
+                GmListReviewedItem,
+            )
+
+            campaign = cast(
+                "CocliApp", self.app
+            ).services.reporting_service.campaign_name
+            reviewed_path = (
+                paths.campaign(campaign).queue("gm-list").completed
+                / "results"
+                / "gm_list_reviewed.usv"
+            )
+            reviewed_path.parent.mkdir(parents=True, exist_ok=True)
+
+            rating_val = float(rating) if rating != "-" else 0.0
+            reviews_val = int(reviews) if reviews != "-" else 0
+
+            reviewed_item = GmListReviewedItem.create(
+                place_id=place_id,
+                average_rating=rating_val,
+                reviews_count=reviews_val,
+            )
+            with open(reviewed_path, "a", encoding="utf-8") as f:
+                f.write(reviewed_item.to_usv())
+
+            self.app.notify(f"Reviewed: {biz_name[:30]} | {rating} ({reviews})")
+            self.is_editing = False
+            self._render_audit_items()
+            return True
+        except Exception as e:
+            logger.error(f"Inline save error: {e}")
+            self.app.notify(f"Error: {e}", severity="error")
+            return False
+
+    def _cancel_inline_edit(self) -> None:
+        """Cancel inline editing."""
+        self.is_editing = False
+        self._render_audit_items()
 
     def action_audit_down(self) -> None:
         """Move selection down in audit list."""

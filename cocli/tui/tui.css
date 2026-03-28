@@ -441,3 +441,7 @@ ModalScreen {
     color: #555555;
     text-style: italic;
 }
+
+.inline-input {
+    width: 6;
+}

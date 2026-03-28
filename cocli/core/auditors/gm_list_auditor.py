@@ -205,7 +205,7 @@ def run_reporting(results_dir: Path) -> Path:
 
 def run_html_audit(
     campaign: str,
-    limit: int = 20,
+    limit: int = 200,
     output_name: str = "gm_list_audit",
 ) -> Path:
     """
@@ -216,7 +216,7 @@ def run_html_audit(
 
     Args:
         campaign: Campaign name
-        limit: Number of random HTML files to audit (default 20)
+        limit: Number of random HTML files to audit (default 200)
         output_name: Name for output files
 
     Returns:
