@@ -649,7 +649,7 @@ class QueueDetail(VerticalScroll):
                 self._edit_reviews_input = reviews_input
                 row = Horizontal(
                     Label(prefix + f"[{color}]{name[:40].ljust(40)}[/{color}]"),
-                    Label(f"{status}"),
+                    Label(f" {status}"),
                     Label("     "),
                     rating_input,
                     reviews_input,
