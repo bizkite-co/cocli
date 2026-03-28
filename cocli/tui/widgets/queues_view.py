@@ -134,10 +134,15 @@ class QueueDetail(VerticalScroll):
                 "AUDIT RESULTS (a=run audit, r=refresh, l=reviewed, g=open url)",
                 classes="panel-header-yellow",
             )
-            yield Label("Source: Loading...", id="audit_source_label", classes="dim")
-            yield Label("Output: Loading...", id="audit_output_label", classes="dim")
-            yield Label("Count: Loading...", id="audit_count_label", classes="dim")
-            yield Label("j/k=navigate, l=reviewed", id="audit_status")
+            with Horizontal(id="audit_headers"):
+                yield Label(
+                    "Source: Loading...", id="audit_source_label", classes="dim"
+                )
+                yield Label(
+                    "Output: Loading...", id="audit_output_label", classes="dim"
+                )
+                yield Label("Count: Loading...", id="audit_count_label", classes="dim")
+                yield Label("j/k=navigate, l=reviewed", id="audit_status")
             yield Vertical(id="audit_results_content", classes="panel-content")
 
     def update_detail(self, queue_id: str) -> None:
@@ -727,6 +732,7 @@ class QueueDetail(VerticalScroll):
             return
         self.audit_selected_idx = (self.audit_selected_idx + 1) % len(self.audit_items)
         self._render_audit_items()
+        self._scroll_to_selection()
 
     def action_audit_up(self) -> None:
         """Move selection up in audit list."""
@@ -734,3 +740,15 @@ class QueueDetail(VerticalScroll):
             return
         self.audit_selected_idx = (self.audit_selected_idx - 1) % len(self.audit_items)
         self._render_audit_items()
+        self._scroll_to_selection()
+
+    def _scroll_to_selection(self) -> None:
+        """Scroll the audit list to keep the current selection in view."""
+        container = self.query_one("#audit_results_content", Vertical)
+        try:
+            children = list(container.children)
+            if 0 <= self.audit_selected_idx < len(children):
+                selected_widget = children[self.audit_selected_idx]
+                container.scroll_to_widget(selected_widget, animate=False)
+        except Exception:
+            pass

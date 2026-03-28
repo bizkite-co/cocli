@@ -276,8 +276,27 @@ DataTable > .datatable--cursor {
     overflow-y: auto;
 }
 
+#source_panel .panel-content,
+#dest_panel .panel-content {
+    height: 13;
+    max-height: 13;
+    overflow-y: auto;
+}
+
 #audit_panel {
     height: 1fr;
+}
+
+#audit_panel .panel-header {
+    height: auto;
+}
+
+#audit_headers {
+    height: auto;
+}
+
+#audit_headers Label {
+    height: auto;
 }
 
 #audit_panel .panel-content {
