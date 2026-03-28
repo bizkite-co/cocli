@@ -307,6 +307,19 @@ DataTable > .datatable--cursor {
     overflow-y: auto;
 }
 
+#audit_panel .panel-content > * {
+    height: 1 !important;
+}
+
+#audit_panel .panel-content > Horizontal {
+    height: 1 !important;
+}
+
+#audit_panel .panel-content > Horizontal > * {
+    height: 1 !important;
+    width: auto !important;
+}
+
 #edit-csz-container {
     height: auto;
     width: 100%;
