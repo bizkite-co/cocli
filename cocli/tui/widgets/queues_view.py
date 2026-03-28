@@ -105,6 +105,7 @@ class QueueDetail(VerticalScroll):
             yield Static(id="queue_info_content", classes="panel-content")
 
         # 2. Middle Section: Transformation Columns (Side-by-Side)
+        yield Label("[dim]Transform:[/]", classes="panel-header")
         with Horizontal(id="queue_transform_grid"):
             # LEFT: Source / Pending
             with Vertical(classes="panel", id="source_panel"):
@@ -747,8 +748,10 @@ class QueueDetail(VerticalScroll):
         container = self.query_one("#audit_results_content", Vertical)
         try:
             children = list(container.children)
-            if 0 <= self.audit_selected_idx < len(children):
-                selected_widget = children[self.audit_selected_idx]
-                container.scroll_to_widget(selected_widget, animate=False)
+            # Header is at index 0, data items start at index 1
+            item_idx = self.audit_selected_idx + 1
+            if 0 < item_idx < len(children):
+                selected_widget = children[item_idx]
+                container.scroll_to_widget(selected_widget, animate=False, origin="top")
         except Exception:
             pass

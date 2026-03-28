@@ -284,7 +284,8 @@ DataTable > .datatable--cursor {
 }
 
 #audit_panel {
-    height: 1fr;
+    height: auto;
+    min-height: 10;
 }
 
 #audit_panel .panel-header {
@@ -292,15 +293,17 @@ DataTable > .datatable--cursor {
 }
 
 #audit_headers {
-    height: auto;
+    height: auto !important;
+    min-height: 1;
 }
 
-#audit_headers Label {
-    height: auto;
+#audit_headers > * {
+    height: auto !important;
 }
 
 #audit_panel .panel-content {
-    height: 1fr;
+    height: auto;
+    min-height: 5;
     overflow-y: auto;
 }
 
