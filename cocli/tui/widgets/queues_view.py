@@ -652,7 +652,6 @@ class QueueDetail(VerticalScroll):
                     Label(f"{status}"),
                     Label("     "),
                     rating_input,
-                    Label("     "),
                     reviews_input,
                 )
                 row.styles.background = "#222222"
