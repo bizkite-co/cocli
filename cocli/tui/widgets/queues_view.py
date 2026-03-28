@@ -646,12 +646,12 @@ class QueueDetail(VerticalScroll):
                 self._edit_rating_input = rating_input
                 self._edit_reviews_input = reviews_input
                 row = Horizontal(
-                    Label(prefix + name[:32]),
-                    Label("   "),
-                    Label(f" {status} "),
+                    Label(prefix + name[:40].ljust(40)),
+                    Label(f"{status}"),
                     rating_input,
                     reviews_input,
                 )
+                row.styles.background = "#222222"
                 container.mount(row)
             else:
                 prefix = "  "
