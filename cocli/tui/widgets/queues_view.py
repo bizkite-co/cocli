@@ -385,7 +385,11 @@ class QueueDetail(VerticalScroll):
             return
 
         self.is_editing = not self.is_editing
+        logger.warning(
+            f"[EDIT START] idx={self.audit_selected_idx} is_editing={self.is_editing} row={self._get_row_text(self.audit_selected_idx)}"
+        )
         self._render_audit_items()
+        logger.warning(f"[EDIT AFTER RENDER] is_editing={self.is_editing}")
 
         if self.is_editing and self._edit_rating_input:
             self._edit_rating_input.focus()
@@ -604,8 +608,21 @@ class QueueDetail(VerticalScroll):
             logger.error(f"Error loading audit: {e}", exc_info=True)
             self.query_one("#audit_status", Label).update(f"[red]Error: {e}[/]")
 
+    def _get_row_text(self, idx: int) -> str:
+        """Get the text of a row at given index for debugging."""
+        if idx < 0 or idx >= len(self.audit_items):
+            return f"INDEX_OUT_OF_RANGE: {idx}"
+        item = self.audit_items[idx]
+        name = item.get("name", "Unknown")[:40]
+        rating = item.get("rating", "-")
+        reviews = item.get("reviews", "-")
+        return f"[{idx}] {name} | rating={rating} reviews={reviews}"
+
     def _render_audit_items(self) -> None:
         """Render audit items with selection highlight, reviewed status, and inline editing."""
+        logger.warning(
+            f"[RENDER] start: is_editing={self.is_editing} selected_idx={self.audit_selected_idx} total_items={len(self.audit_items)}"
+        )
         container = self.query_one("#audit_results_content", Vertical)
         container.remove_children()
 
@@ -669,6 +686,10 @@ class QueueDetail(VerticalScroll):
 
     def _save_inline_edit(self) -> bool:
         """Save the inline edit for the selected item."""
+        logger.warning(
+            f"[SAVE EDIT] before: is_editing={self.is_editing} idx={self.audit_selected_idx}"
+        )
+
         if (
             not self.is_editing
             or not self._edit_rating_input
@@ -679,10 +700,13 @@ class QueueDetail(VerticalScroll):
         rating = self._edit_rating_input.value.strip()
         reviews = self._edit_reviews_input.value.strip()
 
+        logger.warning(f"[SAVE EDIT] input: rating='{rating}' reviews='{reviews}'")
+
         if not rating or not reviews:
             self.app.notify("Rating and reviews are required.", severity="error")
             return False
 
+        logger.warning(f"[SAVE EDIT] validated OK, saving...")
         try:
             item = self.audit_items[self.audit_selected_idx]
             place_id = item.get("place_id", "")
@@ -724,14 +748,24 @@ class QueueDetail(VerticalScroll):
 
     def _cancel_inline_edit(self) -> None:
         """Cancel inline editing."""
+        logger.warning(f"[CANCEL EDIT] before: is_editing={self.is_editing}")
         self.is_editing = False
+        logger.warning(f"[CANCEL EDIT] after cancel, before render")
         self._render_audit_items()
+        logger.warning(f"[CANCEL EDIT] after render, idx={self.audit_selected_idx}")
 
     def action_audit_down(self) -> None:
         """Move selection down in audit list."""
         if not self.audit_items:
             return
+        old_idx = self.audit_selected_idx
+        logger.warning(
+            f"[NAV DOWN] before: idx={old_idx} row={self._get_row_text(old_idx)}"
+        )
         self.audit_selected_idx = (self.audit_selected_idx + 1) % len(self.audit_items)
+        logger.warning(
+            f"[NAV DOWN] after: idx={self.audit_selected_idx} row={self._get_row_text(self.audit_selected_idx)}"
+        )
         self._render_audit_items()
         self._scroll_to_selection()
 
@@ -739,7 +773,14 @@ class QueueDetail(VerticalScroll):
         """Move selection up in audit list."""
         if not self.audit_items:
             return
+        old_idx = self.audit_selected_idx
+        logger.warning(
+            f"[NAV UP] before: idx={old_idx} row={self._get_row_text(old_idx)}"
+        )
         self.audit_selected_idx = (self.audit_selected_idx - 1) % len(self.audit_items)
+        logger.warning(
+            f"[NAV UP] after: idx={self.audit_selected_idx} row={self._get_row_text(self.audit_selected_idx)}"
+        )
         self._render_audit_items()
         self._scroll_to_selection()
 
