@@ -48,6 +48,8 @@ LEADER_KEY = "space"
 
 def tui_debug_log(msg: str) -> None:
     """Direct-to-file logging for TUI events, bypasses framework config."""
+    if os.environ.get("TUI_DEBUG", "").lower() not in ("1", "true", "yes"):
+        return
     try:
         log_path = ".logs/tui_debug.log"
         os.makedirs(os.path.dirname(log_path), exist_ok=True)

@@ -22,6 +22,13 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
+def tui_debug_log(msg: str) -> None:
+    """Lazy import to avoid circular import."""
+    from cocli.tui.app import tui_debug_log as _tui_debug_log
+
+    _tui_debug_log(msg)
+
+
 class QueueSelection(ListView):
     """Sidebar list for selecting a queue to view."""
 
@@ -147,10 +154,10 @@ class QueueDetail(VerticalScroll):
             yield Vertical(id="audit_results_content", classes="panel-content")
 
     def update_detail(self, queue_id: str) -> None:
-        logger.warning(f"update_detail called for queue: {queue_id}")
+        tui_debug_log(f"update_detail called for queue: {queue_id}")
         meta = QUEUES_METADATA.get(queue_id)
         if not meta:
-            logger.warning(f"No metadata for {queue_id}")
+            tui_debug_log(f"No metadata for {queue_id}")
             return
 
         self.active_queue = meta
@@ -171,12 +178,7 @@ class QueueDetail(VerticalScroll):
         # 2. Refresh counts and metadata
         self.refresh_counts()
 
-        # 3. Auto-load audit results for gm-list
-        if queue_id == "gm-list":
-            logger.warning("Calling load_audit_results for gm-list")
-            self.load_audit_results()
-        else:
-            logger.warning(f"Not calling load_audit_results, queue_id={queue_id}")
+        # 3. Audit results are loaded on-demand via 'r' key (was auto-load, removed for performance)
 
     def _render_property_table(
         self, widget_id: str, props: Dict[str, PropertyInfo], color: str
@@ -205,7 +207,7 @@ class QueueDetail(VerticalScroll):
 
         app_cast = cast("CocliApp", app)
         campaign = app_cast.services.reporting_service.campaign_name
-        logger.warning(
+        tui_debug_log(
             f"refresh_counts: campaign={campaign}, queue={self.active_queue.name if self.active_queue else 'None'}"
         )
         local_path = paths.campaign(campaign).queue(self.active_queue.name).path
@@ -290,9 +292,9 @@ class QueueDetail(VerticalScroll):
     @work(exclusive=True)
     async def action_run_audit(self) -> None:
         """Run gm-list audit."""
-        logger.warning(f"action_run_audit: active_queue={self.active_queue}")
+        tui_debug_log(f"action_run_audit: active_queue={self.active_queue}")
         if not self.active_queue or self.active_queue.name != "gm-list":
-            logger.warning("action_run_audit: not gm-list")
+            tui_debug_log("action_run_audit: not gm-list")
             return
 
         self.app.notify("Running audit for gm-list...")
@@ -315,7 +317,7 @@ class QueueDetail(VerticalScroll):
                 "--campaign",
                 campaign,
             ]
-            logger.warning(f"action_run_audit: Executing {' '.join(cmd)}")
+            tui_debug_log(f"action_run_audit: Executing {' '.join(cmd)}")
 
             proc = await asyncio.create_subprocess_exec(
                 *cmd,
@@ -324,8 +326,8 @@ class QueueDetail(VerticalScroll):
             )
             stdout, stderr = await proc.communicate()
 
-            logger.warning(f"action_run_audit: stdout={stdout.decode()}")
-            logger.warning(f"action_run_audit: stderr={stderr.decode()}")
+            tui_debug_log(f"action_run_audit: stdout={stdout.decode()}")
+            tui_debug_log(f"action_run_audit: stderr={stderr.decode()}")
 
             if proc.returncode == 0:
                 self.app.notify("Audit completed successfully.")
@@ -369,27 +371,27 @@ class QueueDetail(VerticalScroll):
     def action_mark_reviewed(self) -> None:
         """Toggle inline editing for selected audit item."""
         if not self.active_queue or self.active_queue.name != "gm-list":
-            logger.warning("mark_reviewed: not active gm-list queue")
+            tui_debug_log("mark_reviewed: not active gm-list queue")
             return
         if not self.audit_items:
-            logger.warning(
+            tui_debug_log(
                 f"mark_reviewed: no audit items (count={len(self.audit_items) if self.audit_items else 'None'}, idx={self.audit_selected_idx})"
             )
             self.app.notify("No audit data. Run audit first.")
             return
         if self.audit_selected_idx >= len(self.audit_items):
-            logger.warning(
+            tui_debug_log(
                 f"mark_reviewed: index out of range (idx={self.audit_selected_idx}, len={len(self.audit_items)})"
             )
             self.app.notify("No audit item selected.")
             return
 
         self.is_editing = not self.is_editing
-        logger.warning(
+        tui_debug_log(
             f"[EDIT START] idx={self.audit_selected_idx} is_editing={self.is_editing} row={self._get_row_text(self.audit_selected_idx)}"
         )
         self._render_audit_items()
-        logger.warning(f"[EDIT AFTER RENDER] is_editing={self.is_editing}")
+        tui_debug_log(f"[EDIT AFTER RENDER] is_editing={self.is_editing}")
 
         if self.is_editing and self._edit_rating_input:
             self._edit_rating_input.focus()
@@ -504,7 +506,7 @@ class QueueDetail(VerticalScroll):
 
     def load_audit_results(self) -> None:
         """Load and display audit results for gm-list."""
-        logger.warning(
+        tui_debug_log(
             f"load_audit_results: active_queue={self.active_queue.name if self.active_queue else 'None'}"
         )
         if not self.active_queue or self.active_queue.name != "gm-list":
@@ -514,7 +516,7 @@ class QueueDetail(VerticalScroll):
             campaign = cast(
                 "CocliApp", self.app
             ).services.reporting_service.campaign_name
-            logger.warning(f"load_audit_results: campaign={campaign}")
+            tui_debug_log(f"load_audit_results: campaign={campaign}")
 
             # Source: raw HTML files
             raw_dir = paths.campaign(campaign).path / "raw" / "gm-list"
@@ -530,7 +532,7 @@ class QueueDetail(VerticalScroll):
                 raw_display = str(raw_dir)
 
             self.query_one("#audit_source_label", Label).update(
-                f"Source: {raw_display} ({html_count} files)"
+                f"Source: {raw_display} ({html_count} files) "
             )
 
             # Output: audit results file
@@ -540,8 +542,8 @@ class QueueDetail(VerticalScroll):
                 / "gm_list_audit.usv"
             )
 
-            logger.warning(f"load_audit_results: Full Path={audit_path}")
-            logger.warning(f"load_audit_results: Path Exists={audit_path.exists()}")
+            tui_debug_log(f"load_audit_results: Full Path={audit_path}")
+            tui_debug_log(f"load_audit_results: Path Exists={audit_path.exists()}")
 
             # Update output label
             try:
@@ -556,7 +558,7 @@ class QueueDetail(VerticalScroll):
             container.remove_children()
 
             if not audit_path.exists():
-                logger.warning("load_audit_results: Path does not exist")
+                tui_debug_log("load_audit_results: Path does not exist")
                 self.query_one("#audit_status", Label).update(
                     f"[dim]No audit data. Path does not exist: {audit_path}[/]"
                 )
@@ -564,7 +566,7 @@ class QueueDetail(VerticalScroll):
                 return
 
             items = []
-            logger.warning(f"load_audit_results: Reading file {audit_path}")
+            tui_debug_log(f"load_audit_results: Reading file {audit_path}")
             with open(audit_path, "r", encoding="utf-8") as f:
                 for line in f:
                     if line.strip():
@@ -582,7 +584,7 @@ class QueueDetail(VerticalScroll):
                                     else "-",
                                 }
                             )
-            logger.warning(f"load_audit_results: Loaded {len(items)} items")
+            tui_debug_log(f"load_audit_results: Loaded {len(items)} items")
 
             # Update count label
             self.query_one("#audit_count_label", Label).update(
@@ -590,7 +592,7 @@ class QueueDetail(VerticalScroll):
             )
 
             if not items:
-                logger.warning("load_audit_results: No items in file")
+                tui_debug_log("load_audit_results: No items in file")
                 self.query_one("#audit_status", Label).update(
                     "[dim]No items in audit.[/]"
                 )
@@ -620,7 +622,7 @@ class QueueDetail(VerticalScroll):
 
     def _render_audit_items(self) -> None:
         """Render audit items with selection highlight, reviewed status, and inline editing."""
-        logger.warning(
+        tui_debug_log(
             f"[RENDER] start: is_editing={self.is_editing} selected_idx={self.audit_selected_idx} total_items={len(self.audit_items)}"
         )
         container = self.query_one("#audit_results_content", Vertical)
@@ -628,7 +630,7 @@ class QueueDetail(VerticalScroll):
 
         reviewed_data = self._get_reviewed_data()
 
-        header = f"  {'Name':<40} {'✓':>2} {'⭐':>3} {'📋':>4}"
+        header = f"{'Name':<39} {'✓':>2} {'⭐':>3} {'📋':>3}"
         container.mount(Label("[dim]" + header + "[/]"))
 
         for i, item in enumerate(self.audit_items):
@@ -646,18 +648,18 @@ class QueueDetail(VerticalScroll):
             elif audit_rating and audit_rating != "-":
                 rating = audit_rating
                 reviews = audit_reviews
-                status = "  "
+                status = " "
                 color = "white"
             else:
                 rating = audit_rating
                 reviews = audit_reviews
-                status = "  "
+                status = " "
                 color = "red"
 
             if is_selected:
                 prefix = "[yellow]>[/] "
-                rating_val = str(rating).rjust(5) if rating != "-" else "    -"
-                reviews_val = str(reviews).rjust(5) if reviews != "-" else "    -"
+                rating_val = str(rating).rjust(0) if rating != "-" else "  -"
+                reviews_val = str(reviews).rjust(4) if reviews != "-" else "  -"
                 rating_input = Input(
                     value=rating_val,
                     classes="inline-input edit_rating",
@@ -671,22 +673,22 @@ class QueueDetail(VerticalScroll):
                 self._edit_rating_input = rating_input
                 self._edit_reviews_input = reviews_input
                 row = Horizontal(
-                    Label(prefix + f"[{color}]{name[:40].ljust(40)}[/{color}]"),
+                    Label(prefix + f"[{color}]{name[:38].ljust(0)}[/{color}]"),
                     Label(f" {status}"),
-                    Label("     "),
+                    Label("  "),
                     rating_input,
                     reviews_input,
                 )
                 row.styles.background = "#222222"
                 container.mount(row)
             else:
-                prefix = "  "
-                line = f"{prefix}[{color}]{name:<40}[/{color}]{status}{rating:>5}{reviews:>5}"
+                prefix = " "
+                line = f"{prefix}[{color}]{name:<38}[/{color}]{status}{rating:>5}{reviews:>5}"
                 container.mount(Label(line))
 
     def _save_inline_edit(self) -> bool:
         """Save the inline edit for the selected item."""
-        logger.warning(
+        tui_debug_log(
             f"[SAVE EDIT] before: is_editing={self.is_editing} idx={self.audit_selected_idx}"
         )
 
@@ -700,13 +702,13 @@ class QueueDetail(VerticalScroll):
         rating = self._edit_rating_input.value.strip()
         reviews = self._edit_reviews_input.value.strip()
 
-        logger.warning(f"[SAVE EDIT] input: rating='{rating}' reviews='{reviews}'")
+        tui_debug_log(f"[SAVE EDIT] input: rating='{rating}' reviews='{reviews}'")
 
         if not rating or not reviews:
             self.app.notify("Rating and reviews are required.", severity="error")
             return False
 
-        logger.warning(f"[SAVE EDIT] validated OK, saving...")
+        tui_debug_log("[SAVE EDIT] validated OK, saving...")
         try:
             item = self.audit_items[self.audit_selected_idx]
             place_id = item.get("place_id", "")
@@ -748,22 +750,22 @@ class QueueDetail(VerticalScroll):
 
     def _cancel_inline_edit(self) -> None:
         """Cancel inline editing."""
-        logger.warning(f"[CANCEL EDIT] before: is_editing={self.is_editing}")
+        tui_debug_log(f"[CANCEL EDIT] before: is_editing={self.is_editing}")
         self.is_editing = False
-        logger.warning(f"[CANCEL EDIT] after cancel, before render")
+        tui_debug_log("[CANCEL EDIT] after cancel, before render")
         self._render_audit_items()
-        logger.warning(f"[CANCEL EDIT] after render, idx={self.audit_selected_idx}")
+        tui_debug_log(f"[CANCEL EDIT] after render, idx={self.audit_selected_idx}")
 
     def action_audit_down(self) -> None:
         """Move selection down in audit list."""
         if not self.audit_items:
             return
         old_idx = self.audit_selected_idx
-        logger.warning(
+        tui_debug_log(
             f"[NAV DOWN] before: idx={old_idx} row={self._get_row_text(old_idx)}"
         )
         self.audit_selected_idx = (self.audit_selected_idx + 1) % len(self.audit_items)
-        logger.warning(
+        tui_debug_log(
             f"[NAV DOWN] after: idx={self.audit_selected_idx} row={self._get_row_text(self.audit_selected_idx)}"
         )
         self._render_audit_items()
@@ -774,11 +776,11 @@ class QueueDetail(VerticalScroll):
         if not self.audit_items:
             return
         old_idx = self.audit_selected_idx
-        logger.warning(
+        tui_debug_log(
             f"[NAV UP] before: idx={old_idx} row={self._get_row_text(old_idx)}"
         )
         self.audit_selected_idx = (self.audit_selected_idx - 1) % len(self.audit_items)
-        logger.warning(
+        tui_debug_log(
             f"[NAV UP] after: idx={self.audit_selected_idx} row={self._get_row_text(self.audit_selected_idx)}"
         )
         self._render_audit_items()
@@ -793,6 +795,6 @@ class QueueDetail(VerticalScroll):
             item_idx = self.audit_selected_idx + 1
             if 0 < item_idx < len(children):
                 selected_widget = children[item_idx]
-                container.scroll_to_widget(selected_widget, animate=False, origin="top")
+                container.scroll_to_widget(selected_widget, animate=False)
         except Exception:
             pass

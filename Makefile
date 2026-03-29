@@ -101,7 +101,7 @@ test: install lint ## Run all non-TUI tests using pytest (incremental)
 	@if $(TASKHASH) check test; then \
 		echo "Code signature matches for task 'test'. Skipping tests."; \
 	else \
-		source $(VENV_DIR)/bin/activate && PYTHONPATH=. pytest -s tests/ --quiet --ignore=tests/e2e --ignore=tests/data && \
+		source $(VENV_DIR)/bin/activate && PYTHONPATH=. pytest tests/ --quiet --ignore=tests/e2e --ignore=tests/data && \
 		$(TASKHASH) update test; \
 	fi
 
@@ -127,7 +127,7 @@ test-tui: install lint ## Run TUI test with names
 	@if $(TASKHASH) check test-tui; then \
 		echo "Code signature matches for task 'test-tui'. Skipping test-tui."; \
 	else \
-		source $(VENV_DIR)/bin/activate && pytest -s tests/tui; \
+		source $(VENV_DIR)/bin/activate && pytest tests/tui; \
 	fi
 
 lint: ## Run ruff and mypy to perform static type checking (incremental)
@@ -992,6 +992,6 @@ s3-mock-status: ## Check LocalStack S3 mock status
 	docker compose -f tools/s3mock/docker-compose.yml ps
 
 tui: ## Run the TUI
-	COCLI_SKIP_AUTO_SYNC=1 cocli tui
+	COCLI_SKIP_AUTO_SYNC=1 TUI_DEBUG=1 cocli tui
 
 include mk/cluster.mk

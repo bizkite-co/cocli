@@ -44,6 +44,7 @@ async def test_queue_detail_metadata_displays(mocker):
 async def test_queue_detail_audit_list_displays(mocker, tmp_path):
     """
     Assert that the audit list container is populated when data exists.
+    Note: Audit results are now loaded on-demand via 'r' key, not auto-load.
     """
     app = SimpleQueueApp()
     mock_services = mocker.Mock()
@@ -64,6 +65,12 @@ async def test_queue_detail_audit_list_displays(mocker, tmp_path):
     async with app.run_test():
         detail = app.query_one("#queue_detail", QueueDetail)
         detail.update_detail("gm-list")
+
+        # Audit items should be empty initially (lazy load)
+        assert len(detail.audit_items) == 0
+
+        # Now explicitly load audit results
+        detail.load_audit_results()
 
         # Verify audit items are loaded
         assert len(detail.audit_items) > 0
@@ -225,7 +232,8 @@ async def test_load_audit_results_method_exists(mocker):
 @pytest.mark.asyncio
 async def test_update_detail_auto_loads_audit_for_gm_list(mocker):
     """
-    Verify update_detail calls load_audit_results when viewing gm-list.
+    Verify update_detail does NOT auto-load audit results (lazy load).
+    User must press 'r' to load audit results manually.
     """
     app = SimpleQueueApp()
     mock_services = mocker.Mock()
@@ -239,7 +247,11 @@ async def test_update_detail_auto_loads_audit_for_gm_list(mocker):
         detail = app.query_one("#queue_detail", QueueDetail)
         detail.update_detail("gm-list")
 
-        load_audit_mock.assert_called_once()
+        # Auto-load was removed for performance - should NOT be called
+        load_audit_mock.assert_not_called()
+
+        # Verify audit items are empty initially
+        assert len(detail.audit_items) == 0
 
 
 @pytest.mark.asyncio
