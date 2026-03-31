@@ -9,6 +9,7 @@ dependencies = [
     "pydantic",
     "rich",
     "requests",
+    "chardet>=3.0.2,<6.0.0",  # Version constraint for requests compatibility
     "beautifulsoup4",
     "pyyaml",
     "lxml",

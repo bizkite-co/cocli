@@ -17,14 +17,10 @@
   "store": ".code_signatures.json",
   "runner": "make",
   "tasks": {
-    "build": {},
     "lint": {},
     "test": {},
-    "test-data": {},
     "test-e2e": {},
     "test-tui": {},
-    "test-tui-integration": {},
     "test-unit": {}
   }
 }
-
