@@ -1,5 +1,9 @@
 {
-  "includes": ["src", "tests", "pyproject.toml"],
+  "includes": [
+    "src",
+    "tests",
+    "pyproject.toml"
+  ],
   "excludes": [
     ".git",
     "__pycache__",
@@ -17,10 +21,8 @@
   "store": ".code_signatures.json",
   "runner": "make",
   "tasks": {
+    "build": {},
     "lint": {},
-    "test": {},
-    "test-e2e": {},
-    "test-tui": {},
-    "test-unit": {}
+    "test": {}
   }
 }

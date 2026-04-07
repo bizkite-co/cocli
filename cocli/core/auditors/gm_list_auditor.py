@@ -160,8 +160,10 @@ def run_compaction(results_dir: Path) -> Path:
 def run_reporting(results_dir: Path) -> Path:
     from cocli.commands.data import metrics
 
-    # 1. Generate missing_review_count.usv
-    missing_path = results_dir.parent / "missing_review_count.usv"
+    # 1. Generate missing_review_count.usv in audit/ directory
+    audit_dir = results_dir.parent / "audit"
+    audit_dir.mkdir(parents=True, exist_ok=True)
+    missing_path = audit_dir / "missing_review_count.usv"
     compacted_path = results_dir / "compacted.usv"
 
     # Use DuckDB to extract records

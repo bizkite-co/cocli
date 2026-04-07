@@ -351,7 +351,7 @@ class QueueDetail(VerticalScroll):
             ).services.reporting_service.campaign_name
             reviewed_path = (
                 paths.campaign(campaign).queue("gm-list").completed
-                / "results"
+                / "audit"
                 / "gm_list_reviewed.usv"
             )
             if reviewed_path.exists():
@@ -429,7 +429,7 @@ class QueueDetail(VerticalScroll):
             ).services.reporting_service.campaign_name
             reviewed_path = (
                 paths.campaign(campaign).queue("gm-list").completed
-                / "results"
+                / "audit"
                 / "gm_list_reviewed.usv"
             )
             reviewed_path.parent.mkdir(parents=True, exist_ok=True)
@@ -723,7 +723,7 @@ class QueueDetail(VerticalScroll):
             ).services.reporting_service.campaign_name
             reviewed_path = (
                 paths.campaign(campaign).queue("gm-list").completed
-                / "results"
+                / "audit"
                 / "gm_list_reviewed.usv"
             )
             reviewed_path.parent.mkdir(parents=True, exist_ok=True)
