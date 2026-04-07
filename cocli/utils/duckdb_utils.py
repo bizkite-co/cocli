@@ -2,11 +2,111 @@
 import fnmatch
 import json
 import logging
+import re
 from pathlib import Path
-from typing import Dict, Optional
+from typing import Dict, List, Optional, Set
 import duckdb
 
 logger = logging.getLogger(__name__)
+
+
+def get_schema_field_names(
+    datapackage_path: Path, resource_name: Optional[str] = None
+) -> List[str]:
+    """
+    Returns list of field names from a datapackage's schema.
+    """
+    if not datapackage_path.exists():
+        return []
+
+    with open(datapackage_path, "r") as f:
+        data = json.load(f)
+
+    resource = None
+    if resource_name:
+        for r in data.get("resources", []):
+            if r.get("name") == resource_name:
+                resource = r
+                break
+
+    if not resource:
+        resource = data["resources"][0]
+
+    fields = resource.get("schema", {}).get("fields", [])
+    return [f["name"] for f in fields]
+
+
+def normalize_column_names(columns_str: str, valid_columns: List[str]) -> str:
+    """
+    Normalizes a comma-separated list of column names, replacing known aliases.
+
+    Known aliases:
+    - company_slug -> slug
+    - reviews -> reviews_count
+    - rating -> average_rating
+
+    Also removes invalid columns and warns about them.
+    """
+    if not columns_str.strip():
+        return "*"
+
+    valid_set: Set[str] = set(valid_columns)
+    aliases = {
+        "company_slug": "slug",
+        "reviews": "reviews_count",
+        "rating": "average_rating",
+    }
+
+    cols = [c.strip() for c in columns_str.split(",")]
+    normalized = []
+    removed = []
+
+    for col in cols:
+        # Check aliases
+        if col in aliases:
+            col = aliases[col]
+
+        if col == "*":
+            normalized.append("*")
+        elif col in valid_set:
+            normalized.append(col)
+        else:
+            removed.append(col)
+
+    if removed:
+        logger.warning(f"Unknown columns removed from query: {removed}")
+
+    return ", ".join(normalized) if normalized else "*"
+
+
+def extract_columns_from_query(query: str) -> Set[str]:
+    """
+    Extracts column references from a SQL WHERE clause.
+    Handles: column_name, table.column_name, "column name"
+    """
+    # Match column references: word chars, or quoted identifiers
+    # This is a simplified extraction - won't catch all cases
+    pattern = r'(?:WHERE|AND|OR)\s+("?[\w]+"?)\s*(?:=|>|<|LIKE|IN|IS|BETWEEN)'
+    matches = re.findall(pattern, query, re.IGNORECASE)
+
+    # Filter out SQL keywords
+    sql_keywords = {"WHERE", "AND", "OR", "NULL", "NOT", "IN", "BETWEEN", "LIKE"}
+    return {m for m in matches if m.upper() not in sql_keywords and m != "*"}
+
+
+def validate_query_columns(query: str, valid_columns: List[str]) -> List[str]:
+    """
+    Validates that all column references in a query exist in the schema.
+    Returns list of unknown/invalid columns.
+    """
+    used_cols = extract_columns_from_query(query)
+    valid_set = set(valid_columns)
+
+    # Also check aliases
+    aliases = {"company_slug", "reviews", "rating"}
+    all_valid = valid_set | aliases
+
+    return [col for col in used_cols if col not in all_valid]
 
 
 def match_resource_path(filename: str, res_path: str) -> bool:
@@ -25,7 +125,13 @@ def find_datapackage(file_path: Path) -> Optional[Path]:
 
     The datapackage must contain a resource whose 'path' matches the filename
     or a glob pattern.
+
+    If the input is already a datapackage.json, returns it directly.
     """
+    # If already a datapackage.json, return it
+    if file_path.name == "datapackage.json":
+        return file_path if file_path.exists() else None
+
     current_dir = file_path.parent
     filename = file_path.name
 

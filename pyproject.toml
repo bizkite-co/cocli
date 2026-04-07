@@ -43,6 +43,7 @@ dependencies = [
     "watchdog>=6.0.0",
     "wasmtime>=29.0.0",
     "onepassword-sdk",
+    "textual>=6.4.0",
 ]
 
 [project.scripts]
@@ -136,6 +137,8 @@ exclude = [
     "mutt-setup",
     "fullertonian-site",
     "scripts",
+    "video-automation",
+    "tools",
 ]
 follow_imports = "normal"
 
@@ -147,6 +150,7 @@ exclude = [
     "build",
     "dist",
     "fullertonian-site",
+    "video-automation",
 ]
 
 [dependency-groups]

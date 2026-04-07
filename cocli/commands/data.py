@@ -50,10 +50,30 @@ def list_schemas() -> None:
 
 @app.command()
 def describe(file_path: Path) -> None:
-    """Show the schema definition (fields/types) for a given USV file."""
+    """Show the schema definition (fields/types) for a given USV file or datapackage."""
     if not file_path.exists():
         console.print(f"[red]Error: File not found: {file_path}[/red]")
         raise typer.Exit(1)
+
+    # If given a datapackage.json, show first resource's schema
+    if file_path.name == "datapackage.json":
+        with open(file_path, "r") as f:
+            pkg = json.load(f)
+
+        resources = pkg.get("resources", [])
+        if not resources:
+            console.print("[red]Error: No resources in datapackage[/red]")
+            raise typer.Exit(1)
+
+        # Show schema for each resource
+        for res in resources:
+            fields = res.get("schema", {}).get("fields", [])
+            console.print(f"[bold]Schema for {res.get('name', 'unknown')}[/bold]")
+            console.print(f"[dim]path: {res.get('path')}[/dim]")
+            for i, field in enumerate(fields):
+                console.print(f"{i}: {field['name']} ({field.get('type', 'string')})")
+            console.print()
+        return
 
     dp_path = find_datapackage(file_path)
     if not dp_path:
@@ -158,6 +178,7 @@ def metrics(
 
     usv_path = file_path
 
+    # Handle datapackage.json input
     if file_path.name == "datapackage.json":
         with open(file_path, "r") as f:
             pkg = json.load(f)
@@ -192,108 +213,150 @@ def metrics(
             f"[dim]Using resource: {resource.get('name', 'unknown')} ({usv_path.name})[/dim]"
         )
 
+    # Get schema from datapackage for proper column mapping
+    from cocli.utils.duckdb_utils import find_datapackage, get_schema_field_names
+
+    dp_path = find_datapackage(usv_path)
+    if not dp_path:
+        console.print(f"[red]Error: Could not find datapackage for {usv_path}[/red]")
+        raise typer.Exit(1)
+
+    # Load schema with field types
+    import json
+
+    with open(dp_path, "r") as f:
+        pkg = json.load(f)
+
+    resource = pkg.get("resources", [{}])[0]
+    schema_fields = get_schema_field_names(dp_path)
+    fields_info = {
+        f["name"]: f.get("type", "string")
+        for f in resource.get("schema", {}).get("fields", [])
+    }
+    print(f"DEBUG: Schema has {len(schema_fields)} fields: {schema_fields[:5]}...")
+
+    # Build metrics using DuckDB with schema awareness
     con = duckdb.connect(database=":memory:")
     try:
-        # Load directly to avoid column name mismatch during raw load
-        # Use auto_detect=False to prevent DuckDB from guessing wrong
-        con.execute(f"""
-            CREATE TABLE raw_data AS 
-            SELECT * FROM read_csv('{usv_path}', delim='\x1f', header=False, auto_detect=False, 
-                                   columns={{
-                                       'place_id': 'VARCHAR', 'company_slug': 'VARCHAR', 'name': 'VARCHAR',
-                                       'category': 'VARCHAR', 'phone': 'VARCHAR', 'domain': 'VARCHAR',
-                                       'reviews_count': 'VARCHAR', 'average_rating': 'VARCHAR', 
-                                       'street_address': 'VARCHAR', 'gmb_url': 'VARCHAR'
-                                   }}, 
-                                   quote='', escape='', null_padding=True)
-        """)
+        # Use load_usv_to_duckdb which properly applies the datapackage schema
+        from cocli.utils.duckdb_utils import load_usv_to_duckdb
 
-        # Force column renaming to match schema names
-        # DuckDB might have auto-assigned column names if not mapped correctly,
-        # but our read_csv call *should* work if the table is created correctly.
-        # Let's verify and fix:
+        load_usv_to_duckdb(con, "metrics_data", usv_path, dp_path)
 
-        # Reloading data correctly *should* already have named columns.
-        # Check current table_info:
-        cols_info = con.execute("PRAGMA table_info('raw_data')").fetchall()
-        print(f"DEBUG: Columns after creation: {[c[1] for c in cols_info]}")
+        # Verify column names from loaded table
+        cols_info = con.execute("PRAGMA table_info('metrics_data')").fetchall()
+        loaded_cols = [c[1] for c in cols_info]
+        print(f"DEBUG: Loaded table has columns: {loaded_cols[:5]}...")
 
-        # 1. Clean misaligned review_count
-        con.execute("""
-            UPDATE raw_data
-            SET reviews_count = NULL
-            WHERE TRY_CAST(reviews_count AS BIGINT) IS NULL 
-               OR reviews_count = REGEXP_EXTRACT(phone, '^1?[^\\d]*(\\d{3})', 1)
-               OR reviews_count = REGEXP_EXTRACT(street_address, '^(\\d+)', 1)
-        """)
+        # Dedupe by place_id (using correct column name from schema)
+        place_id_col = "place_id" if "place_id" in loaded_cols else loaded_cols[0]
 
-        # 2. Dedupe
-        con.execute("""
-            CREATE TABLE metrics_table AS
-            SELECT * FROM (
-                SELECT *, ROW_NUMBER() OVER (
-                    PARTITION BY place_id 
-                    ORDER BY TRY_CAST(reviews_count AS BIGINT) DESC NULLS LAST
-                ) as rn
-                FROM raw_data
-            ) WHERE rn = 1
-        """)
+        # Get total unique records
+        total = con.execute(
+            f"SELECT COUNT(DISTINCT {place_id_col}) FROM metrics_data"
+        ).fetchone()[0]
 
-        # Drop the row number
-        con.execute("ALTER TABLE metrics_table DROP rn")
+        # Build metrics dict - count non-null, non-empty values for each field
+        # Handle numeric fields differently to avoid type conversion errors
+        metrics = {"Total Records": total}
 
-        total = con.execute("SELECT COUNT(*) FROM metrics_table").fetchone()[0]
+        for field in schema_fields:
+            if field in loaded_cols:
+                field_type = fields_info.get(field, "string")
 
-        # Get column names
-        cols = [
-            col[1]
-            for col in con.execute("PRAGMA table_info('metrics_table')").fetchall()
-        ]
+                if field_type in ("integer", "number"):
+                    # For numeric fields, use TRY_CAST to handle empty strings gracefully
+                    count = con.execute(
+                        f'SELECT COUNT(*) FROM metrics_data WHERE TRY_CAST("{field}" AS VARCHAR) IS NOT NULL AND TRY_CAST("{field}" AS VARCHAR) != \'\' AND TRY_CAST("{field}" AS VARCHAR) != \'NULL\''
+                    ).fetchone()[0]
+                else:
+                    # For string fields, count non-null and non-empty
+                    count = con.execute(
+                        f'SELECT COUNT(*) FROM metrics_data WHERE "{field}" IS NOT NULL AND "{field}" != \'\' AND "{field}" != \'NULL\''
+                    ).fetchone()[0]
 
-        table = Table(title=f"Metrics: {usv_path.name} (compacted)")
+                if count > 0:
+                    metrics[field] = count
+
+        table = Table(title=f"Metrics: {usv_path.name}")
         table.add_column("Metric")
         table.add_column("Count")
 
-        table.add_row("Total Records", str(total))
-
-        for col in [
-            "phone",
-            "domain",
-            "reviews_count",
-            "average_rating",
-            "street_address",
-        ]:
-            if col in cols:
-                count = con.execute(
-                    f'SELECT COUNT(*) FROM metrics_table WHERE "{col}" IS NOT NULL AND "{col}" != \'\''
-                ).fetchone()[0]
-                table.add_row(col, str(count))
+        for metric, count in metrics.items():
+            table.add_row(metric, str(count))
 
         console.print(table)
 
         if output_path:
             with open(output_path, "w", encoding="utf-8") as f:
-                f.write(f"# Metrics: {usv_path.name} (compacted)\n\n")
+                f.write(f"# Metrics: {usv_path.name}\n\n")
                 f.write("| Metric | Count |\n")
                 f.write("| :--- | :--- |\n")
-                f.write(f"| Total Records | {total} |\n")
-                for col in [
-                    "phone",
-                    "domain",
-                    "reviews_count",
-                    "average_rating",
-                    "street_address",
-                ]:
-                    if col in cols:
-                        count = con.execute(
-                            f'SELECT COUNT(*) FROM metrics_table WHERE "{col}" IS NOT NULL AND "{col}" != \'\''
-                        ).fetchone()[0]
-                        f.write(f"| {col} | {count} |\n")
+                for metric, count in metrics.items():
+                    f.write(f"| {metric} | {count} |\n")
             console.print(f"[green]Metrics report written to {output_path}[/green]")
 
+        return  # Success with DuckDB
+
     except Exception as e:
-        console.print(f"[red]Error: {e}[/red]")
-        raise typer.Exit(1)
+        print(f"DEBUG: DuckDB approach failed: {e}")
+        console.print("[yellow]Falling back to Python processing...[/yellow]")
+
+        # Fallback: Python-based metrics (less efficient but works without DuckDB schema)
+        import csv
+        import sys
+
+        csv.field_size_limit(sys.maxsize)
+
+        # Get field indices from schema
+        field_index = {name: i for i, name in enumerate(schema_fields)}
+
+        place_ids = set()
+        field_counts = {f: set() for f in schema_fields}
+
+        with open(usv_path, "r", encoding="utf-8") as f:
+            reader = csv.reader(f, delimiter="\x1f")
+            prev_place_id = None
+            for row in reader:
+                if len(row) < len(schema_fields):
+                    continue
+
+                place_id = row[0]
+                if place_id == prev_place_id:
+                    continue  # Skip duplicates
+                prev_place_id = place_id
+                place_ids.add(place_id)
+
+                # Count non-empty values for each field
+                for field_name, idx in field_index.items():
+                    if idx < len(row):
+                        val = row[idx].strip()
+                        if val and val.lower() != "null":
+                            field_counts[field_name].add(val)
+
+        total = len(place_ids)
+        metrics = {"Total Records": total}
+        for field, values in field_counts.items():
+            if values:
+                metrics[field] = len(values)
+
+        table = Table(title=f"Metrics: {usv_path.name} (fallback)")
+        table.add_column("Metric")
+        table.add_column("Count")
+
+        for metric, count in metrics.items():
+            table.add_row(metric, str(count))
+
+        console.print(table)
+
+        if output_path:
+            with open(output_path, "w", encoding="utf-8") as f:
+                f.write(f"# Metrics: {usv_path.name} (fallback)\n\n")
+                f.write("| Metric | Count |\n")
+                f.write("| :--- | :--- |\n")
+                for metric, count in metrics.items():
+                    f.write(f"| {metric} | {count} |\n")
+            console.print(f"[green]Metrics report written to {output_path}[/green]")
 
 
 @app.command()
@@ -303,13 +366,41 @@ def search(
         ..., help="SQL-like WHERE clause to search the USV file."
     ),
     columns: str = typer.Option(
-        "company_slug, phone, reviews_count", help="Comma-separated columns to select."
+        "slug, phone, reviews_count", help="Comma-separated columns to select."
     ),
 ) -> None:
     """Provide a schema-aware search interface for USV files using DuckDB."""
     if not file_path.exists():
         console.print(f"[red]Error: File not found: {file_path}[/red]")
         raise typer.Exit(1)
+
+    # Get schema from datapackage for validation and normalization
+    from cocli.utils.duckdb_utils import (
+        find_datapackage,
+        get_schema_field_names,
+        normalize_column_names,
+        validate_query_columns,
+    )
+
+    dp_path = find_datapackage(file_path)
+    if not dp_path:
+        console.print(
+            f"[yellow]Warning: No datapackage.json found. Schema validation disabled.[/yellow]"
+        )
+        schema_fields = []
+    else:
+        schema_fields = get_schema_field_names(dp_path)
+        # Validate query columns against schema
+        invalid_cols = validate_query_columns(query, schema_fields)
+        if invalid_cols:
+            console.print(
+                f"[red]Error: Unknown column(s) in query: {invalid_cols}[/red]"
+            )
+            console.print(f"[dim]Valid columns: {schema_fields[:10]}...[/dim]")
+            raise typer.Exit(1)
+
+        # Normalize column names (handle aliases like company_slug -> slug)
+        columns = normalize_column_names(columns, schema_fields)
 
     con = duckdb.connect(database=":memory:")
     try:
@@ -319,13 +410,23 @@ def search(
         results = con.execute(sql).fetchall()
 
         table = Table(title=f"Search Results: {query}")
-        for col in [c.strip() for c in columns.split(",")]:
-            table.add_column(col)
+        # Use actual column names from the result
+        if results:
+            # Get column names from result
+            result_cols = [desc[0] for desc in con.execute(sql).description]
+            for col in result_cols:
+                table.add_column(col)
+        else:
+            # Fallback to normalized input columns
+            for col in [c.strip() for c in columns.split(",")]:
+                if col != "*":
+                    table.add_column(col)
 
         for row in results:
-            table.add_row(*[str(val) for val in row])
+            table.add_row(*[str(val) if val is not None else "NULL" for val in row])
 
         console.print(table)
+        console.print(f"[dim]{len(results)} rows returned[/dim]")
 
     except Exception as e:
         console.print(f"[red]Error querying data: {e}[/red]")
