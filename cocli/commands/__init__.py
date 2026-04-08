@@ -1,5 +1,6 @@
 import typer
 
+
 def register_commands(app: typer.Typer) -> None:
     from . import add
     from . import add_email
@@ -32,21 +33,27 @@ def register_commands(app: typer.Typer) -> None:
     from . import infrastructure
     from . import index
     from . import cluster
-
+    from . import video
 
     app.command(name="add")(add.add)
     app.command(name="add-email")(add_email.add_email)
     app.command(name="add-meeting")(add_meeting.add_meeting)
     app.command(name="context")(context.context)
     app.command(name="fz")(fz.fz)
-    app.command(name="google-maps-cache-to-company-files")(import_companies.google_maps_cache_to_company_files)
+    app.command(name="google-maps-cache-to-company-files")(
+        import_companies.google_maps_cache_to_company_files
+    )
     app.command(name="import-customers")(import_customers.import_customers)
     app.command(name="import-data")(import_data.import_data)
-    app.command(name="google-maps-csv-to-google-maps-cache")(ingest_google_maps_csv.google_maps_csv_to_google_maps_cache)
+    app.command(name="google-maps-csv-to-google-maps-cache")(
+        ingest_google_maps_csv.google_maps_csv_to_google_maps_cache
+    )
     app.command(name="init")(init.init)
     app.command(name="next")(meetings.next_meetings)
     app.command(name="open-company-folder")(view.open_company_folder)
-    app.command(name="process-shopify-scrapes")(process_shopify_scrapes.process_shopify_scrapes)
+    app.command(name="process-shopify-scrapes")(
+        process_shopify_scrapes.process_shopify_scrapes
+    )
     app.command(name="recent")(meetings.recent_meetings)
     app.command(name="render-prospects-kml")(render_prospects_kml.render_prospects_kml)
     app.command(name="scrape-shopify-myip")(scrape_shopify.scrape_shopify_myip)
@@ -69,3 +76,4 @@ def register_commands(app: typer.Typer) -> None:
     app.add_typer(infrastructure.app, name="infrastructure")
     app.add_typer(index.app, name="index")
     app.add_typer(cluster.app, name="cluster")
+    app.add_typer(video.app, name="video")
