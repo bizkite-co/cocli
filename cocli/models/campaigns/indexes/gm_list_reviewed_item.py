@@ -13,6 +13,7 @@ class GmListReviewedItem(BaseUsvModel):
 
     SCHEMA_UPDATED_AT: ClassVar[str] = "2026-03-24T00:00:00+00:00"
     RESOURCE_PATH_PATTERN: ClassVar[ResourcePathPolicy] = ResourcePathPolicy.SPECIFIC
+    HEADER: ClassVar[bool] = True  # Write header row to USV files
 
     place_id: str = Field(
         ..., min_length=26, max_length=29, description="Google Place ID"

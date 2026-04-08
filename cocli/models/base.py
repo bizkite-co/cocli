@@ -84,6 +84,16 @@ class BaseUsvModel(BaseModel):
     Enforces Frictionless Data Package standards and deterministic serialization.
     """
 
+    HEADER: ClassVar[bool] = False  # Override in model to write header row
+
+    @classmethod
+    def get_header(cls) -> str:
+        """Returns a header row (field names) for USV serialization."""
+        if not cls.HEADER:
+            return ""
+        field_names = list(cls.model_fields.keys())
+        return UNIT_SEP.join(field_names) + UNIT_SEP + "\n"
+
     def to_usv(self) -> str:
         """
         Serializes the model into a Unit-Separated Value string.

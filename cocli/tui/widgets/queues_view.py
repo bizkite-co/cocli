@@ -442,6 +442,12 @@ class QueueDetail(VerticalScroll):
                 average_rating=rating_val,
                 reviews_count=reviews_val,
             )
+
+            # Write header if model defines HEADER = True (first write only)
+            if GmListReviewedItem.HEADER and not reviewed_path.exists():
+                with open(reviewed_path, "w", encoding="utf-8") as f:
+                    f.write(GmListReviewedItem.get_header())
+
             with open(reviewed_path, "a", encoding="utf-8") as f:
                 f.write(reviewed_item.to_usv())
 
@@ -736,6 +742,12 @@ class QueueDetail(VerticalScroll):
                 average_rating=rating_val,
                 reviews_count=reviews_val,
             )
+
+            # Write header if model defines HEADER = True (first write only)
+            if GmListReviewedItem.HEADER and not reviewed_path.exists():
+                with open(reviewed_path, "w", encoding="utf-8") as f:
+                    f.write(GmListReviewedItem.get_header())
+
             with open(reviewed_path, "a", encoding="utf-8") as f:
                 f.write(reviewed_item.to_usv())
 
