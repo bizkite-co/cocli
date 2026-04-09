@@ -4,12 +4,12 @@ help: ## Display this help screen
 	@awk 'BEGIN {FS = ":.*?## "}; /^[a-zA-Z_-]+:.*?## / {printf "  \033[32m%-20s\033[0m %s\n", $$1, $$2}' $(MAKEFILE_LIST)
 
 # Tool for code signature hashing (prevents redundant lint/test runs)
-TASKHASH := taskhash
+TASKHASH := ./taskhash
 
 .PHONY: init
 init: ## Initialize the cocli configuration file and install git hooks
 	./.venv/bin/cocli init
-	$(VENV_DIR)/bin/python scripts/install_hooks.py
+	./.venv/bin/python3 scripts/install_hooks.py
 
 # ==============================================================================
 # Application Tasks
@@ -43,7 +43,7 @@ test-op-read: ## Test 1Password read with Windows Hello
 # 1. Check if CAMPAIGN was passed in the command line (make CAMPAIGN=xyz)
 # 2. Fallback to default campaign in cocli_config.toml
 # 3. If neither, set to "ERROR" to trigger checks later.
-RAW_CAMPAIGN := $(shell [ -f $(VENV_DIR)/bin/python ] && $(VENV_DIR)/bin/python -c "from cocli.core.config import get_campaign; print(get_campaign() or '')" 2>/dev/null)
+RAW_CAMPAIGN := $(shell [ -f ./.venv/bin/python3 ] && $(VENV_DIR)/bin/python -c "from cocli.core.config import get_campaign; print(get_campaign() or '')" 2>/dev/null)
 CAMPAIGN ?= $(if $(RAW_CAMPAIGN),$(RAW_CAMPAIGN),ERROR)
 
 # Validation function to be called by targets that require a campaign
@@ -58,9 +58,9 @@ define validate_campaign
 endef
 
 # Dynamically resolve AWS_PROFILE and REGION from campaign config
-AWS_PROFILE := $(shell [ -f $(VENV_DIR)/bin/python ] && [ "$(CAMPAIGN)" != "ERROR" ] && $(VENV_DIR)/bin/python -c "from cocli.core.config import load_campaign_config; print(load_campaign_config('$(CAMPAIGN)').get('aws', {}).get('profile', ''))" 2>/dev/null)
-REGION := $(shell [ -f $(VENV_DIR)/bin/python ] && [ "$(CAMPAIGN)" != "ERROR" ] && $(VENV_DIR)/bin/python -c "from cocli.core.config import load_campaign_config; print(load_campaign_config('$(CAMPAIGN)').get('aws', {}).get('region', 'us-east-1'))" 2>/dev/null)
-IOT_PROFILE := $(shell [ -f $(VENV_DIR)/bin/python ] && [ "$(CAMPAIGN)" != "ERROR" ] && $(VENV_DIR)/bin/python -c "from cocli.core.config import load_campaign_config; c = load_campaign_config('$(CAMPAIGN)'); profiles = c.get('aws', {}).get('iot_profiles', []); print(profiles[0] if profiles else '')" 2>/dev/null)
+AWS_PROFILE := $(shell [ -f ./.venv/bin/python3 ] && [ "$(CAMPAIGN)" != "ERROR" ] && $(VENV_DIR)/bin/python -c "from cocli.core.config import load_campaign_config; print(load_campaign_config('$(CAMPAIGN)').get('aws', {}).get('profile', ''))" 2>/dev/null)
+REGION := $(shell [ -f ./.venv/bin/python3 ] && [ "$(CAMPAIGN)" != "ERROR" ] && $(VENV_DIR)/bin/python -c "from cocli.core.config import load_campaign_config; print(load_campaign_config('$(CAMPAIGN)').get('aws', {}).get('region', 'us-east-1'))" 2>/dev/null)
+IOT_PROFILE := $(shell [ -f ./.venv/bin/python3 ] && [ "$(CAMPAIGN)" != "ERROR" ] && $(VENV_DIR)/bin/python -c "from cocli.core.config import load_campaign_config; c = load_campaign_config('$(CAMPAIGN)'); profiles = c.get('aws', {}).get('iot_profiles', []); print(profiles[0] if profiles else '')" 2>/dev/null)
 
 open: activate ##Activate the venv and open
 	@cocli
@@ -137,7 +137,7 @@ lint: ## Run ruff and mypy to perform static type checking (incremental)
 	else \
 		echo "Code changed. Running lint..."; \
 		$(VENV_DIR)/bin/ruff check . --fix && \
-		$(VENV_DIR)/bin/python -m mypy --config-file pyproject.toml . && \
+		./.venv/bin/python3 -m mypy --config-file pyproject.toml . && \
 		$(TASKHASH) update lint; \
 	fi
 ################################
@@ -148,11 +148,11 @@ report: ## Show the report for the current campaign (Usage: make report [CAMPAIG
 	@PYTHONPATH=. ./.venv/bin/python scripts/campaign_report.py $(CAMPAIGN)
 
 audit-campaign: ## Audit campaign for cross-contamination (Usage: make audit-campaign [CAMPAIGN=name] [FIX=--fix])
-	@$(VENV_DIR)/bin/python scripts/audit_campaign_integrity.py $(CAMPAIGN) $(FIX)
+	@./.venv/bin/python3 scripts/audit_campaign_integrity.py $(CAMPAIGN) $(FIX)
 
 cleanse: ## Distributed removal of orphans from audit report (Usage: make cleanse REPORT=.logs/orphan_cleanup_xxx.txt [CAMPAIGN=name])
 	@if [ -z "$(REPORT)" ]; then echo "ERROR: REPORT parameter is required. Generate one with: cocli audit fs --gen-cleanup"; exit 1; fi
-	$(VENV_DIR)/bin/python scripts/execute_cleanup.py --report $(REPORT) --campaign $(or $(CAMPAIGN), roadmap)
+	./.venv/bin/python3 scripts/execute_cleanup.py --report $(REPORT) --campaign $(or $(CAMPAIGN), roadmap)
 
 coverage-gap: ## Generate a report of unscraped target areas
 	@COCLI_DATA_HOME=$(shell pwd)/data ./.venv/bin/cocli campaign coverage-gap $(CAMPAIGN)
@@ -241,7 +241,7 @@ scrape-prospects: install ## Scrape prospects for the current campaign context
 
 .PHONY: deduplicate-prospects
 deduplicate-prospects: ## Deduplicate prospects CSV (Usage: make deduplicate-prospects [CAMPAIGN=name])
-	$(VENV_DIR)/bin/python scripts/deduplicate_prospects.py $(or $(CAMPAIGN), turboship)
+	./.venv/bin/python3 scripts/deduplicate_prospects.py $(or $(CAMPAIGN), turboship)
 
 WORKERS ?= 4
 DETAILS_WORKERS ?= 1
@@ -250,7 +250,7 @@ SCRAPE_WORKERS ?= 1
 .PHONY: head-scrape
 head-scrape: ## Scrape the <head> of a specific company (usage: make head-scrape SLUG=beckerarena-com)
 	@if [ -z "$(SLUG)" ]; then echo "Error: SLUG is required. Usage: make head-scrape SLUG=beckerarena-com"; exit 1; fi
-	$(VENV_DIR)/bin/python scripts/repair_names_with_heads.py $(SLUG)
+	./.venv/bin/python3 scripts/repair_names_with_heads.py $(SLUG)
 	@echo "Head saved to: data/companies/$(SLUG)/enrichments/head.html"
 
 .PHONY: enrich-websites
@@ -345,7 +345,7 @@ deploy-infra: install ## Deploy AWS Infrastructure (queues, Fargate service defi
 	$(call validate_campaign)
 	@echo "Deploying infrastructure for campaign: $(CAMPAIGN)"
 	@echo "Using AWS Profile: $(AWS_PROFILE)"
-	@AWS_REGION=$$(./$(VENV_DIR)/bin/python -c "from cocli.core.config import load_campaign_config; config = load_campaign_config('$(CAMPAIGN)'); print(config.get('aws', {}).get('region', 'us-east-1'))"); \
+	@AWS_REGION=$$(././.venv/bin/python3 -c "from cocli.core.config import load_campaign_config; config = load_campaign_config('$(CAMPAIGN)'); print(config.get('aws', {}).get('region', 'us-east-1'))"); \
 	aws ecr describe-repositories --repository-names cocli-enrichment-service --region $$AWS_REGION --profile $(AWS_PROFILE) > /dev/null 2>&1 || \
 	aws ecr create-repository --repository-name cocli-enrichment-service --region $$AWS_REGION --profile $(AWS_PROFILE)
 	cd cdk_scraper_deployment && uv venv --allow-existing && . .venv/bin/activate && uv pip install -r requirements.txt && cdk deploy --require-approval never --profile $(AWS_PROFILE) -c campaign=$(CAMPAIGN)
@@ -354,7 +354,7 @@ deploy-infra: install ## Deploy AWS Infrastructure (queues, Fargate service defi
 .PHONY: update-infra-config
 update-infra-config: install ## Update campaign config.toml with latest SQS URLs from AWS
 	$(call validate_campaign)
-	PYTHONPATH=. ./$(VENV_DIR)/bin/python scripts/update_campaign_infra_config.py $(CAMPAIGN)
+	PYTHONPATH=. ././.venv/bin/python3 scripts/update_campaign_infra_config.py $(CAMPAIGN)
 
 .PHONY: deploy-enrichment
 deploy-enrichment: test docker-build ## Build and deploy the enrichment service to AWS Fargate
@@ -374,12 +374,12 @@ scale: ## Scale the enrichment service (Usage: make scale COUNT=5 [CAMPAIGN=name
 .PHONY: ingest-legacy
 ingest-legacy: ## Ingest legacy google_maps_prospects.csv into the new queue system (Usage: make ingest-legacy CAMPAIGN=name)
 	@if [ -z "$(CAMPAIGN)" ]; then echo "Error: CAMPAIGN variable is required. Usage: make ingest-legacy CAMPAIGN=name"; exit 1; fi
-	@$(VENV_DIR)/bin/python scripts/ingest_legacy_csv.py $(CAMPAIGN)
+	@./.venv/bin/python3 scripts/ingest_legacy_csv.py $(CAMPAIGN)
 
 .PHONY: calc-saturation
 calc-saturation: ## Calculate saturation scores for target locations (Usage: make calc-saturation [CAMPAIGN=name])
 	$(call validate_campaign)
-	@$(VENV_DIR)/bin/python scripts/calculate_saturation.py $(CAMPAIGN)
+	@./.venv/bin/python3 scripts/calculate_saturation.py $(CAMPAIGN)
 
 scrape: calc-saturation ## Run the scraper
 	$(call validate_campaign)
@@ -399,17 +399,17 @@ coverage-kml: ## Generate scrape coverage KML
 
 .PHONY: analyze-emails
 analyze-emails: ## Run deep analysis on emails for the current campaign
-	@$(VENV_DIR)/bin/python scripts/debug_stats.py $(CAMPAIGN)
+	@./.venv/bin/python3 scripts/debug_stats.py $(CAMPAIGN)
 
 .PHONY: compare-emails
 compare-emails: ## Compare current emails to a historical CSV (Usage: make compare-emails FILE=path/to/csv [CAMPAIGN=name])
 	$(call validate_campaign)
 	@if [ -z "$(FILE)" ]; then echo "Error: FILE is required. Usage: make compare-emails FILE=path/to/csv"; exit 1; fi
-	@$(VENV_DIR)/bin/python scripts/compare_missing_emails.py "$(FILE)" --campaign $(CAMPAIGN)
+	@./.venv/bin/python3 scripts/compare_missing_emails.py "$(FILE)" --campaign $(CAMPAIGN)
 
 .PHONY: backfill-email-index
 backfill-email-index: ## Backfill the email index from existing company files (Usage: make backfill-email-index [CAMPAIGN=name])
-	@$(VENV_DIR)/bin/python scripts/backfill_email_index.py $(CAMPAIGN)
+	@./.venv/bin/python3 scripts/backfill_email_index.py $(CAMPAIGN)
 
 .PHONY: backfill-domain-index
 backfill-domain-index: ## Backfill the domain index from existing company files (Usage: make backfill-domain-index [CAMPAIGN=name])
@@ -418,12 +418,12 @@ backfill-domain-index: ## Backfill the domain index from existing company files 
 .PHONY: recover-prospect-index
 recover-prospect-index: ## Reconstruct the prospect index from tagged companies (Usage: make recover-prospect-index [CAMPAIGN=name])
 	$(call validate_campaign)
-	@$(VENV_DIR)/bin/python scripts/recover_prospect_index.py $(CAMPAIGN)
+	@./.venv/bin/python3 scripts/recover_prospect_index.py $(CAMPAIGN)
 
 .PHONY: enrich-place-ids
 enrich-place-ids: ## Find missing Place IDs on Google Maps for tagged companies (Usage: make enrich-place-ids [CAMPAIGN=name] [LIMIT=10])
 	$(call validate_campaign)
-	@$(VENV_DIR)/bin/python scripts/enrich_place_id.py $(CAMPAIGN) --limit $(or $(LIMIT), 0)
+	@./.venv/bin/python3 scripts/enrich_place_id.py $(CAMPAIGN) --limit $(or $(LIMIT), 0)
 
 .PHONY: rebuild-index
 rebuild-index: enrich-place-ids recover-prospect-index ## Full rebuild: Enrich Place IDs then reconstruct the prospect index
@@ -432,17 +432,17 @@ rebuild-index: enrich-place-ids recover-prospect-index ## Full rebuild: Enrich P
 .PHONY: audit-queue
 audit-queue: ## Audit completion markers against Pydantic models and index (Usage: make audit-queue [CAMPAIGN=name])
 	$(call validate_campaign)
-	@$(VENV_DIR)/bin/python scripts/audit_queue_completion.py $(CAMPAIGN)
+	@./.venv/bin/python3 scripts/audit_queue_completion.py $(CAMPAIGN)
 
 .PHONY: audit-queue-fix
 audit-queue-fix: ## Audit and automatically move invalid markers to recovery (Usage: make audit-queue-fix [CAMPAIGN=name])
 	$(call validate_campaign)
-	@$(VENV_DIR)/bin/python scripts/audit_queue_completion.py $(CAMPAIGN) --execute
+	@./.venv/bin/python3 scripts/audit_queue_completion.py $(CAMPAIGN) --execute
 
 .PHONY: cleanup-pending
 cleanup-pending: ## Purge expired leases and normalize pending queue paths (Usage: make cleanup-pending [CAMPAIGN=name])
 	$(call validate_campaign)
-	@$(VENV_DIR)/bin/python scripts/cleanup_gm_list_pending.py $(CAMPAIGN) --execute
+	@./.venv/bin/python3 scripts/cleanup_gm_list_pending.py $(CAMPAIGN) --execute
 
 sync-scraped-areas: ## Sync scraped areas from S3
 	@$(VENV_DIR)/bin/cocli smart-sync scraped-areas
@@ -489,7 +489,7 @@ recent-completed: ## List the 5 most recently completed enrichment tasks on S3 (
 .PHONY: push-queue
 push-queue: ## Push local queue items to S3 (Usage: make push-queue [CAMPAIGN=name] [QUEUE=enrichment])
 	$(call validate_campaign)
-	@$(VENV_DIR)/bin/python scripts/push_queue.py --campaign $(CAMPAIGN) --queue $(or $(QUEUE), enrichment)
+	@./.venv/bin/python3 scripts/push_queue.py --campaign $(CAMPAIGN) --queue $(or $(QUEUE), enrichment)
 
 sync-all: sync-scraped-areas sync-prospects sync-companies sync-emails sync-queues ## Sync all S3 data to local directorys
 
@@ -520,12 +520,12 @@ check-freshness: sync-scraped-areas ## Check if scraped data is fresh (warn if >
 .PHONY: export-emails
 export-emails: ## Export enriched emails to CSV (Usage: make export-emails [CAMPAIGN=name])
 	$(call validate_campaign)
-	@PYTHONPATH=. $(VENV_DIR)/bin/python scripts/export_enriched_emails.py $(CAMPAIGN) --all
+	@PYTHONPATH=. ./.venv/bin/python3 scripts/export_enriched_emails.py $(CAMPAIGN) --all
 
 .PHONY: queue-missing
 queue-missing: ## Identify and queue missing enrichments (Gap Analysis) (Usage: make queue-missing CAMPAIGN=name)
 	$(call validate_campaign)
-	@$(VENV_DIR)/bin/python scripts/queue_missing_enrichments.py $(CAMPAIGN)
+	@./.venv/bin/python3 scripts/queue_missing_enrichments.py $(CAMPAIGN)
 
 .PHONY: enrich-domain
 enrich-domain: ## Enrich a single domain using the Fargate service (Usage: make enrich-domain DOMAIN=example.com [NAV_TIMEOUT_MS=15000] [FORCE=1] [DEBUG=1])
@@ -538,7 +538,7 @@ enrich-domain: ## Enrich a single domain using the Fargate service (Usage: make 
 
 migrate-prospects: ## Migrate google_maps_prospects.csv to file-based index (Usage: make migrate-prospects [CAMPAIGN=name])
 	$(call validate_campaign)
-	$(VENV_DIR)/bin/python scripts/migrate_prospects_to_index.py $(CAMPAIGN)
+	./.venv/bin/python3 scripts/migrate_prospects_to_index.py $(CAMPAIGN)
 
 gc-campaigns: ## Commit and push all changes to campaigns and indexes
 	cd data && git add camapaigns indexes && git commit -m "Update campaigns and indexes" && git push;; cd ..
@@ -611,12 +611,12 @@ web-deploy: web-build ## Deploy the web dashboard to S3
 
 .PHONY: publish-report
 publish-report: ## Generate and upload report.json to S3 (Usage: make publish-report [CAMPAIGN=name])
-	@PYTHONPATH=. $(VENV_DIR)/bin/python scripts/campaign_report.py $(CAMPAIGN) --upload
+	@PYTHONPATH=. ./.venv/bin/python3 scripts/campaign_report.py $(CAMPAIGN) --upload
 
 .PHONY: compile-companies
 compile-companies: install ## Run batch compilation for the current campaign
 	$(call validate_campaign)
-	$(VENV_DIR)/bin/python scripts/batch_compile_companies.py $(CAMPAIGN)
+	./.venv/bin/python3 scripts/batch_compile_companies.py $(CAMPAIGN)
 
 .PHONY: publish-all
 publish-all: sync-companies compile-companies backfill-email-index export-emails publish-report publish-kml web-deploy ## Full sync including compilation and web deployment
@@ -705,7 +705,7 @@ check-rpi-voltage: ## Check Raspberry Pi for load, undervoltage and throttling i
 
 .PHONY: check-cluster-health
 check-cluster-health: ## Check health (load/voltage) of all known Raspberry Pi workers
-	@$(VENV_DIR)/bin/python scripts/check_cluster_health.py
+	@./.venv/bin/python3 scripts/check_cluster_health.py
 
 .PHONY: shutdown-rpi
 shutdown-rpi: ## Safely shut down the Raspberry Pi (halts system)
@@ -876,7 +876,7 @@ stop-rpi-all: ## Stop all cocli worker containers on ALL cluster nodes
 	done
 
 test-op-sdk: ## Test OP
-	@$(VENV_DIR)/bin/python test_op_sdk.py
+	@./.venv/bin/python3 test_op_sdk.py
 
 
 .PHONY: _deploy-single-node
@@ -894,12 +894,12 @@ deploy-rpi: test ## Full deployment: stop, rebuild, and restart with Supervisor 
 	$(VENV_DIR)/bin/ruff check cocli/
 
 missing-keywords: ## List the companies that are missing keywords to CSV
-	$(VENV_DIR)/bin/python scripts/list_companies_missing_keywords.py --campaign $(CAMPAIGN)
+	./.venv/bin/python3 scripts/list_companies_missing_keywords.py --campaign $(CAMPAIGN)
 
 .PHONY: keywords-report
 keywords-report: sync-companies compile-companies ## Sync, compile, and generate both keyword reports
-	$(VENV_DIR)/bin/python scripts/list_companies_with_keywords.py --campaign $(CAMPAIGN)
-	$(VENV_DIR)/bin/python scripts/list_companies_missing_keywords.py --campaign $(CAMPAIGN)
+	./.venv/bin/python3 scripts/list_companies_with_keywords.py --campaign $(CAMPAIGN)
+	./.venv/bin/python3 scripts/list_companies_missing_keywords.py --campaign $(CAMPAIGN)
 
 refresh-keyword-display: ## Sync keyword server data and generate web report
 	@echo "Syncing data and updating web report"
@@ -940,7 +940,7 @@ verify-iam: ## Verify that the current IoT profile respects granular prefix rest
 	echo "Using AWS Bin: $$BIN"; \
 	echo "Testing Scraper path (should work for PUT)..."; \
 	echo "test" > .tmp_iam_test; \
-	BUCKET=$$(./$(VENV_DIR)/bin/python -c "from cocli.core.config import load_campaign_config; print(load_campaign_config('$(CAMPAIGN)').get('aws', {}).get('data_bucket_name', ''))" 2>/dev/null || echo "roadmap-cocli-data-use1"); \
+	BUCKET=$$(././.venv/bin/python3 -c "from cocli.core.config import load_campaign_config; print(load_campaign_config('$(CAMPAIGN)').get('aws', {}).get('data_bucket_name', ''))" 2>/dev/null || echo "roadmap-cocli-data-use1"); \
 	$$BIN s3 cp .tmp_iam_test s3://$$BUCKET/campaigns/$(CAMPAIGN)/raw/iam_test.txt --profile $$EFFECTIVE_PROFILE && echo "  [OK] raw/ prefix accessible" || echo "  [FAIL] raw/ prefix blocked"; \
 	echo "Testing restricted path (should fail)..."; \
 	$$BIN s3 ls s3://$$BUCKET/status/ --profile $$EFFECTIVE_PROFILE > /dev/null 2>&1 && echo "  [FAIL] Restricted prefix accessible!" || echo "  [OK] Restricted prefix blocked"; \
@@ -953,10 +953,10 @@ verify-iam: ## Verify that the current IoT profile respects granular prefix rest
 
 clean-html: ## Convert HTML source to clean Markdown (Usage: make clean-html FILE=docs/ref.html)
 	@if [ -z "$(FILE)" ]; then echo "ERROR: FILE parameter is required."; exit 1; fi
-	$(VENV_DIR)/bin/python scripts/clean_html_docs.py $(FILE) $(FILE:.html=.md)
+	./.venv/bin/python3 scripts/clean_html_docs.py $(FILE) $(FILE:.html=.md)
 .PHONY: path-check
 path-check: install ## Audit paths across cluster and S3 (Usage: make path-check PATHS="wal/,indexes/scraped_areas/" [CAMPAIGNS="roadmap,turboship"])
-	@$(VENV_DIR)/bin/python scripts/audit_cluster_paths.py --paths "$(PATHS)" --campaigns "$(or $(CAMPAIGNS), $(CAMPAIGN))"
+	@./.venv/bin/python3 scripts/audit_cluster_paths.py --paths "$(PATHS)" --campaigns "$(or $(CAMPAIGNS), $(CAMPAIGN))"
 
 .PHONY: tui-tree
 tui-tree: install ## Dump the TUI widget tree for Screaming Architecture comparison

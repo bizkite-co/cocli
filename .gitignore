@@ -1,5 +1,7 @@
 build
 temp
+taskhash
+
 # AWS Credentials for RPi deployment
 docker/rpi-worker/.rpi_credentials
 docker/rpi-worker/.rpi_config
