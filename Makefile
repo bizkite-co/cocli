@@ -34,8 +34,9 @@ dev: install ## Run the TUI in dev mode with auto-restart on file changes
 	@PYTHONPATH=. uv run watchmedo auto-restart --patterns="*.py;*.css" --recursive --signal SIGTERM -- \
 		uv run textual run --dev cocli.tui.app:CocliApp
 
-# Define the virtual environment directory
-VENV_DIR := ./.venv
+test-op-read: ## Test 1Password read with Windows Hello
+	@export OP_ACCOUNT=my && python3 /home/mstouffer/repos/company-cli/.gwt/dev/test_op_read.py
+
 
 # Campaign and AWS Profile Resolution
 # CAMPAIGN RESOLUTION
@@ -873,6 +874,10 @@ stop-rpi-all: ## Stop all cocli worker containers on ALL cluster nodes
 	@for host in $$(echo $(CLUSTER_NODES) | tr ',' ' '); do \
 		$(MAKE) stop-rpi RPI_HOST=$$host; \
 	done
+
+test-op-sdk: ## Test OP
+	@$(VENV_DIR)/bin/python test_op_sdk.py
+
 
 .PHONY: _deploy-single-node
 _deploy-single-node: ## Deploy to a single RPi node (Internal)

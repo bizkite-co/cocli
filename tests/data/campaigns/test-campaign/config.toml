@@ -8,9 +8,11 @@ workflows = []
 [import]
 format = "csv"
 
-[google_maps]
-email = "test@example.com"
-one_password_path = "path/to/password"
+[google_api_client]
+client_id_path = "op://Private/Google-BizkiteLLC/client-id"
+client_secret_path = "op://Private/Google-BizkiteLLC/client-secret"
+oauth_token_path = "op://Private/Google-BizkiteLLC/oauth-token"
+refresh_token_path = "op://Private/Google-BizkiteLLC/refresh-token"
 
 [prospecting]
 locations = []

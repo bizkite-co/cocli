@@ -8,25 +8,36 @@ from googleapiclient.discovery import build
 from googleapiclient.http import MediaFileUpload
 from google.oauth2.credentials import Credentials
 
+from cocli.core.config import load_campaign_config
+from cocli.utils.op_utils import get_op_secret
+
 logger = logging.getLogger(__name__)
 
 SCOPES = ["https://www.googleapis.com/auth/youtube.upload"]
 
 
-def get_secrets() -> tuple[str, str, str, str]:
-    """Fetch all secrets from 1Password."""
-    client_id = subprocess.check_output(
-        ["op", "read", "op::Private/Google-BizkiteLLC/client-id"], text=True
-    ).strip()
-    client_secret = subprocess.check_output(
-        ["op", "read", "op::Private/Google-BizkiteLLC/client-secret"], text=True
-    ).strip()
-    oauth_token = subprocess.check_output(
-        ["op", "read", "op::Private/Google-BizkiteLLC/oauth-token"], text=True
-    ).strip()
-    refresh_token = subprocess.check_output(
-        ["op", "read", "op::Private/Google-BizkiteLLC/refresh-token"], text=True
-    ).strip()
+def get_secrets(campaign: str) -> tuple[str, str, str, str]:
+    """Fetch all secrets from 1Password paths defined in campaign config."""
+    config = load_campaign_config(campaign)
+    google_api_config = config.get("google_api_client", {})
+
+    def read_secret(key: str) -> str:
+        path = google_api_config.get(key)
+        if not path:
+            raise ValueError(
+                f"Secret path for '{key}' not found in campaign '{campaign}' config"
+            )
+        secret = get_op_secret(path)
+        if not secret:
+            raise ValueError(
+                f"Could not retrieve secret from 1Password at path: {path}"
+            )
+        return secret
+
+    client_id = read_secret("client_id_path")
+    client_secret = read_secret("client_secret_path")
+    oauth_token = read_secret("oauth_token_path")
+    refresh_token = read_secret("refresh_token_path")
     return client_id, client_secret, oauth_token, refresh_token
 
 
@@ -54,7 +65,9 @@ class YouTubeUploader:
     def service(self):
         """Lazy-load YouTube service."""
         if self._service is None:
-            client_id, client_secret, oauth_token, refresh_token = get_secrets()
+            client_id, client_secret, oauth_token, refresh_token = get_secrets(
+                self.campaign
+            )
             credentials = build_credentials(
                 client_id, client_secret, oauth_token, refresh_token
             )

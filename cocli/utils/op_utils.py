@@ -6,13 +6,14 @@ from typing import Optional, cast, Any, Dict
 
 logger = logging.getLogger(__name__)
 
+
 def get_op_secret(op_path: str) -> Optional[str]:
     """
     Retrieves a secret from 1Password.
     Priority:
     1. 1Password Python SDK (via OP_SERVICE_ACCOUNT_TOKEN or Local Biometrics).
     2. Fallback to 'op' CLI if SDK is not available or fails.
-    
+
     Expects a path like 'op://Vault/Item/Field'
     """
     if not op_path or not op_path.startswith("op://"):
@@ -20,15 +21,15 @@ def get_op_secret(op_path: str) -> Optional[str]:
 
     # 1. Attempt SDK Retrieval
     try:
-        from onepassword.sdk import Client as NewSDKClient # type: ignore
-        
+        from onepassword.sdk import Client as NewSDKClient  # type: ignore
+
         # New 1Password SDK (Official)
         if "OP_SERVICE_ACCOUNT_TOKEN" in os.environ:
             try:
                 client = NewSDKClient.authenticate(
                     token=os.environ["OP_SERVICE_ACCOUNT_TOKEN"],
                     integration_name="cocli",
-                    integration_version="0.1.0"
+                    integration_version="0.1.0",
                 )
                 return cast(str, client.secrets.retrieve(op_path))
             except Exception as sdk_err:
@@ -41,17 +42,20 @@ def get_op_secret(op_path: str) -> Optional[str]:
 
     # 2. Fallback to 'op' CLI
     try:
-        # We use check=True to raise an exception on non-zero exit
-        # We use capture_output=True to get the secret from stdout
+        # We use a shell wrapper to ensure the Windows Desktop Agent session is inherited
+        # in the WSL environment.
         result = subprocess.run(
-            ["op", "read", op_path],
+            ["/home/mstouffer/repos/company-cli/.gwt/dev/scripts/op_read.sh", op_path],
             capture_output=True,
             text=True,
-            check=True
+            check=True,
+            env=os.environ.copy(),
         )
         return result.stdout.strip()
     except subprocess.CalledProcessError as e:
-        logger.error(f"Failed to read from 1Password path '{op_path}' via CLI: {e.stderr}")
+        logger.error(
+            f"Failed to read from 1Password path '{op_path}' via CLI: {e.stderr}"
+        )
         return None
     except FileNotFoundError:
         logger.error("The 'op' CLI was not found in the system path.")
@@ -60,25 +64,21 @@ def get_op_secret(op_path: str) -> Optional[str]:
         logger.error(f"Unexpected error retrieving 1Password secret via CLI: {e}")
         return None
 
+
 def get_op_item(item_id: str, vault: Optional[str] = None) -> Optional[Dict[str, Any]]:
     """
     Retrieves a full item from 1Password as a dictionary.
     Currently only supports CLI fallback for complex item retrieval.
     """
     # 1. SDK Implementation (To be added when needed/supported by SDK for full items)
-    
+
     # 2. Fallback to 'op' CLI
     try:
         cmd = ["op", "item", "get", item_id, "--format", "json"]
         if vault:
             cmd.extend(["--vault", vault])
-            
-        result = subprocess.run(
-            cmd,
-            capture_output=True,
-            text=True,
-            check=True
-        )
+
+        result = subprocess.run(cmd, capture_output=True, text=True, check=True)
         return cast(Dict[str, Any], json.loads(result.stdout))
     except subprocess.CalledProcessError as e:
         logger.error(f"Failed to get 1Password item '{item_id}' via CLI: {e.stderr}")
@@ -89,4 +89,3 @@ def get_op_item(item_id: str, vault: Optional[str] = None) -> Optional[Dict[str,
     except Exception as e:
         logger.error(f"Unexpected error retrieving 1Password item via CLI: {e}")
         return None
-
