@@ -57,7 +57,12 @@ class PiSyncService:
             SyncResult with details of the sync.
         """
         try:
-            remote_path = f"mstouffer@{host}:repos/data/campaigns/{self.campaign}/queues/gm-list/completed/results/"
+            # Look up the IP from the cluster nodes config if available
+            node_info = next((n for n in self.nodes if n.hostname == host), None)
+            target = (
+                node_info.ip_address if node_info and node_info.ip_address else host
+            )
+            remote_path = f"mstouffer@{target}:repos/data/campaigns/{self.campaign}/queues/gm-list/completed/results/"
             local_path = str(
                 paths.campaign(self.campaign).queue("gm-list").completed / "results"
             )

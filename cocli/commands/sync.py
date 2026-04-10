@@ -146,13 +146,8 @@ def pi_results(
     from cocli.core.sync_tracker import SyncTracker
     from cocli.application.pi_sync_service import PiSyncService
 
-    campaign_name = campaign or get_campaign()
-
-    if not campaign_name:
-        console.print(
-            "[bold red]No campaign specified and no active campaign found.[/bold red]"
-        )
-        raise typer.Exit(1)
+    # Default to "roadmap" if no campaign is active, as a safe fallback for cluster-wide syncing
+    campaign_name = campaign or get_campaign() or "roadmap"
 
     tracker = SyncTracker(campaign_name)
     service = PiSyncService(campaign_name)

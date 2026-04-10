@@ -7,60 +7,78 @@ from typing import List, Dict
 from rich.console import Console
 
 from ..core.config import load_campaign_config
-from ..models.campaigns.worker_config import CampaignClusterConfig, PiNodeConfig, WorkerDefinition
+from ..models.campaigns.worker_config import (
+    CampaignClusterConfig,
+    PiNodeConfig,
+    WorkerDefinition,
+)
 
 logger = logging.getLogger(__name__)
 console = Console()
 
 BUILD_DIR = "~/repos/cocli_build"
 
+
 class ClusterService:
     """
     Central service for managing the Raspberry Pi cluster.
     Implements the 'Safe Hotfix' (Registry-Propagation) deployment strategy.
     """
-    
+
     def __init__(self, campaign_name: str):
         self.campaign_name = campaign_name
         self.config = load_campaign_config(campaign_name)
-        
+
         # 1. Load Global Config (The Authority for Node List)
         from ..core.config import load_global_config
+
         global_config = load_global_config()
         cluster_data = global_config.get("cluster", {})
         self.cluster_config = CampaignClusterConfig(**cluster_data)
-        
+
         # 2. Resolve Registry Host and IP
         self.registry_host = cluster_data.get("registry_host", "cocli5x1.pi")
-        
+
         # Use IP for registry URL to avoid DNS issues on spokes
-        registry_node = next((n for n in self.cluster_config.nodes if n.hostname == self.registry_host), None)
-        self.registry_ip = registry_node.ip_address if registry_node else self.registry_host
+        # We need to resolve the hostname to IP using Tailscale if possible
+        registry_node = next(
+            (n for n in self.cluster_config.nodes if n.hostname == self.registry_host),
+            None,
+        )
+        self.registry_ip = (
+            registry_node.ip_address if registry_node else self.registry_host
+        )
         self.registry_url = f"{self.registry_ip}:5000"
-        
+
         # 3. Fallback to prospecting.scaling ONLY if global node list is empty
         if not self.cluster_config.nodes:
-            logger.info("Global node list empty, falling back to campaign scaling config.")
+            logger.info(
+                "Global node list empty, falling back to campaign scaling config."
+            )
             scaling = self.config.get("prospecting", {}).get("scaling", {})
             for host_key, workers_data in scaling.items():
                 if host_key == "fargate":
                     continue
                 host = host_key if "." in host_key else f"{host_key}.pi"
-                
+
                 # Create WorkerDefinitions from scaling data
                 node_workers = []
                 for content_type, count in workers_data.items():
                     if count > 0:
-                        node_workers.append(WorkerDefinition(
-                            name=f"{host_key}-{content_type}",
-                            role="full",
-                            content_type=content_type,
-                            workers=count,
-                            iot_profile=None
-                        ))
-                
+                        node_workers.append(
+                            WorkerDefinition(
+                                name=f"{host_key}-{content_type}",
+                                role="full",
+                                content_type=content_type,
+                                workers=count,
+                                iot_profile=None,
+                            )
+                        )
+
                 if node_workers:
-                    self.cluster_config.nodes.append(PiNodeConfig(host=host, ip=None, workers=node_workers))
+                    self.cluster_config.nodes.append(
+                        PiNodeConfig(host=host, ip=None, workers=node_workers)
+                    )
 
     def get_nodes(self) -> List[PiNodeConfig]:
         return self.cluster_config.nodes
@@ -93,10 +111,12 @@ class ClusterService:
 
         # 1. Prepare Registry Host (The Hub)
         logger.info(f"--- Preparing Registry Hub: {self.registry_host} ---")
-        if not await self._sync_and_build(self.registry_host, image_name, registry_image, user):
+        if not await self._sync_and_build(
+            self.registry_host, image_name, registry_image, user
+        ):
             logger.error("Registry Hub build failed. Aborting cluster deployment.")
             return {self.registry_host: False}
-        
+
         results[self.registry_host] = True
 
         # 2. Deploy to Spokes
@@ -105,32 +125,48 @@ class ClusterService:
             if node.hostname == self.registry_host:
                 continue
             tasks.append(self._deploy_to_spoke(node, image_name, registry_image, user))
-        
+
         if tasks:
             spoke_results = await asyncio.gather(*tasks)
-            for i, node in enumerate([n for n in self.get_nodes() if n.hostname != self.registry_host]):
+            for i, node in enumerate(
+                [n for n in self.get_nodes() if n.hostname != self.registry_host]
+            ):
                 results[node.hostname] = spoke_results[i]
 
         return results
 
-    async def _sync_and_build(self, host: str, image_name: str, registry_image: str, user: str) -> bool:
+    async def _sync_and_build(
+        self, host: str, image_name: str, registry_image: str, user: str
+    ) -> bool:
         # Ensure we sync from the absolute project root
         project_root = Path(__file__).parent.parent.parent.resolve()
-        
+
         try:
             # Sync
-            subprocess.run(["ssh", f"{user}@{host}", f"mkdir -p {BUILD_DIR}"], check=True)
+            subprocess.run(
+                ["ssh", f"{user}@{host}", f"mkdir -p {BUILD_DIR}"], check=True
+            )
             rsync_cmd = [
-                "rsync", "-az", "--delete",
-                "--exclude", ".venv", "--exclude", ".git", "--exclude", "data", "--exclude", ".logs",
-                str(project_root) + "/", f"{user}@{host}:{BUILD_DIR}/"
+                "rsync",
+                "-az",
+                "--delete",
+                "--exclude",
+                ".venv",
+                "--exclude",
+                ".git",
+                "--exclude",
+                "data",
+                "--exclude",
+                ".logs",
+                str(project_root) + "/",
+                f"{user}@{host}:{BUILD_DIR}/",
             ]
             subprocess.run(rsync_cmd, check=True)
 
             # Build and Push
             build_cmd = f"cd {BUILD_DIR} && docker build -t {image_name} -f docker/rpi-worker/Dockerfile . && docker tag {image_name} {registry_image} && docker push {registry_image}"
             subprocess.run(["ssh", f"{user}@{host}", build_cmd], check=True)
-            
+
             # Restart Hub
             await self._restart_node(host, image_name, user)
             return True
@@ -138,14 +174,16 @@ class ClusterService:
             logger.error(f"Hub build/push failed on {host}: {e}")
             return False
 
-    async def _deploy_to_spoke(self, node: PiNodeConfig, image_name: str, registry_image: str, user: str) -> bool:
+    async def _deploy_to_spoke(
+        self, node: PiNodeConfig, image_name: str, registry_image: str, user: str
+    ) -> bool:
         host = node.hostname
         logger.info(f"Deploying to Spoke: {host}...")
         try:
             # Pull
             pull_cmd = f"docker pull {registry_image} && docker tag {registry_image} {image_name}"
             subprocess.run(["ssh", f"{user}@{host}", pull_cmd], check=True)
-            
+
             # Restart
             await self._restart_node(host, image_name, user)
             return True
@@ -159,7 +197,7 @@ class ClusterService:
         # Standardize on 'cocli-supervisor' as the container name for now
         stop_cmd = "docker stop cocli-supervisor && docker rm cocli-supervisor"
         subprocess.run(["ssh", f"{user}@{host}", stop_cmd], capture_output=True)
-        
+
         # We map .cocli to both /root/ and the host user's home path
         # This ensures that 'credential_process' paths in ~/.aws/config (which use host absolute paths)
         # work correctly inside the container.
@@ -176,7 +214,7 @@ class ClusterService:
             -v ~/.cocli:/home/{user}/.cocli:ro \
             {image_name} \
             cocli worker orchestrate --campaign {self.campaign_name}"""
-        
+
         subprocess.run(["ssh", f"{user}@{host}", run_cmd], check=True)
         logger.info(f"  Node {host} restarted with orchestrated workers.")
 
@@ -188,7 +226,9 @@ class ClusterService:
         project_root = Path(__file__).parent.parent.parent.resolve()
         local_campaign_dir = project_root / "data" / "campaigns" / self.campaign_name
 
-        logger.info(f"[bold cyan]Surgical Pull: cluster results for {self.campaign_name}...[/bold cyan]")
+        logger.info(
+            f"[bold cyan]Surgical Pull: cluster results for {self.campaign_name}...[/bold cyan]"
+        )
 
         for node in self.get_nodes():
             host = node.hostname
@@ -203,12 +243,16 @@ class ClusterService:
 
                 # Use -rtWz for fastest SD card performance
                 rsync_cmd = [
-                    "rsync", "-rtWz",
-                    f"{user}@{host}:{remote_path}", str(local_path) + "/"
+                    "rsync",
+                    "-rtWz",
+                    f"{user}@{host}:{remote_path}",
+                    str(local_path) + "/",
                 ]
 
                 try:
-                    subprocess.run(rsync_cmd, capture_output=True, text=True, timeout=120)
+                    subprocess.run(
+                        rsync_cmd, capture_output=True, text=True, timeout=120
+                    )
                 except subprocess.TimeoutExpired:
                     logger.warning(f"  Pull from {host}:{folder} timed out.")
                 except Exception as e:
@@ -217,9 +261,11 @@ class ClusterService:
         # Now run the auditor logic via dynamic import to avoid mypy package collisions
         import importlib.util
         import sys
-        
+
         script_path = project_root / "scripts" / "audit_prospect_quality.py"
-        spec = importlib.util.spec_from_file_location("audit_prospect_quality", str(script_path))
+        spec = importlib.util.spec_from_file_location(
+            "audit_prospect_quality", str(script_path)
+        )
         if spec and spec.loader:
             module = importlib.util.module_from_spec(spec)
             sys.modules["audit_prospect_quality"] = module
@@ -233,50 +279,98 @@ class ClusterService:
         to ensure fast and reliable task activation, monitoring, and hot-reloading.
         """
         from ..core.paths import paths
-        
+
         campaign_dir = paths.campaign(self.campaign_name).path
         dg_queue = paths.campaign(self.campaign_name).queue("discovery-gen")
-        
+
         # 1. Discovery Gen Completed (The Active Task Pool)
         local_dg_completed = dg_queue.completed
-        
+
         # 2. Pending Batches (Required for monitor-batch)
         local_dg_batches = dg_queue.pending / "batches"
-        
+
         # 3. Campaign Config (Required for hot-reloading scaling)
         local_config = campaign_dir / "config.toml"
-        
-        logger.info(f"[bold cyan]Surgical Push: discovery-gen tasks, batches and config for {self.campaign_name}...[/bold cyan]")
-        
+
+        logger.info(
+            f"[bold cyan]Surgical Push: discovery-gen tasks, batches and config for {self.campaign_name}...[/bold cyan]"
+        )
+
         for node in self.get_nodes():
             host = node.hostname
             logger.info(f"  Pushing to {host}...")
-            
+
             remote_campaign_root = f"~/repos/data/campaigns/{self.campaign_name}/"
-            remote_dg_completed = f"{remote_campaign_root}queues/discovery-gen/completed/"
-            remote_dg_batches = f"{remote_campaign_root}queues/discovery-gen/pending/batches/"
+            remote_dg_completed = (
+                f"{remote_campaign_root}queues/discovery-gen/completed/"
+            )
+            remote_dg_batches = (
+                f"{remote_campaign_root}queues/discovery-gen/pending/batches/"
+            )
             remote_config = f"{remote_campaign_root}config.toml"
-            
+
             try:
                 # Ensure remote directories exist
-                subprocess.run(["ssh", f"{user}@{host}", f"mkdir -p {remote_dg_completed} {remote_dg_batches}"], check=True, capture_output=True, timeout=15)
-                
+                subprocess.run(
+                    [
+                        "ssh",
+                        f"{user}@{host}",
+                        f"mkdir -p {remote_dg_completed} {remote_dg_batches}",
+                    ],
+                    check=True,
+                    capture_output=True,
+                    timeout=15,
+                )
+
                 # Sync Active Task Pool
                 rsync_cmd_tasks = ["rsync", "-rtWz"]
                 if delete:
                     rsync_cmd_tasks.append("--delete")
-                rsync_cmd_tasks.extend([str(local_dg_completed) + "/", f"{user}@{host}:{remote_dg_completed}"])
-                subprocess.run(rsync_cmd_tasks, check=True, capture_output=True, text=True, timeout=120)
+                rsync_cmd_tasks.extend(
+                    [
+                        str(local_dg_completed) + "/",
+                        f"{user}@{host}:{remote_dg_completed}",
+                    ]
+                )
+                subprocess.run(
+                    rsync_cmd_tasks,
+                    check=True,
+                    capture_output=True,
+                    text=True,
+                    timeout=120,
+                )
 
                 # Sync Batches (Always sync, small files)
-                rsync_cmd_batches = ["rsync", "-rtWz", str(local_dg_batches) + "/", f"{user}@{host}:{remote_dg_batches}"]
-                subprocess.run(rsync_cmd_batches, check=True, capture_output=True, text=True, timeout=60)
+                rsync_cmd_batches = [
+                    "rsync",
+                    "-rtWz",
+                    str(local_dg_batches) + "/",
+                    f"{user}@{host}:{remote_dg_batches}",
+                ]
+                subprocess.run(
+                    rsync_cmd_batches,
+                    check=True,
+                    capture_output=True,
+                    text=True,
+                    timeout=60,
+                )
 
                 # Sync Config (Crucial for hot-reloading)
                 if local_config.exists():
-                    rsync_cmd_config = ["rsync", "-rtWz", str(local_config), f"{user}@{host}:{remote_config}"]
-                    subprocess.run(rsync_cmd_config, check=True, capture_output=True, text=True, timeout=30)
-                
+                    rsync_cmd_config = [
+                        "rsync",
+                        "-rtWz",
+                        str(local_config),
+                        f"{user}@{host}:{remote_config}",
+                    ]
+                    subprocess.run(
+                        rsync_cmd_config,
+                        check=True,
+                        capture_output=True,
+                        text=True,
+                        timeout=30,
+                    )
+
             except subprocess.TimeoutExpired:
                 logger.warning(f"Push to {host} timed out.")
             except Exception as e:
@@ -288,10 +382,13 @@ class ClusterService:
         Bypasses S3 for rapid local diagnostic updates.
         """
         from ..core.paths import paths
+
         local_tiles_dir = paths.indexes / "scraped-tiles"
         local_tiles_dir.mkdir(parents=True, exist_ok=True)
 
-        logger.info("[bold cyan]Direct Pull: high-speed witness data from cluster...[/bold cyan]")
+        logger.info(
+            "[bold cyan]Direct Pull: high-speed witness data from cluster...[/bold cyan]"
+        )
 
         for node in self.get_nodes():
             host = node.hostname
@@ -301,8 +398,10 @@ class ClusterService:
 
             # Use -rtWz for fastest performance
             rsync_cmd = [
-                "rsync", "-rtWz",
-                f"{user}@{host}:{remote_path}", str(local_tiles_dir) + "/"
+                "rsync",
+                "-rtWz",
+                f"{user}@{host}:{remote_path}",
+                str(local_tiles_dir) + "/",
             ]
 
             try:
@@ -312,6 +411,10 @@ class ClusterService:
             except Exception as e:
                 logger.warning(f"  Could not pull from {host}: {e}")
 
-    async def run_remote_command(self, node: PiNodeConfig, command: str, user: str = "mstouffer") -> str:
-        res = subprocess.run(["ssh", f"{user}@{node.hostname}", command], capture_output=True, text=True)
+    async def run_remote_command(
+        self, node: PiNodeConfig, command: str, user: str = "mstouffer"
+    ) -> str:
+        res = subprocess.run(
+            ["ssh", f"{user}@{node.hostname}", command], capture_output=True, text=True
+        )
         return res.stdout if res.returncode == 0 else res.stderr
