@@ -552,6 +552,8 @@ class FilesystemGmListQueue(FilesystemQueue):
             self.target_tiles_dir = Path("does-not-exist")
         self.witness_dir = get_cocli_base_dir() / "indexes" / "scraped-tiles"
 
+from ...core.geo_types import LatScale1, LonScale1
+...
     def _create_scrape_task(self, task_id: str) -> Optional[ScrapeTask]:
         """Reconstructs a ScrapeTask from a discovery-gen task_id."""
         path_parts = Path(task_id).parts
@@ -560,8 +562,8 @@ class FilesystemGmListQueue(FilesystemQueue):
             return None
             
         try:
-            lat = float(path_parts[1])
-            lon = float(path_parts[2])
+            lat = LatScale1(float(path_parts[1]))
+            lon = LonScale1(float(path_parts[2]))
             phrase = path_parts[3].replace(".usv", "").replace(".csv", "")
             
             return ScrapeTask(
