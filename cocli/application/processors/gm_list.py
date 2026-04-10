@@ -96,14 +96,16 @@ class GmListProcessor:
 
             # 2. Save JSON Receipt
             receipt_path = results_dir / f"{phrase_slug}.json"
+from ...core.geo_types import LatScale1, LonScale1
+...
             receipt_data = {
                 "task_id": task.ack_token,
                 "completed_at": datetime.now(UTC).isoformat(),
                 "worker_id": self.processed_by,
                 "schema_version": 2,
                 "search_phrase": task.search_phrase,
-                "latitude": task.latitude,
-                "longitude": task.longitude,
+                "latitude": float(LatScale1(task.latitude)),
+                "longitude": float(LonScale1(task.longitude)),
                 "result_count": len(items),
                 "status": "success",
                 "metadata": metadata or {},
