@@ -55,4 +55,4 @@ def cleanup(campaign_name: str) -> None:
 
 if __name__ == "__main__":
     from cocli.core.config import get_campaign
-    cleanup(get_campaign() or "roadmap")
+    cleanup(get_campaign() or (lambda: exec('raise ValueError("No campaign")'))())

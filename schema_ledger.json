@@ -4,7 +4,7 @@
     "history": [
       {
         "hash": "81a13c8784257f4c",
-        "timestamp": "2026-04-07T20:29:47.846974+00:00"
+        "timestamp": "2026-04-10T21:07:27.722313+00:00"
       }
     ]
   },
@@ -13,7 +13,7 @@
     "history": [
       {
         "hash": "10709da097ca520e",
-        "timestamp": "2026-04-07T20:29:47.851667+00:00"
+        "timestamp": "2026-04-10T21:07:27.773269+00:00"
       }
     ]
   },
@@ -22,34 +22,7 @@
     "history": [
       {
         "hash": "2b8c8da9e0fbef14",
-        "timestamp": "2026-04-07T20:29:47.868315+00:00"
-      }
-    ]
-  },
-  "gm-list-test-phrase": {
-    "current_hash": "482cca6348a83d67",
-    "history": [
-      {
-        "hash": "482cca6348a83d67",
-        "timestamp": "2026-03-22T20:00:00+00:00"
-      }
-    ]
-  },
-  "google_maps_prospects": {
-    "current_hash": "81a13c8784257f4c",
-    "history": [
-      {
-        "hash": "81a13c8784257f4c",
-        "timestamp": "2026-04-07T20:31:40.115948+00:00"
-      }
-    ]
-  },
-  "to_call_queue": {
-    "current_hash": "83db295423198f4a",
-    "history": [
-      {
-        "hash": "83db295423198f4a",
-        "timestamp": "2026-04-07T20:31:40.547861+00:00"
+        "timestamp": "2026-04-10T21:07:27.816652+00:00"
       }
     ]
   }

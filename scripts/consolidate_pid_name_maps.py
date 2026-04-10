@@ -53,4 +53,4 @@ def consolidate(campaign_name: str) -> None:
 
 if __name__ == "__main__":
     from cocli.core.config import get_campaign
-    consolidate(get_campaign() or "roadmap")
+    consolidate(get_campaign() or (lambda: exec('raise ValueError("No campaign")'))())
