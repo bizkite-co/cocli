@@ -491,26 +491,17 @@ def inspect(
         console.print(f"{i}: {field['name']:<20} | {val}")
 
 
-@queue_app.command(name="compact")
-def queue_compact(
-    campaign: str = typer.Option("roadmap", "--campaign", "-c", help="Campaign name"),
-    queue_name: str = typer.Argument(..., help="Queue name to compact (e.g., gm-list)"),
+@app.command()
+def commit(
+    message: str = typer.Option(..., "--message", "-m", help="Commit message"),
 ) -> None:
-    """Compact a queue's results into a unified dataset.
+    """Commit changes in the current data directory."""
+    import subprocess
 
-    Example: cocli data queue compact gm-list
-    """
-    from cocli.core.transformers.gm_list_to_checkpoint import compact_gm_list_results
-
-    console.print(
-        f"[cyan]Compacting queue '{queue_name}' for campaign '{campaign}'...[/cyan]"
-    )
-
-    if queue_name == "gm-list":
-        count = compact_gm_list_results(campaign)
-        console.print(f"[green]Compaction complete. Merged {count} records.[/green]")
-    else:
-        console.print(
-            f"[red]Error: Unknown queue '{queue_name}'. Currently supported: gm-list[/red]"
-        )
+    try:
+        subprocess.run(["git", "add", "."], check=True)
+        subprocess.run(["git", "commit", "-m", message], check=True)
+        console.print(f"[green]Successfully committed changes: {message}[/green]")
+    except subprocess.CalledProcessError as e:
+        console.print(f"[red]Error committing changes: {e}[/red]")
         raise typer.Exit(1)
