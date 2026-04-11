@@ -32,9 +32,6 @@ from cocli.core.video.transcript_to_vtt import convert_transcript_to_vtt
 from cocli.core.video import auth as video_auth
 from cocli.core.text_utils import slugdotify
 
-app = typer.Typer(no_args_is_help=True)
-console = Console()
-
 
 def extract_screenshots_logic(video_path: Path) -> None:
     """Internal logic to extract screenshots."""
@@ -99,6 +96,7 @@ def add(
 
         shutil.copy2(video_path, dest)
         console.print(f"[green]Added {safe_name} to raw queue.[/green]")
+
     except Exception:
         import traceback
 
