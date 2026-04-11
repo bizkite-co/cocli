@@ -71,6 +71,7 @@ def get_video_queue_root(campaign_name: str) -> Path:
 
 
 @app.command()
+<<<<<<< HEAD
 def add(
     campaign: Optional[str] = typer.Option(
         None, "-c", "--campaign", help="Campaign name"
@@ -298,6 +299,8 @@ def package(
 
 
 @app.command()
+=======
+>>>>>>> cb708128 (feat(video): add force option to create-thumbnail)
 def create_thumbnail(
     campaign: Optional[str] = typer.Option(
         None, "-c", "--campaign", help="Campaign name"
