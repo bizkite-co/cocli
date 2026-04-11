@@ -1,5 +1,5 @@
 from typing import List, Any, cast
-from google.genai import Client
+from google.genai import Client  # type: ignore
 import logging
 from cocli.core.config import load_campaign_config
 from cocli.utils.op_utils import get_op_secret

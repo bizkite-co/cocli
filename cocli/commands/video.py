@@ -250,7 +250,11 @@ def package(
             # 1. Identify video file
             video_file = next(video_dir.glob("*.mp4"))
 
-            # 2. Transcribe
+            # 2. Parse Metadata
+            md_file = video_dir / f"{video_dir.name}.md"
+            metadata = thumbnailer.parse_metadata(md_file)
+
+            # 3. Transcribe
             console.print(f"Transcribing {video_file.name}...")
 
             camp_cfg = load_campaign_config(campaign_name)
@@ -264,7 +268,13 @@ def package(
             )
             transcripts = transcriber_engine.transcribe(video_file, campaign_name)
 
-            # 3. Save transcripts
+            # 4. Save transcripts and Generate Chapters
+            transcript_text = transcripts.get("whisper") or next(
+                iter(transcripts.values())
+            )
+            chapters_text = chapters.create_chapters(transcript_text, campaign_name)
+
+            # Save transcript and chapters
             for provider_name, transcript_text in transcripts.items():
                 transcript_path = video_dir / f"transcript_{provider_name}.md"
                 with open(transcript_path, "w") as f:
@@ -273,17 +283,24 @@ def package(
                     f"[green]Saved transcript to {transcript_path.name}[/green]"
                 )
 
-            # 4. Copy to packaged
-            for item in video_dir.iterdir():
-                if item.is_dir():
-                    shutil.copytree(
-                        item, target_video_dir / item.name, dirs_exist_ok=True
-                    )
-                else:
-                    shutil.copy2(item, target_video_dir / item.name)
+chapters_path = video_dir / "chapters.md"
+            with open(chapters_path, "w") as f:
+                f.write(chapters_text)
+            console.print(f"[green]Saved chapters to {chapters_path.name}[/green]")
 
-            # 5. Process Thumbnail
-            thumbnailer.process_thumbnail(video_dir, target_video_dir)
+            # 5. Compile final description
+            description = metadata.get("description", "")
+            final_description = f"{description}\n\n## Chapters\n{chapters_text}"
+
+            desc_path = video_dir / "description.md"
+            with open(desc_path, "w") as f:
+                f.write(final_description)
+
+            # 6. Copy to packaged
+            shutil.copytree(video_dir, pack_dir / video_dir.name)
+
+            # 7. Process Thumbnail
+            thumbnailer.process_thumbnail(video_dir, pack_dir / video_dir.name)
 
             console.print(f"[green]Packaged: {video_dir.name}[/green]")
 
