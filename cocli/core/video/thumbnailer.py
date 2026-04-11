@@ -1,7 +1,6 @@
 from pathlib import Path
 from typing import Dict, Any
-from PIL import Image, ImageDraw, ImageFont
-
+from PIL import Image, ImageDraw, ImageFont  # type: ignore
 import yaml
 from rich.console import Console
 
@@ -106,7 +105,7 @@ def process_thumbnail(video_dir: Path, output_dir: Path) -> None:
     screenshot_name = metadata.get("thumbnail-screenshot")
     if screenshot_name:
         img_path = video_dir / screenshot_name
-else:
+    else:
         # Fallback to the first screenshot_*.png
         img_files = sorted(list(video_dir.glob("screenshot_*.png")))
         if not img_files:
