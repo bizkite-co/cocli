@@ -68,6 +68,10 @@ def get_video_queue_root(campaign_name: str) -> Path:
     return campaign_dir / "video"
 
 
+app = typer.Typer(help="Commands for video processing.", no_args_is_help=True)
+console = Console()
+
+
 @app.command()
 def add(
     campaign: Optional[str] = typer.Option(
@@ -194,6 +198,9 @@ def normalize(
             # Extract screenshots here
             extract_screenshots_logic(video_file)
 
+            # Extract thumbnails here
+            extract_thumbnails_logic(video_file)
+
             console.print(f"[green]Normalized: {video_file.stem}[/green]")
 
     except Exception:
@@ -270,33 +277,6 @@ def package(
                 console.print(
                     f"[green]Saved transcript to {transcript_path.name}[/green]"
                 )
-
-            # 3.5. Generate chapters from the first transcript
-            first_transcript = next(iter(transcripts.values()), "")
-            if first_transcript:
-                console.print("Generating chapters...")
-                try:
-                    chapter_text = chapters.create_chapters(
-                        first_transcript, campaign_name
-                    )
-                    chapters_path = video_dir / "chapters.md"
-                    with open(chapters_path, "w") as f:
-                        f.write(chapter_text)
-                    console.print(
-                        f"[green]Saved chapters to {chapters_path.name}[/green]"
-                    )
-                except Exception as e:
-                    console.print(f"[yellow]Chapter generation failed: {e}[/yellow]")
-
-            # 4. Generate VTT (closed captions) from first transcript
-            if first_transcript:
-                console.print("Generating VTT closed captions...")
-                try:
-                    vtt_path = video_dir / "captions.vtt"
-                    convert_transcript_to_vtt(first_transcript, vtt_path)
-                    console.print(f"[green]Saved captions to {vtt_path.name}[/green]")
-                except Exception as e:
-                    console.print(f"[yellow]VTT generation failed: {e}[/yellow]")
 
             # 4. Copy to packaged
             for item in video_dir.iterdir():
