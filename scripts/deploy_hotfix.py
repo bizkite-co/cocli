@@ -92,7 +92,7 @@ def main() -> None:
         deploy_to_host("mstouffer", target_arg)
         return
 
-    campaign_name = get_campaign() or (lambda: exec('raise ValueError("No campaign")'))()
+    campaign_name = get_campaign() or "roadmap"
     config = load_campaign_config(campaign_name)
     
     # 1. Try campaign config first

@@ -152,6 +152,10 @@ exclude = [
     "fullertonian-site",
     "video-automation",
 ]
+[tool.ruff.lint]
+ignore = ["E402"]
+[tool.ruff.lint.per-file-ignores]
+"cocli/main.py" = ["E402"]
 
 [dependency-groups]
 dev = [

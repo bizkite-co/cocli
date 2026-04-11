@@ -5,6 +5,7 @@ help: ## Display this help screen
 
 # Tool for code signature hashing (prevents redundant lint/test runs)
 TASKHASH := ./taskhash
+VENV_DIR := ./.venv
 
 .PHONY: init
 init: ## Initialize the cocli configuration file and install git hooks
@@ -227,9 +228,21 @@ install-global: ## Install the latest version of the app using pipx
 # Default Data Home (can be overridden by environment variable)
 COCLI_DATA_HOME ?= $(HOME)/.local/share/cocli_data
 
-.PHONY: import-turboship
-import-turboship: install ## Import turboship customers
-	$(VENV_DIR)/bin/cocli import-turboship $(COCLI_DATA_HOME)/scraped_data/turboship/customers/customers.csv $(COCLI_DATA_HOME)/scraped_data/turboship/customers/customer_addresses.csv
+.PHONY: video-normalize
+video-normalize: ## Normalize videos (Usage: make video-normalize CAMPAIGN=name)
+	$(call validate_campaign)
+	COCLI_DATA_HOME=$(shell pwd)/data ./bin/run-cocli.sh video normalize --campaign $(CAMPAIGN)
+
+.PHONY: video-package
+video-package: ## Package videos (Usage: make video-package CAMPAIGN=name)
+	$(call validate_campaign)
+	COCLI_DATA_HOME=$(shell pwd)/data ./bin/run-cocli.sh video package --campaign $(CAMPAIGN)
+
+.PHONY: video-extract-thumbnails
+video-extract-thumbnails: ## Extract thumbnails (Usage: make video-extract-thumbnails CAMPAIGN=name VIDEO=filename)
+	$(call validate_campaign)
+	@if [ -z "$(VIDEO)" ]; then echo "Error: VIDEO is required."; exit 1; fi
+	COCLI_DATA_HOME=$(shell pwd)/data ./bin/run-cocli.sh video extract-thumbnails --campaign $(CAMPAIGN) "$(VIDEO)"
 
 .PHONY: render-kml
 render-kml: install ## Render KML for the current campaign context

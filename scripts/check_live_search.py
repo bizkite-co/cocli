@@ -7,17 +7,13 @@ from cocli.core.config import set_campaign
 # Setup minimal logging to stdout
 logging.basicConfig(level=logging.DEBUG, stream=sys.stdout)
 
-
 def test_search() -> None:
     # Use the current campaign
     from cocli.core.config import get_campaign
-
-    campaign = get_campaign()
-    if not campaign:
-        raise ValueError("No campaign specified and no active campaign found.")
+    campaign = get_campaign() or "roadmap"
     set_campaign(campaign)
     print(f"--- Testing Search for Campaign: {campaign} ---")
-
+    
     # 1. Test All Leads (Empty query)
     results = get_fuzzy_search_results("", item_type="company", campaign_name=campaign)
     print(f"All Leads Count: {len(results)}")
@@ -28,13 +24,10 @@ def test_search() -> None:
 
     # 2. Test 'To Call' specific
     print("\n--- Testing 'To Call' template ---")
-    results = get_fuzzy_search_results(
-        "", filters={"to_call": True}, campaign_name=campaign
-    )
+    results = get_fuzzy_search_results("", filters={"to_call": True}, campaign_name=campaign)
     print(f"To Call Count: {len(results)}")
     for res in results:
         print(f"  - {res.name} ({res.slug})")
-
 
 if __name__ == "__main__":
     test_search()

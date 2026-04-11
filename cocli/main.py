@@ -1,21 +1,26 @@
-from cocli.commands import companies
+from cocli.core.bootstrap import setup_environment
+
+# Apply CUDA env and Data Home before any other imports
+setup_environment()
+
 import os
 from typing import Optional
 import typer
-
-from cocli.commands import enrich
-from cocli.commands import query
-from cocli.commands import audit
-from cocli.commands import task
-from cocli.commands import admin
-from cocli.commands import data
-from cocli.core.paths import paths
 from rich.console import Console
 
-from cocli.commands import register_commands
+from cocli.commands import (
+    companies,
+    enrich,
+    query,
+    audit,
+    task,
+    admin,
+    data,
+    register_commands,
+)
+from cocli.core.paths import paths
 
 console = Console()
-
 app = typer.Typer(no_args_is_help=True)
 
 

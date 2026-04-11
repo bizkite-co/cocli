@@ -1,6 +1,5 @@
 """YouTube uploader using 1Password for credentials."""
 
-import subprocess
 import logging
 from pathlib import Path
 from typing import Optional

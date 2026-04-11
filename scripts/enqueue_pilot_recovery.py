@@ -54,4 +54,4 @@ def enqueue_pilot(campaign_name: str) -> None:
 
 if __name__ == "__main__":
     from cocli.core.config import get_campaign
-    enqueue_pilot(get_campaign() or (lambda: exec('raise ValueError("No campaign")'))())
+    enqueue_pilot(get_campaign() or "roadmap")

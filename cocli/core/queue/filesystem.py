@@ -592,6 +592,9 @@ class FilesystemQueue:
                 logger.error(f"Error S3 nacking for {task_id}: {e}")
 
 
+from cocli.core.geo_types import LatScale1, LonScale1
+
+
 class FilesystemGmListQueue(FilesystemQueue):
     """Specialized queue for Google Maps List scraping using the Mission Index."""
 
@@ -624,26 +627,6 @@ class FilesystemGmListQueue(FilesystemQueue):
             return None
 
         try:
-            # LatScale1 and LonScale1 handles 1-decimal precision and string conversion
-            lat = LatScale1(float(path_parts[1]))
-            lon = LonScale1(float(path_parts[2]))
-            phrase = path_parts[3].replace(".usv", "").replace(".csv", "")
-
-            return ScrapeTask(
-                latitude=lat,
-                longitude=lon,
-                zoom=15,
-                search_phrase=phrase,
-                campaign_name=self.campaign_name,
-                tile_id=f"{lat}_{lon}",
-                ack_token=task_id,
-            )
-        except Exception as e:
-            logger.error(f"Error reconstructing ScrapeTask from {task_id}: {e}")
-            return None
-
-        try:
-            # LatScale1 and LonScale1 handles 1-decimal precision and string conversion
             lat = LatScale1(float(path_parts[1]))
             lon = LonScale1(float(path_parts[2]))
             phrase = path_parts[3].replace(".usv", "").replace(".csv", "")

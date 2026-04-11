@@ -24,11 +24,6 @@ console = Console()
 queue_app = typer.Typer(help="Queue management commands")
 app.add_typer(queue_app, name="queue")
 
-# Cleanup sub-commands
-from .cleanup import app as cleanup_app
-
-app.add_typer(cleanup_app, name="cleanup")
-
 
 @app.command(name="list")
 def list_schemas() -> None:
@@ -227,7 +222,7 @@ def metrics(
         raise typer.Exit(1)
 
     # Load schema with field types
-    import json
+    # import json  <-- Removed
 
     with open(dp_path, "r") as f:
         pkg = json.load(f)
@@ -390,7 +385,7 @@ def search(
     dp_path = find_datapackage(file_path)
     if not dp_path:
         console.print(
-            f"[yellow]Warning: No datapackage.json found. Schema validation disabled.[/yellow]"
+            "[yellow]Warning: No datapackage.json found. Schema validation disabled.[/yellow]"
         )
         schema_fields = []
     else:
@@ -496,17 +491,26 @@ def inspect(
         console.print(f"{i}: {field['name']:<20} | {val}")
 
 
-@app.command()
-def commit(
-    message: str = typer.Option(..., "--message", "-m", help="Commit message"),
+@queue_app.command(name="compact")
+def queue_compact(
+    campaign: str = typer.Option("roadmap", "--campaign", "-c", help="Campaign name"),
+    queue_name: str = typer.Argument(..., help="Queue name to compact (e.g., gm-list)"),
 ) -> None:
-    """Commit changes in the current data directory."""
-    import subprocess
+    """Compact a queue's results into a unified dataset.
 
-    try:
-        subprocess.run(["git", "add", "."], check=True)
-        subprocess.run(["git", "commit", "-m", message], check=True)
-        console.print(f"[green]Successfully committed changes: {message}[/green]")
-    except subprocess.CalledProcessError as e:
-        console.print(f"[red]Error committing changes: {e}[/red]")
+    Example: cocli data queue compact gm-list
+    """
+    from cocli.core.transformers.gm_list_to_checkpoint import compact_gm_list_results
+
+    console.print(
+        f"[cyan]Compacting queue '{queue_name}' for campaign '{campaign}'...[/cyan]"
+    )
+
+    if queue_name == "gm-list":
+        count = compact_gm_list_results(campaign)
+        console.print(f"[green]Compaction complete. Merged {count} records.[/green]")
+    else:
+        console.print(
+            f"[red]Error: Unknown queue '{queue_name}'. Currently supported: gm-list[/red]"
+        )
         raise typer.Exit(1)

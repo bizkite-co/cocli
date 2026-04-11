@@ -95,7 +95,7 @@ def migrate_to_call_queue(campaign_name: str) -> None:
     print(f"- Migrated {count_scheduled} legacy scheduled tasks to sharded USV.")
 
 if __name__ == "__main__":
-    campaign = get_campaign() or (lambda: exec('raise ValueError("No campaign")'))()
+    campaign = get_campaign() or "roadmap"
     migrate_to_call_queue(campaign)
     if campaign != "turboship": 
         migrate_to_call_queue("turboship")

@@ -103,6 +103,6 @@ if __name__ == "__main__":
 
     from cocli.core.config import get_campaign
 
-    camp = get_campaign() or (lambda: exec('raise ValueError("No campaign")'))()
+    camp = get_campaign() or "roadmap"
 
     compile_list(camp)

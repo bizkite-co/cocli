@@ -15,7 +15,7 @@ class WebsiteDomainCsvManager:
     def __init__(self, indexes_dir: Optional[Path] = None):
         # We try to load the current campaign context
         from .config import get_campaign
-        campaign_name = get_campaign() or (lambda: exec('raise ValueError("No campaign")'))() # Fallback
+        campaign_name = get_campaign() or "roadmap" # Fallback
         self.campaign = Campaign.load(campaign_name)
         self.manager = DomainIndexManager(self.campaign)
         

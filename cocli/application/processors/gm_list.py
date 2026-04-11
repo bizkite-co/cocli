@@ -2,6 +2,7 @@
 import logging
 import json
 from datetime import datetime, UTC
+from cocli.core.geo_types import LatScale1, LonScale1
 from typing import Any, List, Optional, Dict
 
 from ...models.campaigns.queues.gm_list import ScrapeTask
@@ -9,7 +10,6 @@ from ...models.campaigns.indexes.google_maps_list_item import GoogleMapsListItem
 from ...core.paths import paths
 from ...core.sharding import get_geo_shard, get_grid_tile_id
 from ...core.text_utils import slugify
-from ...core.geo_types import LatScale1, LonScale1
 
 logger = logging.getLogger(__name__)
 
@@ -40,6 +40,9 @@ class GmListProcessor:
 
         MANDATE: NEVER delete or unlink trace files.
         """
+        logger.info(
+            f"!!! DEBUG: GmListProcessor.process_results called with metadata: {metadata is not None}"
+        )
         try:
             lat_shard = get_geo_shard(task.latitude)
             grid_id = get_grid_tile_id(task.latitude, task.longitude)
@@ -61,6 +64,36 @@ class GmListProcessor:
                 for item in items:
                     # Model-based serialization ensures canonical field order
                     rf.write(item.to_usv())
+
+                    # MANDATE: Save individual HTML witness for EACH item
+                    if item.html:
+                        # Save to raw/gm-list/ instead of queues/ to keep queue sync fast
+                        raw_list_dir = (
+                            paths.campaign(task.campaign_name).path
+                            / "raw"
+                            / "gm-list"
+                            / lat_shard
+                            / lat_tile
+                            / lon_tile
+                        )
+                        raw_list_dir.mkdir(parents=True, exist_ok=True)
+
+                        html_path = raw_list_dir / f"{item.place_id}.html"
+                        with open(html_path, "w", encoding="utf-8") as hf:
+                            hf.write(item.html)
+
+                        # Mirror HTML to S3
+                        if s3_client and self.bucket_name:
+                            s3_raw_prefix = f"campaigns/{task.campaign_name}/raw/gm-list/{lat_shard}/{lat_tile}/{lon_tile}"
+                            s3_client.upload_file(
+                                str(html_path),
+                                self.bucket_name,
+                                f"{s3_raw_prefix}/{item.place_id}.html",
+                            )
+
+            # Save Datapackage for the results (Frictionless Mandate)
+            # NOTE: Datapackage is now created at results/ level with glob pattern
+            # GoogleMapsListItem.save_datapackage(results_dir, f"gm-list-{phrase_slug}", f"{phrase_slug}.usv")
 
             # 2. Save JSON Receipt
             receipt_path = results_dir / f"{phrase_slug}.json"

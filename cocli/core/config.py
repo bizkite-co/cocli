@@ -15,22 +15,27 @@ console = Console()
 
 logger = logging.getLogger(__name__)
 
+
 def get_cocli_app_data_dir() -> Path:
     """
     Determines the root data directory for cocli application-specific files (logs, caches).
     This is distinct from the user's business data directory.
     """
     from .environment import get_environment, Environment
+
     env = get_environment()
 
     if "XDG_DATA_HOME" in os.environ:
         base = Path(os.environ["XDG_DATA_HOME"]).expanduser() / "cocli"
     else:
         if platform.system() == "Windows":
-            base = Path(os.environ.get("LOCALAPPDATA", Path.home() / "AppData" / "Local")) / "cocli"
-        elif platform.system() == "Darwin": # macOS
+            base = (
+                Path(os.environ.get("LOCALAPPDATA", Path.home() / "AppData" / "Local"))
+                / "cocli"
+            )
+        elif platform.system() == "Darwin":  # macOS
             base = Path.home() / "Library" / "Application Support" / "cocli"
-        else: # Linux and other Unix-like
+        else:  # Linux and other Unix-like
             base = Path.home() / ".local" / "share" / "cocli"
 
     if env == Environment.PROD:
@@ -42,6 +47,7 @@ def get_cocli_app_data_dir() -> Path:
     v_path.path.mkdir(parents=True, exist_ok=True)
     return v_path.path
 
+
 def get_cocli_base_dir() -> Path:
     """
     Determines the root data directory for cocli user business data.
@@ -52,6 +58,7 @@ def get_cocli_base_dir() -> Path:
     v_path.path.mkdir(parents=True, exist_ok=True)
     return v_path.path
 
+
 def get_config_dir() -> Path:
     """
     Determines the configuration directory for cocli.
@@ -61,17 +68,21 @@ def get_config_dir() -> Path:
     p.mkdir(parents=True, exist_ok=True)
     return p
 
+
 def get_companies_dir() -> Path:
     """DEPRECATED: Use paths.companies.ensure()"""
     return paths.companies.ensure()
+
 
 def get_people_dir() -> Path:
     """DEPRECATED: Use paths.people.ensure()"""
     return paths.people.ensure()
 
+
 def get_wal_dir() -> Path:
     """DEPRECATED: Use paths.wal.ensure()"""
     return paths.wal.ensure()
+
 
 def get_shared_scraped_data_dir() -> Path:
     """
@@ -83,12 +94,14 @@ def get_shared_scraped_data_dir() -> Path:
     p.mkdir(parents=True, exist_ok=True)
     return p
 
+
 def get_scraped_data_dir() -> Path:
     """
     Legacy alias for get_shared_scraped_data_dir.
     TODO: Deprecate and remove.
     """
     return get_shared_scraped_data_dir()
+
 
 def get_indexes_dir() -> Path:
     """
@@ -100,6 +113,7 @@ def get_indexes_dir() -> Path:
     p.mkdir(parents=True, exist_ok=True)
     return p
 
+
 def get_temp_dir() -> Path:
     """
     Returns the temporary directory for cocli.
@@ -109,6 +123,7 @@ def get_temp_dir() -> Path:
     v_dir = get_validated_dir(p, "Temp Directory")
     v_dir.path.mkdir(parents=True, exist_ok=True)
     return v_dir.path
+
 
 def get_scraped_areas_index_dir() -> Path:
     """
@@ -120,6 +135,7 @@ def get_scraped_areas_index_dir() -> Path:
     v_dir.path.mkdir(parents=True, exist_ok=True)
     return v_dir.path
 
+
 def get_scraped_tiles_index_dir() -> Path:
     """
     Returns the directory for the Phase 10 witness file index.
@@ -130,6 +146,7 @@ def get_scraped_tiles_index_dir() -> Path:
     v_dir.path.mkdir(parents=True, exist_ok=True)
     return v_dir.path
 
+
 def get_campaign_scraped_data_dir(campaign_name: str) -> Path:
     """
     Returns the scraped data directory for a specific campaign.
@@ -139,6 +156,7 @@ def get_campaign_scraped_data_dir(campaign_name: str) -> Path:
     p.mkdir(parents=True, exist_ok=True)
     return p
 
+
 def get_campaign_exports_dir(campaign_name: str) -> Path:
     """
     Returns the exports directory for a specific campaign.
@@ -147,6 +165,7 @@ def get_campaign_exports_dir(campaign_name: str) -> Path:
     p = paths.campaign(campaign_name).exports
     p.mkdir(parents=True, exist_ok=True)
     return p
+
 
 def get_campaigns_dir() -> Path:
     p = paths.campaigns
@@ -162,6 +181,7 @@ def get_campaign_dir(campaign_name: str) -> Optional[Path]:
     if campaign_dir.exists() and campaign_dir.is_dir():
         return campaign_dir
     return None
+
 
 def get_all_campaign_dirs() -> list[Path]:
     """
@@ -184,11 +204,11 @@ def get_all_campaign_dirs() -> list[Path]:
         try:
             rel_path = campaign_dir.relative_to(campaigns_root)
             campaign_name = str(rel_path)
-            
+
             # Skip templates or READMEs if they somehow matched
             if campaign_name == "." or campaign_name == "":
                 continue
-                
+
             # Use the full relative path as the unique key
             if campaign_name not in seen_slugs:
                 seen_slugs.add(campaign_name)
@@ -221,6 +241,7 @@ def _read_data_home_from_config_file() -> Optional[Path]:
 class Tui(BaseModel):
     master_width: int = 30
 
+
 class Config(BaseModel):
     model_config = ConfigDict(extra="allow")
     data_home: Path = Field(default_factory=get_cocli_base_dir)
@@ -229,9 +250,11 @@ class Config(BaseModel):
     context: Optional[Dict[str, Any]] = None
     queue_type: Optional[str] = None
 
+
 def get_config() -> Config:
     config_path = get_config_path()
     return load_config(config_path)
+
 
 class ScraperSettings(BaseSettings):
     google_maps_delay_seconds: float = 1.0
@@ -244,6 +267,7 @@ class ScraperSettings(BaseSettings):
     browser_devtools: bool = False
     proxy_url: Optional[str] = None
 
+
 def load_scraper_settings() -> ScraperSettings:
     """
     Loads scraper settings from cocli_config.toml.
@@ -252,22 +276,30 @@ def load_scraper_settings() -> ScraperSettings:
     config_file = config_dir / "cocli_config.toml"
 
     if not config_file.exists():
-        logger.warning(f"Config file not found at {config_file}. Using default scraper settings.")
+        logger.warning(
+            f"Config file not found at {config_file}. Using default scraper settings."
+        )
         return ScraperSettings()
 
     try:
-        with config_file.open('rb') as f: # Open in binary mode for tomli
+        with config_file.open("rb") as f:  # Open in binary mode for tomli
             config_data = tomli.load(f)
             if config_data and "scraper" in config_data:
                 return ScraperSettings(**config_data["scraper"])
             else:
-                logger.info(f"'scraper' section not found in {config_file}. Using default scraper settings.")
+                logger.info(
+                    f"'scraper' section not found in {config_file}. Using default scraper settings."
+                )
                 return ScraperSettings()
     except tomli.TOMLDecodeError as e:
-        logger.error(f"Error decoding TOML config file {config_file}: {e}. Using default scraper settings.")
+        logger.error(
+            f"Error decoding TOML config file {config_file}: {e}. Using default scraper settings."
+        )
         return ScraperSettings()
     except Exception as e:
-        logger.error(f"Error loading config file {config_file}: {e}. Using default scraper settings.")
+        logger.error(
+            f"Error loading config file {config_file}: {e}. Using default scraper settings."
+        )
         return ScraperSettings()
 
 
@@ -277,25 +309,26 @@ def load_campaign_config(campaign_name: str) -> Dict[str, Any]:
     Walks from the campaigns root down to the specific campaign directory.
     """
     from .utils import deep_merge
+
     campaigns_root = paths.campaigns
     campaign_dir = paths.campaign(campaign_name)
-    
+
     # 1. Identify all possible config files in the hierarchy
     # e.g. for 'test/sub/my-campaign':
     # - data/campaigns/config.toml (if exists, though usually template)
     # - data/campaigns/test/config.toml
     # - data/campaigns/test/sub/config.toml
     # - data/campaigns/test/sub/my-campaign/config.toml
-    
+
     config_hierarchy: list[Path] = []
-    
+
     # Walk up from campaign_dir to campaigns_root
     current = campaign_dir.path
     while True:
         config_file = current / "config.toml"
         if config_file.exists():
-            config_hierarchy.insert(0, config_file) # Parents first
-        
+            config_hierarchy.insert(0, config_file)  # Parents first
+
         if current == campaigns_root or current == current.parent:
             break
         current = current.parent
@@ -312,9 +345,11 @@ def load_campaign_config(campaign_name: str) -> Dict[str, Any]:
 
     return merged_config
 
+
 def get_config_path() -> Path:
     config_dir = get_config_dir()
     return config_dir / "cocli_config.toml"
+
 
 def load_config(config_path: Path) -> Config:
     if not config_path.exists():
@@ -322,6 +357,7 @@ def load_config(config_path: Path) -> Config:
     with config_path.open("rb") as f:
         data = tomli.load(f)
     return Config(**data)
+
 
 def load_global_config() -> Dict[str, Any]:
     """
@@ -333,10 +369,11 @@ def load_global_config() -> Dict[str, Any]:
     with config_path.open("rb") as f:
         return tomli.load(f)
 
+
 def save_config(config_data: Dict[str, Any]) -> None:
     config_file = get_config_path()
     config_file.parent.mkdir(parents=True, exist_ok=True)
-    
+
     # Convert Path objects to strings for TOML serialization
     def _make_serializable(obj: Any) -> Any:
         if isinstance(obj, Path):
@@ -352,11 +389,13 @@ def save_config(config_data: Dict[str, Any]) -> None:
     with config_file.open("wb") as f:
         tomli_w.dump(serializable_config, f)
 
+
 def get_context() -> Optional[str]:
     config = load_config(get_config_path())
     if config.context:
         return config.context.get("filter")
     return None
+
 
 def set_context(filter_str: Optional[str]) -> None:
     config = load_config(get_config_path())
@@ -371,9 +410,11 @@ def set_context(filter_str: Optional[str]) -> None:
             config.context = None
     save_config(config.model_dump())
 
+
 def is_campaign_overridden() -> bool:
     """Returns True if the campaign is currently overridden via environment or CLI."""
     return "COCLI_CAMPAIGN" in os.environ
+
 
 def get_campaign() -> Optional[str]:
     # 1. Check for transient environment variable override
@@ -385,6 +426,7 @@ def get_campaign() -> Optional[str]:
     if config.campaign:
         return config.campaign.get("name")
     return None
+
 
 def set_campaign(name: Optional[str]) -> None:
     # 1. Update transient environment variable to ensure consistency in the current process
@@ -407,6 +449,7 @@ def set_campaign(name: Optional[str]) -> None:
             config.campaign = None
     save_config(config.model_dump())
 
+
 def get_editor_command() -> Optional[str]:
     """
     Returns the editor command from the config file.
@@ -417,12 +460,14 @@ def get_editor_command() -> Optional[str]:
         return config.context.get("editor")
     return None
 
+
 def get_enrichment_service_url() -> str:
     """
     Returns the URL for the enrichment service, either from an environment variable
     or defaulting to the local Docker endpoint.
     """
     return os.getenv("COCLI_ENRICHMENT_SERVICE_URL", "http://localhost:8000")
+
 
 def create_default_config_file() -> None:
     """
@@ -447,7 +492,9 @@ google_maps_max_pages = 3
 """
         try:
             config_dir.mkdir(parents=True, exist_ok=True)
-            with config_file.open('w', encoding='utf-8') as f: # Open in text mode for writing template string
+            with config_file.open(
+                "w", encoding="utf-8"
+            ) as f:  # Open in text mode for writing template string
                 f.write(default_settings_template)
             logger.info(f"Created default config file at {config_file}")
         except Exception as e:
