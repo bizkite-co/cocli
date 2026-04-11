@@ -362,11 +362,13 @@ def extract_screenshots(
     ),
     video: str = typer.Argument(..., help="Video file name or path"),
 ) -> None:
-    """Extract candidate screenshots from a video."""
+    """Extract candidate thumbnails from a video."""
 
-    video_path: Optional[Path] = None
+    # 1. Try to treat 'video' as a direct path
+    video_path = Path(video)
+
     # 2. If not a direct path, fallback to campaign search
-    if not Path(video).exists():
+    if not video_path.exists():
         campaign_name = campaign or get_campaign()
         if not campaign_name:
             console.print("[red]Video file not found and no campaign specified.[/red]")
@@ -374,7 +376,7 @@ def extract_screenshots(
 
         queue_root = get_video_queue_root(campaign_name)
         # Search in raw or normalized
-        found_path: Optional[Path] = None
+        found_path = None
         for folder in ["raw", "normalized"]:
             search_path = queue_root / folder
             if search_path.exists():
@@ -387,9 +389,9 @@ def extract_screenshots(
                 if matches:
                     found_path = matches[0]
                     break
-        video_path = found_path if found_path else Path("invalid_path")
+        video_path = found_path
 
-    if video_path is None or not video_path.exists():
+    if not video_path or not video_path.exists():
         console.print(f"[red]Video file not found: {video}[/red]")
         raise typer.Exit(1)
 
