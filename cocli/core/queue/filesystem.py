@@ -815,8 +815,16 @@ class FilesystemGmListQueue(FilesystemQueue):
             from ..geo_types import LatScale1, LonScale1
             from ..text_utils import slugify
 
-            lat_t = LatScale1(task.latitude)
-            lon_t = LonScale1(task.longitude)
+            lat_t = (
+                task.latitude
+                if isinstance(task.latitude, LatScale1)
+                else LatScale1(float(task.latitude))
+            )
+            lon_t = (
+                task.longitude
+                if isinstance(task.longitude, LonScale1)
+                else LonScale1(float(task.longitude))
+            )
             phrase_slug = slugify(task.search_phrase)
 
             completion_data = {

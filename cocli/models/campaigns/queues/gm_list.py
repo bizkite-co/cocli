@@ -40,7 +40,7 @@ class ScrapeTask(BaseUsvModel):
         """Standardized Geo Shard (first digit of latitude)."""
         from ....core.sharding import get_geo_shard
 
-        return get_geo_shard(self.latitude)
+        return get_geo_shard(float(self.latitude))
 
     def get_local_path(self) -> Path:
         """
@@ -51,8 +51,16 @@ class ScrapeTask(BaseUsvModel):
         from ....core.geo_types import LatScale1, LonScale1
 
         shard = self.get_shard_id()
-        lat = LatScale1(self.latitude)
-        lon = LonScale1(self.longitude)
+        lat = (
+            self.latitude
+            if isinstance(self.latitude, LatScale1)
+            else LatScale1(float(self.latitude))
+        )
+        lon = (
+            self.longitude
+            if isinstance(self.longitude, LonScale1)
+            else LonScale1(float(self.longitude))
+        )
         phrase = slugify(self.search_phrase)
 
         return (
@@ -69,8 +77,16 @@ class ScrapeTask(BaseUsvModel):
         from ....core.geo_types import LatScale1, LonScale1
 
         shard = self.get_shard_id()
-        lat = LatScale1(self.latitude)
-        lon = LonScale1(self.longitude)
+        lat = (
+            self.latitude
+            if isinstance(self.latitude, LatScale1)
+            else LatScale1(float(self.latitude))
+        )
+        lon = (
+            self.longitude
+            if isinstance(self.longitude, LonScale1)
+            else LonScale1(float(self.longitude))
+        )
         phrase = slugify(self.search_phrase)
 
         return f"campaigns/{self.campaign_name}/queues/gm-list/pending/{shard}/{lat}/{lon}/{phrase}.usv/task.json"

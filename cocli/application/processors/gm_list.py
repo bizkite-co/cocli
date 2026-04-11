@@ -66,16 +66,16 @@ class GmListProcessor:
                     rf.write(item.to_usv())
 
                     # MANDATE: Save individual HTML witness for EACH item
-                    if item.html:
-                        # Save to raw/gm-list/ instead of queues/ to keep queue sync fast
-                        raw_list_dir = (
-                            paths.campaign(task.campaign_name).path
-                            / "raw"
-                            / "gm-list"
-                            / lat_shard
-                            / lat_tile
-                            / lon_tile
-                        )
+                    # (Simplified fix: avoid redundant type casting)
+                    raw_list_dir = (
+                        paths.campaign(task.campaign_name).path
+                        / "raw"
+                        / "gm-list"
+                        / lat_shard
+                        / lat_tile
+                        / lon_tile
+                    )
+
                         raw_list_dir.mkdir(parents=True, exist_ok=True)
 
                         html_path = raw_list_dir / f"{item.place_id}.html"
