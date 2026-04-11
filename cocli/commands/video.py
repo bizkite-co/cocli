@@ -41,6 +41,7 @@ def extract_screenshots_logic(video_path: Path) -> None:
     console.print(f"Extracting screenshots from: {video_path.name}")
 
     # Use ffmpeg scene detection to get 5 frames
+    # Lowered threshold to 0.1 for better sensitivity
     cmd = [
         "ffmpeg",
         "-i",
@@ -71,7 +72,6 @@ def get_video_queue_root(campaign_name: str) -> Path:
 
 
 @app.command()
-<<<<<<< HEAD
 def add(
     campaign: Optional[str] = typer.Option(
         None, "-c", "--campaign", help="Campaign name"
@@ -196,9 +196,6 @@ def normalize(
             # Extract screenshots here
             extract_screenshots_logic(video_file)
 
-            # Extract screenshots
-            extract_screenshots_logic(video_file)
-
             console.print(f"[green]Normalized: {video_file.stem}[/green]")
 
     except Exception:
@@ -299,8 +296,6 @@ def package(
 
 
 @app.command()
-=======
->>>>>>> cb708128 (feat(video): add force option to create-thumbnail)
 def create_thumbnail(
     campaign: Optional[str] = typer.Option(
         None, "-c", "--campaign", help="Campaign name"
