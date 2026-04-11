@@ -3,7 +3,7 @@
 import shutil
 import subprocess
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Any
 import typer
 import yaml
 from rich.console import Console
@@ -32,13 +32,15 @@ from cocli.core.video.transcript_to_vtt import convert_transcript_to_vtt
 from cocli.core.video import auth as video_auth
 from cocli.core.text_utils import slugdotify
 
+app = typer.Typer(help="Commands for video processing.", no_args_is_help=True)
+console = Console()
+
 
 def extract_screenshots_logic(video_path: Path) -> None:
     """Internal logic to extract screenshots."""
     console.print(f"Extracting screenshots from: {video_path.name}")
 
     # Use ffmpeg scene detection to get 5 frames
-    # Lowered threshold to 0.1 for better sensitivity
     cmd = [
         "ffmpeg",
         "-i",
@@ -66,10 +68,6 @@ def get_video_queue_root(campaign_name: str) -> Path:
     if not campaign_dir:
         raise ValueError(f"Campaign directory not found for: {campaign_name}")
     return campaign_dir / "video"
-
-
-app = typer.Typer(help="Commands for video processing.", no_args_is_help=True)
-console = Console()
 
 
 @app.command()
@@ -100,7 +98,6 @@ def add(
 
         shutil.copy2(video_path, dest)
         console.print(f"[green]Added {safe_name} to raw queue.[/green]")
-
     except Exception:
         import traceback
 
@@ -198,8 +195,8 @@ def normalize(
             # Extract screenshots here
             extract_screenshots_logic(video_file)
 
-            # Extract thumbnails here
-            extract_thumbnails_logic(video_file)
+            # Extract screenshots
+            extract_screenshots_logic(video_file)
 
             console.print(f"[green]Normalized: {video_file.stem}[/green]")
 
@@ -340,7 +337,7 @@ def extract_screenshots(
     ),
     video: str = typer.Argument(..., help="Video file name or path"),
 ) -> None:
-    """Extract candidate thumbnails from a video."""
+    """Extract candidate screenshots from a video."""
 
     # 1. Try to treat 'video' as a direct path
     video_path = Path(video)
