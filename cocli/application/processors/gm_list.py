@@ -2,7 +2,6 @@
 import logging
 import json
 from datetime import datetime, UTC
-from cocli.core.geo_types import LatScale1, LonScale1
 from typing import Any, List, Optional, Dict
 
 from ...models.campaigns.queues.gm_list import ScrapeTask
@@ -44,8 +43,8 @@ class GmListProcessor:
             f"!!! DEBUG: GmListProcessor.process_results called with metadata: {metadata is not None}"
         )
         try:
-            lat_shard = get_geo_shard(float(task.latitude))
-            grid_id = get_grid_tile_id(float(task.latitude), float(task.longitude))
+            lat_shard = get_geo_shard(task.latitude.root)
+            grid_id = get_grid_tile_id(task.latitude.root, task.longitude.root)
             lat_tile, lon_tile = grid_id.split("_")
             phrase_slug = slugify(task.search_phrase)
 
@@ -66,16 +65,15 @@ class GmListProcessor:
                     rf.write(item.to_usv())
 
                     # MANDATE: Save individual HTML witness for EACH item
-                    # (Simplified fix: avoid redundant type casting)
-                    raw_list_dir = (
-                        paths.campaign(task.campaign_name).path
-                        / "raw"
-                        / "gm-list"
-                        / lat_shard
-                        / lat_tile
-                        / lon_tile
-                    )
-
+                    if item.html:
+                        raw_list_dir = (
+                            paths.campaign(task.campaign_name).path
+                            / "raw"
+                            / "gm-list"
+                            / lat_shard
+                            / lat_tile
+                            / lon_tile
+                        )
                         raw_list_dir.mkdir(parents=True, exist_ok=True)
 
                         html_path = raw_list_dir / f"{item.place_id}.html"
@@ -91,10 +89,6 @@ class GmListProcessor:
                                 f"{s3_raw_prefix}/{item.place_id}.html",
                             )
 
-            # Save Datapackage for the results (Frictionless Mandate)
-            # NOTE: Datapackage is now created at results/ level with glob pattern
-            # GoogleMapsListItem.save_datapackage(results_dir, f"gm-list-{phrase_slug}", f"{phrase_slug}.usv")
-
             # 2. Save JSON Receipt
             receipt_path = results_dir / f"{phrase_slug}.json"
             receipt_data = {
@@ -103,8 +97,8 @@ class GmListProcessor:
                 "worker_id": self.processed_by,
                 "schema_version": 2,
                 "search_phrase": task.search_phrase,
-                "latitude": float(LatScale1(task.latitude)),
-                "longitude": float(LonScale1(task.longitude)),
+                "latitude": float(task.latitude),
+                "longitude": float(task.longitude),
                 "result_count": len(items),
                 "status": "success",
                 "metadata": metadata or {},

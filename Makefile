@@ -3,9 +3,11 @@ help: ## Display this help screen
 	@echo "Available commands:"
 	@awk 'BEGIN {FS = ":.*?## "}; /^[a-zA-Z_-]+:.*?## / {printf "  \033[32m%-20s\033[0m %s\n", $$1, $$2}' $(MAKEFILE_LIST)
 
-# Tool for code signature hashing (prevents redundant lint/test runs)
-TASKHASH := ./taskhash
+# Define the virtual environment directory
 VENV_DIR := ./.venv
+
+# Tool for code signature hashing (prevents redundant lint/test runs)
+TASKHASH := taskhash
 
 .PHONY: init
 init: ## Initialize the cocli configuration file and install git hooks

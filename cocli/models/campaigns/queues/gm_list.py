@@ -40,7 +40,7 @@ class ScrapeTask(BaseUsvModel):
         """Standardized Geo Shard (first digit of latitude)."""
         from ....core.sharding import get_geo_shard
 
-        return get_geo_shard(float(self.latitude))
+        return get_geo_shard(self.latitude.root)
 
     def get_local_path(self) -> Path:
         """
@@ -48,45 +48,23 @@ class ScrapeTask(BaseUsvModel):
         Path: queues/gm-list/pending/{shard}/{lat}/{lon}/{phrase}.usv/
         """
         from ....core.text_utils import slugify
-        from ....core.geo_types import LatScale1, LonScale1
 
         shard = self.get_shard_id()
-        lat = (
-            self.latitude
-            if isinstance(self.latitude, LatScale1)
-            else LatScale1(float(self.latitude))
-        )
-        lon = (
-            self.longitude
-            if isinstance(self.longitude, LonScale1)
-            else LonScale1(float(self.longitude))
-        )
         phrase = slugify(self.search_phrase)
 
         return (
             paths.campaign(self.campaign_name).queue("gm-list").pending
             / shard
-            / str(lat)
-            / str(lon)
+            / str(self.latitude)
+            / str(self.longitude)
             / f"{phrase}.usv"
         )
 
     def get_remote_key(self) -> str:
         """Returns the OMAP-compliant S3 key for this task."""
         from ....core.text_utils import slugify
-        from ....core.geo_types import LatScale1, LonScale1
 
         shard = self.get_shard_id()
-        lat = (
-            self.latitude
-            if isinstance(self.latitude, LatScale1)
-            else LatScale1(float(self.latitude))
-        )
-        lon = (
-            self.longitude
-            if isinstance(self.longitude, LonScale1)
-            else LonScale1(float(self.longitude))
-        )
         phrase = slugify(self.search_phrase)
 
-        return f"campaigns/{self.campaign_name}/queues/gm-list/pending/{shard}/{lat}/{lon}/{phrase}.usv/task.json"
+        return f"campaigns/{self.campaign_name}/queues/gm-list/pending/{shard}/{self.latitude}/{self.longitude}/{phrase}.usv/task.json"

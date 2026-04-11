@@ -44,6 +44,10 @@ dependencies = [
     "wasmtime>=29.0.0",
     "onepassword-sdk",
     "textual>=6.4.0",
+    "google-genai",
+    "faster-whisper",
+    "ctranslate2",
+    "pillow",
 ]
 
 [project.scripts]

@@ -2,10 +2,10 @@
 
 import logging
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Any, Dict, List
 from googleapiclient.discovery import build  # type: ignore
 from googleapiclient.http import MediaFileUpload  # type: ignore
-from google.oauth2.credentials import Credentials  # type: ignore
+from google.oauth2.credentials import Credentials
 
 from cocli.core.config import load_campaign_config
 from cocli.utils.op_utils import get_op_secret
@@ -44,7 +44,7 @@ def build_credentials(
     client_id: str, client_secret: str, oauth_token: str, refresh_token: str
 ) -> Credentials:
     """Build Google credentials from stored tokens."""
-    return Credentials(
+    return Credentials(  # type: ignore
         token=oauth_token,
         refresh_token=refresh_token,
         client_id=client_id,
@@ -58,10 +58,10 @@ class YouTubeUploader:
 
     def __init__(self, campaign: str = "roadmap"):
         self.campaign = campaign
-        self._service: Optional[object] = None
+        self._service: Optional[Any] = None
 
     @property
-    def service(self):
+    def service(self) -> Any:
         """Lazy-load YouTube service."""
         if self._service is None:
             client_id, client_secret, oauth_token, refresh_token = get_secrets(
@@ -78,23 +78,23 @@ class YouTubeUploader:
         video_path: str | Path,
         title: str,
         description: str = "",
-        tags: list[str] = None,
+        tags: Optional[List[str]] = None,
         category_id: str = "22",  # People & Blogs
         privacy: str = "unlisted",
-    ) -> Optional[dict]:
+    ) -> Optional[Dict[str, str]]:
         """Upload video to YouTube."""
         video_path = Path(video_path)
         if not video_path.exists():
             logger.error(f"Video file not found: {video_path}")
             return None
 
-        tags = tags or ["automation", "roadmap"]
+        actual_tags = tags or ["automation", "roadmap"]
 
         body = {
             "snippet": {
                 "title": title,
                 "description": description,
-                "tags": tags,
+                "tags": actual_tags,
                 "categoryId": category_id,
             },
             "status": {
@@ -109,12 +109,12 @@ class YouTubeUploader:
             part=",".join(body.keys()),
             body=body,
             media_body=MediaFileUpload(
-                video_path, chunksize=1024 * 1024, resumable=True
+                str(video_path), chunksize=1024 * 1024, resumable=True
             ),
         )
 
-        response = None
-        while response is None:
+        response_insert = None
+        while response_insert is None:
             try:
                 status, response_insert = insert_request.next_chunk()
                 if status:
@@ -125,7 +125,7 @@ class YouTubeUploader:
                 break
 
         if response_insert:
-            video_id = response_insert["id"]
+            video_id = str(response_insert["id"])
             logger.info(f"Success! Video ID: {video_id}")
             return {
                 "id": video_id,
@@ -138,10 +138,10 @@ class YouTubeUploader:
         self,
         video_path: str | Path,
         title: str,
-        campaign: str = None,
-    ) -> Optional[dict]:
+        campaign: Optional[str] = None,
+    ) -> Optional[Dict[str, str]]:
         """Upload with campaign-specific metadata."""
-        campaign = campaign or self.campaign
-        description = f"Uploaded via {campaign} automation"
-        tags = [campaign, "automation"]
+        campaign_name = campaign or self.campaign
+        description = f"Uploaded via {campaign_name} automation"
+        tags = [campaign_name, "automation"]
         return self.upload(video_path, title, description, tags)

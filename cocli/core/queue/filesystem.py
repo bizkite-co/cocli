@@ -833,8 +833,8 @@ class FilesystemGmListQueue(FilesystemQueue):
                 "worker_id": lease_data.get("worker_id", self.worker_id),
                 "lease_created_at": lease_data.get("created_at"),
                 "search_phrase": task.search_phrase,
-                "latitude": task.latitude,
-                "longitude": task.longitude,
+                "latitude": float(task.latitude),
+                "longitude": float(task.longitude),
                 "result_count": task.result_count,
                 "metadata": getattr(
                     task, "metadata", {}

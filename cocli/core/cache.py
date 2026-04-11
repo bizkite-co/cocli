@@ -11,6 +11,7 @@ logger = logging.getLogger(__name__)
 
 CACHE_FILE_NAME = "company_cache.usv"
 
+
 def get_cache_path(campaign: Optional[str] = None) -> Path:
     """Returns the directory where the company cache index is stored."""
     base = get_cocli_base_dir()
@@ -18,6 +19,7 @@ def get_cache_path(campaign: Optional[str] = None) -> Path:
         safe_name = campaign.replace("/", "_").replace("\\", "_")
         return base / "campaigns" / safe_name / "indexes" / "company_cache"
     return base / "indexes" / "company_cache"
+
 
 def _get_most_recent_mtime(directory: Path) -> Optional[float]:
     """Fast approach to check if any source files changed."""
@@ -34,6 +36,7 @@ def _get_most_recent_mtime(directory: Path) -> Optional[float]:
         pass
     return max_mtime
 
+
 def is_cache_valid(campaign: Optional[str] = None) -> bool:
     """Checks if the USV cache is valid compared to source folders."""
     cache_dir = get_cache_path(campaign=campaign)
@@ -47,15 +50,18 @@ def is_cache_valid(campaign: Optional[str] = None) -> bool:
             first_line = f.readline()
             if first_line:
                 from cocli.core.constants import UNIT_SEP
+
                 # If first line contains 'slug', it's a header - we don't use headers anymore
                 if "slug" in first_line:
                     logger.info("Cache contains header. Invalidating.")
                     return False
-                
+
                 cols = first_line.split(UNIT_SEP)
                 # We expect 8 columns now: slug, name, type, domain, email, phone_number, tags, display
                 if len(cols) != 8:
-                    logger.info(f"Cache schema mismatch (found {len(cols)} cols, expected 8). Invalidating.")
+                    logger.info(
+                        f"Cache schema mismatch (found {len(cols)} cols, expected 8). Invalidating."
+                    )
                     return False
     except Exception:
         return False
@@ -72,21 +78,22 @@ def is_cache_valid(campaign: Optional[str] = None) -> bool:
 
     return True
 
+
 def _fast_extract_metadata(index_path: Path) -> Dict[str, Any]:
     """Regex-based frontmatter extraction."""
     data = {}
     try:
         with open(index_path, "r", encoding="utf-8") as f:
             content = f.read(2048)
-            
+
         m = re.search(r"^name:\s*(.*)$", content, re.MULTILINE)
         if m:
             data["name"] = m.group(1).strip().strip('"').strip("'")
-        
+
         m = re.search(r"^domain:\s*(.*)$", content, re.MULTILINE)
         if m:
             data["domain"] = m.group(1).strip()
-        
+
         m = re.search(r"^email:\s*(.*)$", content, re.MULTILINE)
         if m:
             data["email"] = m.group(1).strip()
@@ -95,12 +102,23 @@ def _fast_extract_metadata(index_path: Path) -> Dict[str, Any]:
         if m:
             data["phone"] = m.group(1).strip()
 
+        m = re.search(r"^average_rating:\s*(.*)$", content, re.MULTILINE)
+        if m:
+            data["average_rating"] = m.group(1).strip()
+
+        m = re.search(r"^reviews_count:\s*(.*)$", content, re.MULTILINE)
+        if m:
+            data["reviews_count"] = m.group(1).strip()
+
         tags = []
         if "tags:" in content:
             # Match either [tag1, tag2] or bulleted list
             flow_match = re.search(r"^tags:\s*\[(.*)\]", content, re.MULTILINE)
             if flow_match:
-                tags = [t.strip().strip('"').strip("'") for t in flow_match.group(1).split(",")]
+                tags = [
+                    t.strip().strip('"').strip("'")
+                    for t in flow_match.group(1).split(",")
+                ]
             else:
                 tags_section = content.split("tags:")[1].split("\n\n")[0]
                 for line in tags_section.split("\n"):
@@ -112,9 +130,11 @@ def _fast_extract_metadata(index_path: Path) -> Dict[str, Any]:
         pass
     return data
 
+
 def build_cache(campaign: Optional[str] = None) -> None:
     """Builds the USV search cache and its datapackage.json."""
     from .paths import paths
+
     logger.info(f"Building high-performance search cache for {campaign or 'global'}...")
     items: List[CompanyCacheItem] = []
     companies_dir = paths.companies.path
@@ -127,23 +147,31 @@ def build_cache(campaign: Optional[str] = None) -> None:
                     idx_path = Path(entry.path) / "_index.md"
                     if not idx_path.exists():
                         continue
-                    
+
                     meta = _fast_extract_metadata(idx_path)
                     tags = meta.get("tags", [])
                     if campaign and campaign not in tags:
                         continue
-                    
+
                     name = meta.get("name", entry.name)
-                    items.append(CompanyCacheItem(
-                        slug=entry.name,
-                        name=name,
-                        type="company",
-                        domain=meta.get("domain"),
-                        email=meta.get("email"),
-                        phone_number=meta.get("phone"),
-                        tags=tags,
-                        display=f"COMPANY:{name} -- {entry.name}"
-                    ))
+                    items.append(
+                        CompanyCacheItem(
+                            slug=entry.name,
+                            name=name,
+                            type="company",
+                            domain=meta.get("domain"),
+                            email=meta.get("email"),
+                            phone_number=meta.get("phone"),
+                            average_rating=float(meta["average_rating"])
+                            if meta.get("average_rating")
+                            else None,
+                            reviews_count=int(meta["reviews_count"])
+                            if meta.get("reviews_count")
+                            else None,
+                            tags=tags,
+                            display=f"COMPANY:{name} -- {entry.name}",
+                        )
+                    )
 
     if people_dir.exists():
         with os.scandir(people_dir) as it:
@@ -153,34 +181,37 @@ def build_cache(campaign: Optional[str] = None) -> None:
                     tags = meta.get("tags", [])
                     if campaign and campaign not in tags:
                         continue
-                    
+
                     name = meta.get("name", Path(entry.name).stem)
-                    items.append(CompanyCacheItem(
-                        slug=Path(entry.name).stem,
-                        name=name,
-                        type="person",
-                        phone_number=meta.get("phone"),
-                        tags=tags,
-                        display=f"PERSON:{name}"
-                    ))
+                    items.append(
+                        CompanyCacheItem(
+                            slug=Path(entry.name).stem,
+                            name=name,
+                            type="person",
+                            phone_number=meta.get("phone"),
+                            tags=tags,
+                            display=f"PERSON:{name}",
+                        )
+                    )
 
     cache_dir = get_cache_path(campaign=campaign)
     cache_dir.mkdir(parents=True, exist_ok=True)
     cache_file = cache_dir / CACHE_FILE_NAME
     tmp_cache_file = cache_file.with_suffix(".tmp")
-    
+
     # Tiny sleep to ensure mtime > source files in fast tests
     import time
+
     time.sleep(0.01)
 
     try:
         with open(tmp_cache_file, "w", encoding="utf-8") as f:
             for item in items:
                 f.write(item.to_usv())
-        
+
         # Atomic rename to ensure search never sees a partial file
         tmp_cache_file.replace(cache_file)
-                
+
         # Save Frictionless schema
         CompanyCacheItem.save_datapackage(cache_dir)
         logger.info(f"Cache build complete. Saved {len(items)} items to {cache_file}")
@@ -189,11 +220,16 @@ def build_cache(campaign: Optional[str] = None) -> None:
         if tmp_cache_file.exists():
             tmp_cache_file.unlink()
 
-def get_cached_items(filter_str: Optional[str] = None, campaign: Optional[str] = None, force_rebuild: bool = False) -> List[Dict[str, Any]]:
+
+def get_cached_items(
+    filter_str: Optional[str] = None,
+    campaign: Optional[str] = None,
+    force_rebuild: bool = False,
+) -> List[Dict[str, Any]]:
     """LEGACY ADAPTER: Still used by some CLI commands. Rebuilds USV if needed."""
     if force_rebuild or not is_cache_valid(campaign=campaign):
         build_cache(campaign=campaign)
-    
+
     # Simple JSON-like list for legacy compatibility
     # In the future, we'll remove this entirely in favor of DuckDB queries.
     return []

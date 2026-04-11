@@ -348,8 +348,8 @@ def queue_scrapes(
 
                     tasks_to_queue.append(
                         ScrapeTask(
-                            latitude=LatScale1(float(lat)),
-                            longitude=LonScale1(float(lon)),
+                            latitude=LatScale1(root=float(lat)),
+                            longitude=LonScale1(root=float(lon)),
                             zoom=13,
                             search_phrase=phrase,
                             campaign_name=campaign_name,
