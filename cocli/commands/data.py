@@ -24,6 +24,11 @@ console = Console()
 queue_app = typer.Typer(help="Queue management commands")
 app.add_typer(queue_app, name="queue")
 
+# Cleanup sub-commands
+from .cleanup import app as cleanup_app
+
+app.add_typer(cleanup_app, name="cleanup")
+
 
 @app.command(name="list")
 def list_schemas() -> None:
