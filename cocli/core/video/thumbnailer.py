@@ -1,6 +1,6 @@
 from pathlib import Path
 from typing import Dict, Any
-from PIL import Image, ImageDraw, ImageFont
+from PIL import Image, ImageDraw, ImageFont  # type: ignore
 import logging
 import yaml
 from rich.console import Console

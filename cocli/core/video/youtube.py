@@ -3,9 +3,9 @@
 import logging
 from pathlib import Path
 from typing import Optional
-from googleapiclient.discovery import build
-from googleapiclient.http import MediaFileUpload
-from google.oauth2.credentials import Credentials
+from googleapiclient.discovery import build  # type: ignore
+from googleapiclient.http import MediaFileUpload  # type: ignore
+from google.oauth2.credentials import Credentials  # type: ignore
 
 from cocli.core.config import load_campaign_config
 from cocli.utils.op_utils import get_op_secret

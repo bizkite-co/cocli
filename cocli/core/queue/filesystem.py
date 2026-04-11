@@ -652,8 +652,8 @@ class FilesystemGmListQueue(FilesystemQueue):
         from ..text_utils import slugify
 
         # OMAP Shard: shard/lat/lon/phrase.usv
-        lat_shard = get_geo_shard(task.latitude)
-        grid_id = get_grid_tile_id(task.latitude, task.longitude)
+        lat_shard = get_geo_shard(float(task.latitude))
+        grid_id = get_grid_tile_id(float(task.latitude), float(task.longitude))
         lat_dir, lon_dir = grid_id.split("_")
         phrase_file = f"{slugify(task.search_phrase)}.usv"
 
