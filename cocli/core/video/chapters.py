@@ -26,12 +26,9 @@ def create_chapters(transcript_text: str, campaign: str) -> str:
     {transcript_text}
     """
 
-    # Properly cast content to match SDK's expected input type (Union of Content types)
-    contents: List[Any] = [prompt]
-    response = client.models.generate_content(
-        model="gemini-2.0-flash-001", contents=cast(Any, contents)
+    # Use cast to satisfy the google-genai SDK typing for 'contents'
+    response: Any = client.models.generate_content(
+        model="gemini-2.0-flash", contents=cast(Any, [prompt])
     )
 
-    if response.text is None:
-        return ""
-    return str(response.text)
+    return str(response.text or "")

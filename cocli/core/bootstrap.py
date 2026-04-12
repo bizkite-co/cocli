@@ -7,7 +7,6 @@ from cocli.core import env_setup
 def setup_environment() -> None:
     env_updates = {}
 
-    # 1. CUDA setup
     cuda_env = env_setup.get_cuda_env()
 
     # 1. CUDA setup
@@ -32,5 +31,6 @@ def setup_environment() -> None:
         env_updates["COCLI_DATA_HOME"] = str(project_root / "data")
 
     if env_updates:
+        print(f"DEBUG: Re-executing with: {env_updates}")
         os.environ.update(env_updates)
         os.execv(sys.executable, [sys.executable] + sys.argv)

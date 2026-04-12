@@ -3,7 +3,7 @@
 import shutil
 import subprocess
 from pathlib import Path
-from typing import Optional, Any
+from typing import Optional
 import typer
 import yaml
 from rich.console import Console
@@ -26,7 +26,6 @@ from cocli.core.video import (
     thumbnailer,
     get_duration,
     normalize_video,
-    chapters,
 )
 from cocli.core.video.transcript_to_vtt import convert_transcript_to_vtt
 from cocli.core.video import auth as video_auth
@@ -243,6 +242,10 @@ def package(
             target_video_dir = pack_dir / video_dir.name
             target_video_dir.mkdir(parents=True, exist_ok=True)
 
+            # Target directory for THIS video
+            target_video_dir = pack_dir / video_dir.name
+            target_video_dir.mkdir(parents=True, exist_ok=True)
+
             console.print(f"Packaging: {video_dir.name}")
             console.print(f"[dim]Source: {video_dir}[/dim]")
             console.print(f"[dim]Destination: {target_video_dir}[/dim]")
@@ -250,11 +253,7 @@ def package(
             # 1. Identify video file
             video_file = next(video_dir.glob("*.mp4"))
 
-            # 2. Parse Metadata
-            md_file = video_dir / f"{video_dir.name}.md"
-            metadata = thumbnailer.parse_metadata(md_file)
-
-            # 3. Transcribe
+            # 2. Transcribe
             console.print(f"Transcribing {video_file.name}...")
 
             camp_cfg = load_campaign_config(campaign_name)
@@ -268,13 +267,7 @@ def package(
             )
             transcripts = transcriber_engine.transcribe(video_file, campaign_name)
 
-            # 4. Save transcripts and Generate Chapters
-            transcript_text = transcripts.get("whisper") or next(
-                iter(transcripts.values())
-            )
-            chapters_text = chapters.create_chapters(transcript_text, campaign_name)
-
-            # Save transcript and chapters
+            # 3. Save transcripts
             for provider_name, transcript_text in transcripts.items():
                 transcript_path = video_dir / f"transcript_{provider_name}.md"
                 with open(transcript_path, "w") as f:
@@ -288,19 +281,17 @@ chapters_path = video_dir / "chapters.md"
                 f.write(chapters_text)
             console.print(f"[green]Saved chapters to {chapters_path.name}[/green]")
 
-            # 5. Compile final description
-            description = metadata.get("description", "")
-            final_description = f"{description}\n\n## Chapters\n{chapters_text}"
+            # 4. Copy to packaged
+            for item in video_dir.iterdir():
+                if item.is_dir():
+                    shutil.copytree(
+                        item, target_video_dir / item.name, dirs_exist_ok=True
+                    )
+                else:
+                    shutil.copy2(item, target_video_dir / item.name)
 
-            desc_path = video_dir / "description.md"
-            with open(desc_path, "w") as f:
-                f.write(final_description)
-
-            # 6. Copy to packaged
-            shutil.copytree(video_dir, pack_dir / video_dir.name)
-
-            # 7. Process Thumbnail
-            thumbnailer.process_thumbnail(video_dir, pack_dir / video_dir.name)
+            # 5. Process Thumbnail
+            thumbnailer.process_thumbnail(video_dir, target_video_dir)
 
             console.print(f"[green]Packaged: {video_dir.name}[/green]")
 
@@ -354,11 +345,9 @@ def extract_screenshots(
 ) -> None:
     """Extract candidate screenshots from a video."""
 
-    # 1. Try to treat 'video' as a direct path
-    video_path = Path(video)
-
+    video_path: Optional[Path] = None
     # 2. If not a direct path, fallback to campaign search
-    if not video_path.exists():
+    if not Path(video).exists():
         campaign_name = campaign or get_campaign()
         if not campaign_name:
             console.print("[red]Video file not found and no campaign specified.[/red]")
@@ -366,7 +355,7 @@ def extract_screenshots(
 
         queue_root = get_video_queue_root(campaign_name)
         # Search in raw or normalized
-        found_path = None
+        found_path: Optional[Path] = None
         for folder in ["raw", "normalized"]:
             search_path = queue_root / folder
             if search_path.exists():
@@ -380,8 +369,10 @@ def extract_screenshots(
                     found_path = matches[0]
                     break
         video_path = found_path
+    else:
+        video_path = Path(video)
 
-    if not video_path or not video_path.exists():
+    if video_path is None or not video_path.exists():
         console.print(f"[red]Video file not found: {video}[/red]")
         raise typer.Exit(1)
 

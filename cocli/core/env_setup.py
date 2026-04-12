@@ -7,6 +7,7 @@ from typing import Dict
 def get_cuda_env() -> Dict[str, str]:
     """Get the required LD_LIBRARY_PATH updates for NVIDIA libs."""
     venv_path = Path(sys.prefix)
+    print(f"DEBUG: venv_path={venv_path}")
 
     # Locate nvidia packages
     site_packages = (
@@ -31,6 +32,8 @@ def get_cuda_env() -> Dict[str, str]:
         return {}
 
     nvidia_path = site_packages / "nvidia"
+    print(f"DEBUG: Checking nvidia: {nvidia_path}")
+    print(f"DEBUG: nvidia.exists()={nvidia_path.exists()}")
     if not nvidia_path.exists():
         return {}
 
@@ -42,6 +45,7 @@ def get_cuda_env() -> Dict[str, str]:
 
     # Filter only those that exist
     lib_paths = [str(p) for p in nvidia_lib_paths if p.exists()]
+    print(f"DEBUG: Found lib paths: {lib_paths}")
 
     if not lib_paths:
         return {}
