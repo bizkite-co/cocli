@@ -368,7 +368,7 @@ def extract_screenshots(
                 if matches:
                     found_path = matches[0]
                     break
-        video_path = found_path
+    video_path = found_path if found_path else Path("invalid_path")
     else:
         video_path = Path(video)
 
