@@ -45,4 +45,4 @@ tools/taskhash/
 .tmp/
 lightpanda
 video-automation/token.json
-schema_ledger.json
+schema_ledger
