@@ -1,4 +1,4 @@
-from typing import List, Any, Optional, Sequence, cast
+from typing import List, Any, cast
 from google.genai import Client
 import logging
 from cocli.core.config import load_campaign_config
@@ -29,7 +29,7 @@ def create_chapters(transcript_text: str, campaign: str) -> str:
     # Properly cast content to match SDK's expected input type (Union of Content types)
     contents: List[Any] = [prompt]
     response = client.models.generate_content(
-        model="gemini-2.0-flash", contents=cast(Any, contents)
+        model="gemini-2.0-flash-001", contents=cast(Any, contents)
     )
 
     if response.text is None:

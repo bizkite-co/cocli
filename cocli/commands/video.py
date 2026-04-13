@@ -26,12 +26,13 @@ from cocli.core.video import (
     thumbnailer,
     get_duration,
     normalize_video,
+    chapters,
 )
 from cocli.core.video.transcript_to_vtt import convert_transcript_to_vtt
 from cocli.core.video import auth as video_auth
 from cocli.core.text_utils import slugdotify
 
-app = typer.Typer(help="Commands for video processing.", no_args_is_help=True)
+app = typer.Typer(no_args_is_help=True)
 console = Console()
 
 
@@ -276,10 +277,32 @@ def package(
                     f"[green]Saved transcript to {transcript_path.name}[/green]"
                 )
 
-chapters_path = video_dir / "chapters.md"
-            with open(chapters_path, "w") as f:
-                f.write(chapters_text)
-            console.print(f"[green]Saved chapters to {chapters_path.name}[/green]")
+            # 3.5. Generate chapters from the first transcript
+            first_transcript = next(iter(transcripts.values()), "")
+            if first_transcript:
+                console.print("Generating chapters...")
+                try:
+                    chapter_text = chapters.create_chapters(
+                        first_transcript, campaign_name
+                    )
+                    chapters_path = video_dir / "chapters.md"
+                    with open(chapters_path, "w") as f:
+                        f.write(chapter_text)
+                    console.print(
+                        f"[green]Saved chapters to {chapters_path.name}[/green]"
+                    )
+                except Exception as e:
+                    console.print(f"[yellow]Chapter generation failed: {e}[/yellow]")
+
+            # 4. Generate VTT (closed captions) from first transcript
+            if first_transcript:
+                console.print("Generating VTT closed captions...")
+                try:
+                    vtt_path = video_dir / "captions.vtt"
+                    convert_transcript_to_vtt(first_transcript, vtt_path)
+                    console.print(f"[green]Saved captions to {vtt_path.name}[/green]")
+                except Exception as e:
+                    console.print(f"[yellow]VTT generation failed: {e}[/yellow]")
 
             # 4. Copy to packaged
             for item in video_dir.iterdir():
@@ -368,9 +391,7 @@ def extract_screenshots(
                 if matches:
                     found_path = matches[0]
                     break
-    video_path = found_path if found_path else Path("invalid_path")
-    else:
-        video_path = Path(video)
+        video_path = found_path if found_path else Path("invalid_path")
 
     if video_path is None or not video_path.exists():
         console.print(f"[red]Video file not found: {video}[/red]")

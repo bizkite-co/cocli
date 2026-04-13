@@ -157,27 +157,6 @@ class YouTubeUploader:
 
         return None
 
-    def _add_to_playlist(self, video_id: str, playlist_id: str) -> bool:
-        """Add video to a playlist."""
-        try:
-            self.service.playlistItems().insert(
-                part="snippet",
-                body={
-                    "snippet": {
-                        "playlistId": playlist_id,
-                        "resourceId": {
-                            "kind": "youtube#video",
-                            "videoId": video_id,
-                        },
-                    }
-                },
-            ).execute()
-            logger.info(f"Added video to playlist: {playlist_id}")
-            return True
-        except Exception as e:
-            logger.error(f"Failed to add to playlist: {e}")
-            return False
-
     def upload_thumbnail(self, video_id: str, thumbnail_path: str | Path) -> bool:
         """Upload thumbnail for an existing video."""
         thumbnail_path = Path(thumbnail_path)
