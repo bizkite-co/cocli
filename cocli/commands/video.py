@@ -243,10 +243,6 @@ def package(
             target_video_dir = pack_dir / video_dir.name
             target_video_dir.mkdir(parents=True, exist_ok=True)
 
-            # Target directory for THIS video
-            target_video_dir = pack_dir / video_dir.name
-            target_video_dir.mkdir(parents=True, exist_ok=True)
-
             console.print(f"Packaging: {video_dir.name}")
             console.print(f"[dim]Source: {video_dir}[/dim]")
             console.print(f"[dim]Destination: {target_video_dir}[/dim]")

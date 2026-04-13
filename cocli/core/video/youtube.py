@@ -94,7 +94,6 @@ class YouTubeUploader:
         description: str = "",
         tags: Optional[List[str]] = None,
         category_id: str = "22",
-        privacy: str = "unlisted",
         playlist_id: Optional[str] = None,
         progress_callback: Optional[CallableType[[int], None]] = None,
     ) -> Optional[Dict[str, str]]:
