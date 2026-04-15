@@ -5,6 +5,7 @@ import subprocess
 from pathlib import Path
 from typing import Optional
 import typer
+import yaml
 from rich.console import Console
 from rich.progress import (
     Progress,
@@ -25,37 +26,42 @@ from cocli.core.video import (
     thumbnailer,
     get_duration,
     normalize_video,
+    chapters,
 )
+from cocli.core.video.transcript_to_vtt import convert_transcript_to_vtt
+from cocli.core.video import auth as video_auth
+from cocli.core.text_utils import slugdotify
 
-app = typer.Typer(help="Commands for video processing.", no_args_is_help=True)
+app = typer.Typer(no_args_is_help=True)
 console = Console()
 
 
-def extract_thumbnails_logic(video_path: Path) -> None:
-    """Internal logic to extract thumbnails."""
-    console.print(f"Extracting thumbnails from: {video_path.name}")
+def extract_screenshots_logic(video_path: Path) -> None:
+    """Internal logic to extract screenshots."""
+    console.print(f"Extracting screenshots from: {video_path.name}")
 
     # Use ffmpeg scene detection to get 5 frames
+    # Lowered threshold to 0.1 for better sensitivity
     cmd = [
         "ffmpeg",
         "-i",
         str(video_path),
         "-vf",
-        "select='gt(scene,0.3)',scale=640:-1,showinfo",
+        "select='gt(scene,0.1)',scale=640:-1,showinfo",
         "-vsync",
         "0",
         "-frames:v",
         "5",
         "-q:v",
         "2",
-        str(video_path.parent / "thumb_%03d.png"),
+        str(video_path.parent / "screenshot_%03d.png"),
     ]
 
     try:
         subprocess.run(cmd, check=True, capture_output=True)
-        console.print(f"[green]Thumbnails extracted to {video_path.parent}[/green]")
+        console.print(f"[green]Screenshots extracted to {video_path.parent}[/green]")
     except subprocess.CalledProcessError as e:
-        console.print(f"[red]Failed to extract thumbnails: {e.stderr.decode()}[/red]")
+        console.print(f"[red]Failed to extract screenshots: {e.stderr.decode()}[/red]")
 
 
 def get_video_queue_root(campaign_name: str) -> Path:
@@ -87,9 +93,12 @@ def add(
             console.print(f"[red]File not found: {video}[/red]")
             raise typer.Exit(1)
 
-        dest = raw_dir / video_path.name
+        # Sanitize filename
+        safe_name = slugdotify(video_path.name)
+        dest = raw_dir / safe_name
+
         shutil.copy2(video_path, dest)
-        console.print(f"[green]Added {video_path.name} to raw queue.[/green]")
+        console.print(f"[green]Added {safe_name} to raw queue.[/green]")
     except Exception:
         import traceback
 
@@ -173,14 +182,19 @@ def normalize(
             # Remove original from raw/ ONLY after success
             video_file.unlink()
 
-            # Create metadata file
+            # Create metadata file only if it doesn't exist
             md_file = video_dir / f"{video_file.stem}.md"
-            with open(md_file, "w") as f:
-                f.write("---\n")
-                f.write('thumbnail-text: ""\n')
-                f.write('thumbnail-style: ""\n')
-                f.write("draft: true\n")
-                f.write("---\n\n")
+            if not md_file.exists():
+                with open(md_file, "w") as f:
+                    f.write("---\n")
+                    f.write('title: ""\n')
+                    f.write('thumbnail-text: ""\n')
+                    f.write('thumbnail-style: ""\n')
+                    f.write("draft: true\n")
+                    f.write("---\n\n")
+
+            # Extract screenshots here
+            extract_screenshots_logic(video_file)
 
             console.print(f"[green]Normalized: {video_file.stem}[/green]")
 
@@ -225,19 +239,18 @@ def package(
                 )
                 continue
 
-            if force and (pack_dir / video_dir.name).exists():
-                console.print(f"[blue]Overwriting: {video_dir.name}[/blue]")
-                shutil.rmtree(pack_dir / video_dir.name)
+            # Target directory for THIS video
+            target_video_dir = pack_dir / video_dir.name
+            target_video_dir.mkdir(parents=True, exist_ok=True)
 
             console.print(f"Packaging: {video_dir.name}")
+            console.print(f"[dim]Source: {video_dir}[/dim]")
+            console.print(f"[dim]Destination: {target_video_dir}[/dim]")
 
             # 1. Identify video file
             video_file = next(video_dir.glob("*.mp4"))
 
-            # 2. Extract Thumbnails
-            extract_thumbnails_logic(video_file)
-
-            # 3. Transcribe
+            # 2. Transcribe
             console.print(f"Transcribing {video_file.name}...")
 
             camp_cfg = load_campaign_config(campaign_name)
@@ -251,7 +264,7 @@ def package(
             )
             transcripts = transcriber_engine.transcribe(video_file, campaign_name)
 
-            # 4. Save transcripts
+            # 3. Save transcripts
             for provider_name, transcript_text in transcripts.items():
                 transcript_path = video_dir / f"transcript_{provider_name}.md"
                 with open(transcript_path, "w") as f:
@@ -260,11 +273,44 @@ def package(
                     f"[green]Saved transcript to {transcript_path.name}[/green]"
                 )
 
-            # 5. Copy to packaged
-            shutil.copytree(video_dir, pack_dir / video_dir.name)
+            # 3.5. Generate chapters from the first transcript
+            first_transcript = next(iter(transcripts.values()), "")
+            if first_transcript:
+                console.print("Generating chapters...")
+                try:
+                    chapter_text = chapters.create_chapters(
+                        first_transcript, campaign_name
+                    )
+                    chapters_path = video_dir / "chapters.md"
+                    with open(chapters_path, "w") as f:
+                        f.write(chapter_text)
+                    console.print(
+                        f"[green]Saved chapters to {chapters_path.name}[/green]"
+                    )
+                except Exception as e:
+                    console.print(f"[yellow]Chapter generation failed: {e}[/yellow]")
 
-            # 6. Process Thumbnail
-            thumbnailer.process_thumbnail(video_dir, pack_dir / video_dir.name)
+            # 4. Generate VTT (closed captions) from first transcript
+            if first_transcript:
+                console.print("Generating VTT closed captions...")
+                try:
+                    vtt_path = video_dir / "captions.vtt"
+                    convert_transcript_to_vtt(first_transcript, vtt_path)
+                    console.print(f"[green]Saved captions to {vtt_path.name}[/green]")
+                except Exception as e:
+                    console.print(f"[yellow]VTT generation failed: {e}[/yellow]")
+
+            # 4. Copy to packaged
+            for item in video_dir.iterdir():
+                if item.is_dir():
+                    shutil.copytree(
+                        item, target_video_dir / item.name, dirs_exist_ok=True
+                    )
+                else:
+                    shutil.copy2(item, target_video_dir / item.name)
+
+            # 5. Process Thumbnail
+            thumbnailer.process_thumbnail(video_dir, target_video_dir)
 
             console.print(f"[green]Packaged: {video_dir.name}[/green]")
 
@@ -277,39 +323,77 @@ def package(
 
 
 @app.command()
-def extract_thumbnails(
+def create_thumbnail(
     campaign: Optional[str] = typer.Option(
         None, "-c", "--campaign", help="Campaign name"
     ),
-    video: str = typer.Argument(..., help="Video file name (in raw/ or normalized/)"),
+    video_slug: str = typer.Argument(
+        ..., help="Video slug (directory name in normalized/)"
+    ),
+    force: bool = typer.Option(
+        False, "--force", "-f", help="Overwrite existing thumbnail"
+    ),
 ) -> None:
-    """Extract candidate thumbnails from a video."""
+    """Create a thumbnail for a video using metadata."""
     campaign_name = campaign or get_campaign()
     if not campaign_name:
         console.print("[red]No campaign specified.[/red]")
         raise typer.Exit(1)
 
     queue_root = get_video_queue_root(campaign_name)
-    # Search in raw or normalized
-    video_path = None
-    for folder in ["raw", "normalized"]:
-        search_path = queue_root / folder
-        if search_path.exists():
-            # Get only files
-            matches = [
-                p
-                for p in search_path.rglob(f"*{video}*")
-                if p.is_file() and p.suffix == ".mp4"
-            ]
-            if matches:
-                video_path = matches[0]
-                break
+    norm_dir = queue_root / "normalized" / video_slug
+    pack_dir = queue_root / "packaged" / video_slug
 
-    if not video_path:
+    if not norm_dir.exists():
+        console.print(f"[red]Normalized video directory not found: {norm_dir}[/red]")
+        raise typer.Exit(1)
+
+    pack_dir.mkdir(parents=True, exist_ok=True)
+
+    # Process thumbnail
+    thumbnailer.process_thumbnail(norm_dir, pack_dir)
+    console.print(f"[green]Thumbnail created for {video_slug}[/green]")
+
+
+@app.command()
+def extract_screenshots(
+    campaign: Optional[str] = typer.Option(
+        None, "-c", "--campaign", help="Campaign name"
+    ),
+    video: str = typer.Argument(..., help="Video file name or path"),
+) -> None:
+    """Extract candidate screenshots from a video."""
+
+    video_path: Optional[Path] = None
+    # 2. If not a direct path, fallback to campaign search
+    if not Path(video).exists():
+        campaign_name = campaign or get_campaign()
+        if not campaign_name:
+            console.print("[red]Video file not found and no campaign specified.[/red]")
+            raise typer.Exit(1)
+
+        queue_root = get_video_queue_root(campaign_name)
+        # Search in raw or normalized
+        found_path: Optional[Path] = None
+        for folder in ["raw", "normalized"]:
+            search_path = queue_root / folder
+            if search_path.exists():
+                # Get only files
+                matches = [
+                    p
+                    for p in search_path.rglob(f"*{video}*")
+                    if p.is_file() and p.suffix == ".mp4"
+                ]
+                if matches:
+                    found_path = matches[0]
+                    break
+        video_path = found_path if found_path else Path("invalid_path")
+
+    if video_path is None or not video_path.exists():
         console.print(f"[red]Video file not found: {video}[/red]")
         raise typer.Exit(1)
 
-    extract_thumbnails_logic(video_path)
+    extract_screenshots_logic(video_path)
 
 
 @app.command()
@@ -317,17 +401,20 @@ def upload(
     campaign: Optional[str] = typer.Option(
         None, "-c", "--campaign", help="Campaign name"
     ),
-    video: str = typer.Option(..., "-v", "--video", help="Video file to upload"),
-    title: str = typer.Option(..., "-t", "--title", help="Video title"),
-    description: str = typer.Option(
-        "", "-d", "--description", help="Video description"
+    video_slug: Optional[str] = typer.Option(
+        None, "-v", "--video", help="Video slug to upload (from normalized/)"
     ),
     privacy: str = typer.Option(
         "unlisted", "-p", "--privacy", help="Privacy: public, unlisted, private"
     ),
-    tags: str = typer.Option("automation", "-g", "--tags", help="Comma-separated tags"),
+    force_privacy: bool = typer.Option(
+        False,
+        "--force-privacy",
+        help="Override metadata draft setting with CLI privacy",
+    ),
+    dry_run: bool = typer.Option(False, "--dry-run", help="Validate without uploading"),
 ) -> None:
-    """Upload video to YouTube."""
+    """Upload a video to YouTube using metadata from normalized queue."""
     campaign_name = campaign or get_campaign()
     if not campaign_name:
         console.print(
@@ -335,27 +422,175 @@ def upload(
         )
         raise typer.Exit(1)
 
-    video_path = Path(video)
-    if not video_path.exists():
-        console.print(f"[red]Video file not found: {video}[/red]")
+    queue_root = get_video_queue_root(campaign_name)
+    norm_dir = queue_root / "normalized"
+    pack_dir = queue_root / "packaged"
+    upload_dir = queue_root / "uploaded"
+
+    if video_slug:
+        video_dirs = [norm_dir / video_slug]
+    else:
+        video_dirs = [d for d in norm_dir.iterdir() if d.is_dir()]
+
+    for video_dir in video_dirs:
+        slug = video_dir.name
+        console.print(f"\n[cyan]Processing: {slug}[/cyan]")
+
+        md_file = video_dir / f"{slug}.md"
+        if not md_file.exists():
+            console.print(f"[red]Metadata file not found: {md_file}[/red]")
+            continue
+
+        with open(md_file) as f:
+            content = f.read()
+        if content.startswith("---"):
+            parts = content.split("---", 2)
+            if len(parts) >= 3:
+                metadata = yaml.safe_load(parts[1]) or {}
+                description_body = parts[2].strip()
+            else:
+                metadata = {}
+                description_body = content
+        else:
+            metadata = {}
+            description_body = content
+
+        title = metadata.get("title", slug)
+        if not title:
+            title = slug.replace("-", " ").replace("_", " ").title()
+
+        is_draft = metadata.get("draft", True)
+        final_privacy = (
+            privacy if force_privacy else ("private" if is_draft else "public")
+        )
+        console.print(f"  Privacy: {final_privacy}")
+
+        playlist_id = metadata.get("playlist")
+        if playlist_id:
+            console.print(f"  Playlist: {playlist_id}")
+
+        chapters_path = video_dir / "chapters.md"
+        description = description_body
+        if chapters_path.exists():
+            description += "\n\n" + chapters_path.read_text()
+
+        video_file_path = video_dir / f"{slug}.mp4"
+        video_file: Optional[Path] = None
+        if video_file_path.exists():
+            video_file = video_file_path
+        else:
+            video_file = next(video_dir.glob("*.mp4"), None)
+        if not video_file:
+            console.print(f"[red]Video file not found in {video_dir}[/red]")
+            continue
+
+        thumbnail_filename = metadata.get("thumbnail-screenshot", "thumbnail.png")
+        thumbnail_path: Path = pack_dir / slug / thumbnail_filename
+        if not thumbnail_path.exists():
+            thumbnail_path = video_dir / thumbnail_filename
+        if not thumbnail_path.exists():
+            thumbnail_path = video_dir / "thumbnail.png"
+
+        console.print(f"  Title: {title}")
+        console.print(f"  Description: {description[:100]}...")
+        console.print(f"  Video: {video_file.name}")
+        console.print(
+            f"  Thumbnail: {thumbnail_path.name if thumbnail_path.exists() else 'not found'}"
+        )
+
+        if dry_run:
+            console.print("[yellow]DRY RUN: Skipping actual upload[/yellow]")
+            continue
+
+        uploader = YouTubeUploader(campaign=campaign_name)
+
+        console.print("[cyan]Uploading video...[/cyan]")
+        with Progress(
+            SpinnerColumn(),
+            TextColumn("[progress.description]{task.description}"),
+            BarColumn(),
+            TaskProgressColumn(),
+            console=console,
+        ) as progress:
+            task = progress.add_task("Uploading", total=100)
+
+            def update_progress(p: int) -> None:
+                progress.update(task, completed=p)
+
+            result = uploader.upload(
+                video_file,
+                title,
+                description=description,
+                privacy=final_privacy,
+                playlist_id=playlist_id,
+                progress_callback=update_progress,
+            )
+
+        if not result:
+            console.print("[red]Video upload failed[/red]")
+            continue
+
+        video_id = result["id"]
+        console.print(f"[green]Video uploaded: {result['url']}[/green]")
+
+        if thumbnail_path.exists():
+            console.print("[cyan]Uploading thumbnail...[/cyan]")
+            if uploader.upload_thumbnail(video_id, thumbnail_path):
+                console.print("[green]Thumbnail uploaded[/green]")
+            else:
+                console.print("[yellow]Thumbnail upload failed (continuing)[/yellow]")
+        else:
+            console.print("[yellow]No thumbnail found, skipping[/yellow]")
+
+        captions_path = video_dir / "captions.vtt"
+        if not captions_path.exists():
+            captions_path = pack_dir / slug / "captions.vtt"
+        if captions_path.exists():
+            console.print("[cyan]Uploading captions...[/cyan]")
+            if uploader.upload_captions(video_id, captions_path):
+                console.print("[green]Captions uploaded[/green]")
+            else:
+                console.print("[yellow]Captions upload failed (continuing)[/yellow]")
+        else:
+            console.print("[yellow]No captions found, skipping[/yellow]")
+
+        upload_dir.mkdir(parents=True, exist_ok=True)
+        target = upload_dir / slug
+        if target.exists():
+            shutil.rmtree(target)
+        shutil.move(str(video_dir), str(target))
+        console.print(f"[green]Moved to uploaded: {slug}[/green]")
+        console.print(f"[green]Upload complete: {result['url']}[/green]")
+
+
+@app.command()
+def auth(
+    campaign: Optional[str] = typer.Option(
+        None, "-c", "--campaign", help="Campaign name"
+    ),
+) -> None:
+    """Authenticate with YouTube using OAuth Device Code Flow."""
+    campaign_name = campaign or get_campaign()
+    if not campaign_name:
+        console.print(
+            "[red]No campaign selected. Please specify --campaign or set a campaign context.[/red]"
+        )
         raise typer.Exit(1)
 
-    tag_list = [t.strip() for t in tags.split(",")]
-    uploader = YouTubeUploader(campaign=campaign_name)
-
-    console.print(f"Uploading: {title}")
-    result = uploader.upload(
-        video_path,
-        title,
-        description=description,
-        tags=tag_list,
-        privacy=privacy,
+    console.print(
+        f"[cyan]Starting OAuth authentication for campaign: {campaign_name}[/cyan]"
     )
+    authenticator = video_auth.DeviceCodeAuth()
 
-    if result:
-        console.print("[green]Success![/green]")
-        console.print(f"  Video ID: {result['id']}")
-        console.print(f"  URL: {result['url']}")
-    else:
-        console.print("[red]Upload failed[/red]")
+    try:
+        success = authenticator.authenticate(campaign_name)
+        if success:
+            console.print(
+                "[green]Authentication complete! You can now upload videos.[/green]"
+            )
+        else:
+            console.print("[red]Authentication failed. Please try again.[/red]")
+            raise typer.Exit(1)
+    except Exception as e:
+        console.print(f"[red]Error during authentication: {e}[/red]")
         raise typer.Exit(1)

@@ -1,6 +1,5 @@
 from cocli.core.bootstrap import setup_environment
 
-# Apply CUDA env and Data Home before any other imports
 setup_environment()
 
 import os

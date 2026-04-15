@@ -16,6 +16,17 @@ def get_cuda_env() -> Dict[str, str]:
         / "site-packages"
     )
 
+    # In some installations, site-packages is just lib/python3.x/site-packages
+    # but sometimes it's different.
+    lib_path = venv_path / "lib"
+    if lib_path.exists():
+        for py_dir in lib_path.iterdir():
+            if py_dir.is_dir() and "python" in py_dir.name:
+                sp = py_dir / "site-packages"
+                if sp.exists():
+                    site_packages = sp
+                    break
+
     if not site_packages.exists():
         return {}
 
@@ -35,13 +46,7 @@ def get_cuda_env() -> Dict[str, str]:
     if not lib_paths:
         return {}
 
-    new_ld_path = ":".join(
-        lib_paths
-        + (
-            [os.environ.get("LD_LIBRARY_PATH", "")]
-            if os.environ.get("LD_LIBRARY_PATH")
-            else []
-        )
-    )
+    existing_ld = os.environ.get("LD_LIBRARY_PATH", "")
+    new_ld_path = ":".join(lib_paths + ([existing_ld] if existing_ld else []))
 
     return {"LD_LIBRARY_PATH": new_ld_path}

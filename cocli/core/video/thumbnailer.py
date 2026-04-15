@@ -1,11 +1,10 @@
 from pathlib import Path
 from typing import Dict, Any
 from PIL import Image, ImageDraw, ImageFont
-import logging
+
 import yaml
 from rich.console import Console
 
-logger = logging.getLogger(__name__)
 console = Console()
 
 
@@ -32,12 +31,15 @@ def parse_metadata(md_file: Path) -> Dict[str, Any]:
 
 def overlay_text(image: Image.Image, text: str) -> Image.Image:
     """Overlay text onto an image with transparency."""
+    # Resize image to YouTube standard (1280x720)
+    image = image.resize((1280, 720), Image.Resampling.LANCZOS)
+
     draw = ImageDraw.Draw(image, "RGBA")
     font_path = "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"
 
-    # Handle multi-line
+    # Handle multi-line and force uppercase for readability
     console.print(f"[dim]Processing text: {text}[/dim]")
-    text = text.replace("<br />", "\n")
+    text = text.replace("<br />", "\n").upper()
     console.print(f"[dim]Transformed text: {text}[/dim]")
 
     # 1. Determine font size to fit with 10% padding
@@ -72,9 +74,14 @@ def overlay_text(image: Image.Image, text: str) -> Image.Image:
     overlay = Image.new("RGBA", image.size, (255, 255, 255, 0))
     draw_overlay = ImageDraw.Draw(overlay)
 
-    # Draw text with 50% transparency (127/255)
+    # Draw text with 40% transparency (approx 102/255)
     draw_overlay.multiline_text(
-        (x, y), text, font=font, fill=(255, 255, 255, 127), align="center"
+        (x, y),
+        text,
+        font=font,
+        fill=(255, 255, 255, 102),
+        align="center",
+        spacing=int(font_size * 0.5),
     )
 
     return Image.alpha_composite(image.convert("RGBA"), overlay).convert("RGB")
@@ -95,17 +102,22 @@ def process_thumbnail(video_dir: Path, output_dir: Path) -> None:
         console.print("[yellow]No thumbnail text found[/yellow]")
         return
 
-    # Search for image
-    img_files = (
-        list(video_dir.glob("thumbnail.*"))
-        + list(video_dir.glob("*.jpg"))
-        + list(video_dir.glob("*.png"))
-    )
-    if not img_files:
-        console.print(f"[red]No thumbnail image found in {video_dir}[/red]")
+    # Search for image based on metadata
+    screenshot_name = metadata.get("thumbnail-screenshot")
+    if screenshot_name:
+        img_path = video_dir / screenshot_name
+    else:
+        # Fallback to the first screenshot_*.png
+        img_files = sorted(list(video_dir.glob("screenshot_*.png")))
+        if not img_files:
+            console.print(f"[red]No screenshots found in {video_dir}[/red]")
+            return
+        img_path = img_files[0]
+
+    if not img_path.exists():
+        console.print(f"[red]Screenshot file not found: {img_path}[/red]")
         return
 
-    img_path = img_files[0]
     console.print(f"[dim]Processing thumbnail from: {img_path}[/dim]")
     image = Image.open(img_path)
 

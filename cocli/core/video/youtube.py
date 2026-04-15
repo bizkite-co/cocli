@@ -1,22 +1,26 @@
-"""YouTube uploader using 1Password for credentials."""
+"""YouTube uploader using 1Password for client credentials and keyring for OAuth tokens."""
 
 import logging
 from pathlib import Path
-from typing import Optional, Any, Dict, List
+from typing import Optional, Any, Dict, List, Callable as CallableType
 from googleapiclient.discovery import build  # type: ignore
 from googleapiclient.http import MediaFileUpload  # type: ignore
-from google.oauth2.credentials import Credentials
+from google.oauth2.credentials import Credentials as GoogleCredentials
 
 from cocli.core.config import load_campaign_config
 from cocli.utils.op_utils import get_op_secret
+from cocli.core.video.keyring_manager import KeyringManager
 
 logger = logging.getLogger(__name__)
 
-SCOPES = ["https://www.googleapis.com/auth/youtube.upload"]
+SCOPES = [
+    "https://www.googleapis.com/auth/youtube.upload",
+    "https://www.googleapis.com/auth/youtube.force-ssl",
+]
 
 
 def get_secrets(campaign: str) -> tuple[str, str, str, str]:
-    """Fetch all secrets from 1Password paths defined in campaign config."""
+    """Fetch credentials: client_id/client_secret from 1Password, OAuth tokens from keyring."""
     config = load_campaign_config(campaign)
     google_api_config = config.get("google_api_client", {})
 
@@ -33,18 +37,28 @@ def get_secrets(campaign: str) -> tuple[str, str, str, str]:
             )
         return secret
 
+    # client_id and client_secret from 1Password
     client_id = read_secret("client_id_path")
     client_secret = read_secret("client_secret_path")
-    oauth_token = read_secret("oauth_token_path")
-    refresh_token = read_secret("refresh_token_path")
+
+    # OAuth tokens from keyring
+    keyring_mgr = KeyringManager()
+    oauth_token = keyring_mgr.get_access_token(campaign)
+    refresh_token = keyring_mgr.get_refresh_token(campaign)
+
+    if not oauth_token or not refresh_token:
+        raise ValueError(
+            f"OAuth tokens not found in keyring for campaign '{campaign}'. Run 'cocli video auth' first."
+        )
+
     return client_id, client_secret, oauth_token, refresh_token
 
 
 def build_credentials(
     client_id: str, client_secret: str, oauth_token: str, refresh_token: str
-) -> Credentials:
+) -> GoogleCredentials:
     """Build Google credentials from stored tokens."""
-    return Credentials(  # type: ignore
+    return GoogleCredentials(  # type: ignore
         token=oauth_token,
         refresh_token=refresh_token,
         client_id=client_id,
@@ -79,8 +93,10 @@ class YouTubeUploader:
         title: str,
         description: str = "",
         tags: Optional[List[str]] = None,
-        category_id: str = "22",  # People & Blogs
+        category_id: str = "22",
         privacy: str = "unlisted",
+        playlist_id: Optional[str] = None,
+        progress_callback: Optional[CallableType[[int], None]] = None,
     ) -> Optional[Dict[str, str]]:
         """Upload video to YouTube."""
         video_path = Path(video_path)
@@ -113,13 +129,16 @@ class YouTubeUploader:
             ),
         )
 
-        response_insert = None
+        response_insert: Optional[Dict[str, Any]] = None
         while response_insert is None:
             try:
                 status, response_insert = insert_request.next_chunk()
                 if status:
                     progress = int(status.progress() * 100)
-                    logger.info(f"Progress: {progress}%")
+                    if progress_callback:
+                        progress_callback(progress)
+                    else:
+                        logger.info(f"Progress: {progress}%")
             except Exception as e:
                 logger.error(f"Upload error: {e}")
                 break
@@ -127,12 +146,86 @@ class YouTubeUploader:
         if response_insert:
             video_id = str(response_insert["id"])
             logger.info(f"Success! Video ID: {video_id}")
+
+            if playlist_id:
+                self._add_to_playlist(video_id, playlist_id)
+
             return {
                 "id": video_id,
                 "url": f"https://www.youtube.com/watch?v={video_id}",
             }
 
         return None
+
+    def _add_to_playlist(self, video_id: str, playlist_id: str) -> bool:
+        """Add video to a playlist."""
+        try:
+            self.service.playlistItems().insert(
+                part="snippet",
+                body={
+                    "snippet": {
+                        "playlistId": playlist_id,
+                        "resourceId": {
+                            "kind": "youtube#video",
+                            "videoId": video_id,
+                        },
+                    }
+                },
+            ).execute()
+            logger.info(f"Added video to playlist: {playlist_id}")
+            return True
+        except Exception as e:
+            logger.error(f"Failed to add to playlist: {e}")
+            return False
+
+    def upload_thumbnail(self, video_id: str, thumbnail_path: str | Path) -> bool:
+        """Upload thumbnail for an existing video."""
+        thumbnail_path = Path(thumbnail_path)
+        if not thumbnail_path.exists():
+            logger.error(f"Thumbnail file not found: {thumbnail_path}")
+            return False
+
+        logger.info(f"Uploading thumbnail for video: {video_id}")
+
+        try:
+            self.service.thumbnails().set(
+                videoId=video_id,
+                media_body=MediaFileUpload(str(thumbnail_path)),
+            ).execute()
+            logger.info("Thumbnail uploaded successfully")
+            return True
+        except Exception as e:
+            logger.error(f"Thumbnail upload error: {e}")
+            return False
+
+    def upload_captions(
+        self, video_id: str, captions_path: str | Path, language: str = "en"
+    ) -> bool:
+        """Upload closed captions (VTT) for a video."""
+        captions_path = Path(captions_path)
+        if not captions_path.exists():
+            logger.error(f"Captions file not found: {captions_path}")
+            return False
+
+        logger.info(f"Uploading captions for video: {video_id}")
+
+        try:
+            self.service.captions().insert(
+                part="snippet",
+                body={
+                    "snippet": {
+                        "videoId": video_id,
+                        "language": language,
+                        "name": "English",
+                    }
+                },
+                media_body=MediaFileUpload(str(captions_path)),
+            ).execute()
+            logger.info("Captions uploaded successfully")
+            return True
+        except Exception as e:
+            logger.error(f"Captions upload error: {e}")
+            return False
 
     def upload_for_campaign(
         self,

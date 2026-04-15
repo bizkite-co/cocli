@@ -233,18 +233,18 @@ COCLI_DATA_HOME ?= $(HOME)/.local/share/cocli_data
 .PHONY: video-normalize
 video-normalize: ## Normalize videos (Usage: make video-normalize CAMPAIGN=name)
 	$(call validate_campaign)
-	COCLI_DATA_HOME=$(shell pwd)/data ./bin/run-cocli.sh video normalize --campaign $(CAMPAIGN)
+	@COCLI_DATA_HOME=$(shell pwd)/data cocli video normalize --campaign $(CAMPAIGN)
 
 .PHONY: video-package
 video-package: ## Package videos (Usage: make video-package CAMPAIGN=name)
 	$(call validate_campaign)
-	COCLI_DATA_HOME=$(shell pwd)/data ./bin/run-cocli.sh video package --campaign $(CAMPAIGN)
+	@COCLI_DATA_HOME=$(shell pwd)/data cocli video package --campaign $(CAMPAIGN) $(if $(FORCE),--force)
 
-.PHONY: video-extract-thumbnails
-video-extract-thumbnails: ## Extract thumbnails (Usage: make video-extract-thumbnails CAMPAIGN=name VIDEO=filename)
+.PHONY: video-extract-screenshots
+video-extract-screenshots: ## Extract screenshots (Usage: make video-extract-screenshots CAMPAIGN=name VIDEO=filename)
 	$(call validate_campaign)
 	@if [ -z "$(VIDEO)" ]; then echo "Error: VIDEO is required."; exit 1; fi
-	COCLI_DATA_HOME=$(shell pwd)/data ./bin/run-cocli.sh video extract-thumbnails --campaign $(CAMPAIGN) "$(VIDEO)"
+	@COCLI_DATA_HOME=$(shell pwd)/data cocli video extract-screenshots --campaign $(CAMPAIGN) "$(VIDEO)"
 
 .PHONY: render-kml
 render-kml: install ## Render KML for the current campaign context

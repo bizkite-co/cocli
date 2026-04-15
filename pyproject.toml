@@ -48,6 +48,14 @@ dependencies = [
     "faster-whisper",
     "ctranslate2",
     "pillow",
+    "nvidia-cublas-cu12",
+    "nvidia-cudnn-cu12",
+    "nvidia-cuda-nvrtc-cu12",
+    "google-api-python-client",
+    "google-auth-httplib2",
+    "google-auth-oauthlib",
+    "keyring",
+    "keyrings.alt",
 ]
 
 [project.scripts]
@@ -59,9 +67,6 @@ full = [
     "textual",
     "selenium",
     "webdriver-manager",
-    "google-api-python-client",
-    "google-auth-httplib2",
-    "google-auth-oauthlib",
 ]
 dev = [
     "pytest",

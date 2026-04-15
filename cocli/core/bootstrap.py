@@ -9,10 +9,20 @@ def setup_environment() -> None:
 
     # 1. CUDA setup
     cuda_env = env_setup.get_cuda_env()
+
+    # 1. CUDA setup
     if cuda_env:
-        required_path = cuda_env["LD_LIBRARY_PATH"].split(":")[0]
+        required_paths = cuda_env["LD_LIBRARY_PATH"].split(":")
         current_ld_path = os.environ.get("LD_LIBRARY_PATH", "")
-        if required_path not in current_ld_path:
+
+        # Check if ANY of the required paths are missing
+        needs_update = False
+        for path in required_paths:
+            if path and path not in current_ld_path:
+                needs_update = True
+                break
+
+        if needs_update:
             env_updates.update(cuda_env)
 
     # 2. Data Home setup

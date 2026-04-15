@@ -33,7 +33,7 @@ class GeminiTranscriber:
         transcription_config = config.get("video", {}).get("transcription", {})
 
         api_key_path = config.get("google", {}).get("gemini-api-key")
-        model_name = transcription_config.get("model", "gemini-2.0-flash")
+        model_name = transcription_config.get("model", "gemini-1.5-flash-002")
 
         api_key = get_op_secret(api_key_path)
         client = Client(api_key=api_key)

@@ -195,7 +195,7 @@ def cleanup_wal(dry_run: bool = True) -> dict:
     if not dry_run and WAL_DIR.exists() and not list(WAL_DIR.glob("*.usv")):
         try:
             WAL_DIR.rmdir()
-            logger.info(f"Removed empty WAL directory")
+            logger.info("Removed empty WAL directory")
         except Exception:
             pass
 
