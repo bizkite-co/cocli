@@ -38,19 +38,78 @@ def get_duration(input_file: str | Path) -> float:
 def parse_loudness_stats(stderr_output: str) -> Optional[Dict[str, float]]:
     """Parse loudness statistics from FFmpeg stderr output."""
     try:
-        # Find the JSON block by looking for the first '{' and the last '}'
-        start = stderr_output.find("{")
-        end = stderr_output.rfind("}")
-        if start == -1 or end == -1:
+        # Find the JSON block - look for "Input" section which contains measured values
+        # FFmpeg loudnorm outputs: {"Input": {...}, "Output": {...}}
+        start = stderr_output.find('"Input"')
+        if start == -1:
+            # Try fallback to first brace
+            start = stderr_output.find("{")
+
+        if start == -1:
             logger.error("No JSON block found in ffmpeg output")
             return None
 
+        # Find the matching closing brace
+        end = stderr_output.rfind("}")
+        if end == -1 or end <= start:
+            logger.error("Could not find complete JSON block")
+            return None
+
         json_str = stderr_output[start : end + 1]
+
+        # Debug log the raw JSON for troubleshooting
+        logger.debug(f"Loudness JSON: {json_str[:500]}...")
+
         data = json.loads(json_str)
-        return {k: float(v) for k, v in data.items()}
+
+        # Extract only the Input section (measured values before normalization)
+        input_data = data.get("Input", data)  # Fallback to whole block if no Input
+
+        # FFmpeg outputs keys like "input_i", "input_lra", "input_tp", "input_thresh"
+        # Map to the keys expected by normalize_video
+        key_map = {
+            "input_i": "input_i",
+            "input_lra": "input_lra",
+            "input_tp": "input_tp",
+            "input_thresh": "input_thresh",
+        }
+
+        result = {}
+        for ff_key, our_key in key_map.items():
+            value = input_data.get(ff_key)
+            if value is not None:
+                try:
+                    result[our_key] = float(value)
+                except (ValueError, TypeError):
+                    logger.warning(f"Skipping non-numeric value for {ff_key}: {value}")
+
+        # Get target_offset - it may be in Output section or at top level
+        output_data = data.get("Output", {})
+        if "target_offset" in output_data:
+            try:
+                result["target_offset"] = float(output_data["target_offset"])
+            except (ValueError, TypeError):
+                pass
+        elif "target_offset" in data:
+            try:
+                result["target_offset"] = float(data["target_offset"])
+            except (ValueError, TypeError):
+                pass
+
+        if not result:
+            logger.error(
+                f"No valid numeric loudness values found in JSON. Keys found: {list(input_data.keys())}"
+            )
+            return None
+
+        # Log what we found for debugging
+        logger.info(f"Parsed loudness stats: {result}")
+
+        return result
+
     except (json.JSONDecodeError, KeyError, ValueError) as e:
         logger.error(
-            f"Failed to parse loudness stats: {e}. Output snippet: {stderr_output[:200]}..."
+            f"Failed to parse loudness stats: {e}. Output snippet: {stderr_output[:500]}..."
         )
         return None
 

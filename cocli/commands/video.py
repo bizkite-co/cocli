@@ -40,28 +40,47 @@ def extract_screenshots_logic(video_path: Path) -> None:
     """Internal logic to extract screenshots."""
     console.print(f"Extracting screenshots from: {video_path.name}")
 
-    # Use ffmpeg scene detection to get 5 frames
-    # Lowered threshold to 0.1 for better sensitivity
-    cmd = [
-        "ffmpeg",
-        "-i",
-        str(video_path),
-        "-vf",
-        "select='gt(scene,0.1)',scale=640:-1,showinfo",
-        "-vsync",
-        "0",
-        "-frames:v",
-        "5",
-        "-q:v",
-        "2",
-        str(video_path.parent / "screenshot_%03d.png"),
+    # Use evenly spaced timestamps instead of scene detection
+    # This is more reliable for longer videos
+    duration = get_duration(str(video_path))
+
+    # Get 5 evenly spaced timestamps (avoiding very end)
+    num_screenshots = 5
+    timestamps = [
+        duration * (i + 1) / (num_screenshots + 1) for i in range(num_screenshots)
     ]
 
-    try:
-        subprocess.run(cmd, check=True, capture_output=True)
-        console.print(f"[green]Screenshots extracted to {video_path.parent}[/green]")
-    except subprocess.CalledProcessError as e:
-        console.print(f"[red]Failed to extract screenshots: {e.stderr.decode()}[/red]")
+    # Extract at each timestamp
+    for i, ts in enumerate(timestamps):
+        output_file = video_path.parent / f"screenshot_{i + 1:03d}.png"
+        cmd = [
+            "ffmpeg",
+            "-y",
+            "-ss",
+            str(ts),
+            "-i",
+            str(video_path),
+            "-vframes",
+            "1",
+            "-q:v",
+            "2",
+            str(output_file),
+        ]
+        try:
+            subprocess.run(cmd, check=True, capture_output=True)
+        except subprocess.CalledProcessError as e:
+            console.print(
+                f"[yellow]Failed to extract screenshot at {ts}s: {e.stderr.decode() if e.stderr else e}[/yellow]"
+            )
+
+    # Count how many we got
+    existing = list(video_path.parent.glob("screenshot_*.png"))
+    if existing:
+        console.print(
+            f"[green]Extracted {len(existing)} screenshots to {video_path.parent}[/green]"
+        )
+    else:
+        console.print("[yellow]No screenshots extracted[/yellow]")
 
 
 def get_video_queue_root(campaign_name: str) -> Path:
@@ -193,8 +212,8 @@ def normalize(
                     f.write("draft: true\n")
                     f.write("---\n\n")
 
-            # Extract screenshots here
-            extract_screenshots_logic(video_file)
+            # Extract screenshots from the normalized video
+            extract_screenshots_logic(result)
 
             console.print(f"[green]Normalized: {video_file.stem}[/green]")
 
@@ -436,7 +455,10 @@ def upload(
         slug = video_dir.name
         console.print(f"\n[cyan]Processing: {slug}[/cyan]")
 
-        md_file = video_dir / f"{slug}.md"
+        md_file = video_dir / "metadata.md"
+        if not md_file.exists():
+            # Fallback to old naming convention
+            md_file = video_dir / f"{slug}.md"
         if not md_file.exists():
             console.print(f"[red]Metadata file not found: {md_file}[/red]")
             continue

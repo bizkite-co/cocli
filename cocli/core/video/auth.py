@@ -23,7 +23,7 @@ console = Console()
 
 DEVICE_AUTH_URL = "https://oauth2.googleapis.com/device/code"
 TOKEN_URL = "https://oauth2.googleapis.com/token"
-SCOPE = "https://www.googleapis.com/auth/youtube.upload"
+SCOPE = "https://www.googleapis.com/auth/youtube.upload https://www.googleapis.com/auth/youtube"
 
 
 class PasswordManager(ABC):
@@ -58,6 +58,8 @@ class DeviceCodeAuth:
 
     def get_device_code(self, client_id: str) -> dict[str, Any]:
         """Initiate device code flow."""
+        console.print(f"[dim]Using scope: {SCOPE}[/dim]")
+        console.print(f"[dim]Using client_id: {client_id}[/dim]")
         response = requests.post(
             DEVICE_AUTH_URL,
             data={
@@ -68,6 +70,10 @@ class DeviceCodeAuth:
         )
         logger.debug(f"Device code response status: {response.status_code}")
         logger.debug(f"Device code response body: {response.text}")
+        if response.status_code != 200:
+            raise Exception(
+                f"Device code request failed: {response.status_code} - {response.text}"
+            )
         response.raise_for_status()
         return response.json()  # type: ignore[no-any-return]
 
