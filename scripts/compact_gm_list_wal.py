@@ -22,6 +22,8 @@ Usage:
 """
 
 import argparse
+import hashlib
+import json
 import logging
 import sys
 from pathlib import Path
@@ -43,11 +45,38 @@ SHARDS_DIR = (
     DATA_DIR / "campaigns" / "roadmap" / "queues" / "gm-list" / "completed" / "shards"
 )
 WAL_DIR = SHARDS_DIR / "wal"
+WORKER_JSON = SHARDS_DIR / "worker.json"
 
 sys.path.insert(0, str(REPO_DIR))
 from cocli.core.sharding import get_place_id_shard
 
 USV_DELIM = "\x1f"
+
+
+def compute_self_hash() -> str:
+    """Compute SHA256 hash of this worker script."""
+    content = Path(__file__).read_bytes()
+    return f"sha256:{hashlib.sha256(content).hexdigest()}"
+
+
+def validate_worker() -> bool:
+    """Validate this worker against worker.json in data directory."""
+    if not WORKER_JSON.exists():
+        logger.warning(f"worker.json not found at {WORKER_JSON}")
+        return False
+    
+    with open(WORKER_JSON) as f:
+        worker_config = json.load(f)
+    
+    expected_hash = worker_config.get("hash", "")
+    actual_hash = compute_self_hash()
+    
+    if expected_hash != actual_hash:
+        logger.error(f"Worker hash mismatch! Expected {expected_hash}, got {actual_hash}")
+        return False
+    
+    logger.info(f"Worker validated: {actual_hash}")
+    return True
 
 
 def get_shard_index_path(shard_char: str) -> Path:
@@ -220,6 +249,10 @@ def main():
     )
 
     args = parser.parse_args()
+
+    if not validate_worker():
+        logger.error("Worker validation failed! Aborting.")
+        sys.exit(1)
 
     if args.write or args.full:
         logger.info("=== Stage 1: Write to WAL ===")
