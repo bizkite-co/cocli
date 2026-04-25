@@ -47,10 +47,27 @@ SHARDS_DIR = (
 WAL_DIR = SHARDS_DIR / "wal"
 WORKER_JSON = SHARDS_DIR / "worker.json"
 
+REGISTRY_JSON = DATA_DIR / ".registry" / "index-workers" / "gm-list-compactor" / "worker.json"
+CAMPAIGN_REGISTRY_JSON = SHARDS_DIR.parent / "registry" / "gm-list-compactor.json"
+
 sys.path.insert(0, str(REPO_DIR))
 from cocli.core.sharding import get_place_id_shard
 
 USV_DELIM = "\x1f"
+
+
+def find_worker_json() -> Path | None:
+    """Find worker.json - check campaign registry first, then global registry, then legacy location."""
+    if CAMPAIGN_REGISTRY_JSON.exists():
+        logger.info(f"Using campaign registry: {CAMPAIGN_REGISTRY_JSON}")
+        return CAMPAIGN_REGISTRY_JSON
+    if REGISTRY_JSON.exists():
+        logger.info(f"Using global registry: {REGISTRY_JSON}")
+        return REGISTRY_JSON
+    if WORKER_JSON.exists():
+        logger.info(f"Using legacy worker.json: {WORKER_JSON}")
+        return WORKER_JSON
+    return None
 
 
 def compute_self_hash() -> str:
@@ -60,12 +77,13 @@ def compute_self_hash() -> str:
 
 
 def validate_worker() -> bool:
-    """Validate this worker against worker.json in data directory."""
-    if not WORKER_JSON.exists():
-        logger.warning(f"worker.json not found at {WORKER_JSON}")
+    """Validate this worker against worker.json in registry."""
+    worker_config_path = find_worker_json()
+    if not worker_config_path:
+        logger.warning(f"No worker.json found. Check: {CAMPAIGN_REGISTRY_JSON} or {REGISTRY_JSON}")
         return False
     
-    with open(WORKER_JSON) as f:
+    with open(worker_config_path) as f:
         worker_config = json.load(f)
     
     expected_hash = worker_config.get("hash", "")
