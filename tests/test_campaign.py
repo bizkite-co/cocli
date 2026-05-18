@@ -2,8 +2,6 @@ import pytest
 from pytest_bdd import scenario, given, when, then, parsers
 import toml
 
-from cocli.main import app
-
 import shlex
 
 @pytest.fixture
@@ -33,9 +31,9 @@ def data_dir(temp_data_dir, mocker):
     return temp_data_dir
 
 @when(parsers.parse('the user runs "{command}"'), target_fixture="cli_result")
-def run_command(runner, command):
+def run_command(runner, cli_app, command):
     args = shlex.split(command)
-    result = runner.invoke(app, args[1:]) # Skip 'cocli'
+    result = runner.invoke(cli_app, args[1:]) # Skip 'cocli'
     return result
 
 @then('the command should exit successfully')

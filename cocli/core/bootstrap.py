@@ -33,4 +33,7 @@ def setup_environment() -> None:
 
     if env_updates:
         os.environ.update(env_updates)
+        # Skip execv when running in test mode to avoid disrupting pytest
+        if os.environ.get("COCLI_ENV") == "test":
+            return
         os.execv(sys.executable, [sys.executable] + sys.argv)

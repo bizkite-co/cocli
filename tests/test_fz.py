@@ -3,7 +3,6 @@ from click.testing import CliRunner
 from slugify import slugify
 import typer
 
-from cocli.main import app
 from cocli.core.paths import paths
 from cocli.core.cache import build_cache
 
@@ -28,7 +27,7 @@ def setup_test_environment(mock_cocli_env, mocker):
     build_cache()
     return company_name, mock_cocli_env
 
-def test_fz_finds_and_views_company(setup_test_environment, mocker):
+def test_fz_finds_and_views_company(cli_app, setup_test_environment, mocker):
     """
     Integration test for the fz command.
     """
@@ -52,14 +51,14 @@ def test_fz_finds_and_views_company(setup_test_environment, mocker):
     mock_run_fzf.return_value = display_str
 
     # Get the click object from typer for CliRunner
-    click_app = typer.main.get_command(app)
+    click_app = typer.main.get_command(cli_app)
     result = runner.invoke(click_app, ["fz"])
 
     assert result.exit_code == 0
     assert mock_run_fzf.called
     mock_view_company.assert_called_once_with(company_slug=company_slug)
 
-def test_fz_with_none_filter_in_config(setup_test_environment, mocker):
+def test_fz_with_none_filter_in_config(cli_app, setup_test_environment, mocker):
     """
     Tests that the fz command correctly handles a context filter with the literal value "None".
     """
@@ -82,7 +81,7 @@ def test_fz_with_none_filter_in_config(setup_test_environment, mocker):
     mock_run_fzf = mocker.patch('cocli.commands.fz.run_fzf')
     mock_run_fzf.return_value = display_str
 
-    click_app = typer.main.get_command(app)
+    click_app = typer.main.get_command(cli_app)
     result = runner.invoke(click_app, ["fz"])
 
     assert result.exit_code == 0

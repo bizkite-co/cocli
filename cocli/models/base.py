@@ -339,7 +339,7 @@ class BaseUsvModel(BaseModel):
                     "name": resource_name,
                     "path": pattern,
                     "format": "usv",
-                    "dialect": {"delimiter": UNIT_SEP, "header": False},
+                    "dialect": {"delimiter": UNIT_SEP, "header": getattr(cls, "HEADER", False)},
                     "schema": {"fields": cls.get_datapackage_fields()},
                 }
             ],
@@ -502,6 +502,53 @@ class BaseUsvModel(BaseModel):
 
         with open(sentinel_path, "w") as f:
             json.dump(new_schema, f, indent=2)
+
+    @classmethod
+    def append_resource_to_datapackage(
+        cls, directory: Path, resource_name: str, pattern: str
+    ) -> Path:
+        """
+        Appends or updates a resource entry in an existing datapackage.json.
+
+        If the datapackage.json already contains a resource with the same name,
+        the entry is updated in place. Otherwise a new resource is appended.
+        Returns the path to the sentinel file.
+        """
+        sentinel = directory / "datapackage.json"
+        new_resource = {
+            "name": resource_name,
+            "path": pattern,
+            "format": "usv",
+            "dialect": {"delimiter": UNIT_SEP, "header": getattr(cls, "HEADER", False)},
+            "schema": {"fields": cls.get_datapackage_fields()},
+        }
+        new_hash = cls.get_schema_hash()
+
+        dp = {}
+        if sentinel.exists():
+            with open(sentinel) as f:
+                dp = json.load(f)
+
+        dp.setdefault("profile", "tabular-data-package")
+        dp.setdefault("name", resource_name)
+        dp.setdefault("resources", [])
+
+        existing = [r for r in dp["resources"] if r.get("name") == resource_name]
+        if existing:
+            existing[0].update(new_resource)
+        else:
+            dp["resources"].append(new_resource)
+
+        dp.setdefault("cocli:schema_hash", {})[resource_name] = new_hash
+        dp.setdefault("cocli:schema_updated_at", getattr(cls, "SCHEMA_UPDATED_AT", ""))
+
+        with open(sentinel, "w") as f:
+            json.dump(dp, f, indent=2)
+
+        logger.info(
+            f"Appended resource '{resource_name}' (hash {new_hash[:8]}) to {sentinel}"
+        )
+        return sentinel
 
     @classmethod
     def save_usv_with_datapackage(

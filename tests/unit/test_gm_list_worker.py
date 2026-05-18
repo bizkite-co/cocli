@@ -1,9 +1,6 @@
 """Unit tests for gm-list compactor worker validation."""
 
-import hashlib
 import json
-import pytest
-from pathlib import Path
 
 
 def test_compute_self_hash():
@@ -20,7 +17,7 @@ def test_compute_self_hash():
 def test_find_worker_json_priority(tmp_path):
     """Test that find_worker_json checks paths in priority order."""
     from scripts.compact_gm_list_wal import (
-        find_worker_json, DATA_DIR, SHARDS_DIR, REGISTRY_JSON, CAMPAIGN_REGISTRY_JSON, WORKER_JSON
+        find_worker_json
     )
     
     # Create test structure
@@ -92,7 +89,7 @@ def test_find_worker_json_priority(tmp_path):
 def test_validate_worker_success(tmp_path):
     """Test that validation passes with matching hash."""
     from scripts.compact_gm_list_wal import (
-        validate_worker, REGISTRY_JSON, CAMPAIGN_REGISTRY_JSON
+        validate_worker
     )
     import scripts.compact_gm_list_wal as module
     

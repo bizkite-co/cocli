@@ -437,11 +437,18 @@ class QueueDetail(VerticalScroll):
             rating_val = float(rating) if rating != "-" else 0.0
             reviews_val = int(reviews) if reviews != "-" else 0
 
-            reviewed_item = GmListReviewedItem.create(
-                place_id=place_id,
-                average_rating=rating_val,
-                reviews_count=reviews_val,
-            )
+            reviewed_entries = [
+                GmListReviewedItem(
+                    place_id=place_id,
+                    field_name="average_rating",
+                    expected=str(rating_val),
+                ),
+                GmListReviewedItem(
+                    place_id=place_id,
+                    field_name="reviews_count",
+                    expected=str(reviews_val),
+                ),
+            ]
 
             # Write header if model defines HEADER = True (first write only)
             if GmListReviewedItem.HEADER and not reviewed_path.exists():
@@ -449,7 +456,8 @@ class QueueDetail(VerticalScroll):
                     f.write(GmListReviewedItem.get_header())
 
             with open(reviewed_path, "a", encoding="utf-8") as f:
-                f.write(reviewed_item.to_usv())
+                for entry in reviewed_entries:
+                    f.write(entry.to_usv())
 
             self.app.notify(f"Reviewed: {biz_name[:30]} | {rating} ({reviews})")
             saved_idx = self.audit_selected_idx
@@ -737,11 +745,18 @@ class QueueDetail(VerticalScroll):
             rating_val = float(rating) if rating != "-" else 0.0
             reviews_val = int(reviews) if reviews != "-" else 0
 
-            reviewed_item = GmListReviewedItem.create(
-                place_id=place_id,
-                average_rating=rating_val,
-                reviews_count=reviews_val,
-            )
+            reviewed_entries = [
+                GmListReviewedItem(
+                    place_id=place_id,
+                    field_name="average_rating",
+                    expected=str(rating_val),
+                ),
+                GmListReviewedItem(
+                    place_id=place_id,
+                    field_name="reviews_count",
+                    expected=str(reviews_val),
+                ),
+            ]
 
             # Write header if model defines HEADER = True (first write only)
             if GmListReviewedItem.HEADER and not reviewed_path.exists():
@@ -749,7 +764,8 @@ class QueueDetail(VerticalScroll):
                     f.write(GmListReviewedItem.get_header())
 
             with open(reviewed_path, "a", encoding="utf-8") as f:
-                f.write(reviewed_item.to_usv())
+                for entry in reviewed_entries:
+                    f.write(entry.to_usv())
 
             self.app.notify(f"Reviewed: {biz_name[:30]} | {rating} ({reviews})")
             self.is_editing = False

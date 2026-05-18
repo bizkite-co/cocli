@@ -1,6 +1,5 @@
 from cocli.models.campaigns.indexes.google_maps_list_item import GoogleMapsListItem
 from typer.testing import CliRunner
-from cocli.main import app
 import pytest
 from unittest.mock import AsyncMock, MagicMock
 
@@ -140,8 +139,8 @@ queries = ["software company"]
     )
 
 
-def test_achieve_goal(mock_achieve_goal_dependencies):
+def test_achieve_goal(cli_app, mock_achieve_goal_dependencies):
     result = runner.invoke(
-        app, ["campaign", "achieve-goal", "--emails", "1"], catch_exceptions=False
+        cli_app, ["campaign", "achieve-goal", "--emails", "1"], catch_exceptions=False
     )
     assert result.exit_code == 0

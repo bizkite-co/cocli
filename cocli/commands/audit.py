@@ -3,6 +3,8 @@ from typing import Optional, Any, List
 from pathlib import Path
 
 from rich.console import Console
+from rich.table import Table
+from rich.prompt import Prompt
 
 app = typer.Typer(
     help="Auditing tools for the cocli system structure and integrity.",
@@ -11,6 +13,31 @@ app = typer.Typer(
 queue_app = typer.Typer(help="Audit specific queues.")
 app.add_typer(queue_app, name="queue")
 console = Console()
+
+
+def _run_async(coro: Any) -> Any:
+    """Run a coroutine from a sync context, avoiding event-loop conflicts."""
+    import asyncio
+    try:
+        asyncio.get_running_loop()
+    except RuntimeError:
+        return asyncio.run(coro)
+    import threading
+    result: list[Any] = []
+    exc: list[Exception] = []
+    def _target() -> None:
+        try:
+            new_loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(new_loop)
+            result.append(new_loop.run_until_complete(coro))
+        except Exception as e:
+            exc.append(e)
+    t = threading.Thread(target=_target, daemon=True)
+    t.start()
+    t.join()
+    if exc:
+        raise exc[0]
+    return result[0] if result else None
 
 
 @queue_app.command(name="gm-list")
@@ -515,3 +542,546 @@ def audit_gm_list_html(
 
     result = run_html_audit(campaign, limit=limit, output_name=output)
     console.print(f"[green]Audit results saved to: {result}[/green]")
+
+
+@queue_app.command(name="validate")
+def audit_validate(
+    campaign: str = typer.Argument("roadmap", help="Campaign name"),
+    tile: str = typer.Option(
+        None, "--tile", help="Grid tile coordinates as lat,lon (e.g. 34.1,-118.4)"
+    ),
+    phrase: str = typer.Option(
+        None, "--phrase", "-p", help="Search phrase to scrape and review"
+    ),
+    usv_path: Path = typer.Option(
+        None,
+        "--usv-path",
+        help="Path to existing USV file (skip scrape, review offline)",
+        exists=False,
+    ),
+    headless_scrape: bool = typer.Option(
+        True, "--headless/--headed", help="Run scrape in headless mode"
+    ),
+    limit: int = typer.Option(
+        0, "--limit", "-n", help="Max records to review (0 = all)"
+    ),
+) -> None:
+    """
+    Human-in-the-loop validation for gm-list results.
+
+    Two modes:
+      ONLINE  (--tile + --phrase): scrapes live, saves USV, then reviews.
+      OFFLINE (--usv-path):         reviews an existing USV file.
+
+    For each company, walks through fields and prompts for corrections.
+    Only corrected fields are saved as GmListReviewedItem entries.
+
+    Examples:
+      cocli audit queue validate roadmap --tile 34.1,-118.4 --p "financial-advisor"
+      cocli audit queue validate --usv-path data/.../results/3/34.1/-118.4/foo.usv
+    """
+    import csv
+    import sys
+    from datetime import datetime, UTC
+
+    from ..core.paths import paths
+    from ..core.text_utils import slugify
+    from ..models.campaigns.indexes.google_maps_list_item import GoogleMapsListItem
+    from ..models.campaigns.indexes.gm_list_audit_log_item import GmListAuditLogItem
+    from ..models.campaigns.indexes.gm_list_reviewed_item import GmListReviewedItem
+    from ..application.processors.gm_list import GmListProcessor
+
+    if usv_path:
+        mode = "offline"
+        if not usv_path.exists():
+            console.print(f"[red]Error: USV file not found: {usv_path}[/red]")
+            raise typer.Exit(1)
+        console.print(f"[bold]Offline review:[/bold] [cyan]{usv_path}[/cyan]")
+    elif tile and phrase:
+        mode = "online"
+        try:
+            parts = tile.split(",")
+            lat = float(parts[0].strip())
+            lon = float(parts[1].strip())
+        except (ValueError, IndexError):
+            console.print("[red]--tile must be lat,lon (e.g. 34.1,-118.4)[/red]")
+            raise typer.Exit(1)
+        phrase_slug = slugify(phrase)
+        console.print(f"[bold]Online review:[/bold] [cyan]{phrase}[/cyan] at [cyan]{tile}[/cyan]")
+    else:
+        console.print("[red]Provide --tile + --phrase (online) OR --usv-path (offline).[/red]")
+        raise typer.Exit(1)
+
+    # Step 1: Scrape (online mode only)
+    items = []
+    if mode == "online":
+        console.print("\n[bold yellow]Step 1: Running headless scrape...[/bold yellow]")
+        from ..models.campaigns.queues.gm_list import ScrapeTask
+        from ..core.sharding import get_geo_shard, get_grid_tile_id
+
+        lat_shard = get_geo_shard(lat)
+        grid_id = get_grid_tile_id(lat, lon)
+        lat_tile_v, lon_tile_v = grid_id.split("_")
+
+        async def run_scrape() -> list[Any]:
+            from playwright.async_api import async_playwright
+            from ..scrapers.google.gm_scraper.coordinator import ScrapeCoordinator
+
+            async with async_playwright() as pw:
+                browser = await pw.chromium.launch(headless=headless_scrape)
+                try:
+                    coordinator = ScrapeCoordinator(
+                        browser, campaign_name=campaign, debug=False
+                    )
+                    scraped = []
+                    scrape_limit = limit if limit > 0 else 20
+                    async for item in coordinator.run(
+                        start_lat=lat,
+                        start_lon=lon,
+                        search_phrases=[phrase],
+                        force_refresh=True,
+                    ):
+                        scraped.append(item)
+                        if len(scraped) >= scrape_limit:
+                            break
+                    return scraped
+                finally:
+                    await browser.close()
+
+        items = _run_async(run_scrape())
+
+        if not items:
+            console.print("[yellow]No items scraped. Skipping review but recording audit log.[/yellow]")
+        else:
+            task = ScrapeTask(
+                latitude=lat,  # type: ignore[arg-type]
+                longitude=lon,  # type: ignore[arg-type]
+                zoom=15,
+                search_phrase=phrase,
+                campaign_name=campaign,
+                force_refresh=True,
+                ack_token=f"validate-{phrase_slug}-{datetime.now(UTC).timestamp()}",
+            )
+            processor = GmListProcessor(processed_by="audit-validate")
+            _run_async(processor.process_results(task, items))
+            console.print(f"[green]  Scraped {len(items)} companies. Saved to results/[/green]")
+
+            usv_path = (
+                paths.queue(campaign, "gm-list").completed
+                / "results"
+                / lat_shard
+                / lat_tile_v
+                / lon_tile_v
+                / f"{phrase_slug}.usv"
+            )
+
+    # Step 2: Locate / read USV records
+    if not usv_path or not usv_path.exists():
+        console.print("[red]No USV file available for review.[/red]")
+        raise typer.Exit(1)
+
+    field_names = list(GoogleMapsListItem.model_fields.keys())
+    excluded = {n for n, f in GoogleMapsListItem.model_fields.items() if f.exclude}
+    review_skip = {"place_id", "company_slug"}
+    display_fields = [n for n in field_names if n not in excluded and n not in review_skip]
+
+    records = []
+    with open(usv_path, "r", encoding="utf-8") as f:
+        reader = csv.reader(f, delimiter="\x1f")
+        for row in reader:
+            if row:
+                while len(row) < len(field_names):
+                    row.append("")
+                records.append(row[: len(field_names)])
+
+    console.print(f"[dim]  Read {len(records)} records from {usv_path}[/dim]")
+
+    # Step 3: Record audit log entry
+    audit_dir = paths.queue(campaign, "gm-list").pending / "audit"
+    audit_dir.mkdir(parents=True, exist_ok=True)
+
+    try:
+        records_file = str(usv_path.relative_to(paths.queue(campaign, "gm-list").completed))
+    except ValueError:
+        records_file = str(usv_path.name)
+
+    log_item = GmListAuditLogItem.create(
+        tile=str(usv_path.parent),
+        search_phrase=phrase or usv_path.stem,
+        total_companies=len(items) if mode == "online" else len(records),
+        records_file=records_file,
+        usv_count=len(records),
+        scraper_version="audit-validate",
+    )
+    audit_log = audit_dir / "gm_list_audit_log.usv"
+    with open(audit_log, "a", encoding="utf-8") as f:
+        f.write(log_item.to_usv())
+    GmListAuditLogItem.append_resource_to_datapackage(
+        audit_dir, "gm_list_audit_log", "gm_list_audit_log.usv"
+    )
+    console.print(f"[green]  Audit log entry saved to {audit_log}[/green]")
+
+    # Step 4: Interactive field-level review
+    console.print("\n[bold yellow]Step 4: Field-level review[/bold yellow]")
+    console.print("[dim]For each company, review the scraped fields.[/dim]")
+    console.print("[dim]    - Press Enter to keep the current value[/dim]")
+    console.print("[dim]    - Type a correction to overwrite[/dim]")
+    console.print("[dim]    - Type [bold].skip[/bold] to skip this record[/dim]\n")
+
+    # Open Google Maps search in headed Playwright browser for visual comparison
+    try:
+        usv_str = str(usv_path.resolve())
+        parts = usv_str.split("/")
+        try:
+            ri = next(i for i, p in enumerate(parts) if p == "results")
+            ref_lat = parts[ri + 2]
+            ref_lon = parts[ri + 3]
+            phrase = parts[ri + 4].replace(".usv", "")
+        except (StopIteration, IndexError):
+            ref_lat = ref_lon = phrase = None  # type: ignore[assignment]
+
+        if ref_lat and ref_lon and phrase:
+            search_url = f"https://www.google.com/maps/search/{phrase}/@{ref_lat},{ref_lon},13z"
+            console.print(f"[dim]  Opening reference browser: {search_url}[/dim]")
+
+            import threading
+            import asyncio
+
+            def _open_ref_browser(url: str) -> None:
+                try:
+                    async def _run() -> None:
+                        from playwright.async_api import async_playwright
+                        async with async_playwright() as pw:
+                            browser = await pw.chromium.launch(
+                                headless=False,
+                                args=["--start-maximized"]
+                            )
+                            context = await browser.new_context(no_viewport=True)
+                            page = await context.new_page()
+                            await page.goto(url, wait_until="domcontentloaded")
+                            while True:
+                                await asyncio.sleep(3600)
+                    asyncio.run(_run())
+                except Exception:
+                    pass
+
+            console.print("[dim]  Launching reference browser...[/dim]")
+            t = threading.Thread(target=_open_ref_browser, args=(search_url,), daemon=True)
+            t.start()
+    except Exception:
+        pass
+
+    # Load existing corrections
+    reviewed_path = audit_dir / "gm_list_reviewed.usv"
+
+    already_reviewed: set[str] = set()
+    if reviewed_path.exists():
+        with open(reviewed_path, "r", encoding="utf-8") as f:
+            for line in f:
+                parts = line.strip().split("\x1f")
+                if len(parts) >= 1 and parts[0]:
+                    already_reviewed.add(parts[0])
+
+    # Ensure datapackage includes all resources
+    for model_cls, name, path in [
+        (GmListReviewedItem, "gm_list_reviewed", "gm_list_reviewed.usv"),
+        (GmListAuditLogItem, "gm_list_audit_log", "gm_list_audit_log.usv"),
+    ]:
+        model_cls.append_resource_to_datapackage(audit_dir, name, path)  # type: ignore[attr-defined]
+
+    reviewed_count = 0
+    skipped_count = 0
+    corrected_count = 0
+
+    for idx, record in enumerate(records):
+        if limit > 0 and idx >= limit:
+            break
+
+        place_id = record[0] if len(record) > 0 else ""
+
+        if place_id and place_id in already_reviewed:
+            skipped_count += 1
+            continue
+
+        if not sys.stdin.isatty():
+            console.print(f"  [{idx + 1}/{len(records)}] {record[2] if len(record) > 2 else '?'} (non-TTY, skipped)")
+            continue
+
+        name = record[2] if len(record) > 2 else "?"
+        console.print(f"\n[bold cyan]─── [{idx + 1}/{len(records)}] {name} ───[/bold cyan]")
+        if place_id:
+            console.print(f"[dim]{place_id}[/dim]")
+
+        changes = {}
+        skipped_record = False
+
+        for field_name in display_fields:
+            fi = field_names.index(field_name)
+            if fi >= len(record):
+                break
+            current_val = record[fi].strip()
+
+            disp = current_val[:60] + "..." if len(current_val) > 60 else current_val
+            prompt_text = f"  {field_name:<18} [{disp}]"
+            try:
+                corrected = Prompt.ask(prompt_text, default=current_val, show_default=False).strip()
+            except TypeError:
+                corrected = Prompt.ask(prompt_text, default=current_val).strip()
+
+            if corrected.lower() == ".skip":
+                skipped_record = True
+                break
+            if corrected != current_val:
+                changes[field_name] = corrected
+
+        if not skipped_record and changes:
+            header_needed = not reviewed_path.exists() or reviewed_path.stat().st_size == 0
+            with open(reviewed_path, "a", encoding="utf-8") as f:
+                if header_needed and GmListReviewedItem.HEADER:
+                    f.write(GmListReviewedItem.get_header())
+                for field_name, val in changes.items():
+                    item = GmListReviewedItem(
+                        place_id=place_id,
+                        field_name=field_name,
+                        expected=val,
+                    )
+                    f.write(item.to_usv())
+            corrected_count += len(changes)
+            if place_id:
+                already_reviewed.add(place_id)
+
+        reviewed_count += 1
+
+    # Summary
+    console.print("\n[bold]─── Validation Summary ───[/bold]")
+    table = Table()
+    table.add_column("Metric", style="cyan")
+    table.add_column("Count", justify="right")
+    table.add_row("Records in USV", str(len(records)))
+    table.add_row("Reviewed interactively", str(reviewed_count))
+    table.add_row("Skipped (already done)", str(skipped_count))
+    table.add_row("Field corrections", str(corrected_count))
+    console.print(table)
+    console.print(f"\n[green]Audit log:[/green] {audit_log}")
+    if reviewed_path.exists():
+        console.print(f"[green]Reviewed:[/green]    {reviewed_path}")
+    console.print("[green]Done.[/green]")
+
+
+@queue_app.command(name="replay")
+def audit_replay(
+    campaign: str = typer.Argument("roadmap", help="Campaign name"),
+    usv_path: Path = typer.Argument(
+        ..., help="Path to a USV results file to apply corrections to", exists=True
+    ),
+    output: Path = typer.Option(
+        None,
+        "--output", "-o",
+        help="Output path for corrected USV (default: <original>.corrected.usv)",
+    ),
+    corrections_path: Path = typer.Option(
+        None,
+        "--corrections",
+        help="Path to GmListCorrectionItem USV (default: <campaign>/audit/gm_list_corrections.usv)",
+    ),
+    reviewed_path_opt: Path = typer.Option(
+        None,
+        "--reviewed",
+        help="Path to GmListReviewedItem USV (default: <campaign>/audit/gm_list_reviewed.usv)",
+    ),
+) -> None:
+    """
+    Replay audit corrections onto a USV results file.
+
+    Reads the original USV file, applies all field-level corrections
+    from gm_list_corrections.usv and gm_list_reviewed.usv.
+
+    Example:
+        cocli audit queue replay roadmap \\
+          data/.../results/3/34.1/-118.4/financial-advisor.usv
+    """
+    from collections import defaultdict
+    from ..models.campaigns.indexes.google_maps_list_item import GoogleMapsListItem
+    from ..core.paths import paths
+
+    audit_dir = paths.queue(campaign, "gm-list").pending / "audit"
+
+    if not corrections_path:
+        corrections_path = audit_dir / "gm_list_corrections.usv"
+    if not reviewed_path_opt:
+        reviewed_path_opt = audit_dir / "gm_list_reviewed.usv"
+
+    # 1. Load corrections
+    field_corrections: dict[str, dict[str, str]] = defaultdict(dict)
+    if corrections_path.exists():
+        with open(corrections_path, "r", encoding="utf-8") as f:
+            for line in f:
+                parts = line.strip().split("\x1f")
+                if len(parts) >= 4:
+                    place_id = parts[0]
+                    field_name = parts[1]
+                    corrected_val = parts[3]
+                    field_corrections[place_id][field_name] = corrected_val
+        console.print(f"[dim]  Loaded {sum(len(v) for v in field_corrections.values())} corrections for {len(field_corrections)} place_ids[/dim]")
+
+    # 2. Load reviewed entries (field-level diffs)
+    reviewed_overrides: dict[str, dict[str, str]] = defaultdict(dict)
+    if reviewed_path_opt.exists():
+        with open(reviewed_path_opt, "r", encoding="utf-8") as f:
+            for line in f:
+                parts = line.strip().split("\x1f")
+                if len(parts) >= 3:
+                    place_id = parts[0]
+                    field_name = parts[1]
+                    expected_val = parts[2]
+                    if field_name and expected_val:
+                        reviewed_overrides[place_id][field_name] = expected_val
+        console.print(f"[dim]  Loaded {sum(len(v) for v in reviewed_overrides.values())} field-level reviewed entries for {len(reviewed_overrides)} place_ids[/dim]")
+
+    # 3. Read & transform USV records
+    field_names = list(GoogleMapsListItem.model_fields.keys())
+    excluded = {n for n, f in GoogleMapsListItem.model_fields.items() if f.exclude}
+    display_names = [n for n in field_names if n not in excluded]
+
+    import csv
+    records: list[list[str]] = []
+    with open(usv_path, "r", encoding="utf-8") as f:
+        reader = csv.reader(f, delimiter="\x1f")
+        for row in reader:
+            if row:
+                while len(row) < len(field_names):
+                    row.append("")
+                row = row[: len(field_names)]
+                records.append(row)
+
+    applied_count = 0
+    reviewed_applied = 0
+    for row in records:
+        place_id = row[0] if len(row) > 0 else ""
+        if not place_id:
+            continue
+
+        all_overrides = field_corrections.get(place_id, {}).copy()
+        if place_id in reviewed_overrides:
+            all_overrides.update(reviewed_overrides[place_id])
+
+        if all_overrides:
+            for fi, fn in enumerate(display_names):
+                if fn in all_overrides:
+                    row[fi] = all_overrides[fn]
+                    if fn in field_corrections.get(place_id, {}):
+                        applied_count += 1
+                    else:
+                        reviewed_applied += 1
+
+    # 4. Write corrected output
+    output_path = output or usv_path.with_suffix(".corrected.usv")
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    with open(output_path, "w", encoding="utf-8") as f:
+        for row in records:
+            f.write("\x1f".join(row) + "\x1e\n")
+
+    console.print(f"[green]  Corrected USV written to: {output_path}[/green]")
+    table = Table(title="Replay Summary")
+    table.add_column("Metric", style="cyan")
+    table.add_column("Count", justify="right")
+    table.add_row("Records in source USV", str(len(records)))
+    table.add_row("Field corrections applied", str(applied_count))
+    table.add_row("Rating/review overrides", str(reviewed_applied))
+    console.print(table)
+
+
+@queue_app.command(name="export-cases")
+def audit_export_cases(
+    campaign: str = typer.Argument("roadmap", help="Campaign name"),
+    tile: str = typer.Option(
+        None, "--tile", help="Grid tile coordinates as lat,lon (e.g. 34.1,-118.4)"
+    ),
+    phrase: str = typer.Option(
+        None, "--phrase", "-p", help="Search phrase"
+    ),
+) -> None:
+    """
+    Export field-level corrections as parametrized test cases.
+
+    Reads reviewed corrections from pending/audit/gm_list_reviewed.usv,
+    resolves the raw HTML path for each place_id, and writes
+    tests/data/maps.google.com/field_extraction_cases.usv.
+
+    Example:
+        cocli audit queue export-cases --tile 29.1,-98.4 --phrase financial-advisor
+    """
+    from ..core.paths import paths
+
+    # Read reviewed corrections
+    reviewed_path = paths.queue(campaign, "gm-list").pending / "audit" / "gm_list_reviewed.usv"
+    if not reviewed_path.exists():
+        console.print("[red]No gm_list_reviewed.usv found. Run audit validate first.[/red]")
+        raise typer.Exit(1)
+
+    import csv
+    corrections: list[tuple[str, str, str]] = []
+    with open(reviewed_path, "r", encoding="utf-8") as f:
+        reader = csv.reader(f, delimiter="\x1f")
+        for row in reader:
+            if len(row) >= 3 and row[0].startswith("ChIJ"):
+                corrections.append((row[0], row[1], row[2]))
+
+    if not corrections:
+        console.print("[yellow]No corrections found in reviewed file.[/yellow]")
+        return
+
+    console.print(f"[dim]  Loaded {len(corrections)} corrections[/dim]")
+
+    # Resolve raw HTML paths by searching the raw/gm-list directory
+    raw_base = paths.campaign(campaign).path / "raw" / "gm-list"
+    if not raw_base.exists():
+        console.print(f"[red]Raw HTML directory not found: {raw_base}[/red]")
+        raise typer.Exit(1)
+
+    cases: list[tuple[str, str, str, Path]] = []
+    missing_html = 0
+    for place_id, field, expected in corrections:
+        html_path: Path | None = None
+        for html_file in raw_base.rglob(f"{place_id}.html"):
+            html_path = html_file
+            break
+        if html_path is None:
+            missing_html += 1
+            continue
+        cases.append((place_id, field, expected, html_path))
+
+    if not cases:
+        console.print("[yellow]No cases could be resolved (no matching HTML files).[/yellow]")
+        if missing_html:
+            console.print(f"[dim]  ({missing_html} corrections had no matching HTML)[/dim]")
+        return
+
+    # Copy HTML files into test data directory
+    test_data_dir = Path("tests/data/maps.google.com")
+    html_dir = test_data_dir / "html"
+    html_dir.mkdir(parents=True, exist_ok=True)
+
+    for place_id, field, expected, src_html in cases:
+        dst = html_dir / f"{place_id}.html"
+        if not dst.exists():
+            dst.write_bytes(src_html.read_bytes())
+
+    # Write test cases file (html_path relative to test_data_dir)
+    test_cases_path = test_data_dir / "field_extraction_cases.usv"
+    HEADER_LINE = "\x1f".join(["place_id", "field", "expected", "html_path"])
+    with open(test_cases_path, "w", encoding="utf-8") as f:
+        f.write(HEADER_LINE + "\n")
+        for place_id, field, expected, _ in cases:
+            html_rel = f"html/{place_id}.html"
+            f.write("\x1f".join([place_id, field, expected, html_rel]) + "\n")
+
+    console.print(f"[green]  {len(cases)} test cases written to: {test_cases_path}[/green]")
+    if missing_html:
+        console.print(f"[dim]  ({missing_html} corrections skipped — no matching HTML file)[/dim]")
+
+    # Also update datapackage
+    from ..models.campaigns.indexes.gm_list_reviewed_item import GmListReviewedItem
+    GmListReviewedItem.append_resource_to_datapackage(
+        test_data_dir, "field_extraction_cases", "field_extraction_cases.usv"
+    )
