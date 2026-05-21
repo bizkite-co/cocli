@@ -5,7 +5,7 @@ from pathlib import Path
 from rich.console import Console
 from rich.table import Table
 from rich.prompt import Prompt
-
+from rich.markup import escape
 app = typer.Typer(
     help="Auditing tools for the cocli system structure and integrity.",
     no_args_is_help=True,
@@ -18,10 +18,6 @@ console = Console()
 def _run_async(coro: Any) -> Any:
     """Run a coroutine from a sync context, avoiding event-loop conflicts."""
     import asyncio
-    try:
-        asyncio.get_running_loop()
-    except RuntimeError:
-        return asyncio.run(coro)
     import threading
     result: list[Any] = []
     exc: list[Exception] = []
@@ -30,6 +26,7 @@ def _run_async(coro: Any) -> Any:
             new_loop = asyncio.new_event_loop()
             asyncio.set_event_loop(new_loop)
             result.append(new_loop.run_until_complete(coro))
+            new_loop.close()
         except Exception as e:
             exc.append(e)
     t = threading.Thread(target=_target, daemon=True)
@@ -559,8 +556,8 @@ def audit_validate(
         help="Path to existing USV file (skip scrape, review offline)",
         exists=False,
     ),
-    headless_scrape: bool = typer.Option(
-        True, "--headless/--headed", help="Run scrape in headless mode"
+    headed: bool = typer.Option(
+        False, "--headed", help="Run scrape in headed mode"
     ),
     limit: int = typer.Option(
         0, "--limit", "-n", help="Max records to review (0 = all)"
@@ -615,7 +612,8 @@ def audit_validate(
     # Step 1: Scrape (online mode only)
     items = []
     if mode == "online":
-        console.print("\n[bold yellow]Step 1: Running headless scrape...[/bold yellow]")
+        scrape_type = "headless" if not headed else "headed"
+        console.print(f"\n[bold yellow]Step 1: Running {scrape_type} scrape...[/bold yellow]")
         from ..models.campaigns.queues.gm_list import ScrapeTask
         from ..core.sharding import get_geo_shard, get_grid_tile_id
 
@@ -628,7 +626,7 @@ def audit_validate(
             from ..scrapers.google.gm_scraper.coordinator import ScrapeCoordinator
 
             async with async_playwright() as pw:
-                browser = await pw.chromium.launch(headless=headless_scrape)
+                browser = await pw.chromium.launch(headless=not headed)
                 try:
                     coordinator = ScrapeCoordinator(
                         browser, campaign_name=campaign, debug=False
@@ -822,7 +820,8 @@ def audit_validate(
             current_val = record[fi].strip()
 
             disp = current_val[:60] + "..." if len(current_val) > 60 else current_val
-            prompt_text = f"  {field_name:<18} [{disp}]"
+            # Escape brackets so rich doesn't interpret them as style tags (e.g. [purefinancial.com])
+            prompt_text = f"  {field_name:<18} \\[{escape(disp)}\\]"
             try:
                 corrected = Prompt.ask(prompt_text, default=current_val, show_default=False).strip()
             except TypeError:
@@ -834,19 +833,29 @@ def audit_validate(
             if corrected != current_val:
                 changes[field_name] = corrected
 
-        if not skipped_record and changes:
+        if not skipped_record:
             header_needed = not reviewed_path.exists() or reviewed_path.stat().st_size == 0
             with open(reviewed_path, "a", encoding="utf-8") as f:
                 if header_needed and GmListReviewedItem.HEADER:
                     f.write(GmListReviewedItem.get_header())
-                for field_name, val in changes.items():
+                if changes:
+                    for field_name, val in changes.items():
+                        item = GmListReviewedItem(
+                            place_id=place_id,
+                            field_name=field_name,
+                            expected=val,
+                        )
+                        f.write(item.to_usv())
+                    corrected_count += len(changes)
+                else:
+                    # Mark as reviewed even if no fields changed
                     item = GmListReviewedItem(
                         place_id=place_id,
-                        field_name=field_name,
-                        expected=val,
+                        field_name="_reviewed",
+                        expected="true",
                     )
                     f.write(item.to_usv())
-            corrected_count += len(changes)
+            
             if place_id:
                 already_reviewed.add(place_id)
 

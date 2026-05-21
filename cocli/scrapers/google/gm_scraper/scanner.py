@@ -110,6 +110,27 @@ class SidebarScraper:
                 data = parse_business_listing_html(html_content, search_string, debug=self.debug)
                 place_id = data.get("Place_ID")
 
+                # Geographic Filtering (Targeted Tiles)
+                # Google often intersperses results from outside the targeted area.
+                # We strictly enforce 0.1 degree tile bounds to prevent cross-tile duplication.
+                if tile_id:
+                    from .utils import get_tile_bounds
+                    bounds = get_tile_bounds(tile_id)
+                    if bounds:
+                        lat_val = data.get("Latitude")
+                        lon_val = data.get("Longitude")
+                        if lat_val and lon_val:
+                            try:
+                                lat_f = float(lat_val)
+                                lon_f = float(lon_val)
+                                if not (bounds["lat_min"] <= lat_f < bounds["lat_max"] and 
+                                        bounds["lon_min"] <= lon_f < bounds["lon_max"]):
+                                    if self.debug:
+                                        logger.debug(f"Skipping out-of-bounds result: {data.get('Name')} at {lat_f}, {lon_f} for tile {tile_id}")
+                                    continue
+                            except (ValueError, TypeError):
+                                pass
+
                 if place_id and place_id not in processed_place_ids:
                     processed_place_ids.add(place_id)
                     

@@ -19,7 +19,7 @@ from typing import (
 
 from pydantic import BaseModel, ValidationError
 
-from ..core.constants import UNIT_SEP, RECORD_SEP
+from ..core.constants import UNIT_SEP
 
 logger = logging.getLogger(__name__)
 
@@ -92,7 +92,7 @@ class BaseUsvModel(BaseModel):
         if not cls.HEADER:
             return ""
         field_names = list(cls.model_fields.keys())
-        return UNIT_SEP.join(field_names) + UNIT_SEP + "\n"
+        return UNIT_SEP.join(field_names) + "\n"
 
     def to_usv(self) -> str:
         """
@@ -136,7 +136,7 @@ class BaseUsvModel(BaseModel):
                 )
                 values.append(s_val)
 
-        return UNIT_SEP.join(values) + RECORD_SEP + "\n"
+        return UNIT_SEP.join(values) + "\n"
 
     @classmethod
     def validate_record(cls: Type[T], usv_line: str) -> Tuple[bool, Optional[T], str]:
@@ -144,7 +144,7 @@ class BaseUsvModel(BaseModel):
         Validates a single USV record against this model's schema.
         Returns (is_valid, parsed_model, error_message).
         """
-        line = usv_line.strip(RECORD_SEP + "\n")
+        line = usv_line.strip("\n")
         if not line:
             return False, None, "Empty line"
 

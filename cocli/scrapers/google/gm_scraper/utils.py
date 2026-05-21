@@ -92,3 +92,22 @@ def get_viewport_bounds(center_lat: float, center_lon: float, map_width_miles: f
         'lon_min': lon_min,
         'lon_max': lon_max,
     }
+
+def get_tile_bounds(tile_id: str) -> dict[str, float]:
+    """
+    Calculates the 0.1-degree bounding box for a Scale 1 tile ID.
+    Tile ID format: '29.1_-98.4' (lat_lon southwest corner)
+    """
+    try:
+        lat_str, lon_str = tile_id.split("_")
+        lat_min = float(lat_str)
+        lon_min = float(lon_str)
+        # Use precision-safe rounding to avoid floating point drift
+        return {
+            'lat_min': lat_min,
+            'lat_max': round(lat_min + 0.1, 1),
+            'lon_min': lon_min,
+            'lon_max': round(lon_min + 0.1, 1)
+        }
+    except Exception:
+        return {}

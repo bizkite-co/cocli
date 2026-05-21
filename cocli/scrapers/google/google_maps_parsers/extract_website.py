@@ -1,6 +1,6 @@
 import re
 from bs4 import BeautifulSoup
-from typing import Dict
+from typing import Dict, Optional
 import logging
 
 logger = logging.getLogger(__name__)
@@ -12,8 +12,18 @@ def extract_website(soup: BeautifulSoup, inner_text: str, debug: bool = False) -
     website = ""
     domain = ""
 
-    # Prioritize data-value="Website", then any http/https link not related to maps
+    # Prioritize data-value="Website", then aria-label, then any http/https link not related to maps
     website_element = soup.find("a", attrs={"data-value": "Website"})
+    if not website_element:
+        # Fallback 1: data-item-id="authority" (Common in details view)
+        website_element = soup.find("a", {"data-item-id": "authority"})
+    
+    if not website_element:
+        # Fallback 2: aria-label containing "Website"
+        def is_website_label(label: Optional[str]) -> bool:
+            return bool(label and 'website' in label.lower())
+        website_element = soup.find("a", attrs={"aria-label": is_website_label})
+
     if website_element and website_element.has_attr("href"):
         href_value = website_element["href"]
         website = str(href_value) # Ensure it's a string

@@ -29,27 +29,25 @@ class GoogleMapsListItem(BaseUsvModel):
     )
     category: Optional[str] = Field(
         None,
-        min_length=2,
         max_length=100,
         description="Primary category from the list view",
     )
     phone: Optional[str] = Field(
         None,
-        min_length=10,
-        max_length=15,
+        max_length=20,
         description="Phone number from the list view",
     )
     domain: Optional[str] = Field(
-        None, min_length=3, max_length=100, description="Extracted domain"
+        None, max_length=100, description="Extracted domain"
     )
     reviews_count: Optional[int] = Field(None, ge=0, description="Number of reviews")
     average_rating: Optional[float] = Field(
         None, ge=0.0, le=5.0, description="Average rating"
     )
     street_address: Optional[str] = Field(
-        None, min_length=5, max_length=100, description="Street address"
+        None, max_length=200, description="Street address"
     )
-    gmb_url: Optional[str] = Field(None, min_length=20, description="Google Maps URL")
+    gmb_url: Optional[str] = Field(None, description="Google Maps URL")
 
     # --- Non-Serialized Metadata (Excluded from to_usv) ---
     discovery_phrase: Optional[str] = Field(None, exclude=True)
