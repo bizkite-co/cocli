@@ -1,6 +1,7 @@
 from google.genai import Client
 from pathlib import Path
 import logging
+import os
 import time
 from typing import Dict, Union, cast, Any
 
@@ -27,15 +28,53 @@ class TranscriptionFactory:
             raise ValueError(f"Unknown transcription provider: {provider}")
 
 
+def fallback_resolve_model(client: Client, preferred_type: str = "flash") -> str:
+    """
+    Queries the available models from the Client and returns the best matching model.
+    Falls back to a hardcoded stable default if listing fails.
+    """
+    try:
+        available_models: list[str] = []
+        for m in client.models.list():
+            if m.name and m.supported_actions and "generateContent" in m.supported_actions:
+                available_models.append(m.name)
+        matches = [match for match in available_models if preferred_type in match.lower()]
+        if matches:
+            order = []
+            if preferred_type == "flash":
+                order = ["gemini-3.5-flash", "gemini-2.5-flash", "gemini-2.0-flash", "gemini-flash-latest"]
+            elif preferred_type == "pro":
+                order = ["gemini-3.5-pro", "gemini-2.5-pro", "gemini-pro-latest"]
+            
+            for preferred in order:
+                for match in matches:
+                    if preferred in match:
+                        return match
+            return matches[0]
+        if available_models:
+            return available_models[0]
+    except Exception as list_err:
+        logger.warning(f"Failed to list models: {list_err}")
+    
+    return f"gemini-2.5-{preferred_type}"
+
+
+
+
 class GeminiTranscriber:
     def transcribe(self, video_path: Path, campaign: str) -> Dict[str, str]:
         config = load_campaign_config(campaign)
         transcription_config = config.get("video", {}).get("transcription", {})
 
         api_key_path = config.get("google", {}).get("gemini-api-key")
-        model_name = transcription_config.get("model", "gemini-1.5-flash-002")
+        model_name = transcription_config.get("model", "gemini-2.0-flash")
 
-        api_key = get_op_secret(api_key_path)
+        api_key = get_op_secret(api_key_path) or os.environ.get("GEMINI_API_KEY")
+        if not api_key:
+            raise ValueError(
+                "No Gemini API key found. Please configure `gemini-api-key` under the `[google]` section "
+                "in your campaign config, or set the `GEMINI_API_KEY` environment variable."
+            )
         client = Client(api_key=api_key)
 
         logger.info(f"Uploading {video_path.name} to Gemini using {model_name}...")
@@ -48,15 +87,29 @@ class GeminiTranscriber:
             video_file = client.files.get(name=video_file.name)
 
         prompt = "Please provide a timecoded transcript of this video in Markdown format. Use the format [MM:SS] Text content."
-        response = client.models.generate_content(
-            model=model_name, contents=[cast(Any, prompt), cast(Any, video_file)]
-        )
+        try:
+            response = client.models.generate_content(
+                model=model_name, contents=[cast(Any, prompt), cast(Any, video_file)]
+            )
+            used_model = model_name
+        except Exception as e:
+            if "not found" in str(e).lower() or "404" in str(e):
+                logger.warning(f"Model {model_name} not found or not supported. Attempting dynamic fallback...")
+                used_model = fallback_resolve_model(client, "flash")
+                logger.info(f"Retrying with fallback model: {used_model}")
+                response = client.models.generate_content(
+                    model=used_model, contents=[cast(Any, prompt), cast(Any, video_file)]
+                )
+            else:
+                raise
+
         client.files.delete(name=cast(str, video_file.name))
 
         full_transcript = (
-            f"# Transcript for {video_path.name} ({model_name})\n\n{response.text}"
+            f"# Transcript for {video_path.name} ({used_model})\n\n{response.text}"
         )
         return {"gemini": full_transcript}
+
 
 
 class WhisperTranscriber:
