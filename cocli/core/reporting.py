@@ -175,7 +175,8 @@ def get_campaign_stats(campaign_name: str) -> Dict[str, Any]:
     queries = prospecting_config.get("queries", [])
     stats["queries"] = queries
 
-    witness_root = get_cocli_base_dir() / "indexes" / "scraped-tiles"
+    from cocli.core.paths import paths
+    witness_root = paths.indexes / "scraped-tiles"
 
     stats.update(get_exclusions_data(campaign_name))
 

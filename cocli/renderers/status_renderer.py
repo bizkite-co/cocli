@@ -20,12 +20,13 @@ def render_environment_panel(status_data: Dict[str, Any]) -> Panel:
     return Panel(env_text, title="Environment Status", border_style="blue")
 
 def render_queue_table(stats: Dict[str, Any]) -> Table:
-    """Renders the queue depth and age table."""
-    q_data = stats.get("s3_queues") or stats.get("local_queues", {})
-    q_source = "S3 (Cloud)" if stats.get("s3_queues") else "Local Filesystem"
+    """Renders the queue depth and age table, combining S3 and Local stats."""
+    s3_data = stats.get("s3_queues", {})
+    local_data = stats.get("local_queues", {})
     
-    table = Table(title=f"Queue Depth & Age (Source: {q_source})", expand=True)
+    table = Table(title="Queue Monitoring (Cloud & Local)", expand=True)
     table.add_column("Queue", style="cyan")
+    table.add_column("Type", style="dim")
     table.add_column("Pending", justify="right", style="magenta")
     table.add_column("In-Flight", justify="right", style="blue")
     table.add_column("Scheduled", justify="right", style="cyan")
@@ -41,35 +42,43 @@ def render_queue_table(stats: Dict[str, Any]) -> Table:
         "to-call": "To Call"
     }
 
-    for name, metrics in q_data.items():
-        label = labels.get(name, name)
-        last_ts = metrics.get("last_completed_at")
-        age_str = "N/A"
-        if last_ts:
-            try:
-                dt = datetime.fromisoformat(last_ts)
-                if dt.tzinfo is None:
-                    dt = dt.replace(tzinfo=UTC)
-                diff = datetime.now(UTC) - dt
-                if diff.total_seconds() < 60:
-                    age_str = f"{int(diff.total_seconds())}s ago"
-                elif diff.total_seconds() < 3600:
-                    age_str = f"{int(diff.total_seconds()/60)}m ago"
-                elif diff.total_seconds() < 86400:
-                    age_str = f"{int(diff.total_seconds()/3600)}h ago"
-                else:
-                    age_str = f"{int(diff.total_seconds()/86400)}d ago"
-            except Exception:
-                age_str = last_ts
+    def add_rows(data: Dict[str, Any], type_label: str) -> None:
+        for name, metrics in data.items():
+            label = labels.get(name, name)
+            last_ts = metrics.get("last_completed_at")
+            age_str = "N/A"
+            if last_ts:
+                try:
+                    dt = datetime.fromisoformat(last_ts)
+                    if dt.tzinfo is None:
+                        dt = dt.replace(tzinfo=UTC)
+                    diff = datetime.now(UTC) - dt
+                    if diff.total_seconds() < 60:
+                        age_str = f"{int(diff.total_seconds())}s ago"
+                    elif diff.total_seconds() < 3600:
+                        age_str = f"{int(diff.total_seconds()/60)}m ago"
+                    elif diff.total_seconds() < 86400:
+                        age_str = f"{int(diff.total_seconds()/3600)}h ago"
+                    else:
+                        age_str = f"{int(diff.total_seconds()/86400)}d ago"
+                except Exception:
+                    age_str = last_ts
 
-        table.add_row(
-            label, 
-            str(metrics.get("pending", 0)), 
-            str(metrics.get("inflight", 0)), 
-            str(metrics.get("scheduled", 0)),
-            str(metrics.get("completed", 0)), 
-            age_str
-        )
+            table.add_row(
+                label,
+                type_label,
+                str(metrics.get("pending", 0)), 
+                str(metrics.get("inflight", 0)), 
+                str(metrics.get("scheduled", 0)),
+                str(metrics.get("completed", 0)), 
+                age_str
+            )
+
+    if s3_data:
+        add_rows(s3_data, "Cloud")
+    if local_data:
+        add_rows(local_data, "Local")
+        
     return table
 
 def render_gossip_status_table(heartbeats: Dict[str, Dict[str, Any]]) -> Table:
