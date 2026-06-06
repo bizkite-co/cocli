@@ -47,11 +47,21 @@ def get_secrets(campaign: str) -> tuple[str, str, str, str]:
     refresh_token = keyring_mgr.get_refresh_token(campaign)
 
     if not oauth_token or not refresh_token:
+        logger.info(f"OAuth tokens not found in keyring for '{campaign}'. Trying 1Password fallback...")
+        try:
+            oauth_token = read_secret("oauth_token_path")
+            refresh_token = read_secret("refresh_token_path")
+            logger.info("Successfully loaded OAuth tokens from 1Password.")
+        except Exception as e:
+            logger.debug(f"Failed to load OAuth tokens from 1Password: {e}")
+
+    if not oauth_token or not refresh_token:
         raise ValueError(
-            f"OAuth tokens not found in keyring for campaign '{campaign}'. Run 'cocli video auth' first."
+            f"OAuth tokens not found in keyring or 1Password for campaign '{campaign}'. Run 'cocli video auth' first."
         )
 
     return client_id, client_secret, oauth_token, refresh_token
+
 
 
 def build_credentials(
