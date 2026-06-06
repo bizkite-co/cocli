@@ -609,7 +609,6 @@ def prepare_mission(
     )
 
     # 4. Build Deterministic Task List
-    from ...core.geo_types import LatScale6, LonScale6
 
     tasks = []
     for tile in unique_tiles:
@@ -622,8 +621,8 @@ def prepare_mission(
                     {
                         "tile_id": tile_id,
                         "search_phrase": phrase,
-                        "latitude": LatScale6(lat),
-                        "longitude": LonScale6(lon),
+                        "latitude": LatScale1(lat),
+                        "longitude": LonScale1(lon),
                     }
                 )
 
@@ -776,14 +775,14 @@ def create_batch(
         # Manual Mode (Ignores offsets/state)
         parts = query.split(";")
         if len(parts) == 4:
-            from ...core.geo_types import LatScale6, LonScale6
+            from ...core.geo_types import LatScale1, LonScale1
 
             tasks.append(
                 MissionTask(
                     tile_id=parts[0],
                     search_phrase=parts[1],
-                    latitude=LatScale6(float(parts[2])),
-                    longitude=LonScale6(float(parts[3])),
+                    latitude=LatScale1(float(parts[2])),
+                    longitude=LonScale1(float(parts[3])),
                 )
             )
         else:

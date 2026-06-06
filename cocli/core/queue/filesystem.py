@@ -91,10 +91,11 @@ class FilesystemQueue:
         # Sanitize task_id for directory name
         safe_id = task_id.replace("\\", "/")
 
-        # If task_id already looks like a sharded path (e.g. 2/25.0/...), return it as is
-        parts = safe_id.split("/")
+        # If task_id already looks like a sharded path (e.g. 2/25.0/...), return it as is.
+        # We split and filter empty parts to handle leading/trailing slashes.
+        parts = [p for p in safe_id.split("/") if p]
         if len(parts) > 1 and len(parts[0]) <= 2:
-            return safe_id
+            return "/".join(parts)
 
         shard = self._get_shard(task_id)
         return f"{shard}/{safe_id}"

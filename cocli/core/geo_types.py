@@ -40,14 +40,36 @@ class LatScale1(GeoDegrees):
     """1-decimal precision for sharding and Tile IDs (e.g. 25.0)."""
     DECIMALS = 1
 
+    @field_validator("root", mode="before")
+    @classmethod
+    def round_value(cls, v: Any) -> float:
+        import math
+        return math.floor(float(v) * 10) / 10.0
+
 class LonScale1(GeoDegrees):
     """1-decimal precision for sharding and Tile IDs (e.g. -79.9)."""
     DECIMALS = 1
+
+    @field_validator("root", mode="before")
+    @classmethod
+    def round_value(cls, v: Any) -> float:
+        import math
+        return math.floor(float(v) * 10) / 10.0
 
 class LatScale6(GeoDegrees):
     """6-decimal precision for high-fidelity business locations."""
     DECIMALS = 6
 
+    @field_validator("root", mode="before")
+    @classmethod
+    def round_value(cls, v: Any) -> float:
+        return round(float(v), 6)
+
 class LonScale6(GeoDegrees):
     """6-decimal precision for high-fidelity business locations."""
     DECIMALS = 6
+
+    @field_validator("root", mode="before")
+    @classmethod
+    def round_value(cls, v: Any) -> float:
+        return round(float(v), 6)
