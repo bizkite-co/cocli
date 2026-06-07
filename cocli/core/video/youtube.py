@@ -116,6 +116,13 @@ class YouTubeUploader:
 
         actual_tags = tags or ["automation", "roadmap"]
 
+        # Sanitize forbidden characters '<' and '>' for YouTube API
+        title = title.replace("<", "[").replace(">", "]")
+        if description:
+            description = description.replace("<", "less than").replace(">", "greater than")
+        if actual_tags:
+            actual_tags = [t.replace("<", "").replace(">", "") for t in actual_tags]
+
         # Fail-safe: Truncate description to 5000 characters if still too long
         if description and len(description) > 5000:
             logger.warning(

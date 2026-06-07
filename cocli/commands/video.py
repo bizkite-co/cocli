@@ -494,19 +494,26 @@ def upload(
         chapters_path = video_dir / "chapters.md"
         description = description_body
         if chapters_path.exists():
-            chapters_text = chapters_path.read_text()
+            # Sanitize forbidden characters for YouTube API (no '<' or '>')
+            description = description.replace("<", "less than").replace(">", "greater than")
+            chapters_text: str = chapters_path.read_text().replace("<", "less than").replace(">", "greater than")
+
             if len(description) + len(chapters_text) + 2 > 5000:
-                allowed_body_len = 5000 - len(chapters_text) - 5
+                allowed_body_len = 5000 - len(chapters_text) - 10
+
                 console.print(
                     f"[yellow]Warning: Video description is too long. Truncating body text to {allowed_body_len} characters to fit chapters.[/yellow]"
                 )
                 description = description_body[:allowed_body_len] + "\n..."
             description += "\n\n" + chapters_text
-        elif len(description) > 5000:
-            console.print(
-                "[yellow]Warning: Video description is too long. Truncating to 5000 characters.[/yellow]"
-            )
-            description = description[:4997] + "..."
+        else:
+            description = description.replace("<", "less than").replace(">", "greater than")
+            if len(description) > 5000:
+                console.print(
+                    "[yellow]Warning: Video description is too long. Truncating to 5000 characters.[/yellow]"
+                )
+                description = description[:4997] + "..."
+
 
 
         video_file_path = video_dir / f"{slug}.mp4"
