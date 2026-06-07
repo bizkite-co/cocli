@@ -504,7 +504,7 @@ def upload(
                 console.print(
                     f"[yellow]Warning: Video description is too long. Truncating body text to {allowed_body_len} characters to fit chapters.[/yellow]"
                 )
-                description = description_body[:allowed_body_len] + "\n..."
+                description = description[:allowed_body_len] + "\n..."
             description += "\n\n" + chapters_text
         else:
             description = description.replace("<", "less than").replace(">", "greater than")
