@@ -1,0 +1,159 @@
+/* Light Mode Theme (Default) */
+:root {
+  --bg-main: #f8f9fa;
+  --bg-container: #ffffff;
+  --bg-card: #ffffff;
+  --bg-card-hover: #f1f3f5;
+  --bg-input: #ffffff;
+  --bg-details: rgba(0, 0, 0, 0.025);
+  --bg-details-hover: rgba(0, 0, 0, 0.05);
+  
+  --border-color: #e9ecef;
+  --border-color-hover: #0891b2;
+  
+  --text-primary: #1a1f2c;
+  --text-muted: #6b7280;
+  --text-inverse: #ffffff;
+  
+  --accent-cyan: #0891b2;
+  --accent-blue: #1a73e8;
+  --accent-purple: #7c3aed;
+  --accent-teal: #0d9488;
+  
+  --h1-gradient-start: #0891b2;
+  --h1-gradient-end: #1a73e8;
+  
+  --status-fulfilled-bg: #ecfdf5;
+  --status-fulfilled-text: #059669;
+  --status-fulfilled-border: rgba(5, 150, 105, 0.2);
+  
+  --status-fraud-bg: #fef2f2;
+  --status-fraud-text: #dc2626;
+  --status-fraud-border: rgba(220, 38, 38, 0.2);
+  
+  --status-warning-bg: #fffbeb;
+  --status-warning-text: #d97706;
+  --status-warning-border: rgba(217, 119, 6, 0.2);
+  
+  --status-customs-bg: #eff6ff;
+  --status-customs-text: #2563eb;
+  --status-customs-border: rgba(37, 99, 235, 0.2);
+  
+  --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+  --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -1px rgba(0, 0, 0, 0.03);
+  --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.05), 0 4px 6px -2px rgba(0, 0, 0, 0.02);
+  --shadow-glow: 0 0 12px rgba(8, 145, 178, 0.12);
+  --transition-all: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  --font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  
+  --bg-switch-off: #cbd5e1;
+  --bg-button-secondary: rgba(8, 145, 178, 0.05);
+  --border-button-secondary: rgba(8, 145, 178, 0.25);
+  --bg-button-secondary-hover: rgba(8, 145, 178, 0.12);
+}
+
+/* Dark Mode Theme (System preference choice) */
+@media (prefers-color-scheme: dark) {
+  :root:not(.light-theme) {
+    --bg-main: #080c14;
+    --bg-container: rgba(17, 24, 39, 0.65);
+    --bg-card: rgba(31, 41, 55, 0.4);
+    --bg-card-hover: rgba(55, 65, 81, 0.45);
+    --bg-input: rgba(17, 24, 39, 0.5);
+    --bg-details: rgba(255, 255, 255, 0.035);
+    --bg-details-hover: rgba(255, 255, 255, 0.06);
+    
+    --border-color: rgba(255, 255, 255, 0.08);
+    --border-color-hover: rgba(6, 182, 212, 0.35);
+    
+    --text-primary: #f3f4f6;
+    --text-muted: #9ca3af;
+    --text-inverse: #0b0f19;
+    
+    --accent-cyan: #06b6d4;
+    --accent-blue: #3b82f6;
+    --accent-purple: #8b5cf6;
+    --accent-teal: #0d9488;
+    
+    --h1-gradient-start: #22d3ee;
+    --h1-gradient-end: #3b82f6;
+    
+    --status-fulfilled-bg: rgba(16, 185, 129, 0.12);
+    --status-fulfilled-text: #34d399;
+    --status-fulfilled-border: rgba(52, 211, 153, 0.25);
+    
+    --status-fraud-bg: rgba(239, 68, 68, 0.12);
+    --status-fraud-text: #f87171;
+    --status-fraud-border: rgba(248, 113, 113, 0.25);
+    
+    --status-warning-bg: rgba(245, 158, 11, 0.12);
+    --status-warning-text: #fbbf24;
+    --status-warning-border: rgba(251, 191, 36, 0.25);
+    
+    --status-customs-bg: rgba(59, 130, 246, 0.12);
+    --status-customs-text: #60a5fa;
+    --status-customs-border: rgba(96, 165, 250, 0.25);
+    
+    --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+    --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+    --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.3), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+    --shadow-glow: 0 0 15px rgba(6, 182, 212, 0.25);
+    
+    --bg-switch-off: rgba(255, 255, 255, 0.1);
+    --bg-button-secondary: rgba(6, 182, 212, 0.05);
+    --border-button-secondary: rgba(6, 182, 212, 0.25);
+    --bg-button-secondary-hover: rgba(6, 182, 212, 0.15);
+  }
+}
+
+/* Manual Dark Theme Override */
+:root.dark-theme {
+  --bg-main: #080c14;
+  --bg-container: rgba(17, 24, 39, 0.65);
+  --bg-card: rgba(31, 41, 55, 0.4);
+  --bg-card-hover: rgba(55, 65, 81, 0.45);
+  --bg-input: rgba(17, 24, 39, 0.5);
+  --bg-details: rgba(255, 255, 255, 0.035);
+  --bg-details-hover: rgba(255, 255, 255, 0.06);
+  
+  --border-color: rgba(255, 255, 255, 0.08);
+  --border-color-hover: rgba(6, 182, 212, 0.35);
+  
+  --text-primary: #f3f4f6;
+  --text-muted: #9ca3af;
+  --text-inverse: #0b0f19;
+  
+  --accent-cyan: #06b6d4;
+  --accent-blue: #3b82f6;
+  --accent-purple: #8b5cf6;
+  --accent-teal: #0d9488;
+  
+  --h1-gradient-start: #22d3ee;
+  --h1-gradient-end: #3b82f6;
+  
+  --status-fulfilled-bg: rgba(16, 185, 129, 0.12);
+  --status-fulfilled-text: #34d399;
+  --status-fulfilled-border: rgba(52, 211, 153, 0.25);
+  
+  --status-fraud-bg: rgba(239, 68, 68, 0.12);
+  --status-fraud-text: #f87171;
+  --status-fraud-border: rgba(248, 113, 113, 0.25);
+  
+  --status-warning-bg: rgba(245, 158, 11, 0.12);
+  --status-warning-text: #fbbf24;
+  --status-warning-border: rgba(251, 191, 36, 0.25);
+  
+  --status-customs-bg: rgba(59, 130, 246, 0.12);
+  --status-customs-text: #60a5fa;
+  --status-customs-border: rgba(96, 165, 250, 0.25);
+  
+  --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+  --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+  --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.3), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+  --shadow-glow: 0 0 15px rgba(6, 182, 212, 0.25);
+  
+  --bg-switch-off: rgba(255, 255, 255, 0.1);
+  --bg-button-secondary: rgba(6, 182, 212, 0.05);
+  --border-button-secondary: rgba(6, 182, 212, 0.25);
+  --bg-button-secondary-hover: rgba(6, 182, 212, 0.15);
+}
