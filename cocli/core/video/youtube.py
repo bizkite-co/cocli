@@ -116,6 +116,13 @@ class YouTubeUploader:
 
         actual_tags = tags or ["automation", "roadmap"]
 
+        # Fail-safe: Truncate description to 5000 characters if still too long
+        if description and len(description) > 5000:
+            logger.warning(
+                f"Description length ({len(description)}) exceeds YouTube's 5000 character limit. Truncating..."
+            )
+            description = description[:4997] + "..."
+
         body = {
             "snippet": {
                 "title": title,
