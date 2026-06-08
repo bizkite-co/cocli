@@ -421,7 +421,7 @@ def upload(
         None, "-c", "--campaign", help="Campaign name"
     ),
     video_slug: Optional[str] = typer.Option(
-        None, "-v", "--video", help="Video slug to upload (from normalized/)"
+        None, "-v", "--video", help="Video slug to upload (from packaged/)"
     ),
     privacy: str = typer.Option(
         "unlisted", "-p", "--privacy", help="Privacy: public, unlisted, private"
@@ -433,7 +433,7 @@ def upload(
     ),
     dry_run: bool = typer.Option(False, "--dry-run", help="Validate without uploading"),
 ) -> None:
-    """Upload a video to YouTube using metadata from normalized queue."""
+    """Upload a video to YouTube using metadata from the packaged queue."""
     campaign_name = campaign or get_campaign()
     if not campaign_name:
         console.print(
@@ -442,14 +442,13 @@ def upload(
         raise typer.Exit(1)
 
     queue_root = get_video_queue_root(campaign_name)
-    norm_dir = queue_root / "normalized"
     pack_dir = queue_root / "packaged"
     upload_dir = queue_root / "uploaded"
 
     if video_slug:
-        video_dirs = [norm_dir / video_slug]
+        video_dirs = [pack_dir / video_slug]
     else:
-        video_dirs = [d for d in norm_dir.iterdir() if d.is_dir()]
+        video_dirs = [d for d in pack_dir.iterdir() if d.is_dir()]
 
     for video_dir in video_dirs:
         slug = video_dir.name
