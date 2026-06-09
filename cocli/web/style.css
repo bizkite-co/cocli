@@ -52,8 +52,7 @@ body {
     font-size: 0.9em;
     font-weight: bold;
 }
-.status-running { background: #e8f5e9; color: #2e7d32; }
-.status-sqs { background: #fff3e0; color: #ef6c00; }
+
 .download-box {
     background: var(--bg-card);
     border: 1px solid var(--border-color);
@@ -157,7 +156,7 @@ footer {
 .config-section h3 {
     margin-top: 0;
     font-size: 1.1em;
-    border-bottom: 2px solid #ddd;
+    border-bottom: 2px solid var(--border-color);
     padding-bottom: 5px;
 }
 
@@ -169,7 +168,7 @@ footer {
 
 .config-list li {
     padding: 10px 0;
-    border-bottom: 1px solid #eee;
+    border-bottom: 1px solid var(--border-color);
 }
 
 /* Location Item Styling */
@@ -339,7 +338,7 @@ footer {
 
 .config-hint {
     font-size: 0.85em;
-    color: #666;
+    color: var(--text-muted);
     margin-top: auto;
     padding-top: 15px;
     font-style: italic;
@@ -375,8 +374,8 @@ footer {
 }
 
 .badge-count {
-    background: var(--status-sqs);
-    color: white;
+    background: var(--accent-cyan);
+    color: var(--text-inverse);
     border-radius: 50%;
     padding: 2px 8px;
     font-size: 0.7em;
@@ -436,20 +435,7 @@ footer {
 .btn-confirm { background: #f44336; color: white; border: none; padding: 2px 8px; border-radius: 3px; cursor: pointer; }
 .btn-cancel { background: #bdbdbd; color: white; border: none; padding: 2px 8px; border-radius: 3px; cursor: pointer; }
 
-.download-box {
-    background: var(--bg-card);
-    border: 1px solid var(--border-color);
-    padding: 20px;
-    border-radius: 8px;
-}
-.button {
-    display: inline-block;
-    padding: 10px 20px;
-    background: #007bff;
-    color: white;
-    text-decoration: none;
-    border-radius: 4px;
-}
+
 
 /* Prospect Card Grid Layout */
 .prospect-grid {
@@ -546,9 +532,7 @@ footer {
     color: var(--text-primary);
 }
 
-#clear-search:hover {
-    color: #333 !important;
-}
+
 
 .panel-section {
     margin-top: 10px;
