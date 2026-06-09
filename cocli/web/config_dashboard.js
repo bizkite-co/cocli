@@ -1,21 +1,7 @@
 let activeMap = null;
 let activeMarker = null;
 let statsData = null;
-
-function logout() {
-    localStorage.removeItem('cocli_id_token');
-    localStorage.removeItem('cocli_access_token');
-    localStorage.removeItem('cocli_pending_changes');
-    const config = window.COCLI_CONFIG;
-    if (config && config.userPoolId) {
-        const domain = config.userPoolDomain;
-        const clientId = config.userPoolClientId;
-        const logoutUri = window.location.origin + '/signout/index.html';
-        window.location.href = `${domain}/logout?client_id=${clientId}&logout_uri=${encodeURIComponent(logoutUri)}`;
-    } else {
-        window.location.href = '/signout/index.html';
-    }
-}
+// logout is defined globally in layout.njk
 
 async function fetchConfig() {
     const urlParams = new URLSearchParams(window.location.search);

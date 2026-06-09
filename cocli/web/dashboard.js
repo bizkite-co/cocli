@@ -1,54 +1,6 @@
 let allProspects = [];
 let categories = new Set();
-
-function checkAuth() {
-    const idToken = localStorage.getItem('cocli_id_token');
-    
-    // Check if token exists and is valid (not expired)
-    let isExpired = true;
-    if (idToken) {
-        try {
-            const payload = JSON.parse(atob(idToken.split('.')[1]));
-            const now = Math.floor(Date.now() / 1000);
-            if (payload.exp > now) {
-                isExpired = false;
-            } else {
-                console.warn("checkAuth: Token expired.");
-            }
-        } catch (e) {
-            console.error("checkAuth: Failed to parse token.");
-        }
-    }
-
-    if (!isExpired) {
-        return true;
-    }
-
-    // Token is missing or expired - redirect to login
-    localStorage.removeItem('cocli_id_token');
-    localStorage.removeItem('cocli_access_token');
-
-    const config = window.COCLI_CONFIG;
-    if (!config || !config.userPoolId || !config.userPoolClientId) {
-        console.error("checkAuth: Cognito configuration missing from COCLI_CONFIG.");
-        return false;
-    }
-
-    const redirectUri = window.location.origin + '/auth-callback/index.html';
-    const loginUrl = `${config.userPoolDomain}/oauth2/authorize?client_id=${config.userPoolClientId}&response_type=token&scope=openid+email+profile&redirect_uri=${encodeURIComponent(redirectUri)}`;
-    
-    console.log("checkAuth: Redirecting to login:", loginUrl);
-    window.location.href = loginUrl;
-    return false;
-}
-
-function logout() {
-    localStorage.removeItem('cocli_id_token');
-    localStorage.removeItem('cocli_access_token');
-    const config = window.COCLI_CONFIG;
-    const logoutUrl = `${config.userPoolDomain}/logout?client_id=${config.userPoolClientId}&logout_uri=${encodeURIComponent(window.location.origin + '/signout/index.html')}`;
-    window.location.href = logoutUrl;
-}
+// checkAuth and logout are defined globally in layout.njk
 
 async function fetchReport() {
     const urlParams = new URLSearchParams(window.location.search);

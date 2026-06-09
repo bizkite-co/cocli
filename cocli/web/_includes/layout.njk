@@ -49,21 +49,112 @@
             googleMapsApiKey: "{{ campaign.googleMapsApiKey }}",
             strictKeywordFilter: {{ campaign.strictKeywordFilter | dump }}
         };
+
+        function getCookie(name) {
+            var nameEQ = name + "=";
+            var ca = document.cookie.split(';');
+            for (var i = 0; i < ca.length; i++) {
+                var c = ca[i];
+                while (c.charAt(0) == ' ') c = c.substring(1, c.length);
+                if (c.indexOf(nameEQ) == 0) return c.substring(nameEQ.length, c.length);
+            }
+            return null;
+        }
+
+        function checkAuth() {
+            var idToken = getCookie('cognito_id_token') || getCookie('id_token') || localStorage.getItem('cocli_id_token');
+            var isExpired = true;
+            if (idToken) {
+                try {
+                    var payload = JSON.parse(atob(idToken.split('.')[1]));
+                    var now = Math.floor(Date.now() / 1000);
+                    if (payload.exp > now) {
+                        isExpired = false;
+                        if (!localStorage.getItem('cocli_id_token')) {
+                            localStorage.setItem('cocli_id_token', idToken);
+                        }
+                    } else {
+                        console.warn("checkAuth: Token expired.");
+                    }
+                } catch (e) {
+                    console.error("checkAuth: Failed to parse token.");
+                }
+            }
+
+            if (!isExpired) {
+                return true;
+            }
+
+            localStorage.removeItem('cocli_id_token');
+            localStorage.removeItem('cocli_access_token');
+
+            var config = window.COCLI_CONFIG;
+            if (!config || !config.userPoolId || !config.userPoolClientId) {
+                console.error("checkAuth: Cognito configuration missing from COCLI_CONFIG.");
+                return false;
+            }
+
+            if (!config.userPoolDomain) {
+                console.error("checkAuth: userPoolDomain is not configured. Cannot redirect to login.");
+                return false;
+            }
+
+            var redirectUri = window.location.origin + '/auth-callback/index.html';
+            var loginUrl = config.userPoolDomain + '/oauth2/authorize?client_id=' + config.userPoolClientId + '&response_type=token&scope=openid+email+profile&redirect_uri=' + encodeURIComponent(redirectUri);
+            
+            console.log("checkAuth: Redirecting to login:", loginUrl);
+            window.location.href = loginUrl;
+            return false;
+        }
+
+        function logout() {
+            localStorage.removeItem('cocli_id_token');
+            localStorage.removeItem('cocli_access_token');
+            localStorage.removeItem('cocli_pending_changes');
+            var deleteCookie = function(name) {
+                document.cookie = name + '=; Max-Age=-99999999; path=/; domain=.turboheat.net; SameSite=Lax; Secure';
+                document.cookie = name + '=; Max-Age=-99999999; path=/; SameSite=Lax; Secure';
+            };
+            deleteCookie('cognito_id_token');
+            deleteCookie('cognito_access_token');
+            deleteCookie('is_logged_in');
+            deleteCookie('user_email');
+
+            var config = window.COCLI_CONFIG;
+            if (config && config.userPoolDomain && config.userPoolClientId) {
+                var logoutUrl = config.userPoolDomain + '/logout?client_id=' + config.userPoolClientId + '&logout_uri=' + encodeURIComponent(window.location.origin + '/signout/index.html');
+                window.location.href = logoutUrl;
+            } else {
+                window.location.href = '/signout/index.html';
+            }
+        }
+
+        var path = window.location.pathname;
+        if (!path.includes('/auth-callback/') && !path.includes('/signout/')) {
+            checkAuth();
+        }
+    </script>
+    <script>
+        (function() {
+            var hostname = window.location.hostname;
+            var isUat = hostname.includes('uat') || hostname.includes('localhost');
+            var assetsDomain = isUat ? 'turbo-shared-assets-uat.turboheat.net' : 'turbo-shared-assets.turboheat.net';
+            var script = document.createElement('script');
+            script.src = 'https://' + assetsDomain + '/navbar-bundle.js';
+            document.head.appendChild(script);
+        })();
     </script>
 </head>
 <body>
-    <nav class="top-navbar">
-        <div class="navbar-content">
-            <a href="/index.html" class="navbar-brand">cocli Dashboard</a>
-            <div class="navbar-links">
-                <a href="/index.html" class="nav-link">Dashboard</a>
-                <a href="/config/index.html" class="nav-link">Config</a>
-                <a href="/kml-viewer.html" class="nav-link">Map Viewer</a>
-                {% for item in campaign.navItems %}
-                <a href="{{ item.link }}" class="nav-link">{{ item.label }}</a>
-                {% endfor %}
-                <button onclick="logout()" class="nav-link btn-link" style="background:none; border:none; color:inherit; cursor:pointer; font:inherit; padding:0; margin-left:15px;">Sign Out</button>
-            </div>
+    <div id="shared-navbar-placeholder"></div>
+    <nav class="sub-navbar">
+        <div class="sub-navbar-content">
+            <a href="/index.html" class="sub-nav-link" id="sub-nav-dashboard">Dashboard</a>
+            <a href="/config/index.html" class="sub-nav-link" id="sub-nav-config">Config</a>
+            <a href="/kml-viewer.html" class="sub-nav-link" id="sub-nav-map" target="_blank">Map Viewer</a>
+            {% for item in campaign.navItems %}
+            <a href="{{ item.link }}" class="sub-nav-link" target="_blank">{{ item.label }}</a>
+            {% endfor %}
         </div>
     </nav>
     <div class="container">
@@ -72,5 +163,17 @@
     <footer>
         <p>&copy; 2025 Bizkite. Generated by 11ty.</p>
     </footer>
+    <script>
+        (function() {
+            var path = window.location.pathname;
+            if (path === '/' || path.endsWith('/index.html') || path.endsWith('/')) {
+                var el = document.getElementById('sub-nav-dashboard');
+                if (el) el.classList.add('active');
+            } else if (path.includes('/config/')) {
+                var el = document.getElementById('sub-nav-config');
+                if (el) el.classList.add('active');
+            }
+        })();
+    </script>
 </body>
 </html>

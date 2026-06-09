@@ -81,45 +81,44 @@ footer {
     font-size: 0.9em;
 }
 
-.top-navbar {
-    background-color: #333;
-    color: #fff;
+.sub-navbar {
+    background-color: var(--bg-container);
+    border-bottom: 1px solid var(--border-color);
     padding: 10px 0;
-    box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+    margin-bottom: 20px;
+    width: 100%;
 }
 
-.navbar-content {
+.sub-navbar-content {
     max-width: 1200px;
     margin: 0 auto;
     padding: 0 20px;
     display: flex;
-    justify-content: space-between;
+    gap: 15px;
     align-items: center;
 }
 
-.navbar-brand {
-    font-size: 1.2em;
-    font-weight: bold;
-    color: #fff;
-    text-decoration: none;
-}
-
-.navbar-links {
-    display: flex;
-    gap: 20px;
-}
-
-.nav-link {
-    color: #e0e0e0;
+.sub-nav-link {
+    color: var(--text-muted);
     text-decoration: none;
     font-weight: bold;
-    transition: color 0.2s;
+    font-size: 0.95em;
+    padding: 8px 16px;
+    border-radius: 6px;
+    transition: var(--transition-all);
+    display: inline-block;
 }
 
-.nav-link:hover {
-    color: #fff;
-    text-decoration: underline;
+.sub-nav-link:hover {
+    color: var(--text-primary);
+    background-color: var(--bg-card-hover);
 }
+
+.sub-nav-link.active {
+    color: var(--accent-cyan);
+    background-color: var(--bg-details);
+}
+
 
 /* Responsive Campaign Config Grid */
 .campaign-config-grid {
