@@ -86,7 +86,7 @@ else:
     env = cdk.Environment(account=os.getenv('CDK_DEFAULT_ACCOUNT'), region=region)
 
 # Determine the RPi user name (defaulting to the profile name used)
-rpi_user_name = aws_config.get("profile") or aws_config.get("aws_profile") or "bizkite-support"
+rpi_user_name = aws_config.get("rpi_user_name") or aws_config.get("profile") or aws_config.get("aws_profile") or "bizkite-support"
 data_bucket_name = aws_config.get("data_bucket_name") or f"cocli-data-{campaign_name}"
 ou_arn = aws_config.get("organizational-unit-arn")
 worker_count = aws_config.get("worker_count", 1)
@@ -104,6 +104,8 @@ if campaign_name == "turboship":
 else:
     stack_name = f"CdkScraperDeploymentStack-{campaign_name}"
 
+is_uat = "uat" in (aws_config.get("profile") or aws_config.get("aws_profile") or "").lower()
+
 CdkScraperDeploymentStack(app, stack_name,
     env=env,
     campaign_config={
@@ -117,6 +119,7 @@ CdkScraperDeploymentStack(app, stack_name,
         "user_pool_domain": user_pool_domain,
         "ou_arn": ou_arn,
         "worker_count": worker_count,
+        "is_uat": is_uat,
     }
 )
 

@@ -31,8 +31,18 @@ class CdkScraperDeploymentStack(Stack):  # type: ignore[misc]
 
         domain = campaign_config["domain"]
         zone_id = campaign_config["zone_id"]
-        bucket_name = f"cocli-web-assets-{domain.replace('.', '-')}"
-        subdomain = f"cocli.{domain}"
+        
+        self.is_uat = campaign_config.get("is_uat", False)
+        if self.is_uat:
+            subdomain = f"cocli-uat.{domain}"
+            bucket_name = f"cocli-web-assets-uat-{domain.replace('.', '-')}"
+        else:
+            subdomain = f"cocli.{domain}"
+            bucket_name = f"cocli-web-assets-{domain.replace('.', '-')}"
+        
+        subdomain = subdomain
+        bucket_name = bucket_name
+        
         data_bucket_name = campaign_config["data_bucket_name"]
         rpi_user_name = campaign_config["rpi_user_name"]
         ou_arn = campaign_config.get("ou_arn")
@@ -162,7 +172,7 @@ class CdkScraperDeploymentStack(Stack):  # type: ignore[misc]
         # 4. Route53 Record
         route53.ARecord(self, "CocliWebAlias",
             zone=zone,
-            record_name="cocli",
+            record_name="cocli-uat" if self.is_uat else "cocli",
             target=route53.RecordTarget.from_alias(targets.CloudFrontTarget(web_distro))
         )
 
