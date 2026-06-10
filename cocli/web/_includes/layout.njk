@@ -166,11 +166,11 @@
     <script>
         (function() {
             var path = window.location.pathname;
-            if (path === '/' || path.endsWith('/index.html') || path.endsWith('/')) {
-                var el = document.getElementById('sub-nav-dashboard');
-                if (el) el.classList.add('active');
-            } else if (path.includes('/config/')) {
+            if (path.includes('/config/')) {
                 var el = document.getElementById('sub-nav-config');
+                if (el) el.classList.add('active');
+            } else if (path === '/' || path.endsWith('/index.html') || path.endsWith('/')) {
+                var el = document.getElementById('sub-nav-dashboard');
                 if (el) el.classList.add('active');
             }
         })();
