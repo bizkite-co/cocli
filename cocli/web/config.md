@@ -24,7 +24,7 @@ title: cocli Campaign Configuration
     </table>
 </div>
 
-<p style="background: #e9ecef; padding: 10px; border-radius: 4px; display: inline-block;">
+<p style="background: var(--bg-details); border: 1px solid var(--border-color); padding: 10px 16px; border-radius: 8px; display: inline-block; color: var(--text-primary);">
     <strong>Global Proximity:</strong> <span id="proximity-display">...</span> miles
 </p>
 

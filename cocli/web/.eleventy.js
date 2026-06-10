@@ -1,6 +1,7 @@
 module.exports = function(eleventyConfig) {
   // Pass through the CSS and any other assets
   eleventyConfig.addPassthroughCopy("style.css");
+  eleventyConfig.addPassthroughCopy("theme.css");
   eleventyConfig.addPassthroughCopy("dashboard.js");
   eleventyConfig.addPassthroughCopy("config_dashboard.js");
 
