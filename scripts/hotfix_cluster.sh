@@ -14,7 +14,7 @@ NC='\033[0m'
 CONFIG_FILE="data/config/cocli_config.toml"
 # We use the IP address for the registry to avoid hostname resolution issues on child nodes
 REGISTRY_IP="10.0.0.17"
-REGISTRY_HOST="cocli5x1.pi"
+REGISTRY_HOST="cocli5x1"
 REGISTRY_URL="${REGISTRY_IP}:5000"
 
 get_node_campaign() {

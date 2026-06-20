@@ -6,7 +6,7 @@ from typing import Dict, Any, cast, Optional
 from rich.console import Console
 from datetime import datetime, UTC
 
-from cocli.core.config import get_cocli_base_dir, load_campaign_config
+from cocli.core.config import load_campaign_config
 from cocli.core.prospects_csv_manager import ProspectsIndexManager
 from cocli.core.exclusions import ExclusionManager
 from .paths import paths

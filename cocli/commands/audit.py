@@ -3,6 +3,8 @@ from typing import Optional, Any, List
 from pathlib import Path
 
 from rich.console import Console
+import duckdb
+from ..core.paths import paths
 from rich.table import Table
 from rich.prompt import Prompt
 from rich.markup import escape
@@ -215,6 +217,7 @@ def audit_rollout(
     import json
     import subprocess
     import asyncio
+    from datetime import datetime, UTC
 
     campaign_name = campaign or get_campaign()
     if not campaign_name:
@@ -326,23 +329,201 @@ def audit_rollout(
         table.add_row("[white]PENDING[/]", str(pending), "Waiting in queue")
         console.print(table)
 
-    # 4. Remote Health Check
-    hub = "cocli5x1.pi"
-    console.print(f"\n[bold]Cluster Hub ({hub}) Health Check:[/bold]")
-    log_cmd = (
-        "docker logs --tail 100 cocli-supervisor 2>&1 | grep -i 'error' | head -n 5"
-    )
-    try:
-        res = subprocess.run(
-            ["ssh", f"mstouffer@{hub}", log_cmd], capture_output=True, text=True
+@app.command(name="scrape")
+def audit_scrape(
+    campaign: Optional[str] = typer.Option(
+        None, "--campaign", "-c", help="Campaign name (defaults to current)."
+    ),
+    verbose: bool = typer.Option(False, "--verbose", "-v", help="Show sample of pending tiles."),
+    threshold: Optional[int] = typer.Option(
+        None, "--threshold", help="Exit with error if pending tiles exceed this number."
+    ),
+    output: Optional[Path] = typer.Option(
+        None, "--output", "-o", help="Write full JSON report to the given file."
+    ),
+    include_details: bool = typer.Option(
+        False, "--details", help="Also report counts for the gm-details queue."
+    ),
+    no_duckdb: bool = typer.Option(
+        False, "--no-duckdb", help="Force filesystem scan instead of DuckDB.") ,
+    summary_only: bool = typer.Option(
+        False, "--summary-only", help="Print only JSON summary without Rich table."
+    ),
+    cluster_pull: bool = typer.Option(
+        True, "--cluster/--no-cluster", help="Pull latest data from cluster nodes before audit."
+    ),
+) -> None:
+    """Audit the whole scrape workflow for a campaign.
+
+    Shows config‑derived parameters, distinct discovery tiles,
+    and how many of those tiles have already produced gm‑list results.
+    """
+    from ..core.config import get_campaign
+    from ..services.cluster_service import ClusterService
+    from rich.table import Table
+    import json
+    import subprocess
+    import asyncio
+    import logging
+    from datetime import datetime
+
+    logger = logging.getLogger(__name__)
+
+    # Resolve campaign and optionally pull fresh data
+    campaign_name = campaign or get_campaign() or "roadmap"
+    if cluster_pull:
+        service = ClusterService(campaign_name)
+        console.print("[bold cyan]Pulling latest tiles from cluster…[/bold cyan]")
+        asyncio.run(service.pull_scraped_tiles())
+
+    # Load campaign config (search phrases, locations, proximity)
+    cfg_path = paths.campaign(campaign_name).config
+    import tomli
+    cfg = tomli.load(cfg_path.open("rb"))
+    phrases = cfg.get("prospecting", {}).get("queries", [])
+    locations_cfg = cfg.get("prospecting", {}).get("locations", [])
+    # Load target locations from file if defined
+    target_locations_path = paths.campaign(campaign_name).config.parent / cfg.get("prospecting", {}).get("target-locations-csv", "")
+    if target_locations_path and target_locations_path.exists():
+        try:
+            with open(target_locations_path, "r", encoding="utf-8") as f:
+                locations_file = [line.strip() for line in f if line.strip()]
+        except Exception:
+            locations_file = []
+    else:
+        locations_file = []
+    # Combine config locations and file locations (avoid duplicates)
+    locations = list(set(locations_cfg + locations_file))
+
+
+
+
+    proximity = cfg.get("prospecting", {}).get("proximity", "N/A")
+
+    # Audit queues: count valid and invalid records from completed/ subdirectories
+    from cocli.utils import duckdb_utils
+    import json as json_lib
+
+    def audit_queue(queue_name: str) -> tuple[int, int]:
+        """
+        Audit a queue's completed records against its datapackage.json schema.
+        Returns (valid_records, invalid_records) counts.
+        """
+        queue_path = paths.campaign(campaign_name).queue(queue_name)
+        completed_dir = queue_path.completed
+        datapackage_path = queue_path / "datapackage.json"
+
+        if not completed_dir.exists():
+            logger.warning(f"No completed/ directory for queue {queue_name}")
+            return 0, 0
+
+        # Find all .usv files in completed/
+        usv_files = list(completed_dir.rglob("*.usv"))
+        if not usv_files:
+            logger.info(f"No .usv files found in {queue_name}/completed/")
+            return 0, 0
+
+        # If no datapackage.json, fall back to file count
+        if not datapackage_path.exists():
+            logger.info(f"No datapackage.json for {queue_name}; counting .usv files as fallback")
+            # Count each .usv file as one "unit" (may be multiple records per file)
+            return len(usv_files), 0
+
+        try:
+            con = duckdb.connect(database=":memory:")
+
+            # Load datapackage schema
+            with open(datapackage_path, "r") as f:
+                dp = json_lib.load(f)
+
+            # Use a safe table name (replace hyphens with underscores)
+            safe_table_name = queue_name.replace("-", "_")
+
+            # Load all .usv files into a single table
+            duckdb_utils.load_from_datapackage(con, safe_table_name, datapackage_path)
+
+            # Count total and valid records
+            total_res = con.execute(f"SELECT COUNT(*) FROM {safe_table_name}").fetchone()
+            total_records = total_res[0] if total_res else 0
+
+            # For now, assume all loaded records are valid (schema validation happens at load time)
+            valid_records = total_records
+            invalid_records = 0
+
+            con.close()
+            return valid_records, invalid_records
+        except Exception as e:
+            logger.warning(f"Error auditing queue {queue_name}: {e}")
+            return 0, 0
+
+    # Audit discovery-gen queue
+    discovery_valid, discovery_invalid = audit_queue("discovery-gen")
+    distinct_tiles = discovery_valid
+
+    # Audit gm-list queue
+    gm_list_valid, gm_list_invalid = audit_queue("gm-list")
+    gm_list_tiles = gm_list_valid
+    pending_tiles = distinct_tiles - gm_list_tiles
+
+    # Optional gm-details stats
+    details_tiles = None
+    if include_details:
+        gm_details_root = paths.campaign(campaign_name).queue("gm-details").completed
+        details_set: set[str] = set()
+        for receipt in gm_details_root.rglob("*.json"):
+            parts = receipt.relative_to(gm_details_root).parts
+            if len(parts) >= 3:
+                details_set.add(f"{parts[0]}/{parts[1]}")
+        details_tiles = len(details_set)
+
+    # Build report dict
+    report: dict[str, Any] = {
+        "campaign": campaign_name,
+        "search_phrases": len(phrases),
+        "locations": len(locations),
+        "proximity": proximity,
+        "discovery_records_valid": discovery_valid,
+        "discovery_records_invalid": discovery_invalid,
+        "gm_list_records_valid": gm_list_valid,
+        "gm_list_records_invalid": gm_list_invalid,
+        "distinct_tiles": distinct_tiles,
+        "gm_list_tiles": gm_list_tiles,
+        "pending_tiles": pending_tiles,
+    }
+    if include_details:
+        report["gm_details_tiles"] = details_tiles
+
+    # Output
+    if summary_only:
+        console.print(json.dumps(report, indent=2))
+    else:
+        table = Table(title="Scrape Pipeline Audit")
+        table.add_column("Metric", style="cyan")
+        table.add_column("Value", justify="right")
+        for k, v in report.items():
+            table.add_row(k.replace("_", " ").title(), str(v))
+        console.print(table)
+        if verbose and pending_tiles:
+            # Show a short sample of pending tiles
+            sample = sorted(seen - gm_tiles)[:20] if not no_duckdb else []
+            if sample:
+                console.print("\n[bold]Sample of pending tiles (lat/long):[/bold]")
+                for t in sample:
+                    console.print(f"  • {t}")
+
+    # Write JSON if requested
+    if output:
+        output.parent.mkdir(parents=True, exist_ok=True)
+        with output.open("w", encoding="utf-8") as f:
+            json.dump(report, f, indent=2)
+        console.print(f"[green]Report written to {output}[/green]")
+
+    # Enforce threshold
+    if threshold is not None and pending_tiles > threshold:
+        console.print(
+            f"[red]Pending tiles ({pending_tiles}) exceed threshold ({threshold}) – exiting with error.[/red]"
         )
-        if res.stdout:
-            console.print("[red]Recent Hub Errors found:[/red]")
-            console.print(res.stdout)
-        else:
-            console.print("[green]No recent errors in Hub logs.[/green]")
-    except Exception as e:
-        console.print(f"[yellow]Could not check Hub logs: {e}[/yellow]")
+        raise SystemExit(1)
 
 
 @app.command(name="tui")
@@ -357,9 +538,65 @@ def audit_tui(
     """
     Dumps the TUI widget hierarchy.
     """
-    # This just wraps the existing functionality
-    # But cocli tui --dump-tree already does this.
     console.print(f"To dump TUI tree, use: [bold]cocli tui --dump-tree {output}[/bold]")
+
+
+@app.command(name="cluster")
+def audit_cluster(
+    verbose: bool = typer.Option(False, "--verbose", "-v", help="Show detailed container command output."),
+) -> None:
+    """
+    Audit cluster nodes for supervisor container configuration and worker counts.
+    """
+    from ..core.config import get_campaign
+    from ..services.cluster_service import ClusterService
+    from rich.table import Table
+    import asyncio
+
+    campaign_name = get_campaign() or "roadmap"
+    service = ClusterService(campaign_name)
+
+    async def collect_node_info(node):
+        # Get container command via docker inspect
+        inspect_cmd = "docker inspect -f '{{.Config.Cmd}}' cocli-supervisor"
+        cmd_output = await service.run_remote_command(node, inspect_cmd)
+        # Determine if orchestrate is present
+        orchestrate = "orchestrate" in cmd_output
+        cmd_desc = "orchestrate" if orchestrate else "supervisor"
+        # Count worker processes (cocli worker ...) inside container
+        ps_cmd = "docker exec cocli-supervisor pgrep -c -f 'cocli worker' || true"
+        ps_output = await service.run_remote_command(node, ps_cmd)
+        try:
+            worker_count = int(ps_output.strip())
+        except Exception:
+            worker_count = 0
+        return {
+            "host": node.hostname,
+            "cmd": cmd_desc,
+            "full_cmd": cmd_output.strip() if verbose else "",
+            "workers": worker_count,
+        }
+
+    async def gather():
+        results = []
+        for n in service.get_nodes():
+            info = await collect_node_info(n)
+            results.append(info)
+        return results
+
+    diagnostics = asyncio.run(gather())
+    table = Table(title="Cluster Node Audit")
+    table.add_column("Node", style="cyan")
+    table.add_column("Container Cmd", style="magenta")
+    table.add_column("Worker Count", justify="right")
+    if verbose:
+        table.add_column("Full Cmd", style="dim")
+    for d in diagnostics:
+        row = [d["host"], d["cmd"], str(d["workers"])]
+        if verbose:
+            row.append(d["full_cmd"])
+        table.add_row(*row)
+    console.print(table)
 
 
 @app.command(name="schemas")

@@ -572,8 +572,10 @@ def prepare_mission(
     # 2. Load Target Locations
     target_locations: List[Dict[str, Any]] = []
     if target_locations_csv:
-        # Search in campaign root OR resources/
-        path = campaign_dir / target_locations_csv
+        # Search order: queues/discovery-gen/inputs/ (new standard) → campaign root → resources/
+        path = paths.campaign(campaign_name).queue("discovery-gen").inputs / target_locations_csv
+        if not path.exists():
+            path = campaign_dir / target_locations_csv
         if not path.exists():
             path = campaign_dir / "resources" / target_locations_csv
 

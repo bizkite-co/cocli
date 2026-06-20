@@ -34,13 +34,13 @@ RUN uv pip install . --system --no-deps
 # Final static analysis check
 RUN ruff check cocli/
 
-# Verify that the core application can be imported (Safety check)
-# We run this from /tmp to ensure we are testing the installed package
-RUN cd /tmp && python3 -c "import cocli.main; import cocli.commands.worker; print('Import check passed!')"
-
 # Set COCLI_DATA_HOME to a persistent-ish location in the container
 ENV COCLI_DATA_HOME=/app/data
 ENV PYTHONUNBUFFERED=1
+
+# Verify that the core application can be imported (Safety check)
+# We run this from /tmp to ensure we are testing the installed package
+RUN cd /tmp && COCLI_ENV=test python3 -c "import cocli.main; import cocli.commands.worker; print('Import check passed!')"
 
 # Create the run_worker.sh script directly in the Dockerfile
 RUN echo '#!/bin/bash' > docker/rpi-worker/run_worker.sh && \

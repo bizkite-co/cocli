@@ -85,6 +85,11 @@ class QueuePaths(PathObject):
         return self.state("wal")
 
     @property
+    def inputs(self) -> Path:
+        """Returns the inputs directory for the discovery-gen queue (target locations, etc)."""
+        return self.path / "inputs"
+
+    @property
     def master(self) -> Path:
         """Returns the master mission file for the discovery-gen queue."""
         return self.path / "mission.usv"

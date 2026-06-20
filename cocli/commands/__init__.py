@@ -9,6 +9,7 @@ def register_commands(app: typer.Typer) -> None:
     from . import compile_enrichment
     from . import context
     from . import deduplicate
+    from . import dev
     from . import enrich_customers
     from . import enrich_shopify_data
     from . import exclude
@@ -67,6 +68,7 @@ def register_commands(app: typer.Typer) -> None:
     app.command(name="flag-email-providers")(flag_email_providers.flag_email_providers)
 
     app.add_typer(campaign.app, name="campaign")
+    app.add_typer(dev.app, name="dev")
     app.add_typer(exclude.app, name="exclude")
     app.add_typer(deduplicate.app, name="deduplicate")
     app.add_typer(render.app, name="render")
