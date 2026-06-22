@@ -4,22 +4,20 @@ Development utilities for testing and debugging pipeline stages.
 
 import typer
 import logging
-from typing import Optional, List, Annotated
+from typing import Optional, List, Annotated, Any
 from pathlib import Path
 from rich.console import Console
-from rich.table import Table
 
 from cocli.core.paths import paths
 from cocli.core.config import get_campaign, get_campaign_dir
-from cocli.models.campaigns.mission import MissionTask
-from cocli.models.campaigns.tiles import TileRecord
+from cocli.core.frictionless_validation import validate_stage_outputs
 
 logger = logging.getLogger(__name__)
 console = Console()
 app = typer.Typer(no_args_is_help=True)
 
 
-def validate_usv_against_schema(usv_path: Path, model_class) -> tuple[bool, int, List[str]]:
+def validate_usv_against_schema(usv_path: Path, model_class: type[Any]) -> tuple[bool, int, List[str]]:
     """
     Validate a USV file against a Pydantic model schema.
     Returns: (is_valid, record_count, errors)
@@ -91,76 +89,50 @@ def run_discovery_pipeline(
         raise typer.Exit(1)
 
     dg_queue = paths.campaign(campaign_name).queue("discovery-gen")
-    console.print(f"[bold blue]Discovery-Gen Pipeline Test[/bold blue]")
+    console.print("[bold blue]Discovery-Gen Pipeline Validation[/bold blue]")
     console.print(f"  Campaign: {campaign_name}")
     console.print(f"  Queue: {dg_queue.path}\n")
 
-    # ===== STAGE 1: Generate Tiles =====
-    if stage is None or stage == 1:
-        console.print("[bold cyan]Stage 1: Generate Tiles[/bold cyan]")
-        tiles_path = dg_queue.path / "tiles" / "tiles.usv"
-        if tiles_path.exists():
-            is_valid, count, errors = validate_usv_against_schema(tiles_path, TileRecord)
-            status = "[green]✓[/green]" if is_valid else "[red]✗[/red]"
-            console.print(f"  {status} tiles/tiles.usv: {count} tiles")
-            if errors:
-                for error in errors[:3]:
-                    console.print(f"    [red]{error}[/red]")
-        else:
-            console.print(f"  [yellow]⚠[/yellow] tiles/tiles.usv not found: {tiles_path}")
-        console.print()
+    # Use Frictionless validation utility
+    results = validate_stage_outputs(campaign_name, dg_queue, stage)
 
-    # ===== STAGE 2: Expand Phrases (Mission) =====
-    if stage is None or stage == 2:
-        console.print("[bold cyan]Stage 2: Expand Phrases → Mission[/bold cyan]")
-        mission_path = dg_queue.master
-        if mission_path.exists():
-            is_valid, count, errors = validate_usv_against_schema(mission_path, MissionTask)
-            status = "[green]✓[/green]" if is_valid else "[red]✗[/red]"
-            console.print(f"  {status} mission.usv: {count} records")
-            if errors:
-                for error in errors[:3]:
-                    console.print(f"    [red]{error}[/red]")
-                if len(errors) > 3:
-                    console.print(f"    [dim]... and {len(errors) - 3} more[/dim]")
-        else:
-            console.print(f"  [yellow]⚠[/yellow] mission.usv not found: {mission_path}")
-        console.print()
+    for stage_num in sorted(results.keys()):
+        result = results[stage_num]
+        status = "[green]✓[/green]" if result["valid"] else "[red]✗[/red]"
+        console.print(f"{status} [bold cyan]Stage {stage_num}: {result['name']}[/bold cyan]")
 
-    # ===== STAGE 3: Filter Frontier =====
-    if stage is None or stage == 3:
-        console.print("[bold cyan]Stage 3: Filter Frontier (ScrapeIndex TTL)[/bold cyan]")
-        frontier_path = dg_queue.pending / "frontier.usv"
-        if frontier_path.exists():
-            is_valid, count, errors = validate_usv_against_schema(frontier_path, MissionTask)
-            status = "[green]✓[/green]" if is_valid else "[red]✗[/red]"
-            console.print(f"  {status} frontier.usv: {count} pending tasks")
-            if errors:
-                for error in errors[:3]:
-                    console.print(f"    [red]{error}[/red]")
-        else:
-            console.print(f"  [yellow]⚠[/yellow] frontier.usv not found: {frontier_path}")
-        console.print()
+        # Check if file exists
+        file_path = Path(result["file"])
+        if not file_path.exists():
+            console.print(f"    [yellow]⚠[/yellow] File not found: {file_path.name}")
+            console.print()
+            continue
 
-    # ===== STAGE 4: Create Batches =====
-    if stage is None or stage == 4:
-        console.print("[bold cyan]Stage 4: Create Batches[/bold cyan]")
-        batch_dir = dg_queue.pending / "batches"
-        if batch_dir.exists():
-            batch_files = list(batch_dir.glob("*.usv"))
-            console.print(f"  Found {len(batch_files)} batch files:")
-            for batch_file in sorted(batch_files)[:5]:
-                is_valid, count, _ = validate_usv_against_schema(batch_file, MissionTask)
-                status = "[green]✓[/green]" if is_valid else "[red]✗[/red]"
-                console.print(f"    {status} {batch_file.name}: {count} items")
-            if len(batch_files) > 5:
-                console.print(f"    [dim]... and {len(batch_files) - 5} more[/dim]")
+        # Show record count
+        console.print(f"    Records: {result['record_count']}")
+
+        # Show schema path
+        schema_path = Path(result["schema"])
+        if schema_path.exists():
+            console.print(f"    Schema: ✓ {schema_path.name}")
         else:
-            console.print(f"  [yellow]⚠[/yellow] No batches directory yet")
+            console.print(f"    Schema: [yellow]⚠[/yellow] {schema_path.name} not found")
+
+        # Show errors if any
+        if result["errors"]:
+            console.print(f"    [red]Errors ({len(result['errors'])}):[/red]")
+            for error in result["errors"][:3]:
+                console.print(f"      {error}")
+            if len(result["errors"]) > 3:
+                console.print(f"      [dim]... and {len(result['errors']) - 3} more[/dim]")
         console.print()
 
     # ===== Summary =====
-    console.print("[bold green]Pipeline validation complete![/bold green]")
+    all_valid = all(r["valid"] for r in results.values())
+    if all_valid:
+        console.print("[bold green]✓ All stages validated successfully![/bold green]")
+    else:
+        console.print("[bold yellow]⚠ Some stages have validation errors[/bold yellow]")
 
 
 @app.command(name="run-discovery-gen-stages")
@@ -179,20 +151,33 @@ def run_discovery_gen_stages(
     ] = False,
 ) -> None:
     """
-    Run the extracted discovery-gen pipeline stages end-to-end.
+    Execute the discovery-gen pipeline: locations → tiles → mission → frontier.
 
-    This orchestrates the decomposed stage functions:
-      Stage 1: generate_tiles() → tiles.usv
-      Stage 2: expand_phrases() → mission.usv
-      Stage 3: filter_frontier() → pending/frontier.usv
+    This runs the refactored decomposed stages end-to-end with validation:
+      Stage 1: generate_tiles()
+        Input: target_locations from config
+        Output: tiles/tiles.usv (geographic grid)
 
-    Each stage validates its output against Frictionless Data schema.
-    Schema versioning (cocli:schema_hash) protects against conflicts.
+      Stage 2: expand_phrases()
+        Input: tiles from Stage 1
+        Output: mission.usv (tiles × search phrases)
 
-    Example:
-      cocli dev run-discovery-gen-stages turboship               # Run all stages
-      cocli dev run-discovery-gen-stages turboship --stage=1     # Run Stage 1 only
-      cocli dev run-discovery-gen-stages turboship --stage=2     # Run Stage 2 only
+      Stage 3: filter_frontier()
+        Input: mission tasks from Stage 2
+        Output: pending/frontier.usv (unscraped/stale tasks ready for scraping)
+
+    Each stage auto-validates output against Frictionless Data schema.
+    Schema versioning (cocli:schema_hash) ensures consistency.
+
+    USAGE:
+      # Full pipeline (all 3 stages):
+      cocli dev run-discovery-gen-stages turboship
+
+      # Single stage (useful for debugging):
+      cocli dev run-discovery-gen-stages turboship --stage=1
+
+      # Then check results without re-running:
+      cocli dev run-discovery-pipeline turboship
     """
     from cocli.commands.campaign.discovery_gen_stages import (
         generate_tiles,
@@ -213,7 +198,7 @@ def run_discovery_gen_stages(
         raise typer.Exit(1)
 
     dg_queue = paths.campaign(campaign_name).queue("discovery-gen")
-    console.print(f"[bold blue]Discovery-Gen Pipeline Execution[/bold blue]")
+    console.print("[bold blue]Discovery-Gen Pipeline Execution[/bold blue]")
     console.print(f"  Campaign: {campaign_name}")
     console.print(f"  Queue: {dg_queue.path}\n")
 

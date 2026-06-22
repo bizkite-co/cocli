@@ -3,7 +3,6 @@ import asyncio
 import logging
 import toml
 import json
-import csv
 from typing import Optional, List, Dict, Any, cast, Annotated
 from pathlib import Path
 from rich.console import Console
@@ -547,7 +546,19 @@ def prepare_mission(
 ) -> None:
     """
     Generates a deterministic master task list (mission.usv) and calculates the unscraped frontier.
+
+    Uses the refactored discovery-gen pipeline stages:
+      Stage 1: generate_tiles() - Create geographic grid from target locations
+      Stage 2: expand_phrases() - Cross tiles × search phrases to create mission tasks
+      Stage 3: filter_frontier() - Filter by ScrapeIndex TTL to find pending work
+      Stage 4: Reset state - Clear offset for fresh batch creation
     """
+    from ...commands.campaign.discovery_gen_stages import (
+        generate_tiles,
+        expand_phrases,
+        filter_frontier,
+    )
+
     if campaign_name is None:
         campaign_name = get_campaign()
 
@@ -560,176 +571,60 @@ def prepare_mission(
         console.print(f"[red]Campaign directory not found for {campaign_name}[/red]")
         raise typer.Exit(1)
 
-    # 1. Load Config
-    with open(campaign_dir / "config.toml", "r") as f:
-        config = toml.load(f)
-
-    prospecting_config = config.get("prospecting", {})
-    proximity_miles = float(prospecting_config.get("proximity", 10.0))
-    search_phrases = prospecting_config.get("queries", [])
-    target_locations_csv = prospecting_config.get("target-locations-csv")
-
-    # 2. Load Target Locations
-    target_locations: List[Dict[str, Any]] = []
-    if target_locations_csv:
-        # Search order: queues/discovery-gen/inputs/ (new standard) → campaign root → resources/
-        path = paths.campaign(campaign_name).queue("discovery-gen").inputs / target_locations_csv
-        if not path.exists():
-            path = campaign_dir / target_locations_csv
-        if not path.exists():
-            path = campaign_dir / "resources" / target_locations_csv
-
-        if path.exists():
-            with open(path, "r", encoding="utf-8") as f:
-                rows: List[Dict[str, Any]] = []
-                if path.suffix == ".usv":
-                    from ...utils.usv_utils import USVDictReader
-
-                    u_reader = USVDictReader(f)
-                    rows = list(u_reader)
-                else:
-                    c_reader = csv.DictReader(f)
-                    rows = list(c_reader)
-
-                for row in rows:
-                    lat, lon = row.get("lat"), row.get("lon")
-                    if lat and lon:
-                        target_locations.append(
-                            {
-                                "name": row.get("name") or row.get("city"),
-                                "lat": float(lat),
-                                "lon": float(lon),
-                            }
-                        )
-
-    # 3. Generate Grid
-    console.print(
-        f"[bold]Generating grid for {len(target_locations)} locations (Radius: {proximity_miles} mi)...[/bold]"
-    )
-    unique_tiles = get_campaign_grid_tiles(
-        campaign_name, target_locations=target_locations
-    )
-
-    # 4. Build Deterministic Task List
-
-    tasks = []
-    for tile in unique_tiles:
-        lat = tile.get("center_lat") or tile.get("center", {}).get("lat")
-        lon = tile.get("center_lon") or tile.get("center", {}).get("lon")
-        tile_id = tile.get("id")
-        if lat and lon and tile_id:
-            for phrase in search_phrases:
-                tasks.append(
-                    {
-                        "tile_id": tile_id,
-                        "search_phrase": phrase,
-                        "latitude": LatScale1(lat),
-                        "longitude": LonScale1(lon),
-                    }
-                )
-
-    # Sort by tile_id then phrase for stability
-    tasks.sort(key=lambda x: (x["tile_id"], x["search_phrase"]))
-
-    from ...models.campaigns.mission import MissionTask
-
     discovery_gen = paths.campaign(campaign_name).queue("discovery-gen")
-    mission_usv_path = discovery_gen.master  # Root/mission.usv
-    mission_tasks = [MissionTask(**t) for t in tasks]
-    MissionTask.save_usv_with_datapackage(mission_tasks, mission_usv_path, "mission")
 
-    # 5. Filter for Pending Tasks (The Frontier)
-    console.print(
-        f"[bold]Filtering against ScrapeIndex (TTL: {ttl_days} days) to find the frontier...[/bold]"
-    )
-    scrape_index = ScrapeIndex()
+    try:
+        # Stage 1: Generate tiles from target locations
+        console.print("[bold]Stage 1: Generating grid from target locations...[/bold]")
+        tiles = generate_tiles(campaign_name, save_output=True)
+        console.print(f"  [green]✓[/green] Generated {len(tiles)} tiles")
 
-    if debug:
-        temp_manifest = discovery_gen.path / "temp" / "scraped_manifest.usv"
-        count = scrape_index.generate_diagnostic_manifest(temp_manifest)
-        console.print(
-            f"[dim]  Generated diagnostic manifest with {count} items at {temp_manifest}[/dim]"
-        )
+        # Stage 2: Expand tiles × search phrases → mission tasks
+        console.print("[bold]Stage 2: Expanding tiles × search phrases...[/bold]")
+        mission_tasks = expand_phrases(campaign_name, tiles=tiles, save_output=True)
+        console.print(f"  [green]✓[/green] Generated {len(mission_tasks)} mission tasks")
+        mission_usv_path = discovery_gen.master
 
-    pending_tasks = []
-
-    match_count = 0
-    skipped_unproductive = 0
-    checked = 0
-    for t in tasks:
-        checked += 1
-        match = scrape_index.is_tile_scraped(
-            t["search_phrase"], t["tile_id"], ttl_days=ttl_days
-        )
-
-        # If it's NOT a match (it's unscraped or stale), we might want it
-        if not match:
-            # But we must check if it was EVER scraped and found 0 items
-            forever_match = scrape_index.is_tile_scraped(
-                t["search_phrase"], t["tile_id"], ttl_days=None
+        # Optional: Generate diagnostic manifest
+        if debug:
+            console.print("[bold]Debug: Generating diagnostic manifest...[/bold]")
+            scrape_index = ScrapeIndex()
+            temp_manifest = discovery_gen.path / "temp" / "scraped_manifest.usv"
+            count = scrape_index.generate_diagnostic_manifest(temp_manifest)
+            console.print(
+                f"  [dim]Generated manifest with {count} items at {temp_manifest}[/dim]"
             )
-            if forever_match and forever_match.items_found == 0:
-                skipped_unproductive += 1
-                continue
 
-            # Double check with area bounds to be safe
-            lat, lon = t["latitude"], t["longitude"]
-            bounds = {
-                "lat_min": lat - 0.05,
-                "lat_max": lat + 0.05,
-                "lon_min": lon - 0.05,
-                "lon_max": lon + 0.05,
-            }
-            area_match_res = scrape_index.is_area_scraped(
-                t["search_phrase"],
-                bounds,
-                ttl_days=ttl_days,
-                overlap_threshold_percent=90.0,
-            )
-            if area_match_res:
-                # Unproductive check for area matches
-                area_match, _ = area_match_res
-                if area_match.items_found == 0:
-                    skipped_unproductive += 1
-                    continue
-                match = area_match
-
-            if not match:
-                pending_tasks.append(t)
-            else:
-                match_count += 1
-        else:
-            match_count += 1
-
-    console.print(f"[dim]  Checked {checked} tasks.[/dim]")
-    if match_count > 0:
+        # Stage 3: Filter frontier by ScrapeIndex TTL
         console.print(
-            f"[green]  Successfully identified {match_count} previously scraped tiles.[/green]"
+            f"[bold]Stage 3: Filtering frontier (TTL: {ttl_days} days)...[/bold]"
         )
-    if skipped_unproductive > 0:
+        frontier_tasks = filter_frontier(
+            campaign_name, mission_tasks=mission_tasks, ttl_days=ttl_days, save_output=True
+        )
+        frontier_path = discovery_gen.pending / "frontier.usv"
+        console.print(f"  [green]✓[/green] Identified {len(frontier_tasks)} pending tasks")
+
+        # Stage 4: Reset state for clean batch creation
+        state_path = campaign_dir / "mission_state.toml"
+        with open(state_path, "w") as f:
+            toml.dump({"last_offset": 0}, f)
+        console.print("[bold]Stage 4: Reset state[/bold]")
+        console.print("  [green]✓[/green] Offset reset to 0")
+
+        # Summary
+        console.print("\n[bold green]✓ Mission prepared![/bold green]")
+        console.print(f"  Total mission tasks: [cyan]{len(mission_tasks)}[/cyan]")
         console.print(
-            f"[yellow]  Skipped {skipped_unproductive} previously unproductive tiles (0 results).[/yellow]"
+            f"  [bold yellow]Pending frontier: {len(frontier_tasks)}[/bold yellow]"
         )
+        console.print(f"  Master: {mission_usv_path}")
+        console.print(f"  Frontier: {frontier_path}")
 
-    frontier_path = discovery_gen.pending / "frontier.usv"
-    frontier_model_tasks = [MissionTask(**t) for t in pending_tasks]
-    MissionTask.save_usv_with_datapackage(
-        frontier_model_tasks, frontier_path, "frontier"
-    )
-
-    # 6. Reset State
-    state_path = campaign_dir / "mission_state.toml"
-    with open(state_path, "w") as f:
-        toml.dump({"last_offset": 0}, f)
-
-    console.print("[bold green]Mission prepared![/bold green]")
-    console.print(f"  Total mission tasks: [cyan]{len(tasks)}[/cyan]")
-    console.print(
-        f"  [bold yellow]Pending frontier: {len(pending_tasks)}[/bold yellow]"
-    )
-    console.print(f"  Saved master to: {mission_usv_path}")
-    console.print(f"  Saved frontier to: {frontier_path}")
-    console.print("[dim]Offset reset to 0.[/dim]")
+    except Exception as e:
+        console.print(f"[red]Error preparing mission: {e}[/red]")
+        logger.exception("Mission preparation failed")
+        raise typer.Exit(1)
 
 
 @app.command(name="create-batch")

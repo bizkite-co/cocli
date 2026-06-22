@@ -215,9 +215,7 @@ def audit_rollout(
     from rich.table import Table
     from datetime import datetime, UTC, timedelta
     import json
-    import subprocess
     import asyncio
-    from datetime import datetime, UTC
 
     campaign_name = campaign or get_campaign()
     if not campaign_name:
@@ -362,10 +360,8 @@ def audit_scrape(
     from ..services.cluster_service import ClusterService
     from rich.table import Table
     import json
-    import subprocess
     import asyncio
     import logging
-    from datetime import datetime
 
     logger = logging.getLogger(__name__)
 
@@ -402,7 +398,6 @@ def audit_scrape(
 
     # Audit queues: count valid and invalid records from completed/ subdirectories
     from cocli.utils import duckdb_utils
-    import json as json_lib
 
     def audit_queue(queue_name: str) -> tuple[int, int]:
         """
@@ -431,10 +426,6 @@ def audit_scrape(
 
         try:
             con = duckdb.connect(database=":memory:")
-
-            # Load datapackage schema
-            with open(datapackage_path, "r") as f:
-                dp = json_lib.load(f)
 
             # Use a safe table name (replace hyphens with underscores)
             safe_table_name = queue_name.replace("-", "_")
@@ -503,13 +494,9 @@ def audit_scrape(
         for k, v in report.items():
             table.add_row(k.replace("_", " ").title(), str(v))
         console.print(table)
-        if verbose and pending_tiles:
-            # Show a short sample of pending tiles
-            sample = sorted(seen - gm_tiles)[:20] if not no_duckdb else []
-            if sample:
-                console.print("\n[bold]Sample of pending tiles (lat/long):[/bold]")
-                for t in sample:
-                    console.print(f"  • {t}")
+        if verbose and pending_tiles and not no_duckdb:
+            # Pending tiles: those in discovery-gen but not yet in gm-list
+            console.print(f"\n[bold]Pending tiles to scrape: {pending_tiles}[/bold]")
 
     # Write JSON if requested
     if output:
@@ -556,7 +543,7 @@ def audit_cluster(
     campaign_name = get_campaign() or "roadmap"
     service = ClusterService(campaign_name)
 
-    async def collect_node_info(node):
+    async def collect_node_info(node: Any) -> dict[str, Any]:
         # Get container command via docker inspect
         inspect_cmd = "docker inspect -f '{{.Config.Cmd}}' cocli-supervisor"
         cmd_output = await service.run_remote_command(node, inspect_cmd)
@@ -577,14 +564,14 @@ def audit_cluster(
             "workers": worker_count,
         }
 
-    async def gather():
-        results = []
+    async def gather() -> list[dict[str, Any]]:
+        results: list[dict[str, Any]] = []
         for n in service.get_nodes():
             info = await collect_node_info(n)
             results.append(info)
         return results
 
-    diagnostics = asyncio.run(gather())
+    diagnostics: list[dict[str, Any]] = asyncio.run(gather())
     table = Table(title="Cluster Node Audit")
     table.add_column("Node", style="cyan")
     table.add_column("Container Cmd", style="magenta")

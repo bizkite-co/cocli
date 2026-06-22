@@ -1,16 +1,57 @@
 """
 Discovery-Gen Pipeline Stages: Decomposed, testable functions.
 
-Stage 1: generate_tiles()
-Stage 2: expand_phrases()
-Stage 3: filter_frontier()
-Stage 4: create_batch()
+ARCHITECTURE:
+  The discovery-gen pipeline transforms target locations → tiles → mission tasks → frontier.
+  Each stage is independently testable and can chain input/output via USV files.
+
+STAGES:
+  Stage 1: generate_tiles(campaign_name) → List[TileRecord]
+    Input: target_locations from config or inputs/target_locations.usv
+    Output: tiles.usv (saved to tiles/ with datapackage.json schema)
+    Purpose: Create geographic grid covering target locations
+
+  Stage 2: expand_phrases(campaign_name, tiles) → List[MissionTask]
+    Input: TileRecord list from Stage 1
+    Output: mission.usv (saved to queue root with datapackage.json)
+    Purpose: Cross tiles × search phrases from config to create mission tasks
+
+  Stage 3: filter_frontier(campaign_name, mission_tasks) → List[MissionTask]
+    Input: MissionTask list from Stage 2
+    Output: pending/frontier.usv (unscraped/stale tasks, with datapackage.json)
+    Purpose: Filter by ScrapeIndex TTL to find pending work
+
+  Stage 4: create_batch() [FUTURE]
+    Purpose: Package frontier into controlled batch rollouts (not yet extracted)
+
+USAGE:
+  # Full pipeline execution (all stages with file I/O):
+  cocli dev run-discovery-gen-stages turboship
+
+  # Single stage (e.g., just generate tiles):
+  cocli dev run-discovery-gen-stages turboship --stage=1
+
+  # Validate existing outputs:
+  cocli dev run-discovery-pipeline turboship
+
+TESTING:
+  # All stages have unit tests with mocked dependencies
+  pytest tests/unit/test_discovery_gen_stages.py
+
+  # Schema conformance tests
+  pytest tests/integration/test_discovery_gen_frictionless_validation.py
+
+SCHEMA VERSIONING:
+  Each stage output includes a datapackage.json with:
+    - Frictionless Data schema (field names, types, descriptions)
+    - cocli:schema_hash for deterministic version tracking
+    - cocli:generated_at timestamp
+  This prevents schema conflicts when outputs are stored in different directories.
 """
 
 import logging
 import csv
 from typing import List, Dict, Any, Optional
-from pathlib import Path
 import toml
 
 from cocli.core.paths import paths
@@ -18,7 +59,6 @@ from cocli.core.config import get_campaign_dir
 from cocli.core.geo_types import LatScale1, LonScale1
 from cocli.planning.generate_grid import get_campaign_grid_tiles
 from cocli.models.campaigns.tiles import TileRecord
-from cocli.models.campaigns.target_location import TargetLocationRecord
 from cocli.models.campaigns.mission import MissionTask
 from cocli.core.scrape_index import ScrapeIndex
 
@@ -167,13 +207,25 @@ def expand_phrases(
     """
     Stage 2: Expand tiles × search phrases → mission tasks.
 
+    Reads search phrases from campaign config and creates one MissionTask
+    per (tile, phrase) combination. Tasks are sorted by tile_id then phrase
+    for deterministic output.
+
     Args:
         campaign_name: Campaign to generate mission for
-        tiles: List of TileRecord objects. If None, loads from inputs/tiles.usv
-        save_output: If True, saves to mission.usv with datapackage.json
+        tiles: List of TileRecord objects. If None, loads from tiles/tiles.usv
+        save_output: If True, saves to mission.usv at queue root with datapackage.json
 
     Returns:
-        List of MissionTask objects
+        List of MissionTask objects (tile_id, search_phrase, latitude, longitude)
+
+    Raises:
+        ValueError: If campaign directory not found or tiles file missing
+
+    Example:
+        tiles = generate_tiles("turboship", save_output=True)
+        mission = expand_phrases("turboship", tiles=tiles, save_output=True)
+        # Creates mission.usv: tile_id<tab>phrase<tab>lat<tab>lon
     """
     campaign_dir = get_campaign_dir(campaign_name)
     if not campaign_dir:
@@ -239,14 +291,29 @@ def filter_frontier(
     """
     Stage 3: Filter mission tasks by ScrapeIndex to find unscraped frontier.
 
+    Queries ScrapeIndex to identify:
+    1. Tasks never scraped (no match in index)
+    2. Tasks stale beyond ttl_days (last scrape > ttl_days ago)
+    3. Tasks in unproductive areas (no results found historically)
+
+    Results are "the frontier" — pending work ready for scraping.
+
     Args:
         campaign_name: Campaign to filter for
         mission_tasks: List of MissionTask objects. If None, loads from mission.usv
-        ttl_days: Tiles scraped longer ago than this are considered stale
-        save_output: If True, saves to pending/frontier.usv
+        ttl_days: Tiles scraped longer ago than this are considered stale (default: 30)
+        save_output: If True, saves to pending/frontier.usv with datapackage.json
 
     Returns:
-        List of unscraped/stale MissionTask objects (the frontier)
+        List of unscraped/stale MissionTask objects ready for scraping
+
+    Raises:
+        ValueError: If campaign directory not found or mission.usv missing
+
+    Example:
+        mission = expand_phrases("turboship", save_output=True)
+        frontier = filter_frontier("turboship", mission_tasks=mission, save_output=True)
+        # Creates pending/frontier.usv: MissionTask records ready to scrape
     """
     campaign_dir = get_campaign_dir(campaign_name)
     if not campaign_dir:

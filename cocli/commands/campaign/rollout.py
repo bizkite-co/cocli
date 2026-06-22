@@ -2,15 +2,98 @@
 import typer
 import asyncio
 import logging
-from typing import Optional, Annotated
+import subprocess
+from pathlib import Path
+from typing import Optional, Annotated, Dict, Any, Tuple
 from rich.console import Console
+from rich.table import Table
 
 from cocli.core.config import get_campaign
+from cocli.core.paths import paths
 from cocli.application.operation_service import OperationService
 
 logger = logging.getLogger(__name__)
 console = Console()
 app = typer.Typer(name="rollout", help="Standardized campaign rollout management.", no_args_is_help=True)
+
+
+def _get_pi_hostnames() -> Dict[str, str]:
+    """Get PI hostnames (Tailscale MagicDNS names)."""
+    return {
+        "cocli5x0": "cocli5x0.tail87cf32.ts.net",
+        "cocli5x1": "cocli5x1.tail87cf32.ts.net",
+    }
+
+
+def _ssh_run(hostname: str, command: str) -> Tuple[int, str]:
+    """Run command on remote host via SSH. Returns (exit_code, output)."""
+    try:
+        result = subprocess.run(
+            ["ssh", f"mstouffer@{hostname}", command],
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+        return result.returncode, result.stdout.strip()
+    except subprocess.TimeoutExpired:
+        return 1, ""
+    except Exception as e:
+        return 1, str(e)
+
+
+def _count_lines_in_dir(path: Path, pattern: str = "*.usv") -> int:
+    """Count total lines in all matching files in a directory."""
+    count = 0
+    if path.exists():
+        for file in path.glob(pattern):
+            try:
+                with open(file, "r") as f:
+                    count += sum(1 for _ in f)
+            except Exception:
+                pass
+    return count
+
+
+def _get_batch_status(campaign_name: str) -> Dict[str, Any]:
+    """Get status of all batches for a campaign."""
+    dg_queue = paths.campaign(campaign_name).queue("discovery-gen")
+    batches_dir = dg_queue.pending / "batches"
+
+    batches = {}
+    if batches_dir.exists():
+        for batch_file in batches_dir.glob("*.usv"):
+            with open(batch_file, "r") as f:
+                count = sum(1 for _ in f)
+            batches[batch_file.stem] = count
+
+    return batches
+
+
+def _get_pi_stats(campaign_name: str) -> Dict[str, Dict[str, Any]]:
+    """Get scraping stats from each PI."""
+    pi_hosts = _get_pi_hostnames()
+    stats = {}
+
+    for pi_name, hostname in pi_hosts.items():
+        wal_command = (
+            f"find ~/repos/data/campaigns/{campaign_name}/indexes/google_maps_prospects/wal "
+            "-name '*.usv' 2>/dev/null | xargs wc -l 2>/dev/null | tail -1 | awk '{{print $1}}'"
+        )
+        active_command = (
+            f"find ~/repos/data/campaigns/{campaign_name}/indexes/google_maps_prospects/active "
+            "-name '*.usv' 2>/dev/null | xargs wc -l 2>/dev/null | tail -1 | awk '{{print $1}}'"
+        )
+
+        rc1, wal_out = _ssh_run(hostname, wal_command)
+        rc2, active_out = _ssh_run(hostname, active_command)
+
+        stats[pi_name] = {
+            "wal_companies": int(wal_out) if wal_out and wal_out.isdigit() else 0,
+            "active_companies": int(active_out) if active_out and active_out.isdigit() else 0,
+            "reachable": rc1 == 0 and rc2 == 0,
+        }
+
+    return stats
 
 @app.command(name="run")
 def run_rollout(
@@ -158,6 +241,247 @@ def sync_audit(
         await service.sync_and_audit()
 
     asyncio.run(run())
+
+
+@app.command(name="status")
+def rollout_status(
+    campaign_name: Annotated[
+        Optional[str], typer.Argument(help="Campaign name")
+    ] = None,
+) -> None:
+    """
+    Show current rollout status: batches deployed, and synced results.
+    """
+    if campaign_name is None:
+        campaign_name = get_campaign()
+
+    if not campaign_name:
+        console.print("[red]No campaign specified.[/red]")
+        raise typer.Exit(1)
+
+    batches = _get_batch_status(campaign_name)
+
+    # Hub local data (synced from S3)
+    hub_index_path = (
+        paths.campaign(campaign_name).index("google_maps_prospects").path / "active"
+    )
+    hub_companies = _count_lines_in_dir(hub_index_path)
+
+    # Summary
+    console.print(f"\n[bold blue]Rollout Status: {campaign_name}[/bold blue]")
+    console.print(f"[dim]{'─' * 70}[/dim]")
+
+    # Batches table
+    if batches:
+        batch_table = Table(title="Batches Deployed")
+        batch_table.add_column("Batch Name", style="cyan")
+        batch_table.add_column("Tasks", style="yellow")
+
+        total_tasks = 0
+        for batch_name, task_count in sorted(batches.items()):
+            batch_table.add_row(batch_name, str(task_count))
+            total_tasks += task_count
+
+        console.print(batch_table)
+        console.print(f"[bold]Total Deployed: {total_tasks} tasks[/bold]\n")
+    else:
+        console.print("[yellow]No batches deployed[/yellow]\n")
+
+    # Hub results (deduplicated by place_id)
+    console.print("[bold]Results Synced to Hub:[/bold]")
+    console.print(f"  Unique Companies: [green]{hub_companies:,}[/green]")
+    if batches and total_tasks > 0:
+        console.print(f"  Avg per Task: [cyan]{hub_companies / total_tasks:.1f}[/cyan]")
+
+    console.print(f"[dim]{'─' * 70}[/dim]")
+    console.print("[dim]Run [bold]cocli campaign rollout sync[/bold] to pull latest results from S3[/dim]\n")
+
+
+@app.command(name="progress")
+def rollout_progress(
+    campaign_name: Annotated[
+        Optional[str], typer.Argument(help="Campaign name")
+    ] = None,
+    watch: Annotated[
+        bool, typer.Option("--watch", "-w", help="Continuously monitor (updates every 10s)")
+    ] = False,
+) -> None:
+    """
+    Show real-time progress of active rollout.
+    Reports synced results from hub. Run 'cocli campaign rollout sync' first for latest data.
+    """
+    if campaign_name is None:
+        campaign_name = get_campaign()
+
+    if not campaign_name:
+        console.print("[red]No campaign specified.[/red]")
+        raise typer.Exit(1)
+
+    import time
+
+    def show_progress() -> None:
+        batches = _get_batch_status(campaign_name)
+        total_deployed = sum(batches.values())
+
+        hub_index_path = (
+            paths.campaign(campaign_name).index("google_maps_prospects").path / "active"
+        )
+        hub_companies = _count_lines_in_dir(hub_index_path)
+
+        if total_deployed == 0:
+            console.print("[yellow]No batches deployed[/yellow]")
+            return
+
+        avg_per_task = hub_companies / total_deployed if total_deployed > 0 else 0
+
+        console.print(
+            f"[bold]Progress:[/bold] {hub_companies:,} companies from {total_deployed} tasks | "
+            f"{avg_per_task:.1f} avg/task"
+        )
+
+    if watch:
+        while True:
+            console.clear()
+            show_progress()
+            console.print("\n[dim]Syncing every 30 seconds... (press Ctrl+C to stop)[/dim]")
+            time.sleep(30)
+    else:
+        show_progress()
+
+
+@app.command(name="sync")
+def rollout_sync(
+    campaign_name: Annotated[
+        Optional[str], typer.Argument(help="Campaign name")
+    ] = None,
+    deduplicate: Annotated[
+        bool, typer.Option("--deduplicate", help="Remove duplicate companies across PIs")
+    ] = True,
+    workers: int = typer.Option(20, help="Number of concurrent download threads"),
+    full: bool = typer.Option(False, "--full", help="Perform a full sync (slower)"),
+    force: bool = typer.Option(False, "--force", help="Force re-download all files"),
+) -> None:
+    """
+    Sync scraping results from PIs back to hub via S3.
+    Deduplicates companies by place_id across all nodes.
+    """
+    if campaign_name is None:
+        campaign_name = get_campaign()
+
+    if not campaign_name:
+        console.print("[red]No campaign specified.[/red]")
+        raise typer.Exit(1)
+
+    from cocli.commands.smart_sync import run_smart_sync
+    from cocli.core.config import load_campaign_config
+    from cocli.core.reporting import get_data_bucket_name
+
+    console.print(f"[bold cyan]Syncing results for {campaign_name}...[/bold cyan]")
+
+    config = load_campaign_config(campaign_name)
+    aws_config = config.get("aws", {})
+    bucket_name = get_data_bucket_name(config, campaign_name)
+
+    # Pull prospects index from S3
+    console.print("[yellow]Step 1/3: Pulling prospects index from S3...[/yellow]")
+    prefix = f"campaigns/{campaign_name}/indexes/google_maps_prospects/"
+    local_base = paths.campaign(campaign_name).index("google_maps_prospects").path
+    run_smart_sync(
+        "prospects",
+        bucket_name,
+        prefix,
+        local_base,
+        campaign_name,
+        aws_config,
+        workers=workers,
+        full=full,
+        force=force
+    )
+
+    # Count total and deduplicate
+    active_path = local_base / "active"
+    seen_place_ids: set[str] = set()
+    duplicates = 0
+
+    console.print("[yellow]Step 2/3: Deduplicating by place_id...[/yellow]")
+    if active_path.exists():
+        for usv_file in active_path.glob("*.usv"):
+            try:
+                with open(usv_file, "r", encoding="utf-8") as f:
+                    for line in f:
+                        if line.strip():
+                            parts = line.strip().split("\x1f")
+                            if len(parts) >= 1:
+                                place_id = parts[0]
+                                if place_id in seen_place_ids:
+                                    duplicates += 1
+                                else:
+                                    seen_place_ids.add(place_id)
+            except Exception as e:
+                logger.error(f"Error reading {usv_file}: {e}")
+
+    # Get batch info
+    batches = _get_batch_status(campaign_name)
+    total_tasks_deployed = sum(batches.values())
+    unique_companies = len(seen_place_ids)
+
+    console.print("[yellow]Step 3/3: Reporting results...[/yellow]")
+    console.print(f"\n[bold blue]Sync Complete for {campaign_name}[/bold blue]")
+    console.print(f"[dim]{'─' * 70}[/dim]")
+    console.print(f"  Tasks Deployed: [cyan]{total_tasks_deployed}[/cyan]")
+    console.print(f"  Unique Companies Found: [green]{unique_companies:,}[/green]")
+    if duplicates > 0:
+        console.print(f"  Duplicate Entries Across PIs: [yellow]{duplicates:,}[/yellow]")
+    if total_tasks_deployed > 0:
+        console.print(f"  Avg Companies/Task: [cyan]{unique_companies / total_tasks_deployed:.1f}[/cyan]")
+    console.print(f"[dim]{'─' * 70}[/dim]\n")
+
+
+@app.command(name="report")
+def rollout_report(
+    campaign_name: Annotated[
+        Optional[str], typer.Argument(help="Campaign name")
+    ] = None,
+) -> None:
+    """
+    Detailed audit report: batches, coverage, and synced results.
+    """
+    if campaign_name is None:
+        campaign_name = get_campaign()
+
+    if not campaign_name:
+        console.print("[red]No campaign specified.[/red]")
+        raise typer.Exit(1)
+
+    batches = _get_batch_status(campaign_name)
+
+    hub_index_path = (
+        paths.campaign(campaign_name).index("google_maps_prospects").path / "active"
+    )
+    hub_companies = _count_lines_in_dir(hub_index_path)
+
+    total_deployed = sum(batches.values())
+
+    console.print(f"\n[bold blue]Rollout Report: {campaign_name}[/bold blue]")
+    console.print(f"[dim]{'─' * 70}[/dim]")
+
+    console.print("\n[bold]Deployment Coverage:[/bold]")
+    console.print(f"  Batches: {len(batches)}")
+    for batch_name, task_count in sorted(batches.items()):
+        console.print(f"    {batch_name}: {task_count} tasks")
+    console.print(f"  Total Deployed: {total_deployed} tasks")
+
+    console.print("\n[bold]Results (Synced & Deduplicated):[/bold]")
+    console.print(f"  Unique Companies: {hub_companies:,}")
+    if total_deployed > 0:
+        console.print(f"  Avg per Task: {hub_companies / total_deployed:.1f}")
+
+    coverage = (hub_companies / (total_deployed * 10)) * 100 if total_deployed > 0 else 0
+    console.print(f"  Coverage Estimate: {coverage:.0f}%")
+
+    console.print("\n[dim]Last synced: Run [bold]cocli campaign rollout sync[/bold] to update[/dim]")
+    console.print(f"[dim]{'─' * 70}[/dim]\n")
+
 
 if __name__ == "__main__":
     app()

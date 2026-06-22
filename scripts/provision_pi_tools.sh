@@ -103,5 +103,35 @@ else
     git -C "$NVIM_CONFIG_DIR" pull || true
 fi
 
+# 8. Create helpful aliases that direct users to Docker
+echo "Creating Docker reminders as aliases..."
+if ! grep -q "# All cocli work runs in Docker containers" ~/.bashrc; then
+    cat >> ~/.bashrc << 'EOF'
+
+# All cocli work runs in Docker containers on this PI
+# Use: docker run --rm -v ~/repos/data:/app/data cocli-worker-rpi:latest cocli <command>
+# Or manage the supervisor with: docker logs/start/stop/restart cocli-supervisor
+
+alias cocli='echo "❌ cocli is not installed here - it runs in Docker. Use the docker container instead."'
+alias playwright='echo "❌ playwright is not installed here - it runs in Docker."'
+alias python='echo "ℹ️  Python is not in PATH on this PI - work runs in Docker containers."'
+
+# Supervisor helpers that explain what they do
+alias supervisor-logs='echo "Tail supervisor logs: docker logs cocli-supervisor -f" && docker logs cocli-supervisor -f'
+alias supervisor-ps='echo "Check supervisor status:" && docker ps -a | grep cocli-supervisor'
+alias supervisor-restart='echo "Restart supervisor:" && docker restart cocli-supervisor'
+EOF
+fi
+
 echo "Provisioning complete on $(hostname)!"
-echo "IMPORTANT: Please log out and back in (or run 'newgrp docker') to use Docker without sudo."
+echo ""
+echo "=========================================="
+echo "Architecture: PI Host + Docker Container"
+echo "=========================================="
+echo "Host tools:  mise, nvim, git, docker, fd, rg (for navigation/editing)"
+echo "Docker:      cocli, Playwright, Python, all scraping/discovery work"
+echo ""
+echo "IMPORTANT: Please log out and back in (or run 'newgrp docker') for group changes."
+echo "Then try: docker ps (to verify Docker access)"
+echo "Then run: docker logs cocli-supervisor (to see worker logs)"
+echo "=========================================="
