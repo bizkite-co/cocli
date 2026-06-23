@@ -189,7 +189,6 @@ class WorkerService:
     async def _run_scrape_task_loop(
         self,
         browser: Browser,
-        scrape_queue: Any,
         gm_list_item_queue: Any,
         s3_client: Any,
         debug: bool,
@@ -197,6 +196,9 @@ class WorkerService:
         headless: bool = True,
         workers: int = 1,
     ) -> None:
+        from ..core.paths import paths
+        from ..core.geo_types import LatScale1, LonScale1
+
         while True:
             await asyncio.sleep(0.1)
             try:
@@ -207,14 +209,45 @@ class WorkerService:
                 logger.error(f"Browser check failed: {e}")
                 break
 
-            tasks: List[ScrapeTask] = await asyncio.to_thread(scrape_queue.poll, batch_size=1)
-            if not tasks:
+            # Read batch files from discovery-gen/pending/batches/
+            dg_queue = paths.campaign(self.campaign_name).queue("discovery-gen")
+            batches_dir = dg_queue.pending / "batches"
+
+            task = None
+            if batches_dir.exists():
+                # Find the first batch file with unprocessed tasks
+                for batch_file in sorted(batches_dir.glob("*.usv")):
+                    if batch_file.name == "datapackage.json":
+                        continue
+                    try:
+                        with open(batch_file, "r", encoding="utf-8") as f:
+                            for line in f:
+                                if line.strip():
+                                    # Parse: tile_id\tphrase\tlat\tlon
+                                    parts = line.strip().split("\t")
+                                    if len(parts) >= 4:
+                                        tile_id, phrase, lat_str, lon_str = parts[0], parts[1], parts[2], parts[3]
+                                        task = ScrapeTask(
+                                            ack_token=f"{tile_id}:{phrase}",
+                                            campaign_name=self.campaign_name,
+                                            tile_id=tile_id,
+                                            search_phrase=phrase,
+                                            latitude=LatScale1(float(lat_str)),
+                                            longitude=LonScale1(float(lon_str)),
+                                            zoom=15.0,
+                                        )
+                                        break
+                        if task:
+                            break
+                    except Exception as e:
+                        logger.error(f"Error reading batch file {batch_file}: {e}")
+                        continue
+
+            if not task:
                 if once:
                     return
                 await asyncio.sleep(5)
                 continue
-
-            task = tasks[0]
             grid_tiles = None
             if task.tile_id:
                 grid_tiles = [{"id": task.tile_id, "center_lat": task.latitude, "center_lon": task.longitude, "center": {"lat": task.latitude, "lon": task.longitude}}]
@@ -255,12 +288,11 @@ class WorkerService:
                     except Exception as res_err:
                         logger.warning(f"Failed to write batch result log: {res_err}")
 
-                scrape_queue.ack(task)
+                logger.info(f"Completed scrape task: {task.tile_id} × {task.search_phrase}")
                 if once:
                     return
             except Exception as e:
                 logger.error(f"Task Failed: {e}")
-                scrape_queue.nack(task)
                 if "Target page, context or browser has been closed" in str(e):
                     break
 
@@ -378,9 +410,8 @@ class WorkerService:
         async with async_playwright() as p:
             browser = await self._launch_browser(p, headless)
             s3_client = self.get_s3_client()
-            scrape_q = get_queue_manager("scrape", use_cloud=True, queue_type="scrape", campaign_name=self.campaign_name, s3_client=s3_client)
             details_q = get_queue_manager("details", use_cloud=True, queue_type="gm_list_item", campaign_name=self.campaign_name, s3_client=s3_client)
-            tasks = [self._run_scrape_task_loop(browser, scrape_q, details_q, s3_client, debug, once, headless, workers) for _ in range(workers)]
+            tasks = [self._run_scrape_task_loop(browser, details_q, s3_client, debug, once, headless, workers) for _ in range(workers)]
             await asyncio.gather(*tasks)
             await browser.close()
 
