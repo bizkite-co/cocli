@@ -15,6 +15,7 @@ from ..models.campaigns.queues.gm_list import ScrapeTask
 from ..models.campaigns.indexes.google_maps_list_item import GoogleMapsListItem
 from ..models.campaigns.queues.gm_details import GmItemTask
 from ..models.campaigns.queues.base import QueueMessage
+from ..models.campaigns.mission import MissionTask
 from ..core.config import load_campaign_config
 from ..utils.playwright_utils import setup_optimized_context
 from ..utils.headers import ANTI_BOT_HEADERS, USER_AGENT
@@ -223,20 +224,17 @@ class WorkerService:
                         with open(batch_file, "r", encoding="utf-8") as f:
                             for line in f:
                                 if line.strip():
-                                    # Parse: tile_id\tphrase\tlat\tlon
-                                    parts = line.strip().split("\t")
-                                    if len(parts) >= 4:
-                                        tile_id, phrase, lat_str, lon_str = parts[0], parts[1], parts[2], parts[3]
-                                        task = ScrapeTask(
-                                            ack_token=f"{tile_id}:{phrase}",
-                                            campaign_name=self.campaign_name,
-                                            tile_id=tile_id,
-                                            search_phrase=phrase,
-                                            latitude=LatScale1(float(lat_str)),
-                                            longitude=LonScale1(float(lon_str)),
-                                            zoom=15.0,
-                                        )
-                                        break
+                                    mission_task = MissionTask.from_usv(line)
+                                    task = ScrapeTask(
+                                        ack_token=f"{mission_task.tile_id}:{mission_task.search_phrase}",
+                                        campaign_name=self.campaign_name,
+                                        tile_id=mission_task.tile_id,
+                                        search_phrase=mission_task.search_phrase,
+                                        latitude=mission_task.latitude,
+                                        longitude=mission_task.longitude,
+                                        zoom=15.0,
+                                    )
+                                    break
                         if task:
                             break
                     except Exception as e:
