@@ -1077,6 +1077,11 @@ class FilesystemTileQueue(FilesystemQueue):
         """Pending tiles directory."""
         return self.pending_dir / "tiles"
 
+    @property
+    def processing_dir(self) -> Path:
+        """Processing directory for tiles currently being worked on."""
+        return self.queue_base / "processing"
+
     def push(self, tile_file_path: Path) -> None:
         """Register a tile file in the queue (file should already exist in pending/tiles)."""
         if not tile_file_path.exists():
@@ -1113,13 +1118,17 @@ class FilesystemTileQueue(FilesystemQueue):
     def nack(self, task: Union[str, Path]) -> None:
         """Move tile file from processing back to pending/tiles."""
         tile_file = Path(task) if isinstance(task, str) else task
-        processing_path = self.processing_dir / tile_file.name
+
+        # If passed a Path, use its name; otherwise use the string directly
+        tile_filename = tile_file.name if isinstance(tile_file, Path) else tile_file
+        processing_path = self.processing_dir / tile_filename
 
         if not processing_path.exists():
             logger.warning(f"Tile file not found in processing: {processing_path}")
             return
 
         # Move back to pending/tiles
-        pending_path = self.tiles_dir / tile_file.name
+        pending_path = self.tiles_dir / tile_filename
+        pending_path.parent.mkdir(parents=True, exist_ok=True)
         processing_path.rename(pending_path)
-        logger.info(f"Tile nacked and returned to pending: {tile_file.name}")
+        logger.info(f"Tile nacked and returned to pending: {tile_filename}")
