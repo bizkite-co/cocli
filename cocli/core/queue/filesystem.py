@@ -1041,3 +1041,85 @@ class FilesystemEnrichmentQueue(FilesystemQueue):
                 logger.debug(f"Immediate S3 Nack for {token} completed.")
             except Exception as e:
                 logger.error(f"Error S3 nacking for {token}: {e}")
+
+
+class FilesystemTileQueue(FilesystemQueue):
+    """
+    Queue for atomic tile work units.
+    Each file in pending/tiles/ represents one tile with all its search phrases.
+    Ensures datapackage.json is created and maintained from TileRecord schema.
+    """
+
+    def __init__(
+        self,
+        campaign_name: str,
+        s3_client: Any = None,
+        bucket_name: Optional[str] = None,
+    ):
+        super().__init__(
+            campaign_name, "tile-queue", s3_client=s3_client, bucket_name=bucket_name
+        )
+        self._ensure_schema()
+
+    def _ensure_schema(self) -> None:
+        """Ensures datapackage.json exists in pending/tiles from TileRecord schema."""
+        from ...models.campaigns.tile import TileRecord
+
+        tiles_dir = self.pending_dir / "tiles"
+        tiles_dir.mkdir(parents=True, exist_ok=True)
+
+        # Create datapackage.json from TileRecord schema
+        TileRecord.save_datapackage(tiles_dir, "tiles", "*.usv", force=False)
+        logger.info(f"Tile queue schema ensured at {tiles_dir}")
+
+    @property
+    def tiles_dir(self) -> Path:
+        """Pending tiles directory."""
+        return self.pending_dir / "tiles"
+
+    def push(self, tile_file_path: Path) -> None:
+        """Register a tile file in the queue (file should already exist in pending/tiles)."""
+        if not tile_file_path.exists():
+            raise FileNotFoundError(f"Tile file not found: {tile_file_path}")
+        logger.debug(f"Registered tile: {tile_file_path.name}")
+
+    def ack(self, task: Union[str, Path]) -> None:
+        """Move tile file from pending/tiles → completed."""
+        tile_file = Path(task) if isinstance(task, str) else task
+        if not tile_file.exists():
+            logger.warning(f"Tile file not found for ack: {tile_file}")
+            return
+
+        # Move from pending/tiles to completed
+        completed_path = self.completed_dir / tile_file.name
+        completed_path.parent.mkdir(parents=True, exist_ok=True)
+        tile_file.rename(completed_path)
+        logger.info(f"Tile completed and moved: {tile_file.name}")
+
+        # Optional: Push to S3 if configured
+        if self.s3_client and self.bucket_name:
+            try:
+                s3_key = f"campaigns/{self.campaign_name}/queues/tile-queue/completed/{tile_file.name}"
+                with open(completed_path, "r") as f:
+                    self.s3_client.put_object(
+                        Bucket=self.bucket_name,
+                        Key=s3_key,
+                        Body=f.read(),
+                        ContentType="text/csv",
+                    )
+            except Exception as e:
+                logger.warning(f"Failed to push completed tile to S3: {e}")
+
+    def nack(self, task: Union[str, Path]) -> None:
+        """Move tile file from processing back to pending/tiles."""
+        tile_file = Path(task) if isinstance(task, str) else task
+        processing_path = self.processing_dir / tile_file.name
+
+        if not processing_path.exists():
+            logger.warning(f"Tile file not found in processing: {processing_path}")
+            return
+
+        # Move back to pending/tiles
+        pending_path = self.tiles_dir / tile_file.name
+        processing_path.rename(pending_path)
+        logger.info(f"Tile nacked and returned to pending: {tile_file.name}")

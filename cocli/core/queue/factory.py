@@ -39,15 +39,15 @@ def get_queue_manager(queue_name: str, use_cloud: bool = False, queue_type: str 
     logger.info(f"Queue Factory: Resolved provider={provider} for queue={queue_name} (campaign={effective_campaign})")
     
     if provider == "filesystem" and effective_campaign:
-        from .filesystem import FilesystemGmListQueue, FilesystemGmDetailsQueue, FilesystemEnrichmentQueue
+        from .filesystem import FilesystemGmListQueue, FilesystemGmDetailsQueue, FilesystemEnrichmentQueue, FilesystemTileQueue
         from ..reporting import get_boto3_session, get_data_bucket_name, get_s3_client
-        
+
         active_s3_client = s3_client
         bucket_name = None
         if use_cloud:
             config = load_campaign_config(effective_campaign)
             bucket_name = get_data_bucket_name(config, effective_campaign)
-            
+
             if not active_s3_client:
                 try:
                     session = get_boto3_session(config)
@@ -61,6 +61,8 @@ def get_queue_manager(queue_name: str, use_cloud: bool = False, queue_type: str 
             return FilesystemGmDetailsQueue(campaign_name=effective_campaign, s3_client=active_s3_client, bucket_name=bucket_name)
         elif queue_type == "enrichment":
             return FilesystemEnrichmentQueue(campaign_name=effective_campaign, s3_client=active_s3_client, bucket_name=bucket_name)
+        elif queue_type == "tile":
+            return FilesystemTileQueue(campaign_name=effective_campaign, s3_client=active_s3_client, bucket_name=bucket_name)
 
     if use_cloud:
         config = load_campaign_config(effective_campaign) if effective_campaign else {}
