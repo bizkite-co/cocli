@@ -248,16 +248,30 @@ class WorkerService:
                     return
                 await asyncio.sleep(5)
                 continue
+
+            # STEP 1: Move tile file from pending/tiles → processing/ BEFORE starting work
+            processing_tile_path = None
+            if tile_file and tile_file.exists():
+                processing_dir = tile_queue.processing_dir
+                processing_dir.mkdir(parents=True, exist_ok=True)
+                processing_tile_path = processing_dir / tile_file.name
+                try:
+                    tile_file.rename(processing_tile_path)
+                    logger.info(f"Tile moved to processing: {tile_file.name}")
+                except Exception as e:
+                    logger.error(f"Failed to move tile to processing: {e}")
+                    continue
+
             grid_tiles = None
             if task.tile_id:
                 grid_tiles = [{"id": task.tile_id, "center_lat": task.latitude, "center_lon": task.longitude, "center": {"lat": task.latitude, "lon": task.longitude}}]
-            
+
             try:
                 location_param = {"latitude": str(task.latitude), "longitude": str(task.longitude)}
                 discovered_items: List[GoogleMapsListItem] = []
                 # Keep track of Place IDs in this specific search to avoid redundant enqueuing
                 pushed_place_ids: Set[str] = set()
-                
+
                 async with asyncio.timeout(900):
                     async for list_item in scrape_google_maps(
                         browser=browser,
@@ -272,9 +286,9 @@ class WorkerService:
                     ):
                         if not list_item.place_id:
                             continue
-                        
+
                         discovered_items.append(list_item)
-                        
+
                         if list_item.place_id not in pushed_place_ids:
                             gm_list_item_queue.push(list_item.to_task(task.campaign_name, force_refresh=False))
                             pushed_place_ids.add(list_item.place_id)
@@ -290,15 +304,20 @@ class WorkerService:
 
                 logger.info(f"Completed scrape task: {task.tile_id} × {task.search_phrase}")
 
-                # Move tile file from pending/tiles → completed (entire tile is done)
-                if tile_file and tile_file.exists():
-                    tile_queue.ack(tile_file)
-                    logger.info(f"Tile file completed and moved: {tile_file.name}")
+                # STEP 2: On success, move tile file from processing/ → completed/
+                if processing_tile_path and processing_tile_path.exists():
+                    tile_queue.ack(processing_tile_path)
+                    logger.info(f"Tile file completed and moved: {processing_tile_path.name}")
 
                 if once:
                     return
             except Exception as e:
                 logger.error(f"Task Failed: {e}")
+                # STEP 3: On failure, move tile file from processing/ → pending/ (for retry)
+                if processing_tile_path and processing_tile_path.exists():
+                    tile_queue.nack(processing_tile_path)
+                    logger.info(f"Tile nacked and returned to pending: {processing_tile_path.name}")
+
                 if "Target page, context or browser has been closed" in str(e):
                     break
 
