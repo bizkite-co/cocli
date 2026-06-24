@@ -213,8 +213,12 @@ class WorkerService:
             # Read batch files from discovery-gen/pending/batches/
             dg_queue = paths.campaign(self.campaign_name).queue("discovery-gen")
             batches_dir = dg_queue.pending / "batches"
+            completed_batches_dir = dg_queue.pending.parent / "completed" / "batches"
 
             task = None
+            task_batch_file = None
+            task_line = None
+
             if batches_dir.exists():
                 # Find the first batch file with unprocessed tasks
                 for batch_file in sorted(batches_dir.glob("*.usv")):
@@ -234,6 +238,8 @@ class WorkerService:
                                         longitude=mission_task.longitude,
                                         zoom=15.0,
                                     )
+                                    task_batch_file = batch_file
+                                    task_line = line.strip()
                                     break
                         if task:
                             break
@@ -287,6 +293,25 @@ class WorkerService:
                         logger.warning(f"Failed to write batch result log: {res_err}")
 
                 logger.info(f"Completed scrape task: {task.tile_id} × {task.search_phrase}")
+
+                # Remove the processed line from the batch file
+                if task_batch_file and task_batch_file.exists():
+                    remaining_lines = []
+                    with open(task_batch_file, "r", encoding="utf-8") as f:
+                        for line in f:
+                            if line.strip() != task_line:
+                                remaining_lines.append(line)
+
+                    if remaining_lines:
+                        # Batch still has tasks, rewrite it
+                        with open(task_batch_file, "w", encoding="utf-8") as f:
+                            f.writelines(remaining_lines)
+                    else:
+                        # Batch is complete, move to completed directory
+                        completed_batches_dir.mkdir(parents=True, exist_ok=True)
+                        task_batch_file.rename(completed_batches_dir / task_batch_file.name)
+                        logger.info(f"Batch completed and moved: {task_batch_file.name}")
+
                 if once:
                     return
             except Exception as e:
