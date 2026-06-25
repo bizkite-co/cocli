@@ -198,6 +198,10 @@ class WorkerService:
         workers: int = 1,
     ) -> None:
         from ..core.queue.factory import get_queue_manager
+        import os
+
+        worker_id = os.getenv("COCLI_HOSTNAME") or "unknown-worker"
+        reclaim_interval = 0  # Track reclaim attempts
 
         while True:
             await asyncio.sleep(0.1)
@@ -211,6 +215,13 @@ class WorkerService:
 
             # Read tile files from tile-queue/pending/tiles/
             tile_queue = get_queue_manager("tile-queue", queue_type="tile", campaign_name=self.campaign_name)
+
+            # Periodically reclaim expired tiles
+            reclaim_interval += 1
+            if reclaim_interval % 50 == 0:  # Every ~5 seconds
+                reclaimed = tile_queue.reclaim_expired_tiles()
+                if reclaimed > 0:
+                    logger.info(f"Reclaimed {reclaimed} expired tile(s)")
             tiles_dir = tile_queue.tiles_dir
 
             task = None
@@ -249,15 +260,29 @@ class WorkerService:
                 await asyncio.sleep(5)
                 continue
 
-            # STEP 1: Move tile file from pending/tiles → processing/ BEFORE starting work
+            # STEP 1: Move tile file from pending/tiles → processing/ with lease
             processing_tile_path = None
             if tile_file and tile_file.exists():
                 processing_dir = tile_queue.processing_dir
                 processing_dir.mkdir(parents=True, exist_ok=True)
                 processing_tile_path = processing_dir / tile_file.name
+                lease_path = processing_dir / f"{tile_file.name}.lease.json"
                 try:
                     tile_file.rename(processing_tile_path)
-                    logger.info(f"Tile moved to processing: {tile_file.name}")
+
+                    # Write lease to mark this tile as actively being processed
+                    from datetime import datetime, timedelta, UTC
+                    import json
+                    now = datetime.now(UTC)
+                    lease_data = {
+                        "worker_id": worker_id,
+                        "claimed_at": now.isoformat(),
+                        "expires_at": (now + timedelta(minutes=30)).isoformat(),
+                    }
+                    with lease_path.open("w") as f:
+                        json.dump(lease_data, f)
+
+                    logger.info(f"Tile moved to processing: {tile_file.name} (claimed by {worker_id})")
                 except Exception as e:
                     logger.error(f"Failed to move tile to processing: {e}")
                     continue

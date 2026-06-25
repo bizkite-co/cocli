@@ -1108,17 +1108,22 @@ class FilesystemTileQueue:
         logger.debug(f"Registered tile: {tile_file_path.name}")
 
     def ack(self, task: Union[str, Path]) -> None:
-        """Move tile file from pending/tiles → completed."""
+        """Move tile file from processing → completed."""
         tile_file = Path(task) if isinstance(task, str) else task
         if not tile_file.exists():
             logger.warning(f"Tile file not found for ack: {tile_file}")
             return
 
-        # Move from pending/tiles to completed
+        # Move from processing to completed
         completed_path = self.completed_dir / tile_file.name
         completed_path.parent.mkdir(parents=True, exist_ok=True)
         tile_file.rename(completed_path)
         logger.info(f"Tile completed and moved: {tile_file.name}")
+
+        # Remove lease if it exists
+        lease_path = self.processing_dir / f"{tile_file.name}.lease.json"
+        if lease_path.exists():
+            lease_path.unlink()
 
         # Optional: Push to S3 if configured
         if self.s3_client and self.bucket_name:
@@ -1151,3 +1156,113 @@ class FilesystemTileQueue:
         pending_path.parent.mkdir(parents=True, exist_ok=True)
         processing_path.rename(pending_path)
         logger.info(f"Tile nacked and returned to pending: {tile_filename}")
+
+        # Remove lease if it exists
+        lease_path = self.processing_dir / f"{tile_filename}.lease.json"
+        if lease_path.exists():
+            lease_path.unlink()
+
+    def claim_tile(self, tile_filename: str, worker_id: str, lease_duration_minutes: int = 30) -> bool:
+        """
+        Claim a tile: move from pending/tiles → processing with a lease.
+
+        Args:
+            tile_filename: Name of the tile file (e.g., "28.3_-81.4.usv")
+            worker_id: ID of the worker claiming the tile
+            lease_duration_minutes: How long the lease is valid
+
+        Returns:
+            True if claimed successfully, False if already claimed by active lease
+        """
+        pending_path = self.tiles_dir / tile_filename
+        processing_path = self.processing_dir / tile_filename
+        lease_path = self.processing_dir / f"{tile_filename}.lease.json"
+
+        if not pending_path.exists():
+            logger.warning(f"Tile not found in pending: {tile_filename}")
+            return False
+
+        # Check if already in processing with valid lease
+        if processing_path.exists() and lease_path.exists():
+            try:
+                with lease_path.open() as f:
+                    lease = json.load(f)
+                    expires_at = datetime.fromisoformat(lease["expires_at"])
+                    if datetime.now(UTC) < expires_at:
+                        logger.warning(f"Tile {tile_filename} already claimed by {lease['worker_id']}")
+                        return False
+                    else:
+                        logger.info(f"Reclaiming expired lease for {tile_filename} from {lease['worker_id']}")
+            except Exception as e:
+                logger.warning(f"Error reading lease for {tile_filename}: {e}")
+
+        # Create lease
+        now = datetime.now(UTC)
+        lease_data = {
+            "worker_id": worker_id,
+            "claimed_at": now.isoformat(),
+            "expires_at": (now + timedelta(minutes=lease_duration_minutes)).isoformat(),
+        }
+
+        # Move tile to processing
+        self.processing_dir.mkdir(parents=True, exist_ok=True)
+        pending_path.rename(processing_path)
+
+        # Write lease
+        with lease_path.open("w") as f:
+            json.dump(lease_data, f)
+
+        logger.info(f"Tile claimed: {tile_filename} by {worker_id}")
+        return True
+
+    def get_expired_tiles(self) -> List[str]:
+        """
+        Find tiles in processing with expired leases.
+
+        Returns:
+            List of tile filenames that can be reclaimed
+        """
+        expired: List[str] = []
+        if not self.processing_dir.exists():
+            return expired
+
+        for lease_path in self.processing_dir.glob("*.lease.json"):
+            try:
+                with lease_path.open() as f:
+                    lease = json.load(f)
+                    expires_at = datetime.fromisoformat(lease["expires_at"])
+                    if datetime.now(UTC) >= expires_at:
+                        tile_filename = lease_path.name.replace(".lease.json", "")
+                        expired.append(tile_filename)
+                        logger.warning(f"Lease expired for {tile_filename} (claimed by {lease['worker_id']})")
+            except Exception as e:
+                logger.error(f"Error checking lease {lease_path}: {e}")
+
+        return expired
+
+    def reclaim_expired_tiles(self) -> int:
+        """
+        Move expired tiles from processing back to pending/tiles.
+
+        Returns:
+            Number of tiles reclaimed
+        """
+        expired = self.get_expired_tiles()
+        reclaimed = 0
+
+        for tile_filename in expired:
+            processing_path = self.processing_dir / tile_filename
+            lease_path = self.processing_dir / f"{tile_filename}.lease.json"
+
+            if processing_path.exists():
+                pending_path = self.tiles_dir / tile_filename
+                pending_path.parent.mkdir(parents=True, exist_ok=True)
+                processing_path.rename(pending_path)
+                reclaimed += 1
+
+            if lease_path.exists():
+                lease_path.unlink()
+
+            logger.info(f"Reclaimed expired tile: {tile_filename}")
+
+        return reclaimed
