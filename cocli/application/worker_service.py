@@ -15,7 +15,6 @@ from ..models.campaigns.queues.gm_list import ScrapeTask
 from ..models.campaigns.indexes.google_maps_list_item import GoogleMapsListItem
 from ..models.campaigns.queues.gm_details import GmItemTask
 from ..models.campaigns.queues.base import QueueMessage
-from ..models.campaigns.mission import MissionTask
 from ..core.config import load_campaign_config
 from ..utils.playwright_utils import setup_optimized_context
 from ..utils.headers import ANTI_BOT_HEADERS, USER_AGENT
@@ -201,7 +200,6 @@ class WorkerService:
         import os
 
         worker_id = os.getenv("COCLI_HOSTNAME") or "unknown-worker"
-        reclaim_interval = 0  # Track reclaim attempts
 
         while True:
             await asyncio.sleep(0.1)
@@ -213,79 +211,19 @@ class WorkerService:
                 logger.error(f"Browser check failed: {e}")
                 break
 
-            # Read tile files from tile-queue/pending/tiles/
-            tile_queue = get_queue_manager("tile-queue", queue_type="tile", campaign_name=self.campaign_name)
+            # Poll from gm-list queue with lease-based coordination
+            gm_list_queue = get_queue_manager("gm-list", queue_type="gm-list", campaign_name=self.campaign_name)
 
-            # Periodically reclaim expired tiles
-            reclaim_interval += 1
-            if reclaim_interval % 50 == 0:  # Every ~5 seconds
-                reclaimed = tile_queue.reclaim_expired_tiles()
-                if reclaimed > 0:
-                    logger.info(f"Reclaimed {reclaimed} expired tile(s)")
-            tiles_dir = tile_queue.tiles_dir
+            # Poll for next scrape task (includes automatic lease creation)
+            tasks = gm_list_queue.poll(batch_size=1)
 
-            task = None
-            tile_file = None
-
-            if tiles_dir.exists():
-                # Find the first tile file with unprocessed tasks
-                for tile_path in sorted(tiles_dir.glob("*.usv")):
-                    if tile_path.name == "datapackage.json":
-                        continue
-                    try:
-                        with open(tile_path, "r", encoding="utf-8") as f:
-                            for line in f:
-                                if line.strip():
-                                    tile_record = MissionTask.from_usv(line)
-                                    task = ScrapeTask(
-                                        ack_token=f"{tile_record.tile_id}:{tile_record.search_phrase}",
-                                        campaign_name=self.campaign_name,
-                                        tile_id=tile_record.tile_id,
-                                        search_phrase=tile_record.search_phrase,
-                                        latitude=tile_record.latitude,
-                                        longitude=tile_record.longitude,
-                                        zoom=15.0,
-                                    )
-                                    tile_file = tile_path
-                                    break
-                        if task:
-                            break
-                    except Exception as e:
-                        logger.error(f"Error reading tile file {tile_path.name}: {e}")
-                        continue
-
-            if not task:
+            if not tasks:
                 if once:
                     return
                 await asyncio.sleep(5)
                 continue
 
-            # STEP 1: Move tile file from pending/tiles → processing/ with lease
-            processing_tile_path = None
-            if tile_file and tile_file.exists():
-                processing_dir = tile_queue.processing_dir
-                processing_dir.mkdir(parents=True, exist_ok=True)
-                processing_tile_path = processing_dir / tile_file.name
-                lease_path = processing_dir / f"{tile_file.name}.lease.json"
-                try:
-                    tile_file.rename(processing_tile_path)
-
-                    # Write lease to mark this tile as actively being processed
-                    from datetime import datetime, timedelta, UTC
-                    import json
-                    now = datetime.now(UTC)
-                    lease_data = {
-                        "worker_id": worker_id,
-                        "claimed_at": now.isoformat(),
-                        "expires_at": (now + timedelta(minutes=30)).isoformat(),
-                    }
-                    with lease_path.open("w") as f:
-                        json.dump(lease_data, f)
-
-                    logger.info(f"Tile moved to processing: {tile_file.name} (claimed by {worker_id})")
-                except Exception as e:
-                    logger.error(f"Failed to move tile to processing: {e}")
-                    continue
+            task = tasks[0]
 
             grid_tiles = None
             if task.tile_id:
@@ -329,19 +267,15 @@ class WorkerService:
 
                 logger.info(f"Completed scrape task: {task.tile_id} × {task.search_phrase}")
 
-                # STEP 2: On success, move tile file from processing/ → completed/
-                if processing_tile_path and processing_tile_path.exists():
-                    tile_queue.ack(processing_tile_path)
-                    logger.info(f"Tile file completed and moved: {processing_tile_path.name}")
+                # Acknowledge successful task completion (removes lease)
+                gm_list_queue.ack(task.ack_token)
 
                 if once:
                     return
             except Exception as e:
                 logger.error(f"Task Failed: {e}")
-                # STEP 3: On failure, move tile file from processing/ → pending/ (for retry)
-                if processing_tile_path and processing_tile_path.exists():
-                    tile_queue.nack(processing_tile_path)
-                    logger.info(f"Tile nacked and returned to pending: {processing_tile_path.name}")
+                # Negative acknowledge on failure (removes lease, task stays available)
+                gm_list_queue.nack(task.ack_token)
 
                 if "Target page, context or browser has been closed" in str(e):
                     break
