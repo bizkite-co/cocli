@@ -10,7 +10,6 @@ Pattern: frontier.usv (MissionTask, many tasks per tile)
 """
 
 import logging
-from pathlib import Path
 from typing import Dict, List
 from collections import defaultdict
 
@@ -66,8 +65,6 @@ def stage_frontier_to_tiles(campaign_name: str, force: bool = False) -> Dict[str
     tiles_skipped = 0
 
     for tile_id, tasks in sorted(tiles.items()):
-        # Safe filename from tile_id: 28.3_-81.4 → 28_3_m81_4
-        safe_tile_name = tile_id.replace(".", "_").replace("-", "m")
         tile_file = tile_queue.tiles_dir / f"{tile_id}.usv"
 
         if tile_file.exists() and not force:

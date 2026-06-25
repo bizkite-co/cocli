@@ -31,6 +31,9 @@ COPY . .
 # Install the package into the system python
 RUN uv pip install . --system --no-deps
 
+# Pre-download Playwright browsers to avoid runtime hangs on resource-constrained PIs
+RUN python3 -m playwright install chromium
+
 # Final static analysis check
 RUN ruff check cocli/
 
@@ -48,7 +51,7 @@ RUN echo '#!/bin/bash' > docker/rpi-worker/run_worker.sh && \
     echo 'export CAMPAIGN_NAME' >> docker/rpi-worker/run_worker.sh && \
     echo 'echo "Starting worker for campaign: $CAMPAIGN_NAME"' >> docker/rpi-worker/run_worker.sh && \
     echo 'if [ "$#" -eq 0 ]; then' >> docker/rpi-worker/run_worker.sh && \
-    echo '    cocli worker gm-list' >> docker/rpi-worker/run_worker.sh && \
+    echo '    cocli worker orchestrate --debug' >> docker/rpi-worker/run_worker.sh && \
     echo 'else' >> docker/rpi-worker/run_worker.sh && \
     echo '    "$@"' >> docker/rpi-worker/run_worker.sh && \
     echo 'fi' >> docker/rpi-worker/run_worker.sh && \

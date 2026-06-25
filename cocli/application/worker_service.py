@@ -535,25 +535,36 @@ class WorkerService:
 
         # Start Config Watcher
         asyncio.create_task(self._watch_remote_config())
-        
+
         # Start Heartbeat Loop
         asyncio.create_task(self._heartbeat_loop())
 
+        logger.info(f"Orchestrating {len(worker_definitions)} worker definition(s)")
+
         self.worker_tasks = []
         for wd in worker_definitions:
+            logger.info(f"Starting worker: {wd.name} (type={wd.content_type}, workers={wd.workers})")
             worker_service = WorkerService(campaign_name=self.campaign_name, role=wd.role, processed_by=f"{self.processed_by}-{wd.name}")
             if wd.content_type == "gm-list":
+                logger.info("  → Launching run_worker for gm-list")
                 coro = worker_service.run_worker(headless=headless, debug=debug, once=False, workers=wd.workers)
             elif wd.content_type == "gm-details":
+                logger.info("  → Launching run_details_worker")
                 coro = worker_service.run_details_worker(headless=headless, debug=debug, once=False, workers=wd.workers, role=wd.role)
             elif wd.content_type == "enrichment":
+                logger.info("  → Launching run_enrichment_worker")
                 coro = worker_service.run_enrichment_worker(headless=headless, debug=debug, once=False, workers=wd.workers)
             else:
+                logger.warning(f"  ✗ Unknown content_type: {wd.content_type}, skipping")
                 continue
             self.worker_tasks.append(asyncio.create_task(coro))
 
+        logger.info(f"Created {len(self.worker_tasks)} worker task(s), awaiting...")
+
         if self.worker_tasks:
             await asyncio.gather(*self.worker_tasks)
+        else:
+            logger.warning("No worker tasks created, exiting")
 
     async def get_cluster_health(self) -> List[Dict[str, Any]]:
         """

@@ -176,9 +176,10 @@ def orchestrate(
     """
     Starts orchestrated workers for this node as defined in the campaign cluster config.
     """
+    print("[ORCHESTRATE] Command started")  # Simple print for debugging
     import socket
     from ..models.campaigns.worker_config import WorkerDefinition
-    
+
     effective_campaign = campaign or os.getenv("CAMPAIGN_NAME") or get_campaign()
     if not effective_campaign:
         logger.error("No campaign specified and no active context.")
