@@ -19,10 +19,13 @@ STAGES:
   Stage 3: filter_frontier(campaign_name, mission_tasks) → List[MissionTask]
     Input: MissionTask list from Stage 2
     Output: pending/frontier.usv (unscraped/stale tasks, with datapackage.json)
-    Purpose: Filter by ScrapeIndex TTL to find pending work
+    Purpose: Filter by ScrapeIndex TTL to find pending work [DEPRECATED]
 
-  Stage 4: create_batch() [FUTURE]
-    Purpose: Package frontier into controlled batch rollouts (not yet extracted)
+  Stage 4: populate_tile_queue(campaign_name, mission_tasks) → int
+    Input: MissionTask list from Stage 2 (all tasks, no TTL filtering)
+    Output: tile-queue/pending/{shard}/{lat}/{lon}/{tile_id}.usv (sharded USV files)
+    Purpose: Write all mission tasks as the manifest for tile-queue processor
+    Note: This bypasses frontier.usv and feeds directly into tile-queue
 
 USAGE:
   # Full pipeline execution (all stages with file I/O):
@@ -53,6 +56,7 @@ import logging
 import csv
 from typing import List, Dict, Any, Optional
 import toml
+from pathlib import Path
 
 from cocli.core.paths import paths
 from cocli.core.config import get_campaign_dir
@@ -60,7 +64,10 @@ from cocli.core.geo_types import LatScale1, LonScale1
 from cocli.planning.generate_grid import get_campaign_grid_tiles
 from cocli.models.campaigns.tiles import TileRecord
 from cocli.models.campaigns.mission import MissionTask
+from cocli.models.campaigns.tile import TileRecord as TileQueueRecord
 from cocli.core.scrape_index import ScrapeIndex
+from cocli.core.sharding import get_geo_shard
+from cocli.core.text_utils import slugify
 
 logger = logging.getLogger(__name__)
 
@@ -391,3 +398,96 @@ def filter_frontier(
         logger.info(f"  Saved frontier to: {frontier_path}")
 
     return pending_tasks
+
+
+def populate_tile_queue(
+    campaign_name: str,
+    mission_tasks: Optional[List[MissionTask]] = None,
+    save_output: bool = True,
+) -> int:
+    """
+    Stage 4: Write all mission tasks directly to tile-queue manifest.
+
+    Reads mission.usv (all tasks, no TTL filtering) and writes to
+    tile-queue/pending/{shard}/{lat}/{lon}/{tile_id}.usv files.
+    This becomes the authoritative manifest for scraping.
+
+    Args:
+        campaign_name: Campaign to populate tile-queue for
+        mission_tasks: List of MissionTask objects. If None, loads from mission.usv
+        save_output: If True, writes to tile-queue/pending/{shard}/{lat}/{lon}/
+
+    Returns:
+        Number of tile files created
+
+    Raises:
+        ValueError: If campaign directory not found or mission.usv missing
+    """
+    campaign_dir = get_campaign_dir(campaign_name)
+    if not campaign_dir:
+        raise ValueError(f"Campaign directory not found: {campaign_name}")
+
+    # Load mission tasks if not provided
+    if mission_tasks is None:
+        dg_queue = paths.campaign(campaign_name).queue("discovery-gen")
+        mission_path = dg_queue.master
+        if not mission_path.exists():
+            raise ValueError(f"Mission file not found: {mission_path}")
+
+        mission_tasks = []
+        with open(mission_path, "r", encoding="utf-8") as f:
+            for line in f:
+                if line.strip():
+                    mission_tasks.append(MissionTask.from_usv(line))
+
+    logger.info(f"Stage 4: Populating tile-queue with {len(mission_tasks)} mission tasks...")
+
+    if not save_output:
+        return len(mission_tasks)
+
+    # Get tile-queue base path
+    tile_queue = paths.campaign(campaign_name).queue("tile-queue")
+    pending_dir = tile_queue.pending
+
+    # Group tasks by (tile_id, shard, lat, lon)
+    tile_files: Dict[str, List[TileQueueRecord]] = {}
+
+    for task in mission_tasks:
+        shard = get_geo_shard(float(task.latitude))
+        lat = str(task.latitude)
+        lon = str(task.longitude)
+
+        # File path: pending/{shard}/{lat}/{lon}/{tile_id}.usv
+        rel_path = f"{shard}/{lat}/{lon}/{task.tile_id}.usv"
+
+        if rel_path not in tile_files:
+            tile_files[rel_path] = []
+
+        # Create TileQueueRecord (tile + phrase)
+        record = TileQueueRecord(
+            tile_id=task.tile_id,
+            search_phrase=task.search_phrase,
+            latitude=task.latitude,
+            longitude=task.longitude,
+        )
+        tile_files[rel_path].append(record)
+
+    # Write sharded tile files
+    tiles_created = 0
+    for rel_path, records in sorted(tile_files.items()):
+        file_path = pending_dir / rel_path
+        file_path.parent.mkdir(parents=True, exist_ok=True)
+
+        try:
+            with open(file_path, "w", encoding="utf-8") as f:
+                for record in records:
+                    f.write(record.to_usv())
+
+            logger.debug(f"  Created tile file: {rel_path} ({len(records)} phrases)")
+            tiles_created += 1
+        except Exception as e:
+            logger.error(f"Error creating tile file {file_path}: {e}")
+            continue
+
+    logger.info(f"Stage 4 complete: {tiles_created} tile files created in {pending_dir}")
+    return tiles_created

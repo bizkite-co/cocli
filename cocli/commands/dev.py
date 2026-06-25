@@ -143,7 +143,7 @@ def run_discovery_gen_stages(
     ] = None,
     stage: Annotated[
         Optional[int],
-        typer.Option("--stage", "-s", help="Run only a specific stage (1-3). Default: all stages."),
+        typer.Option("--stage", "-s", help="Run only a specific stage (1-4). Default: all stages."),
     ] = None,
     skip_validation: Annotated[
         bool,
@@ -151,7 +151,7 @@ def run_discovery_gen_stages(
     ] = False,
 ) -> None:
     """
-    Execute the discovery-gen pipeline: locations → tiles → mission → frontier.
+    Execute the discovery-gen pipeline: locations → tiles → mission → tile-queue.
 
     This runs the refactored decomposed stages end-to-end with validation:
       Stage 1: generate_tiles()
@@ -164,13 +164,17 @@ def run_discovery_gen_stages(
 
       Stage 3: filter_frontier()
         Input: mission tasks from Stage 2
-        Output: pending/frontier.usv (unscraped/stale tasks ready for scraping)
+        Output: pending/frontier.usv (unscraped/stale tasks) [DEPRECATED]
+
+      Stage 4: populate_tile_queue()
+        Input: mission.usv (all tasks, no TTL filtering)
+        Output: tile-queue/pending/{shard}/{lat}/{lon}/{tile_id}.usv (manifest)
 
     Each stage auto-validates output against Frictionless Data schema.
     Schema versioning (cocli:schema_hash) ensures consistency.
 
     USAGE:
-      # Full pipeline (all 3 stages):
+      # Full pipeline (all 4 stages):
       cocli dev run-discovery-gen-stages turboship
 
       # Single stage (useful for debugging):
@@ -183,6 +187,7 @@ def run_discovery_gen_stages(
         generate_tiles,
         expand_phrases,
         filter_frontier,
+        populate_tile_queue,
     )
 
     if campaign_name is None:
@@ -230,6 +235,14 @@ def run_discovery_gen_stages(
             console.print(f"  ✓ Filtered {len(frontier)} pending tasks")
             artifacts_created.append(f"pending/frontier.usv ({len(frontier)} records)")
             artifacts_created.append("pending/frontier datapackage.json")
+            console.print()
+
+        # ===== STAGE 4 =====
+        if stage is None or stage == 4:
+            console.print("[bold cyan]Stage 4: Populate Tile-Queue Manifest[/bold cyan]")
+            tiles_count = populate_tile_queue(campaign_name, save_output=True)
+            console.print(f"  ✓ Created {tiles_count} sharded tile files")
+            artifacts_created.append(f"tile-queue/pending/ ({tiles_count} sharded files)")
             console.print()
 
         # ===== Validation =====
