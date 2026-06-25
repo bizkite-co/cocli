@@ -670,13 +670,14 @@ hotfix-rpi: ## Push code hotfix to a single RPi (Usage: make hotfix-rpi RPI_HOST
 	fi
 
 .PHONY: hotfix-hub
-hotfix-hub: ## Apply hotfix ONLY to the cluster Hub (registry host) and verify
-	@$(eval REGISTRY_HOST := $(shell python3 -c "import toml; c = toml.load('data/config/cocli_config.toml'); print(c.get('cluster', {}).get('registry_host', ''))"))
-	@bash scripts/hotfix_cluster.sh $(REGISTRY_HOST)
+hotfix-hub: ## DEPRECATED: Use 'cocli cluster deploy-hotfix' instead
+	@echo "⚠️  hotfix-hub is deprecated. Use: cocli cluster deploy-hotfix --help"
+	@exit 1
 
 .PHONY: hotfix-child-nodes
-hotfix-child-nodes: ## Apply hotfix to all child nodes (excluding Hub)
-	@bash scripts/hotfix_cluster.sh --children
+hotfix-child-nodes: ## DEPRECATED: Use 'cocli cluster deploy-hotfix' instead
+	@echo "⚠️  hotfix-child-nodes is deprecated. Use: cocli cluster deploy-hotfix --help"
+	@exit 1
 
 # ==============================================================================
 # Raspberry Pi Worker Management
@@ -684,7 +685,7 @@ hotfix-child-nodes: ## Apply hotfix to all child nodes (excluding Hub)
 RPI_HOST ?= octoprint.pi
 RPI_USER ?= mstouffer
 RPI_DIR ?= ~/repos/cocli
-CLUSTER_NODES ?= cocli5x1.pi,octoprint.pi,coclipi.pi
+CLUSTER_NODES ?= cocli5x0,cocli5x1
 
 .PHONY: setup-rpi
 setup-rpi: ## Bootstap the Raspberry Pi with Docker and Git
@@ -936,7 +937,7 @@ deploy-iot-cdk: install ## Deploy granular IAM roles and IoT aliases via CDK (Us
 .PHONY: provision-pi-iot
 provision-pi-iot: ## Provision a Pi with a specific granular role (Usage: make provision-pi-iot HOST=xxx.pi CAMPAIGN=roadmap [ROLE=scraper|processor])
 	@$(call validate_campaign)
-	@if [ -z "$(HOST)" ]; then echo "Error: HOST is required. Usage: make provision-pi-iot HOST=cocli5x0.pi CAMPAIGN=roadmap"; exit 1; fi
+	@if [ -z "$(HOST)" ]; then echo "Error: HOST is required. Usage: make provision-pi-iot HOST=cocli5x0 CAMPAIGN=roadmap"; exit 1; fi
 	./scripts/provision_pi_iot.py --host $(HOST) --campaign $(CAMPAIGN) --profile $(AWS_PROFILE) --role $(or $(ROLE), scraper)
 
 .PHONY: verify-iam

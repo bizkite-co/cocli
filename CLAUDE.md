@@ -209,6 +209,31 @@ See `docs/README.md` for the full documentation index.
 
 ## Deployment and Scripts
 
+### Cluster Deployment
+
+Deploy code changes to the Raspberry Pi worker cluster using the registry-based pipeline:
+
+```bash
+# Deploy to all nodes (hub + children, staged rollout)
+uv run cocli cluster deploy-hotfix --campaign turboship
+
+# Deploy to a specific node
+uv run cocli cluster deploy-hotfix --node cocli5x0 --campaign turboship
+
+# Deploy only child nodes (non-hub)
+uv run cocli cluster deploy-hotfix --children --campaign turboship
+```
+
+**Process:**
+1. Syncs code to hub via rsync
+2. Hub rebuilds Docker image, verifies it, pushes to registry
+3. Child nodes pull the verified image, restart containers
+4. Hash-based verification at each stage ensures code is correctly deployed
+
+See `cocli cluster deploy-hotfix --help` for all options.
+
+### Infrastructure
+
 - **Docker:** `Dockerfile` at root; worker images in `docker/rpi-worker/`
 - **Scrapers:** Distributed across Raspberry Pi (Google Maps) and AWS Fargate (enrichment)
 - **Scripts:** `scripts/` directory includes campaign auditing, cleanup, and import utilities
