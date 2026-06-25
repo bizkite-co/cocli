@@ -1318,3 +1318,96 @@ def audit_export_cases(
     GmListReviewedItem.append_resource_to_datapackage(
         test_data_dir, "field_extraction_cases", "field_extraction_cases.usv"
     )
+
+
+@queue_app.command(name="tile-status")
+def queue_status(campaign: str = typer.Option("", help="Campaign name")) -> None:
+    """
+    Audit tile-queue status: pending/processing/completed tiles with lease info.
+
+    Shows tile queue state, processing tiles with lease expiration, and warns
+    about expired leases (stuck tiles that will be reclaimed).
+    """
+    from ..core.config import load_campaign_config
+    from ..core.queue.factory import get_queue_manager
+    from datetime import datetime, UTC
+    import json
+
+    campaign_name = campaign or "default"
+    tile_queue = get_queue_manager("tile-queue", queue_type="tile", campaign_name=campaign_name)
+
+    # Count tiles in each state
+    pending_count = 0
+    if tile_queue.tiles_dir.exists():
+        pending_count = len(list(tile_queue.tiles_dir.glob("*.usv")))
+
+    processing_count = 0
+    processing_tiles = []
+    expired_count = 0
+    if tile_queue.processing_dir.exists():
+        for f in tile_queue.processing_dir.glob("*.usv"):
+            processing_count += 1
+            processing_tiles.append(f)
+
+            # Check lease
+            lease_path = tile_queue.processing_dir / f"{f.name}.lease.json"
+            if lease_path.exists():
+                try:
+                    with lease_path.open() as lf:
+                        lease = json.load(lf)
+                        expires_at = datetime.fromisoformat(lease["expires_at"])
+                        if datetime.now(UTC) >= expires_at:
+                            expired_count += 1
+                except Exception:
+                    pass
+
+    completed_count = 0
+    if tile_queue.completed_dir.exists():
+        completed_count = len(list(tile_queue.completed_dir.glob("*.usv")))
+
+    # Display status table
+    console.print(f"\n[bold]Tile Queue Status: {campaign_name}[/bold]\n")
+
+    table = Table(title="State Summary")
+    table.add_column("State", style="cyan")
+    table.add_column("Count", style="magenta")
+
+    table.add_row("Pending", str(pending_count))
+    table.add_row("Processing", str(processing_count))
+    table.add_row("Completed", str(completed_count))
+
+    console.print(table)
+
+    # Show details of processing tiles with leases
+    if processing_tiles:
+        console.print("\n[bold]Processing Tiles:[/bold]")
+        for tile_path in sorted(processing_tiles):
+            lease_path = tile_queue.processing_dir / f"{tile_path.name}.lease.json"
+            if lease_path.exists():
+                try:
+                    with lease_path.open() as lf:
+                        lease = json.load(lf)
+                        worker_id = lease["worker_id"]
+                        claimed_at = datetime.fromisoformat(lease["claimed_at"])
+                        expires_at = datetime.fromisoformat(lease["expires_at"])
+                        age_min = (datetime.now(UTC) - claimed_at).total_seconds() / 60
+                        ttl_min = (expires_at - datetime.now(UTC)).total_seconds() / 60
+                        if ttl_min > 0:
+                            status = f"TTL: {ttl_min:.0f}min"
+                            style = "green"
+                        else:
+                            status = "EXPIRED"
+                            style = "red"
+                        console.print(f"  • {tile_path.name}: {worker_id} (claimed {age_min:.0f}min ago) [{style}]{status}[/{style}]")
+                except Exception as e:
+                    console.print(f"  • {tile_path.name}: [error]Error reading lease: {e}[/error]")
+            else:
+                console.print(f"  • {tile_path.name}: [warning]No lease file[/warning]")
+
+    if expired_count > 0:
+        console.print(f"\n[bold red][ALERT][/bold red] {expired_count} tile(s) have expired leases")
+        console.print("[dim]These will be automatically reclaimed on next worker scan (~5s)[/dim]")
+    elif processing_count == 0:
+        console.print("\n[green][OK] Queue idle, no processing tiles[/green]")
+    else:
+        console.print(f"\n[green][OK] {processing_count} tile(s) processing, no expired leases[/green]")
