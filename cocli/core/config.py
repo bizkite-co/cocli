@@ -5,7 +5,7 @@ import tomli
 import tomli_w
 from typing import Optional, Any, Dict
 import logging
-from pydantic import BaseModel, Field, ConfigDict
+from pydantic import BaseModel, Field, ConfigDict, ValidationError
 
 from pydantic_settings import BaseSettings
 from rich.console import Console
@@ -296,6 +296,12 @@ def load_scraper_settings() -> ScraperSettings:
             f"Error decoding TOML config file {config_file}: {e}. Using default scraper settings."
         )
         return ScraperSettings()
+    except ValidationError as e:
+        logger.error(
+            f"Config validation error in {config_file}:\n{e}\n"
+            "Config fields do not match ScraperSettings schema. This is a deployment error—fix the config file."
+        )
+        raise  # Fail loudly on config schema mismatch
     except Exception as e:
         logger.error(
             f"Error loading config file {config_file}: {e}. Using default scraper settings."

@@ -1043,7 +1043,7 @@ class FilesystemEnrichmentQueue(FilesystemQueue):
                 logger.error(f"Error S3 nacking for {token}: {e}")
 
 
-class FilesystemTileQueue(FilesystemQueue):
+class FilesystemTileQueue:
     """
     Queue for atomic tile work units.
     Each file in pending/tiles/ represents one tile with all its search phrases.
@@ -1056,9 +1056,28 @@ class FilesystemTileQueue(FilesystemQueue):
         s3_client: Any = None,
         bucket_name: Optional[str] = None,
     ):
-        super().__init__(
-            campaign_name, "tile-queue", s3_client=s3_client, bucket_name=bucket_name
-        )
+        self.campaign_name = campaign_name
+        self.queue_name = "tile-queue"
+        self.s3_client = s3_client
+        self.bucket_name = bucket_name
+
+        if s3_client:
+            logger.info(
+                f"FilesystemTileQueue initialized WITH S3 client for bucket {bucket_name}"
+            )
+        else:
+            logger.warning(
+                "FilesystemTileQueue initialized WITHOUT S3 client (Local-only mode)"
+            )
+
+        # Initialize queue directories
+        self.queue_base = paths.queue(campaign_name, "tile-queue")
+        self.pending_dir = self.queue_base / "pending"
+        self.completed_dir = self.queue_base / "completed"
+
+        self.pending_dir.mkdir(parents=True, exist_ok=True)
+        self.completed_dir.mkdir(parents=True, exist_ok=True)
+
         self._ensure_schema()
 
     def _ensure_schema(self) -> None:
