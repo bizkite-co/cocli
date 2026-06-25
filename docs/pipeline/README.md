@@ -4,59 +4,98 @@ This directory contains specifications for all [from-model-to-model](../adr/from
 
 ## Discovery-Gen Pipeline (Prospect Discovery)
 
-The discovery-gen pipeline executes a **4-stage geographic search** to find business prospects via Google Maps:
+The discovery-gen pipeline executes a **4-stage geographic search** to find business prospects via Google Maps.
 
-### Stage 1: Generate Tiles
-- **Input:** target_locations.usv (name, latitude, longitude)
-- **Output:** discovery-gen queue → tiles/tiles.usv
+### Architecture Notation
+
+```
+DISCOVERY-GEN (Stage/Pipeline):
+  Input: 
+    - target_locations.usv
+    - search_phrases.txt
+  Processing:
+    1. generate_tiles → tiles.usv
+    2. expand_phrases → mission.usv (all tiles × phrases)
+    3. filter_frontier → frontier.usv (pending by TTL)
+    4. create_batch → batches/*.usv (deployed slices)
+  Output:
+    - discovery-gen/pending/batches/*.usv (work to deploy)
+    - discovery-gen/completed/* (processed state)
+
+GM-LIST (Queue):
+  Input:
+    - batches/*.usv from discovery-gen (workers read directly)
+  States:
+    - gm-list/pending/ (not yet processed)
+    - gm-list/completed/results/{lat_shard}/{tile_id}/ (finished)
+  Output:
+    - *.usv files: discovered GoogleMapsListItem entries (results)
+    - *.json files: completion receipts (metadata + timing)
+```
+
+### Queue Folder Structure
+
+Each named queue has a standard hierarchical structure:
+
+```
+{queue_name}/
+├── pending/              # Work not yet started
+│   └── *.usv            # Task records (format: ScrapeTask, GmItemTask, etc.)
+├── processing/          # Work in progress (with distributed locks)
+│   └── *.usv            # Locked records
+├── failed/              # Work that failed
+│   └── *.usv            # Failed task records
+└── completed/           # Work that finished
+    ├── results/         # Actual results (sharded by {lat_shard}/{tile_id}/)
+    │   └── {lat_shard}/{lat_tile}/{lon_tile}/
+    │       ├── {phrase_slug}.usv         # Discovered items (empty if none found)
+    │       └── {phrase_slug}.json        # Completion receipt
+    ├── audit/           # Audit artifacts (if generated)
+    └── leases/          # Distributed locks (for concurrency control)
+```
+
+### Stage Descriptions
+
+**Stage 1: Generate Tiles**
+- **Input:** target_locations.usv
+- **Output:** tiles.usv
 - **Transform:** Geographic grid generation from target locations
 - **Code:** `cocli/commands/campaign/discovery_gen_stages.py:generate_tiles()`
 
-### Stage 2: Expand Phrases
+**Stage 2: Expand Phrases**
 - **Input:** tiles.usv + search_phrases.txt
-- **Output:** mission.usv
-- **Transform:** Cross-product: all tiles × all search phrases
-- **Semantics:** mission.usv is the **complete universe of work** to be discovered
+- **Output:** mission.usv (all tiles × all phrases)
+- **Semantics:** Complete universe of work to discover
 - **Code:** `cocli/commands/campaign/discovery_gen_stages.py:expand_phrases()`
 
-### Stage 3: Filter by TTL
-- **Input:** mission.usv + ScrapeIndex (tracks last-scraped timestamp for each item)
-- **Output:** frontier.usv
-- **Transform:** Filter items older than TTL (default 30 days) or never scraped
-- **Semantics:** frontier.usv is the **pending work snapshot** for this batch (immutable after creation)
+**Stage 3: Filter by TTL**
+- **Input:** mission.usv + ScrapeIndex
+- **Output:** frontier.usv (items older than TTL or never scraped)
+- **Semantics:** Pending work snapshot for this batch (immutable after creation)
 - **Code:** `cocli/commands/campaign/discovery_gen_stages.py:filter_frontier()`
 
-### Stage 4: Create Batch
+**Stage 4: Create Batch**
 - **Input:** frontier.usv
 - **Output:** batches/{batch_name}.usv
-- **Transform:** Partition frontier into deployable batches
-- **Deploy:** Push to PI workers via S3
+- **Transform:** Partition into deployable batches
 - **Code:** `cocli/commands/campaign/discovery_gen_stages.py:create_batch()`
 
-## Result Artifact Flow
+## Processing Queue Chain
 
-After workers process batches, results flow through intermediate artifact queues:
+After batches are created, workers process them through a queue chain:
 
-### Queue 1: scrape_queue
-- **Workers read from:** frontier.usv (batches/{batch_name}.usv)
-- **Create:** ScrapeTask items (what to search for)
-- **Workers:** Run `scrape_google_maps()` discovery task
-- **Code:** `cocli/application/worker_service.py:_run_scrape_task_loop()` (line 210)
+### gm-list Queue: Discover List Items
+- **Input:** batches/{batch_name}.usv (workers read directly)
+- **Processing:** `cocli/application/worker_service.py:_run_scrape_task_loop()`
+  1. Read batch file → convert to ScrapeTask
+  2. Call `scrape_google_maps()` → discover GoogleMapsListItem entries
+  3. Push items to gm_list_item_queue for detail enrichment
+  4. Write results via `GmListProcessor.process_results()`
+- **Output:** `gm-list/completed/results/{lat_shard}/{lat_tile}/{lon_tile}/{phrase_slug}.usv`
+- **Metadata:** `gm-list/completed/results/{lat_shard}/{lat_tile}/{lon_tile}/{phrase_slug}.json`
 
-### Queue 2: gm_list_item_queue
-- **Produced by:** scrape_google_maps() discovers GoogleMapsListItem entries
-- **Pushed to:** gm_list_item_queue (for detail enrichment)
-- **Code:** `cocli/application/worker_service.py:_run_scrape_task_loop()` (line 246)
-
-### Final Results: gm-list Queue (Completed/Results)
-- **Location:** `gm-list/completed/results/{lat_shard}/{lat_tile}/{lon_tile}/`
-- **Files per tile+phrase:**
-  - `{phrase_slug}.usv` — discovered companies (can be empty)
-  - `{phrase_slug}.json` — completion receipt with metadata
-- **Writer:** `cocli/application/processors/gm_list.py:GmListProcessor.process_results()`
-
-### Completion Receipt (JSON)
-Every tile+phrase produces a receipt file tracking:
+### Completion Receipt Structure
+Every tile+phrase produces a JSON receipt tracking:
 ```json
 {
   "task_id": "ack_token",
@@ -69,19 +108,21 @@ Every tile+phrase produces a receipt file tracking:
   "status": "success"
 }
 ```
+**Note:** Receipt exists even if result_count = 0 (tile was searched but no results found).
 
-**Tracking:** A receipt exists even if result_count = 0 (tile was searched but found nothing).
+### gm-details Queue: Enrich Company Details
+- **Input:** gm_list_item_queue (GoogleMapsListItem entries from gm-list)
+- **Processing:** `cocli/application/worker_service.py:_run_details_task_loop()`
+  1. Fetch detailed info for each discovered company
+  2. Enrich with phone, address, website, ratings, etc.
+- **Output:** `gm-details/completed/results/{shard_id}/{item_id}.usv`
 
-## Transformation Index
-
-| From | To | Queue | Status | Description |
-|------|----|----|--------|-------------|
-| tiles.usv × phrases.txt | mission.usv | discovery-gen | Active | Cross-product expansion |
-| mission.usv + ScrapeIndex | frontier.usv | discovery-gen | Active | TTL-based filtering for next batch |
-| frontier.usv | ScrapeTask items | scrape_queue | Active | Workers poll for discovery tasks |
-| ScrapeTask → scrape_google_maps() | GoogleMapsListItem | gm_list_item_queue | Active | Discovered items await detail enrichment |
-| GoogleMapsListItem | gm-list/completed/results/ | gm-list | Active | Final results + completion receipts |
-| gm-list/active | google_maps_prospects/active | (hub index) | Planned | Compact results into deduplicated index |
+### enrichment Queue: Website & Contact Enrichment
+- **Input:** enrichment queue (companies needing enrichment)
+- **Processing:** `cocli/application/worker_service.py:_run_enrichment_task_loop()`
+  1. Fetch websites, emails, social profiles
+  2. Parse and validate contact information
+- **Output:** `enrichment/completed/results/{shard_id}/{item_id}.usv`
 
 ## State Tracking Layers
 
@@ -89,9 +130,12 @@ The pipeline tracks state at three distinct layers:
 
 1. **frontier.usv** — Static batch snapshot (doesn't change as work progresses)
 2. **ScrapeIndex** — Tracks when each item was last scraped (used for TTL in Stage 3)
-3. **gm-list queue** — Actual results + completion receipts (source of truth for what was found)
+3. **Queue completion artifacts** — Actual results + completion receipts (source of truth)
 
-The frontier doesn't change; completion tracking is done via receipts + the ScrapeIndex for future TTL calculations.
+Completion tracking is done via:
+- Receipt files in `{queue}/completed/results/` 
+- Result files presence/absence
+- ScrapeIndex update (for next batch's TTL calculation)
 
 ## Related Documents
 

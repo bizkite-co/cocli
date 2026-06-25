@@ -116,7 +116,7 @@ with open(p, "w") as f:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Provision a Raspberry Pi with an IoT Certificate identity.")
-    parser.add_argument("--host", required=True, help="RPi hostname (e.g. cocli5x0.pi)")
+    parser.add_argument("--host", required=True, help="RPi hostname (e.g. cocli5x0)")
     parser.add_argument("--campaign", required=True, help="Campaign name.")
     parser.add_argument("--role", choices=["scraper", "processor"], default="scraper", help="The granular role for this worker.")
     parser.add_argument("--user", default="mstouffer", help="SSH user.")

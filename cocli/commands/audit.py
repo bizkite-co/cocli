@@ -1411,3 +1411,72 @@ def queue_status(campaign: str = typer.Option("", help="Campaign name")) -> None
         console.print("\n[green][OK] Queue idle, no processing tiles[/green]")
     else:
         console.print(f"\n[green][OK] {processing_count} tile(s) processing, no expired leases[/green]")
+
+
+@queue_app.command(name="purge-leases")
+def purge_stale_leases(
+    campaign: str = typer.Option("", help="Campaign name"),
+    queue_name: str = typer.Option("gm-list", help="Queue name (gm-list, tile-queue, etc)"),
+    force: bool = typer.Option(False, help="Force remove ALL leases (even fresh ones)"),
+    dry_run: bool = typer.Option(False, help="Preview what would be deleted without deleting"),
+    max_age_minutes: int = typer.Option(30, help="Lease is stale if heartbeat older than N minutes"),
+) -> None:
+    """
+    Purge stale or expired leases from a queue directory.
+
+    Leases can block work from being claimed if they're left behind by
+    crashed or abandoned workers. This command removes them to unblock
+    the queue.
+
+    USAGE:
+      # Remove expired leases (default 30min old):
+      cocli audit queue purge-leases turboship
+
+      # Preview without deleting:
+      cocli audit queue purge-leases turboship --dry-run
+
+      # Force remove ALL leases (for testing/reset):
+      cocli audit queue purge-leases turboship --force
+
+      # Custom age threshold:
+      cocli audit queue purge-leases turboship --max-age-minutes 10
+    """
+    from cocli.services.lease_cleanup import purge_expired_leases, force_purge_all_leases
+    from cocli.core.config import get_campaign
+
+    campaign_name = campaign or get_campaign() or "default"
+    queue_dir = paths.campaign(campaign_name).queue(queue_name).pending
+
+    console.print(f"[bold blue]Lease Cleanup: {campaign_name} / {queue_name}[/bold blue]")
+    console.print(f"  Directory: {queue_dir}\n")
+
+    if dry_run:
+        console.print("[yellow]DRY RUN MODE - no files will be deleted[/yellow]\n")
+
+    if force:
+        console.print("[bold red]WARNING: Force mode will delete ALL leases[/bold red]")
+        if not dry_run:
+            confirm = Prompt.ask("Type 'yes' to confirm", default="no")
+            if confirm.lower() != "yes":
+                console.print("[yellow]Cancelled[/yellow]")
+                return
+
+        metrics = force_purge_all_leases(queue_dir, dry_run=dry_run)
+        console.print("\n[bold]Results:[/bold]")
+        console.print(f"  Leases found:  {metrics['leases_found']}")
+        console.print(f"  Leases deleted: {metrics['leases_deleted']}")
+        if metrics["errors"] > 0:
+            console.print(f"  [red]Errors: {metrics['errors']}[/red]")
+    else:
+        metrics = purge_expired_leases(queue_dir, max_heartbeat_age_minutes=max_age_minutes, dry_run=dry_run)
+        console.print("\n[bold]Results:[/bold]")
+        console.print(f"  Leases found:   {metrics['leases_found']}")
+        console.print(f"  Leases expired: {metrics['leases_expired']}")
+        console.print(f"  Leases deleted: {metrics['leases_deleted']}")
+        if metrics["errors"] > 0:
+            console.print(f"  [red]Errors: {metrics['errors']}[/red]")
+
+    if dry_run:
+        console.print("\n[dim][DRY RUN] No files were actually deleted[/dim]")
+    elif metrics["leases_deleted"] > 0:
+        console.print(f"\n[green]✓ Cleaned up {metrics['leases_deleted']} stale lease(s)[/green]")
