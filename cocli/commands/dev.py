@@ -356,6 +356,100 @@ def move_tiles_to_processing_cmd(
         raise typer.Exit(1)
 
 
+@app.command(name="move-tiles-to-processing")
+def move_tiles_to_processing_cmd(
+    campaign_name: Annotated[
+        Optional[str],
+        typer.Argument(help="Campaign name. Defaults to current context."),
+    ] = None,
+    count: Annotated[
+        int,
+        typer.Option("--count", "-c", help="Number of tiles to move."),
+    ] = 10,
+) -> None:
+    """
+    Move N random tiles from tile-queue/pending/ → tile-queue/processing/.
+
+    This is a testing utility to set up a batch of tiles for processing.
+    Randomly selects N tiles from the pending directory and moves them
+    to processing so they're ready for the tile-queue processor.
+
+    USAGE:
+      # Move 10 tiles to processing (default):
+      cocli dev move-tiles-to-processing turboship
+
+      # Move 5 tiles:
+      cocli dev move-tiles-to-processing turboship --count 5
+    """
+    from cocli.core.queue.factory import get_queue_manager
+    import random
+
+    if campaign_name is None:
+        campaign_name = get_campaign()
+
+    if not campaign_name:
+        console.print("[red]No campaign specified.[/red]")
+        raise typer.Exit(1)
+
+    campaign_dir = get_campaign_dir(campaign_name)
+    if not campaign_dir:
+        console.print(f"[red]Campaign directory not found: {campaign_name}[/red]")
+        raise typer.Exit(1)
+
+    try:
+        tile_queue = get_queue_manager("tile-queue", queue_type="tile", campaign_name=campaign_name)
+        pending_dir = tile_queue.pending_dir
+        processing_dir = tile_queue.processing_dir
+
+        if not pending_dir.exists():
+            console.print(f"[red]Pending directory not found: {pending_dir}[/red]")
+            raise typer.Exit(1)
+
+        # Collect all tile files from pending/
+        import os
+        tile_files = []
+        for root, dirs, files in os.walk(pending_dir):
+            for f in files:
+                if f.endswith(".usv"):
+                    tile_files.append(Path(root) / f)
+
+        if not tile_files:
+            console.print("[yellow]No tile files found in pending directory.[/yellow]")
+            raise typer.Exit(0)
+
+        # Randomly select N tiles
+        tiles_to_move = random.sample(tile_files, min(count, len(tile_files)))
+
+        console.print(f"[bold blue]Moving {len(tiles_to_move)} tiles to processing[/bold blue]")
+        console.print(f"  From: {pending_dir}")
+        console.print(f"  To:   {processing_dir}\n")
+
+        moved = 0
+        for tile_path in tiles_to_move:
+            try:
+                rel_path = tile_path.relative_to(pending_dir)
+                processing_path = processing_dir / rel_path
+
+                # Create subdirectories
+                processing_path.parent.mkdir(parents=True, exist_ok=True)
+
+                # Move (rename) the file
+                tile_path.rename(processing_path)
+                console.print(f"  ✓ {rel_path}")
+                moved += 1
+
+            except Exception as e:
+                console.print(f"  [red]✗ Error moving {tile_path.name}: {e}[/red]")
+                continue
+
+        console.print(f"\n[bold green]Moved {moved} tiles to processing[/bold green]")
+
+    except Exception as e:
+        console.print(f"[red]Error during move: {e}[/red]")
+        logger.exception("Tile move failed")
+        raise typer.Exit(1)
+
+
 @app.command(name="process-tile-queue")
 def process_tile_queue_cmd(
     campaign_name: Annotated[
