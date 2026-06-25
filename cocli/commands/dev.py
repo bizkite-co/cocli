@@ -260,3 +260,72 @@ def run_discovery_gen_stages(
         console.print(f"[red]Error during pipeline execution: {e}[/red]")
         logger.exception("Pipeline execution failed")
         raise typer.Exit(1)
+
+
+@app.command(name="process-tile-queue")
+def process_tile_queue_cmd(
+    campaign_name: Annotated[
+        Optional[str],
+        typer.Argument(help="Campaign name. Defaults to current context."),
+    ] = None,
+    max_tiles: Annotated[
+        Optional[int],
+        typer.Option("--max", "-m", help="Maximum number of tiles to process."),
+    ] = None,
+    dry_run: Annotated[
+        bool,
+        typer.Option("--dry-run", help="Preview what would be processed without writing files."),
+    ] = False,
+) -> None:
+    """
+    Process tile-queue/processing/ → gm-list/pending/.
+
+    Reads tiles from tile-queue/processing/, converts each tile's phrases
+    to individual ScrapeTask work items, writes them to gm-list/pending/
+    with lease coordination, then moves processed tiles to completed/.
+
+    USAGE:
+      # Process all tiles in processing/:
+      cocli dev process-tile-queue turboship
+
+      # Process only 10 tiles (for testing):
+      cocli dev process-tile-queue turboship --max 10
+
+      # Preview without writing:
+      cocli dev process-tile-queue turboship --dry-run
+    """
+    from cocli.services.tile_queue_processor import process_tile_queue
+
+    if campaign_name is None:
+        campaign_name = get_campaign()
+
+    if not campaign_name:
+        console.print("[red]No campaign specified.[/red]")
+        raise typer.Exit(1)
+
+    campaign_dir = get_campaign_dir(campaign_name)
+    if not campaign_dir:
+        console.print(f"[red]Campaign directory not found: {campaign_name}[/red]")
+        raise typer.Exit(1)
+
+    try:
+        console.print("[bold blue]Tile-Queue Processor[/bold blue]")
+        console.print(f"  Campaign: {campaign_name}")
+        if dry_run:
+            console.print("  Mode: [yellow]DRY RUN[/yellow]")
+        if max_tiles:
+            console.print(f"  Max tiles: {max_tiles}")
+        console.print()
+
+        metrics = process_tile_queue(campaign_name, max_tiles=max_tiles, dry_run=dry_run)
+
+        console.print("[bold green]Processing complete![/bold green]")
+        console.print(f"  Tiles processed: {metrics['tiles_processed']}")
+        console.print(f"  ScrapeTask records created: {metrics['scrape_tasks_created']}")
+        if metrics["errors"] > 0:
+            console.print(f"  [yellow]Errors: {metrics['errors']}[/yellow]")
+
+    except Exception as e:
+        console.print(f"[red]Error during tile-queue processing: {e}[/red]")
+        logger.exception("Tile-queue processing failed")
+        raise typer.Exit(1)
