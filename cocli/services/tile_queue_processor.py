@@ -173,6 +173,22 @@ def process_tile_queue(
                 errors += 1
                 continue
 
+    # CRITICAL: Create datapackage.json for schema compliance
+    # Describes all *.usv ScrapeTask files in gm-list/pending using glob pattern
+    if not dry_run:
+        try:
+            ScrapeTask.save_datapackage(
+                gm_list_pending,
+                resource_name="gm-list-pending",
+                resource_path="**/*.usv",  # Glob pattern for all sharded files
+                force=True,  # Overwrite if exists (safe for idempotent processing)
+            )
+            logger.info(f"  Created datapackage.json for {scrape_tasks_created} ScrapeTask records")
+        except Exception as e:
+            logger.error(f"Error creating datapackage.json in {gm_list_pending}: {e}")
+            # Don't fail the entire processing if schema metadata fails
+            errors += 1
+
     logger.info(
         f"Tile-queue processing complete: "
         f"{tiles_processed} tiles, {scrape_tasks_created} ScrapeTask records, {errors} errors"

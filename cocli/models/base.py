@@ -75,6 +75,50 @@ class SchemaGenerator(Protocol):
     ) -> None: ...
 
 
+@runtime_checkable
+class QueueWriter(Protocol):
+    """
+    Protocol enforcing that queue files are ALWAYS written with datapackage.json.
+
+    This prevents the error of writing queue files without schema metadata.
+    Any code that writes queue files should use write_queue_files() helper.
+
+    Usage:
+        # ✓ Correct: automatically creates datapackage.json
+        write_queue_files(
+            model_class=TileQueueRecord,
+            items=tile_records,
+            queue_dir=pending_dir,
+            resource_name="tile-queue",
+            resource_path="**/*.usv",  # glob pattern for sharded data
+        )
+
+        # ✗ Incorrect: would lose schema metadata
+        for item in items:
+            path = queue_dir / item_path
+            path.write_text(item.to_usv())  # Missing datapackage.json!
+    """
+
+    @classmethod
+    def write_queue_files(
+        cls,
+        items: List["BaseUsvModel"],
+        queue_dir: Path,
+        resource_name: str,
+        resource_path: str,
+    ) -> None:
+        """
+        Writes items to queue directory and ENSURES datapackage.json is created.
+
+        Args:
+            items: List of models to write
+            queue_dir: Root directory for queue files
+            resource_name: Name for datapackage.json resource
+            resource_path: Glob pattern (e.g., "**/*.usv") describing file locations
+        """
+        ...
+
+
 T = TypeVar("T", bound="BaseUsvModel")
 
 
@@ -575,3 +619,66 @@ class BaseUsvModel(BaseModel):
         path.parent.mkdir(parents=True, exist_ok=True)
         with open(path, "w", encoding="utf-8") as f:
             f.write(self.to_usv())
+
+
+def write_queue_files(
+    model_class: Type[SchemaGenerator],
+    items: List[BaseUsvModel],
+    queue_dir: Path,
+    resource_name: str,
+    resource_path: str,
+    file_writer: Optional[callable] = None,
+) -> None:
+    """
+    ENFORCED: Writes queue files and ALWAYS creates datapackage.json.
+
+    This function ensures protocol compliance: no queue files are written
+    without schema metadata. Use this instead of raw file writes.
+
+    Args:
+        model_class: Model class (must implement SchemaGenerator)
+        items: List of models to write
+        queue_dir: Root directory for queue files
+        resource_name: Name for datapackage.json resource
+        resource_path: Glob pattern (e.g., "**/*.usv") or single file name
+        file_writer: Optional custom function to write files (default: model.to_usv())
+
+    Raises:
+        TypeError: If model_class doesn't implement SchemaGenerator protocol
+
+    Example:
+        write_queue_files(
+            model_class=TileQueueRecord,
+            items=tile_records,
+            queue_dir=pending_dir,
+            resource_name="tile-queue",
+            resource_path="**/*.usv",
+            file_writer=lambda item, path: (
+                path.parent.mkdir(parents=True, exist_ok=True),
+                path.write_text(item.to_usv())
+            )[1]
+        )
+    """
+    # Type check: ensure model implements SchemaGenerator protocol
+    if not isinstance(model_class, type) or not hasattr(model_class, "save_datapackage"):
+        raise TypeError(
+            f"{model_class} must implement SchemaGenerator protocol "
+            f"(must have save_datapackage classmethod)"
+        )
+
+    # Ensure queue directory exists
+    queue_dir.mkdir(parents=True, exist_ok=True)
+
+    # Write files using provided writer or default
+    if file_writer is None:
+        file_writer = lambda item, path: (
+            path.parent.mkdir(parents=True, exist_ok=True),
+            path.write_text(item.to_usv())
+        )[1]
+
+    for item in items:
+        file_writer(item, queue_dir)  # type: ignore
+
+    # CRITICAL: Always create datapackage.json
+    model_class.save_datapackage(queue_dir, resource_name, resource_path)
+    logger.debug(f"Wrote {len(items)} items to {queue_dir} with schema {resource_name}")

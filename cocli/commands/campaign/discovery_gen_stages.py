@@ -489,5 +489,20 @@ def populate_tile_queue(
             logger.error(f"Error creating tile file {file_path}: {e}")
             continue
 
+    # CRITICAL: Create datapackage.json for schema compliance
+    # Describes all *.usv files in all shards using glob pattern
+    try:
+        TileQueueRecord.save_datapackage(
+            pending_dir,
+            resource_name="tile-queue",
+            resource_path="**/*.usv",  # Glob pattern for all sharded files
+            force=True,  # Overwrite if exists (safe for idempotent processing)
+        )
+        logger.info(f"  Created datapackage.json for {tiles_created} tiles")
+    except Exception as e:
+        logger.error(f"Error creating datapackage.json in {pending_dir}: {e}")
+        # Don't fail the entire stage if schema metadata fails
+        pass
+
     logger.info(f"Stage 4 complete: {tiles_created} tile files created in {pending_dir}")
     return tiles_created
