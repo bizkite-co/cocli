@@ -15,6 +15,7 @@ from typing import (
     Protocol,
     runtime_checkable,
     ClassVar,
+    Callable,
 )
 
 from pydantic import BaseModel, ValidationError
@@ -641,7 +642,7 @@ def write_queue_files(
     queue_dir: Path,
     resource_name: str,
     resource_path: str,
-    file_writer: Optional[callable] = None,
+    file_writer: Optional[Callable[[Any, Path], Any]] = None,
 ) -> None:
     """
     ENFORCED: Writes queue files and ALWAYS creates datapackage.json.
@@ -684,13 +685,13 @@ def write_queue_files(
     queue_dir.mkdir(parents=True, exist_ok=True)
 
     if file_writer is None:
-        def default_file_writer(item, path):
+        def default_file_writer(item: Any, path: Path) -> Any:
             path.parent.mkdir(parents=True, exist_ok=True)
             return path.write_text(item.to_usv())
         file_writer = default_file_writer
 
     for item in items:
-        file_writer(item, queue_dir)  # type: ignore
+        file_writer(item, queue_dir)
 
     # CRITICAL: Always create datapackage.json
     model_class.save_datapackage(queue_dir, resource_name, resource_path)

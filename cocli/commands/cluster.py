@@ -233,7 +233,7 @@ def prune() -> None:
             # Parse reclaimed space
             reclaimed_str = "0 B"
             if "Total reclaimed space:" in res:
-                line = [l for l in res.split("\n") if "Total reclaimed space:" in l]
+                line = [row for row in res.split("\n") if "Total reclaimed space:" in row]
                 if line:
                     reclaimed_str = line[0].replace("Total reclaimed space:", "").strip()
             

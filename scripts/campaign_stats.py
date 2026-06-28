@@ -16,7 +16,7 @@ def run_stats(campaign_name: str) -> None:
     completed_tasks = len(list(gm_list_dir.completed.glob("**/*.json")))
     pending_tasks = len(list(gm_list_dir.pending.glob("**/*.json")))
     
-    print(f"GM-List Queue Status:")
+    print("GM-List Queue Status:")
     print(f"  Completed Tasks: {completed_tasks}")
     print(f"  Pending Leases:  {pending_tasks}")
     
@@ -46,19 +46,19 @@ def run_stats(campaign_name: str) -> None:
         except Exception:
             pass
             
-    print(f"\nLead Scraping Results:")
+    print("\nLead Scraping Results:")
     print(f"  Total Scraped Records: {total_records}")
     print(f"  Unique Leads Scraped:  {len(unique_place_ids)}")
     if len(unique_place_ids) > 0:
         print(f"  Leads with Websites:   {len(leads_with_domain)} ({len(leads_with_domain) / len(unique_place_ids) * 100:.1f}%)")
     else:
-        print(f"  Leads with Websites:   0")
+        print("  Leads with Websites:   0")
         
     # 3. Enrichment Queue Stats
     enrich_dir = paths.queue(campaign_name, "enrichment")
     completed_enrich = len(list(enrich_dir.completed.glob("**/*.json")))
     pending_enrich = len(list(enrich_dir.pending.glob("**/*.json")))
-    print(f"\nEnrichment Queue Status:")
+    print("\nEnrichment Queue Status:")
     print(f"  Completed: {completed_enrich}")
     print(f"  Pending:   {pending_enrich}")
     print("=================================================================")

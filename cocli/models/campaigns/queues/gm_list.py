@@ -1,4 +1,4 @@
-from typing import Optional, ClassVar
+from typing import Optional, ClassVar, Literal
 from pathlib import Path
 from pydantic import Field
 from ....core.paths import paths
@@ -26,16 +26,16 @@ class ScrapeTask(BaseUsvModel):
     ttl_days: int = 30
 
     # Queue mechanics (Transient)
-    ack_token: Optional[str] = Field(None, exclude=True)
+    ack_token: Optional[str] = Field(default=None, exclude=True)
     attempts: int = 0
-    result_count: Optional[int] = Field(None, ge=0, description="Capture discovery count for receipt")
+    result_count: Optional[int] = Field(default=None, ge=0, description="Capture discovery count for receipt")
 
     SCHEMA_VERSION: ClassVar[str] = "1.0.0"
 
     SOURCE_QUEUE: ClassVar[str] = "discovery-gen"
-    SOURCE_STATE: ClassVar[str] = "completed"
+    SOURCE_STATE: ClassVar[Literal["pending", "completed", "sideline", "inbox", "processing", "wal"]] = "completed"
     LEASE_QUEUE: ClassVar[str] = "gm-list"
-    LEASE_STATE: ClassVar[str] = "pending"
+    LEASE_STATE: ClassVar[Literal["pending", "completed", "sideline", "inbox", "processing", "wal"]] = "pending"
 
     @property
     def collection(self) -> QueueName:

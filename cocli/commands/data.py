@@ -13,6 +13,7 @@ from ..utils.duckdb_utils import (
     match_resource_path,
     load_from_datapackage,
 )
+from ..core.paths import paths
 
 # Set up logging for CLI tools
 logging.basicConfig(level=logging.INFO)
