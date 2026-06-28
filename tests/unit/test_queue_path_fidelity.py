@@ -26,8 +26,8 @@ def test_gmlist_queue_path_fidelity(tmp_path):
         # FAILURE CONDITION: If the shard '2' appears twice consecutively
         assert "/2/2/" not in path_str, f"Double-sharding detected in queue path: {path_str}"
         
-        # CORRECT CONDITION: Should be queues/gm-list/pending/2/25.0/-80.0/dentist.usv
-        assert path_str.endswith("pending/2/25.0/-80.0/dentist.usv")
+        # CORRECT CONDITION: Should be queues/gm-list/pending/2/25.0/-80.0/dentist
+        assert path_str.endswith("pending/2/25.0/-80.0/dentist")
 
 def test_generic_queue_sharding_fidelity(tmp_path):
     """

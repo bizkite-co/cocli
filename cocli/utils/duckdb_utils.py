@@ -128,6 +128,10 @@ def find_datapackage(file_path: Path) -> Optional[Path]:
 
     If the input is already a datapackage.json, returns it directly.
     """
+    # If a directory is passed, check if it contains a datapackage.json
+    if file_path.is_dir() and (file_path / "datapackage.json").exists():
+        return file_path / "datapackage.json"
+
     # If already a datapackage.json, return it
     if file_path.name == "datapackage.json":
         return file_path if file_path.exists() else None

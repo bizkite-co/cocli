@@ -28,6 +28,7 @@ class QueueIdentity(str, Enum):
     TO_CALL = "to-call"
     DISCOVERY_GEN = "discovery-gen"
     EVENTS = "events"
+    MAP_TILE = "map-tile"
 
 # Legacy Type Aliases for compatibility
 CollectionName = Union[CollectionIdentity, str]

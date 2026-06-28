@@ -11,7 +11,6 @@ from playwright.async_api import async_playwright, Browser, BrowserContext
 
 from ..core.queue.factory import get_queue_manager
 from ..scrapers.google.google_maps import scrape_google_maps
-from ..models.campaigns.queues.gm_list import ScrapeTask
 from ..models.campaigns.indexes.google_maps_list_item import GoogleMapsListItem
 from ..models.campaigns.queues.gm_details import GmItemTask
 from ..models.campaigns.queues.base import QueueMessage
@@ -162,8 +161,17 @@ class WorkerService:
     def get_s3_client(self) -> Any:
         from ..core.reporting import get_boto3_session
         profile = f"{self.campaign_name}-iot"
-        session = get_boto3_session(self.config, profile_name=profile)
-        return session.client("s3")
+        try:
+            session = get_boto3_session(self.config, profile_name=profile)
+            session.get_credentials()
+            return session.client("s3")
+        except Exception as e:
+            logger.warning(
+                f"Failed to initialize S3 client with profile {profile}: {e}. "
+                "Falling back to default/configured session."
+            )
+            session = get_boto3_session(self.config)
+            return session.client("s3")
 
     async def _launch_browser(self, playwright: Any, headless: bool) -> Browser:
         """Launches a browser, prioritizing msedge channel for stealth."""
@@ -197,9 +205,6 @@ class WorkerService:
         workers: int = 1,
     ) -> None:
         from ..core.queue.factory import get_queue_manager
-        import os
-
-        worker_id = os.getenv("COCLI_HOSTNAME") or "unknown-worker"
 
         while True:
             await asyncio.sleep(0.1)
@@ -212,7 +217,8 @@ class WorkerService:
                 break
 
             # Poll from gm-list queue with lease-based coordination
-            gm_list_queue = get_queue_manager("gm-list", queue_type="gm-list", campaign_name=self.campaign_name)
+            gm_list_queue = get_queue_manager("gm-list", use_cloud=True, queue_type="gm-list", campaign_name=self.campaign_name, s3_client=s3_client)
+            enrichment_queue = get_queue_manager("enrichment", use_cloud=True, queue_type="enrichment", campaign_name=self.campaign_name, s3_client=s3_client)
 
             # Poll for next scrape task (includes automatic lease creation)
             tasks = gm_list_queue.poll(batch_size=1)
@@ -253,7 +259,19 @@ class WorkerService:
                         discovered_items.append(list_item)
 
                         if list_item.place_id not in pushed_place_ids:
-                            gm_list_item_queue.push(list_item.to_task(task.campaign_name, force_refresh=False))
+                            if list_item.domain:
+                                logger.info(f"Bypassing details: domain '{list_item.domain}' found for '{list_item.name}'. Routing directly to enrichment.")
+                                enrichment_queue.push(
+                                    QueueMessage(
+                                        domain=str(list_item.domain),
+                                        company_slug=slugify(list_item.name),
+                                        campaign_name=task.campaign_name,
+                                        force_refresh=False,
+                                        ack_token=None
+                                    )
+                                )
+                            else:
+                                gm_list_item_queue.push(list_item.to_task(task.campaign_name, force_refresh=False))
                             pushed_place_ids.add(list_item.place_id)
 
                 if discovered_items:
@@ -267,15 +285,16 @@ class WorkerService:
 
                 logger.info(f"Completed scrape task: {task.tile_id} × {task.search_phrase}")
 
+                task.result_count = len(discovered_items)
                 # Acknowledge successful task completion (removes lease)
-                gm_list_queue.ack(task.ack_token)
+                gm_list_queue.ack(task)
 
                 if once:
                     return
             except Exception as e:
                 logger.error(f"Task Failed: {e}")
                 # Negative acknowledge on failure (removes lease, task stays available)
-                gm_list_queue.nack(task.ack_token)
+                gm_list_queue.nack(task)
 
                 if "Target page, context or browser has been closed" in str(e):
                     break

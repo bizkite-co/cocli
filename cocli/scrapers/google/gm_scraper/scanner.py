@@ -24,11 +24,11 @@ class SidebarScraper:
         combined_pattern = re.compile(r"\d\.\d\s*stars?\s*[\d,]+\s*Reviews?", re.IGNORECASE)
         
         try:
-            await listing_locator.get_by_text(combined_pattern).first.wait_for(timeout=10000)
+            await listing_locator.get_by_text(combined_pattern).first.wait_for(timeout=500)
             return True
         except Exception:
             try:
-                await listing_locator.locator('span[aria-label*="stars"]').first.wait_for(timeout=2000)
+                await listing_locator.locator('span[aria-label*="stars"]').first.wait_for(timeout=200)
                 return True
             except Exception:
                 return False

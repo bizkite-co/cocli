@@ -10,7 +10,7 @@ import logging
 import json
 from pathlib import Path
 from datetime import datetime, UTC, timedelta
-from typing import Dict, Optional
+from typing import Dict
 
 logger = logging.getLogger(__name__)
 

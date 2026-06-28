@@ -212,25 +212,105 @@ class GossipBridge:
                 
                 logger.info(f"Received queue sync: {q_record.queue_name}/{q_record.task_id} [{q_record.status}] from {q_record.node_id} (Campaign: {effective_campaign})")
                 
-                # Write marker to local filesystem
-                queue = paths.campaign(effective_campaign).queue(q_record.queue_name)
-                if q_record.status == "completed":
-                    dest = queue.completed / "results" / f"{q_record.task_id}.json"
+                # Resolve queue manager using local imports to avoid circular dependencies
+                from .queue.factory import get_queue_manager
+                from .queue.filesystem import FilesystemTileQueue
+                from datetime import datetime, timedelta, UTC
+                import json
+
+                queue_type = q_record.queue_name
+                if queue_type == "gm-details":
+                    queue_type = "details"
+                elif queue_type in ["tile-queue", "map-tile"]:
+                    queue_type = "tile"
+
+                try:
+                    q_manager = get_queue_manager(
+                        queue_name=q_record.queue_name,
+                        queue_type=queue_type,
+                        campaign_name=effective_campaign
+                    )
+                except Exception as q_err:
+                    logger.error(f"Failed to resolve queue manager for {q_record.queue_name}: {q_err}")
+                    return
+
+                # Check if it's the specialized FilesystemTileQueue
+                if isinstance(q_manager, FilesystemTileQueue):
+                    if q_record.status == "claimed":
+                        pending_path = q_manager.tiles_dir / q_record.task_id
+                        processing_path = q_manager.processing_dir / q_record.task_id
+                        lease_path = q_manager.processing_dir / f"{q_record.task_id}.lease.json"
+                        
+                        # Move to processing if still in pending
+                        if pending_path.exists():
+                            q_manager.processing_dir.mkdir(parents=True, exist_ok=True)
+                            pending_path.rename(processing_path)
+                            
+                        # Write local lease replica
+                        lease_data = {
+                            "worker_id": q_record.node_id,
+                            "claimed_at": q_record.timestamp,
+                            "expires_at": (datetime.fromisoformat(q_record.timestamp).replace(tzinfo=UTC) + timedelta(minutes=30)).isoformat()
+                        }
+                        with lease_path.open("w") as f:
+                            json.dump(lease_data, f)
+                            
+                    elif q_record.status == "released":
+                        # Return to pending
+                        q_manager.nack(q_record.task_id)
+                        
+                    elif q_record.status == "completed":
+                        # Move to completed
+                        q_manager.ack(q_record.task_id)
                 else:
-                    dest = queue.path / q_record.status / f"{q_record.task_id}.json"
-                
-                if not dest.exists():
-                    dest.parent.mkdir(parents=True, exist_ok=True)
-                    import json
-                    with open(dest, "w") as f:
-                        json.dump({
-                            "id": q_record.task_id, 
-                            "status": q_record.status, 
-                            "synced_via": "gossip", 
-                            "campaign": effective_campaign,
-                            "remote_node": q_record.node_id,
-                            "timestamp": q_record.timestamp
-                        }, f)
+                    # Standard FilesystemQueue subclasses (FilesystemGmListQueue, etc.)
+                    task_dir = q_manager._get_task_dir(q_record.task_id)
+                    lease_path = q_manager._get_lease_path(q_record.task_id)
+                    
+                    if q_record.status == "claimed":
+                        # TIE BREAKER: If this node also has a lease on the task, resolve race condition
+                        if lease_path.exists():
+                            try:
+                                with open(lease_path, "r") as f:
+                                    local_lease = json.load(f)
+                                local_worker = local_lease.get("worker_id", self.node_id)
+                                
+                                # If we are the ones holding the local lease, decide who yields
+                                if local_worker == self.node_id:
+                                    local_time = datetime.fromisoformat(local_lease.get("claimed_at", q_record.timestamp)).replace(tzinfo=UTC)
+                                    remote_time = datetime.fromisoformat(q_record.timestamp).replace(tzinfo=UTC)
+                                    
+                                    # Tie-breaker rule: Earlier claim wins. If identical, lower node_id wins.
+                                    if remote_time < local_time or (remote_time == local_time and q_record.node_id < self.node_id):
+                                        logger.warning(f"Race condition lost for {q_record.task_id}. Yielding to {q_record.node_id}.")
+                                        # Yield: release local lease and let peer have it
+                                        q_manager.nack(q_record.task_id)
+                                        # Let the incoming gossip claim overwrite it
+                                    else:
+                                        logger.info(f"Race condition won for {q_record.task_id}. Ignoring claim from {q_record.node_id}.")
+                                        return
+                            except Exception as lease_read_err:
+                                logger.error(f"Error parsing local lease for tie-breaker: {lease_read_err}")
+                                
+                        task_dir.mkdir(parents=True, exist_ok=True)
+                        lease_data = {
+                            "worker_id": q_record.node_id,
+                            "claimed_at": q_record.timestamp,
+                            "heartbeat_at": q_record.timestamp,
+                            "expires_at": (datetime.fromisoformat(q_record.timestamp).replace(tzinfo=UTC) + timedelta(minutes=q_manager.lease_duration)).isoformat()
+                        }
+                        with open(lease_path, "w") as f:
+                            json.dump(lease_data, f)
+                            
+                    elif q_record.status == "released":
+                        if lease_path.exists():
+                            try:
+                                lease_path.unlink()
+                            except Exception as unlink_err:
+                                logger.error(f"Failed to delete lease {lease_path}: {unlink_err}")
+                                
+                    elif q_record.status == "completed":
+                        q_manager.ack(q_record.task_id)
                 return
 
             # 2. Handle Heartbeats

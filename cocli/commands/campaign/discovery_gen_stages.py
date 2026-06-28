@@ -56,7 +56,6 @@ import logging
 import csv
 from typing import List, Dict, Any, Optional
 import toml
-from pathlib import Path
 
 from cocli.core.paths import paths
 from cocli.core.config import get_campaign_dir
@@ -67,7 +66,6 @@ from cocli.models.campaigns.mission import MissionTask
 from cocli.models.campaigns.tile import TileRecord as TileQueueRecord
 from cocli.core.scrape_index import ScrapeIndex
 from cocli.core.sharding import get_geo_shard
-from cocli.core.text_utils import slugify
 
 logger = logging.getLogger(__name__)
 
@@ -440,13 +438,13 @@ def populate_tile_queue(
                 if line.strip():
                     mission_tasks.append(MissionTask.from_usv(line))
 
-    logger.info(f"Stage 4: Populating tile-queue with {len(mission_tasks)} mission tasks...")
+    logger.info(f"Stage 4: Populating map-tile with {len(mission_tasks)} mission tasks...")
 
     if not save_output:
         return len(mission_tasks)
 
-    # Get tile-queue base path
-    tile_queue = paths.campaign(campaign_name).queue("tile-queue")
+    # Get map-tile base path
+    tile_queue = paths.campaign(campaign_name).queue("map-tile")
     pending_dir = tile_queue.pending
 
     # Group tasks by (tile_id, shard, lat, lon)
@@ -494,7 +492,7 @@ def populate_tile_queue(
     try:
         TileQueueRecord.save_datapackage(
             pending_dir,
-            resource_name="tile-queue",
+            resource_name="map-tile",
             resource_path="**/*.usv",  # Glob pattern for all sharded files
             force=True,  # Overwrite if exists (safe for idempotent processing)
         )

@@ -61,7 +61,7 @@ def get_queue_manager(queue_name: str, use_cloud: bool = False, queue_type: str 
             return FilesystemGmDetailsQueue(campaign_name=effective_campaign, s3_client=active_s3_client, bucket_name=bucket_name)
         elif queue_type == "enrichment":
             return FilesystemEnrichmentQueue(campaign_name=effective_campaign, s3_client=active_s3_client, bucket_name=bucket_name)
-        elif queue_type == "tile":
+        elif queue_type in ["tile", "map-tile", "tile-queue"]:
             return FilesystemTileQueue(campaign_name=effective_campaign, s3_client=active_s3_client, bucket_name=bucket_name)
 
     if use_cloud:

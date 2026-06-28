@@ -89,7 +89,7 @@ class QueueWriter(Protocol):
             model_class=TileQueueRecord,
             items=tile_records,
             queue_dir=pending_dir,
-            resource_name="tile-queue",
+            resource_name="map-tile",
             resource_path="**/*.usv",  # glob pattern for sharded data
         )
 
@@ -117,6 +117,20 @@ class QueueWriter(Protocol):
             resource_path: Glob pattern (e.g., "**/*.usv") describing file locations
         """
         ...
+
+
+from typing import Protocol, ClassVar, runtime_checkable
+
+@runtime_checkable
+class OMOPQueueRecord(Protocol):
+    """
+    Protocol enforcing the One Model, One Path (OMOP) queue contract.
+    Ensures Pydantic models explicitly declare the source queue/state and lease queue/state.
+    """
+    SOURCE_QUEUE: ClassVar[str]
+    SOURCE_STATE: ClassVar[str]
+    LEASE_QUEUE: ClassVar[str]
+    LEASE_STATE: ClassVar[str]
 
 
 T = TypeVar("T", bound="BaseUsvModel")
@@ -651,7 +665,7 @@ def write_queue_files(
             model_class=TileQueueRecord,
             items=tile_records,
             queue_dir=pending_dir,
-            resource_name="tile-queue",
+            resource_name="map-tile",
             resource_path="**/*.usv",
             file_writer=lambda item, path: (
                 path.parent.mkdir(parents=True, exist_ok=True),
@@ -669,12 +683,11 @@ def write_queue_files(
     # Ensure queue directory exists
     queue_dir.mkdir(parents=True, exist_ok=True)
 
-    # Write files using provided writer or default
     if file_writer is None:
-        file_writer = lambda item, path: (
-            path.parent.mkdir(parents=True, exist_ok=True),
-            path.write_text(item.to_usv())
-        )[1]
+        def default_file_writer(item, path):
+            path.parent.mkdir(parents=True, exist_ok=True)
+            return path.write_text(item.to_usv())
+        file_writer = default_file_writer
 
     for item in items:
         file_writer(item, queue_dir)  # type: ignore

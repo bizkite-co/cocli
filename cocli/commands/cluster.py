@@ -200,5 +200,49 @@ def status(
     asyncio.run(check_all())
     console.print(table)
 
+@app.command(name="prune")
+def prune() -> None:
+    """
+    Prunes unused Docker objects (containers, images, build cache) across all known cluster nodes.
+    """
+    from ..core.config import load_global_config
+    
+    global_config = load_global_config()
+    cluster_data = global_config.get("cluster", {})
+    nodes = cluster_data.get("nodes", [])
+    
+    if not nodes:
+        console.print("[yellow]No nodes configured in global cluster config.[/yellow]")
+        raise typer.Exit(0)
+
+    # Use a default/dummy campaign context to initialize ClusterService utilities
+    service = ClusterService("roadmap")
+    validated_nodes = service.get_nodes()
+    
+    table = Table(title="Cluster Prune Results (All Nodes)")
+    table.add_column("Node", style="cyan")
+    table.add_column("Status")
+    table.add_column("Reclaimed Space", justify="right")
+
+    async def prune_all() -> None:
+        for node in validated_nodes:
+            console.print(f"  Pruning [cyan]{node.hostname}[/cyan]...")
+            cmd = "docker system prune -af"
+            res = await service.run_remote_command(node, cmd)
+            
+            # Parse reclaimed space
+            reclaimed_str = "0 B"
+            if "Total reclaimed space:" in res:
+                line = [l for l in res.split("\n") if "Total reclaimed space:" in l]
+                if line:
+                    reclaimed_str = line[0].replace("Total reclaimed space:", "").strip()
+            
+            status = "[green]SUCCESS[/green]" if "Total reclaimed space:" in res else "[red]FAILED[/red]"
+            table.add_row(node.hostname, status, reclaimed_str)
+
+    asyncio.run(prune_all())
+    console.print()
+    console.print(table)
+
 if __name__ == "__main__":
     app()

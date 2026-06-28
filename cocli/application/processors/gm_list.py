@@ -106,6 +106,24 @@ class GmListProcessor:
             with open(receipt_path, "w", encoding="utf-8") as jf:
                 json.dump(receipt_data, jf, indent=2)
 
+            # 2.5 Ensure datapackage.json is generated in the completed results directory
+            results_root = paths.queue(task.campaign_name, "gm-list").completed / "results"
+            try:
+                GoogleMapsListItem.save_datapackage(
+                    results_root,
+                    resource_name="gm-list-results",
+                    resource_path="**/*.usv",
+                    force=True,
+                )
+                if s3_client and self.bucket_name:
+                    s3_client.upload_file(
+                        str(results_root / "datapackage.json"),
+                        self.bucket_name,
+                        f"campaigns/{task.campaign_name}/queues/gm-list/completed/results/datapackage.json",
+                    )
+            except Exception as dp_err:
+                logger.error(f"Failed to generate/upload datapackage.json: {dp_err}")
+
             # 3. S3 Mirror
             if s3_client and self.bucket_name:
                 prefix = f"campaigns/{task.campaign_name}/queues/gm-list/completed/results/{lat_shard}/{lat_tile}/{lon_tile}/{phrase_slug}"

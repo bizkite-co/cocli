@@ -90,8 +90,8 @@ def test_scrape_task_omap_path_resolution():
     # Expected: .../queues/gm-list/pending/{shard}/{lat}/{lon}/{phrase}.usv
     path_str = str(local_path)
     
-    assert "pending/2/25.0/-80.1/financial-advisor.usv" in path_str
-    assert "pending/2/2/25.0" not in path_str # Double-shard regression check
+    assert "completed/2/25.0/-80.1/financial-advisor.usv" in path_str
+    assert "completed/2/2/25.0" not in path_str # Double-shard regression check
     
     remote_key = task.get_remote_key()
-    assert remote_key == "campaigns/test_camp/queues/gm-list/pending/2/25.0/-80.1/financial-advisor.usv/task.json"
+    assert remote_key == "campaigns/test_camp/queues/discovery-gen/completed/2/25.0/-80.1/financial-advisor.usv"

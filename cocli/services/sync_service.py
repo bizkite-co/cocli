@@ -21,7 +21,8 @@ class SyncService:
         
         self.aws_config = aws_config or self.config.get("aws", {})
         self.bucket = self.aws_config.get("data_bucket_name") or f"cocli-data-{campaign_name}"
-        self.profile = self.aws_config.get("profile") or self.aws_config.get("aws_profile")
+        import os
+        self.profile = os.getenv("AWS_PROFILE") or self.aws_config.get("profile") or self.aws_config.get("aws_profile")
         self.region = self.aws_config.get("region_name") or self.aws_config.get("region")
 
     def _get_aws_bin(self) -> str:

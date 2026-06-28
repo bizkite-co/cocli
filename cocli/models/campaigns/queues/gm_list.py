@@ -28,9 +28,14 @@ class ScrapeTask(BaseUsvModel):
     # Queue mechanics (Transient)
     ack_token: Optional[str] = Field(None, exclude=True)
     attempts: int = 0
-    result_count: Optional[int] = None  # Capture discovery count for receipt
+    result_count: Optional[int] = Field(None, ge=0, description="Capture discovery count for receipt")
 
     SCHEMA_VERSION: ClassVar[str] = "1.0.0"
+
+    SOURCE_QUEUE: ClassVar[str] = "discovery-gen"
+    SOURCE_STATE: ClassVar[str] = "completed"
+    LEASE_QUEUE: ClassVar[str] = "gm-list"
+    LEASE_STATE: ClassVar[str] = "pending"
 
     @property
     def collection(self) -> QueueName:
@@ -44,8 +49,8 @@ class ScrapeTask(BaseUsvModel):
 
     def get_local_path(self) -> Path:
         """
-        Returns the OMAP-compliant local directory for the task lease.
-        Path: queues/gm-list/pending/{shard}/{lat}/{lon}/{phrase}.usv/
+        Returns the OMOP-compliant local file path for this task.
+        Path: queues/discovery-gen/completed/{shard}/{lat}/{lon}/{phrase}.usv
         """
         from ....core.text_utils import slugify
 
@@ -53,7 +58,7 @@ class ScrapeTask(BaseUsvModel):
         phrase = slugify(self.search_phrase)
 
         return (
-            paths.campaign(self.campaign_name).queue("gm-list").pending
+            paths.campaign(self.campaign_name).queue(self.SOURCE_QUEUE).state(self.SOURCE_STATE)
             / shard
             / str(self.latitude)
             / str(self.longitude)
@@ -61,13 +66,13 @@ class ScrapeTask(BaseUsvModel):
         )
 
     def get_remote_key(self) -> str:
-        """Returns the OMAP-compliant S3 key for this task."""
+        """Returns the OMOP-compliant S3 key for this task."""
         from ....core.text_utils import slugify
 
         shard = self.get_shard_id()
         phrase = slugify(self.search_phrase)
 
         return (
-            f"campaigns/{self.campaign_name}/queues/gm-list/pending/"
-            f"{shard}/{self.latitude}/{self.longitude}/{phrase}.usv/task.json"
+            f"campaigns/{self.campaign_name}/queues/{self.SOURCE_QUEUE}/{self.SOURCE_STATE}/"
+            f"{shard}/{self.latitude}/{self.longitude}/{phrase}.usv"
         )

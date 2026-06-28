@@ -151,7 +151,7 @@ def run_discovery_gen_stages(
     ] = False,
 ) -> None:
     """
-    Execute the discovery-gen pipeline: locations → tiles → mission → tile-queue.
+    Execute the discovery-gen pipeline: locations → tiles → mission → map-tile.
 
     This runs the refactored decomposed stages end-to-end with validation:
       Stage 1: generate_tiles()
@@ -168,7 +168,7 @@ def run_discovery_gen_stages(
 
       Stage 4: populate_tile_queue()
         Input: mission.usv (all tasks, no TTL filtering)
-        Output: tile-queue/pending/{shard}/{lat}/{lon}/{tile_id}.usv (manifest)
+        Output: map-tile/pending/{shard}/{lat}/{lon}/{tile_id}.usv (manifest)
 
     Each stage auto-validates output against Frictionless Data schema.
     Schema versioning (cocli:schema_hash) ensures consistency.
@@ -239,10 +239,10 @@ def run_discovery_gen_stages(
 
         # ===== STAGE 4 =====
         if stage is None or stage == 4:
-            console.print("[bold cyan]Stage 4: Populate Tile-Queue Manifest[/bold cyan]")
+            console.print("[bold cyan]Stage 4: Populate Map-Tile Manifest[/bold cyan]")
             tiles_count = populate_tile_queue(campaign_name, save_output=True)
             console.print(f"  ✓ Created {tiles_count} sharded tile files")
-            artifacts_created.append(f"tile-queue/pending/ ({tiles_count} sharded files)")
+            artifacts_created.append(f"map-tile/pending/ ({tiles_count} sharded files)")
             console.print()
 
         # ===== Validation =====
@@ -262,8 +262,8 @@ def run_discovery_gen_stages(
         raise typer.Exit(1)
 
 
-@app.command(name="move-tiles-to-processing")
-def move_tiles_to_processing_cmd(
+@app.command(name="move-map-tiles-to-processing")
+def move_map_tiles_to_processing_cmd(
     campaign_name: Annotated[
         Optional[str],
         typer.Argument(help="Campaign name. Defaults to current context."),
@@ -274,18 +274,18 @@ def move_tiles_to_processing_cmd(
     ] = 10,
 ) -> None:
     """
-    Move N random tiles from tile-queue/pending/ → tile-queue/processing/.
+    Move N random tiles from map-tile/pending/ → map-tile/processing/.
 
     This is a testing utility to set up a batch of tiles for processing.
     Randomly selects N tiles from the pending directory and moves them
-    to processing so they're ready for the tile-queue processor.
+    to processing so they're ready for the tile processor.
 
     USAGE:
       # Move 10 tiles to processing (default):
-      cocli dev move-tiles-to-processing turboship
+      cocli dev move-map-tiles-to-processing turboship
 
       # Move 5 tiles:
-      cocli dev move-tiles-to-processing turboship --count 5
+      cocli dev move-map-tiles-to-processing turboship --count 5
     """
     from cocli.core.queue.factory import get_queue_manager
     import random
@@ -303,7 +303,7 @@ def move_tiles_to_processing_cmd(
         raise typer.Exit(1)
 
     try:
-        tile_queue = get_queue_manager("tile-queue", queue_type="tile", campaign_name=campaign_name)
+        tile_queue = get_queue_manager("map-tile", queue_type="tile", campaign_name=campaign_name)
         pending_dir = tile_queue.pending_dir
         processing_dir = tile_queue.processing_dir
 
@@ -356,102 +356,8 @@ def move_tiles_to_processing_cmd(
         raise typer.Exit(1)
 
 
-@app.command(name="move-tiles-to-processing")
-def move_tiles_to_processing_cmd(
-    campaign_name: Annotated[
-        Optional[str],
-        typer.Argument(help="Campaign name. Defaults to current context."),
-    ] = None,
-    count: Annotated[
-        int,
-        typer.Option("--count", "-c", help="Number of tiles to move."),
-    ] = 10,
-) -> None:
-    """
-    Move N random tiles from tile-queue/pending/ → tile-queue/processing/.
-
-    This is a testing utility to set up a batch of tiles for processing.
-    Randomly selects N tiles from the pending directory and moves them
-    to processing so they're ready for the tile-queue processor.
-
-    USAGE:
-      # Move 10 tiles to processing (default):
-      cocli dev move-tiles-to-processing turboship
-
-      # Move 5 tiles:
-      cocli dev move-tiles-to-processing turboship --count 5
-    """
-    from cocli.core.queue.factory import get_queue_manager
-    import random
-
-    if campaign_name is None:
-        campaign_name = get_campaign()
-
-    if not campaign_name:
-        console.print("[red]No campaign specified.[/red]")
-        raise typer.Exit(1)
-
-    campaign_dir = get_campaign_dir(campaign_name)
-    if not campaign_dir:
-        console.print(f"[red]Campaign directory not found: {campaign_name}[/red]")
-        raise typer.Exit(1)
-
-    try:
-        tile_queue = get_queue_manager("tile-queue", queue_type="tile", campaign_name=campaign_name)
-        pending_dir = tile_queue.pending_dir
-        processing_dir = tile_queue.processing_dir
-
-        if not pending_dir.exists():
-            console.print(f"[red]Pending directory not found: {pending_dir}[/red]")
-            raise typer.Exit(1)
-
-        # Collect all tile files from pending/
-        import os
-        tile_files = []
-        for root, dirs, files in os.walk(pending_dir):
-            for f in files:
-                if f.endswith(".usv"):
-                    tile_files.append(Path(root) / f)
-
-        if not tile_files:
-            console.print("[yellow]No tile files found in pending directory.[/yellow]")
-            raise typer.Exit(0)
-
-        # Randomly select N tiles
-        tiles_to_move = random.sample(tile_files, min(count, len(tile_files)))
-
-        console.print(f"[bold blue]Moving {len(tiles_to_move)} tiles to processing[/bold blue]")
-        console.print(f"  From: {pending_dir}")
-        console.print(f"  To:   {processing_dir}\n")
-
-        moved = 0
-        for tile_path in tiles_to_move:
-            try:
-                rel_path = tile_path.relative_to(pending_dir)
-                processing_path = processing_dir / rel_path
-
-                # Create subdirectories
-                processing_path.parent.mkdir(parents=True, exist_ok=True)
-
-                # Move (rename) the file
-                tile_path.rename(processing_path)
-                console.print(f"  ✓ {rel_path}")
-                moved += 1
-
-            except Exception as e:
-                console.print(f"  [red]✗ Error moving {tile_path.name}: {e}[/red]")
-                continue
-
-        console.print(f"\n[bold green]Moved {moved} tiles to processing[/bold green]")
-
-    except Exception as e:
-        console.print(f"[red]Error during move: {e}[/red]")
-        logger.exception("Tile move failed")
-        raise typer.Exit(1)
-
-
-@app.command(name="process-tile-queue")
-def process_tile_queue_cmd(
+@app.command(name="process-map-tile")
+def process_map_tile_cmd(
     campaign_name: Annotated[
         Optional[str],
         typer.Argument(help="Campaign name. Defaults to current context."),
@@ -466,21 +372,21 @@ def process_tile_queue_cmd(
     ] = False,
 ) -> None:
     """
-    Process tile-queue/processing/ → gm-list/pending/.
+    Process map-tile/processing/ → gm-list/pending/.
 
-    Reads tiles from tile-queue/processing/, converts each tile's phrases
+    Reads tiles from map-tile/processing/, converts each tile's phrases
     to individual ScrapeTask work items, writes them to gm-list/pending/
     with lease coordination, then moves processed tiles to completed/.
 
     USAGE:
       # Process all tiles in processing/:
-      cocli dev process-tile-queue turboship
+      cocli dev process-map-tile turboship
 
       # Process only 10 tiles (for testing):
-      cocli dev process-tile-queue turboship --max 10
+      cocli dev process-map-tile turboship --max 10
 
       # Preview without writing:
-      cocli dev process-tile-queue turboship --dry-run
+      cocli dev process-map-tile turboship --dry-run
     """
     from cocli.services.tile_queue_processor import process_tile_queue
 
@@ -497,7 +403,7 @@ def process_tile_queue_cmd(
         raise typer.Exit(1)
 
     try:
-        console.print("[bold blue]Tile-Queue Processor[/bold blue]")
+        console.print("[bold blue]Map-Tile Processor[/bold blue]")
         console.print(f"  Campaign: {campaign_name}")
         if dry_run:
             console.print("  Mode: [yellow]DRY RUN[/yellow]")
@@ -514,6 +420,6 @@ def process_tile_queue_cmd(
             console.print(f"  [yellow]Errors: {metrics['errors']}[/yellow]")
 
     except Exception as e:
-        console.print(f"[red]Error during tile-queue processing: {e}[/red]")
-        logger.exception("Tile-queue processing failed")
+        console.print(f"[red]Error during map-tile processing: {e}[/red]")
+        logger.exception("Map-tile processing failed")
         raise typer.Exit(1)

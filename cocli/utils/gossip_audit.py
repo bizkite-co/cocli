@@ -48,14 +48,16 @@ def audit_gossip(timeout_seconds: float = 60.0) -> None:
         console.print("[yellow]No gossip-synced markers found in local results.[/yellow]")
 
     # 2. Network Listener
-    console.print(f"\n[bold]2. Listening for Live Gossip ({timeout_seconds}s timeout)...[/bold]")
+    from cocli.core.gossip_bridge import get_gossip_port
+    port = get_gossip_port()
+    console.print(f"\n[bold]2. Listening for Live Gossip on port {port} ({timeout_seconds}s timeout)...[/bold]")
     
     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
     try:
-        sock.bind(('0.0.0.0', 9999))
+        sock.bind(('0.0.0.0', port))
     except Exception as e:
-        console.print(f"[red]Could not bind to port 9999: {e}[/red]")
+        console.print(f"[red]Could not bind to port {port}: {e}[/red]")
         return
 
     sock.settimeout(1.0) # Short timeout for loop responsiveness
@@ -141,7 +143,9 @@ def send_test_gossip(target_ip: str) -> None:
     from cocli.models.wal.record import QueueDatagram
     from cocli.core.wal import get_node_id
     from datetime import datetime, UTC
+    from cocli.core.gossip_bridge import get_gossip_port
     
+    port = get_gossip_port()
     datagram = QueueDatagram(
         campaign_name="audit-test",
         queue_name="test-queue",
@@ -152,10 +156,10 @@ def send_test_gossip(target_ip: str) -> None:
     )
     
     msg = datagram.to_usv()
-    console.print(f"[blue]Sending test datagram to {target_ip}:9999...[/blue]")
+    console.print(f"[blue]Sending test datagram to {target_ip}:{port}...[/blue]")
     console.print(f"[dim]Content: {msg.strip()}[/dim]")
     
     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-    sock.sendto(msg.encode('utf-8'), (target_ip, 9999))
+    sock.sendto(msg.encode('utf-8'), (target_ip, port))
     sock.close()
     console.print("[green]Sent.[/green]")

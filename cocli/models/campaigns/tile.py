@@ -6,9 +6,9 @@ from ...core.geo_types import LatScale1, LonScale1
 
 class TileRecord(BaseUsvModel):
     """
-    Atomic work unit for tile-queue.
+    Atomic work unit for map-tile.
     Represents one tile with all its search phrases ready for scraping.
-    Used in tile-queue/pending/tiles/*.usv files (one file per tile).
+    Used in map-tile/pending/tiles/*.usv files (one file per tile).
     """
     tile_id: str = Field(..., description="Southwest corner 0.1-degree grid ID (e.g., 25.0_-79.9)")
     search_phrase: str = Field(..., description="Slugified search query")

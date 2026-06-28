@@ -1328,13 +1328,12 @@ def queue_status(campaign: str = typer.Option("", help="Campaign name")) -> None
     Shows tile queue state, processing tiles with lease expiration, and warns
     about expired leases (stuck tiles that will be reclaimed).
     """
-    from ..core.config import load_campaign_config
     from ..core.queue.factory import get_queue_manager
     from datetime import datetime, UTC
     import json
 
     campaign_name = campaign or "default"
-    tile_queue = get_queue_manager("tile-queue", queue_type="tile", campaign_name=campaign_name)
+    tile_queue = get_queue_manager("map-tile", queue_type="tile", campaign_name=campaign_name)
 
     # Count tiles in each state
     pending_count = 0
@@ -1416,7 +1415,7 @@ def queue_status(campaign: str = typer.Option("", help="Campaign name")) -> None
 @queue_app.command(name="purge-leases")
 def purge_stale_leases(
     campaign: str = typer.Option("", help="Campaign name"),
-    queue_name: str = typer.Option("gm-list", help="Queue name (gm-list, tile-queue, etc)"),
+    queue_name: str = typer.Option("gm-list", help="Queue name (gm-list, map-tile, etc)"),
     force: bool = typer.Option(False, help="Force remove ALL leases (even fresh ones)"),
     dry_run: bool = typer.Option(False, help="Preview what would be deleted without deleting"),
     max_age_minutes: int = typer.Option(30, help="Lease is stale if heartbeat older than N minutes"),

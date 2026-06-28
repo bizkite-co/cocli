@@ -11,6 +11,7 @@ from ..utils.duckdb_utils import (
     find_datapackage,
     load_usv_to_duckdb,
     match_resource_path,
+    load_from_datapackage,
 )
 
 # Set up logging for CLI tools
@@ -25,32 +26,69 @@ queue_app = typer.Typer(help="Queue management commands")
 app.add_typer(queue_app, name="queue")
 
 
+def resolve_usv_path(file_path: Path, resource_name: Optional[str] = None) -> Path:
+    # If a directory is passed, check if it contains a datapackage.json
+    if file_path.is_dir() and (file_path / "datapackage.json").exists():
+        file_path = file_path / "datapackage.json"
+
+    if file_path.name == "datapackage.json":
+        with open(file_path, "r") as f:
+            pkg = json.load(f)
+
+        resource = None
+        if resource_name:
+            for res in pkg.get("resources", []):
+                if res.get("name") == resource_name:
+                    resource = res
+                    break
+        elif pkg.get("resources"):
+            resource = pkg["resources"][0]
+
+        if not resource:
+            raise ValueError("Could not identify resource in datapackage.")
+
+        res_path_pattern = resource.get("path", "")
+        matches = list(file_path.parent.glob(res_path_pattern))
+        if not matches:
+            raise ValueError(f"No files found matching {res_path_pattern}")
+
+        return matches[0]
+
+    return file_path
+
+
 @app.command(name="list")
 def list_schemas() -> None:
     """List all known frictionless data schemas (datapackage.json files) in the project."""
-    root = Path.cwd()
-    dps = list(root.rglob("datapackage.json"))
+    # Find all datapackage.json files under data/
+    data_dir = paths.root
+    datapackages = sorted(list(data_dir.glob("**/datapackage.json")))
 
-    table = Table(title="Known Datapackages")
+    table = Table(title="Frictionless Datapackages")
     table.add_column("Path", style="cyan")
     table.add_column("Resources")
 
-    for dp in dps:
+    for dp in datapackages:
         try:
             with open(dp, "r") as f:
                 pkg = json.load(f)
-                resources = [
-                    res.get("name", "unknown") for res in pkg.get("resources", [])
-                ]
-                table.add_row(str(dp.relative_to(root)), ", ".join(resources))
-        except Exception as e:
-            console.print(f"[red]Error reading {dp}: {e}[/red]")
+            resources = ", ".join(
+                [res.get("name", "unknown") for res in pkg.get("resources", [])]
+            )
+            rel_path = dp.relative_to(data_dir)
+            table.add_row(str(rel_path), resources)
+        except Exception:
+            continue
+
     console.print(table)
 
 
 @app.command()
 def describe(file_path: Path) -> None:
     """Show the schema definition (fields/types) for a given USV file or datapackage."""
+    if file_path.is_dir() and (file_path / "datapackage.json").exists():
+        file_path = file_path / "datapackage.json"
+
     if not file_path.exists():
         console.print(f"[red]Error: File not found: {file_path}[/red]")
         raise typer.Exit(1)
@@ -109,6 +147,8 @@ def describe(file_path: Path) -> None:
 @app.command()
 def locate(file_path: Path) -> None:
     """Find and display the datapackage.json for a given file."""
+    if file_path.is_dir() and (file_path / "datapackage.json").exists():
+        file_path = file_path / "datapackage.json"
     dp = find_datapackage(file_path)
     if dp:
         console.print(f"[green]Found: {dp}[/green]")
@@ -123,15 +163,27 @@ def sample(
     text_only: bool = typer.Option(
         False, "--text", help="Output as plain text for narrow terminals."
     ),
+    resource_name: Optional[str] = typer.Option(
+        None, "--resource", help="Resource name to use if file_path is a datapackage/directory."
+    ),
 ) -> None:
     """Show first N rows with column names from a USV file."""
+    if file_path.is_dir() and (file_path / "datapackage.json").exists():
+        file_path = file_path / "datapackage.json"
+
     if not file_path.exists():
         console.print(f"[red]Error: File not found: {file_path}[/red]")
         raise typer.Exit(1)
 
     con = duckdb.connect(database=":memory:")
     try:
-        load_usv_to_duckdb(con, "sample_table", file_path)
+        if file_path.name == "datapackage.json":
+            load_from_datapackage(con, "sample_table", file_path)
+            title = f"Sample: {file_path.parent.name} (Unified Datapackage)"
+        else:
+            load_usv_to_duckdb(con, "sample_table", file_path)
+            title = f"Sample: {file_path.name}"
+
         results = con.execute(f"SELECT * FROM sample_table LIMIT {limit}").fetchall()
 
         # Get column names
@@ -146,7 +198,7 @@ def sample(
                     console.print(f"{col}: {val}")
                 console.print("-" * 20)
         else:
-            table = Table(title=f"Sample: {file_path.name}")
+            table = Table(title=title)
             for col in columns:
                 table.add_column(col)
             for row in results:
@@ -172,58 +224,29 @@ def metrics(
 ) -> None:
     """Compute data quality metrics for a USV dataset (or datapackage)."""
     console.print(f"DEBUG: metrics called with output_path={output_path}")
+
+    # If a directory is passed, check if it contains a datapackage.json
+    if file_path.is_dir() and (file_path / "datapackage.json").exists():
+        file_path = file_path / "datapackage.json"
+
     if not file_path.exists():
         console.print(f"[red]Error: File not found: {file_path}[/red]")
         raise typer.Exit(1)
 
-    usv_path = file_path
-
-    # Handle datapackage.json input
-    if file_path.name == "datapackage.json":
-        with open(file_path, "r") as f:
-            pkg = json.load(f)
-
-        # Find resource
-        resource = None
-        if resource_name:
-            for res in pkg.get("resources", []):
-                if res.get("name") == resource_name:
-                    resource = res
-                    break
-        elif pkg.get("resources"):
-            resource = pkg["resources"][0]
-
-        if not resource:
-            console.print(
-                "[red]Error: Could not identify resource in datapackage. Specify --resource.[/red]"
-            )
-            raise typer.Exit(1)
-
-        # Construct USV path (handle glob patterns by finding first match)
-        res_path_pattern = resource.get("path", "")
-        matches = list(file_path.parent.glob(res_path_pattern))
-        if not matches:
-            console.print(
-                f"[red]Error: No files found matching {res_path_pattern}[/red]"
-            )
-            raise typer.Exit(1)
-
-        usv_path = matches[0]  # Use first match
-        console.print(
-            f"[dim]Using resource: {resource.get('name', 'unknown')} ({usv_path.name})[/dim]"
-        )
-
     # Get schema from datapackage for proper column mapping
     from cocli.utils.duckdb_utils import find_datapackage, get_schema_field_names
 
-    dp_path = find_datapackage(usv_path)
-    if not dp_path:
-        console.print(f"[red]Error: Could not find datapackage for {usv_path}[/red]")
-        raise typer.Exit(1)
+    if file_path.name == "datapackage.json":
+        dp_path = file_path
+        usv_path = file_path
+    else:
+        dp_path = find_datapackage(file_path)
+        if not dp_path:
+            console.print(f"[red]Error: Could not find datapackage for {file_path}[/red]")
+            raise typer.Exit(1)
+        usv_path = file_path
 
     # Load schema with field types
-    # import json  <-- Removed
-
     with open(dp_path, "r") as f:
         pkg = json.load(f)
 
@@ -238,10 +261,11 @@ def metrics(
     # Build metrics using DuckDB with schema awareness
     con = duckdb.connect(database=":memory:")
     try:
-        # Use load_usv_to_duckdb which properly applies the datapackage schema
-        from cocli.utils.duckdb_utils import load_usv_to_duckdb
-
-        load_usv_to_duckdb(con, "metrics_data", usv_path, dp_path)
+        # Use load_from_datapackage or load_usv_to_duckdb depending on input
+        if file_path.name == "datapackage.json":
+            load_from_datapackage(con, "metrics_data", file_path)
+        else:
+            load_usv_to_duckdb(con, "metrics_data", usv_path, dp_path)
 
         # Verify column names from loaded table
         cols_info = con.execute("PRAGMA table_info('metrics_data')").fetchall()

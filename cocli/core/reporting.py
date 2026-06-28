@@ -98,6 +98,8 @@ def get_boto3_session(config: Dict[str, Any], max_pool_connections: int = 10, pr
     for p in iot_profiles:
         try:
             session = boto3.Session(profile_name=p)
+            # Trigger early validation of profile name
+            session.get_credentials()
             logger.debug(f"Initialized AWS session via IoT profile: {p}")
             return session
         except Exception:

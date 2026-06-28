@@ -95,6 +95,11 @@ class FilesystemQueue:
         # We split and filter empty parts to handle leading/trailing slashes.
         parts = [p for p in safe_id.split("/") if p]
         if len(parts) > 1 and len(parts[0]) <= 2:
+            last_part = parts[-1]
+            for ext in [".usv", ".csv", ".json"]:
+                if last_part.endswith(ext):
+                    parts[-1] = last_part[:-len(ext)]
+                    break
             return "/".join(parts)
 
         shard = self._get_shard(task_id)
@@ -125,8 +130,11 @@ class FilesystemQueue:
             "expires_at": (now + timedelta(minutes=self.lease_duration)).isoformat(),
         }
 
+        success = False
+        tried_s3 = False
         # 1. Try S3 Conditional Write (Global Atomic)
         if self.s3_client and self.bucket_name:
+            tried_s3 = True
             s3_key = self._get_s3_lease_key(task_id)
             try:
                 self.s3_client.put_object(
@@ -145,24 +153,50 @@ class FilesystemQueue:
 
                 # Also create local lease
                 self._create_local_lease(task_id, lease_data)
-                return True
+                success = True
             except ClientError as e:
                 if e.response["Error"]["Code"] in ["PreconditionFailed", "412"]:
                     # Lease exists, check if stale
-                    return self._reclaim_stale_s3_lease(task_id)
-                logger.error(f"S3 Lease Error for {task_id}: {e}")
-                return False
+                    success = self._reclaim_stale_s3_lease(task_id)
+                else:
+                    logger.error(f"S3 Lease Error for {task_id}: {e}")
+                    success = False
             except Exception as e:
                 # Fallback
                 if "IfNoneMatch" in str(e):
                     logger.warning(
                         "S3 Conditional Write not supported. Falling back to local."
                     )
+                    tried_s3 = False
                 else:
                     logger.error(f"Unexpected S3 error: {e}")
 
         # 2. Fallback to Local Lease
-        return self._create_local_lease(task_id, lease_data)
+        if not tried_s3 and not success:
+            success = self._create_local_lease(task_id, lease_data)
+
+        if success:
+            # Broadcast lease claim via Gossip
+            try:
+                from ..gossip_bridge import bridge
+                if bridge and bridge.running:
+                    from ...models.wal.record import QueueDatagram
+                    from ..environment import get_environment
+                    datagram = QueueDatagram(
+                        campaign_name=self.campaign_name,
+                        queue_name=self.queue_name,
+                        task_id=task_id,
+                        status="claimed",
+                        timestamp=now.isoformat(),
+                        node_id=self.worker_id,
+                        environment=get_environment().value,
+                    )
+                    bridge.broadcast_msg(datagram.to_usv())
+                    logger.debug(f"Broadcasted lease claim for {task_id}")
+            except Exception as gossip_err:
+                logger.debug(f"Gossip lease claim broadcast skipped: {gossip_err}")
+
+        return success
 
     def _reclaim_stale_s3_lease(self, task_id: str) -> bool:
         """Checks if S3 lease is stale and attempts to reclaim it."""
@@ -591,6 +625,26 @@ class FilesystemQueue:
                 logger.debug(f"Immediate S3 Nack for {task_id} completed.")
             except Exception as e:
                 logger.error(f"Error S3 nacking for {task_id}: {e}")
+
+        # 3. Broadcast release via Gossip
+        try:
+            from ..gossip_bridge import bridge
+            if bridge and bridge.running:
+                from ...models.wal.record import QueueDatagram
+                from ..environment import get_environment
+                datagram = QueueDatagram(
+                    campaign_name=self.campaign_name,
+                    queue_name=self.queue_name,
+                    task_id=task_id,
+                    status="released",
+                    timestamp=datetime.now(UTC).isoformat(),
+                    node_id=self.worker_id,
+                    environment=get_environment().value,
+                )
+                bridge.broadcast_msg(datagram.to_usv())
+                logger.debug(f"Broadcasted lease release for {task_id}")
+        except Exception as gossip_err:
+            logger.debug(f"Gossip lease release broadcast skipped: {gossip_err}")
 
 
 from cocli.core.geo_types import LatScale1, LonScale1
@@ -1057,9 +1111,15 @@ class FilesystemTileQueue:
         bucket_name: Optional[str] = None,
     ):
         self.campaign_name = campaign_name
-        self.queue_name = "tile-queue"
+        self.queue_name = "map-tile"
         self.s3_client = s3_client
         self.bucket_name = bucket_name
+        self.worker_id = (
+            os.getenv("COCLI_HOSTNAME")
+            or os.getenv("HOSTNAME")
+            or os.getenv("COMPUTERNAME")
+            or "unknown-worker"
+        )
 
         if s3_client:
             logger.info(
@@ -1071,7 +1131,7 @@ class FilesystemTileQueue:
             )
 
         # Initialize queue directories
-        self.queue_base = paths.queue(campaign_name, "tile-queue")
+        self.queue_base = paths.queue(campaign_name, self.queue_name)
         self.pending_dir = self.queue_base / "pending"
         self.completed_dir = self.queue_base / "completed"
 
@@ -1128,7 +1188,7 @@ class FilesystemTileQueue:
         # Optional: Push to S3 if configured
         if self.s3_client and self.bucket_name:
             try:
-                s3_key = f"campaigns/{self.campaign_name}/queues/tile-queue/completed/{tile_file.name}"
+                s3_key = f"campaigns/{self.campaign_name}/queues/{self.queue_name}/completed/{tile_file.name}"
                 with open(completed_path, "r") as f:
                     self.s3_client.put_object(
                         Bucket=self.bucket_name,
@@ -1138,6 +1198,26 @@ class FilesystemTileQueue:
                     )
             except Exception as e:
                 logger.warning(f"Failed to push completed tile to S3: {e}")
+
+        # Broadcast tile completion via Gossip
+        try:
+            from ..gossip_bridge import bridge
+            if bridge and bridge.running:
+                from ...models.wal.record import QueueDatagram
+                from ..environment import get_environment
+                datagram = QueueDatagram(
+                    campaign_name=self.campaign_name,
+                    queue_name=self.queue_name,
+                    task_id=tile_file.name,
+                    status="completed",
+                    timestamp=datetime.now(UTC).isoformat(),
+                    node_id=self.worker_id,
+                    environment=get_environment().value,
+                )
+                bridge.broadcast_msg(datagram.to_usv())
+                logger.debug(f"Broadcasted tile completion for {tile_file.name}")
+        except Exception as gossip_err:
+            logger.debug(f"Gossip tile completion broadcast skipped: {gossip_err}")
 
     def nack(self, task: Union[str, Path]) -> None:
         """Move tile file from processing back to pending/tiles."""
@@ -1161,6 +1241,26 @@ class FilesystemTileQueue:
         lease_path = self.processing_dir / f"{tile_filename}.lease.json"
         if lease_path.exists():
             lease_path.unlink()
+
+        # Broadcast tile release via Gossip
+        try:
+            from ..gossip_bridge import bridge
+            if bridge and bridge.running:
+                from ...models.wal.record import QueueDatagram
+                from ..environment import get_environment
+                datagram = QueueDatagram(
+                    campaign_name=self.campaign_name,
+                    queue_name=self.queue_name,
+                    task_id=tile_filename,
+                    status="released",
+                    timestamp=datetime.now(UTC).isoformat(),
+                    node_id=self.worker_id,
+                    environment=get_environment().value,
+                )
+                bridge.broadcast_msg(datagram.to_usv())
+                logger.debug(f"Broadcasted tile release for {tile_filename}")
+        except Exception as gossip_err:
+            logger.debug(f"Gossip tile release broadcast skipped: {gossip_err}")
 
     def claim_tile(self, tile_filename: str, worker_id: str, lease_duration_minutes: int = 30) -> bool:
         """
@@ -1211,6 +1311,26 @@ class FilesystemTileQueue:
         # Write lease
         with lease_path.open("w") as f:
             json.dump(lease_data, f)
+
+        # Broadcast tile claim via Gossip
+        try:
+            from ..gossip_bridge import bridge
+            if bridge and bridge.running:
+                from ...models.wal.record import QueueDatagram
+                from ..environment import get_environment
+                datagram = QueueDatagram(
+                    campaign_name=self.campaign_name,
+                    queue_name=self.queue_name,
+                    task_id=tile_filename,
+                    status="claimed",
+                    timestamp=now.isoformat(),
+                    node_id=worker_id,
+                    environment=get_environment().value,
+                )
+                bridge.broadcast_msg(datagram.to_usv())
+                logger.debug(f"Broadcasted tile claim for {tile_filename}")
+        except Exception as gossip_err:
+            logger.debug(f"Gossip tile claim broadcast skipped: {gossip_err}")
 
         logger.info(f"Tile claimed: {tile_filename} by {worker_id}")
         return True

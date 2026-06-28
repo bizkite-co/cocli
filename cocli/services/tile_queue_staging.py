@@ -32,7 +32,7 @@ def stage_frontier_to_tiles(campaign_name: str, force: bool = False) -> Dict[str
     """
     # 1. Initialize queues (auto-creates directories and datapackage.json)
     dg_queue = paths.campaign(campaign_name).queue("discovery-gen")
-    tile_queue = get_queue_manager("tile-queue", queue_type="tile", campaign_name=campaign_name)
+    tile_queue = get_queue_manager("map-tile", queue_type="tile", campaign_name=campaign_name)
 
     # 2. Load frontier.usv
     frontier_file = dg_queue.pending / "frontier.usv"

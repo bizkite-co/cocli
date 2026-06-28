@@ -415,7 +415,7 @@ def sync_queues(
     bucket_name = get_data_bucket_name(config, campaign_name)
     
     from ..core.paths import paths
-    for q in ["gm-list", "gm-details", "enrichment"]:
+    for q in ["map-tile", "gm-list", "gm-details", "enrichment"]:
         # Completed Path (Used for zombie check)
         local_base_completed = paths.queue(campaign_name, q) / "completed"
 

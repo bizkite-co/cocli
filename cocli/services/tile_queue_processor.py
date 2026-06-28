@@ -57,18 +57,17 @@ def process_tile_queue(
         raise ValueError(f"Campaign directory not found: {campaign_name}")
 
     # Get queue managers
-    tile_queue = get_queue_manager("tile-queue", queue_type="tile", campaign_name=campaign_name)
-    gm_list_queue = get_queue_manager("gm-list", queue_type="gm-list", campaign_name=campaign_name)
+    tile_queue = get_queue_manager("map-tile", queue_type="tile", campaign_name=campaign_name)
 
     processing_dir = tile_queue.processing_dir
     completed_dir = tile_queue.completed_dir
-    gm_list_pending = paths.campaign(campaign_name).queue("gm-list").pending
+    gm_list_pending = paths.campaign(campaign_name).queue(ScrapeTask.SOURCE_QUEUE).state(ScrapeTask.SOURCE_STATE)
 
     if not processing_dir.exists():
         logger.warning(f"Processing directory not found: {processing_dir}")
         return {"tiles_processed": 0, "scrape_tasks_created": 0, "errors": 0}
 
-    logger.info(f"Processing tile-queue for {campaign_name}")
+    logger.info(f"Processing map-tile for {campaign_name}")
     logger.info(f"  Input:  {processing_dir}")
     logger.info(f"  Output: {gm_list_pending}")
 

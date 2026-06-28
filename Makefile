@@ -482,6 +482,18 @@ sync-enrichment-queue: ## Sync enrichment queue from S3
 sync-queues: ## Sync all local queues from S3
 	@$(VENV_DIR)/bin/cocli smart-sync queues
 
+.PHONY: campaign-stats
+campaign-stats: sync-queues ## Sync queues and show campaign lead and queue stats (Usage: make campaign-stats [CAMPAIGN=name])
+	@$(VENV_DIR)/bin/python3 scripts/campaign_stats.py $(CAMPAIGN)
+
+.PHONY: push-tasks
+push-tasks: ## Push locally generated discovery tasks to all cluster nodes via rsync (Usage: make push-tasks [CAMPAIGN=name])
+	$(call validate_campaign)
+	@for host in $$(./.venv/bin/python3 -c "from cocli.services.cluster_service import ClusterService; print(' '.join(n.ip_address for n in ClusterService('$(CAMPAIGN)').get_nodes() if n.ip_address))"); do \
+		echo "Pushing tasks to $$host..."; \
+		rsync -avz --delete /home/mstouffer/.local/share/cocli_data/campaigns/$(CAMPAIGN)/queues/discovery-gen/completed/ mstouffer@$$host:repos/data/campaigns/$(CAMPAIGN)/queues/discovery-gen/completed/ || true; \
+	done
+
 .PHONY: completed-count
 completed-count: ## Get the count of completed enrichment tasks on S3
 	$(call validate_campaign)
