@@ -406,7 +406,9 @@ def audit_scrape(
         """
         queue_path = paths.campaign(campaign_name).queue(queue_name)
         completed_dir = queue_path.completed
-        datapackage_path = queue_path / "datapackage.json"
+        if (completed_dir / "results").exists():
+            completed_dir = completed_dir / "results"
+        datapackage_path = completed_dir / "datapackage.json"
 
         if not completed_dir.exists():
             logger.warning(f"No completed/ directory for queue {queue_name}")
