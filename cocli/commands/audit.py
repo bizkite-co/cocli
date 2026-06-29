@@ -449,14 +449,37 @@ def audit_scrape(
             logger.warning(f"Error auditing queue {queue_name}: {e}")
             return 0, 0
 
-    # Audit discovery-gen queue
+    # Audit queues to get total records
     discovery_valid, discovery_invalid = audit_queue("discovery-gen")
-    distinct_tiles = discovery_valid
-
-    # Audit gm-list queue
     gm_list_valid, gm_list_invalid = audit_queue("gm-list")
-    gm_list_tiles = gm_list_valid
-    pending_tiles = distinct_tiles - gm_list_tiles
+
+    # Count unique completed viewports (tiles) in gm-list
+    gm_list_root = paths.campaign(campaign_name).queue("gm-list").completed
+    if (gm_list_root / "results").exists():
+        gm_list_root = gm_list_root / "results"
+    gm_list_tiles_set = set()
+    if gm_list_root.exists():
+        for usv_file in gm_list_root.rglob("*.usv"):
+            parts = usv_file.relative_to(gm_list_root).parts
+            if len(parts) >= 3:
+                gm_list_tiles_set.add(f"{parts[-3]}/{parts[-2]}")
+    gm_list_tiles = len(gm_list_tiles_set)
+
+    # Count unique target viewports (tiles) in discovery-gen completed pool
+    dg_root = paths.campaign(campaign_name).queue("discovery-gen").completed
+    dg_tiles_set = set()
+    if dg_root.exists():
+        for usv_file in dg_root.rglob("*.usv"):
+            parts = usv_file.relative_to(dg_root).parts
+            if len(parts) >= 3:
+                dg_tiles_set.add(f"{parts[-3]}/{parts[-2]}")
+    staged_tiles = len(dg_tiles_set)
+
+    # Count total campaign tiles in map-tile queue (pending + completed)
+    map_tile_queue = paths.campaign(campaign_name).queue("map-tile")
+    total_campaign_tiles = 0
+    if map_tile_queue.pending.exists():
+        total_campaign_tiles = len(list(map_tile_queue.pending.rglob("*.usv"))) + len(list(map_tile_queue.completed.rglob("*.usv")))
 
     # Optional gm-details stats
     details_tiles = None
@@ -469,22 +492,24 @@ def audit_scrape(
                 details_set.add(f"{parts[0]}/{parts[1]}")
         details_tiles = len(details_set)
 
+    pending_tiles = staged_tiles - gm_list_tiles
+
     # Build report dict
     report: dict[str, Any] = {
         "campaign": campaign_name,
         "search_phrases": len(phrases),
         "locations": len(locations),
         "proximity": proximity,
-        "discovery_records_valid": discovery_valid,
-        "discovery_records_invalid": discovery_invalid,
-        "gm_list_records_valid": gm_list_valid,
-        "gm_list_records_invalid": gm_list_invalid,
-        "distinct_tiles": distinct_tiles,
-        "gm_list_tiles": gm_list_tiles,
-        "pending_tiles": pending_tiles,
+        "total_campaign_tiles": total_campaign_tiles,
+        "staged_active_tiles": staged_tiles,
+        "completed_scraped_tiles": gm_list_tiles,
+        "pending_scraped_tiles": pending_tiles,
+        "total_active_scrape_tasks": discovery_valid,
+        "valid_business_leads": gm_list_valid,
     }
     if include_details:
         report["gm_details_tiles"] = details_tiles
+
 
     # Output
     if summary_only:
@@ -1331,11 +1356,13 @@ def queue_status(campaign: str = typer.Option("", help="Campaign name")) -> None
     about expired leases (stuck tiles that will be reclaimed).
     """
     from ..core.queue.factory import get_queue_manager
+    from ..core.queue.filesystem import FilesystemTileQueue
+    from typing import cast
     from datetime import datetime, UTC
     import json
 
     campaign_name = campaign or "default"
-    tile_queue = get_queue_manager("map-tile", queue_type="tile", campaign_name=campaign_name)
+    tile_queue = cast(FilesystemTileQueue, get_queue_manager("map-tile", queue_type="tile", campaign_name=campaign_name))
 
     # Count tiles in each state
     pending_count = 0

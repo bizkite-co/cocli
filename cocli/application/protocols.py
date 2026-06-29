@@ -1,4 +1,4 @@
-from typing import Protocol, List, Dict, Any, Optional, Iterator, Callable
+from typing import Protocol, List, Dict, Any, Optional, Iterator, Callable, TypeVar
 from cocli.models.search import SearchResult
 
 class SearchProvider(Protocol):
@@ -102,3 +102,16 @@ class OperationServiceProvider(Protocol):
 class SecretServiceProvider(Protocol):
     def get_secret(self, key: str) -> Optional[str]: ...
     def get_item(self, item_id: str) -> Optional[Dict[str, Any]]: ...
+
+
+T = TypeVar("T")
+
+class CampaignQueueProtocol(Protocol[T]):
+    campaign_name: str
+    queue_name: str
+
+    def push(self, task: T) -> Any: ...
+    def poll(self, batch_size: int = 1) -> List[T]: ...
+    def ack(self, task: T) -> None: ...
+    def nack(self, task: T) -> None: ...
+

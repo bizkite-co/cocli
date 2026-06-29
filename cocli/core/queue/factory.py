@@ -1,15 +1,33 @@
-from typing import Any, Optional
+from typing import Any, Optional, Union, TYPE_CHECKING
 from .local_file_queue import LocalFileQueue
 from .sqs_queue import SQSQueue
 from .scrape_sqs_queue import ScrapeSQSQueue
 from .gm_item_sqs_queue import GmItemSQSQueue
 from .command_sqs_queue import CommandSQSQueue
 
+if TYPE_CHECKING:
+    from cocli.application.protocols import CampaignQueueProtocol
+    from .filesystem import FilesystemTileQueue
+
 import logging
 
 logger = logging.getLogger(__name__)
 
-def get_queue_manager(queue_name: str, use_cloud: bool = False, queue_type: str = "enrichment", campaign_name: Optional[str] = None, s3_client: Optional[Any] = None) -> Any:
+def get_queue_manager(
+    queue_name: str,
+    use_cloud: bool = False,
+    queue_type: str = "enrichment",
+    campaign_name: Optional[str] = None,
+    s3_client: Optional[Any] = None,
+) -> Union[
+    "CampaignQueueProtocol[Any]",
+    "FilesystemTileQueue",
+    LocalFileQueue,
+    SQSQueue,
+    ScrapeSQSQueue,
+    GmItemSQSQueue,
+    CommandSQSQueue,
+]:
     """
     Factory to return the appropriate QueueManager.
     """

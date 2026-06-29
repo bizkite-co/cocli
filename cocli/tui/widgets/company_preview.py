@@ -80,8 +80,9 @@ class CompanyPreview(Container):
             enriched_str = "No"
 
         content.mount(
-            Static(f"[b]Name:[/b] {escape(company.name)}"),
+            Static(f"Name: [b]{escape(company.name)}[/b]"),
             Static(f"[b]Domain:[/b] {escape(str(company.domain or 'N/A'))}"),
+            Static(f"[b]Categories:[/b] {escape(', '.join(company.categories))}"),
             Static(f"[b]Type:[/b] {escape(company.type)}"),
             Static(f"[b]Location:[/b] {escape(location)}"),
             Static(f"[b]Address:[/b] {escape(company.street_address or 'N/A')}"),
