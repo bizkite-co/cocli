@@ -32,4 +32,5 @@ class QueueMessage(BaseUsvModel):
     updated_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
     
     # Transient field for queue adapters (e.g. SQS ReceiptHandle)
-    ack_token: Optional[str] = Field(None, exclude=True)
+    ack_token: Optional[str] = Field(default=None, exclude=True)
+

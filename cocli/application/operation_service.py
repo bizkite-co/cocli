@@ -613,6 +613,7 @@ class OperationService:
                     limit = params.get("limit")
                     from cocli.models.companies.company import Company
                     from cocli.models.campaigns.queues.to_call import ToCallTask
+                    tasks_to_save = []
 
                     for p in top_prospects:
                         if limit and created >= limit:
@@ -684,14 +685,28 @@ class OperationService:
                                 campaign_name=self.campaign_name,
                                 ack_token=None,
                             )
-                            task.save()
+                            tasks_to_save.append(task)
                             created += 1
                             logger.info(f"Enqueued to-call: {p.slug}")
                         else:
                             logger.warning(f"Prospect {p} has no slug")
+
+                    if tasks_to_save:
+                        from cocli.models.base import write_queue_files
+                        from cocli.core.paths import paths
+                        base_queue = paths.campaign(self.campaign_name).path / "queues" / "to-call"
+                        write_queue_files(
+                            model_class=ToCallTask,
+                            items=tasks_to_save,
+                            queue_dir=base_queue,
+                            resource_name="to_call_queue",
+                            resource_path="**/*.usv",
+                        )
+
                     log_step("tag_leads", "success")
                     log_step("tag_leads", "task-end")
                     log_step("job-end", "success")
+
 
                     return report
 

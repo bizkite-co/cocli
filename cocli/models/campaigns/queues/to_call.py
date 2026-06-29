@@ -1,7 +1,7 @@
 # POLICY: frictionless-data-policy-enforcement
 from pathlib import Path
 from datetime import datetime
-from typing import Optional
+from typing import Optional, ClassVar
 from .base import QueueMessage
 from ....core.ordinant import QueueName
 
@@ -12,8 +12,11 @@ class ToCallTask(QueueMessage):
     Supports scheduling via callback_at.
     """
 
+    SCHEMA_UPDATED_AT: ClassVar[str] = "2026-06-25T15:09:30+00:00"
+
     priority: int = 1
     callback_at: Optional[datetime] = None
+
 
     @property
     def collection(self) -> QueueName:
@@ -57,4 +60,5 @@ class ToCallTask(QueueMessage):
         from ....core.paths import paths
 
         base_queue = paths.campaign(self.campaign_name).path / "queues" / "to-call"
-        self.save_datapackage(base_queue, "to_call_queue", "pending/*.usv")
+        self.save_datapackage(base_queue, "to_call_queue", "**/*.usv")
+

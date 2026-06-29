@@ -16,6 +16,7 @@ from typing import (
     runtime_checkable,
     ClassVar,
     Callable,
+    Sequence,
 )
 
 from pydantic import BaseModel, ValidationError
@@ -638,7 +639,7 @@ class BaseUsvModel(BaseModel):
 
 def write_queue_files(
     model_class: Type[SchemaGenerator],
-    items: List[BaseUsvModel],
+    items: Sequence[BaseUsvModel],
     queue_dir: Path,
     resource_name: str,
     resource_path: str,
@@ -686,9 +687,18 @@ def write_queue_files(
 
     if file_writer is None:
         def default_file_writer(item: Any, path: Path) -> Any:
-            path.parent.mkdir(parents=True, exist_ok=True)
-            return path.write_text(item.to_usv())
+            if hasattr(item, "get_local_path"):
+                target_path = item.get_local_path()
+            elif hasattr(item, "task_id"):
+                target_path = path / f"{item.task_id}.usv"
+            elif hasattr(item, "slug"):
+                target_path = path / f"{item.slug}.usv"
+            else:
+                target_path = path / f"{getattr(item, 'id', 'item')}.usv"
+            target_path.parent.mkdir(parents=True, exist_ok=True)
+            return target_path.write_text(item.to_usv(), encoding="utf-8")
         file_writer = default_file_writer
+
 
     for item in items:
         file_writer(item, queue_dir)
