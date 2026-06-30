@@ -1,6 +1,7 @@
 from pydantic import BaseModel
 from typing import Optional
 from ..campaigns.indexes.google_maps_prospect import GoogleMapsProspect
+from ..phone import OptionalPhone
 
 class LegacyProspectUSV(BaseModel):
     """
@@ -11,7 +12,7 @@ class LegacyProspectUSV(BaseModel):
     place_id: str
     company_slug: Optional[str] = None
     name: str
-    phone_1: Optional[str] = None
+    phone_1: OptionalPhone = None
     
     # 4-7: Metadata
     created_at: Optional[str] = None

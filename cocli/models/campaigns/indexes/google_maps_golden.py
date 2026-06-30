@@ -2,6 +2,7 @@
 from typing import ClassVar, Optional
 from pathlib import Path
 from pydantic import Field
+from ...phone import OptionalPhone
 from .base import BaseIndexModel
 
 class GoogleMapsGoldenItem(BaseIndexModel):
@@ -13,7 +14,7 @@ class GoogleMapsGoldenItem(BaseIndexModel):
     
     name: str = Field(..., description="Business name")
     address: Optional[str] = Field(None, description="Full address")
-    phone: Optional[str] = Field(None, description="Phone number")
+    phone: OptionalPhone = Field(None, description="Phone number")
     website: Optional[str] = Field(None, description="Website URL")
     place_id: str = Field(..., description="Google Maps Place ID")
     search_phrase: str = Field(..., description="The phrase used to find it")

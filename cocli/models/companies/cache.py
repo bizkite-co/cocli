@@ -4,6 +4,7 @@ from typing import Optional, List
 from pydantic import Field
 
 from ..base import BaseUsvModel
+from ..phone import OptionalPhone
 
 
 class CompanyCacheItem(BaseUsvModel):
@@ -17,7 +18,7 @@ class CompanyCacheItem(BaseUsvModel):
     type: str = Field("company", description="Entity type (company/person)")
     domain: Optional[str] = None
     email: Optional[str] = None
-    phone_number: Optional[str] = None
+    phone_number: OptionalPhone = None
     average_rating: Optional[float] = None
     reviews_count: Optional[int] = None
     tags: List[str] = Field(default_factory=list)

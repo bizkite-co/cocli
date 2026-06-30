@@ -1,6 +1,7 @@
 from pydantic import Field
 from typing import Optional, ClassVar
 from ...base import BaseUsvModel, ResourcePathPolicy
+from ...phone import OptionalPhone
 from ..queues.gm_details import GmItemTask
 
 
@@ -32,9 +33,8 @@ class GoogleMapsListItem(BaseUsvModel):
         max_length=100,
         description="Primary category from the list view",
     )
-    phone: Optional[str] = Field(
+    phone: OptionalPhone = Field(
         None,
-        max_length=20,
         description="Phone number from the list view",
     )
     domain: Optional[str] = Field(

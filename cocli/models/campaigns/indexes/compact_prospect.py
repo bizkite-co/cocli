@@ -1,6 +1,7 @@
 from pydantic import Field
 from typing import Optional, ClassVar
 from ...base import BaseUsvModel, ResourcePathPolicy
+from ...phone import OptionalPhone
 
 
 class CompactProspect(BaseUsvModel):
@@ -16,7 +17,7 @@ class CompactProspect(BaseUsvModel):
     company_slug: str = Field(..., min_length=3, max_length=100)
     name: str = Field(..., min_length=1, max_length=100)
     category: Optional[str] = Field(None, min_length=2, max_length=100)
-    phone: Optional[str] = Field(None, min_length=10, max_length=15)
+    phone: OptionalPhone = Field(None)
     domain: Optional[str] = Field(None, min_length=3, max_length=100)
     reviews_count: Optional[int] = Field(None, ge=0)
     average_rating: Optional[float] = Field(None, ge=0.0, le=5.0)

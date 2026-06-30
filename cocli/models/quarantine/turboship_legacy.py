@@ -2,6 +2,7 @@ from pydantic import BaseModel
 from typing import Optional
 from datetime import datetime
 from ..campaigns.indexes.google_maps_prospect import GoogleMapsProspect
+from ..phone import OptionalPhone
 
 class TurboshipLegacyProspect(BaseModel):
     """
@@ -21,8 +22,8 @@ class TurboshipLegacyProspect(BaseModel):
     state: Optional[str] = None
     country: Optional[str] = None
     timezone: Optional[str] = None
-    phone_1: Optional[str] = None
-    phone_standard_format: Optional[str] = None
+    phone_1: OptionalPhone = None
+    phone_standard_format: OptionalPhone = None
     website: Optional[str] = None
     domain: Optional[str] = None
     first_category: Optional[str] = None

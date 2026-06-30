@@ -1,5 +1,6 @@
 from pydantic import BaseModel, BeforeValidator
 from typing import Optional, List, Any, Annotated
+from .phone import OptionalPhone
 
 def strip_quotes(v: Any) -> str:
     if isinstance(v, str):
@@ -18,7 +19,7 @@ class SearchResult(BaseModel):
     slug: Optional[str] = None
     domain: Optional[str] = None
     email: Optional[str] = None
-    phone_number: Optional[str] = None
+    phone_number: OptionalPhone = None
     company_name: Optional[str] = None
     unique_id: str
     average_rating: Optional[float] = None

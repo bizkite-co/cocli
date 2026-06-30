@@ -70,12 +70,36 @@ def test_null_phone():
     # Test if it can be used with Optional
     from typing import Optional
     from pydantic import BaseModel
-    
+
     class TestModel(BaseModel):
         phone: Optional[PhoneNumber] = None
-        
+
     m = TestModel(phone=None)
     assert m.phone is None
-    
+
     m2 = TestModel(phone="(512) 555-1212")
     assert m2.phone.country_code == "1"
+
+def test_parse_multi_digit_country_code_france():
+    # Multi-digit country code: France (+33)
+    p = PhoneNumber.model_validate("+33123456789")
+    assert p.country_code == "33"
+    assert p.format("e164") == "+33123456789"
+
+def test_parse_multi_digit_country_code_uk():
+    # Multi-digit country code: UK (+44)
+    p = PhoneNumber.model_validate("+441234567890")
+    assert p.country_code == "44"
+    assert p.format("e164") == "+441234567890"
+
+def test_parse_multi_digit_country_code_spain():
+    # Multi-digit country code: Spain (+34)
+    p = PhoneNumber.model_validate("+34912345678")
+    assert p.country_code == "34"
+    assert p.format("e164") == "+34912345678"
+
+def test_parse_multi_digit_country_code_formatted():
+    # Multi-digit country code with formatting
+    p = PhoneNumber.model_validate("+33-1-23-45-67-89")
+    assert p.country_code == "33"
+    assert p.format("e164") == "+33123456789"
