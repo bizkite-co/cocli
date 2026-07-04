@@ -198,6 +198,84 @@ def broadcast_config(
     
     console.print("[bold green]Broadcast complete.[/bold green]")
 
+@app.command(name="push-config")
+def push_config(
+    campaign: Optional[str] = typer.Option(None, "--campaign", "-c", help="Campaign name."),
+) -> None:
+    """
+    Uploads the local campaign config.toml to S3 (campaigns/{campaign}/config.toml).
+
+    This is the source of truth Fargate tasks pull from at startup, since the
+    Fargate image does not bundle the data/ directory and cannot reach the
+    Pis' rsync-based config distribution. Run this after any change to
+    [prospecting.scaling] (or other config) that Fargate workers need to see.
+    """
+    effective_campaign = campaign or get_campaign()
+    if not effective_campaign:
+        console.print("[red]No campaign specified.[/red]")
+        raise typer.Exit(1)
+
+    from cocli.core.config import load_campaign_config
+    from cocli.core.reporting import get_boto3_session, get_data_bucket_name, get_s3_client
+
+    config_path = paths.campaign(effective_campaign).path / "config.toml"
+    if not config_path.exists():
+        console.print(f"[red]Config not found at {config_path}[/red]")
+        raise typer.Exit(1)
+
+    config = load_campaign_config(effective_campaign)
+    bucket_name = get_data_bucket_name(config, effective_campaign)
+    session = get_boto3_session(config)
+    s3 = get_s3_client(session=session)
+
+    s3_key = paths.s3.campaign(effective_campaign).config()
+    s3.upload_file(str(config_path), bucket_name, s3_key)
+    console.print(f"[bold green]Pushed {config_path} -> s3://{bucket_name}/{s3_key}[/bold green]")
+
+
+@app.command(name="pull-config")
+def pull_config(
+    campaign: Optional[str] = typer.Option(None, "--campaign", "-c", help="Campaign name."),
+) -> None:
+    """
+    Downloads campaign config.toml from S3 to local disk (campaigns/{campaign}/config.toml).
+
+    Called by the Fargate container's entrypoint before starting the worker
+    orchestrator, since load_campaign_config() only ever reads from local disk
+    and the Fargate image doesn't bundle data/. On Fargate this uses the ECS
+    Task Role (no profile) via COCLI_RUNNING_IN_FARGATE, matching the pattern
+    already used in cocli/core/queue/factory.py.
+    """
+    import os
+
+    effective_campaign = campaign or get_campaign()
+    if not effective_campaign:
+        console.print("[red]No campaign specified.[/red]")
+        raise typer.Exit(1)
+
+    from cocli.core.config import load_campaign_config
+    from cocli.core.reporting import get_boto3_session, get_data_bucket_name, get_s3_client
+
+    config = load_campaign_config(effective_campaign)
+    bucket_name = os.environ.get("COCLI_S3_BUCKET_NAME") or get_data_bucket_name(config, effective_campaign)
+
+    if os.getenv("COCLI_RUNNING_IN_FARGATE"):
+        session = get_boto3_session({})
+    else:
+        session = get_boto3_session(config)
+    s3 = get_s3_client(session=session)
+
+    s3_key = paths.s3.campaign(effective_campaign).config()
+    config_path = paths.campaign(effective_campaign).path / "config.toml"
+    config_path.parent.mkdir(parents=True, exist_ok=True)
+
+    try:
+        s3.download_file(bucket_name, s3_key, str(config_path))
+        console.print(f"[bold green]Pulled s3://{bucket_name}/{s3_key} -> {config_path}[/bold green]")
+    except Exception as e:
+        console.print(f"[bold yellow]Warning: Could not pull config from S3 ({e}). Continuing with whatever is on local disk.[/bold yellow]")
+
+
 @app.command(name="push")
 def push_data(
     campaign: Optional[str] = typer.Option(None, "--campaign", "-c", help="Campaign name."),

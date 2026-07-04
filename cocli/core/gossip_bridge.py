@@ -214,7 +214,7 @@ class GossipBridge:
                 
                 # Resolve queue manager using local imports to avoid circular dependencies
                 from .queue.factory import get_queue_manager
-                from .queue.filesystem import FilesystemTileQueue
+                from .queue.filesystem import FilesystemTileQueue, FilesystemQueue
                 from datetime import datetime, timedelta, UTC
                 import json
 
@@ -262,7 +262,7 @@ class GossipBridge:
                     elif q_record.status == "completed":
                         # Move to completed
                         q_manager.ack(q_record.task_id)
-                else:
+                elif isinstance(q_manager, FilesystemQueue):
                     # Standard FilesystemQueue subclasses (FilesystemGmListQueue, etc.)
                     task_dir = q_manager._get_task_dir(q_record.task_id)
                     lease_path = q_manager._get_lease_path(q_record.task_id)
@@ -311,6 +311,11 @@ class GossipBridge:
                                 
                     elif q_record.status == "completed":
                         q_manager.ack(q_record.task_id)
+                else:
+                    logger.debug(
+                        f"Queue sync for {q_record.queue_name} skipped: backend "
+                        f"{type(q_manager).__name__} does not support lease-file sync."
+                    )
                 return
 
             # 2. Handle Heartbeats

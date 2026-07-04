@@ -57,9 +57,11 @@ class ClusterService:
             )
             scaling = self.config.get("prospecting", {}).get("scaling", {})
             for host_key, workers_data in scaling.items():
-                if host_key == "fargate":
-                    continue
-                host = host_key if "." in host_key else f"{host_key}.pi"
+                host = (
+                    host_key
+                    if "." in host_key or host_key == "fargate"
+                    else f"{host_key}.pi"
+                )
 
                 # Create WorkerDefinitions from scaling data
                 node_workers = []

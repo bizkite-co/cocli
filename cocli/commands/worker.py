@@ -200,9 +200,24 @@ def orchestrate(
     
     if not node_config:
         logger.warning(f"No specific configuration found for node {hostname} in campaign {effective_campaign}.")
-        logger.info("Falling back to default single-worker mode.")
-        # Default: 1 gm-list worker
-        worker_defs = [WorkerDefinition(name="default", role="full", content_type="gm-list", workers=1, iot_profile=None)]
+        if os.getenv("COCLI_RUNNING_IN_FARGATE") or hostname == "fargate":
+            # Google Maps conclusively blocks Fargate/data-center IP ranges (see
+            # CLAUDE.md "Known Issues"). The gm-list default below is only safe
+            # for a genuinely new Pi joining the cluster - defaulting to it here
+            # caused ~1hr of live gm-list scraping from a Fargate IP on
+            # 2026-07-02 when config resolution silently failed. Refuse to
+            # guess: idle (heartbeat/HTTP only) rather than risk another block.
+            logger.error(
+                f"Node '{hostname}' is running in Fargate but has no resolved worker "
+                "config - refusing to fall back to gm-list. Starting with zero "
+                "workers instead. Check that 'campaign rollout pull-config' succeeded "
+                "and that [prospecting.scaling].fargate is set in config.toml."
+            )
+            worker_defs = []
+        else:
+            logger.info("Falling back to default single-worker mode.")
+            # Default: 1 gm-list worker
+            worker_defs = [WorkerDefinition(name="default", role="full", content_type="gm-list", workers=1, iot_profile=None)]
     else:
         logger.info(f"Found configuration for {node_config.hostname} with {len(node_config.workers)} workers.")
         worker_defs = node_config.workers

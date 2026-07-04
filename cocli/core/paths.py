@@ -264,6 +264,9 @@ class S3CampaignPaths:
     def queue(self, name: QueueName) -> S3QueuePaths:
         return S3QueuePaths(self.slug, name)
 
+    def config(self) -> str:
+        return f"{self.root}config.toml"
+
 
 class S3DataPaths:
     def bucket(self, base_name: str) -> str:

@@ -36,13 +36,24 @@ export COCLI_ENRICHMENT_QUEUE_URL="${COCLI_ENRICHMENT_QUEUE_URL}"
 export COCLI_S3_BUCKET_NAME="${COCLI_S3_BUCKET_NAME}"
 export COCLI_RUNNING_IN_FARGATE="true"
 
-# Start the Supervisor in the foreground
-# It will dynamically launch enrichment workers based on the 'fargate' key in [prospecting.scaling]
+# Start the orchestrator in the foreground.
+# It resolves worker definitions for this node (COCLI_HOSTNAME) from
+# [prospecting.scaling] and launches them; 'worker supervisor' does NOT do
+# this (heartbeat-only), so it must not be used here.
 if [ -z "$CAMPAIGN_NAME" ]; then
     echo "Error: CAMPAIGN_NAME environment variable is not set."
     exit 1
 fi
 
-echo "Starting cocli Supervisor for $CAMPAIGN_NAME..."
 
-exec python3 -m cocli.main worker supervisor --campaign "$CAMPAIGN_NAME" --interval 60
+# Pull the campaign's config.toml from S3 before orchestrating. The Fargate
+# image does not bundle data/, so load_campaign_config() would otherwise see
+# an empty [prospecting.scaling] and orchestrate would silently fall back to
+# its 1-worker gm-list default (this happened in production on 2026-07-02 -
+# do not remove this step without replacing it).
+echo "Pulling config.toml for $CAMPAIGN_NAME from S3..."
+python3 -m cocli.main campaign rollout pull-config --campaign "$CAMPAIGN_NAME"
+
+echo "Starting cocli orchestrator for $CAMPAIGN_NAME..."
+
+exec python3 -m cocli.main worker orchestrate --campaign "$CAMPAIGN_NAME"

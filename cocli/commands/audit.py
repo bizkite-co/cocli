@@ -1,3 +1,4 @@
+import re
 import typer
 from typing import Optional, Any, List
 from pathlib import Path
@@ -555,40 +556,178 @@ def audit_tui(
     console.print(f"To dump TUI tree, use: [bold]cocli tui --dump-tree {output}[/bold]")
 
 
+_KNOWN_CONTENT_TYPES = ["gm-list", "gm-details", "enrichment"]
+
+# gm-list logs one line per multi-minute scrape cycle (page load + scroll), while
+# gm-details/enrichment poll their queue every ~5s when idle. A silent worker is
+# "stale" once it's gone quiet for longer than its own normal cadence.
+_STALE_THRESHOLD_S = {"gm-list": 600.0, "gm-details": 120.0, "enrichment": 120.0}
+_DEFAULT_STALE_THRESHOLD_S = 120.0
+
+_CLUSTER_AUDIT_REMOTE_SCRIPT = """
+LOGS=$(docker logs cocli-supervisor 2>&1)
+docker inspect -f '{{range .Config.Env}}{{println .}}{{end}}' cocli-supervisor 2>/dev/null | grep -E '^CAMPAIGN_NAME=' || true
+echo '@@WORKERS@@'
+echo "$LOGS" | grep -E 'Starting worker:' | tail -30 || true
+echo '@@ERRORS@@'
+docker logs --since 30m cocli-supervisor 2>&1 | grep -icE 'error|exception|traceback|denied' || true
+echo '@@LASTLOG@@'
+echo "$LOGS" | tail -1 || true
+echo '@@TYPE_ACTIVITY@@'
+for t in gm-list gm-details enrichment; do
+  echo "$t|||$(echo "$LOGS" | grep -i "$t" | tail -1)"
+done
+echo '@@QUEUES@@'
+for q in gm-list gm-details enrichment; do
+  for s in pending completed failed; do
+    c=$(find ~/repos/data/campaigns/__CAMPAIGN__/queues/$q/$s -type f 2>/dev/null | wc -l)
+    echo "$q/$s=$c"
+  done
+done
+""".strip()
+
+_WORKER_LINE_RE = re.compile(
+    r"Starting worker:\s*(?P<name>\S+)\s*\(type=(?P<content_type>[\w-]+),\s*workers=(?P<count>\d+)\)"
+)
+_LOG_TS_RE = re.compile(r"\[(?P<ts>\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2} [+-]\d{4})\]")
+
+
+def _parse_cluster_audit_sections(raw: str) -> dict[str, list[str]]:
+    sections: dict[str, list[str]] = {
+        "HEADER": [], "WORKERS": [], "ERRORS": [], "LASTLOG": [], "TYPE_ACTIVITY": [], "QUEUES": [],
+    }
+    current = "HEADER"
+    markers = {
+        "@@WORKERS@@": "WORKERS", "@@ERRORS@@": "ERRORS", "@@LASTLOG@@": "LASTLOG",
+        "@@TYPE_ACTIVITY@@": "TYPE_ACTIVITY", "@@QUEUES@@": "QUEUES",
+    }
+    for line in raw.splitlines():
+        stripped = line.strip()
+        if stripped in markers:
+            current = markers[stripped]
+            continue
+        sections[current].append(line)
+    return sections
+
+
+def _log_line_age_seconds(line: str) -> Optional[float]:
+    from datetime import datetime
+
+    ts_match = _LOG_TS_RE.search(line)
+    if not ts_match:
+        return None
+    try:
+        last_ts = datetime.strptime(ts_match.group("ts"), "%Y-%m-%d %H:%M:%S %z")
+        return (datetime.now(last_ts.tzinfo) - last_ts).total_seconds()
+    except ValueError:
+        return None
+
+
+def _node_health_verdict(
+    has_campaign: bool,
+    last_log_age_s: Optional[float],
+    error_count: int,
+    stale_content_types: list[str],
+) -> str:
+    if not has_campaign:
+        return "[red]OFFLINE[/red]"
+    if last_log_age_s is None or last_log_age_s > 120:
+        return "[red]STALE[/red]"
+    if stale_content_types:
+        return f"[red]STALE ({', '.join(stale_content_types)})[/red]"
+    if error_count >= 5:
+        return "[yellow]DEGRADED[/yellow]"
+    return "[green]OK[/green]"
+
+
+def _format_age(seconds: float) -> str:
+    if seconds < 90:
+        return f"{int(seconds)}s ago"
+    if seconds < 5400:
+        return f"{int(seconds / 60)}m ago"
+    return f"{seconds / 3600:.1f}h ago"
+
+
 @app.command(name="cluster")
 def audit_cluster(
-    verbose: bool = typer.Option(False, "--verbose", "-v", help="Show detailed container command output."),
+    campaign: Optional[str] = typer.Option(None, "--campaign", "-c", help="Campaign name (defaults to current)."),
+    verbose: bool = typer.Option(False, "--verbose", "-v", help="Show recent error lines per node."),
 ) -> None:
     """
-    Audit cluster nodes for supervisor container configuration and worker counts.
+    Audit cluster nodes: designation (content_type/workers), queue depths, and a
+    log-based health signal (recent errors + staleness), derived from live container logs.
     """
     from ..core.config import get_campaign
     from ..services.cluster_service import ClusterService
     from rich.table import Table
     import asyncio
 
-    campaign_name = get_campaign() or "roadmap"
+    campaign_name = campaign or get_campaign() or "roadmap"
     service = ClusterService(campaign_name)
+    remote_script = _CLUSTER_AUDIT_REMOTE_SCRIPT.replace("__CAMPAIGN__", campaign_name)
 
     async def collect_node_info(node: Any) -> dict[str, Any]:
-        # Get container command via docker inspect
-        inspect_cmd = "docker inspect -f '{{.Config.Cmd}}' cocli-supervisor"
-        cmd_output = await service.run_remote_command(node, inspect_cmd)
-        # Determine if orchestrate is present
-        orchestrate = "orchestrate" in cmd_output
-        cmd_desc = "orchestrate" if orchestrate else "supervisor"
-        # Count worker processes (cocli worker ...) inside container
-        ps_cmd = "docker exec cocli-supervisor pgrep -c -f 'cocli worker' || true"
-        ps_output = await service.run_remote_command(node, ps_cmd)
+        raw = await service.run_remote_command(node, remote_script)
+        sections = _parse_cluster_audit_sections(raw)
+
+        has_campaign = any(line.startswith("CAMPAIGN_NAME=") for line in sections["HEADER"])
+
+        # Dedupe by worker name, keeping the last (most recent) definition, then
+        # aggregate active worker counts per content_type.
+        latest_by_name: dict[str, tuple[str, int]] = {}
+        for line in sections["WORKERS"]:
+            m = _WORKER_LINE_RE.search(line)
+            if m:
+                latest_by_name[m.group("name")] = (m.group("content_type"), int(m.group("count")))
+        by_content_type: dict[str, int] = {}
+        for content_type, count in latest_by_name.values():
+            by_content_type[content_type] = by_content_type.get(content_type, 0) + count
+
         try:
-            worker_count = int(ps_output.strip())
-        except Exception:
-            worker_count = 0
+            error_count = int(sections["ERRORS"][0].strip()) if sections["ERRORS"] else 0
+        except ValueError:
+            error_count = 0
+
+        last_log_line = sections["LASTLOG"][0].strip() if sections["LASTLOG"] else ""
+        last_log_age = _log_line_age_seconds(last_log_line)
+
+        # Per-content-type last activity, so a busy gm-details worker logging every
+        # 5s doesn't mask a silently dead enrichment worker on the same container.
+        type_activity: dict[str, Optional[float]] = {}
+        for line in sections["TYPE_ACTIVITY"]:
+            if "|||" not in line:
+                continue
+            content_type, _, activity_line = line.partition("|||")
+            type_activity[content_type] = _log_line_age_seconds(activity_line)
+
+        stale_content_types = []
+        for ct in by_content_type:
+            age = type_activity.get(ct)
+            if age is None or age > _STALE_THRESHOLD_S.get(ct, _DEFAULT_STALE_THRESHOLD_S):
+                stale_content_types.append(ct)
+
+        queue_depths: dict[str, dict[str, int]] = {}
+        for line in sections["QUEUES"]:
+            if "=" not in line:
+                continue
+            path, count_str = line.split("=", 1)
+            if "/" not in path:
+                continue
+            queue_name, status = path.split("/", 1)
+            try:
+                queue_depths.setdefault(queue_name, {})[status] = int(count_str)
+            except ValueError:
+                continue
+
         return {
             "host": node.hostname,
-            "cmd": cmd_desc,
-            "full_cmd": cmd_output.strip() if verbose else "",
-            "workers": worker_count,
+            "has_campaign": has_campaign,
+            "designation": by_content_type,
+            "error_count": error_count,
+            "last_log_age": last_log_age,
+            "last_log_line": last_log_line,
+            "stale_content_types": stale_content_types,
+            "queue_depths": queue_depths,
         }
 
     async def gather() -> list[dict[str, Any]]:
@@ -599,18 +738,48 @@ def audit_cluster(
         return results
 
     diagnostics: list[dict[str, Any]] = asyncio.run(gather())
-    table = Table(title="Cluster Node Audit")
+
+    table = Table(title=f"Cluster Node Audit: {campaign_name}")
     table.add_column("Node", style="cyan")
-    table.add_column("Container Cmd", style="magenta")
-    table.add_column("Worker Count", justify="right")
-    if verbose:
-        table.add_column("Full Cmd", style="dim")
+    table.add_column("Designation", style="magenta")
+    table.add_column("Queues (pending/done)")
+    table.add_column("Errors (30m)", justify="right")
+    table.add_column("Last Activity")
+    table.add_column("Health")
+
     for d in diagnostics:
-        row = [d["host"], d["cmd"], str(d["workers"])]
-        if verbose:
-            row.append(d["full_cmd"])
-        table.add_row(*row)
+        designation = d["designation"]
+        if not designation:
+            designation_str = "-"
+            relevant_queues = list(d["queue_depths"].keys())
+        else:
+            designation_str = "\n".join(f"{ct}: {n}" for ct, n in sorted(designation.items()))
+            relevant_queues = list(designation.keys())
+
+        queue_lines = []
+        for q in relevant_queues:
+            depths = d["queue_depths"].get(q, {})
+            queue_lines.append(f"{q}: {depths.get('pending', 0)}p / {depths.get('completed', 0)}d")
+        queues_str = "\n".join(queue_lines) if queue_lines else "-"
+
+        error_count = d["error_count"]
+        errors_str = str(error_count) if d["has_campaign"] else "-"
+
+        if d["last_log_age"] is not None:
+            activity_str = _format_age(d["last_log_age"])
+        else:
+            activity_str = "-"
+
+        health = _node_health_verdict(d["has_campaign"], d["last_log_age"], error_count, d["stale_content_types"])
+
+        table.add_row(d["host"], designation_str, queues_str, errors_str, activity_str, health)
+
     console.print(table)
+
+    if verbose:
+        for d in diagnostics:
+            if d["last_log_line"]:
+                console.print(f"[dim]{d['host']} last log:[/dim] {escape(d['last_log_line'])}")
 
 
 @app.command(name="schemas")
@@ -1356,13 +1525,11 @@ def queue_status(campaign: str = typer.Option("", help="Campaign name")) -> None
     about expired leases (stuck tiles that will be reclaimed).
     """
     from ..core.queue.factory import get_queue_manager
-    from ..core.queue.filesystem import FilesystemTileQueue
-    from typing import cast
     from datetime import datetime, UTC
     import json
 
     campaign_name = campaign or "default"
-    tile_queue = cast(FilesystemTileQueue, get_queue_manager("map-tile", queue_type="tile", campaign_name=campaign_name))
+    tile_queue = get_queue_manager("map-tile", queue_type="tile", campaign_name=campaign_name)
 
     # Count tiles in each state
     pending_count = 0
