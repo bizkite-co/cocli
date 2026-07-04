@@ -40,6 +40,7 @@ class FilesystemQueue:
         stale_heartbeat_minutes: int = 10,
         s3_client: Any = None,
         bucket_name: Optional[str] = None,
+        max_nack_attempts: int = 5,
     ):
         self.campaign_name = campaign_name
         self.queue_name = queue_name
@@ -47,6 +48,7 @@ class FilesystemQueue:
         self.stale_heartbeat = stale_heartbeat_minutes
         self.s3_client = s3_client
         self.bucket_name = bucket_name
+        self.max_nack_attempts = max_nack_attempts
 
         if s3_client:
             logger.info(
@@ -119,6 +121,71 @@ class FilesystemQueue:
 
     def _get_lease_path(self, task_id: str) -> Path:
         return self._get_task_dir(task_id) / "lease.json"
+
+    def _get_attempts_path(self, task_id: str) -> Path:
+        return self._get_task_dir(task_id) / "attempts.json"
+
+    def _record_nack_attempt(self, task_id: str) -> int:
+        """Increments and returns the persistent nack count for a task."""
+        attempts_path = self._get_attempts_path(task_id)
+        count = 0
+        try:
+            if attempts_path.exists():
+                with open(attempts_path, "r") as f:
+                    count = json.load(f).get("count", 0)
+        except Exception as e:
+            logger.error(f"Error reading attempts file for {task_id}: {e}")
+
+        count += 1
+
+        try:
+            with open(attempts_path, "w") as f:
+                json.dump({"count": count}, f)
+        except Exception as e:
+            logger.error(f"Error writing attempts file for {task_id}: {e}")
+
+        return count
+
+    def _dead_letter(self, task_id: str, attempts: int) -> None:
+        """Moves a task that has exceeded max_nack_attempts from pending to failed."""
+        task_dir = self._get_task_dir(task_id)
+        task_file = task_dir / "task.json"
+        failed_file = self.failed_dir / f"{task_id}.json"
+
+        logger.error(
+            f"Task {task_id} in queue {self.queue_name} exceeded max nack attempts "
+            f"({attempts}/{self.max_nack_attempts}). Dead-lettering to failed/."
+        )
+
+        try:
+            # 1. Local: move task.json to failed/, remove the pending task dir entirely
+            # (including its lease/attempts files) so it stops being a poll candidate.
+            if task_file.exists():
+                task_file.rename(failed_file)
+
+            import shutil
+
+            if task_dir.exists():
+                shutil.rmtree(task_dir, ignore_errors=True)
+
+            # 2. S3: mirror the move so other nodes discovering from S3 don't
+            # re-download the same poison task.
+            if self.s3_client and self.bucket_name:
+                s3_task_key = self._get_s3_task_key(task_id)
+                s3_lease_key = self._get_s3_lease_key(task_id)
+                s3_failed_key = f"campaigns/{self.campaign_name}/queues/{self.queue_name}/failed/{task_id}.json"
+
+                if failed_file.exists():
+                    self.s3_client.upload_file(
+                        str(failed_file), self.bucket_name, s3_failed_key
+                    )
+
+                self.s3_client.delete_objects(
+                    Bucket=self.bucket_name,
+                    Delete={"Objects": [{"Key": s3_task_key}, {"Key": s3_lease_key}]},
+                )
+        except Exception as e:
+            logger.error(f"Error dead-lettering {task_id}: {e}")
 
     def _create_lease(self, task_id: str) -> bool:
         """Attempts to create an atomic lease (Local O_EXCL or S3 Conditional)."""
@@ -626,7 +693,17 @@ class FilesystemQueue:
             except Exception as e:
                 logger.error(f"Error S3 nacking for {task_id}: {e}")
 
-        # 3. Broadcast release via Gossip
+        # 3. Track repeated failures; dead-letter poison tasks so they stop
+        # occupying a poll slot forever and stop blocking fresh S3 discovery
+        # (poll_frontier only re-discovers from S3 when local candidates is
+        # empty - a task that's never removed from pending/ blocks that
+        # indefinitely).
+        attempts = self._record_nack_attempt(task_id)
+        dead_lettered = attempts >= self.max_nack_attempts
+        if dead_lettered:
+            self._dead_letter(task_id, attempts)
+
+        # 4. Broadcast release via Gossip
         try:
             from ..gossip_bridge import bridge
             if bridge and bridge.running:
@@ -636,7 +713,7 @@ class FilesystemQueue:
                     campaign_name=self.campaign_name,
                     queue_name=self.queue_name,
                     task_id=task_id,
-                    status="released",
+                    status="failed" if dead_lettered else "released",
                     timestamp=datetime.now(UTC).isoformat(),
                     node_id=self.worker_id,
                     environment=get_environment().value,
@@ -658,9 +735,14 @@ class FilesystemGmListQueue(FilesystemQueue):
         campaign_name: str,
         s3_client: Any = None,
         bucket_name: Optional[str] = None,
+        max_nack_attempts: int = 5,
     ):
         super().__init__(
-            campaign_name, "gm-list", s3_client=s3_client, bucket_name=bucket_name
+            campaign_name,
+            "gm-list",
+            s3_client=s3_client,
+            bucket_name=bucket_name,
+            max_nack_attempts=max_nack_attempts,
         )
         self.campaign_dir = get_campaign_dir(campaign_name)
         if self.campaign_dir:
@@ -940,9 +1022,14 @@ class FilesystemGmDetailsQueue(FilesystemQueue):
         campaign_name: str,
         s3_client: Any = None,
         bucket_name: Optional[str] = None,
+        max_nack_attempts: int = 5,
     ):
         super().__init__(
-            campaign_name, "gm-details", s3_client=s3_client, bucket_name=bucket_name
+            campaign_name,
+            "gm-details",
+            s3_client=s3_client,
+            bucket_name=bucket_name,
+            max_nack_attempts=max_nack_attempts,
         )
 
     def push(self, task: GmItemTask) -> str:  # type: ignore
@@ -977,9 +1064,14 @@ class FilesystemEnrichmentQueue(FilesystemQueue):
         campaign_name: str,
         s3_client: Any = None,
         bucket_name: Optional[str] = None,
+        max_nack_attempts: int = 5,
     ):
         super().__init__(
-            campaign_name, "enrichment", s3_client=s3_client, bucket_name=bucket_name
+            campaign_name,
+            "enrichment",
+            s3_client=s3_client,
+            bucket_name=bucket_name,
+            max_nack_attempts=max_nack_attempts,
         )
 
     def _get_task_model(self, task_id: str, data: Dict[str, Any]) -> Any:

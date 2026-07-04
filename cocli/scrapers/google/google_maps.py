@@ -85,8 +85,6 @@ async def scrape_google_maps(
         viewport_width=launch_width,
         viewport_height=launch_height,
         debug=debug,
-        s3_client=s3_client,
-        s3_bucket=s3_bucket
     )
     
     # Run

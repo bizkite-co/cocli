@@ -1,19 +1,14 @@
 import logging
-from pathlib import Path
-from typing import Dict, Optional, Any
+from typing import Dict, Optional
 from ....core.scrape_index import ScrapeIndex
-from ....core.config import get_scraped_areas_index_dir
 
 logger = logging.getLogger(__name__)
 
 class WildernessManager:
-    def __init__(self, overlap_threshold: float = 60.0, ttl_days: int = 30, s3_client: Any = None, s3_bucket: Optional[str] = None):
+    def __init__(self, overlap_threshold: float = 60.0, ttl_days: int = 30):
         self.index = ScrapeIndex()
         self.overlap_threshold = overlap_threshold
         self.ttl_days = ttl_days
-        self.s3_client = s3_client
-        self.s3_bucket = s3_bucket
-        self.base_dir = get_scraped_areas_index_dir()
 
     def should_scrape(self, bounds: Dict[str, float], query: str) -> bool:
         """
@@ -38,7 +33,15 @@ class WildernessManager:
         """Updates the index with the results."""
         # Always mark as scraped for the specific query, even if 0 items found.
         # We no longer mark "Wilderness" (global empty).
-        file_path = self.index.add_area(
+        #
+        # This witness file is local-only by design: it records a timestamp +
+        # item count, not the actual scraped results, so mirroring it to a
+        # global (non-campaign-scoped) S3 prefix never actually let one
+        # campaign skip re-scraping another's tiles - it has no IAM grant on
+        # the scraper role either, so it only produced AccessDenied noise.
+        # `cocli audit scrape`'s Completed/Pending Scraped Tiles metrics read
+        # this file locally per-campaign, which is the only thing it's for.
+        self.index.add_area(
             phrase=query,
             bounds=bounds,
             lat_miles=height_miles,
@@ -47,40 +50,3 @@ class WildernessManager:
             tile_id=tile_id,
             processed_by=processed_by
         )
-
-        if file_path and self.s3_client and self.s3_bucket:
-            try:
-                # 1. Upload legacy JSON
-                # Calculate S3 Key: indexes/scraped_areas/{phrase}/{grid}/{file}
-                try:
-                    relative_path = file_path.relative_to(self.base_dir)
-                    s3_key = f"indexes/scraped_areas/{relative_path}"
-                    self.s3_client.upload_file(str(file_path), self.s3_bucket, s3_key)
-                    logger.info(f"Uploaded scraped area to s3://{self.s3_bucket}/{s3_key}")
-                except ValueError:
-                    # If not under base_dir, it might be in a different root (e.g. tests)
-                    logger.warning(f"Skipping legacy upload for {file_path} as it is outside {self.base_dir}")
-
-                # 2. Upload Witness CSV/USV (Phase 10)
-                if tile_id:
-                    from cocli.core.text_utils import slugify
-                    from cocli.core.config import get_scraped_tiles_index_dir
-                    parts = tile_id.split("_")
-                    lat_str, lon_str = parts[0], parts[1]
-                    phrase_slug = slugify(query)
-
-                    witness_root = get_scraped_tiles_index_dir()
-
-                    # Try both USV and CSV
-                    for ext in [".usv", ".csv"]:
-                        witness_rel_path = Path(lat_str) / lon_str / f"{phrase_slug}{ext}"
-                        witness_local_path = witness_root / witness_rel_path
-
-                        if witness_local_path.exists():
-                            # S3 key should match the local relative structure: indexes/scraped-tiles/...
-                            witness_s3_key = f"indexes/scraped-tiles/{witness_rel_path}"
-                            self.s3_client.upload_file(str(witness_local_path), self.s3_bucket, witness_s3_key)
-                            logger.info(f"Uploaded witness file to s3://{self.s3_bucket}/{witness_s3_key}")
-                            break
-            except Exception as e:
-                logger.error(f"Failed to upload scraped area to S3: {e}")

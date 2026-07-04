@@ -264,7 +264,7 @@ class WorkerService:
                                 enrichment_queue.push(
                                     QueueMessage(
                                         domain=str(list_item.domain),
-                                        company_slug=slugify(list_item.name),
+                                        company_slug=slugify(str(list_item.name) if list_item.name else ""),
                                         campaign_name=task.campaign_name,
                                         force_refresh=False,
                                         ack_token=None
@@ -328,7 +328,7 @@ class WorkerService:
                     final_prospect_data = await processor.process(task, page, debug=debug)
                     
                     if final_prospect_data and final_prospect_data.domain:
-                        enrichment_queue.push(QueueMessage(domain=str(final_prospect_data.domain), company_slug=slugify(final_prospect_data.name), campaign_name=task.campaign_name, force_refresh=task.force_refresh, ack_token=None))
+                        enrichment_queue.push(QueueMessage(domain=str(final_prospect_data.domain), company_slug=slugify(str(final_prospect_data.name) if final_prospect_data.name else ""), campaign_name=task.campaign_name, force_refresh=task.force_refresh, ack_token=None))
                     
                     gm_list_item_queue.ack(task)
                 finally:
@@ -340,7 +340,7 @@ class WorkerService:
                 gm_list_item_queue.nack(task)
                 if once:
                     return
-                break
+                await asyncio.sleep(5)
 
     async def _run_enrichment_task_loop(
         self,
@@ -352,6 +352,7 @@ class WorkerService:
     ) -> None:
         from ..core.enrichment import enrich_company_website
         from ..models.companies.company import Company
+        from ..models.company_name import CompanyName
         from ..models.campaigns.campaign import Campaign
 
         try:
@@ -360,6 +361,10 @@ class WorkerService:
             return
 
         while True:
+            if not context.browser or not context.browser.is_connected():
+                logger.error("Browser is disconnected. Breaking task loop to restart.")
+                break
+
             tasks: List[QueueMessage] = await asyncio.to_thread(enrichment_queue.poll, batch_size=1)
             if not tasks:
                 if once:
@@ -369,12 +374,12 @@ class WorkerService:
 
             task = tasks[0]
             try:
-                company = Company.get(task.company_slug) or Company(name=task.company_slug, domain=task.domain, slug=task.company_slug)
+                company = Company.get(task.company_slug) or Company(name=CompanyName(task.company_slug), domain=task.domain, slug=task.company_slug)
                 website_data = await enrich_company_website(
-                    browser=context, 
-                    company=company, 
-                    campaign=campaign_obj, 
-                    force=task.force_refresh, 
+                    browser=context,
+                    company=company,
+                    campaign=campaign_obj,
+                    force=task.force_refresh,
                     debug=debug,
                     processed_by=self.processed_by
                 )
@@ -388,7 +393,7 @@ class WorkerService:
                 enrichment_queue.nack(task)
                 if once:
                     return
-                break
+                await asyncio.sleep(5)
 
     async def _run_command_poller_loop(self, command_queue: Any, s3_client: Any) -> None:
         from ..application.campaign_service import CampaignService
@@ -519,8 +524,20 @@ class WorkerService:
 
         logger.info(f"Orchestrating {len(worker_definitions)} worker definition(s)")
 
+        # Google Maps conclusively blocks Fargate/data-center IP ranges (see
+        # CLAUDE.md "Known Issues"). This is a hard rule, not just a missing-
+        # config fallback: regardless of what config.toml says, gm-list/
+        # gm-details must never be launched on Fargate.
+        running_in_fargate = bool(os.getenv("COCLI_RUNNING_IN_FARGATE"))
+
         self.worker_tasks = []
         for wd in worker_definitions:
+            if running_in_fargate and wd.content_type in ("gm-list", "gm-details"):
+                logger.error(
+                    f"  ✗ Refusing to launch '{wd.content_type}' worker '{wd.name}' on Fargate "
+                    "- Google Maps blocks Fargate IPs (see CLAUDE.md). Check config.toml."
+                )
+                continue
             logger.info(f"Starting worker: {wd.name} (type={wd.content_type}, workers={wd.workers})")
             worker_service = WorkerService(campaign_name=self.campaign_name, role=wd.role, processed_by=f"{self.processed_by}-{wd.name}")
             if wd.content_type == "gm-list":
@@ -542,7 +559,13 @@ class WorkerService:
         if self.worker_tasks:
             await asyncio.gather(*self.worker_tasks)
         else:
-            logger.warning("No worker tasks created, exiting")
+            # Stay alive (heartbeat + config watcher keep running) instead of
+            # exiting the process - an empty worker_definitions list means "no
+            # safe default was known" (see worker.py's orchestrate command),
+            # and exiting here would crash-loop the container instead of
+            # idling until a real config arrives.
+            logger.warning("No worker tasks created; idling (heartbeat/config-watch only).")
+            await asyncio.Event().wait()
 
     async def get_cluster_health(self) -> List[Dict[str, Any]]:
         """
