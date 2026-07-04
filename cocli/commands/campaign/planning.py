@@ -48,7 +48,7 @@ def import_contacts(
         for row in reader:
             try:
                 person = Person.model_validate(row)
-                person_slug = slugify(person.name)
+                person_slug = slugify(str(person.name) if person.name else person.slug)
                 person_dir = people_dir / person_slug
                 person_dir.mkdir(exist_ok=True)
 

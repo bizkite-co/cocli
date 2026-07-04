@@ -2,6 +2,8 @@ from pydantic import Field
 from typing import Optional, ClassVar
 from ...base import BaseUsvModel, ResourcePathPolicy
 from ...phone import OptionalPhone
+from ...company_name import OptionalCompanyName
+from ...company_address import OptionalCompanyAddress
 from ..queues.gm_details import GmItemTask
 
 
@@ -22,10 +24,8 @@ class GoogleMapsListItem(BaseUsvModel):
     company_slug: str = Field(
         ..., min_length=3, max_length=100, description="Generated slug for the business"
     )
-    name: str = Field(
-        ...,
-        min_length=1,
-        max_length=100,
+    name: OptionalCompanyName = Field(
+        None,
         description="Business name from the list view",
     )
     category: Optional[str] = Field(
@@ -44,8 +44,8 @@ class GoogleMapsListItem(BaseUsvModel):
     average_rating: Optional[float] = Field(
         None, ge=0.0, le=5.0, description="Average rating"
     )
-    street_address: Optional[str] = Field(
-        None, max_length=200, description="Street address"
+    street_address: OptionalCompanyAddress = Field(
+        None, description="Street address"
     )
     gmb_url: Optional[str] = Field(None, description="Google Maps URL")
 
@@ -61,7 +61,7 @@ class GoogleMapsListItem(BaseUsvModel):
         return GmItemTask(
             place_id=self.place_id,
             campaign_name=campaign_name,
-            name=self.name,
+            name=str(self.name) if self.name else "",
             company_slug=self.company_slug,
             force_refresh=force_refresh,
             gmb_url=self.gmb_url,

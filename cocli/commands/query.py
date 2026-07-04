@@ -175,7 +175,7 @@ def query_prospects_location(
     print("-" * 120)
     
     for prospect, dist_val in matches:
-        name = (prospect.name or "")[:38]
+        name = (str(prospect.name) if prospect.name else "")[:38]
         city_state = f"{prospect.city or ''}, {prospect.state or ''}"
         dist = f"{dist_val} mi"
         phone = prospect.phone or ""

@@ -1,5 +1,5 @@
 from pydantic import BaseModel
-from typing import Optional
+from typing import Any, Optional
 from ..campaigns.indexes.google_maps_prospect import GoogleMapsProspect
 from ..phone import OptionalPhone
 
@@ -28,7 +28,7 @@ class LegacyProspectUSV(BaseModel):
         from cocli.core.constants import UNIT_SEP
         parts = line.strip("\x1e\n").split(UNIT_SEP)
         
-        data = {
+        data: dict[str, Any] = {
             "place_id": parts[0] if len(parts) > 0 else None,
             "company_slug": parts[1] if len(parts) > 1 else None,
             "name": parts[2] if len(parts) > 2 else None,
@@ -46,7 +46,7 @@ class LegacyProspectUSV(BaseModel):
         from cocli.core.text_utils import parse_address_components, calculate_company_hash
         
         # 1. Start with reliable base fields
-        data = {
+        data: dict[str, Any] = {
             "place_id": self.place_id,
             "company_slug": self.company_slug,
             "name": self.name,

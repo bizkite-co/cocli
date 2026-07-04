@@ -205,10 +205,11 @@ async def pipeline(
                         break
 
                     # --- FAST FILTERING ---
+                    list_item_name_lower = str(list_item.name).lower() if list_item.name else ""
                     is_venue_match = is_likely_non_commercial(
                         list_item.category or ""
                     ) or any(
-                        k in list_item.name.lower()
+                        k in list_item_name_lower
                         for k in ["park", "library", "center", "museum", "gallery"]
                     )
 
@@ -226,7 +227,7 @@ async def pipeline(
                             page=page,
                             place_id=list_item.place_id,
                             campaign_name=campaign_name,
-                            name=list_item.name,
+                            name=str(list_item.name) if list_item.name else None,
                             company_slug=list_item.company_slug,
                             debug=debug,
                         )

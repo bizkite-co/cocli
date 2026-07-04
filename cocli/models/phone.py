@@ -1,6 +1,6 @@
 from typing import Any, Optional, Protocol, runtime_checkable, Annotated
 import re
-from pydantic import GetCoreSchemaHandler, BeforeValidator, ValidationError
+from pydantic import GetCoreSchemaHandler, BeforeValidator
 from pydantic_core import CoreSchema, core_schema
 import phonenumbers
 from phonenumbers import NumberParseException

@@ -55,7 +55,7 @@ class EnrichmentManager:
 
     def _save_company(self, company: Company) -> None:
         """Saves the updated Company object back to its _index.md file."""
-        company_dir = self._get_company_path(company.name)
+        company_dir = self._get_company_path(str(company.name) if company.name else str(company.slug))
         index_path = company_dir / "_index.md"
 
         # Read existing content to preserve markdown

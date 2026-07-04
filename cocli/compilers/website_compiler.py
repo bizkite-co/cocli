@@ -9,6 +9,7 @@ from rich.console import Console
 from .base import BaseCompiler
 from ..models.companies.company import Company
 from ..models.companies.website import Website
+from ..models.company_name import CompanyName
 from ..core.utils import create_company_files
 
 logger = logging.getLogger(__name__)
@@ -113,7 +114,7 @@ class WebsiteCompiler(BaseCompiler):
             
             if is_weak_name and not is_new_name_junk:
                 logger.info(f"Updating name for {company.slug}: {company.name} -> {website_data.company_name}")
-                company.name = website_data.company_name
+                company.name = CompanyName(website_data.company_name)
                 updated = True
 
         # Phone

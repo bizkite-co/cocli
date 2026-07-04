@@ -11,6 +11,7 @@ from contextlib import asynccontextmanager
 from cocli.core.enrichment import enrich_company_website
 from cocli.models.companies.website import Website
 from cocli.models.companies.company import Company
+from cocli.models.company_name import CompanyName
 from cocli.models.campaigns.campaign import Campaign 
 from cocli.core.config import get_campaign_dir
 from cocli.core.exceptions import EnrichmentError, NavigationError
@@ -142,7 +143,7 @@ async def enrich_domain(request: EnrichmentRequest) -> Website:
         browser = await p.chromium.launch(headless=True, args=['--no-sandbox'])
         try:
             # We create a dummy company object to pass to the enrichment function
-            dummy_company = Company(name=request.domain, domain=request.domain, slug=request.domain)
+            dummy_company = Company(name=CompanyName(request.domain), domain=request.domain, slug=request.domain)
             
             website_data = await enrich_company_website(
                 browser=browser,

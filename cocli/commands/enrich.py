@@ -220,7 +220,7 @@ def scrape_contacts(
                 company_name=company.name, # Link to current company
                 slug=slugify(person_name_to_use) # Add slug here
             )
-            person_slug = slugify(new_person.name)
+            person_slug = slugify(str(new_person.name) if new_person.name else person_name_to_use)
             new_person_dir = people_dir / person_slug
             
             # Ensure unique directory name if slug already exists

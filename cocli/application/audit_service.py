@@ -76,7 +76,8 @@ class AuditService:
             if self.campaign_name in company.tags:
                 reason = None
                 for p in contamination_patterns:
-                    if any(p in kw.lower() for kw in company.keywords) or any(p in cat.lower() for cat in company.categories) or p in company.name.lower():
+                    company_name_lower = str(company.name).lower() if company.name else ""
+                    if any(p in kw.lower() for kw in company.keywords) or any(p in cat.lower() for cat in company.categories) or p in company_name_lower:
                         reason = f"Explicit Contamination Pattern: {p}"
                         break
                 if reason:

@@ -50,7 +50,7 @@ def enrich_customers(
                     logger.info(f"Skipping {person.name} as they are not associated with a company.")
                     continue
 
-                company_dir = get_companies_dir() / slugify(person.company_name)
+                company_dir = get_companies_dir() / slugify(str(person.company_name))
                 enrichment_dir = company_dir / "enrichments"
                 google_maps_md_path = enrichment_dir / "google-maps.md"
                 
@@ -60,9 +60,9 @@ def enrich_customers(
                     
                 logger.info(f"Enriching {person.company_name} (from person {person.name})...")
                 
-                location_param = {}
+                location_param: dict[str, str] = {}
                 if person.full_address:
-                    location_param["address"] = person.full_address
+                    location_param["address"] = str(person.full_address)
                 elif person.zip_code:
                     location_param["zip_code"] = person.zip_code
                 elif person.city and person.state:
@@ -71,7 +71,7 @@ def enrich_customers(
                     logger.info(f"Skipping {person.name} as it has no address information.")
                     continue
 
-                business_data = find_business_on_google_maps(person.company_name, location_param)
+                business_data = find_business_on_google_maps(str(person.company_name), location_param)
                 
                 if business_data:
                     enrichment_dir.mkdir(parents=True, exist_ok=True)

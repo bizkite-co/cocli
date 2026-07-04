@@ -10,6 +10,8 @@ from cocli.core.utils import create_company_files, create_person_files
 from ..models.people.person import Person
 from ..models.companies.company import Company
 from ..models.phone import PhoneNumber
+from ..models.company_name import CompanyName
+from ..models.company_address import CompanyAddress
 from ..models.campaigns.indexes.domains import WebsiteDomainCsv
 from ..core.website_domain_csv_manager import WebsiteDomainCsvManager
 from ..models.email_address import EmailAddress
@@ -76,12 +78,13 @@ def import_customers(
                 phone_obj = None
 
             # Prepare person
+            person_address = address_data.get("address")
             person = Person(
-                name=name,
+                name=CompanyName(name),
                 email=email_addr,
                 phone=phone_obj,
                 tags=tags,
-                full_address=address_data.get("address"),
+                full_address=CompanyAddress(person_address) if person_address else None,
                 city=address_data.get("city"),
                 state=address_data.get("state"),
                 zip_code=address_data.get("zip"),
@@ -110,13 +113,13 @@ def import_customers(
 
             if company_name:
                 company = Company(
-                    name=company_name.replace("-", " ").title(),
+                    name=CompanyName(company_name.replace("-", " ").title()),
                     domain=website_url,
                     tags=tags,
                     phone_1=phone_obj,
                     slug=slugify(company_name.replace("-", " ").title()),
                 )
-                company_dir = get_companies_dir() / slugify(company.name)
+                company_dir = get_companies_dir() / slugify(str(company.name))
                 create_company_files(company, company_dir)
                 person.company_name = company.name
 
@@ -130,7 +133,7 @@ def import_customers(
                     website_csv_manager.add_or_update(website)
 
             people_dir = get_people_dir()
-            person_dir = people_dir / slugify(person.name)
+            person_dir = people_dir / slugify(str(person.name))
             create_person_files(person, person_dir)
 
             logger.info(f"Imported customer: {person.name}")

@@ -85,7 +85,7 @@ def _render_contacts_from_data(contacts_data: List[Dict[str, Any]]) -> Panel:
             contact_details += f"Email: {person.email}\n"
         if person.phone:
             contact_details += f"Phone: {person.phone}"
-        contact_panels.append(Panel(contact_details, title=person.name, border_style="blue"))
+        contact_panels.append(Panel(contact_details, title=str(person.name) if person.name else None, border_style="blue"))
 
     if not contact_panels:
         return Panel("No contacts found.", title="Contacts", border_style="blue")

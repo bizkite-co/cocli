@@ -1,10 +1,12 @@
-from typing import ClassVar, Any, Annotated
-from pydantic import BeforeValidator, Field
+from typing import ClassVar, Any
+from pydantic import Field
 from .base import BaseIndexModel
 from ...place_id import PlaceID
 from ...companies.slug import CompanySlug
+from ...company_name import OptionalCompanyName
 
 def strip_quotes(v: Any) -> Any:
+    """Legacy strip_quotes function - kept for backward compatibility with other fields."""
     if v is None:
         return ""
     # Handle MagicMock during tests
@@ -20,10 +22,10 @@ class GoogleMapsIdx(BaseIndexModel):
     This defines the start of every USV file in the index.
     """
     INDEX_NAME: ClassVar[str] = "google_maps_idx"
-    
+
     place_id: PlaceID
     slug: CompanySlug = Field(..., alias="company_slug")
-    name: Annotated[str, BeforeValidator(strip_quotes)]
+    name: OptionalCompanyName = None
 
     @property
     def company_slug(self) -> str:

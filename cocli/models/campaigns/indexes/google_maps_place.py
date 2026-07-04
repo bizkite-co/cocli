@@ -6,6 +6,8 @@ import logging
 
 from .google_maps_idx import GoogleMapsIdx, strip_quotes
 from ...phone import OptionalPhone
+from ...company_name import OptionalCompanyName
+from ...company_address import OptionalCompanyAddress
 
 logger = logging.getLogger(__name__)
 
@@ -43,7 +45,7 @@ class GoogleMapsPlaceProtocol(Protocol):
     """
     place_id: str
     slug: str
-    name: str
+    name: OptionalCompanyName
     phone: OptionalPhone
     created_at: datetime
     updated_at: datetime
@@ -53,9 +55,9 @@ class GoogleMapsPlaceProtocol(Protocol):
 
     @property
     def company_slug(self) -> str: ...
-    
+
     # Core Physicality
-    full_address: Optional[str]
+    full_address: OptionalCompanyAddress
     city: Optional[str]
     zip: Optional[str]
     state: Optional[str]
@@ -99,8 +101,8 @@ class GoogleMapsPlace(GoogleMapsIdx):
     
     # --- Enrichment Data ---
     keyword: Annotated[Optional[str], BeforeValidator(strip_quotes)] = None
-    full_address: Annotated[Optional[str], BeforeValidator(strip_quotes)] = None
-    street_address: Annotated[Optional[str], BeforeValidator(strip_quotes)] = None
+    full_address: OptionalCompanyAddress = None
+    street_address: OptionalCompanyAddress = None
     city: Annotated[Optional[str], BeforeValidator(strip_quotes)] = None
     zip: Annotated[Optional[str], BeforeValidator(strip_quotes)] = None
     municipality: Annotated[Optional[str], BeforeValidator(strip_quotes)] = None
@@ -158,14 +160,14 @@ class GoogleMapsPlace(GoogleMapsIdx):
     @model_validator(mode='after')
     def validate_identity_tripod(self) -> 'GoogleMapsPlace':
         from cocli.core.text_utils import slugify, calculate_company_hash
-        
+
         if not self.slug and self.name:
-            self.slug = slugify(self.name)
-            
+            self.slug = slugify(str(self.name))
+
         if self.name and not self.company_hash:
             self.company_hash = calculate_company_hash(
-                self.name,
-                self.street_address,
+                str(self.name) if self.name else None,
+                str(self.street_address) if self.street_address else None,
                 self.zip
             )
         return self

@@ -402,7 +402,8 @@ class CompanyList(Container):
 
             new_items = []
             for item in self.filtered_fz_items:
-                new_items.append(ListItem(Label(item.name), name=item.name))
+                item_name = str(item.name) if item.name else ""
+                new_items.append(ListItem(Label(item_name), name=item_name))
 
             # extend() is more synchronous for small lists and helps tests
             list_view.extend(new_items)
@@ -569,7 +570,7 @@ class CompanyList(Container):
 
         task = ToCallTask(
             company_slug=selected_item.slug,
-            domain=selected_item.name or "unknown",
+            domain=str(selected_item.name) if selected_item.name else "unknown",
             campaign_name=campaign,
             ack_token=None,
         )
@@ -582,7 +583,8 @@ class CompanyList(Container):
         # Run confirmation and deletion in background
         self.app.run_worker(
             self._remove_from_to_call_with_confirm(
-                task_path, selected_item.slug, selected_item.name
+                task_path, selected_item.slug,
+                str(selected_item.name) if selected_item.name else "",
             ),
             exclusive=True,
         )

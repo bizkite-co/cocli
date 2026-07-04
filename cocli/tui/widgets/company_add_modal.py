@@ -6,6 +6,8 @@ from textual.containers import Container, Vertical, Horizontal
 from textual import on
 
 from cocli.models.companies.company import Company
+from cocli.models.company_name import CompanyName
+from cocli.models.company_address import CompanyAddress
 from cocli.core.config import get_campaign
 from cocli.core.text_utils import slugify
 from cocli.models.campaigns.queues.gm_details import GmItemTask
@@ -129,12 +131,12 @@ class CompanyAddModal(ModalScreen[bool]):
 
             # 1. Create Company
             company = Company(
-                name=name,
+                name=CompanyName(name),
                 domain=domain or None,
                 slug=slug,
                 email=validated_email,
                 phone_1=validated_phone,
-                street_address=address or None,
+                street_address=CompanyAddress(address) if address else None,
                 city=city or None,
                 state=state or None,
                 zip_code=zip_code or None,

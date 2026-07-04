@@ -17,6 +17,8 @@ from typing_extensions import Annotated
 
 from ..email_address import EmailAddress
 from ..phone import OptionalPhone
+from ..company_name import OptionalCompanyName
+from ..company_address import OptionalCompanyAddress
 from ..campaigns.indexes.email import EmailEntry
 from ..place_id import PlaceID
 from .slug import CompanySlug
@@ -34,18 +36,8 @@ def split_categories(v: Any) -> List[str]:
     return []
 
 
-def strip_quotes(v: Any) -> str:
-    if isinstance(v, str):
-        v = v.strip()
-        if v.startswith('"') and v.endswith('"'):
-            v = v[1:-1].strip()
-        if v.startswith("'") and v.endswith("'"):
-            v = v[1:-1].strip()
-    return str(v)
-
-
 class Company(BaseModel):
-    name: Annotated[str, BeforeValidator(strip_quotes)]
+    name: OptionalCompanyName
     domain: Optional[str] = None
     type: str = "N/A"
     tags: list[str] = Field(default_factory=list)
@@ -80,8 +72,8 @@ class Company(BaseModel):
     # New fields for enrichment
     # id: Optional[str] = None # Removed as per feedback
     keywords: List[str] = Field(default_factory=list)
-    full_address: Optional[str] = None
-    street_address: Optional[str] = None
+    full_address: OptionalCompanyAddress = None
+    street_address: OptionalCompanyAddress = None
     city: Optional[str] = None
     zip_code: Optional[str] = None
     state: Optional[str] = None
@@ -143,7 +135,9 @@ class Company(BaseModel):
             from cocli.core.text_utils import calculate_company_hash
 
             self.company_hash = calculate_company_hash(
-                self.name, self.street_address, self.zip_code
+                str(self.name) if self.name else None,
+                str(self.street_address) if self.street_address else None,
+                self.zip_code
             )
         return self
 
@@ -151,17 +145,19 @@ class Company(BaseModel):
     def parse_full_address(self) -> "Company":
         if self.full_address and (not self.city or not self.state or not self.zip_code):
             # Regex to capture city, state, and zip from a standard US address
-            match = re.search(
-                r"([^,]+),\s*([A-Z]{2})\s*(\d{5}(?:-\d{4})?)", self.full_address
-            )
-            if match:
-                city, state, zip_code = match.groups()
-                if not self.city:
-                    self.city = city.strip()
-                if not self.state:
-                    self.state = state.strip()
-                if not self.zip_code:
-                    self.zip_code = zip_code.strip()
+            full_addr_str = str(self.full_address) if self.full_address else None
+            if full_addr_str:
+                match = re.search(
+                    r"([^,]+),\s*([A-Z]{2})\s*(\d{5}(?:-\d{4})?)", full_addr_str
+                )
+                if match:
+                    city, state, zip_code = match.groups()
+                    if not self.city:
+                        self.city = city.strip()
+                    if not self.state:
+                        self.state = state.strip()
+                    if not self.zip_code:
+                        self.zip_code = zip_code.strip()
         return self
 
     @classmethod

@@ -89,7 +89,7 @@ def _interactive_view_company(company_slug: str) -> None:
             if email:
                 from .add_email import add_email
                 try:
-                    add_email(company_name=company.name, email=email)
+                    add_email(company_name=company_slug, email=email)
                     frontmatter_data = _load_frontmatter(index_path) # Reload data
                     console.print(f"[bold green]Email '{email}' added. Press any key to continue.[/bold green]")
                 except Exception as e:
@@ -122,7 +122,7 @@ def _interactive_view_company(company_slug: str) -> None:
         elif char == 'a':
             console.print("\n[bold green]Adding a new meeting...[/bold green]")
             meeting_date_str = typer.prompt("Enter meeting date (e.g., 'today', 'next Monday', '2025-12-25')")
-            _add_meeting_logic(company_name=company.name, date_str=meeting_date_str)
+            _add_meeting_logic(company_name=company_slug, date_str=meeting_date_str)
             console.print("[bold green]Meeting added. Press any key to continue.[/bold green]")
             _getch() # Wait for a key press to clear the message
         elif char == 'e':
@@ -160,7 +160,7 @@ def _interactive_view_company(company_slug: str) -> None:
                 try:
                     webbrowser.open(google_voice_url)
                     console.print(f"[bold green]Initiated call to {phone_number}. Auto-creating meeting...[/bold green]")
-                    _add_meeting_logic(company_name=company.name, date_str="today", title_str="Google Voice Call", phone_number_str=phone_number)
+                    _add_meeting_logic(company_name=company_slug, date_str="today", title_str="Google Voice Call", phone_number_str=phone_number)
                     console.print("[bold green]Meeting for call added. Press any key to continue.[/bold green]")
                 except Exception as e:
                     console.print(f"[bold red]Error initiating call: {e}. Press any key to continue.[/bold red]")
@@ -226,7 +226,7 @@ def _interactive_view_company(company_slug: str) -> None:
                     new_person = Person(name=contact_name, email=contact_email if contact_email else None, phone=contact_phone if contact_phone else None, role=contact_role if contact_role else None, slug=slugify(contact_name)) # Add slug here
                     
                     people_dir = paths.people.path
-                    person_dir = people_dir / slugify(new_person.name)
+                    person_dir = people_dir / slugify(str(new_person.name) if new_person.name else new_person.slug)
                     create_person_files(new_person, person_dir)
 
                     contacts_dir = selected_company_dir / "contacts"
@@ -253,8 +253,9 @@ def _interactive_view_company(company_slug: str) -> None:
                         if person_dir_item.is_dir():
                             person = Person.from_directory(person_dir_item)
                             if person:
-                                people_names.append(person.name)
-                                person_paths[person.name] = person_dir_item
+                                person_name = str(person.name) if person.name else person.slug
+                                people_names.append(person_name)
+                                person_paths[person_name] = person_dir_item
 
                     if not people_names:
                         console.print("[bold red]No people found in the people directory. Press any key to continue.[/bold red]")
@@ -299,8 +300,9 @@ def _interactive_view_company(company_slug: str) -> None:
                             person_dir = contact_symlink.resolve()
                             person = Person.from_directory(person_dir)
                             if person:
-                                contact_names.append(person.name)
-                                contact_person_dirs[person.name] = person_dir
+                                person_name = str(person.name) if person.name else person.slug
+                                contact_names.append(person_name)
+                                contact_person_dirs[person_name] = person_dir
 
                     if not contact_names:
                         console.print("[bold red]No valid contacts found for this company. Press any key to continue.[/bold red]")
@@ -345,8 +347,9 @@ def _interactive_view_company(company_slug: str) -> None:
                         if contact_symlink.is_symlink():
                             person = Person.from_directory(contact_symlink.resolve())
                             if person:
-                                contact_names.append(person.name)
-                                contact_symlinks[person.name] = contact_symlink
+                                person_name = str(person.name) if person.name else person.slug
+                                contact_names.append(person_name)
+                                contact_symlinks[person_name] = contact_symlink
 
                     if not contact_names:
                         console.print("[bold red]No valid contacts found for this company. Press any key to continue.[/bold red]")

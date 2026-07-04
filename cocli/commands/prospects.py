@@ -78,7 +78,7 @@ def to_hubspot_csv(
         for prospect in prospects:
             try:
                 contact = HubspotContactCsv(
-                    company=prospect.name,
+                    company=str(prospect.name) if prospect.name else None,
                     phone=prospect.phone_1,
                     website=prospect.website_url,
                     city=prospect.city,

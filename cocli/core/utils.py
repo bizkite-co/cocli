@@ -64,14 +64,14 @@ def create_person_files(person: Person, person_dir: Path) -> Path:
     Creates or updates the markdown file for a person and creates symlinks.
     """
     person_dir.mkdir(parents=True, exist_ok=True)
-    person_file = person_dir / f"{slugify(person.name)}.md"
+    person_file = person_dir / f"{slugify(str(person.name) if person.name else person.slug)}.md"
 
     # Use the model's save method which handles safe_dump and index sync
     person.save(person_file, base_dir=person_dir.parent)
 
     # --- Create Symlinks ---
     if person.company_name:
-        company_slug = slugify(person.company_name)
+        company_slug = slugify(str(person.company_name))
         company_dir = paths.companies.path / company_slug
 
         if company_dir.exists():

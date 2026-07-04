@@ -1,4 +1,4 @@
-from typing import Any, Optional, Union, TYPE_CHECKING
+from typing import Any, Literal, Optional, TYPE_CHECKING, overload
 from .local_file_queue import LocalFileQueue
 from .sqs_queue import SQSQueue
 from .scrape_sqs_queue import ScrapeSQSQueue
@@ -13,21 +13,43 @@ import logging
 
 logger = logging.getLogger(__name__)
 
+
+# FilesystemTileQueue is the one genuine oddball: no poll(), push() takes a
+# Path (not a task), and claiming is done via claim_tile() instead of
+# ack()/nack(). It does not (and should not) satisfy CampaignQueueProtocol,
+# so it gets its own overload rather than joining the shared union below.
+# mypy flags these two overloads as "overlapping" because queue_type: str in
+# the second overload technically accepts the tile literals too — but overload
+# resolution always tries this (keyword-only, more specific) one first, so
+# real call sites resolve correctly; the overlap is a false positive here.
+@overload
+def get_queue_manager(  # type: ignore[overload-overlap]
+    queue_name: str,
+    use_cloud: bool = False,
+    *,
+    queue_type: Literal["tile", "map-tile", "tile-queue"],
+    campaign_name: Optional[str] = None,
+    s3_client: Optional[Any] = None,
+) -> "FilesystemTileQueue": ...
+
+
+@overload
 def get_queue_manager(
     queue_name: str,
     use_cloud: bool = False,
     queue_type: str = "enrichment",
     campaign_name: Optional[str] = None,
     s3_client: Optional[Any] = None,
-) -> Union[
-    "CampaignQueueProtocol[Any]",
-    "FilesystemTileQueue",
-    LocalFileQueue,
-    SQSQueue,
-    ScrapeSQSQueue,
-    GmItemSQSQueue,
-    CommandSQSQueue,
-]:
+) -> "CampaignQueueProtocol[Any]": ...
+
+
+def get_queue_manager(
+    queue_name: str,
+    use_cloud: bool = False,
+    queue_type: str = "enrichment",
+    campaign_name: Optional[str] = None,
+    s3_client: Optional[Any] = None,
+) -> Any:
     """
     Factory to return the appropriate QueueManager.
     """

@@ -49,7 +49,7 @@ class GoogleMapsCompiler(BaseCompiler):
         # Name: Prioritize Google Maps name if current name is a slug/domain/junk/generic
         gm_name = gm_data.get("Name") or gm_data.get("name")
         if gm_name and company.name != gm_name:
-            current_name = company.name
+            current_name = str(company.name) if company.name else ""
             is_slug_based = current_name == company.slug or (company.domain and current_name == company.domain)
             is_generic = current_name in ["N/A", "Home", "Flooring Contractor", "Flooring", "Contractor", "Gmail", "Currently.com", "403 Forbidden", "404 Not Found", "Facebook", "Instagram", "dot.cards"]
             is_domain_like = "." in current_name and " " not in current_name

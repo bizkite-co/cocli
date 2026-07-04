@@ -612,6 +612,7 @@ class OperationService:
                     created = 0
                     limit = params.get("limit")
                     from cocli.models.companies.company import Company
+                    from cocli.models.company_name import CompanyName
                     from cocli.models.campaigns.queues.to_call import ToCallTask
                     tasks_to_save = []
 
@@ -656,15 +657,15 @@ class OperationService:
                                 from cocli.core.utils import create_company_files
 
                                 company_name = (
-                                    p.name.strip("\"'")
+                                    str(p.name).strip("\"'")
                                     if p.name
                                     else p.slug.replace("-", " ").title()
                                 )
                                 new_company = Company(
-                                    name=company_name,
+                                    name=CompanyName(company_name),
                                     slug=p.slug,
-                                    phone_1=p.phone_number,  # type: ignore[arg-type]
-                                    phone_number=p.phone_number,  # type: ignore[arg-type]
+                                    phone_1=p.phone_number,
+                                    phone_number=p.phone_number,
                                     average_rating=p.average_rating,
                                     reviews_count=p.reviews_count,
                                     street_address=p.street_address,

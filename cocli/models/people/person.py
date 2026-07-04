@@ -7,6 +7,8 @@ import yaml
 from pydantic import BaseModel, Field, ValidationError
 from ..email_address import EmailAddress
 from ..phone import OptionalPhone
+from ..company_name import OptionalCompanyName
+from ..company_address import OptionalCompanyAddress
 from ..campaigns.indexes.email import EmailEntry
 from ...core.paths import paths
 from ...core.ordinant import CollectionName
@@ -16,16 +18,16 @@ from ...core.email_index_manager import EmailIndexManager
 logger = logging.getLogger(__name__)
 
 class Person(BaseModel):
-    name: str
+    name: OptionalCompanyName = None
     email: Optional[EmailAddress] = None
     phone: OptionalPhone = None
-    company_name: Optional[str] = None  # Added to link person to company
+    company_name: OptionalCompanyName = None  # Added to link person to company
     role: Optional[str] = None
     tags: list[str] = Field(default_factory=list)
     slug: str # Changed from Optional[str] to str
 
-    full_address: Optional[str] = None
-    street_address: Optional[str] = None
+    full_address: OptionalCompanyAddress = None
+    street_address: OptionalCompanyAddress = None
     city: Optional[str] = None
     state: Optional[str] = None
     zip_code: Optional[str] = None
@@ -118,7 +120,7 @@ class Person(BaseModel):
             
             person_dir.mkdir(parents=True, exist_ok=True)
             from ...core.text_utils import slugify
-            person_file = person_dir / f"{slugify(self.name)}.md"
+            person_file = person_dir / f"{slugify(str(self.name) if self.name else 'unnamed')}.md"
 
         # We don't want to save the description/content in YAML if it's large
         data = self.model_dump(exclude_none=True)

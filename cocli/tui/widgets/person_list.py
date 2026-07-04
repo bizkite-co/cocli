@@ -106,7 +106,8 @@ class PersonList(Screen[None]):
             list_view = self.query_one("#person_list_view", ListView)
             list_view.clear()
             for item in self.filtered_fz_items[:20]:
-                list_view.append(ListItem(Label(item.name), name=item.name))
+                item_name = str(item.name) if item.name else ""
+                list_view.append(ListItem(Label(item_name), name=item_name))
             
             if len(self.filtered_fz_items) > 0:
                 list_view.index = 0

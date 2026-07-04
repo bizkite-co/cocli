@@ -1,6 +1,8 @@
-from pydantic import BaseModel, BeforeValidator
-from typing import Optional, List, Any, Annotated
+from pydantic import BaseModel
+from typing import Optional, List, Any
 from .phone import OptionalPhone
+from .company_name import OptionalCompanyName
+from .company_address import OptionalCompanyAddress
 
 def strip_quotes(v: Any) -> str:
     if isinstance(v, str):
@@ -13,18 +15,18 @@ def strip_quotes(v: Any) -> str:
 
 class SearchResult(BaseModel):
     type: str
-    name: Annotated[str, BeforeValidator(strip_quotes)]
+    name: OptionalCompanyName = None
     tags: List[str] = []
     display: str
     slug: Optional[str] = None
     domain: Optional[str] = None
     email: Optional[str] = None
     phone_number: OptionalPhone = None
-    company_name: Optional[str] = None
+    company_name: OptionalCompanyName = None
     unique_id: str
     average_rating: Optional[float] = None
     reviews_count: Optional[int] = None
-    street_address: Optional[str] = None
+    street_address: OptionalCompanyAddress = None
     city: Optional[str] = None
     state: Optional[str] = None
     zip: Optional[str] = None

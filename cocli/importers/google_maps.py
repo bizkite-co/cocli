@@ -91,7 +91,7 @@ def google_maps(filepath: Path, debug: bool = False) -> None:
 
                     # Construct company_dir
                     companies_base_dir = get_companies_dir()
-                    company_slug = slugify(company.name)
+                    company_slug = slugify(str(company.name) if company.name else company.slug)
                     company_dir = companies_base_dir / company_slug
 
                     # Pass the validated object to our core function

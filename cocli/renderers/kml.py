@@ -47,7 +47,7 @@ def render_kml_for_campaign(campaign_name: str, output_dir: Optional[Path] = Non
     people_by_company_slug: Dict[str, List[Person]] = {}
     for person_obj in Person.get_all(): # Person.get_all() is an iterator
         if person_obj.company_name:
-            company_slug = slugify(person_obj.company_name)
+            company_slug = slugify(str(person_obj.company_name))
             if company_slug not in people_by_company_slug:
                 people_by_company_slug[company_slug] = []
             people_by_company_slug[company_slug].append(person_obj)
@@ -99,11 +99,11 @@ def render_kml_for_campaign(campaign_name: str, output_dir: Optional[Path] = Non
         
         if not geocode_data:
             # Determine the best address to use for geocoding
-            address_to_geocode = None
+            address_to_geocode: Optional[str] = None
             if associated_person and associated_person.full_address:
-                address_to_geocode = associated_person.full_address
+                address_to_geocode = str(associated_person.full_address)
             elif company.full_address:
-                address_to_geocode = company.full_address
+                address_to_geocode = str(company.full_address)
             elif associated_person and associated_person.zip_code:
                 address_to_geocode = associated_person.zip_code
             elif company.zip_code:
@@ -174,11 +174,11 @@ def render_kml_for_campaign(campaign_name: str, output_dir: Optional[Path] = Non
             if website_url:
                 description_parts.append(f"Website: <a href=\"http://{website_url}\">{website_url}</a>")
             
-            display_address = None
+            display_address: Optional[str] = None
             if associated_person and associated_person.full_address:
-                display_address = associated_person.full_address
+                display_address = str(associated_person.full_address)
             elif company.full_address:
-                display_address = company.full_address
+                display_address = str(company.full_address)
             elif geocode_data.address:
                 display_address = geocode_data.address
             elif geocode_data.city and geocode_data.state:

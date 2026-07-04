@@ -12,6 +12,9 @@ from cocli.core.cache import get_cache_path, CACHE_FILE_NAME
 from cocli.core.config import get_campaign
 from cocli.core.exclusions import ExclusionManager
 from cocli.models.search import SearchResult
+from cocli.models.company_name import CompanyName
+from cocli.models.company_address import CompanyAddress
+from cocli.models.phone import PhoneNumber
 from cocli.utils.duckdb_utils import load_usv_to_duckdb
 from cocli.models.campaigns.indexes.google_maps_place import GoogleMapsPlace
 
@@ -469,16 +472,16 @@ def get_fuzzy_search_results(
                     SearchResult(
                         unique_id=slug,
                         type=str(r[0]),
-                        name=str(r[1]),
+                        name=CompanyName(str(r[1])) if r[1] else None,
                         slug=slug,
                         domain=domain,
                         email=str(r[4]) if r[4] else None,
-                        phone_number=str(r[5]) if r[5] else None,
+                        phone_number=PhoneNumber.validate(str(r[5])) if r[5] else None,
                         tags=cast(List[str], r[6]) if r[6] else [],
                         display=str(r[7]),
                         average_rating=float(r[8]) if r[8] else None,
                         reviews_count=int(r[9]) if r[9] else None,
-                        street_address=str(r[10]) if r[10] else None,
+                        street_address=CompanyAddress(str(r[10])) if r[10] else None,
                         city=str(r[11]) if r[11] else None,
                         state=str(r[12]) if r[12] else None,
                         zip=str(r[13]) if r[13] else None,

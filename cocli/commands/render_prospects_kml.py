@@ -49,9 +49,10 @@ def render_prospects_kml(
     people_by_company_name: Dict[str, List[Person]] = {}
     for person in Person.get_all():
         if person.company_name:
-            if person.company_name not in people_by_company_name:
-                people_by_company_name[person.company_name] = []
-            people_by_company_name[person.company_name].append(person)
+            company_name_key = str(person.company_name)
+            if company_name_key not in people_by_company_name:
+                people_by_company_name[company_name_key] = []
+            people_by_company_name[company_name_key].append(person)
 
     prospects = manager.read_all_prospects()
     for prospect in prospects:
@@ -88,7 +89,7 @@ def render_prospects_kml(
         # At this point, 'company' is guaranteed to be a Company object
 
         # Get associated People
-        associated_people: List[Person] = people_by_company_name.get(company.name, [])
+        associated_people: List[Person] = people_by_company_name.get(str(company.name) if company.name else "", [])
 
         placemark = kml.newpoint(name=name)
         placemark.coords = [(lon, lat)]

@@ -28,7 +28,7 @@ class PersonDetail(Screen[None]):
     def on_mount(self) -> None:
         self.person = Person.get(self.person_slug)
         if self.person:
-            self.sub_title = self.person.name
+            self.sub_title = str(self.person.name) if self.person.name else ""
         else:
             self.sub_title = "Person Not Found"
         self.query_one(Markdown).update(self._get_person_description())
