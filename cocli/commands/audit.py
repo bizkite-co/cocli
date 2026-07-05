@@ -565,17 +565,24 @@ _STALE_THRESHOLD_S = {"gm-list": 600.0, "gm-details": 120.0, "enrichment": 120.0
 _DEFAULT_STALE_THRESHOLD_S = 120.0
 
 _CLUSTER_AUDIT_REMOTE_SCRIPT = """
-LOGS=$(docker logs cocli-supervisor 2>&1)
+# Stream docker logs to a file on disk rather than into a shell variable -
+# on a node under heavy memory pressure, `LOGS=$(docker logs ...)` has to
+# materialize the *entire* log history as one in-memory string before any
+# grep can run, and that allocation can silently fail/truncate exactly when
+# the node is unhealthy (i.e. exactly when this audit matters most). A file
+# plus streaming grep/tail never holds more than one line in memory.
+LOGFILE=$(mktemp)
+docker logs cocli-supervisor > "$LOGFILE" 2>&1
 docker inspect -f '{{range .Config.Env}}{{println .}}{{end}}' cocli-supervisor 2>/dev/null | grep -E '^CAMPAIGN_NAME=' || true
 echo '@@WORKERS@@'
-echo "$LOGS" | grep -E 'Starting worker:' | tail -30 || true
+grep -E 'Starting worker:' "$LOGFILE" | tail -30 || true
 echo '@@ERRORS@@'
 docker logs --since 30m cocli-supervisor 2>&1 | grep -icE 'error|exception|traceback|denied' || true
 echo '@@LASTLOG@@'
-echo "$LOGS" | tail -1 || true
+tail -1 "$LOGFILE" || true
 echo '@@TYPE_ACTIVITY@@'
 for t in gm-list gm-details enrichment; do
-  echo "$t|||$(echo "$LOGS" | grep -i "$t" | tail -1)"
+  echo "$t|||$(grep -i "$t" "$LOGFILE" | tail -1)"
 done
 echo '@@QUEUES@@'
 for q in gm-list gm-details enrichment; do
@@ -584,6 +591,7 @@ for q in gm-list gm-details enrichment; do
     echo "$q/$s=$c"
   done
 done
+rm -f "$LOGFILE"
 """.strip()
 
 _WORKER_LINE_RE = re.compile(
