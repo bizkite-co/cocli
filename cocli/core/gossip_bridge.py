@@ -335,6 +335,8 @@ class GossipBridge:
 
             # 3. Handle Configuration Updates
             if msg.startswith("C"):
+                from .config import get_campaign
+
                 c_record = ConfigDatagram.from_usv(msg)
                 if not c_record:
                     return
@@ -342,11 +344,23 @@ class GossipBridge:
                 # ENVIRONMENT FILTER
                 if c_record.environment != current_env:
                     return
-                
+
                 # Ignore if not for us (and not a broadcast)
                 if c_record.node_id != self.node_id and c_record.node_id != "*":
                     return
-                
+
+                # CAMPAIGN FILTER - a node running one campaign's container must
+                # never accept another campaign's scaling broadcast just because
+                # it shares an environment/LAN (e.g. a Pi mid-reassignment
+                # between campaigns). Environment alone isn't a strong enough
+                # boundary since two campaigns can both run in PROD.
+                my_campaign = os.getenv("CAMPAIGN_NAME") or get_campaign()
+                if my_campaign and c_record.campaign_name != my_campaign:
+                    logger.debug(
+                        f"Discarding cross-campaign gossip config: {c_record.campaign_name} != {my_campaign}"
+                    )
+                    return
+
                 logger.info(f"Received remote config update from gossip ({c_record.campaign_name}).")
                 
                 # Save update to a dedicated location for WorkerService to pick up

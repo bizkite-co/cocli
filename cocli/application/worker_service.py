@@ -4,6 +4,7 @@ import asyncio
 import json
 import logging
 import os
+import time
 from datetime import datetime, UTC
 from typing import Any, Dict, List, Optional, Set
 
@@ -28,6 +29,10 @@ class WorkerService:
         self.role = role
         self._load_config()
         self.worker_tasks: List[asyncio.Task[Any]] = []
+        self.child_workers: List["WorkerService"] = []
+        self.content_type: Optional[str] = None
+        self.worker_count: int = 1
+        self.last_activity_ts: Optional[float] = None
         self._running = False
 
     def _load_config(self) -> None:
@@ -96,9 +101,7 @@ class WorkerService:
         s3_client = self.get_s3_client()
         while self._running:
             try:
-                # We pass empty dicts because WorkerService isn't the supervisor, 
-                # but it still needs to report its own existence.
-                await self._push_supervisor_heartbeat(s3_client, {}, {}, {})
+                await self._push_supervisor_heartbeat(s3_client)
             except Exception as e:
                 logger.error(f"Error in heartbeat loop: {e}")
             await asyncio.sleep(interval)
@@ -207,6 +210,7 @@ class WorkerService:
         from ..core.queue.factory import get_queue_manager
 
         while True:
+            self.last_activity_ts = time.time()
             await asyncio.sleep(0.1)
             try:
                 if not browser.is_connected():
@@ -309,6 +313,7 @@ class WorkerService:
         once: bool,
     ) -> None:
         while True:
+            self.last_activity_ts = time.time()
             if not context.browser or not context.browser.is_connected():
                 break
 
@@ -361,6 +366,7 @@ class WorkerService:
             return
 
         while True:
+            self.last_activity_ts = time.time()
             if not context.browser or not context.browser.is_connected():
                 logger.error("Browser is disconnected. Breaking task loop to restart.")
                 break
@@ -448,23 +454,47 @@ class WorkerService:
             await asyncio.gather(*tasks)
             await browser.close()
 
-    async def _push_supervisor_heartbeat(self, s3_client: Any, s: Dict[int, asyncio.Task[Any]], d: Dict[int, asyncio.Task[Any]], e: Dict[int, asyncio.Task[Any]]) -> None:
+    async def _push_supervisor_heartbeat(self, s3_client: Any) -> None:
         import psutil
         from ..core.paths import paths
         from ..models.wal.record import HeartbeatDatagram
         from ..core.gossip_bridge import bridge
-        
+        from ..core.logging_config import get_recent_error_count
+
         cpu_usage = psutil.cpu_percent()
         mem_usage = psutil.virtual_memory().percent
-        worker_count = len(s) + len(d) + len(e)
-        
+
+        # Real per-content-type designation/activity from the child workers this
+        # orchestrator actually launched (run_orchestrated_workers populates
+        # self.child_workers) - previously this was always {} regardless of what
+        # was running, which is why the heartbeat's worker counts were always 0.
+        designation: Dict[str, int] = {}
+        last_activity: Dict[str, str] = {}
+        for child in self.child_workers:
+            if not child.content_type:
+                continue
+            designation[child.content_type] = designation.get(child.content_type, 0) + child.worker_count
+            if child.last_activity_ts is not None:
+                ts_iso = datetime.fromtimestamp(child.last_activity_ts, UTC).isoformat()
+                if child.content_type not in last_activity or ts_iso > last_activity[child.content_type]:
+                    last_activity[child.content_type] = ts_iso
+
+        worker_count = sum(designation.values())
+
         stats = {
-            "timestamp": datetime.now(UTC).isoformat(), 
-            "hostname": self.processed_by, 
-            "system": {"cpu": cpu_usage, "mem": mem_usage}, 
-            "workers": {"s": len(s), "d": len(d), "e": len(e)}
+            "timestamp": datetime.now(UTC).isoformat(),
+            "hostname": self.processed_by,
+            "system": {"cpu": cpu_usage, "mem": mem_usage},
+            "workers": {
+                "s": designation.get("gm-list", 0),
+                "d": designation.get("gm-details", 0),
+                "e": designation.get("enrichment", 0),
+            },
+            "designation": designation,
+            "last_activity": last_activity,
+            "error_count_30m": get_recent_error_count(1800),
         }
-        
+
         # 1. Durability Tier (S3)
         try:
             s3_client.put_object(Bucket=self.bucket_name, Key=paths.s3.heartbeat(self.processed_by), Body=json.dumps(stats), ContentType="application/json")
@@ -492,13 +522,10 @@ class WorkerService:
     async def run_supervisor(self, headless: bool, debug: bool, interval: int) -> None:
         async with async_playwright() as p:
             browser = await self._launch_browser(p, headless)
-            s_tasks: Dict[int, asyncio.Task[Any]] = {}
-            d_tasks: Dict[int, asyncio.Task[Any]] = {}
-            e_tasks: Dict[int, asyncio.Task[Any]] = {}
             s3_client = self.get_s3_client()
             while True:
                 try:
-                    await self._push_supervisor_heartbeat(s3_client, s_tasks, d_tasks, e_tasks)
+                    await self._push_supervisor_heartbeat(s3_client)
                 except Exception as ex:
                     logger.error(f"Supervisor error: {ex}")
                 await asyncio.sleep(interval)
@@ -540,6 +567,9 @@ class WorkerService:
                 continue
             logger.info(f"Starting worker: {wd.name} (type={wd.content_type}, workers={wd.workers})")
             worker_service = WorkerService(campaign_name=self.campaign_name, role=wd.role, processed_by=f"{self.processed_by}-{wd.name}")
+            worker_service.content_type = wd.content_type
+            worker_service.worker_count = wd.workers
+            self.child_workers.append(worker_service)
             if wd.content_type == "gm-list":
                 logger.info("  → Launching run_worker for gm-list")
                 coro = worker_service.run_worker(headless=headless, debug=debug, once=False, workers=wd.workers)

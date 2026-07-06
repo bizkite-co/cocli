@@ -659,18 +659,162 @@ def _format_age(seconds: float) -> str:
 @app.command(name="cluster")
 def audit_cluster(
     campaign: Optional[str] = typer.Option(None, "--campaign", "-c", help="Campaign name (defaults to current)."),
-    verbose: bool = typer.Option(False, "--verbose", "-v", help="Show recent error lines per node."),
+    verbose: bool = typer.Option(False, "--verbose", "-v", help="Show each node's raw heartbeat payload (or, with --live, recent log lines)."),
+    live: bool = typer.Option(
+        False,
+        "--live",
+        help="Fall back to live SSH+docker-logs polling instead of the fast S3 heartbeat fan-in. "
+        "Slow (opens an SSH connection per Pi) and can't see Fargate - use it to dig into a "
+        "specific node's actual logs when the heartbeat-based view looks wrong.",
+    ),
 ) -> None:
     """
     Audit cluster nodes: designation (content_type/workers), queue depths, and a
-    log-based health signal (recent errors + staleness), derived from live container logs.
+    health signal (recent errors + staleness). Reads from each node's S3 heartbeat
+    by default (fast, includes Fargate); pass --live for the old SSH+docker-logs path.
     """
     from ..core.config import get_campaign
-    from ..services.cluster_service import ClusterService
-    from rich.table import Table
-    import asyncio
 
     campaign_name = campaign or get_campaign() or "roadmap"
+
+    if live:
+        _audit_cluster_live(campaign_name, verbose)
+        return
+
+    _audit_cluster_from_heartbeats(campaign_name, verbose)
+
+
+def _audit_cluster_from_heartbeats(campaign_name: str, verbose: bool) -> None:
+    """Fast path: read node health from each node's S3 heartbeat (status/{host}.json)
+    instead of opening an SSH connection per node. Node enumeration comes from
+    whichever hostnames have a recent heartbeat, which is what makes Fargate show
+    up "for free" - it has no SSH endpoint but does write its own heartbeat.
+    """
+    import json
+    from datetime import datetime, timezone
+
+    from ..core.config import load_campaign_config
+    from ..core.reporting import get_boto3_session, get_data_bucket_name, get_s3_client
+
+    config = load_campaign_config(campaign_name)
+    bucket_name = get_data_bucket_name(config, campaign_name)
+    s3 = get_s3_client(session=get_boto3_session(config))
+
+    status_prefix = paths.s3.status_root
+    nodes: dict[str, dict[str, Any]] = {}
+    paginator = s3.get_paginator("list_objects_v2")
+    for page in paginator.paginate(Bucket=bucket_name, Prefix=status_prefix):
+        for obj in page.get("Contents", []):
+            key = obj["Key"]
+            if not key.endswith(".json"):
+                continue
+            hostname = key[len(status_prefix):-len(".json")]
+            # Real worker heartbeats are always a flat leaf file directly under
+            # status/ (paths.s3.heartbeat writes status/{hostname}.json). A
+            # nested path here (e.g. status/registry/<hash>.json) is something
+            # else entirely - observed in production to be stale Docker
+            # registry access-log debris, not a node - and would otherwise
+            # flood this table with dozens of irrelevant STALE rows.
+            if "/" in hostname:
+                continue
+            try:
+                body = s3.get_object(Bucket=bucket_name, Key=key)["Body"].read()
+                nodes[hostname] = json.loads(body)
+            except Exception:
+                continue
+
+    if not nodes:
+        console.print(f"[yellow]No heartbeats found under s3://{bucket_name}/{status_prefix}[/yellow]")
+        return
+
+    # Queue depths are campaign-wide (S3 is the coordination source of truth for
+    # gm-details/enrichment leases, and gm-list mirrors its mission tiles there
+    # too) rather than owned by any one node, so compute them once, not per-row.
+    queue_depths: dict[str, dict[str, int]] = {}
+    for q in _KNOWN_CONTENT_TYPES:
+        for status in ("pending", "completed", "failed"):
+            prefix = f"campaigns/{campaign_name}/queues/{q}/{status}/"
+            count = 0
+            for page in paginator.paginate(Bucket=bucket_name, Prefix=prefix):
+                count += page.get("KeyCount", len(page.get("Contents", [])))
+            queue_depths.setdefault(q, {})[status] = count
+
+    now = datetime.now(timezone.utc)
+
+    table = Table(title=f"Cluster Node Audit: {campaign_name}")
+    table.add_column("Node", style="cyan")
+    table.add_column("Designation", style="magenta")
+    table.add_column("Errors (30m)", justify="right")
+    table.add_column("Last Activity")
+    table.add_column("Health")
+
+    def _age(ts_raw: Any) -> Optional[float]:
+        """Age in seconds of a heartbeat timestamp, tolerating whatever shape
+        older/non-orchestrator heartbeat writers happen to have left in S3:
+        naive (no tzinfo) ISO strings, raw epoch numbers, missing/null, etc.
+        Any node's malformed timestamp should degrade that node to "unknown
+        activity", not crash the whole audit for every other node.
+        """
+        if ts_raw is None:
+            return None
+        try:
+            if isinstance(ts_raw, (int, float)):
+                ts = datetime.fromtimestamp(ts_raw, tz=timezone.utc)
+            else:
+                ts = datetime.fromisoformat(str(ts_raw))
+                if ts.tzinfo is None:
+                    ts = ts.replace(tzinfo=timezone.utc)
+        except (ValueError, OSError, OverflowError):
+            return None
+        return (now - ts).total_seconds()
+
+    for hostname in sorted(nodes):
+        payload = nodes[hostname]
+        try:
+            designation: dict[str, int] = payload.get("designation") or {}
+            last_activity: dict[str, str] = payload.get("last_activity") or {}
+            error_count = int(payload.get("error_count_30m", 0))
+            last_log_age = _age(payload.get("timestamp"))
+
+            stale_content_types = [
+                ct for ct in designation
+                if (age := _age(last_activity.get(ct))) is None or age > _STALE_THRESHOLD_S.get(ct, _DEFAULT_STALE_THRESHOLD_S)
+            ]
+
+            designation_str = "\n".join(f"{ct}: {n}" for ct, n in sorted(designation.items())) if designation else "-"
+            activity_str = _format_age(last_log_age) if last_log_age is not None else "-"
+            health = _node_health_verdict(True, last_log_age, error_count, stale_content_types)
+        except Exception as e:
+            table.add_row(hostname, "-", "-", "-", f"[red]MALFORMED ({e})[/red]")
+            continue
+
+        table.add_row(hostname, designation_str, str(error_count), activity_str, health)
+
+    console.print(table)
+
+    queue_table = Table(title=f"Campaign Queue Depths: {campaign_name}")
+    queue_table.add_column("Queue", style="cyan")
+    queue_table.add_column("Pending", justify="right")
+    queue_table.add_column("Completed", justify="right")
+    queue_table.add_column("Failed", justify="right")
+    for q in _KNOWN_CONTENT_TYPES:
+        depths = queue_depths.get(q, {})
+        queue_table.add_row(q, str(depths.get("pending", 0)), str(depths.get("completed", 0)), str(depths.get("failed", 0)))
+    console.print(queue_table)
+
+    if verbose:
+        for hostname in sorted(nodes):
+            console.print(f"[dim]{hostname} heartbeat:[/dim] {json.dumps(nodes[hostname])}")
+
+
+def _audit_cluster_live(campaign_name: str, verbose: bool) -> None:
+    """Legacy path: opens a live SSH connection per node and greps `docker logs`.
+    Slow and can't see Fargate (no SSH endpoint) - kept as an opt-in `--live`
+    fallback for deep debugging a specific node's actual log output.
+    """
+    from ..services.cluster_service import ClusterService
+    import asyncio
+
     service = ClusterService(campaign_name)
     remote_script = _CLUSTER_AUDIT_REMOTE_SCRIPT.replace("__CAMPAIGN__", campaign_name)
 

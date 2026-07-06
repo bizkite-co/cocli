@@ -1,9 +1,45 @@
 
+import collections
 import logging
 import sys
+import time
 from datetime import datetime
+from typing import Deque, Optional
 
 from pathlib import Path
+
+
+class RollingErrorCounter(logging.Handler):
+    """Counts ERROR+ log records seen in a trailing time window.
+
+    Replaces `docker logs --since 30m | grep -icE 'error|exception|...'` with an
+    in-process count workers can report on their own heartbeat, instead of a
+    remote log-grep the audit tool has to poll for.
+    """
+
+    def __init__(self, level: int = logging.ERROR) -> None:
+        super().__init__(level=level)
+        self._timestamps: Deque[float] = collections.deque()
+
+    def emit(self, record: logging.LogRecord) -> None:
+        self._timestamps.append(time.time())
+
+    def count_since(self, seconds: float) -> int:
+        cutoff = time.time() - seconds
+        while self._timestamps and self._timestamps[0] < cutoff:
+            self._timestamps.popleft()
+        return len(self._timestamps)
+
+
+_error_counter: Optional[RollingErrorCounter] = None
+
+
+def get_recent_error_count(window_s: float = 1800.0) -> int:
+    """Number of ERROR+ log records emitted in the last `window_s` seconds."""
+    if _error_counter is None:
+        return 0
+    return _error_counter.count_since(window_s)
+
 
 def setup_file_logging(command_name: str, console_level: int = logging.INFO, file_level: int = logging.DEBUG, disable_console: bool = False) -> None:
     """
@@ -38,6 +74,10 @@ def setup_file_logging(command_name: str, console_level: int = logging.INFO, fil
     file_formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s', datefmt='%Y-%m-%d %H:%M:%S %z')
     file_handler.setFormatter(file_formatter)
     root_logger.addHandler(file_handler)
+
+    global _error_counter
+    _error_counter = RollingErrorCounter()
+    root_logger.addHandler(_error_counter)
 
     if not disable_console:
         # Docker captures both stdout and stderr. By using stderr for all console logs,
