@@ -43,7 +43,6 @@ dependencies = [
     "watchdog>=6.0.0",
     "wasmtime>=29.0.0",
     "onepassword-sdk",
-    "textual>=6.4.0",
     "google-genai",
     "faster-whisper",
     "ctranslate2",
@@ -65,9 +64,7 @@ cocli = "cocli.main:app"
 [project.optional-dependencies]
 full = [
     "pandas",
-    "textual",
-    "selenium",
-    "webdriver-manager",
+    "textual>=6.4.0",
 ]
 dev = [
     "pytest",
