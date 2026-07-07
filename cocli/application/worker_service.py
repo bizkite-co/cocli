@@ -113,22 +113,33 @@ class WorkerService:
         for task in self.worker_tasks:
             if not task.done():
                 task.cancel()
-        
+
         if self.worker_tasks:
             await asyncio.gather(*self.worker_tasks, return_exceptions=True)
             self.worker_tasks = []
-        
+
+        # The workers cancelled above are about to be replaced wholesale -
+        # drop their child_workers entries too. Production incident
+        # (2026-07-07): this list used to only ever get populated at
+        # startup by run_orchestrated_workers(); _rebalance_workers()
+        # replaced the actual running workers without touching it, so the
+        # heartbeat/audit kept reporting a frozen, aging last_activity_ts
+        # for content types a rebalance had already replaced (false STALE
+        # verdicts) and never showed content types a rebalance added fresh
+        # (invisible designation) - see incident ticket for full evidence.
+        self.child_workers = []
+
         # Resolve Host-Specific Worker Definitions
         from ..models.campaigns.worker_config import WorkerDefinition
         hostname = self.processed_by.split("-")[0] # Strip previous worker suffixes if present
-        
+
         scaling = self.config.get("prospecting", {}).get("scaling", {})
         node_scaling = {}
         for h, s in scaling.items():
             if h.startswith(hostname):
                 node_scaling = s
                 break
-        
+
         if not node_scaling:
             logger.warning(f"No scaling config found for host: {hostname}")
             return
@@ -146,19 +157,41 @@ class WorkerService:
                     workers=count,
                     iot_profile=default_iot_profile
                 ))
-        
-        # Restart
+
+        # Google Maps conclusively blocks Fargate/data-center IP ranges (see
+        # CLAUDE.md "Known Issues") - the same hard rule
+        # run_orchestrated_workers() enforces at startup; a hot-reload must
+        # not be able to bypass it.
+        running_in_fargate = bool(os.getenv("COCLI_RUNNING_IN_FARGATE"))
+
+        # Restart: mirror run_orchestrated_workers()'s pattern of a
+        # dedicated child WorkerService per content type, registered in
+        # child_workers, so the heartbeat's designation/last-activity
+        # aggregation sees these workers the same way it sees the ones
+        # created at startup.
         for wd in worker_defs:
+            if running_in_fargate and wd.content_type in ("gm-list", "gm-details"):
+                logger.error(
+                    f"  ✗ Refusing to launch '{wd.content_type}' worker '{wd.name}' on Fargate "
+                    "- Google Maps blocks Fargate IPs (see CLAUDE.md). Check config.toml."
+                )
+                continue
+
+            worker_service = WorkerService(campaign_name=self.campaign_name, role=wd.role, processed_by=f"{self.processed_by}-{wd.name}")
+            worker_service.content_type = wd.content_type
+            worker_service.worker_count = wd.workers
+            self.child_workers.append(worker_service)
+
             if wd.content_type == "gm-list":
-                coro = self.run_worker(headless=True, debug=False, once=False, workers=wd.workers)
+                coro = worker_service.run_worker(headless=True, debug=False, once=False, workers=wd.workers)
             elif wd.content_type == "gm-details":
-                coro = self.run_details_worker(headless=True, debug=False, once=False, workers=wd.workers, role=wd.role)
+                coro = worker_service.run_details_worker(headless=True, debug=False, once=False, workers=wd.workers, role=wd.role)
             elif wd.content_type == "enrichment":
-                coro = self.run_enrichment_worker(headless=True, debug=False, once=False, workers=wd.workers)
+                coro = worker_service.run_enrichment_worker(headless=True, debug=False, once=False, workers=wd.workers)
             else:
                 continue
             self.worker_tasks.append(asyncio.create_task(coro))
-        
+
         logger.info(f"Rebalance complete. Now running {len(self.worker_tasks)} worker tasks.")
 
     def get_s3_client(self) -> Any:

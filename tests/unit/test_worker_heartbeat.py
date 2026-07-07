@@ -128,3 +128,54 @@ async def test_run_orchestrated_workers_survives_rebalance_mid_flight(tmp_path: 
         for t in supervisor.worker_tasks:
             t.cancel()
         await asyncio.wait_for(orchestrator_task, timeout=5)
+
+
+@pytest.mark.asyncio
+async def test_rebalance_workers_registers_child_workers(tmp_path: Path) -> None:
+    """
+    Regression test for a real production incident (2026-07-07): audit
+    designation showed only "gm-list: 2" for a node that was actually also
+    running gm-details (invisible to monitoring), and reported a false
+    STALE verdict for gm-list despite it completing tasks every 1-5
+    minutes. Root cause: _rebalance_workers() replaced the running workers
+    by calling the run coroutine directly on `self` instead of a dedicated
+    child WorkerService registered in self.child_workers - the only thing
+    _push_supervisor_heartbeat's designation/last-activity aggregation
+    reads. Fixed to mirror run_orchestrated_workers()'s existing pattern.
+    """
+    fake_config = {
+        "prospecting": {
+            "scaling": {
+                "testnode": {"gm-list": 1, "gm-details": 1, "enrichment": 0}
+            }
+        },
+        "aws": {"iot_profiles": ["test-iot"]},
+    }
+
+    with patch("cocli.core.paths.paths.root", tmp_path), patch(
+        "cocli.application.worker_service.load_campaign_config", return_value=fake_config
+    ):
+        supervisor = WorkerService(campaign_name="test_campaign", processed_by="testnode")
+
+    async def fake_run_worker(self: WorkerService, *args: object, **kwargs: object) -> None:
+        await asyncio.sleep(100)
+
+    async def fake_run_details_worker(self: WorkerService, *args: object, **kwargs: object) -> None:
+        await asyncio.sleep(100)
+
+    with patch("cocli.application.worker_service.load_campaign_config", return_value=fake_config), patch.object(
+        WorkerService, "run_worker", fake_run_worker
+    ), patch.object(WorkerService, "run_details_worker", fake_run_details_worker):
+        await supervisor._rebalance_workers()
+
+        assert len(supervisor.child_workers) == 2, (
+            "expected one child WorkerService per non-zero content type "
+            f"(gm-list, gm-details), got {len(supervisor.child_workers)}"
+        )
+        content_types = {w.content_type for w in supervisor.child_workers}
+        assert content_types == {"gm-list", "gm-details"}
+        assert len(supervisor.worker_tasks) == 2
+
+        for t in supervisor.worker_tasks:
+            t.cancel()
+        await asyncio.gather(*supervisor.worker_tasks, return_exceptions=True)
