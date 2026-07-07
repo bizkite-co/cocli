@@ -29,39 +29,42 @@ class ClusterService:
         self.campaign_name = campaign_name
         self.config = load_campaign_config(campaign_name)
 
-        # 1. Load Global Config (The Authority for Node List)
-        from ..core.config import load_global_config
+        # 1. Prefer this campaign's OWN [cluster] config over the global one.
+        # The global file is a single block with no campaign scoping at all -
+        # if it's ever populated (e.g. hand-edited for one campaign's hub),
+        # it silently overrides every other campaign's topology too, since
+        # ClusterService("other-campaign") reads the exact same block.
+        # Confirmed live: setting turboship's registry_host there redirected
+        # a `deploy-hotfix --campaign roadmap` run onto turboship's hub and
+        # node list instead of roadmap's own.
+        cluster_data = self.config.get("cluster", {})
+        if not cluster_data.get("nodes"):
+            from ..core.config import load_global_config
 
-        global_config = load_global_config()
-        cluster_data = global_config.get("cluster", {})
+            global_config = load_global_config()
+            cluster_data = global_config.get("cluster", {})
+
         self.cluster_config = CampaignClusterConfig(**cluster_data)
 
-        # 2. Resolve Registry Host and IP
-        self.registry_host = cluster_data.get("registry_host", "cocli5x1.pi")
+        # 2. Resolve Registry Host - no cross-campaign hardcoded default here;
+        # if nothing specifies one, fall through to the first node the
+        # scaling-based fallback below produces.
+        self.registry_host: str = cluster_data.get("registry_host") or ""
 
-        # Use IP for registry URL to avoid DNS issues on spokes
-        # We need to resolve the hostname to IP using Tailscale if possible
-        registry_node = next(
-            (n for n in self.cluster_config.nodes if n.hostname == self.registry_host),
-            None,
-        )
-        self.registry_ip = (
-            registry_node.ip_address if registry_node else self.registry_host
-        )
-        self.registry_url = f"{self.registry_ip}:5000"
-
-        # 3. Fallback to prospecting.scaling ONLY if global node list is empty
+        # 3. Fallback to prospecting.scaling ONLY if the node list is still empty
         if not self.cluster_config.nodes:
             logger.info(
-                "Global node list empty, falling back to campaign scaling config."
+                "No cluster nodes configured for this campaign, falling back to campaign scaling config."
             )
             scaling = self.config.get("prospecting", {}).get("scaling", {})
             for host_key, workers_data in scaling.items():
-                host = (
-                    host_key
-                    if "." in host_key or host_key == "fargate"
-                    else f"{host_key}.pi"
-                )
+                # Nodes are reached over Tailscale by their bare machine name
+                # (e.g. "cocli5x1") - confirmed live, "cocli5x1.pi"/"cocli5x0.pi"
+                # don't resolve at all, while the bare names do. The old
+                # ".pi" suffix looks like a holdover from a pre-Tailscale mDNS
+                # setup; keep host_key as-is unless it's already a dotted
+                # hostname/IP.
+                host = host_key
 
                 # Create WorkerDefinitions from scaling data
                 node_workers = []
@@ -81,6 +84,22 @@ class ClusterService:
                     self.cluster_config.nodes.append(
                         PiNodeConfig(host=host, ip=None, workers=node_workers)
                     )
+
+        if not self.registry_host and self.cluster_config.nodes:
+            self.registry_host = self.cluster_config.nodes[0].hostname
+
+        # Use IP for registry URL to avoid DNS issues on spokes
+        # We need to resolve the hostname to IP using Tailscale if possible
+        registry_node = next(
+            (n for n in self.cluster_config.nodes if n.hostname == self.registry_host),
+            None,
+        )
+        self.registry_ip = (
+            registry_node.ip_address
+            if registry_node and registry_node.ip_address
+            else self.registry_host
+        )
+        self.registry_url = f"{self.registry_ip}:5000"
 
     def get_nodes(self) -> List[PiNodeConfig]:
         return self.cluster_config.nodes

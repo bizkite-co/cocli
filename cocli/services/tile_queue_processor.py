@@ -19,6 +19,8 @@ import logging
 from pathlib import Path
 from typing import List, Dict, Optional
 
+from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, TaskProgressColumn
+
 from ..core.queue.factory import get_queue_manager
 from ..core.paths import paths
 from ..models.campaigns.tile import TileRecord as TileQueueRecord
@@ -75,20 +77,30 @@ def process_tile_queue(
     scrape_tasks_created = 0
     errors = 0
 
-    # Walk through tile-queue/processing/{shard}/{lat}/{lon}/*.usv
+    # Collect tile file paths up front (respecting max_tiles) so progress has a known total.
     import os
+    tile_paths: List[Path] = []
     for root, dirs, files in os.walk(processing_dir):
-        if max_tiles and tiles_processed >= max_tiles:
-            break
-
         for filename in sorted(files):
-            if not filename.endswith(".usv"):
-                continue
+            if filename.endswith(".usv"):
+                tile_paths.append(Path(root) / filename)
+        if max_tiles and len(tile_paths) >= max_tiles:
+            break
+    if max_tiles:
+        tile_paths = tile_paths[:max_tiles]
 
-            if max_tiles and tiles_processed >= max_tiles:
-                break
+    with Progress(
+        SpinnerColumn(),
+        TextColumn("[progress.description]{task.description}"),
+        BarColumn(),
+        TaskProgressColumn(),
+    ) as progress:
+        progress_task = progress.add_task(
+            f"Processing tiles for {campaign_name}...", total=len(tile_paths)
+        )
 
-            tile_path = Path(root) / filename
+        for tile_path in tile_paths:
+            filename = tile_path.name
             rel_path = tile_path.relative_to(processing_dir)
 
             try:
@@ -108,9 +120,10 @@ def process_tile_queue(
                 if not tile_records:
                     logger.warning(f"Tile file has no records: {filename}")
                     errors += 1
+                    progress.advance(progress_task)
                     continue
 
-                logger.info(
+                logger.debug(
                     f"Processing tile: {filename} ({len(tile_records)} phrases)"
                 )
 
@@ -158,11 +171,12 @@ def process_tile_queue(
 
                         # Move (rename) the file
                         tile_path.rename(completed_path)
-                        logger.info(f"Completed tile: {filename}")
+                        logger.debug(f"Completed tile: {filename}")
 
                     except Exception as move_err:
                         logger.error(f"Error moving tile to completed: {move_err}")
                         errors += 1
+                        progress.advance(progress_task)
                         continue
 
                 tiles_processed += 1
@@ -170,7 +184,14 @@ def process_tile_queue(
             except Exception as e:
                 logger.error(f"Error processing tile {filename}: {e}")
                 errors += 1
+                progress.advance(progress_task)
                 continue
+
+            progress.update(
+                progress_task,
+                advance=1,
+                description=f"Processing tiles for {campaign_name}... ({scrape_tasks_created} tasks created)",
+            )
 
     # CRITICAL: Create datapackage.json for schema compliance
     # Describes all *.usv ScrapeTask files in gm-list/pending using glob pattern

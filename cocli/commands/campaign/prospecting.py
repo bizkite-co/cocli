@@ -903,7 +903,9 @@ def monitor_batch(
         # Remote execution on Hub
         import subprocess
 
-        hub = "cocli5x1.pi"
+        from cocli.services.cluster_service import ClusterService
+
+        hub = ClusterService(campaign_name).registry_host
         cmd = f"docker exec cocli-supervisor cocli campaign monitor-batch {campaign_name} --name {name}"
         if recent:
             cmd += " --recent"

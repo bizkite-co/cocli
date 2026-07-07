@@ -26,7 +26,11 @@ class USVReader:
 
     def __iter__(self) -> Iterator[List[str]]:
         for line in self._iterator:
-            clean_line = line.strip()
+            # NOTE: str.strip() treats \x1f (Unit Separator) as whitespace
+            # (Unicode bidi category "B"), so a bare .strip() silently
+            # drops a legitimately-empty trailing field before the split.
+            # Only strip \r (stray CRLF remnants) and \n.
+            clean_line = line.strip("\r\n")
             if clean_line:
                 yield clean_line.split(UNIT_SEP)
 

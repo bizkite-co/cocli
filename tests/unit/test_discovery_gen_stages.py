@@ -11,6 +11,7 @@ from pathlib import Path
 
 from cocli.commands.campaign.discovery_gen_stages import (
     generate_tiles,
+    _load_target_locations,
 )
 from cocli.models.campaigns.tiles import TileRecord
 
@@ -379,3 +380,46 @@ class TestFilterFrontier:
 
                 # All tasks should be in frontier if none have been scraped
                 assert len(frontier) == 2
+
+
+class TestLoadTargetLocations:
+    """Unit tests for _load_target_locations, covering both on-disk shapes
+    a discovery-gen/inputs/target_locations.usv can take."""
+
+    def _write_inputs_file(self, tmp_path: Path, campaign: str, content: str) -> None:
+        inputs_dir = tmp_path / "campaigns" / campaign / "queues" / "discovery-gen" / "inputs"
+        inputs_dir.mkdir(parents=True, exist_ok=True)
+        (inputs_dir / "target_locations.usv").write_text(content, encoding="utf-8")
+        (tmp_path / "campaigns" / campaign).mkdir(parents=True, exist_ok=True)
+
+    def test_loads_legacy_headerless_triples(self, tmp_path: Path) -> None:
+        with patch("cocli.core.paths.paths.root", tmp_path):
+            self._write_inputs_file(
+                tmp_path,
+                "test_campaign",
+                "AdventHealth Orlando\x1f28.5\x1f-81.3\n"
+                "Albuquerque, NM\x1f35.0\x1f-106.7\n",
+            )
+
+            locations = _load_target_locations("test_campaign")
+
+            assert len(locations) == 2
+            assert locations[0] == {"name": "AdventHealth Orlando", "lat": 28.5, "lon": -81.3}
+
+    def test_loads_headered_multi_column_shape(self, tmp_path: Path) -> None:
+        # Output of a geocoded CSV import: header row + extra columns beyond
+        # name/lat/lon. A plain 3-field split used to silently drop every
+        # row here, including the header, raising "no target locations found".
+        with patch("cocli.core.paths.paths.root", tmp_path):
+            self._write_inputs_file(
+                tmp_path,
+                "test_campaign",
+                "name\x1fbeds\x1flat\x1flon\x1fcity\x1fstate\x1fcsv_name\x1fsaturation_score\x1fcompany_slug\n"
+                "New York, NY\x1f\x1f40.7127\x1f-74.006\x1fNew York\x1fNY\x1f\x1f\x1f\n"
+                "Dallas, TX\x1f\x1f32.7767\x1f-96.797\x1fDallas\x1fTX\x1f\x1f\x1f\n",
+            )
+
+            locations = _load_target_locations("test_campaign")
+
+            assert len(locations) == 2
+            assert locations[0] == {"name": "New York, NY", "lat": 40.7127, "lon": -74.006}

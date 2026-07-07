@@ -606,8 +606,9 @@ class WorkerService:
         nodes = []
         for host_key in scaling.keys():
             if host_key != "fargate":
-                host = host_key if "." in host_key else f"{host_key}.pi"
-                nodes.append({"host": host, "label": host_key.capitalize()})
+                # Nodes are reached over Tailscale by their bare machine name
+                # (e.g. "cocli5x1") - a ".pi" suffix doesn't resolve at all.
+                nodes.append({"host": host_key, "label": host_key.capitalize()})
         
         results = []
         for node in nodes:

@@ -265,9 +265,21 @@ class CdkScraperDeploymentStack(Stack):  # type: ignore[misc]
                     resources=[f"arn:aws:s3:::{data_bucket_name}/campaigns/{campaign_config['name']}/raw/*"]
                 ),
                 iam.PolicyStatement(
+                    sid="AllowCompanyEnrichmentReadWrite",
+                    effect=iam.Effect.ALLOW,
+                    actions=["s3:PutObject", "s3:GetObject"],
+                    resources=[f"arn:aws:s3:::{data_bucket_name}/companies/*"]
+                ),
+                iam.PolicyStatement(
                     sid="AllowStatusUpdate",
                     effect=iam.Effect.ALLOW,
-                    actions=["s3:PutObject"],
+                    actions=[
+                        "s3:PutObject",
+                        # GetObject needed by `cocli audit cluster`'s heartbeat
+                        # fan-in, which reads back every node's status/{host}.json
+                        # after listing them.
+                        "s3:GetObject",
+                    ],
                     resources=[f"arn:aws:s3:::{data_bucket_name}/status/*"]
                 ),
                 iam.PolicyStatement(
@@ -284,7 +296,14 @@ class CdkScraperDeploymentStack(Stack):  # type: ignore[misc]
                     conditions={
                         "StringLike": {
                             "s3:prefix": [
-                                f"campaigns/{campaign_config['name']}/queues/*"
+                                f"campaigns/{campaign_config['name']}/queues/*",
+                                # Needed by `cocli audit cluster`'s heartbeat-based
+                                # fan-in, which lists status/ to enumerate live nodes.
+                                "status/*",
+                                # Needed by cocli/core/analytics.py, which lists
+                                # indexes/google_maps_prospects/wal/ and
+                                # indexes/scraped-tiles/ under this campaign.
+                                f"campaigns/{campaign_config['name']}/indexes/*",
                             ]
                         }
                     }

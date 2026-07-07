@@ -151,17 +151,45 @@ def _load_target_locations(campaign_name: str) -> List[Dict[str, Any]]:
     if inputs_path.exists():
         logger.info(f"  Loading target locations from: {inputs_path}")
         with open(inputs_path, "r", encoding="utf-8") as f:
-            for line in f:
+            lines = f.readlines()
+
+        def _as_headerless_triple(line: str) -> Optional[Dict[str, Any]]:
+            parts = line.strip().split("\x1f")
+            if len(parts) != 3:
+                return None
+            try:
+                return {"name": parts[0], "lat": float(parts[1]), "lon": float(parts[2])}
+            except ValueError:
+                return None
+
+        first_data_line = next((line for line in lines if line.strip()), None)
+        if first_data_line is not None and _as_headerless_triple(first_data_line) is not None:
+            # Legacy headerless name\x1flat\x1flon format, one row per line.
+            for line in lines:
                 if line.strip():
-                    parts = line.strip().split("\x1f")
-                    if len(parts) == 3:
-                        target_locations.append(
-                            {
-                                "name": parts[0],
-                                "lat": float(parts[1]),
-                                "lon": float(parts[2]),
-                            }
-                        )
+                    row = _as_headerless_triple(line)
+                    if row:
+                        target_locations.append(row)
+        else:
+            # Header + extra-column format (e.g. output of a geocoded CSV
+            # import: name, beds, lat, lon, city, state, ...). USVDictReader
+            # auto-detects the header row and hands back named fields - the
+            # plain 3-field split above silently dropped every row (including
+            # the header itself) whenever this richer shape showed up.
+            import io
+
+            from cocli.utils.usv_utils import USVDictReader
+
+            for row in USVDictReader(io.StringIO("".join(lines))):
+                lat, lon = row.get("lat"), row.get("lon")
+                if lat and lon:
+                    target_locations.append(
+                        {
+                            "name": row.get("name") or row.get("city"),
+                            "lat": float(lat),
+                            "lon": float(lon),
+                        }
+                    )
     else:
         # Fall back to config file
         with open(campaign_dir / "config.toml", "r") as f:

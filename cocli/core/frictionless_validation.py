@@ -82,7 +82,10 @@ def validate_usv_file(
             with open(usv_path, "r", encoding="utf-8") as f:
                 for line_num, line in enumerate(f, 1):
                     if line.strip():
-                        field_count = len(line.strip().split("\x1f"))
+                        # NOTE: str.strip() treats \x1f (Unit Separator) as
+                        # whitespace, so it silently drops a legitimately-
+                        # empty trailing optional field before the split.
+                        field_count = len(line.rstrip("\r\n").split("\x1f"))
                         # Count non-optional fields in schema
                         required_count = sum(
                             1

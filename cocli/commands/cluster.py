@@ -104,7 +104,7 @@ def top(
 
 @app.command(name="sync-clocks")
 def sync_clocks(
-    authoritative_node: str = typer.Option("cocli5x1.pi", "--source", help="Node to use as the time authority."),
+    authoritative_node: str = typer.Option("cocli5x1", "--source", help="Node to use as the time authority."),
 ) -> None:
     """
     Synchronizes clocks across the cluster using the Hub as the authority.
@@ -121,7 +121,12 @@ def sync_clocks(
         console.print(f"[red]Could not get time from authority: {e}[/red]")
         raise typer.Exit(1)
 
-    service = ClusterService("roadmap") # Campaign doesn't matter for clock sync
+    # NOTE: ClusterService now resolves nodes per-campaign (each campaign's
+    # own config.toml [cluster]/[prospecting.scaling], not one shared global
+    # list) - so hardcoding "roadmap" here only syncs roadmap's own nodes,
+    # not the whole physical cluster. Pass --campaign through if you need to
+    # sync a different campaign's nodes.
+    service = ClusterService("roadmap")
     nodes = service.get_nodes()
     
     async def sync_all() -> None:
@@ -205,20 +210,29 @@ def prune() -> None:
     """
     Prunes unused Docker objects (containers, images, build cache) across all known cluster nodes.
     """
-    from ..core.config import load_global_config
-    
-    global_config = load_global_config()
-    cluster_data = global_config.get("cluster", {})
-    nodes = cluster_data.get("nodes", [])
-    
-    if not nodes:
-        console.print("[yellow]No nodes configured in global cluster config.[/yellow]")
-        raise typer.Exit(0)
+    from ..core.config import get_all_campaign_dirs
+    from ..core.paths import paths
 
-    # Use a default/dummy campaign context to initialize ClusterService utilities
-    service = ClusterService("roadmap")
-    validated_nodes = service.get_nodes()
-    
+    # ClusterService now resolves nodes per-campaign (each campaign's own
+    # [cluster]/[prospecting.scaling]) rather than one shared global list, so
+    # "all known cluster nodes" means the union of every campaign's nodes,
+    # not a single global lookup.
+    validated_nodes = []
+    seen_hostnames = set()
+    for campaign_dir in get_all_campaign_dirs():
+        campaign_name = str(campaign_dir.relative_to(paths.campaigns))
+        service = ClusterService(campaign_name)
+        for node in service.get_nodes():
+            if node.hostname not in seen_hostnames:
+                seen_hostnames.add(node.hostname)
+                validated_nodes.append(node)
+
+    if not validated_nodes:
+        console.print("[yellow]No cluster nodes found across any campaign.[/yellow]")
+        raise typer.Exit(0)
+    # run_remote_command is stateless w.r.t. which campaign built it - reuse
+    # whichever ClusterService instance we last constructed above.
+
     table = Table(title="Cluster Prune Results (All Nodes)")
     table.add_column("Node", style="cyan")
     table.add_column("Status")

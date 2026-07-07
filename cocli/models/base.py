@@ -323,11 +323,18 @@ class BaseUsvModel(BaseModel):
 
     @classmethod
     def get_schema_hash(cls) -> str:
-        """Generate a deterministic hash of the current schema."""
+        """Generate a deterministic hash of the current schema.
+
+        Excludes "description" - it's documentation, not a data constraint,
+        and must not invalidate the hash of records that already conform.
+        """
         import hashlib
         import json
 
-        fields = cls.get_datapackage_fields()
+        fields = [
+            {k: v for k, v in field.items() if k != "description"}
+            for field in cls.get_datapackage_fields()
+        ]
         schema_str = json.dumps(fields, sort_keys=True, separators=(",", ":"))
         return hashlib.sha256(schema_str.encode()).hexdigest()[:16]
 

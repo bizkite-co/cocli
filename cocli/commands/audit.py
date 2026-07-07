@@ -564,7 +564,7 @@ _KNOWN_CONTENT_TYPES = ["gm-list", "gm-details", "enrichment"]
 _STALE_THRESHOLD_S = {"gm-list": 600.0, "gm-details": 120.0, "enrichment": 120.0}
 _DEFAULT_STALE_THRESHOLD_S = 120.0
 
-_CLUSTER_AUDIT_REMOTE_SCRIPT = """
+_CLUSTER_AUDIT_REMOTE_SCRIPT = r"""
 # Stream docker logs to a file on disk rather than into a shell variable -
 # on a node under heavy memory pressure, `LOGS=$(docker logs ...)` has to
 # materialize the *entire* log history as one in-memory string before any
@@ -578,6 +578,16 @@ echo '@@WORKERS@@'
 grep -E 'Starting worker:' "$LOGFILE" | tail -30 || true
 echo '@@ERRORS@@'
 docker logs --since 30m cocli-supervisor 2>&1 | grep -icE 'error|exception|traceback|denied' || true
+echo '@@ERROR_PATTERNS@@'
+# Normalize variable parts (timestamps, per-company/campaign path segments, long
+# IDs/hashes/ARNs) so the same underlying error collapses to one bucket instead
+# of flooding the top-N with one line per company/task it happened to hit.
+docker logs --since 30m cocli-supervisor 2>&1 \
+  | grep -iE 'error|exception|traceback|denied' \
+  | sed -E 's/^\[[0-9-]+ [0-9:]+ [+-][0-9]+\] //' \
+  | sed -E 's#(companies|campaigns)/[A-Za-z0-9_-]+/#\1/*/#g' \
+  | sed -E 's/[A-Za-z0-9+\/]{20,}/<ID>/g' \
+  | sort | uniq -c | sort -rn | head -5 || true
 echo '@@LASTLOG@@'
 tail -1 "$LOGFILE" || true
 echo '@@TYPE_ACTIVITY@@'
@@ -602,12 +612,13 @@ _LOG_TS_RE = re.compile(r"\[(?P<ts>\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2} [+-]\d{4}
 
 def _parse_cluster_audit_sections(raw: str) -> dict[str, list[str]]:
     sections: dict[str, list[str]] = {
-        "HEADER": [], "WORKERS": [], "ERRORS": [], "LASTLOG": [], "TYPE_ACTIVITY": [], "QUEUES": [],
+        "HEADER": [], "WORKERS": [], "ERRORS": [], "ERROR_PATTERNS": [], "LASTLOG": [],
+        "TYPE_ACTIVITY": [], "QUEUES": [],
     }
     current = "HEADER"
     markers = {
-        "@@WORKERS@@": "WORKERS", "@@ERRORS@@": "ERRORS", "@@LASTLOG@@": "LASTLOG",
-        "@@TYPE_ACTIVITY@@": "TYPE_ACTIVITY", "@@QUEUES@@": "QUEUES",
+        "@@WORKERS@@": "WORKERS", "@@ERRORS@@": "ERRORS", "@@ERROR_PATTERNS@@": "ERROR_PATTERNS",
+        "@@LASTLOG@@": "LASTLOG", "@@TYPE_ACTIVITY@@": "TYPE_ACTIVITY", "@@QUEUES@@": "QUEUES",
     }
     for line in raw.splitlines():
         stripped = line.strip()
@@ -840,6 +851,8 @@ def _audit_cluster_live(campaign_name: str, verbose: bool) -> None:
         except ValueError:
             error_count = 0
 
+        error_patterns = [line.strip() for line in sections["ERROR_PATTERNS"] if line.strip()]
+
         last_log_line = sections["LASTLOG"][0].strip() if sections["LASTLOG"] else ""
         last_log_age = _log_line_age_seconds(last_log_line)
 
@@ -876,6 +889,7 @@ def _audit_cluster_live(campaign_name: str, verbose: bool) -> None:
             "has_campaign": has_campaign,
             "designation": by_content_type,
             "error_count": error_count,
+            "error_patterns": error_patterns,
             "last_log_age": last_log_age,
             "last_log_line": last_log_line,
             "stale_content_types": stale_content_types,
@@ -927,6 +941,12 @@ def _audit_cluster_live(campaign_name: str, verbose: bool) -> None:
         table.add_row(d["host"], designation_str, queues_str, errors_str, activity_str, health)
 
     console.print(table)
+
+    for d in diagnostics:
+        if d["error_count"] > 0 and d["error_patterns"]:
+            console.print(f"\n[bold yellow]{d['host']} top error patterns:[/bold yellow]")
+            for line in d["error_patterns"]:
+                console.print(f"  {escape(line)}")
 
     if verbose:
         for d in diagnostics:
