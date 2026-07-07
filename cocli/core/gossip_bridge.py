@@ -81,6 +81,11 @@ class GossipBridge:
         # Real-time cluster status
         self.heartbeats: Dict[str, Dict[str, Any]] = {}
 
+        # Thread-local so only the listener thread (which applies remote
+        # syncs) suppresses broadcasts; the main thread's genuine local
+        # task completions must still broadcast normally. See broadcast_msg().
+        self._suppress_broadcast = threading.local()
+
     def _load_offsets(self) -> Dict[str, int]:
         if self.offset_file.exists():
             try:
@@ -153,9 +158,21 @@ class GossipBridge:
 
     def broadcast_msg(self, msg: str) -> None:
         """Sends a raw message to all known peers via Unicast UDP."""
+        # The gossip *listener* thread applies incoming "Q" (queue-sync)
+        # messages via q_manager.ack()/nack(), which unconditionally
+        # re-broadcast as a side effect (that's correct for a *real* local
+        # worker completing a task, which must inform peers). Without this
+        # guard, applying a remote sync re-broadcasts it, the peer re-applies
+        # and re-broadcasts back, forever - an unthrottled ping-pong that
+        # measured at 300+ msg/s and ~330% CPU on both nodes in production
+        # (turboship/cocli5x0 <-> roadmap/cocli5x1, 2026-07-07). The listener
+        # thread's only job is to mirror what peers already broadcast, so it
+        # should never re-originate a broadcast itself.
+        if getattr(self._suppress_broadcast, "active", False):
+            return
         if not self.sock or not self.peers:
             return
-            
+
         data = msg.encode('utf-8')
         for node_id, ip in list(self.peers.items()):
             try:
@@ -168,6 +185,9 @@ class GossipBridge:
         """Background thread to receive unicast gossip."""
         if not self.sock:
             return
+        # This thread only ever applies remote state locally - see the
+        # comment in broadcast_msg() for why it must never re-broadcast.
+        self._suppress_broadcast.active = True
         while self.running:
             try:
                 self.sock.settimeout(1.0)

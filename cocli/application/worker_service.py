@@ -587,7 +587,30 @@ class WorkerService:
         logger.info(f"Created {len(self.worker_tasks)} worker task(s), awaiting...")
 
         if self.worker_tasks:
-            await asyncio.gather(*self.worker_tasks)
+            # This supervisor runs until externally killed - nothing in
+            # normal operation ever sets self._running back to False.
+            # _rebalance_workers() (triggered concurrently by the config
+            # watcher) cancels the tasks in self.worker_tasks and replaces
+            # the list wholesale with fresh ones. A bare
+            # `asyncio.gather(*self.worker_tasks)` here would capture a fixed
+            # snapshot of the *original* tasks - once rebalance cancels them,
+            # gather would raise CancelledError and kill the whole
+            # orchestrator on every hot-reload. Loop forever instead,
+            # re-reading self.worker_tasks each time so a rebalance's
+            # replacement list gets picked up. Do NOT try to distinguish
+            # "genuine exit" from "rebalance in progress" by comparing task
+            # list identity - that races against _rebalance_workers()'s own
+            # reassignment and can return before the new tasks are in place.
+            while self._running:
+                current_tasks = self.worker_tasks
+                if not current_tasks:
+                    await asyncio.sleep(1)
+                    continue
+                await asyncio.gather(*current_tasks, return_exceptions=True)
+                # Yield briefly so a still-empty-or-unchanged worker_tasks
+                # (e.g. all workers crashed with no rebalance pending)
+                # doesn't spin the loop tightly.
+                await asyncio.sleep(1)
         else:
             # Stay alive (heartbeat + config watcher keep running) instead of
             # exiting the process - an empty worker_definitions list means "no

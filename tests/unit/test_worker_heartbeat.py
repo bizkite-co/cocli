@@ -1,6 +1,8 @@
+import asyncio
 import json
 from pathlib import Path
-from unittest.mock import MagicMock, patch
+from types import SimpleNamespace
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -70,3 +72,59 @@ def test_get_recent_error_count_reflects_active_counter() -> None:
     counter.emit(MagicMock())
 
     assert get_recent_error_count(1800) == 2
+
+
+@pytest.mark.asyncio
+async def test_run_orchestrated_workers_survives_rebalance_mid_flight(tmp_path: Path) -> None:
+    """
+    Regression test for a real production crash-loop (turboship/cocli5x0,
+    2026-07-07): _rebalance_workers() cancels the tasks in self.worker_tasks
+    and replaces the list wholesale with new ones. run_orchestrated_workers
+    used to await a fixed snapshot of the *original* tasks
+    (`asyncio.gather(*self.worker_tasks)`, no return_exceptions) - once
+    rebalance cancelled them, gather raised CancelledError and killed the
+    whole orchestrator on every hot-reload from gossip.
+    """
+    with patch("cocli.core.paths.paths.root", tmp_path):
+        supervisor = WorkerService(campaign_name="test_campaign", processed_by="node1")
+
+    async def fake_run_worker(self: WorkerService, *args: object, **kwargs: object) -> None:
+        await asyncio.sleep(100)
+
+    wd = SimpleNamespace(name="n-gm-list", role="full", content_type="gm-list", workers=1)
+
+    with patch.object(WorkerService, "run_worker", fake_run_worker), patch.object(
+        supervisor, "_watch_remote_config", new=AsyncMock()
+    ), patch.object(supervisor, "_heartbeat_loop", new=AsyncMock()), patch(
+        "cocli.core.gossip_bridge.bridge", None
+    ):
+        orchestrator_task = asyncio.create_task(
+            supervisor.run_orchestrated_workers([wd], headless=True, debug=False)
+        )
+        await asyncio.sleep(0.05)  # let it create the initial task(s)
+
+        # Simulate exactly what _rebalance_workers() does: cancel the
+        # current tasks, wait them out, then swap in a fresh list.
+        old_tasks = supervisor.worker_tasks
+        for t in old_tasks:
+            t.cancel()
+        await asyncio.gather(*old_tasks, return_exceptions=True)
+        supervisor.worker_tasks = [asyncio.create_task(asyncio.sleep(100))]
+
+        # The critical assertion: a fixed rebalance-mid-flight bug used to
+        # let run_orchestrated_workers return right here (either by
+        # crashing on CancelledError, or - a subtler regression caught
+        # while fixing the first bug - by racing _rebalance_workers()'s own
+        # reassignment and deciding "no rebalance happened, exit" before
+        # the new task list was actually in place). It must still be
+        # running, awaiting the replacement tasks.
+        await asyncio.sleep(0.2)
+        assert not orchestrator_task.done(), (
+            "run_orchestrated_workers returned after a rebalance instead of "
+            "picking up the replacement worker_tasks"
+        )
+
+        supervisor._running = False
+        for t in supervisor.worker_tasks:
+            t.cancel()
+        await asyncio.wait_for(orchestrator_task, timeout=5)
