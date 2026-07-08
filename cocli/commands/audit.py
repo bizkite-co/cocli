@@ -896,6 +896,36 @@ def _audit_cluster_live(campaign_name: str, verbose: bool) -> None:
             "queue_depths": queue_depths,
         }
 
+    from ..core.config import load_campaign_config
+    from ..core.reporting import get_boto3_session, get_data_bucket_name, get_s3_client
+    import json
+    from datetime import datetime, timezone
+
+    config = load_campaign_config(campaign_name)
+    bucket_name = get_data_bucket_name(config, campaign_name)
+    s3 = get_s3_client(session=get_boto3_session(config))
+
+    status_prefix = paths.s3.status_root
+    s3_nodes: dict[str, dict[str, Any]] = {}
+    try:
+        paginator = s3.get_paginator("list_objects_v2")
+        for page in paginator.paginate(Bucket=bucket_name, Prefix=status_prefix):
+            for obj in page.get("Contents", []):
+                key = obj["Key"]
+                if not key.endswith(".json"):
+                    continue
+                hostname = key[len(status_prefix):-len(".json")]
+                if "/" in hostname:
+                    continue
+                try:
+                    body = s3.get_object(Bucket=bucket_name, Key=key)["Body"].read()
+                    s3_nodes[hostname] = json.loads(body)
+                except Exception:
+                    continue
+    except Exception as e:
+        import logging
+        logging.getLogger(__name__).debug(f"Failed to fetch S3 heartbeats for live audit: {e}")
+
     async def gather() -> list[dict[str, Any]]:
         results: list[dict[str, Any]] = []
         for n in service.get_nodes():
@@ -904,6 +934,55 @@ def _audit_cluster_live(campaign_name: str, verbose: bool) -> None:
         return results
 
     diagnostics: list[dict[str, Any]] = asyncio.run(gather())
+
+    # Merge non-SSH nodes from S3 heartbeats
+    ssh_hosts = {d["host"] for d in diagnostics}
+    now = datetime.now(timezone.utc)
+
+    def _age(ts_raw: Any) -> Optional[float]:
+        if ts_raw is None:
+            return None
+        try:
+            if isinstance(ts_raw, (int, float)):
+                ts = datetime.fromtimestamp(ts_raw, tz=timezone.utc)
+            else:
+                ts = datetime.fromisoformat(str(ts_raw))
+                if ts.tzinfo is None:
+                    ts = ts.replace(tzinfo=timezone.utc)
+        except (ValueError, OSError, OverflowError):
+            return None
+        return (now - ts).total_seconds()
+
+    for hostname in sorted(s3_nodes):
+        if hostname in ssh_hosts:
+            continue
+        payload = s3_nodes[hostname]
+        try:
+            designation = payload.get("designation") or {}
+            last_activity = payload.get("last_activity") or {}
+            error_count = int(payload.get("error_count_30m", 0))
+            last_log_age = _age(payload.get("timestamp"))
+            stale_content_types = [
+                ct for ct in designation
+                if (age := _age(last_activity.get(ct))) is None or age > _STALE_THRESHOLD_S.get(ct, _DEFAULT_STALE_THRESHOLD_S)
+            ]
+        except Exception:
+            designation = {}
+            error_count = 0
+            last_log_age = None
+            stale_content_types = []
+
+        diagnostics.append({
+            "host": hostname,
+            "has_campaign": True,
+            "designation": designation,
+            "error_count": error_count,
+            "error_patterns": [],
+            "last_log_age": last_log_age,
+            "last_log_line": "",
+            "stale_content_types": stale_content_types,
+            "queue_depths": {},
+        })
 
     table = Table(title=f"Cluster Node Audit: {campaign_name}")
     table.add_column("Node", style="cyan")
@@ -924,8 +1003,9 @@ def _audit_cluster_live(campaign_name: str, verbose: bool) -> None:
 
         queue_lines = []
         for q in relevant_queues:
-            depths = d["queue_depths"].get(q, {})
-            queue_lines.append(f"{q}: {depths.get('pending', 0)}p / {depths.get('completed', 0)}d")
+            if d["queue_depths"]:
+                depths = d["queue_depths"].get(q, {})
+                queue_lines.append(f"{q}: {depths.get('pending', 0)}p / {depths.get('completed', 0)}d")
         queues_str = "\n".join(queue_lines) if queue_lines else "-"
 
         error_count = d["error_count"]
