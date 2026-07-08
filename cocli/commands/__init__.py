@@ -34,7 +34,6 @@ def register_commands(app: typer.Typer) -> None:
     from . import infrastructure
     from . import index
     from . import cluster
-    from . import video
 
     app.command(name="add")(add.add)
     app.command(name="add-email")(add_email.add_email)
@@ -78,4 +77,16 @@ def register_commands(app: typer.Typer) -> None:
     app.add_typer(infrastructure.app, name="infrastructure")
     app.add_typer(index.app, name="index")
     app.add_typer(cluster.app, name="cluster")
-    app.add_typer(video.app, name="video")
+    try:
+        from . import video
+        app.add_typer(video.app, name="video")
+    except ImportError as e:
+        err_msg = str(e)
+        # Register a dummy command or typer that warns the user if they try to use it
+        video_inactive_app = typer.Typer(no_args_is_help=True, help="Video commands (not available).")
+        @video_inactive_app.callback()
+        def video_inactive_callback() -> None:
+            typer.echo(f"Video commands not available: {err_msg}. Install with 'pip install .[video]'.")
+            raise typer.Exit(1)
+        app.add_typer(video_inactive_app, name="video")
+

@@ -21,7 +21,7 @@ RUN pip install uv
 COPY pyproject.toml uv.lock* ./
 
 # Export requirements (including 'full' for pandas/numpy) and install them
-RUN uv export --frozen --no-dev --no-hashes --extra full > requirements.txt && \
+RUN uv export --frozen --no-dev --no-hashes --extra worker > requirements.txt && \
     uv pip install -r requirements.txt --system && \
     uv pip install ruff awscli --system
 
@@ -43,7 +43,7 @@ ENV PYTHONUNBUFFERED=1
 
 # Verify that the core application can be imported (Safety check)
 # We run this from /tmp to ensure we are testing the installed package
-RUN cd /tmp && COCLI_ENV=test python3 -c "import cocli.main; import cocli.commands.worker; print('Import check passed!')"
+RUN cd /tmp && COCLI_ENV=test python3 -c "import cocli.worker_main; import cocli.commands.worker; print('Import check passed!')"
 
 # Create the run_worker.sh script directly in the Dockerfile
 RUN echo '#!/bin/bash' > docker/rpi-worker/run_worker.sh && \
@@ -51,7 +51,7 @@ RUN echo '#!/bin/bash' > docker/rpi-worker/run_worker.sh && \
     echo 'export CAMPAIGN_NAME' >> docker/rpi-worker/run_worker.sh && \
     echo 'echo "Starting worker for campaign: $CAMPAIGN_NAME"' >> docker/rpi-worker/run_worker.sh && \
     echo 'if [ "$#" -eq 0 ]; then' >> docker/rpi-worker/run_worker.sh && \
-    echo '    cocli worker orchestrate --debug' >> docker/rpi-worker/run_worker.sh && \
+    echo '    cocli-worker worker orchestrate --debug' >> docker/rpi-worker/run_worker.sh && \
     echo 'else' >> docker/rpi-worker/run_worker.sh && \
     echo '    "$@"' >> docker/rpi-worker/run_worker.sh && \
     echo 'fi' >> docker/rpi-worker/run_worker.sh && \

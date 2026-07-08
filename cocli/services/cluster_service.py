@@ -234,7 +234,7 @@ class ClusterService:
             -v ~/.cocli:/root/.cocli:ro \
             -v ~/.cocli:/home/{user}/.cocli:ro \
             {image_name} \
-            cocli worker orchestrate --campaign {self.campaign_name}"""
+            cocli-worker worker orchestrate --campaign {self.campaign_name}"""
 
         subprocess.run(["ssh", f"{user}@{host}", run_cmd], check=True)
         logger.info(f"  Node {host} restarted with orchestrated workers.")

@@ -52,8 +52,8 @@ fi
 # its 1-worker gm-list default (this happened in production on 2026-07-02 -
 # do not remove this step without replacing it).
 echo "Pulling config.toml for $CAMPAIGN_NAME from S3..."
-python3 -m cocli.main campaign rollout pull-config --campaign "$CAMPAIGN_NAME"
+python3 -m cocli.worker_main campaign rollout pull-config --campaign "$CAMPAIGN_NAME"
 
 echo "Starting cocli orchestrator for $CAMPAIGN_NAME..."
 
-exec python3 -m cocli.main worker orchestrate --campaign "$CAMPAIGN_NAME"
+exec python3 -m cocli.worker_main worker orchestrate --campaign "$CAMPAIGN_NAME"

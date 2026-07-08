@@ -42,29 +42,44 @@ dependencies = [
     "zeroconf>=0.148.0",
     "watchdog>=6.0.0",
     "wasmtime>=29.0.0",
-    "onepassword-sdk",
-    "google-genai",
-    "faster-whisper",
-    "ctranslate2",
     "pillow",
-    "nvidia-cublas-cu12",
-    "nvidia-cudnn-cu12",
-    "nvidia-cuda-nvrtc-cu12",
     "google-api-python-client",
     "google-auth-httplib2",
     "google-auth-oauthlib",
-    "keyring",
-    "keyrings.alt",
     "phonenumbers",
 ]
 
 [project.scripts]
 cocli = "cocli.main:app"
+cocli-worker = "cocli.worker_main:app"
 
 [project.optional-dependencies]
+video = [
+    "google-genai",
+    "faster-whisper",
+    "ctranslate2",
+    "nvidia-cublas-cu12",
+    "nvidia-cudnn-cu12",
+    "nvidia-cuda-nvrtc-cu12",
+]
+op = [
+    "onepassword-sdk",
+    "keyring",
+    "keyrings.alt",
+]
+worker = []
 full = [
     "pandas",
     "textual>=6.4.0",
+    "google-genai",
+    "faster-whisper",
+    "ctranslate2",
+    "nvidia-cublas-cu12",
+    "nvidia-cudnn-cu12",
+    "nvidia-cuda-nvrtc-cu12",
+    "onepassword-sdk",
+    "keyring",
+    "keyrings.alt",
 ]
 dev = [
     "pytest",

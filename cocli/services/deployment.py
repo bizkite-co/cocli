@@ -402,7 +402,7 @@ with open(path, 'w') as f:
                 "-v ~/.aws:/root/.aws:ro "
                 "-v ~/.cocli:/root/.cocli:ro "
                 "cocli-worker-rpi:latest "
-                "cocli worker orchestrate --debug"
+                "cocli-worker worker orchestrate --debug"
             )
 
             subprocess.run(
