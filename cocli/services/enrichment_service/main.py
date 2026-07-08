@@ -178,5 +178,25 @@ async def enrich_domain(request: EnrichmentRequest) -> Website:
             await browser.close()
 
 @app.get("/health")
-async def health_check() -> dict[str, str]:
+async def health_check() -> dict[str, Any]:
+    if os.getenv("COCLI_RUNNING_IN_FARGATE") == "true":
+        import time
+        import json
+        hb_path = "/tmp/cocli_heartbeat.json"
+        if not os.path.exists(hb_path):
+            raise HTTPException(status_code=503, detail="Worker orchestrator has not started yet.")
+            
+        try:
+            mtime = os.path.getmtime(hb_path)
+            if time.time() - mtime > 120:
+                raise HTTPException(status_code=503, detail="Worker orchestrator heartbeat is stale.")
+                
+            with open(hb_path, "r") as f:
+                stats = json.load(f)
+            return {"status": "ok", "orchestrator": stats}
+        except HTTPException as he:
+            raise he
+        except Exception as e:
+            raise HTTPException(status_code=503, detail=f"Failed to read orchestrator heartbeat: {e}")
+            
     return {"status": "ok"}

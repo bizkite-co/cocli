@@ -528,6 +528,13 @@ class WorkerService:
             "error_count_30m": get_recent_error_count(1800),
         }
 
+        # Write local copy for container/health checks
+        try:
+            with open("/tmp/cocli_heartbeat.json", "w") as f:
+                json.dump(stats, f)
+        except Exception as local_err:
+            logger.debug(f"Failed to write local heartbeat: {local_err}")
+
         # 1. Durability Tier (S3)
         try:
             s3_client.put_object(Bucket=self.bucket_name, Key=paths.s3.heartbeat(self.processed_by), Body=json.dumps(stats), ContentType="application/json")

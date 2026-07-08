@@ -14,6 +14,10 @@ class AwsSettings(BaseModel):
     profile: Optional[str] = None
     hosted_zone_id: Optional[str] = Field(None, alias="hosted-zone-id")
 
+class AlertSettings(BaseModel):
+    model_config = {"extra": "ignore"}
+    ntfy_url: Optional[str] = Field(None, alias="ntfy-url")
+
 class GoogleMaps(BaseModel):
     model_config = {"extra": "ignore"}
     email: str
@@ -58,6 +62,7 @@ class Campaign(BaseModel):
     google_maps: GoogleMaps
     prospecting: Prospecting
     aws: Optional[AwsSettings] = None
+    alerts: Optional[AlertSettings] = None
 
     @classmethod
     @lru_cache(maxsize=32)

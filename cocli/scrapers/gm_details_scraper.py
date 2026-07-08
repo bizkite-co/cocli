@@ -39,6 +39,7 @@ class GoogleMapsDetailsScraper:
         self.witness: Optional[RawWitness] = None
         self.error: Optional[str] = None
         self.start_time: Optional[datetime] = None
+        self.state: str = ""
         
         # Initialize Async Machine
         self.machine = AsyncMachine(
@@ -89,9 +90,11 @@ class GoogleMapsDetailsScraper:
             
         except Exception as e:
             self.error = str(e)
-            logger.error(f"[{place_id}] Scraper failed in state '{self.state}': {e}") # type: ignore
-            if self.state != 'failed': # type: ignore
-                await self.fail() # type: ignore
+            logger.error(f"[{place_id}] Scraper failed in state '{self.state}': {e}")
+            from cocli.utils.alert_utils import check_and_alert_google_maps_block
+            await check_and_alert_google_maps_block(self.page, f"Details Scraper failed on Place ID {place_id} in state '{self.state}': {e}")
+            if self.state != 'failed':
+                await self.fail()  # type: ignore[attr-defined]
             return None
 
     # --- State Callbacks ---
@@ -149,7 +152,7 @@ class GoogleMapsDetailsScraper:
                 html=html_content,
                 metadata={
                     "strategy": "state-machine-v1",
-                    "final_state": self.state, # type: ignore
+                    "final_state": self.state,
                     "viewport": str(self.page.viewport_size),
                     "duration_seconds": (datetime.now(UTC) - self.start_time).total_seconds() if self.start_time else 0
                 }

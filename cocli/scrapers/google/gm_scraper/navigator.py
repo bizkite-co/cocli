@@ -22,6 +22,8 @@ class Navigator:
             await self.page.locator("#searchboxinput, canvas").first.wait_for(timeout=30000)
         except Exception as e:
             logger.error(f"Home navigation failed: {e}")
+            from cocli.utils.alert_utils import check_and_alert_google_maps_block
+            await check_and_alert_google_maps_block(self.page, f"Home navigation failed: {e}")
             return False
 
         if query:
@@ -48,6 +50,8 @@ class Navigator:
                     return True
             except Exception as e:
                 logger.error(f"Search flow failed: {e}")
+                from cocli.utils.alert_utils import check_and_alert_google_maps_block
+                await check_and_alert_google_maps_block(self.page, f"Search flow failed for query '{query}': {e}")
                 try:
                     safe_query = query.replace(" ", "+")
                     search_url = f"https://www.google.com/maps/search/{safe_query}/@{lat},{lon},13z"
