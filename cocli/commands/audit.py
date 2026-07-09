@@ -924,6 +924,7 @@ def _audit_cluster_live(campaign_name: str, verbose: bool) -> None:
     except Exception as e:
         import logging
         logging.getLogger(__name__).debug(f"Failed to fetch S3 heartbeats for live audit: {e}")
+        console.print(f"[yellow]Warning: Could not fetch S3 heartbeats ({e}). Only showing SSH-audited nodes.[/yellow]")
 
     async def gather() -> list[dict[str, Any]]:
         results: list[dict[str, Any]] = []
