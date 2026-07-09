@@ -901,13 +901,12 @@ def _audit_cluster_live(campaign_name: str, verbose: bool) -> None:
     import json
     from datetime import datetime, timezone
 
-    config = load_campaign_config(campaign_name)
-    bucket_name = get_data_bucket_name(config, campaign_name)
-    s3 = get_s3_client(session=get_boto3_session(config))
-
     status_prefix = paths.s3.status_root
     s3_nodes: dict[str, dict[str, Any]] = {}
     try:
+        config = load_campaign_config(campaign_name)
+        bucket_name = get_data_bucket_name(config, campaign_name)
+        s3 = get_s3_client(session=get_boto3_session(config))
         paginator = s3.get_paginator("list_objects_v2")
         for page in paginator.paginate(Bucket=bucket_name, Prefix=status_prefix):
             for obj in page.get("Contents", []):

@@ -201,19 +201,28 @@ def orchestrate(
     if not node_config:
         logger.warning(f"No specific configuration found for node {hostname} in campaign {effective_campaign}.")
         if os.getenv("COCLI_RUNNING_IN_FARGATE") or hostname == "fargate":
-            # Google Maps conclusively blocks Fargate/data-center IP ranges (see
-            # CLAUDE.md "Known Issues"). The gm-list default below is only safe
-            # for a genuinely new Pi joining the cluster - defaulting to it here
-            # caused ~1hr of live gm-list scraping from a Fargate IP on
-            # 2026-07-02 when config resolution silently failed. Refuse to
-            # guess: idle (heartbeat/HTTP only) rather than risk another block.
-            logger.error(
-                f"Node '{hostname}' is running in Fargate but has no resolved worker "
-                "config - refusing to fall back to gm-list. Starting with zero "
-                "workers instead. Check that 'campaign rollout pull-config' succeeded "
-                "and that [prospecting.scaling].fargate is set in config.toml."
-            )
-            worker_defs = []
+            scaling = service.config.get("prospecting", {}).get("scaling", {})
+            fargate_scaling = scaling.get("fargate", {})
+            if fargate_scaling:
+                worker_defs = []
+                for content_type, count in fargate_scaling.items():
+                    if count > 0:
+                        worker_defs.append(WorkerDefinition(
+                            name=f"fargate-{content_type}",
+                            role="full",
+                            content_type=content_type,
+                            workers=count,
+                            iot_profile=None
+                        ))
+                logger.info(f"Resolved Fargate configuration from prospecting.scaling: {worker_defs}")
+            else:
+                logger.error(
+                    f"Node '{hostname}' is running in Fargate but has no resolved worker "
+                    "config - refusing to fall back to gm-list. Starting with zero "
+                    "workers instead. Check that 'campaign rollout pull-config' succeeded "
+                    "and that [prospecting.scaling].fargate is set in config.toml."
+                )
+                worker_defs = []
         else:
             logger.info("Falling back to default single-worker mode.")
             # Default: 1 gm-list worker

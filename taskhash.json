@@ -1,5 +1,6 @@
 {
   "includes": [
+    "cocli",
     "src",
     "tests",
     "pyproject.toml"
