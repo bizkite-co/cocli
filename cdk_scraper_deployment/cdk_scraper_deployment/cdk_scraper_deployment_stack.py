@@ -2,14 +2,12 @@ from aws_cdk import (
     Stack,
     aws_ecr as ecr,
     aws_ecs as ecs,
-    aws_ecs_patterns as ecs_patterns,
     aws_ec2 as ec2,
     aws_iam as iam,
     aws_s3 as s3,
     aws_sqs as sqs,
     aws_route53 as route53,
     aws_route53_targets as targets,
-    aws_elasticloadbalancingv2 as elbv2,
     aws_cloudfront as cloudfront,
     aws_cloudfront_origins as origins,
     aws_certificatemanager as acm,
@@ -193,37 +191,36 @@ class CdkScraperDeploymentStack(Stack):  # type: ignore[misc]
         CfnOutput(self, "WebDomainName", value=subdomain)
 
         if cluster:
-            # Application Load Balanced Fargate Service
-            fargate_service = ecs_patterns.ApplicationLoadBalancedFargateService(self, "ScraperService",
-                cluster=cluster,
-                service_name="EnrichmentService", # Explicitly name the service
+            # Fargate Task Definition (no load balancer)
+            task_definition = ecs.FargateTaskDefinition(self, "ScraperTaskDef",
                 cpu=1024,  # 1 vCPU
                 memory_limit_mib=3072, # 3GB RAM
-                desired_count=worker_count,
-                domain_name=f"enrich.{domain}",
-                domain_zone=zone,
-                protocol=elbv2.ApplicationProtocol.HTTPS, # Explicitly set HTTPS protocol
-                redirect_http=True, # Redirect HTTP to HTTPS
-                task_image_options=ecs_patterns.ApplicationLoadBalancedTaskImageOptions(
-                    image=ecs.ContainerImage.from_registry(repository.repository_uri + ":latest"),
-                    container_port=8000,
-                    log_driver=ecs.LogDrivers.aws_logs(
-                        stream_prefix="web",
-                        log_retention=logs.RetentionDays.THREE_DAYS
-                    ),
-                    environment={
-                        "COCLI_COMMAND_QUEUE_URL": campaign_updates_queue.queue_url,
-                        "COCLI_S3_BUCKET_NAME": data_bucket.bucket_name,
-                        "CAMPAIGN_NAME": campaign_config["name"],
-                        "COCLI_DATA_HOME": "/app/data",
-                        "COCLI_HOSTNAME": "fargate",
-                        "DEPLOY_TIMESTAMP": self.node.try_get_context("deploy_timestamp") or "initial"
-                    },
-                    task_role=task_role
+                task_role=task_role
+            )
+
+            task_definition.add_container("web",
+                image=ecs.ContainerImage.from_registry(repository.repository_uri + ":latest"),
+                logging=ecs.LogDrivers.aws_logs(
+                    stream_prefix="web",
+                    log_retention=logs.RetentionDays.THREE_DAYS
                 ),
-                public_load_balancer=True,
+                environment={
+                    "COCLI_COMMAND_QUEUE_URL": campaign_updates_queue.queue_url,
+                    "COCLI_S3_BUCKET_NAME": data_bucket.bucket_name,
+                    "CAMPAIGN_NAME": campaign_config["name"],
+                    "COCLI_DATA_HOME": "/app/data",
+                    "COCLI_HOSTNAME": "fargate",
+                    "DEPLOY_TIMESTAMP": self.node.try_get_context("deploy_timestamp") or "initial"
+                }
+            )
+
+            ecs.FargateService(self, "ScraperService",
+                cluster=cluster,
+                service_name="EnrichmentService", # Explicitly name the service
+                task_definition=task_definition,
+                desired_count=worker_count,
                 assign_public_ip=True,
-                task_subnets=ec2.SubnetSelection(subnet_type=ec2.SubnetType.PUBLIC),
+                vpc_subnets=ec2.SubnetSelection(subnet_type=ec2.SubnetType.PUBLIC),
                 capacity_provider_strategies=[
                     ecs.CapacityProviderStrategy(
                         capacity_provider="FARGATE_SPOT",
@@ -233,18 +230,7 @@ class CdkScraperDeploymentStack(Stack):  # type: ignore[misc]
             )
             
             # Grant permissions to pull image from ECR
-            repository.grant_pull(fargate_service.task_definition.obtain_execution_role())
-
-            # Configure Health Check
-            fargate_service.target_group.configure_health_check(
-                path="/health",
-                healthy_http_codes="200"
-            )
-
-            CfnOutput(self, "EnrichmentServiceURL",
-                value=f"https://enrich.{domain}",
-                description="URL of the enrichment service"
-            )
+            repository.grant_pull(task_definition.obtain_execution_role())
 
         # --- Granular IAM Roles for Scrapers and Processors ---
         

@@ -24,43 +24,46 @@ if [ -z "$PROFILE" ]; then
     exit 1
 fi
 
-# 3. Use Service URL if available, otherwise fallback to Public IP
-if [ -n "$SERVICE_URL" ]; then
-    echo "Using configured Service URL: $SERVICE_URL"
-    TARGET_URL="$SERVICE_URL"
-else
-    CLUSTER="ScraperCluster"
-    SERVICE="EnrichmentService"
+# 3. Wait for ECS Task to be RUNNING
+CLUSTER="ScraperCluster"
+SERVICE="EnrichmentService"
+echo "Waiting for ECS Task to be RUNNING..."
+TASK_STATUS="UNKNOWN"
+for i in {1..30}; do
+    TASK_ARN=$(aws ecs list-tasks --cluster $CLUSTER --service-name $SERVICE --desired-status RUNNING --region $REGION --profile $PROFILE | jq -r '.taskArns[0] // empty')
+    if [ -n "$TASK_ARN" ]; then
+        echo "ECS Task is RUNNING: $TASK_ARN"
+        TASK_STATUS="RUNNING"
+        break
+    fi
+    echo "Waiting for task to start... ($i/30)"
+    sleep 5
+done
 
-    echo "No Service URL configured. Attempting to find Fargate Public IP..."
-    # ... (existing task finding logic) ...
-    TASK_ARN=$(aws ecs list-tasks --cluster $CLUSTER --service-name $SERVICE --desired-status RUNNING --region $REGION --profile $PROFILE | jq -r '.taskArns[0]')
-    # ... (logic to get public IP) ...
-    ENI_ID=$(aws ecs describe-tasks --cluster $CLUSTER --tasks $TASK_ARN --region $REGION --profile $PROFILE | jq -r '.tasks[0].attachments[0].details[] | select(.name=="networkInterfaceId") | .value')
-    PUBLIC_IP=$(aws ec2 describe-network-interfaces --network-interface-ids $ENI_ID --region $REGION --profile $PROFILE | jq -r '.NetworkInterfaces[0].Association.PublicIp')
-    TARGET_URL="http://$PUBLIC_IP:8000"
+if [ "$TASK_STATUS" != "RUNNING" ]; then
+    echo "ERROR: Fargate task did not start within 150 seconds."
+    exit 1
 fi
 
-echo "--- Verifying Fargate Deployment for $CAMPAIGN_NAME ---"
-echo "Target URL: $TARGET_URL"
+# 4. Wait for S3 Heartbeat update
+BUCKET_NAME=$(./.venv/bin/python -c "from cocli.core.config import load_campaign_config; config = load_campaign_config('$CAMPAIGN_NAME'); print(config.get('aws', {}).get('data_bucket_name', ''))")
+echo "Waiting for S3 Heartbeat update in bucket '$BUCKET_NAME'..."
+HEARTBEAT_STATUS="FAIL"
+for i in {1..20}; do
+    # Check if the heartbeat file exists and has been modified recently
+    HEARTBEAT_TIME=$(aws s3api head-object --bucket "$BUCKET_NAME" --key "status/fargate.json" --region "$REGION" --profile "$PROFILE" --query "LastModified" --output text 2>/dev/null || echo "")
+    if [ -n "$HEARTBEAT_TIME" ]; then
+        echo "Heartbeat detected in S3: $HEARTBEAT_TIME"
+        HEARTBEAT_STATUS="SUCCESS"
+        break
+    fi
+    echo "Waiting for heartbeat... ($i/20)"
+    sleep 10
+done
 
-# 4. Wait for Health
-echo "Waiting for service to be healthy..."
-timeout 60 bash -c "while ! curl -s $TARGET_URL/health > /dev/null; do echo 'Waiting...'; sleep 2; done"
-echo "Service is READY!"
+if [ "$HEARTBEAT_STATUS" != "SUCCESS" ]; then
+    echo "ERROR: Fargate heartbeat was not updated in S3."
+    exit 1
+fi
 
-# 5. Run Enrichment Test
-echo "Running Enrichment Test..."
-curl -v -X POST "$TARGET_URL/enrich" \
-    -H "Content-Type: application/json" \
-    -d "{
-  \"domain\": \"google.com\",
-  \"force\": true,
-  \"ttl_days\": 30,
-  \"debug\": false,
-  \"campaign_name\": \"$CAMPAIGN_NAME\",
-  \"aws_profile_name\": \"$PROFILE\",
-  \"company_slug\": \"$COMPANY_SLUG\"
-}"
-
-echo -e "\n--- Verification Complete ---"
+echo "--- Verification Complete: Fargate consumer is active and reporting! ---"

@@ -27,9 +27,6 @@ if [ -z "$LOCAL_DEV" ]; then
 fi
 
 # Execute the original command
-# Start Uvicorn server in the background
-# It should pick up environment variables from Fargate task definition
-uvicorn cocli.services.enrichment_service.main:app --host 0.0.0.0 --port 8000 &
 
 # Set required environment variables for the consumer
 export COCLI_ENRICHMENT_QUEUE_URL="${COCLI_ENRICHMENT_QUEUE_URL}"
