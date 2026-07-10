@@ -332,49 +332,57 @@ class ClusterService:
 
             try:
                 # Ensure remote directories exist
-                subprocess.run(
-                    [
-                        "ssh",
-                        f"{user}@{host}",
-                        f"mkdir -p {remote_dg_completed} {remote_dg_batches}",
-                    ],
-                    check=True,
-                    capture_output=True,
-                    timeout=15,
-                )
+                remote_dirs = []
+                if local_dg_completed.exists():
+                    remote_dirs.append(remote_dg_completed)
+                if local_dg_batches.exists():
+                    remote_dirs.append(remote_dg_batches)
+                if remote_dirs:
+                    subprocess.run(
+                        [
+                            "ssh",
+                            f"{user}@{host}",
+                            f"mkdir -p {' '.join(remote_dirs)}",
+                        ],
+                        check=True,
+                        capture_output=True,
+                        timeout=15,
+                    )
 
                 # Sync Active Task Pool
-                rsync_cmd_tasks = ["rsync", "-rtWz"]
-                if delete:
-                    rsync_cmd_tasks.append("--delete")
-                rsync_cmd_tasks.extend(
-                    [
-                        str(local_dg_completed) + "/",
-                        f"{user}@{host}:{remote_dg_completed}",
-                    ]
-                )
-                subprocess.run(
-                    rsync_cmd_tasks,
-                    check=True,
-                    capture_output=True,
-                    text=True,
-                    timeout=120,
-                )
+                if local_dg_completed.exists():
+                    rsync_cmd_tasks = ["rsync", "-rtWz"]
+                    if delete:
+                        rsync_cmd_tasks.append("--delete")
+                    rsync_cmd_tasks.extend(
+                        [
+                            str(local_dg_completed) + "/",
+                            f"{user}@{host}:{remote_dg_completed}",
+                        ]
+                    )
+                    subprocess.run(
+                        rsync_cmd_tasks,
+                        check=True,
+                        capture_output=True,
+                        text=True,
+                        timeout=120,
+                    )
 
                 # Sync Batches (Always sync, small files)
-                rsync_cmd_batches = [
-                    "rsync",
-                    "-rtWz",
-                    str(local_dg_batches) + "/",
-                    f"{user}@{host}:{remote_dg_batches}",
-                ]
-                subprocess.run(
-                    rsync_cmd_batches,
-                    check=True,
-                    capture_output=True,
-                    text=True,
-                    timeout=60,
-                )
+                if local_dg_batches.exists():
+                    rsync_cmd_batches = [
+                        "rsync",
+                        "-rtWz",
+                        str(local_dg_batches) + "/",
+                        f"{user}@{host}:{remote_dg_batches}",
+                    ]
+                    subprocess.run(
+                        rsync_cmd_batches,
+                        check=True,
+                        capture_output=True,
+                        text=True,
+                        timeout=60,
+                    )
 
                 # Sync Config (Crucial for hot-reloading)
                 if local_config.exists():

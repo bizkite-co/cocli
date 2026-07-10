@@ -709,30 +709,34 @@ def _audit_cluster_from_heartbeats(campaign_name: str, verbose: bool) -> None:
 
     config = load_campaign_config(campaign_name)
     bucket_name = get_data_bucket_name(config, campaign_name)
-    s3 = get_s3_client(session=get_boto3_session(config))
-
-    status_prefix = paths.s3.status_root
-    nodes: dict[str, dict[str, Any]] = {}
-    paginator = s3.get_paginator("list_objects_v2")
-    for page in paginator.paginate(Bucket=bucket_name, Prefix=status_prefix):
-        for obj in page.get("Contents", []):
-            key = obj["Key"]
-            if not key.endswith(".json"):
-                continue
-            hostname = key[len(status_prefix):-len(".json")]
-            # Real worker heartbeats are always a flat leaf file directly under
-            # status/ (paths.s3.heartbeat writes status/{hostname}.json). A
-            # nested path here (e.g. status/registry/<hash>.json) is something
-            # else entirely - observed in production to be stale Docker
-            # registry access-log debris, not a node - and would otherwise
-            # flood this table with dozens of irrelevant STALE rows.
-            if "/" in hostname:
-                continue
-            try:
-                body = s3.get_object(Bucket=bucket_name, Key=key)["Body"].read()
-                nodes[hostname] = json.loads(body)
-            except Exception:
-                continue
+    try:
+        s3 = get_s3_client(session=get_boto3_session(config))
+        status_prefix = paths.s3.status_root
+        nodes: dict[str, dict[str, Any]] = {}
+        paginator = s3.get_paginator("list_objects_v2")
+        for page in paginator.paginate(Bucket=bucket_name, Prefix=status_prefix):
+            for obj in page.get("Contents", []):
+                key = obj["Key"]
+                if not key.endswith(".json"):
+                    continue
+                hostname = key[len(status_prefix):-len(".json")]
+                # Real worker heartbeats are always a flat leaf file directly under
+                # status/ (paths.s3.heartbeat writes status/{hostname}.json). A
+                # nested path here (e.g. status/registry/<hash>.json) is something
+                # else entirely - observed in production to be stale Docker
+                # registry access-log debris, not a node - and would otherwise
+                # flood this table with dozens of irrelevant STALE rows.
+                if "/" in hostname:
+                    continue
+                try:
+                    body = s3.get_object(Bucket=bucket_name, Key=key)["Body"].read()
+                    nodes[hostname] = json.loads(body)
+                except Exception:
+                    continue
+    except Exception as e:
+        console.print(f"[red]Error: Could not retrieve cluster status from AWS S3 ({e}).[/red]")
+        console.print("[yellow]Please check that your AWS credentials are valid and 1Password is unlocked.[/yellow]")
+        raise typer.Exit(1)
 
     if not nodes:
         console.print(f"[yellow]No heartbeats found under s3://{bucket_name}/{status_prefix}[/yellow]")
