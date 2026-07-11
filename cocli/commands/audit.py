@@ -13,7 +13,7 @@ app = typer.Typer(
     help="Auditing tools for the cocli system structure and integrity.",
     no_args_is_help=True,
 )
-queue_app = typer.Typer(help="Audit specific queues.")
+queue_app = typer.Typer(help="Audit specific queues.", no_args_is_help=True)
 app.add_typer(queue_app, name="queue")
 console = Console()
 
@@ -1687,7 +1687,7 @@ def audit_validate(
     console.print("[green]Done.[/green]")
 
 
-@queue_app.command(name="replay")
+@queue_app.command(name="replay", no_args_is_help=True)
 def audit_replay(
     campaign: str = typer.Argument("roadmap", help="Campaign name"),
     usv_path: Path = typer.Argument(

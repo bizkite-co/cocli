@@ -35,36 +35,36 @@ def register_commands(app: typer.Typer) -> None:
     from . import index
     from . import cluster
 
-    app.command(name="add")(add.add)
-    app.command(name="add-email")(add_email.add_email)
-    app.command(name="add-meeting")(add_meeting.add_meeting)
+    app.command(name="add", no_args_is_help=True)(add.add)
+    app.command(name="add-email", no_args_is_help=True)(add_email.add_email)
+    app.command(name="add-meeting", no_args_is_help=True)(add_meeting.add_meeting)
     app.command(name="context")(context.context)
     app.command(name="fz")(fz.fz)
-    app.command(name="google-maps-cache-to-company-files")(
+    app.command(name="google-maps-cache-to-company-files", no_args_is_help=True)(
         import_companies.google_maps_cache_to_company_files
     )
-    app.command(name="import-customers")(import_customers.import_customers)
-    app.command(name="import-data")(import_data.import_data)
-    app.command(name="google-maps-csv-to-google-maps-cache")(
+    app.command(name="import-customers", no_args_is_help=True)(import_customers.import_customers)
+    app.command(name="import-data", no_args_is_help=True)(import_data.import_data)
+    app.command(name="google-maps-csv-to-google-maps-cache", no_args_is_help=True)(
         ingest_google_maps_csv.google_maps_csv_to_google_maps_cache
     )
     app.command(name="init")(init.init)
     app.command(name="next")(meetings.next_meetings)
-    app.command(name="open-company-folder")(view.open_company_folder)
+    app.command(name="open-company-folder", no_args_is_help=True)(view.open_company_folder)
     app.command(name="process-shopify-scrapes")(
         process_shopify_scrapes.process_shopify_scrapes
     )
     app.command(name="recent")(meetings.recent_meetings)
-    app.command(name="render-prospects-kml")(render_prospects_kml.render_prospects_kml)
+    app.command(name="render-prospects-kml", no_args_is_help=True)(render_prospects_kml.render_prospects_kml)
     app.command(name="scrape-shopify-myip")(scrape_shopify.scrape_shopify_myip)
     app.command(name="status")(status.status)
     app.add_typer(sync.app, name="sync")
-    app.command(name="view-company")(view.view_company)
-    app.command(name="view-meetings")(view.view_meetings)
-    app.command(name="enrich-customers")(enrich_customers.enrich_customers)
+    app.command(name="view-company", no_args_is_help=True)(view.view_company)
+    app.command(name="view-meetings", no_args_is_help=True)(view.view_meetings)
+    app.command(name="enrich-customers", no_args_is_help=True)(enrich_customers.enrich_customers)
     app.command(name="enrich-shopify-data")(enrich_shopify_data.enrich_shopify_data)
     app.command(name="compile-enrichment")(compile_enrichment.compile_enrichment)
-    app.command(name="flag-email-providers")(flag_email_providers.flag_email_providers)
+    app.command(name="flag-email-providers", no_args_is_help=True)(flag_email_providers.flag_email_providers)
 
     app.add_typer(campaign.app, name="campaign")
     app.add_typer(dev.app, name="dev")

@@ -5,9 +5,9 @@ from typing import Optional # Import Optional
 
 from ..renderers.kml import render_kml_for_campaign
 
-app = typer.Typer()
+app = typer.Typer(no_args_is_help=True)
 
-@app.command()
+@app.command(no_args_is_help=True)
 def kml(
     campaign_name: str = typer.Argument(..., help="Name of the campaign to render."),
     output_dir: Optional[Path] = typer.Option(

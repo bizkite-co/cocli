@@ -114,7 +114,7 @@ def list_scripts(
     else:
         logger.info("No enrichment scripts found.")
 
-@app.command(name="contacts")
+@app.command(name="contacts", no_args_is_help=True)
 def scrape_contacts(
     company_name: str = typer.Argument(..., help="Name of the company to scrape contacts for."),
 ) -> None:

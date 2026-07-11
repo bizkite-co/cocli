@@ -12,7 +12,7 @@ import yaml
 logger = logging.getLogger(__name__)
 console = Console()
 
-app = typer.Typer()
+app = typer.Typer(no_args_is_help=True)
 
 def get_enriched_emails(domain_to_slug_map: dict[str, str], domain: str) -> List[str]:
     """Looks up a company by domain and returns all associated emails."""
@@ -109,7 +109,7 @@ def build_domain_to_tags_map() -> dict[str, List[str]]:
     return domain_map
 
 
-@app.command()
+@app.command(no_args_is_help=True)
 def query_prospects_location(
     city: str = typer.Argument(..., help="The city to search around (e.g., 'New York, NY')."),
     radius: float = typer.Option(50.0, "--radius", "-r", help="Radius in miles to search."),

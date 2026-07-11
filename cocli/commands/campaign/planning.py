@@ -20,7 +20,7 @@ logger = logging.getLogger(__name__)
 console = Console()
 app = typer.Typer(no_args_is_help=True)
 
-@app.command(name="import-contacts")
+@app.command(name="import-contacts", no_args_is_help=True)
 def import_contacts(
     csv_path: Path = typer.Argument(..., help="Path to the CSV file containing contacts."),
     campaign_name: Optional[str] = typer.Argument(None, help="Name of the campaign to import contacts into. If not provided, uses the current campaign context."),

@@ -4,10 +4,10 @@ from rich.console import Console
 from ..services.sync_service import SyncService
 
 console = Console()
-app = typer.Typer(help="Commands for syncing data with S3.")
+app = typer.Typer(help="Commands for syncing data with S3.", no_args_is_help=True)
 
 
-@app.command()
+@app.command(no_args_is_help=True)
 def queue(
     campaign_name: str = typer.Argument(..., help="The campaign name."),
     queue_name: str = typer.Argument(
@@ -89,7 +89,7 @@ def indexes(
         raise typer.Exit(1)
 
 
-@app.command()
+@app.command(no_args_is_help=True)
 def config(
     campaign_name: str = typer.Argument(..., help="The campaign name."),
     direction: str = typer.Option(

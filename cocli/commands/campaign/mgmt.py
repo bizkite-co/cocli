@@ -120,7 +120,7 @@ def add(
         raise typer.Exit(code=1)
 
 
-@app.command(name="set")
+@app.command(name="set", no_args_is_help=True)
 def set_default_campaign(
     campaign_name: str = typer.Argument(
         ..., help="The name of the campaign to set as the current context."

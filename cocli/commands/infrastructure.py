@@ -4,10 +4,10 @@ from rich.console import Console
 from cocli.core.infrastructure.rpi import start_rpi_worker, stop_rpi_workers
 from cocli.core.config import get_campaign, load_campaign_config
 
-app = typer.Typer(help="Manage cocli infrastructure (Raspberry Pis, AWS).")
+app = typer.Typer(help="Manage cocli infrastructure (Raspberry Pis, AWS).", no_args_is_help=True)
 console = Console()
 
-@app.command()
+@app.command(no_args_is_help=True)
 def stop_workers(
     host: str = typer.Argument(..., help="Host to stop workers on."),
     user: str = typer.Option("mstouffer", "--user", "-u", help="SSH user for the RPi.")
@@ -15,7 +15,7 @@ def stop_workers(
     """Stops all cocli workers on a specific host."""
     stop_rpi_workers(host, user)
 
-@app.command()
+@app.command(no_args_is_help=True)
 def start_worker(
     host: str = typer.Argument(..., help="Host to start worker on."),
     role: str = typer.Option("scrape", "--role", help="Worker role: 'scrape' or 'details'"),

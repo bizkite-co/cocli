@@ -90,7 +90,7 @@ def get_video_queue_root(campaign_name: str) -> Path:
     return campaign_dir / "video"
 
 
-@app.command()
+@app.command(no_args_is_help=True)
 def add(
     campaign: Optional[str] = typer.Option(
         None, "-c", "--campaign", help="Campaign name"
@@ -341,7 +341,7 @@ def package(
         raise typer.Exit(1)
 
 
-@app.command()
+@app.command(no_args_is_help=True)
 def create_thumbnail(
     campaign: Optional[str] = typer.Option(
         None, "-c", "--campaign", help="Campaign name"
@@ -374,7 +374,7 @@ def create_thumbnail(
     console.print(f"[green]Thumbnail created for {video_slug}[/green]")
 
 
-@app.command()
+@app.command(no_args_is_help=True)
 def extract_screenshots(
     campaign: Optional[str] = typer.Option(
         None, "-c", "--campaign", help="Campaign name"

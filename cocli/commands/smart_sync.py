@@ -13,7 +13,7 @@ from ..core.config import get_cocli_base_dir
 from ..core.reporting import get_data_bucket_name
 
 console = Console()
-app = typer.Typer()
+app = typer.Typer(no_args_is_help=True)
 
 DATA_DIR = get_cocli_base_dir()
 STATE_FILE = DATA_DIR / ".smart_sync_state.json"

@@ -23,7 +23,7 @@ app = typer.Typer(no_args_is_help=True)
 console = Console()
 
 # Queue sub-commands for data operations
-queue_app = typer.Typer(help="Queue management commands")
+queue_app = typer.Typer(help="Queue management commands", no_args_is_help=True)
 app.add_typer(queue_app, name="queue")
 
 
@@ -84,7 +84,7 @@ def list_schemas() -> None:
     console.print(table)
 
 
-@app.command()
+@app.command(no_args_is_help=True)
 def describe(file_path: Path) -> None:
     """Show the schema definition (fields/types) for a given USV file or datapackage."""
     if file_path.is_dir() and (file_path / "datapackage.json").exists():
@@ -145,7 +145,7 @@ def describe(file_path: Path) -> None:
         console.print(f"{i}: {field['name']} ({field.get('type', 'string')})")
 
 
-@app.command()
+@app.command(no_args_is_help=True)
 def locate(file_path: Path) -> None:
     """Find and display the datapackage.json for a given file."""
     if file_path.is_dir() and (file_path / "datapackage.json").exists():
@@ -157,7 +157,7 @@ def locate(file_path: Path) -> None:
         console.print("[red]No datapackage.json found[/red]")
 
 
-@app.command()
+@app.command(no_args_is_help=True)
 def sample(
     file_path: Path,
     limit: int = typer.Option(10, "--limit", "-n"),
@@ -211,7 +211,7 @@ def sample(
         raise typer.Exit(1)
 
 
-@app.command()
+@app.command(no_args_is_help=True)
 def metrics(
     file_path: Path = typer.Argument(..., help="Path to USV file or datapackage.json"),
     resource_name: str = typer.Option(
@@ -384,7 +384,7 @@ def metrics(
             console.print(f"[green]Metrics report written to {output_path}[/green]")
 
 
-@app.command()
+@app.command(no_args_is_help=True)
 def search(
     file_path: Path,
     query: str = typer.Argument(
@@ -458,7 +458,7 @@ def search(
         raise typer.Exit(1)
 
 
-@app.command()
+@app.command(no_args_is_help=True)
 def inspect(
     file_path: Path,
     row_number: int = typer.Option(
@@ -516,7 +516,7 @@ def inspect(
         console.print(f"{i}: {field['name']:<20} | {val}")
 
 
-@queue_app.command(name="compact")
+@queue_app.command(name="compact", no_args_is_help=True)
 def queue_compact(
     campaign: str = typer.Option("roadmap", "--campaign", "-c", help="Campaign name"),
     queue_name: str = typer.Argument(..., help="Queue name to compact (e.g., gm-list)"),

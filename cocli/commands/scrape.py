@@ -1,1 +1,0 @@
-# This command has been deprecated and replaced by 'cocli campaign achieve-goal'

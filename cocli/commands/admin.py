@@ -10,7 +10,7 @@ from cocli.services.sync_service import SyncService
 app = typer.Typer(help="Administrative commands for system management.", no_args_is_help=True)
 console = Console()
 
-@app.command(name="archive-campaign")
+@app.command(name="archive-campaign", no_args_is_help=True)
 def archive_campaign(
     campaign_name: str = typer.Argument(..., help="Name of the campaign to archive."),
     upload: bool = typer.Option(True, help="Whether to upload to S3 after archiving."),

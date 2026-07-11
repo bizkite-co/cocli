@@ -10,7 +10,7 @@ logger = logging.getLogger(__name__)
 
 app = typer.Typer()
 
-@app.command()
+@app.command(no_args_is_help=True)
 def import_data(
     importer_name: str = typer.Argument(..., help="Name of the importer to use."),
     file_path: Optional[Path] = typer.Argument(None, help="Path to the data file to import. If not provided, a list of available files will be shown."), # Make file_path optional

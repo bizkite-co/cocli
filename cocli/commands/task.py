@@ -244,7 +244,7 @@ def complete_task(
     console.print(f"[green]Task '{task.slug}' marked as COMPLETED and removed from index.[/green]")
 
 
-@app.command(name="create")
+@app.command(name="create", no_args_is_help=True)
 def create_task(
     title: str = typer.Argument(..., help="The title of the new task."),
     slug: Optional[str] = typer.Option(None, "--slug", "-s", help="The slug for the new task. If not provided, it will be generated from the title."),

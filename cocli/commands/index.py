@@ -10,7 +10,7 @@ from rich.console import Console
 console = Console()
 logger = logging.getLogger(__name__)
 
-app = typer.Typer(help="Commands for managing sharded indexes.")
+app = typer.Typer(help="Commands for managing sharded indexes.", no_args_is_help=True)
 
 def setup_index_logging(campaign_name: str, index_name: str) -> Path:
     logs_dir = Path(".logs")
@@ -241,7 +241,7 @@ def backfill_domains(
 
     console.print(f"[bold green]Success![/bold green] Backfill process finished for [cyan]{campaign}[/cyan].")
 
-@app.command(name="write-datapackage")
+@app.command(name="write-datapackage", no_args_is_help=True)
 def write_datapackage(
     index: str = typer.Argument(..., help="Index name (e.g. domains, google_maps_prospects)"),
     campaign: Optional[str] = typer.Option(None, "--campaign", "-c", help="Campaign name for campaign-specific indexes."),

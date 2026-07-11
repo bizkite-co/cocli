@@ -9,9 +9,9 @@ from ..core.exclusions import ExclusionManager
 logger = logging.getLogger(__name__)
 console = Console()
 
-app = typer.Typer(help="Manage campaign-specific exclusions")
+app = typer.Typer(help="Manage campaign-specific exclusions", no_args_is_help=True)
 
-@app.command(name="add")
+@app.command(name="add", no_args_is_help=True)
 def add_exclude(
     target: str = typer.Argument(..., help="Company slug or domain to exclude."),
     campaign: str = typer.Option(..., "--campaign", "-c", help="The campaign slug."),
@@ -31,7 +31,7 @@ def add_exclude(
         manager.add_exclusion(slug=target, reason=reason)
         console.print(f"[green]Excluded slug: {target}[/green]")
 
-@app.command(name="remove")
+@app.command(name="remove", no_args_is_help=True)
 def remove_exclude(
     target: str = typer.Argument(..., help="Company slug or domain to remove from exclusion."),
     campaign: str = typer.Option(..., "--campaign", "-c", help="The campaign slug."),
@@ -46,7 +46,7 @@ def remove_exclude(
         manager.remove_exclusion(slug=target)
     console.print(f"[green]Removed exclusion for: {target}[/green]")
 
-@app.command(name="list")
+@app.command(name="list", no_args_is_help=True)
 def list_excludes(
     campaign: str = typer.Option(..., "--campaign", "-c", help="The campaign slug."),
 ) -> None:

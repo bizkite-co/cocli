@@ -7,7 +7,7 @@ from cocli.core.utils import generate_company_hash
 from cocli.core.config import get_companies_dir
 
 logger = logging.getLogger(__name__)
-app = typer.Typer()
+app = typer.Typer(no_args_is_help=True)
 
 @app.command()
 def deduplicate(

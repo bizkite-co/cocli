@@ -12,7 +12,7 @@ logger = logging.getLogger(__name__)
 
 app = typer.Typer()
 
-@app.command()
+@app.command(no_args_is_help=True)
 def enrich_customers(
     campaign_name: str = typer.Argument(..., help="Name of the campaign to enrich customers for.")
 ) -> None:

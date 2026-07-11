@@ -3,7 +3,7 @@ from rich.console import Console
 from ...application.event_generator_service import EventGeneratorService
 from ...core.config import get_campaign
 
-app = typer.Typer(help="Commands for managing campaign events.")
+app = typer.Typer(help="Commands for managing campaign events.", no_args_is_help=True)
 console = Console()
 
 @app.command(name="generate-tasks")

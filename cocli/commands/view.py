@@ -49,7 +49,7 @@ def _load_frontmatter(index_path: Path) -> Dict[str, Any]:
                 console.print(f"Error parsing YAML frontmatter: {e}")
     return frontmatter_data
 
-@app.command()
+@app.command(no_args_is_help=True)
 def view_company(
     company_slug: str = typer.Argument(..., help="Slug of the company to view.")
 ) -> None:
@@ -625,7 +625,7 @@ def _interactive_view_company(company_slug: str) -> None:
             console.print(f"[bold red]Invalid option: '{char}'. Press 'a', 'e', 'w', 'p', 'm', 'C', or 'q'.[/bold red]")
             _getch() # Wait for a key press to clear the message
 
-@app.command()
+@app.command(no_args_is_help=True)
 def view_meetings(
     company_name: str = typer.Argument(..., help="Name of the company to view meetings for.")
 ) -> None:
@@ -658,7 +658,7 @@ def view_meetings(
                 logger.warning(f"- Malformed meeting file: {meeting_file.name}")
 
 
-@app.command()
+@app.command(no_args_is_help=True)
 def open_company_folder(
     company_name: str = typer.Argument(..., help="Name of the company to open folder for.")
 ) -> None:
