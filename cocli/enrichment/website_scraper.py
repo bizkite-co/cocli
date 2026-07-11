@@ -1055,6 +1055,24 @@ class WebsiteScraper:
                 email = email.lower()
                 if email not in email_to_label:
                     email_to_label[email] = ""
+
+        # Parse obfuscated emails
+        obfuscated_patterns = [
+            r"\b([a-zA-Z0-9._%+-]+)\s*(?:\[at\]|\(at\)|\[\s*at\s*\]|\(\s*at\s*\)|at)\s*([a-zA-Z0-9.-]+)\s*(?:\[dot\]|\(dot\)|\[\s*dot\s*\]|\(\s*dot\s*\)|dot)\s*([a-zA-Z]{2,})\b"
+        ]
+        for pattern in obfuscated_patterns:
+            for match in re.finditer(pattern, text_content, re.I):
+                email = f"{match.group(1)}@{match.group(2)}.{match.group(3)}"
+                email = re.sub(r"\s+", "", email).lower()
+                if email not in email_to_label:
+                    email_to_label[email] = ""
+            if html:
+                for match in re.finditer(pattern, html, re.I):
+                    email = f"{match.group(1)}@{match.group(2)}.{match.group(3)}"
+                    email = re.sub(r"\s+", "", email).lower()
+                    if email not in email_to_label:
+                        email_to_label[email] = ""
+
         return email_to_label
 
     def _detect_tech(self, soup: BeautifulSoup) -> List[str]:

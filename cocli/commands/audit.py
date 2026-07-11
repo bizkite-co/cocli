@@ -1046,7 +1046,8 @@ def audit_enrichment(
 ) -> None:
     """
     Audit website enrichment metrics for a campaign: counts of enriched companies,
-    and how many successfully resolved contact names (people), phone numbers, and emails.
+    and how many successfully resolved contact names (people), phone numbers, emails,
+    and social media links, along with lead quality tiering.
     """
     from ..core.config import get_campaign, get_companies_dir
     from ..core.text_utils import parse_frontmatter
@@ -1068,6 +1069,10 @@ def audit_enrichment(
     has_contact_name = 0
     has_phone = 0
     has_email = 0
+    has_social = 0
+    tier_1 = 0
+    tier_2 = 0
+    tier_3 = 0
 
     # Walk the directory
     for path in companies_dir.iterdir():
@@ -1106,27 +1111,40 @@ def audit_enrichment(
             # We consider it processed/enriched if the file exists and is readable
             total_enriched += 1
 
-            # Check Phone
-            if data.get("phone"):
-                has_phone += 1
-
-            # Check Email
-            if data.get("email") or data.get("all_emails"):
-                has_email += 1
-
-            # Check Personnel (Names)
+            # Check flags
+            has_name_val = False
             personnel = data.get("personnel", [])
             if isinstance(personnel, list) and len(personnel) > 0:
-                # Double check that there is at least one person with a name
                 if any(p.get("name") or p.get("first_name") or p.get("last_name") for p in personnel if isinstance(p, dict)):
-                    has_contact_name += 1
+                    has_name_val = True
+
+            has_phone_val = bool(data.get("phone"))
+            has_email_val = bool(data.get("email") or data.get("all_emails"))
+            has_social_val = any(bool(data.get(f"{platform}_url")) for platform in ["facebook", "linkedin", "instagram", "twitter", "youtube"])
+
+            if has_name_val:
+                has_contact_name += 1
+            if has_phone_val:
+                has_phone += 1
+            if has_email_val:
+                has_email += 1
+            if has_social_val:
+                has_social += 1
+
+            # Quality Tiers
+            if has_name_val and (has_email_val or has_phone_val or has_social_val):
+                tier_1 += 1
+            elif has_email_val or has_phone_val or has_social_val:
+                tier_2 += 1
+            else:
+                tier_3 += 1
 
         except Exception:
             continue
 
     # Render Table
     table = Table(title=f"Enrichment Health Audit: {campaign_name}")
-    table.add_column("Metric", style="cyan")
+    table.add_column("Metric/Segment", style="cyan")
     table.add_column("Count", justify="right", style="magenta")
     table.add_column("Percentage", justify="right", style="green")
 
@@ -1143,6 +1161,13 @@ def audit_enrichment(
     add_metric_row("Has Contact Name (People)", has_contact_name, total_enriched)
     add_metric_row("Has Phone Number", has_phone, total_enriched)
     add_metric_row("Has Email Address", has_email, total_enriched)
+    add_metric_row("Has Social Media Link", has_social, total_enriched)
+
+    table.add_section()
+    # Lead Quality Tiers
+    add_metric_row("Tier 1 Lead (Name + Email/Phone/Social)", tier_1, total_enriched)
+    add_metric_row("Tier 2 Lead (No Name, has Contact Point)", tier_2, total_enriched)
+    add_metric_row("Tier 3 Lead (No Contact Info / Dead)", tier_3, total_enriched)
 
     console.print(table)
 
