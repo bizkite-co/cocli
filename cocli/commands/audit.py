@@ -1038,6 +1038,115 @@ def _audit_cluster_live(campaign_name: str, verbose: bool) -> None:
                 console.print(f"[dim]{d['host']} last log:[/dim] {escape(d['last_log_line'])}")
 
 
+@app.command(name="enrichment")
+def audit_enrichment(
+    campaign: Optional[str] = typer.Option(
+        None, "--campaign", "-c", help="Campaign name (defaults to current)."
+    ),
+) -> None:
+    """
+    Audit website enrichment metrics for a campaign: counts of enriched companies,
+    and how many successfully resolved contact names (people), phone numbers, and emails.
+    """
+    from ..core.config import get_campaign, get_companies_dir
+    from ..core.text_utils import parse_frontmatter
+    from rich.table import Table
+    import yaml
+
+    campaign_name = campaign or get_campaign()
+    if not campaign_name:
+        console.print("[bold red]Error:[/bold red] No campaign specified.")
+        raise typer.Exit(1)
+
+    companies_dir = get_companies_dir()
+    if not companies_dir.exists():
+        console.print(f"[bold red]Companies directory not found at: {companies_dir}[/bold red]")
+        raise typer.Exit(1)
+
+    total_companies = 0
+    total_enriched = 0
+    has_contact_name = 0
+    has_phone = 0
+    has_email = 0
+
+    # Walk the directory
+    for path in companies_dir.iterdir():
+        if not path.is_dir():
+            continue
+        
+        # Check if the company belongs to the campaign
+        tags_path = path / "tags.lst"
+        if not tags_path.exists():
+            continue
+        
+        try:
+            with open(tags_path, "r", encoding="utf-8") as f:
+                tags = [line.strip() for line in f if line.strip()]
+            if campaign_name not in tags:
+                continue
+        except Exception:
+            continue
+
+        total_companies += 1
+
+        # Check for website enrichment
+        website_md_path = path / "enrichments" / "website.md"
+        if not website_md_path.exists():
+            continue
+
+        try:
+            content = website_md_path.read_text(encoding="utf-8")
+            fm_str = parse_frontmatter(content)
+            if not fm_str:
+                continue
+            data = yaml.safe_load(fm_str)
+            if not data:
+                continue
+
+            # We consider it processed/enriched if the file exists and is readable
+            total_enriched += 1
+
+            # Check Phone
+            if data.get("phone"):
+                has_phone += 1
+
+            # Check Email
+            if data.get("email") or data.get("all_emails"):
+                has_email += 1
+
+            # Check Personnel (Names)
+            personnel = data.get("personnel", [])
+            if isinstance(personnel, list) and len(personnel) > 0:
+                # Double check that there is at least one person with a name
+                if any(p.get("name") or p.get("first_name") or p.get("last_name") for p in personnel if isinstance(p, dict)):
+                    has_contact_name += 1
+
+        except Exception:
+            continue
+
+    # Render Table
+    table = Table(title=f"Enrichment Health Audit: {campaign_name}")
+    table.add_column("Metric", style="cyan")
+    table.add_column("Count", justify="right", style="magenta")
+    table.add_column("Percentage", justify="right", style="green")
+
+    # Add row helper
+    def add_metric_row(label: str, count: int, base_count: int) -> None:
+        pct = (count / base_count * 100) if base_count > 0 else 0.0
+        table.add_row(label, str(count), f"{pct:.1f}%")
+
+    add_metric_row("Total Campaign Companies", total_companies, total_companies)
+    add_metric_row("Total Enriched (Processed)", total_enriched, total_companies)
+    
+    table.add_section()
+    # These metrics are out of the processed/enriched ones
+    add_metric_row("Has Contact Name (People)", has_contact_name, total_enriched)
+    add_metric_row("Has Phone Number", has_phone, total_enriched)
+    add_metric_row("Has Email Address", has_email, total_enriched)
+
+    console.print(table)
+
+
 @app.command(name="schemas")
 def audit_schemas(
     campaign: Optional[str] = typer.Option(

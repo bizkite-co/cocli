@@ -57,6 +57,7 @@ class Website(BaseModel):
     found_keywords: List[str] = []
     sitemap_xml: Optional[str] = None
     navbar_html: Optional[str] = None
+    error: Optional[str] = None
 
     def save(self, company_slug: str) -> None:
         """Saves the website enrichment data to the local company directory."""

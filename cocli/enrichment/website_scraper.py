@@ -29,6 +29,59 @@ from ..models.campaigns.raw_witness import RawWebsiteWitness
 from ..core.text_utils import is_valid_email
 from ..utils.headers import ANTI_BOT_HEADERS, USER_AGENT
 
+STOP_WORDS = {
+    # Business & Web terms
+    "roofing", "flooring", "contracting", "contractor", "services", "solutions", "llc", "inc", "co",
+    "company", "group", "construction", "commercial", "residential", "quality", "page", "home",
+    "about", "contact", "privacy", "policy", "terms", "service", "estimator", "office", "admin",
+    "info", "sales", "support", "team", "staff", "meet", "welcome", "licensed", "insured", "local",
+    "trusted", "expert", "best", "top", "free", "estimate", "quote", "repair", "installation",
+    "gallery", "projects", "reviews", "testimonials", "blog", "news", "careers", "jobs", "apply",
+    "project", "work", "job", "other", "for", "get", "timeline", "most", "know", "should", "looking",
+    "damage", "foundation", "collection", "architecture", "design", "area", "doe",
+    # Places, Roads, & Directions
+    "rd", "road", "street", "st", "ave", "avenue", "blvd", "boulevard", "lane", "ln", "dr", "drive",
+    "court", "ct", "way", "plaza", "point", "view", "heights", "lake", "lakes", "valley", "river",
+    "ridge", "park", "hills", "island", "county", "state", "city", "town", "country", "nation",
+    "naperville", "florissant", "bay", "beach", "creek", "canyon", "grove", "harbor", "haven", 
+    "hill", "meadow", "meadows", "mount", "mountain", "mountains", "port", "spring", "springs",
+    "station", "wood", "woods", "boroughs", "island", "islands", "center", "square",
+    # States & Cities
+    "washington", "wisconsin", "virginia", "georgia", "maryland", "carolina", "dakota", "delaware",
+    "indiana", "michigan", "montana", "nevada", "oregon", "texas", "utah", "vermont", "wyoming",
+    "colorado", "alaska", "arizona", "arkansas", "california", "florida", "hawaii", "idaho",
+    "illinois", "iowa", "kansas", "kentucky", "louisiana", "maine", "massachusetts", "minnesota",
+    "mississippi", "missouri", "nebraska", "new", "hampshire", "jersey", "mexico", "york", "ohio",
+    "oklahoma", "pennsylvania", "rhode", "tennessee", "alabama", "east", "west", "north", "south",
+    # Flooring brands & false entities
+    "mannington", "armstrong", "mohawk", "shaw", "congoleum", "harbour"
+}
+
+FIRST_NAMES = {
+    "james", "john", "robert", "michael", "william", "david", "richard", "joseph", "thomas", "charles",
+    "christopher", "daniel", "matthew", "anthony", "mark", "donald", "steven", "paul", "andrew", "joshua",
+    "kenneth", "kevin", "brian", "george", "edward", "ronald", "timothy", "jason", "jeffrey", "ryan",
+    "jacob", "gary", "nicholas", "eric", "jonathan", "stephen", "larry", "justin", "scott", "brandon",
+    "frank", "benjamin", "gregory", "samuel", "raymond", "patrick", "alexander", "jack", "dennis", "jerry",
+    "tyler", "aaron", "jose", "adam", "nathan", "henry", "douglas", "zachary", "peter", "kyle",
+    "walter", "harold", "jeremy", "ethan", "carl", "keith", "roger", "gerald", "christian", "terry",
+    "sean", "arthur", "austin", "noah", "lawrence", "jesse", "joe", "bryan", "billy", "jordan",
+    "albert", "dylan", "bruce", "willie", "alan", "gabriel", "logan", "randy", "ralph", "roy",
+    "alan", "louis", "wayne", "vincent", "russell", "bobby", "philip", "johnny", "mary", "patricia",
+    "jennifer", "linda", "elizabeth", "barbara", "susan", "jessica", "sarah", "karen", "lisa", "nancy",
+    "betty", "sandra", "margaret", "ashley", "kimberly", "emily", "donna", "michelle", "carol", "amanda",
+    "dorothy", "melissa", "deborah", "stephanie", "rebecca", "sharon", "laura", "cynthia", "kathleen", "amy",
+    "shirley", "angela", "helen", "anna", "brenda", "pamela", "nicole", "samantha", "katherine", "emma",
+    "ruth", "christine", "catherine", "debra", "rachel", "carolyn", "janet", "virginia", "maria", "heather",
+    "diane", "julie", "joyce", "evelyn", "joan", "kelly", "christina", "lauren", "victoria", "cheryl",
+    "megan", "alice", "jean", "doris", "andrea", "marie", "kathryn", "jacqueline", "gloria", "teresa",
+    "hannah", "sara", "janice", "julia", "olivia", "grace", "rose", "theresa", "judy", "beverly",
+    "denise", "marilyn", "amber", "madison", "danielle", "brittany", "diana", "abigail", "jane", "lori",
+    "bill", "steve", "mike", "dave", "chris", "bob", "ken", "rick", "dan", "tom", "jeff", "rob", "tim",
+    "tony", "andy", "jeffery", "jerry", "scott", "bruce", "pat", "gary", "keith", "brian", "bobby", "craig",
+    "jared", "justin", "corey", "marcus", "kurt", "charlie", "sam", "matt", "alex", "ben", "luke", "jake"
+}
+
 
 logger = logging.getLogger(__name__)
 
@@ -147,7 +200,11 @@ class WebsiteScraper:
                 timeout=site_timeout_seconds,
             )
         except asyncio.TimeoutError:
-            logger.error(f"Scraping timed out for {domain} after {site_timeout_seconds} seconds. Finalizing with partial data.")
+            logger.info(f"Scraping timed out for {domain} after {site_timeout_seconds} seconds. Finalizing with partial data.")
+            website_data.error = "Timeout"
+        except Exception as e:
+            logger.info(f"Failed to scrape website {domain}: {e}")
+            website_data.error = str(e)
         finally:
             await self._finalize_enrichment(website_data, campaign)
 
@@ -755,6 +812,7 @@ class WebsiteScraper:
                     about_section.get_text(separator="\n", strip=True)
                 )
 
+        self._extract_personnel(soup, website_data)
         return website_data
 
     async def _scrape_contact_page(
@@ -835,6 +893,113 @@ class WebsiteScraper:
         if phone_match:
             person_data["phone"] = str(phone_match.group(0))
         return person_data if person_data else None
+
+    def _clean_and_validate_name(self, name_str: str) -> str:
+        name = re.sub(r"[^a-zA-Z\s-]", "", name_str).strip()
+        words = name.split()
+        
+        if len(words) < 2 or len(words) > 3:
+            return ""
+            
+        if not all(w[0].isupper() for w in words if w):
+            return ""
+            
+        for w in words:
+            if w.lower() in STOP_WORDS:
+                return ""
+                
+        if words[0].lower() not in FIRST_NAMES:
+            return ""
+            
+        return " ".join(words)
+
+    def _extract_personnel(self, soup: BeautifulSoup, website_data: Website) -> None:
+        text = soup.get_text(separator=" \n ")
+        seen_names = {p["name"].lower() for p in website_data.personnel if "name" in p}
+
+        # Heuristic 1: Extract from emails (e.g. john.smith@domain.com or john@domain.com)
+        emails = re.findall(r"\b([a-zA-Z0-9._%+-]+)@([a-zA-Z0-9.-]+\.[a-zA-Z]{2,})\b", text)
+        for mailbox, domain in emails:
+            mailbox_lower = mailbox.lower()
+            if mailbox_lower in {"info", "sales", "support", "office", "admin", "contact", "mail", "help", "billing", "service", "jobs", "estimator"}:
+                continue
+                
+            if "." in mailbox:
+                parts = mailbox.split(".")
+                if len(parts) == 2:
+                    first, last = parts[0], parts[1]
+                    if first.lower() in FIRST_NAMES and len(last) > 1:
+                        candidate = f"{first.capitalize()} {last.capitalize()}"
+                        cleaned = self._clean_and_validate_name(candidate)
+                        if cleaned and cleaned.lower() not in seen_names:
+                            seen_names.add(cleaned.lower())
+                            website_data.personnel.append({
+                                "name": cleaned,
+                                "title": "Key Contact (Email)",
+                                "email": f"{mailbox}@{domain}"
+                            })
+                            
+            elif mailbox_lower in FIRST_NAMES:
+                first_cap = mailbox_lower.capitalize()
+                matches = re.findall(rf"\b({first_cap}\s+[A-Z][a-z]+)\b", text)
+                for m in matches:
+                    cleaned = self._clean_and_validate_name(m)
+                    if cleaned and cleaned.lower() not in seen_names:
+                        seen_names.add(cleaned.lower())
+                        website_data.personnel.append({
+                            "name": cleaned,
+                            "title": "Key Contact",
+                            "email": f"{mailbox}@{domain}"
+                        })
+
+        # Heuristic 2: Contextual parsing of Owner/President patterns
+        patterns = [
+            r"\b(?:Owner|Founder|President|CEO|Partner|Manager)\b\s*[:,-]?\s*([A-Z][a-z]+(?:\s+[A-Z][a-z]+){1,2})",
+            r"\b([A-Z][a-z]+(?:\s+[A-Z][a-z]+){1,2})\s*,\s*(?:Owner|Founder|President|CEO|Partner|Manager)\b",
+        ]
+        
+        for pattern in patterns:
+            for match in re.finditer(pattern, text):
+                candidate = match.group(1)
+                cleaned = self._clean_and_validate_name(candidate)
+                if cleaned and cleaned.lower() not in seen_names:
+                    seen_names.add(cleaned.lower())
+                    
+                    title = "Owner/Key Person"
+                    context_str = text[max(0, match.start() - 20):min(len(text), match.end() + 20)]
+                    for t in ["Owner", "Founder", "President", "CEO", "Partner", "Manager"]:
+                        if t.lower() in context_str.lower():
+                            title = t
+                            break
+                    website_data.personnel.append({
+                        "name": cleaned,
+                        "title": title
+                    })
+
+        # Heuristic 3: Simple first name dictionary lookup in the text (with strict filters)
+        for fn in FIRST_NAMES:
+            fn_cap = fn.capitalize()
+            for match in re.finditer(rf"\b({fn_cap}\s+[A-Z][a-z]+)\b", text):
+                candidate = match.group(1)
+                cleaned = self._clean_and_validate_name(candidate)
+                if cleaned and cleaned.lower() not in seen_names:
+                    context_start = max(0, match.start() - 150)
+                    context_end = min(len(text), match.end() + 150)
+                    context = text[context_start:context_end].lower()
+                    
+                    keywords = {"owner", "founder", "president", "ceo", "partner", "manager", "team", "staff", "meet", "founder", "about", "contact", "our", "we"}
+                    if any(kw in context for kw in keywords):
+                        seen_names.add(cleaned.lower())
+                        
+                        title = "Key Person"
+                        for t in ["owner", "founder", "president", "ceo", "partner", "manager"]:
+                            if t in context:
+                                title = t.capitalize()
+                                break
+                        website_data.personnel.append({
+                            "name": cleaned,
+                            "title": title
+                        })
 
     def _search_keywords(
         self, soup: BeautifulSoup, website_data: Website, target_keywords: List[str]
