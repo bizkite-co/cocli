@@ -1,5 +1,7 @@
 # Documentation Index
 
+*   **[DESCRIPTION](./DESCRIPTION.md): What this app is and why it's built this way — the value proposition, the file-path-queue thesis, the queue/WAL/index trichotomy, and positioning vs Burr/Dagster/Temporal/DuckDB. Read this when lost in implementation weeds.**
+
 ## Architecture
 High-level design, patterns, and infrastructure.
 
