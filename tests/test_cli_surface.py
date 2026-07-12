@@ -96,3 +96,43 @@ def test_help_smoke(runner: CliRunner, leaf_path: Tuple[str, ...]) -> None:
         f"`cocli {' '.join(leaf_path)} --help` exited {result.exit_code}:\n"
         f"{result.output}"
     )
+
+
+ACTUAL_TREE_FILE = Path(__file__).parents[1] / "docs" / "cli" / "actual_tree.txt"
+
+
+def test_golden_matches_actual_tree_doc() -> None:
+    """`tests/goldens/cli_tree.txt` and `docs/cli/actual_tree.txt` are the same
+    content today and are kept in sync by this test. They serve different
+    purposes (golden snapshot for the surface test vs. Screaming Architecture
+    comparison doc), so both are kept, but they must not silently drift.
+
+    If you intentionally changed the CLI surface, regenerate both from the same
+    walker so this test stays green:
+
+        make cli-tree                                  # writes docs/cli/actual_tree.txt
+        uv run cocli audit cli --output tests/goldens/cli_tree.txt
+    """
+    if not ACTUAL_TREE_FILE.exists():
+        pytest.fail(
+            f"{ACTUAL_TREE_FILE} not found. Regenerate with:\n"
+            f"  make cli-tree"
+        )
+    actual = ACTUAL_TREE_FILE.read_text(encoding="utf-8")
+    expected = GOLDEN_FILE.read_text(encoding="utf-8")
+    if actual != expected:
+        diff = "".join(
+            difflib.unified_diff(
+                expected.splitlines(keepends=True),
+                actual.splitlines(keepends=True),
+                fromfile=str(GOLDEN_FILE),
+                tofile=str(ACTUAL_TREE_FILE),
+            )
+        )
+        pytest.fail(
+            "CLI tree golden snapshot does not match docs/cli/actual_tree.txt.\n"
+            "Both files must be regenerated together from the same walker:\n"
+            "  make cli-tree\n"
+            "  uv run cocli audit cli --output tests/goldens/cli_tree.txt\n\n"
+            f"{diff}"
+        )
