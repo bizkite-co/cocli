@@ -296,3 +296,5 @@ To prevent breaking active pipelines, scripts, and developer configurations, we 
 3.  **Warning Messages**: Upon invocation, deprecated commands must print a clear one-line deprecation notice to `sys.stderr` and exit with the output of the redirected target command.
     *   *Format*: `DEPRECATION WARNING: 'cocli {old_name}' is deprecated and will be removed in version {removal_version}. Use 'cocli {new_name}' instead.`
 4.  **Automation Safety**: Commands identified with automation callers (such as `launch.json` or cluster deployment helper scripts) must not have their signatures modified during the bake period.
+5.  **Visibility in CLI Surface Audits & Tests**: To maintain strict auditability and ensure robust automated verification, all hidden deprecation aliases remain visible in the golden snapshot (`tests/goldens/cli_tree.txt`), the actual tree documentation (`docs/cli/actual_tree.txt`), and the automated `--help` smoke tests. This guarantees that deprecated aliases are actively smoke-tested and cannot silently break during the bake period.
+
