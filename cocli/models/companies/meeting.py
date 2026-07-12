@@ -99,3 +99,12 @@ class Meeting(BaseModel):
 
         meeting_path.write_text(file_content)
         return meeting_path
+
+
+class CompanyMeeting(BaseModel):
+    datetime_utc: datetime
+    datetime_local: datetime
+    company_name: str
+    title: str
+    file_path: Path
+

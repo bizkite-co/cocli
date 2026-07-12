@@ -298,3 +298,38 @@ To prevent breaking active pipelines, scripts, and developer configurations, we 
 4.  **Automation Safety**: Commands identified with automation callers (such as `launch.json` or cluster deployment helper scripts) must not have their signatures modified during the bake period.
 5.  **Visibility in CLI Surface Audits & Tests**: To maintain strict auditability and ensure robust automated verification, all hidden deprecation aliases remain visible in the golden snapshot (`tests/goldens/cli_tree.txt`), the actual tree documentation (`docs/cli/actual_tree.txt`), and the automated `--help` smoke tests. This guarantees that deprecated aliases are actively smoke-tested and cannot silently break during the bake period.
 
+---
+
+## 7. Appendix: Command-to-Application-API Extraction Pattern (Exemplar)
+
+This appendix documents the extraction pattern established in Phase 4 using the `meetings` module as the exemplar. All subsequent Phase 5 refactoring subtasks must follow these conventions to ensure CLI/TUI parity and decoupled business logic.
+
+### 1. File Placement & Naming Conventions
+- **Command Adapter**: Stays in `cocli/commands/` (e.g. `cocli/commands/meetings.py`). This layer only parses CLI arguments/options, performs presentation formatting, and dispatches interactive processes (like `fzf` or `nvim`).
+- **Application Service**: Placed in `cocli/application/` (e.g. `cocli/application/meeting_service.py`).
+- **Data Models**: Stays in the model structure (e.g. `cocli/models/companies/meeting.py`). View/context-specific helper models are defined as strongly typed Pydantic models (e.g. `CompanyMeeting`).
+- **Service Interfaces**: Declared as `typing.Protocol` classes in `cocli/application/protocols.py` (e.g., `MeetingServiceProvider`).
+- **Unit Tests**: Test files are placed under `tests/unit/` (e.g. `tests/unit/test_meeting_service.py`).
+
+### 2. Campaign/Context Resolution
+- The command layer resolves the active campaign using `get_campaign() or "default"`.
+- It instantiates/accesses the lazily loaded service from `ServiceContainer(campaign_name=campaign)`.
+- The service instance resolves campaign-scoped data directories via path-aware managers (e.g., `paths.companies.ensure()`).
+
+### 3. Model-to-Model Signatures
+- Services must accept primitive types or model objects, and must return strictly typed Pydantic models (e.g., `List[CompanyMeeting]`).
+- Services must NOT perform any presentation operations (no Rich console prints, no terminal colors).
+- All warning/info output in the service layer must utilize Python's built-in `logging` (e.g., `logger.warning()`).
+
+### 4. Service Unit Test Pattern
+Unit tests must verify service logic in isolation by setting a virtualized path root:
+```python
+def test_meeting_service_gathers_meetings(tmp_path):
+    paths.root = tmp_path
+    # Set up mock files...
+    service = MeetingService(campaign_name="test-campaign")
+    meetings = service.get_all_meetings()
+    assert len(meetings) == 1
+```
+
+

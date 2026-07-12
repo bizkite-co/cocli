@@ -14,6 +14,7 @@ from cocli.application.data_sync_service import DataSyncService
 from cocli.application.deployment_service import DeploymentService
 from cocli.application.company_service import get_company_details_for_view
 from cocli.application.event_service import EventService
+from cocli.application.meeting_service import MeetingService
 from cocli.core.secrets import get_secret_provider
 from cocli.models.search import SearchResult
 from cocli.core.config import get_campaign
@@ -31,6 +32,7 @@ from .protocols import (
     OperationServiceProvider,
     EventServiceProvider,
     SecretServiceProvider,
+    MeetingServiceProvider,
 )
 
 logger = logging.getLogger(__name__)
@@ -60,6 +62,7 @@ class ServiceContainer(BaseModel):
             self._operation_service = None
             self._event_service = None
             self._secret_service = None
+            self._meeting_service = None
             logger.warning(f"Services invalidated for campaign: {name}")
 
     # Provider overrides (can be injected via constructor or setters)
@@ -81,6 +84,7 @@ class ServiceContainer(BaseModel):
     _operation_service: Optional[Any] = PrivateAttr(default=None)
     _event_service: Optional[Any] = PrivateAttr(default=None)
     _secret_service: Optional[Any] = PrivateAttr(default=None)
+    _meeting_service: Optional[Any] = PrivateAttr(default=None)
 
     @property
     def search_service(self) -> SearchProvider:
@@ -242,3 +246,13 @@ class ServiceContainer(BaseModel):
 
     def get_company_details(self, company_slug: str) -> Optional[Dict[str, Any]]:
         return self.company_service(company_slug)
+
+    @property
+    def meeting_service(self) -> MeetingServiceProvider:
+        if not self._meeting_service:
+            self._meeting_service = MeetingService(campaign_name=self.campaign_name)
+        return cast(MeetingServiceProvider, self._meeting_service)
+
+    @meeting_service.setter
+    def meeting_service(self, value: MeetingServiceProvider) -> None:
+        self._meeting_service = value

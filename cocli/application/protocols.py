@@ -1,5 +1,7 @@
 from typing import Protocol, List, Dict, Any, Optional, Iterator, Callable, TypeVar
 from cocli.models.search import SearchResult
+from cocli.models.companies.meeting import CompanyMeeting
+
 
 class SearchProvider(Protocol):
     def __call__(
@@ -18,6 +20,12 @@ class SearchProvider(Protocol):
 class CompanyServiceProvider(Protocol):
     def __call__(self, company_slug: str) -> Optional[Dict[str, Any]]:
         ...
+
+class MeetingServiceProvider(Protocol):
+    campaign_name: str
+    def get_all_meetings(self) -> List[CompanyMeeting]:
+        ...
+
 
 class TemplateCountsProvider(Protocol):
     def __call__(self, campaign_name: Optional[str] = None) -> Dict[str, int]:
