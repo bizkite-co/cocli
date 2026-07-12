@@ -29,6 +29,8 @@ cocli
             --live (boolean)
         enrichment - Audit website enrichment metrics for a campaign: counts of enriched companies,
             --campaign/-c (text)
+        enrichment-interactive - Interactively step through companies that have no contact name (Tiers 2 & 3)
+            --campaign/-c (text)
         fs - Audits the filesystem for OMAP compliance and Screaming Architecture.
             --campaign/-c (text)
             --output/-o (path)

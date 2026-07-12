@@ -1172,6 +1172,148 @@ def audit_enrichment(
     console.print(table)
 
 
+@app.command(name="enrichment-interactive")
+def audit_enrichment_interactive(
+    campaign: Optional[str] = typer.Option(
+        None, "--campaign", "-c", help="Campaign name (defaults to current)."
+    ),
+) -> None:
+    """
+    Interactively step through companies that have no contact name (Tiers 2 & 3)
+    and open their websites in the browser to inspect and find contacts.
+    """
+    from ..core.config import get_campaign, get_companies_dir
+    from ..core.text_utils import parse_frontmatter
+    import yaml
+    import webbrowser
+
+    campaign_name = campaign or get_campaign()
+    if not campaign_name:
+        console.print("[bold red]Error:[/bold red] No campaign specified.")
+        raise typer.Exit(1)
+
+    companies_dir = get_companies_dir()
+    if not companies_dir.exists():
+        console.print(f"[bold red]Companies directory not found at: {companies_dir}[/bold red]")
+        raise typer.Exit(1)
+
+    targets = [] # list of (domain, company_name, slug, has_email, has_phone)
+    
+    # Walk the directory
+    for path in sorted(companies_dir.iterdir(), key=lambda p: p.name):
+        if not path.is_dir():
+            continue
+        
+        tags_path = path / "tags.lst"
+        if not tags_path.exists():
+            continue
+        
+        try:
+            with open(tags_path, "r", encoding="utf-8") as f:
+                tags = [line.strip() for line in f if line.strip()]
+            if campaign_name not in tags:
+                continue
+        except Exception:
+            continue
+
+        website_md_path = path / "enrichments" / "website.md"
+        if not website_md_path.exists():
+            domain = None
+            name = path.name
+            index_md = path / "_index.md"
+            if index_md.exists():
+                try:
+                    fm = parse_frontmatter(index_md.read_text(encoding="utf-8"))
+                    if fm:
+                        idx_data = yaml.safe_load(fm)
+                        if idx_data:
+                            domain = idx_data.get("domain")
+                            name = idx_data.get("name") or path.name
+                except Exception:
+                    pass
+            if domain:
+                targets.append((domain, name, path.name, False, False))
+            continue
+
+        try:
+            content = website_md_path.read_text(encoding="utf-8")
+            fm_str = parse_frontmatter(content)
+            if not fm_str:
+                continue
+            data = yaml.safe_load(fm_str)
+            if not data:
+                continue
+
+            has_name_val = False
+            personnel = data.get("personnel", [])
+            if isinstance(personnel, list) and len(personnel) > 0:
+                if any(p.get("name") or p.get("first_name") or p.get("last_name") for p in personnel if isinstance(p, dict)):
+                    has_name_val = True
+
+            if not has_name_val:
+                domain = data.get("url") or data.get("domain") or path.name
+                name = data.get("company_name") or data.get("title") or path.name
+                has_email = bool(data.get("email") or data.get("all_emails"))
+                has_phone = bool(data.get("phone"))
+                targets.append((domain, name, path.name, has_email, has_phone))
+        except Exception:
+            continue
+
+    if not targets:
+        console.print("[green]All enriched companies already have contact names! Nothing to inspect.[/green]")
+        return
+
+    console.print(f"[bold cyan]Found {len(targets)} companies without contact names.[/bold cyan]")
+    
+    idx = 0
+    while True:
+        domain, name, slug, has_email, has_phone = targets[idx]
+        console.print(f"\n[bold green][Company {idx + 1}/{len(targets)}][/bold green]")
+        console.print(f"  Name:   [bold]{name}[/bold]")
+        console.print(f"  Domain: [cyan]{domain}[/cyan]")
+        console.print(f"  Slug:   {slug}")
+        console.print(f"  Contact status: Email={has_email}, Phone={has_phone}")
+        
+        console.print("\n[yellow]Options: [o] open in browser, [n] next, [p] previous, [g <num>] go to number, [q] quit[/yellow]")
+        choice = typer.prompt("Select option").strip().lower()
+        
+        if choice == 'o':
+            url = f"https://{domain}" if not domain.startswith(("http://", "https://")) else domain
+            console.print(f"Opening {url}...")
+            webbrowser.open(url)
+        elif choice == 'n':
+            if idx < len(targets) - 1:
+                idx += 1
+            else:
+                console.print("[red]Already at the last company.[/red]")
+        elif choice == 'p':
+            if idx > 0:
+                idx -= 1
+            else:
+                console.print("[red]Already at the first company.[/red]")
+        elif choice.startswith('g'):
+            try:
+                num = int(choice.split()[1]) - 1
+                if 0 <= num < len(targets):
+                    idx = num
+                else:
+                    console.print(f"[red]Invalid company index (must be 1-{len(targets)}).[/red]")
+            except Exception:
+                try:
+                    num = int(choice[1:]) - 1
+                    if 0 <= num < len(targets):
+                        idx = num
+                    else:
+                        console.print("[red]Invalid company index.[/red]")
+                except Exception:
+                    console.print("[red]Usage: g <number> or g<number>[/red]")
+        elif choice == 'q':
+            console.print("[green]Exiting interactive audit.[/green]")
+            break
+        else:
+            console.print("[red]Invalid choice.[/red]")
+
+
 @app.command(name="schemas")
 def audit_schemas(
     campaign: Optional[str] = typer.Option(
