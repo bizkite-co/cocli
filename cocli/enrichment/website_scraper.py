@@ -185,7 +185,7 @@ class WebsiteScraper:
         website_data.ip_address = await self._resolve_ip(domain)
 
         try:
-            await asyncio.wait_for(
+            website_data = await asyncio.wait_for(
                 self.scrape_website_internal(
                     browser,
                     domain,
