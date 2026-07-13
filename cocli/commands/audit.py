@@ -51,21 +51,21 @@ def audit_queue_gm_list(
     """
     Run full end-to-end audit for the gm-list queue (compile, compact, report).
     """
-    from ..core.auditors.audit_workflow import DataAuditWorkflow
     from ..core.config import get_campaign
+    from ..application.services import ServiceContainer
 
     campaign_name = campaign or get_campaign()
     if not campaign_name:
         console.print("[red]No campaign specified.[/red]")
         raise typer.Exit(1)
 
-    workflow = DataAuditWorkflow(campaign=campaign_name, queue="gm-list")
-    workflow.start()
+    audit_service = ServiceContainer(campaign_name=campaign_name).queue_audit_service
+    state = audit_service.run_queue_gm_list(campaign_name)
 
-    if workflow.state == "completed":
+    if state == "completed":
         console.print("[green]Audit completed successfully.[/green]")
     else:
-        console.print(f"[red]Audit failed in state: {workflow.state}[/red]")
+        console.print(f"[red]Audit failed in state: {state}[/red]")
         raise typer.Exit(1)
 
 
@@ -103,7 +103,7 @@ def audit_cli(
     """
     campaign = get_campaign() or "default"
     services = ServiceContainer(campaign_name=campaign)
-    report = services.audit_service.get_cli_tree()
+    report = services.codebase_audit_service.get_cli_tree()
 
     if output:
         output.parent.mkdir(parents=True, exist_ok=True)
@@ -141,7 +141,7 @@ def audit_fs(
     effective_campaign = campaign or get_campaign() or "default"
     services = ServiceContainer(campaign_name=effective_campaign)
 
-    res = services.audit_service.audit_filesystem(
+    res = services.codebase_audit_service.audit_filesystem(
         campaign_name=campaign,
         skip_companies=skip_companies,
         gen_cleanup=gen_cleanup,
@@ -1042,98 +1042,31 @@ def audit_enrichment(
     and how many successfully resolved contact names (people), phone numbers, emails,
     and social media links, along with lead quality tiering.
     """
-    from ..core.config import get_campaign, get_companies_dir
-    from ..core.text_utils import parse_frontmatter
+    from ..core.config import get_campaign
+    from ..application.services import ServiceContainer
     from rich.table import Table
-    import yaml
 
     campaign_name = campaign or get_campaign()
     if not campaign_name:
         console.print("[bold red]Error:[/bold red] No campaign specified.")
         raise typer.Exit(1)
 
-    companies_dir = get_companies_dir()
-    if not companies_dir.exists():
-        console.print(f"[bold red]Companies directory not found at: {companies_dir}[/bold red]")
+    try:
+        audit_service = ServiceContainer(campaign_name=campaign_name).queue_audit_service
+        res = audit_service.audit_enrichment(campaign_name)
+    except FileNotFoundError as e:
+        console.print(f"[bold red]Error:[/bold red] {e}")
         raise typer.Exit(1)
 
-    total_companies = 0
-    total_enriched = 0
-    has_contact_name = 0
-    has_phone = 0
-    has_email = 0
-    has_social = 0
-    tier_1 = 0
-    tier_2 = 0
-    tier_3 = 0
-
-    # Walk the directory
-    for path in companies_dir.iterdir():
-        if not path.is_dir():
-            continue
-        
-        # Check if the company belongs to the campaign
-        tags_path = path / "tags.lst"
-        if not tags_path.exists():
-            continue
-        
-        try:
-            with open(tags_path, "r", encoding="utf-8") as f:
-                tags = [line.strip() for line in f if line.strip()]
-            if campaign_name not in tags:
-                continue
-        except Exception:
-            continue
-
-        total_companies += 1
-
-        # Check for website enrichment
-        website_md_path = path / "enrichments" / "website.md"
-        if not website_md_path.exists():
-            continue
-
-        try:
-            content = website_md_path.read_text(encoding="utf-8")
-            fm_str = parse_frontmatter(content)
-            if not fm_str:
-                continue
-            data = yaml.safe_load(fm_str)
-            if not data:
-                continue
-
-            # We consider it processed/enriched if the file exists and is readable
-            total_enriched += 1
-
-            # Check flags
-            has_name_val = False
-            personnel = data.get("personnel", [])
-            if isinstance(personnel, list) and len(personnel) > 0:
-                if any(p.get("name") or p.get("first_name") or p.get("last_name") for p in personnel if isinstance(p, dict)):
-                    has_name_val = True
-
-            has_phone_val = bool(data.get("phone"))
-            has_email_val = bool(data.get("email") or data.get("all_emails"))
-            has_social_val = any(bool(data.get(f"{platform}_url")) for platform in ["facebook", "linkedin", "instagram", "twitter", "youtube"])
-
-            if has_name_val:
-                has_contact_name += 1
-            if has_phone_val:
-                has_phone += 1
-            if has_email_val:
-                has_email += 1
-            if has_social_val:
-                has_social += 1
-
-            # Quality Tiers
-            if has_name_val and (has_email_val or has_phone_val or has_social_val):
-                tier_1 += 1
-            elif has_email_val or has_phone_val or has_social_val:
-                tier_2 += 1
-            else:
-                tier_3 += 1
-
-        except Exception:
-            continue
+    total_companies = res["total_companies"]
+    total_enriched = res["total_enriched"]
+    has_contact_name = res["has_contact_name"]
+    has_phone = res["has_phone"]
+    has_email = res["has_email"]
+    has_social = res["has_social"]
+    tier_1 = res["tier_1"]
+    tier_2 = res["tier_2"]
+    tier_3 = res["tier_3"]
 
     # Render Table
     table = Table(title=f"Enrichment Health Audit: {campaign_name}")
@@ -1175,9 +1108,8 @@ def audit_enrichment_interactive(
     Interactively step through companies that have no contact name (Tiers 2 & 3)
     and open their websites in the browser to inspect and find contacts.
     """
-    from ..core.config import get_campaign, get_companies_dir
-    from ..core.text_utils import parse_frontmatter
-    import yaml
+    from ..core.config import get_campaign
+    from ..application.services import ServiceContainer
     import webbrowser
 
     campaign_name = campaign or get_campaign()
@@ -1185,72 +1117,12 @@ def audit_enrichment_interactive(
         console.print("[bold red]Error:[/bold red] No campaign specified.")
         raise typer.Exit(1)
 
-    companies_dir = get_companies_dir()
-    if not companies_dir.exists():
-        console.print(f"[bold red]Companies directory not found at: {companies_dir}[/bold red]")
+    try:
+        audit_service = ServiceContainer(campaign_name=campaign_name).queue_audit_service
+        targets = audit_service.get_enrichment_interactive_targets(campaign_name)
+    except FileNotFoundError as e:
+        console.print(f"[bold red]Error:[/bold red] {e}")
         raise typer.Exit(1)
-
-    targets = [] # list of (domain, company_name, slug, has_email, has_phone)
-    
-    # Walk the directory
-    for path in sorted(companies_dir.iterdir(), key=lambda p: p.name):
-        if not path.is_dir():
-            continue
-        
-        tags_path = path / "tags.lst"
-        if not tags_path.exists():
-            continue
-        
-        try:
-            with open(tags_path, "r", encoding="utf-8") as f:
-                tags = [line.strip() for line in f if line.strip()]
-            if campaign_name not in tags:
-                continue
-        except Exception:
-            continue
-
-        website_md_path = path / "enrichments" / "website.md"
-        if not website_md_path.exists():
-            domain = None
-            name = path.name
-            index_md = path / "_index.md"
-            if index_md.exists():
-                try:
-                    fm = parse_frontmatter(index_md.read_text(encoding="utf-8"))
-                    if fm:
-                        idx_data = yaml.safe_load(fm)
-                        if idx_data:
-                            domain = idx_data.get("domain")
-                            name = idx_data.get("name") or path.name
-                except Exception:
-                    pass
-            if domain:
-                targets.append((domain, name, path.name, False, False))
-            continue
-
-        try:
-            content = website_md_path.read_text(encoding="utf-8")
-            fm_str = parse_frontmatter(content)
-            if not fm_str:
-                continue
-            data = yaml.safe_load(fm_str)
-            if not data:
-                continue
-
-            has_name_val = False
-            personnel = data.get("personnel", [])
-            if isinstance(personnel, list) and len(personnel) > 0:
-                if any(p.get("name") or p.get("first_name") or p.get("last_name") for p in personnel if isinstance(p, dict)):
-                    has_name_val = True
-
-            if not has_name_val:
-                domain = data.get("url") or data.get("domain") or path.name
-                name = data.get("company_name") or data.get("title") or path.name
-                has_email = bool(data.get("email") or data.get("all_emails"))
-                has_phone = bool(data.get("phone"))
-                targets.append((domain, name, path.name, has_email, has_phone))
-        except Exception:
-            continue
 
     if not targets:
         console.print("[green]All enriched companies already have contact names! Nothing to inspect.[/green]")
@@ -1271,9 +1143,12 @@ def audit_enrichment_interactive(
         choice = typer.prompt("Select option").strip().lower()
         
         if choice == 'o':
-            url = f"https://{domain}" if not domain.startswith(("http://", "https://")) else domain
-            console.print(f"Opening {url}...")
-            webbrowser.open(url)
+            if not domain:
+                console.print("[red]No domain available for this company.[/red]")
+            else:
+                url = f"https://{domain}" if not domain.startswith(("http://", "https://")) else domain
+                console.print(f"Opening {url}...")
+                webbrowser.open(url)
         elif choice == 'n':
             if idx < len(targets) - 1:
                 idx += 1
@@ -1342,7 +1217,7 @@ def audit_schemas(
 
     console.print("[bold]Scanning for datapackage.json files...[/bold]\n")
 
-    res = services.audit_service.audit_schemas(
+    res = services.codebase_audit_service.audit_schemas(
         campaign=campaign, fix=fix, dry_run=dry_run
     )
 
@@ -1404,9 +1279,10 @@ def audit_gm_list_html(
 
     Example: cocli audit gm-list-html --campaign roadmap --limit 20
     """
-    from cocli.core.auditors.gm_list_auditor import run_html_audit
+    from ..application.services import ServiceContainer
 
-    result = run_html_audit(campaign, limit=limit, output_name=output)
+    audit_service = ServiceContainer(campaign_name=campaign).queue_audit_service
+    result = audit_service.run_gm_list_html_audit(campaign, limit=limit, output=output)
     console.print(f"[green]Audit results saved to: {result}[/green]")
 
 
@@ -1446,146 +1322,43 @@ def audit_validate(
       cocli audit queue validate roadmap --tile 34.1,-118.4 --p "financial-advisor"
       cocli audit queue validate --usv-path data/.../results/3/34.1/-118.4/foo.usv
     """
-    import csv
     import sys
-    from datetime import datetime, UTC
-
-    from ..core.paths import paths
-    from ..core.text_utils import slugify
-    from ..models.campaigns.indexes.google_maps_list_item import GoogleMapsListItem
-    from ..models.campaigns.indexes.gm_list_audit_log_item import GmListAuditLogItem
-    from ..models.campaigns.indexes.gm_list_reviewed_item import GmListReviewedItem
-    from ..application.processors.gm_list import GmListProcessor
-
-    if usv_path:
-        mode = "offline"
-        if not usv_path.exists():
-            console.print(f"[red]Error: USV file not found: {usv_path}[/red]")
-            raise typer.Exit(1)
-        console.print(f"[bold]Offline review:[/bold] [cyan]{usv_path}[/cyan]")
-    elif tile and phrase:
-        mode = "online"
-        try:
-            parts = tile.split(",")
-            lat = float(parts[0].strip())
-            lon = float(parts[1].strip())
-        except (ValueError, IndexError):
-            console.print("[red]--tile must be lat,lon (e.g. 34.1,-118.4)[/red]")
-            raise typer.Exit(1)
-        phrase_slug = slugify(phrase)
-        console.print(f"[bold]Online review:[/bold] [cyan]{phrase}[/cyan] at [cyan]{tile}[/cyan]")
-    else:
-        console.print("[red]Provide --tile + --phrase (online) OR --usv-path (offline).[/red]")
-        raise typer.Exit(1)
-
-    # Step 1: Scrape (online mode only)
-    items = []
-    if mode == "online":
-        scrape_type = "headless" if not headed else "headed"
-        console.print(f"\n[bold yellow]Step 1: Running {scrape_type} scrape...[/bold yellow]")
-        from ..models.campaigns.queues.gm_list import ScrapeTask
-        from ..core.sharding import get_geo_shard, get_grid_tile_id
-
-        lat_shard = get_geo_shard(lat)
-        grid_id = get_grid_tile_id(lat, lon)
-        lat_tile_v, lon_tile_v = grid_id.split("_")
-
-        async def run_scrape() -> list[Any]:
-            from playwright.async_api import async_playwright
-            from ..scrapers.google.gm_scraper.coordinator import ScrapeCoordinator
-
-            async with async_playwright() as pw:
-                browser = await pw.chromium.launch(headless=not headed)
-                try:
-                    coordinator = ScrapeCoordinator(
-                        browser, campaign_name=campaign, debug=False
-                    )
-                    scraped = []
-                    scrape_limit = limit if limit > 0 else 20
-                    async for item in coordinator.run(
-                        start_lat=lat,
-                        start_lon=lon,
-                        search_phrases=[phrase],
-                        force_refresh=True,
-                    ):
-                        scraped.append(item)
-                        if len(scraped) >= scrape_limit:
-                            break
-                    return scraped
-                finally:
-                    await browser.close()
-
-        items = _run_async(run_scrape())
-
-        if not items:
-            console.print("[yellow]No items scraped. Skipping review but recording audit log.[/yellow]")
-        else:
-            task = ScrapeTask(
-                latitude=lat,  # type: ignore[arg-type]
-                longitude=lon,  # type: ignore[arg-type]
-                zoom=15,
-                search_phrase=phrase,
-                campaign_name=campaign,
-                force_refresh=True,
-                ack_token=f"validate-{phrase_slug}-{datetime.now(UTC).timestamp()}",
-            )
-            processor = GmListProcessor(processed_by="audit-validate")
-            _run_async(processor.process_results(task, items))
-            console.print(f"[green]  Scraped {len(items)} companies. Saved to results/[/green]")
-
-            usv_path = (
-                paths.queue(campaign, "gm-list").completed
-                / "results"
-                / lat_shard
-                / lat_tile_v
-                / lon_tile_v
-                / f"{phrase_slug}.usv"
-            )
-
-    # Step 2: Locate / read USV records
-    if not usv_path or not usv_path.exists():
-        console.print("[red]No USV file available for review.[/red]")
-        raise typer.Exit(1)
-
-    field_names = list(GoogleMapsListItem.model_fields.keys())
-    excluded = {n for n, f in GoogleMapsListItem.model_fields.items() if f.exclude}
-    review_skip = {"place_id", "company_slug"}
-    display_fields = [n for n in field_names if n not in excluded and n not in review_skip]
-
-    records = []
-    with open(usv_path, "r", encoding="utf-8") as f:
-        reader = csv.reader(f, delimiter="\x1f")
-        for row in reader:
-            if row:
-                while len(row) < len(field_names):
-                    row.append("")
-                records.append(row[: len(field_names)])
-
-    console.print(f"[dim]  Read {len(records)} records from {usv_path}[/dim]")
-
-    # Step 3: Record audit log entry
-    audit_dir = paths.queue(campaign, "gm-list").pending / "audit"
-    audit_dir.mkdir(parents=True, exist_ok=True)
+    from ..application.services import ServiceContainer
 
     try:
-        records_file = str(usv_path.relative_to(paths.queue(campaign, "gm-list").completed))
-    except ValueError:
-        records_file = str(usv_path.name)
+        audit_service = ServiceContainer(campaign_name=campaign).queue_audit_service
+        res = audit_service.prepare_validate(
+            campaign=campaign,
+            tile=tile,
+            phrase=phrase,
+            usv_path=usv_path,
+            headed=headed,
+            limit=limit,
+        )
+    except (ValueError, FileNotFoundError) as e:
+        console.print(f"[red]Error: {e}[/red]")
+        raise typer.Exit(1)
 
-    log_item = GmListAuditLogItem.create(
-        tile=str(usv_path.parent),
-        search_phrase=phrase or usv_path.stem,
-        total_companies=len(items) if mode == "online" else len(records),
-        records_file=records_file,
-        usv_count=len(records),
-        scraper_version="audit-validate",
-    )
-    audit_log = audit_dir / "gm_list_audit_log.usv"
-    with open(audit_log, "a", encoding="utf-8") as f:
-        f.write(log_item.to_usv())
-    GmListAuditLogItem.append_resource_to_datapackage(
-        audit_dir, "gm_list_audit_log", "gm_list_audit_log.usv"
-    )
+    records = res["records"]
+    already_reviewed = res["already_reviewed"]
+    audit_log = res["audit_log"]
+    reviewed_path = res["reviewed_path"]
+    display_fields = res["display_fields"]
+    field_names = res["field_names"]
+    mode = res["mode"]
+    usv_path_val = res["usv_path"]
+    items_scraped_count = res["items_scraped_count"]
+
+    if mode == "online":
+        console.print(f"\n[bold yellow]Step 1: Running {'headless' if not headed else 'headed'} scrape...[/bold yellow]")
+        if items_scraped_count == 0:
+            console.print("[yellow]No items scraped. Skipping review but recording audit log.[/yellow]")
+        else:
+            console.print(f"[green]  Scraped {items_scraped_count} companies. Saved to results/[/green]")
+    else:
+        console.print(f"[bold]Offline review:[/bold] [cyan]{usv_path_val}[/cyan]")
+
+    console.print(f"[dim]  Read {len(records)} records from {usv_path_val}[/dim]")
     console.print(f"[green]  Audit log entry saved to {audit_log}[/green]")
 
     # Step 4: Interactive field-level review
@@ -1595,20 +1368,22 @@ def audit_validate(
     console.print("[dim]    - Type a correction to overwrite[/dim]")
     console.print("[dim]    - Type [bold].skip[/bold] to skip this record[/dim]\n")
 
-    # Open Google Maps search in headed Playwright browser for visual comparison
     try:
-        usv_str = str(usv_path.resolve())
+        usv_str = str(usv_path_val.resolve())
         parts = usv_str.split("/")
+        ref_lat: Optional[str] = None
+        ref_lon: Optional[str] = None
+        phrase_slug: Optional[str] = None
         try:
             ri = next(i for i, p in enumerate(parts) if p == "results")
             ref_lat = parts[ri + 2]
             ref_lon = parts[ri + 3]
-            phrase = parts[ri + 4].replace(".usv", "")
+            phrase_slug = parts[ri + 4].replace(".usv", "")
         except (StopIteration, IndexError):
-            ref_lat = ref_lon = phrase = None  # type: ignore[assignment]
+            pass
 
-        if ref_lat and ref_lon and phrase:
-            search_url = f"https://www.google.com/maps/search/{phrase}/@{ref_lat},{ref_lon},13z"
+        if ref_lat and ref_lon and phrase_slug:
+            search_url = f"https://www.google.com/maps/search/{phrase_slug}/@{ref_lat},{ref_lon},13z"
             console.print(f"[dim]  Opening reference browser: {search_url}[/dim]")
 
             import threading
@@ -1637,24 +1412,6 @@ def audit_validate(
             t.start()
     except Exception:
         pass
-
-    # Load existing corrections
-    reviewed_path = audit_dir / "gm_list_reviewed.usv"
-
-    already_reviewed: set[str] = set()
-    if reviewed_path.exists():
-        with open(reviewed_path, "r", encoding="utf-8") as f:
-            for line in f:
-                parts = line.strip().split("\x1f")
-                if len(parts) >= 1 and parts[0]:
-                    already_reviewed.add(parts[0])
-
-    # Ensure datapackage includes all resources
-    for model_cls, name, path in [
-        (GmListReviewedItem, "gm_list_reviewed", "gm_list_reviewed.usv"),
-        (GmListAuditLogItem, "gm_list_audit_log", "gm_list_audit_log.usv"),
-    ]:
-        model_cls.append_resource_to_datapackage(audit_dir, name, path)  # type: ignore[attr-defined]
 
     reviewed_count = 0
     skipped_count = 0
@@ -1703,27 +1460,13 @@ def audit_validate(
                 changes[field_name] = corrected
 
         if not skipped_record:
-            header_needed = not reviewed_path.exists() or reviewed_path.stat().st_size == 0
-            with open(reviewed_path, "a", encoding="utf-8") as f:
-                if header_needed and GmListReviewedItem.HEADER:
-                    f.write(GmListReviewedItem.get_header())
-                if changes:
-                    for field_name, val in changes.items():
-                        item = GmListReviewedItem(
-                            place_id=place_id,
-                            field_name=field_name,
-                            expected=val,
-                        )
-                        f.write(item.to_usv())
-                    corrected_count += len(changes)
-                else:
-                    # Mark as reviewed even if no fields changed
-                    item = GmListReviewedItem(
-                        place_id=place_id,
-                        field_name="_reviewed",
-                        expected="true",
-                    )
-                    f.write(item.to_usv())
+            if changes:
+                for field_name, val in changes.items():
+                    audit_service.save_reviewed_item(reviewed_path, place_id, field_name, val)
+                corrected_count += len(changes)
+            else:
+                # Mark as reviewed even if no fields changed
+                audit_service.save_reviewed_item(reviewed_path, place_id, "_reviewed", "true")
             
             if place_id:
                 already_reviewed.add(place_id)
@@ -1778,94 +1521,24 @@ def audit_replay(
         cocli audit queue replay roadmap \\
           data/.../results/3/34.1/-118.4/financial-advisor.usv
     """
-    from collections import defaultdict
-    from ..models.campaigns.indexes.google_maps_list_item import GoogleMapsListItem
-    from ..core.paths import paths
+    from ..application.services import ServiceContainer
 
-    audit_dir = paths.queue(campaign, "gm-list").pending / "audit"
+    audit_service = ServiceContainer(campaign_name=campaign).queue_audit_service
+    res = audit_service.replay_audit_corrections(
+        campaign=campaign,
+        usv_path=usv_path,
+        output=output,
+        corrections_path=corrections_path,
+        reviewed_path_opt=reviewed_path_opt,
+    )
 
-    if not corrections_path:
-        corrections_path = audit_dir / "gm_list_corrections.usv"
-    if not reviewed_path_opt:
-        reviewed_path_opt = audit_dir / "gm_list_reviewed.usv"
-
-    # 1. Load corrections
-    field_corrections: dict[str, dict[str, str]] = defaultdict(dict)
-    if corrections_path.exists():
-        with open(corrections_path, "r", encoding="utf-8") as f:
-            for line in f:
-                parts = line.strip().split("\x1f")
-                if len(parts) >= 4:
-                    place_id = parts[0]
-                    field_name = parts[1]
-                    corrected_val = parts[3]
-                    field_corrections[place_id][field_name] = corrected_val
-        console.print(f"[dim]  Loaded {sum(len(v) for v in field_corrections.values())} corrections for {len(field_corrections)} place_ids[/dim]")
-
-    # 2. Load reviewed entries (field-level diffs)
-    reviewed_overrides: dict[str, dict[str, str]] = defaultdict(dict)
-    if reviewed_path_opt.exists():
-        with open(reviewed_path_opt, "r", encoding="utf-8") as f:
-            for line in f:
-                parts = line.strip().split("\x1f")
-                if len(parts) >= 3:
-                    place_id = parts[0]
-                    field_name = parts[1]
-                    expected_val = parts[2]
-                    if field_name and expected_val:
-                        reviewed_overrides[place_id][field_name] = expected_val
-        console.print(f"[dim]  Loaded {sum(len(v) for v in reviewed_overrides.values())} field-level reviewed entries for {len(reviewed_overrides)} place_ids[/dim]")
-
-    # 3. Read & transform USV records
-    field_names = list(GoogleMapsListItem.model_fields.keys())
-    excluded = {n for n, f in GoogleMapsListItem.model_fields.items() if f.exclude}
-    display_names = [n for n in field_names if n not in excluded]
-
-    import csv
-    records: list[list[str]] = []
-    with open(usv_path, "r", encoding="utf-8") as f:
-        reader = csv.reader(f, delimiter="\x1f")
-        for row in reader:
-            if row:
-                while len(row) < len(field_names):
-                    row.append("")
-                row = row[: len(field_names)]
-                records.append(row)
-
-    applied_count = 0
-    reviewed_applied = 0
-    for row in records:
-        place_id = row[0] if len(row) > 0 else ""
-        if not place_id:
-            continue
-
-        all_overrides = field_corrections.get(place_id, {}).copy()
-        if place_id in reviewed_overrides:
-            all_overrides.update(reviewed_overrides[place_id])
-
-        if all_overrides:
-            for fi, fn in enumerate(display_names):
-                if fn in all_overrides:
-                    row[fi] = all_overrides[fn]
-                    if fn in field_corrections.get(place_id, {}):
-                        applied_count += 1
-                    else:
-                        reviewed_applied += 1
-
-    # 4. Write corrected output
-    output_path = output or usv_path.with_suffix(".corrected.usv")
-    output_path.parent.mkdir(parents=True, exist_ok=True)
-    with open(output_path, "w", encoding="utf-8") as f:
-        for row in records:
-            f.write("\x1f".join(row) + "\x1e\n")
-
-    console.print(f"[green]  Corrected USV written to: {output_path}[/green]")
+    console.print(f"[green]  Corrected USV written to: {res['output_path']}[/green]")
     table = Table(title="Replay Summary")
     table.add_column("Metric", style="cyan")
     table.add_column("Count", justify="right")
-    table.add_row("Records in source USV", str(len(records)))
-    table.add_row("Field corrections applied", str(applied_count))
-    table.add_row("Rating/review overrides", str(reviewed_applied))
+    table.add_row("Records in source USV", str(res["records_count"]))
+    table.add_row("Field corrections applied", str(res["applied_count"]))
+    table.add_row("Rating/review overrides", str(res["reviewed_applied"]))
     console.print(table)
 
 
@@ -1889,80 +1562,29 @@ def audit_export_cases(
     Example:
         cocli audit queue export-cases --tile 29.1,-98.4 --phrase financial-advisor
     """
-    from ..core.paths import paths
+    from ..application.services import ServiceContainer
 
-    # Read reviewed corrections
-    reviewed_path = paths.queue(campaign, "gm-list").pending / "audit" / "gm_list_reviewed.usv"
-    if not reviewed_path.exists():
-        console.print("[red]No gm_list_reviewed.usv found. Run audit validate first.[/red]")
+    try:
+        audit_service = ServiceContainer(campaign_name=campaign).queue_audit_service
+        res = audit_service.export_cases(campaign=campaign, tile=tile, phrase=phrase)
+    except FileNotFoundError as e:
+        console.print(f"[red]Error: {e}[/red]")
         raise typer.Exit(1)
 
-    import csv
-    corrections: list[tuple[str, str, str]] = []
-    with open(reviewed_path, "r", encoding="utf-8") as f:
-        reader = csv.reader(f, delimiter="\x1f")
-        for row in reader:
-            if len(row) >= 3 and row[0].startswith("ChIJ"):
-                corrections.append((row[0], row[1], row[2]))
+    cases_count = res["cases_count"]
+    test_cases_path = res["test_cases_path"]
+    missing_html = res["missing_html"]
 
-    if not corrections:
-        console.print("[yellow]No corrections found in reviewed file.[/yellow]")
-        return
-
-    console.print(f"[dim]  Loaded {len(corrections)} corrections[/dim]")
-
-    # Resolve raw HTML paths by searching the raw/gm-list directory
-    raw_base = paths.campaign(campaign).path / "raw" / "gm-list"
-    if not raw_base.exists():
-        console.print(f"[red]Raw HTML directory not found: {raw_base}[/red]")
-        raise typer.Exit(1)
-
-    cases: list[tuple[str, str, str, Path]] = []
-    missing_html = 0
-    for place_id, field, expected in corrections:
-        html_path: Path | None = None
-        for html_file in raw_base.rglob(f"{place_id}.html"):
-            html_path = html_file
-            break
-        if html_path is None:
-            missing_html += 1
-            continue
-        cases.append((place_id, field, expected, html_path))
-
-    if not cases:
-        console.print("[yellow]No cases could be resolved (no matching HTML files).[/yellow]")
+    if cases_count == 0:
         if missing_html:
-            console.print(f"[dim]  ({missing_html} corrections had no matching HTML)[/dim]")
+            console.print(f"[yellow]No cases could be resolved ({missing_html} corrections had no matching HTML files).[/yellow]")
+        else:
+            console.print("[yellow]No corrections found in reviewed file.[/yellow]")
         return
 
-    # Copy HTML files into test data directory
-    test_data_dir = Path("tests/data/maps.google.com")
-    html_dir = test_data_dir / "html"
-    html_dir.mkdir(parents=True, exist_ok=True)
-
-    for place_id, field, expected, src_html in cases:
-        dst = html_dir / f"{place_id}.html"
-        if not dst.exists():
-            dst.write_bytes(src_html.read_bytes())
-
-    # Write test cases file (html_path relative to test_data_dir)
-    test_cases_path = test_data_dir / "field_extraction_cases.usv"
-    HEADER_LINE = "\x1f".join(["place_id", "field", "expected", "html_path"])
-    with open(test_cases_path, "w", encoding="utf-8") as f:
-        f.write(HEADER_LINE + "\n")
-        for place_id, field, expected, _ in cases:
-            html_rel = f"html/{place_id}.html"
-            f.write("\x1f".join([place_id, field, expected, html_rel]) + "\n")
-
-    console.print(f"[green]  {len(cases)} test cases written to: {test_cases_path}[/green]")
+    console.print(f"[green]  {cases_count} test cases written to: {test_cases_path}[/green]")
     if missing_html:
         console.print(f"[dim]  ({missing_html} corrections skipped — no matching HTML file)[/dim]")
-
-    # Also update datapackage
-    from ..models.campaigns.indexes.gm_list_reviewed_item import GmListReviewedItem
-    GmListReviewedItem.append_resource_to_datapackage(
-        test_data_dir, "field_extraction_cases", "field_extraction_cases.usv"
-    )
 
 
 @queue_app.command(name="tile-status")
@@ -1973,41 +1595,17 @@ def queue_status(campaign: str = typer.Option("", help="Campaign name")) -> None
     Shows tile queue state, processing tiles with lease expiration, and warns
     about expired leases (stuck tiles that will be reclaimed).
     """
-    from ..core.queue.factory import get_queue_manager
-    from datetime import datetime, UTC
-    import json
+    from ..application.services import ServiceContainer
 
     campaign_name = campaign or "default"
-    tile_queue = get_queue_manager("map-tile", queue_type="tile", campaign_name=campaign_name)
+    audit_service = ServiceContainer(campaign_name=campaign_name).queue_audit_service
+    res = audit_service.get_tile_status(campaign_name)
 
-    # Count tiles in each state
-    pending_count = 0
-    if tile_queue.tiles_dir.exists():
-        pending_count = len(list(tile_queue.tiles_dir.glob("*.usv")))
-
-    processing_count = 0
-    processing_tiles = []
-    expired_count = 0
-    if tile_queue.processing_dir.exists():
-        for f in tile_queue.processing_dir.glob("*.usv"):
-            processing_count += 1
-            processing_tiles.append(f)
-
-            # Check lease
-            lease_path = tile_queue.processing_dir / f"{f.name}.lease.json"
-            if lease_path.exists():
-                try:
-                    with lease_path.open() as lf:
-                        lease = json.load(lf)
-                        expires_at = datetime.fromisoformat(lease["expires_at"])
-                        if datetime.now(UTC) >= expires_at:
-                            expired_count += 1
-                except Exception:
-                    pass
-
-    completed_count = 0
-    if tile_queue.completed_dir.exists():
-        completed_count = len(list(tile_queue.completed_dir.glob("*.usv")))
+    pending_count = res["pending_count"]
+    processing_count = res["processing_count"]
+    completed_count = res["completed_count"]
+    processing_tiles = res["processing_tiles_details"]
+    expired_count = res["expired_count"]
 
     # Display status table
     console.print(f"\n[bold]Tile Queue Status: {campaign_name}[/bold]\n")
@@ -2025,28 +1623,18 @@ def queue_status(campaign: str = typer.Option("", help="Campaign name")) -> None
     # Show details of processing tiles with leases
     if processing_tiles:
         console.print("\n[bold]Processing Tiles:[/bold]")
-        for tile_path in sorted(processing_tiles):
-            lease_path = tile_queue.processing_dir / f"{tile_path.name}.lease.json"
-            if lease_path.exists():
-                try:
-                    with lease_path.open() as lf:
-                        lease = json.load(lf)
-                        worker_id = lease["worker_id"]
-                        claimed_at = datetime.fromisoformat(lease["claimed_at"])
-                        expires_at = datetime.fromisoformat(lease["expires_at"])
-                        age_min = (datetime.now(UTC) - claimed_at).total_seconds() / 60
-                        ttl_min = (expires_at - datetime.now(UTC)).total_seconds() / 60
-                        if ttl_min > 0:
-                            status = f"TTL: {ttl_min:.0f}min"
-                            style = "green"
-                        else:
-                            status = "EXPIRED"
-                            style = "red"
-                        console.print(f"  • {tile_path.name}: {worker_id} (claimed {age_min:.0f}min ago) [{style}]{status}[/{style}]")
-                except Exception as e:
-                    console.print(f"  • {tile_path.name}: [error]Error reading lease: {e}[/error]")
+        for tile in sorted(processing_tiles, key=lambda x: x.get("tile_name", "")):
+            tile_name = tile["tile_name"]
+            if "error" in tile:
+                console.print(f"  • {tile_name}: [error]Error reading lease: {tile['error']}[/error]")
+            elif "no_lease" in tile:
+                console.print(f"  • {tile_name}: [warning]No lease file[/warning]")
             else:
-                console.print(f"  • {tile_path.name}: [warning]No lease file[/warning]")
+                worker_id = tile["worker_id"]
+                age_min = tile["age_min"]
+                status = tile["status"]
+                style = tile["style"]
+                console.print(f"  • {tile_name}: {worker_id} (claimed {age_min:.0f}min ago) [{style}]{status}[/{style}]")
 
     if expired_count > 0:
         console.print(f"\n[bold red][ALERT][/bold red] {expired_count} tile(s) have expired leases")
@@ -2085,12 +1673,13 @@ def purge_stale_leases(
       # Custom age threshold:
       cocli audit queue purge-leases turboship --max-age-minutes 10
     """
-    from cocli.services.lease_cleanup import purge_expired_leases, force_purge_all_leases
+    from ..application.services import ServiceContainer
     from cocli.core.config import get_campaign
 
     campaign_name = campaign or get_campaign() or "default"
-    queue_dir = paths.campaign(campaign_name).queue(queue_name).pending
+    audit_service = ServiceContainer(campaign_name=campaign_name).queue_audit_service
 
+    queue_dir = paths.campaign(campaign_name).queue(queue_name).pending
     console.print(f"[bold blue]Lease Cleanup: {campaign_name} / {queue_name}[/bold blue]")
     console.print(f"  Directory: {queue_dir}\n")
 
@@ -2105,20 +1694,26 @@ def purge_stale_leases(
                 console.print("[yellow]Cancelled[/yellow]")
                 return
 
-        metrics = force_purge_all_leases(queue_dir, dry_run=dry_run)
-        console.print("\n[bold]Results:[/bold]")
+    res = audit_service.purge_leases(
+        campaign_name=campaign_name,
+        queue_name=queue_name,
+        force=force,
+        dry_run=dry_run,
+        max_age_minutes=max_age_minutes,
+    )
+    metrics = res["metrics"]
+
+    console.print("\n[bold]Results:[/bold]")
+    if force:
         console.print(f"  Leases found:  {metrics['leases_found']}")
         console.print(f"  Leases deleted: {metrics['leases_deleted']}")
-        if metrics["errors"] > 0:
-            console.print(f"  [red]Errors: {metrics['errors']}[/red]")
     else:
-        metrics = purge_expired_leases(queue_dir, max_heartbeat_age_minutes=max_age_minutes, dry_run=dry_run)
-        console.print("\n[bold]Results:[/bold]")
         console.print(f"  Leases found:   {metrics['leases_found']}")
         console.print(f"  Leases expired: {metrics['leases_expired']}")
         console.print(f"  Leases deleted: {metrics['leases_deleted']}")
-        if metrics["errors"] > 0:
-            console.print(f"  [red]Errors: {metrics['errors']}[/red]")
+    
+    if metrics.get("errors", 0) > 0:
+        console.print(f"  [red]Errors: {metrics['errors']}[/red]")
 
     if dry_run:
         console.print("\n[dim][DRY RUN] No files were actually deleted[/dim]")

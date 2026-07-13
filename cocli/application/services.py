@@ -10,6 +10,9 @@ from cocli.application.campaign_service import CampaignService
 from cocli.application.worker_service import WorkerService
 from cocli.application.reporting_service import ReportingService
 from cocli.application.audit_service import AuditService
+from cocli.application.audit_codebase_service import AuditCodebaseService
+from cocli.application.audit_queue_service import AuditQueueService
+from cocli.application.audit_cluster_service import AuditClusterService
 from cocli.application.data_sync_service import DataSyncService
 from cocli.application.deployment_service import DeploymentService
 from cocli.application.company_service import get_company_details_for_view
@@ -27,6 +30,9 @@ from .protocols import (
     WorkerServiceProvider,
     ReportingServiceProvider,
     AuditServiceProvider,
+    AuditCodebaseServiceProvider,
+    AuditQueueServiceProvider,
+    AuditClusterServiceProvider,
     DataSyncServiceProvider,
     DeploymentServiceProvider,
     OperationServiceProvider,
@@ -57,6 +63,9 @@ class ServiceContainer(BaseModel):
             self._worker_service = None
             self._reporting_service = None
             self._audit_service = None
+            self._codebase_audit_service = None
+            self._queue_audit_service = None
+            self._cluster_audit_service = None
             self._data_sync_service = None
             self._deployment_service = None
             self._operation_service = None
@@ -79,6 +88,9 @@ class ServiceContainer(BaseModel):
     _worker_service: Optional[Any] = PrivateAttr(default=None)
     _reporting_service: Optional[Any] = PrivateAttr(default=None)
     _audit_service: Optional[Any] = PrivateAttr(default=None)
+    _codebase_audit_service: Optional[Any] = PrivateAttr(default=None)
+    _queue_audit_service: Optional[Any] = PrivateAttr(default=None)
+    _cluster_audit_service: Optional[Any] = PrivateAttr(default=None)
     _data_sync_service: Optional[Any] = PrivateAttr(default=None)
     _deployment_service: Optional[Any] = PrivateAttr(default=None)
     _operation_service: Optional[Any] = PrivateAttr(default=None)
@@ -157,6 +169,37 @@ class ServiceContainer(BaseModel):
     @audit_service.setter
     def audit_service(self, value: AuditServiceProvider) -> None:
         self._audit_service = value
+
+    @property
+    def codebase_audit_service(self) -> AuditCodebaseServiceProvider:
+        if not self._codebase_audit_service:
+            self._codebase_audit_service = AuditCodebaseService(campaign_name=self.campaign_name)
+        return cast(AuditCodebaseServiceProvider, self._codebase_audit_service)
+
+    @codebase_audit_service.setter
+    def codebase_audit_service(self, value: AuditCodebaseServiceProvider) -> None:
+        self._codebase_audit_service = value
+
+    @property
+    def queue_audit_service(self) -> AuditQueueServiceProvider:
+        if not self._queue_audit_service:
+            self._queue_audit_service = AuditQueueService(campaign_name=self.campaign_name)
+        return cast(AuditQueueServiceProvider, self._queue_audit_service)
+
+    @queue_audit_service.setter
+    def queue_audit_service(self, value: AuditQueueServiceProvider) -> None:
+        self._queue_audit_service = value
+
+    @property
+    def cluster_audit_service(self) -> AuditClusterServiceProvider:
+        if not self._cluster_audit_service:
+            self._cluster_audit_service = AuditClusterService(campaign_name=self.campaign_name)
+        return cast(AuditClusterServiceProvider, self._cluster_audit_service)
+
+    @cluster_audit_service.setter
+    def cluster_audit_service(self, value: AuditClusterServiceProvider) -> None:
+        self._cluster_audit_service = value
+
 
     @property
     def data_sync_service(self) -> DataSyncServiceProvider:

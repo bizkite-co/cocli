@@ -1,4 +1,5 @@
 from typing import Protocol, List, Dict, Any, Optional, Iterator, Callable, TypeVar
+from pathlib import Path
 from cocli.models.search import SearchResult
 from cocli.models.companies.meeting import CompanyMeeting
 
@@ -86,6 +87,46 @@ class AuditServiceProvider(Protocol):
         fix: bool = False,
         dry_run: bool = False,
     ) -> Dict[str, Any]: ...
+    def run_queue_gm_list(self, campaign_name: str) -> str: ...
+    def audit_enrichment(self, campaign_name: str) -> Dict[str, Any]: ...
+    def get_enrichment_interactive_targets(self, campaign_name: str) -> List[tuple[Optional[str], str, str, bool, bool]]: ...
+    def run_gm_list_html_audit(self, campaign: str, limit: int, output: str) -> Path: ...
+    def prepare_validate(
+        self,
+        campaign: str,
+        tile: Optional[str] = None,
+        phrase: Optional[str] = None,
+        usv_path: Optional[Path] = None,
+        headed: bool = False,
+        limit: int = 0,
+    ) -> Dict[str, Any]: ...
+    def save_reviewed_item(self, reviewed_path: Path, place_id: str, field_name: str, expected: str) -> None: ...
+    def replay_audit_corrections(
+        self,
+        campaign: str,
+        usv_path: Path,
+        output: Optional[Path] = None,
+        corrections_path: Optional[Path] = None,
+        reviewed_path_opt: Optional[Path] = None,
+    ) -> Dict[str, Any]: ...
+    def export_cases(self, campaign: str, tile: Optional[str] = None, phrase: Optional[str] = None) -> Dict[str, Any]: ...
+    def get_tile_status(self, campaign_name: str) -> Dict[str, Any]: ...
+    def purge_leases(self, campaign_name: str, queue_name: str, force: bool = False, dry_run: bool = False, max_age_minutes: int = 30) -> Dict[str, Any]: ...
+
+class AuditCodebaseServiceProvider(AuditServiceProvider, Protocol):
+    """Subset of AuditService focusing on codebase operations."""
+    # Inherits methods from AuditServiceProvider; can be further restricted if needed.
+    ...
+
+class AuditQueueServiceProvider(AuditServiceProvider, Protocol):
+    """Subset of AuditService focusing on queue‑related operations."""
+    # Inherits methods from AuditServiceProvider; can be further restricted.
+    ...
+
+class AuditClusterServiceProvider(AuditServiceProvider, Protocol):
+    """Subset of AuditService focusing on cluster‑path operations."""
+    # Inherits methods from AuditServiceProvider; can be further restricted.
+    ...
 
 class DataSyncServiceProvider(Protocol):
     campaign_name: str
