@@ -450,7 +450,7 @@ def rollout_sync(
         console.print("[red]No campaign specified.[/red]")
         raise typer.Exit(1)
 
-    from cocli.commands.smart_sync import run_smart_sync
+    from cocli.core.smart_sync import run_smart_sync
     from cocli.core.config import load_campaign_config
     from cocli.core.reporting import get_data_bucket_name
 

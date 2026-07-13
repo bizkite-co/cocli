@@ -220,7 +220,6 @@ forbidden_modules = [
 ]
 ignore_imports = [
     # Burn-down targets: Refactor these commands to delegate to canonical application services
-    "cocli.application.data_sync_service -> cocli.commands.smart_sync",
     "cocli.core.campaign_workflow -> cocli.commands.campaign.prospecting",
     "cocli.core.campaign_workflow -> cocli.commands.import_companies",
     "cocli.core.campaign_workflow -> cocli.commands.ingest_google_maps_csv",
@@ -269,8 +268,5 @@ source_modules = [
 ]
 forbidden_modules = [
     "cocli.commands",
-]
-ignore_imports = [
-    "cocli.application.data_sync_service -> cocli.commands.smart_sync",
 ]
 

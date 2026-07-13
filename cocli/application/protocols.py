@@ -1,4 +1,4 @@
-from typing import Protocol, List, Dict, Any, Optional, Iterator, Callable, TypeVar
+from typing import Protocol, List, Dict, Any, Optional, Iterator, Callable
 from pathlib import Path
 from cocli.models.search import SearchResult
 from cocli.models.companies.meeting import CompanyMeeting
@@ -167,14 +167,4 @@ class SecretServiceProvider(Protocol):
     def get_item(self, item_id: str) -> Optional[Dict[str, Any]]: ...
 
 
-T = TypeVar("T")
-
-class CampaignQueueProtocol(Protocol[T]):
-    campaign_name: str
-    queue_name: str
-
-    def push(self, task: T) -> Any: ...
-    def poll(self, batch_size: int = 1) -> List[T]: ...
-    def ack(self, task: T) -> None: ...
-    def nack(self, task: T, is_http_500: bool = False) -> None: ...
 

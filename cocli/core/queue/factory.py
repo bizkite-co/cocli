@@ -6,7 +6,7 @@ from .gm_item_sqs_queue import GmItemSQSQueue
 from .command_sqs_queue import CommandSQSQueue
 
 if TYPE_CHECKING:
-    from cocli.application.protocols import CampaignQueueProtocol
+    from .protocol import CampaignQueueProtocol
     from .filesystem import FilesystemTileQueue
 
 import logging

@@ -470,6 +470,16 @@ def audit_scrape(
 
     pending_tiles = staged_tiles - gm_list_tiles
 
+    # Count actual queue files in filesystem
+    gm_list_queue = paths.campaign(campaign_name).queue("gm-list")
+    queued_pending_tasks = 0
+    if gm_list_queue.pending.exists():
+        queued_pending_tasks = len([f for f in gm_list_queue.pending.glob("*.usv") if f.name != "mission.usv"])
+    
+    active_leases = 0
+    if gm_list_queue.pending.exists():
+        active_leases = len(list(gm_list_queue.pending.glob("lease*.json")))
+
     # Build report dict
     report: dict[str, Any] = {
         "campaign": campaign_name,
@@ -480,6 +490,8 @@ def audit_scrape(
         "staged_active_tiles": staged_tiles,
         "completed_scraped_tiles": gm_list_tiles,
         "pending_scraped_tiles": pending_tiles,
+        "queued_pending_tasks": queued_pending_tasks,
+        "active_leases": active_leases,
         "total_active_scrape_tasks": discovery_valid,
         "valid_business_leads": gm_list_valid,
     }

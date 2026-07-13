@@ -4,7 +4,7 @@ from pathlib import Path
 from typing import Any, Dict, Optional
 
 from ..core.config import get_campaign, load_campaign_config, get_cocli_base_dir
-from ..commands.smart_sync import run_smart_sync
+from ..core.smart_sync import run_smart_sync
 from ..core.paths import paths
 
 logger = logging.getLogger(__name__)
