@@ -141,6 +141,7 @@ lint: ## Run ruff and mypy to perform static type checking (incremental)
 		echo "Code changed. Running lint..."; \
 		$(VENV_DIR)/bin/ruff check . --fix && \
 		./.venv/bin/python3 -m mypy --config-file pyproject.toml . && \
+		$(VENV_DIR)/bin/lint-imports && \
 		$(TASKHASH) update lint; \
 	fi
 ################################

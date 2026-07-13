@@ -101,6 +101,7 @@ dev = [
     "ruff",
     "boto3-stubs[s3,sqs]",
     "watchdog",
+    "import-linter",
 ]
 
 [tool.setuptools]
@@ -199,3 +200,73 @@ disable_error_code = ["func-returns-value"]
 [[tool.mypy.overrides]]
 module = "scripts"
 ignore_errors = true
+
+[tool.importlinter]
+root_package = "cocli"
+
+[[tool.importlinter.contracts]]
+name = "Commands are leaf nodes"
+type = "forbidden"
+source_modules = [
+    "cocli.application",
+    "cocli.core",
+    "cocli.models",
+    "cocli.scrapers",
+    "cocli.tui",
+]
+forbidden_modules = [
+    "cocli.commands",
+]
+ignore_imports = [
+    # Burn-down targets: Refactor these commands to delegate to canonical application services
+    "cocli.application.data_sync_service -> cocli.commands.smart_sync",
+    "cocli.core.campaign_workflow -> cocli.commands.campaign.prospecting",
+    "cocli.core.campaign_workflow -> cocli.commands.import_companies",
+    "cocli.core.campaign_workflow -> cocli.commands.ingest_google_maps_csv",
+]
+
+[[tool.importlinter.contracts]]
+name = "Core and models import no higher layer"
+type = "forbidden"
+source_modules = [
+    "cocli.core",
+    "cocli.models",
+]
+forbidden_modules = [
+    "cocli.application",
+    "cocli.services",
+    "cocli.commands",
+    "cocli.tui",
+]
+ignore_imports = [
+    # Burn-down targets: Extract workflow actions to application services to avoid core calling commands
+    "cocli.core.campaign_workflow -> cocli.commands.campaign.prospecting",
+    "cocli.core.campaign_workflow -> cocli.commands.import_companies",
+    "cocli.core.campaign_workflow -> cocli.commands.ingest_google_maps_csv",
+]
+
+[[tool.importlinter.contracts]]
+name = "Scrapers import no commands or TUI"
+type = "forbidden"
+source_modules = [
+    "cocli.scrapers",
+]
+forbidden_modules = [
+    "cocli.commands",
+    "cocli.tui",
+]
+ignore_imports = [
+    # Burn-down target: Inject 1Password credentials from caller instead of scraper fetching from ServiceContainer
+    "cocli.scrapers.event_search_scraper -> cocli.application.services",
+]
+
+[[tool.importlinter.contracts]]
+name = "TUI imports application services, not commands"
+type = "forbidden"
+source_modules = [
+    "cocli.tui",
+]
+forbidden_modules = [
+    "cocli.commands",
+]
+

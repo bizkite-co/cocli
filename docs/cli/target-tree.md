@@ -314,7 +314,7 @@ This appendix documents the extraction pattern established in Phase 4 using the 
 ### 2. Campaign/Context Resolution
 - The command layer resolves the active campaign using `get_campaign() or "default"`.
 - It instantiates/accesses the lazily loaded service from `ServiceContainer(campaign_name=campaign)`.
-- The service instance resolves campaign-scoped data directories via path-aware managers (e.g., `paths.companies.ensure()`).
+- The service instance resolves data paths via the central path registry (e.g., `paths.companies.ensure()` for global collections, or `paths.campaign(campaign_name).queue(...)` for campaign-scoped directories).
 
 ### 3. Model-to-Model Signatures
 - Services must accept primitive types or model objects, and must return strictly typed Pydantic models (e.g., `List[CompanyMeeting]`).

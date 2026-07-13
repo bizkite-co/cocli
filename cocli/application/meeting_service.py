@@ -6,7 +6,7 @@ import yaml
 from pytz import timezone
 from tzlocal import get_localzone
 
-from cocli.core.config import get_companies_dir
+from cocli.core.paths import paths
 from cocli.models.companies.meeting import CompanyMeeting
 
 logger = logging.getLogger(__name__)
@@ -20,7 +20,7 @@ class MeetingService:
     def get_all_meetings(self) -> List[CompanyMeeting]:
         """Gathers all meeting data from all companies."""
         all_meetings: List[CompanyMeeting] = []
-        companies_dir = get_companies_dir()
+        companies_dir = paths.companies.ensure()
 
         local_tz: Any
         try:
