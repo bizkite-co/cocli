@@ -11,6 +11,7 @@ from ..models.campaigns.queues.gm_details import GmItemTask
 from ..models.companies.company import Company
 from ..core.prospects_csv_manager import ProspectsIndexManager
 from ..core.text_utils import slugify
+from ..core.paths import paths
 
 logger = logging.getLogger(__name__)
 
@@ -229,3 +230,161 @@ class AuditService:
             return res.returncode == 0 and len(res.stdout.strip()) > 0
         except Exception:
             return False
+
+    def get_cli_tree(self) -> str:
+        """Dumps the CLI command hierarchy as a string."""
+        from typer.main import get_command
+        from io import StringIO
+        from ..main import app as main_app
+
+        click_command = get_command(main_app)
+        out = StringIO()
+        self._dump_cli_tree(click_command, out)
+        return out.getvalue()
+
+    def _dump_cli_tree(self, command: Any, out: Any, indent: int = 0) -> None:
+        name = command.name or "cocli"
+        help_text = f" - {command.help.splitlines()[0]}" if command.help else ""
+        out.write(" " * indent + f"{name}{help_text}\n")
+
+        for param in command.params:
+            if getattr(param, "hidden", False):
+                continue
+            if param.name in ["install_completion", "show_completion"]:
+                continue
+
+            param_name = "/".join(param.opts) if param.opts else param.name
+            param_type = f" ({param.type.name})" if hasattr(param.type, "name") else ""
+            required = " [required]" if param.required else ""
+            out.write(" " * (indent + 4) + f"{param_name}{param_type}{required}\n")
+
+        if hasattr(command, "commands"):
+            for sub_name, sub_command in sorted(command.commands.items()):
+                self._dump_cli_tree(sub_command, out, indent + 4)
+
+    def audit_filesystem(
+        self,
+        campaign_name: Optional[str] = None,
+        skip_companies: bool = True,
+        gen_cleanup: bool = False,
+    ) -> Dict[str, Any]:
+        """Audits the filesystem for OMAP compliance and Screaming Architecture."""
+        from ..core.audit.fs_auditor import FsAuditor
+        from datetime import datetime
+
+        auditor = FsAuditor()
+        root_node = auditor.audit_full(
+            campaign_name=campaign_name, skip_companies=skip_companies
+        )
+
+        orphans = []
+        cleanup_report_path = None
+        if gen_cleanup:
+            orphans = auditor.get_orphans(root_node)
+            if orphans:
+                ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+                cleanup_report_path = paths.root / ".logs" / f"orphan_cleanup_{ts}.txt"
+                cleanup_report_path.parent.mkdir(parents=True, exist_ok=True)
+                auditor.generate_removal_report(orphans, cleanup_report_path)
+
+        return {
+            "root_node": root_node,
+            "orphans": orphans,
+            "cleanup_report_path": cleanup_report_path,
+        }
+
+    def audit_schemas(
+        self,
+        campaign: Optional[str] = None,
+        fix: bool = False,
+        dry_run: bool = False,
+    ) -> Dict[str, Any]:
+        """Audit datapackage.json files for schema compliance."""
+        from cocli.models.campaigns.indexes.google_maps_list_item import GoogleMapsListItem
+        from cocli.models.campaigns.indexes.google_maps_prospect import GoogleMapsProspect
+        from cocli.models.campaigns.queues.to_call import ToCallTask
+
+        schema_models = [
+            GoogleMapsListItem,
+            GoogleMapsProspect,
+            ToCallTask,
+        ]
+
+        root = paths.root
+        issues_found = []
+        files_checked = 0
+        fixed_count = 0
+
+        for dp_file in root.rglob("datapackage.json"):
+            if campaign:
+                campaign_dir = paths.campaign(campaign).path
+                try:
+                    dp_file.relative_to(campaign_dir)
+                except ValueError:
+                    continue
+
+            files_checked += 1
+
+            try:
+                with open(dp_file, "r") as f:
+                    dp = json.load(f)
+
+                resource_name = dp.get("name", dp_file.parent.name)
+                existing_hash = dp.get("cocli:schema_hash")
+
+                if existing_hash is None:
+                    issues_found.append(
+                        {
+                            "file": str(dp_file.relative_to(root)),
+                            "issue": "MISSING_SCHEMA_HASH",
+                            "details": "Old datapackage.json without schema_hash",
+                        }
+                    )
+                    continue
+
+                ledger_path = root / "schema_ledger.json"
+                if ledger_path.exists():
+                    with open(ledger_path, "r") as f:
+                        ledger = json.load(f)
+
+                    if resource_name in ledger:
+                        ledger_hash = ledger[resource_name].get("current_hash", "")
+                        if ledger_hash and ledger_hash != existing_hash:
+                            issues_found.append(
+                                {
+                                    "file": str(dp_file.relative_to(root)),
+                                    "issue": "HASH_MISMATCH",
+                                    "details": f"File: {existing_hash[:8]}, Ledger: {ledger_hash[:8]}",
+                                }
+                            )
+            except Exception as e:
+                issues_found.append(
+                    {
+                        "file": str(dp_file.relative_to(root)),
+                        "issue": "READ_ERROR",
+                        "details": str(e),
+                    }
+                )
+
+        if fix and issues_found and not dry_run:
+            for issue in issues_found:
+                if issue["issue"] in ["MISSING_SCHEMA_HASH", "HASH_MISMATCH"]:
+                    dp_file = root / issue["file"]
+                    for model in schema_models:
+                        try:
+                            model.save_datapackage(  # type: ignore[attr-defined]
+                                dp_file.parent,
+                                dp_file.parent.name,
+                                "*.usv",
+                                force=True,
+                            )
+                            fixed_count += 1
+                            break
+                        except Exception:
+                            continue
+
+        return {
+            "files_checked": files_checked,
+            "issues_found": issues_found,
+            "fixed_count": fixed_count,
+        }

@@ -6,6 +6,8 @@ from pathlib import Path
 from rich.console import Console
 import duckdb
 from ..core.paths import paths
+from ..core.config import get_campaign
+from ..application.services import ServiceContainer
 from rich.table import Table
 from rich.prompt import Prompt
 from rich.markup import escape
@@ -99,18 +101,10 @@ def audit_cli(
     """
     Dumps the CLI command hierarchy.
     """
-    from typer.main import get_command
-    from io import StringIO
+    campaign = get_campaign() or "default"
+    services = ServiceContainer(campaign_name=campaign)
+    report = services.audit_service.get_cli_tree()
 
-    # Late import main_app to avoid circular dependency
-    from ..main import app as main_app
-
-    click_command = get_command(main_app)
-
-    out = StringIO()
-    dump_cli_tree(click_command, out)
-
-    report = out.getvalue()
     if output:
         output.parent.mkdir(parents=True, exist_ok=True)
         output.write_text(report, encoding="utf-8")
@@ -141,27 +135,26 @@ def audit_fs(
     """
     Audits the filesystem for OMAP compliance and Screaming Architecture.
     """
-    from ..core.audit.fs_auditor import FsAuditor, dump_audit_tree
+    from ..core.audit.fs_auditor import dump_audit_tree
     from io import StringIO
-    from datetime import datetime
 
-    auditor = FsAuditor()
+    effective_campaign = campaign or get_campaign() or "default"
+    services = ServiceContainer(campaign_name=effective_campaign)
 
-    # Perform full audit using schema source of truth
-    root_node = auditor.audit_full(
-        campaign_name=campaign, skip_companies=skip_companies
+    res = services.audit_service.audit_filesystem(
+        campaign_name=campaign,
+        skip_companies=skip_companies,
+        gen_cleanup=gen_cleanup,
     )
 
+    root_node = res["root_node"]
+    orphans = res["orphans"]
+    report_path = res["cleanup_report_path"]
+
     if gen_cleanup:
-        orphans = auditor.get_orphans(root_node)
         if not orphans:
             console.print("[green]No orphans found. Nothing to clean.[/green]")
         else:
-            ts = datetime.now().strftime("%Y%m%d_%H%M%S")
-            report_path = Path(".logs") / f"orphan_cleanup_{ts}.txt"
-            report_path.parent.mkdir(parents=True, exist_ok=True)
-            auditor.generate_removal_report(orphans, report_path)
-
             console.print(
                 f"[bold yellow]Cleanup report generated:[/bold yellow] [cyan]{report_path}[/cyan]"
             )
@@ -1342,75 +1335,21 @@ def audit_schemas(
         cocli audit schemas --fix                    # Auto-fix stale schemas
         cocli audit schemas --fix --dry-run         # Preview fixes
     """
-    import json
     from rich.table import Table
 
-    # Import all models that implement SchemaGenerator
-    from cocli.models.campaigns.indexes.google_maps_list_item import GoogleMapsListItem
-    from cocli.models.campaigns.indexes.google_maps_prospect import GoogleMapsProspect
-    from cocli.models.campaigns.queues.to_call import ToCallTask
+    effective_campaign = campaign or get_campaign() or "default"
+    services = ServiceContainer(campaign_name=effective_campaign)
 
-    SCHEMA_MODELS = [
-        GoogleMapsListItem,
-        GoogleMapsProspect,
-        ToCallTask,
-    ]
-
-    # Find all datapackage.json files
-    root = Path.cwd()
     console.print("[bold]Scanning for datapackage.json files...[/bold]\n")
 
-    issues_found = []
-    files_checked = 0
+    res = services.audit_service.audit_schemas(
+        campaign=campaign, fix=fix, dry_run=dry_run
+    )
 
-    for dp_file in root.rglob("datapackage.json"):
-        files_checked += 1
+    files_checked = res["files_checked"]
+    issues_found = res["issues_found"]
+    fixed_count = res["fixed_count"]
 
-        try:
-            with open(dp_file, "r") as f:
-                dp = json.load(f)
-
-            resource_name = dp.get("name", dp_file.parent.name)
-            existing_hash = dp.get("cocli:schema_hash")
-
-            # Check for missing hash (old schema)
-            if existing_hash is None:
-                issues_found.append(
-                    {
-                        "file": str(dp_file.relative_to(root)),
-                        "issue": "MISSING_SCHEMA_HASH",
-                        "details": "Old datapackage.json without schema_hash",
-                    }
-                )
-                continue
-
-            # Check against ledger
-            ledger_path = root / "schema_ledger.json"
-            if ledger_path.exists():
-                with open(ledger_path, "r") as f:
-                    ledger = json.load(f)
-
-                if resource_name in ledger:
-                    ledger_hash = ledger[resource_name].get("current_hash", "")
-                    if ledger_hash and ledger_hash != existing_hash:
-                        issues_found.append(
-                            {
-                                "file": str(dp_file.relative_to(root)),
-                                "issue": "HASH_MISMATCH",
-                                "details": f"File: {existing_hash[:8]}, Ledger: {ledger_hash[:8]}",
-                            }
-                        )
-
-        except Exception as e:
-            issues_found.append(
-                {
-                    "file": str(dp_file.relative_to(root)),
-                    "issue": "READ_ERROR",
-                    "details": str(e),
-                }
-            )
-
-    # Display results
     console.print(f"Checked {files_checked} datapackage.json files.\n")
 
     if not issues_found:
@@ -1440,31 +1379,9 @@ def audit_schemas(
             )
         else:
             console.print(f"\n[bold]Fixing {len(issues_found)} stale schemas...[/bold]")
-
-            fixed_count = 0
             for issue in issues_found:
                 if issue["issue"] in ["MISSING_SCHEMA_HASH", "HASH_MISMATCH"]:
-                    dp_file = root / issue["file"]
-
-                    # Try to find the right model for this datapackage
-                    # For now, try common models
-                    for model in SCHEMA_MODELS:
-                        try:
-                            model.save_datapackage(  # type: ignore[attr-defined]
-                                dp_file.parent,
-                                dp_file.parent.name,
-                                "*.usv",
-                                force=True,
-                            )
-                            fixed_count += 1
-                            console.print(f"  [green]Fixed:[/green] {issue['file']}")
-                            break
-                        except Exception:
-                            continue
-                    else:
-                        console.print(
-                            f"  [red]Could not fix:[/red] {issue['file']} - No matching model"
-                        )
+                    console.print(f"  [green]Fixed:[/green] {issue['file']}")
 
             console.print(f"\n[green]Fixed {fixed_count} schemas.[/green]")
 

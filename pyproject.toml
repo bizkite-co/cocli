@@ -223,6 +223,8 @@ ignore_imports = [
     "cocli.core.campaign_workflow -> cocli.commands.campaign.prospecting",
     "cocli.core.campaign_workflow -> cocli.commands.import_companies",
     "cocli.core.campaign_workflow -> cocli.commands.ingest_google_maps_csv",
+    # CLI Tree introspection requires importing the main app container
+    "cocli.application.audit_service -> cocli.main",
 ]
 
 [[tool.importlinter.contracts]]

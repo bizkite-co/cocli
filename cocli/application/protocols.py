@@ -73,6 +73,19 @@ class AuditServiceProvider(Protocol):
     def audit_campaign_integrity(self, fix: bool = False) -> Dict[str, Any]: ...
     def audit_queue_completion(self, execute: bool = False) -> Dict[str, Any]: ...
     def audit_cluster_paths(self, target_paths: List[str], campaigns: Optional[List[str]] = None) -> List[Dict[str, Any]]: ...
+    def get_cli_tree(self) -> str: ...
+    def audit_filesystem(
+        self,
+        campaign_name: Optional[str] = None,
+        skip_companies: bool = True,
+        gen_cleanup: bool = False,
+    ) -> Dict[str, Any]: ...
+    def audit_schemas(
+        self,
+        campaign: Optional[str] = None,
+        fix: bool = False,
+        dry_run: bool = False,
+    ) -> Dict[str, Any]: ...
 
 class DataSyncServiceProvider(Protocol):
     campaign_name: str
