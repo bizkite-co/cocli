@@ -9,11 +9,32 @@ from typing import Any, Dict, List, Optional
 from ..core.config import get_campaign_dir, load_campaign_config, load_global_config
 from ..models.campaigns.queues.gm_details import GmItemTask
 from ..models.companies.company import Company
+from ..models import TileStatusResult, ProcessingTileDetail
 from ..core.prospects_csv_manager import ProspectsIndexManager
 from ..core.text_utils import slugify
 from ..core.paths import paths
 
 logger = logging.getLogger(__name__)
+
+def dump_cli_tree(command: Any, out: Any, indent: int = 0) -> None:
+    name = command.name or "cocli"
+    help_text = f" - {command.help.splitlines()[0]}" if command.help else ""
+    out.write(" " * indent + f"{name}{help_text}\n")
+
+    for param in command.params:
+        if getattr(param, "hidden", False):
+            continue
+        if param.name in ["install_completion", "show_completion"]:
+            continue
+
+        param_name = "/".join(param.opts) if param.opts else param.name
+        param_type = f" ({param.type.name})" if hasattr(param.type, "name") else ""
+        required = " [required]" if param.required else ""
+        out.write(" " * (indent + 4) + f"{param_name}{param_type}{required}\n")
+
+    if hasattr(command, "commands"):
+        for sub_name, sub_command in sorted(command.commands.items()):
+            dump_cli_tree(sub_command, out, indent + 4)
 
 class AuditService:
     def __init__(self, campaign_name: str):
@@ -231,36 +252,13 @@ class AuditService:
         except Exception:
             return False
 
-    def get_cli_tree(self) -> str:
+    def get_cli_tree(self, click_command: Any) -> str:
         """Dumps the CLI command hierarchy as a string."""
-        from typer.main import get_command
         from io import StringIO
-        from ..main import app as main_app
 
-        click_command = get_command(main_app)
         out = StringIO()
-        self._dump_cli_tree(click_command, out)
+        dump_cli_tree(click_command, out)
         return out.getvalue()
-
-    def _dump_cli_tree(self, command: Any, out: Any, indent: int = 0) -> None:
-        name = command.name or "cocli"
-        help_text = f" - {command.help.splitlines()[0]}" if command.help else ""
-        out.write(" " * indent + f"{name}{help_text}\n")
-
-        for param in command.params:
-            if getattr(param, "hidden", False):
-                continue
-            if param.name in ["install_completion", "show_completion"]:
-                continue
-
-            param_name = "/".join(param.opts) if param.opts else param.name
-            param_type = f" ({param.type.name})" if hasattr(param.type, "name") else ""
-            required = " [required]" if param.required else ""
-            out.write(" " * (indent + 4) + f"{param_name}{param_type}{required}\n")
-
-        if hasattr(command, "commands"):
-            for sub_name, sub_command in sorted(command.commands.items()):
-                self._dump_cli_tree(sub_command, out, indent + 4)
 
     def audit_filesystem(
         self,
@@ -986,7 +984,7 @@ class AuditService:
             "missing_html": missing_html,
         }
 
-    def get_tile_status(self, campaign_name: str) -> Dict[str, Any]:
+    def get_tile_status(self, campaign_name: str) -> TileStatusResult:
         """Audit tile-queue status."""
         from ..core.queue.factory import get_queue_manager
         from datetime import datetime, UTC
@@ -1002,7 +1000,7 @@ class AuditService:
             pending_count = len(list(tile_queue.tiles_dir.glob("*.usv")))
 
         processing_count = 0
-        processing_tiles_details = []
+        processing_tiles_details: List[ProcessingTileDetail] = []
         expired_count = 0
         if tile_queue.processing_dir.exists():
             for f in tile_queue.processing_dir.glob("*.usv"):
@@ -1036,36 +1034,36 @@ class AuditService:
                             if ttl_min <= 0:
                                 expired_count += 1
 
-                            processing_tiles_details.append({
-                                "tile_name": f.name,
-                                "worker_id": worker_id,
-                                "age_min": age_min,
-                                "ttl_min": ttl_min,
-                                "status": status,
-                                "style": style,
-                            })
+                            processing_tiles_details.append(ProcessingTileDetail(
+                                tile_name=f.name,
+                                worker_id=worker_id,
+                                age_min=age_min,
+                                ttl_min=ttl_min,
+                                status=status,
+                                style=style,
+                            ))
                     except Exception as e:
-                        processing_tiles_details.append({
-                            "tile_name": f.name,
-                            "error": str(e),
-                        })
+                        processing_tiles_details.append(ProcessingTileDetail(
+                            tile_name=f.name,
+                            error=str(e),
+                        ))
                 else:
-                    processing_tiles_details.append({
-                        "tile_name": f.name,
-                        "no_lease": True,
-                    })
+                    processing_tiles_details.append(ProcessingTileDetail(
+                        tile_name=f.name,
+                        no_lease=True,
+                    ))
 
         completed_count = 0
         if tile_queue.completed_dir.exists():
             completed_count = len(list(tile_queue.completed_dir.glob("*.usv")))
 
-        return {
-            "pending_count": pending_count,
-            "processing_count": processing_count,
-            "completed_count": completed_count,
-            "processing_tiles_details": processing_tiles_details,
-            "expired_count": expired_count,
-        }
+        return TileStatusResult(
+            pending_count=pending_count,
+            processing_count=processing_count,
+            completed_count=completed_count,
+            processing_tiles_details=processing_tiles_details,
+            expired_count=expired_count,
+        )
 
     def purge_leases(
         self,

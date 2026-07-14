@@ -688,11 +688,11 @@ def path_check(
     path_list = [p.strip() for p in paths.split(",")]
 
     try:
-        from ...application.audit_service import AuditService
+        from ...application.services import ServiceContainer
 
         # Use first campaign for service init, but service handles multiple campaigns in method
-        service = AuditService(campaign_list[0])
-        results = service.audit_cluster_paths(path_list, campaigns=campaign_list)
+        services = ServiceContainer(campaign_name=campaign_list[0])
+        results = services.cluster_audit_service.audit_cluster_paths(path_list, campaigns=campaign_list)
 
         table = Table(title="Cluster Path Audit")
         table.add_column("Campaign", style="cyan")

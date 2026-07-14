@@ -5,8 +5,11 @@ from cocli.application.audit_service import AuditService
 
 
 def test_get_cli_tree():
+    from typer.main import get_command
+    from cocli.main import app as main_app
+    click_command = get_command(main_app)
     service = AuditService(campaign_name="test-campaign")
-    tree = service.get_cli_tree()
+    tree = service.get_cli_tree(click_command)
     assert isinstance(tree, str)
     assert len(tree) > 0
     assert "cocli" in tree

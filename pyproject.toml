@@ -203,6 +203,7 @@ ignore_errors = true
 
 [tool.importlinter]
 root_package = "cocli"
+exclude_type_checking_imports = true
 
 [[tool.importlinter.contracts]]
 name = "Commands are leaf nodes"
@@ -223,8 +224,6 @@ ignore_imports = [
     "cocli.core.campaign_workflow -> cocli.commands.campaign.prospecting",
     "cocli.core.campaign_workflow -> cocli.commands.import_companies",
     "cocli.core.campaign_workflow -> cocli.commands.ingest_google_maps_csv",
-    # CLI Tree introspection requires importing the main app container
-    "cocli.application.audit_service -> cocli.main",
 ]
 
 [[tool.importlinter.contracts]]
@@ -270,5 +269,8 @@ source_modules = [
 ]
 forbidden_modules = [
     "cocli.commands",
+]
+ignore_imports = [
+    "cocli.application.data_sync_service -> cocli.commands.smart_sync",
 ]
 

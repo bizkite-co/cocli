@@ -23,7 +23,7 @@ import pytest
 from typer.main import get_command
 from typer.testing import CliRunner
 
-from cocli.commands.audit import dump_cli_tree
+from cocli.application.audit_service import dump_cli_tree
 from cocli.main import app as main_app
 
 GOLDEN_FILE = Path(__file__).parent / "goldens" / "cli_tree.txt"

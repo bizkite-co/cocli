@@ -69,28 +69,6 @@ def audit_queue_gm_list(
         raise typer.Exit(1)
 
 
-def dump_cli_tree(command: Any, out: Any, indent: int = 0) -> None:
-    name = command.name or "cocli"
-    help_text = f" - {command.help.splitlines()[0]}" if command.help else ""
-    out.write(" " * indent + f"{name}{help_text}\n")
-
-    for param in command.params:
-        if getattr(param, "hidden", False):
-            continue
-        # Typer adds these by default
-        if param.name in ["install_completion", "show_completion"]:
-            continue
-
-        param_name = "/".join(param.opts) if param.opts else param.name
-        param_type = f" ({param.type.name})" if hasattr(param.type, "name") else ""
-        required = " [required]" if param.required else ""
-        out.write(" " * (indent + 4) + f"{param_name}{param_type}{required}\n")
-
-    if hasattr(command, "commands"):
-        for sub_name, sub_command in sorted(command.commands.items()):
-            dump_cli_tree(sub_command, out, indent + 4)
-
-
 @app.command(name="cli")
 def audit_cli(
     ctx: typer.Context,
@@ -101,9 +79,13 @@ def audit_cli(
     """
     Dumps the CLI command hierarchy.
     """
+    from typer.main import get_command
+    from ..main import app as main_app
+
+    click_command = get_command(main_app)
     campaign = get_campaign() or "default"
     services = ServiceContainer(campaign_name=campaign)
-    report = services.codebase_audit_service.get_cli_tree()
+    report = services.codebase_audit_service.get_cli_tree(click_command)
 
     if output:
         output.parent.mkdir(parents=True, exist_ok=True)
@@ -1601,11 +1583,11 @@ def queue_status(campaign: str = typer.Option("", help="Campaign name")) -> None
     audit_service = ServiceContainer(campaign_name=campaign_name).queue_audit_service
     res = audit_service.get_tile_status(campaign_name)
 
-    pending_count = res["pending_count"]
-    processing_count = res["processing_count"]
-    completed_count = res["completed_count"]
-    processing_tiles = res["processing_tiles_details"]
-    expired_count = res["expired_count"]
+    pending_count = res.pending_count
+    processing_count = res.processing_count
+    completed_count = res.completed_count
+    processing_tiles = res.processing_tiles_details
+    expired_count = res.expired_count
 
     # Display status table
     console.print(f"\n[bold]Tile Queue Status: {campaign_name}[/bold]\n")
@@ -1623,17 +1605,17 @@ def queue_status(campaign: str = typer.Option("", help="Campaign name")) -> None
     # Show details of processing tiles with leases
     if processing_tiles:
         console.print("\n[bold]Processing Tiles:[/bold]")
-        for tile in sorted(processing_tiles, key=lambda x: x.get("tile_name", "")):
-            tile_name = tile["tile_name"]
-            if "error" in tile:
-                console.print(f"  • {tile_name}: [error]Error reading lease: {tile['error']}[/error]")
-            elif "no_lease" in tile:
+        for tile in sorted(processing_tiles, key=lambda x: x.tile_name):
+            tile_name = tile.tile_name
+            if tile.error is not None:
+                console.print(f"  • {tile_name}: [error]Error reading lease: {tile.error}[/error]")
+            elif tile.no_lease:
                 console.print(f"  • {tile_name}: [warning]No lease file[/warning]")
             else:
-                worker_id = tile["worker_id"]
-                age_min = tile["age_min"]
-                status = tile["status"]
-                style = tile["style"]
+                worker_id = tile.worker_id
+                age_min = tile.age_min if tile.age_min is not None else 0.0
+                status = tile.status
+                style = tile.style
                 console.print(f"  • {tile_name}: {worker_id} (claimed {age_min:.0f}min ago) [{style}]{status}[/{style}]")
 
     if expired_count > 0:
