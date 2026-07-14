@@ -7,7 +7,8 @@ from rich.markdown import Markdown
 from rich.rule import Rule
 from rich.tree import Tree
 
-from ..core.tasks import TaskIndexManager, TaskStatus
+from ..application.services import ServiceContainer
+from ..core.tasks import TaskStatus
 
 app = typer.Typer(help="Manage development tasks and architectural issues.", no_args_is_help=True)
 console = Console()
@@ -42,15 +43,16 @@ def render_markdown_with_links(path: Path, seen: Optional[Set[Path]] = None) -> 
 @app.command(name="sync")
 def sync_index() -> None:
     """Sync the task index with the filesystem (discovering active/pending/draft)."""
-    manager = TaskIndexManager()
-    changes = manager.sync()
+    services = ServiceContainer()
+    changes = services.task_service.sync_index()
     console.print(f"[green]Index synced. {changes} changes detected.[/green]")
 
 @app.command(name="list")
 def list_tasks() -> None:
     """List all tasks from the mission index."""
-    manager = TaskIndexManager()
-    if not manager.tasks:
+    services = ServiceContainer()
+    tasks = services.task_service.get_all_tasks()
+    if not tasks:
         console.print("[yellow]Index is empty. Run 'cocli task sync' to discover tasks.[/yellow]")
         return
 
@@ -61,7 +63,7 @@ def list_tasks() -> None:
     table.add_column("Title")
     table.add_column("Deps")
     
-    for i, task in enumerate(manager.tasks):
+    for i, task in enumerate(tasks):
         status_color = "white"
         if task.status == TaskStatus.ACTIVE:
             status_color = "bold yellow"
@@ -86,10 +88,10 @@ def list_tasks() -> None:
 @app.command(name="next")
 def show_next() -> None:
     """Show the current objective from the top of the mission index."""
-    manager = TaskIndexManager()
-    next_task = manager.get_next_task()
+    services = ServiceContainer()
+    next_task = services.task_service.get_next_task()
     if next_task:
-        task_file = manager.resolve_file(next_task.slug)
+        task_file = services.task_service.resolve_file(next_task.slug)
         if task_file:
             render_markdown_with_links(task_file)
         else:
@@ -100,8 +102,8 @@ def show_next() -> None:
 @app.command(name="prioritize")
 def prioritize_task(slug: str, position: int) -> None:
     """Update the ordinal position of a task in the mission index."""
-    manager = TaskIndexManager()
-    if manager.prioritize(slug, position):
+    services = ServiceContainer()
+    if services.task_service.prioritize_task(slug, position):
         console.print(f"[green]Task '{slug}' moved to position {position}.[/green]")
     else:
         console.print(f"[red]Task '{slug}' not found.[/red]")
@@ -109,11 +111,12 @@ def prioritize_task(slug: str, position: int) -> None:
 @app.command(name="tree")
 def show_tree() -> None:
     """Show a visual dependency tree of tasks."""
-    manager = TaskIndexManager()
+    services = ServiceContainer()
+    tasks = services.task_service.get_all_tasks()
     root = Tree("[bold blue]Development Roadmap[/bold blue]")
     
     # Active/Pending with dependencies
-    for task in manager.tasks:
+    for task in tasks:
         label = task.slug
         if task.status == TaskStatus.ACTIVE:
             label = f"[bold yellow]{label} (ACTIVE)[/bold yellow]"
@@ -129,50 +132,12 @@ def show_tree() -> None:
 @app.command(name="start")
 def start_task(slug: Optional[str] = typer.Argument(None)) -> None:
     """Move a task to ACTIVE. Defaults to the first PENDING task."""
-    manager = TaskIndexManager()
-    
-    # Find task
-    task = None
-    if slug:
-        # Find by slug or priority
-        for i, t in enumerate(manager.tasks):
-            if t.slug == slug or str(i + 1) == slug:
-                task = t
-                break
+    services = ServiceContainer()
+    res = services.task_service.start_task(slug)
+    if res["success"]:
+        console.print(f"[green]Task '{res['slug']}' is now ACTIVE.[/green]")
     else:
-        # Get first PENDING or DRAFT task
-        for t in manager.tasks:
-            if t.status in [TaskStatus.PENDING, TaskStatus.DRAFT]:
-                task = t
-                break
-            
-    if not task:
-        console.print("[red]No startable task found.[/red]")
-        return
-
-    if task.status == TaskStatus.BLOCKED:
-        console.print(f"[red]Task '{task.slug}' is BLOCKED by {';'.join(task.dependencies)}[/red]")
-        return
-
-    # Find file
-    old_path = manager.resolve_file(task.slug)
-    if not old_path:
-        console.print(f"[red]Requirement file for '{task.slug}' not found.[/red]")
-        return
-
-    new_rel_name = old_path.name
-    if old_path.parent.name == "pending" and "_" in old_path.name:
-        new_rel_name = old_path.name.split("_", 1)[1]
-        
-    new_path = ISSUES_ROOT / "active" / new_rel_name
-    new_path.parent.mkdir(parents=True, exist_ok=True)
-    
-    old_path.rename(new_path)
-    
-    # Update index
-    task.status = TaskStatus.ACTIVE
-    manager.save()
-    console.print(f"[green]Task '{task.slug}' is now ACTIVE.[/green]")
+        console.print(f"[red]{res['error']}[/red]")
 
 @app.command(name="done")
 def complete_task(
@@ -181,23 +146,16 @@ def complete_task(
     body: Optional[str] = typer.Option(None, "--body", "-b", help="Git commit message body.")
 ) -> None:
     """Move a task to COMPLETED and create a Git commit."""
-    manager = TaskIndexManager()
-
-    # Find task
-    task = None
-    if slug:
-        for i, t in enumerate(manager.tasks):
-            if t.slug == slug or str(i + 1) == slug:
-                task = t
-                break
-    else:
+    services = ServiceContainer()
+    task_slug = slug
+    if not task_slug:
         # Default to ACTIVE task
-        for t in manager.tasks:
+        for t in services.task_service.get_all_tasks():
             if t.status == TaskStatus.ACTIVE:
-                task = t
+                task_slug = t.slug
                 break
 
-    if not task:
+    if not task_slug:
         console.print("[red]No active task to complete.[/red]")
         return
 
@@ -210,38 +168,30 @@ def complete_task(
     if body is None:
         body = ""
 
-    old_path = manager.resolve_file(task.slug)
-    if not old_path:
-        console.print(f"[red]Requirement file for '{task.slug}' not found.[/red]")
-        return
-
-    # 1. Prepare Git Commit
-    import subprocess
-    try:
+    def run_git_commit(msg: str, bdy: Optional[str]) -> None:
+        import subprocess
         console.print("[yellow]Staging changes and running pre-commit tests...[/yellow]")
         subprocess.run(["git", "add", "."], check=True)
-        commit_cmd = ["git", "commit", "-m", message]
-        if body:
-            commit_cmd.extend(["-m", body])
-        
-        # This will trigger the pre-commit hook (tests/lint)
+        commit_cmd = ["git", "commit", "-m", msg]
+        if bdy:
+            commit_cmd.extend(["-m", bdy])
         subprocess.run(commit_cmd, check=True)
         console.print("[green]Changes committed to git successfully.[/green]")
-    except subprocess.CalledProcessError:
-        console.print("[red]Git commit failed (tests or lint likely failed). Task remains ACTIVE.[/red]")
-        raise typer.Exit(1)
 
-    # 2. Update Filesystem and Index ONLY if commit succeeded
-    new_path = ISSUES_ROOT / "completed" / "2026" / old_path.name
-    new_path.parent.mkdir(parents=True, exist_ok=True)
-    old_path.rename(new_path)
+    res = services.task_service.complete_task(
+        slug=task_slug,
+        commit_message=message,
+        commit_body=body,
+        commit_fn=run_git_commit,
+    )
 
-    # Removing from index happens automatically on save because we filter by status != COMPLETED
-    task.status = TaskStatus.COMPLETED
-    manager.update_blocked_states()
-    manager.save()
-
-    console.print(f"[green]Task '{task.slug}' marked as COMPLETED and removed from index.[/green]")
+    if res["success"]:
+        console.print(f"[green]Task '{res['slug']}' marked as COMPLETED and removed from index.[/green]")
+    else:
+        console.print(f"[red]{res['error']}[/red]")
+        if "Commit failed" in res["error"]:
+            console.print("[red]Git commit failed (tests or lint likely failed). Task remains ACTIVE.[/red]")
+            raise typer.Exit(1)
 
 
 @app.command(name="create", no_args_is_help=True)
@@ -253,52 +203,22 @@ def create_task(
     depends_on: Optional[str] = typer.Option(None, "--depends-on", "-d", help="Comma-separated list of existing task slugs this task depends on.")
 ) -> None:
     """Create a new task in the mission queue."""
-    from ..utils.textual_utils import sanitize_id
-    
-    # 1. Prepare slug and title
-    if not slug:
-        slug = sanitize_id(title)
-    
-    manager = TaskIndexManager()
-    
-    # Check if task already exists
-    if any(t.slug == slug for t in manager.tasks) or manager._is_task_completed(slug):
-        console.print(f"[red]Task with slug '{slug}' already exists.[/red]")
-        raise typer.Exit(1)
-        
-    # 2. Prepare dependencies
-    dependencies = []
-    if depends_on:
-        dependencies = [d.strip() for d in depends_on.split(",")]
-        # Validate dependencies exist
-        for dep in dependencies:
-            if not any(t.slug == dep for t in manager.tasks) and not manager._is_task_completed(dep):
-                console.print(f"[yellow]Warning: Dependency '{dep}' not found in index or completed history.[/yellow]")
-    
-    # 3. Create markdown file
-    status = TaskStatus.DRAFT if draft else TaskStatus.PENDING
-    folder = "draft" if draft else "pending"
-    task_file = ISSUES_ROOT / folder / f"{slug}.md"
-    task_file.parent.mkdir(parents=True, exist_ok=True)
-    
-    markdown_content = f"# {title}\n"
-    if body:
-        markdown_content += f"\n{body}\n"
-    
-    task_file.write_text(markdown_content, encoding="utf-8")
-    
-    # 4. Add to index
-    from ..models.tasks import MissionTask
-    new_task = MissionTask(
+    services = ServiceContainer()
+    res = services.task_service.create_task(
+        title=title,
         slug=slug,
-        dependencies=dependencies
+        body=body,
+        draft=draft,
+        depends_on=depends_on,
     )
-    new_task.title = title
-    new_task.status = status
-    manager.tasks.append(new_task)
-    manager.save()
-    
-    console.print(f"[green]Created {status.value} task '{slug}' at {task_file}[/green]")
+
+    if res["success"]:
+        for warning in res["warnings"]:
+            console.print(f"[yellow]Warning: {warning}[/yellow]")
+        console.print(f"[green]Created {res['status']} task '{res['slug']}' at {res['task_file']}[/green]")
+    else:
+        console.print(f"[red]Error: {res['error']}[/red]")
+        raise typer.Exit(1)
 
 if __name__ == "__main__":
     app()

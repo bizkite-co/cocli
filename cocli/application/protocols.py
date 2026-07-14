@@ -1,8 +1,9 @@
-from typing import Protocol, List, Dict, Any, Optional, Iterator, Callable
+from typing import Protocol, List, Dict, Any, Optional, Iterator, Callable, Set
 from pathlib import Path
 from cocli.models.search import SearchResult
 from cocli.models.companies.meeting import CompanyMeeting
 from cocli.models import TileStatusResult
+from cocli.models.tasks import MissionTask
 
 
 class SearchProvider(Protocol):
@@ -45,6 +46,41 @@ class WebServiceProvider(Protocol):
     def fetch_cdk_outputs(self, profile: str) -> Dict[str, str]:
         ...
     def get_campaign_reports(self) -> Dict[str, Any]:
+        ...
+
+
+class TaskServiceProvider(Protocol):
+    issues_root: Path
+    def sync_index(self) -> int:
+        ...
+    def get_all_tasks(self) -> List[MissionTask]:
+        ...
+    def prioritize_task(self, slug: str, position: int) -> bool:
+        ...
+    def get_next_task(self) -> Optional[MissionTask]:
+        ...
+    def resolve_file(self, slug: str) -> Optional[Path]:
+        ...
+    def get_markdown_content_with_links(self, path: Path, seen: Optional[Set[Path]] = None) -> List[Dict[str, str]]:
+        ...
+    def start_task(self, slug: Optional[str] = None) -> Dict[str, Any]:
+        ...
+    def create_task(
+        self,
+        title: str,
+        slug: Optional[str] = None,
+        body: Optional[str] = None,
+        draft: bool = False,
+        depends_on: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        ...
+    def complete_task(
+        self,
+        slug: Optional[str] = None,
+        commit_message: Optional[str] = None,
+        commit_body: Optional[str] = None,
+        commit_fn: Optional[Callable[[str, Optional[str]], None]] = None,
+    ) -> Dict[str, Any]:
         ...
 
 
