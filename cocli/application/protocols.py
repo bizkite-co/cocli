@@ -27,6 +27,10 @@ class MeetingServiceProvider(Protocol):
     campaign_name: str
     def get_all_meetings(self) -> List[CompanyMeeting]:
         ...
+    def get_upcoming_meetings(self) -> List[CompanyMeeting]:
+        ...
+    def get_recent_meetings(self, days_limit: int = 180) -> List[CompanyMeeting]:
+        ...
 
 
 class TemplateCountsProvider(Protocol):

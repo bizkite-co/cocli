@@ -62,14 +62,7 @@ def next_meetings() -> None:
 
     campaign = get_campaign() or "default"
     services = ServiceContainer(campaign_name=campaign)
-    all_meetings = services.meeting_service.get_all_meetings()
-
-    now_local = datetime.datetime.now(get_localzone())
-
-    upcoming_meetings = sorted(
-        [m for m in all_meetings if m.datetime_local > now_local],
-        key=lambda m: m.datetime_local,
-    )
+    upcoming_meetings = services.meeting_service.get_upcoming_meetings()
 
     if not upcoming_meetings:
         console.print("No upcoming meetings found.")
@@ -133,21 +126,7 @@ def recent_meetings() -> None:
 
     campaign = get_campaign() or "default"
     services = ServiceContainer(campaign_name=campaign)
-    all_meetings = services.meeting_service.get_all_meetings()
-
-    now_local = datetime.datetime.now(get_localzone())
-    six_months_ago_local = now_local - datetime.timedelta(days=180)
-
-    past_meetings = sorted(
-        [
-            m
-            for m in all_meetings
-            if m.datetime_local < now_local
-            and m.datetime_local >= six_months_ago_local
-        ],
-        key=lambda m: m.datetime_local,
-        reverse=True,
-    )
+    past_meetings = services.meeting_service.get_recent_meetings(days_limit=180)
 
     if not past_meetings:
         console.print("No recent meetings found.")

@@ -109,3 +109,31 @@ class MeetingService:
                                 )
                                 continue
         return all_meetings
+
+    def get_upcoming_meetings(self) -> List[CompanyMeeting]:
+        """Gathers and returns sorted list of upcoming meetings."""
+        all_meetings = self.get_all_meetings()
+        local_tz = get_localzone()
+        now_local = datetime.datetime.now(local_tz)
+        return sorted(
+            [m for m in all_meetings if m.datetime_local > now_local],
+            key=lambda m: m.datetime_local,
+        )
+
+    def get_recent_meetings(self, days_limit: int = 180) -> List[CompanyMeeting]:
+        """Gathers and returns sorted list of recent meetings within a day limit."""
+        all_meetings = self.get_all_meetings()
+        local_tz = get_localzone()
+        now_local = datetime.datetime.now(local_tz)
+        limit_date_local = now_local - datetime.timedelta(days=days_limit)
+        return sorted(
+            [
+                m
+                for m in all_meetings
+                if m.datetime_local < now_local
+                and m.datetime_local >= limit_date_local
+            ],
+            key=lambda m: m.datetime_local,
+            reverse=True,
+        )
+
