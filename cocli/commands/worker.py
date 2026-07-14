@@ -178,7 +178,6 @@ def orchestrate(
     """
     print("[ORCHESTRATE] Command started")  # Simple print for debugging
     import socket
-    from ..models.campaigns.worker_config import WorkerDefinition
 
     effective_campaign = campaign or os.getenv("CAMPAIGN_NAME") or get_campaign()
     if not effective_campaign:
@@ -188,51 +187,23 @@ def orchestrate(
     log_level = logging.DEBUG if debug else logging.INFO
     setup_file_logging("orchestration", console_level=log_level)
 
-    from ..services.cluster_service import ClusterService
-    service = ClusterService(effective_campaign)
+    worker_service = WorkerService(effective_campaign)
     
     # Use environment variable if set (standard for our Docker runners), otherwise local hostname
     raw_hostname = os.getenv("COCLI_HOSTNAME") or socket.gethostname()
     hostname = raw_hostname.split(".")[0]
+    running_in_fargate = bool(os.getenv("COCLI_RUNNING_IN_FARGATE") or hostname == "fargate")
     
-    # 1. Resolve Node Config from ClusterService
-    node_config = next((n for n in service.get_nodes() if n.hostname.startswith(hostname)), None)
-    
-    if not node_config:
-        logger.warning(f"No specific configuration found for node {hostname} in campaign {effective_campaign}.")
-        if os.getenv("COCLI_RUNNING_IN_FARGATE") or hostname == "fargate":
-            scaling = service.config.get("prospecting", {}).get("scaling", {})
-            fargate_scaling = scaling.get("fargate", {})
-            if fargate_scaling:
-                worker_defs = []
-                for content_type, count in fargate_scaling.items():
-                    if count > 0:
-                        worker_defs.append(WorkerDefinition(
-                            name=f"fargate-{content_type}",
-                            role="full",
-                            content_type=content_type,
-                            workers=count,
-                            iot_profile=None
-                        ))
-                logger.info(f"Resolved Fargate configuration from prospecting.scaling: {worker_defs}")
-            else:
-                logger.error(
-                    f"Node '{hostname}' is running in Fargate but has no resolved worker "
-                    "config - refusing to fall back to gm-list. Starting with zero "
-                    "workers instead. Check that 'campaign rollout pull-config' succeeded "
-                    "and that [prospecting.scaling].fargate is set in config.toml."
-                )
-                worker_defs = []
-        else:
-            logger.info("Falling back to default single-worker mode.")
-            # Default: 1 gm-list worker
-            worker_defs = [WorkerDefinition(name="default", role="full", content_type="gm-list", workers=1, iot_profile=None)]
-    else:
-        logger.info(f"Found configuration for {node_config.hostname} with {len(node_config.workers)} workers.")
-        worker_defs = node_config.workers
+    worker_defs = worker_service.resolve_worker_definitions(hostname, running_in_fargate)
+    if not worker_defs and running_in_fargate:
+        logger.error(
+            f"Node '{hostname}' is running in Fargate but has no resolved worker "
+            "config - refusing to fall back to gm-list. Starting with zero "
+            "workers instead. Check that 'campaign rollout pull-config' succeeded "
+            "and that [prospecting.scaling].fargate is set in config.toml."
+        )
 
     # 2. Execute
-    worker_service = WorkerService(effective_campaign)
     asyncio.run(worker_service.run_orchestrated_workers(worker_defs, headless=not headed, debug=debug))
 
 @app.command()

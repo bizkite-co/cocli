@@ -684,3 +684,36 @@ class WorkerService:
             except Exception:
                 results.append({"host": host, "online": False})
         return results
+
+    def resolve_worker_definitions(self, hostname: str, running_in_fargate: bool) -> List[Any]:
+        """Resolves node config and returns a list of WorkerDefinitions for the host."""
+        from ..models.campaigns.worker_config import WorkerDefinition
+        from ..services.cluster_service import ClusterService
+
+        cluster_service = ClusterService(self.campaign_name)
+        node_config = next((n for n in cluster_service.get_nodes() if n.hostname.startswith(hostname)), None)
+
+        if not node_config:
+            if running_in_fargate or hostname == "fargate":
+                scaling = cluster_service.config.get("prospecting", {}).get("scaling", {})
+                fargate_scaling = scaling.get("fargate", {})
+                if fargate_scaling:
+                    worker_defs = []
+                    for content_type, count in fargate_scaling.items():
+                        if count > 0:
+                            worker_defs.append(WorkerDefinition(
+                                name=f"fargate-{content_type}",
+                                role="full",
+                                content_type=content_type,
+                                workers=count,
+                                iot_profile=None
+                            ))
+                    return worker_defs
+                else:
+                    return []
+            else:
+                # Default: 1 gm-list worker
+                return [WorkerDefinition(name="default", role="full", content_type="gm-list", workers=1, iot_profile=None)]
+        
+        return node_config.workers
+
