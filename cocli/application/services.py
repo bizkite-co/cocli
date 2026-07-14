@@ -18,6 +18,7 @@ from cocli.application.deployment_service import DeploymentService
 from cocli.application.company_service import get_company_details_for_view
 from cocli.application.event_service import EventService
 from cocli.application.meeting_service import MeetingService
+from cocli.application.web_service import WebService
 from cocli.core.secrets import get_secret_provider
 from cocli.models.search import SearchResult
 from cocli.core.config import get_campaign
@@ -39,6 +40,7 @@ from .protocols import (
     EventServiceProvider,
     SecretServiceProvider,
     MeetingServiceProvider,
+    WebServiceProvider,
 )
 
 logger = logging.getLogger(__name__)
@@ -72,6 +74,7 @@ class ServiceContainer(BaseModel):
             self._event_service = None
             self._secret_service = None
             self._meeting_service = None
+            self._web_service = None
             logger.warning(f"Services invalidated for campaign: {name}")
 
     # Provider overrides (can be injected via constructor or setters)
@@ -97,6 +100,7 @@ class ServiceContainer(BaseModel):
     _event_service: Optional[Any] = PrivateAttr(default=None)
     _secret_service: Optional[Any] = PrivateAttr(default=None)
     _meeting_service: Optional[Any] = PrivateAttr(default=None)
+    _web_service: Optional[Any] = PrivateAttr(default=None)
 
     @property
     def search_service(self) -> SearchProvider:
@@ -299,3 +303,14 @@ class ServiceContainer(BaseModel):
     @meeting_service.setter
     def meeting_service(self, value: MeetingServiceProvider) -> None:
         self._meeting_service = value
+
+    @property
+    def web_service(self) -> WebServiceProvider:
+        if not self._web_service:
+            self._web_service = WebService(campaign_name=self.campaign_name)
+        return cast(WebServiceProvider, self._web_service)
+
+    @web_service.setter
+    def web_service(self, value: WebServiceProvider) -> None:
+        self._web_service = value
+

@@ -3,13 +3,12 @@ import json
 import subprocess
 import os
 import boto3
-import toml
 from datetime import datetime
-from typing import Optional, Dict, Any
+from typing import Optional
 from pathlib import Path
 from rich.console import Console
 from cocli.core.config import get_campaign, get_campaign_dir
-from cocli.core.reporting import get_campaign_stats
+from ..application.services import ServiceContainer
 
 app = typer.Typer(no_args_is_help=True, help="Manage web deployment.")
 console = Console()
@@ -36,40 +35,21 @@ def deploy(
         console.print(f"[red]Campaign directory not found for {campaign_name}[/red]")
         raise typer.Exit(1)
 
-    # Load campaign config
     config_path = campaign_dir / "config.toml"
-    config: Dict[str, Any] = {}
-    if config_path.exists():
-        with open(config_path, "r") as f:
-            config = toml.load(f)
-    
-    # Resolve Profile
-    if not profile:
-        aws_config = config.get("aws", {})
-        profile = aws_config.get("profile") or aws_config.get("aws_profile") or aws_config.get("aws-profile") or config.get("aws-profile")
-    
-    if not profile:
-        console.print("[red]Error: AWS profile not specified via --profile or '[aws] profile' in config.toml.[/red]")
+
+    services = ServiceContainer(campaign_name=campaign_name)
+    try:
+        cfg = services.web_service.resolve_deployment_config(
+            profile=profile,
+            bucket_name=bucket_name,
+            domain=domain,
+        )
+        profile = cfg["profile"]
+        domain = cfg["domain"]
+        bucket_name = cfg["bucket_name"]
+    except ValueError as e:
+        console.print(f"[red]Error: {e}[/red]")
         raise typer.Exit(1)
-
-    # Resolve Domain
-    aws_config = config.get("aws", {})
-    hosted_zone_domain = aws_config.get("hosted-zone-domain") or config.get("hosted-zone-domain")
-    
-    # If domain explicitly passed, use it. Otherwise derive from hosted_zone_domain
-    if not domain:
-        if not hosted_zone_domain:
-             console.print("[red]Error: Domain not specified via --domain and 'hosted-zone-domain' missing in config.toml.[/red]")
-             raise typer.Exit(1)
-        domain = f"cocli.{hosted_zone_domain}"
-
-    # Resolve Bucket
-    if not bucket_name:
-        # If we have a hosted_zone_domain, use it for the bucket name slug
-        # If we only have a raw 'domain' passed in arg, try to use that
-        base_domain = str(hosted_zone_domain) if hosted_zone_domain else str(domain)
-        bucket_slug = base_domain.replace(".", "-")
-        bucket_name = f"cocli-web-assets-{bucket_slug}"
 
     console.print("[bold blue]Deploying to:[/bold blue]")
     console.print(f"  Campaign: [cyan]{campaign_name}[/cyan]")
@@ -91,28 +71,8 @@ def deploy(
             session = boto3.Session(profile_name=profile)
             env["AWS_REGION"] = session.region_name or "us-east-1"
 
-            # Try to fetch CDK outputs from CloudFormation
-            cf = session.client("cloudformation")
-            stack_name = f"CdkScraperDeploymentStack-{campaign_name}"
-            if campaign_name == "turboship":
-                stack_name = "CdkScraperDeploymentStack"
-            
-            try:
-                response = cf.describe_stacks(StackName=stack_name)
-                outputs = response["Stacks"][0].get("Outputs", [])
-                for output in outputs:
-                    key = output["OutputKey"]
-                    val = output["OutputValue"]
-                    if key == "IdentityPoolId":
-                        env["COCLI_IDENTITY_POOL_ID"] = val
-                    elif key == "UserPoolId":
-                        env["COCLI_USER_POOL_ID"] = val
-                    elif key == "UserPoolClientId":
-                        env["COCLI_USER_POOL_CLIENT_ID"] = val
-                    elif key == "CampaignUpdatesQueueUrl":
-                        env["COCLI_COMMAND_QUEUE_URL"] = val
-            except Exception as e:
-                console.print(f"[yellow]Warning: Could not fetch CDK outputs for {stack_name}: {e}[/yellow]")
+            # Fetch CDK outputs from CloudFormation
+            env.update(services.web_service.fetch_cdk_outputs(profile=profile))
 
             subprocess.run(["npm", "run", "build"], cwd=source_web_dir, check=True, env=env)
             console.print("[green]Build successful.[/green]")
@@ -159,19 +119,19 @@ def deploy(
     except Exception as e:
         console.print(f"[yellow]Warning: Could not regenerate export CSV: {e}[/yellow]")
 
-    from cocli.core.reporting import get_campaign_stats, get_exclusions_data, get_queries_data, get_locations_data
+    reports = services.web_service.get_campaign_reports()
+    stats = reports["stats"]
     
     # 2a. Main Report
-    stats = get_campaign_stats(campaign_name)
     report_key = f"reports/{campaign_name}.json"
     s3.put_object(Bucket=bucket_name, Key=report_key, Body=json.dumps(stats, indent=2), ContentType="application/json")
     console.print(f"  Uploaded main report to s3://{bucket_name}/{report_key}")
 
     # 2b. Granular Reports (for faster worker-driven updates)
     granular = {
-        "exclusions.json": get_exclusions_data(campaign_name),
-        "queries.json": get_queries_data(campaign_name),
-        "locations.json": get_locations_data(campaign_name)
+        "exclusions.json": reports["exclusions"],
+        "queries.json": reports["queries"],
+        "locations.json": reports["locations"]
     }
     for filename, data in granular.items():
         key = f"reports/{filename}"
@@ -248,7 +208,8 @@ def report(
         console.print("[red]No campaign specified.[/red]")
         raise typer.Exit(1)
 
-    stats = get_campaign_stats(campaign_name)
+    services = ServiceContainer(campaign_name=campaign_name)
+    stats = services.web_service.get_campaign_reports()["stats"]
     
     if output:
         with open(output, "w") as f:

@@ -33,6 +33,21 @@ class MeetingServiceProvider(Protocol):
         ...
 
 
+class WebServiceProvider(Protocol):
+    campaign_name: str
+    def resolve_deployment_config(
+        self,
+        profile: Optional[str] = None,
+        bucket_name: Optional[str] = None,
+        domain: Optional[str] = None,
+    ) -> Dict[str, str]:
+        ...
+    def fetch_cdk_outputs(self, profile: str) -> Dict[str, str]:
+        ...
+    def get_campaign_reports(self) -> Dict[str, Any]:
+        ...
+
+
 class TemplateCountsProvider(Protocol):
     def __call__(self, campaign_name: Optional[str] = None) -> Dict[str, int]:
         ...
