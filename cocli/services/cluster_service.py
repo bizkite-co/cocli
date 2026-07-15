@@ -3,8 +3,7 @@ import logging
 import asyncio
 import subprocess
 from pathlib import Path
-from typing import List, Dict
-from rich.console import Console
+from typing import List, Dict, Any
 
 from ..core.config import load_campaign_config
 from ..models.campaigns.worker_config import (
@@ -14,7 +13,6 @@ from ..models.campaigns.worker_config import (
 )
 
 logger = logging.getLogger(__name__)
-console = Console()
 
 BUILD_DIR = "~/repos/cocli_build"
 
@@ -447,3 +445,88 @@ class ClusterService:
             ["ssh", f"{user}@{node.hostname}", command], capture_output=True, text=True
         )
         return res.stdout if res.returncode == 0 else res.stderr
+
+    async def get_top_stats(self) -> List[Dict[str, Any]]:
+        """Collects load, temp, mem, and pids of all nodes."""
+        results = []
+        for node in self.get_nodes():
+            cmd = "uptime && vcgencmd measure_temp && docker stats cocli-supervisor --no-stream --format '{{.MemUsage}} | {{.PIDs}}'"
+            res = await self.run_remote_command(node, cmd)
+            lines = res.strip().split("\n")
+            if len(lines) >= 3:
+                load = lines[0].split("average:")[1].strip() if "average:" in lines[0] else "N/A"
+                temp = lines[1].replace("temp=", "")
+                mem_pids = lines[2].split("|")
+                mem = mem_pids[0].strip() if len(mem_pids) > 0 else "N/A"
+                pids = mem_pids[1].strip() if len(mem_pids) > 1 else "N/A"
+                results.append({
+                    "node": node.hostname,
+                    "load": load,
+                    "temp": temp,
+                    "mem": mem,
+                    "pids": pids,
+                    "status": "OK"
+                })
+            else:
+                results.append({
+                    "node": node.hostname,
+                    "status": "OFFLINE"
+                })
+        return results
+
+    async def sync_clocks(self, authoritative_node: str, auth_time: str) -> None:
+        """Syncs node clocks with the authoritative node's time."""
+        for node in self.get_nodes():
+            if node.hostname == authoritative_node:
+                continue
+            cmd = f"sudo date -s '{auth_time}'"
+            await self.run_remote_command(node, cmd)
+
+    async def stop_workers(self) -> None:
+        """Stops and removes cocli worker containers on all nodes."""
+        for node in self.get_nodes():
+            cmd = "docker stop $(docker ps -q --filter name=cocli-) 2>/dev/null || true"
+            await self.run_remote_command(node, cmd)
+            cmd_rm = "docker rm $(docker ps -a -q --filter name=cocli-) 2>/dev/null || true"
+            await self.run_remote_command(node, cmd_rm)
+
+    async def get_nodes_status(self) -> List[Dict[str, Any]]:
+        """Uptime/status checks on all cluster nodes."""
+        results = []
+        for node in self.get_nodes():
+            res = await self.run_remote_command(node, "uptime")
+            if "load average" in res:
+                uptime_str = res.split("up")[1].split(",")[0].strip()
+                results.append({
+                    "node": node.hostname,
+                    "online": True,
+                    "uptime": uptime_str,
+                    "details": "Ready"
+                })
+            else:
+                results.append({
+                    "node": node.hostname,
+                    "online": False,
+                    "uptime": "N/A",
+                    "details": res.strip()[:30]
+                })
+        return results
+
+    async def prune_nodes(self, validated_nodes: List[PiNodeConfig]) -> List[Dict[str, Any]]:
+        """Prunes docker objects on nodes and returns space reclaimed."""
+        results = []
+        for node in validated_nodes:
+            cmd = "docker system prune -af"
+            res = await self.run_remote_command(node, cmd)
+            reclaimed_str = "0 B"
+            if "Total reclaimed space:" in res:
+                line = [row for row in res.split("\n") if "Total reclaimed space:" in row]
+                if line:
+                    reclaimed_str = line[0].replace("Total reclaimed space:", "").strip()
+            success = "Total reclaimed space:" in res
+            results.append({
+                "node": node.hostname,
+                "success": success,
+                "reclaimed": reclaimed_str
+            })
+        return results

@@ -71,7 +71,6 @@ def top(
         raise typer.Exit(1)
 
     service = ClusterService(effective_campaign)
-    nodes = service.get_nodes()
     
     table = Table(title=f"Cluster Top: {effective_campaign}")
     table.add_column("Node", style="cyan")
@@ -82,22 +81,12 @@ def top(
     table.add_column("Status")
 
     async def check_all() -> None:
-        for node in nodes:
-            # Combined command for speed
-            cmd = "uptime && vcgencmd measure_temp && docker stats cocli-supervisor --no-stream --format '{{.MemUsage}} | {{.PIDs}}'"
-            res = await service.run_remote_command(node, cmd)
-            
-            lines = res.strip().split("\n")
-            if len(lines) >= 3:
-                load = lines[0].split("average:")[1].strip() if "average:" in lines[0] else "N/A"
-                temp = lines[1].replace("temp=", "")
-                mem_pids = lines[2].split("|")
-                mem = mem_pids[0].strip() if len(mem_pids) > 0 else "N/A"
-                pids = mem_pids[1].strip() if len(mem_pids) > 1 else "N/A"
-                
-                table.add_row(node.hostname, load, temp, mem, pids, "[green]OK[/green]")
+        stats = await service.get_top_stats()
+        for stat in stats:
+            if stat["status"] == "OK":
+                table.add_row(stat["node"], stat["load"], stat["temp"], stat["mem"], stat["pids"], "[green]OK[/green]")
             else:
-                table.add_row(node.hostname, "OFFLINE", "-", "-", "-", "[red]ERR[/red]")
+                table.add_row(stat["node"], "OFFLINE", "-", "-", "-", "[red]ERR[/red]")
 
     asyncio.run(check_all())
     console.print(table)
@@ -134,11 +123,7 @@ def sync_clocks(
             if node.hostname == authoritative_node:
                 continue
             console.print(f"  Syncing {node.hostname}...")
-            # Force update time using date -s (requires sudo/root in container or host)
-            # Since workers run as root in container, and we want to affect the HOST, 
-            # this is best done via SSH to the host.
-            cmd = f"sudo date -s '{auth_time}'"
-            await service.run_remote_command(node, cmd)
+        await service.sync_clocks(authoritative_node, auth_time)
 
     asyncio.run(sync_all())
     console.print("[bold green]Clock synchronization complete.[/bold green]")
@@ -163,11 +148,7 @@ def stop(
     async def stop_all() -> None:
         for node in nodes:
             console.print(f"  Stopping workers on {node.hostname}...")
-            # Stop any container starting with cocli-
-            cmd = "docker stop $(docker ps -q --filter name=cocli-) 2>/dev/null || true"
-            await service.run_remote_command(node, cmd)
-            cmd_rm = "docker rm $(docker ps -a -q --filter name=cocli-) 2>/dev/null || true"
-            await service.run_remote_command(node, cmd_rm)
+        await service.stop_workers()
 
     asyncio.run(stop_all())
     console.print("[bold green]Cluster stopped.[/bold green]")
@@ -185,7 +166,6 @@ def status(
         raise typer.Exit(1)
 
     service = ClusterService(effective_campaign)
-    nodes = service.get_nodes()
     
     table = Table(title=f"Cluster Status: {effective_campaign}")
     table.add_column("Hostname", style="cyan")
@@ -194,13 +174,12 @@ def status(
     table.add_column("Details")
 
     async def check_all() -> None:
-        for node in nodes:
-            # We use a simple uptime check as a proxy for 'online'
-            res = await service.run_remote_command(node, "uptime")
-            if "load average" in res:
-                table.add_row(node.hostname, "[green]ONLINE[/green]", res.split("up")[1].split(",")[0].strip(), "Ready")
+        nodes_status = await service.get_nodes_status()
+        for ns in nodes_status:
+            if ns["online"]:
+                table.add_row(ns["node"], "[green]ONLINE[/green]", ns["uptime"], ns["details"])
             else:
-                table.add_row(node.hostname, "[red]OFFLINE[/red]", "N/A", res.strip()[:30])
+                table.add_row(ns["node"], "[red]OFFLINE[/red]", ns["uptime"], ns["details"])
 
     asyncio.run(check_all())
     console.print(table)
@@ -241,18 +220,10 @@ def prune() -> None:
     async def prune_all() -> None:
         for node in validated_nodes:
             console.print(f"  Pruning [cyan]{node.hostname}[/cyan]...")
-            cmd = "docker system prune -af"
-            res = await service.run_remote_command(node, cmd)
-            
-            # Parse reclaimed space
-            reclaimed_str = "0 B"
-            if "Total reclaimed space:" in res:
-                line = [row for row in res.split("\n") if "Total reclaimed space:" in row]
-                if line:
-                    reclaimed_str = line[0].replace("Total reclaimed space:", "").strip()
-            
-            status = "[green]SUCCESS[/green]" if "Total reclaimed space:" in res else "[red]FAILED[/red]"
-            table.add_row(node.hostname, status, reclaimed_str)
+        prune_results = await service.prune_nodes(validated_nodes)
+        for pr in prune_results:
+            status = "[green]SUCCESS[/green]" if pr["success"] else "[red]FAILED[/red]"
+            table.add_row(pr["node"], status, pr["reclaimed"])
 
     asyncio.run(prune_all())
     console.print()
