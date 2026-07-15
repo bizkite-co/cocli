@@ -116,14 +116,12 @@ def sync_clocks(
     # not the whole physical cluster. Pass --campaign through if you need to
     # sync a different campaign's nodes.
     service = ClusterService("roadmap")
-    nodes = service.get_nodes()
-    
+
+    def log_cb(msg: str) -> None:
+        console.print(f"  {msg}")
+
     async def sync_all() -> None:
-        for node in nodes:
-            if node.hostname == authoritative_node:
-                continue
-            console.print(f"  Syncing {node.hostname}...")
-        await service.sync_clocks(authoritative_node, auth_time)
+        await service.sync_clocks(authoritative_node, auth_time, log_callback=log_cb)
 
     asyncio.run(sync_all())
     console.print("[bold green]Clock synchronization complete.[/bold green]")
@@ -141,14 +139,14 @@ def stop(
         raise typer.Exit(1)
 
     service = ClusterService(effective_campaign)
-    nodes = service.get_nodes()
-    
+
     console.print(f"[bold red]Stopping all workers for campaign: {effective_campaign}[/bold red]")
-    
+
+    def log_cb(msg: str) -> None:
+        console.print(f"  {msg}")
+
     async def stop_all() -> None:
-        for node in nodes:
-            console.print(f"  Stopping workers on {node.hostname}...")
-        await service.stop_workers()
+        await service.stop_workers(log_callback=log_cb)
 
     asyncio.run(stop_all())
     console.print("[bold green]Cluster stopped.[/bold green]")
@@ -217,10 +215,11 @@ def prune() -> None:
     table.add_column("Status")
     table.add_column("Reclaimed Space", justify="right")
 
+    def log_cb(msg: str) -> None:
+        console.print(f"  {msg}")
+
     async def prune_all() -> None:
-        for node in validated_nodes:
-            console.print(f"  Pruning [cyan]{node.hostname}[/cyan]...")
-        prune_results = await service.prune_nodes(validated_nodes)
+        prune_results = await service.prune_nodes(validated_nodes, log_callback=log_cb)
         for pr in prune_results:
             status = "[green]SUCCESS[/green]" if pr["success"] else "[red]FAILED[/red]"
             table.add_row(pr["node"], status, pr["reclaimed"])

@@ -50,3 +50,42 @@ async def test_cluster_service_stats_and_status(monkeypatch):
     assert prune_res[0]["node"] == "node1"
     assert prune_res[0]["success"] is True
     assert prune_res[0]["reclaimed"] == "1.25 GB"
+
+
+@pytest.mark.asyncio
+async def test_cluster_service_log_callback_fires_per_node(monkeypatch):
+    """
+    Regression test: sync_clocks/stop_workers/prune_nodes must invoke
+    log_callback once per node, interleaved with that node's own remote
+    command - not all upfront before any work happens. This is the gap that
+    let the command-layer progress prints get orphaned from the actual
+    per-node action during the cluster.py extraction.
+    """
+    service = ClusterService("roadmap")
+
+    async def mock_run_remote_command(node, cmd, user="mstouffer"):
+        if "docker system prune" in cmd:
+            return "Total reclaimed space: 1.25 GB\n"
+        return ""
+
+    monkeypatch.setattr(service, "run_remote_command", mock_run_remote_command)
+
+    node1 = PiNodeConfig(host="node1", ip=None, workers=[])
+    node2 = PiNodeConfig(host="node2", ip=None, workers=[])
+    monkeypatch.setattr(service, "get_nodes", lambda: [node1, node2])
+
+    messages = []
+
+    def log_cb(msg: str) -> None:
+        messages.append(msg)
+
+    await service.sync_clocks("node1", "2026-07-14 17:42:00", log_callback=log_cb)
+    assert messages == ["Syncing node2..."]
+
+    messages.clear()
+    await service.stop_workers(log_callback=log_cb)
+    assert messages == ["Stopping workers on node1...", "Stopping workers on node2..."]
+
+    messages.clear()
+    await service.prune_nodes([node1, node2], log_callback=log_cb)
+    assert messages == ["Pruning node1...", "Pruning node2..."]

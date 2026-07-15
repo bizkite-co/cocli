@@ -3,7 +3,7 @@ import logging
 import asyncio
 import subprocess
 from pathlib import Path
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional, Callable
 
 from ..core.config import load_campaign_config
 from ..models.campaigns.worker_config import (
@@ -474,17 +474,28 @@ class ClusterService:
                 })
         return results
 
-    async def sync_clocks(self, authoritative_node: str, auth_time: str) -> None:
+    async def sync_clocks(
+        self,
+        authoritative_node: str,
+        auth_time: str,
+        log_callback: Optional[Callable[[str], None]] = None,
+    ) -> None:
         """Syncs node clocks with the authoritative node's time."""
         for node in self.get_nodes():
             if node.hostname == authoritative_node:
                 continue
+            if log_callback:
+                log_callback(f"Syncing {node.hostname}...")
             cmd = f"sudo date -s '{auth_time}'"
             await self.run_remote_command(node, cmd)
 
-    async def stop_workers(self) -> None:
+    async def stop_workers(
+        self, log_callback: Optional[Callable[[str], None]] = None
+    ) -> None:
         """Stops and removes cocli worker containers on all nodes."""
         for node in self.get_nodes():
+            if log_callback:
+                log_callback(f"Stopping workers on {node.hostname}...")
             cmd = "docker stop $(docker ps -q --filter name=cocli-) 2>/dev/null || true"
             await self.run_remote_command(node, cmd)
             cmd_rm = "docker rm $(docker ps -a -q --filter name=cocli-) 2>/dev/null || true"
@@ -512,10 +523,16 @@ class ClusterService:
                 })
         return results
 
-    async def prune_nodes(self, validated_nodes: List[PiNodeConfig]) -> List[Dict[str, Any]]:
+    async def prune_nodes(
+        self,
+        validated_nodes: List[PiNodeConfig],
+        log_callback: Optional[Callable[[str], None]] = None,
+    ) -> List[Dict[str, Any]]:
         """Prunes docker objects on nodes and returns space reclaimed."""
         results = []
         for node in validated_nodes:
+            if log_callback:
+                log_callback(f"Pruning {node.hostname}...")
             cmd = "docker system prune -af"
             res = await self.run_remote_command(node, cmd)
             reclaimed_str = "0 B"
