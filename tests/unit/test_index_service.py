@@ -52,8 +52,10 @@ def test_resolve_index_dir_campaign_scoped(tmp_path: Path) -> None:
 
 def test_write_datapackage_unknown_index() -> None:
     service = IndexService(campaign_name="roadmap")
-    with pytest.raises(KeyError, match="Unknown index type"):
+    with pytest.raises(ValueError, match="Unknown index type: not-a-real-index") as exc:
         service.write_datapackage("not-a-real-index")
+    # Must be ValueError so CLI str(e) is clean (KeyError adds repr quotes).
+    assert str(exc.value) == "Unknown index type: not-a-real-index"
 
 
 def test_write_datapackage_creates_dir_and_calls_model(
@@ -262,11 +264,16 @@ def test_compact_lock_failure() -> None:
 def test_compact_success_path() -> None:
     manager = _make_compact_manager_mock(lock_ok=True, moved=3)
     service = IndexService(campaign_name="roadmap")
+    steps: list[str] = []
     with (
         patch.object(IndexService, "list_interrupted_runs", return_value=[]),
         patch("cocli.core.compact.CompactManager", return_value=manager),
     ):
-        result = service.compact("google_maps_prospects", log_file=Path("/tmp/x.log"))
+        result = service.compact(
+            "google_maps_prospects",
+            log_file=Path("/tmp/x.log"),
+            log_callback=steps.append,
+        )
 
     assert result.success is True
     assert result.isolated_files == 3
@@ -275,6 +282,14 @@ def test_compact_success_path() -> None:
     manager.commit_remote.assert_called_once()
     manager.cleanup.assert_called_once()
     manager.release_lock.assert_called_once()
+    # Live progress steps restored (cluster log_callback idiom).
+    assert "Checking for interrupted runs..." in steps
+    assert "Acquiring S3 lock..." in steps
+    assert "Isolating WAL files on S3..." in steps
+    assert "Downloading staging data..." in steps
+    assert "Merging checkpoint (DuckDB)..." in steps
+    assert "Uploading new checkpoint to S3..." in steps
+    assert "Cleaning up..." in steps
 
 
 def test_compact_nothing_to_do() -> None:

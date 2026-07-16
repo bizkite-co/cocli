@@ -10,7 +10,7 @@ import json
 import logging
 from datetime import datetime
 from pathlib import Path
-from typing import Dict, List, Optional, Type
+from typing import Callable, Dict, List, Optional, Type
 
 from pydantic import BaseModel, Field
 
@@ -18,6 +18,15 @@ from cocli.core.paths import paths
 from cocli.models.base import BaseUsvModel, SchemaConflictError
 
 logger = logging.getLogger(__name__)
+
+LogCallback = Callable[[str], None]
+
+
+def _emit(log_callback: Optional[LogCallback], message: str) -> None:
+    """Forward a progress/status line to the caller without presentation coupling."""
+    logger.info(message)
+    if log_callback is not None:
+        log_callback(message)
 
 
 class IndexLockStatus(BaseModel):
@@ -215,17 +224,30 @@ class IndexService:
         self,
         index_name: str = "google_maps_prospects",
         log_file: Optional[Path] = None,
+        log_callback: Optional[LogCallback] = None,
     ) -> CompactResult:
         """
         Compact WAL into the main checkpoint (Freeze-Ingest-Merge-Commit).
 
         Self-heals interrupted runs first, then runs a full compact cycle under lock.
+        ``log_callback`` receives plain step messages so CLI/TUI can show live progress
+        without the service depending on Rich.
         """
         from cocli.core.compact import CompactManager
 
+        _emit(log_callback, "Checking for interrupted runs...")
         recovered = self.list_interrupted_runs(index_name)
-        for run_id in recovered:
-            self.recover_interrupted_run(index_name, run_id, log_file=log_file)
+        if recovered:
+            _emit(
+                log_callback,
+                f"Found {len(recovered)} interrupted runs. Recovering...",
+            )
+            for run_id in recovered:
+                _emit(log_callback, f"Recovering interrupted run: {run_id}")
+                self.recover_interrupted_run(index_name, run_id, log_file=log_file)
+            _emit(log_callback, "Recovery complete.")
+        else:
+            _emit(log_callback, "No interrupted runs found.")
 
         manager = CompactManager(
             campaign_name=self.campaign_name,
@@ -233,51 +255,73 @@ class IndexService:
             log_file=log_file,
         )
 
+        _emit(log_callback, "Acquiring S3 lock...")
         if not manager.acquire_lock():
+            msg = "Lock acquisition failed (another compact may be running)."
+            _emit(log_callback, msg)
             return CompactResult(
                 campaign_name=self.campaign_name,
                 index_name=index_name,
                 success=False,
                 recovered_runs=recovered,
-                message="Lock acquisition failed (another compact may be running).",
+                message=msg,
                 log_file=log_file,
             )
+        _emit(log_callback, "Lock acquired.")
 
         try:
+            _emit(log_callback, "Isolating WAL files on S3...")
             moved = manager.isolate_wal()
             if moved == 0:
+                msg = "Nothing to compact."
+                _emit(log_callback, msg)
                 return CompactResult(
                     campaign_name=self.campaign_name,
                     index_name=index_name,
                     success=True,
                     recovered_runs=recovered,
                     isolated_files=0,
-                    message="Nothing to compact.",
+                    message=msg,
                     log_file=log_file,
                 )
+            _emit(log_callback, f"Isolated {moved} files.")
 
+            _emit(log_callback, "Downloading staging data...")
             manager.acquire_staging()
-            manager.merge()
-            manager.commit_remote()
-            manager.cleanup()
+            _emit(log_callback, "Staging data acquired.")
 
+            _emit(log_callback, "Merging checkpoint (DuckDB)...")
+            manager.merge()
+            _emit(log_callback, "Merge complete.")
+
+            _emit(log_callback, "Uploading new checkpoint to S3...")
+            manager.commit_remote()
+            _emit(log_callback, "S3 Checkpoint updated.")
+
+            _emit(log_callback, "Cleaning up...")
+            manager.cleanup()
+            _emit(log_callback, "Cleanup complete.")
+
+            msg = "Compaction workflow finished successfully."
             return CompactResult(
                 campaign_name=self.campaign_name,
                 index_name=index_name,
                 success=True,
                 recovered_runs=recovered,
                 isolated_files=moved,
-                message="Compaction workflow finished successfully.",
+                message=msg,
                 log_file=log_file,
             )
         except Exception as e:
             logger.error("Compaction failed: %s", e, exc_info=True)
+            msg = f"Compaction failed: {e}"
+            _emit(log_callback, msg)
             return CompactResult(
                 campaign_name=self.campaign_name,
                 index_name=index_name,
                 success=False,
                 recovered_runs=recovered,
-                message=f"Compaction failed: {e}",
+                message=msg,
                 log_file=log_file,
             )
         finally:
@@ -291,6 +335,7 @@ class IndexService:
         self,
         limit: int = 0,
         compact: bool = True,
+        log_callback: Optional[LogCallback] = None,
     ) -> DomainBackfillResult:
         """Backfill the domain index from local website enrichment files."""
         from cocli.core.config import load_campaign_config
@@ -302,11 +347,15 @@ class IndexService:
         tag = config.get("campaign", {}).get("tag") or self.campaign_name
 
         manager = DomainIndexManager(camp_obj)
+        _emit(log_callback, f"Scanning companies for tag '{tag}'...")
         added = manager.backfill_from_companies(tag, limit=limit)
+        _emit(log_callback, f"Scanned and added {added} records to inbox.")
         did_compact = False
         if compact and added > 0:
+            _emit(log_callback, "Compacting inbox into shards...")
             manager.compact_inbox()
             did_compact = True
+            _emit(log_callback, "Compaction complete.")
 
         return DomainBackfillResult(
             campaign_name=self.campaign_name,
@@ -357,14 +406,13 @@ class IndexService:
         Write Frictionless datapackage.json for an index from its Pydantic model.
 
         Raises:
-            KeyError: unknown index name
-            ValueError: campaign required but missing
+            ValueError: unknown index name, or campaign required but missing
             SchemaConflictError: breaking schema drift without --force
         """
         model_map = self.index_model_map()
         model_class = model_map.get(index_name)
         if model_class is None:
-            raise KeyError(f"Unknown index type: {index_name}")
+            raise ValueError(f"Unknown index type: {index_name}")
 
         target_dir = self.resolve_index_dir(index_name, campaign=campaign)
         if not target_dir.exists():

@@ -65,11 +65,13 @@ class IndexServiceProvider(Protocol):
         self,
         index_name: str = "google_maps_prospects",
         log_file: Optional[Path] = None,
+        log_callback: Optional[Callable[[str], None]] = None,
     ) -> Any: ...
     def backfill_domains(
         self,
         limit: int = 0,
         compact: bool = True,
+        log_callback: Optional[Callable[[str], None]] = None,
     ) -> Any: ...
     def resolve_index_dir(
         self, index_name: str, campaign: Optional[str] = None

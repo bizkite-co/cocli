@@ -7,6 +7,7 @@ from typing import Optional
 
 import typer
 from rich.console import Console
+from rich.progress import Progress, SpinnerColumn, TextColumn
 
 from cocli.application.index_service import (
     SchemaConflictError,
@@ -50,11 +51,22 @@ def compact(
     console.print(f"Detailed logs: [cyan]{log_file}[/cyan]")
 
     services = ServiceContainer(campaign_name=campaign)
-    result = services.index_service.compact(index_name=index, log_file=log_file)
 
-    if result.recovered_runs:
-        console.print(
-            f"[yellow]Recovered {len(result.recovered_runs)} interrupted run(s).[/yellow]"
+    with Progress(
+        SpinnerColumn(),
+        TextColumn("[progress.description]{task.description}"),
+        console=console,
+    ) as progress:
+        task_id = progress.add_task("Starting compaction...", total=None)
+
+        def log_cb(msg: str) -> None:
+            # Live step updates during long S3-bound FIMC work (cluster idiom).
+            progress.update(task_id, description=msg)
+
+        result = services.index_service.compact(
+            index_name=index,
+            log_file=log_file,
+            log_callback=log_cb,
         )
 
     if not result.success:
@@ -138,20 +150,29 @@ def backfill_domains(
 
     services = ServiceContainer(campaign_name=campaign)
     try:
-        result = services.index_service.backfill_domains(limit=limit, compact=compact)
+        with Progress(
+            SpinnerColumn(),
+            TextColumn("[progress.description]{task.description}"),
+            console=console,
+        ) as progress:
+            task_id = progress.add_task("Starting domain backfill...", total=None)
+
+            def log_cb(msg: str) -> None:
+                progress.update(task_id, description=msg)
+
+            result = services.index_service.backfill_domains(
+                limit=limit,
+                compact=compact,
+                log_callback=log_cb,
+            )
     except Exception as e:
         console.print(f"[bold red]Error loading campaign:[/bold red] {e}")
         raise typer.Exit(1)
 
     console.print(
-        f"[green]Scanned and added {result.records_added} records "
-        f"(tag '{result.tag}').[/green]"
-    )
-    if result.compacted:
-        console.print("[green]Compaction complete.[/green]")
-    console.print(
         f"[bold green]Success![/bold green] Backfill process finished for "
-        f"[cyan]{campaign}[/cyan]."
+        f"[cyan]{campaign}[/cyan] "
+        f"({result.records_added} records, tag '{result.tag}')."
     )
 
 
@@ -176,10 +197,8 @@ def write_datapackage(
             index_name=index, force=force, campaign=campaign
         )
         console.print(f"[green]{result.message}[/green]")
-    except KeyError as e:
-        console.print(f"[red]{e}[/red]")
-        raise typer.Exit(1)
     except ValueError as e:
+        # ValueError (not KeyError): str(KeyError) wraps the message in repr quotes.
         console.print(f"[red]{e}[/red]")
         raise typer.Exit(1)
     except SchemaConflictError as e:
