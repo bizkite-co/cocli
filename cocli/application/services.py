@@ -20,6 +20,7 @@ from cocli.application.event_service import EventService
 from cocli.application.meeting_service import MeetingService
 from cocli.application.web_service import WebService
 from cocli.application.task_service import TaskService
+from cocli.application.index_service import IndexService
 from cocli.core.secrets import get_secret_provider
 from cocli.models.search import SearchResult
 from cocli.core.config import get_campaign
@@ -42,6 +43,7 @@ from .protocols import (
     SecretServiceProvider,
     MeetingServiceProvider,
     WebServiceProvider,
+    IndexServiceProvider,
     TaskServiceProvider,
 )
 
@@ -77,6 +79,7 @@ class ServiceContainer(BaseModel):
             self._secret_service = None
             self._meeting_service = None
             self._web_service = None
+            self._index_service = None
             self._task_service = None
             logger.warning(f"Services invalidated for campaign: {name}")
 
@@ -104,6 +107,7 @@ class ServiceContainer(BaseModel):
     _secret_service: Optional[Any] = PrivateAttr(default=None)
     _meeting_service: Optional[Any] = PrivateAttr(default=None)
     _web_service: Optional[Any] = PrivateAttr(default=None)
+    _index_service: Optional[Any] = PrivateAttr(default=None)
     _task_service: Optional[Any] = PrivateAttr(default=None)
 
     @property
@@ -317,6 +321,16 @@ class ServiceContainer(BaseModel):
     @web_service.setter
     def web_service(self, value: WebServiceProvider) -> None:
         self._web_service = value
+
+    @property
+    def index_service(self) -> IndexServiceProvider:
+        if not self._index_service:
+            self._index_service = IndexService(campaign_name=self.campaign_name)
+        return cast(IndexServiceProvider, self._index_service)
+
+    @index_service.setter
+    def index_service(self, value: IndexServiceProvider) -> None:
+        self._index_service = value
 
     @property
     def task_service(self) -> TaskServiceProvider:

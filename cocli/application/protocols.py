@@ -49,6 +49,39 @@ class WebServiceProvider(Protocol):
         ...
 
 
+class IndexServiceProvider(Protocol):
+    campaign_name: str
+    def get_status(self, index_name: str = "google_maps_prospects") -> Any: ...
+    def list_interrupted_runs(
+        self, index_name: str = "google_maps_prospects"
+    ) -> List[str]: ...
+    def recover_interrupted_run(
+        self,
+        index_name: str,
+        run_id: str,
+        log_file: Optional[Path] = None,
+    ) -> None: ...
+    def compact(
+        self,
+        index_name: str = "google_maps_prospects",
+        log_file: Optional[Path] = None,
+    ) -> Any: ...
+    def backfill_domains(
+        self,
+        limit: int = 0,
+        compact: bool = True,
+    ) -> Any: ...
+    def resolve_index_dir(
+        self, index_name: str, campaign: Optional[str] = None
+    ) -> Path: ...
+    def write_datapackage(
+        self,
+        index_name: str,
+        force: bool = False,
+        campaign: Optional[str] = None,
+    ) -> Any: ...
+
+
 class TaskServiceProvider(Protocol):
     issues_root: Path
     def sync_index(self) -> int:
