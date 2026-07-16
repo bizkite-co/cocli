@@ -129,6 +129,24 @@ portable paths.
 execution-history protocol. It answers the same reliability questions with infrastructure that
 this system answers with storage semantics.
 
+**Near neighbors deliberately left out of the comparison table** (related ideas, wrong empty cell):
+
+- **Prefect** — lighter orchestration than Dagster, sometimes runnable with less daemon weight;
+  still *orchestration-shaped* (flows/tasks/schedulers), not a path-grammar state machine with
+  storage-native claim/lease corpus semantics.
+- **DVC / LakeFS / Apache Iceberg** — data layout, versioning, and table formats. Strong on
+  lineage and reproducible datasets; weak or absent as multi-worker *work queues* with typed
+  model-to-model transforms and lease protocols. Adjacent storage thinking, different job.
+- **maildir + cron** — the purest prior art for "directories *are* the queue and atomic rename
+  is the coordinator." No declared types, no schema stations, no portable FS↔S3 claim
+  primitive — coordination without the corpus type system.
+- **Kedro / Ray** — pipeline graphs and distributed compute. They move *execution*, not a
+  portable, inspectable *corpus of typed station files* coordinated only by storage semantics.
+
+The table above is scoped to *orchestration and workflow frameworks* that might be mistaken for
+substitutes. Dataset versioners and compute runtimes are neighbors on the map, not competitors
+for the cell.
+
 **DuckDB is deliberately not a competitor — it's the read side.** DuckDB has no ingestion
 workflow; it is a query engine, and that's a feature. The boundary: this substrate owns
 *movement, typing, leasing, folding, and traceability*; DuckDB reads the stations in place

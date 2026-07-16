@@ -47,6 +47,29 @@ We select **`cocli/application/`** as the canonical orchestration layer (the **A
 *   **Fate of `cocli/application/`**: Receives all domain/orchestration services extracted from command modules. Commands should act as thin adapters, delegating validation, I/O, and business transactions to these services.
 *   **Fate of `cocli/services/`**: Reserved exclusively for low-level technical infrastructure drivers (e.g., SSH clients, Docker managers, local WAL logs, S3 bucket drivers). It does not contain domain workflows or business-driven operations.
 
+### 3.1 Three-tier layering (two axes, not one)
+
+Do not collapse `application/` vs `services/` with the stations library-extraction boundary.
+They are orthogonal:
+
+1. **Extraction axis** — `cocli/core/` (queue/WAL/index, claim/lease, path grammar, DFQ/cache/audit
+   primitives) vs *everything else*. Only `core/` is a candidate for the reusable stations /
+   typed file-path-queue library. Neither `application/` nor `services/` is an extraction
+   candidate; both are cocli-product code that stays in cocli.
+2. **Intra-product axis** — among product code only: `application/` = domain/orchestration
+   services; `services/` = infra drivers (SSH, Docker, S3, WAL ops). Example: `ClusterService`
+   (SSH into Pi nodes, `docker` commands) belongs in `services/` — same tier as other infra
+   drivers — not in `application/`, and never in the stations substrate.
+
+```
+core/                         ← extraction candidates (stations substrate)
+application/  +  services/    ← both product-specific; split only by orchestration vs infra
+commands/                     ← thin Typer adapters over the two product tiers
+```
+
+When reviewing placement: first ask extraction (core vs product), then — only if product —
+ask orchestration vs infra-driver. See also `CLAUDE.md` ("Three-tier layering").
+
 ---
 
 ## 4. Mermaid Target Command Tree Visualization

@@ -58,31 +58,62 @@ See `docs/adr/from-model-to-model.md` for details.
 ```
 cocli/
 ├── main.py                # Entry point, registers all command groups
-├── commands/              # Command implementations
-│   ├── enrich.py         # Data enrichment commands
-│   ├── audit.py          # System integrity auditing
-│   ├── query.py          # Data querying
-│   ├── companies.py      # Company management
-│   ├── data.py           # Frictionless data operations
-│   └── campaign/         # Campaign-specific commands
-├── core/                 # Core utilities and config
-│   ├── config.py         # Campaign/environment configuration
-│   ├── paths.py          # Data directory paths
-│   ├── models.py         # Shared Pydantic models
-│   ├── bootstrap.py      # Environment initialization
-│   ├── cache.py          # Website/domain caching
-│   └── audit/            # Schema validation and auditing
-├── scrapers/             # Web scrapers (Google Maps, general sites)
-├── enrichment/           # Data enrichment services
-├── importers/            # CSV/data importers
-├── models/               # Domain-specific Pydantic models
-├── compilers/            # Data compilation/indexing
-├── renderers/            # Output formatters (KML, CSV, etc.)
-├── tui/                  # Textual TUI implementation
-├── web/                  # FastAPI enrichment service
-├── services/             # Business logic services
-└── utils/                # Utilities (formatting, file ops, etc.)
+├── commands/              # Thin Typer adapters (leaf layer; no business logic)
+│   ├── enrich.py
+│   ├── audit.py
+│   ├── query.py
+│   ├── companies.py
+│   ├── data.py
+│   └── campaign/
+├── core/                  # Substrate primitives (queue/WAL/index, config, paths)
+│   ├── config.py          # Campaign/environment configuration
+│   ├── paths.py           # Data directory paths
+│   ├── models.py          # Shared Pydantic models
+│   ├── bootstrap.py       # Environment initialization
+│   ├── cache.py           # Website/domain caching
+│   ├── queue/             # Filesystem/S3 queue + claim/lease protocol
+│   └── audit/             # Schema validation and auditing
+├── application/           # Domain/orchestration services (product-specific)
+├── services/              # Low-level infra drivers: SSH, Docker, S3, WAL ops
+├── scrapers/              # Web scrapers (Google Maps, general sites)
+├── enrichment/            # Data enrichment services
+├── importers/             # CSV/data importers
+├── models/                # Domain-specific Pydantic models
+├── compilers/             # Data compilation/indexing
+├── renderers/             # Output formatters (KML, CSV, etc.)
+├── tui/                   # Textual TUI implementation
+├── web/                   # FastAPI enrichment service
+└── utils/                 # Utilities (formatting, file ops, etc.)
 ```
+
+### Three-tier layering (do not collapse these axes)
+
+Two orthogonal boundaries — do not treat them as one:
+
+**Axis 1 — library extraction (stations substrate vs cocli product)**
+
+| Layer | Role | Library extraction? |
+| :--- | :--- | :--- |
+| `cocli/core/` | Queue, WAL, index, claim/lease, path grammar, schema/audit machinery | **Yes** — candidates for the reusable stations/file-path-queue library |
+| `cocli/application/` + `cocli/services/` | Everything product-specific to the CRM/ops platform | **No** — stays in cocli regardless of which of those two dirs a module lives in |
+
+**Axis 2 — intra-product split (only among non-extraction code)**
+
+| Layer | Role | Examples |
+| :--- | :--- | :--- |
+| `cocli/application/` | Domain and orchestration services | MeetingService, TaskService, WorkerService, CompanyService |
+| `cocli/services/` | Low-level infrastructure drivers | ClusterService (SSH/Docker on Pi nodes), S3/WAL drivers, deployment helpers |
+| `cocli/commands/` | Thin CLI adapters over application/services | Typer option parsing, exit codes, user-facing messages |
+
+`application/` vs `services/` is orchestration-vs-infra-driver *inside* cocli. It is not the
+stations extraction cut line. Placing `ClusterService` under `services/` (SSH + docker exec)
+follows Axis 2 correctly; it was never an extraction candidate. When in doubt: if it is typed
+path-queue / WAL / index substrate, it belongs in `core/`; if it is cocli product logic, choose
+`application/` (domain) or `services/` (infra driver) — never invent a third story about
+extraction from those two.
+
+Enforced by import-linter contracts in `pyproject.toml` (`core`/`models` must not import
+`application`, `services`, `commands`, or `tui`). Detail: `docs/cli/target-tree.md`.
 
 ### Campaign Configuration
 
