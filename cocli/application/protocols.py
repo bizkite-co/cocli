@@ -160,6 +160,45 @@ class ReportingServiceProvider(Protocol):
     def save_cached_report(self, campaign_name: str, report_type: str, data: Dict[str, Any]) -> None: ...
     def load_cached_report(self, campaign_name: str, report_type: str) -> Optional[Dict[str, Any]]: ...
     def get_email_analysis(self, campaign_name: Optional[str] = None) -> Dict[str, Any]: ...
+    def generate_coverage_kml(self, campaign_name: Optional[str] = None) -> Any: ...
+    def generate_legacy_scrapes_kml(self, campaign_name: Optional[str] = None) -> Any: ...
+    def resolve_publish_config(
+        self,
+        profile: Optional[str] = None,
+        bucket_name: Optional[str] = None,
+        domain: Optional[str] = None,
+        campaign_name: Optional[str] = None,
+    ) -> Dict[str, str]: ...
+    def generate_publish_kmls(
+        self,
+        campaign_name: Optional[str] = None,
+        log_callback: Optional[Callable[[str], None]] = None,
+    ) -> None: ...
+    def upload_kml_layers(
+        self,
+        profile: str,
+        bucket_name: str,
+        domain: str,
+        campaign_name: Optional[str] = None,
+        log_callback: Optional[Callable[[str], None]] = None,
+    ) -> Any: ...
+    def publish_kml(
+        self,
+        profile: Optional[str] = None,
+        bucket_name: Optional[str] = None,
+        domain: Optional[str] = None,
+        campaign_name: Optional[str] = None,
+        log_callback: Optional[Callable[[str], None]] = None,
+        generate: bool = True,
+    ) -> Any: ...
+    def place_kml_for_turboship(
+        self,
+        campaign_name: Optional[str] = None,
+        turboship_kml_exports_path: Path = ...,
+        kml_filename: str = "turboship_coverage.kml",
+        kml_type: str = "customers",
+    ) -> Any: ...
+    def export_value_resources(self, campaign_name: Optional[str] = None) -> Any: ...
 
 class AuditServiceProvider(Protocol):
     campaign_name: str
