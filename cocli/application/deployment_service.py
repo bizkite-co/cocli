@@ -11,7 +11,7 @@ import os
 import subprocess
 import time
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional, Tuple
+from typing import Any, Callable, Dict, Optional, Tuple
 
 from pydantic import BaseModel, Field
 
