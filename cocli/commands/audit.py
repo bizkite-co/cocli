@@ -326,6 +326,9 @@ def audit_scrape(
     cluster_pull: bool = typer.Option(
         True, "--cluster/--no-cluster", help="Pull latest data from cluster nodes before audit."
     ),
+    sync_first: bool = typer.Option(
+        True, "--sync/--no-sync", help="Sync Pi queue results before auditing (default: on)."
+    ),
 ) -> None:
     """Audit the whole scrape workflow for a campaign.
 
@@ -343,6 +346,14 @@ def audit_scrape(
 
     # Resolve campaign and optionally pull fresh data
     campaign_name = campaign or get_campaign() or "roadmap"
+
+    if sync_first:
+        from cocli.application.pi_sync_service import PiSyncService
+        console.print("[bold blue]Syncing PI results for campaign: {campaign_name}[/bold blue]".format(campaign_name=campaign_name))
+        sync_service = PiSyncService(campaign_name)
+        sync_service.sync_all_nodes(blocking=True)
+        console.print("[bold green]Sync Complete![/bold green]")
+
     if cluster_pull:
         service = ClusterService(campaign_name)
         console.print("[bold cyan]Pulling latest tiles from cluster…[/bold cyan]")

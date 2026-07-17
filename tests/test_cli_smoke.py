@@ -1,10 +1,12 @@
 import re
 import subprocess
 
+_ANSI_RE = re.compile(r"\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])")
+
 
 def _strip_ansi(text: str) -> str:
-    """Remove ANSI escape sequences (Rich help splits '--' across styles)."""
-    return re.sub(r"\x1b\[[0-9;]*m", "", text)
+    """Remove ANSI escape sequences (Rich styles split e.g. -- into separate spans)."""
+    return _ANSI_RE.sub("", text)
 
 
 def test_cocli_help():
@@ -14,8 +16,9 @@ def test_cocli_help():
         ["python3", "cocli/main.py", "--help"], capture_output=True, text=True
     )
     assert result.returncode == 0
-    assert "Options" in result.stdout
-    assert "Commands" in result.stdout
+    stdout = _strip_ansi(result.stdout)
+    assert "Options" in stdout
+    assert "Commands" in stdout
 
 
 def test_cocli_video_help():
@@ -24,8 +27,9 @@ def test_cocli_video_help():
         ["python3", "cocli/main.py", "video", "--help"], capture_output=True, text=True
     )
     assert result.returncode == 0
-    assert "Options" in result.stdout
-    assert "Commands" in result.stdout
+    stdout = _strip_ansi(result.stdout)
+    assert "Options" in stdout
+    assert "Commands" in stdout
 
 
 def test_cocli_video_upload_help():
@@ -36,12 +40,12 @@ def test_cocli_video_upload_help():
         text=True,
     )
     assert result.returncode == 0
-    plain = _strip_ansi(result.stdout)
-    assert "Options" in plain
-    assert "--campaign" in plain
-    assert "--video" in plain
-    assert "--privacy" in plain
-    assert "--dry-run" in plain
+    stdout = _strip_ansi(result.stdout)
+    assert "Options" in stdout
+    assert "--campaign" in stdout
+    assert "--video" in stdout
+    assert "--privacy" in stdout
+    assert "--dry-run" in stdout
 
 
 def test_cocli_video_upload_missing_config():
