@@ -1,13 +1,98 @@
+import csv
+import json
 import logging
 import os
+import sys
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional, Sequence, Tuple
 
-from ..core.config import get_campaign, load_campaign_config, get_cocli_base_dir
-from ..core.smart_sync import run_smart_sync
+import duckdb
+from pydantic import BaseModel, Field
+
+from ..core.config import get_campaign, get_cocli_base_dir, load_campaign_config
 from ..core.paths import paths
+from ..core.smart_sync import run_smart_sync
 
 logger = logging.getLogger(__name__)
+
+
+class DatapackageSummary(BaseModel):
+    """A discovered frictionless datapackage under the data root."""
+
+    path: Path
+    relative_path: str
+    resource_names: List[str] = Field(default_factory=list)
+
+
+class SchemaField(BaseModel):
+    index: int
+    name: str
+    type: str = "string"
+
+
+class SchemaDescribeResult(BaseModel):
+    """Schema description for one or more resources (datapackage or USV)."""
+
+    source_label: str
+    datapackage_path: Optional[Path] = None
+    resources: List[Dict[str, Any]] = Field(default_factory=list)
+
+
+class SampleResult(BaseModel):
+    """First N rows from a USV / datapackage load."""
+
+    title: str
+    columns: List[str] = Field(default_factory=list)
+    rows: List[List[Any]] = Field(default_factory=list)
+
+
+class MetricsResult(BaseModel):
+    """Data-quality metrics for a USV dataset."""
+
+    source_name: str
+    metrics: Dict[str, Any] = Field(default_factory=dict)
+    used_fallback: bool = False
+    output_path: Optional[Path] = None
+    message: str = ""
+
+
+class SearchResult(BaseModel):
+    """SQL search results over a USV file."""
+
+    query: str
+    columns: List[str] = Field(default_factory=list)
+    rows: List[List[Any]] = Field(default_factory=list)
+    row_count: int = 0
+    schema_warning: Optional[str] = None
+    valid_columns_preview: List[str] = Field(default_factory=list)
+
+
+class InspectRowResult(BaseModel):
+    """Single-row field inspection against a datapackage schema."""
+
+    file_name: str
+    row_number: int
+    fields: List[Tuple[int, str, str]] = Field(default_factory=list)
+
+
+class QueueCompactResult(BaseModel):
+    """Result of compacting a queue's completed results."""
+
+    campaign_name: str
+    queue_name: str
+    success: bool = True
+    message: str = ""
+    records_merged: int = 0
+
+
+class UnknownColumnError(ValueError):
+    """Raised when a search query references columns not in the datapackage schema."""
+
+    def __init__(self, invalid_cols: Any, valid_preview: List[str]):
+        self.invalid_cols = invalid_cols
+        self.valid_preview = valid_preview
+        super().__init__(f"Unknown column(s) in query: {invalid_cols}")
+
 
 class DataSyncService:
     def __init__(self, campaign_name: Optional[str] = None):
@@ -148,3 +233,478 @@ class DataSyncService:
         except Exception as e:
             logger.error(f"Push queue failed for {queue_name}: {e}")
             return {"status": "error", "message": str(e)}
+
+    # ------------------------------------------------------------------
+    # Frictionless data inspection (from commands/data.py)
+    # Intermediate artifacts: datapackages, local USV stores
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def resolve_usv_path(
+        file_path: Path, resource_name: Optional[str] = None
+    ) -> Path:
+        """Resolve a datapackage/directory path to a concrete USV file path."""
+        if file_path.is_dir() and (file_path / "datapackage.json").exists():
+            file_path = file_path / "datapackage.json"
+
+        if file_path.name == "datapackage.json":
+            with open(file_path, "r") as f:
+                pkg = json.load(f)
+
+            resource = None
+            if resource_name:
+                for res in pkg.get("resources", []):
+                    if res.get("name") == resource_name:
+                        resource = res
+                        break
+            elif pkg.get("resources"):
+                resource = pkg["resources"][0]
+
+            if not resource:
+                raise ValueError("Could not identify resource in datapackage.")
+
+            res_path_pattern = resource.get("path", "")
+            matches = list(file_path.parent.glob(res_path_pattern))
+            if not matches:
+                raise ValueError(f"No files found matching {res_path_pattern}")
+
+            return matches[0]
+
+        return file_path
+
+    def list_datapackages(self) -> List[DatapackageSummary]:
+        """List all datapackage.json files under the data root."""
+        data_dir = paths.root
+        results: List[DatapackageSummary] = []
+        for dp in sorted(data_dir.glob("**/datapackage.json")):
+            try:
+                with open(dp, "r") as f:
+                    pkg = json.load(f)
+                resource_names = [
+                    res.get("name", "unknown") for res in pkg.get("resources", [])
+                ]
+                results.append(
+                    DatapackageSummary(
+                        path=dp,
+                        relative_path=str(dp.relative_to(data_dir)),
+                        resource_names=resource_names,
+                    )
+                )
+            except Exception:
+                continue
+        return results
+
+    def describe_schema(self, file_path: Path) -> SchemaDescribeResult:
+        """
+        Return schema field definitions for a USV file or datapackage.
+
+        Raises:
+            FileNotFoundError, ValueError
+        """
+        from cocli.utils.duckdb_utils import find_datapackage, match_resource_path
+
+        if file_path.is_dir() and (file_path / "datapackage.json").exists():
+            file_path = file_path / "datapackage.json"
+
+        if not file_path.exists():
+            raise FileNotFoundError(f"File not found: {file_path}")
+
+        if file_path.name == "datapackage.json":
+            with open(file_path, "r") as f:
+                pkg = json.load(f)
+
+            resources = pkg.get("resources", [])
+            if not resources:
+                raise ValueError("No resources in datapackage")
+
+            resource_payloads: List[Dict[str, Any]] = []
+            for res in resources:
+                fields = res.get("schema", {}).get("fields", [])
+                resource_payloads.append(
+                    {
+                        "name": res.get("name", "unknown"),
+                        "path": res.get("path"),
+                        "fields": [
+                            SchemaField(
+                                index=i,
+                                name=field["name"],
+                                type=field.get("type", "string"),
+                            ).model_dump()
+                            for i, field in enumerate(fields)
+                        ],
+                    }
+                )
+            return SchemaDescribeResult(
+                source_label=file_path.parent.name,
+                datapackage_path=file_path,
+                resources=resource_payloads,
+            )
+
+        dp_path = find_datapackage(file_path)
+        if not dp_path:
+            raise ValueError(
+                f"Could not find authoritative datapackage.json for: {file_path}"
+            )
+
+        with open(dp_path, "r") as f:
+            pkg = json.load(f)
+
+        resource = None
+        filename = file_path.name
+        for res in pkg.get("resources", []):
+            if match_resource_path(filename, res.get("path", "")):
+                resource = res
+                break
+
+        if not resource:
+            raise ValueError(f"No resource found in {dp_path} for: {filename}")
+
+        fields = resource.get("schema", {}).get("fields", [])
+        return SchemaDescribeResult(
+            source_label=file_path.name,
+            datapackage_path=dp_path,
+            resources=[
+                {
+                    "name": resource.get("name", file_path.name),
+                    "path": resource.get("path"),
+                    "fields": [
+                        SchemaField(
+                            index=i,
+                            name=field["name"],
+                            type=field.get("type", "string"),
+                        ).model_dump()
+                        for i, field in enumerate(fields)
+                    ],
+                }
+            ],
+        )
+
+    def locate_datapackage(self, file_path: Path) -> Optional[Path]:
+        """Find the authoritative datapackage.json for a file or directory."""
+        from cocli.utils.duckdb_utils import find_datapackage
+
+        if file_path.is_dir() and (file_path / "datapackage.json").exists():
+            file_path = file_path / "datapackage.json"
+        return find_datapackage(file_path)
+
+    def sample_rows(
+        self,
+        file_path: Path,
+        limit: int = 10,
+        resource_name: Optional[str] = None,
+    ) -> SampleResult:
+        """Load first N rows from a USV file or datapackage via DuckDB."""
+        from cocli.utils.duckdb_utils import load_from_datapackage, load_usv_to_duckdb
+
+        # resource_name retained for API parity with CLI (unused in original path).
+        _ = resource_name
+
+        if file_path.is_dir() and (file_path / "datapackage.json").exists():
+            file_path = file_path / "datapackage.json"
+
+        if not file_path.exists():
+            raise FileNotFoundError(f"File not found: {file_path}")
+
+        con = duckdb.connect(database=":memory:")
+        try:
+            if file_path.name == "datapackage.json":
+                load_from_datapackage(con, "sample_table", file_path)
+                title = f"Sample: {file_path.parent.name} (Unified Datapackage)"
+            else:
+                load_usv_to_duckdb(con, "sample_table", file_path)
+                title = f"Sample: {file_path.name}"
+
+            results = con.execute(
+                f"SELECT * FROM sample_table LIMIT {limit}"
+            ).fetchall()
+            columns = [
+                col[1]
+                for col in con.execute("PRAGMA table_info('sample_table')").fetchall()
+            ]
+            rows = [list(row) for row in results]
+            return SampleResult(title=title, columns=columns, rows=rows)
+        finally:
+            con.close()
+
+    def compute_metrics(
+        self,
+        file_path: Path,
+        resource_name: Optional[str] = None,
+        output_path: Optional[Path] = None,
+    ) -> MetricsResult:
+        """
+        Compute data-quality metrics for a USV dataset or datapackage.
+
+        Tries DuckDB first; falls back to pure-Python USV scanning.
+        Optionally writes a Markdown report to ``output_path``.
+        """
+        from cocli.utils.duckdb_utils import (
+            find_datapackage,
+            get_schema_field_names,
+            load_from_datapackage,
+            load_usv_to_duckdb,
+        )
+
+        _ = resource_name
+
+        if file_path.is_dir() and (file_path / "datapackage.json").exists():
+            file_path = file_path / "datapackage.json"
+
+        if not file_path.exists():
+            raise FileNotFoundError(f"File not found: {file_path}")
+
+        if file_path.name == "datapackage.json":
+            dp_path: Path = file_path
+            usv_path = file_path
+        else:
+            found_dp = find_datapackage(file_path)
+            if not found_dp:
+                raise ValueError(f"Could not find datapackage for {file_path}")
+            dp_path = found_dp
+            usv_path = file_path
+
+        with open(dp_path, "r") as f:
+            pkg = json.load(f)
+
+        resource = pkg.get("resources", [{}])[0]
+        schema_fields = get_schema_field_names(dp_path)
+        fields_info = {
+            f["name"]: f.get("type", "string")
+            for f in resource.get("schema", {}).get("fields", [])
+        }
+        logger.debug(
+            "Schema has %s fields: %s...",
+            len(schema_fields),
+            schema_fields[:5],
+        )
+
+        con = duckdb.connect(database=":memory:")
+        try:
+            if file_path.name == "datapackage.json":
+                load_from_datapackage(con, "metrics_data", file_path)
+            else:
+                load_usv_to_duckdb(con, "metrics_data", usv_path, dp_path)
+
+            cols_info = con.execute("PRAGMA table_info('metrics_data')").fetchall()
+            loaded_cols = [c[1] for c in cols_info]
+            logger.debug("Loaded table has columns: %s...", loaded_cols[:5])
+
+            place_id_col = "place_id" if "place_id" in loaded_cols else loaded_cols[0]
+            total_row = con.execute(
+                f"SELECT COUNT(DISTINCT {place_id_col}) FROM metrics_data"
+            ).fetchone()
+            total = total_row[0] if total_row is not None else 0
+
+            metrics: Dict[str, Any] = {"Total Records": total}
+            for field in schema_fields:
+                if field in loaded_cols:
+                    field_type = fields_info.get(field, "string")
+                    if field_type in ("integer", "number"):
+                        count_row = con.execute(
+                            f'SELECT COUNT(*) FROM metrics_data WHERE '
+                            f'TRY_CAST("{field}" AS VARCHAR) IS NOT NULL AND '
+                            f'TRY_CAST("{field}" AS VARCHAR) != \'\' AND '
+                            f'TRY_CAST("{field}" AS VARCHAR) != \'NULL\''
+                        ).fetchone()
+                    else:
+                        count_row = con.execute(
+                            f'SELECT COUNT(*) FROM metrics_data WHERE '
+                            f'"{field}" IS NOT NULL AND "{field}" != \'\' AND '
+                            f'"{field}" != \'NULL\''
+                        ).fetchone()
+                    count = count_row[0] if count_row is not None else 0
+                    if count > 0:
+                        metrics[field] = count
+
+            result = MetricsResult(
+                source_name=usv_path.name,
+                metrics=metrics,
+                used_fallback=False,
+            )
+        except Exception as e:
+            logger.debug("DuckDB metrics approach failed: %s", e)
+            result = self._compute_metrics_fallback(usv_path, schema_fields)
+        finally:
+            con.close()
+
+        if output_path:
+            suffix = " (fallback)" if result.used_fallback else ""
+            with open(output_path, "w", encoding="utf-8") as f:
+                f.write(f"# Metrics: {result.source_name}{suffix}\n\n")
+                f.write("| Metric | Count |\n")
+                f.write("| :--- | :--- |\n")
+                for metric, count in result.metrics.items():
+                    f.write(f"| {metric} | {count} |\n")
+            result.output_path = output_path
+            result.message = f"Metrics report written to {output_path}"
+
+        return result
+
+    @staticmethod
+    def _compute_metrics_fallback(
+        usv_path: Path, schema_fields: Sequence[str]
+    ) -> MetricsResult:
+        """Pure-Python metrics when DuckDB load/query fails."""
+        csv.field_size_limit(sys.maxsize)
+        field_index = {name: i for i, name in enumerate(schema_fields)}
+        place_ids: set[str] = set()
+        field_counts: Dict[str, set[str]] = {f: set() for f in schema_fields}
+
+        with open(usv_path, "r", encoding="utf-8") as f:
+            reader = csv.reader(f, delimiter="\x1f")
+            prev_place_id = None
+            for row in reader:
+                if len(row) < len(schema_fields):
+                    continue
+                place_id = row[0]
+                if place_id == prev_place_id:
+                    continue
+                prev_place_id = place_id
+                place_ids.add(place_id)
+                for field_name, idx in field_index.items():
+                    if idx < len(row):
+                        val = row[idx].strip()
+                        if val and val.lower() != "null":
+                            field_counts[field_name].add(val)
+
+        metrics: Dict[str, Any] = {"Total Records": len(place_ids)}
+        for field, values in field_counts.items():
+            if values:
+                metrics[field] = len(values)
+
+        return MetricsResult(
+            source_name=usv_path.name,
+            metrics=metrics,
+            used_fallback=True,
+        )
+
+    def search_usv(
+        self,
+        file_path: Path,
+        query: str,
+        columns: str = "slug, phone, reviews_count",
+    ) -> SearchResult:
+        """Schema-aware DuckDB search over a USV file."""
+        from cocli.utils.duckdb_utils import (
+            find_datapackage,
+            get_schema_field_names,
+            load_usv_to_duckdb,
+            normalize_column_names,
+            validate_query_columns,
+        )
+
+        if not file_path.exists():
+            raise FileNotFoundError(f"File not found: {file_path}")
+
+        schema_warning: Optional[str] = None
+        valid_preview: List[str] = []
+        dp_path = find_datapackage(file_path)
+        if not dp_path:
+            schema_warning = (
+                "No datapackage.json found. Schema validation disabled."
+            )
+            schema_fields: List[str] = []
+        else:
+            schema_fields = get_schema_field_names(dp_path)
+            invalid_cols = validate_query_columns(query, schema_fields)
+            if invalid_cols:
+                raise UnknownColumnError(
+                    invalid_cols, list(schema_fields[:10])
+                )
+            columns = normalize_column_names(columns, schema_fields)
+            valid_preview = list(schema_fields[:10])
+
+        con = duckdb.connect(database=":memory:")
+        try:
+            load_usv_to_duckdb(con, "search_table", file_path)
+            sql = f"SELECT {columns} FROM search_table WHERE {query}"
+            cursor = con.execute(sql)
+            results = cursor.fetchall()
+            result_cols = [desc[0] for desc in cursor.description] if results else []
+            if not result_cols:
+                result_cols = [
+                    c.strip() for c in columns.split(",") if c.strip() != "*"
+                ]
+            return SearchResult(
+                query=query,
+                columns=result_cols,
+                rows=[list(row) for row in results],
+                row_count=len(results),
+                schema_warning=schema_warning,
+                valid_columns_preview=valid_preview,
+            )
+        finally:
+            con.close()
+
+    def inspect_row(self, file_path: Path, row_number: int = 1) -> InspectRowResult:
+        """Inspect a specific 1-indexed USV row against its datapackage schema."""
+        from cocli.utils.duckdb_utils import find_datapackage, match_resource_path
+        from cocli.utils.usv_utils import USVReader
+
+        if not file_path.exists():
+            raise FileNotFoundError(f"File not found: {file_path}")
+
+        dp_path = find_datapackage(file_path)
+        if not dp_path:
+            raise ValueError(
+                f"Could not find authoritative datapackage.json for: {file_path}"
+            )
+
+        with open(dp_path, "r") as f:
+            pkg = json.load(f)
+
+        resource = None
+        filename = file_path.name
+        for res in pkg.get("resources", []):
+            if match_resource_path(filename, res.get("path", "")):
+                resource = res
+                break
+
+        if not resource:
+            raise ValueError(f"No resource found in {dp_path} for: {filename}")
+
+        fields = resource.get("schema", {}).get("fields", [])
+
+        with open(file_path, "r", encoding="utf-8") as f:
+            reader = USVReader(f)
+            row = None
+            for i, r in enumerate(reader):
+                if i == row_number - 1:
+                    row = r
+                    break
+
+            if row is None:
+                raise ValueError(f"Row {row_number} not found in {file_path.name}")
+
+        field_values: List[Tuple[int, str, str]] = []
+        for i, field in enumerate(fields):
+            val = row[i] if i < len(row) else ""
+            field_values.append((i, field["name"], str(val)))
+
+        return InspectRowResult(
+            file_name=file_path.name,
+            row_number=row_number,
+            fields=field_values,
+        )
+
+    def compact_queue(
+        self, queue_name: str, campaign_name: Optional[str] = None
+    ) -> QueueCompactResult:
+        """Compact a queue's results into a unified dataset (e.g. gm-list)."""
+        from cocli.core.transformers.gm_list_to_checkpoint import (
+            compact_gm_list_results,
+        )
+
+        name = campaign_name or self.campaign_name
+        if queue_name == "gm-list":
+            count = compact_gm_list_results(name)
+            return QueueCompactResult(
+                campaign_name=name,
+                queue_name=queue_name,
+                success=True,
+                message=f"Compaction complete. Merged {count} records.",
+                records_merged=count,
+            )
+        raise ValueError(
+            f"Unknown queue '{queue_name}'. Currently supported: gm-list"
+        )
