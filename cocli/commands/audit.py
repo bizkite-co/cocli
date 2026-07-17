@@ -470,15 +470,31 @@ def audit_scrape(
 
     pending_tiles = staged_tiles - gm_list_tiles
 
-    # Count actual queue files in filesystem
+    # Count gm-list queue states directly from filesystem (rglob to handle sharded subdirs)
     gm_list_queue = paths.campaign(campaign_name).queue("gm-list")
-    queued_pending_tasks = 0
+    gm_list_pending = 0
     if gm_list_queue.pending.exists():
-        queued_pending_tasks = len([f for f in gm_list_queue.pending.glob("*.usv") if f.name != "mission.usv"])
-    
-    active_leases = 0
+        gm_list_pending = sum(1 for f in gm_list_queue.pending.rglob("*.usv") if f.name != "mission.usv")
+
+    gm_list_claimed = 0
     if gm_list_queue.pending.exists():
-        active_leases = len(list(gm_list_queue.pending.glob("lease*.json")))
+        gm_list_claimed = len(list(gm_list_queue.pending.rglob("lease*.json")))
+
+    # Count enrichment pipeline queue states directly from filesystem
+    def _count_queue_state(queue_name: str, state: str) -> int:
+        """Count USV files in a queue state directory (recursive, excludes datapackage.json)."""
+        state_dir = paths.campaign(campaign_name).queue(queue_name) / state
+        if not state_dir.exists():
+            return 0
+        return sum(1 for f in state_dir.rglob("*.usv"))
+
+    gm_details_pending = _count_queue_state("gm-details", "pending")
+    gm_details_completed = _count_queue_state("gm-details", "completed")
+    gm_details_failed = _count_queue_state("gm-details", "failed")
+
+    enrichment_pending = _count_queue_state("enrichment", "pending")
+    enrichment_completed = _count_queue_state("enrichment", "completed")
+    enrichment_failed = _count_queue_state("enrichment", "failed")
 
     # Build report dict
     report: dict[str, Any] = {
@@ -490,8 +506,15 @@ def audit_scrape(
         "staged_active_tiles": staged_tiles,
         "completed_scraped_tiles": gm_list_tiles,
         "pending_scraped_tiles": pending_tiles,
-        "queued_pending_tasks": queued_pending_tasks,
-        "active_leases": active_leases,
+        "gm_list_pending": gm_list_pending,
+        "gm_list_claimed": gm_list_claimed,
+        "gm_list_completed": gm_list_tiles,
+        "gm_details_pending": gm_details_pending,
+        "gm_details_completed": gm_details_completed,
+        "gm_details_failed": gm_details_failed,
+        "enrichment_pending": enrichment_pending,
+        "enrichment_completed": enrichment_completed,
+        "enrichment_failed": enrichment_failed,
         "total_active_scrape_tasks": discovery_valid,
         "valid_business_leads": gm_list_valid,
     }

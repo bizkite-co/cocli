@@ -1,20 +1,30 @@
 """
-PiSyncService: Background sync of gm-list results from Pi workers.
+PiSyncService: Background sync of queue results from Pi workers.
 """
 
 import logging
 import os
 import subprocess
+from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from pathlib import Path
 from typing import List
 
 from cocli.core.config import get_campaign
 from cocli.services.cluster_service import ClusterService
-from cocli.core.paths import paths
+from cocli.core.paths import paths, QueuePaths
 
 
 logger = logging.getLogger(__name__)
+
+# Queue directories to sync from each Pi node.
+# Each entry is (queue_name, remote_subpath, local_subpath_fn).
+_SYNC_QUEUES: list[tuple[str, str, Callable[[QueuePaths], Path]]] = [
+    ("gm-list",    "completed/results/", lambda q: q / "completed" / "results"),
+    ("gm-details", "completed/",         lambda q: q / "completed"),
+    ("enrichment", "completed/",         lambda q: q / "completed"),
+]
 
 
 @dataclass
@@ -25,11 +35,17 @@ class SyncResult:
     success: bool
     files_synced: int
     error: str | None = None
+    queue_results: dict[str, int] = field(default_factory=dict)
 
 
 class PiSyncService:
     """
-    Syncs gm-list results from Pi workers to local storage.
+    Syncs queue results from Pi workers to local storage.
+
+    Syncs the following queues from each node:
+      - gm-list/completed/results/
+      - gm-details/completed/
+      - enrichment/completed/
 
     Usage:
         service = PiSyncService("roadmap")
@@ -48,64 +64,70 @@ class PiSyncService:
 
     def sync_node(self, host: str) -> SyncResult:
         """
-        Sync results from a single node.
+        Sync results from a single node across all configured queues.
 
         Args:
             host: The hostname of the Pi (e.g., "cocli5x1.pi")
 
         Returns:
-            SyncResult with details of the sync.
+            SyncResult with total files synced across all queues.
         """
         try:
-            # Look up the IP from the cluster nodes config if available
             node_info = next((n for n in self.nodes if n.hostname == host), None)
             target = (
                 node_info.ip_address if node_info and node_info.ip_address else host
             )
-            remote_path = f"mstouffer@{target}:repos/data/campaigns/{self.campaign}/queues/gm-list/completed/results/"
-            local_path = str(
-                paths.campaign(self.campaign).queue("gm-list").completed / "results"
+
+            total_files = 0
+            queue_results: dict[str, int] = {}
+
+            for queue_name, remote_subpath, local_subpath_fn in _SYNC_QUEUES:
+                remote_path = (
+                    f"mstouffer@{target}:repos/data/campaigns/{self.campaign}"
+                    f"/queues/{queue_name}/{remote_subpath}"
+                )
+                local_queue_root = paths.campaign(self.campaign).queue(queue_name)
+                local_path = str(local_subpath_fn(local_queue_root))
+
+                os.makedirs(local_path, exist_ok=True)
+
+                cmd = [
+                    "rsync",
+                    "-avzu",
+                    remote_path,
+                    local_path + "/",
+                ]
+
+                logger.info(f"  Syncing {queue_name} from {host}...")
+                result = subprocess.run(
+                    cmd,
+                    capture_output=True,
+                    text=True,
+                    timeout=300,
+                )
+
+                if result.returncode == 0:
+                    output_lines = result.stdout.strip().split("\n")
+                    synced = sum(
+                        1
+                        for line in output_lines
+                        if line.startswith(".") or "/" in line and not line.endswith("/")
+                    )
+                    queue_results[queue_name] = synced
+                    total_files += synced
+                else:
+                    error_msg = result.stderr.strip() or "Unknown error"
+                    logger.warning(f"  {host}/{queue_name}: Failed - {error_msg}")
+                    queue_results[queue_name] = -1  # mark as failed
+
+            all_ok = all(v >= 0 for v in queue_results.values())
+            logger.info(f"  {host}: {'Success' if all_ok else 'Partial'} ({total_files} files)")
+            return SyncResult(
+                host=host,
+                success=all_ok,
+                files_synced=total_files,
+                queue_results=queue_results,
             )
-
-            os.makedirs(local_path, exist_ok=True)
-
-            cmd = [
-                "rsync",
-                "-avzu",
-                remote_path,
-                local_path + "/",
-            ]
-
-            logger.info(f"Syncing from {host}...")
-            result = subprocess.run(
-                cmd,
-                capture_output=True,
-                text=True,
-                timeout=300,
-            )
-
-            if result.returncode == 0:
-                output_lines = result.stdout.strip().split("\n")
-                synced_files = sum(
-                    1
-                    for line in output_lines
-                    if line.startswith(".") or "/" in line and not line.endswith("/")
-                )
-                logger.info(f"  {host}: Success ({synced_files} files)")
-                return SyncResult(
-                    host=host,
-                    success=True,
-                    files_synced=synced_files,
-                )
-            else:
-                error_msg = result.stderr.strip() or "Unknown error"
-                logger.warning(f"  {host}: Failed - {error_msg}")
-                return SyncResult(
-                    host=host,
-                    success=False,
-                    files_synced=0,
-                    error=error_msg,
-                )
 
         except subprocess.TimeoutExpired:
             logger.warning(f"  {host}: Timeout (>5 minutes)")
@@ -160,3 +182,4 @@ class PiSyncService:
             "failed": total - successful,
             "total_files_synced": total_files,
         }
+
