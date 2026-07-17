@@ -4,7 +4,7 @@ import logging
 import os
 import sys
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Sequence, Tuple
+from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple
 
 import duckdb
 from pydantic import BaseModel, Field
@@ -14,6 +14,14 @@ from ..core.paths import paths
 from ..core.smart_sync import run_smart_sync
 
 logger = logging.getLogger(__name__)
+
+LogCallback = Callable[[str], None]
+
+
+def _emit(log_callback: Optional[LogCallback], message: str) -> None:
+    logger.info(message)
+    if log_callback is not None:
+        log_callback(message)
 
 
 class DatapackageSummary(BaseModel):
@@ -431,6 +439,7 @@ class DataSyncService:
         file_path: Path,
         resource_name: Optional[str] = None,
         output_path: Optional[Path] = None,
+        log_callback: Optional[LogCallback] = None,
     ) -> MetricsResult:
         """
         Compute data-quality metrics for a USV dataset or datapackage.
@@ -523,6 +532,7 @@ class DataSyncService:
             )
         except Exception as e:
             logger.debug("DuckDB metrics approach failed: %s", e)
+            _emit(log_callback, "Falling back to Python processing...")
             result = self._compute_metrics_fallback(usv_path, schema_fields)
         finally:
             con.close()

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from typing import Any
 from unittest.mock import patch
 
 import pytest
@@ -21,7 +22,7 @@ def _write_datapackage(
     directory: Path,
     resource_name: str = "items",
     path_pattern: str = "*.usv",
-    fields: list[dict] | None = None,
+    fields: list[dict[str, Any]] | None = None,
 ) -> Path:
     directory.mkdir(parents=True, exist_ok=True)
     fields = fields or [
@@ -171,6 +172,36 @@ def test_compute_metrics_fallback(tmp_path: Path) -> None:
     assert result.used_fallback is True
     assert result.metrics["Total Records"] == 2
     assert result.metrics["slug"] == 2
+
+
+def test_compute_metrics_emits_fallback_message_via_log_callback(
+    tmp_path: Path,
+) -> None:
+    """
+    Regression: the "Falling back..." message must fire through log_callback
+    at the moment DuckDB fails, not only be inferable from used_fallback after
+    the (potentially slow) Python scan has already completed.
+    """
+    _write_datapackage(tmp_path, path_pattern="data.usv")
+    usv = tmp_path / "data.usv"
+    _write_usv(usv, [["p1", "alpha", "111", "1"]])
+    service = DataSyncService()
+    messages: list[str] = []
+
+    with (
+        patch(
+            "cocli.utils.duckdb_utils.find_datapackage",
+            return_value=tmp_path / "datapackage.json",
+        ),
+        patch(
+            "cocli.utils.duckdb_utils.load_usv_to_duckdb",
+            side_effect=RuntimeError("boom"),
+        ),
+    ):
+        result = service.compute_metrics(usv, log_callback=messages.append)
+
+    assert result.used_fallback is True
+    assert "Falling back to Python processing..." in messages
 
 
 def test_search_usv_unknown_column(tmp_path: Path) -> None:

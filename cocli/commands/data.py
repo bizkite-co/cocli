@@ -144,9 +144,16 @@ def metrics(
     ),
 ) -> None:
     """Compute data quality metrics for a USV dataset (or datapackage)."""
+
+    def log_cb(msg: str) -> None:
+        console.print(f"[yellow]{msg}[/yellow]")
+
     try:
         result = _service().compute_metrics(
-            file_path, resource_name=resource_name, output_path=output_path
+            file_path,
+            resource_name=resource_name,
+            output_path=output_path,
+            log_callback=log_cb,
         )
     except FileNotFoundError as e:
         console.print(f"[red]Error: {e}[/red]")
@@ -155,11 +162,11 @@ def metrics(
         console.print(f"[red]Error: {e}[/red]")
         raise typer.Exit(1)
 
-    if result.used_fallback:
-        console.print("[yellow]Falling back to Python processing...[/yellow]")
-        title = f"Metrics: {result.source_name} (fallback)"
-    else:
-        title = f"Metrics: {result.source_name}"
+    title = (
+        f"Metrics: {result.source_name} (fallback)"
+        if result.used_fallback
+        else f"Metrics: {result.source_name}"
+    )
 
     table = Table(title=title)
     table.add_column("Metric")
