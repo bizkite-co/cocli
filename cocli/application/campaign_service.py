@@ -1,13 +1,32 @@
 import csv
 import logging
 import toml
-from typing import Optional, Dict, Any
+from pathlib import Path
+from typing import Any, Dict, List, Optional
+
+from pydantic import BaseModel, Field
 
 from ..core.config import get_campaign_dir, load_campaign_config
 from ..core.exclusions import ExclusionManager
-from ..core.geocoding import get_coordinates_from_city_state, get_coordinates_from_address
+from ..core.geocoding import (
+    get_coordinates_from_address,
+    get_coordinates_from_city_state,
+)
 
 logger = logging.getLogger(__name__)
+
+
+class CampaignEditTargets(BaseModel):
+    """Files a human editor may open for a campaign (config + optional README)."""
+
+    campaign_name: str
+    campaign_dir: Path
+    config_path: Path
+    readme_path: Path
+    files_to_edit: List[Path] = Field(default_factory=list)
+    config_exists: bool = False
+    readme_exists: bool = False
+
 
 class CampaignService:
     def __init__(self, campaign_name: str):
@@ -16,8 +35,9 @@ class CampaignService:
         if not self.campaign_dir:
             # Fallback for bootstrapping: check if the directory exists in data/campaigns
             from ..core.config import get_campaigns_dir
+
             self.campaign_dir = get_campaigns_dir() / campaign_name
-            
+
         self.config_path = self.campaign_dir / "config.toml"
         self.exclusion_manager = ExclusionManager(campaign_name)
 
@@ -357,3 +377,112 @@ class CampaignService:
                 stats["errors"] += 1
                 
         yield stats
+
+    # ------------------------------------------------------------------
+    # Remaining mgmt surface (from commands/campaign/mgmt.py)
+    # Intermediate artifacts: campaign config.toml, geocode cache (via add_location/geocode)
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def list_campaign_names() -> List[str]:
+        """Return campaign directory names under the data root."""
+        from ..core.config import get_all_campaign_dirs
+
+        return [d.name for d in get_all_campaign_dirs()]
+
+    @staticmethod
+    def create_campaign(name: str, company: str) -> Path:
+        """
+        Bootstrap a new campaign under data_home.
+
+        Returns the campaign directory path. Raises FileNotFoundError on missing
+        templates (same as Campaign.create).
+        """
+        from ..core.config import get_cocli_base_dir
+        from ..models.campaigns.campaign import Campaign
+
+        data_home = get_cocli_base_dir()
+        Campaign.create(name, company, data_home)
+        return get_campaign_dir(name) or (data_home / "campaigns" / name)
+
+    @staticmethod
+    def clear_context() -> None:
+        """Clear the active campaign context."""
+        from ..core.config import set_campaign
+
+        set_campaign(None)
+
+    def get_edit_targets(self) -> CampaignEditTargets:
+        """Resolve config.toml / README.md paths available for interactive edit."""
+        if not self.campaign_dir or not self.campaign_dir.exists():
+            raise FileNotFoundError(f"Campaign '{self.campaign_name}' not found.")
+
+        config_path = self.campaign_dir / "config.toml"
+        readme_path = self.campaign_dir / "README.md"
+        files: List[Path] = []
+        if config_path.exists():
+            files.append(config_path)
+        if readme_path.exists():
+            files.append(readme_path)
+        if not files:
+            raise FileNotFoundError(
+                f"No files to edit for campaign '{self.campaign_name}'."
+            )
+        return CampaignEditTargets(
+            campaign_name=self.campaign_name,
+            campaign_dir=self.campaign_dir,
+            config_path=config_path,
+            readme_path=readme_path,
+            files_to_edit=files,
+            config_exists=config_path.exists(),
+            readme_exists=readme_path.exists(),
+        )
+
+    def load_campaign_model(self) -> Any:
+        """
+        Load and validate the campaign as a Campaign Pydantic model.
+
+        Used by ``campaign show``. Raises FileNotFoundError / ValueError on bad config.
+        """
+        from ..models.campaigns.campaign import Campaign
+
+        if not self.campaign_dir:
+            raise FileNotFoundError(f"Campaign '{self.campaign_name}' not found.")
+        if not self.config_path.exists():
+            raise FileNotFoundError(
+                f"Configuration file not found for campaign '{self.campaign_name}'."
+            )
+
+        with open(self.config_path, "r") as f:
+            config_data = toml.load(f)
+
+        flat_config = config_data.pop("campaign")
+        flat_config.update(config_data)
+        return Campaign.model_validate(flat_config)
+
+    def get_s3_campaign_uri(self) -> str:
+        """
+        S3 URI root for this campaign's data layout.
+
+        Prefer ``aws.data_bucket_name`` / ``aws.cocli_data_bucket_name``; fall back
+        to ``cocli-data-{campaign}`` (matches original bucket command).
+        """
+        if not self.campaign_dir:
+            raise FileNotFoundError(
+                f"Campaign directory not found for {self.campaign_name}"
+            )
+        if not self.config_path.exists():
+            raise FileNotFoundError(
+                f"config.toml not found for {self.campaign_name}"
+            )
+
+        with open(self.config_path, "r") as f:
+            config = toml.load(f)
+
+        aws_config = config.get("aws", {})
+        bucket_name = aws_config.get("data_bucket_name") or aws_config.get(
+            "cocli_data_bucket_name"
+        )
+        if not bucket_name:
+            bucket_name = f"cocli-data-{self.campaign_name}"
+        return f"s3://{bucket_name}/campaigns/{self.campaign_name}/"

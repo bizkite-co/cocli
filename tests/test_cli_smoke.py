@@ -1,4 +1,10 @@
+import re
 import subprocess
+
+
+def _strip_ansi(text: str) -> str:
+    """Remove ANSI escape sequences (Rich help splits '--' across styles)."""
+    return re.sub(r"\x1b\[[0-9;]*m", "", text)
 
 
 def test_cocli_help():
@@ -30,11 +36,12 @@ def test_cocli_video_upload_help():
         text=True,
     )
     assert result.returncode == 0
-    assert "Options" in result.stdout
-    assert "--campaign" in result.stdout
-    assert "--video" in result.stdout
-    assert "--privacy" in result.stdout
-    assert "--dry-run" in result.stdout
+    plain = _strip_ansi(result.stdout)
+    assert "Options" in plain
+    assert "--campaign" in plain
+    assert "--video" in plain
+    assert "--privacy" in plain
+    assert "--dry-run" in plain
 
 
 def test_cocli_video_upload_missing_config():

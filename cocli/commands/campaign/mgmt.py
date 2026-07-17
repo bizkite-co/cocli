@@ -1,29 +1,42 @@
-import typer
-import subprocess
-import toml
+"""CLI adapter for campaign management commands."""
+
+from __future__ import annotations
+
+import asyncio
 import logging
-from typing import Optional, Dict, Any
+import subprocess
+from typing import Any, Dict, Optional
+
+import typer
 from rich.console import Console
+from rich.progress import (
+    BarColumn,
+    Progress,
+    SpinnerColumn,
+    TaskProgressColumn,
+    TextColumn,
+)
 from rich.table import Table
 from typing_extensions import Annotated
 
-from ...core.config import (
-    get_campaign_dir,
-    get_cocli_base_dir,
-    get_all_campaign_dirs,
-    get_editor_command,
-    get_campaign,
-    set_campaign,
-)
-from ...models.campaigns.campaign import Campaign
-from ...renderers.campaign_view import display_campaign_view
+from ...application.campaign_service import CampaignService
 from ...core.campaign_workflow import CampaignWorkflow
+from ...core.config import get_campaign, get_editor_command
 from ...core.utils import run_fzf
+from ...renderers.campaign_view import display_campaign_view
 
 logger = logging.getLogger(__name__)
 console = Console()
 
 app = typer.Typer(no_args_is_help=True)
+
+
+def _require_campaign(campaign_name: Optional[str]) -> str:
+    name = campaign_name or get_campaign()
+    if not name:
+        console.print("[bold red]Error: No campaign specified.[/bold red]")
+        raise typer.Exit(1)
+    return name
 
 
 @app.command()
@@ -36,68 +49,51 @@ def edit(
     Edits an existing campaign's configuration.
     """
     if campaign_name is None:
-        campaign_dirs = get_all_campaign_dirs()
-        if not campaign_dirs:
+        campaign_names = CampaignService.list_campaign_names()
+        if not campaign_names:
             console.print("[bold red]No campaigns found.[/bold red]")
             raise typer.Exit(code=1)
 
-        campaign_names = [d.name for d in campaign_dirs]
-        fzf_input = "\n".join(campaign_names)
-        selected_campaign = run_fzf(fzf_input)
-
+        selected_campaign = run_fzf("\n".join(campaign_names))
         if not selected_campaign:
             console.print("No campaign selected.")
             raise typer.Exit(code=1)
         campaign_name = selected_campaign
 
-    campaign_dir = get_campaign_dir(campaign_name)
-    if not campaign_dir:
-        console.print(f"[bold red]Campaign '{campaign_name}' not found.[/bold red]")
+    try:
+        targets = CampaignService(campaign_name).get_edit_targets()
+    except FileNotFoundError as e:
+        console.print(f"[bold red]{e}[/bold red]")
         raise typer.Exit(code=1)
 
-    config_path = campaign_dir / "config.toml"
-    readme_path = campaign_dir / "README.md"
+    if not targets.config_exists:
+        console.print(
+            f"[bold red]Configuration file not found for campaign "
+            f"'{campaign_name}'.[/bold red]"
+        )
 
     editor_command = get_editor_command()
-
     if editor_command:
-        files_to_edit = []
-        if config_path.exists():
-            files_to_edit.append(str(config_path))
-        else:
-            console.print(
-                f"[bold red]Configuration file not found for campaign '{campaign_name}'.[/bold red]"
-            )
-
-        if readme_path.exists():
-            files_to_edit.append(str(readme_path))
-
-        if not files_to_edit:
-            console.print(
-                f"[bold red]No files to edit for campaign '{campaign_name}'.[/bold red]"
-            )
-            raise typer.Exit(code=1)
-
         command = [editor_command]
-        # For vim/nvim, use -o for horizontal split
         if "vim" in editor_command or "nvim" in editor_command:
             command.append("-o")
-
-        command.extend(files_to_edit)
-
+        command.extend(str(p) for p in targets.files_to_edit)
         subprocess.run(command)
-    else:
-        if config_path.exists():
-            typer.edit(filename=str(config_path))
-        else:
-            console.print(
-                f"[bold red]Configuration file not found for campaign '{campaign_name}'.[/bold red]"
-            )
+        return
 
-        if readme_path.exists():
-            console.print(
-                "[yellow]To edit the README.md as well, please configure an editor in your cocli_config.toml.[/yellow]"
-            )
+    if targets.config_exists:
+        typer.edit(filename=str(targets.config_path))
+    else:
+        console.print(
+            f"[bold red]Configuration file not found for campaign "
+            f"'{campaign_name}'.[/bold red]"
+        )
+
+    if targets.readme_exists:
+        console.print(
+            "[yellow]To edit the README.md as well, please configure an editor "
+            "in your cocli_config.toml.[/yellow]"
+        )
 
 
 @app.command()
@@ -108,9 +104,8 @@ def add(
     """
     Adds a new campaign.
     """
-    data_home = get_cocli_base_dir()
     try:
-        Campaign.create(name, company, data_home)
+        CampaignService.create_campaign(name, company)
         console.print(f"[green]Campaign '{name}' created successfully.[/green]")
     except FileNotFoundError as e:
         console.print(f"[red]Error: {e}[/red]")
@@ -127,16 +122,16 @@ def set_default_campaign(
     ),
 ) -> None:
     """Sets the current campaign context."""
-    from ...application.campaign_service import CampaignService
-
     try:
         service = CampaignService(campaign_name)
         service.activate()
-
+        # Workflow still imports command modules (burn-down); keep out of CampaignService
+        # so TUI -> application does not transitively import commands.
         workflow = CampaignWorkflow(campaign_name)
         console.print(f"[green]Campaign context set to:[/][bold]{campaign_name}[/]")
         console.print(
-            f"[green]Current workflow state for '{campaign_name}':[/][bold]{workflow.state}[/]"
+            f"[green]Current workflow state for '{campaign_name}':[/]"
+            f"[bold]{workflow.state}[/]"
         )
     except Exception as e:
         console.print(f"[red]Error setting campaign: {e}[/red]")
@@ -148,7 +143,7 @@ def unset() -> None:
     """
     Clears the current campaign context.
     """
-    set_campaign(None)
+    CampaignService.clear_context()
     console.print("[green]Campaign context cleared.[/]")
 
 
@@ -158,37 +153,23 @@ def show() -> None:
     Displays the current campaign context.
     """
     campaign_name = get_campaign()
-    if campaign_name:
-        campaign_dir = get_campaign_dir(campaign_name)
-        if not campaign_dir:
-            console.print(f"[bold red]Campaign '{campaign_name}' not found.[/bold red]")
-            raise typer.Exit(code=1)
-
-        config_path = campaign_dir / "config.toml"
-        if not config_path.exists():
-            console.print(
-                f"[bold red]Configuration file not found for campaign '{campaign_name}'.[/bold red]"
-            )
-            raise typer.Exit(code=1)
-
-        with open(config_path, "r") as f:
-            config_data = toml.load(f)
-
-        # Flatten config
-        flat_config = config_data.pop("campaign")
-        flat_config.update(config_data)
-
-        try:
-            campaign = Campaign.model_validate(flat_config)
-        except Exception as e:
-            console.print(
-                f"[bold red]Error validating campaign configuration for '{campaign_name}': {e}[/bold red]"
-            )
-            raise typer.Exit(code=1)
-
-        display_campaign_view(console, campaign)
-    else:
+    if not campaign_name:
         console.print("No campaign context is set.")
+        return
+
+    try:
+        campaign = CampaignService(campaign_name).load_campaign_model()
+    except FileNotFoundError as e:
+        console.print(f"[bold red]{e}[/bold red]")
+        raise typer.Exit(code=1)
+    except Exception as e:
+        console.print(
+            f"[bold red]Error validating campaign configuration for "
+            f"'{campaign_name}': {e}[/bold red]"
+        )
+        raise typer.Exit(code=1)
+
+    display_campaign_view(console, campaign)
 
 
 @app.command()
@@ -201,19 +182,19 @@ def status(
     """
     Displays the current state of the campaign workflow.
     """
-    effective_campaign_name = campaign_name
-    if effective_campaign_name is None:
-        effective_campaign_name = get_campaign()
-
-    if effective_campaign_name is None:
+    effective = campaign_name or get_campaign()
+    if effective is None:
         console.print(
-            "[bold red]Error: No campaign name provided and no campaign context is set. Please provide a campaign name or set a campaign context using 'cocli campaign set <campaign_name>'.[/bold red]"
+            "[bold red]Error: No campaign name provided and no campaign context "
+            "is set. Please provide a campaign name or set a campaign context "
+            "using 'cocli campaign set <campaign_name>'.[/bold red]"
         )
         raise typer.Exit(code=1)
 
-    workflow = CampaignWorkflow(effective_campaign_name)
+    workflow = CampaignWorkflow(effective)
     console.print(
-        f"[green]Current workflow state for '{effective_campaign_name}':[/][bold]{workflow.state}[/]"
+        f"[green]Current workflow state for '{effective}':[/]"
+        f"[bold]{workflow.state}[/]"
     )
 
 
@@ -225,17 +206,9 @@ def add_query(
     ),
 ) -> None:
     """Adds a search query to the campaign configuration."""
-    if not campaign_name:
-        campaign_name = get_campaign()
-    if not campaign_name:
-        console.print("[bold red]Error: No campaign specified.[/bold red]")
-        raise typer.Exit(1)
-
+    name = _require_campaign(campaign_name)
     try:
-        from ...application.campaign_service import CampaignService
-
-        service = CampaignService(campaign_name)
-        if service.add_query(query):
+        if CampaignService(name).add_query(query):
             console.print(f"[green]Added query:[/green] {query}")
         else:
             console.print(f"[yellow]Query already exists:[/yellow] {query}")
@@ -252,17 +225,9 @@ def remove_query(
     ),
 ) -> None:
     """Removes a search query from the campaign configuration."""
-    if not campaign_name:
-        campaign_name = get_campaign()
-    if not campaign_name:
-        console.print("[bold red]Error: No campaign specified.[/bold red]")
-        raise typer.Exit(1)
-
+    name = _require_campaign(campaign_name)
     try:
-        from ...application.campaign_service import CampaignService
-
-        service = CampaignService(campaign_name)
-        if service.remove_query(query):
+        if CampaignService(name).remove_query(query):
             console.print(f"[green]Removed query:[/green] {query}")
         else:
             console.print(f"[yellow]Query not found:[/yellow] {query}")
@@ -279,17 +244,9 @@ def add_location(
     ),
 ) -> None:
     """Adds a target location to the campaign."""
-    if not campaign_name:
-        campaign_name = get_campaign()
-    if not campaign_name:
-        console.print("[bold red]Error: No campaign specified.[/bold red]")
-        raise typer.Exit(1)
-
+    name = _require_campaign(campaign_name)
     try:
-        from ...application.campaign_service import CampaignService
-
-        service = CampaignService(campaign_name)
-        if service.add_location(location):
+        if CampaignService(name).add_location(location):
             console.print(f"[green]Added location:[/green] {location}")
         else:
             console.print(f"[yellow]Location already exists:[/yellow] {location}")
@@ -306,17 +263,9 @@ def remove_location(
     ),
 ) -> None:
     """Removes a target location from the campaign."""
-    if not campaign_name:
-        campaign_name = get_campaign()
-    if not campaign_name:
-        console.print("[bold red]Error: No campaign specified.[/bold red]")
-        raise typer.Exit(1)
-
+    name = _require_campaign(campaign_name)
     try:
-        from ...application.campaign_service import CampaignService
-
-        service = CampaignService(campaign_name)
-        if service.remove_location(location):
+        if CampaignService(name).remove_location(location):
             console.print(f"[green]Removed location:[/green] {location}")
         else:
             console.print(f"[yellow]Location not found:[/yellow] {location}")
@@ -334,21 +283,13 @@ def geocode_locations(
     """
     Scans the campaign's target locations CSV and fills in missing geocoordinates.
     """
-    if not campaign_name:
-        campaign_name = get_campaign()
-    if not campaign_name:
-        console.print("[bold red]Error: No campaign specified.[/bold red]")
-        raise typer.Exit(1)
-
+    name = _require_campaign(campaign_name)
     try:
-        from ...application.campaign_service import CampaignService
-
-        service = CampaignService(campaign_name)
-        updated_count = service.geocode_locations()
-
+        updated_count = CampaignService(name).geocode_locations()
         if updated_count > 0:
             console.print(
-                f"[bold green]Successfully updated {updated_count} locations.[/bold green]"
+                f"[bold green]Successfully updated {updated_count} locations."
+                f"[/bold green]"
             )
         else:
             console.print("[yellow]No locations were updated.[/yellow]")
@@ -364,53 +305,15 @@ def bucket(
     ),
 ) -> None:
     """
-
     Displays the S3 bucket root and campaign path.
-
     """
-
-    if not campaign_name:
-        campaign_name = get_campaign()
-
-    if not campaign_name:
-        console.print("[bold red]Error: No campaign specified.[/bold red]")
-
+    name = _require_campaign(campaign_name)
+    try:
+        uri = CampaignService(name).get_s3_campaign_uri()
+    except FileNotFoundError as e:
+        console.print(f"[bold red]Error: {e}[/bold red]")
         raise typer.Exit(1)
-
-    campaign_dir = get_campaign_dir(campaign_name)
-
-    if not campaign_dir:
-        console.print(
-            f"[bold red]Error: Campaign directory not found for {campaign_name}[/bold red]"
-        )
-
-        raise typer.Exit(1)
-
-    config_path = campaign_dir / "config.toml"
-
-    if not config_path.exists():
-        console.print(
-            f"[bold red]Error: config.toml not found for {campaign_name}[/bold red]"
-        )
-
-        raise typer.Exit(1)
-
-    with open(config_path, "r") as f:
-        config = toml.load(f)
-
-    aws_config = config.get("aws", {})
-
-    bucket_name = aws_config.get("data_bucket_name") or aws_config.get(
-        "cocli_data_bucket_name"
-    )
-
-    if bucket_name:
-        console.print(f"s3://{bucket_name}/campaigns/{campaign_name}/")
-
-    else:
-        # Fallback to default pattern
-
-        console.print(f"s3://cocli-data-{campaign_name}/campaigns/{campaign_name}/")
+    console.print(uri)
 
 
 @app.command(name="compile-lifecycle")
@@ -423,24 +326,9 @@ def compile_lifecycle(
     Compiles the lifecycle index from local completed queues.
     Mandate: Sync 'queues/' before running.
     """
-    if not campaign_name:
-        campaign_name = get_campaign()
-    if not campaign_name:
-        console.print("[bold red]Error: No campaign specified.[/bold red]")
-        raise typer.Exit(1)
-
+    name = _require_campaign(campaign_name)
     try:
-        from ...application.campaign_service import CampaignService
-        from rich.progress import (
-            Progress,
-            SpinnerColumn,
-            TextColumn,
-            BarColumn,
-            TaskProgressColumn,
-        )
-
-        service = CampaignService(campaign_name)
-
+        service = CampaignService(name)
         with Progress(
             SpinnerColumn(),
             TextColumn("[progress.description]{task.description}"),
@@ -452,11 +340,8 @@ def compile_lifecycle(
             task = progress.add_task(
                 "Compiling lifecycle index...", total=None, label=""
             )
-
-            generator = service.compile_lifecycle_index()
             final_count = 0
-
-            for update in generator:
+            for update in service.compile_lifecycle_index():
                 if isinstance(update, dict):
                     progress.update(
                         task,
@@ -469,7 +354,8 @@ def compile_lifecycle(
                     final_count = update
 
         console.print(
-            f"[bold green]Successfully compiled lifecycle index with {final_count} records.[/bold green]"
+            f"[bold green]Successfully compiled lifecycle index with "
+            f"{final_count} records.[/bold green]"
         )
     except Exception as e:
         console.print(f"[bold red]Error: {e}[/bold red]")
@@ -486,24 +372,9 @@ def restore_names(
     """
     Restores company names from the Google Maps index and writes provenance receipts.
     """
-    if not campaign_name:
-        campaign_name = get_campaign()
-    if not campaign_name:
-        console.print("[bold red]Error: No campaign specified.[/bold red]")
-        raise typer.Exit(1)
-
+    name = _require_campaign(campaign_name)
     try:
-        from ...application.campaign_service import CampaignService
-        from rich.progress import (
-            Progress,
-            SpinnerColumn,
-            TextColumn,
-            BarColumn,
-            TaskProgressColumn,
-        )
-
-        service = CampaignService(campaign_name)
-
+        service = CampaignService(name)
         with Progress(
             SpinnerColumn(),
             TextColumn("[progress.description]{task.description}"),
@@ -513,11 +384,8 @@ def restore_names(
             console=console,
         ) as progress:
             task = progress.add_task("Restoring names...", total=None, slug="")
-
-            generator = service.restore_names_from_index(dry_run=dry_run)
-            final_stats = {}
-
-            for update in generator:
+            final_stats: Dict[str, Any] = {}
+            for update in service.restore_names_from_index(dry_run=dry_run):
                 if "total" in update:
                     progress.update(
                         task,
@@ -530,14 +398,17 @@ def restore_names(
 
         if dry_run:
             console.print(
-                f"[yellow]DRY RUN: Would restore {final_stats.get('restored', 0)} names.[/yellow]"
+                f"[yellow]DRY RUN: Would restore "
+                f"{final_stats.get('restored', 0)} names.[/yellow]"
             )
         else:
             console.print(
-                f"[bold green]Successfully restored {final_stats.get('restored', 0)} names.[/bold green]"
+                f"[bold green]Successfully restored "
+                f"{final_stats.get('restored', 0)} names.[/bold green]"
             )
             console.print(
-                f"[bold green]Wrote {final_stats.get('receipts_written', 0)} provenance receipts.[/bold green]"
+                f"[bold green]Wrote {final_stats.get('receipts_written', 0)} "
+                f"provenance receipts.[/bold green]"
             )
 
         if final_stats.get("errors", 0) > 0:
@@ -558,41 +429,37 @@ def sanitize_discovery(
     """
     High-Fidelity Discovery Reset: Pulls from S3, purges junk/hollow USVs, and propagates to PIs.
     """
-    if not campaign_name:
-        campaign_name = get_campaign()
-    if not campaign_name:
-        console.print("[bold red]Error: No campaign specified.[/bold red]")
-        raise typer.Exit(1)
-
+    name = _require_campaign(campaign_name)
     try:
         from ...application.operation_service import OperationService
 
-        service = OperationService(campaign_name)
-
+        service = OperationService(name)
         console.print(
-            f"[bold cyan]Starting Discovery Sanitization for: {campaign_name}[/bold cyan]"
+            f"[bold cyan]Starting Discovery Sanitization for: {name}[/bold cyan]"
         )
 
         def log_cb(msg: str) -> None:
             console.print(f"  {msg.strip()}")
 
         async def run_op() -> Dict[str, Any]:
-            return await service.execute("op_sanitize_discovery", log_callback=log_cb)
-
-        import asyncio
+            return await service.execute(
+                "op_sanitize_discovery", log_callback=log_cb
+            )
 
         result = asyncio.run(run_op())
-
         if result["status"] == "success":
             console.print(
-                f"\n[bold green]Successfully sanitized discovery for '{campaign_name}'.[/bold green]"
+                f"\n[bold green]Successfully sanitized discovery for "
+                f"'{name}'.[/bold green]"
             )
         else:
             console.print(
-                f"\n[bold red]Sanitization failed: {result.get('message')}[/bold red]"
+                f"\n[bold red]Sanitization failed: "
+                f"{result.get('message')}[/bold red]"
             )
             raise typer.Exit(1)
-
+    except typer.Exit:
+        raise
     except Exception as e:
         console.print(f"[bold red]Error: {e}[/bold red]")
         raise typer.Exit(1)
@@ -612,19 +479,13 @@ def compile_to_call(
     3. Identifies top leads (rating >= 4.5, reviews >= 20, has contact info).
     4. Adds top leads to the 'to-call' queue.
     """
-    if not campaign_name:
-        campaign_name = get_campaign()
-    if not campaign_name:
-        console.print("[bold red]Error: No campaign specified.[/bold red]")
-        raise typer.Exit(1)
-
+    name = _require_campaign(campaign_name)
     try:
         from ...application.operation_service import OperationService
 
-        service = OperationService(campaign_name)
-
+        service = OperationService(name)
         console.print(
-            f"[bold cyan]Compiling To-Call list for: {campaign_name}[/bold cyan]"
+            f"[bold cyan]Compiling To-Call list for: {name}[/bold cyan]"
         )
 
         def log_cb(msg: str) -> None:
@@ -632,23 +493,24 @@ def compile_to_call(
 
         async def run_op() -> Dict[str, Any]:
             return await service.execute(
-                "op_compile_to_call", log_callback=log_cb, params={"limit": limit}
+                "op_compile_to_call",
+                log_callback=log_cb,
+                params={"limit": limit},
             )
 
-        import asyncio
-
         result = asyncio.run(run_op())
-
         if result["status"] == "success":
             console.print(
-                f"\n[bold green]Successfully compiled To-Call list for '{campaign_name}'.[/bold green]"
+                f"\n[bold green]Successfully compiled To-Call list for "
+                f"'{name}'.[/bold green]"
             )
         else:
             console.print(
                 f"\n[bold red]Compile failed: {result.get('message')}[/bold red]"
             )
             raise typer.Exit(1)
-
+    except typer.Exit:
+        raise
     except Exception as e:
         console.print(f"[bold red]Error: {e}[/bold red]")
         raise typer.Exit(1)
@@ -690,9 +552,10 @@ def path_check(
     try:
         from ...application.services import ServiceContainer
 
-        # Use first campaign for service init, but service handles multiple campaigns in method
         services = ServiceContainer(campaign_name=campaign_list[0])
-        results = services.cluster_audit_service.audit_cluster_paths(path_list, campaigns=campaign_list)
+        results = services.cluster_audit_service.audit_cluster_paths(
+            path_list, campaigns=campaign_list
+        )
 
         table = Table(title="Cluster Path Audit")
         table.add_column("Campaign", style="cyan")
@@ -704,14 +567,12 @@ def path_check(
             status_style = "green" if r["status"] == "FOUND" else "red"
             if r["status"] == "NO BUCKET":
                 status_style = "yellow"
-
             table.add_row(
                 r["campaign"],
                 r["template"],
                 r["location"],
                 f"[{status_style}]{r['status']}[/]",
             )
-
         console.print(table)
     except Exception as e:
         console.print(f"[bold red]Error during path audit: {e}[/bold red]")
