@@ -315,28 +315,21 @@ def audit_scrape(
     output: Optional[Path] = typer.Option(
         None, "--output", "-o", help="Write full JSON report to the given file."
     ),
-    include_details: bool = typer.Option(
-        False, "--details", help="Also report counts for the gm-details queue."
-    ),
     no_duckdb: bool = typer.Option(
         False, "--no-duckdb", help="Force filesystem scan instead of DuckDB.") ,
     summary_only: bool = typer.Option(
         False, "--summary-only", help="Print only JSON summary without Rich table."
     ),
-    cluster_pull: bool = typer.Option(
-        True, "--cluster/--no-cluster", help="Pull latest data from cluster nodes before audit."
-    ),
-    sync_first: bool = typer.Option(
-        True, "--sync/--no-sync", help="Sync Pi queue results before auditing (default: on)."
-    ),
 ) -> None:
     """Audit the whole scrape workflow for a campaign.
 
-    Shows config‑derived parameters, distinct discovery tiles,
-    and how many of those tiles have already produced gm‑list results.
+    Syncs Pi queue results and pulls cluster tiles, then reports
+    config-derived parameters, discovery/gm-list/gm-details/enrichment
+    queue state, and how many discovery tiles have produced gm-list results.
     """
     from ..core.config import get_campaign
     from ..services.cluster_service import ClusterService
+    from cocli.application.pi_sync_service import PiSyncService
     from rich.table import Table
     import json
     import asyncio
@@ -344,20 +337,18 @@ def audit_scrape(
 
     logger = logging.getLogger(__name__)
 
-    # Resolve campaign and optionally pull fresh data
     campaign_name = campaign or get_campaign() or "roadmap"
 
-    if sync_first:
-        from cocli.application.pi_sync_service import PiSyncService
-        console.print("[bold blue]Syncing PI results for campaign: {campaign_name}[/bold blue]".format(campaign_name=campaign_name))
-        sync_service = PiSyncService(campaign_name)
-        sync_service.sync_all_nodes(blocking=True)
-        console.print("[bold green]Sync Complete![/bold green]")
+    console.print(
+        f"[bold blue]Syncing PI results for campaign: {campaign_name}[/bold blue]"
+    )
+    sync_service = PiSyncService(campaign_name)
+    sync_service.sync_all_nodes(blocking=True)
+    console.print("[bold green]Sync Complete![/bold green]")
 
-    if cluster_pull:
-        service = ClusterService(campaign_name)
-        console.print("[bold cyan]Pulling latest tiles from cluster…[/bold cyan]")
-        asyncio.run(service.pull_scraped_tiles())
+    service = ClusterService(campaign_name)
+    console.print("[bold cyan]Pulling latest tiles from cluster…[/bold cyan]")
+    asyncio.run(service.pull_scraped_tiles())
 
     # Load campaign config (search phrases, locations, proximity)
     cfg_path = paths.campaign(campaign_name).config
@@ -468,17 +459,6 @@ def audit_scrape(
     if map_tile_queue.pending.exists():
         total_campaign_tiles = len(list(map_tile_queue.pending.rglob("*.usv"))) + len(list(map_tile_queue.completed.rglob("*.usv")))
 
-    # Optional gm-details stats
-    details_tiles = None
-    if include_details:
-        gm_details_root = paths.campaign(campaign_name).queue("gm-details").completed
-        details_set: set[str] = set()
-        for receipt in gm_details_root.rglob("*.json"):
-            parts = receipt.relative_to(gm_details_root).parts
-            if len(parts) >= 3:
-                details_set.add(f"{parts[0]}/{parts[1]}")
-        details_tiles = len(details_set)
-
     pending_tiles = staged_tiles - gm_list_tiles
 
     # Count gm-list queue states directly from filesystem (rglob to handle sharded subdirs)
@@ -529,9 +509,6 @@ def audit_scrape(
         "total_active_scrape_tasks": discovery_valid,
         "valid_business_leads": gm_list_valid,
     }
-    if include_details:
-        report["gm_details_tiles"] = details_tiles
-
 
     # Output
     if summary_only:

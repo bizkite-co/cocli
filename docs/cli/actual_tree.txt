@@ -81,11 +81,8 @@ cocli
             --verbose/-v (boolean)
             --threshold (integer)
             --output/-o (path)
-            --details (boolean)
             --no-duckdb (boolean)
             --summary-only (boolean)
-            --cluster (boolean)
-            --sync (boolean)
         tui - Dumps the TUI widget hierarchy.
             --output/-o (path)
     campaign - Manage campaigns.

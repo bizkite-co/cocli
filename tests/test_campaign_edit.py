@@ -97,7 +97,11 @@ def test_campaign_edit_no_campaigns_exist(cli_app, tmp_path):
         assert result.exit_code == 1
         assert "No campaigns found" in result.stdout
 
-def test_campaign_edit_campaign_not_found(cli_app):
-    result = runner.invoke(cli_app, ["campaign", "edit", "non-existent-campaign"])
+def test_campaign_edit_campaign_not_found(cli_app, tmp_path):
+    # Isolate paths so leftover dirs under the shared COCLI_DATA_HOME cannot
+    # make a "non-existent" campaign look real.
+    with patch("cocli.core.config.paths.root", tmp_path):
+        result = runner.invoke(cli_app, ["campaign", "edit", "non-existent-campaign"])
 
     assert result.exit_code == 1
+    assert "not found" in result.stdout
