@@ -48,13 +48,17 @@ dependencies = [
     "google-auth-oauthlib",
     "phonenumbers",
     # stations: typed file-path queue/WAL/index Protocols (strangler Phase 1).
-    # Path dep — not a cocli workspace member (stations decision 0005).
+    # Not a cocli workspace member (stations decision 0005).
     "stations",
 ]
 
 [tool.uv.sources]
-# Relative from this worktree (.gwt/commands) → repos/stations/python
-stations = { path = "../../../stations/python", editable = true }
+# Canonical HTTPS source — resolves identically from any checkout depth, Docker,
+# and CI (a relative path dep only resolved from .gwt/* worktrees and broke image
+# builds). For local hacking on stations/python, temporarily switch to a path
+# source; do not commit the override. Bump the pinned rev with:
+#   uv lock --upgrade-package stations
+stations = { git = "https://github.com/bizkite-co/stations", subdirectory = "python" }
 
 [project.scripts]
 cocli = "cocli.main:app"

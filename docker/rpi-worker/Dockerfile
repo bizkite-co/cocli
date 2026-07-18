@@ -6,7 +6,7 @@ WORKDIR /app
 # Install system dependencies needed for pandas/numpy on ARM, plus qsv for indexing
 RUN apt-get update && apt-get install -y \
     libatlas-base-dev \
-    wget unzip jq --no-install-recommends && \
+    git wget unzip jq --no-install-recommends && \
     export ARCH=$(uname -m) && \
     if [ "$ARCH" = "x86_64" ]; then QSV_ARCH="x86_64-unknown-linux-gnu"; elif [ "$ARCH" = "aarch64" ]; then QSV_ARCH="aarch64-unknown-linux-gnu"; fi && \
     wget https://github.com/jqnatividad/qsv/releases/download/0.134.0/qsv-0.134.0-$QSV_ARCH.zip && \

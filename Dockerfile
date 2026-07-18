@@ -25,7 +25,7 @@ COPY --from=1password/op:2 /usr/local/bin/op /usr/local/bin/op
 
 # Install jq for JSON parsing in entrypoint.sh and qsv for high-performance data indexing
 RUN apt-get update && \
-    apt-get install -y jq wget unzip --no-install-recommends && \
+    apt-get install -y git jq wget unzip --no-install-recommends && \
     export ARCH=$(uname -m) && \
     if [ "$ARCH" = "x86_64" ]; then QSV_ARCH="x86_64-unknown-linux-gnu"; elif [ "$ARCH" = "aarch64" ]; then QSV_ARCH="aarch64-unknown-linux-gnu"; fi && \
     wget https://github.com/jqnatividad/qsv/releases/download/0.134.0/qsv-0.134.0-$QSV_ARCH.zip && \
