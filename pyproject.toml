@@ -47,7 +47,14 @@ dependencies = [
     "google-auth-httplib2",
     "google-auth-oauthlib",
     "phonenumbers",
+    # stations: typed file-path queue/WAL/index Protocols (strangler Phase 1).
+    # Path dep — not a cocli workspace member (stations decision 0005).
+    "stations",
 ]
+
+[tool.uv.sources]
+# Relative from this worktree (.gwt/commands) → repos/stations/python
+stations = { path = "../../../stations/python", editable = true }
 
 [project.scripts]
 cocli = "cocli.main:app"

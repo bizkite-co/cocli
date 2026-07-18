@@ -732,6 +732,7 @@ dependencies = [
     { name = "selectolax" },
     { name = "simple-term-menu" },
     { name = "simplekml" },
+    { name = "stations" },
     { name = "toml" },
     { name = "tomli" },
     { name = "tomli-w" },
@@ -875,6 +876,7 @@ requires-dist = [
     { name = "selectolax", specifier = ">=0.4.6" },
     { name = "simple-term-menu" },
     { name = "simplekml" },
+    { name = "stations", editable = "../../../stations/python" },
     { name = "textual", marker = "extra == 'full'", specifier = ">=6.4.0" },
     { name = "toml" },
     { name = "tomli" },
@@ -5845,6 +5847,22 @@ sdist = { url = "https://files.pythonhosted.org/packages/a7/a5/d6f429d43394057b6
 wheels = [
     { url = "https://files.pythonhosted.org/packages/be/72/2db2f49247d0a18b4f1bb9a5a39a0162869acf235f3a96418363947b3d46/starlette-0.48.0-py3-none-any.whl", hash = "sha256:0764ca97b097582558ecb498132ed0c7d942f233f365b86ba37770e026510659", size = 73736, upload-time = "2025-09-13T08:41:03.869Z" },
 ]
+
+[[package]]
+name = "stations"
+version = "0.1.0"
+source = { editable = "../../../stations/python" }
+dependencies = [
+    { name = "typing-extensions", marker = "python_full_version < '3.11'" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "mypy", marker = "extra == 'dev'", specifier = ">=1.0" },
+    { name = "pytest", marker = "extra == 'dev'", specifier = ">=7.0" },
+    { name = "typing-extensions", marker = "python_full_version < '3.11'", specifier = ">=4.0" },
+]
+provides-extras = ["dev"]
 
 [[package]]
 name = "sympy"
