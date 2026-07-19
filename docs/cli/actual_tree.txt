@@ -510,6 +510,12 @@ cocli
             --workers (integer)
             --full (boolean)
             --force (boolean)
+    stations - Stations substrate tools (read-only inspect via the stations package).
+        inspect - Render a campaign station root via stations inspect (read-only).
+            queue (text)
+            --path (path)
+            --plain (boolean)
+            --no-leases (boolean)
     status - Displays the current status of the cocli environment and campaign metrics.
         --campaign (text)
         --refresh/-r (boolean)

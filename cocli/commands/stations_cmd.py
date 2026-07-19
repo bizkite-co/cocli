@@ -40,16 +40,6 @@ def inspect_stations(
     ),
 ) -> None:
     """Render a campaign station root via stations inspect (read-only)."""
-    try:
-        from stations.inspect import inspect_and_render
-    except ImportError as exc:
-        logger.error(
-            "stations package not installed (%s). "
-            "Install the pinned stations dependency (see pyproject.toml).",
-            exc,
-        )
-        raise typer.Exit(1) from exc
-
     if path is not None:
         root = path.expanduser().resolve()
     else:
@@ -70,6 +60,17 @@ def inspect_stations(
     if not root.exists():
         logger.error("station root does not exist: %s", root)
         raise typer.Exit(2)
+
+    try:
+        from stations.inspect import inspect_and_render
+    except ImportError as exc:
+        logger.error(
+            "stations package too old or missing inspect (%s). "
+            "Bump with: uv lock --upgrade-package stations "
+            "(requires stations >= 0.2.0 / decision 0008).",
+            exc,
+        )
+        raise typer.Exit(1) from exc
 
     logger.info("inspecting stations root: %s", root)
     inspect_and_render(
