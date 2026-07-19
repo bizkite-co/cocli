@@ -119,6 +119,8 @@ borrowing from Burr: the `@action(reads=, writes=)` decorator ergonomics (→ ou
 `@transform(from_station=, to_station=)`), builder-validated graph assembly, and the lesson that
 their telemetry UI — not their state machine — is what users praise most. Our states-as-
 directories substrate makes an inspector nearly free; build it.
+Normative home for that decision (and the shipped decorator + `stations inspect` CLI):
+stations repo `decisions/0008-burr-telemetry-and-transform-ergonomics.md`.
 
 **Dagster** has the closest *concept* (software-defined assets: typed, lineage-tracked,
 materialized), and its asset/IO-manager split is worth studying for API shape. But it requires

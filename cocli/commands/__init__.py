@@ -34,6 +34,7 @@ def register_commands(app: typer.Typer) -> None:
     from . import infrastructure
     from . import index
     from . import cluster
+    from . import stations_cmd
 
     app.command(name="add", no_args_is_help=True)(add.add)
     app.command(name="add-email", no_args_is_help=True)(add_email.add_email)
@@ -77,6 +78,7 @@ def register_commands(app: typer.Typer) -> None:
     app.add_typer(infrastructure.app, name="infrastructure")
     app.add_typer(index.app, name="index")
     app.add_typer(cluster.app, name="cluster")
+    app.add_typer(stations_cmd.app, name="stations")
     try:
         from . import video
         app.add_typer(video.app, name="video")
