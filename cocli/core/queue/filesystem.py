@@ -4,7 +4,6 @@ import logging
 from typing import List, Type, TypeVar, Any, Optional, Union, Dict
 from pathlib import Path
 from datetime import datetime, timedelta, UTC
-from botocore.exceptions import ClientError
 
 from ...models.campaigns.queues.gm_list import ScrapeTask
 from ...models.campaigns.queues.gm_details import GmItemTask
@@ -207,68 +206,110 @@ class FilesystemQueue:
         except Exception as e:
             logger.error(f"Error dead-lettering {task_id}: {e}")
 
-    def _create_lease(self, task_id: str) -> bool:
-        """Attempts to create an atomic lease (Local O_EXCL or S3 Conditional)."""
+    def _lease_payload(self) -> dict[str, Any]:
         now = datetime.now(UTC)
-        lease_data = {
+        return {
             "worker_id": self.worker_id,
             "created_at": now.isoformat(),
             "heartbeat_at": now.isoformat(),
             "expires_at": (now + timedelta(minutes=self.lease_duration)).isoformat(),
         }
 
+    def _lease_is_reclaimable(self, lease_bytes: bytes) -> bool:
+        """Product reclaim predicate: expires_at or stale heartbeat (C3 uses CAS)."""
+        try:
+            data = json.loads(lease_bytes.decode("utf-8"))
+        except (UnicodeDecodeError, json.JSONDecodeError, AttributeError):
+            return False
+        if not isinstance(data, dict):
+            return False
+        now = datetime.now(UTC)
+
+        exp_raw = data.get("expires_at")
+        if isinstance(exp_raw, str):
+            try:
+                expires_at = datetime.fromisoformat(exp_raw.replace("Z", "+00:00"))
+                if expires_at.tzinfo is None:
+                    expires_at = expires_at.replace(tzinfo=UTC)
+                if now > expires_at:
+                    return True
+            except ValueError:
+                pass
+
+        hb_raw = data.get("heartbeat_at")
+        if isinstance(hb_raw, str):
+            try:
+                heartbeat_at = datetime.fromisoformat(hb_raw.replace("Z", "+00:00"))
+                if heartbeat_at.tzinfo is None:
+                    heartbeat_at = heartbeat_at.replace(tzinfo=UTC)
+                if (now - heartbeat_at).total_seconds() > (self.stale_heartbeat * 60):
+                    return True
+            except ValueError:
+                pass
+        return False
+
+    def _local_path_backend(self) -> Any:
+        from stations.backends import LocalPathBackend
+
+        # Absolute lease paths — no root sandbox (queue dirs already under data home)
+        return LocalPathBackend()
+
+    def _s3_path_backend(self) -> Any:
+        from stations.backends import S3PathBackend
+
+        assert self.s3_client is not None and self.bucket_name is not None
+        return S3PathBackend(bucket=self.bucket_name, client=self.s3_client)
+
+    def _create_lease(self, task_id: str) -> bool:
+        """Atomic lease via stations PathBackend (create-if-absent, CAS reclaim)."""
+        from stations.backends import acquire_lease
+
+        lease_data = self._lease_payload()
+        lease_bytes = json.dumps(lease_data).encode("utf-8")
+        now = datetime.now(UTC)
         success = False
         tried_s3 = False
-        # 1. Try S3 Conditional Write (Global Atomic)
+
+        # 1. S3 claim/reclaim (global atomic) through stations.backends
         if self.s3_client and self.bucket_name:
             tried_s3 = True
             s3_key = self._get_s3_lease_key(task_id)
             try:
-                self.s3_client.put_object(
-                    Bucket=self.bucket_name,
-                    Key=s3_key,
-                    Body=json.dumps(lease_data),
-                    IfNoneMatch="*",  # Atomic creation
-                    # Store owner info in metadata for fast HEAD checks
-                    Metadata={
-                        "worker-id": self.worker_id,
-                        "heartbeat-at": now.isoformat(),
-                    },
-                    ContentType="application/json",
+                success = acquire_lease(
+                    self._s3_path_backend(),
+                    s3_key,
+                    lease_bytes,
+                    is_expired=self._lease_is_reclaimable,
                 )
-                logger.debug(f"Worker {self.worker_id} acquired S3 lease for {task_id}")
-
-                # Also create local lease
-                self._create_local_lease(task_id, lease_data)
-                success = True
-            except ClientError as e:
-                if e.response["Error"]["Code"] in ["PreconditionFailed", "412"]:
-                    # Lease exists, check if stale
-                    success = self._reclaim_stale_s3_lease(task_id)
-                else:
-                    logger.error(f"S3 Lease Error for {task_id}: {e}")
-                    success = False
+                if success:
+                    logger.debug(
+                        f"Worker {self.worker_id} acquired S3 lease for {task_id}"
+                    )
+                    # Mirror local lease for local workers (layout unchanged)
+                    self._create_local_lease(task_id, lease_data)
             except Exception as e:
-                # Fallback
-                if "IfNoneMatch" in str(e):
+                if "IfNoneMatch" in str(e) or "IfMatch" in str(e):
                     logger.warning(
-                        "S3 Conditional Write not supported. Falling back to local."
+                        "S3 conditional write unsupported; falling back to local: %s",
+                        e,
                     )
                     tried_s3 = False
                 else:
-                    logger.error(f"Unexpected S3 error: {e}")
+                    logger.error(f"S3 Lease Error for {task_id}: {e}")
+                    success = False
 
-        # 2. Fallback to Local Lease
+        # 2. Local claim/reclaim through stations.backends
         if not tried_s3 and not success:
             success = self._create_local_lease(task_id, lease_data)
 
         if success:
-            # Broadcast lease claim via Gossip
             try:
                 from ..gossip_bridge import bridge
+
                 if bridge and bridge.running:
                     from ...models.wal.record import QueueDatagram
                     from ..environment import get_environment
+
                     datagram = QueueDatagram(
                         campaign_name=self.campaign_name,
                         queue_name=self.queue_name,
@@ -285,90 +326,24 @@ class FilesystemQueue:
 
         return success
 
-    def _reclaim_stale_s3_lease(self, task_id: str) -> bool:
-        """Checks if S3 lease is stale and attempts to reclaim it."""
-        s3_key = self._get_s3_lease_key(task_id)
-        try:
-            # Efficiently check metadata without body
-            response = self.s3_client.head_object(Bucket=self.bucket_name, Key=s3_key)
-            metadata = response.get("Metadata", {})
-
-            hb_str = metadata.get("heartbeat-at")
-            if not hb_str:
-                # Fallback to body if metadata missing (legacy leases)
-                response = self.s3_client.get_object(
-                    Bucket=self.bucket_name, Key=s3_key
-                )
-                data = json.loads(response["Body"].read())
-                hb_str = data.get("heartbeat_at")
-
-            if hb_str:
-                heartbeat_at = datetime.fromisoformat(hb_str).replace(tzinfo=UTC)
-                now = datetime.now(UTC)
-
-                if (now - heartbeat_at).total_seconds() > (self.stale_heartbeat * 60):
-                    logger.warning(
-                        f"Reclaiming stale S3 lease for {task_id} (Worker: {metadata.get('worker-id')})"
-                    )
-                    # Atomic delete before reclaim
-                    self.s3_client.delete_object(Bucket=self.bucket_name, Key=s3_key)
-                    return self._create_lease(task_id)
-        except Exception as e:
-            logger.error(f"Error reclaiming S3 lease for {task_id}: {e}")
-        return False
-
     def _create_local_lease(self, task_id: str, lease_data: dict[str, Any]) -> bool:
+        """Local lease via stations LocalPathBackend (O_EXCL + CAS reclaim, C3)."""
+        from stations.backends import acquire_lease
+
         task_dir = self._get_task_dir(task_id)
         task_dir.mkdir(parents=True, exist_ok=True)
-        lease_path = task_dir / "lease.json"
-
+        lease_path = str(self._get_lease_path(task_id))
+        lease_bytes = json.dumps(lease_data).encode("utf-8")
         try:
-            fd = os.open(lease_path, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
-            with os.fdopen(fd, "w") as f:
-                json.dump(lease_data, f)
-            return True
-        except FileExistsError:
-            return self._reclaim_stale_local_lease(task_id)
+            return acquire_lease(
+                self._local_path_backend(),
+                lease_path,
+                lease_bytes,
+                is_expired=self._lease_is_reclaimable,
+            )
         except Exception as e:
             logger.error(f"Error creating local lease for {task_id}: {e}")
             return False
-
-    def _reclaim_stale_local_lease(self, task_id: str) -> bool:
-        # Renamed from _reclaim_stale_lease to avoid confusion
-        lease_path = self._get_lease_path(task_id)
-        try:
-            with open(lease_path, "r") as f:
-                data = json.load(f)
-
-            heartbeat_at = datetime.fromisoformat(data["heartbeat_at"])
-            expires_at = datetime.fromisoformat(data["expires_at"])
-
-            # Ensure they are aware
-            if heartbeat_at.tzinfo is None:
-                heartbeat_at = heartbeat_at.replace(tzinfo=UTC)
-            if expires_at.tzinfo is None:
-                expires_at = expires_at.replace(tzinfo=UTC)
-
-            now = datetime.now(UTC)
-
-            is_expired = now > expires_at
-            is_stale = (now - heartbeat_at).total_seconds() > (
-                self.stale_heartbeat * 60
-            )
-
-            if is_expired or is_stale:
-                logger.warning(
-                    f"Reclaiming stale/expired lease for {task_id} (Worker: {data.get('worker_id')})"
-                )
-                try:
-                    lease_path.unlink()
-                    return self._create_lease(task_id)
-                except FileNotFoundError:
-                    return False
-        except Exception as e:
-            logger.error(f"Error checking stale lease for {task_id}: {e}")
-
-        return False
 
     def push(self, task_id: str, payload: dict[str, Any]) -> str:
         """Writes a task to the pending directory."""
