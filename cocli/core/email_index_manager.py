@@ -14,6 +14,7 @@ class EmailIndexManager:
     Architecture:
     - inbox/shard/email.usv (Hot layer, atomic writes)
     - shards/shard.usv (Cold layer, compacted)
+    - CURRENT + checkpoint.* (stations Compactor commit pointer; Phase 3)
     """
     def __init__(self, campaign_name: str):
         self.campaign_name = campaign_name
@@ -123,9 +124,29 @@ class EmailIndexManager:
     def compact(self) -> None:
         """
         Merges all inbox files into the deterministic shards.
+
+        Phase 3: stations DefaultCompactor commits CURRENT + checkpoint first
+        (PHYSICAL-CONTRACT §6), then legacy shards/ are refreshed for DuckDB.
         """
         logger.info(f"Starting email index compaction for {self.campaign_name}...")
-        
+
+        try:
+            from cocli.core.stations_runtime import compact_email_index_stations_only
+
+            stations_ok = compact_email_index_stations_only(
+                self, compactor_id=f"email-{self.campaign_name}"
+            )
+            logger.info(
+                "stations Compactor email cycle committed=%s campaign=%s",
+                stations_ok,
+                self.campaign_name,
+            )
+        except Exception as exc:
+            logger.warning(
+                "stations email compact skipped/failed (%s); continuing legacy fold",
+                exc,
+            )
+
         # 1. Load everything currently in the index (Inbox + Shards)
         all_entries = self.query()
         if not all_entries:
@@ -152,5 +173,5 @@ class EmailIndexManager:
         if self.inbox_dir.exists():
             shutil.rmtree(self.inbox_dir)
             self.inbox_dir.mkdir(parents=True, exist_ok=True)
-        
+
         logger.info("Email compaction complete.")
