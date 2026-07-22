@@ -567,8 +567,16 @@ class BaseUsvModel(BaseModel):
             except Exception as e:
                 logger.error(f"Error validating schema against {sentinel_path}: {e}")
 
-        with open(sentinel_path, "w") as f:
-            json.dump(new_schema, f, indent=2)
+        # Sole physical write path: stations schema API (decision 0007 §3 / P1).
+        # force=True after product validation above (append-only / SchemaConflictError).
+        from stations.schema import write_schema_sidecar
+
+        write_schema_sidecar(
+            path,
+            new_schema,
+            force=True,
+            protect=True,
+        )
 
     @classmethod
     def append_resource_to_datapackage(
@@ -609,8 +617,9 @@ class BaseUsvModel(BaseModel):
         dp.setdefault("cocli:schema_hash", {})[resource_name] = new_hash
         dp.setdefault("cocli:schema_updated_at", getattr(cls, "SCHEMA_UPDATED_AT", ""))
 
-        with open(sentinel, "w") as f:
-            json.dump(dp, f, indent=2)
+        from stations.schema import write_schema_sidecar
+
+        write_schema_sidecar(directory, dp, force=True, protect=True)
 
         logger.info(
             f"Appended resource '{resource_name}' (hash {new_hash[:8]}) to {sentinel}"

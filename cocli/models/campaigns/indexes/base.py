@@ -1,4 +1,3 @@
-import json
 from pathlib import Path
 from typing import List, Dict, Optional, ClassVar
 from ...base import BaseUsvModel
@@ -97,6 +96,8 @@ class BaseIndexModel(BaseUsvModel):
             ]
         }
         
-        with open(output_path, 'w') as f:
-            json.dump(schema, f, indent=2)
+        # Sole physical write path: stations schema API (decision 0007 §3).
+        from stations.schema import write_schema_sidecar
+
+        write_schema_sidecar(index_dir, schema, force=True, protect=True)
         return output_path
