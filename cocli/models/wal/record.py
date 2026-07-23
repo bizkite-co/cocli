@@ -6,6 +6,12 @@ US = "\x1f"  # Unit Separator
 RS = "\x1e"  # Record Separator
 
 class DatagramRecord(BaseModel):
+    """One field-update log fact (stations decision 0009).
+
+    Whole typed record in an append-only journal — not an in-place entity patch.
+    See ``cocli.core.wal`` module docstring.
+    """
+
     timestamp: str
     node_id: str
     campaign_name: str

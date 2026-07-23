@@ -3,6 +3,12 @@
 ## Overview
 This document describes the **Tiered Distributed Data Paradigm** implemented in `cocli`. This system handles high-availability scraping and real-time coordination across a heterogeneous cluster (Raspberry Pi nodes, cloud workers, and laptop hubs) while ensuring eventual consistency via S3.
 
+**Stations disposition (2026-07-23):** Concurrent field updates (e.g. one user sets
+company `phone`, another sets `address`) are **first-class stations log facts** —
+decision [0009](https://github.com/bizkite-co/stations/blob/main/decisions/0009-field-update-records-as-log-facts.md).
+Product code: `cocli/core/wal.py` (document-and-keep until LogEdge + Compactor cutover).
+This is *not* the same instance as campaign index WALs (`docs/wal-strategy.md`).
+
 ## 1. The Tiered Strategy
 
 The system prioritizes local, sub-second coordination while maintaining a durable, consolidated cloud record.
