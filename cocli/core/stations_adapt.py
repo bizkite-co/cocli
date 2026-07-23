@@ -1,9 +1,12 @@
-"""Phase 1 structural adapters: cocli queue/compactor types → stations.protocols.
+"""Structural adapters: cocli queue/compactor types → stations.protocols.
 
-No behavior change and no on-disk format change (stations decision 0006 Phase 1).
 Existing cocli types keep ``push/poll/ack/nack`` and product compact APIs; these
 shims present the stations vocabulary (``enqueue/claim/complete``,
 ``compact_once``) so mypy can verify conformance against ``stations.protocols``.
+
+Claim/lease CAS is owned by ``stations.backends`` (Phase 2); product queues
+call ``acquire_lease`` directly. QueueEdge adapters here only map vocabulary
+and do not reimplement storage CAS.
 
 Do **not** add a parallel protocol zoo here — Protocols live in ``stations``.
 """
@@ -14,6 +17,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from typing import Any, Callable, Generic, Optional, Sequence, Tuple, Type, TypeVar
 
+from stations.backends import LocalPathBackend
 from stations.protocols import (
     Compactor,
     Fold,
@@ -34,7 +38,7 @@ T_out = TypeVar("T_out")
 
 
 # ---------------------------------------------------------------------------
-# Minimal Station / Lease / PathBackend carriers for shims
+# Minimal Station / Lease carriers for shims
 # ---------------------------------------------------------------------------
 
 
@@ -65,38 +69,6 @@ class SimpleLease:
     item_id: str
 
 
-class UnwiredPathBackend:
-    """Placeholder PathBackend until stations backends land (Phase 2).
-
-    Satisfies the Protocol for typing; methods raise if called so Phase 1
-    cannot accidentally pretend storage is wired.
-    """
-
-    def exists(self, path: str) -> bool:
-        raise NotImplementedError("stations PathBackend not wired (Phase 1 types only)")
-
-    def read_bytes(self, path: str) -> bytes:
-        raise NotImplementedError("stations PathBackend not wired (Phase 1 types only)")
-
-    def write_atomic(self, path: str, data: bytes) -> None:
-        raise NotImplementedError("stations PathBackend not wired (Phase 1 types only)")
-
-    def list(self, prefix: str) -> Any:
-        raise NotImplementedError("stations PathBackend not wired (Phase 1 types only)")
-        yield  # pragma: no cover — makes this a generator type for Iterator[str]
-
-    def delete(self, path: str) -> None:
-        raise NotImplementedError("stations PathBackend not wired (Phase 1 types only)")
-
-    def create_if_absent(self, path: str, data: bytes) -> bool:
-        raise NotImplementedError("stations PathBackend not wired (Phase 1 types only)")
-
-    def replace_if_match(
-        self, path: str, data: bytes, *, etag: Optional[str]
-    ) -> bool:
-        raise NotImplementedError("stations PathBackend not wired (Phase 1 types only)")
-
-
 # ---------------------------------------------------------------------------
 # Queue: CampaignQueueProtocol (push/poll/ack/nack) → QueueEdge
 # ---------------------------------------------------------------------------
@@ -115,11 +87,13 @@ class CampaignQueueAsQueueEdge(Generic[T]):
     """Adapt cocli ``CampaignQueueProtocol`` to stations ``QueueEdge``.
 
     Maps: enqueue←push, claim←poll, complete←ack, fail←nack.
+    Storage CAS stays on the product queue (stations PathBackend); this edge
+    only adapts the API surface for TransformEngine.
     """
 
     queue: CampaignQueueProtocol[T]
     station: Station[T]
-    backend: PathBackend = field(default_factory=UnwiredPathBackend)
+    backend: PathBackend = field(default_factory=LocalPathBackend)
     _open_leases: dict[str, SimpleLease] = field(default_factory=dict)
 
     def enqueue(self, item: T) -> str:
@@ -185,7 +159,7 @@ def as_queue_edge(
         serialization="json-file",
     )
     edge: QueueEdge[T] = CampaignQueueAsQueueEdge(
-        queue=queue, station=station, backend=UnwiredPathBackend()
+        queue=queue, station=station, backend=LocalPathBackend()
     )
     return edge
 

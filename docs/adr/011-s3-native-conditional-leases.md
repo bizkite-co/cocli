@@ -1,7 +1,13 @@
 # ADR 011: S3-Native Conditional Leases for DFQ
 
+> **Historical (stations strangler Phase 4, decision 0006).** S3
+> `If-None-Match` / `If-Match` claim semantics are now specified in
+> `stations/spec/CONCURRENCY.md` and implemented by `stations.backends.S3PathBackend`.
+> cocli `FilesystemQueue` calls `stations.backends.acquire_lease` rather than
+> owning a parallel CAS path.
+
 ## Status
-Implemented (2026-01-13)
+Historical — implemented in cocli; normative spec is stations (2026-01-13 origin)
 
 ## Context
 Our initial Distributed Filesystem Queue (DFQ) design relied on local atomic file operations (`os.O_EXCL`) and periodic S3 synchronization via the `supervisor`. 

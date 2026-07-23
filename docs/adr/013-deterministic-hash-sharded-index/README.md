@@ -1,7 +1,12 @@
 # ADR 013: Deterministic Hash-Sharded Index (DHSI)
 
+> **Historical (stations strangler Phase 4, decision 0006).** Hash-sharded path
+> grammar and product index managers remain cocli; stations `spec/` is normative
+> for compaction CURRENT/watermark and claim concurrency. See stations decision
+> 0006 Phase 4: ADRs 010–013 stay as history, not the living contract.
+
 ## Status
-Proposed
+Historical — product layout still in use; normative compaction/claim is stations
 
 ## Context
 The current **Distributed Filesystem Index (DFI)** (ADR 012) utilizes a "Manifest-Pointer" architecture where a central USV manifest maps every individual domain to its corresponding shard. 

@@ -15,9 +15,10 @@ logger = logging.getLogger(__name__)
 
 
 # FilesystemTileQueue is the one genuine oddball: no poll(), push() takes a
-# Path (not a task), and claiming is done via claim_tile() instead of
-# ack()/nack(). It does not (and should not) satisfy CampaignQueueProtocol,
-# so it gets its own overload rather than joining the shared union below.
+# Path (not a task), and workers move files pending→processing (dev/staging
+# helpers) rather than CampaignQueueProtocol ack()/nack(). It does not (and
+# should not) satisfy CampaignQueueProtocol, so it gets its own overload
+# rather than joining the shared union below.
 # mypy flags these two overloads as "overlapping" because queue_type: str in
 # the second overload technically accepts the tile literals too — but overload
 # resolution always tries this (keyword-only, more specific) one first, so

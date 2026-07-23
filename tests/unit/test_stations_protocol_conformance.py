@@ -5,11 +5,11 @@ from __future__ import annotations
 from typing import Any, List
 from unittest.mock import MagicMock
 
+from stations.backends import LocalPathBackend
 from stations.protocols import Compactor, QueueEdge, Transform
 
 from cocli.core.stations_adapt import (
     SimpleStation,
-    UnwiredPathBackend,
     accept_compactor,
     accept_path_backend,
     accept_queue_edge,
@@ -57,8 +57,9 @@ class _FakeQueue:
         self.nacked.append(task)
 
 
-def test_unwired_backend_is_path_backend() -> None:
-    backend = accept_path_backend(UnwiredPathBackend())
+def test_stations_local_backend_is_path_backend() -> None:
+    """Phase 4: PathBackend comes from stations (not a cocli Unwired placeholder)."""
+    backend = accept_path_backend(LocalPathBackend())
     assert backend is not None
 
 

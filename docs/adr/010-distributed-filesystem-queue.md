@@ -1,8 +1,12 @@
 # ADR 010: Distributed Filesystem Queue (DFQ)
 
-## Status
-Implemented
+> **Historical (stations strangler Phase 4, decision 0006).** On-disk layout and
+> cocli product APIs remain; normative claim/lease CAS and path-queue contracts
+> live in `stations/spec/` (PHYSICAL-CONTRACT, CONCURRENCY). Implementation of
+> atomic create-if-absent / CAS reclaim is `stations.backends`, not this ADR.
 
+## Status
+Historical — implemented in cocli; normative spec is stations
 ## Context
 We are currently using AWS SQS for distributing scrape and enrichment tasks. While effective, SQS introduces external dependencies, cost, and complexity in a distributed local cluster (Raspberry Pis). Since we already have a robust S3-synced filesystem index, we can leverage it to act as a queue.
 

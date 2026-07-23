@@ -1,6 +1,10 @@
 # ADR 010: Distributed Filesystem Queue (DFQ) - Technical Index
 
-This directory serves as the living documentation for the **Distributed Filesystem Queue (DFQ)**, a "zero-cost" task distribution system that leverages S3-synchronized storage and native S3 atomic operations.
+> **Historical (stations strangler Phase 4, decision 0006).** Product path layouts
+> and lifecycle notes below remain useful archaeology. Normative concurrency and
+> physical contracts: `stations/spec/`. Claim CAS: `stations.backends`.
+
+This directory documents the **Distributed Filesystem Queue (DFQ)**, a "zero-cost" task distribution system that leverages S3-synchronized storage and native S3 atomic operations.
 
 ## Architecture Evolution
 

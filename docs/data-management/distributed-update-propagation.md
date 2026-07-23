@@ -85,7 +85,7 @@ Worker A and Worker B both find different `website_url` values for the same comp
 ### Scenario C: Laptop Catch-up
 The laptop has been offline for 4 hours while the Pi cluster continued working.
 1. **Sync**: Laptop runs `aws s3 sync s3://{bucket}/wal/ data/wal/`.
-2. **Replay**: Laptop runs `compact_all_companies()`. 
+2. **Replay**: Laptop replays company WAL updates into entity files (historical note: `compact_all_companies` / `compact_wal.py` removed in stations strangler Phase 4; use product save/load paths).
 3. **Reconnect**: Laptop rejoins the Gossip Bridge and starts receiving real-time updates again.
 
 ---

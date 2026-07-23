@@ -3,6 +3,11 @@
 > [!CAUTION]
 > **SUPERSEDED**: This ADR has been superseded by **[ADR 013: Deterministic Hash-Sharded Index](../013-deterministic-hash-sharded-index/README.md)**.
 > The Manifest-Pointer architecture was found to be a bottleneck at scale and is being replaced by a deterministic sharding model.
+>
+> **Historical (stations strangler Phase 4, decision 0006).** Index compaction /
+> CURRENT commit contracts are normative in `stations/spec/` (PHYSICAL-CONTRACT §6,
+> CONCURRENCY six-step Compactor). Product cocli managers may still refresh
+> DuckDB-facing shards; stations owns the CAS CURRENT path.
 
 This directory documents the **Distributed Filesystem Index (DFI)**, a high-concurrency storage system for domain and company metadata that mirrors the "zero-cost" architectural principles of the [Distributed Filesystem Queue (ADR 010)](../010-distributed-filesystem-queue/README.md).
 
