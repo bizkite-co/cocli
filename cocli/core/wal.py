@@ -10,47 +10,34 @@ Two writers often update the *same entity* for different reasons — e.g. one se
 the other field. The protocol is:
 
 1. **Append** an immutable field-update fact (target + field + value + timestamp).
-2. **Read/fold** facts onto the entity base (LWW per field on load today).
-3. **Later:** compact into a whole present snapshot and retire journal segments.
+2. **Read/fold** facts onto the entity base (LWW per field).
+3. **Compact** folds the journal and writes whole entity snapshots
+   (:func:`cocli.core.entity_field_log.compact_entity_field_journal`).
 
-That is the stations trichotomy (log → fold → index/entity present state), with
-payload kind = field-update. Canonical example and rules:
-`stations/decisions/0009-field-update-records-as-log-facts.md`.
+That is the stations trichotomy (log → fold → present state), with payload kind
+= field-update. Canonical example and rules:
+``stations/decisions/0009-field-update-records-as-log-facts.md``.
 
-## What this is / is not
+## Stations wiring
 
-| This journal | Campaign index WAL (prospects, emails, …) |
-| :--- | :--- |
-| Field patches → company (etc.) entity state | Whole domain rows → index CURRENT/checkpoint |
-| ``paths.wal`` / ``DatagramRecord`` | ``indexes/.../wal`` or ``inbox/`` |
-| Stations-shaped; **wiring to LogEdge/Compactor is a follow-on** | Active strangler cutover surface |
-
-Transforms still do **not** in-place patch living files (GLOSSARY § Transform).
-Patches are whole *log records*; the folded entity is a whole *present* record.
+``append_update`` / ``read_updates`` go through
+:class:`cocli.core.entity_field_log.EntityFieldLogEdge` (implements stations
+``LogEdge``). On-disk Shape A segments (``{date}_{node}.usv``) are unchanged.
 
 ## Layout
 
-- Journal segments: ``paths.wal_journal(node_id)`` — Shape A style
-  (period + writer id), append-only.
+- Journal segments: ``paths.wal_journal(node_id)`` — Shape A, append-only.
 - Entity identity: ``paths.wal_target_id(target_dir)`` (e.g. companies/slug).
-- Apply path today: ``Company.from_directory`` calls :func:`read_updates` and
-  merges fields over YAML frontmatter.
+- Apply on load: ``Company.from_directory`` calls :func:`read_updates`.
+- Compact: :func:`cocli.core.entity_field_log.compact_entity_field_journal`.
 
 ## Further docs
 
 - stations decision **0009** (normative): field-update records as log facts
-- stations [GLOSSARY](https://github.com/bizkite-co/stations/blob/main/GLOSSARY.md)
-  trichotomy + Transform note pointing at 0009
-- stations [consumers/cocli.md](https://github.com/bizkite-co/stations/blob/main/consumers/cocli.md)
-- cocli ``docs/data-management/distributed-update-propagation.md`` (gossip + journal)
+- stations GLOSSARY trichotomy + Transform note pointing at 0009
+- stations consumers/cocli.md
+- cocli ``docs/data-management/distributed-update-propagation.md``
 - cocli ``docs/wal-strategy.md`` (campaign **index** WAL — different instance)
-
-## Implement follow-on
-
-Cut over this journal through ``stations`` ``LogEdge`` + fold/compactor for entity
-snapshots (see task-agent:
-``implement-stations-logedge-cutover-for-cocli-entity-field-journal-wal.py``).
-Until then: document-and-keep; do not delete as Phase-4 husk.
 """
 
 from __future__ import annotations
@@ -61,8 +48,9 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, List, Optional
 
-from ..models.wal.record import RS, DatagramRecord
-from .paths import paths
+from cocli.core.entity_field_log import open_entity_field_log
+from cocli.core.paths import paths
+from cocli.models.wal.record import DatagramRecord
 
 logger = logging.getLogger(__name__)
 
@@ -77,29 +65,23 @@ def append_update(
     value: Any,
     campaign_name: Optional[str] = None,
 ) -> None:
-    """Append one field-update fact to the centralized entity journal.
+    """Append one field-update fact via stations LogEdge (decision 0009).
 
-    The record is a whole typed log entry (stations decision 0009), not an
-    in-place edit of the entity file.
+    The record is a whole typed log entry, not an in-place edit of the entity file.
     """
-    from .config import get_campaign
+    from cocli.core.config import get_campaign
+    from cocli.core.environment import get_environment
 
     node_id = get_node_id()
-    wal_file = paths.wal_journal(node_id)
     target_id = paths.wal_target_id(target_dir)
-
-    # Infer campaign if not provided
     effective_campaign = campaign_name or get_campaign() or "unknown"
 
-    # Convert value to string representation (JSON if complex)
     if isinstance(value, (list, dict)):
         import json
 
         value_str = json.dumps(value)
     else:
         value_str = str(value)
-
-    from .environment import get_environment
 
     record = DatagramRecord(
         timestamp=datetime.now(UTC).isoformat(),
@@ -110,40 +92,16 @@ def append_update(
         field=field,
         value=value_str,
     )
-
-    # Ensure WAL directory exists
-    wal_file.parent.mkdir(parents=True, exist_ok=True)
-
-    with open(wal_file, "a") as f:
-        f.write(record.to_usv())
-
-    logger.info(f"WAL append: {field}={value_str} in {wal_file}")
+    open_entity_field_log().append(record)
 
 
 def read_updates(target_dir: Path) -> List[DatagramRecord]:
-    """Load all field-update facts for one entity from the centralized journal.
+    """Load field-update facts for one entity via stations LogEdge.
 
-    Callers fold onto base entity state (LWW by timestamp per field is the
-    current naive policy in ``Company.from_directory``).
+    Callers fold onto base entity state (e.g. ``Company.from_directory``).
     """
-    wal_dir = paths.wal
-    records: List[DatagramRecord] = []
-    if not wal_dir.exists():
-        return records
-
     target_id = paths.wal_target_id(target_dir)
-
-    for wal_file in sorted(wal_dir.glob("*.usv")):
-        try:
-            content = wal_file.read_text()
-            for raw_record in content.split(RS):
-                if raw_record.strip():
-                    record = DatagramRecord.from_usv(raw_record)
-                    if record.target == target_id:
-                        records.append(record)
-        except Exception as e:
-            logger.error(f"Error reading WAL file {wal_file}: {e}")
-
-    # Sort by timestamp (naive 'latest wins' for now)
+    edge = open_entity_field_log()
+    records = [r for r in edge.iter_beyond() if r.target == target_id]
     records.sort(key=lambda x: x.timestamp)
     return records

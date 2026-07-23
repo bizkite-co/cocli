@@ -250,3 +250,8 @@ def accept_path_backend(backend: PathBackend) -> PathBackend:
 def accept_station(station: Station[Any]) -> Station[Any]:
     """Type gate: argument must satisfy ``Station``."""
     return station
+
+
+def accept_log_edge(edge: LogEdge[Any]) -> LogEdge[Any]:
+    """Type gate: argument must satisfy ``LogEdge`` (e.g. entity field journal)."""
+    return edge

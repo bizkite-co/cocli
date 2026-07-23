@@ -227,23 +227,15 @@ class Company(BaseModel):
                         )
                         return None
 
-            # Apply WAL Updates on top of frontmatter
+            # Apply entity field journal (stations LogEdge / decision 0009)
+            from cocli.core.entity_field_log import apply_field_updates_to_mapping
             from cocli.core.wal import read_updates
 
             wal_records = read_updates(company_dir)
-            for record in wal_records:
-                # Naive merge: latest field value wins
-                try:
-                    import json
-
-                    # Try to parse as JSON for complex types
-                    if record.value.startswith("[") or record.value.startswith("{"):
-                        val = json.loads(record.value)
-                    else:
-                        val = record.value
-                    frontmatter_data[record.field] = val
-                except Exception:
-                    frontmatter_data[record.field] = record.value
+            if wal_records:
+                frontmatter_data = apply_field_updates_to_mapping(
+                    frontmatter_data, wal_records
+                )
 
             # Load tags from tags.lst (Source of Truth)
             tags = []
