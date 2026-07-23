@@ -81,6 +81,26 @@ class FilesystemQueue:
             or "unknown-worker"
         )
 
+    def count_state(self, state: Union[str, Any]) -> int:
+        """
+        Count tasks/records in a queue state directory.
+        Checks for valid data files (.usv and .json), ignoring metadata files.
+        """
+        state_str = str(state)
+        state_dir = self.queue_base / state_str
+        if not state_dir.exists():
+            return 0
+
+        total = 0
+        for root, _, files in os.walk(state_dir):
+            for f in files:
+                if f == "datapackage.json" or f.startswith("lease") or f.startswith("attempts"):
+                    continue
+                if f.endswith(".usv") or f.endswith(".json"):
+                    total += 1
+        return total
+
+
     def _get_shard(self, task_id: str) -> str:
         """Default sharding logic (PlaceID based). Overridden by subclasses."""
         return get_shard_id(task_id)

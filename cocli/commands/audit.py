@@ -471,21 +471,21 @@ def audit_scrape(
     if gm_list_queue.pending.exists():
         gm_list_claimed = len(list(gm_list_queue.pending.rglob("lease*.json")))
 
-    # Count enrichment pipeline queue states directly from filesystem
-    def _count_queue_state(queue_name: str, state: str) -> int:
-        """Count USV files in a queue state directory (recursive, excludes datapackage.json)."""
-        state_dir = paths.campaign(campaign_name).queue(queue_name) / state
-        if not state_dir.exists():
-            return 0
-        return sum(1 for f in state_dir.rglob("*.usv"))
+    # Count enrichment pipeline queue states via Queue abstractions
+    from cocli.core.queue.factory import get_queue_manager
+    from cocli.core.ordinant import QueueIdentity
 
-    gm_details_pending = _count_queue_state("gm-details", "pending")
-    gm_details_completed = _count_queue_state("gm-details", "completed")
-    gm_details_failed = _count_queue_state("gm-details", "failed")
+    gm_details_q = get_queue_manager(QueueIdentity.GM_DETAILS, queue_type="gm_list_item", campaign_name=campaign_name)
+    enrichment_q = get_queue_manager(QueueIdentity.ENRICHMENT, queue_type="enrichment", campaign_name=campaign_name)
 
-    enrichment_pending = _count_queue_state("enrichment", "pending")
-    enrichment_completed = _count_queue_state("enrichment", "completed")
-    enrichment_failed = _count_queue_state("enrichment", "failed")
+    gm_details_pending = gm_details_q.count_state("pending")
+    gm_details_completed = gm_details_q.count_state("completed")
+    gm_details_failed = gm_details_q.count_state("failed")
+
+    enrichment_pending = enrichment_q.count_state("pending")
+    enrichment_completed = enrichment_q.count_state("completed")
+    enrichment_failed = enrichment_q.count_state("failed")
+
 
     # Build report dict
     report: dict[str, Any] = {

@@ -454,38 +454,111 @@ class WorkerService:
 
     async def run_worker(self, headless: bool, debug: bool, once: bool = False, workers: int = 1, role: str = "full") -> None:
         self.role = role
-        async with async_playwright() as p:
-            browser = await self._launch_browser(p, headless)
-            s3_client = self.get_s3_client()
-            details_q = get_queue_manager("details", use_cloud=True, queue_type="gm_list_item", campaign_name=self.campaign_name, s3_client=s3_client)
-            tasks = [self._run_scrape_task_loop(browser, details_q, s3_client, debug, once, headless, workers) for _ in range(workers)]
-            await asyncio.gather(*tasks)
-            await browser.close()
+        max_session_duration_s = 4 * 3600  # Recycle Playwright browser every 4 hours to prevent RAM leaks
+        while self._running or not once:
+            session_start = time.time()
+            try:
+                async with async_playwright() as p:
+                    browser = await self._launch_browser(p, headless)
+                    s3_client = self.get_s3_client()
+                    details_q = get_queue_manager("details", use_cloud=True, queue_type="gm_list_item", campaign_name=self.campaign_name, s3_client=s3_client)
+                    coros = [self._run_scrape_task_loop(browser, details_q, s3_client, debug, once, headless, workers) for _ in range(workers)]
+                    tasks: List[asyncio.Task[Any]] = [asyncio.create_task(c) for c in coros]
+                    
+                    # Run until workers finish or max session duration reached
+                    while time.time() - session_start < max_session_duration_s:
+                        done, pending = await asyncio.wait(tasks, timeout=30, return_when=asyncio.FIRST_EXCEPTION)
+                        if once:
+                            break
+                        # Check if any task crashed
+                        for t in done:
+                            if t.exception():
+                                logger.error(f"Scrape worker task crashed: {t.exception()}")
+                        if any(t.done() for t in tasks):
+                            break
+
+                    for t in tasks:
+                        if not t.done():
+                            t.cancel()
+                    await browser.close()
+            except Exception as e:
+                logger.error(f"Browser session crash in run_worker: {e}")
+
+            if once:
+                break
+            logger.info("Recycling Playwright browser session for fresh memory footprint...")
+            await asyncio.sleep(5)
 
     async def run_details_worker(self, headless: bool, debug: bool, once: bool = False, workers: int = 1, role: str = "full") -> None:
         self.role = role
-        async with async_playwright() as p:
-            browser = await self._launch_browser(p, headless)
-            context = await browser.new_context(user_agent=USER_AGENT, extra_http_headers=ANTI_BOT_HEADERS)
-            await setup_optimized_context(context)
-            s3_client = self.get_s3_client()
-            details_q = get_queue_manager("details", use_cloud=True, queue_type="gm_list_item", campaign_name=self.campaign_name, s3_client=s3_client)
-            enrich_q = get_queue_manager("enrichment", use_cloud=True, queue_type="enrichment", campaign_name=self.campaign_name, s3_client=s3_client)
-            tasks = [self._run_details_task_loop(context, details_q, enrich_q, s3_client, debug, once) for _ in range(workers)]
-            await asyncio.gather(*tasks)
-            await browser.close()
+        max_session_duration_s = 4 * 3600
+        while self._running or not once:
+            session_start = time.time()
+            try:
+                async with async_playwright() as p:
+                    browser = await self._launch_browser(p, headless)
+                    context = await browser.new_context(user_agent=USER_AGENT, extra_http_headers=ANTI_BOT_HEADERS)
+                    await setup_optimized_context(context)
+                    s3_client = self.get_s3_client()
+                    details_q = get_queue_manager("details", use_cloud=True, queue_type="gm_list_item", campaign_name=self.campaign_name, s3_client=s3_client)
+                    enrich_q = get_queue_manager("enrichment", use_cloud=True, queue_type="enrichment", campaign_name=self.campaign_name, s3_client=s3_client)
+                    coros = [self._run_details_task_loop(context, details_q, enrich_q, s3_client, debug, once) for _ in range(workers)]
+                    tasks: List[asyncio.Task[Any]] = [asyncio.create_task(c) for c in coros]
+                    
+                    while time.time() - session_start < max_session_duration_s:
+                        done, pending = await asyncio.wait(tasks, timeout=30, return_when=asyncio.FIRST_EXCEPTION)
+                        if once:
+                            break
+                        if any(t.done() for t in tasks):
+                            break
+
+                    for t in tasks:
+                        if not t.done():
+                            t.cancel()
+                    await browser.close()
+            except Exception as e:
+                logger.error(f"Browser session crash in run_details_worker: {e}")
+
+            if once:
+                break
+            logger.info("Recycling Playwright details browser session for fresh memory footprint...")
+            await asyncio.sleep(5)
 
     async def run_enrichment_worker(self, headless: bool, debug: bool, once: bool = False, workers: int = 1) -> None:
-        async with async_playwright() as p:
-            browser = await self._launch_browser(p, headless)
-            context = await browser.new_context(user_agent=USER_AGENT, extra_http_headers=ANTI_BOT_HEADERS)
-            from ..utils.playwright_utils import setup_stealth_context
-            await setup_stealth_context(context)
-            s3_client = self.get_s3_client()
-            enrich_q = get_queue_manager("enrichment", use_cloud=True, queue_type="enrichment", campaign_name=self.campaign_name, s3_client=s3_client)
-            tasks = [self._run_enrichment_task_loop(context, enrich_q, debug, once, s3_client) for _ in range(workers)]
-            await asyncio.gather(*tasks)
-            await browser.close()
+        max_session_duration_s = 4 * 3600
+        while self._running or not once:
+            session_start = time.time()
+            try:
+                async with async_playwright() as p:
+                    browser = await self._launch_browser(p, headless)
+                    context = await browser.new_context(user_agent=USER_AGENT, extra_http_headers=ANTI_BOT_HEADERS)
+                    from ..utils.playwright_utils import setup_stealth_context
+                    await setup_stealth_context(context)
+                    s3_client = self.get_s3_client()
+                    enrich_q = get_queue_manager("enrichment", use_cloud=True, queue_type="enrichment", campaign_name=self.campaign_name, s3_client=s3_client)
+                    coros = [self._run_enrichment_task_loop(context, enrich_q, debug, once, s3_client) for _ in range(workers)]
+                    tasks: List[asyncio.Task[Any]] = [asyncio.create_task(c) for c in coros]
+                    
+                    while time.time() - session_start < max_session_duration_s:
+                        done, pending = await asyncio.wait(tasks, timeout=30, return_when=asyncio.FIRST_EXCEPTION)
+                        if once:
+                            break
+                        if any(t.done() for t in tasks):
+                            break
+
+                    for t in tasks:
+                        if not t.done():
+                            t.cancel()
+                    await browser.close()
+            except Exception as e:
+                logger.error(f"Browser session crash in run_enrichment_worker: {e}")
+
+            if once:
+                break
+            logger.info("Recycling Playwright enrichment browser session for fresh memory footprint...")
+            await asyncio.sleep(5)
+
+
 
     async def _push_supervisor_heartbeat(self, s3_client: Any) -> None:
         import psutil

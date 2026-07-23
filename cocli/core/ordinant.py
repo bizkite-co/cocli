@@ -36,7 +36,7 @@ IndexName = Union[IndexIdentity, str]
 QueueName = Union[QueueIdentity, str]
 
 # Standardized folder names for Queues/WAL
-StateFolder = Literal["pending", "completed", "sideline", "inbox", "processing", "wal"]
+StateFolder = Literal["pending", "completed", "failed", "sideline", "inbox", "processing", "wal"]
 
 # --- Deterministic Sharding ---
 
