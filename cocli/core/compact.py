@@ -291,14 +291,18 @@ class CompactManager:
         con.execute(q)
         
         if tmp_checkpoint.exists():
-            from stations.schema import protect_schema_sidecar, is_schema_protected
-            if is_schema_protected(self.checkpoint_path):
-                try:
-                    os.chmod(self.checkpoint_path, 0o644)
-                except OSError:
-                    pass
+            # General ratified-artifact protect (not schema-sidecar naming).
+            # CONCURRENCY §5 mechanical speed-bump; S3 CAS remains multi-node safety.
+            from stations.protect import (
+                is_protected,
+                protect_path,
+                unprotect_for_write,
+            )
+
+            if is_protected(self.checkpoint_path):
+                unprotect_for_write(self.checkpoint_path)
             os.replace(tmp_checkpoint, self.checkpoint_path)
-            protect_schema_sidecar(self.checkpoint_path)
+            protect_path(self.checkpoint_path)
             logger.info(f"Merged checkpoint saved to {self.checkpoint_path}")
 
 
