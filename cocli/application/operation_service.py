@@ -148,7 +148,8 @@ class OperationService:
                 "Merges completed GM results into the main checkpoint and cleans up queue files.",
                 "maintenance",
                 source_path="data/campaigns/{campaign}/queues/gm-list/completed/results/",
-                dest_path="data/campaigns/{campaign}/indexes/google_maps_prospects/prospects.checkpoint.usv",
+                dest_path="data/campaigns/{campaign}/indexes/google_maps_prospects/prospects.usv",
+
                 process_details="Consolidates high-precision results into 0.1-degree tiles, then appends to main checkpoint and deletes source USVs.",
                 steps=[
                     OperationStep("s3_sync_down", "Pull latest results from S3."),

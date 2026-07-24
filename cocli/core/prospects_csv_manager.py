@@ -27,9 +27,18 @@ class ProspectsIndexManager:
         except Exception as e:
             logger.error(f"FDPE: Failed to save datapackage for prospect index: {e}")
             
+    @property
+    def checkpoint_path(self) -> Path:
+        """Single source of truth checkpoint path for the prospects index."""
+        from cocli.core.paths import paths
+        from cocli.core.ordinant import IndexIdentity
+        return paths.campaign(self.campaign_name).index(IndexIdentity.PROSPECTS).checkpoint
+
     def _get_checkpoint_path(self) -> Path:
-        """Internal helper for maintenance scripts."""
-        return self.index_dir / "prospects.checkpoint.usv"
+        """Legacy helper delegating to checkpoint_path property."""
+        return self.checkpoint_path
+
+
 
     def get_file_path(self, place_id: str, for_write: bool = False) -> Path:
         """

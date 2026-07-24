@@ -27,7 +27,8 @@ def test_prospects_store_integrity_enforcement(tmp_path: Path):
     GoogleMapsProspect.save_datapackage(
         store_root, 
         "google-maps-prospects", 
-        "prospects.checkpoint.usv",
+        "prospects.usv",
+
         wasi_hash=fake_hash
     )
     

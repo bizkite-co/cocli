@@ -422,8 +422,12 @@ class IndexService:
 
         resource_name = index_name.replace("_", "-")
         resource_path = "*.usv"
-        if index_name == "google_maps_prospects":
-            resource_path = "prospects.checkpoint.usv"
+        from ..core.ordinant import IndexIdentity
+        if index_name == IndexIdentity.PROSPECTS:
+            c_name = campaign or self.campaign_name
+            resource_path = paths.campaign(c_name).index(IndexIdentity.PROSPECTS).checkpoint_filename
+
+
 
         model_class.save_datapackage(
             target_dir, resource_name, resource_path, force=force

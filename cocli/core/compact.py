@@ -127,7 +127,7 @@ class CompactManager:
                         "--exclude", "*",
                         "--include", "*.usv",
                         "--include", "*.csv",
-                        "--exclude", "prospects.checkpoint.usv",
+                        "--exclude", self.checkpoint_filename,
                         "--exclude", "validation_errors.usv",
                         "--exclude", "_*",
                         "--quiet"
@@ -147,8 +147,9 @@ class CompactManager:
             
             # Purge local naked files in index root
             for f_path in self.index_dir.glob("*.usv"):
-                if f_path.name != "prospects.checkpoint.usv" and f_path.name != "validation_errors.usv":
+                if f_path.name != self.checkpoint_filename and f_path.name != "validation_errors.usv":
                     f_path.unlink()
+
             for f_path in self.index_dir.glob("*.csv"):
                 f_path.unlink()
             
@@ -290,17 +291,16 @@ class CompactManager:
         con.execute(q)
         
         if tmp_checkpoint.exists():
-            if self.checkpoint_path.exists():
+            from stations.schema import protect_schema_sidecar, is_schema_protected
+            if is_schema_protected(self.checkpoint_path):
                 try:
-                    self.checkpoint_path.chmod(0o644)
-                except Exception:
+                    os.chmod(self.checkpoint_path, 0o644)
+                except OSError:
                     pass
             os.replace(tmp_checkpoint, self.checkpoint_path)
-            try:
-                self.checkpoint_path.chmod(0o444)
-            except Exception:
-                pass
+            protect_schema_sidecar(self.checkpoint_path)
             logger.info(f"Merged checkpoint saved to {self.checkpoint_path}")
+
 
         
     def commit_remote(self) -> None:

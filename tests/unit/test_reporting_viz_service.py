@@ -211,11 +211,13 @@ def test_export_value_resources(tmp_path: Path) -> None:
             return cls()
 
     mock_manager = SimpleNamespace(
-        index_dir=tmp_path / "indexes" / "google_maps_prospects"
+        index_dir=tmp_path / "indexes" / "google_maps_prospects",
+        checkpoint_path=tmp_path / "indexes" / "google_maps_prospects" / "prospects.usv"
     )
     mock_manager.index_dir.mkdir(parents=True)
-    checkpoint = mock_manager.index_dir / "prospects.checkpoint.usv"
+    checkpoint = mock_manager.checkpoint_path
     checkpoint.write_text("dummy\n")
+
 
     with patch(
         "cocli.application.reporting_service.get_campaign_dir",
@@ -244,8 +246,10 @@ def test_export_value_resources_no_index(tmp_path: Path) -> None:
     campaign_dir = _campaign_tree(tmp_path)
     service = ReportingService(campaign_name="test-campaign")
     mock_manager = SimpleNamespace(
-        index_dir=tmp_path / "missing" / "google_maps_prospects"
+        index_dir=tmp_path / "missing" / "google_maps_prospects",
+        checkpoint_path=tmp_path / "missing" / "google_maps_prospects" / "prospects.usv"
     )
+
     with patch(
         "cocli.application.reporting_service.get_campaign_dir",
         return_value=campaign_dir,

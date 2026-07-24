@@ -188,7 +188,8 @@ def get_campaign_stats(campaign_name: str) -> Dict[str, Any]:
 
     if manager.index_dir.exists():
         con = duckdb.connect(database=':memory:')
-        checkpoint_path = manager.index_dir / "prospects.checkpoint.usv"
+        checkpoint_path = manager.checkpoint_path
+
         if checkpoint_path.exists():
             q = f"SELECT count(*), count(CASE WHEN column24 = 'local-worker' THEN 1 END), count(CASE WHEN column24 = 'fargate-worker' THEN 1 END) FROM read_csv('{checkpoint_path}', delim='\x1f', header=False, auto_detect=True, all_varchar=True)"
             res = con.execute(q).fetchone()

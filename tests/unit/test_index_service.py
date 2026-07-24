@@ -97,10 +97,11 @@ def test_write_datapackage_google_maps_resource_path(
     ):
         result = service.write_datapackage("google_maps_prospects", force=True)
 
-    assert result.resource_path == "prospects.checkpoint.usv"
+    assert result.resource_path == "prospects.usv"
     mock_model.save_datapackage.assert_called_once_with(
-        target, "google-maps-prospects", "prospects.checkpoint.usv", force=True
+        target, "google-maps-prospects", "prospects.usv", force=True
     )
+
 
 
 def test_write_datapackage_propagates_schema_conflict(tmp_path: Path) -> None:

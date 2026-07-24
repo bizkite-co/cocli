@@ -54,7 +54,7 @@ class GoogleMapsProspect(GoogleMapsPlace):
 
         con = duckdb.connect(database=":memory:")
 
-        checkpoint = manager.index_dir / "prospects.checkpoint.usv"
+        checkpoint = manager.checkpoint_path
         if not checkpoint.exists():
             return None
 
@@ -79,10 +79,11 @@ class GoogleMapsProspect(GoogleMapsPlace):
         cls,
         path: Path,
         resource_name: str = "google_maps_prospects",
-        resource_path: str = "prospects.checkpoint.usv",
+        resource_path: str = "prospects.usv",
         force: bool = True,
         wasi_hash: Optional[str] = None,
     ) -> None:
+
         """Saves the datapackage.json to the specified directory."""
         super().save_datapackage(
             path, resource_name, resource_path, force=force, wasi_hash=wasi_hash

@@ -195,7 +195,10 @@ class ReportingService:
                 pass
         
         # Exclusion Index (Campaign Specific)
-        exclusion_index_path = campaign_node.indexes / "exclude" / "prospects.checkpoint.usv"
+        from cocli.core.ordinant import IndexIdentity
+        exclusion_index_path = campaign_node.index(IndexIdentity.EXCLUSIONS).checkpoint
+
+
 
         return {
             "gm_prospects": {
@@ -749,7 +752,6 @@ class ReportingService:
 
         Intermediate artifact: ``{campaign}/exports/resources.json``.
         """
-        from cocli.core.prospects_csv_manager import ProspectsIndexManager
         from cocli.models.campaigns.indexes.google_maps_prospect import (
             GoogleMapsProspect,
         )
@@ -757,11 +759,16 @@ class ReportingService:
         from cocli.utils.usv_utils import USVDictReader
 
         name, campaign_dir = self._require_campaign_dir(campaign_name)
+        from cocli.core.paths import paths
+        from cocli.core.prospects_csv_manager import ProspectsIndexManager
         manager = ProspectsIndexManager(name)
-        checkpoint = manager.index_dir / "prospects.checkpoint.usv"
+
+        checkpoint = manager.checkpoint_path
+
         venue_checkpoint = (
-            manager.index_dir.parent / "google_maps_venues" / "venues.checkpoint.usv"
+            paths.campaign(name).index("google_maps_venues").checkpoint
         )
+
 
         targets: List[tuple[Path, Any]] = []
         if checkpoint.exists():
