@@ -18,21 +18,16 @@ from typing import Any, Dict, Iterable, Iterator, List, Optional, Tuple
 import yaml
 from stations.backends import LocalPathBackend
 from stations.compactor import last_write_wins_fold
-from stations.station import StationDecl
 
 from cocli.core.paths import paths
 from cocli.models.wal.record import RS, DatagramRecord
+from cocli.station_defs.wal.entity_field import ENTITY_FIELD_JOURNAL
 
 logger = logging.getLogger(__name__)
 
 
-def _station() -> StationDecl[DatagramRecord]:
-    return StationDecl(
-        name="entity-field-journal",
-        path_template="wal/{period}_{writer}.usv",
-        model=DatagramRecord,
-        serialization="usv-segment",
-    )
+def _station() -> Any:
+    return ENTITY_FIELD_JOURNAL
 
 
 @dataclass

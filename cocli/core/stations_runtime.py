@@ -23,6 +23,11 @@ from stations.engine import DefaultTransformEngine
 from stations.station import StationDecl
 
 from cocli.core.stations_adapt import as_queue_edge
+from cocli.station_defs.campaigns.indexes.emails import (
+    EMAIL_INBOX,
+    EMAIL_INDEX,
+    EMAIL_SHARDS,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -181,7 +186,6 @@ def compact_email_index_stations_only(
     :func:`materialize_email_shards_from_current` so DuckDB readers see the same
     fold as CURRENT (no second independent LWW).
     """
-    from cocli.models.campaigns.indexes.email import EmailEntry
 
     index_root = Path(manager.index_root)
     index_root.mkdir(parents=True, exist_ok=True)
@@ -191,19 +195,19 @@ def compact_email_index_stations_only(
     backend = LocalPathBackend(index_root)
 
     inbox_log = PathLogEdge(
-        station=StationDecl("email-inbox", "inbox", model=EmailEntry),
+        station=EMAIL_INBOX,
         backend=backend,
         root="inbox",
         serialize=_email_entry_ser,
         deserialize=_email_entry_de,
     )
     shard_log = _UsvShardDirectoryLogEdge(
-        station=StationDecl("email-shards", "shards", model=EmailEntry),
+        station=EMAIL_SHARDS,
         backend=backend,
         shards_dir=shards_dir,
     )
     index = PathIndexEdge(
-        station=StationDecl("email-index", "emails", model=EmailEntry),
+        station=EMAIL_INDEX,
         backend=backend,
         root=".",
         serialize_record=_email_entry_ser,
@@ -232,7 +236,7 @@ def load_email_entries_from_current(manager: Any) -> List[Any]:
         return []
     backend = LocalPathBackend(index_root)
     index = PathIndexEdge(
-        station=StationDecl("email-index", "emails", model=EmailEntry),
+        station=EMAIL_INDEX,
         backend=backend,
         root=".",
         serialize_record=_email_entry_ser,

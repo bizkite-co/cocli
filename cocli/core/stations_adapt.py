@@ -151,12 +151,15 @@ def as_queue_edge(
     model: Type[T] = object,  # type: ignore[assignment]
 ) -> QueueEdge[T]:
     """Return a ``QueueEdge`` view of a cocli campaign queue (mypy gate)."""
+    from cocli.station_defs.campaigns.queues import QUEUE_PENDING_TEMPLATE
+
     name = station_name or f"{queue.campaign_name}/{queue.queue_name}"
+    # 0010: path template from mirrored station def; name is instance-specific.
     station: Station[T] = SimpleStation(
         name=name,
-        path_template="campaigns/{campaign}/queues/{queue}/pending",
+        path_template=QUEUE_PENDING_TEMPLATE.path_template,
         model=model,
-        serialization="json-file",
+        serialization=QUEUE_PENDING_TEMPLATE.serialization,
     )
     edge: QueueEdge[T] = CampaignQueueAsQueueEdge(
         queue=queue, station=station, backend=LocalPathBackend()
