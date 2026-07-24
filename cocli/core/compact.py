@@ -29,7 +29,8 @@ class CompactManager:
         # Local Paths
         self.data_root = get_cocli_base_dir() / "campaigns" / campaign_name
         self.index_dir = self.data_root / "indexes" / index_name
-        self.checkpoint_path = self.index_dir / "prospects.checkpoint.usv"
+        self.checkpoint_path = self.index_dir / "prospects.usv"
+
         self.local_proc_dir = self.index_dir / "processing" / self.run_id
         
         # S3 Paths

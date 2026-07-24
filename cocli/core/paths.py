@@ -103,20 +103,9 @@ class IndexPaths(PathObject):
     @property
     def checkpoint(self) -> Path:
         if self.path.name == IndexIdentity.PROSPECTS:
-            p = self.path / "prospects.usv"
-            if p.exists():
-                return p
-            p_old = self.path / "prospects.checkpoint.usv"
-            if p_old.exists():
-                return p_old
-            return p
-        p = self.path / f"{self.path.name}.usv"
-        if p.exists():
-            return p
-        p_old = self.path / f"{self.path.name}.checkpoint.usv"
-        if p_old.exists():
-            return p_old
-        return p
+            return self.path / "prospects.usv"
+        return self.path / f"{self.path.name}.usv"
+
 
 
 

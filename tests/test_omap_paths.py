@@ -7,7 +7,8 @@ def test_hierarchical_paths():
     # Test dot-notation for campaigns
     camp = paths.campaign("test-campaign")
     assert str(camp.indexes).endswith("campaigns/test-campaign/indexes")
-    assert str(camp.index("google_maps_prospects").checkpoint).endswith("campaigns/test-campaign/indexes/google_maps_prospects/prospects.checkpoint.usv")
+    assert str(camp.index("google_maps_prospects").checkpoint).endswith("campaigns/test-campaign/indexes/google_maps_prospects/prospects.usv")
+
     
     # Test dot-notation for queues
     q = camp.queue("enrichment")

@@ -154,7 +154,8 @@ class IndexService:
         report.processing_file_count = proc_count
 
         # 4. Checkpoint
-        checkpoint_key = manager.s3_index_prefix + "prospects.checkpoint.usv"
+        checkpoint_key = manager.s3_index_prefix + "prospects.usv"
+
         try:
             head = manager.s3.head_object(Bucket=manager._bucket, Key=checkpoint_key)
             size_mb = head["ContentLength"] / 1024 / 1024

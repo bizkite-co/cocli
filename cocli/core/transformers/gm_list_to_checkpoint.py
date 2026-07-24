@@ -158,19 +158,22 @@ def compact_gm_list_results(
         logger.info("Writing to checkpoint...")
 
         cols_str = ", ".join(checkpoint_cols)
+        tmp_path = checkpoint_path.parent / f"{checkpoint_path.name}.tmp"
+        backup_path = checkpoint_path.parent / f"{checkpoint_path.name}.bak"
+
         con.execute(f"""
             COPY (SELECT {cols_str} FROM merged ORDER BY place_id ASC) 
-            TO '{checkpoint_path}.tmp' (
+            TO '{tmp_path}' (
                 DELIMITER '\x1f',
                 HEADER FALSE
             )
         """)
 
         # 5. Swap files
-        backup_path = Path(str(checkpoint_path) + ".bak")
-        tmp_path = Path(str(checkpoint_path) + ".tmp")
-        Path(checkpoint_path).rename(backup_path)
+        if checkpoint_path.exists():
+            checkpoint_path.rename(backup_path)
         tmp_path.rename(checkpoint_path)
+
 
         # Keep backup for now (could be removed after verification)
         logger.info(f"Checkpoint updated. Backup: {backup_path}")
