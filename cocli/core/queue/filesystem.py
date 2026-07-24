@@ -72,6 +72,36 @@ class FilesystemQueue:
         self.completed_dir.mkdir(parents=True, exist_ok=True)
         self.failed_dir.mkdir(parents=True, exist_ok=True)
 
+        # Enforce Frictionless Data Policy: Ensure authoritative queue datapackage.json sidecar exists
+        self.ensure_schema_sidecar()
+
+    def ensure_schema_sidecar(self) -> None:
+        """Writes authoritative datapackage.json sidecar for this queue via stations.schema."""
+        try:
+            from stations.schema import write_schema_sidecar
+            schema = {
+                "profile": "tabular-data-package",
+                "name": self.queue_name,
+                "resources": [
+                    {
+                        "name": self.queue_name,
+                        "path": "**/*.json",
+                        "format": "json",
+                        "schema": {"fields": [{"name": "place_id", "type": "string"}, {"name": "domain", "type": "string"}]}
+                    }
+                ]
+            }
+            target_dir = Path(str(self.queue_base.path))
+            target_dir.mkdir(parents=True, exist_ok=True)
+            write_schema_sidecar(target_dir, schema, force=True, protect=True)
+        except OSError as oe:
+            logger.debug(f"Queue schema sidecar write skipped on read-only system for {self.queue_name}: {oe}")
+        except Exception as e:
+            logger.warning(f"Queue schema sidecar write failed for {self.queue_name}: {e}")
+
+
+
+
         # We need a worker ID for the lease
         self.worker_id = (
             os.getenv("COCLI_HOSTNAME")

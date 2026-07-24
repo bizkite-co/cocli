@@ -6,7 +6,8 @@ prospects checkpoint index.
 
 This transformer follows the WAL pattern:
 - Sources: GmListResult USVs from PI scrapers (queues/gm-list/completed/results/)
-- Destination: GoogleMapsProspect checkpoint (indexes/google_maps_prospects/prospects.checkpoint.usv)
+- Destination: GoogleMapsProspect checkpoint (indexes/google_maps_prospects/prospects.usv)
+
 - KEEP source files after transformation (for tracing/debugging)
 
 See docs/pipeline/gm-list/to-google-maps-prospect/README.md for full specification.

@@ -76,9 +76,10 @@ class BaseIndexModel(BaseUsvModel):
         if cls.RESOURCE_PATH:
             res_path = cls.RESOURCE_PATH
         elif cls.INDEX_NAME == "google_maps_prospects":
-            res_path = "prospects.checkpoint.usv"
+            res_path = "prospects.usv"
         else:
-            res_path = f"{cls.INDEX_NAME}.checkpoint.usv"
+            res_path = f"{cls.INDEX_NAME}.usv"
+
 
         schema = {
             "profile": "tabular-data-package",

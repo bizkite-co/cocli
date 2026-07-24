@@ -156,3 +156,65 @@ def compact_email_index_stations_only(
         fold=fold,
         compactor_id=cid,
     )
+
+
+def compact_prospects_index_stations(
+    campaign_name: str, *, compactor_id: Optional[str] = None
+) -> bool:
+    """Compact prospects index via stations DefaultCompactor.
+
+    Folds write-ahead log records into the prospects index under:
+    campaigns/{campaign_name}/indexes/google_maps_prospects/prospects.usv
+    """
+    from cocli.core.paths import paths
+
+    index_dir = paths.campaign(campaign_name).index("google_maps_prospects").path
+    index_dir.mkdir(parents=True, exist_ok=True)
+    (index_dir / "wal").mkdir(parents=True, exist_ok=True)
+    backend = LocalPathBackend(index_dir)
+
+    def ser(entry: Any) -> bytes:
+        if isinstance(entry, dict):
+            return json.dumps(entry, sort_keys=True).encode("utf-8")
+        return str(entry).encode("utf-8")
+
+    def de(data: bytes) -> Any:
+        try:
+            return json.loads(data.decode("utf-8"))
+        except Exception:
+            return {"raw": data.decode("utf-8", errors="replace")}
+
+    log = PathLogEdge(
+        station=StationDecl("prospects-wal", "wal", model=object),
+        backend=backend,
+        root="wal",
+        serialize=ser,
+        deserialize=de,
+    )
+    index = PathIndexEdge(
+        station=StationDecl("prospects-index", "google_maps_prospects", model=object),
+        backend=backend,
+        root=".",
+        serialize_record=ser,
+        deserialize_record=de,
+    )
+    fold = last_write_wins_fold(
+        None,
+        key_fn=lambda r: str(
+            getattr(r, "place_id", None)
+            or (r.get("place_id") if isinstance(r, dict) else r)
+        ),
+        version_fn=lambda r: str(
+            getattr(r, "updated_at", None)
+            or (r.get("updated_at") if isinstance(r, dict) else "")
+            or ""
+        ),
+    )
+    cid = compactor_id or "prospects-stations-compactor"
+    return DefaultCompactor(consuming=True).compact_once(
+        sources=[log],
+        index=index,
+        fold=fold,
+        compactor_id=cid,
+    )
+

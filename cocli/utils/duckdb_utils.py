@@ -322,14 +322,23 @@ def load_from_datapackage(
 
     # 2. Load each resource
     for res in data.get("resources", []):
-        res_path_pattern = res.get("path")
-        # Find all files matching the glob pattern
+        res_path_pattern = res.get("path", "")
+        # Find all files matching the glob pattern (handle both prospects.usv and prospects.checkpoint.usv)
         usv_files = list(base_dir.glob(res_path_pattern))
+        if not usv_files and "checkpoint" in res_path_pattern:
+            fallback_pattern = res_path_pattern.replace(".checkpoint", "")
+            usv_files = list(base_dir.glob(fallback_pattern))
+        elif not usv_files and ".checkpoint" not in res_path_pattern:
+            fallback_pattern = res_path_pattern.replace(".usv", ".checkpoint.usv")
+            usv_files = list(base_dir.glob(fallback_pattern))
+
 
         # Load each file
-        for usv_path in usv_files:
-            # Load into a temporary table and insert into the unified table
-            temp_table = f"temp_{usv_path.stem.replace('-', '_')}"
+        for idx, usv_path in enumerate(usv_files):
+            # Load into a temporary table and insert into the unified table (sanitize name so dots don't trigger schema qualification)
+            clean_stem = re.sub(r"[^a-zA-Z0-9_]", "_", usv_path.name)
+            temp_table = f"temp_{clean_stem}_{idx}"
             load_usv_to_duckdb(con, temp_table, usv_path, datapackage_path)
             con.execute(f"INSERT INTO {table_name} SELECT * FROM {temp_table}")
             con.execute(f"DROP TABLE {temp_table}")
+

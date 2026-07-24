@@ -33,7 +33,7 @@ class ProspectsStore:
         layer: 'wal' (Hot) or 'checkpoint' (Cold).
         """
         if layer == "checkpoint":
-            return self.root / "prospects.checkpoint.usv"
+            return self.root / "prospects.usv"
             
         shard = get_place_id_shard(identity)
         return ShardPath(
