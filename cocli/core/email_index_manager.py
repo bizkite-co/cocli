@@ -1,7 +1,7 @@
 import json
 import logging
 import hashlib
-from typing import List, Optional, Dict
+from typing import List, Optional
 
 from ..models.campaigns.indexes.email import EmailEntry
 from .config import get_campaign_dir
@@ -122,17 +122,23 @@ class EmailIndexManager:
             return []
 
     def compact(self) -> None:
-        """
-        Merges all inbox files into the deterministic shards.
+        """Single-authority email compact: stations fold, then shard materialization.
 
-        Phase 3: stations DefaultCompactor commits CURRENT + checkpoint first
-        (PHYSICAL-CONTRACT §6), then legacy shards/ are refreshed for DuckDB.
+        1. ``DefaultCompactor`` folds inbox + existing shards → CURRENT/checkpoint
+           (LWW by email/last_seen). Consuming mode retires inbox files.
+        2. DuckDB-facing ``shards/*.usv`` are rewritten **from CURRENT only** —
+           not a second independent query/LWW over inbox+shards.
+
+        Readers keep using ``query()`` (shards + hot inbox between compacts).
         """
-        logger.info(f"Starting email index compaction for {self.campaign_name}...")
+        logger.info("Starting email index compaction for %s...", self.campaign_name)
+
+        from cocli.core.stations_runtime import (
+            compact_email_index_stations_only,
+            materialize_email_shards_from_current,
+        )
 
         try:
-            from cocli.core.stations_runtime import compact_email_index_stations_only
-
             stations_ok = compact_email_index_stations_only(
                 self, compactor_id=f"email-{self.campaign_name}"
             )
@@ -142,36 +148,24 @@ class EmailIndexManager:
                 self.campaign_name,
             )
         except Exception as exc:
-            logger.warning(
-                "stations email compact skipped/failed (%s); continuing legacy fold",
+            logger.error(
+                "stations email compact failed (%s); not running dual legacy LWW",
                 exc,
             )
+            raise
 
-        # 1. Load everything currently in the index (Inbox + Shards)
-        all_entries = self.query()
-        if not all_entries:
-            return
+        n = materialize_email_shards_from_current(self)
+        logger.info(
+            "email shards materialized from CURRENT count=%s campaign=%s",
+            n,
+            self.campaign_name,
+        )
 
-        # 2. Group by shard ID
-        shard_groups: Dict[str, List[EmailEntry]] = {}
-        for entry in all_entries:
-            shard_id = self.get_shard_id(entry.domain)
-            if shard_id not in shard_groups:
-                shard_groups[shard_id] = []
-            shard_groups[shard_id].append(entry)
-
-        # 3. Write new shards
-        for shard_id, entries in shard_groups.items():
-            shard_path = self.shards_dir / f"{shard_id}.usv"
-            with open(shard_path, 'w', encoding='utf-8') as f:
-                for entry in entries:
-                    f.write(entry.to_usv())
-            logger.info(f"Wrote shard {shard_id} ({shard_path}) with {len(entries)} emails.")
-
-        # 4. Cleanup Inbox
+        # Inbox should already be empty (consuming); ensure clean hot layer
         import shutil
+
         if self.inbox_dir.exists():
             shutil.rmtree(self.inbox_dir)
             self.inbox_dir.mkdir(parents=True, exist_ok=True)
 
-        logger.info("Email compaction complete.")
+        logger.info("Email compaction complete (stations authority + shard projection).")

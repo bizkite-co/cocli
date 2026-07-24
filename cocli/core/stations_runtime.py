@@ -90,72 +90,214 @@ def run_queue_transform_once(
     )
 
 
+def _email_entry_ser(entry: Any) -> bytes:
+    from cocli.models.campaigns.indexes.email import EmailEntry
+
+    if isinstance(entry, EmailEntry):
+        return entry.model_dump_json().encode("utf-8")
+    if isinstance(entry, dict):
+        return json.dumps(entry, sort_keys=True, default=str).encode("utf-8")
+    return json.dumps(entry, default=str).encode("utf-8")
+
+
+def _email_entry_de(data: bytes) -> Any:
+    """Deserialize inbox file bytes: JSON checkpoint lines or product USV."""
+    from cocli.models.campaigns.indexes.email import EmailEntry
+
+    text = data.decode("utf-8", errors="replace").strip()
+    if not text:
+        return {"raw": ""}
+    try:
+        raw = json.loads(text)
+        if isinstance(raw, dict) and "email" in raw:
+            return EmailEntry.model_validate(raw)
+        return raw
+    except json.JSONDecodeError:
+        pass
+    try:
+        return EmailEntry.from_usv(text)
+    except Exception:
+        return {"raw": text}
+
+
+def _email_key(r: Any) -> str:
+    return str(
+        getattr(r, "email", None) or (r.get("email") if isinstance(r, dict) else r)
+    ).lower()
+
+
+def _email_version(r: Any) -> str:
+    return str(
+        getattr(r, "last_seen", None)
+        or (r.get("last_seen") if isinstance(r, dict) else "")
+        or ""
+    )
+
+
+@dataclass
+class _UsvShardDirectoryLogEdge:
+    """Read-only LogEdge: yield EmailEntry lines from ``shards/*.usv``.
+
+    No ``root`` for DefaultCompactor path-delete — shards are rewritten after
+    fold from CURRENT, not deleted as source files mid-cycle.
+    """
+
+    station: Any
+    backend: Any
+    shards_dir: Path
+
+    def append(self, record: Any) -> str:
+        raise NotImplementedError("email shard log is a compact source only")
+
+    def iter_beyond(self, watermark: Optional[object] = None) -> Any:
+        _ = watermark
+        from cocli.models.campaigns.indexes.email import EmailEntry
+
+        if not self.shards_dir.exists():
+            return
+        for path in sorted(self.shards_dir.glob("*.usv")):
+            try:
+                text = path.read_text(encoding="utf-8")
+            except OSError as exc:
+                logger.warning("skip shard %s: %s", path, exc)
+                continue
+            for line in text.splitlines():
+                if not line.strip():
+                    continue
+                try:
+                    yield EmailEntry.from_usv(line)
+                except Exception as exc:
+                    logger.warning("skip non-conforming email line in %s: %s", path, exc)
+
+
 def compact_email_index_stations_only(
     manager: Any, *, compactor_id: Optional[str] = None
 ) -> bool:
-    """Compact email index via stations ``DefaultCompactor`` only.
+    """Compact email index via stations ``DefaultCompactor`` (single fold authority).
 
-    Commits ``CURRENT`` + checkpoint under the index root (PHYSICAL-CONTRACT §6)
-    and deletes consumed inbox files. Does **not** refresh product ``shards/*.usv``;
-    callers that need DuckDB-facing shards (e.g. ``EmailIndexManager.compact``)
-    run the legacy fold separately after this returns.
+    Sources: product inbox (consuming) + existing ``shards/*.usv`` (retained read).
+    Commits ``CURRENT`` + checkpoint (PHYSICAL-CONTRACT §6). Inbox files are
+    deleted post-commit; shards are **not** deleted here — call
+    :func:`materialize_email_shards_from_current` so DuckDB readers see the same
+    fold as CURRENT (no second independent LWW).
     """
     from cocli.models.campaigns.indexes.email import EmailEntry
 
     index_root = Path(manager.index_root)
     index_root.mkdir(parents=True, exist_ok=True)
     (index_root / "inbox").mkdir(parents=True, exist_ok=True)
+    shards_dir = Path(manager.shards_dir)
+    shards_dir.mkdir(parents=True, exist_ok=True)
     backend = LocalPathBackend(index_root)
 
-    def ser(entry: Any) -> bytes:
-        if isinstance(entry, EmailEntry):
-            return entry.model_dump_json().encode("utf-8")
-        if isinstance(entry, dict):
-            return json.dumps(entry, sort_keys=True).encode("utf-8")
-        return json.dumps(entry, default=str).encode("utf-8")
-
-    def de(data: bytes) -> Any:
-        try:
-            raw = json.loads(data.decode("utf-8"))
-            if isinstance(raw, dict) and "email" in raw:
-                return EmailEntry.model_validate(raw)
-            return raw
-        except json.JSONDecodeError:
-            return {"raw": data.decode("utf-8", errors="replace")}
-
-    log = PathLogEdge(
+    inbox_log = PathLogEdge(
         station=StationDecl("email-inbox", "inbox", model=EmailEntry),
         backend=backend,
         root="inbox",
-        serialize=ser,
-        deserialize=de,
+        serialize=_email_entry_ser,
+        deserialize=_email_entry_de,
+    )
+    shard_log = _UsvShardDirectoryLogEdge(
+        station=StationDecl("email-shards", "shards", model=EmailEntry),
+        backend=backend,
+        shards_dir=shards_dir,
     )
     index = PathIndexEdge(
         station=StationDecl("email-index", "emails", model=EmailEntry),
         backend=backend,
         root=".",
-        serialize_record=ser,
-        deserialize_record=de,
+        serialize_record=_email_entry_ser,
+        deserialize_record=_email_entry_de,
     )
     fold = last_write_wins_fold(
         None,
-        key_fn=lambda r: str(
-            getattr(r, "email", None)
-            or (r.get("email") if isinstance(r, dict) else r)
-        ).lower(),
-        version_fn=lambda r: str(
-            getattr(r, "last_seen", None)
-            or (r.get("last_seen") if isinstance(r, dict) else "")
-            or ""
-        ),
+        key_fn=_email_key,
+        version_fn=_email_version,
     )
     cid = compactor_id or "email-stations-only"
     return DefaultCompactor(consuming=True).compact_once(
-        sources=[log],
+        sources=[inbox_log, shard_log],
         index=index,
         fold=fold,
         compactor_id=cid,
     )
+
+
+def load_email_entries_from_current(manager: Any) -> List[Any]:
+    """Load folded EmailEntry list from stations CURRENT checkpoint."""
+    from cocli.models.campaigns.indexes.email import EmailEntry
+
+    index_root = Path(manager.index_root)
+    if not (index_root / "CURRENT").exists():
+        return []
+    backend = LocalPathBackend(index_root)
+    index = PathIndexEdge(
+        station=StationDecl("email-index", "emails", model=EmailEntry),
+        backend=backend,
+        root=".",
+        serialize_record=_email_entry_ser,
+        deserialize_record=_email_entry_de,
+    )
+    base = index.read_current()
+    if base is None:
+        return []
+    if isinstance(base, list):
+        out: List[Any] = []
+        for item in base:
+            if isinstance(item, EmailEntry):
+                out.append(item)
+            elif isinstance(item, dict) and "email" in item:
+                try:
+                    out.append(EmailEntry.model_validate(item))
+                except Exception:
+                    pass
+        return out
+    if isinstance(base, EmailEntry):
+        return [base]
+    return []
+
+
+def materialize_email_shards_from_current(manager: Any) -> int:
+    """Rewrite ``shards/*.usv`` from stations CURRENT (DuckDB-facing materialization).
+
+    Single authority: stations fold already ran; this is pure projection, not a
+    second LWW over inbox+shards.
+    """
+    from cocli.models.campaigns.indexes.email import EmailEntry
+
+    entries = load_email_entries_from_current(manager)
+    shards_dir = Path(manager.shards_dir)
+    shards_dir.mkdir(parents=True, exist_ok=True)
+
+    # Clear prior shards then rewrite from CURRENT
+    for old in shards_dir.glob("*.usv"):
+        try:
+            old.unlink()
+        except OSError as exc:
+            logger.warning("could not remove old email shard %s: %s", old, exc)
+
+    if not entries:
+        return 0
+
+    groups: dict[str, List[Any]] = {}
+    for entry in entries:
+        if not isinstance(entry, EmailEntry):
+            continue
+        shard_id = manager.get_shard_id(entry.domain)
+        groups.setdefault(shard_id, []).append(entry)
+
+    for shard_id, group in groups.items():
+        shard_path = shards_dir / f"{shard_id}.usv"
+        with open(shard_path, "w", encoding="utf-8") as f:
+            for entry in group:
+                f.write(entry.to_usv())
+        logger.info(
+            "materialized email shard %s (%s) count=%s",
+            shard_id,
+            shard_path,
+            len(group),
+        )
+    return len(entries)
 
 
 def compact_prospects_index_stations(

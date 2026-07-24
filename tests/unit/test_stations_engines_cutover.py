@@ -123,3 +123,60 @@ def test_email_index_stations_compactor_writes_current(
     # consuming mode: inbox files removed
     remaining = list(mgr.inbox_dir.rglob("*.json"))
     assert remaining == []
+
+
+def test_email_compact_single_authority_materializes_shards(
+    tmp_path: Path, monkeypatch: Any
+) -> None:
+    """stations fold wins; shards are projection from CURRENT (phone/address analog)."""
+    from cocli.core.stations_runtime import materialize_email_shards_from_current
+
+    campaign = "email-converge"
+    camp_dir = tmp_path / "campaigns" / campaign
+    camp_dir.mkdir(parents=True)
+    monkeypatch.setattr(
+        "cocli.core.email_index_manager.get_campaign_dir",
+        lambda _name: camp_dir,
+    )
+
+    mgr = EmailIndexManager(campaign)
+    # Existing cold shard (older)
+    old = EmailEntry(
+        email="a@example.com",
+        domain="example.com",
+        source="shard",
+        last_seen=datetime(2026, 1, 1, tzinfo=UTC),
+    )
+    shard_id = mgr.get_shard_id("example.com")
+    (mgr.shards_dir / f"{shard_id}.usv").write_text(old.to_usv(), encoding="utf-8")
+
+    # Hot inbox USV (product format) wins by last_seen
+    newer = EmailEntry(
+        email="a@example.com",
+        domain="example.com",
+        source="inbox",
+        last_seen=datetime(2026, 1, 5, tzinfo=UTC),
+    )
+    other = EmailEntry(
+        email="b@other.com",
+        domain="other.com",
+        source="inbox",
+        last_seen=datetime(2026, 1, 4, tzinfo=UTC),
+    )
+    mgr.add_email(newer)
+    mgr.add_email(other)
+
+    mgr.compact()
+
+    assert (mgr.index_root / "CURRENT").exists()
+    # No dual path: inbox empty, shards match CURRENT fold
+    assert list(mgr.inbox_dir.rglob("*.usv")) == []
+    results = mgr.query()
+    by_email = {str(e.email).lower(): e for e in results}
+    assert set(by_email) == {"a@example.com", "b@other.com"}
+    assert by_email["a@example.com"].source == "inbox"
+    assert by_email["a@example.com"].last_seen == datetime(2026, 1, 5, tzinfo=UTC)
+
+    # materialize is idempotent projection
+    n = materialize_email_shards_from_current(mgr)
+    assert n == 2
