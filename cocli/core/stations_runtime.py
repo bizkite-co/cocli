@@ -300,63 +300,333 @@ def materialize_email_shards_from_current(manager: Any) -> int:
     return len(entries)
 
 
-def compact_prospects_index_stations(
-    campaign_name: str, *, compactor_id: Optional[str] = None
+# Canonical column set for google_maps_prospects USV (headerless) DuckDB fold.
+_PROSPECTS_USV_COLUMNS: dict[str, str] = {
+    "place_id": "VARCHAR",
+    "company_slug": "VARCHAR",
+    "name": "VARCHAR",
+    "phone_1": "VARCHAR",
+    "created_at": "VARCHAR",
+    "updated_at": "VARCHAR",
+    "version": "INTEGER",
+    "keyword": "VARCHAR",
+    "full_address": "VARCHAR",
+    "street_address": "VARCHAR",
+    "city": "VARCHAR",
+    "zip": "VARCHAR",
+    "municipality": "VARCHAR",
+    "state": "VARCHAR",
+    "country": "VARCHAR",
+    "timezone": "VARCHAR",
+    "phone_standard_format": "VARCHAR",
+    "website": "VARCHAR",
+    "domain": "VARCHAR",
+    "first_category": "VARCHAR",
+    "second_category": "VARCHAR",
+    "claimed_google_my_business": "VARCHAR",
+    "reviews_count": "INTEGER",
+    "average_rating": "DOUBLE",
+    "hours": "VARCHAR",
+    "saturday": "VARCHAR",
+    "sunday": "VARCHAR",
+    "monday": "VARCHAR",
+    "tuesday": "VARCHAR",
+    "wednesday": "VARCHAR",
+    "thursday": "VARCHAR",
+    "friday": "VARCHAR",
+    "latitude": "DOUBLE",
+    "longitude": "DOUBLE",
+    "coordinates": "VARCHAR",
+    "plus_code": "VARCHAR",
+    "menu_link": "VARCHAR",
+    "gmb_url": "VARCHAR",
+    "cid": "VARCHAR",
+    "google_knowledge_url": "VARCHAR",
+    "kgmid": "VARCHAR",
+    "image_url": "VARCHAR",
+    "favicon": "VARCHAR",
+    "review_url": "VARCHAR",
+    "facebook_url": "VARCHAR",
+    "linkedin_url": "VARCHAR",
+    "instagram_url": "VARCHAR",
+    "thumbnail_url": "VARCHAR",
+    "reviews": "VARCHAR",
+    "quotes": "VARCHAR",
+    "uuid": "VARCHAR",
+    "company_hash": "VARCHAR",
+    "discovery_phrase": "VARCHAR",
+    "discovery_tile_id": "VARCHAR",
+    "processed_by": "VARCHAR",
+}
+
+
+def _collect_prospect_usv_sources(
+    index_dir: Path,
+    *,
+    checkpoint_path: Path,
+    staging_dirs: Optional[List[Path]] = None,
+) -> List[Path]:
+    """Local USV sources for fold: wal/**, staging/**, naked root (not checkpoint)."""
+    files: List[Path] = []
+    wal = index_dir / "wal"
+    if wal.exists():
+        files.extend(sorted(wal.rglob("*.usv")))
+    for staging in staging_dirs or []:
+        if staging and Path(staging).exists():
+            files.extend(sorted(Path(staging).rglob("*.usv")))
+    ck_name = checkpoint_path.name
+    for f_path in sorted(index_dir.glob("*.usv")):
+        if f_path.name in (ck_name, "validation_errors.usv"):
+            continue
+        if f_path.name.startswith("checkpoint."):
+            continue
+        files.append(f_path)
+    # Existing product checkpoint is the base generation (retained input)
+    if checkpoint_path.exists() and checkpoint_path.stat().st_size > 0:
+        files.append(checkpoint_path)
+    # de-dupe preserving order
+    seen: set[Path] = set()
+    out: List[Path] = []
+    for p in files:
+        rp = p.resolve()
+        if rp not in seen:
+            seen.add(rp)
+            out.append(p)
+    return out
+
+
+def _duckdb_fold_prospect_usv_files(
+    source_files: List[Path], dest: Path
 ) -> bool:
-    """Compact prospects index via stations DefaultCompactor.
+    """Deterministic LWW fold by place_id / updated_at (product-scale Fold)."""
+    import duckdb
 
-    Folds write-ahead log records into the prospects index under:
-    campaigns/{campaign_name}/indexes/google_maps_prospects/prospects.usv
+    if not source_files:
+        return False
+    path_list = "', '".join(str(p) for p in source_files)
+    cols = json.dumps(_PROSPECTS_USV_COLUMNS)
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    tmp = dest.with_suffix(dest.suffix + ".tmp")
+    con = duckdb.connect(database=":memory:")
+    q = f"""
+        COPY (
+            SELECT * EXCLUDE (row_num) FROM (
+                SELECT *,
+                       row_number() OVER (
+                           PARTITION BY place_id ORDER BY updated_at DESC
+                       ) as row_num
+                FROM read_csv(
+                    ['{path_list}'],
+                    delim='\x1f',
+                    header=False,
+                    columns={cols},
+                    ignore_errors=True
+                )
+            )
+            WHERE row_num = 1
+        ) TO '{tmp}' (DELIMITER '\x1f', HEADER FALSE)
     """
-    from cocli.core.paths import paths
+    con.execute(q)
+    if not tmp.exists():
+        return False
+    tmp.replace(dest)
+    return dest.exists() and dest.stat().st_size >= 0
 
-    index_dir = paths.campaign(campaign_name).index("google_maps_prospects").path
+
+def _stations_cas_commit_current(
+    index_dir: Path,
+    *,
+    checkpoint_rel: str,
+    checkpoint_bytes: bytes,
+    compactor_id: str,
+) -> bool:
+    """Six-step-ish CURRENT CAS via stations PathBackend (CONCURRENCY §3–4)."""
+    from datetime import datetime, timezone
+
+    from stations.backends.etag import content_etag
+    from stations.protect import protect_path
+
+    backend = LocalPathBackend(index_dir)
+    current_path = "CURRENT"
+    generation = 0
+    if backend.exists(current_path):
+        try:
+            meta = json.loads(backend.read_bytes(current_path).decode("utf-8"))
+            generation = int(meta.get("generation") or 0)
+        except Exception:
+            generation = 0
+    new_gen = generation + 1
+    # Prefer generation-stamped name when caller passes template
+    if "{gen}" in checkpoint_rel:
+        checkpoint_rel = checkpoint_rel.format(gen=new_gen)
+    backend.write_atomic(checkpoint_rel, checkpoint_bytes)
+    new_meta = {
+        "generation": new_gen,
+        "checkpoint": checkpoint_rel,
+        "created_at": datetime.now(tz=timezone.utc).isoformat(),
+        "compactor_id": compactor_id,
+        "mode": "consuming",
+        "content_hash": content_etag(checkpoint_bytes),
+        "format": "usv",
+    }
+    new_bytes = json.dumps(new_meta, sort_keys=True).encode("utf-8")
+    if backend.exists(current_path):
+        etag = content_etag(backend.read_bytes(current_path))
+        ok = backend.replace_if_match(current_path, new_bytes, etag=etag)
+        if not ok:
+            try:
+                backend.delete(checkpoint_rel)
+            except Exception:
+                pass
+            logger.warning("prospects CURRENT CAS lost; abandoning gen=%s", new_gen)
+            return False
+    else:
+        if not backend.create_if_absent(current_path, new_bytes):
+            try:
+                backend.delete(checkpoint_rel)
+            except Exception:
+                pass
+            return False
+    # Mechanical protect on ratified artifacts
+    try:
+        protect_path(index_dir / checkpoint_rel)
+        protect_path(index_dir / "CURRENT")
+    except Exception as exc:
+        logger.debug("protect after CURRENT commit: %s", exc)
+    return True
+
+
+def materialize_prospects_usv_from_checkpoint(
+    index_dir: Path,
+    *,
+    checkpoint_path: Path,
+    generation_file: Path,
+) -> None:
+    """Copy generation checkpoint to stable product path ``prospects.usv`` + protect."""
+    import shutil
+
+    from stations.protect import protect_path, unprotect_for_write
+
+    if not generation_file.exists():
+        return
+    checkpoint_path.parent.mkdir(parents=True, exist_ok=True)
+    if checkpoint_path.exists():
+        unprotect_for_write(checkpoint_path)
+    shutil.copy2(generation_file, checkpoint_path)
+    protect_path(checkpoint_path)
+    logger.info("materialized prospects USV at %s", checkpoint_path)
+
+
+def compact_prospects_local(
+    index_dir: Path,
+    *,
+    checkpoint_path: Path,
+    staging_dirs: Optional[List[Path]] = None,
+    compactor_id: Optional[str] = None,
+) -> bool:
+    """Local prospects compact: DuckDB LWW fold + stations CURRENT CAS + materialize.
+
+    DefaultCompactor loads all records in-process; prospect indexes are large, so the
+    fold is DuckDB (deterministic C7) while commit/protect use stations PathBackend.
+    WAL / naked / staging USVs are inputs; stable product file is ``checkpoint_path``
+    (typically ``prospects.usv`` via IndexPaths).
+    """
+    index_dir = Path(index_dir)
+    checkpoint_path = Path(checkpoint_path)
     index_dir.mkdir(parents=True, exist_ok=True)
     (index_dir / "wal").mkdir(parents=True, exist_ok=True)
-    backend = LocalPathBackend(index_dir)
 
-    def ser(entry: Any) -> bytes:
-        if isinstance(entry, dict):
-            return json.dumps(entry, sort_keys=True).encode("utf-8")
-        return str(entry).encode("utf-8")
+    sources = _collect_prospect_usv_sources(
+        index_dir,
+        checkpoint_path=checkpoint_path,
+        staging_dirs=staging_dirs,
+    )
+    # Need WAL/staging/naked inputs beyond an unchanged sole checkpoint
+    non_ck = [p for p in sources if p.resolve() != checkpoint_path.resolve()]
+    if not non_ck:
+        logger.info("prospects compact: no WAL/staging sources; idle")
+        return False
 
-    def de(data: bytes) -> Any:
-        try:
-            return json.loads(data.decode("utf-8"))
-        except Exception:
-            return {"raw": data.decode("utf-8", errors="replace")}
+    cid = compactor_id or "prospects-stations"
+    folded = index_dir / f".fold-{cid}.usv"
+    try:
+        if not _duckdb_fold_prospect_usv_files(sources, folded):
+            logger.info("prospects compact: DuckDB fold produced no output")
+            return False
+        body = folded.read_bytes()
+        backend = LocalPathBackend(index_dir)
+        generation = 0
+        if backend.exists("CURRENT"):
+            try:
+                generation = int(
+                    json.loads(backend.read_bytes("CURRENT").decode("utf-8")).get(
+                        "generation"
+                    )
+                    or 0
+                )
+            except Exception:
+                generation = 0
+        new_gen = generation + 1
+        gen_rel = f"checkpoint.{new_gen:06d}.usv"
+        if not _stations_cas_commit_current(
+            index_dir,
+            checkpoint_rel=gen_rel,
+            checkpoint_bytes=body,
+            compactor_id=cid,
+        ):
+            return False
+        materialize_prospects_usv_from_checkpoint(
+            index_dir,
+            checkpoint_path=checkpoint_path,
+            generation_file=index_dir / gen_rel,
+        )
+        # Consume local WAL / naked sources (not the product checkpoint)
+        import shutil
 
-    log = PathLogEdge(
-        station=StationDecl("prospects-wal", "wal", model=object),
-        backend=backend,
-        root="wal",
-        serialize=ser,
-        deserialize=de,
-    )
-    index = PathIndexEdge(
-        station=StationDecl("prospects-index", "google_maps_prospects", model=object),
-        backend=backend,
-        root=".",
-        serialize_record=ser,
-        deserialize_record=de,
-    )
-    fold = last_write_wins_fold(
-        None,
-        key_fn=lambda r: str(
-            getattr(r, "place_id", None)
-            or (r.get("place_id") if isinstance(r, dict) else r)
-        ),
-        version_fn=lambda r: str(
-            getattr(r, "updated_at", None)
-            or (r.get("updated_at") if isinstance(r, dict) else "")
-            or ""
-        ),
-    )
-    cid = compactor_id or "prospects-stations-compactor"
-    return DefaultCompactor(consuming=True).compact_once(
-        sources=[log],
-        index=index,
-        fold=fold,
-        compactor_id=cid,
+        wal = index_dir / "wal"
+        if wal.exists():
+            shutil.rmtree(wal)
+            wal.mkdir(parents=True, exist_ok=True)
+        ck_name = checkpoint_path.name
+        for f_path in list(index_dir.glob("*.usv")):
+            if f_path.name in (ck_name, "validation_errors.usv"):
+                continue
+            if f_path.name.startswith("checkpoint."):
+                continue
+            if f_path.name.startswith(".fold-"):
+                f_path.unlink(missing_ok=True)
+                continue
+            f_path.unlink(missing_ok=True)
+        logger.info(
+            "prospects stations compact ok gen=%s sources=%s id=%s",
+            new_gen,
+            len(sources),
+            cid,
+        )
+        return True
+    finally:
+        if folded.exists():
+            try:
+                folded.unlink()
+            except OSError:
+                pass
+
+
+def compact_prospects_index_stations(
+    campaign_name: str,
+    *,
+    staging_dir: Optional[Path] = None,
+    compactor_id: Optional[str] = None,
+) -> bool:
+    """Compact google_maps_prospects for a campaign via stations commit path."""
+    from cocli.core.paths import paths
+
+    idx = paths.campaign(campaign_name).index("google_maps_prospects")
+    staging_dirs = [Path(staging_dir)] if staging_dir else None
+    return compact_prospects_local(
+        idx.path,
+        checkpoint_path=idx.checkpoint,
+        staging_dirs=staging_dirs,
+        compactor_id=compactor_id,
     )
 

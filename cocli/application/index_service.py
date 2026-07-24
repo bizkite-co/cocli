@@ -291,9 +291,12 @@ class IndexService:
             manager.acquire_staging()
             _emit(log_callback, "Staging data acquired.")
 
-            _emit(log_callback, "Merging checkpoint (DuckDB)...")
+            _emit(
+                log_callback,
+                "Merging via stations commit path (DuckDB fold + CURRENT CAS)...",
+            )
             manager.merge()
-            _emit(log_callback, "Merge complete.")
+            _emit(log_callback, "Merge complete (CURRENT + prospects.usv).")
 
             _emit(log_callback, "Uploading new checkpoint to S3...")
             manager.commit_remote()

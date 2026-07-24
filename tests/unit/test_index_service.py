@@ -288,7 +288,7 @@ def test_compact_success_path() -> None:
     assert "Acquiring S3 lock..." in steps
     assert "Isolating WAL files on S3..." in steps
     assert "Downloading staging data..." in steps
-    assert "Merging checkpoint (DuckDB)..." in steps
+    assert "Merging via stations commit path (DuckDB fold + CURRENT CAS)..." in steps
     assert "Uploading new checkpoint to S3..." in steps
     assert "Cleaning up..." in steps
 

@@ -186,124 +186,35 @@ class CompactManager:
             logger.warning(f"Schema sidecar write failed for {self.index_name}: {e}")
 
     def merge(self) -> None:
-        """Merges checkpoint and staging using DuckDB."""
-        # Enforce schema sidecar BEFORE any data writes land on disk
+        """Fold local WAL/staging into prospects.usv via stations commit path.
+
+        DuckDB performs the scale LWW fold; stations PathBackend CAS-commits
+        CURRENT and protect_path hardens ratified artifacts. S3 isolate/stage
+        still feed ``local_proc_dir`` before this runs.
+        """
         self._write_schema_sidecar_first()
 
-        import duckdb
-        logger.info("Starting DuckDB merge...")
-        
-        con = duckdb.connect(database=':memory:')
-        
-        # Standard schema
-        columns = {
-            "place_id": "VARCHAR",
-            "company_slug": "VARCHAR",
-            "name": "VARCHAR",
-            "phone_1": "VARCHAR",
-            "created_at": "VARCHAR",
-            "updated_at": "VARCHAR",
-            "version": "INTEGER",
-            "keyword": "VARCHAR",
-            "full_address": "VARCHAR",
-            "street_address": "VARCHAR",
-            "city": "VARCHAR",
-            "zip": "VARCHAR",
-            "municipality": "VARCHAR",
-            "state": "VARCHAR",
-            "country": "VARCHAR",
-            "timezone": "VARCHAR",
-            "phone_standard_format": "VARCHAR",
-            "website": "VARCHAR",
-            "domain": "VARCHAR",
-            "first_category": "VARCHAR",
-            "second_category": "VARCHAR",
-            "claimed_google_my_business": "VARCHAR",
-            "reviews_count": "INTEGER",
-            "average_rating": "DOUBLE",
-            "hours": "VARCHAR",
-            "saturday": "VARCHAR",
-            "sunday": "VARCHAR",
-            "monday": "VARCHAR",
-            "tuesday": "VARCHAR",
-            "wednesday": "VARCHAR",
-            "thursday": "VARCHAR",
-            "friday": "VARCHAR",
-            "latitude": "DOUBLE",
-            "longitude": "DOUBLE",
-            "coordinates": "VARCHAR",
-            "plus_code": "VARCHAR",
-            "menu_link": "VARCHAR",
-            "gmb_url": "VARCHAR",
-            "cid": "VARCHAR",
-            "google_knowledge_url": "VARCHAR",
-            "kgmid": "VARCHAR",
-            "image_url": "VARCHAR",
-            "favicon": "VARCHAR",
-            "review_url": "VARCHAR",
-            "facebook_url": "VARCHAR",
-            "linkedin_url": "VARCHAR",
-            "instagram_url": "VARCHAR",
-            "thumbnail_url": "VARCHAR",
-            "reviews": "VARCHAR",
-            "quotes": "VARCHAR",
-            "uuid": "VARCHAR",
-            "company_hash": "VARCHAR",
-            "discovery_phrase": "VARCHAR",
-            "discovery_tile_id": "VARCHAR",
-            "processed_by": "VARCHAR"
-        }
+        from cocli.core.stations_runtime import compact_prospects_local
 
-        tmp_checkpoint = self.checkpoint_path.with_suffix(".tmp")
-        
-        # Gather paths
-        paths = []
-        if self.checkpoint_path.exists():
-            paths.append(str(self.checkpoint_path))
-        
-        # Add all staged USVs
-        staged_files = [str(p) for p in self.local_proc_dir.rglob("*.usv")]
-        paths.extend(staged_files)
-        
-        if not paths:
-            logger.info("No data found to merge.")
+        staging: list[Path] = []
+        if self.local_proc_dir.exists():
+            staging.append(self.local_proc_dir)
+
+        ok = compact_prospects_local(
+            self.index_dir,
+            checkpoint_path=self.checkpoint_path,
+            staging_dirs=staging or None,
+            compactor_id=self.run_id,
+        )
+        if ok:
+            logger.info(
+                "Prospects merge via stations commit path → %s",
+                self.checkpoint_path,
+            )
             return
 
-        # DuckDB can handle thousands of files in one read_csv call
-        path_list = "', '".join(paths)
-        
-        # Deduplication Query
-        q = f"""
-            COPY (
-                SELECT * EXCLUDE (row_num) FROM (
-                    SELECT *, 
-                           row_number() OVER (PARTITION BY place_id ORDER BY updated_at DESC) as row_num
-                    FROM read_csv(['{path_list}'], 
-                                 delim='\x1f', 
-                                 header=False, 
-                                 columns={json.dumps(columns)}, 
-                                 ignore_errors=True)
-                ) 
-                WHERE row_num = 1
-            ) TO '{tmp_checkpoint}' (DELIMITER '\x1f', HEADER FALSE)
-        """
-        
-        con.execute(q)
-        
-        if tmp_checkpoint.exists():
-            # General ratified-artifact protect (not schema-sidecar naming).
-            # CONCURRENCY §5 mechanical speed-bump; S3 CAS remains multi-node safety.
-            from stations.protect import (
-                is_protected,
-                protect_path,
-                unprotect_for_write,
-            )
-
-            if is_protected(self.checkpoint_path):
-                unprotect_for_write(self.checkpoint_path)
-            os.replace(tmp_checkpoint, self.checkpoint_path)
-            protect_path(self.checkpoint_path)
-            logger.info(f"Merged checkpoint saved to {self.checkpoint_path}")
+        # Fallback: empty staging/WAL — nothing to fold (legacy no-op)
+        logger.info("No local prospect sources to merge via stations.")
 
 
         
