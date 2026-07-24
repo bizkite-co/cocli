@@ -49,7 +49,9 @@ class Company(BaseModel):
     # --- Ordinant Protocol Implementation ---
     @property
     def collection(self) -> CollectionName:
-        return "companies"
+        from ...core.ordinant import CollectionIdentity
+        return CollectionIdentity.COMPANIES
+
 
     def get_local_path(self) -> Path:
         """Returns the path to the company directory: data/companies/{slug}/"""

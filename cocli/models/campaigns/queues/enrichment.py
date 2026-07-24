@@ -16,7 +16,9 @@ class EnrichmentTask(QueueMessage):
 
     @property
     def collection(self) -> QueueName:
-        return "enrichment"
+        from ....core.ordinant import QueueIdentity
+        return QueueIdentity.ENRICHMENT
+
     
     @property
     def task_id(self) -> str:

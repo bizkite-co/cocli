@@ -39,7 +39,9 @@ class ScrapeTask(BaseUsvModel):
 
     @property
     def collection(self) -> QueueName:
-        return "gm-list"
+        from ....core.ordinant import QueueIdentity
+        return QueueIdentity.GM_LIST
+
 
     def get_shard_id(self) -> str:
         """Standardized Geo Shard (first digit of latitude)."""

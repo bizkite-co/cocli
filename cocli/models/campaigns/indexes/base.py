@@ -21,7 +21,9 @@ class BaseIndexModel(BaseUsvModel):
 
     @property
     def collection(self) -> IndexName:
-        return self.INDEX_NAME
+        from ....core.ordinant import IndexIdentity
+        return IndexIdentity(self.INDEX_NAME)
+
 
     def get_shard_id(self) -> str:
         # Most indexes shard by place_id if available

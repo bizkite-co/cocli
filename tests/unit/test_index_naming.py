@@ -19,6 +19,15 @@ def test_google_maps_prospect_datapackage_resource_path():
     schema_fields = GoogleMapsProspect.get_datapackage_fields()
     assert len(schema_fields) == 56
 
-    # Verify write_datapackage output path specification
     res_path = "prospects.usv"
     assert res_path == "prospects.usv"
+
+
+def test_compact_manager_writes_datapackage_first(tmp_path: Path):
+    paths.root = tmp_path
+    manager = CompactManager("test_campaign", "google_maps_prospects")
+    manager._write_schema_sidecar_first()
+
+    datapackage_file = manager.index_dir / "datapackage.json"
+    assert datapackage_file.exists()
+

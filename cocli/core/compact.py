@@ -10,7 +10,7 @@ from typing import Any, Optional
 import boto3
 from botocore.exceptions import ClientError
 
-from .config import get_cocli_base_dir, get_campaign_dir
+from .config import get_campaign_dir
 
 logger = logging.getLogger(__name__)
 
@@ -26,18 +26,23 @@ class CompactManager:
         self.run_id = f"run_{int(time.time())}"
         self.log_file = log_file
         
-        # Local Paths
-        self.data_root = get_cocli_base_dir() / "campaigns" / campaign_name
-        self.index_dir = self.data_root / "indexes" / index_name
-        self.checkpoint_path = self.index_dir / "prospects.usv"
+        # Local Paths derived via paths single-source-of-truth
+        from .paths import paths
+        self.index_paths = paths.campaign(campaign_name).index(index_name)
+        self.data_root = paths.campaign(campaign_name).path
+        self.index_dir = self.index_paths.path
+        self.checkpoint_path = self.index_paths.checkpoint
+        self.checkpoint_filename = self.index_paths.checkpoint_filename
 
         self.local_proc_dir = self.index_dir / "processing" / self.run_id
         
         # S3 Paths
         self.s3_index_prefix = f"campaigns/{campaign_name}/indexes/{index_name}/"
+        self.s3_checkpoint_key = self.s3_index_prefix + self.checkpoint_filename
         self.s3_wal_prefix = self.s3_index_prefix + "wal/"
         self.s3_proc_prefix = self.s3_index_prefix + f"processing/{self.run_id}/"
         self.s3_lock_key = self.s3_index_prefix + "compact.lock"
+
         
         # S3 Client
         self._s3: Any = None
@@ -169,8 +174,21 @@ class CompactManager:
         except Exception as e:
             logger.error(f"Failed to sync staging data: {e}")
 
+    def _write_schema_sidecar_first(self) -> None:
+        """Enforces Frictionless Data policy by writing datapackage.json sidecar BEFORE data writes."""
+        try:
+            if self.index_name == "google_maps_prospects":
+                from ..models.campaigns.indexes.google_maps_prospect import GoogleMapsProspect
+                GoogleMapsProspect.write_datapackage(self.campaign_name, output_dir=self.index_dir)
+                logger.info(f"Sidecar datapackage.json written first for {self.index_name}")
+        except Exception as e:
+            logger.warning(f"Schema sidecar write failed for {self.index_name}: {e}")
+
     def merge(self) -> None:
         """Merges checkpoint and staging using DuckDB."""
+        # Enforce schema sidecar BEFORE any data writes land on disk
+        self._write_schema_sidecar_first()
+
         import duckdb
         logger.info("Starting DuckDB merge...")
         
@@ -272,15 +290,25 @@ class CompactManager:
         con.execute(q)
         
         if tmp_checkpoint.exists():
+            if self.checkpoint_path.exists():
+                try:
+                    self.checkpoint_path.chmod(0o644)
+                except Exception:
+                    pass
             os.replace(tmp_checkpoint, self.checkpoint_path)
+            try:
+                self.checkpoint_path.chmod(0o444)
+            except Exception:
+                pass
             logger.info(f"Merged checkpoint saved to {self.checkpoint_path}")
+
         
     def commit_remote(self) -> None:
         """Uploads the new checkpoint to S3."""
         logger.info("Uploading updated checkpoint to S3...")
-        s3_key = self.s3_index_prefix + "prospects.checkpoint.usv"
-        self.s3.upload_file(str(self.checkpoint_path), self._bucket, s3_key)
-        logger.info("S3 Checkpoint updated.")
+        self.s3.upload_file(str(self.checkpoint_path), self._bucket, self.s3_checkpoint_key)
+        logger.info(f"S3 Checkpoint updated at {self.s3_checkpoint_key}.")
+
 
     def cleanup(self) -> None:
         """Purges staging data from local and remote."""

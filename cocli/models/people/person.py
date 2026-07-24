@@ -36,7 +36,9 @@ class Person(BaseModel):
     # --- Ordinant Protocol Implementation ---
     @property
     def collection(self) -> CollectionName:
-        return "people"
+        from ...core.ordinant import CollectionIdentity
+        return CollectionIdentity.PEOPLE
+
 
     def get_local_path(self) -> Path:
         """Returns the path to the person directory: data/people/{slug}/"""

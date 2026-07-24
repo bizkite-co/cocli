@@ -1,4 +1,5 @@
-from typing import Any, Dict, Optional, TYPE_CHECKING, cast
+from typing import Any, Dict, Optional, TYPE_CHECKING, cast, Union
+
 import logging
 import asyncio
 import webbrowser
@@ -14,6 +15,8 @@ from cocli.models.campaigns.queues.metadata import (
     PropertyInfo,
 )
 from cocli.core.paths import paths
+from cocli.core.ordinant import QueueIdentity
+
 
 
 if TYPE_CHECKING:
@@ -153,9 +156,12 @@ class QueueDetail(VerticalScroll):
                 yield Label("j/k=navigate, l=reviewed", id="audit_status")
             yield Vertical(id="audit_results_content", classes="panel-content")
 
-    def update_detail(self, queue_id: str) -> None:
+    def update_detail(self, queue_id: Union[QueueIdentity, str]) -> None:
+
         tui_debug_log(f"update_detail called for queue: {queue_id}")
-        meta = QUEUES_METADATA.get(queue_id)
+        q_ident = QueueIdentity(queue_id) if isinstance(queue_id, str) and queue_id in QueueIdentity._value2member_map_ else queue_id
+        meta = QUEUES_METADATA.get(q_ident) if isinstance(q_ident, QueueIdentity) else None
+
         if not meta:
             tui_debug_log(f"No metadata for {queue_id}")
             return

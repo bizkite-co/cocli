@@ -1,5 +1,5 @@
 from enum import Enum
-from typing import Protocol, Literal, runtime_checkable, Union
+from typing import Protocol, Literal, runtime_checkable
 from pathlib import Path
 import hashlib
 
@@ -30,10 +30,11 @@ class QueueIdentity(str, Enum):
     EVENTS = "events"
     MAP_TILE = "map-tile"
 
-# Legacy Type Aliases for compatibility
-CollectionName = Union[CollectionIdentity, str]
-IndexName = Union[IndexIdentity, str]
-QueueName = Union[QueueIdentity, str]
+# Typed Identities for strict static type safety
+CollectionName = CollectionIdentity
+IndexName = IndexIdentity
+QueueName = QueueIdentity
+
 
 # Standardized folder names for Queues/WAL
 StateFolder = Literal["pending", "completed", "failed", "sideline", "inbox", "processing", "wal"]

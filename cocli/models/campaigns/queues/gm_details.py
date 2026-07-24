@@ -24,7 +24,9 @@ class GmItemTask(BaseModel):
 
     @property
     def collection(self) -> QueueName:
-        return "gm-details"
+        from ....core.ordinant import QueueIdentity
+        return QueueIdentity.GM_DETAILS
+
 
     def get_shard_id(self) -> str:
         return get_shard(self.place_id, strategy="place_id")

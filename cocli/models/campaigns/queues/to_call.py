@@ -20,7 +20,9 @@ class ToCallTask(QueueMessage):
 
     @property
     def collection(self) -> QueueName:
-        return "to-call"
+        from ....core.ordinant import QueueIdentity
+        return QueueIdentity.TO_CALL
+
 
     @property
     def task_id(self) -> str:

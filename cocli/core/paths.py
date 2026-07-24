@@ -3,8 +3,9 @@ from pathlib import Path
 import os
 import platform
 import logging
-from typing import Optional, Iterator, Callable
-from .ordinant import IndexName, QueueName, StateFolder, IndexIdentity
+from typing import Optional, Iterator, Callable, Union
+from .ordinant import StateFolder, IndexIdentity, QueueIdentity
+
 from pydantic import BaseModel
 
 logger = logging.getLogger(__name__)
@@ -106,6 +107,11 @@ class IndexPaths(PathObject):
             return self.path / "prospects.usv"
         return self.path / f"{self.path.name}.usv"
 
+    @property
+    def checkpoint_filename(self) -> str:
+        return self.checkpoint.name
+
+
 
 
 
@@ -123,8 +129,9 @@ class CampaignPaths(PathObject):
     def indexes(self) -> Path:
         return self.path / "indexes"
 
-    def index(self, name: IndexName, ensure: bool = False) -> IndexPaths:
-        obj = IndexPaths(lambda: self.indexes / name)
+    def index(self, name: Union[IndexIdentity, str], ensure: bool = False) -> IndexPaths:
+        str_name = name.value if isinstance(name, IndexIdentity) else name
+        obj = IndexPaths(lambda: self.indexes / str_name)
         if ensure:
             obj.ensure()
         return obj
@@ -137,11 +144,13 @@ class CampaignPaths(PathObject):
     def raw(self) -> Path:
         return self.path / "raw"
 
-    def queue(self, name: QueueName, ensure: bool = False) -> QueuePaths:
-        obj = QueuePaths(lambda: self.queues / name)
+    def queue(self, name: Union[QueueIdentity, str], ensure: bool = False) -> QueuePaths:
+        str_name = name.value if isinstance(name, QueueIdentity) else name
+        obj = QueuePaths(lambda: self.queues / str_name)
         if ensure:
             obj.ensure()
         return obj
+
 
     @property
     def exports(self) -> Path:
@@ -244,8 +253,9 @@ def get_data_home() -> Path:
 
 
 class S3QueuePaths:
-    def __init__(self, c_slug: str, q_name: QueueName):
-        self.base = f"campaigns/{c_slug}/queues/{q_name}/"
+    def __init__(self, c_slug: str, q_name: Union[QueueIdentity, str]):
+        str_q = q_name.value if isinstance(q_name, QueueIdentity) else q_name
+        self.base = f"campaigns/{c_slug}/queues/{str_q}/"
 
     def pending(self, shard: str = "", task_id: str = "") -> str:
         res = self.base + "pending/"
@@ -261,14 +271,16 @@ class S3CampaignPaths:
         self.slug = campaign_slug
         self.root = f"campaigns/{campaign_slug}/"
 
-    def index(self, name: IndexName) -> str:
-        return f"{self.root}indexes/{name}/"
+    def index(self, name: Union[IndexIdentity, str]) -> str:
+        str_name = name.value if isinstance(name, IndexIdentity) else name
+        return f"{self.root}indexes/{str_name}/"
 
-    def queue(self, name: QueueName) -> S3QueuePaths:
+    def queue(self, name: Union[QueueIdentity, str]) -> S3QueuePaths:
         return S3QueuePaths(self.slug, name)
 
     def config(self) -> str:
         return f"{self.root}config.toml"
+
 
 
 class S3DataPaths:
@@ -356,8 +368,9 @@ class DataPaths:
         return self.root / "indexes"
 
     # --- Legacy Delegation Methods ---
-    def queue(self, campaign_slug: str, queue_name: QueueName) -> QueuePaths:
+    def queue(self, campaign_slug: str, queue_name: Union[QueueIdentity, str]) -> QueuePaths:
         return self.campaign(campaign_slug).queue(queue_name)
+
 
     def campaign_indexes(self, campaign_slug: str) -> Path:
         return self.campaign(campaign_slug).indexes
