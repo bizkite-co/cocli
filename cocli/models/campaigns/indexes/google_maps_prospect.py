@@ -109,8 +109,9 @@ class GoogleMapsProspect(GoogleMapsPlace):
             "phone_standard_format": raw.Phone_Standard_format,
             "website": raw.Website,
             "domain": raw.Domain,
-            "first_category": raw.First_category,
+            "first_category": raw.First_category or getattr(raw, "category", None),
             "second_category": raw.Second_category,
+
             "claimed_google_my_business": raw.Claimed_google_my_business,
             "reviews_count": raw.Reviews_count,
             "average_rating": raw.Average_rating,
