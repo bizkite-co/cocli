@@ -8,6 +8,7 @@ Data tree:
 
 from __future__ import annotations
 
+from stations.segments import phases, shard_by_hash
 from stations.station import StationDecl
 
 from cocli.models.campaigns.indexes.google_maps_prospect import GoogleMapsProspect
@@ -17,6 +18,10 @@ PROSPECTS_WAL: StationDecl[GoogleMapsProspect] = StationDecl(
     path_template="wal",
     model=GoogleMapsProspect,
     serialization="usv-tree",
+    segments=(
+        phases("wal"),  # log phase under the index root
+        shard_by_hash(1),  # place-id style 1-char shards when used
+    ),
 )
 
 PROSPECTS_INDEX: StationDecl[GoogleMapsProspect] = StationDecl(
@@ -24,4 +29,8 @@ PROSPECTS_INDEX: StationDecl[GoogleMapsProspect] = StationDecl(
     path_template="google_maps_prospects",
     model=GoogleMapsProspect,
     serialization="usv-checkpoint",
+    segments=(
+        phases("wal", "processing"),  # FIMC local phases (values still on disk)
+        shard_by_hash(1),
+    ),
 )
