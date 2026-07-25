@@ -246,8 +246,9 @@ class ClusterService:
         local_campaign_dir = project_root / "data" / "campaigns" / self.campaign_name
 
         logger.info(
-            f"[bold cyan]Surgical Pull: cluster results for {self.campaign_name}...[/bold cyan]"
+            f"Surgical Pull: cluster results for {self.campaign_name}..."
         )
+
 
         for node in self.get_nodes():
             host = node.hostname
@@ -315,8 +316,9 @@ class ClusterService:
         local_config = campaign_dir / "config.toml"
 
         logger.info(
-            f"[bold cyan]Surgical Push: discovery-gen tasks, batches and config for {self.campaign_name}...[/bold cyan]"
+            f"Surgical Push: discovery-gen tasks, batches and config for {self.campaign_name}..."
         )
+
 
         for node in self.get_nodes():
             host = node.hostname
@@ -417,8 +419,9 @@ class ClusterService:
         local_tiles_dir.mkdir(parents=True, exist_ok=True)
 
         logger.info(
-            "[bold cyan]Direct Pull: high-speed witness data from cluster...[/bold cyan]"
+            "Direct Pull: high-speed witness data from cluster..."
         )
+
 
         for node in self.get_nodes():
             host = node.hostname
