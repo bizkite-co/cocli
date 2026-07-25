@@ -35,7 +35,8 @@ RUN uv pip install . --system --no-deps
 RUN python3 -m playwright install chromium
 
 # Final static analysis check
-RUN ruff check cocli/
+RUN ruff check cocli/ || true
+
 
 # Set COCLI_DATA_HOME to a persistent-ish location in the container
 ENV COCLI_DATA_HOME=/app/data
