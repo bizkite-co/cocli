@@ -12,7 +12,11 @@ from ..models.campaigns.worker_config import (
     WorkerDefinition,
 )
 
+from rich.console import Console
+
 logger = logging.getLogger(__name__)
+console = Console()
+
 
 BUILD_DIR = "~/repos/cocli_build"
 
@@ -245,9 +249,10 @@ class ClusterService:
         project_root = Path(__file__).parent.parent.parent.resolve()
         local_campaign_dir = project_root / "data" / "campaigns" / self.campaign_name
 
-        logger.info(
-            f"Surgical Pull: cluster results for {self.campaign_name}..."
+        console.print(
+            f"[bold cyan]Surgical Pull: cluster results for {self.campaign_name}...[/bold cyan]"
         )
+
 
 
         for node in self.get_nodes():
@@ -315,9 +320,10 @@ class ClusterService:
         # 3. Campaign Config (Required for hot-reloading scaling)
         local_config = campaign_dir / "config.toml"
 
-        logger.info(
-            f"Surgical Push: discovery-gen tasks, batches and config for {self.campaign_name}..."
+        console.print(
+            f"[bold cyan]Surgical Push: discovery-gen tasks, batches and config for {self.campaign_name}...[/bold cyan]"
         )
+
 
 
         for node in self.get_nodes():
@@ -418,9 +424,10 @@ class ClusterService:
         local_tiles_dir = paths.indexes / "scraped-tiles"
         local_tiles_dir.mkdir(parents=True, exist_ok=True)
 
-        logger.info(
-            "Direct Pull: high-speed witness data from cluster..."
+        console.print(
+            "[bold cyan]Direct Pull: high-speed witness data from cluster...[/bold cyan]"
         )
+
 
 
         for node in self.get_nodes():
