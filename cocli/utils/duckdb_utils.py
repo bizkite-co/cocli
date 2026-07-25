@@ -325,6 +325,15 @@ def load_from_datapackage(
         res_path_pattern = res.get("path", "")
         usv_files = list(base_dir.glob(res_path_pattern))
 
+        # Fallback for checkpoint index files (e.g. prospects.checkpoint.usv when path is prospects.usv)
+        if not usv_files and res_path_pattern.endswith(".usv"):
+            stem = res_path_pattern[:-4]
+            usv_files = [
+                f for f in base_dir.glob(f"{stem}*.usv")
+                if not f.name.endswith(".bak")
+            ]
+
+
 
 
         # Load each file
