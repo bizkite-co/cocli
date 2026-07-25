@@ -800,6 +800,8 @@ def build_mission_index(
     # Build index datapackage for discovery-gen active pool
     MissionTask.save_datapackage(target_index_dir, "discovery-gen-active", "**/*.usv")
 
+
+
     console.print(
         f"Activating {len(tasks)} tasks from {source_path.name} into {target_index_dir}..."
     )

@@ -27,19 +27,26 @@ def _load_target_locations(campaign_name: str) -> List[Dict[str, Any]]:
 
     locations = []
     if inputs_path.exists():
+        from cocli.utils.usv_utils import USVDictReader
         with open(inputs_path, "r", encoding="utf-8") as f:
-            for line in f:
-                if line.strip():
-                    parts = line.strip().split("\x1f")
-                    if len(parts) >= 3:
+            reader = USVDictReader(f)
+            for row in reader:
+                name = row.get("name") or row.get("city")
+                lat = row.get("lat") or row.get("latitude")
+                lon = row.get("lon") or row.get("longitude")
+                if name and lat and lon:
+                    try:
                         locations.append(
                             {
-                                "name": parts[0],
-                                "lat": float(parts[1]),
-                                "lon": float(parts[2]),
+                                "name": name,
+                                "lat": float(lat),
+                                "lon": float(lon),
                             }
                         )
+                    except ValueError:
+                        pass
     return locations
+
 
 
 def _load_tiles(campaign_name: str) -> List[Dict[str, Any]]:

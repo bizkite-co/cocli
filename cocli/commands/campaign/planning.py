@@ -9,6 +9,8 @@ from rich.console import Console
 from datetime import datetime
 
 from ...core.config import get_campaign_dir, get_people_dir, get_campaign
+from ...core.paths import paths
+
 from ...models.people.person import Person
 from ...core.text_utils import slugify
 from ...core.importing import import_prospect
@@ -139,19 +141,24 @@ def generate_grid(
     if target_locations_csv:
         csv_path = Path(target_locations_csv)
         if not csv_path.is_absolute():
-            csv_path = campaign_dir / csv_path
-        
+            candidate = campaign_dir / csv_path
+            if not candidate.exists():
+                candidate = paths.campaign(campaign_name).queue("discovery-gen").inputs / csv_path
+            csv_path = candidate
+
         if csv_path.exists():
+
             try:
+                from cocli.utils.usv_utils import USVDictReader
                 with open(csv_path, 'r', encoding='utf-8') as f:
-                    reader = csv.DictReader(f)
+                    reader: Any = USVDictReader(f) if csv_path.suffix == ".usv" else csv.DictReader(f)
                     for row in reader:
                         # Try various field names
                         name = row.get("name") or row.get("city")
-                        lat = row.get("lat")
-                        lon = row.get("lon")
-                        
-                        if name and lat and lon and lat.strip() and lon.strip():
+                        lat = row.get("lat") or row.get("latitude")
+                        lon = row.get("lon") or row.get("longitude")
+
+                        if name and lat and lon and str(lat).strip() and str(lon).strip():
                             target_locations.append({
                                 "name": str(name),
                                 "lat": float(lat),
@@ -159,6 +166,7 @@ def generate_grid(
                             })
                 if target_locations:
                     console.print(f"[green]Loaded {len(target_locations)} target locations from {csv_path.name}[/green]")
+
             except Exception as e:
                 logger.error(f"Error reading target locations CSV: {e}")
                 # Don't raise, try fallback to 'locations' list
