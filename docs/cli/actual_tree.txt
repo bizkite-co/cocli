@@ -1,5 +1,6 @@
 cocli
     --campaign/-c (text)
+    --help-text/-ht (boolean)
     add - Add a new company or a person to an existing company.
         --company/-c (text) [required]
         --person/-p (text)
