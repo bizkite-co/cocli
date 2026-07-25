@@ -264,9 +264,12 @@ class ClusterService:
                 rsync_cmd = [
                     "rsync",
                     "-rtWz",
+                    "-e",
+                    "ssh -o ConnectTimeout=5 -o BatchMode=yes",
                     f"{user}@{host}:{remote_path}",
                     str(local_path) + "/",
                 ]
+
 
                 try:
                     subprocess.run(
@@ -427,9 +430,12 @@ class ClusterService:
             rsync_cmd = [
                 "rsync",
                 "-rtWz",
+                "-e",
+                "ssh -o ConnectTimeout=5 -o BatchMode=yes",
                 f"{user}@{host}:{remote_path}",
                 str(local_tiles_dir) + "/",
             ]
+
 
             try:
                 subprocess.run(rsync_cmd, capture_output=True, text=True, timeout=120)
