@@ -448,7 +448,8 @@ def _stations_cas_commit_current(
     from datetime import datetime, timezone
 
     from stations.backends.etag import content_etag
-    from stations.protect import protect_path
+    from stations.schema import protect_schema_sidecar as protect_path
+
 
     backend = LocalPathBackend(index_dir)
     current_path = "CURRENT"
@@ -507,16 +508,22 @@ def materialize_prospects_usv_from_checkpoint(
     generation_file: Path,
 ) -> None:
     """Copy generation checkpoint to stable product path ``prospects.usv`` + protect."""
+    import os
     import shutil
 
-    from stations.protect import protect_path, unprotect_for_write
+
+    from stations.schema import protect_schema_sidecar as protect_path, is_schema_protected
 
     if not generation_file.exists():
         return
     checkpoint_path.parent.mkdir(parents=True, exist_ok=True)
-    if checkpoint_path.exists():
-        unprotect_for_write(checkpoint_path)
+    if is_schema_protected(checkpoint_path):
+        try:
+            os.chmod(checkpoint_path, 0o644)
+        except OSError:
+            pass
     shutil.copy2(generation_file, checkpoint_path)
+
     protect_path(checkpoint_path)
     logger.info("materialized prospects USV at %s", checkpoint_path)
 
