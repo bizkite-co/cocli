@@ -91,7 +91,7 @@ class GoogleMapsPlace(GoogleMapsIdx):
     # slug (inherited)
     # name (inherited)
     phone: OptionalPhone = Field(None, alias="phone_1")
-    
+
     # --- Metadata / Lifecycle ---
     created_at: AwareDatetime = Field(default_factory=lambda: datetime.now(UTC))
     updated_at: AwareDatetime = Field(default_factory=lambda: datetime.now(UTC))
@@ -149,6 +149,13 @@ class GoogleMapsPlace(GoogleMapsIdx):
     discovery_phrase: Annotated[Optional[str], BeforeValidator(strip_quotes)] = None
     discovery_tile_id: Annotated[Optional[str], BeforeValidator(strip_quotes)] = None
     email: Annotated[Optional[str], BeforeValidator(strip_quotes)] = Field(None, description="DEPRECATED: Google Maps does not provide email. Use website enrichment instead.")
+
+    # USV columns are positional and append-only (decision 0003): category is
+    # NEW to this station (all existing checkpoint/WAL rows are 55/56-col
+    # without it), so it appends at the END of the sequence. Note: gm-list
+    # (GoogleMapsListItem) keeps category at position 3 in its own layout;
+    # cross-station mapping is by field name, not position.
+    category: Annotated[Optional[str], BeforeValidator(strip_quotes)] = None
 
     @model_validator(mode='after')
     def extract_domain(self) -> 'GoogleMapsPlace':

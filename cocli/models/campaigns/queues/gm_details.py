@@ -15,6 +15,9 @@ class GmItemTask(BaseModel):
     company_slug: str = ""
     force_refresh: bool = False
     gmb_url: Optional[str] = None
+    # List-view category from gm-list; fallback when the detail page yields
+    # no First_category.
+    category: Optional[str] = None
     discovery_phrase: Optional[str] = None
     discovery_tile_id: Optional[str] = None
     

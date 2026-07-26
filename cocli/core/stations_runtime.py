@@ -361,6 +361,8 @@ _PROSPECTS_USV_COLUMNS: dict[str, str] = {
     "discovery_phrase": "VARCHAR",
     "discovery_tile_id": "VARCHAR",
     "processed_by": "VARCHAR",
+    # Append-only (decision 0003): category is new to this station and goes last.
+    "category": "VARCHAR",
 }
 
 
@@ -424,6 +426,7 @@ def _duckdb_fold_prospect_usv_files(
                     delim='\x1f',
                     header=False,
                     columns={cols},
+                    null_padding=true,
                     ignore_errors=True
                 )
             )

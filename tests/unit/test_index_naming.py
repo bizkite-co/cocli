@@ -17,7 +17,10 @@ def test_compact_manager_uses_prospects_usv():
 
 def test_google_maps_prospect_datapackage_resource_path():
     schema_fields = GoogleMapsProspect.get_datapackage_fields()
-    assert len(schema_fields) == 56
+    assert len(schema_fields) == 57
+    # Append-only: category is the newest field and must stay LAST so
+    # legacy 56-column rows keep parsing positionally.
+    assert schema_fields[-1]["name"] == "category"
 
     res_path = "prospects.usv"
     assert res_path == "prospects.usv"
