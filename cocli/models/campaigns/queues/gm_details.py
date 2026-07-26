@@ -2,7 +2,9 @@ from pydantic import BaseModel, Field
 from typing import Optional
 from pathlib import Path
 from ....core.paths import paths
-from ....core.ordinant import QueueName, get_shard
+from ....core.ordinant import QueueName
+from ....core.sharding import get_place_id_shard
+
 
 class GmItemTask(BaseModel):
     """
@@ -20,7 +22,7 @@ class GmItemTask(BaseModel):
     category: Optional[str] = None
     discovery_phrase: Optional[str] = None
     discovery_tile_id: Optional[str] = None
-    
+
     # Queue mechanics (Transient)
     ack_token: Optional[str] = Field(default=None, exclude=True)
     attempts: int = 0
@@ -30,14 +32,21 @@ class GmItemTask(BaseModel):
         from ....core.ordinant import QueueIdentity
         return QueueIdentity.GM_DETAILS
 
-
     def get_shard_id(self) -> str:
-        return get_shard(self.place_id, strategy="place_id")
+        # Path authority: same as FSQ / get_place_id_shard (raw alphabet, P14)
+        return get_place_id_shard(self.place_id)
 
     def get_local_path(self) -> Path:
-        """Returns the local pending directory."""
-        return paths.campaign(self.campaign_name).queue("gm-details").pending / self.get_shard_id() / self.place_id
+        """Local pending dir: queues/.../gm-details/pending/{shard}/{place_id}"""
+        return (
+            paths.campaign(self.campaign_name).queue("gm-details").pending
+            / self.get_shard_id()
+            / self.place_id
+        )
 
     def get_remote_key(self) -> str:
-        """Returns the S3 key for this task."""
-        return f"campaigns/{self.campaign_name}/queues/gm-details/pending/{self.get_shard_id()}/{self.place_id}/task.json"
+        """S3 task key — same shape as FilesystemQueue._get_s3_task_key."""
+        return (
+            f"campaigns/{self.campaign_name}/queues/gm-details/pending/"
+            f"{self.get_shard_id()}/{self.place_id}/task.json"
+        )

@@ -876,9 +876,14 @@ class FilesystemGmListQueue(FilesystemQueue):
             logger.debug(f"Pushed task to Discovery Gen: {task_id}")
 
             # If we have S3, also push it there
+            # INTENTIONAL EXCEPTION (PR7): discovery-gen is a separate station/pool,
+            # not this queue's StationDecl layout.
             if self.s3_client and self.bucket_name:
                 try:
-                    s3_key = f"campaigns/{self.campaign_name}/queues/discovery-gen/completed/{task_id}"
+                    s3_key = (
+                        f"campaigns/{self.campaign_name}/queues/"
+                        f"discovery-gen/completed/{task_id}"
+                    )
                     self.s3_client.put_object(
                         Bucket=self.bucket_name,
                         Key=s3_key,
@@ -958,6 +963,7 @@ class FilesystemGmListQueue(FilesystemQueue):
         if not self.s3_client or not self.bucket_name:
             return
 
+        # INTENTIONAL EXCEPTION (PR7): discovery-gen pool, not gm-list layout.
         prefix = f"campaigns/{self.campaign_name}/queues/discovery-gen/completed/"
         try:
             # We list a small sample of the mission index on S3
@@ -1049,7 +1055,7 @@ class FilesystemGmListQueue(FilesystemQueue):
                 ),  # Include audited metadata if present
             }
 
-            # Local path
+            # Local path (product shape: completed/results/{geo}/… — not DFQ flat)
             from ..sharding import get_geo_shard
 
             lat_shard = get_geo_shard(str(task.latitude))
@@ -1062,11 +1068,13 @@ class FilesystemGmListQueue(FilesystemQueue):
             with open(receipt_path, "w") as f:
                 json.dump(completion_data, f, indent=2)
 
-            # S3 Mirror
+            # S3 Mirror — same relative tree under layout.s3_prefix()
             if self.s3_client and self.bucket_name:
                 try:
                     s3_lease_key = self._get_s3_lease_key(task.ack_token)
-                    s3_completed_key = f"campaigns/{self.campaign_name}/queues/{self.queue_name}/completed/results/{lat_shard}/{lat_t}/{lon_t}/{phrase_slug}.json"
+                    s3_completed_key = self._get_s3_gm_list_result_key(
+                        lat_shard, str(lat_t), str(lon_t), phrase_slug
+                    )
 
                     self.s3_client.put_object(
                         Bucket=self.bucket_name,
@@ -1083,6 +1091,16 @@ class FilesystemGmListQueue(FilesystemQueue):
                     )
                 except Exception as e:
                     logger.error(f"Error S3 acking for GmList {task.ack_token}: {e}")
+
+    def _get_s3_gm_list_result_key(
+        self, lat_shard: str, lat_t: str, lon_t: str, phrase_slug: str
+    ) -> str:
+        """Product receipt path under completed/ (not base flat completed/{id}.json)."""
+        completed = self.layout.phases.completed.name
+        return (
+            f"{self.layout.s3_prefix()}/{completed}/results/"
+            f"{lat_shard}/{lat_t}/{lon_t}/{phrase_slug}.json"
+        )
 
 
 class FilesystemGmDetailsQueue(FilesystemQueue):
@@ -1128,7 +1146,12 @@ class FilesystemGmDetailsQueue(FilesystemQueue):
 
 
 class FilesystemEnrichmentQueue(FilesystemQueue):
-    """Queue for Website Enrichment."""
+    """Queue for Website Enrichment.
+
+    Pending paths: layout + domain-hash StationDecl (same as base FSQ).
+    Completed S3: product nested shape ``completed/{shard}/{domain}/task.json``
+    (override of base flat completed/{id}.json) — matches production S3.
+    """
 
     def __init__(
         self,
@@ -1150,23 +1173,12 @@ class FilesystemEnrichmentQueue(FilesystemQueue):
 
         return EnrichmentTask(**data)
 
-    def _get_s3_lease_key(self, task_id: str) -> str:
-        from ...models.campaigns.queues.enrichment import EnrichmentTask
-
-        # task_id is domain. Use model_construct to avoid validation for path-only objects
-        return str(
-            EnrichmentTask.model_construct(
-                domain=task_id, campaign_name=self.campaign_name
-            ).get_s3_lease_key()
-        )
-
-    def _get_s3_task_key(self, task_id: str) -> str:
-        from ...models.campaigns.queues.enrichment import EnrichmentTask
-
-        return str(
-            EnrichmentTask.model_construct(
-                domain=task_id, campaign_name=self.campaign_name
-            ).get_s3_task_key()
+    def _get_s3_completed_key(self, task_id: str) -> str:
+        """Production nested completed (not base flat completed/{id}.json)."""
+        shard = self._get_shard(task_id)
+        return (
+            f"{self.layout.s3_prefix()}/"
+            f"{self.layout.phases.completed.name}/{shard}/{task_id}/task.json"
         )
 
     def push(self, message: Union[QueueMessage, Any]) -> str:  # type: ignore
@@ -1179,25 +1191,23 @@ class FilesystemEnrichmentQueue(FilesystemQueue):
             task = EnrichmentTask(**message.model_dump())
 
         task_id = task.task_id
-        shard = task.shard
+        shard = self._get_shard(task_id)
 
         # Use super().push with the deterministic task_id
         pushed_id = super().push(task_id, task.model_dump())
 
         if self.s3_client and self.bucket_name:
             try:
-                # Use the model's own path resolution logic
-                task_dir = self._get_task_dir(task_id)  # Uses _get_shard internally
+                task_dir = self._get_task_dir(task_id)
                 task_file = task_dir / "task.json"
-                s3_key = str(task.get_s3_task_key())
+                # Single authority: queue layout builders (not model bypass)
+                s3_key = self._get_s3_task_key(task_id)
 
                 self.s3_client.upload_file(str(task_file), self.bucket_name, s3_key)
                 logger.debug(f"Pushed Enrichment task {task_id} to S3 shard {shard}")
             except Exception as e:
                 logger.error(f"Failed immediate S3 push for enrichment {task_id}: {e}")
         return pushed_id
-
-    # _get_shard: StationDecl ENRICHMENT_QUEUE_STATION → shard_by_hash(2)
 
     def poll(self, batch_size: int = 1) -> List[QueueMessage]:
         return self.poll_frontier(QueueMessage, batch_size)
@@ -1206,34 +1216,8 @@ class FilesystemEnrichmentQueue(FilesystemQueue):
         token = task.ack_token if hasattr(task, "ack_token") else task
         if not token:
             return
-
-        # Standard local cleanup
+        # super.ack uses _get_s3_completed_key (nested) + base pending cleanup
         super().ack(token)
-
-        # S3 Completed location for enrichment
-        if self.s3_client and self.bucket_name:
-            from ...models.campaigns.queues.enrichment import EnrichmentTask
-
-            try:
-                # We need the task_id (domain) to find the completed path
-                t = EnrichmentTask.model_construct(
-                    domain=token, campaign_name=self.campaign_name
-                )
-                s3_completed_key = str(t.get_s3_task_key()).replace(
-                    "/pending/", "/completed/"
-                )
-
-                # Check if local completed file exists (from super().ack)
-                local_completed = self.completed_dir / f"{token}.json"
-                if local_completed.exists():
-                    self.s3_client.upload_file(
-                        str(local_completed), self.bucket_name, s3_completed_key
-                    )
-                    logger.debug(
-                        f"Uploaded completion marker to S3: {s3_completed_key}"
-                    )
-            except Exception as e:
-                logger.warning(f"Failed to upload enrichment completion marker: {e}")
 
     def nack(self, task: Union[QueueMessage, str]) -> None:  # type: ignore[override]
         token = task.ack_token if hasattr(task, "ack_token") else task
