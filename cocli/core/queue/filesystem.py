@@ -11,6 +11,7 @@ from ...models.campaigns.queues.base import QueueMessage
 from ...core.config import get_cocli_base_dir, get_campaign_dir
 from ...core.paths import paths
 from ...core.sharding import get_shard_id
+from .layout import QueueLayout, default_dfq_station
 
 logger = logging.getLogger(__name__)
 
@@ -29,6 +30,12 @@ class FilesystemQueue:
               lease.json
         completed/
           <task_id>.json
+
+    Path construction (0010 PR2): phase dirs and S3 key roots come from
+    :class:`QueueLayout` + PhaseRef so local and S3 share one relative scheme.
+    Shard *algorithm* remains ``_get_shard`` / ``_get_task_subpath`` so subclasses
+    that override sharding keep production path fidelity (PR3 will move those
+    to per-queue StationDecls).
     """
 
     def __init__(
@@ -64,9 +71,18 @@ class FilesystemQueue:
             f"Initialized FilesystemQueue V2 for {queue_name} at {self.queue_base} (S3 Atomic: {s3_client is not None})"
         )
 
-        self.pending_dir = self.queue_base / "pending"
-        self.completed_dir = self.queue_base / "completed"
-        self.failed_dir = self.queue_base / "failed"
+        # QueueLayout: phase dirs + S3 prefix; same relative strings for local/S3
+        local_root = Path(str(self.queue_base.path))
+        self.layout = QueueLayout(
+            station=default_dfq_station(),
+            campaign_name=campaign_name,
+            queue_name=queue_name,
+            local_root=local_root,
+        )
+        ph = self.layout.phases
+        self.pending_dir = self.layout.phase_dir(ph.pending)
+        self.completed_dir = self.layout.phase_dir(ph.completed)
+        self.failed_dir = self.layout.phase_dir(ph.failed)
 
         self.pending_dir.mkdir(parents=True, exist_ok=True)
         self.completed_dir.mkdir(parents=True, exist_ok=True)
@@ -74,6 +90,14 @@ class FilesystemQueue:
 
         # Enforce Frictionless Data Policy: Ensure authoritative queue datapackage.json sidecar exists
         self.ensure_schema_sidecar()
+
+        # We need a worker ID for the lease
+        self.worker_id = (
+            os.getenv("COCLI_HOSTNAME")
+            or os.getenv("HOSTNAME")
+            or os.getenv("COMPUTERNAME")
+            or "unknown-worker"
+        )
 
     def ensure_schema_sidecar(self) -> None:
         """Writes authoritative datapackage.json sidecar for this queue via stations.schema."""
@@ -99,17 +123,6 @@ class FilesystemQueue:
         except Exception as e:
             logger.warning(f"Queue schema sidecar write failed for {self.queue_name}: {e}")
 
-
-
-
-        # We need a worker ID for the lease
-        self.worker_id = (
-            os.getenv("COCLI_HOSTNAME")
-            or os.getenv("HOSTNAME")
-            or os.getenv("COMPUTERNAME")
-            or "unknown-worker"
-        )
-
     def count_state(self, state: Union[str, Any]) -> int:
         """
         Count tasks/records in a queue state directory.
@@ -131,12 +144,18 @@ class FilesystemQueue:
 
 
     def _get_shard(self, task_id: str) -> str:
-        """Default sharding logic (PlaceID based). Overridden by subclasses."""
+        """Default sharding logic (PlaceID based). Overridden by subclasses.
+
+        Must stay algorithm-compatible with production data. Default matches
+        ``shard_by_char_index(5)`` / ``get_place_id_shard``.
+        """
         return get_shard_id(task_id)
 
     def _get_task_subpath(self, task_id: str) -> str:
         """
-        Returns the sharded relative path for a task (e.g. 'a/ChIJ-123').
+        Returns the sharded relative path under a phase (e.g. 'a/ChIJ-123').
+        Does **not** include the phase name (pending/...).
+
         Ensures the shard is only added if not already present in the task_id.
         """
         # Sanitize task_id for directory name
@@ -156,17 +175,42 @@ class FilesystemQueue:
         shard = self._get_shard(task_id)
         return f"{shard}/{safe_id}"
 
+    def _pending_rel(self, task_id: str) -> str:
+        """Relative path under queue root: ``pending/{subpath}``.
+
+        Single string used for both local paths and S3 keys (0010 PR2).
+        Phase name comes from StationDecl PhaseRef (still the string "pending"
+        on disk — no format change).
+        """
+        pending = self.layout.phases.pending.name
+        return f"{pending}/{self._get_task_subpath(task_id)}"
+
+    def _s3_pending_prefix(self) -> str:
+        """S3 list prefix for pending phase (trailing slash). Path-stable."""
+        return f"{self.layout.s3_prefix()}/{self.layout.phases.pending.name}/"
+
     def _get_s3_lease_key(self, task_id: str) -> str:
-        subpath = self._get_task_subpath(task_id)
-        return f"campaigns/{self.campaign_name}/queues/{self.queue_name}/pending/{subpath}/lease.json"
+        return f"{self.layout.s3_prefix()}/{self._pending_rel(task_id)}/lease.json"
 
     def _get_s3_task_key(self, task_id: str) -> str:
-        subpath = self._get_task_subpath(task_id)
-        return f"campaigns/{self.campaign_name}/queues/{self.queue_name}/pending/{subpath}/task.json"
+        return f"{self.layout.s3_prefix()}/{self._pending_rel(task_id)}/task.json"
+
+    def _get_s3_completed_key(self, task_id: str) -> str:
+        """Completed objects are flat under the phase (no shard) — production shape."""
+        return (
+            f"{self.layout.s3_prefix()}/"
+            f"{self.layout.phases.completed.name}/{task_id}.json"
+        )
+
+    def _get_s3_failed_key(self, task_id: str) -> str:
+        """Failed objects are flat under the phase (no shard) — production shape."""
+        return (
+            f"{self.layout.s3_prefix()}/"
+            f"{self.layout.phases.failed.name}/{task_id}.json"
+        )
 
     def _get_task_dir(self, task_id: str) -> Path:
-        subpath = self._get_task_subpath(task_id)
-        return self.pending_dir / subpath
+        return self.layout.local_root / Path(self._pending_rel(task_id))
 
     def _get_lease_path(self, task_id: str) -> Path:
         return self._get_task_dir(task_id) / "lease.json"
@@ -222,7 +266,7 @@ class FilesystemQueue:
             if self.s3_client and self.bucket_name:
                 s3_task_key = self._get_s3_task_key(task_id)
                 s3_lease_key = self._get_s3_lease_key(task_id)
-                s3_failed_key = f"campaigns/{self.campaign_name}/queues/{self.queue_name}/failed/{task_id}.json"
+                s3_failed_key = self._get_s3_failed_key(task_id)
 
                 if failed_file.exists():
                     self.s3_client.upload_file(
@@ -474,9 +518,7 @@ class FilesystemQueue:
             return
 
         # 1. Discover which shards actually exist in S3
-        pending_prefix = (
-            f"campaigns/{self.campaign_name}/queues/{self.queue_name}/pending/"
-        )
+        pending_prefix = self._s3_pending_prefix()
         logger.info(
             f"S3 Discovery: Listing {self.bucket_name} with prefix {pending_prefix}"
         )
@@ -511,7 +553,7 @@ class FilesystemQueue:
             if found_total >= max_discovery:
                 break
 
-            prefix = f"campaigns/{self.campaign_name}/queues/{self.queue_name}/pending/{shard}/"
+            prefix = f"{self._s3_pending_prefix()}{shard}/"
             try:
                 # Recursive listing to see both task.json and lease.json in one call
                 # No delimiter means we get the full keys under the prefix
@@ -607,7 +649,7 @@ class FilesystemQueue:
             if self.s3_client and self.bucket_name:
                 s3_task_key = self._get_s3_task_key(task_id)
                 s3_lease_key = self._get_s3_lease_key(task_id)
-                s3_completed_key = f"campaigns/{self.campaign_name}/queues/{self.queue_name}/completed/{task_id}.json"
+                s3_completed_key = self._get_s3_completed_key(task_id)
 
                 # Upload completed file first
                 if completed_file.exists():
