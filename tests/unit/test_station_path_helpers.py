@@ -9,7 +9,7 @@ import pytest
 
 from cocli.core.paths import paths
 from cocli.station_defs.campaigns.indexes.emails import EMAIL_INBOX
-from cocli.station_defs.campaigns.queues import QUEUE_PENDING_TEMPLATE
+from cocli.station_defs.campaigns.queues import DFQ_QUEUE_STATION
 from cocli.station_defs.path_helpers import (
     email_inbox_item_path,
     email_inbox_phases,
@@ -47,7 +47,7 @@ def test_queue_pending_uses_declared_pending_token(
     tmp_path: Path, monkeypatch: Any
 ) -> None:
     monkeypatch.setattr(paths, "root", tmp_path)
-    ph = collect_phases(QUEUE_PENDING_TEMPLATE.segments)
+    ph = collect_phases(DFQ_QUEUE_STATION.segments)
     assert ph is not None
     p = queue_pending_item_path("camp", "enrichment", "task99", phase=ph.pending)
     assert "pending" in p.parts
