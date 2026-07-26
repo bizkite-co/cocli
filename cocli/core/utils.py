@@ -19,8 +19,10 @@ logger = logging.getLogger(__name__)
 
 def get_place_id_shard(place_id: str) -> str:
     """
-    Returns a deterministic shard for a Place ID.
-    Uses the 6th character (index 5) for 1-level sharding.
+    Deterministic path shard for a Place ID (6th character, raw alphabet).
+
+    Prefer :func:`cocli.core.sharding.get_place_id_shard` as the authority.
+    Place ID ``-`` and ``_`` are distinct; do not slugify non-alnum to ``_``.
     """
     if not place_id or len(place_id) < 6:
         return "_"

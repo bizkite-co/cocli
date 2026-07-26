@@ -18,7 +18,7 @@ DFQ_QUEUE_STATION: StationDecl[object] = StationDecl(
     serialization="json-file",
     segments=(
         phases("pending", "completed", "failed", "sideline", "processing"),
-        # Algorithm-preserving: Place ID character at index 5
+        # Place ID char at index 5, raw alphabet (incl. '-' and '_') — not slugified
         shard_by_char_index(5),
     ),
 )

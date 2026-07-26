@@ -3,29 +3,35 @@ from .geo_types import LatScale1, LonScale1
 
 def get_place_id_shard(place_id: str) -> str:
     """
-    Returns a deterministic 1-character shard ID for a Google Place ID.
-    Uses the 6th character (index 5) for 1-level sharding.
+    Deterministic 1-character path shard for a Google Place ID.
+
+    Uses the 6th character (index 5) — one past the common ``ChIJ-`` / ``ChIJ``
+    prefix — for high variability.
+
+    Place IDs use a base64-like alphabet that includes ``-`` and ``_``. Those
+    are distinct identity characters and must appear as path segments unchanged.
+    Do **not** slugify non-alnum characters into ``_``: that collides dash-shard
+    and underscore-shard place_ids and breaks addressability of existing data
+    under ``pending/-/`` vs ``pending/_/``.
+
+    Only missing or short identifiers fall back to ``_``.
     """
     if not place_id or len(place_id) < 6:
         return "_"
-    
-    char = place_id[5]
-    if char.isalnum():
-        return char
-    return "_"
+    return place_id[5]
+
 
 def get_place_id_shard_from_last_character_of_place_id(place_id: str) -> str:
     """
-    ALTERNATIVE STRATEGY: Returns a shard ID based on the LAST character.
-    This is used for compatibility with the 'Gold Standard' migration requirements.
+    ALTERNATIVE STRATEGY: shard by the last character of the place_id.
+
+    Prefer :func:`get_place_id_shard` for queue/index paths. This variant is
+    retained for gold-standard migration tooling only. Same rule as the
+    primary: raw alphabet character, no slugify of ``-``/``_``.
     """
     if not place_id:
         return "_"
-    
-    char = place_id[-1]
-    if char.isalnum():
-        return char
-    return "_"
+    return place_id[-1]
 
 def get_geo_shard(latitude: Union[float, str]) -> str:
     """
