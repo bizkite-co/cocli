@@ -498,13 +498,20 @@ class DataSyncService:
             loaded_cols = [c[1] for c in cols_info]
             logger.debug("Loaded table has columns: %s...", loaded_cols[:5])
 
-            place_id_col = "place_id" if "place_id" in loaded_cols else loaded_cols[0]
-            total_row = con.execute(
-                f"SELECT COUNT(DISTINCT {place_id_col}) FROM metrics_data"
-            ).fetchone()
-            total = total_row[0] if total_row is not None else 0
+            rows_row = con.execute("SELECT COUNT(*) FROM metrics_data").fetchone()
+            total_rows = rows_row[0] if rows_row is not None else 0
 
-            metrics: Dict[str, Any] = {"Total Records": total}
+            # Per-field counts below are over ALL rows, so the headline totals
+            # must distinguish raw rows from deduplicated places — reporting
+            # only COUNT(DISTINCT place_id) made field counts exceed the total.
+            metrics: Dict[str, Any] = {"Total Rows": total_rows}
+            if "place_id" in loaded_cols:
+                distinct_row = con.execute(
+                    'SELECT COUNT(DISTINCT "place_id") FROM metrics_data'
+                ).fetchone()
+                metrics["Distinct Places"] = (
+                    distinct_row[0] if distinct_row is not None else 0
+                )
             for field in schema_fields:
                 if field in loaded_cols:
                     field_type = fields_info.get(field, "string")
@@ -557,30 +564,33 @@ class DataSyncService:
         """Pure-Python metrics when DuckDB load/query fails."""
         csv.field_size_limit(sys.maxsize)
         field_index = {name: i for i, name in enumerate(schema_fields)}
+        place_idx = field_index.get("place_id")
+        total_rows = 0
         place_ids: set[str] = set()
-        field_counts: Dict[str, set[str]] = {f: set() for f in schema_fields}
+        field_counts: Dict[str, int] = {f: 0 for f in schema_fields}
 
         with open(usv_path, "r", encoding="utf-8") as f:
             reader = csv.reader(f, delimiter="\x1f")
-            prev_place_id = None
             for row in reader:
-                if len(row) < len(schema_fields):
+                if not row or not any(row):
                     continue
-                place_id = row[0]
-                if place_id == prev_place_id:
-                    continue
-                prev_place_id = place_id
-                place_ids.add(place_id)
+                total_rows += 1
+                if place_idx is not None and place_idx < len(row):
+                    place_ids.add(row[place_idx])
                 for field_name, idx in field_index.items():
                     if idx < len(row):
                         val = row[idx].strip()
                         if val and val.lower() != "null":
-                            field_counts[field_name].add(val)
+                            field_counts[field_name] += 1
 
-        metrics: Dict[str, Any] = {"Total Records": len(place_ids)}
-        for field, values in field_counts.items():
-            if values:
-                metrics[field] = len(values)
+        # Same semantics as the DuckDB path: raw row total, deduplicated
+        # place count, per-field non-empty row counts.
+        metrics: Dict[str, Any] = {"Total Rows": total_rows}
+        if place_idx is not None:
+            metrics["Distinct Places"] = len(place_ids)
+        for field, count in field_counts.items():
+            if count:
+                metrics[field] = count
 
         return MetricsResult(
             source_name=usv_path.name,

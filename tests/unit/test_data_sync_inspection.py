@@ -139,7 +139,7 @@ def test_compute_metrics(tmp_path: Path) -> None:
         [
             ["p1", "alpha", "111", "1"],
             ["p2", "beta", "", "2"],
-            ["p1", "alpha-dup", "111", "1"],  # same place_id consecutive-ish handled by DISTINCT
+            ["p1", "alpha-dup", "111", "1"],  # duplicate place_id (tile overlap)
         ],
     )
     out = tmp_path / "metrics.md"
@@ -150,7 +150,16 @@ def test_compute_metrics(tmp_path: Path) -> None:
     ):
         result = service.compute_metrics(usv, output_path=out)
     assert isinstance(result, MetricsResult)
-    assert "Total Records" in result.metrics
+    # Raw row total and deduplicated place count are separate metrics; no
+    # per-field count may exceed Total Rows.
+    assert result.metrics["Total Rows"] == 3
+    assert result.metrics["Distinct Places"] == 2
+    field_counts = {
+        k: v
+        for k, v in result.metrics.items()
+        if k not in ("Total Rows", "Distinct Places")
+    }
+    assert all(v <= result.metrics["Total Rows"] for v in field_counts.values())
     assert result.output_path == out
     assert out.exists()
     assert "Metric" in out.read_text()
@@ -164,14 +173,16 @@ def test_compute_metrics_fallback(tmp_path: Path) -> None:
         usv,
         [
             ["p1", "a", "1"],
-            ["p1", "a", "1"],  # consecutive dup skip
+            ["p1", "a", "1"],  # duplicate place_id row still counts as a row
             ["p2", "b", ""],
         ],
     )
     result = service._compute_metrics_fallback(usv, fields)
     assert result.used_fallback is True
-    assert result.metrics["Total Records"] == 2
-    assert result.metrics["slug"] == 2
+    assert result.metrics["Total Rows"] == 3
+    assert result.metrics["Distinct Places"] == 2
+    assert result.metrics["slug"] == 3
+    assert result.metrics["phone"] == 2
 
 
 def test_compute_metrics_emits_fallback_message_via_log_callback(
