@@ -1239,9 +1239,13 @@ class FilesystemEnrichmentQueue(FilesystemQueue):
 
 class FilesystemTileQueue:
     """
-    Queue for atomic tile work units.
-    Each file in pending/tiles/ represents one tile with all its search phrases.
-    Ensures datapackage.json is created and maintained from TileRecord schema.
+    Queue for atomic tile work units (map-tile).
+
+    Phases (StationDecl): pending, processing, completed.
+    Layout under pending: ``tiles/`` holds payload files (not a lifecycle phase).
+
+    Path construction (0010 PR5): phase dirs and S3 prefix via QueueLayout +
+    PhaseRef. On-disk shape unchanged: pending/tiles/, processing/, completed/.
     """
 
     def __init__(
@@ -1250,6 +1254,12 @@ class FilesystemTileQueue:
         s3_client: Any = None,
         bucket_name: Optional[str] = None,
     ):
+        from cocli.station_defs.campaigns.queues import (
+            MAP_TILE_PENDING_LAYOUT,
+            MAP_TILE_QUEUE_STATION,
+        )
+        from .layout import QueueLayout
+
         self.campaign_name = campaign_name
         self.queue_name = "map-tile"
         self.s3_client = s3_client
@@ -1270,13 +1280,23 @@ class FilesystemTileQueue:
                 "FilesystemTileQueue initialized WITHOUT S3 client (Local-only mode)"
             )
 
-        # Initialize queue directories
         self.queue_base = paths.queue(campaign_name, self.queue_name)
-        self.pending_dir = self.queue_base / "pending"
-        self.completed_dir = self.queue_base / "completed"
+        local_root = Path(str(self.queue_base.path))
+        self.layout = QueueLayout(
+            station=MAP_TILE_QUEUE_STATION,
+            campaign_name=campaign_name,
+            queue_name=self.queue_name,
+            local_root=local_root,
+        )
+        ph = self.layout.phases
+        self.pending_dir = self.layout.phase_dir(ph.pending)
+        self.completed_dir = self.layout.phase_dir(ph.completed)
+        self._processing_phase = ph.processing
+        self._pending_layout_name = MAP_TILE_PENDING_LAYOUT
 
         self.pending_dir.mkdir(parents=True, exist_ok=True)
         self.completed_dir.mkdir(parents=True, exist_ok=True)
+        self.processing_dir.mkdir(parents=True, exist_ok=True)
 
         self._ensure_schema()
 
@@ -1284,7 +1304,7 @@ class FilesystemTileQueue:
         """Ensures datapackage.json exists in pending/tiles from TileRecord schema."""
         from ...models.campaigns.tile import TileRecord
 
-        tiles_dir = self.pending_dir / "tiles"
+        tiles_dir = self.tiles_dir
         tiles_dir.mkdir(parents=True, exist_ok=True)
 
         # Create datapackage.json from TileRecord schema
@@ -1293,13 +1313,18 @@ class FilesystemTileQueue:
 
     @property
     def tiles_dir(self) -> Path:
-        """Pending tiles directory."""
-        return self.pending_dir / "tiles"
+        """Payload bag under pending (layout segment, not a phase)."""
+        return self.pending_dir / self._pending_layout_name
 
     @property
     def processing_dir(self) -> Path:
-        """Processing directory for tiles currently being worked on."""
-        return self.queue_base / "processing"
+        """Active-like phase for tiles currently being worked on."""
+        return self.layout.phase_dir(self._processing_phase)
+
+    def _get_s3_completed_key(self, tile_filename: str) -> str:
+        """S3 key for a completed tile file (flat under completed phase)."""
+        completed = self.layout.phases.completed.name
+        return f"{self.layout.s3_prefix()}/{completed}/{tile_filename}"
 
     def push(self, tile_file_path: Path) -> None:
         """Register a tile file in the queue (file should already exist in pending/tiles)."""
@@ -1328,7 +1353,7 @@ class FilesystemTileQueue:
         # Optional: Push to S3 if configured
         if self.s3_client and self.bucket_name:
             try:
-                s3_key = f"campaigns/{self.campaign_name}/queues/{self.queue_name}/completed/{tile_file.name}"
+                s3_key = self._get_s3_completed_key(tile_file.name)
                 with open(completed_path, "r") as f:
                     self.s3_client.put_object(
                         Bucket=self.bucket_name,

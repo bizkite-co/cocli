@@ -9,10 +9,11 @@ Phase names are declared per station — not a single global phase list.
 | gm-details (default DFQ) | place_id 6th char, raw alphabet (``-``/``_`` distinct) | ``shard_by_char_index(5)`` |
 | gm-list | same for bare ids; pre-sharded task ids (``2/25.0/…``) keep first segment | ``shard_by_char_index(5)`` + FSQ pre-shard rule |
 | enrichment | ``sha256(domain)[:2]`` hex | ``shard_by_hash(2)`` |
+| map-tile | no DFQ item shard; payload bag under pending | phases only; layout ``tiles`` under pending |
 | unknown queue_name | place_id char (safe DFQ default) | ``shard_by_char_index(5)`` |
 
 **Not** ``shard_by_hash(1)`` for place ids — that would re-shard production data.
-Tile / discovery-gen layouts are out of scope for this module (PR5/PR7).
+discovery-gen is still PR7.
 """
 
 from __future__ import annotations
@@ -61,6 +62,21 @@ ENRICHMENT_QUEUE_STATION: StationDecl[object] = StationDecl(
     segments=(_DFQ_PHASES, _DOMAIN_HASH_SHARD),
 )
 
+# map-tile (0010 PR5): processing is a lifecycle phase (active-like).
+# ``tiles`` is layout under pending/ — not a peer phase of pending/completed.
+_MAP_TILE_PHASES = phases("pending", "processing", "completed")
+MAP_TILE_QUEUE_STATION: StationDecl[object] = StationDecl(
+    name="map-tile-queue",
+    path_template="campaigns/{campaign}/queues/{queue}",
+    model=object,
+    # Payload files under pending/tiles are USV; schema written by TileRecord.
+    # StationDecl uses json-file so datapackage_path is not required at decl time.
+    serialization="json-file",
+    segments=(_MAP_TILE_PHASES,),
+)
+# Fixed layout segment name under pending (not a PhaseRef).
+MAP_TILE_PENDING_LAYOUT = "tiles"
+
 # Backward-compatible name used by path_helpers pilot
 QUEUE_PENDING_TEMPLATE: StationDecl[object] = StationDecl(
     name="campaign-queue-pending",
@@ -78,9 +94,10 @@ QUEUE_STATIONS: Dict[str, StationDecl[object]] = {
     "gm-details": GM_DETAILS_QUEUE_STATION,
     "gm-list": GM_LIST_QUEUE_STATION,
     "enrichment": ENRICHMENT_QUEUE_STATION,
+    "map-tile": MAP_TILE_QUEUE_STATION,
 }
 
 
 def station_for_queue(queue_name: str) -> StationDecl[object]:
-    """Resolve StationDecl for a DFQ queue_name (algorithm-preserving default)."""
+    """Resolve StationDecl for a queue_name (algorithm-preserving DFQ default)."""
     return QUEUE_STATIONS.get(queue_name, DFQ_QUEUE_STATION)

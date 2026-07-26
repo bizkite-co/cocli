@@ -23,9 +23,12 @@ from stations.segments import collect_shard
 
 
 def test_station_for_queue_mapping() -> None:
+    from cocli.station_defs.campaigns.queues import MAP_TILE_QUEUE_STATION
+
     assert station_for_queue("gm-details") is GM_DETAILS_QUEUE_STATION
     assert station_for_queue("gm-list") is GM_LIST_QUEUE_STATION
     assert station_for_queue("enrichment") is ENRICHMENT_QUEUE_STATION
+    assert station_for_queue("map-tile") is MAP_TILE_QUEUE_STATION
     # unknown → place_id default
     assert collect_shard(station_for_queue("to-call").segments) is not None
     assert (
