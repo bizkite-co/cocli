@@ -81,8 +81,8 @@ class TestTileRecordFrictionlessValidation:
 
             # Check for cocli metadata (stored as top-level keys with cocli: prefix)
             assert "cocli:schema_hash" in schema
-            schema_hash = schema["cocli:schema_hash"]
-            assert len(schema_hash) > 0
+            # Canonical form: {resource_name: hash}
+            schema_hash = schema["cocli:schema_hash"]["tiles"]
             # Hash is a hex string generated from schema fields
             assert len(schema_hash) == 16  # Typically 16 hex chars
 
@@ -241,7 +241,7 @@ class TestSchemaHashValidation:
             # Get actual hash
             with open(schema_path, "r") as f:
                 schema = json.load(f)
-                expected_hash = schema["cocli:schema_hash"]
+                expected_hash = schema["cocli:schema_hash"]["tiles"]
 
             # Validate with expected hash
             is_valid, actual_hash = validate_schema_hash(schema_path, expected_hash)

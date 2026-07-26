@@ -203,8 +203,15 @@ def validate_schema_hash(
         with open(datapackage_path, "r", encoding="utf-8") as f:
             package = json.load(f)
 
-        # Get schema hash from metadata (stored as cocli:schema_hash)
+        # Get schema hash from metadata (stored as cocli:schema_hash).
+        # Canonical form is {resource_name: hash}; legacy sidecars hold a
+        # bare string.
         actual_hash = package.get("cocli:schema_hash", "")
+        if isinstance(actual_hash, dict):
+            resource = str(package.get("name", ""))
+            actual_hash = actual_hash.get(resource) or next(
+                iter(actual_hash.values()), ""
+            )
 
         if not expected_hash:
             return bool(actual_hash), actual_hash

@@ -151,16 +151,23 @@ class BaseUsvModel(BaseModel):
         """Returns a header row (field names) for USV serialization."""
         if not cls.HEADER:
             return ""
-        field_names = list(cls.model_fields.keys())
+        field_names = [
+            name for name, info in cls.model_fields.items() if not info.exclude
+        ]
         return UNIT_SEP.join(field_names) + "\n"
 
     def to_usv(self) -> str:
         """
         Serializes the model into a Unit-Separated Value string.
-        Follows field definition order strictly.
+        Follows field definition order strictly, excluding transient
+        (exclude=True) fields so output matches get_datapackage_fields().
         Handles datetimes, lists, and special character sanitization.
         """
-        field_names = list(self.__class__.model_fields.keys())
+        field_names = [
+            name
+            for name, info in self.__class__.model_fields.items()
+            if not info.exclude
+        ]
         # Use by_alias=False to ensure we use internal field names
         dump = self.model_dump(by_alias=False)
 
@@ -214,28 +221,17 @@ class BaseUsvModel(BaseModel):
 
         if len(parts) < len(field_names):
             parts.extend([""] * (len(field_names) - len(parts)))
-
-        if len(parts) != len(field_names):
-            logger.info(
-                f"Field count mismatch: expected {len(field_names)}, got {len(parts)}. Parts: {parts}"
-            )
-            return (
-                False,
-                None,
-                f"Field count mismatch: expected {len(field_names)}, got {len(parts)}",
-            )
-
-            return (
-                False,
-                None,
-                f"Field count mismatch: expected {len(field_names)}, got {len(parts)}",
-            )
-
-            return (
-                False,
-                None,
-                f"Field count mismatch: expected {len(field_names)}, got {len(parts)}",
-            )
+        elif len(parts) > len(field_names):
+            # Legacy writers appended exclude=True fields as trailing
+            # columns; tolerate them only when they are all empty.
+            extras = parts[len(field_names):]
+            if any(extras):
+                return (
+                    False,
+                    None,
+                    f"Field count mismatch: expected {len(field_names)}, got {len(parts)}",
+                )
+            parts = parts[: len(field_names)]
 
         data = {}
         for i, field_name in enumerate(field_names):
@@ -302,7 +298,9 @@ class BaseUsvModel(BaseModel):
             raise ValueError(f"Empty or invalid USV line for {cls.__name__}")
 
         parts = line.split(UNIT_SEP)
-        field_names = list(cls.model_fields.keys())
+        field_names = [
+            name for name, info in cls.model_fields.items() if not info.exclude
+        ]
 
         data: Dict[str, Any] = {}
         for i, field_name in enumerate(field_names):
@@ -444,7 +442,9 @@ class BaseUsvModel(BaseModel):
             new_schema["cocli:generated_at"] = datetime.now(timezone.utc).isoformat()
 
         current_hash = cls.get_schema_hash()
-        new_schema["cocli:schema_hash"] = current_hash
+        # Canonical form is a mapping {resource_name: hash} (multi-resource
+        # sidecars); append_resource_to_datapackage writes the same shape.
+        new_schema["cocli:schema_hash"] = {resource_name: current_hash}
 
         # 2. Add WASI sentinel if provided
         if wasi_hash:
@@ -484,6 +484,8 @@ class BaseUsvModel(BaseModel):
 
                 # AUTO-VALIDATION: Check for old schema without hash
                 existing_hash = old_schema.get("cocli:schema_hash")
+                if isinstance(existing_hash, dict):
+                    existing_hash = existing_hash.get(resource_name)
 
                 if existing_hash is None:
                     # OLD SCHEMA DETECTED - Auto-regenerate with new hash
