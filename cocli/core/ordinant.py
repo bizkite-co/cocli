@@ -49,14 +49,13 @@ def get_shard(identifier: str, strategy: Literal["place_id", "domain", "geo", "g
         return "_"
     
     if strategy == "place_id":
-        # Uses the 6th character (index 5) for 1-level sharding.
-        if len(identifier) < 6:
-            return identifier[-1] if identifier else "_"
-        char = identifier[5]
-        return char if char.isalnum() else "_"
-        
+        # 6th character, raw place_id alphabet (P14 / get_place_id_shard).
+        from .sharding import get_place_id_shard
+
+        return get_place_id_shard(identifier)
+
     elif strategy == "domain":
-        # Returns a 2-character hex shard (00-ff)
+        # Returns a 2-character hex shard (00-ff). Historical: lower-case before hash.
         return hashlib.sha256(identifier.lower().encode()).hexdigest()[:2]
         
     elif strategy == "geo":

@@ -149,7 +149,14 @@ class QueueLayout:
 
 
 def default_dfq_station() -> StationDecl[object]:
-    """DFQ station decl: DFQ phases + place_id 6th-char shard (algorithm-preserving)."""
+    """Default DFQ station decl: place_id 6th-char shard (algorithm-preserving)."""
     from cocli.station_defs.campaigns.queues import DFQ_QUEUE_STATION
 
     return DFQ_QUEUE_STATION
+
+
+def resolve_queue_station(queue_name: str) -> StationDecl[object]:
+    """Per-queue StationDecl (0010 PR3): place_id char vs domain hash, etc."""
+    from cocli.station_defs.campaigns.queues import station_for_queue
+
+    return station_for_queue(queue_name)

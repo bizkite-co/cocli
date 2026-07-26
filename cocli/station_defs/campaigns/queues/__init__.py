@@ -1,14 +1,31 @@
 """Queue station definitions under campaigns/{campaign}/queues/…
 
 Phase names are declared per station — not a single global phase list.
-Default DFQ uses place_id 6th-character sharding (``shard_by_char_index(5)``),
-matching historical ``get_place_id_shard`` / ``get_shard_id`` — not hash(1).
+
+## Shard strategy → combinator map (algorithm-preserving)
+
+| Queue family | Production algorithm | Combinator |
+| :--- | :--- | :--- |
+| gm-details (default DFQ) | place_id 6th char, raw alphabet (``-``/``_`` distinct) | ``shard_by_char_index(5)`` |
+| gm-list | same for bare ids; pre-sharded task ids (``2/25.0/…``) keep first segment | ``shard_by_char_index(5)`` + FSQ pre-shard rule |
+| enrichment | ``sha256(domain)[:2]`` hex | ``shard_by_hash(2)`` |
+| unknown queue_name | place_id char (safe DFQ default) | ``shard_by_char_index(5)`` |
+
+**Not** ``shard_by_hash(1)`` for place ids — that would re-shard production data.
+Tile / discovery-gen layouts are out of scope for this module (PR5/PR7).
 """
 
 from __future__ import annotations
 
+from typing import Dict
+
 from stations.segments import phases, shard_by_char_index, shard_by_hash
 from stations.station import StationDecl
+
+# Shared DFQ phase set (value-level names on disk; not a global enum type).
+_DFQ_PHASES = phases("pending", "completed", "failed", "sideline", "processing")
+_PLACE_ID_SHARD = shard_by_char_index(5)
+_DOMAIN_HASH_SHARD = shard_by_hash(2)
 
 # DFQ-style queues: pending work lives under pending/{shard}/{id}/
 DFQ_QUEUE_STATION: StationDecl[object] = StationDecl(
@@ -16,11 +33,32 @@ DFQ_QUEUE_STATION: StationDecl[object] = StationDecl(
     path_template="campaigns/{campaign}/queues/{queue}",
     model=object,
     serialization="json-file",
-    segments=(
-        phases("pending", "completed", "failed", "sideline", "processing"),
-        # Place ID char at index 5, raw alphabet (incl. '-' and '_') — not slugified
-        shard_by_char_index(5),
-    ),
+    segments=(_DFQ_PHASES, _PLACE_ID_SHARD),
+)
+
+# Named product queues (0010 PR3)
+GM_DETAILS_QUEUE_STATION: StationDecl[object] = StationDecl(
+    name="gm-details-queue",
+    path_template="campaigns/{campaign}/queues/{queue}",
+    model=object,
+    serialization="json-file",
+    segments=(_DFQ_PHASES, _PLACE_ID_SHARD),
+)
+
+GM_LIST_QUEUE_STATION: StationDecl[object] = StationDecl(
+    name="gm-list-queue",
+    path_template="campaigns/{campaign}/queues/{queue}",
+    model=object,
+    serialization="json-file",
+    segments=(_DFQ_PHASES, _PLACE_ID_SHARD),
+)
+
+ENRICHMENT_QUEUE_STATION: StationDecl[object] = StationDecl(
+    name="enrichment-queue",
+    path_template="campaigns/{campaign}/queues/{queue}",
+    model=object,
+    serialization="json-file",
+    segments=(_DFQ_PHASES, _DOMAIN_HASH_SHARD),
 )
 
 # Backward-compatible name used by path_helpers pilot
@@ -29,20 +67,20 @@ QUEUE_PENDING_TEMPLATE: StationDecl[object] = StationDecl(
     path_template="campaigns/{campaign}/queues/{queue}/pending",
     model=object,
     serialization="json-file",
-    segments=(
-        phases("pending", "completed", "failed", "sideline", "processing"),
-        shard_by_char_index(5),
-    ),
+    segments=(_DFQ_PHASES, _PLACE_ID_SHARD),
 )
 
-# Domain-hash queues (enrichment-style) — opt-in per PR3 wiring
-DFQ_DOMAIN_SHARD_STATION: StationDecl[object] = StationDecl(
-    name="dfq-queue-domain-shard",
-    path_template="campaigns/{campaign}/queues/{queue}",
-    model=object,
-    serialization="json-file",
-    segments=(
-        phases("pending", "completed", "failed", "sideline", "processing"),
-        shard_by_hash(2),
-    ),
-)
+# Explicit alias kept for callers that already import the domain-hash template
+DFQ_DOMAIN_SHARD_STATION: StationDecl[object] = ENRICHMENT_QUEUE_STATION
+
+# queue_name → StationDecl (FilesystemQueue / QueueLayout resolution)
+QUEUE_STATIONS: Dict[str, StationDecl[object]] = {
+    "gm-details": GM_DETAILS_QUEUE_STATION,
+    "gm-list": GM_LIST_QUEUE_STATION,
+    "enrichment": ENRICHMENT_QUEUE_STATION,
+}
+
+
+def station_for_queue(queue_name: str) -> StationDecl[object]:
+    """Resolve StationDecl for a DFQ queue_name (algorithm-preserving default)."""
+    return QUEUE_STATIONS.get(queue_name, DFQ_QUEUE_STATION)

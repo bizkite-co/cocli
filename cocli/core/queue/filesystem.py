@@ -11,7 +11,7 @@ from ...models.campaigns.queues.base import QueueMessage
 from ...core.config import get_cocli_base_dir, get_campaign_dir
 from ...core.paths import paths
 from ...core.sharding import get_shard_id
-from .layout import QueueLayout, default_dfq_station
+from .layout import QueueLayout, resolve_queue_station
 
 logger = logging.getLogger(__name__)
 
@@ -31,11 +31,10 @@ class FilesystemQueue:
         completed/
           <task_id>.json
 
-    Path construction (0010 PR2): phase dirs and S3 key roots come from
+    Path construction (0010 PR2–PR3): phase dirs and S3 key roots come from
     :class:`QueueLayout` + PhaseRef so local and S3 share one relative scheme.
-    Shard *algorithm* remains ``_get_shard`` / ``_get_task_subpath`` so subclasses
-    that override sharding keep production path fidelity (PR3 will move those
-    to per-queue StationDecls).
+    Shard algorithm is the per-queue StationDecl combinator (place_id char or
+    domain hash); ``_get_task_subpath`` still preserves pre-sharded task ids.
     """
 
     def __init__(
@@ -71,10 +70,10 @@ class FilesystemQueue:
             f"Initialized FilesystemQueue V2 for {queue_name} at {self.queue_base} (S3 Atomic: {s3_client is not None})"
         )
 
-        # QueueLayout: phase dirs + S3 prefix; same relative strings for local/S3
+        # QueueLayout: per-queue StationDecl (PR3) + phase dirs; local≡S3 relative
         local_root = Path(str(self.queue_base.path))
         self.layout = QueueLayout(
-            station=default_dfq_station(),
+            station=resolve_queue_station(queue_name),
             campaign_name=campaign_name,
             queue_name=queue_name,
             local_root=local_root,
@@ -144,11 +143,16 @@ class FilesystemQueue:
 
 
     def _get_shard(self, task_id: str) -> str:
-        """Default sharding logic (PlaceID based). Overridden by subclasses.
+        """Shard from this queue's StationDecl combinator (0010 PR3).
 
-        Must stay algorithm-compatible with production data. Default matches
-        ``shard_by_char_index(5)`` / ``get_place_id_shard``.
+        Place-id queues → ``shard_by_char_index(5)``; enrichment →
+        ``shard_by_hash(2)``. Falls back to ``get_shard_id`` if no shard segment.
         """
+        from stations.segments import collect_shard
+
+        sh = collect_shard(self.layout.station.segments)
+        if sh is not None:
+            return sh.shard_for(task_id)
         return get_shard_id(task_id)
 
     def _get_task_subpath(self, task_id: str) -> str:
@@ -1193,14 +1197,7 @@ class FilesystemEnrichmentQueue(FilesystemQueue):
                 logger.error(f"Failed immediate S3 push for enrichment {task_id}: {e}")
         return pushed_id
 
-    def _get_shard(self, task_id: str) -> str:
-        """
-        Gold Standard: task_id is the Domain.
-        Shard is sha256(domain)[:2].
-        """
-        from cocli.core.sharding import get_domain_shard
-
-        return str(get_domain_shard(task_id))
+    # _get_shard: StationDecl ENRICHMENT_QUEUE_STATION → shard_by_hash(2)
 
     def poll(self, batch_size: int = 1) -> List[QueueMessage]:
         return self.poll_frontier(QueueMessage, batch_size)
