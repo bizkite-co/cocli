@@ -84,22 +84,35 @@ class WebService:
         except Exception:
             pass
 
-        # For turboship, auth (User Pool Client + Hosted UI domain) is owned
-        # by the separate turboheatweldingtools/homepage CDK stack
-        # (TurboshipAuthStack), not CdkScraperDeploymentStack - its
-        # UserPoolClientId output is stale/wrong (the client it names was
-        # deleted and recreated under a different ID by that other stack).
-        # That stack publishes the current values to SSM specifically for
-        # cocli's consumption, so prefer those over anything fetched above.
-        if self.campaign_name == "turboship":
-            try:
-                ssm = session.client("ssm")
-                client_id = ssm.get_parameter(Name="/prod/cocli/cognito/client-id")["Parameter"]["Value"]
-                domain_url = ssm.get_parameter(Name="/prod/cocli/cognito/domain-url")["Parameter"]["Value"]
-                env_updates["COCLI_USER_POOL_CLIENT_ID"] = client_id
-                env_updates["COCLI_USER_POOL_DOMAIN"] = domain_url
-            except Exception:
-                pass
+        # Some campaigns' auth (User Pool Client + Hosted UI domain) is owned
+        # by a separate, external CDK stack rather than CdkScraperDeploymentStack
+        # - e.g. turboship's is managed by turboheatweldingtools/homepage's
+        # TurboshipAuthStack, which can recreate its User Pool Client under a
+        # new ID independently of this repo. Rather than hardcoding that
+        # repo's naming scheme here, a campaign opts into a live SSM lookup
+        # by setting these two keys in its own config.toml:
+        #   [aws]
+        #   cognito_client_id_ssm_param = "/prod/cocli/cognito/client-id"
+        #   cognito_domain_ssm_param = "/prod/cocli/cognito/domain-url"
+        # Campaigns that don't set them keep using the static
+        # cocli_user_pool_client_id / cocli_user_pool_domain config values.
+        campaign_dir = get_campaign_dir(self.campaign_name)
+        if campaign_dir:
+            config_path = campaign_dir / "config.toml"
+            if config_path.exists():
+                with open(config_path, "r") as f:
+                    aws_config = toml.load(f).get("aws", {})
+                client_id_param = aws_config.get("cognito_client_id_ssm_param")
+                domain_param = aws_config.get("cognito_domain_ssm_param")
+                if client_id_param or domain_param:
+                    try:
+                        ssm = session.client("ssm")
+                        if client_id_param:
+                            env_updates["COCLI_USER_POOL_CLIENT_ID"] = ssm.get_parameter(Name=client_id_param)["Parameter"]["Value"]
+                        if domain_param:
+                            env_updates["COCLI_USER_POOL_DOMAIN"] = ssm.get_parameter(Name=domain_param)["Parameter"]["Value"]
+                    except Exception:
+                        pass
 
         # Fallback: the pool itself has a domain configured (Cognito Hosted
         # UI custom domain) even when no SSM parameter is available - fetch

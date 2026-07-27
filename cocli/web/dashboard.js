@@ -1,6 +1,14 @@
+/**
+ * Shared across dashboard pages, which each include a different subset of
+ * _includes/components/*.njk - not every element this file looks up exists
+ * on every page. Guard DOM lookups (`if (el) {...}`) instead of an early
+ * `return` keyed on one element, or you'll silently skip unrelated logic
+ * later in the same function on pages that don't have that element. See
+ * web/README.md for the page/component map and the auth setup this file
+ * depends on (checkAuth/logout are defined globally in layout.njk).
+ */
 let allProspects = [];
 let categories = new Set();
-// checkAuth and logout are defined globally in layout.njk
 
 async function fetchReport() {
     const urlParams = new URLSearchParams(window.location.search);
