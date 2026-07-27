@@ -290,54 +290,60 @@ function filterProspects() {
 }
 
 function renderReport(stats, campaign) {
+    // The report table (and worker stats) only exist on pages that include
+    // report_table.njk / worker_stats.njk (currently just config.md) - the
+    // download links and email count below are unrelated and must still
+    // populate on pages (like index.md) that don't have that table.
     const body = document.getElementById('report-body');
-    if (!body) return;
-    body.innerHTML = '';
-    
-    const rows = [
-        { stage: 'Active Enrichment Workers (Fargate)', count: stats.active_fargate_tasks || 0, details: (stats.active_fargate_tasks > 0 ? 'Running' : 'Stopped'), badge: (stats.active_fargate_tasks > 0 ? 'status-running' : '') },
-        { stage: 'Campaign Updates (SQS)', count: `${stats.command_tasks_pending || 0} Pending`, details: 'SQS', badge: (stats.command_tasks_pending > 0 ? 'status-sqs' : '') },
-        { stage: 'Prospects (gm-detail)', count: (stats.prospects_count || 0).toLocaleString(), details: '100%', badge: '' },
-        { stage: 'Enriched (Local)', count: (stats.enriched_count || 0).toLocaleString(), details: `${((stats.enriched_count / stats.prospects_count) * 100).toFixed(1)}%`, badge: '' },
-        { stage: 'Emails Found', count: (stats.emails_found_count || 0).toLocaleString(), details: `${((stats.emails_found_count / stats.enriched_count) * 100).toFixed(1)}% (Yield)`, badge: '' }
-    ];
+    if (body) {
+        body.innerHTML = '';
 
-    rows.forEach(row => {
-        const tr = document.createElement('tr');
-        tr.innerHTML = `
-            <td>${row.stage}</td>
-            <td>${row.count}</td>
-            <td><span class="status-badge ${row.badge}">${row.details}</span></td>
-        `;
-        body.appendChild(tr);
-    });
+        const rows = [
+            { stage: 'Active Enrichment Workers (Fargate)', count: stats.active_fargate_tasks || 0, details: (stats.active_fargate_tasks > 0 ? 'Running' : 'Stopped'), badge: (stats.active_fargate_tasks > 0 ? 'status-running' : '') },
+            { stage: 'Campaign Updates (SQS)', count: `${stats.command_tasks_pending || 0} Pending`, details: 'SQS', badge: (stats.command_tasks_pending > 0 ? 'status-sqs' : '') },
+            { stage: 'Prospects (gm-detail)', count: (stats.prospects_count || 0).toLocaleString(), details: '100%', badge: '' },
+            { stage: 'Enriched (Local)', count: (stats.enriched_count || 0).toLocaleString(), details: `${((stats.enriched_count / stats.prospects_count) * 100).toFixed(1)}%`, badge: '' },
+            { stage: 'Emails Found', count: (stats.emails_found_count || 0).toLocaleString(), details: `${((stats.emails_found_count / stats.enriched_count) * 100).toFixed(1)}% (Yield)`, badge: '' }
+        ];
 
-    document.getElementById('report-loading').style.display = 'none';
-    const reportTable = document.getElementById('report-table');
-    if (reportTable) reportTable.style.display = 'table';
-    
-    const lastUpdatedTime = document.getElementById('last-updated-time');
-    if (lastUpdatedTime) lastUpdatedTime.textContent = new Date(stats.last_updated).toLocaleString();
-    
-    const lastUpdatedText = document.getElementById('last-updated-text');
-    if (lastUpdatedText) lastUpdatedText.style.display = 'block';
-    
-    // Update Worker Stats
-    const workerStats = stats.worker_stats || {};
-    const workerBody = document.getElementById('worker-stats-body');
-    const workerContainer = document.getElementById('worker-stats-container');
-    if (workerBody && workerContainer) {
-        workerBody.innerHTML = '';
-        const totalProcessed = Object.values(workerStats).reduce((a, b) => a + b, 0);
-        
-        if (totalProcessed > 0) {
-            Object.entries(workerStats).sort((a,b) => b[1] - a[1]).forEach(([worker, count]) => {
-                const share = ((count / totalProcessed) * 100).toFixed(1) + '%';
-                const tr = document.createElement('tr');
-                tr.innerHTML = `<td>${worker}</td><td>${count.toLocaleString()}</td><td>${share}</td>`;
-                workerBody.appendChild(tr);
-            });
-            workerContainer.style.display = 'block';
+        rows.forEach(row => {
+            const tr = document.createElement('tr');
+            tr.innerHTML = `
+                <td>${row.stage}</td>
+                <td>${row.count}</td>
+                <td><span class="status-badge ${row.badge}">${row.details}</span></td>
+            `;
+            body.appendChild(tr);
+        });
+
+        const reportLoading = document.getElementById('report-loading');
+        if (reportLoading) reportLoading.style.display = 'none';
+        const reportTable = document.getElementById('report-table');
+        if (reportTable) reportTable.style.display = 'table';
+
+        const lastUpdatedTime = document.getElementById('last-updated-time');
+        if (lastUpdatedTime) lastUpdatedTime.textContent = new Date(stats.last_updated).toLocaleString();
+
+        const lastUpdatedText = document.getElementById('last-updated-text');
+        if (lastUpdatedText) lastUpdatedText.style.display = 'block';
+
+        // Update Worker Stats
+        const workerStats = stats.worker_stats || {};
+        const workerBody = document.getElementById('worker-stats-body');
+        const workerContainer = document.getElementById('worker-stats-container');
+        if (workerBody && workerContainer) {
+            workerBody.innerHTML = '';
+            const totalProcessed = Object.values(workerStats).reduce((a, b) => a + b, 0);
+
+            if (totalProcessed > 0) {
+                Object.entries(workerStats).sort((a,b) => b[1] - a[1]).forEach(([worker, count]) => {
+                    const share = ((count / totalProcessed) * 100).toFixed(1) + '%';
+                    const tr = document.createElement('tr');
+                    tr.innerHTML = `<td>${worker}</td><td>${count.toLocaleString()}</td><td>${share}</td>`;
+                    workerBody.appendChild(tr);
+                });
+                workerContainer.style.display = 'block';
+            }
         }
     }
 

@@ -84,6 +84,38 @@ class WebService:
         except Exception:
             pass
 
+        # For turboship, auth (User Pool Client + Hosted UI domain) is owned
+        # by the separate turboheatweldingtools/homepage CDK stack
+        # (TurboshipAuthStack), not CdkScraperDeploymentStack - its
+        # UserPoolClientId output is stale/wrong (the client it names was
+        # deleted and recreated under a different ID by that other stack).
+        # That stack publishes the current values to SSM specifically for
+        # cocli's consumption, so prefer those over anything fetched above.
+        if self.campaign_name == "turboship":
+            try:
+                ssm = session.client("ssm")
+                client_id = ssm.get_parameter(Name="/prod/cocli/cognito/client-id")["Parameter"]["Value"]
+                domain_url = ssm.get_parameter(Name="/prod/cocli/cognito/domain-url")["Parameter"]["Value"]
+                env_updates["COCLI_USER_POOL_CLIENT_ID"] = client_id
+                env_updates["COCLI_USER_POOL_DOMAIN"] = domain_url
+            except Exception:
+                pass
+
+        # Fallback: the pool itself has a domain configured (Cognito Hosted
+        # UI custom domain) even when no SSM parameter is available - fetch
+        # it directly so the dashboard's login redirect isn't silently
+        # disabled when the local token expires.
+        user_pool_id = env_updates.get("COCLI_USER_POOL_ID")
+        if user_pool_id and "COCLI_USER_POOL_DOMAIN" not in env_updates:
+            try:
+                idp = session.client("cognito-idp")
+                pool = idp.describe_user_pool(UserPoolId=user_pool_id)["UserPool"]
+                domain = pool.get("CustomDomain") or pool.get("Domain")
+                if domain:
+                    env_updates["COCLI_USER_POOL_DOMAIN"] = f"https://{domain}"
+            except Exception:
+                pass
+
         return env_updates
 
     def get_campaign_reports(self) -> Dict[str, Any]:
