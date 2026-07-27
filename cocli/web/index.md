@@ -7,15 +7,15 @@ title: cocli Campaign Dashboard
 
 This dashboard provides a real-time view of the scraping and enrichment funnel.
 
-## Prospect Search
-
-{% include "components/search_box.njk" %}
-
 ## Downloads
 
 {% include "components/downloads.njk" %}
 
-<script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+## Prospect Search
+
+{% include "components/search_box.njk" %}
+
+<script src="/papaparse.min.js"></script>
 <script>
     window.CAMPAIGN_NAME = '{{ campaign.name }}';
 </script>

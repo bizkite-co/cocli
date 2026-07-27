@@ -110,20 +110,21 @@ def main(
 
     from cocli.core.prospects_csv_manager import ProspectsIndexManager
     prospect_manager = ProspectsIndexManager(campaign_name)
-    checkpoint_path = prospect_manager.index_dir / "prospects.checkpoint.usv"
-    
+    checkpoint_path = prospect_manager.checkpoint_path
+
     if not checkpoint_path.exists():
         console.print("[bold red]Error: Prospects checkpoint not found. Run sync-prospects first.[/bold red]")
         raise typer.Exit(1)
 
     # Prospect Schema
     con.execute(f"""
-        CREATE TABLE prospects AS SELECT * FROM read_csv('{checkpoint_path}', 
-            delim='\x1f', 
+        CREATE TABLE prospects AS SELECT * FROM read_csv('{checkpoint_path}',
+            delim='\x1f',
             header=False,
             columns={json.dumps(columns)},
             auto_detect=False,
-            ignore_errors=True
+            ignore_errors=True,
+            quote=''
         )
     """)
 
@@ -155,50 +156,86 @@ def main(
         # Create empty table if no emails yet
         con.execute("CREATE TABLE emails (email VARCHAR, domain VARCHAR, company_slug VARCHAR, tags VARCHAR, last_seen VARCHAR)")
 
+    # Scraper artifacts occasionally land image filenames in the email column
+    # (e.g. "..._580x@2x.png") - the "@2x" retina suffix looks like a valid
+    # local-part@domain shape to a naive check, so filter on plausible email
+    # shape AND reject image-extension "domains" explicitly.
+    con.execute(r"""
+        DELETE FROM emails
+        WHERE NOT regexp_matches(email, '^[^@\s]+@[^@\s]+\.[A-Za-z]{2,}$')
+           OR regexp_matches(lower(email), '\.(png|jpe?g|gif|webp|bmp|svg|ico|tiff?)$')
+    """)
+
+    # Email domains are frequently stored as full URLs (e.g.
+    # "https://www.foo.com/") while prospect domains are bare hostnames
+    # ("foo.com") - normalize both sides before joining or the match rate
+    # silently undercounts.
+    con.execute("ALTER TABLE emails ADD COLUMN norm_domain VARCHAR")
+    con.execute(r"""
+        UPDATE emails SET norm_domain = regexp_replace(regexp_replace(lower(domain), '^https?://(www\.)?', ''), '/$', '')
+    """)
+    con.execute("ALTER TABLE prospects ADD COLUMN norm_domain VARCHAR")
+    con.execute(r"""
+        UPDATE prospects SET norm_domain = regexp_replace(regexp_replace(lower(domain), '^https?://(www\.)?', ''), '/$', '')
+    """)
+
     # 3. Perform High-Performance Join
     # We group emails by domain/slug to get a semicolon-separated list
     query = """
-        SELECT 
+        SELECT
             p.name,
-            COALESCE(p.domain, p.company_slug) as domain,
+            COALESCE(p.domain, p.slug) as domain,
             string_agg(DISTINCT e.email, '; ') as emails,
             p.phone as phone,
             p.city,
             p.state,
             p.keyword as tag,
+            p.category as category,
+            p.first_category as first_category,
             p.place_id,
-            p.company_slug,
+            p.slug,
             p.average_rating,
             p.reviews_count
         FROM prospects p
         LEFT JOIN emails e ON (
-            p.domain = e.domain OR 
-            p.company_slug = e.company_slug OR 
-            p.company_slug = e.domain OR 
-            p.domain = e.company_slug
+            p.norm_domain = e.norm_domain OR
+            p.slug = e.company_slug OR
+            p.slug = e.norm_domain OR
+            p.norm_domain = e.company_slug
         )
-        GROUP BY p.name, p.domain, p.company_slug, p.phone, p.city, p.state, p.keyword, p.place_id, p.average_rating, p.reviews_count
+        GROUP BY p.name, p.domain, p.slug, p.phone, p.city, p.state, p.keyword, p.category, p.first_category, p.place_id, p.average_rating, p.reviews_count
     """
-    
+
+    # Client report criteria: contactable leads only - phone, email, and a
+    # category or keyword signal for outreach personalization.
+    having_clauses = ["phone IS NOT NULL", "TRIM(phone) != ''"]
     if not include_all:
-        query += " HAVING emails IS NOT NULL"
+        having_clauses.append("emails IS NOT NULL")
+    query += " HAVING " + " AND ".join(having_clauses)
 
     rows = con.execute(query).fetchall()
-    
+
     results = []
     skipped_count = 0
-    
+
     for row in track(rows, description="Refining leads..."):
-        name, domain, emails, phone, city, state, keyword, place_id, slug, rating, reviews = row
-        
+        name, domain, emails, phone, city, state, keyword, category, first_category, place_id, slug, rating, reviews = row
+
         if exclusion_manager.is_excluded(domain=domain, slug=slug):
             continue
 
-        # Load extra data from company files ONLY for keywords/details if requested
-        website_data = get_website_data(slug)
-        if keywords:
-            if not website_data or not website_data.found_keywords:
-                continue
+        # Load extra data from company files for enrichment-found keywords.
+        website_data = get_website_data(slug) if slug else None
+        found_keywords = website_data.found_keywords if website_data else []
+
+        report_category = category or first_category or ""
+        has_category_or_keywords = bool(report_category) or bool(found_keywords)
+
+        if keywords and not found_keywords:
+            continue
+        if not has_category_or_keywords:
+            skipped_count += 1
+            continue
 
         # Construct final record
         results.append({
@@ -209,57 +246,68 @@ def main(
             "website": domain,
             "city": city,
             "state": state,
-            "categories": "", # Add back if needed from company files
+            "categories": report_category,
             "services": "",
             "products": "",
-            "tags": "; ".join(filter(None, [keyword] + (website_data.found_keywords if website_data else []))),
+            "tags": "; ".join(filter(None, [keyword] + found_keywords)),
             "gmb_url": f"https://www.google.com/maps/search/?api=1&query=google&query_place_id={place_id}" if place_id else "",
             "rating": rating,
             "reviews": reviews
         })
 
     # 4. Write Output
+    fieldnames = ["company", "domain", "emails", "phone", "website", "city", "state", "categories", "services", "products", "tags", "gmb_url", "rating", "reviews"]
+
+    # 4a. Canonical USV (Frictionless data standard - authoritative artifact)
     output_file_usv = output_file.with_suffix(".usv")
     with open(output_file_usv, "w", newline="", encoding="utf-8") as f:
         from cocli.models.wal.record import US
-        # Header
-        f.write(US.join(["company", "domain", "emails", "phone", "website", "city", "state", "categories", "services", "products", "tags", "gmb_url", "rating", "reviews"]) + "\n")
+        f.write(US.join(fieldnames) + "\n")
         for res in results:
-            line = [
-                str(res["company"]),
-                str(res["domain"]),
-                str(res["emails"]),
-                str(res["phone"]),
-                str(res["website"]),
-                str(res["city"]),
-                str(res["state"]),
-                str(res["categories"]),
-                str(res["services"]),
-                str(res["products"]),
-                str(res["tags"]),
-                str(res["gmb_url"]),
-                str(res["rating"]),
-                str(res["reviews"])
-            ]
+            line = [str(res[name]) for name in fieldnames]
             f.write(US.join(line) + "\n")
-        
+
+    # 4b. Client-facing CSV rendered from the same result set (used by the
+    # dashboard download button and on-page prospect cards).
+    output_file_csv = output_file.with_suffix(".csv")
+    import csv
+    with open(output_file_csv, "w", newline="", encoding="utf-8") as f:
+        writer = csv.DictWriter(f, fieldnames=fieldnames)
+        writer.writeheader()
+        for res in results:
+            writer.writerow(res)
+
     console.print("\n[bold green]Success![/bold green]")
     console.print(f"Exported: [bold]{len(results)}[/bold] companies")
     if skipped_count:
-        console.print(f"Skipped: [bold red]{skipped_count}[/bold red] malformed records (check log)")
+        console.print(f"Skipped: [bold red]{skipped_count}[/bold red] records without phone/category/keyword signal (check log)")
     console.print(f"Output: [cyan]{output_file_usv}[/cyan]")
+    console.print(f"Output: [cyan]{output_file_csv}[/cyan]")
 
-    # Also upload the USV to S3
+    # Also upload both artifacts to S3. The CSV is the one the dashboard
+    # download button and on-page prospect fetch consume, so it needs a
+    # proper text/csv content-type and an attachment disposition or the
+    # browser won't offer a real "Save As" download for it.
     from cocli.core.reporting import get_boto3_session, load_campaign_config
     config = load_campaign_config(campaign_name)
     s3_config = config.get("aws", {})
     bucket_name = s3_config.get("cocli_web_bucket_name") or "cocli-web-assets-turboheat-net"
-    
+
     try:
         session = get_boto3_session(config)
         s3 = session.client("s3")
         s3.upload_file(str(output_file_usv), bucket_name, f"exports/{campaign_name}-emails.usv")
-        console.print("[bold green]Successfully uploaded USV export to S3.[/bold green]")
+        s3.upload_file(
+            str(output_file_csv),
+            bucket_name,
+            f"exports/{campaign_name}-emails.csv",
+            ExtraArgs={
+                "ContentType": "text/csv",
+                "ContentDisposition": f'attachment; filename="{campaign_name}-emails.csv"',
+                "CacheControl": "no-cache, must-revalidate",
+            },
+        )
+        console.print("[bold green]Successfully uploaded USV and CSV exports to S3.[/bold green]")
     except Exception as e:
         console.print(f"[bold red]Failed to upload to S3: {e}[/bold red]")
 

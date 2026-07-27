@@ -608,6 +608,25 @@ class OperationService:
                     )
                     log_step("identify_leads", "task-end")
 
+                    if params.get("purge"):
+                        log_step("purge_pending", "task-start")
+                        log_step("purge_pending", "pending", "Clearing existing to-call queue...")
+                        from cocli.core.paths import paths as _paths
+
+                        pending_dir = (
+                            _paths.campaign(self.campaign_name).path
+                            / "queues"
+                            / "to-call"
+                            / "pending"
+                        )
+                        purged = 0
+                        if pending_dir.exists():
+                            for f in pending_dir.glob("*.usv"):
+                                f.unlink()
+                                purged += 1
+                        log_step("purge_pending", "success", f"{purged} pending tasks removed")
+                        log_step("purge_pending", "task-end")
+
                     log_step("tag_leads", "task-start")
                     log_step("tag_leads", "pending")
                     created = 0

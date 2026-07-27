@@ -101,8 +101,16 @@ def deploy(
                     content_type = "text/html"
                 else:
                     content_type = "application/octet-stream"
-                
-                s3.upload_file(str(file_path), bucket_name, str(rel_path), ExtraArgs={"ContentType": content_type})
+
+                # No Cache-Control means browsers/CloudFront fall back to
+                # heuristic caching (RFC 7234) and can silently serve a stale
+                # shell after a deploy. Force revalidation on every load.
+                s3.upload_file(
+                    str(file_path),
+                    bucket_name,
+                    str(rel_path),
+                    ExtraArgs={"ContentType": content_type, "CacheControl": "no-cache, must-revalidate"},
+                )
                 console.print(f"  Uploaded {rel_path}")
     else:
         console.print(f"[yellow]Build directory {build_dir} not found. Skipping shell sync.[/yellow]")
@@ -115,7 +123,9 @@ def deploy(
         console.print("  Regenerating export CSV...")
         # Use the absolute path to the script relative to project root
         script_path = Path(__file__).parent.parent.parent / "scripts" / "export_enriched_emails.py"
-        subprocess.run(["uv", "run", str(script_path), campaign_name, "--all"], check=True)
+        export_env = os.environ.copy()
+        export_env["AWS_PROFILE"] = profile
+        subprocess.run(["uv", "run", str(script_path), campaign_name], check=True, env=export_env)
     except Exception as e:
         console.print(f"[yellow]Warning: Could not regenerate export CSV: {e}[/yellow]")
 

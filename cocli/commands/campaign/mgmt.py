@@ -471,13 +471,19 @@ def compile_to_call(
         Optional[str], typer.Argument(help="The name of the campaign.")
     ] = None,
     limit: int = typer.Option(50, help="Number of top leads to tag for calling."),
+    purge: bool = typer.Option(
+        False,
+        "--purge",
+        help="Clear the existing pending to-call queue before repopulating.",
+    ),
 ) -> None:
     """
     Compiles prospects to a To-Call list:
     1. Consolidates GM results and compacts index.
     2. Compacts email index.
     3. Identifies top leads (rating >= 4.5, reviews >= 20, has contact info).
-    4. Adds top leads to the 'to-call' queue.
+    4. (Optional, --purge) Clears the existing pending to-call queue.
+    5. Adds top leads to the 'to-call' queue.
     """
     name = _require_campaign(campaign_name)
     try:
@@ -495,7 +501,7 @@ def compile_to_call(
             return await service.execute(
                 "op_compile_to_call",
                 log_callback=log_cb,
-                params={"limit": limit},
+                params={"limit": limit, "purge": purge},
             )
 
         result = asyncio.run(run_op())

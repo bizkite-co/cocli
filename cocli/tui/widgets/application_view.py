@@ -4,7 +4,7 @@ import asyncio
 from datetime import datetime
 from textual.app import ComposeResult
 from textual.containers import Container, VerticalScroll, Horizontal, Vertical
-from textual.widgets import Label, ListView, ListItem, Static, Input, LoadingIndicator
+from textual.widgets import Label, ListView, ListItem, Static, Input, LoadingIndicator, Checkbox
 from textual.message import Message
 from textual.widget import Widget
 from textual.binding import Binding
@@ -143,6 +143,12 @@ class ApplicationView(Container):
                             yield Label("Limit (Target Amount):", id="op_limit_label")
                             yield Input(
                                 placeholder="20", id="op_limit_input", value="20"
+                            )
+                        with Horizontal(id="op_purge_container"):
+                            yield Checkbox(
+                                "Purge existing queue before repopulating",
+                                id="op_purge_checkbox",
+                                value=False,
                             )
                     yield Container(id="op_content_area")
                     with VerticalScroll(id="op_log_preview_container"):
@@ -480,6 +486,9 @@ class ApplicationView(Container):
                     "op_compile_to_call",
                     "op_rollout_discovery",
                 ]
+                self.query_one("#op_purge_container").display = (
+                    op_id == "op_compile_to_call"
+                )
                 content_area = self.query_one("#op_content_area", Container)
                 content_area.remove_children()
                 self.query_one("#op_last_run", Label).update(
@@ -627,6 +636,9 @@ class ApplicationView(Container):
                 )
             except ValueError:
                 params["limit"] = 20
+            params["purge"] = self.query_one(
+                "#op_purge_checkbox", Checkbox
+            ).value
         elif op_id == "op_rollout_discovery":
             try:
                 params["batch_name"] = self.query_one("#op_name_input", Input).value

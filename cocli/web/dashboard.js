@@ -344,11 +344,19 @@ function renderReport(stats, campaign) {
     const emailCountDisplay = document.getElementById('email-count-display');
     if (emailCountDisplay) emailCountDisplay.textContent = (stats.emails_found_count || 0).toLocaleString();
     
+    const exportCampaign = stats.campaign_name || campaign;
+
     const downloadLink = document.getElementById('download-link');
-    if (downloadLink) downloadLink.href = `/exports/${stats.campaign_name || campaign}-emails.csv`;
-    
+    if (downloadLink) {
+        downloadLink.href = `/exports/${exportCampaign}-emails.csv?v=${Date.now()}`;
+        downloadLink.setAttribute('download', `${exportCampaign}-emails.csv`);
+    }
+
     const downloadLinkJson = document.getElementById('download-link-json');
-    if (downloadLinkJson) downloadLinkJson.href = `/exports/${stats.campaign_name || campaign}-emails.json`;
+    if (downloadLinkJson) {
+        downloadLinkJson.href = `/exports/${exportCampaign}-emails.json?v=${Date.now()}`;
+        downloadLinkJson.setAttribute('download', `${exportCampaign}-emails.json`);
+    }
 }
 
 window.addEventListener('DOMContentLoaded', () => {
