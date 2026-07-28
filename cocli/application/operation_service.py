@@ -506,13 +506,15 @@ class OperationService:
                     log_step("s3_sync_down", "success")
 
                     log_step("consolidate_tiles", "pending")
+                    from cocli.core.gm_list_tile_resharder import (
+                        reshard_google_maps_list_item_tiles,
+                    )
                     from cocli.core.prospect_compactor import (
-                        consolidate_campaign_results,
                         compact_prospects_to_checkpoint,
                     )
 
                     await asyncio.to_thread(
-                        consolidate_campaign_results, self.campaign_name
+                        reshard_google_maps_list_item_tiles, self.campaign_name
                     )
                     log_step("consolidate_tiles", "success")
 
@@ -542,13 +544,15 @@ class OperationService:
 
                     log_step("compact_gm", "task-start")
                     log_step("compact_gm", "pending", "Running GM index compaction...")
+                    from cocli.core.gm_list_tile_resharder import (
+                        reshard_google_maps_list_item_tiles,
+                    )
                     from cocli.core.prospect_compactor import (
-                        consolidate_campaign_results,
                         compact_prospects_to_checkpoint,
                     )
 
                     await asyncio.to_thread(
-                        consolidate_campaign_results, self.campaign_name
+                        reshard_google_maps_list_item_tiles, self.campaign_name
                     )
                     m_count = await asyncio.to_thread(
                         compact_prospects_to_checkpoint, self.campaign_name
