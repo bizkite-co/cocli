@@ -115,9 +115,29 @@ def deploy(
     else:
         console.print(f"[yellow]Build directory {build_dir} not found. Skipping shell sync.[/yellow]")
 
+    # 1.5 Compact the GM prospects index (WAL -> checkpoint) so the export/
+    # report below reflect the latest scrape/enrichment results, not
+    # whatever was last compacted locally. This used to be a separate,
+    # easy-to-forget manual step - same path as `cocli index compact`
+    # (Freeze-Ingest-Merge-Commit: S3-native lock, stations CURRENT commit,
+    # real checkpoint upload).
+    console.print(f"[bold]Compacting google_maps_prospects index for {campaign_name}...[/bold]")
+    try:
+        def compact_log_cb(msg: str) -> None:
+            console.print(f"  {msg}")
+
+        compact_result = services.index_service.compact(
+            index_name="google_maps_prospects",
+            log_callback=compact_log_cb,
+        )
+        if not compact_result.success:
+            console.print(f"[yellow]Warning: compaction failed: {compact_result.message}[/yellow]")
+    except Exception as e:
+        console.print(f"[yellow]Warning: Could not compact google_maps_prospects index: {e}[/yellow]")
+
     # 2. Generate & Upload Report
     console.print(f"[bold]Generating reports for {campaign_name}...[/bold]")
-    
+
     # 2.0 Force regeneration of the export CSV to pick up name changes
     try:
         console.print("  Regenerating export CSV...")

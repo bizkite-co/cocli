@@ -488,14 +488,17 @@ def compile_to_call(
     name = _require_campaign(campaign_name)
     try:
         from ...application.operation_service import OperationService
+        from .._operation_console import operation_log_callback, print_operation_steps
 
         service = OperationService(name)
         console.print(
             f"[bold cyan]Compiling To-Call list for: {name}[/bold cyan]"
         )
+        meta = service.get_details("op_compile_to_call")
+        if meta:
+            print_operation_steps(console, meta)
 
-        def log_cb(msg: str) -> None:
-            console.print(f"  {msg.strip()}")
+        log_cb = operation_log_callback(console)
 
         async def run_op() -> Dict[str, Any]:
             return await service.execute(
