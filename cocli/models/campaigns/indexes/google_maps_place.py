@@ -115,8 +115,12 @@ class GoogleMapsPlace(GoogleMapsIdx):
     first_category: Annotated[Optional[str], BeforeValidator(strip_quotes)] = None
     second_category: Annotated[Optional[str], BeforeValidator(strip_quotes)] = None
     claimed_google_my_business: Annotated[Optional[str], BeforeValidator(strip_quotes)] = None
-    reviews_count: SafeInt = None
-    average_rating: SafeFloat = None
+    # Field(ge=/le=) must precede BeforeValidator in the Annotated stack: the
+    # reverse order applies the numeric constraint before the None/"" -> None
+    # coercion runs, so a bare `None` input raises a raw TypeError instead of
+    # passing through cleanly.
+    reviews_count: Annotated[Optional[int], Field(ge=0), BeforeValidator(safe_int)] = None
+    average_rating: Annotated[Optional[float], Field(ge=0.0, le=5.0), BeforeValidator(safe_float)] = None
     hours: Annotated[Optional[str], BeforeValidator(strip_quotes)] = None
     saturday: Annotated[Optional[str], BeforeValidator(strip_quotes)] = None
     sunday: Annotated[Optional[str], BeforeValidator(strip_quotes)] = None
@@ -266,32 +270,13 @@ class GoogleMapsPlace(GoogleMapsIdx):
 
     @classmethod
     def get_datapackage_fields(cls) -> List[Dict[str, Any]]:
-        """Generates Frictionless Data field definitions from the model."""
-        fields = []
-        for name, field in cls.model_fields.items():
-            # Map Python types to JSON Schema/Frictionless types
-            raw_type = field.annotation
-            field_type = "string" # default
-            
-            type_str = str(raw_type)
-            if "int" in type_str:
-                field_type = "integer"
-            elif "float" in type_str:
-                field_type = "number"
-            elif "datetime" in type_str:
-                field_type = "datetime"
-                
-            f_def: Dict[str, Any] = {
-                "name": name,
-                "type": field_type,
-                "description": field.description or ""
-            }
-            
-            # Explicitly flag deprecated fields for Frictionless consumers
-            if "DEPRECATED" in (field.description or ""):
+        """Frictionless field defs, including constraints (BaseUsvModel), plus the
+        DEPRECATED flag this domain uses for fields Google Maps no longer provides."""
+        fields = super().get_datapackage_fields()
+        for f_def in fields:
+            field = cls.model_fields.get(f_def["name"])
+            if field and "DEPRECATED" in (field.description or ""):
                 f_def["deprecated"] = True
-                
-            fields.append(f_def)
         return fields
 
     def save_enrichment(self) -> Path:

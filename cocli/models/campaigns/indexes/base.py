@@ -1,5 +1,5 @@
 from pathlib import Path
-from typing import List, Dict, Optional, ClassVar
+from typing import Any, List, Dict, Optional, ClassVar
 from ...base import BaseUsvModel
 from ....core.paths import paths
 from ....core.ordinant import IndexName, get_shard
@@ -45,27 +45,11 @@ class BaseIndexModel(BaseUsvModel):
         return f"campaigns/{campaign_name}/indexes/{self.INDEX_NAME}/wal/{shard_id}/{identity}.usv"
 
     @classmethod
-    def get_datapackage_fields(cls) -> List[Dict[str, str]]:
-        """Generates Frictionless Data field definitions from the model fields."""
-        fields = []
-        for name, field in cls.model_fields.items():
-            raw_type = field.annotation
-            field_type = "string"
-            
-            type_str = str(raw_type)
-            if "int" in type_str:
-                field_type = "integer"
-            elif "float" in type_str:
-                field_type = "number"
-            elif "datetime" in type_str:
-                field_type = "datetime"
-                
-            fields.append({
-                "name": name,
-                "type": field_type,
-                "description": field.description or ""
-            })
-        return fields
+    def get_datapackage_fields(cls) -> List[Dict[str, Any]]:
+        """Frictionless field defs. Delegates to BaseUsvModel so index models
+        inherit its constraint export (minLength/maxLength/minimum/maximum) -
+        this class used to reimplement the loop and silently drop constraints."""
+        return super().get_datapackage_fields()
 
     @classmethod
     def write_datapackage(cls, campaign_name: str, output_dir: Optional[Path] = None) -> Path:
