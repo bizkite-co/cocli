@@ -118,7 +118,10 @@ def sync_clocks(
     service = ClusterService("roadmap")
 
     def log_cb(msg: str) -> None:
-        console.print(f"  {msg}")
+        # highlight=False: Rich's default highlighter colors "..." (and other
+        # repr-like tokens) inside plain text, splicing ANSI codes into the
+        # middle of these messages.
+        console.print(f"  {msg}", highlight=False)
 
     async def sync_all() -> None:
         await service.sync_clocks(authoritative_node, auth_time, log_callback=log_cb)
@@ -143,7 +146,7 @@ def stop(
     console.print(f"[bold red]Stopping all workers for campaign: {effective_campaign}[/bold red]")
 
     def log_cb(msg: str) -> None:
-        console.print(f"  {msg}")
+        console.print(f"  {msg}", highlight=False)
 
     async def stop_all() -> None:
         await service.stop_workers(log_callback=log_cb)
@@ -216,7 +219,7 @@ def prune() -> None:
     table.add_column("Reclaimed Space", justify="right")
 
     def log_cb(msg: str) -> None:
-        console.print(f"  {msg}")
+        console.print(f"  {msg}", highlight=False)
 
     async def prune_all() -> None:
         prune_results = await service.prune_nodes(validated_nodes, log_callback=log_cb)
