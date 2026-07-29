@@ -416,6 +416,9 @@ cocli
         status - Show the status of the index tiers (WAL, Processing, Checkpoint).
             --campaign (text)
             --index (text)
+        sync-pi-wal - Pushes each Pi node's local index WAL to S3 (rsync Pi -> local staging,
+            --campaign (text)
+            --index (text)
         write-datapackage - Generates Frictionless Data 'datapackage.json' for the specified index based on its Pydantic model.
             index (text) [required]
             --campaign/-c (text)

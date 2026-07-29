@@ -115,6 +115,24 @@ def deploy(
     else:
         console.print(f"[yellow]Build directory {build_dir} not found. Skipping shell sync.[/yellow]")
 
+    # 1.4 Pull fresh WAL data from the Pi cluster before compacting. Scrapers
+    # write WAL entries straight to each Pi's local disk (add_to_wal()) -
+    # nothing else moves that to S3, so without this step the compact below
+    # would fold over stale/empty S3 data (== "0 records merged" success).
+    console.print(f"[bold]Syncing google_maps_prospects WAL from Pi cluster for {campaign_name}...[/bold]")
+    try:
+        from ..application.pi_sync_service import PiSyncService
+        wal_sync_results = PiSyncService(campaign_name).sync_prospect_wal_to_s3(
+            index_name="google_maps_prospects"
+        )
+        for r in wal_sync_results:
+            if r.success:
+                console.print(f"  {r.host}: pushed {r.files_synced} WAL files")
+            else:
+                console.print(f"[yellow]  {r.host}: WAL sync failed - {r.error}[/yellow]")
+    except Exception as e:
+        console.print(f"[yellow]Warning: Could not sync Pi WAL to S3: {e}[/yellow]")
+
     # 1.5 Compact the GM prospects index (WAL -> checkpoint) so the export/
     # report below reflect the latest scrape/enrichment results, not
     # whatever was last compacted locally. This used to be a separate,

@@ -183,3 +183,86 @@ class PiSyncService:
             "total_files_synced": total_files,
         }
 
+    def sync_prospect_wal_to_s3(self, index_name: str = "google_maps_prospects") -> List[SyncResult]:
+        """
+        Pushes each Pi node's local index WAL (e.g. add_to_wal() output written
+        directly by scrapers) up to S3, via a local staging hop: rsync Pi -> a
+        staging dir, then `aws s3 sync` staging -> S3's wal/ prefix.
+
+        Must NOT land the rsync in the campaign's real local WAL dir
+        (indexes/{index_name}/wal) - CompactManager.isolate_wal() unconditionally
+        deletes that directory as a side effect of running compaction, so
+        anything staged there first would be lost before merge() ever saw it.
+        Staging lives under the campaign root instead, outside the index
+        directory entirely, so it can never be swept into a compact run's scan
+        or purge by accident.
+
+        Staging is cleared after a successful S3 push so already-pushed WAL
+        entries aren't re-synced/re-uploaded on the next run - once compaction
+        isolates and folds them, S3's wal/ prefix stops having them, and a
+        stale local staging copy would otherwise look "new" again forever.
+        """
+        import shutil
+
+        from cocli.core.config import load_campaign_config
+        from cocli.core.reporting import get_data_bucket_name
+
+        config = load_campaign_config(self.campaign)
+        aws_config = config.get("aws", {})
+        bucket_name = get_data_bucket_name(config, self.campaign)
+        profile = aws_config.get("profile") or aws_config.get("aws_profile")
+        s3_prefix = f"campaigns/{self.campaign}/indexes/{index_name}/wal/"
+
+        staging_root = paths.campaign(self.campaign).path / "_pi_wal_staging" / index_name
+
+        results: List[SyncResult] = []
+        for node in self.nodes:
+            host = node.hostname
+            target = node.ip_address if node.ip_address else host
+            node_staging = staging_root / host
+            os.makedirs(node_staging, exist_ok=True)
+
+            try:
+                remote_path = f"mstouffer@{target}:repos/data/campaigns/{self.campaign}/indexes/{index_name}/wal/"
+                logger.info(f"  Syncing {index_name} WAL from {host}...")
+                rsync_result = subprocess.run(
+                    ["rsync", "-avzu", remote_path, str(node_staging) + "/"],
+                    capture_output=True, text=True, timeout=300,
+                )
+                if rsync_result.returncode != 0:
+                    error_msg = rsync_result.stderr.strip() or "Unknown rsync error"
+                    logger.warning(f"  {host}: WAL rsync failed - {error_msg}")
+                    results.append(SyncResult(host=host, success=False, files_synced=0, error=error_msg))
+                    continue
+
+                staged_files = [p for p in node_staging.rglob("*.usv") if p.is_file()]
+                if not staged_files:
+                    results.append(SyncResult(host=host, success=True, files_synced=0))
+                    continue
+
+                env = os.environ.copy()
+                if profile:
+                    env["AWS_PROFILE"] = str(profile)
+                push_result = subprocess.run(
+                    ["aws", "s3", "sync", str(node_staging), f"s3://{bucket_name}/{s3_prefix}", "--quiet"],
+                    capture_output=True, text=True, env=env, timeout=300,
+                )
+                if push_result.returncode != 0:
+                    error_msg = push_result.stderr.strip() or "Unknown S3 sync error"
+                    logger.warning(f"  {host}: WAL push to S3 failed - {error_msg}")
+                    results.append(SyncResult(host=host, success=False, files_synced=len(staged_files), error=error_msg))
+                    continue
+
+                shutil.rmtree(node_staging)
+                logger.info(f"  {host}: Pushed {len(staged_files)} WAL files to S3.")
+                results.append(SyncResult(host=host, success=True, files_synced=len(staged_files)))
+
+            except subprocess.TimeoutExpired:
+                logger.warning(f"  {host}: WAL sync timeout (>5 minutes)")
+                results.append(SyncResult(host=host, success=False, files_synced=0, error="Timeout"))
+            except Exception as e:
+                logger.warning(f"  {host}: WAL sync error - {e}")
+                results.append(SyncResult(host=host, success=False, files_synced=0, error=str(e)))
+
+        return results
+

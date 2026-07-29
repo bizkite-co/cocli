@@ -80,6 +80,42 @@ def compact(
     console.print(f"[bold green]{result.message}[/bold green]")
 
 
+@app.command(name="sync-pi-wal")
+def sync_pi_wal(
+    campaign: str = typer.Option("roadmap", help="Campaign name"),
+    index: str = typer.Option("google_maps_prospects", help="Index name whose WAL to sync"),
+) -> None:
+    """
+    Pushes each Pi node's local index WAL to S3 (rsync Pi -> local staging,
+    then upload staging -> S3), so `cocli index compact` has fresh data to
+    fold. Scrapers write WAL entries directly to the Pi's local disk; nothing
+    else moves that data to S3 automatically. Run this before `compact`, or
+    let `cocli web deploy` run both in order.
+    """
+    from cocli.application.pi_sync_service import PiSyncService
+    from rich.table import Table
+
+    console.print(f"[bold]Syncing {index} WAL to S3 for {campaign}...[/bold]")
+    service = PiSyncService(campaign)
+    results = service.sync_prospect_wal_to_s3(index_name=index)
+
+    if not results:
+        console.print("[yellow]No Pi nodes configured for this campaign.[/yellow]")
+        return
+
+    table = Table(title="WAL Sync Results")
+    table.add_column("Node")
+    table.add_column("Status")
+    table.add_column("Files Pushed", justify="right")
+    for r in results:
+        status = "[green]OK[/green]" if r.success else f"[red]FAILED: {r.error}[/red]"
+        table.add_row(r.host, status, str(r.files_synced))
+    console.print(table)
+
+    if not all(r.success for r in results):
+        raise typer.Exit(code=1)
+
+
 @app.command(name="status")
 def status(
     campaign: str = typer.Option("roadmap", help="Campaign name"),
