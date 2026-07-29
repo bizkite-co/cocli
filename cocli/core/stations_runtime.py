@@ -304,66 +304,15 @@ def materialize_email_shards_from_current(manager: Any) -> int:
     return len(entries)
 
 
-# Canonical column set for google_maps_prospects USV (headerless) DuckDB fold.
-_PROSPECTS_USV_COLUMNS: dict[str, str] = {
-    "place_id": "VARCHAR",
-    "company_slug": "VARCHAR",
-    "name": "VARCHAR",
-    "phone_1": "VARCHAR",
-    "created_at": "VARCHAR",
-    "updated_at": "VARCHAR",
-    "version": "INTEGER",
-    "keyword": "VARCHAR",
-    "full_address": "VARCHAR",
-    "street_address": "VARCHAR",
-    "city": "VARCHAR",
-    "zip": "VARCHAR",
-    "municipality": "VARCHAR",
-    "state": "VARCHAR",
-    "country": "VARCHAR",
-    "timezone": "VARCHAR",
-    "phone_standard_format": "VARCHAR",
-    "website": "VARCHAR",
-    "domain": "VARCHAR",
-    "first_category": "VARCHAR",
-    "second_category": "VARCHAR",
-    "claimed_google_my_business": "VARCHAR",
-    "reviews_count": "INTEGER",
-    "average_rating": "DOUBLE",
-    "hours": "VARCHAR",
-    "saturday": "VARCHAR",
-    "sunday": "VARCHAR",
-    "monday": "VARCHAR",
-    "tuesday": "VARCHAR",
-    "wednesday": "VARCHAR",
-    "thursday": "VARCHAR",
-    "friday": "VARCHAR",
-    "latitude": "DOUBLE",
-    "longitude": "DOUBLE",
-    "coordinates": "VARCHAR",
-    "plus_code": "VARCHAR",
-    "menu_link": "VARCHAR",
-    "gmb_url": "VARCHAR",
-    "cid": "VARCHAR",
-    "google_knowledge_url": "VARCHAR",
-    "kgmid": "VARCHAR",
-    "image_url": "VARCHAR",
-    "favicon": "VARCHAR",
-    "review_url": "VARCHAR",
-    "facebook_url": "VARCHAR",
-    "linkedin_url": "VARCHAR",
-    "instagram_url": "VARCHAR",
-    "thumbnail_url": "VARCHAR",
-    "reviews": "VARCHAR",
-    "quotes": "VARCHAR",
-    "uuid": "VARCHAR",
-    "company_hash": "VARCHAR",
-    "discovery_phrase": "VARCHAR",
-    "discovery_tile_id": "VARCHAR",
-    "processed_by": "VARCHAR",
-    # Append-only (decision 0003): category is new to this station and goes last.
-    "category": "VARCHAR",
-}
+def _prospects_duckdb_columns() -> dict[str, str]:
+    """DuckDB column map from GoogleMapsProspect (single schema authority).
+
+    Never hand-maintain a parallel field list here — that reintroduces the
+    55/56/57 dual-authority failures. SQL types are a fold projection only.
+    """
+    from cocli.models.campaigns.indexes.google_maps_prospect import GoogleMapsProspect
+
+    return GoogleMapsProspect.duckdb_read_csv_columns()
 
 
 def _collect_prospect_usv_sources(
@@ -401,43 +350,109 @@ def _collect_prospect_usv_sources(
     return out
 
 
+def _normalize_prospect_usv_files_to_model_width(
+    source_files: List[Path], work_dir: Path
+) -> List[Path]:
+    """Pad/truncate headerless USV lines to current model field count.
+
+    Append-only growth (decision 0003): short historical rows get trailing empties.
+    Longer rows are truncated only when extra cells are empty (legacy trailing
+    exclude columns); otherwise the line is skipped and logged.
+    """
+    from cocli.core.constants import UNIT_SEP
+    from cocli.models.campaigns.indexes.google_maps_prospect import GoogleMapsProspect
+
+    width = len(GoogleMapsProspect.usv_field_names())
+    work_dir.mkdir(parents=True, exist_ok=True)
+    normalized: List[Path] = []
+    for i, src in enumerate(source_files):
+        out = work_dir / f"norm_{i:04d}_{src.name}"
+        kept = 0
+        skipped = 0
+        with open(src, "r", encoding="utf-8", errors="replace") as fin, open(
+            out, "w", encoding="utf-8"
+        ) as fout:
+            for line in fin:
+                raw = line.rstrip("\n\r")
+                if not raw.strip():
+                    continue
+                parts = raw.split(UNIT_SEP)
+                if len(parts) < width:
+                    parts = parts + [""] * (width - len(parts))
+                elif len(parts) > width:
+                    extras = parts[width:]
+                    if any(extras):
+                        skipped += 1
+                        continue
+                    parts = parts[:width]
+                fout.write(UNIT_SEP.join(parts) + "\n")
+                kept += 1
+        if kept:
+            normalized.append(out)
+        else:
+            out.unlink(missing_ok=True)
+        if skipped:
+            logger.warning(
+                "prospects fold skipped %s over-wide non-empty rows from %s",
+                skipped,
+                src,
+            )
+    return normalized
+
+
 def _duckdb_fold_prospect_usv_files(
     source_files: List[Path], dest: Path
 ) -> bool:
-    """Deterministic LWW fold by place_id / updated_at (product-scale Fold)."""
+    """Deterministic LWW fold by place_id / updated_at (product-scale Fold).
+
+    Column list is derived from ``GoogleMapsProspect`` (same order as ``to_usv``).
+    Sources are normalized to model width first so short append-only historical
+    rows and full-width checkpoints fold together without a parallel schema dict.
+    """
+    import shutil
+    import tempfile
+
     import duckdb
 
     if not source_files:
         return False
-    path_list = "', '".join(str(p) for p in source_files)
-    cols = json.dumps(_PROSPECTS_USV_COLUMNS)
+
     dest.parent.mkdir(parents=True, exist_ok=True)
     tmp = dest.with_suffix(dest.suffix + ".tmp")
-    con = duckdb.connect(database=":memory:")
-    q = f"""
-        COPY (
-            SELECT * EXCLUDE (row_num) FROM (
-                SELECT *,
-                       row_number() OVER (
-                           PARTITION BY place_id ORDER BY updated_at DESC
-                       ) as row_num
-                FROM read_csv(
-                    ['{path_list}'],
-                    delim='\x1f',
-                    header=False,
-                    columns={cols},
-                    null_padding=true,
-                    ignore_errors=True
+    work = Path(tempfile.mkdtemp(prefix="prospects-fold-"))
+    try:
+        normalized = _normalize_prospect_usv_files_to_model_width(source_files, work)
+        if not normalized:
+            return False
+        path_list = "', '".join(str(p) for p in normalized)
+        cols = json.dumps(_prospects_duckdb_columns())
+        con = duckdb.connect(database=":memory:")
+        q = f"""
+            COPY (
+                SELECT * EXCLUDE (row_num) FROM (
+                    SELECT *,
+                           row_number() OVER (
+                               PARTITION BY place_id ORDER BY updated_at DESC
+                           ) as row_num
+                    FROM read_csv(
+                        ['{path_list}'],
+                        delim='\x1f',
+                        header=False,
+                        columns={cols},
+                        auto_detect=false,
+                        ignore_errors=True
+                    )
                 )
-            )
-            WHERE row_num = 1
-        ) TO '{tmp}' (DELIMITER '\x1f', HEADER FALSE)
-    """
-    con.execute(q)
-    if not tmp.exists():
-        return False
-    tmp.replace(dest)
-    return dest.exists() and dest.stat().st_size >= 0
+                WHERE row_num = 1
+            ) TO '{tmp}' (DELIMITER '\x1f', HEADER FALSE)
+        """
+        con.execute(q)
+        if not tmp.exists():
+            return False
+        tmp.replace(dest)
+        return dest.exists() and dest.stat().st_size >= 0
+    finally:
+        shutil.rmtree(work, ignore_errors=True)
 
 
 def _stations_cas_commit_current(

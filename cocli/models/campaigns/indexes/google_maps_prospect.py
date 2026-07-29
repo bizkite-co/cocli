@@ -12,7 +12,9 @@ logger = logging.getLogger(__name__)
 class GoogleMapsProspect(GoogleMapsPlace):
     """
     GOLD STANDARD MODEL: Standardized model for Google Maps sales prospects.
-    Strictly follows the 56-column canonical USV format.
+
+    USV column order and count come from ``model_fields`` (via ``to_usv`` /
+    ``duckdb_read_csv_columns``). Do not maintain a parallel column list in compact.
     """
 
     SCHEMA_VERSION: ClassVar[str] = "1.0.0"

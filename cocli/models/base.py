@@ -320,6 +320,35 @@ class BaseUsvModel(BaseModel):
         return cls.model_validate(data)
 
     @classmethod
+    def usv_field_names(cls) -> List[str]:
+        """Field names in USV column order (excludes ``exclude=True`` fields)."""
+        return [
+            name for name, info in cls.model_fields.items() if not info.exclude
+        ]
+
+    @classmethod
+    def duckdb_read_csv_columns(cls) -> Dict[str, str]:
+        """DuckDB ``read_csv(..., columns=)`` map derived from this model.
+
+        Semantic authority is the Pydantic model / datapackage field list.
+        SQL types are a fold-engine **projection** only (e.g. datetime → VARCHAR
+        because USV stores ISO text). Never hand-maintain a parallel field list.
+        """
+        frictionless_to_sql = {
+            "string": "VARCHAR",
+            "integer": "INTEGER",
+            "number": "DOUBLE",
+            "datetime": "VARCHAR",
+            "boolean": "VARCHAR",
+        }
+        cols: Dict[str, str] = {}
+        for field in cls.get_datapackage_fields():
+            name = str(field["name"])
+            ftype = str(field.get("type") or "string")
+            cols[name] = frictionless_to_sql.get(ftype, "VARCHAR")
+        return cols
+
+    @classmethod
     def get_schema_hash(cls) -> str:
         """Generate a deterministic hash of the current schema.
 
@@ -450,27 +479,42 @@ class BaseUsvModel(BaseModel):
         if wasi_hash:
             new_schema["cocli:wasi_hash"] = wasi_hash
 
-        # 3. Update Ledger
-        ledger_path = Path("schema_ledger.json")
-        ledger = {}
+        # 3. Update ledger next to the station (not CWD — that was silent drift)
+        ledger_path = path / "schema_ledger.json"
+        ledger: Dict[str, Any] = {}
         if ledger_path.exists():
-            with open(ledger_path, "r") as f:
-                ledger = json.load(f)
+            try:
+                with open(ledger_path, "r") as f:
+                    ledger = json.load(f)
+            except Exception:
+                ledger = {}
 
         if resource_name not in ledger:
             ledger[resource_name] = {"current_hash": "", "history": []}
 
-        if ledger[resource_name]["current_hash"] != current_hash:
+        hash_changed = ledger[resource_name].get("current_hash") != current_hash
+        if hash_changed:
             timestamp = new_schema.get("cocli:schema_updated_at") or new_schema.get(
                 "cocli:generated_at"
             )
             ledger[resource_name]["history"].append(
-                {"hash": current_hash, "timestamp": timestamp}
+                {
+                    "hash": current_hash,
+                    "timestamp": timestamp,
+                    "field_count": len(new_schema["resources"][0]["schema"]["fields"]),
+                    "fields": [
+                        f["name"]
+                        for f in new_schema["resources"][0]["schema"]["fields"]
+                    ],
+                }
             )
             ledger[resource_name]["current_hash"] = current_hash
 
-            with open(ledger_path, "w") as f:
-                json.dump(ledger, f, indent=2)
+            try:
+                with open(ledger_path, "w") as f:
+                    json.dump(ledger, f, indent=2)
+            except OSError as e:
+                logger.warning("schema_ledger.json write failed at %s: %s", ledger_path, e)
 
         new_fields = new_schema["resources"][0]["schema"]["fields"]
 
@@ -579,6 +623,42 @@ class BaseUsvModel(BaseModel):
             force=True,
             protect=True,
         )
+
+        # Append-only generation log (survives datapackage overwrites; rsync/gossip-friendly)
+        if hash_changed:
+            cls._append_schema_generation_log(
+                path,
+                resource_name=resource_name,
+                schema_hash=current_hash,
+                fields=new_fields,
+            )
+
+    @classmethod
+    def _append_schema_generation_log(
+        cls,
+        directory: Path,
+        *,
+        resource_name: str,
+        schema_hash: str,
+        fields: List[Dict[str, Any]],
+    ) -> None:
+        """Append one JSON line when schema hash changes (audit trail, not dual authority)."""
+        from datetime import datetime, timezone
+
+        log_path = directory / "schema_generations.jsonl"
+        record = {
+            "ts": datetime.now(timezone.utc).isoformat(),
+            "model": cls.__name__,
+            "resource": resource_name,
+            "schema_hash": schema_hash,
+            "field_count": len(fields),
+            "fields": [f.get("name") for f in fields],
+        }
+        try:
+            with open(log_path, "a", encoding="utf-8") as f:
+                f.write(json.dumps(record, separators=(",", ":")) + "\n")
+        except OSError as e:
+            logger.warning("schema_generations.jsonl append failed at %s: %s", log_path, e)
 
     @classmethod
     def append_resource_to_datapackage(
