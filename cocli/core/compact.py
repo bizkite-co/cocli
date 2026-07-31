@@ -159,21 +159,26 @@ class CompactManager:
             return 0
 
     def acquire_staging(self) -> None:
-        """Syncs the processing/run_id/ folder from S3 to local disk using AWS CLI."""
+        """Syncs the processing/run_id/ folder from S3 to local disk using AWS CLI.
+
+        Must raise on failure, not just log: callers proceed straight to merge()
+        assuming local_proc_dir reflects what was isolated on S3. A swallowed
+        sync failure leaves local_proc_dir empty, so merge() sees "no sources"
+        and silently re-commits the checkpoint unchanged - then cleanup() purges
+        the S3 processing/ prefix, permanently losing the isolated batch with
+        the CLI reporting success throughout.
+        """
         logger.info(f"Acquiring staging data to {self.local_proc_dir}...")
         self.local_proc_dir.mkdir(parents=True, exist_ok=True)
-        
+
         src = f"s3://{self._bucket}/{self.s3_proc_prefix}"
-        try:
-            from contextlib import nullcontext
-            with open(self.log_file, "a") if self.log_file else nullcontext() as f:
-                subprocess.run(
-                    ["aws", "s3", "sync", src, str(self.local_proc_dir), "--quiet"],
-                    stdout=f, stderr=f, check=True
-                )
-            logger.info("Staging data acquired.")
-        except Exception as e:
-            logger.error(f"Failed to sync staging data: {e}")
+        from contextlib import nullcontext
+        with open(self.log_file, "a") if self.log_file else nullcontext() as f:
+            subprocess.run(
+                ["aws", "s3", "sync", src, str(self.local_proc_dir), "--quiet"],
+                stdout=f, stderr=f, check=True
+            )
+        logger.info("Staging data acquired.")
 
     def _write_schema_sidecar_first(self) -> None:
         """Enforces Frictionless Data policy by writing datapackage.json sidecar BEFORE data writes."""

@@ -154,7 +154,7 @@ class IndexService:
         report.processing_file_count = proc_count
 
         # 4. Checkpoint
-        checkpoint_key = manager.s3_index_prefix + "prospects.usv"
+        checkpoint_key = manager.s3_index_prefix + manager.checkpoint_filename
 
         try:
             head = manager.s3.head_object(Bucket=manager._bucket, Key=checkpoint_key)
@@ -245,7 +245,22 @@ class IndexService:
             )
             for run_id in recovered:
                 _emit(log_callback, f"Recovering interrupted run: {run_id}")
-                self.recover_interrupted_run(index_name, run_id, log_file=log_file)
+                try:
+                    self.recover_interrupted_run(index_name, run_id, log_file=log_file)
+                except Exception as e:
+                    logger.error(
+                        "Failed to recover interrupted run %s: %s", run_id, e, exc_info=True
+                    )
+                    msg = f"Failed to recover interrupted run {run_id}: {e}"
+                    _emit(log_callback, msg)
+                    return CompactResult(
+                        campaign_name=self.campaign_name,
+                        index_name=index_name,
+                        success=False,
+                        recovered_runs=recovered,
+                        message=msg,
+                        log_file=log_file,
+                    )
             _emit(log_callback, "Recovery complete.")
         else:
             _emit(log_callback, "No interrupted runs found.")

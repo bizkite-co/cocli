@@ -326,6 +326,49 @@ def test_compact_recovers_interrupted_runs() -> None:
     assert result.success is True
 
 
+def test_compact_aborts_when_staging_sync_fails() -> None:
+    """acquire_staging() must propagate a sync failure rather than swallow it -
+    otherwise merge() sees an empty local_proc_dir, treats a real isolated
+    batch as nothing-to-merge, and cleanup() then deletes it from S3 with the
+    CLI reporting success throughout."""
+    manager = _make_compact_manager_mock(lock_ok=True, moved=5)
+    manager.acquire_staging.side_effect = RuntimeError("aws s3 sync failed")
+    service = IndexService(campaign_name="roadmap")
+    with (
+        patch.object(IndexService, "list_interrupted_runs", return_value=[]),
+        patch("cocli.core.compact.CompactManager", return_value=manager),
+    ):
+        result = service.compact("google_maps_prospects")
+
+    assert result.success is False
+    assert "aws s3 sync failed" in result.message
+    manager.merge.assert_not_called()
+    manager.commit_remote.assert_not_called()
+    manager.cleanup.assert_not_called()
+    manager.release_lock.assert_called_once()
+
+
+def test_compact_reports_failure_when_recovery_raises() -> None:
+    manager = _make_compact_manager_mock(lock_ok=True, moved=1)
+    service = IndexService(campaign_name="roadmap")
+    with (
+        patch.object(
+            IndexService, "list_interrupted_runs", return_value=["run_old"]
+        ),
+        patch.object(
+            IndexService,
+            "recover_interrupted_run",
+            side_effect=RuntimeError("aws s3 sync failed"),
+        ),
+        patch("cocli.core.compact.CompactManager", return_value=manager),
+    ):
+        result = service.compact("google_maps_prospects")
+
+    assert result.success is False
+    assert "run_old" in result.message
+    manager.acquire_lock.assert_not_called()
+
+
 def test_backfill_domains() -> None:
     mock_campaign = MagicMock()
     mock_manager = MagicMock()
