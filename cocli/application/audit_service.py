@@ -95,6 +95,8 @@ class AuditService:
 
         # Audit Companies
         for company in Company.get_all():
+            if company is None:
+                continue
             if self.campaign_name in company.tags:
                 reason = None
                 for p in contamination_patterns:

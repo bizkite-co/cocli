@@ -39,6 +39,8 @@ def render_prospects_kml(
     companies_by_hash: Dict[str, Company] = {}
     
     for company_obj in Company.get_all():
+        if company_obj is None:
+            continue
         if company_obj.place_id:
             companies_by_place_id[company_obj.place_id] = company_obj
         companies_by_slug[company_obj.slug] = company_obj

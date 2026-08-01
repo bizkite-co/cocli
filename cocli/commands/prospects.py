@@ -38,6 +38,8 @@ app = typer.Typer(no_args_is_help=True)
 def get_prospects(campaign: str, with_email: bool, city: Optional[str], state: Optional[str]) -> Iterator[Company]:
     """Yields companies that match the filter criteria."""
     for company in Company.get_all():
+        if company is None:
+            continue
         if campaign in company.tags:
             if with_email and not company.email:
                 continue

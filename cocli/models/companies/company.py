@@ -163,25 +163,22 @@ class Company(BaseModel):
         return self
 
     @classmethod
-    def get_all(cls) -> Iterator["Company"]:
-        """Iterates through all company directories and yields Company objects."""
+    def get_all(cls) -> Iterator[Optional["Company"]]:
+        """Iterates through all company directories, yielding a Company per
+        entry or None for a directory that failed to load (so callers that
+        want a skip count can distinguish "no more entries" from "this one
+        didn't parse"). Most callers only want real Company objects - filter
+        out None before using the yielded value."""
         from ...core.paths import paths
 
         companies_dir = paths.companies.path
         if not companies_dir.exists():
             return
 
-        # We can store state on the class for the duration of the scan if needed
-        # but for now we just yield and let the caller count.
         for company_dir in sorted(companies_dir.iterdir()):
             if company_dir.is_dir():
                 company = cls.from_directory(company_dir)
-                if company:
-                    yield company
-                else:
-                    # We can't easily pass the count back via iterator without changing API
-                    # so we'll just yield None for skipped items to allow counting.
-                    yield None  # type: ignore
+                yield company if company else None
 
     @classmethod
     def get(cls, slug: str) -> Optional["Company"]:

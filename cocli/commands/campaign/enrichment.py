@@ -53,6 +53,8 @@ def queue_enrichment(
         task_id = progress.add_task("[cyan]Scanning companies...[/cyan]", total=None)
         
         for company in Company.get_all():
+            if company is None:
+                continue
             if effective_campaign not in company.tags:
                 continue
                 

@@ -115,7 +115,7 @@ class CampaignWorkflow:
 
         # existing_companies_map is no longer needed after import_prospect refactoring
         from ..models.companies.company import Company
-        existing_companies_map = {c.domain: c.slug for c in Company.get_all() if c.domain and c.slug}
+        existing_companies_map = {c.domain: c.slug for c in Company.get_all() if c and c.domain and c.slug}
         location_prospects_index = LocationProspectsIndex(campaign_name=self.name)
 
         try:
