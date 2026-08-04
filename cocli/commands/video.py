@@ -833,12 +833,19 @@ def upload(
             console.print(f"[red]Video file not found in {video_dir}[/red]")
             continue
 
-        thumbnail_filename = metadata.get("thumbnail-screenshot", "thumbnail.png")
-        thumbnail_path: Path = pack_dir / slug / thumbnail_filename
-        if not thumbnail_path.exists():
-            thumbnail_path = video_dir / thumbnail_filename
+        # Prefer processed overlay thumbnail; screenshot name is only the source art.
+        thumbnail_path = pack_dir / slug / "thumbnail.png"
         if not thumbnail_path.exists():
             thumbnail_path = video_dir / "thumbnail.png"
+        if not thumbnail_path.exists():
+            # Legacy fallback: raw screenshot named in metadata
+            screenshot_name = metadata.get("thumbnail-screenshot")
+            if screenshot_name:
+                candidate = pack_dir / slug / str(screenshot_name)
+                if not candidate.exists():
+                    candidate = video_dir / str(screenshot_name)
+                if candidate.exists():
+                    thumbnail_path = candidate
 
         console.print(f"  Title: {title}")
         console.print(f"  Description: {description[:100]}...")
