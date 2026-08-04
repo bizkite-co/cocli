@@ -19,6 +19,7 @@ def _full_usv_line(
     updated_at: str,
     *,
     field_count: int | None = None,
+    extra: dict[str, str] | None = None,
 ) -> str:
     """Build a USV row in current model order (optionally truncated for history)."""
     names = GoogleMapsProspect.usv_field_names()
@@ -29,6 +30,8 @@ def _full_usv_line(
     cols[idx["name"]] = name
     cols[idx["created_at"]] = updated_at
     cols[idx["updated_at"]] = updated_at
+    for field_name, value in (extra or {}).items():
+        cols[idx[field_name]] = value
     if field_count is not None:
         cols = cols[:field_count]
     return "\x1f".join(cols) + "\n"
@@ -127,6 +130,115 @@ def test_prospects_compact_accepts_shorter_historical_usv(
     # Output width is current model (padded)
     first = out.splitlines()[0]
     assert first.count("\x1f") + 1 == n
+
+
+def test_prospects_compact_fold_is_field_level_not_whole_row(
+    tmp_path: Path, monkeypatch: Any
+) -> None:
+    """The real, live bug: an earlier gm-list-shaped row captured `category`;
+    a later gm-details/enrichment-shaped write for the same place_id has no
+    category (that writer never re-scrapes it) but does carry a corrected
+    phone. A whole-row LWW fold picks the later row entirely and silently
+    erases category. The fix must keep BOTH: the later phone AND the earlier
+    category - that is the field-lineage guarantee, not just "newest row
+    wins"."""
+    from cocli.core import paths as paths_mod
+
+    monkeypatch.setattr(paths_mod.paths, "root", tmp_path)
+
+    index_dir = tmp_path / "campaigns" / "t" / "indexes" / "google_maps_prospects"
+    index_dir.mkdir(parents=True)
+    wal = index_dir / "wal" / "a"
+    wal.mkdir(parents=True)
+    checkpoint = index_dir / "prospects.usv"
+
+    checkpoint.write_text(
+        _full_usv_line(
+            "ChIJ1",
+            "Flooring Co",
+            "2026-01-01T00:00:00+00:00",
+            extra={"category": "Flooring contractor", "phone": "555-0001"},
+        ),
+        encoding="utf-8",
+    )
+    (wal / "p1.usv").write_text(
+        _full_usv_line(
+            "ChIJ1",
+            "Flooring Co",
+            "2026-01-05T00:00:00+00:00",
+            extra={"category": "", "phone": "555-9999"},
+        ),
+        encoding="utf-8",
+    )
+
+    assert (
+        compact_prospects_local(
+            index_dir, checkpoint_path=checkpoint, compactor_id="field-lww"
+        )
+        is True
+    )
+
+    names = GoogleMapsProspect.usv_field_names()
+    idx = {n: i for i, n in enumerate(names)}
+    line = checkpoint.read_text(encoding="utf-8").splitlines()[0]
+    parts = line.split("\x1f")
+
+    assert parts[idx["phone"]] == "555-9999", "later row's phone must win"
+    assert parts[idx["category"]] == "Flooring contractor", (
+        "earlier row's category must survive - a later write with no "
+        "category must not erase it"
+    )
+
+
+def test_prospects_compact_fold_ignores_garbage_updated_at_as_tiebreaker(
+    tmp_path: Path, monkeypatch: Any
+) -> None:
+    """A corrupted updated_at (e.g. a field-misalignment artifact leaving a
+    non-date string there) must not out-rank a real ISO timestamp just
+    because letters sort after digits lexicographically."""
+    from cocli.core import paths as paths_mod
+
+    monkeypatch.setattr(paths_mod.paths, "root", tmp_path)
+
+    index_dir = tmp_path / "campaigns" / "t" / "indexes" / "google_maps_prospects"
+    index_dir.mkdir(parents=True)
+    wal = index_dir / "wal" / "a"
+    wal.mkdir(parents=True)
+    checkpoint = index_dir / "prospects.usv"
+
+    checkpoint.write_text(
+        _full_usv_line(
+            "ChIJ1",
+            "Real Row",
+            "2026-01-01T00:00:00+00:00",
+            extra={"category": "Flooring contractor"},
+        ),
+        encoding="utf-8",
+    )
+    (wal / "p1.usv").write_text(
+        _full_usv_line(
+            "ChIJ1",
+            "Garbage Row",
+            "Epoxy Floo",
+            extra={"category": ""},
+        ),
+        encoding="utf-8",
+    )
+
+    assert (
+        compact_prospects_local(
+            index_dir, checkpoint_path=checkpoint, compactor_id="garbage-key"
+        )
+        is True
+    )
+
+    names = GoogleMapsProspect.usv_field_names()
+    idx = {n: i for i, n in enumerate(names)}
+    line = checkpoint.read_text(encoding="utf-8").splitlines()[0]
+    parts = line.split("\x1f")
+
+    assert parts[idx["category"]] == "Flooring contractor"
+    assert parts[idx["name"]] == "Real Row"
 
 
 def test_prospects_compact_idle_without_wal(tmp_path: Path) -> None:

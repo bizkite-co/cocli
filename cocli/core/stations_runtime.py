@@ -403,7 +403,38 @@ def _normalize_prospect_usv_files_to_model_width(
 def _duckdb_fold_prospect_usv_files(
     source_files: List[Path], dest: Path
 ) -> bool:
-    """Deterministic LWW fold by place_id / updated_at (product-scale Fold).
+    """Field-level LWW fold by place_id (product-scale Fold).
+
+    Was a whole-row ``ROW_NUMBER() ... WHERE row_num = 1`` pick by
+    ``updated_at``: whichever row was written most recently won ALL of its
+    columns, including nulls/blanks for fields that row's writer never
+    touched. In this pipeline every WAL entry is a partial write (gm-list
+    captures category/address, gm-details re-scrapes phone/hours, enrichment
+    adds email) - so a later gm-details or enrichment write with no category
+    would silently erase a category an earlier gm-list write had, on every
+    single compaction. That is the field-lineage bug this fold was blindly
+    reproducing every deploy (see task-agent recover-dropped-fields).
+
+    Now per-field: ``arg_max(col, key) FILTER (WHERE col has a real value)``
+    picks, independently for each column, the value from the most recent row
+    that actually populated it - i.e. ``GoogleMapsProspect.merge_with_existing``'s
+    "never overwrite with null/empty" policy, generalized from pairwise to
+    N historical rows via a single aggregate instead of a full-row pick.
+
+    Two things this must NOT get wrong (both hit real data, not hypotheticals):
+    - Short historical rows are padded to model width with empty string, not
+      SQL NULL (see _normalize_prospect_usv_files_to_model_width), and DuckDB's
+      CSV reader preserves that: empty VARCHAR cells load as '' but empty
+      numeric cells load as real NULL. So VARCHAR columns need an explicit
+      ``TRIM(col) != ''`` check; ``IS NOT NULL`` alone is not enough for them.
+    - ``updated_at`` is occasionally missing or corrupted by an unrelated
+      field-misalignment bug (observed: a category string landing in the
+      updated_at column). Letters sort after digits in ASCII, so a garbage
+      value like that would lexicographically outrank every real ISO
+      timestamp and win every tie as "most recent". Anything not shaped like
+      an ISO date is treated as the oldest possible key instead of the
+      newest, so it can still contribute a field no other row has, but never
+      wins a real conflict.
 
     Column list is derived from ``GoogleMapsProspect`` (same order as ``to_usv``).
     Sources are normalized to model width first so short append-only historical
@@ -425,25 +456,49 @@ def _duckdb_fold_prospect_usv_files(
         if not normalized:
             return False
         path_list = "', '".join(str(p) for p in normalized)
-        cols = json.dumps(_prospects_duckdb_columns())
+        col_types = _prospects_duckdb_columns()
+        cols = json.dumps(col_types)
+
+        # Rows with a non-ISO-shaped updated_at (missing, or corrupted by an
+        # unrelated field-misalignment bug) are pinned to the oldest possible
+        # key so they never win a tie purely on lexicographic accident.
+        effective_key = (
+            "CASE WHEN regexp_matches(updated_at, '^[0-9]{4}-[0-9]{2}-[0-9]{2}') "
+            "THEN updated_at ELSE '0000-01-01T00:00:00' END"
+        )
+
+        select_exprs = []
+        for name in col_types:
+            if name == "place_id":
+                select_exprs.append("place_id")
+            elif name == "updated_at":
+                select_exprs.append(f"max({effective_key}) AS updated_at")
+            elif col_types[name] == "VARCHAR":
+                select_exprs.append(
+                    f'arg_max("{name}", {effective_key}) '
+                    f'FILTER (WHERE "{name}" IS NOT NULL AND TRIM("{name}") != \'\') '
+                    f'AS "{name}"'
+                )
+            else:
+                select_exprs.append(
+                    f'arg_max("{name}", {effective_key}) '
+                    f'FILTER (WHERE "{name}" IS NOT NULL) AS "{name}"'
+                )
+        select_clause = ", ".join(select_exprs)
+
         con = duckdb.connect(database=":memory:")
         q = f"""
             COPY (
-                SELECT * EXCLUDE (row_num) FROM (
-                    SELECT *,
-                           row_number() OVER (
-                               PARTITION BY place_id ORDER BY updated_at DESC
-                           ) as row_num
-                    FROM read_csv(
-                        ['{path_list}'],
-                        delim='\x1f',
-                        header=False,
-                        columns={cols},
-                        auto_detect=false,
-                        ignore_errors=True
-                    )
+                SELECT {select_clause}
+                FROM read_csv(
+                    ['{path_list}'],
+                    delim='\x1f',
+                    header=False,
+                    columns={cols},
+                    auto_detect=false,
+                    ignore_errors=True
                 )
-                WHERE row_num = 1
+                GROUP BY place_id
             ) TO '{tmp}' (DELIMITER '\x1f', HEADER FALSE)
         """
         con.execute(q)
