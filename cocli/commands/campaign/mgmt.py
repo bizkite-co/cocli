@@ -147,6 +147,52 @@ def unset() -> None:
     console.print("[green]Campaign context cleared.[/]")
 
 
+@app.command("list")
+def list_campaigns(
+    paths: bool = typer.Option(
+        False,
+        "--paths",
+        help="Include the absolute campaign directory path column.",
+    ),
+) -> None:
+    """List local campaigns with descriptions.
+
+    Description comes from ``[campaign].description`` in config.toml when set,
+    otherwise the first prose paragraph of README.md, otherwise tag/domain.
+    """
+    items = CampaignService.list_campaigns()
+    if not items:
+        console.print("[yellow]No campaigns found.[/yellow]")
+        return
+
+    table = Table(title="Local campaigns", show_lines=False)
+    table.add_column("", width=1, no_wrap=True)  # active marker
+    table.add_column("Name", style="cyan", no_wrap=True)
+    table.add_column("Tag", style="dim")
+    table.add_column("Domain", style="dim")
+    table.add_column("Description")
+    if paths:
+        table.add_column("Path", style="dim")
+
+    for item in items:
+        marker = "*" if item.active else ""
+        row = [
+            marker,
+            item.name,
+            item.tag or "",
+            item.domain or "",
+            item.description or "",
+        ]
+        if paths:
+            row.append(str(item.path))
+        table.add_row(*row)
+
+    console.print(table)
+    active = next((i.name for i in items if i.active), None)
+    if active:
+        console.print(f"[dim]* active context: {active}[/dim]")
+
+
 @app.command()
 def show() -> None:
     """

@@ -274,6 +274,7 @@ plus the 5 orphaned modules (deleted in Phase 1).
 | `cocli campaign rollout status` | `campaign/rollout.py:324` | keep | `cocli campaign rollout status` | embedded | — | — | — |
 | `cocli campaign rollout sync` | `campaign/rollout.py:430` | keep | `cocli campaign rollout sync` | embedded | S3 sync | — | — |
 | `cocli campaign sanitize-discovery` | `campaign/mgmt.py:552` | keep | `cocli campaign sanitize-discovery` | embedded | mission, frontier, queues | — | — |
+| `cocli campaign list` | `campaign/mgmt.py` | keep | `cocli campaign list` | embedded | — | — | — |
 | `cocli campaign set` | `campaign/mgmt.py:123` | keep | `cocli campaign set` | embedded | context state | — | README |
 | `cocli campaign show` | `campaign/mgmt.py:155` | keep | `cocli campaign show` | embedded | — | — | — |
 | `cocli campaign start-workflow` | `campaign/workflow.py:10` | keep | `cocli campaign start-workflow` | embedded | — | — | — |

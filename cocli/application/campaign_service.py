@@ -28,6 +28,92 @@ class CampaignEditTargets(BaseModel):
     readme_exists: bool = False
 
 
+class CampaignListItem(BaseModel):
+    """Lightweight row for ``cocli campaign list`` (no full Campaign validation)."""
+
+    name: str
+    path: Path
+    description: str = ""
+    tag: Optional[str] = None
+    domain: Optional[str] = None
+    active: bool = False
+
+
+def _readme_first_paragraph(readme_path: Path, *, max_len: int = 160) -> str:
+    """First prose paragraph from a campaign README (skip headings/blanks)."""
+    if not readme_path.is_file():
+        return ""
+    try:
+        text = readme_path.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return ""
+
+    paragraphs: List[str] = []
+    buf: List[str] = []
+    for line in text.splitlines():
+        stripped = line.strip()
+        if not stripped:
+            if buf:
+                paragraphs.append(" ".join(buf))
+                buf = []
+            continue
+        if stripped.startswith("#"):
+            if buf:
+                paragraphs.append(" ".join(buf))
+                buf = []
+            continue
+        buf.append(stripped)
+    if buf:
+        paragraphs.append(" ".join(buf))
+
+    if not paragraphs:
+        return ""
+    desc = paragraphs[0]
+    if len(desc) > max_len:
+        return desc[: max_len - 1].rstrip() + "…"
+    return desc
+
+
+def _campaign_description_from_dir(campaign_dir: Path) -> tuple[str, Optional[str], Optional[str]]:
+    """
+    Resolve (description, tag, domain) without full Pydantic Campaign validation.
+
+    Prefer ``[campaign].description`` in config.toml; else first README paragraph;
+    else a short tag/domain summary.
+    """
+    tag: Optional[str] = None
+    domain: Optional[str] = None
+    config_desc = ""
+    config_path = campaign_dir / "config.toml"
+    if config_path.is_file():
+        try:
+            with open(config_path, "r", encoding="utf-8") as f:
+                data = toml.load(f)
+            section = data.get("campaign") or {}
+            if isinstance(section, dict):
+                raw_desc = section.get("description")
+                if isinstance(raw_desc, str):
+                    config_desc = raw_desc.strip()
+                t = section.get("tag")
+                d = section.get("domain")
+                tag = t.strip() if isinstance(t, str) and t.strip() else None
+                domain = d.strip() if isinstance(d, str) and d.strip() else None
+        except Exception as e:
+            logger.debug("Could not read campaign config %s: %s", config_path, e)
+
+    if config_desc:
+        return config_desc, tag, domain
+
+    readme_desc = _readme_first_paragraph(campaign_dir / "README.md")
+    if readme_desc:
+        return readme_desc, tag, domain
+
+    bits = [b for b in (tag, domain) if b]
+    if bits:
+        return " · ".join(bits), tag, domain
+    return "", tag, domain
+
+
 class CampaignService:
     def __init__(self, campaign_name: str):
         self.campaign_name = campaign_name
@@ -385,10 +471,48 @@ class CampaignService:
 
     @staticmethod
     def list_campaign_names() -> List[str]:
-        """Return campaign directory names under the data root."""
-        from ..core.config import get_all_campaign_dirs
+        """Return campaign slugs (relative to campaigns root) under the data root."""
+        from ..core.config import get_all_campaign_dirs, get_campaigns_dir
 
-        return [d.name for d in get_all_campaign_dirs()]
+        root = get_campaigns_dir()
+        names: List[str] = []
+        for d in get_all_campaign_dirs():
+            try:
+                names.append(str(d.relative_to(root)))
+            except ValueError:
+                names.append(d.name)
+        return names
+
+    @staticmethod
+    def list_campaigns() -> List[CampaignListItem]:
+        """
+        List local campaigns with descriptions for interactive CLI use.
+
+        Fast path: pruned directory walk + light TOML/README reads only.
+        Does not load full Campaign models (those can fail validation and are slow).
+        """
+        from ..core.config import get_all_campaign_dirs, get_campaign, get_campaigns_dir
+
+        root = get_campaigns_dir()
+        active = get_campaign()
+        items: List[CampaignListItem] = []
+        for campaign_dir in get_all_campaign_dirs():
+            try:
+                name = str(campaign_dir.relative_to(root))
+            except ValueError:
+                name = campaign_dir.name
+            description, tag, domain = _campaign_description_from_dir(campaign_dir)
+            items.append(
+                CampaignListItem(
+                    name=name,
+                    path=campaign_dir,
+                    description=description,
+                    tag=tag,
+                    domain=domain,
+                    active=(name == active),
+                )
+            )
+        return items
 
     @staticmethod
     def create_campaign(name: str, company: str) -> Path:

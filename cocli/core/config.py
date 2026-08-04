@@ -183,40 +183,92 @@ def get_campaign_dir(campaign_name: str) -> Optional[Path]:
     return None
 
 
+# Directories that never host a campaign config.toml; skip them during discovery.
+# Full rglob over campaign data trees (indexes/queues/video/...) can take 10s+ on
+# large campaigns and is the wrong tool for "list local campaigns".
+_CAMPAIGN_DISCOVERY_SKIP_DIRS = frozenset(
+    {
+        "indexes",
+        "queues",
+        "raw",
+        "data",
+        "scraped_data",
+        "video",
+        "exports",
+        "initiatives",
+        "hardware",
+        "wal",
+        "companies",
+        "packaged",
+        "normalized",
+        "uploaded",
+        "completed",
+        "pending",
+        "claimed",
+        "failed",
+        "dead-letter",
+        "logs",
+        ".git",
+        "node_modules",
+        "__pycache__",
+        ".mypy_cache",
+        ".pytest_cache",
+        ".ruff_cache",
+    }
+)
+
+# Nested campaigns are supported, but only a few levels under campaigns/.
+_CAMPAIGN_DISCOVERY_MAX_DEPTH = 3
+
+
 def get_all_campaign_dirs() -> list[Path]:
     """
-    Returns a list of all campaign directories, recursively finding those
-    with a config.toml file.
+    Return campaign directories under the data root that contain config.toml.
+
+    Uses a depth-limited walk that skips known bulk data folders. Do not use
+    ``Path.rglob("config.toml")`` here — large campaign trees make that too slow
+    for interactive CLI (measured multi-second on typical data homes).
     """
     campaigns_root = paths.campaigns
     if not (campaigns_root.exists() and campaigns_root.is_dir()):
         logger.debug(f"Campaigns root not found: {campaigns_root}")
         return []
 
-    unique_dirs = []
-    seen_slugs = set()
+    unique_dirs: list[Path] = []
+    seen_slugs: set[str] = set()
 
-    # Find all config.toml files and use their parent directories
-    # We search recursively to allow for nested campaign structures
-    for config_file in sorted(campaigns_root.rglob("config.toml")):
-        campaign_dir = config_file.parent
-        # Calculate the relative path from the campaigns root to use as the name
+    for dirpath, dirnames, filenames in os.walk(campaigns_root, topdown=True):
+        current = Path(dirpath)
         try:
-            rel_path = campaign_dir.relative_to(campaigns_root)
-            campaign_name = str(rel_path)
-
-            # Skip templates or READMEs if they somehow matched
-            if campaign_name == "." or campaign_name == "":
-                continue
-
-            # Use the full relative path as the unique key
-            if campaign_name not in seen_slugs:
-                seen_slugs.add(campaign_name)
-                unique_dirs.append(campaign_dir)
-                logger.debug(f"Discovered campaign: {campaign_name} at {campaign_dir}")
+            rel = current.relative_to(campaigns_root)
         except ValueError:
+            dirnames[:] = []
             continue
 
+        depth = len(rel.parts) if rel.parts != (".",) and str(rel) != "." else 0
+
+        # Prune descent: skip bulk data dirs and enforce max depth
+        if depth >= _CAMPAIGN_DISCOVERY_MAX_DEPTH:
+            dirnames[:] = []
+        else:
+            dirnames[:] = sorted(
+                d for d in dirnames if d not in _CAMPAIGN_DISCOVERY_SKIP_DIRS
+            )
+
+        if "config.toml" not in filenames:
+            continue
+        if depth == 0:
+            # config.toml sitting on campaigns/ root is a template, not a campaign
+            continue
+
+        campaign_name = str(rel)
+        if campaign_name in seen_slugs:
+            continue
+        seen_slugs.add(campaign_name)
+        unique_dirs.append(current)
+        logger.debug(f"Discovered campaign: {campaign_name} at {current}")
+
+    unique_dirs.sort(key=lambda p: str(p.relative_to(campaigns_root)).lower())
     return unique_dirs
 
 

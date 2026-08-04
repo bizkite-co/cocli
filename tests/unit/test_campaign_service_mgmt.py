@@ -32,11 +32,65 @@ def test_list_campaign_names(tmp_path: Path) -> None:
     b = tmp_path / "b"
     a.mkdir()
     b.mkdir()
-    with patch(
-        "cocli.core.config.get_all_campaign_dirs", return_value=[a, b]
+    with (
+        patch("cocli.core.config.get_all_campaign_dirs", return_value=[a, b]),
+        patch("cocli.core.config.get_campaigns_dir", return_value=tmp_path),
     ):
         names = CampaignService.list_campaign_names()
     assert names == ["a", "b"]
+
+
+def test_list_campaigns_prefers_config_description(tmp_path: Path) -> None:
+    camp = tmp_path / "campaigns" / "alpha"
+    camp.mkdir(parents=True)
+    (camp / "config.toml").write_text(
+        toml.dumps(
+            {
+                "campaign": {
+                    "name": "alpha",
+                    "tag": "t",
+                    "domain": "ex.com",
+                    "description": "From config",
+                }
+            }
+        )
+    )
+    (camp / "README.md").write_text("# Alpha\n\nFrom readme should lose.\n")
+    with (
+        patch(
+            "cocli.core.config.get_all_campaign_dirs", return_value=[camp]
+        ),
+        patch("cocli.core.config.get_campaigns_dir", return_value=tmp_path / "campaigns"),
+        patch("cocli.core.config.get_campaign", return_value="alpha"),
+    ):
+        items = CampaignService.list_campaigns()
+    assert len(items) == 1
+    assert items[0].name == "alpha"
+    assert items[0].description == "From config"
+    assert items[0].tag == "t"
+    assert items[0].domain == "ex.com"
+    assert items[0].active is True
+
+
+def test_list_campaigns_falls_back_to_readme(tmp_path: Path) -> None:
+    camp = tmp_path / "campaigns" / "beta"
+    camp.mkdir(parents=True)
+    (camp / "config.toml").write_text(
+        toml.dumps({"campaign": {"name": "beta", "tag": "x", "domain": "y.com"}})
+    )
+    (camp / "README.md").write_text(
+        "# Beta Campaign\n\nFirst paragraph of the beta campaign story.\n\n## Goals\n\nMore.\n"
+    )
+    with (
+        patch(
+            "cocli.core.config.get_all_campaign_dirs", return_value=[camp]
+        ),
+        patch("cocli.core.config.get_campaigns_dir", return_value=tmp_path / "campaigns"),
+        patch("cocli.core.config.get_campaign", return_value=None),
+    ):
+        items = CampaignService.list_campaigns()
+    assert items[0].description == "First paragraph of the beta campaign story."
+    assert items[0].active is False
 
 
 def test_get_edit_targets(tmp_path: Path) -> None:
