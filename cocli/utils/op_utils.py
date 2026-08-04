@@ -134,22 +134,34 @@ def set_op_secret(op_path: str, value: str) -> bool:
         # Use the EXACT same pattern as get_op_secret - inline export + --account
         bash_cmd = f'export OP_ACCOUNT=my.1password.com; "/mnt/c/Program Files/1Password CLI/op.exe" item edit "{item}" --vault "{vault}" "{field_ref}={value}" --account "my.1password.com"'
 
-        console.print("[dim]set_op_secret: executing bash command...[/dim]")
-
-        result = subprocess.run(
-            ["bash", "-c", bash_cmd],
-            capture_output=True,
-            text=True,
-            env=os.environ.copy(),
+        console.print(
+            "[dim]set_op_secret: executing bash command (30s timeout)…[/dim]"
         )
+
+        try:
+            result = subprocess.run(
+                ["bash", "-c", bash_cmd],
+                capture_output=True,
+                text=True,
+                env=os.environ.copy(),
+                timeout=30,
+            )
+        except subprocess.TimeoutExpired:
+            console.print(
+                "[yellow]set_op_secret: timed out after 30s waiting for "
+                "1Password CLI (often no Windows Hello prompt from WSL).[/yellow]"
+            )
+            logger.warning("1Password set_op_secret timed out for %s", op_path)
+            return False
 
         console.print(
             f"[dim]set_op_secret: result.returncode={result.returncode}[/dim]"
         )
 
         if result.returncode != 0:
-            console.print(f"[red]set_op_secret: stderr={result.stderr[:200]}[/red]")
-            logger.error(f"Failed to set 1Password secret: {result.stderr}")
+            err = (result.stderr or result.stdout or "")[:300]
+            console.print(f"[red]set_op_secret: stderr={err}[/red]")
+            logger.error(f"Failed to set 1Password secret: {err}")
             return False
 
         console.print("[dim]set_op_secret: success![/dim]")

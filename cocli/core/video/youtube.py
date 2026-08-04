@@ -20,7 +20,18 @@ SCOPES = [
 
 
 def get_secrets(campaign: str) -> tuple[str, str, str, str]:
-    """Fetch credentials: client_id/client_secret from 1Password, OAuth tokens from keyring."""
+    """Fetch YouTube credentials.
+
+    Resolution:
+
+    1. ``client_id`` / ``client_secret`` always from 1Password (Windows Hello unlock).
+    2. OAuth access/refresh tokens from **keyring first** — written by
+       ``cocli video auth`` (device flow). This is the live session after re-auth.
+    3. 1Password OAuth paths as fallback when keyring is empty.
+
+    Note: 1Password ``item edit`` from WSL often hangs with no Hello prompt, so
+    durable 1P token *writes* are best-effort. Auth success = keyring write OK.
+    """
     config = load_campaign_config(campaign)
     google_api_config = config.get("google_api_client", {})
 
@@ -37,29 +48,47 @@ def get_secrets(campaign: str) -> tuple[str, str, str, str]:
             )
         return secret
 
-    # client_id and client_secret from 1Password
+    # client_id and client_secret from 1Password (triggers Windows Hello when needed)
     client_id = read_secret("client_id_path")
     client_secret = read_secret("client_secret_path")
 
-    # OAuth tokens from keyring
+    oauth_token: Optional[str] = None
+    refresh_token: Optional[str] = None
+    source = "none"
+
+    # Keyring first: updated by `cocli video auth` even when 1P write hangs
     keyring_mgr = KeyringManager()
     oauth_token = keyring_mgr.get_access_token(campaign)
     refresh_token = keyring_mgr.get_refresh_token(campaign)
+    if oauth_token and refresh_token:
+        source = "keyring"
+        logger.info("Loaded OAuth tokens from keyring for campaign '%s'", campaign)
 
-    if not oauth_token or not refresh_token:
-        logger.info(f"OAuth tokens not found in keyring for '{campaign}'. Trying 1Password fallback...")
+    # 1Password fallback if keyring empty
+    if (not oauth_token or not refresh_token) and google_api_config.get(
+        "oauth_token_path"
+    ) and google_api_config.get("refresh_token_path"):
         try:
             oauth_token = read_secret("oauth_token_path")
             refresh_token = read_secret("refresh_token_path")
-            logger.info("Successfully loaded OAuth tokens from 1Password.")
+            if oauth_token and refresh_token:
+                source = "1password"
+                logger.info(
+                    "Loaded OAuth tokens from 1Password for campaign '%s'", campaign
+                )
         except Exception as e:
-            logger.debug(f"Failed to load OAuth tokens from 1Password: {e}")
+            logger.warning(
+                "Could not load OAuth tokens from 1Password for '%s': %s", campaign, e
+            )
 
     if not oauth_token or not refresh_token:
         raise ValueError(
-            f"OAuth tokens not found in keyring or 1Password for campaign '{campaign}'. Run 'cocli video auth' first."
+            f"OAuth tokens not found in keyring or 1Password for campaign '{campaign}'. "
+            f"Run 'cocli video auth -c {campaign}' (complete the Google device code; "
+            f"keyring save is enough even if 1Password write hangs)."
         )
 
+    logger.debug("YouTube OAuth token source for %s: %s", campaign, source)
     return client_id, client_secret, oauth_token, refresh_token
 
 
@@ -164,7 +193,17 @@ class YouTubeUploader:
                     else:
                         logger.info(f"Progress: {progress}%")
             except Exception as e:
+                err_text = str(e)
                 logger.error(f"Upload error: {e}")
+                if "invalid_grant" in err_text.lower():
+                    logger.error(
+                        "YouTube OAuth refresh token rejected (invalid_grant). "
+                        "Approve Windows Hello if prompted, then re-run: "
+                        "cocli video auth -c %s  "
+                        "(writes new tokens to 1Password + keyring). "
+                        "If Hello already unlocked stale tokens, re-auth is still required.",
+                        self.campaign,
+                    )
                 break
 
         if response_insert:

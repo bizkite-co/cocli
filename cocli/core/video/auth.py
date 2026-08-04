@@ -165,16 +165,46 @@ class DeviceCodeAuth:
     def update_tokens(
         self, campaign: str, access_token: str, refresh_token: str
     ) -> bool:
-        """Update OAuth tokens in keyring (not 1Password)."""
+        """Update OAuth tokens in keyring; best-effort 1Password write.
+
+        Keyring is required (what ``video upload`` uses after ``video auth``).
+        1Password write often hangs under WSL with no Hello UI — timeout and
+        treat as optional so auth still succeeds.
+        """
         console.print(
-            f"[dim]update_tokens: Saving tokens to keyring for campaign={campaign}[/dim]"
+            f"[dim]update_tokens: Saving tokens for campaign={campaign}[/dim]"
         )
 
         keyring_mgr = KeyringManager()
         success = keyring_mgr.set_tokens(campaign, access_token, refresh_token)
-
         console.print(f"[dim]update_tokens: keyring set_tokens result={success}[/dim]")
 
+        if not refresh_token:
+            console.print(
+                "[yellow]No refresh_token in OAuth response; "
+                "existing refresh token left unchanged.[/yellow]"
+            )
+            return success
+
+        config = load_campaign_config(campaign)
+        google_api = config.get("google_api_client", {})
+        access_path = google_api.get("oauth_token_path")
+        refresh_path = google_api.get("refresh_token_path")
+        if access_path and refresh_path:
+            console.print(
+                "[dim]update_tokens: attempting 1Password write "
+                "(30s timeout; optional if it hangs)…[/dim]"
+            )
+            access_ok = self.password_manager.set_secret(access_path, access_token)
+            refresh_ok = self.password_manager.set_secret(refresh_path, refresh_token)
+            if access_ok and refresh_ok:
+                console.print("[dim]update_tokens: 1Password write OK[/dim]")
+            else:
+                console.print(
+                    "[yellow]1Password token write failed or timed out. "
+                    "Keyring tokens were saved — you can still "
+                    f"`cocli video upload -c {campaign}`.[/yellow]"
+                )
         return success
 
     def authenticate(self, campaign: str) -> bool:
