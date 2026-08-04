@@ -1,5 +1,7 @@
 """Video processing commands for cocli."""
 
+import platform
+import re
 import shutil
 import subprocess
 from pathlib import Path
@@ -34,6 +36,62 @@ from cocli.core.text_utils import slugdotify
 
 app = typer.Typer(no_args_is_help=True)
 console = Console()
+
+# Windows drive path: D:\Video\file.mp4 or D:/Video/file.mp4
+_WIN_DRIVE_PATH_RE = re.compile(r"^([A-Za-z]):[/\\](.*)$")
+
+_ADD_IMPORT_HELP = """\
+Add (import) an external video into the campaign raw queue.
+
+Path forms:
+  Linux/WSL:  /path/to/video.mp4  or  /mnt/d/Video/video.mp4
+  Windows:    D:\\Video\\video.mp4  or  D:/Video/video.mp4
+              On WSL, drive letters map to /mnt/<drive>/...
+
+`import` is an explicit alias of `add`.
+
+Stops after the raw queue (or after normalize if --normalize). Does not run
+package; human review of metadata/screenshots is still required first.
+"""
+
+
+def resolve_video_path(path_str: str) -> Path:
+    """Resolve a user-supplied video path (Linux or Windows/WSL style).
+
+    On non-Windows hosts, ``D:\\Video\\file.mp4`` and ``D:/Video/file.mp4``
+    map to ``/mnt/d/Video/file.mp4``.
+    """
+    cleaned = path_str.strip().strip('"').strip("'")
+    match = _WIN_DRIVE_PATH_RE.match(cleaned)
+    if match and platform.system() != "Windows":
+        drive = match.group(1).lower()
+        rest = match.group(2).replace("\\", "/")
+        if rest:
+            return Path(f"/mnt/{drive}") / rest
+        return Path(f"/mnt/{drive}")
+    return Path(cleaned)
+
+
+def _hint_if_unmounted_drive(video_path: Path) -> None:
+    """If path is under an empty /mnt/<letter>, suggest mounting the drive."""
+    parts = video_path.parts
+    if len(parts) < 3 or parts[0] != "/" or parts[1] != "mnt":
+        return
+    drive = parts[2]
+    if len(drive) != 1 or not drive.isalpha():
+        return
+    mount_root = Path("/mnt") / drive
+    if not mount_root.is_dir():
+        return
+    try:
+        empty = not any(mount_root.iterdir())
+    except OSError:
+        return
+    if empty:
+        console.print(
+            f"[yellow]Hint: /mnt/{drive} looks empty (drive not mounted?). "
+            f"Try: sudo mount -t drvfs {drive.upper()}: /mnt/{drive}[/yellow]"
+        )
 
 
 def extract_screenshots_logic(video_path: Path) -> None:
@@ -90,34 +148,127 @@ def get_video_queue_root(campaign_name: str) -> Path:
     return campaign_dir / "video"
 
 
-@app.command(no_args_is_help=True)
+def normalize_one_video(campaign_name: str, video_file: Path) -> bool:
+    """Normalize a single raw video into the normalized queue.
+
+    On success, removes ``video_file`` from raw/. Returns True on success.
+    """
+    queue_root = get_video_queue_root(campaign_name)
+    norm_dir = queue_root / "normalized"
+    norm_dir.mkdir(parents=True, exist_ok=True)
+
+    console.print(f"Processing: {video_file.name}")
+
+    video_dir = norm_dir / video_file.stem
+    video_dir.mkdir(parents=True, exist_ok=True)
+
+    output_path = video_dir / f"{video_file.name}"
+    console.print(f"Normalizing {video_file.name} to {output_path.name}...")
+
+    duration = get_duration(str(video_file))
+
+    with Progress(
+        SpinnerColumn(),
+        TextColumn("[progress.description]{task.description}"),
+        BarColumn(),
+        TaskProgressColumn(),
+        console=console,
+    ) as progress:
+        task = progress.add_task(f"Normalizing {video_file.name}", total=duration)
+
+        def callback(current_sec: float, total_sec: float) -> None:
+            progress.update(task, completed=current_sec)
+
+        camp_cfg = load_campaign_config(campaign_name)
+        loudness_cfg = camp_cfg.get("video", {}).get("loudness", {})
+        denoise_cfg = camp_cfg.get("video", {}).get("denoise", {})
+        result, _stats = normalize_video(
+            video_file,
+            output_path,
+            callback=callback,
+            loudness_config=loudness_cfg,
+            denoise_config=denoise_cfg,
+        )
+
+    if not result:
+        console.print(f"[red]Failed to normalize {video_file.name}[/red]")
+        return False
+
+    # Remove original from raw/ ONLY after success
+    video_file.unlink()
+
+    md_file = video_dir / f"{video_file.stem}.md"
+    if not md_file.exists():
+        with open(md_file, "w") as f:
+            f.write("---\n")
+            f.write('title: ""\n')
+            f.write('thumbnail-text: ""\n')
+            f.write('thumbnail-style: ""\n')
+            f.write("draft: true\n")
+            f.write("---\n\n")
+
+    extract_screenshots_logic(result)
+    console.print(f"[green]Normalized: {video_file.stem}[/green]")
+    return True
+
+
+def _add_video_to_raw(
+    campaign_name: str,
+    video: str,
+    *,
+    do_normalize: bool,
+) -> None:
+    """Copy an external video into raw/, optionally normalize only that file."""
+    raw_dir = get_video_queue_root(campaign_name) / "raw"
+    raw_dir.mkdir(parents=True, exist_ok=True)
+
+    video_path = resolve_video_path(video)
+    if not video_path.exists():
+        _hint_if_unmounted_drive(video_path)
+        console.print(f"[red]File not found: {video_path}[/red]")
+        raise typer.Exit(1)
+
+    safe_name = slugdotify(video_path.name)
+    dest = raw_dir / safe_name
+
+    shutil.copy2(video_path, dest)
+    console.print(f"[green]Added {safe_name} to raw queue.[/green]")
+
+    if do_normalize:
+        if not normalize_one_video(campaign_name, dest):
+            raise typer.Exit(1)
+
+
+# Stacked decorators register the same command under both names (import = alias of add).
+@app.command("import", no_args_is_help=True, help=_ADD_IMPORT_HELP)
+@app.command("add", no_args_is_help=True, help=_ADD_IMPORT_HELP)
 def add(
     campaign: Optional[str] = typer.Option(
         None, "-c", "--campaign", help="Campaign name"
     ),
-    video: str = typer.Argument(..., help="Path to video file"),
+    video: str = typer.Argument(
+        ...,
+        help=(
+            "Path to video file (Linux /path/to/file.mp4 or Windows "
+            "D:\\\\Video\\\\file.mp4 / D:/Video/file.mp4)"
+        ),
+    ),
+    do_normalize: bool = typer.Option(
+        False,
+        "--normalize",
+        help="After adding, normalize this video only (does not run package)",
+    ),
 ) -> None:
-    """Add a video to the raw queue."""
+    """Add (import) an external video into the campaign raw queue."""
     campaign_name = campaign or get_campaign()
     if not campaign_name:
         console.print("[red]No campaign specified.[/red]")
         raise typer.Exit(1)
 
     try:
-        raw_dir = get_video_queue_root(campaign_name) / "raw"
-        raw_dir.mkdir(parents=True, exist_ok=True)
-
-        video_path = Path(video)
-        if not video_path.exists():
-            console.print(f"[red]File not found: {video}[/red]")
-            raise typer.Exit(1)
-
-        # Sanitize filename
-        safe_name = slugdotify(video_path.name)
-        dest = raw_dir / safe_name
-
-        shutil.copy2(video_path, dest)
-        console.print(f"[green]Added {safe_name} to raw queue.[/green]")
+        _add_video_to_raw(campaign_name, video, do_normalize=do_normalize)
+    except typer.Exit:
+        raise
     except Exception:
         import traceback
 
@@ -146,76 +297,13 @@ def normalize(
             console.print(f"[yellow]Raw directory not found: {raw_dir}[/yellow]")
             return
 
-        norm_dir = queue_root / "normalized"
-        norm_dir.mkdir(parents=True, exist_ok=True)
-
         files = list(raw_dir.glob("*.mp4"))
         if not files:
             console.print(f"[yellow]No videos found in {raw_dir}[/yellow]")
             return
 
         for video_file in files:
-            console.print(f"Processing: {video_file.name}")
-
-            # Create normalized subdir
-            video_dir = norm_dir / video_file.stem
-            video_dir.mkdir(parents=True, exist_ok=True)
-
-            # Define output path
-            output_path = video_dir / f"{video_file.name}"
-            console.print(f"Normalizing {video_file.name} to {output_path.name}...")
-
-            # Get duration for progress bar
-            duration = get_duration(str(video_file))
-
-            with Progress(
-                SpinnerColumn(),
-                TextColumn("[progress.description]{task.description}"),
-                BarColumn(),
-                TaskProgressColumn(),
-                console=console,
-            ) as progress:
-                task = progress.add_task(
-                    f"Normalizing {video_file.name}", total=duration
-                )
-
-                def callback(current_sec: float, total_sec: float) -> None:
-                    progress.update(task, completed=current_sec)
-
-                # We call the existing normalization logic, keeping input in raw/
-                camp_cfg = load_campaign_config(campaign_name)
-                loudness_cfg = camp_cfg.get("video", {}).get("loudness", {})
-                denoise_cfg = camp_cfg.get("video", {}).get("denoise", {})
-                result, stats = normalize_video(
-                    video_file,
-                    output_path,
-                    callback=callback,
-                    loudness_config=loudness_cfg,
-                    denoise_config=denoise_cfg,
-                )
-
-            if not result:
-                console.print(f"[red]Failed to normalize {video_file.name}[/red]")
-                continue
-
-            # Remove original from raw/ ONLY after success
-            video_file.unlink()
-
-            # Create metadata file only if it doesn't exist
-            md_file = video_dir / f"{video_file.stem}.md"
-            if not md_file.exists():
-                with open(md_file, "w") as f:
-                    f.write("---\n")
-                    f.write('title: ""\n')
-                    f.write('thumbnail-text: ""\n')
-                    f.write('thumbnail-style: ""\n')
-                    f.write("draft: true\n")
-                    f.write("---\n\n")
-
-            # Extract screenshots from the normalized video
-            extract_screenshots_logic(result)
-
-            console.print(f"[green]Normalized: {video_file.stem}[/green]")
+            normalize_one_video(campaign_name, video_file)
 
     except Exception:
         import traceback
@@ -384,8 +472,9 @@ def extract_screenshots(
     """Extract candidate screenshots from a video."""
 
     video_path: Optional[Path] = None
+    direct = resolve_video_path(video)
     # 2. If not a direct path, fallback to campaign search
-    if not Path(video).exists():
+    if not direct.exists():
         campaign_name = campaign or get_campaign()
         if not campaign_name:
             console.print("[red]Video file not found and no campaign specified.[/red]")
@@ -407,6 +496,8 @@ def extract_screenshots(
                     found_path = matches[0]
                     break
         video_path = found_path if found_path else Path("invalid_path")
+    else:
+        video_path = direct
 
     if video_path is None or not video_path.exists():
         console.print(f"[red]Video file not found: {video}[/red]")

@@ -95,8 +95,8 @@ design — they take no required parameters and legitimately act with defaults:
 - All `task` commands except `create` (e.g. `task list`, `task next`,
   `task tree`, `task sync`, `task start`, `task done`, `task prioritize`).
 - All `dev` commands (validation/pipeline helpers with optional args).
-- All `video` commands except `add`, `create-thumbnail`, `extract-screenshots`
-  (the three with required `video` / `video_slug` arguments).
+- All `video` commands except `add` / `import`, `create-thumbnail`,
+  `extract-screenshots` (required `video` / `video_slug` arguments).
 - All `prospects` commands (`to-hubspot-csv`, `enrich-from-queue`,
   `tag-from-csv`) take only optional args.
 - All `companies` commands (`list-recent`).
@@ -419,7 +419,8 @@ plus the 5 orphaned modules (deleted in Phase 1).
 
 | Command path | Source | Disposition | Target location | Biz-logic | Intermediates | Automation callers | Usage evidence |
 |---|---|---|---|---|---|---|---|
-| `cocli video add` | `commands/video.py:93` | keep | `cocli video add` | embedded | video queue | — | — |
+| `cocli video add` | `commands/video.py` | keep | `cocli video add` | embedded | video queue | — | — |
+| `cocli video import` | `commands/video.py` | keep | `cocli video import` (alias of `add`) | embedded | video queue | — | — |
 | `cocli video auth` | `commands/video.py:607` | keep | `cocli video auth` | app-api (`youtube`) | OAuth tokens | — | — |
 | `cocli video create-thumbnail` | `commands/video.py:344` | keep | `cocli video create-thumbnail` | embedded | thumbnail image | — | — |
 | `cocli video extract-screenshots` | `commands/video.py:377` | keep | `cocli video extract-screenshots` | embedded | screenshot images | — | — |

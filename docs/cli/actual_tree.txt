@@ -567,9 +567,10 @@ cocli
     tui - Launches the Textual TUI for cocli.
         --dump-tree (path)
     video
-        add - Add a video to the raw queue.
+        add - Add (import) an external video into the campaign raw queue.
             -c/--campaign (text)
             video (text) [required]
+            --normalize (boolean)
         auth - Authenticate with YouTube using OAuth Device Code Flow.
             -c/--campaign (text)
         create-thumbnail - Create a thumbnail for a video using metadata.
@@ -579,6 +580,10 @@ cocli
         extract-screenshots - Extract candidate screenshots from a video.
             -c/--campaign (text)
             video (text) [required]
+        import - Add (import) an external video into the campaign raw queue.
+            -c/--campaign (text)
+            video (text) [required]
+            --normalize (boolean)
         normalize - Normalize videos in the raw queue.
             -c/--campaign (text)
         package - Package videos from the normalized queue.
