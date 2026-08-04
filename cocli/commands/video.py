@@ -30,9 +30,15 @@ from cocli.core.video import (
     normalize_video,
     chapters,
 )
+from cocli.core.video.job_runs import (
+    save_video_job_run,
+    write_last_normalize_pointer,
+)
+from cocli.core.video.display_paths import print_accessible_path
 from cocli.core.video.transcript_to_vtt import convert_transcript_to_vtt
 from cocli.core.video import auth as video_auth
 from cocli.core.text_utils import slugdotify
+from cocli.models.campaigns.video_job_run import VideoJobRun
 
 app = typer.Typer(no_args_is_help=True)
 console = Console()
@@ -50,8 +56,9 @@ Path forms:
 
 `import` is an explicit alias of `add`.
 
-Stops after the raw queue (or after normalize if --normalize). Does not run
-package; human review of metadata/screenshots is still required first.
+With --normalize: runs encode + STT (transcripts, chapters, captions) into
+normalized/, then stops. Does not run package/upload; human review of
+metadata/screenshots is still required before package.
 """
 
 
@@ -148,56 +155,198 @@ def get_video_queue_root(campaign_name: str) -> Path:
     return campaign_dir / "video"
 
 
+def _find_normalized_mp4(video_dir: Path) -> Optional[Path]:
+    matches = sorted(p for p in video_dir.glob("*.mp4") if p.is_file())
+    return matches[0] if matches else None
+
+
+def _existing_transcripts(video_dir: Path) -> dict[str, str]:
+    """Load any transcript_*.md already written in the normalized package."""
+    found: dict[str, str] = {}
+    for path in sorted(video_dir.glob("transcript_*.md")):
+        # transcript_whisper.md -> whisper; transcript_whisper_granular.md stays full stem after prefix
+        key = path.stem.removeprefix("transcript_")
+        try:
+            found[key] = path.read_text(encoding="utf-8")
+        except OSError:
+            continue
+    return found
+
+
+def transcribe_normalized_dir(
+    campaign_name: str,
+    video_dir: Path,
+    *,
+    job_run: Optional[VideoJobRun] = None,
+    force: bool = False,
+) -> dict[str, str]:
+    """
+    Run STT (+ chapters + captions) for a normalized video directory.
+
+    This is the single transcription implementation used by normalize (always)
+    and by package only when transcripts are missing (recovery / legacy).
+
+    Returns the map of provider -> transcript markdown (including granular keys).
+    """
+    video_file = _find_normalized_mp4(video_dir)
+    if video_file is None:
+        raise FileNotFoundError(f"No .mp4 found in {video_dir}")
+
+    if not force:
+        existing = _existing_transcripts(video_dir)
+        # Prefer reusing when we already have at least one primary transcript
+        # (not only granular sidecar).
+        primary = {
+            k: v
+            for k, v in existing.items()
+            if not k.endswith("_granular")
+        }
+        if primary:
+            console.print(
+                f"[dim]Transcripts already present in {video_dir.name}; "
+                f"skipping STT (use force to re-run).[/dim]"
+            )
+            return existing
+
+    console.print(f"Transcribing {video_file.name}...")
+    if job_run is not None:
+        job_run.start_phase("transcribe")
+
+    camp_cfg = load_campaign_config(campaign_name)
+    provider = (
+        camp_cfg.get("video", {})
+        .get("transcription", {})
+        .get("provider", "gemini")
+    )
+    transcriber_engine = transcriber.TranscriptionFactory.get_transcriber(provider)
+    try:
+        transcripts = transcriber_engine.transcribe(video_file, campaign_name)
+    except Exception:
+        if job_run is not None:
+            job_run.end_phase("transcribe")
+        raise
+
+    for provider_name, transcript_text in transcripts.items():
+        transcript_path = video_dir / f"transcript_{provider_name}.md"
+        transcript_path.write_text(transcript_text, encoding="utf-8")
+        console.print(f"[green]Saved transcript to {transcript_path.name}[/green]")
+
+    if job_run is not None:
+        job_run.end_phase("transcribe")
+
+    first_transcript = next(iter(transcripts.values()), "")
+    if first_transcript:
+        console.print("Generating chapters...")
+        if job_run is not None:
+            job_run.start_phase("chapters")
+        try:
+            chapter_text = chapters.create_chapters(first_transcript, campaign_name)
+            chapters_path = video_dir / "chapters.md"
+            chapters_path.write_text(chapter_text, encoding="utf-8")
+            console.print(f"[green]Saved chapters to {chapters_path.name}[/green]")
+        except Exception as e:
+            console.print(f"[yellow]Chapter generation failed: {e}[/yellow]")
+            if job_run is not None:
+                job_run.add_error(f"Chapter generation failed: {e}")
+        finally:
+            if job_run is not None:
+                job_run.end_phase("chapters")
+
+        console.print("Generating VTT closed captions...")
+        if job_run is not None:
+            job_run.start_phase("captions")
+        try:
+            vtt_path = video_dir / "captions.vtt"
+            convert_transcript_to_vtt(first_transcript, vtt_path)
+            console.print(f"[green]Saved captions to {vtt_path.name}[/green]")
+        except Exception as e:
+            console.print(f"[yellow]VTT generation failed: {e}[/yellow]")
+            if job_run is not None:
+                job_run.add_error(f"VTT generation failed: {e}")
+        finally:
+            if job_run is not None:
+                job_run.end_phase("captions")
+
+    return transcripts
+
+
 def normalize_one_video(campaign_name: str, video_file: Path) -> bool:
     """Normalize a single raw video into the normalized queue.
 
     On success, removes ``video_file`` from raw/. Returns True on success.
+    Writes a job-run receipt under ``video/job_runs/{YYYYMMDD}/{run_id}.json``
+    and mirrors it to ``normalized/{slug}/last-normalize-run.json`` on success.
     """
     queue_root = get_video_queue_root(campaign_name)
     norm_dir = queue_root / "normalized"
     norm_dir.mkdir(parents=True, exist_ok=True)
 
+    slug = video_file.stem
+    job_run = VideoJobRun.start_normalize(campaign_name, slug)
+    receipt_path = save_video_job_run(queue_root, job_run)
+    console.print(f"[dim]Job run: {receipt_path}[/dim]")
+
     console.print(f"Processing: {video_file.name}")
 
-    video_dir = norm_dir / video_file.stem
+    video_dir = norm_dir / slug
     video_dir.mkdir(parents=True, exist_ok=True)
 
     output_path = video_dir / f"{video_file.name}"
     console.print(f"Normalizing {video_file.name} to {output_path.name}...")
 
-    duration = get_duration(str(video_file))
+    try:
+        duration = get_duration(str(video_file))
+    except Exception as e:
+        job_run.mark_failed(str(e))
+        save_video_job_run(queue_root, job_run)
+        console.print(f"[red]Failed to probe duration: {e}[/red]")
+        return False
 
-    with Progress(
-        SpinnerColumn(),
-        TextColumn("[progress.description]{task.description}"),
-        BarColumn(),
-        TaskProgressColumn(),
-        console=console,
-    ) as progress:
-        task = progress.add_task(f"Normalizing {video_file.name}", total=duration)
+    result: Optional[Path] = None
+    try:
+        with Progress(
+            SpinnerColumn(),
+            TextColumn("[progress.description]{task.description}"),
+            BarColumn(),
+            TaskProgressColumn(),
+            console=console,
+        ) as progress:
+            task = progress.add_task(f"Normalizing {video_file.name}", total=duration)
 
-        def callback(current_sec: float, total_sec: float) -> None:
-            progress.update(task, completed=current_sec)
+            def callback(current_sec: float, total_sec: float) -> None:
+                progress.update(task, completed=current_sec)
 
-        camp_cfg = load_campaign_config(campaign_name)
-        loudness_cfg = camp_cfg.get("video", {}).get("loudness", {})
-        denoise_cfg = camp_cfg.get("video", {}).get("denoise", {})
-        result, _stats = normalize_video(
-            video_file,
-            output_path,
-            callback=callback,
-            loudness_config=loudness_cfg,
-            denoise_config=denoise_cfg,
-        )
+            camp_cfg = load_campaign_config(campaign_name)
+            loudness_cfg = camp_cfg.get("video", {}).get("loudness", {})
+            denoise_cfg = camp_cfg.get("video", {}).get("denoise", {})
+            result, _stats = normalize_video(
+                video_file,
+                output_path,
+                callback=callback,
+                loudness_config=loudness_cfg,
+                denoise_config=denoise_cfg,
+                job_run=job_run,
+            )
+            # Persist mid-run phase updates after encode returns
+            save_video_job_run(queue_root, job_run)
+    except Exception as e:
+        job_run.mark_failed(str(e))
+        receipt_path = save_video_job_run(queue_root, job_run)
+        console.print(f"[red]Failed to normalize {video_file.name}: {e}[/red]")
+        console.print(f"[dim]Job run: {receipt_path}[/dim]")
+        return False
 
     if not result:
+        job_run.mark_failed(job_run.errors[-1] if job_run.errors else "normalize failed")
+        receipt_path = save_video_job_run(queue_root, job_run)
         console.print(f"[red]Failed to normalize {video_file.name}[/red]")
+        console.print(f"[dim]Job run: {receipt_path}[/dim]")
         return False
 
     # Remove original from raw/ ONLY after success
     video_file.unlink()
 
-    md_file = video_dir / f"{video_file.stem}.md"
+    md_file = video_dir / f"{slug}.md"
     if not md_file.exists():
         with open(md_file, "w") as f:
             f.write("---\n")
@@ -208,12 +357,48 @@ def normalize_one_video(campaign_name: str, video_file: Path) -> bool:
             f.write("---\n\n")
 
     try:
+        job_run.start_phase("screenshots")
         extract_screenshots_logic(result)
+        job_run.end_phase("screenshots")
     except Exception as e:
-        # Normalize already succeeded; do not fail the whole job for screenshots.
+        # Encode already succeeded; do not fail the whole job for screenshots.
+        job_run.end_phase("screenshots")
+        job_run.add_error(f"Screenshot extraction failed: {e}")
         console.print(f"[yellow]Screenshot extraction failed: {e}[/yellow]")
 
-    console.print(f"[green]Normalized: {video_file.stem}[/green]")
+    # STT is part of normalize (single pipeline with encode).
+    try:
+        transcribe_normalized_dir(
+            campaign_name, video_dir, job_run=job_run, force=False
+        )
+        save_video_job_run(queue_root, job_run)
+    except Exception as e:
+        job_run.mark_failed(f"Transcription failed: {e}")
+        receipt_path = save_video_job_run(queue_root, job_run)
+        console.print(f"[red]Transcription failed: {e}[/red]")
+        console.print(
+            "[yellow]Encoded video was kept in normalized/; re-run STT with:[/yellow]"
+        )
+        console.print(
+            f"  cocli video transcribe {slug} -c {campaign_name}"
+        )
+        print_accessible_path(console, "Folder:", video_dir)
+        print_accessible_path(console, "Receipt:", receipt_path, style="dim")
+        return False
+
+    job_run.mark_completed()
+    receipt_path = save_video_job_run(queue_root, job_run)
+    write_last_normalize_pointer(
+        video_dir, job_run, receipt_path=receipt_path
+    )
+
+    console.print(f"[green]Normalized (+ STT): {slug}[/green]")
+    if job_run.duration_seconds is not None:
+        console.print(f"[dim]Elapsed: {job_run.duration_seconds:.1f}s[/dim]")
+    # Prefer Windows/UNC form for Explorer + VLC on a Windows host (WSL).
+    print_accessible_path(console, "Video:", result)
+    print_accessible_path(console, "Folder:", video_dir)
+    print_accessible_path(console, "Receipt:", receipt_path, style="dim")
     return True
 
 
@@ -261,7 +446,10 @@ def add(
     do_normalize: bool = typer.Option(
         False,
         "--normalize",
-        help="After adding, normalize this video only (does not run package)",
+        help=(
+            "After adding, normalize + transcribe this video only "
+            "(encode, STT, chapters, captions; does not run package)"
+        ),
     ),
 ) -> None:
     """Add (import) an external video into the campaign raw queue."""
@@ -288,7 +476,7 @@ def normalize(
         None, "-c", "--campaign", help="Campaign name"
     ),
 ) -> None:
-    """Normalize videos in the raw queue."""
+    """Normalize + transcribe videos in the raw queue (encode, STT, chapters, captions)."""
     campaign_name = campaign or get_campaign()
     if not campaign_name:
         console.print("[red]No campaign specified.[/red]")
@@ -318,6 +506,63 @@ def normalize(
         raise typer.Exit(1)
 
 
+@app.command(no_args_is_help=True)
+def transcribe(
+    campaign: Optional[str] = typer.Option(
+        None, "-c", "--campaign", help="Campaign name"
+    ),
+    video_slug: str = typer.Argument(
+        ..., help="Video slug (directory name under normalized/)"
+    ),
+    force: bool = typer.Option(
+        False, "--force", "-f", help="Re-run STT even if transcripts already exist"
+    ),
+) -> None:
+    """
+    Run STT (+ chapters + captions) on an already-normalized video.
+
+    Recovery path when encode finished without transcription. Prefer letting
+    ``normalize`` / ``add --normalize`` do STT in one step for new videos.
+    """
+    campaign_name = campaign or get_campaign()
+    if not campaign_name:
+        console.print("[red]No campaign specified.[/red]")
+        raise typer.Exit(1)
+
+    queue_root = get_video_queue_root(campaign_name)
+    video_dir = queue_root / "normalized" / video_slug
+    if not video_dir.is_dir():
+        console.print(f"[red]Normalized directory not found: {video_dir}[/red]")
+        raise typer.Exit(1)
+
+    job_run = VideoJobRun.start_normalize(campaign_name, video_slug)
+    job_run.kind = "video.transcribe"
+    job_run.notes = "Recovery STT on existing normalized package"
+    receipt_path = save_video_job_run(queue_root, job_run)
+    console.print(f"[dim]Job run: {receipt_path}[/dim]")
+
+    try:
+        transcribe_normalized_dir(
+            campaign_name, video_dir, job_run=job_run, force=force
+        )
+        job_run.mark_completed()
+        receipt_path = save_video_job_run(queue_root, job_run)
+        write_last_normalize_pointer(
+            video_dir, job_run, receipt_path=receipt_path
+        )
+        console.print(f"[green]Transcribed: {video_slug}[/green]")
+        if job_run.duration_seconds is not None:
+            console.print(f"[dim]Elapsed: {job_run.duration_seconds:.1f}s[/dim]")
+        print_accessible_path(console, "Folder:", video_dir)
+        print_accessible_path(console, "Receipt:", receipt_path, style="dim")
+    except Exception as e:
+        job_run.mark_failed(str(e))
+        receipt_path = save_video_job_run(queue_root, job_run)
+        console.print(f"[red]Transcription failed: {e}[/red]")
+        print_accessible_path(console, "Receipt:", receipt_path, style="dim")
+        raise typer.Exit(1)
+
+
 @app.command()
 def package(
     campaign: Optional[str] = typer.Option(
@@ -327,7 +572,13 @@ def package(
         False, "--force", "-f", help="Overwrite existing packaged data"
     ),
 ) -> None:
-    """Package videos from the normalized queue."""
+    """
+    Package videos from the normalized queue.
+
+    Copies normalized assets to packaged/ and builds thumbnails. Transcription
+    is expected from normalize; if transcripts are missing, STT is run once
+    via the shared helper (not a second pipeline).
+    """
     campaign_name = campaign or get_campaign()
     if not campaign_name:
         console.print("[red]No campaign specified.[/red]")
@@ -359,60 +610,21 @@ def package(
             console.print(f"[dim]Source: {video_dir}[/dim]")
             console.print(f"[dim]Destination: {target_video_dir}[/dim]")
 
-            # 1. Identify video file
-            video_file = next(video_dir.glob("*.mp4"))
+            if _find_normalized_mp4(video_dir) is None:
+                console.print(f"[red]No .mp4 in {video_dir}; skipping[/red]")
+                continue
 
-            # 2. Transcribe
-            console.print(f"Transcribing {video_file.name}...")
-
-            camp_cfg = load_campaign_config(campaign_name)
-            provider = (
-                camp_cfg.get("video", {})
-                .get("transcription", {})
-                .get("provider", "gemini")
-            )
-            transcriber_engine = transcriber.TranscriptionFactory.get_transcriber(
-                provider
-            )
-            transcripts = transcriber_engine.transcribe(video_file, campaign_name)
-
-            # 3. Save transcripts
-            for provider_name, transcript_text in transcripts.items():
-                transcript_path = video_dir / f"transcript_{provider_name}.md"
-                with open(transcript_path, "w") as f:
-                    f.write(transcript_text)
+            # STT if missing (legacy / failed-normalize recovery); shared helper
+            try:
+                transcribe_normalized_dir(
+                    campaign_name, video_dir, job_run=None, force=False
+                )
+            except Exception as e:
                 console.print(
-                    f"[green]Saved transcript to {transcript_path.name}[/green]"
+                    f"[yellow]STT failed for {video_dir.name}: {e}; packaging remaining assets[/yellow]"
                 )
 
-            # 3.5. Generate chapters from the first transcript
-            first_transcript = next(iter(transcripts.values()), "")
-            if first_transcript:
-                console.print("Generating chapters...")
-                try:
-                    chapter_text = chapters.create_chapters(
-                        first_transcript, campaign_name
-                    )
-                    chapters_path = video_dir / "chapters.md"
-                    with open(chapters_path, "w") as f:
-                        f.write(chapter_text)
-                    console.print(
-                        f"[green]Saved chapters to {chapters_path.name}[/green]"
-                    )
-                except Exception as e:
-                    console.print(f"[yellow]Chapter generation failed: {e}[/yellow]")
-
-            # 4. Generate VTT (closed captions) from first transcript
-            if first_transcript:
-                console.print("Generating VTT closed captions...")
-                try:
-                    vtt_path = video_dir / "captions.vtt"
-                    convert_transcript_to_vtt(first_transcript, vtt_path)
-                    console.print(f"[green]Saved captions to {vtt_path.name}[/green]")
-                except Exception as e:
-                    console.print(f"[yellow]VTT generation failed: {e}[/yellow]")
-
-            # 4. Copy to packaged
+            # Copy to packaged
             for item in video_dir.iterdir():
                 if item.is_dir():
                     shutil.copytree(
@@ -421,7 +633,7 @@ def package(
                 else:
                     shutil.copy2(item, target_video_dir / item.name)
 
-            # 5. Process Thumbnail
+            # Thumbnail
             thumbnailer.process_thumbnail(video_dir, target_video_dir)
 
             console.print(f"[green]Packaged: {video_dir.name}[/green]")

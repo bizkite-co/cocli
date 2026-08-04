@@ -13,15 +13,27 @@ class TestGetH264Encoder:
         encoders = MagicMock(returncode=0, stdout=" ... h264_nvenc ... libx264 ...")
         with (
             patch("cocli.core.video.ffmpeg.subprocess.run", return_value=encoders),
-            patch("cocli.core.video.ffmpeg._nvenc_is_usable", return_value=False),
+            patch(
+                "cocli.core.video.ffmpeg._nvenc_is_usable",
+                return_value=(False, "cuInit failed"),
+            ),
         ):
             assert get_h264_encoder() == "libx264"
+            from cocli.core.video.ffmpeg import select_h264_encoder
+
+            enc, requested, reason = select_h264_encoder()
+            assert enc == "libx264"
+            assert requested == "h264_nvenc"
+            assert reason == "cuInit failed"
 
     def test_prefers_nvenc_when_usable(self) -> None:
         encoders = MagicMock(returncode=0, stdout=" ... h264_nvenc ... libx264 ...")
         with (
             patch("cocli.core.video.ffmpeg.subprocess.run", return_value=encoders),
-            patch("cocli.core.video.ffmpeg._nvenc_is_usable", return_value=True),
+            patch(
+                "cocli.core.video.ffmpeg._nvenc_is_usable",
+                return_value=(True, None),
+            ),
         ):
             assert get_h264_encoder() == "h264_nvenc"
 

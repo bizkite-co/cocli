@@ -586,10 +586,14 @@ cocli
             -c/--campaign (text)
             video (text) [required]
             --normalize (boolean)
-        normalize - Normalize videos in the raw queue.
+        normalize - Normalize + transcribe videos in the raw queue (encode, STT, chapters, captions).
             -c/--campaign (text)
         package - Package videos from the normalized queue.
             -c/--campaign (text)
+            --force/-f (boolean)
+        transcribe - Run STT (+ chapters + captions) on an already-normalized video.
+            -c/--campaign (text)
+            video_slug (text) [required]
             --force/-f (boolean)
         upload - Upload a video to YouTube using metadata from the packaged queue.
             -c/--campaign (text)

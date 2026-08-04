@@ -112,6 +112,22 @@ class GeminiTranscriber:
 
 
 
+def _load_whisper_model(model_size: str) -> WhisperModel:
+    """Load faster-whisper; prefer CUDA, fall back to CPU when GPU/CUDA is unusable."""
+    try:
+        model = WhisperModel(model_size, device="cuda", compute_type="float16")
+        logger.info("Whisper using device=cuda compute_type=float16")
+        return model
+    except Exception as e:
+        logger.warning(
+            "Whisper CUDA unavailable (%s); falling back to device=cpu compute_type=int8",
+            e,
+        )
+        model = WhisperModel(model_size, device="cpu", compute_type="int8")
+        logger.info("Whisper using device=cpu compute_type=int8")
+        return model
+
+
 class WhisperTranscriber:
     def transcribe(self, video_path: Path, campaign: str) -> Dict[str, str]:
         config = load_campaign_config(campaign)
@@ -119,7 +135,7 @@ class WhisperTranscriber:
         model_size = transcription_config.get("whisper_model", "small")
 
         logger.info(f"Transcribing {video_path.name} using Whisper ({model_size})...")
-        model = WhisperModel(model_size, device="cuda", compute_type="float16")
+        model = _load_whisper_model(model_size)
 
         # Enable word-level timestamps
         segments, info = model.transcribe(

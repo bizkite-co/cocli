@@ -4,18 +4,16 @@ import re
 import logging
 import tempfile
 from pathlib import Path
-from typing import Optional, Tuple, Callable, Dict
+from typing import TYPE_CHECKING, Any, Optional, Tuple, Callable, Dict
 
 logger = logging.getLogger(__name__)
 
+if TYPE_CHECKING:
+    from cocli.models.campaigns.video_job_run import VideoJobRun
 
-def _nvenc_is_usable() -> bool:
-    """Return True only if h264_nvenc can actually encode (CUDA stack works).
 
-    FFmpeg often lists h264_nvenc even when no NVIDIA GPU / CUDA is available
-    (common on WSL). A failed encode leaves a zero-byte output that still
-    ``exists()``, so we must probe before selecting the encoder.
-    """
+def _nvenc_is_usable() -> Tuple[bool, Optional[str]]:
+    """Return (usable, failure_reason) for h264_nvenc runtime probe."""
     probe = subprocess.run(
         [
             "ffmpeg",
@@ -39,23 +37,76 @@ def _nvenc_is_usable() -> bool:
     )
     if probe.returncode != 0:
         err = (probe.stderr or probe.stdout or "").strip()
+        reason = err[-300:] if err else f"exit={probe.returncode}"
         logger.warning(
             "h264_nvenc is listed but unusable; falling back to libx264. %s",
-            err[-300:] if err else f"exit={probe.returncode}",
+            reason,
         )
-        return False
-    return True
+        return False, reason
+    return True, None
+
+
+def select_h264_encoder() -> Tuple[str, Optional[str], Optional[str]]:
+    """
+    Choose H.264 encoder.
+
+    Returns:
+        (encoder, encoder_requested, fallback_reason)
+        encoder_requested is set when nvenc was preferred but unusable.
+    """
+    try:
+        result = subprocess.run(["ffmpeg", "-encoders"], capture_output=True, text=True)
+        if "h264_nvenc" in result.stdout:
+            usable, reason = _nvenc_is_usable()
+            if usable:
+                return "h264_nvenc", None, None
+            return "libx264", "h264_nvenc", reason
+        return "libx264", None, None
+    except Exception as e:
+        return "libx264", None, str(e)
 
 
 def get_h264_encoder() -> str:
     """Detect a usable H.264 encoder (prefer nvenc only if it actually works)."""
+    encoder, _requested, _reason = select_h264_encoder()
+    return encoder
+
+
+def probe_video_identity(input_file: str | Path) -> Dict[str, Any]:
+    """Best-effort duration/size/dimensions for job-run receipts."""
+    path = Path(input_file)
+    identity: Dict[str, Any] = {"path": str(path.resolve()) if path.exists() else str(path)}
+    if path.exists():
+        identity["bytes"] = path.stat().st_size
     try:
-        result = subprocess.run(["ffmpeg", "-encoders"], capture_output=True, text=True)
-        if "h264_nvenc" in result.stdout and _nvenc_is_usable():
-            return "h264_nvenc"
-        return "libx264"
-    except Exception:
-        return "libx264"
+        identity["duration_seconds"] = get_duration(path)
+    except Exception as e:
+        logger.debug("duration probe failed for %s: %s", path, e)
+
+    cmd = [
+        "ffprobe",
+        "-v",
+        "error",
+        "-select_streams",
+        "v:0",
+        "-show_entries",
+        "stream=width,height",
+        "-of",
+        "csv=p=0",
+        str(path),
+    ]
+    try:
+        result = subprocess.run(cmd, capture_output=True, text=True)
+        raw = (result.stdout or "").strip()
+        if result.returncode == 0 and raw:
+            # width,height or width,height, with trailing comma variants
+            parts = [p for p in raw.replace("\n", ",").split(",") if p]
+            if len(parts) >= 2:
+                identity["width"] = int(float(parts[0]))
+                identity["height"] = int(float(parts[1]))
+    except Exception as e:
+        logger.debug("stream probe failed for %s: %s", path, e)
+    return identity
 
 
 def get_duration(input_file: str | Path) -> float:
@@ -178,6 +229,7 @@ def normalize_video(
     callback: Optional[Callable[[float, float], None]] = None,
     loudness_config: Optional[Dict[str, float]] = None,
     denoise_config: Optional[Dict[str, int]] = None,
+    job_run: Optional["VideoJobRun"] = None,
 ) -> Tuple[Optional[Path], Optional[Dict[str, float]]]:
     """
     Normalize video audio and compress for YouTube/Social.
@@ -188,13 +240,21 @@ def normalize_video(
         callback: Progress callback(current, total_seconds) or None
         loudness_config: Optional dict with keys I, TP, LRA
         denoise_config: Optional dict with keys nr (noise reduction dB)
+        job_run: Optional VideoJobRun receipt to update with phases/settings
 
     Returns:
         (output_path, stats) or (None, None) on failure
     """
+    from cocli.models.campaigns.video_job_run import (
+        VideoFileIdentity,
+        VideoNormalizeSettings,
+    )
+
     input_path = Path(input_path)
     if not input_path.exists():
         logger.error(f"Input file not found: {input_path}")
+        if job_run is not None:
+            job_run.add_error(f"Input file not found: {input_path}")
         return None, None
 
     if not output_path:
@@ -203,6 +263,9 @@ def normalize_video(
         )
     else:
         output_path = Path(output_path)
+
+    if job_run is not None and job_run.input is None:
+        job_run.input = VideoFileIdentity(**probe_video_identity(input_path))
 
     loudness_config = loudness_config or {"I": -14, "TP": -1.5, "LRA": 11}
     target_i = loudness_config.get("I", -14)
@@ -214,6 +277,8 @@ def normalize_video(
 
     # Phase 1: Analyze loudness
     logger.info(f"Analyzing {input_path.name}...")
+    if job_run is not None:
+        job_run.start_phase("analyze_loudness")
     analyze_cmd = [
         "ffmpeg",
         "-i",
@@ -225,21 +290,49 @@ def normalize_video(
         "-",
     ]
     result = subprocess.run(analyze_cmd, capture_output=True, text=True)
+    if job_run is not None:
+        job_run.end_phase("analyze_loudness")
 
     stats = parse_loudness_stats(result.stderr)
     if not stats:
         logger.error("Could not parse loudness statistics")
+        if job_run is not None:
+            job_run.add_error("Could not parse loudness statistics")
         return None, None
 
     # Phase 2: Normalize and compress
     logger.info("Normalizing and compressing...")
 
-    encoder = get_h264_encoder()
-    codec_args = []
+    encoder, encoder_requested, fallback_reason = select_h264_encoder()
+    codec_args: list[str] = []
+    preset: Optional[str] = None
+    crf: Optional[int] = None
+    cq: Optional[int] = None
     if encoder == "h264_nvenc":
-        codec_args = ["-c:v", "h264_nvenc", "-preset", "p4", "-tune", "hq", "-cq", "20"]
+        preset = "p4"
+        cq = 20
+        codec_args = ["-c:v", "h264_nvenc", "-preset", preset, "-tune", "hq", "-cq", str(cq)]
     else:
-        codec_args = ["-c:v", "libx264", "-crf", "18", "-preset", "slow"]
+        preset = "slow"
+        crf = 18
+        codec_args = ["-c:v", "libx264", "-crf", str(crf), "-preset", preset]
+
+    if job_run is not None:
+        job_run.settings = VideoNormalizeSettings(
+            encoder=encoder,
+            encoder_requested=encoder_requested,
+            encoder_fallback_reason=fallback_reason,
+            preset=preset,
+            crf=crf,
+            cq=cq,
+            audio="aac@192k",
+            loudness={
+                "I": float(target_i),
+                "TP": float(target_tp),
+                "LRA": float(target_lra),
+            },
+            denoise_nr=int(nr) if nr is not None else None,
+        )
 
     af = (
         f"afftdn=nr={nr}:nt=w,loudnorm=I={target_i}:TP={target_tp}:LRA={target_lra}:linear=true:"
@@ -276,6 +369,9 @@ def normalize_video(
         ]
     )
 
+    if job_run is not None:
+        job_run.start_phase("encode")
+
     # Capture stderr to a temp file so we can report encode failures (e.g. nvenc
     # CUDA init) without deadlocking on a filled PIPE buffer.
     with tempfile.NamedTemporaryFile(
@@ -302,6 +398,9 @@ def normalize_video(
 
         returncode = process.wait()
 
+    if job_run is not None:
+        job_run.end_phase("encode")
+
     stderr_tail = ""
     try:
         stderr_text = err_path.read_text(errors="replace")
@@ -316,6 +415,8 @@ def normalize_video(
     )
     if output_ok:
         logger.info(f"Done! Saved to: {output_path} ({output_path.stat().st_size} bytes)")
+        if job_run is not None:
+            job_run.output = VideoFileIdentity(**probe_video_identity(output_path))
         return output_path, stats
 
     # Remove zero-byte / partial outputs so a later run does not treat them as success
@@ -325,12 +426,13 @@ def normalize_video(
         except OSError:
             pass
 
-    logger.error(
-        "FFmpeg normalize failed (exit=%s, output=%s). stderr tail:\n%s",
-        returncode,
-        output_path,
-        stderr_tail or "(empty)",
+    err_msg = (
+        f"FFmpeg normalize failed (exit={returncode}, output={output_path}). "
+        f"stderr tail: {stderr_tail or '(empty)'}"
     )
+    logger.error("%s", err_msg)
+    if job_run is not None:
+        job_run.add_error(err_msg)
     return None, stats
 
 
