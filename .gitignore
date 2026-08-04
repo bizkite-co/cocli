@@ -51,3 +51,6 @@ schema_ledger.json
 # task-agent local store pointer (vestigial; canonical resolution is via the machine registry)
 .task-agent/
 
+
+# task-agent: human-facing store symlink
+docks/tasks

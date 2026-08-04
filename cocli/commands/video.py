@@ -207,7 +207,12 @@ def normalize_one_video(campaign_name: str, video_file: Path) -> bool:
             f.write("draft: true\n")
             f.write("---\n\n")
 
-    extract_screenshots_logic(result)
+    try:
+        extract_screenshots_logic(result)
+    except Exception as e:
+        # Normalize already succeeded; do not fail the whole job for screenshots.
+        console.print(f"[yellow]Screenshot extraction failed: {e}[/yellow]")
+
     console.print(f"[green]Normalized: {video_file.stem}[/green]")
     return True
 

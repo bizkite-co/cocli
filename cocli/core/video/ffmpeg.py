@@ -2,17 +2,56 @@ import json
 import subprocess
 import re
 import logging
+import tempfile
 from pathlib import Path
 from typing import Optional, Tuple, Callable, Dict
 
 logger = logging.getLogger(__name__)
 
 
+def _nvenc_is_usable() -> bool:
+    """Return True only if h264_nvenc can actually encode (CUDA stack works).
+
+    FFmpeg often lists h264_nvenc even when no NVIDIA GPU / CUDA is available
+    (common on WSL). A failed encode leaves a zero-byte output that still
+    ``exists()``, so we must probe before selecting the encoder.
+    """
+    probe = subprocess.run(
+        [
+            "ffmpeg",
+            "-hide_banner",
+            "-loglevel",
+            "error",
+            "-f",
+            "lavfi",
+            "-i",
+            "nullsrc=s=256x256:d=0.1",
+            "-frames:v",
+            "1",
+            "-c:v",
+            "h264_nvenc",
+            "-f",
+            "null",
+            "-",
+        ],
+        capture_output=True,
+        text=True,
+    )
+    if probe.returncode != 0:
+        err = (probe.stderr or probe.stdout or "").strip()
+        logger.warning(
+            "h264_nvenc is listed but unusable; falling back to libx264. %s",
+            err[-300:] if err else f"exit={probe.returncode}",
+        )
+        return False
+    return True
+
+
 def get_h264_encoder() -> str:
-    """Detects available H.264 encoder."""
+    """Detect a usable H.264 encoder (prefer nvenc only if it actually works)."""
     try:
         result = subprocess.run(["ffmpeg", "-encoders"], capture_output=True, text=True)
-        if "h264_nvenc" in result.stdout:
+        if "h264_nvenc" in result.stdout and _nvenc_is_usable():
             return "h264_nvenc"
         return "libx264"
     except Exception:
@@ -20,7 +59,17 @@ def get_h264_encoder() -> str:
 
 
 def get_duration(input_file: str | Path) -> float:
-    """Get video duration using ffprobe."""
+    """Get video duration using ffprobe.
+
+    Raises:
+        RuntimeError: if the file cannot be probed or has no duration.
+    """
+    path = Path(input_file)
+    if not path.exists():
+        raise RuntimeError(f"Cannot probe duration; file not found: {path}")
+    if path.stat().st_size == 0:
+        raise RuntimeError(f"Cannot probe duration; file is empty: {path}")
+
     cmd = [
         "ffprobe",
         "-v",
@@ -29,10 +78,19 @@ def get_duration(input_file: str | Path) -> float:
         "format=duration",
         "-of",
         "default=noprint_wrappers=1:nokey=1",
-        str(input_file),
+        str(path),
     ]
     result = subprocess.run(cmd, capture_output=True, text=True)
-    return float(result.stdout.strip())
+    raw = (result.stdout or "").strip()
+    if result.returncode != 0 or not raw:
+        err = (result.stderr or "").strip() or "no duration in ffprobe output"
+        raise RuntimeError(f"ffprobe failed for {path}: {err}")
+    try:
+        return float(raw)
+    except ValueError as exc:
+        raise RuntimeError(
+            f"ffprobe returned non-numeric duration for {path!s}: {raw!r}"
+        ) from exc
 
 
 def parse_loudness_stats(stderr_output: str) -> Optional[Dict[str, float]]:
@@ -191,6 +249,7 @@ def normalize_video(
     )
 
     duration = get_duration(input_path)
+    logger.info(f"Using video encoder: {encoder}")
 
     cmd = (
         [
@@ -217,29 +276,61 @@ def normalize_video(
         ]
     )
 
-    process = subprocess.Popen(
-        cmd, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True
+    # Capture stderr to a temp file so we can report encode failures (e.g. nvenc
+    # CUDA init) without deadlocking on a filled PIPE buffer.
+    with tempfile.NamedTemporaryFile(
+        mode="w+", prefix="cocli-ffmpeg-", suffix=".log", delete=False
+    ) as err_file:
+        err_path = Path(err_file.name)
+        process = subprocess.Popen(
+            cmd, stdout=subprocess.PIPE, stderr=err_file, text=True
+        )
+
+        time_regex = re.compile(r"out_time_ms=(\d+)")
+        if process.stdout:
+            while True:
+                line = process.stdout.readline()
+                if not line:
+                    if process.poll() is not None:
+                        break
+                    continue
+
+                match = time_regex.search(line)
+                if match and callback:
+                    current_sec = int(match.group(1)) / 1000000.0
+                    callback(current_sec, duration)
+
+        returncode = process.wait()
+
+    stderr_tail = ""
+    try:
+        stderr_text = err_path.read_text(errors="replace")
+        stderr_tail = stderr_text[-1500:] if stderr_text else ""
+    finally:
+        err_path.unlink(missing_ok=True)
+
+    output_ok = (
+        returncode == 0
+        and output_path.exists()
+        and output_path.stat().st_size > 0
     )
-
-    time_regex = re.compile(r"out_time_ms=(\d+)")
-    if process.stdout:
-        while True:
-            line = process.stdout.readline()
-            if not line:
-                if process.poll() is not None:
-                    break
-                continue
-
-            match = time_regex.search(line)
-            if match and callback:
-                current_sec = int(match.group(1)) / 1000000.0
-                callback(current_sec, duration)
-
-    if output_path.exists():
-        logger.info(f"Done! Saved to: {output_path}")
+    if output_ok:
+        logger.info(f"Done! Saved to: {output_path} ({output_path.stat().st_size} bytes)")
         return output_path, stats
 
-    logger.error("Output file not created")
+    # Remove zero-byte / partial outputs so a later run does not treat them as success
+    if output_path.exists() and output_path.stat().st_size == 0:
+        try:
+            output_path.unlink()
+        except OSError:
+            pass
+
+    logger.error(
+        "FFmpeg normalize failed (exit=%s, output=%s). stderr tail:\n%s",
+        returncode,
+        output_path,
+        stderr_tail or "(empty)",
+    )
     return None, stats
 
 
