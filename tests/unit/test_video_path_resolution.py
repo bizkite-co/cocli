@@ -1,11 +1,19 @@
 """Tests for video path resolution and add/import CLI wiring."""
 
+import re
 from pathlib import Path
 from unittest.mock import patch
 
 from typer.testing import CliRunner
 
 from cocli.commands.video import app, resolve_video_path
+
+_ANSI_RE = re.compile(r"\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])")
+
+
+def _strip_ansi(text: str) -> str:
+    """Remove ANSI escape sequences (Rich styles split e.g. -- into separate spans)."""
+    return _ANSI_RE.sub("", text)
 
 
 class TestResolveVideoPath:
@@ -54,9 +62,10 @@ class TestAddImportCli:
         runner = CliRunner()
         result = runner.invoke(app, ["add", "--help"])
         assert result.exit_code == 0
-        assert "--normalize" in result.output
+        output = _strip_ansi(result.output)
+        assert "--normalize" in output
         # Path guidance (backslash form may be escaped in help)
-        assert "Linux" in result.output or "/path" in result.output or "mnt" in result.output
+        assert "Linux" in output or "/path" in output or "mnt" in output
 
     def test_import_help_matches_add(self) -> None:
         runner = CliRunner()
@@ -64,4 +73,4 @@ class TestAddImportCli:
         import_help = runner.invoke(app, ["import", "--help"])
         assert add_help.exit_code == 0
         assert import_help.exit_code == 0
-        assert "--normalize" in import_help.output
+        assert "--normalize" in _strip_ansi(import_help.output)
