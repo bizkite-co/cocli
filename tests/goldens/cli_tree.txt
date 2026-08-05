@@ -573,8 +573,14 @@ cocli
             -c/--campaign (text)
             video (text) [required]
             --normalize (boolean)
+            --profile (text)
         auth - Authenticate with YouTube using OAuth Device Code Flow.
             -c/--campaign (text)
+        chapters - Regenerate chapters.md from existing transcripts (no Whisper / no encode).
+            -c/--campaign (text)
+            video_slug (text) [required]
+            --provider (text)
+            --also-packaged (boolean)
         create-thumbnail - Create a thumbnail for a video using metadata.
             -c/--campaign (text)
             video_slug (text) [required]
@@ -586,8 +592,10 @@ cocli
             -c/--campaign (text)
             video (text) [required]
             --normalize (boolean)
+            --profile (text)
         normalize - Normalize + transcribe videos in the raw queue (encode, STT, chapters, captions).
             -c/--campaign (text)
+            --profile (text)
         package - Package videos from the normalized queue.
             -c/--campaign (text)
             --force/-f (boolean)
