@@ -22,6 +22,59 @@ from ..core.text_utils import slugify
 
 logger = logging.getLogger(__name__)
 
+
+def route_discovered_list_item(
+    list_item: GoogleMapsListItem,
+    *,
+    campaign_name: str,
+    enrichment_queue: Any,
+    gm_list_item_queue: Any,
+    processed_by: str,
+) -> None:
+    """Per-discovery routing decision for the gm-list scraper.
+
+    domain present -> bypass gm-details entirely, push straight to
+    enrichment AND persist a durable WAL record. The details stage would
+    normally write this record via add_to_wal() (see
+    GoogleMapsDetailsProcessor.process()) - bypassing details here must not
+    also bypass that record, or this discovery never reaches the prospects
+    checkpoint except via a manual compact_gm_list_results() run.
+
+    No domain -> queue for gm-details, which persists its own WAL record
+    once it finds one.
+
+    Extracted as a plain, synchronous function (rather than inline in the
+    async scrape loop) so it's testable without mocking a Playwright
+    browser - see task-agent ticket
+    gm-list-output-router-decouple-fan-out-from-scraper-workers for the
+    larger router/connector split this is a small step towards.
+    """
+    from ..core.prospects_csv_manager import ProspectsIndexManager
+    from ..core.transformers.gm_list_item_to_prospect import (
+        transform_gm_list_item_to_google_maps_prospect,
+    )
+
+    if list_item.domain:
+        logger.info(
+            f"Bypassing details: domain '{list_item.domain}' found for "
+            f"'{list_item.name}'. Routing directly to enrichment."
+        )
+        enrichment_queue.push(
+            QueueMessage(
+                domain=str(list_item.domain),
+                company_slug=slugify(str(list_item.name) if list_item.name else ""),
+                campaign_name=campaign_name,
+                force_refresh=False,
+                ack_token=None,
+            )
+        )
+        prospect = transform_gm_list_item_to_google_maps_prospect(list_item)
+        prospect.processed_by = processed_by
+        ProspectsIndexManager(campaign_name).add_to_wal(prospect)
+    else:
+        gm_list_item_queue.push(list_item.to_task(campaign_name, force_refresh=False))
+
+
 class WorkerService:
     def __init__(self, campaign_name: str, processed_by: Optional[str] = None, role: str = "full"):
         self.campaign_name = campaign_name
@@ -296,19 +349,13 @@ class WorkerService:
                         discovered_items.append(list_item)
 
                         if list_item.place_id not in pushed_place_ids:
-                            if list_item.domain:
-                                logger.info(f"Bypassing details: domain '{list_item.domain}' found for '{list_item.name}'. Routing directly to enrichment.")
-                                enrichment_queue.push(
-                                    QueueMessage(
-                                        domain=str(list_item.domain),
-                                        company_slug=slugify(str(list_item.name) if list_item.name else ""),
-                                        campaign_name=task.campaign_name,
-                                        force_refresh=False,
-                                        ack_token=None
-                                    )
-                                )
-                            else:
-                                gm_list_item_queue.push(list_item.to_task(task.campaign_name, force_refresh=False))
+                            route_discovered_list_item(
+                                list_item,
+                                campaign_name=task.campaign_name,
+                                enrichment_queue=enrichment_queue,
+                                gm_list_item_queue=gm_list_item_queue,
+                                processed_by=self.processed_by,
+                            )
                             pushed_place_ids.add(list_item.place_id)
 
                 if discovered_items:
