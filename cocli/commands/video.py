@@ -33,12 +33,14 @@ from cocli.core.video import (
 from cocli.core.video.job_runs import (
     save_video_job_run,
     write_last_normalize_pointer,
+    write_last_package_pointer,
+    write_last_upload_pointer,
 )
 from cocli.core.video.display_paths import print_accessible_path
 from cocli.core.video.transcript_to_vtt import convert_transcript_to_vtt
 from cocli.core.video import auth as video_auth
 from cocli.core.text_utils import slugdotify
-from cocli.models.campaigns.video_job_run import VideoJobRun
+from cocli.models.campaigns.video_job_run import KIND_TRANSCRIBE, VideoJobRun
 
 app = typer.Typer(no_args_is_help=True)
 console = Console()
@@ -536,7 +538,7 @@ def transcribe(
         raise typer.Exit(1)
 
     job_run = VideoJobRun.start_normalize(campaign_name, video_slug)
-    job_run.kind = "video.transcribe"
+    job_run.kind = KIND_TRANSCRIBE
     job_run.notes = "Recovery STT on existing normalized package"
     receipt_path = save_video_job_run(queue_root, job_run)
     console.print(f"[dim]Job run: {receipt_path}[/dim]")
@@ -561,6 +563,100 @@ def transcribe(
         console.print(f"[red]Transcription failed: {e}[/red]")
         print_accessible_path(console, "Receipt:", receipt_path, style="dim")
         raise typer.Exit(1)
+
+
+def package_one_video(
+    campaign_name: str,
+    video_dir: Path,
+    pack_dir: Path,
+    *,
+    force: bool = False,
+) -> bool:
+    """
+    Package a single normalized video dir into packaged/.
+
+    Writes ``video/job_runs/...`` with kind ``video.package`` and mirrors
+    ``last-package-run.json`` next to the packaged product on success.
+    STT only runs when transcripts are missing (shared helper).
+    """
+    queue_root = get_video_queue_root(campaign_name)
+    slug = video_dir.name
+    target_video_dir = pack_dir / slug
+
+    if target_video_dir.exists() and not force:
+        console.print(
+            f"[yellow]Skipping: {slug} already packaged. Use --force to overwrite.[/yellow]"
+        )
+        return False
+
+    job_run = VideoJobRun.start_package(campaign_name, slug)
+    receipt_path = save_video_job_run(queue_root, job_run)
+    console.print(f"[dim]Job run: {receipt_path}[/dim]")
+    console.print(f"Packaging: {slug}")
+    console.print(f"[dim]Source: {video_dir}[/dim]")
+    console.print(f"[dim]Destination: {target_video_dir}[/dim]")
+
+    if _find_normalized_mp4(video_dir) is None:
+        job_run.mark_failed(f"No .mp4 in {video_dir}")
+        receipt_path = save_video_job_run(queue_root, job_run)
+        console.print(f"[red]No .mp4 in {video_dir}; skipping[/red]")
+        console.print(f"[dim]Job run: {receipt_path}[/dim]")
+        return False
+
+    target_video_dir.mkdir(parents=True, exist_ok=True)
+
+    # STT if missing (legacy / failed-normalize recovery); shared helper — not a second pipeline
+    try:
+        transcribe_normalized_dir(
+            campaign_name, video_dir, job_run=job_run, force=False
+        )
+        save_video_job_run(queue_root, job_run)
+    except Exception as e:
+        job_run.add_error(f"STT failed: {e}")
+        save_video_job_run(queue_root, job_run)
+        console.print(
+            f"[yellow]STT failed for {slug}: {e}; packaging remaining assets[/yellow]"
+        )
+
+    try:
+        job_run.start_phase("copy_assets")
+        for item in video_dir.iterdir():
+            if item.is_dir():
+                shutil.copytree(
+                    item, target_video_dir / item.name, dirs_exist_ok=True
+                )
+            else:
+                shutil.copy2(item, target_video_dir / item.name)
+        job_run.end_phase("copy_assets")
+    except Exception as e:
+        job_run.end_phase("copy_assets")
+        job_run.mark_failed(f"Copy assets failed: {e}")
+        receipt_path = save_video_job_run(queue_root, job_run)
+        console.print(f"[red]Failed to copy assets for {slug}: {e}[/red]")
+        console.print(f"[dim]Job run: {receipt_path}[/dim]")
+        return False
+
+    try:
+        job_run.start_phase("thumbnail")
+        thumbnailer.process_thumbnail(video_dir, target_video_dir)
+        job_run.end_phase("thumbnail")
+    except Exception as e:
+        job_run.end_phase("thumbnail")
+        job_run.add_error(f"Thumbnail failed: {e}")
+        console.print(f"[yellow]Thumbnail failed for {slug}: {e}[/yellow]")
+
+    job_run.mark_completed()
+    receipt_path = save_video_job_run(queue_root, job_run)
+    write_last_package_pointer(
+        target_video_dir, job_run, receipt_path=receipt_path
+    )
+
+    console.print(f"[green]Packaged: {slug}[/green]")
+    if job_run.duration_seconds is not None:
+        console.print(f"[dim]Elapsed: {job_run.duration_seconds:.1f}s[/dim]")
+    print_accessible_path(console, "Folder:", target_video_dir)
+    print_accessible_path(console, "Receipt:", receipt_path, style="dim")
+    return True
 
 
 @app.command()
@@ -590,53 +686,16 @@ def package(
         pack_dir = queue_root / "packaged"
         pack_dir.mkdir(parents=True, exist_ok=True)
 
-        # Iterate through normalized subdirs
-        for video_dir in norm_dir.iterdir():
+        if not norm_dir.exists():
+            console.print(f"[yellow]Normalized directory not found: {norm_dir}[/yellow]")
+            return
+
+        for video_dir in sorted(norm_dir.iterdir()):
             if not video_dir.is_dir():
                 continue
-
-            # Check if already packaged
-            if (pack_dir / video_dir.name).exists() and not force:
-                console.print(
-                    f"[yellow]Skipping: {video_dir.name} already packaged. Use --force to overwrite.[/yellow]"
-                )
-                continue
-
-            # Target directory for THIS video
-            target_video_dir = pack_dir / video_dir.name
-            target_video_dir.mkdir(parents=True, exist_ok=True)
-
-            console.print(f"Packaging: {video_dir.name}")
-            console.print(f"[dim]Source: {video_dir}[/dim]")
-            console.print(f"[dim]Destination: {target_video_dir}[/dim]")
-
-            if _find_normalized_mp4(video_dir) is None:
-                console.print(f"[red]No .mp4 in {video_dir}; skipping[/red]")
-                continue
-
-            # STT if missing (legacy / failed-normalize recovery); shared helper
-            try:
-                transcribe_normalized_dir(
-                    campaign_name, video_dir, job_run=None, force=False
-                )
-            except Exception as e:
-                console.print(
-                    f"[yellow]STT failed for {video_dir.name}: {e}; packaging remaining assets[/yellow]"
-                )
-
-            # Copy to packaged
-            for item in video_dir.iterdir():
-                if item.is_dir():
-                    shutil.copytree(
-                        item, target_video_dir / item.name, dirs_exist_ok=True
-                    )
-                else:
-                    shutil.copy2(item, target_video_dir / item.name)
-
-            # Thumbnail
-            thumbnailer.process_thumbnail(video_dir, target_video_dir)
-
-            console.print(f"[green]Packaged: {video_dir.name}[/green]")
+            package_one_video(
+                campaign_name, video_dir, pack_dir, force=force
+            )
 
     except Exception:
         import traceback
@@ -723,52 +782,48 @@ def extract_screenshots(
     extract_screenshots_logic(video_path)
 
 
-@app.command()
-def upload(
-    campaign: Optional[str] = typer.Option(
-        None, "-c", "--campaign", help="Campaign name"
-    ),
-    video_slug: Optional[str] = typer.Option(
-        None, "-v", "--video", help="Video slug to upload (from packaged/)"
-    ),
-    privacy: str = typer.Option(
-        "unlisted", "-p", "--privacy", help="Privacy: public, unlisted, private"
-    ),
-    force_privacy: bool = typer.Option(
-        False,
-        "--force-privacy",
-        help="Override metadata draft setting with CLI privacy",
-    ),
-    dry_run: bool = typer.Option(False, "--dry-run", help="Validate without uploading"),
-) -> None:
-    """Upload a video to YouTube using metadata from the packaged queue."""
-    campaign_name = campaign or get_campaign()
-    if not campaign_name:
-        console.print(
-            "[red]No campaign selected. Please specify --campaign or set a campaign context.[/red]"
-        )
-        raise typer.Exit(1)
+def upload_one_video(
+    campaign_name: str,
+    video_dir: Path,
+    pack_dir: Path,
+    upload_dir: Path,
+    *,
+    privacy: str,
+    force_privacy: bool,
+    dry_run: bool,
+) -> bool:
+    """
+    Upload a single packaged video to YouTube.
 
+    Writes ``video/job_runs/...`` with kind ``video.upload`` and mirrors
+    ``last-upload-run.json`` next to the uploaded product on success.
+    """
     queue_root = get_video_queue_root(campaign_name)
-    pack_dir = queue_root / "packaged"
-    upload_dir = queue_root / "uploaded"
+    slug = video_dir.name
+    console.print(f"\n[cyan]Processing: {slug}[/cyan]")
 
-    if video_slug:
-        video_dirs = [pack_dir / video_slug]
-    else:
-        video_dirs = [d for d in pack_dir.iterdir() if d.is_dir()]
+    if not video_dir.is_dir():
+        console.print(f"[red]Packaged directory not found: {video_dir}[/red]")
+        return False
 
-    for video_dir in video_dirs:
-        slug = video_dir.name
-        console.print(f"\n[cyan]Processing: {slug}[/cyan]")
+    job_run = VideoJobRun.start_upload(campaign_name, slug)
+    receipt_path = save_video_job_run(queue_root, job_run)
+    console.print(f"[dim]Job run: {receipt_path}[/dim]")
+
+    try:
+        job_run.start_phase("prepare_metadata")
 
         md_file = video_dir / "metadata.md"
         if not md_file.exists():
             # Fallback to old naming convention
             md_file = video_dir / f"{slug}.md"
         if not md_file.exists():
+            job_run.end_phase("prepare_metadata")
+            job_run.mark_failed(f"Metadata file not found: {md_file}")
+            receipt_path = save_video_job_run(queue_root, job_run)
             console.print(f"[red]Metadata file not found: {md_file}[/red]")
-            continue
+            console.print(f"[dim]Job run: {receipt_path}[/dim]")
+            return False
 
         with open(md_file) as f:
             content = f.read()
@@ -802,26 +857,35 @@ def upload(
         description = description_body
         if chapters_path.exists():
             # Sanitize forbidden characters for YouTube API (no '<' or '>')
-            description = description.replace("<", "less than").replace(">", "greater than")
-            chapters_text: str = chapters_path.read_text().replace("<", "less than").replace(">", "greater than")
+            description = description.replace("<", "less than").replace(
+                ">", "greater than"
+            )
+            chapters_text: str = (
+                chapters_path.read_text()
+                .replace("<", "less than")
+                .replace(">", "greater than")
+            )
 
             if len(description) + len(chapters_text) + 2 > 5000:
                 allowed_body_len = 5000 - len(chapters_text) - 10
 
                 console.print(
-                    f"[yellow]Warning: Video description is too long. Truncating body text to {allowed_body_len} characters to fit chapters.[/yellow]"
+                    f"[yellow]Warning: Video description is too long. "
+                    f"Truncating body text to {allowed_body_len} characters "
+                    f"to fit chapters.[/yellow]"
                 )
                 description = description[:allowed_body_len] + "\n..."
             description += "\n\n" + chapters_text
         else:
-            description = description.replace("<", "less than").replace(">", "greater than")
+            description = description.replace("<", "less than").replace(
+                ">", "greater than"
+            )
             if len(description) > 5000:
                 console.print(
-                    "[yellow]Warning: Video description is too long. Truncating to 5000 characters.[/yellow]"
+                    "[yellow]Warning: Video description is too long. "
+                    "Truncating to 5000 characters.[/yellow]"
                 )
                 description = description[:4997] + "..."
-
-
 
         video_file_path = video_dir / f"{slug}.mp4"
         video_file: Optional[Path] = None
@@ -830,8 +894,12 @@ def upload(
         else:
             video_file = next(video_dir.glob("*.mp4"), None)
         if not video_file:
+            job_run.end_phase("prepare_metadata")
+            job_run.mark_failed(f"Video file not found in {video_dir}")
+            receipt_path = save_video_job_run(queue_root, job_run)
             console.print(f"[red]Video file not found in {video_dir}[/red]")
-            continue
+            console.print(f"[dim]Job run: {receipt_path}[/dim]")
+            return False
 
         # Prefer processed overlay thumbnail; screenshot name is only the source art.
         thumbnail_path = pack_dir / slug / "thumbnail.png"
@@ -853,48 +921,82 @@ def upload(
         console.print(
             f"  Thumbnail: {thumbnail_path.name if thumbnail_path.exists() else 'not found'}"
         )
+        job_run.end_phase("prepare_metadata")
+        save_video_job_run(queue_root, job_run)
 
         if dry_run:
+            job_run.notes = "dry_run — upload skipped"
+            job_run.mark_completed()
+            receipt_path = save_video_job_run(queue_root, job_run)
             console.print("[yellow]DRY RUN: Skipping actual upload[/yellow]")
-            continue
+            console.print(f"[dim]Job run: {receipt_path}[/dim]")
+            return True
 
         uploader = YouTubeUploader(campaign=campaign_name)
 
         console.print("[cyan]Uploading video...[/cyan]")
-        with Progress(
-            SpinnerColumn(),
-            TextColumn("[progress.description]{task.description}"),
-            BarColumn(),
-            TaskProgressColumn(),
-            console=console,
-        ) as progress:
-            task = progress.add_task("Uploading", total=100)
+        job_run.start_phase("upload_video")
+        try:
+            with Progress(
+                SpinnerColumn(),
+                TextColumn("[progress.description]{task.description}"),
+                BarColumn(),
+                TaskProgressColumn(),
+                console=console,
+            ) as progress:
+                task = progress.add_task("Uploading", total=100)
 
-            def update_progress(p: int) -> None:
-                progress.update(task, completed=p)
+                def update_progress(p: int) -> None:
+                    progress.update(task, completed=p)
 
-            result = uploader.upload(
-                video_file,
-                title,
-                description=description,
-                privacy=final_privacy,
-                playlist_id=playlist_id,
-                progress_callback=update_progress,
-            )
+                result = uploader.upload(
+                    video_file,
+                    title,
+                    description=description,
+                    privacy=final_privacy,
+                    playlist_id=playlist_id,
+                    progress_callback=update_progress,
+                )
+        except Exception as e:
+            job_run.end_phase("upload_video")
+            job_run.mark_failed(f"Video upload failed: {e}")
+            receipt_path = save_video_job_run(queue_root, job_run)
+            console.print(f"[red]Video upload failed: {e}[/red]")
+            console.print(f"[dim]Job run: {receipt_path}[/dim]")
+            return False
+
+        job_run.end_phase("upload_video")
 
         if not result:
+            job_run.mark_failed("Video upload failed")
+            receipt_path = save_video_job_run(queue_root, job_run)
             console.print("[red]Video upload failed[/red]")
-            continue
+            console.print(f"[dim]Job run: {receipt_path}[/dim]")
+            return False
 
         video_id = result["id"]
         console.print(f"[green]Video uploaded: {result['url']}[/green]")
+        job_run.notes = f"youtube_id={video_id} url={result.get('url', '')}"
+        save_video_job_run(queue_root, job_run)
 
         if thumbnail_path.exists():
             console.print("[cyan]Uploading thumbnail...[/cyan]")
-            if uploader.upload_thumbnail(video_id, thumbnail_path):
-                console.print("[green]Thumbnail uploaded[/green]")
-            else:
-                console.print("[yellow]Thumbnail upload failed (continuing)[/yellow]")
+            job_run.start_phase("upload_thumbnail")
+            try:
+                if uploader.upload_thumbnail(video_id, thumbnail_path):
+                    console.print("[green]Thumbnail uploaded[/green]")
+                else:
+                    job_run.add_error("Thumbnail upload failed")
+                    console.print(
+                        "[yellow]Thumbnail upload failed (continuing)[/yellow]"
+                    )
+            except Exception as e:
+                job_run.add_error(f"Thumbnail upload failed: {e}")
+                console.print(
+                    f"[yellow]Thumbnail upload failed (continuing): {e}[/yellow]"
+                )
+            finally:
+                job_run.end_phase("upload_thumbnail")
         else:
             console.print("[yellow]No thumbnail found, skipping[/yellow]")
 
@@ -903,20 +1005,113 @@ def upload(
             captions_path = pack_dir / slug / "captions.vtt"
         if captions_path.exists():
             console.print("[cyan]Uploading captions...[/cyan]")
-            if uploader.upload_captions(video_id, captions_path):
-                console.print("[green]Captions uploaded[/green]")
-            else:
-                console.print("[yellow]Captions upload failed (continuing)[/yellow]")
+            job_run.start_phase("upload_captions")
+            try:
+                if uploader.upload_captions(video_id, captions_path):
+                    console.print("[green]Captions uploaded[/green]")
+                else:
+                    job_run.add_error("Captions upload failed")
+                    console.print(
+                        "[yellow]Captions upload failed (continuing)[/yellow]"
+                    )
+            except Exception as e:
+                job_run.add_error(f"Captions upload failed: {e}")
+                console.print(
+                    f"[yellow]Captions upload failed (continuing): {e}[/yellow]"
+                )
+            finally:
+                job_run.end_phase("upload_captions")
         else:
             console.print("[yellow]No captions found, skipping[/yellow]")
 
-        upload_dir.mkdir(parents=True, exist_ok=True)
-        target = upload_dir / slug
-        if target.exists():
-            shutil.rmtree(target)
-        shutil.move(str(video_dir), str(target))
+        job_run.start_phase("move_to_uploaded")
+        try:
+            upload_dir.mkdir(parents=True, exist_ok=True)
+            target = upload_dir / slug
+            if target.exists():
+                shutil.rmtree(target)
+            shutil.move(str(video_dir), str(target))
+            job_run.end_phase("move_to_uploaded")
+        except Exception as e:
+            job_run.end_phase("move_to_uploaded")
+            job_run.mark_failed(f"Move to uploaded failed: {e}")
+            receipt_path = save_video_job_run(queue_root, job_run)
+            console.print(f"[red]Moved to uploaded failed: {e}[/red]")
+            console.print(f"[dim]Job run: {receipt_path}[/dim]")
+            return False
+
+        job_run.mark_completed()
+        receipt_path = save_video_job_run(queue_root, job_run)
+        write_last_upload_pointer(target, job_run, receipt_path=receipt_path)
+
         console.print(f"[green]Moved to uploaded: {slug}[/green]")
         console.print(f"[green]Upload complete: {result['url']}[/green]")
+        if job_run.duration_seconds is not None:
+            console.print(f"[dim]Elapsed: {job_run.duration_seconds:.1f}s[/dim]")
+        print_accessible_path(console, "Folder:", target)
+        print_accessible_path(console, "Receipt:", receipt_path, style="dim")
+        return True
+
+    except Exception as e:
+        # Ensure any open phases are closed and receipt is failed.
+        for phase_name, phase in list(job_run.phases.items()):
+            if phase.ended_at is None:
+                job_run.end_phase(phase_name)
+        job_run.mark_failed(str(e))
+        receipt_path = save_video_job_run(queue_root, job_run)
+        console.print(f"[red]Upload failed for {slug}: {e}[/red]")
+        console.print(f"[dim]Job run: {receipt_path}[/dim]")
+        return False
+
+
+@app.command()
+def upload(
+    campaign: Optional[str] = typer.Option(
+        None, "-c", "--campaign", help="Campaign name"
+    ),
+    video_slug: Optional[str] = typer.Option(
+        None, "-v", "--video", help="Video slug to upload (from packaged/)"
+    ),
+    privacy: str = typer.Option(
+        "unlisted", "-p", "--privacy", help="Privacy: public, unlisted, private"
+    ),
+    force_privacy: bool = typer.Option(
+        False,
+        "--force-privacy",
+        help="Override metadata draft setting with CLI privacy",
+    ),
+    dry_run: bool = typer.Option(False, "--dry-run", help="Validate without uploading"),
+) -> None:
+    """Upload a video to YouTube using metadata from the packaged queue."""
+    campaign_name = campaign or get_campaign()
+    if not campaign_name:
+        console.print(
+            "[red]No campaign selected. Please specify --campaign or set a campaign context.[/red]"
+        )
+        raise typer.Exit(1)
+
+    queue_root = get_video_queue_root(campaign_name)
+    pack_dir = queue_root / "packaged"
+    upload_dir = queue_root / "uploaded"
+
+    if video_slug:
+        video_dirs = [pack_dir / video_slug]
+    else:
+        if not pack_dir.exists():
+            console.print(f"[yellow]Packaged directory not found: {pack_dir}[/yellow]")
+            return
+        video_dirs = sorted(d for d in pack_dir.iterdir() if d.is_dir())
+
+    for video_dir in video_dirs:
+        upload_one_video(
+            campaign_name,
+            video_dir,
+            pack_dir,
+            upload_dir,
+            privacy=privacy,
+            force_privacy=force_privacy,
+            dry_run=dry_run,
+        )
 
 
 @app.command()

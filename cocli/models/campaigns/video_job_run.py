@@ -1,4 +1,4 @@
-"""Job-run receipts for campaign video pipeline stages (normalize, later package/upload)."""
+"""Job-run receipts for campaign video pipeline stages (normalize, package, upload)."""
 
 from __future__ import annotations
 
@@ -10,6 +10,12 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from pydantic import BaseModel, Field
+
+# Stage kinds written under video/job_runs/
+KIND_NORMALIZE = "video.normalize"
+KIND_TRANSCRIBE = "video.transcribe"
+KIND_PACKAGE = "video.package"
+KIND_UPLOAD = "video.upload"
 
 
 def utc_now() -> datetime:
@@ -69,13 +75,15 @@ class VideoJobRun(BaseModel):
     """
     Single-document lifecycle for a video pipeline attempt.
 
-    Stored as JSON under ``video/job_runs/{YYYYMMDD}/{run_id}.json`` and
-    mirrored to ``video/normalized/{slug}/last-normalize-run.json`` on success.
+    Stored as JSON under ``video/job_runs/{YYYYMMDD}/{run_id}.json``.
+    On success, optionally mirrored next to the product dir as
+    ``last-normalize-run.json``, ``last-package-run.json``, or
+    ``last-upload-run.json``.
     """
 
     schema_version: int = 1
     run_id: str
-    kind: str = "video.normalize"
+    kind: str = KIND_NORMALIZE
     status: str = "running"  # running | completed | failed | cancelled
     campaign: str
     slug: str
@@ -91,16 +99,28 @@ class VideoJobRun(BaseModel):
     notes: Optional[str] = None
 
     @classmethod
-    def start_normalize(cls, campaign: str, slug: str) -> "VideoJobRun":
+    def _start(cls, kind: str, campaign: str, slug: str) -> "VideoJobRun":
         started = utc_now()
         return cls(
             run_id=make_video_run_id(slug, started),
-            kind="video.normalize",
+            kind=kind,
             status="running",
             campaign=campaign,
             slug=slug,
             started_at=started,
         )
+
+    @classmethod
+    def start_normalize(cls, campaign: str, slug: str) -> "VideoJobRun":
+        return cls._start(KIND_NORMALIZE, campaign, slug)
+
+    @classmethod
+    def start_package(cls, campaign: str, slug: str) -> "VideoJobRun":
+        return cls._start(KIND_PACKAGE, campaign, slug)
+
+    @classmethod
+    def start_upload(cls, campaign: str, slug: str) -> "VideoJobRun":
+        return cls._start(KIND_UPLOAD, campaign, slug)
 
     def start_phase(self, name: str) -> None:
         self.phases[name] = PhaseTiming(started_at=utc_now())
