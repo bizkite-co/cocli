@@ -115,6 +115,21 @@ def deploy(
     else:
         console.print(f"[yellow]Build directory {build_dir} not found. Skipping shell sync.[/yellow]")
 
+    # 1.3 Pull fresh gm-list/gm-details/enrichment completed results from the
+    # Pi cluster before syncing/compacting. Shells out to the existing `cocli
+    # sync pi-results` command (rather than calling PiSyncService directly)
+    # so this reuses its built-in staleness check (SyncTracker, ~1hr window) -
+    # if a periodic cron job already keeps this synced, this call is a
+    # near-instant no-op instead of adding real time to every deploy.
+    console.print(f"[bold]Syncing gm-list/gm-details/enrichment results from Pi cluster for {campaign_name}...[/bold]")
+    try:
+        subprocess.run(
+            ["uv", "run", "cocli", "sync", "pi-results", "--campaign", campaign_name],
+            check=True,
+        )
+    except Exception as e:
+        console.print(f"[yellow]Warning: Could not sync Pi results: {e}[/yellow]")
+
     # 1.4 Pull fresh WAL data from the Pi cluster before compacting. Scrapers
     # write WAL entries straight to each Pi's local disk (add_to_wal()) -
     # nothing else moves that to S3, so without this step the compact below
