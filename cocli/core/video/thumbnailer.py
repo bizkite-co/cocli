@@ -57,14 +57,16 @@ def _fit_font(
     *,
     max_size: int = 200,
     min_size: int = 12,
+    spacing: int = 0,
 ) -> Tuple[ImageFont.FreeTypeFont, int, int, int]:
     """Return (font, size, text_w, text_h) that fits inside max box."""
-    font_size = min_size
-    font = ImageFont.truetype(font_path, font_size)
-    best = (font, font_size, 0, 0)
+    font = ImageFont.truetype(font_path, min_size)
+    best = (font, min_size, 0, 0)
     for size in range(min_size, max_size + 1):
         font = ImageFont.truetype(font_path, size)
-        bbox = draw.multiline_textbbox((0, 0), text, font=font, align="center")
+        bbox = draw.multiline_textbbox(
+            (0, 0), text, font=font, align="center", spacing=spacing
+        )
         tw = bbox[2] - bbox[0]
         th = bbox[3] - bbox[1]
         if tw <= max_width and th <= max_height:
@@ -72,6 +74,26 @@ def _fit_font(
         else:
             break
     return best
+
+
+def _wrap_line(text: str, font: ImageFont.FreeTypeFont, max_width: float) -> str:
+    """Simple word-wrap so long subtext stays under the title block."""
+    words = text.split()
+    if not words:
+        return text
+    lines: list[str] = []
+    current = words[0]
+    probe = ImageDraw.Draw(Image.new("RGB", (10, 10)))
+    for word in words[1:]:
+        trial = f"{current} {word}"
+        bbox = probe.textbbox((0, 0), trial, font=font)
+        if bbox[2] - bbox[0] <= max_width:
+            current = trial
+        else:
+            lines.append(current)
+            current = word
+    lines.append(current)
+    return "\n".join(lines)
 
 
 def overlay_text(
@@ -83,7 +105,8 @@ def overlay_text(
     Overlay title (and optional subtext) onto a screenshot.
 
     Title: bold white, uppercase, multi-line via ``<br/>``.
-    Subtext: bold yellow, smaller, under the title (not forced uppercase).
+    Subtext: bold yellow, smaller, always drawn **below** the title block
+    (not beside or overlapping title lines).
     """
     image = image.resize((_THUMB_W, _THUMB_H), Image.Resampling.LANCZOS)
     draw = ImageDraw.Draw(image, "RGBA")
@@ -100,16 +123,18 @@ def overlay_text(
     pad_y = height * 0.08
     max_w = width - 2 * pad_x
 
-    # Reserve vertical bands: title gets most of the upper/center area
+    # Title band upper; subtext always stacks under it with a clear gap
     if sub:
-        title_max_h = height * 0.42
-        sub_max_h = height * 0.18
-        gap = height * 0.03
+        title_max_h = height * 0.38
+        sub_max_h = height * 0.22
+        gap = max(20, int(height * 0.045))
     else:
         title_max_h = height * 0.85
         sub_max_h = 0.0
-        gap = 0.0
+        gap = 0
 
+    # Use real draw spacing when fitting so measured title_h matches rendered height
+    title_spacing = 10
     title_font, title_size, title_w, title_h = _fit_font(
         draw,
         title,
@@ -118,25 +143,50 @@ def overlay_text(
         title_max_h,
         max_size=180,
         min_size=28,
+        spacing=title_spacing,
     )
+    title_spacing = max(8, int(title_size * 0.2))
+    bbox = draw.multiline_textbbox(
+        (0, 0), title, font=title_font, align="center", spacing=title_spacing
+    )
+    title_w = int(bbox[2] - bbox[0])
+    title_h = int(bbox[3] - bbox[1])
 
     sub_font: Optional[ImageFont.FreeTypeFont] = None
     sub_w = sub_h = 0
     sub_size = 0
+    sub_spacing = 6
     if sub:
-        sub_font, sub_size, sub_w, sub_h = _fit_font(
+        sub_font, sub_size, _, _ = _fit_font(
             draw,
             sub,
             _FONT_BOLD,
             max_w,
             sub_max_h,
-            max_size=max(24, int(title_size * 0.45)),
-            min_size=16,
+            max_size=max(22, int(title_size * 0.4)),
+            min_size=18,
+            spacing=0,
         )
+        sub = _wrap_line(sub, sub_font, max_w)
+        sub_spacing = max(6, int(sub_size * 0.25))
+        bbox = draw.multiline_textbbox(
+            (0, 0), sub, font=sub_font, align="center", spacing=sub_spacing
+        )
+        sub_w = int(bbox[2] - bbox[0])
+        sub_h = int(bbox[3] - bbox[1])
+        if sub_h > sub_max_h and sub_size > 18:
+            sub_size = max(18, int(sub_size * 0.85))
+            sub_font = ImageFont.truetype(_FONT_BOLD, sub_size)
+            sub = _wrap_line(sub, sub_font, max_w)
+            bbox = draw.multiline_textbbox(
+                (0, 0), sub, font=sub_font, align="center", spacing=sub_spacing
+            )
+            sub_w = int(bbox[2] - bbox[0])
+            sub_h = int(bbox[3] - bbox[1])
 
     block_h = title_h + (gap + sub_h if sub else 0)
-    # Prefer slightly upper-center so subtext sits under the main title block
-    y0 = max(pad_y, (height - block_h) / 2 - height * 0.05)
+    # Center the title+subtext column as one stack
+    y0 = max(pad_y, (height - block_h) / 2)
 
     overlay = Image.new("RGBA", image.size, (255, 255, 255, 0))
     draw_overlay = ImageDraw.Draw(overlay)
@@ -148,12 +198,13 @@ def overlay_text(
         font=title_font,
         fill=_TITLE_FILL,
         align="center",
-        spacing=int(title_size * 0.35),
+        spacing=title_spacing,
         stroke_width=max(1, title_size // 28),
         stroke_fill=(0, 0, 0, 160),
     )
 
     if sub and sub_font is not None:
+        # Strictly below the measured title block
         sub_x = (width - sub_w) / 2
         sub_y = y0 + title_h + gap
         draw_overlay.multiline_text(
@@ -162,7 +213,7 @@ def overlay_text(
             font=sub_font,
             fill=_SUBTEXT_FILL,
             align="center",
-            spacing=int(sub_size * 0.3),
+            spacing=sub_spacing,
             stroke_width=max(1, sub_size // 22),
             stroke_fill=(0, 0, 0, 180),
         )
@@ -207,7 +258,7 @@ def process_thumbnail(video_dir: Path, output_dir: Path) -> None:
 
     console.print(f"[dim]Processing thumbnail from: {img_path}[/dim]")
     if subtext:
-        console.print(f"[dim]Subtext: {subtext}[/dim]")
+        console.print(f"[dim]Subtext (below title): {subtext}[/dim]")
     image = Image.open(img_path)
 
     processed_image = overlay_text(image, str(text), subtext=subtext)
