@@ -5851,7 +5851,7 @@ wheels = [
 [[package]]
 name = "stations"
 version = "0.5.5"
-source = { git = "https://github.com/bizkite-co/stations?subdirectory=python#9806db196bf19e489824d804e0e055eef31f310c" }
+source = { git = "https://github.com/bizkite-co/stations?subdirectory=python#a36e5b61e9772b8f47a5b10812d313b9895fb366" }
 dependencies = [
     { name = "rich" },
     { name = "typing-extensions", marker = "python_full_version < '3.11'" },
