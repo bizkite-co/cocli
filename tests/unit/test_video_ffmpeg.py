@@ -1,11 +1,75 @@
-"""Tests for video ffmpeg helpers (encoder selection, duration probing)."""
+"""Tests for video ffmpeg helpers (encoder selection, duration probing, profiles)."""
 
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
 
-from cocli.core.video.ffmpeg import get_duration, get_h264_encoder
+from cocli.core.video.ffmpeg import (
+    build_codec_args,
+    get_duration,
+    get_encode_profile_settings,
+    get_h264_encoder,
+    resolve_encode_profile_name,
+)
+
+
+class TestEncodeProfiles:
+    def test_default_is_publish(self) -> None:
+        assert resolve_encode_profile_name(None, None) == "publish"
+
+    def test_cli_overrides_campaign(self) -> None:
+        assert (
+            resolve_encode_profile_name(
+                "draft", {"encode": {"profile": "publish"}}
+            )
+            == "draft"
+        )
+
+    def test_campaign_profile(self) -> None:
+        assert (
+            resolve_encode_profile_name(None, {"encode": {"profile": "Draft"}})
+            == "draft"
+        )
+
+    def test_publish_libx264_settings(self) -> None:
+        s = get_encode_profile_settings("publish")
+        assert s["libx264"]["preset"] == "slow"
+        assert s["libx264"]["crf"] == 18
+        args, preset, crf, cq = build_codec_args("libx264", s)
+        assert preset == "slow"
+        assert crf == 18
+        assert cq is None
+        assert "-preset" in args and "slow" in args
+
+    def test_draft_is_faster(self) -> None:
+        s = get_encode_profile_settings("draft")
+        assert s["libx264"]["preset"] == "veryfast"
+        assert s["libx264"]["crf"] == 20
+        args, preset, crf, cq = build_codec_args("h264_nvenc", s)
+        assert preset == "p2"
+        assert cq == 23
+        assert crf is None
+        assert "h264_nvenc" in args
+
+    def test_campaign_override(self) -> None:
+        cfg = {
+            "encode": {
+                "profiles": {
+                    "draft": {
+                        "libx264_preset": "fast",
+                        "libx264_crf": 21,
+                    }
+                }
+            }
+        }
+        s = get_encode_profile_settings("draft", cfg)
+        assert s["libx264"]["preset"] == "fast"
+        assert s["libx264"]["crf"] == 21
+
+    def test_unknown_profile_raises(self) -> None:
+        with pytest.raises(ValueError, match="Unknown encode profile"):
+            get_encode_profile_settings("turbo-max")
 
 
 class TestGetH264Encoder:

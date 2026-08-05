@@ -3,7 +3,7 @@ from pathlib import Path
 import logging
 import os
 import time
-from typing import Dict, Union, cast, Any
+from typing import Dict, Optional, Tuple, Union, cast, Any
 
 from cocli.core.config import load_campaign_config
 from cocli.utils.op_utils import get_op_secret
@@ -112,12 +112,18 @@ class GeminiTranscriber:
 
 
 
-def _load_whisper_model(model_size: str) -> WhisperModel:
-    """Load faster-whisper; prefer CUDA, fall back to CPU when GPU/CUDA is unusable."""
+def _load_whisper_model(
+    model_size: str,
+) -> Tuple[WhisperModel, str, str]:
+    """
+    Load faster-whisper; prefer CUDA, fall back to CPU when GPU/CUDA is unusable.
+
+    Returns ``(model, device, compute_type)``.
+    """
     try:
         model = WhisperModel(model_size, device="cuda", compute_type="float16")
         logger.info("Whisper using device=cuda compute_type=float16")
-        return model
+        return model, "cuda", "float16"
     except Exception as e:
         logger.warning(
             "Whisper CUDA unavailable (%s); falling back to device=cpu compute_type=int8",
@@ -125,17 +131,24 @@ def _load_whisper_model(model_size: str) -> WhisperModel:
         )
         model = WhisperModel(model_size, device="cpu", compute_type="int8")
         logger.info("Whisper using device=cpu compute_type=int8")
-        return model
+        return model, "cpu", "int8"
 
 
 class WhisperTranscriber:
+    last_device: Optional[str] = None
+    last_compute_type: Optional[str] = None
+    last_model_size: Optional[str] = None
+
     def transcribe(self, video_path: Path, campaign: str) -> Dict[str, str]:
         config = load_campaign_config(campaign)
         transcription_config = config.get("video", {}).get("transcription", {})
         model_size = transcription_config.get("whisper_model", "small")
 
         logger.info(f"Transcribing {video_path.name} using Whisper ({model_size})...")
-        model = _load_whisper_model(model_size)
+        model, device, compute_type = _load_whisper_model(model_size)
+        WhisperTranscriber.last_device = device
+        WhisperTranscriber.last_compute_type = compute_type
+        WhisperTranscriber.last_model_size = model_size
 
         # Enable word-level timestamps
         segments, info = model.transcribe(

@@ -4,12 +4,124 @@ import re
 import logging
 import tempfile
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Optional, Tuple, Callable, Dict
+from typing import TYPE_CHECKING, Any, Mapping, Optional, Tuple, Callable, Dict
 
 logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
     from cocli.models.campaigns.video_job_run import VideoJobRun
+
+# Built-in encode profiles for draft vs publish passes (one normalize path).
+# Text/UI screencasts: prefer lower CRF and slower presets for publish clarity.
+ENCODE_PROFILES: Dict[str, Dict[str, Dict[str, Any]]] = {
+    "publish": {
+        "libx264": {"preset": "slow", "crf": 18},
+        "h264_nvenc": {"preset": "p4", "cq": 20},
+    },
+    # Faster draft: still CRF~20 so small UI text stays readable; veryfast for wall-clock.
+    "draft": {
+        "libx264": {"preset": "veryfast", "crf": 20},
+        "h264_nvenc": {"preset": "p2", "cq": 23},
+    },
+}
+
+DEFAULT_ENCODE_PROFILE = "publish"
+
+
+def resolve_encode_profile_name(
+    profile: Optional[str] = None,
+    video_config: Optional[Mapping[str, Any]] = None,
+) -> str:
+    """
+    Resolve encode profile name: explicit CLI > campaign ``video.encode.profile`` > publish.
+    """
+    if profile and str(profile).strip():
+        return str(profile).strip().lower()
+    if video_config:
+        encode_cfg = video_config.get("encode") or {}
+        if isinstance(encode_cfg, Mapping):
+            named = encode_cfg.get("profile")
+            if named and str(named).strip():
+                return str(named).strip().lower()
+    return DEFAULT_ENCODE_PROFILE
+
+
+def get_encode_profile_settings(
+    profile_name: str,
+    video_config: Optional[Mapping[str, Any]] = None,
+) -> Dict[str, Dict[str, Any]]:
+    """
+    Return per-encoder settings for a named profile.
+
+    Campaign overrides (optional)::
+
+        [video.encode.profiles.draft]
+        libx264_preset = "fast"
+        libx264_crf = 21
+        nvenc_preset = "p3"
+        nvenc_cq = 22
+    """
+    name = (profile_name or DEFAULT_ENCODE_PROFILE).strip().lower()
+    base = ENCODE_PROFILES.get(name)
+    if base is None:
+        known = ", ".join(sorted(ENCODE_PROFILES))
+        raise ValueError(
+            f"Unknown encode profile '{profile_name}'. Built-ins: {known}. "
+            "Or define [video.encode.profiles.<name>] in campaign config."
+        )
+    # Deep-ish copy of built-in
+    settings: Dict[str, Dict[str, Any]] = {
+        "libx264": dict(base["libx264"]),
+        "h264_nvenc": dict(base["h264_nvenc"]),
+    }
+
+    if video_config:
+        encode_cfg = video_config.get("encode") or {}
+        if isinstance(encode_cfg, Mapping):
+            profiles = encode_cfg.get("profiles") or {}
+            if isinstance(profiles, Mapping):
+                override = profiles.get(name) or {}
+                if isinstance(override, Mapping):
+                    if "libx264_preset" in override:
+                        settings["libx264"]["preset"] = str(override["libx264_preset"])
+                    if "libx264_crf" in override:
+                        settings["libx264"]["crf"] = int(override["libx264_crf"])
+                    if "nvenc_preset" in override:
+                        settings["h264_nvenc"]["preset"] = str(override["nvenc_preset"])
+                    if "nvenc_cq" in override:
+                        settings["h264_nvenc"]["cq"] = int(override["nvenc_cq"])
+
+    return settings
+
+
+def build_codec_args(
+    encoder: str,
+    profile_settings: Mapping[str, Mapping[str, Any]],
+) -> Tuple[list[str], Optional[str], Optional[int], Optional[int]]:
+    """
+    Build ffmpeg video codec args from encoder + profile settings.
+
+    Returns ``(codec_args, preset, crf, cq)``.
+    """
+    if encoder == "h264_nvenc":
+        nv = profile_settings.get("h264_nvenc") or {}
+        preset = str(nv.get("preset", "p4"))
+        cq = int(nv.get("cq", 20))
+        return (
+            ["-c:v", "h264_nvenc", "-preset", preset, "-tune", "hq", "-cq", str(cq)],
+            preset,
+            None,
+            cq,
+        )
+    x264 = profile_settings.get("libx264") or {}
+    preset = str(x264.get("preset", "slow"))
+    crf = int(x264.get("crf", 18))
+    return (
+        ["-c:v", "libx264", "-crf", str(crf), "-preset", preset],
+        preset,
+        crf,
+        None,
+    )
 
 
 def _nvenc_is_usable() -> Tuple[bool, Optional[str]]:
@@ -230,6 +342,8 @@ def normalize_video(
     loudness_config: Optional[Dict[str, float]] = None,
     denoise_config: Optional[Dict[str, int]] = None,
     job_run: Optional["VideoJobRun"] = None,
+    encode_profile: Optional[str] = None,
+    video_config: Optional[Mapping[str, Any]] = None,
 ) -> Tuple[Optional[Path], Optional[Dict[str, float]]]:
     """
     Normalize video audio and compress for YouTube/Social.
@@ -241,6 +355,8 @@ def normalize_video(
         loudness_config: Optional dict with keys I, TP, LRA
         denoise_config: Optional dict with keys nr (noise reduction dB)
         job_run: Optional VideoJobRun receipt to update with phases/settings
+        encode_profile: Named profile (``draft`` / ``publish``); see ENCODE_PROFILES
+        video_config: Campaign ``video`` section for profile resolution/overrides
 
     Returns:
         (output_path, stats) or (None, None) on failure
@@ -304,24 +420,30 @@ def normalize_video(
     logger.info("Normalizing and compressing...")
 
     encoder, encoder_requested, fallback_reason = select_h264_encoder()
-    codec_args: list[str] = []
-    preset: Optional[str] = None
-    crf: Optional[int] = None
-    cq: Optional[int] = None
-    if encoder == "h264_nvenc":
-        preset = "p4"
-        cq = 20
-        codec_args = ["-c:v", "h264_nvenc", "-preset", preset, "-tune", "hq", "-cq", str(cq)]
-    else:
-        preset = "slow"
-        crf = 18
-        codec_args = ["-c:v", "libx264", "-crf", str(crf), "-preset", preset]
+    profile_name = resolve_encode_profile_name(encode_profile, video_config)
+    try:
+        profile_settings = get_encode_profile_settings(profile_name, video_config)
+    except ValueError as e:
+        logger.error("%s", e)
+        if job_run is not None:
+            job_run.add_error(str(e))
+        return None, None
+    codec_args, preset, crf, cq = build_codec_args(encoder, profile_settings)
+    logger.info(
+        "Encode profile=%s encoder=%s preset=%s crf=%s cq=%s",
+        profile_name,
+        encoder,
+        preset,
+        crf,
+        cq,
+    )
 
     if job_run is not None:
         job_run.settings = VideoNormalizeSettings(
             encoder=encoder,
             encoder_requested=encoder_requested,
             encoder_fallback_reason=fallback_reason,
+            profile=profile_name,
             preset=preset,
             crf=crf,
             cq=cq,

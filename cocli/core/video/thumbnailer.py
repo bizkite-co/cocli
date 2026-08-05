@@ -19,6 +19,40 @@ _TITLE_FILL = (255, 255, 255, 220)
 # Bold yellow subtext (full opacity for emphasis under the title)
 _SUBTEXT_FILL = (255, 214, 0, 255)  # bright yellow
 
+_VALID_POSITIONS = frozenset({"top", "center", "bottom"})
+
+
+def parse_rgba_color(
+    value: Any,
+    default: Tuple[int, int, int, int],
+) -> Tuple[int, int, int, int]:
+    """
+    Parse ``#RGB``, ``#RRGGBB``, or ``#RRGGBBAA`` (optional leading #).
+
+    Returns RGBA; uses ``default`` when value is empty/invalid.
+    """
+    if value is None:
+        return default
+    s = str(value).strip()
+    if not s:
+        return default
+    if s.startswith("#"):
+        s = s[1:]
+    if len(s) == 3:
+        s = "".join(ch * 2 for ch in s) + "ff"
+    elif len(s) == 6:
+        s = s + "ff"
+    elif len(s) != 8:
+        return default
+    try:
+        r = int(s[0:2], 16)
+        g = int(s[2:4], 16)
+        b = int(s[4:6], 16)
+        a = int(s[6:8], 16)
+    except ValueError:
+        return default
+    return (r, g, b, a)
+
 
 def parse_metadata(md_file: Path) -> Dict[str, Any]:
     """Parse YAML frontmatter from a markdown file."""
@@ -100,13 +134,20 @@ def overlay_text(
     image: Image.Image,
     text: str,
     subtext: Optional[str] = None,
+    *,
+    position: str = "center",
+    title_fill: Optional[Tuple[int, int, int, int]] = None,
+    subtext_fill: Optional[Tuple[int, int, int, int]] = None,
 ) -> Image.Image:
     """
     Overlay title (and optional subtext) onto a screenshot.
 
-    Title: bold white, uppercase, multi-line via ``<br/>``.
-    Subtext: bold yellow, smaller, always drawn **below** the title block
+    Title: bold white (default), uppercase, multi-line via ``<br/>``.
+    Subtext: bold yellow (default), smaller, always drawn **below** the title block
     (not beside or overlapping title lines).
+
+    ``position`` is the vertical placement of the whole title+subtext stack:
+    ``top``, ``center`` (default), or ``bottom``.
     """
     image = image.resize((_THUMB_W, _THUMB_H), Image.Resampling.LANCZOS)
     draw = ImageDraw.Draw(image, "RGBA")
@@ -117,6 +158,11 @@ def overlay_text(
         if subtext
         else ""
     )
+    pos = (position or "center").strip().lower()
+    if pos not in _VALID_POSITIONS:
+        pos = "center"
+    title_color = title_fill if title_fill is not None else _TITLE_FILL
+    sub_color = subtext_fill if subtext_fill is not None else _SUBTEXT_FILL
 
     width, height = image.size
     pad_x = width * 0.06
@@ -185,8 +231,12 @@ def overlay_text(
             sub_h = int(bbox[3] - bbox[1])
 
     block_h = title_h + (gap + sub_h if sub else 0)
-    # Center the title+subtext column as one stack
-    y0 = max(pad_y, (height - block_h) / 2)
+    if pos == "top":
+        y0 = pad_y
+    elif pos == "bottom":
+        y0 = max(pad_y, height - pad_y - block_h)
+    else:
+        y0 = max(pad_y, (height - block_h) / 2)
 
     overlay = Image.new("RGBA", image.size, (255, 255, 255, 0))
     draw_overlay = ImageDraw.Draw(overlay)
@@ -196,7 +246,7 @@ def overlay_text(
         (title_x, y0),
         title,
         font=title_font,
-        fill=_TITLE_FILL,
+        fill=title_color,
         align="center",
         spacing=title_spacing,
         stroke_width=max(1, title_size // 28),
@@ -211,7 +261,7 @@ def overlay_text(
             (sub_x, sub_y),
             sub,
             font=sub_font,
-            fill=_SUBTEXT_FILL,
+            fill=sub_color,
             align="center",
             spacing=sub_spacing,
             stroke_width=max(1, sub_size // 22),
@@ -240,6 +290,14 @@ def process_thumbnail(video_dir: Path, output_dir: Path) -> None:
     if subtext is not None:
         subtext = str(subtext).strip() or None
 
+    position = str(metadata.get("thumbnail-position") or "center").strip().lower()
+    title_fill = parse_rgba_color(
+        metadata.get("thumbnail-title-color"), _TITLE_FILL
+    )
+    subtext_fill = parse_rgba_color(
+        metadata.get("thumbnail-subtext-color"), _SUBTEXT_FILL
+    )
+
     # Search for image based on metadata
     screenshot_name = metadata.get("thumbnail-screenshot")
     if screenshot_name:
@@ -259,9 +317,17 @@ def process_thumbnail(video_dir: Path, output_dir: Path) -> None:
     console.print(f"[dim]Processing thumbnail from: {img_path}[/dim]")
     if subtext:
         console.print(f"[dim]Subtext (below title): {subtext}[/dim]")
+    console.print(f"[dim]Position: {position}[/dim]")
     image = Image.open(img_path)
 
-    processed_image = overlay_text(image, str(text), subtext=subtext)
+    processed_image = overlay_text(
+        image,
+        str(text),
+        subtext=subtext,
+        position=position,
+        title_fill=title_fill,
+        subtext_fill=subtext_fill,
+    )
 
     # Save as PNG for lossless text
     output_path = output_dir / "thumbnail.png"

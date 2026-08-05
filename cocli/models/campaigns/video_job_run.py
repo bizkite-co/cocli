@@ -63,12 +63,22 @@ class VideoNormalizeSettings(BaseModel):
     encoder: str
     encoder_requested: Optional[str] = None
     encoder_fallback_reason: Optional[str] = None
+    profile: Optional[str] = None  # draft | publish | custom campaign name
     preset: Optional[str] = None
     crf: Optional[int] = None
     cq: Optional[int] = None
     audio: str = "aac@192k"
     loudness: Dict[str, float] = Field(default_factory=dict)
     denoise_nr: Optional[int] = None
+
+
+class VideoSttSettings(BaseModel):
+    """STT device/model fingerprint recorded on job runs when Whisper (or dual) runs."""
+
+    provider: Optional[str] = None
+    model: Optional[str] = None
+    device: Optional[str] = None  # cuda | cpu
+    compute_type: Optional[str] = None  # float16 | int8 | ...
 
 
 class VideoJobRun(BaseModel):
@@ -94,6 +104,7 @@ class VideoJobRun(BaseModel):
     input: Optional[VideoFileIdentity] = None
     output: Optional[VideoFileIdentity] = None
     settings: Optional[VideoNormalizeSettings] = None
+    stt: Optional[VideoSttSettings] = None
     host: Dict[str, Any] = Field(default_factory=default_host_info)
     errors: List[str] = Field(default_factory=list)
     notes: Optional[str] = None

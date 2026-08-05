@@ -2,6 +2,13 @@
 
 This directory contains specifications for all [from-model-to-model](../adr/from-model-to-model.md) transformations in the data pipeline.
 
+## Campaign video pipeline
+
+- [Encode profiles (draft vs publish)](video-encode-profiles.md)
+- [WSL GPU path for nvenc + Whisper](video-wsl-gpu.md)
+- [Thumbnail text-overlay YAML contract](video-thumbnail-overlay.md)
+
+
 ## Discovery-Gen Pipeline (Prospect Discovery)
 
 The discovery-gen pipeline executes a **4-stage geographic search** to find business prospects via Google Maps.

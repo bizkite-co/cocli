@@ -40,7 +40,11 @@ from cocli.core.video.display_paths import print_accessible_path
 from cocli.core.video.transcript_to_vtt import convert_transcript_to_vtt
 from cocli.core.video import auth as video_auth
 from cocli.core.text_utils import slugdotify
-from cocli.models.campaigns.video_job_run import KIND_TRANSCRIBE, VideoJobRun
+from cocli.models.campaigns.video_job_run import (
+    KIND_TRANSCRIBE,
+    VideoJobRun,
+    VideoSttSettings,
+)
 
 app = typer.Typer(no_args_is_help=True)
 console = Console()
@@ -220,6 +224,25 @@ def transcribe_normalized_dir(
             job_run.end_phase("transcribe")
         raise
 
+    if job_run is not None:
+        # Record Whisper device when STT used Whisper (or dual).
+        whisper_device = getattr(transcriber.WhisperTranscriber, "last_device", None)
+        whisper_compute = getattr(
+            transcriber.WhisperTranscriber, "last_compute_type", None
+        )
+        whisper_model = getattr(
+            transcriber.WhisperTranscriber, "last_model_size", None
+        )
+        if whisper_device or provider in ("whisper", "both"):
+            job_run.stt = VideoSttSettings(
+                provider=provider,
+                model=whisper_model,
+                device=whisper_device,
+                compute_type=whisper_compute,
+            )
+        else:
+            job_run.stt = VideoSttSettings(provider=provider)
+
     for provider_name, transcript_text in transcripts.items():
         transcript_path = video_dir / f"transcript_{provider_name}.md"
         transcript_path.write_text(transcript_text, encoding="utf-8")
@@ -267,7 +290,12 @@ def transcribe_normalized_dir(
     return transcripts
 
 
-def normalize_one_video(campaign_name: str, video_file: Path) -> bool:
+def normalize_one_video(
+    campaign_name: str,
+    video_file: Path,
+    *,
+    encode_profile: Optional[str] = None,
+) -> bool:
     """Normalize a single raw video into the normalized queue.
 
     On success, removes ``video_file`` from raw/. Returns True on success.
@@ -314,8 +342,9 @@ def normalize_one_video(campaign_name: str, video_file: Path) -> bool:
                 progress.update(task, completed=current_sec)
 
             camp_cfg = load_campaign_config(campaign_name)
-            loudness_cfg = camp_cfg.get("video", {}).get("loudness", {})
-            denoise_cfg = camp_cfg.get("video", {}).get("denoise", {})
+            video_cfg = camp_cfg.get("video", {}) or {}
+            loudness_cfg = video_cfg.get("loudness", {})
+            denoise_cfg = video_cfg.get("denoise", {})
             result, _stats = normalize_video(
                 video_file,
                 output_path,
@@ -323,6 +352,8 @@ def normalize_one_video(campaign_name: str, video_file: Path) -> bool:
                 loudness_config=loudness_cfg,
                 denoise_config=denoise_cfg,
                 job_run=job_run,
+                encode_profile=encode_profile,
+                video_config=video_cfg if isinstance(video_cfg, dict) else None,
             )
             # Persist mid-run phase updates after encode returns
             save_video_job_run(queue_root, job_run)
@@ -404,6 +435,7 @@ def _add_video_to_raw(
     video: str,
     *,
     do_normalize: bool,
+    encode_profile: Optional[str] = None,
 ) -> None:
     """Copy an external video into raw/, optionally normalize only that file."""
     raw_dir = get_video_queue_root(campaign_name) / "raw"
@@ -422,7 +454,9 @@ def _add_video_to_raw(
     console.print(f"[green]Added {safe_name} to raw queue.[/green]")
 
     if do_normalize:
-        if not normalize_one_video(campaign_name, dest):
+        if not normalize_one_video(
+            campaign_name, dest, encode_profile=encode_profile
+        ):
             raise typer.Exit(1)
 
 
@@ -448,6 +482,14 @@ def add(
             "(encode, STT, chapters, captions; does not run package)"
         ),
     ),
+    encode_profile: Optional[str] = typer.Option(
+        None,
+        "--profile",
+        help=(
+            "Encode profile: publish (default, slow/CRF18) or draft "
+            "(faster; see docs/pipeline/video-encode-profiles.md)"
+        ),
+    ),
 ) -> None:
     """Add (import) an external video into the campaign raw queue."""
     campaign_name = campaign or get_campaign()
@@ -456,7 +498,12 @@ def add(
         raise typer.Exit(1)
 
     try:
-        _add_video_to_raw(campaign_name, video, do_normalize=do_normalize)
+        _add_video_to_raw(
+            campaign_name,
+            video,
+            do_normalize=do_normalize,
+            encode_profile=encode_profile,
+        )
     except typer.Exit:
         raise
     except Exception:
@@ -471,6 +518,14 @@ def add(
 def normalize(
     campaign: Optional[str] = typer.Option(
         None, "-c", "--campaign", help="Campaign name"
+    ),
+    encode_profile: Optional[str] = typer.Option(
+        None,
+        "--profile",
+        help=(
+            "Encode profile: publish (default, quality for UI/screencasts) or "
+            "draft (faster). Campaign video.encode.profile used when omitted."
+        ),
     ),
 ) -> None:
     """Normalize + transcribe videos in the raw queue (encode, STT, chapters, captions)."""
@@ -493,7 +548,9 @@ def normalize(
             return
 
         for video_file in files:
-            normalize_one_video(campaign_name, video_file)
+            normalize_one_video(
+                campaign_name, video_file, encode_profile=encode_profile
+            )
 
     except Exception:
         import traceback
