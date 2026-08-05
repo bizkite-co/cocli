@@ -19,6 +19,7 @@ from pathlib import Path
 import duckdb
 
 from cocli.core.paths import paths
+from cocli.utils.backup_utils import timestamped_backup_path
 
 logger = logging.getLogger(__name__)
 
@@ -104,20 +105,52 @@ def compact_gm_list_results(
             logger.info("No GmListResult records to merge")
             return 0
 
+        # 2.5. Reduce gm_results to one row per place_id BEFORE merging into
+        # the checkpoint. The same place_id legitimately appears in multiple
+        # result files - the same business discovered via overlapping
+        # geo-tiles and/or different keyword searches - so without this
+        # reduce, the join below picks an arbitrary duplicate row (ordered
+        # by a tile-id string, not a real timestamp) instead of the best
+        # value available across all of them. MAX() ignores NULLs, so any
+        # field with a real value in ANY duplicate row survives, rather than
+        # being lost to whichever row happened to win the arbitrary tie.
+        # NOT safe for a column that is legitimately multi-valued per place -
+        # checked: nothing reads discovery_tile_id/discovery_phrase off the
+        # checkpoint for tile-completion tracking today, so collapsing them
+        # to one representative value is acceptable (revisit if that
+        # changes). See scripts/sql/gm_prospects_yield/queries/
+        # 06_gm_results_reduced_per_place_id.sql for the standalone version
+        # of this query used to size the fix before landing it here.
+        logger.info("Reducing GmListResult duplicates to one row per place_id...")
+
+        gm_cols = [
+            r[1] for r in con.execute("PRAGMA table_info('gm_results')").fetchall()
+        ]
+        gm_agg_cols = [f'max("{c}") AS "{c}"' for c in gm_cols if c != "place_id"]
+
+        con.execute("DROP TABLE IF EXISTS gm_results_reduced")
+        con.execute(f"""
+            CREATE TABLE gm_results_reduced AS
+            SELECT place_id, {", ".join(gm_agg_cols)}
+            FROM gm_results
+            GROUP BY place_id
+        """)
+
+        res = con.execute("SELECT COUNT(*) FROM gm_results_reduced").fetchone()
+        reduced_count = res[0] if res else 0
+        logger.info(
+            f"GmListResult records after per-place_id reduce: {reduced_count} "
+            f"(from {results_count} raw rows)"
+        )
+
         # 3. Merge with deduplication
         logger.info("Merging with deduplication...")
 
-        # Get checkpoint columns
         # Get checkpoint columns
         checkpoint_cols = [
             r[1] for r in con.execute("PRAGMA table_info('checkpoint')").fetchall()
         ]
         logger.info(f"Checkpoint columns: {len(checkpoint_cols)}")
-
-        # Get gm_results columns
-        gm_cols = [
-            r[1] for r in con.execute("PRAGMA table_info('gm_results')").fetchall()
-        ]
 
         # Map columns using COALESCE for join
         # gm_results has: place_id, company_slug, name, phone, domain, reviews_count,
@@ -145,7 +178,7 @@ def compact_gm_list_results(
                         ORDER BY COALESCE(cp.updated_at, gm.discovery_tile_id) DESC NULLS LAST
                     ) as rn
                 FROM checkpoint cp
-                FULL OUTER JOIN gm_results gm ON cp.place_id = gm.place_id
+                FULL OUTER JOIN gm_results_reduced gm ON cp.place_id = gm.place_id
             ) subq WHERE rn = 1
             ORDER BY place_id ASC
         """)
@@ -159,7 +192,7 @@ def compact_gm_list_results(
 
         cols_str = ", ".join(checkpoint_cols)
         tmp_path = checkpoint_path.parent / f"{checkpoint_path.name}.tmp"
-        backup_path = checkpoint_path.parent / f"{checkpoint_path.name}.bak"
+        backup_path = timestamped_backup_path(checkpoint_path)
 
         con.execute(f"""
             COPY (SELECT {cols_str} FROM merged ORDER BY place_id ASC) 

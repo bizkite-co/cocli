@@ -4,6 +4,7 @@ import typer
 import logging
 from rich.console import Console
 from cocli.core.config import get_scraped_data_dir, get_campaign_scraped_data_dir
+from cocli.utils.backup_utils import timestamped_backup_path
 
 app = typer.Typer()
 console = Console()
@@ -64,7 +65,7 @@ def main(campaign_name: str = typer.Argument(..., help="The campaign name to mer
 
     # Backup the target file before overwriting if it existed
     if new_csv_path.exists():
-        backup_path = new_csv_path.with_suffix('.csv.bak')
+        backup_path = timestamped_backup_path(new_csv_path)
         shutil.copy(new_csv_path, backup_path)
         console.print(f"Backed up existing target CSV to: {backup_path}")
 
