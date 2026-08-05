@@ -1,7 +1,8 @@
 import logging
 import os
 import re
-from typing import Any, List, cast
+from pathlib import Path
+from typing import Any, Dict, List, Optional, Tuple, cast
 
 from google.genai import Client
 
@@ -14,6 +15,83 @@ logger = logging.getLogger(__name__)
 _CHAPTER_LINE_RE = re.compile(
     r"^\s*(\d{1,2}:\d{2}(?::\d{2})?)\s+(.+?)\s*$"
 )
+
+# Preferred STT sources when regenerating chapters without re-transcribing.
+_TRANSCRIPT_PROVIDER_PREFERENCE = ("whisper", "gemini", "openai")
+
+
+def load_transcripts_from_dir(video_dir: Path) -> Dict[str, str]:
+    """Load ``transcript_*.md`` files from a normalized (or packaged) video dir."""
+    found: Dict[str, str] = {}
+    for path in sorted(video_dir.glob("transcript_*.md")):
+        key = path.stem.removeprefix("transcript_")
+        try:
+            found[key] = path.read_text(encoding="utf-8")
+        except OSError:
+            continue
+    return found
+
+
+def pick_primary_transcript(
+    transcripts: Dict[str, str],
+    *,
+    provider: Optional[str] = None,
+) -> Optional[Tuple[str, str]]:
+    """
+    Choose one non-granular transcript for chapter generation.
+
+    Returns ``(provider_key, text)`` or None if nothing usable is present.
+    Preference: explicit ``provider``, then whisper/gemini/openai, then sorted keys.
+    """
+    primary = {
+        k: v
+        for k, v in transcripts.items()
+        if not k.endswith("_granular") and (v or "").strip()
+    }
+    if not primary:
+        return None
+    if provider is not None:
+        if provider not in primary:
+            return None
+        return provider, primary[provider]
+    for preferred in _TRANSCRIPT_PROVIDER_PREFERENCE:
+        if preferred in primary:
+            return preferred, primary[preferred]
+    key = sorted(primary.keys())[0]
+    return key, primary[key]
+
+
+def write_chapters_for_dir(
+    video_dir: Path,
+    campaign: str,
+    *,
+    provider: Optional[str] = None,
+    transcripts: Optional[Dict[str, str]] = None,
+) -> Path:
+    """
+    Regenerate ``chapters.md`` from existing transcripts (no STT / no encode).
+
+    Uses ``create_chapters`` (which applies ``sanitize_chapters_text``).
+    Returns the path written.
+    """
+    loaded = transcripts if transcripts is not None else load_transcripts_from_dir(video_dir)
+    picked = pick_primary_transcript(loaded, provider=provider)
+    if picked is None:
+        if provider:
+            raise FileNotFoundError(
+                f"No usable transcript_{provider}.md in {video_dir}"
+            )
+        raise FileNotFoundError(
+            f"No usable transcript_*.md in {video_dir} "
+            "(need a non-granular transcript before regenerating chapters)"
+        )
+    provider_key, text = picked
+    logger.info("Generating chapters from transcript_%s.md in %s", provider_key, video_dir)
+    chapter_text = create_chapters(text, campaign)
+    out = video_dir / "chapters.md"
+    out.write_text(chapter_text, encoding="utf-8")
+    return out
+
 
 
 def sanitize_chapters_text(raw: str) -> str:

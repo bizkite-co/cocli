@@ -164,15 +164,7 @@ def _find_normalized_mp4(video_dir: Path) -> Optional[Path]:
 
 def _existing_transcripts(video_dir: Path) -> dict[str, str]:
     """Load any transcript_*.md already written in the normalized package."""
-    found: dict[str, str] = {}
-    for path in sorted(video_dir.glob("transcript_*.md")):
-        # transcript_whisper.md -> whisper; transcript_whisper_granular.md stays full stem after prefix
-        key = path.stem.removeprefix("transcript_")
-        try:
-            found[key] = path.read_text(encoding="utf-8")
-        except OSError:
-            continue
-    return found
+    return chapters.load_transcripts_from_dir(video_dir)
 
 
 def transcribe_normalized_dir(
@@ -236,15 +228,18 @@ def transcribe_normalized_dir(
     if job_run is not None:
         job_run.end_phase("transcribe")
 
-    first_transcript = next(iter(transcripts.values()), "")
-    if first_transcript:
+    picked = chapters.pick_primary_transcript(transcripts)
+    if picked is not None:
+        _provider_key, first_transcript = picked
         console.print("Generating chapters...")
         if job_run is not None:
             job_run.start_phase("chapters")
         try:
-            chapter_text = chapters.create_chapters(first_transcript, campaign_name)
-            chapters_path = video_dir / "chapters.md"
-            chapters_path.write_text(chapter_text, encoding="utf-8")
+            chapters_path = chapters.write_chapters_for_dir(
+                video_dir,
+                campaign_name,
+                transcripts=transcripts,
+            )
             console.print(f"[green]Saved chapters to {chapters_path.name}[/green]")
         except Exception as e:
             console.print(f"[yellow]Chapter generation failed: {e}[/yellow]")
@@ -508,6 +503,81 @@ def normalize(
         raise typer.Exit(1)
 
 
+@app.command("chapters", no_args_is_help=True)
+def chapters_cmd(
+    campaign: Optional[str] = typer.Option(
+        None, "-c", "--campaign", help="Campaign name"
+    ),
+    video_slug: str = typer.Argument(
+        ..., help="Video slug (directory name under normalized/)"
+    ),
+    provider: Optional[str] = typer.Option(
+        None,
+        "--provider",
+        help="Transcript key to use (e.g. whisper). Default: prefer whisper, then others",
+    ),
+    also_packaged: bool = typer.Option(
+        False,
+        "--also-packaged",
+        help="Also write chapters.md under packaged/{slug} when that dir exists",
+    ),
+) -> None:
+    """
+    Regenerate chapters.md from existing transcripts (no Whisper / no encode).
+
+    Recovery when chapter gen failed (e.g. expired Gemini auth) after STT
+    already succeeded. Prefer this over ``video transcribe --force``.
+    """
+    campaign_name = campaign or get_campaign()
+    if not campaign_name:
+        console.print("[red]No campaign specified.[/red]")
+        raise typer.Exit(1)
+
+    queue_root = get_video_queue_root(campaign_name)
+    video_dir = queue_root / "normalized" / video_slug
+    if not video_dir.is_dir():
+        console.print(f"[red]Normalized directory not found: {video_dir}[/red]")
+        raise typer.Exit(1)
+
+    try:
+        console.print(
+            f"Generating chapters for {video_slug} (from existing transcripts)..."
+        )
+        chapters_path = chapters.write_chapters_for_dir(
+            video_dir, campaign_name, provider=provider
+        )
+        console.print(f"[green]Saved chapters to {chapters_path}[/green]")
+        print_accessible_path(console, "Chapters:", chapters_path)
+
+        if also_packaged:
+            pack_dir = queue_root / "packaged" / video_slug
+            if pack_dir.is_dir():
+                # Prefer reusing normalized transcripts if packaged has none.
+                pack_transcripts = chapters.load_transcripts_from_dir(pack_dir)
+                if not chapters.pick_primary_transcript(pack_transcripts):
+                    pack_transcripts = chapters.load_transcripts_from_dir(video_dir)
+                pack_path = chapters.write_chapters_for_dir(
+                    pack_dir,
+                    campaign_name,
+                    provider=provider,
+                    transcripts=pack_transcripts,
+                )
+                console.print(
+                    f"[green]Also updated packaged chapters: {pack_path}[/green]"
+                )
+            else:
+                console.print(
+                    f"[yellow]Packaged dir not found ({pack_dir}); "
+                    f"skipped --also-packaged[/yellow]"
+                )
+    except FileNotFoundError as e:
+        console.print(f"[red]{e}[/red]")
+        raise typer.Exit(1)
+    except Exception as e:
+        console.print(f"[red]Chapter generation failed: {e}[/red]")
+        raise typer.Exit(1)
+
+
 @app.command(no_args_is_help=True)
 def transcribe(
     campaign: Optional[str] = typer.Option(
@@ -525,6 +595,7 @@ def transcribe(
 
     Recovery path when encode finished without transcription. Prefer letting
     ``normalize`` / ``add --normalize`` do STT in one step for new videos.
+    For chapters-only recovery after STT succeeded, use ``video chapters``.
     """
     campaign_name = campaign or get_campaign()
     if not campaign_name:
