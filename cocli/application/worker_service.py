@@ -16,6 +16,7 @@ from ..models.campaigns.indexes.google_maps_list_item import GoogleMapsListItem
 from ..models.campaigns.queues.gm_details import GmItemTask
 from ..models.campaigns.queues.base import QueueMessage
 from ..core.config import load_campaign_config
+from ..core.paths import paths
 from ..utils.playwright_utils import setup_optimized_context
 from ..utils.headers import ANTI_BOT_HEADERS, USER_AGENT
 from ..utils.async_iteration import iterate_with_idle_timeout
@@ -33,53 +34,99 @@ SCRAPE_IDLE_TIMEOUT_S = 90
 SCRAPE_ABSOLUTE_TIMEOUT_S = 1500
 
 
-def _is_orphaned_playwright_target_closed(context: Dict[str, Any]) -> bool:
-    """True for the specific "Future exception was never retrieved:
-    TargetClosedError" noise documented on ticket
+def _is_orphaned_playwright_future(context: Dict[str, Any]) -> bool:
+    """True for the general "Future/Task exception was never retrieved"
+    shape from an orphaned Playwright internal Future, documented on ticket
     investigate-orphaned-playwright-future-targetclosederror-from-idle-timeout-cancellation.
 
-    Root cause (confirmed by reading playwright/_impl/_connection.py, not
-    guessed): Channel._inner_send() awaits asyncio.wait({..., callback.future})
-    and only cancels callback.future in the line right after that await
-    returns. When iterate_with_idle_timeout cancels the *task* running this
-    while it's suspended inside that await, asyncio.wait's own cancellation
-    semantics skip that cleanup line entirely (cancelling the awaiter does not
-    cancel the futures passed into wait()), so callback.future is left
-    registered in Connection._callbacks forever. It later gets set() - either
-    by the real (now-unwanted) protocol response, or in one batch by
-    Connection.cleanup() when the browser connection dies - with nothing left
-    awaiting it, which is what triggers this exact "never retrieved" warning.
-
-    This is a bug in Playwright's own _inner_send (missing try/finally around
-    its cancel-cleanup line), not something patchable from our call site - we
-    have no reference to the leaked callback.future from outside Playwright's
-    internals. Downgrading the log is a documented workaround, not a fix; see
-    the ticket for the full mechanism and the periodic-restart mitigation that
-    bounds how many of these can accumulate between browser relaunches.
+    Root cause: any Playwright async operation that gets cancelled mid-flight
+    (iterate_with_idle_timeout cancels the *task* running the scrape loop
+    whenever it's stuck waiting for a low-level Playwright call) can strand
+    that operation's own internal Future/Task - Playwright has no hook for
+    "my caller just got cancelled, let me clean up." Confirmed two concrete
+    shapes so far, both from reading Playwright's own source, not guessed:
+    - Channel._inner_send() (_impl/_connection.py) awaits
+      asyncio.wait({..., callback.future}) and only cancels callback.future
+      in the line right after that await returns; asyncio.wait's own
+      cancellation semantics skip that line when the *awaiter* (not the
+      future itself) is cancelled, leaving callback.future registered in
+      Connection._callbacks forever.
+    - Locator polling (e.g. `locator(...).first` visibility waits) can raise
+      its own TimeoutError into a similarly abandoned Future when the
+      surrounding task is cancelled before that poll resolves.
+    Both are bugs in Playwright's own internals (missing cancellation
+    cleanup), not something patchable from our call site - we have no
+    reference to the leaked Future from outside Playwright's internals.
+    Matching on "exception's type lives in a playwright module" rather than
+    a specific class name is deliberate: this covers whatever shape
+    Playwright's internals produce next, without also swallowing our own
+    IdleTimeoutError (module cocli.utils.async_iteration - already caught
+    and logged deliberately elsewhere, must keep flowing normally) or any
+    unrelated orphaned-Future warning from our own code.
     """
     exc = context.get("exception")
     message = context.get("message", "")
     return (
         exc is not None
-        and type(exc).__name__ == "TargetClosedError"
+        and type(exc).__module__.startswith("playwright")
         and "never retrieved" in message
     )
 
 
-def install_playwright_leak_exception_handler(loop: asyncio.AbstractEventLoop) -> None:
-    """Downgrade the known orphaned-callback TargetClosedError noise (see
-    _is_orphaned_playwright_target_closed) to a debug log instead of asyncio's
+def _write_orphaned_playwright_future_record(
+    campaign_name: str, context: Dict[str, Any]
+) -> None:
+    """Append a structured record of a suppressed orphaned-Playwright-Future
+    warning to a durable, campaign-scoped file - downgrading the console
+    warning to debug must not also mean losing track of how often this
+    actually happens.
+
+    Written under paths.campaign(campaign_name).path, which is bind-mounted
+    to the host (~/repos/data - see ClusterService._restart_node) and
+    survives container restarts, unlike stdout/stderr (only captured by
+    `docker logs`, subject to the log rotation policy). Note this currently
+    requires SSHing to the node to read - ClusterService.pull_scraped_tiles/
+    sync_and_audit only pull queues/ and raw/, not logs/.
+    """
+    try:
+        log_path = (
+            paths.campaign(campaign_name).path / "logs" / "playwright_leaked_futures.jsonl"
+        )
+        log_path.parent.mkdir(parents=True, exist_ok=True)
+        exc = context.get("exception")
+        record = {
+            "timestamp": datetime.now(UTC).isoformat(),
+            "exception_type": type(exc).__name__,
+            "exception_module": type(exc).__module__,
+            "exception_str": str(exc),
+            "message": context.get("message", ""),
+        }
+        with open(log_path, "a", encoding="utf-8") as f:
+            f.write(json.dumps(record) + "\n")
+    except Exception:
+        logger.debug(
+            "Failed to write orphaned-Playwright-Future tracking record", exc_info=True
+        )
+
+
+def install_playwright_leak_exception_handler(
+    loop: asyncio.AbstractEventLoop, campaign_name: str
+) -> None:
+    """Downgrade the known orphaned-Playwright-Future noise (see
+    _is_orphaned_playwright_future) to a debug log plus a durable tracking
+    record (_write_orphaned_playwright_future_record) instead of asyncio's
     default unhandled-exception warning; everything else still goes through
     the loop's normal default handler unchanged."""
 
     def _handler(loop: asyncio.AbstractEventLoop, context: Dict[str, Any]) -> None:
-        if _is_orphaned_playwright_target_closed(context):
+        if _is_orphaned_playwright_future(context):
             logger.debug(
-                "Suppressed known orphaned-Playwright-callback TargetClosedError "
+                "Suppressed known orphaned-Playwright-Future noise "
                 "(ticket: investigate-orphaned-playwright-future-targetclosederror-"
                 "from-idle-timeout-cancellation): %s",
                 context.get("exception"),
             )
+            _write_orphaned_playwright_future_record(campaign_name, context)
             return
         loop.default_exception_handler(context)
 
@@ -771,7 +818,7 @@ class WorkerService:
         """
         Launches and manages multiple named worker instances.
         """
-        install_playwright_leak_exception_handler(asyncio.get_running_loop())
+        install_playwright_leak_exception_handler(asyncio.get_running_loop(), self.campaign_name)
         self._running = True
         from cocli.core.gossip_bridge import bridge
         if bridge:

@@ -49,6 +49,29 @@ def test_recent_messages_is_bounded_and_drops_oldest() -> None:
     assert not any("error 0" in m for m in messages)
 
 
+def test_emit_collapses_multiline_messages_to_one_line() -> None:
+    """A live cluster audit surfaced a multi-line Playwright call-log
+    exception (a locator visibility wait's traceback) as one recent_errors
+    entry - unbounded multi-line text there makes `cocli audit cluster
+    --verbose` unreadable and bloats the heartbeat JSON."""
+    counter = RollingErrorCounter()
+    counter.emit(_make_record("line one\nline two\n  indented line three"))
+
+    messages = counter.recent_messages()
+    assert len(messages) == 1
+    assert "\n" not in messages[0]
+    assert "line one line two indented line three" == messages[0]
+
+
+def test_emit_truncates_long_messages() -> None:
+    counter = RollingErrorCounter(max_message_length=20)
+    counter.emit(_make_record("x" * 100))
+
+    messages = counter.recent_messages()
+    assert len(messages) == 1
+    assert messages[0] == ("x" * 20) + "... [truncated]"
+
+
 def test_count_since_unaffected_by_message_capture() -> None:
     """The two responsibilities (rolling count, bounded message sample)
     must stay independent - a full message buffer must not affect the

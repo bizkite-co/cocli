@@ -20,44 +20,6 @@ console = Console()
 
 BUILD_DIR = "~/repos/cocli_build"
 
-# Workaround for ticket
-# investigate-orphaned-playwright-future-targetclosederror-from-idle-timeout-cancellation:
-# every scrape task idle-timeout that lands mid-flight inside a low-level
-# Playwright call leaks one dangling callback Future in Playwright's
-# Connection._callbacks dict (a bug in Playwright's own Channel._inner_send -
-# it has no try/finally around its cancel-on-timeout cleanup line, so a
-# cancelled *caller* skips it). We can't patch that from our call site. A
-# full container restart discards the whole Connection object - and
-# therefore every leaked callback accumulated since the last restart - so
-# this bounds the leak's growth instead of eliminating its root cause.
-# Complements install_playwright_leak_exception_handler() in
-# worker_service.py, which quiets the resulting log noise but does nothing
-# about the underlying accumulation.
-PERIODIC_RESTART_INTERVAL_HOURS = 6
-_PERIODIC_RESTART_MARKER = "cocli-supervisor-periodic-restart"
-
-
-def _build_periodic_restart_cron_cmd(
-    interval_hours: int = PERIODIC_RESTART_INTERVAL_HOURS,
-) -> str:
-    """Shell command that idempotently (re-)installs the periodic restart
-    cron job: drops any existing line carrying our marker before adding the
-    new one, so re-running this (e.g. on every deploy-hotfix) never stacks
-    duplicate cron entries even if interval_hours changes between runs.
-
-    Docker's own `--restart always` (used when the container is first
-    launched - see _restart_node) only restarts on crash/exit, never on a
-    schedule while the container is healthy, hence this separate cron job.
-    """
-    cron_line = (
-        f"0 */{interval_hours} * * * docker restart cocli-supervisor "
-        f"# {_PERIODIC_RESTART_MARKER}"
-    )
-    return (
-        f"(crontab -l 2>/dev/null | grep -v '{_PERIODIC_RESTART_MARKER}'; "
-        f"echo '{cron_line}') | crontab -"
-    )
-
 
 class ClusterService:
     """
@@ -279,16 +241,14 @@ class ClusterService:
         subprocess.run(["ssh", f"{user}@{host}", run_cmd], check=True)
         logger.info(f"  Node {host} restarted with orchestrated workers.")
 
-        # See _build_periodic_restart_cron_cmd's docstring / ticket
-        # investigate-orphaned-playwright-future-targetclosederror-from-idle-timeout-cancellation.
-        # Every deploy-hotfix already restarts this node via this method, so
-        # piggybacking the (idempotent) cron install here means the mitigation
-        # self-heals on every deploy instead of needing its own command that's
-        # easy to forget to (re-)run.
-        subprocess.run(
-            ["ssh", f"{user}@{host}", _build_periodic_restart_cron_cmd()],
-            capture_output=True,
-        )
+        # Both Pis already carry a pre-existing, undocumented hourly
+        # `docker restart cocli-supervisor` cron job (predates this
+        # codebase - discovered while verifying ticket
+        # investigate-orphaned-playwright-future-targetclosederror-from-idle-timeout-cancellation).
+        # It already bounds the leaked-Playwright-callback-Future
+        # accumulation described there tighter than any interval we'd add
+        # here, so deploy-hotfix intentionally does not install a second,
+        # redundant cron job on top of it.
 
     async def sync_and_audit(self, user: str = "mstouffer") -> None:
         """

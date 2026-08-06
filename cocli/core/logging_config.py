@@ -20,17 +20,39 @@ class RollingErrorCounter(logging.Handler):
     the current lack of it - see docker-log-rotation-not-configured-on-pi-nodes).
     """
 
-    def __init__(self, level: int = logging.ERROR, max_messages: int = 50) -> None:
+    def __init__(
+        self,
+        level: int = logging.ERROR,
+        max_messages: int = 50,
+        max_message_length: int = 300,
+    ) -> None:
         super().__init__(level=level)
         self._timestamps: Deque[float] = collections.deque()
         self._messages: Deque[str] = collections.deque(maxlen=max_messages)
+        self._max_message_length = max_message_length
 
     def emit(self, record: logging.LogRecord) -> None:
         self._timestamps.append(time.time())
         try:
-            self._messages.append(self.format(record))
+            formatted = self.format(record)
         except Exception:
-            self._messages.append(record.getMessage())
+            formatted = record.getMessage()
+        self._messages.append(self._truncate(formatted))
+
+    def _truncate(self, message: str) -> str:
+        """Collapse to one line and cap length. A live audit surfaced a
+        multi-line Playwright call-log exception (waiting for a locator...)
+        that alone was several hundred characters across many lines -
+        at max_messages of these, the heartbeat JSON balloons and
+        `cocli audit cluster --verbose` becomes unreadable. The full,
+        untruncated text still reaches its own dedicated tracking file for
+        the specific orphaned-Playwright-Future case (see
+        worker_service._write_orphaned_playwright_future_record) - this cap
+        is only about what's cheap to carry on every heartbeat."""
+        single_line = " ".join(message.split())
+        if len(single_line) > self._max_message_length:
+            return single_line[: self._max_message_length] + "... [truncated]"
+        return single_line
 
     def count_since(self, seconds: float) -> int:
         cutoff = time.time() - seconds
