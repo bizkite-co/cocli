@@ -5,7 +5,11 @@ from unittest.mock import patch
 from rich.console import Console
 
 import cocli.commands.audit as audit_module
-from cocli.commands.audit import _audit_cluster_from_heartbeats
+from cocli.commands.audit import (
+    _audit_cluster_from_heartbeats,
+    _classify_error_message,
+    _count_error_types,
+)
 
 
 class FakePaginator:
@@ -51,6 +55,66 @@ class FakeS3Client:
                 return body
 
         return {"Body": _Body()}
+
+
+def test_classify_error_message_extracts_exception_class() -> None:
+    assert _classify_error_message(
+        "Future exception was never retrieved: TargetClosedError('Target page, "
+        "context or browser has been closed')"
+    ) == "TargetClosedError"
+    assert _classify_error_message(
+        "Task Failed: No item yielded within 90s (idle timeout)"
+    ) == "Task Failed"
+
+
+def test_count_error_types_sorts_by_frequency_descending() -> None:
+    messages = [
+        "Future exception was never retrieved: TargetClosedError(...)",
+        "Task Failed: No item yielded within 90s (idle timeout)",
+        "Future exception was never retrieved: TargetClosedError(...)",
+        "Future exception was never retrieved: TargetClosedError(...)",
+    ]
+    counts = _count_error_types(messages)
+    assert counts[0] == ("TargetClosedError", 3)
+    assert counts[1] == ("Task Failed", 1)
+
+
+def test_audit_cluster_from_heartbeats_verbose_prints_error_type_counts(
+    capsys: Any,
+) -> None:
+    """Verbose mode should surface a "list of error types and counts" the
+    user can scan at a glance, not just N raw message lines to eyeball for
+    repeats."""
+    from datetime import datetime, timezone
+
+    now_iso = datetime.now(timezone.utc).isoformat()
+    heartbeats = {
+        "cocli5x0": {
+            "timestamp": now_iso,
+            "designation": {"gm-list": 1},
+            "last_activity": {"gm-list": now_iso},
+            "error_count_30m": 3,
+            "recent_errors": [
+                "Future exception was never retrieved: TargetClosedError(...)",
+                "Future exception was never retrieved: TargetClosedError(...)",
+                "Task Failed: No item yielded within 90s (idle timeout)",
+            ],
+        },
+    }
+    fake_client = FakeS3Client(heartbeats)
+
+    with patch.object(audit_module, "console", Console(width=200, no_color=True)), \
+        patch("cocli.core.config.load_campaign_config", return_value={}), patch(
+        "cocli.core.reporting.get_data_bucket_name", return_value="test-bucket"
+    ), patch("cocli.core.reporting.get_boto3_session", return_value=None), patch(
+        "cocli.core.reporting.get_s3_client", return_value=fake_client
+    ):
+        _audit_cluster_from_heartbeats("turboship", verbose=True)
+
+    out = capsys.readouterr().out
+    assert "error types (last 3 messages)" in out
+    assert "TargetClosedError" in out
+    assert "  2  TargetClosedError" in out
 
 
 def test_audit_cluster_from_heartbeats_renders_designation_and_health(capsys: Any) -> None:

@@ -20,7 +20,7 @@ class RollingErrorCounter(logging.Handler):
     the current lack of it - see docker-log-rotation-not-configured-on-pi-nodes).
     """
 
-    def __init__(self, level: int = logging.ERROR, max_messages: int = 20) -> None:
+    def __init__(self, level: int = logging.ERROR, max_messages: int = 50) -> None:
         super().__init__(level=level)
         self._timestamps: Deque[float] = collections.deque()
         self._messages: Deque[str] = collections.deque(maxlen=max_messages)

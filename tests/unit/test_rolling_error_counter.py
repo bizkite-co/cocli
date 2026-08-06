@@ -10,6 +10,21 @@ def _make_record(msg: str) -> logging.LogRecord:
     )
 
 
+def test_default_max_messages_is_50() -> None:
+    """Bumped from 20 -> 50: repeated cluster degradations showed 20 recent
+    lines wasn't enough context when a node is throwing many distinct
+    error types back-to-back."""
+    counter = RollingErrorCounter()
+    for i in range(60):
+        counter.emit(_make_record(f"error {i}"))
+
+    messages = counter.recent_messages()
+    assert len(messages) == 50
+    # oldest 10 of 60 (0-9) must have been dropped to keep the newest 50.
+    assert any("error 59" in m for m in messages)
+    assert not any(m == "error 9" for m in messages)
+
+
 def test_recent_messages_returns_formatted_messages_oldest_first() -> None:
     counter = RollingErrorCounter(max_messages=20)
     counter.emit(_make_record("first error"))

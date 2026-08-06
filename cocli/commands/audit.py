@@ -666,6 +666,33 @@ def _format_age(seconds: float) -> str:
     return f"{seconds / 3600:.1f}h ago"
 
 
+_ERROR_TYPE_RE = re.compile(r"\b([A-Za-z_][A-Za-z0-9_.]*(?:Error|Exception|Timeout))\b")
+
+
+def _classify_error_message(message: str) -> str:
+    """Best-effort grouping key for a formatted log message: the exception
+    class name if one appears (e.g. "TargetClosedError", "TimeoutError"),
+    else the text up to the first colon - good enough to cluster the small
+    number of recurring failure shapes seen in practice without needing a
+    real log-parsing grammar."""
+    match = _ERROR_TYPE_RE.search(message)
+    if match:
+        return match.group(1)
+    return message.split(":", 1)[0].strip() or message.strip()
+
+
+def _count_error_types(messages: list[str]) -> list[tuple[str, int]]:
+    """Counts of _classify_error_message(m) over messages, most frequent
+    first (ties broken by first-seen order) - the "list of error types and
+    counts" view, since scrolling through 50 raw lines to eyeball repeats
+    doesn't scale once a node is actually degraded."""
+    counts: dict[str, int] = {}
+    for m in messages:
+        key = _classify_error_message(m)
+        counts[key] = counts.get(key, 0) + 1
+    return sorted(counts.items(), key=lambda kv: kv[1], reverse=True)
+
+
 @app.command(name="cluster")
 def audit_cluster(
     campaign: Optional[str] = typer.Option(None, "--campaign", "-c", help="Campaign name (defaults to current)."),
@@ -850,12 +877,27 @@ def _audit_cluster_from_heartbeats(campaign_name: str, verbose: bool) -> None:
 
     if verbose:
         for hostname in sorted(nodes):
-            console.print(f"[dim]{hostname} heartbeat:[/dim] {json.dumps(nodes[hostname])}")
+            console.print(
+                f"[dim]{hostname} heartbeat:[/dim] {json.dumps(nodes[hostname])}",
+                highlight=False,
+            )
             recent_errors = nodes[hostname].get("recent_errors") or []
             if recent_errors:
-                console.print(f"[bold]{hostname} recent errors (last {len(recent_errors)}):[/bold]")
+                error_counts = _count_error_types(recent_errors)
+                console.print(
+                    f"[bold]{hostname} error types (last {len(recent_errors)} messages):[/bold]",
+                    highlight=False,
+                )
+                for error_type, count in error_counts:
+                    console.print(
+                        f"  [red]{count:>3}[/red]  {escape(error_type)}", highlight=False
+                    )
+                console.print(
+                    f"[bold]{hostname} recent errors (last {len(recent_errors)}):[/bold]",
+                    highlight=False,
+                )
                 for line in recent_errors:
-                    console.print(f"  [red]{escape(line)}[/red]")
+                    console.print(f"  [red]{escape(line)}[/red]", highlight=False)
 
 
 def _audit_cluster_live(campaign_name: str, verbose: bool) -> None:
