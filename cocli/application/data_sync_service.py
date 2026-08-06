@@ -54,11 +54,21 @@ class SampleResult(BaseModel):
     rows: List[List[Any]] = Field(default_factory=list)
 
 
+class MetricValue(BaseModel):
+    """One metric row: a count, and (when there's a real denominator to
+    compare it against) the percentage that count represents - kept as a
+    separate typed field rather than folded into a "N (X.X%)" string, so
+    count and percentage stay their own columns wherever this is rendered."""
+
+    count: int
+    percentage: Optional[float] = None
+
+
 class MetricsResult(BaseModel):
     """Data-quality metrics for a USV dataset."""
 
     source_name: str
-    metrics: Dict[str, Any] = Field(default_factory=dict)
+    metrics: Dict[str, MetricValue] = Field(default_factory=dict)
     used_fallback: bool = False
     output_path: Optional[Path] = None
     message: str = ""
@@ -531,7 +541,9 @@ class DataSyncService:
             denom_row = con.execute(f"SELECT COUNT(*) FROM {metrics_table}").fetchone()
             denominator = denom_row[0] if denom_row is not None else 0
 
-            metrics: Dict[str, Any] = {denominator_label: denominator}
+            metrics: Dict[str, MetricValue] = {
+                denominator_label: MetricValue(count=denominator)
+            }
             for field in schema_fields:
                 if field in loaded_cols:
                     field_type = fields_info.get(field, "string")
@@ -550,11 +562,12 @@ class DataSyncService:
                         ).fetchone()
                     count = count_row[0] if count_row is not None else 0
                     if count > 0:
-                        if is_deduped and denominator > 0:
-                            pct = 100.0 * count / denominator
-                            metrics[field] = f"{count} ({pct:.1f}%)"
-                        else:
-                            metrics[field] = count
+                        pct = (
+                            100.0 * count / denominator
+                            if is_deduped and denominator > 0
+                            else None
+                        )
+                        metrics[field] = MetricValue(count=count, percentage=pct)
 
             result = MetricsResult(
                 source_name=usv_path.name,
@@ -572,10 +585,11 @@ class DataSyncService:
             suffix = " (fallback)" if result.used_fallback else ""
             with open(output_path, "w", encoding="utf-8") as f:
                 f.write(f"# Metrics: {result.source_name}{suffix}\n\n")
-                f.write("| Metric | Value |\n")
-                f.write("| :--- | :--- |\n")
-                for metric, count in result.metrics.items():
-                    f.write(f"| {metric} | {count} |\n")
+                f.write("| Metric | Count | Percentage |\n")
+                f.write("| :--- | :--- | :--- |\n")
+                for metric, value in result.metrics.items():
+                    pct_str = f"{value.percentage:.1f}%" if value.percentage is not None else "-"
+                    f.write(f"| {metric} | {value.count} | {pct_str} |\n")
             result.output_path = output_path
             result.message = f"Metrics report written to {output_path}"
 
@@ -622,19 +636,20 @@ class DataSyncService:
                             if place_id_val is not None:
                                 field_places_with_value[field_name].add(place_id_val)
 
+        metrics: Dict[str, MetricValue]
         if place_idx is not None:
             denominator = len(place_ids)
-            metrics: Dict[str, Any] = {"Distinct Places": denominator}
+            metrics = {"Distinct Places": MetricValue(count=denominator)}
             for field in schema_fields:
                 count = len(field_places_with_value[field])
                 if count and denominator > 0:
                     pct = 100.0 * count / denominator
-                    metrics[field] = f"{count} ({pct:.1f}%)"
+                    metrics[field] = MetricValue(count=count, percentage=pct)
         else:
-            metrics = {"Total Rows": total_rows}
+            metrics = {"Total Rows": MetricValue(count=total_rows)}
             for field, count in field_row_counts.items():
                 if count:
-                    metrics[field] = count
+                    metrics[field] = MetricValue(count=count)
 
         return MetricsResult(
             source_name=usv_path.name,

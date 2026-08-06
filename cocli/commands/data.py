@@ -170,9 +170,11 @@ def metrics(
 
     table = Table(title=title)
     table.add_column("Metric")
-    table.add_column("Value")
-    for metric, count in result.metrics.items():
-        table.add_row(metric, str(count))
+    table.add_column("Count", justify="right")
+    table.add_column("Percentage", justify="right")
+    for metric, value in result.metrics.items():
+        pct_str = f"{value.percentage:.1f}%" if value.percentage is not None else "-"
+        table.add_row(metric, str(value.count), pct_str)
     console.print(table)
 
     if result.message:

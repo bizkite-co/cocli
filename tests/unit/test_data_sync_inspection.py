@@ -156,11 +156,14 @@ def test_compute_metrics(tmp_path: Path) -> None:
     # duplicate place_id rows (p1 appears twice - tile overlap) to one
     # row per place via a null-ignoring MAX() per column first.
     assert "Total Rows" not in result.metrics
-    assert result.metrics["Distinct Places"] == 2
+    assert result.metrics["Distinct Places"].count == 2
+    assert result.metrics["Distinct Places"].percentage is None
     # p1's two rows both had phone="111" -> present for 1 of 2 places (50%).
-    assert result.metrics["phone"] == "1 (50.0%)"
+    assert result.metrics["phone"].count == 1
+    assert result.metrics["phone"].percentage == 50.0
     # slug is non-empty on every row -> present for both places (100%).
-    assert result.metrics["slug"] == "2 (100.0%)"
+    assert result.metrics["slug"].count == 2
+    assert result.metrics["slug"].percentage == 100.0
     assert result.output_path == out
     assert out.exists()
     assert "Metric" in out.read_text()
@@ -189,10 +192,12 @@ def test_compute_metrics_without_place_id_keeps_raw_row_counts(tmp_path: Path) -
         return_value=tmp_path / "datapackage.json",
     ):
         result = service.compute_metrics(usv)
-    assert result.metrics["Total Rows"] == 2
+    assert result.metrics["Total Rows"].count == 2
     assert "Distinct Places" not in result.metrics
-    assert result.metrics["domain"] == 2
-    assert result.metrics["email"] == 1
+    assert result.metrics["domain"].count == 2
+    assert result.metrics["domain"].percentage is None
+    assert result.metrics["email"].count == 1
+    assert result.metrics["email"].percentage is None
 
 
 def test_compute_metrics_fallback(tmp_path: Path) -> None:
@@ -210,14 +215,16 @@ def test_compute_metrics_fallback(tmp_path: Path) -> None:
     result = service._compute_metrics_fallback(usv, fields)
     assert result.used_fallback is True
     assert "Total Rows" not in result.metrics
-    assert result.metrics["Distinct Places"] == 2
+    assert result.metrics["Distinct Places"].count == 2
     # Both p1 (2 duplicate rows) and p2 have a non-empty slug -> 2 of 2
     # distinct places, not "3 of 3 raw rows" (there are only 2 raw slugs
     # to begin with, but the point holds either way: rows aren't places).
-    assert result.metrics["slug"] == "2 (100.0%)"
+    assert result.metrics["slug"].count == 2
+    assert result.metrics["slug"].percentage == 100.0
     # p1's rows both have phone="1"; p2's row has phone="" -> present for
     # only 1 of 2 distinct places.
-    assert result.metrics["phone"] == "1 (50.0%)"
+    assert result.metrics["phone"].count == 1
+    assert result.metrics["phone"].percentage == 50.0
 
 
 def test_compute_metrics_emits_fallback_message_via_log_callback(
