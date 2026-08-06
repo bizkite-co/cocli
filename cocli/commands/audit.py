@@ -754,9 +754,11 @@ def _audit_cluster_from_heartbeats(campaign_name: str, verbose: bool) -> None:
 
     now = datetime.now(timezone.utc)
 
-    table = Table(title=f"Cluster Node Audit: {campaign_name}")
+    table = Table(title=f"Cluster Node Audit: {campaign_name}", box=None)
     table.add_column("Node", style="cyan")
     table.add_column("Designation", style="magenta")
+    table.add_column("CPU %", justify="right")
+    table.add_column("MEM %", justify="right")
     table.add_column("Errors (30m)", justify="right")
     table.add_column("Last Activity")
     table.add_column("Health")
@@ -781,6 +783,22 @@ def _audit_cluster_from_heartbeats(campaign_name: str, verbose: bool) -> None:
             return None
         return (now - ts).total_seconds()
 
+    def _fmt_pct(value: Any) -> str:
+        """Colored at-a-glance CPU/MEM reading - lets DEGRADED/STALE verdicts
+        be cross-checked against actual load instead of taken on faith."""
+        if value is None:
+            return "-"
+        try:
+            v = float(value)
+        except (TypeError, ValueError):
+            return "-"
+        text = f"{v:.0f}"
+        if v >= 85:
+            return f"[red]{text}[/red]"
+        if v >= 60:
+            return f"[yellow]{text}[/yellow]"
+        return text
+
     for hostname in sorted(nodes):
         payload = nodes[hostname]
         try:
@@ -788,6 +806,9 @@ def _audit_cluster_from_heartbeats(campaign_name: str, verbose: bool) -> None:
             last_activity: dict[str, str] = payload.get("last_activity") or {}
             error_count = int(payload.get("error_count_30m", 0))
             last_log_age = _age(payload.get("timestamp"))
+            system: dict[str, Any] = payload.get("system") or {}
+            cpu_str = _fmt_pct(system.get("cpu"))
+            mem_str = _fmt_pct(system.get("mem"))
 
             stale_content_types = [
                 ct for ct in designation
@@ -798,14 +819,14 @@ def _audit_cluster_from_heartbeats(campaign_name: str, verbose: bool) -> None:
             activity_str = _format_age(last_log_age) if last_log_age is not None else "-"
             health = _node_health_verdict(True, last_log_age, error_count, stale_content_types)
         except Exception as e:
-            table.add_row(hostname, "-", "-", "-", f"[red]MALFORMED ({e})[/red]")
+            table.add_row(hostname, "-", "-", "-", "-", "-", f"[red]MALFORMED ({e})[/red]")
             continue
 
-        table.add_row(hostname, designation_str, str(error_count), activity_str, health)
+        table.add_row(hostname, designation_str, cpu_str, mem_str, str(error_count), activity_str, health)
 
     console.print(table)
 
-    queue_table = Table(title=f"Campaign Queue Depths: {campaign_name}")
+    queue_table = Table(title=f"Campaign Queue Depths: {campaign_name}", box=None)
     queue_table.add_column("Queue", style="cyan")
     queue_table.add_column("Pending", justify="right")
     queue_table.add_column("Completed", justify="right")

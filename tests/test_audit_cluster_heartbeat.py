@@ -2,6 +2,9 @@ import json
 from typing import Any, Dict, List
 from unittest.mock import patch
 
+from rich.console import Console
+
+import cocli.commands.audit as audit_module
 from cocli.commands.audit import _audit_cluster_from_heartbeats
 
 
@@ -65,7 +68,12 @@ def test_audit_cluster_from_heartbeats_renders_designation_and_health(capsys: An
     }
     fake_client = FakeS3Client(heartbeats)
 
-    with patch("cocli.core.config.load_campaign_config", return_value={}), patch(
+    # Wide + no_color: avoids Rich wrapping the Designation column (which
+    # would interleave sibling columns' text between "enrichment:" and "2"
+    # in the captured output) and avoids ANSI codes splitting substrings -
+    # both are rendering details, not what this test is checking.
+    with patch.object(audit_module, "console", Console(width=200, no_color=True)), \
+        patch("cocli.core.config.load_campaign_config", return_value={}), patch(
         "cocli.core.reporting.get_data_bucket_name", return_value="test-bucket"
     ), patch("cocli.core.reporting.get_boto3_session", return_value=None), patch(
         "cocli.core.reporting.get_s3_client", return_value=fake_client
@@ -77,6 +85,48 @@ def test_audit_cluster_from_heartbeats_renders_designation_and_health(capsys: An
     assert "fargate" in out
     assert "gm-list: 2" in out
     assert "enrichment: 2" in out
+
+
+def test_audit_cluster_from_heartbeats_renders_cpu_and_mem(capsys: Any) -> None:
+    """CPU/MEM come straight from the same heartbeat JSON already used for
+    designation/errors (_push_supervisor_heartbeat's stats["system"]) - this
+    pins that the audit table actually surfaces it, not just reads it."""
+    from datetime import datetime, timezone
+
+    now_iso = datetime.now(timezone.utc).isoformat()
+    heartbeats = {
+        "cocli5x0": {
+            "timestamp": now_iso,
+            "system": {"cpu": 91.4, "mem": 42.0},
+            "designation": {"enrichment": 2},
+            "last_activity": {"enrichment": now_iso},
+            "error_count_30m": 0,
+        },
+        "cocli5x1": {
+            "timestamp": now_iso,
+            # No "system" key at all - an older heartbeat writer, or a
+            # transient psutil failure - must render "-", not crash.
+            "designation": {"enrichment": 3},
+            "last_activity": {"enrichment": now_iso},
+            "error_count_30m": 0,
+        },
+    }
+    fake_client = FakeS3Client(heartbeats)
+
+    with patch.object(audit_module, "console", Console(width=200, no_color=True)), \
+        patch("cocli.core.config.load_campaign_config", return_value={}), patch(
+        "cocli.core.reporting.get_data_bucket_name", return_value="test-bucket"
+    ), patch("cocli.core.reporting.get_boto3_session", return_value=None), patch(
+        "cocli.core.reporting.get_s3_client", return_value=fake_client
+    ):
+        _audit_cluster_from_heartbeats("turboship", verbose=False)
+
+    out = capsys.readouterr().out
+    assert "91" in out
+    assert "42" in out
+    # cocli5x1 has no "system" key - must degrade to "-", not throw.
+    matching_lines = [line for line in out.splitlines() if "cocli5x1" in line]
+    assert matching_lines and "-" in matching_lines[0]
 
 
 def test_audit_cluster_from_heartbeats_tolerates_legacy_naive_timestamp(capsys: Any) -> None:
