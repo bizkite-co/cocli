@@ -839,6 +839,11 @@ def _audit_cluster_from_heartbeats(campaign_name: str, verbose: bool) -> None:
     if verbose:
         for hostname in sorted(nodes):
             console.print(f"[dim]{hostname} heartbeat:[/dim] {json.dumps(nodes[hostname])}")
+            recent_errors = nodes[hostname].get("recent_errors") or []
+            if recent_errors:
+                console.print(f"[bold]{hostname} recent errors (last {len(recent_errors)}):[/bold]")
+                for line in recent_errors:
+                    console.print(f"  [red]{escape(line)}[/red]")
 
 
 def _audit_cluster_live(campaign_name: str, verbose: bool) -> None:

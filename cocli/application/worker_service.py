@@ -634,7 +634,7 @@ class WorkerService:
         from ..core.paths import paths
         from ..models.wal.record import HeartbeatDatagram
         from ..core.gossip_bridge import bridge
-        from ..core.logging_config import get_recent_error_count
+        from ..core.logging_config import get_recent_error_count, get_recent_error_messages
 
         cpu_usage = psutil.cpu_percent()
         mem_usage = psutil.virtual_memory().percent
@@ -668,6 +668,7 @@ class WorkerService:
             "designation": designation,
             "last_activity": last_activity,
             "error_count_30m": get_recent_error_count(1800),
+            "recent_errors": get_recent_error_messages(),
         }
 
         # Write local copy for container/health checks

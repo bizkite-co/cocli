@@ -10,25 +10,39 @@ from pathlib import Path
 
 
 class RollingErrorCounter(logging.Handler):
-    """Counts ERROR+ log records seen in a trailing time window.
+    """Counts ERROR+ log records seen in a trailing time window, and keeps
+    the last few formatted messages.
 
     Replaces `docker logs --since 30m | grep -icE 'error|exception|...'` with an
-    in-process count workers can report on their own heartbeat, instead of a
-    remote log-grep the audit tool has to poll for.
+    in-process count (and now message sample) workers can report on their
+    own heartbeat, instead of a remote log-grep the audit tool has to poll
+    for - and unlike a remote grep, this isn't affected by log rotation (or
+    the current lack of it - see docker-log-rotation-not-configured-on-pi-nodes).
     """
 
-    def __init__(self, level: int = logging.ERROR) -> None:
+    def __init__(self, level: int = logging.ERROR, max_messages: int = 20) -> None:
         super().__init__(level=level)
         self._timestamps: Deque[float] = collections.deque()
+        self._messages: Deque[str] = collections.deque(maxlen=max_messages)
 
     def emit(self, record: logging.LogRecord) -> None:
         self._timestamps.append(time.time())
+        try:
+            self._messages.append(self.format(record))
+        except Exception:
+            self._messages.append(record.getMessage())
 
     def count_since(self, seconds: float) -> int:
         cutoff = time.time() - seconds
         while self._timestamps and self._timestamps[0] < cutoff:
             self._timestamps.popleft()
         return len(self._timestamps)
+
+    def recent_messages(self) -> list[str]:
+        """Last max_messages ERROR+ records, oldest first. Not time-windowed
+        like count_since - a fixed-count sample, so it stays cheap and
+        bounded regardless of how bursty errors get."""
+        return list(self._messages)
 
 
 _error_counter: Optional[RollingErrorCounter] = None
@@ -39,6 +53,14 @@ def get_recent_error_count(window_s: float = 1800.0) -> int:
     if _error_counter is None:
         return 0
     return _error_counter.count_since(window_s)
+
+
+def get_recent_error_messages() -> list[str]:
+    """Last ~20 ERROR+ formatted messages this process has logged, oldest
+    first. Empty if logging isn't set up yet (no worker process running)."""
+    if _error_counter is None:
+        return []
+    return _error_counter.recent_messages()
 
 
 def setup_file_logging(command_name: str, console_level: int = logging.INFO, file_level: int = logging.DEBUG, disable_console: bool = False) -> None:
