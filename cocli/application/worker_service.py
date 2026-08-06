@@ -18,9 +18,19 @@ from ..models.campaigns.queues.base import QueueMessage
 from ..core.config import load_campaign_config
 from ..utils.playwright_utils import setup_optimized_context
 from ..utils.headers import ANTI_BOT_HEADERS, USER_AGENT
+from ..utils.async_iteration import iterate_with_idle_timeout
 from ..core.text_utils import slugify
 
 logger = logging.getLogger(__name__)
+
+# Max time to wait for the *next* new gm-list result before treating a
+# scrape task as stuck (resets on every item found - see
+# iterate_with_idle_timeout). 90s comfortably covers a slow scroll/hydration
+# cycle without waiting anywhere near as long as the old fixed 900s ceiling.
+SCRAPE_IDLE_TIMEOUT_S = 90
+# Hard backstop regardless of progress, for a source that never stalls but
+# also never finishes (e.g. a duplicate-heavy feed with no clean end).
+SCRAPE_ABSOLUTE_TIMEOUT_S = 1500
 
 
 def route_discovered_list_item(
@@ -331,8 +341,17 @@ class WorkerService:
                 # Keep track of Place IDs in this specific search to avoid redundant enqueuing
                 pushed_place_ids: Set[str] = set()
 
-                async with asyncio.timeout(900):
-                    async for list_item in scrape_google_maps(
+                # Idle timeout (resets per item) instead of one fixed ceiling
+                # for the whole tile+phrase task - a source that keeps
+                # yielding real results can run indefinitely; a source that
+                # stops producing (observed live: the sidebar scanner's own
+                # stall-check only watches raw DOM element count, which can
+                # keep climbing - ads, re-renders - even when every place_id
+                # found is already a duplicate, so it never yields anything
+                # new and never trips its own break condition) now fails in
+                # SCRAPE_IDLE_TIMEOUT_S instead of burning the full ceiling.
+                async for list_item in iterate_with_idle_timeout(
+                    scrape_google_maps(
                         browser=browser,
                         location_param=location_param,
                         search_strings=[task.search_phrase],
@@ -342,21 +361,24 @@ class WorkerService:
                         s3_client=s3_client,
                         s3_bucket=self.bucket_name,
                         processed_by=self.processed_by,
-                    ):
-                        if not list_item.place_id:
-                            continue
+                    ),
+                    idle_timeout_s=SCRAPE_IDLE_TIMEOUT_S,
+                    absolute_timeout_s=SCRAPE_ABSOLUTE_TIMEOUT_S,
+                ):
+                    if not list_item.place_id:
+                        continue
 
-                        discovered_items.append(list_item)
+                    discovered_items.append(list_item)
 
-                        if list_item.place_id not in pushed_place_ids:
-                            route_discovered_list_item(
-                                list_item,
-                                campaign_name=task.campaign_name,
-                                enrichment_queue=enrichment_queue,
-                                gm_list_item_queue=gm_list_item_queue,
-                                processed_by=self.processed_by,
-                            )
-                            pushed_place_ids.add(list_item.place_id)
+                    if list_item.place_id not in pushed_place_ids:
+                        route_discovered_list_item(
+                            list_item,
+                            campaign_name=task.campaign_name,
+                            enrichment_queue=enrichment_queue,
+                            gm_list_item_queue=gm_list_item_queue,
+                            processed_by=self.processed_by,
+                        )
+                        pushed_place_ids.add(list_item.place_id)
 
                 if discovered_items:
                     try:
