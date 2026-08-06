@@ -2,6 +2,8 @@ import logging
 import re
 from playwright.async_api import Page
 
+from ....utils.headers import jittered_delay_ms
+
 logger = logging.getLogger(__name__)
 
 class Navigator:
@@ -75,7 +77,7 @@ class Navigator:
             button = self.page.get_by_role("button", name=re.compile("Search this area", re.IGNORECASE))
             if await button.is_visible():
                 await button.click()
-                await self.page.wait_for_timeout(2000) # Wait for update
+                await self.page.wait_for_timeout(jittered_delay_ms(2000)) # Wait for update
                 return True
         except Exception:
             pass

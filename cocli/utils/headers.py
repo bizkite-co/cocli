@@ -4,6 +4,24 @@
 Centralized headers to prevent bot detection and maintain consistent scraping behavior.
 """
 
+import random
+
+
+def jittered_delay_ms(base_ms: int, jitter_pct: float = 0.4) -> int:
+    """Randomizes a fixed anti-bot pacing delay within +/-jitter_pct of base_ms.
+
+    A script that waits exactly the same number of milliseconds before
+    every single action, forever, is itself a detectable behavioral
+    fingerprint - real interaction timing always has natural variance.
+    Use this for deliberate pacing delays (page.wait_for_timeout calls
+    between scroll/click actions); do NOT use it for wait_for(timeout=...)
+    budgets, which are a "how long to wait for an element" ceiling, not a
+    pacing delay - randomizing those trades reliability for no anti-bot
+    benefit.
+    """
+    spread = base_ms * jitter_pct
+    return round(random.uniform(base_ms - spread, base_ms + spread))
+
 # Current Chromium version used for consistency
 CHROME_VERSION = "133"
 

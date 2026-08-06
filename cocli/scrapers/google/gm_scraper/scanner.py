@@ -7,6 +7,7 @@ from playwright.async_api import Page, Locator
 from ....core.config import load_scraper_settings
 from ....core.text_utils import slugify
 from ....models.campaigns.indexes.google_maps_list_item import GoogleMapsListItem
+from ....utils.headers import jittered_delay_ms
 
 logger = logging.getLogger(__name__)
 
@@ -75,7 +76,7 @@ class SidebarScraper:
             if self.page.is_closed():
                 break
 
-            await self.page.wait_for_timeout(1000)
+            await self.page.wait_for_timeout(jittered_delay_ms(1000))
             listing_divs = await scrollable_div.locator("> div").all()
             
             if len(listing_divs) == last_processed_div_count:
@@ -97,7 +98,7 @@ class SidebarScraper:
                     if box:
                         await self.page.mouse.move(box['x'] + box['width']/2, box['y'] + box['height']/2)
                         await self.page.mouse.wheel(0, 100)
-                        await self.page.wait_for_timeout(500)
+                        await self.page.wait_for_timeout(jittered_delay_ms(500))
                 except Exception:
                     pass
 
@@ -163,6 +164,6 @@ class SidebarScraper:
             try:
                 await scrollable_div.hover()
                 await self.page.mouse.wheel(0, 5000)
-                await self.page.wait_for_timeout(2000)
+                await self.page.wait_for_timeout(jittered_delay_ms(2000))
             except Exception:
                 break
