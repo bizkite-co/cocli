@@ -17,22 +17,27 @@ class FakePaginator:
 
 
 class FakeS3Client:
-    def __init__(self, heartbeats: Dict[str, Dict[str, Any]]) -> None:
+    def __init__(
+        self,
+        heartbeats: Dict[str, Dict[str, Any]],
+        queue_keys_by_prefix: Dict[str, List[str]] | None = None,
+    ) -> None:
         from cocli.core.paths import paths
 
         self._heartbeats = heartbeats
         status_prefix = paths.s3.status_root
-        self._paginator = FakePaginator(
-            {
-                status_prefix: [
-                    {
-                        "Contents": [
-                            {"Key": f"{status_prefix}{host}.json"} for host in heartbeats
-                        ]
-                    }
-                ]
-            }
-        )
+        pages: Dict[str, List[Dict[str, Any]]] = {
+            status_prefix: [
+                {
+                    "Contents": [
+                        {"Key": f"{status_prefix}{host}.json"} for host in heartbeats
+                    ]
+                }
+            ]
+        }
+        for prefix, keys in (queue_keys_by_prefix or {}).items():
+            pages[prefix] = [{"Contents": [{"Key": k} for k in keys]}]
+        self._paginator = FakePaginator(pages)
 
     def get_paginator(self, name: str) -> FakePaginator:
         return self._paginator
@@ -85,6 +90,64 @@ def test_audit_cluster_from_heartbeats_renders_designation_and_health(capsys: An
     assert "fargate" in out
     assert "gm-list: 2" in out
     assert "enrichment: 2" in out
+
+
+def test_queue_depths_exclude_lease_attempts_and_sidecar_files(capsys: Any) -> None:
+    """The real bug this pins: raw S3 KeyCount under a queue prefix counted
+    every lease*.json (claimed task), attempts*.json (retried task), and
+    datapackage.json/mission.usv sidecar as if it were its own pending
+    task - silently inflating "Pending" well past the true number of
+    distinct tiles/phrases still waiting to be scraped."""
+    from datetime import datetime, timezone
+
+    now_iso = datetime.now(timezone.utc).isoformat()
+    heartbeats = {
+        "cocli5x0": {
+            "timestamp": now_iso,
+            "designation": {"gm-list": 1},
+            "last_activity": {"gm-list": now_iso},
+            "error_count_30m": 0,
+        },
+    }
+    gm_list_pending_prefix = "campaigns/turboship/queues/gm-list/pending/"
+    fake_client = FakeS3Client(
+        heartbeats,
+        queue_keys_by_prefix={
+            gm_list_pending_prefix: [
+                # 2 real pending tasks...
+                f"{gm_list_pending_prefix}2/28.0/-82.7/commercial-vinyl-flooring-contractor.usv",
+                f"{gm_list_pending_prefix}2/28.3/-81.5/rubber-flooring-contractor.usv",
+                # ...but one of them is claimed (adds a lease file)...
+                f"{gm_list_pending_prefix}2/28.0/-82.7/commercial-vinyl-flooring-contractor/lease.json",
+                # ...one has been retried (adds an attempts file)...
+                f"{gm_list_pending_prefix}2/28.3/-81.5/rubber-flooring-contractor/attempts.json",
+                # ...and the queue-wide sidecars are always present regardless
+                # of how many real tasks exist.
+                f"{gm_list_pending_prefix}datapackage.json",
+                f"{gm_list_pending_prefix}mission.usv",
+            ],
+        },
+    )
+
+    with patch.object(audit_module, "console", Console(width=200, no_color=True)), \
+        patch("cocli.core.config.load_campaign_config", return_value={}), patch(
+        "cocli.core.reporting.get_data_bucket_name", return_value="test-bucket"
+    ), patch("cocli.core.reporting.get_boto3_session", return_value=None), patch(
+        "cocli.core.reporting.get_s3_client", return_value=fake_client
+    ):
+        _audit_cluster_from_heartbeats("turboship", verbose=False)
+
+    out = capsys.readouterr().out
+    # "gm-list: N" (with a colon) is the Cluster Node Audit table's
+    # Designation cell - the Campaign Queue Depths table's Queue column is
+    # just the bare word "gm-list", so exclude the colon form to isolate it.
+    lines = [
+        line for line in out.splitlines()
+        if "gm-list" in line and "gm-list:" not in line
+    ]
+    assert lines, "expected a gm-list row in the Campaign Queue Depths table"
+    # 6 raw keys were provided; only 2 are real distinct pending tasks.
+    assert " 2 " in lines[0], f"expected exactly 2 real pending tasks, got: {lines[0]!r}"
 
 
 def test_audit_cluster_from_heartbeats_renders_cpu_and_mem(capsys: Any) -> None:

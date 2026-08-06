@@ -11,6 +11,7 @@ from ..application.services import ServiceContainer
 from rich.table import Table
 from rich.prompt import Prompt
 from rich.markup import escape
+from ..core.queue.task_file_filter import is_valid_task_data_file
 app = typer.Typer(
     help="Auditing tools for the cocli system structure and integrity.",
     no_args_is_help=True,
@@ -465,7 +466,7 @@ def audit_scrape(
     gm_list_queue = paths.campaign(campaign_name).queue("gm-list")
     gm_list_pending = 0
     if gm_list_queue.pending.exists():
-        gm_list_pending = sum(1 for f in gm_list_queue.pending.rglob("*.usv") if f.name != "mission.usv")
+        gm_list_pending = sum(1 for f in gm_list_queue.pending.rglob("*.usv") if is_valid_task_data_file(f.name))
 
     gm_list_claimed = 0
     if gm_list_queue.pending.exists():
@@ -743,13 +744,24 @@ def _audit_cluster_from_heartbeats(campaign_name: str, verbose: bool) -> None:
     # Queue depths are campaign-wide (S3 is the coordination source of truth for
     # gm-details/enrichment leases, and gm-list mirrors its mission tiles there
     # too) rather than owned by any one node, so compute them once, not per-row.
+    #
+    # Raw KeyCount under a queue prefix overcounts real tasks: every claimed
+    # task adds a lease*.json (and retried ones an attempts*.json) alongside
+    # its real data file, and a shared datapackage.json schema sidecar sits
+    # in most of these prefixes too - none of those are tasks. Filter with
+    # the same is_valid_task_data_file rule FilesystemQueueBase.count_state()
+    # already uses locally, so this S3 path and that local path can't drift
+    # apart into two different ideas of "how many tasks are pending."
     queue_depths: dict[str, dict[str, int]] = {}
     for q in _KNOWN_CONTENT_TYPES:
         for status in ("pending", "completed", "failed"):
             prefix = f"campaigns/{campaign_name}/queues/{q}/{status}/"
             count = 0
             for page in paginator.paginate(Bucket=bucket_name, Prefix=prefix):
-                count += page.get("KeyCount", len(page.get("Contents", [])))
+                for obj in page.get("Contents", []):
+                    filename = obj["Key"].rsplit("/", 1)[-1]
+                    if is_valid_task_data_file(filename):
+                        count += 1
             queue_depths.setdefault(q, {})[status] = count
 
     now = datetime.now(timezone.utc)

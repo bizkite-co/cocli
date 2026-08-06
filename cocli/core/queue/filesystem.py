@@ -12,6 +12,7 @@ from ...core.config import get_cocli_base_dir, get_campaign_dir
 from ...core.paths import paths
 from ...core.sharding import get_shard_id
 from .layout import QueueLayout, resolve_queue_station
+from .task_file_filter import is_valid_task_data_file
 
 logger = logging.getLogger(__name__)
 
@@ -135,9 +136,7 @@ class FilesystemQueue:
         total = 0
         for root, _, files in os.walk(state_dir):
             for f in files:
-                if f == "datapackage.json" or f.startswith("lease") or f.startswith("attempts"):
-                    continue
-                if f.endswith(".usv") or f.endswith(".json"):
+                if is_valid_task_data_file(f):
                     total += 1
         return total
 
