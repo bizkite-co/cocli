@@ -150,19 +150,49 @@ def test_compute_metrics(tmp_path: Path) -> None:
     ):
         result = service.compute_metrics(usv, output_path=out)
     assert isinstance(result, MetricsResult)
-    # Raw row total and deduplicated place count are separate metrics; no
-    # per-field count may exceed Total Rows.
-    assert result.metrics["Total Rows"] == 3
+    # A raw "Total Rows" is gone once place_id is present - it only
+    # invites reading percentages that were never computed against it.
+    # Every metric is now "N of Distinct Places", after reducing the
+    # duplicate place_id rows (p1 appears twice - tile overlap) to one
+    # row per place via a null-ignoring MAX() per column first.
+    assert "Total Rows" not in result.metrics
     assert result.metrics["Distinct Places"] == 2
-    field_counts = {
-        k: v
-        for k, v in result.metrics.items()
-        if k not in ("Total Rows", "Distinct Places")
-    }
-    assert all(v <= result.metrics["Total Rows"] for v in field_counts.values())
+    # p1's two rows both had phone="111" -> present for 1 of 2 places (50%).
+    assert result.metrics["phone"] == "1 (50.0%)"
+    # slug is non-empty on every row -> present for both places (100%).
+    assert result.metrics["slug"] == "2 (100.0%)"
     assert result.output_path == out
     assert out.exists()
     assert "Metric" in out.read_text()
+
+
+def test_compute_metrics_without_place_id_keeps_raw_row_counts(tmp_path: Path) -> None:
+    """No place_id column means no identity key to dedupe on - raw "Total
+    Rows" with per-row counts is still the correct (and only possible)
+    denominator here, unlike the place_id-keyed case above."""
+    fields = [
+        {"name": "domain", "type": "string"},
+        {"name": "email", "type": "string"},
+    ]
+    _write_datapackage(tmp_path, path_pattern="data.usv", fields=fields)
+    usv = tmp_path / "data.usv"
+    _write_usv(
+        usv,
+        [
+            ["example.com", "a@example.com"],
+            ["other.com", ""],
+        ],
+    )
+    service = DataSyncService()
+    with patch(
+        "cocli.utils.duckdb_utils.find_datapackage",
+        return_value=tmp_path / "datapackage.json",
+    ):
+        result = service.compute_metrics(usv)
+    assert result.metrics["Total Rows"] == 2
+    assert "Distinct Places" not in result.metrics
+    assert result.metrics["domain"] == 2
+    assert result.metrics["email"] == 1
 
 
 def test_compute_metrics_fallback(tmp_path: Path) -> None:
@@ -179,10 +209,15 @@ def test_compute_metrics_fallback(tmp_path: Path) -> None:
     )
     result = service._compute_metrics_fallback(usv, fields)
     assert result.used_fallback is True
-    assert result.metrics["Total Rows"] == 3
+    assert "Total Rows" not in result.metrics
     assert result.metrics["Distinct Places"] == 2
-    assert result.metrics["slug"] == 3
-    assert result.metrics["phone"] == 2
+    # Both p1 (2 duplicate rows) and p2 have a non-empty slug -> 2 of 2
+    # distinct places, not "3 of 3 raw rows" (there are only 2 raw slugs
+    # to begin with, but the point holds either way: rows aren't places).
+    assert result.metrics["slug"] == "2 (100.0%)"
+    # p1's rows both have phone="1"; p2's row has phone="" -> present for
+    # only 1 of 2 distinct places.
+    assert result.metrics["phone"] == "1 (50.0%)"
 
 
 def test_compute_metrics_emits_fallback_message_via_log_callback(

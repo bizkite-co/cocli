@@ -498,39 +498,63 @@ class DataSyncService:
             loaded_cols = [c[1] for c in cols_info]
             logger.debug("Loaded table has columns: %s...", loaded_cols[:5])
 
-            rows_row = con.execute("SELECT COUNT(*) FROM metrics_data").fetchone()
-            total_rows = rows_row[0] if rows_row is not None else 0
-
-            # Per-field counts below are over ALL rows, so the headline totals
-            # must distinguish raw rows from deduplicated places — reporting
-            # only COUNT(DISTINCT place_id) made field counts exceed the total.
-            metrics: Dict[str, Any] = {"Total Rows": total_rows}
-            if "place_id" in loaded_cols:
-                distinct_row = con.execute(
-                    'SELECT COUNT(DISTINCT "place_id") FROM metrics_data'
-                ).fetchone()
-                metrics["Distinct Places"] = (
-                    distinct_row[0] if distinct_row is not None else 0
+            # A "place_id"-keyed dataset (e.g. gm-list's raw discovery archive)
+            # legitimately has multiple rows per place - the same business
+            # discovered via overlapping geo-tiles / different keyword
+            # searches. Computing per-field counts over those raw rows
+            # double-counts every duplicated place, inflating every metric by
+            # the same ratio (raw rows / distinct places) - it doesn't tell
+            # you anything about real business coverage, and reporting a raw
+            # "Total Rows" alongside it only invites reading percentages that
+            # were never computed. Reduce to one row per place_id first (same
+            # null-ignoring MAX() per column already proven in
+            # scripts/sql/gm_prospects_yield/queries/06_gm_results_reduced_per_place_id.sql)
+            # so every subsequent metric is a real "N of M distinct places"
+            # percentage, not a raw row count with an unrelated aside.
+            metrics_table = "metrics_data"
+            denominator_label = "Total Rows"
+            is_deduped = "place_id" in loaded_cols
+            if is_deduped:
+                agg_cols = ", ".join(
+                    f'max("{c}") AS "{c}"' for c in loaded_cols if c != "place_id"
                 )
+                con.execute("DROP TABLE IF EXISTS metrics_data_deduped")
+                con.execute(f"""
+                    CREATE TABLE metrics_data_deduped AS
+                    SELECT place_id, {agg_cols}
+                    FROM metrics_data
+                    GROUP BY place_id
+                """)
+                metrics_table = "metrics_data_deduped"
+                denominator_label = "Distinct Places"
+
+            denom_row = con.execute(f"SELECT COUNT(*) FROM {metrics_table}").fetchone()
+            denominator = denom_row[0] if denom_row is not None else 0
+
+            metrics: Dict[str, Any] = {denominator_label: denominator}
             for field in schema_fields:
                 if field in loaded_cols:
                     field_type = fields_info.get(field, "string")
                     if field_type in ("integer", "number"):
                         count_row = con.execute(
-                            f'SELECT COUNT(*) FROM metrics_data WHERE '
+                            f'SELECT COUNT(*) FROM {metrics_table} WHERE '
                             f'TRY_CAST("{field}" AS VARCHAR) IS NOT NULL AND '
                             f'TRY_CAST("{field}" AS VARCHAR) != \'\' AND '
                             f'TRY_CAST("{field}" AS VARCHAR) != \'NULL\''
                         ).fetchone()
                     else:
                         count_row = con.execute(
-                            f'SELECT COUNT(*) FROM metrics_data WHERE '
+                            f'SELECT COUNT(*) FROM {metrics_table} WHERE '
                             f'"{field}" IS NOT NULL AND "{field}" != \'\' AND '
                             f'"{field}" != \'NULL\''
                         ).fetchone()
                     count = count_row[0] if count_row is not None else 0
                     if count > 0:
-                        metrics[field] = count
+                        if is_deduped and denominator > 0:
+                            pct = 100.0 * count / denominator
+                            metrics[field] = f"{count} ({pct:.1f}%)"
+                        else:
+                            metrics[field] = count
 
             result = MetricsResult(
                 source_name=usv_path.name,
@@ -561,13 +585,23 @@ class DataSyncService:
     def _compute_metrics_fallback(
         usv_path: Path, schema_fields: Sequence[str]
     ) -> MetricsResult:
-        """Pure-Python metrics when DuckDB load/query fails."""
+        """Pure-Python metrics when DuckDB load/query fails.
+
+        Same reduce-before-counting semantics as the DuckDB path (see
+        compute_metrics): a place_id-keyed dataset can have multiple rows
+        per place, so a field is "present" for a place if ANY of that
+        place's rows had it, not counted once per row.
+        """
         csv.field_size_limit(sys.maxsize)
         field_index = {name: i for i, name in enumerate(schema_fields)}
         place_idx = field_index.get("place_id")
         total_rows = 0
         place_ids: set[str] = set()
-        field_counts: Dict[str, int] = {f: 0 for f in schema_fields}
+        # Per-place-id-keyed dataset: which places have a non-empty value
+        # for each field, on ANY of their (possibly duplicate) rows.
+        field_places_with_value: Dict[str, set[str]] = {f: set() for f in schema_fields}
+        # No place_id column at all: nothing to dedupe on, count per row.
+        field_row_counts: Dict[str, int] = {f: 0 for f in schema_fields}
 
         with open(usv_path, "r", encoding="utf-8") as f:
             reader = csv.reader(f, delimiter="\x1f")
@@ -575,22 +609,32 @@ class DataSyncService:
                 if not row or not any(row):
                     continue
                 total_rows += 1
-                if place_idx is not None and place_idx < len(row):
-                    place_ids.add(row[place_idx])
+                place_id_val = (
+                    row[place_idx] if place_idx is not None and place_idx < len(row) else None
+                )
+                if place_id_val is not None:
+                    place_ids.add(place_id_val)
                 for field_name, idx in field_index.items():
                     if idx < len(row):
                         val = row[idx].strip()
                         if val and val.lower() != "null":
-                            field_counts[field_name] += 1
+                            field_row_counts[field_name] += 1
+                            if place_id_val is not None:
+                                field_places_with_value[field_name].add(place_id_val)
 
-        # Same semantics as the DuckDB path: raw row total, deduplicated
-        # place count, per-field non-empty row counts.
-        metrics: Dict[str, Any] = {"Total Rows": total_rows}
         if place_idx is not None:
-            metrics["Distinct Places"] = len(place_ids)
-        for field, count in field_counts.items():
-            if count:
-                metrics[field] = count
+            denominator = len(place_ids)
+            metrics: Dict[str, Any] = {"Distinct Places": denominator}
+            for field in schema_fields:
+                count = len(field_places_with_value[field])
+                if count and denominator > 0:
+                    pct = 100.0 * count / denominator
+                    metrics[field] = f"{count} ({pct:.1f}%)"
+        else:
+            metrics = {"Total Rows": total_rows}
+            for field, count in field_row_counts.items():
+                if count:
+                    metrics[field] = count
 
         return MetricsResult(
             source_name=usv_path.name,
