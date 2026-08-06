@@ -170,7 +170,7 @@ def metrics(
 
     table = Table(title=title)
     table.add_column("Metric")
-    table.add_column("Count")
+    table.add_column("Value")
     for metric, count in result.metrics.items():
         table.add_row(metric, str(count))
     console.print(table)

@@ -572,7 +572,7 @@ class DataSyncService:
             suffix = " (fallback)" if result.used_fallback else ""
             with open(output_path, "w", encoding="utf-8") as f:
                 f.write(f"# Metrics: {result.source_name}{suffix}\n\n")
-                f.write("| Metric | Count |\n")
+                f.write("| Metric | Value |\n")
                 f.write("| :--- | :--- |\n")
                 for metric, count in result.metrics.items():
                     f.write(f"| {metric} | {count} |\n")
