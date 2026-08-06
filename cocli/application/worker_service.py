@@ -33,6 +33,59 @@ SCRAPE_IDLE_TIMEOUT_S = 90
 SCRAPE_ABSOLUTE_TIMEOUT_S = 1500
 
 
+def _is_orphaned_playwright_target_closed(context: Dict[str, Any]) -> bool:
+    """True for the specific "Future exception was never retrieved:
+    TargetClosedError" noise documented on ticket
+    investigate-orphaned-playwright-future-targetclosederror-from-idle-timeout-cancellation.
+
+    Root cause (confirmed by reading playwright/_impl/_connection.py, not
+    guessed): Channel._inner_send() awaits asyncio.wait({..., callback.future})
+    and only cancels callback.future in the line right after that await
+    returns. When iterate_with_idle_timeout cancels the *task* running this
+    while it's suspended inside that await, asyncio.wait's own cancellation
+    semantics skip that cleanup line entirely (cancelling the awaiter does not
+    cancel the futures passed into wait()), so callback.future is left
+    registered in Connection._callbacks forever. It later gets set() - either
+    by the real (now-unwanted) protocol response, or in one batch by
+    Connection.cleanup() when the browser connection dies - with nothing left
+    awaiting it, which is what triggers this exact "never retrieved" warning.
+
+    This is a bug in Playwright's own _inner_send (missing try/finally around
+    its cancel-cleanup line), not something patchable from our call site - we
+    have no reference to the leaked callback.future from outside Playwright's
+    internals. Downgrading the log is a documented workaround, not a fix; see
+    the ticket for the full mechanism and the periodic-restart mitigation that
+    bounds how many of these can accumulate between browser relaunches.
+    """
+    exc = context.get("exception")
+    message = context.get("message", "")
+    return (
+        exc is not None
+        and type(exc).__name__ == "TargetClosedError"
+        and "never retrieved" in message
+    )
+
+
+def install_playwright_leak_exception_handler(loop: asyncio.AbstractEventLoop) -> None:
+    """Downgrade the known orphaned-callback TargetClosedError noise (see
+    _is_orphaned_playwright_target_closed) to a debug log instead of asyncio's
+    default unhandled-exception warning; everything else still goes through
+    the loop's normal default handler unchanged."""
+
+    def _handler(loop: asyncio.AbstractEventLoop, context: Dict[str, Any]) -> None:
+        if _is_orphaned_playwright_target_closed(context):
+            logger.debug(
+                "Suppressed known orphaned-Playwright-callback TargetClosedError "
+                "(ticket: investigate-orphaned-playwright-future-targetclosederror-"
+                "from-idle-timeout-cancellation): %s",
+                context.get("exception"),
+            )
+            return
+        loop.default_exception_handler(context)
+
+    loop.set_exception_handler(_handler)
+
+
 def route_discovered_list_item(
     list_item: GoogleMapsListItem,
     *,
@@ -718,6 +771,7 @@ class WorkerService:
         """
         Launches and manages multiple named worker instances.
         """
+        install_playwright_leak_exception_handler(asyncio.get_running_loop())
         self._running = True
         from cocli.core.gossip_bridge import bridge
         if bridge:

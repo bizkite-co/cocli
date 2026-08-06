@@ -1,6 +1,48 @@
 import pytest
-from cocli.services.cluster_service import ClusterService
+from cocli.services.cluster_service import (
+    ClusterService,
+    _build_periodic_restart_cron_cmd,
+)
 from cocli.models.campaigns.worker_config import PiNodeConfig
+
+
+def test_build_periodic_restart_cron_cmd_is_idempotent_and_respects_interval():
+    """Workaround for ticket
+    investigate-orphaned-playwright-future-targetclosederror-from-idle-timeout-cancellation:
+    the installed cron line must carry the marker comment (so a re-run can
+    find and drop it instead of stacking duplicates) and respect
+    interval_hours."""
+    cmd = _build_periodic_restart_cron_cmd(interval_hours=8)
+    assert "cocli-supervisor-periodic-restart" in cmd
+    assert "0 */8 * * * docker restart cocli-supervisor" in cmd
+    assert "grep -v 'cocli-supervisor-periodic-restart'" in cmd
+
+
+@pytest.mark.asyncio
+async def test_restart_node_also_installs_periodic_restart_cron(monkeypatch):
+    """_restart_node runs on every deploy-hotfix (hub build and every spoke
+    pull) - piggybacking the idempotent cron install here means the
+    mitigation self-heals on every deploy instead of needing a separate
+    command that's easy to forget to (re-)run."""
+    import cocli.services.cluster_service as cluster_service_module
+
+    ssh_commands = []
+
+    def mock_subprocess_run(cmd_list, **kwargs):
+        ssh_commands.append(cmd_list[-1])
+
+        class _Result:
+            returncode = 0
+
+        return _Result()
+
+    monkeypatch.setattr(cluster_service_module.subprocess, "run", mock_subprocess_run)
+
+    service = ClusterService("roadmap")
+    await service._restart_node("node1", "cocli-worker-rpi:latest", "mstouffer")
+
+    assert any("cocli-supervisor-periodic-restart" in cmd for cmd in ssh_commands)
+
 
 @pytest.mark.asyncio
 async def test_cluster_service_stats_and_status(monkeypatch):
