@@ -8,6 +8,9 @@ from ....core.config import load_scraper_settings
 from ....core.text_utils import slugify
 from ....models.campaigns.indexes.google_maps_list_item import GoogleMapsListItem
 from ....utils.headers import jittered_delay_ms
+from .utils import get_tile_bounds
+
+_MAP_CENTER_RE = re.compile(r"@(-?\d+\.?\d*),(-?\d+\.?\d*),")
 
 logger = logging.getLogger(__name__)
 
@@ -69,6 +72,30 @@ class SidebarScraper:
             logger.warning(f"Could not find scrollable results feed for '{search_string}'. Possibly no results.")
             return
 
+        # Google auto-resizes/recenters the viewport for sparse areas (e.g. a tile
+        # over open ocean or a large desert) and returns results from outside the
+        # requested tile instead. The per-item bounds filter below already discards
+        # those results one-by-one, but each one still looks like "new" DOM content
+        # to the stall-detector (consecutive_no_new_results never trips), so the
+        # scan loop runs to the full 90s idle-timeout instead of failing fast. Catch
+        # the resize once, up front, by checking whether the map actually settled
+        # inside the requested tile before scanning content we'd discard anyway.
+        if tile_id:
+            bounds = get_tile_bounds(tile_id)
+            if bounds:
+                center_match = _MAP_CENTER_RE.search(self.page.url)
+                if center_match:
+                    center_lat = float(center_match.group(1))
+                    center_lon = float(center_match.group(2))
+                    if not (bounds["lat_min"] <= center_lat < bounds["lat_max"] and
+                            bounds["lon_min"] <= center_lon < bounds["lon_max"]):
+                        logger.info(
+                            f"Viewport resized outside tile {tile_id} for '{search_string}' "
+                            f"(settled at {center_lat},{center_lon}, tile bounds {bounds}). "
+                            "Treating as zero results instead of scanning discarded content."
+                        )
+                        return
+
         last_processed_div_count = 0
         consecutive_no_new_results = 0
         
@@ -115,7 +142,6 @@ class SidebarScraper:
                 # Google often intersperses results from outside the targeted area.
                 # We strictly enforce 0.1 degree tile bounds to prevent cross-tile duplication.
                 if tile_id:
-                    from .utils import get_tile_bounds
                     bounds = get_tile_bounds(tile_id)
                     if bounds:
                         lat_val = data.get("Latitude")
