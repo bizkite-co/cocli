@@ -143,6 +143,9 @@ exclude = [
     "cdk_scraper_deployment*"
 ]
 
+[tool.setuptools.package-data]
+cocli = ["utils/*.js"]
+
 [tool.setuptools.dynamic]
 version = {file = "VERSION"}
 
