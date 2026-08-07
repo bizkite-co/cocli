@@ -38,7 +38,6 @@ gemini-cli
 fullertonian-site
 .playwright/
 docs/issues
-docs/tasks
 tools/taskhash/
 /ses
 
@@ -52,5 +51,3 @@ schema_ledger.json
 .task-agent/
 
 
-# task-agent: human-facing store symlink
-docks/tasks
