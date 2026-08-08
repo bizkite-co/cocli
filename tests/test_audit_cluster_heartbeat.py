@@ -3,12 +3,14 @@ from typing import Any, Dict, List
 from unittest.mock import patch
 
 from rich.console import Console
+from typer.testing import CliRunner
 
 import cocli.commands.audit as audit_module
 from cocli.commands.audit import (
     _audit_cluster_from_heartbeats,
     _classify_error_message,
     _count_error_types,
+    _parse_cluster_audit_sections,
 )
 
 
@@ -207,34 +209,41 @@ def test_queue_depths_exclude_lease_attempts_and_sidecar_files(capsys: Any) -> N
     every lease*.json (claimed task), attempts*.json (retried task), and
     datapackage.json/mission.usv sidecar as if it were its own pending
     task - silently inflating "Pending" well past the true number of
-    distinct tiles/phrases still waiting to be scraped."""
+    distinct tasks still waiting.
+
+    Uses gm-details, not gm-list: gm-list's real work pool is
+    discovery-gen/completed (a witness-indexed pool), not queues/gm-list/
+    pending/, so that specific queue's pending count is intentionally
+    skipped entirely now (see test_gm_list_pending_omitted_not_zeroed) -
+    the lease/attempts/sidecar filtering this test pins still applies to
+    every other queue type that does count its pending/ prefix for real."""
     from datetime import datetime, timezone
 
     now_iso = datetime.now(timezone.utc).isoformat()
     heartbeats = {
         "cocli5x0": {
             "timestamp": now_iso,
-            "designation": {"gm-list": 1},
-            "last_activity": {"gm-list": now_iso},
+            "designation": {"gm-details": 1},
+            "last_activity": {"gm-details": now_iso},
             "error_count_30m": 0,
         },
     }
-    gm_list_pending_prefix = "campaigns/turboship/queues/gm-list/pending/"
+    gm_details_pending_prefix = "campaigns/turboship/queues/gm-details/pending/"
     fake_client = FakeS3Client(
         heartbeats,
         queue_keys_by_prefix={
-            gm_list_pending_prefix: [
+            gm_details_pending_prefix: [
                 # 2 real pending tasks...
-                f"{gm_list_pending_prefix}2/28.0/-82.7/commercial-vinyl-flooring-contractor.usv",
-                f"{gm_list_pending_prefix}2/28.3/-81.5/rubber-flooring-contractor.usv",
+                f"{gm_details_pending_prefix}2/28.0/-82.7/commercial-vinyl-flooring-contractor.usv",
+                f"{gm_details_pending_prefix}2/28.3/-81.5/rubber-flooring-contractor.usv",
                 # ...but one of them is claimed (adds a lease file)...
-                f"{gm_list_pending_prefix}2/28.0/-82.7/commercial-vinyl-flooring-contractor/lease.json",
+                f"{gm_details_pending_prefix}2/28.0/-82.7/commercial-vinyl-flooring-contractor/lease.json",
                 # ...one has been retried (adds an attempts file)...
-                f"{gm_list_pending_prefix}2/28.3/-81.5/rubber-flooring-contractor/attempts.json",
+                f"{gm_details_pending_prefix}2/28.3/-81.5/rubber-flooring-contractor/attempts.json",
                 # ...and the queue-wide sidecars are always present regardless
                 # of how many real tasks exist.
-                f"{gm_list_pending_prefix}datapackage.json",
-                f"{gm_list_pending_prefix}mission.usv",
+                f"{gm_details_pending_prefix}datapackage.json",
+                f"{gm_details_pending_prefix}mission.usv",
             ],
         },
     )
@@ -248,16 +257,52 @@ def test_queue_depths_exclude_lease_attempts_and_sidecar_files(capsys: Any) -> N
         _audit_cluster_from_heartbeats("turboship", verbose=False)
 
     out = capsys.readouterr().out
-    # "gm-list: N" (with a colon) is the Cluster Node Audit table's
+    # "gm-details: N" (with a colon) is the Cluster Node Audit table's
     # Designation cell - the Campaign Queue Depths table's Queue column is
-    # just the bare word "gm-list", so exclude the colon form to isolate it.
+    # just the bare word "gm-details", so exclude the colon form to isolate it.
+    lines = [
+        line for line in out.splitlines()
+        if "gm-details" in line and "gm-details:" not in line
+    ]
+    assert lines, "expected a gm-details row in the Campaign Queue Depths table"
+    # 6 raw keys were provided; only 2 are real distinct pending tasks.
+    assert " 2 " in lines[0], f"expected exactly 2 real pending tasks, got: {lines[0]!r}"
+
+
+def test_gm_list_pending_omitted_not_zeroed(capsys: Any) -> None:
+    """gm-list's real work pool is discovery-gen/completed, not queues/
+    gm-list/pending/ (near-permanently empty by design) - counting it would
+    render a confident-looking "0" indistinguishable from "genuinely no work
+    left", when the truth is just "this counter doesn't know where to look".
+    Must render "-", not 0."""
+    from datetime import datetime, timezone
+
+    now_iso = datetime.now(timezone.utc).isoformat()
+    heartbeats = {
+        "cocli5x0": {
+            "timestamp": now_iso,
+            "designation": {"gm-list": 1},
+            "last_activity": {"gm-list": now_iso},
+            "error_count_30m": 0,
+        },
+    }
+    fake_client = FakeS3Client(heartbeats)
+
+    with patch.object(audit_module, "console", Console(width=200, no_color=True)), \
+        patch("cocli.core.config.load_campaign_config", return_value={}), patch(
+        "cocli.core.reporting.get_data_bucket_name", return_value="test-bucket"
+    ), patch("cocli.core.reporting.get_boto3_session", return_value=None), patch(
+        "cocli.core.reporting.get_s3_client", return_value=fake_client
+    ):
+        _audit_cluster_from_heartbeats("turboship", verbose=False)
+
+    out = capsys.readouterr().out
     lines = [
         line for line in out.splitlines()
         if "gm-list" in line and "gm-list:" not in line
     ]
     assert lines, "expected a gm-list row in the Campaign Queue Depths table"
-    # 6 raw keys were provided; only 2 are real distinct pending tasks.
-    assert " 2 " in lines[0], f"expected exactly 2 real pending tasks, got: {lines[0]!r}"
+    assert "-" in lines[0], f"expected pending rendered as '-', got: {lines[0]!r}"
 
 
 def test_audit_cluster_from_heartbeats_renders_cpu_and_mem(capsys: Any) -> None:
@@ -346,3 +391,77 @@ def test_audit_cluster_from_heartbeats_tolerates_epoch_float_timestamp(capsys: A
 
     out = capsys.readouterr().out
     assert "octoprint" in out
+
+
+def test_audit_cluster_defaults_to_ssh_not_s3(cli_app) -> None:
+    """SSH (concurrent, per-node) is the default path now - S3 heartbeat
+    fan-in became the default in July for Fargate coverage, but that made
+    every plain `cocli audit cluster` call pay 9+ paginated S3 listings (and
+    an 1Password/Windows-Hello prompt) even for campaigns with no Fargate
+    node at all. --s3 opts back into the old heartbeat-only path."""
+    runner = CliRunner()
+    with patch.object(audit_module, "_audit_cluster_ssh") as mock_ssh, \
+        patch.object(audit_module, "_audit_cluster_from_heartbeats") as mock_s3:
+        result = runner.invoke(cli_app, ["audit", "cluster", "--campaign", "roadmap"])
+
+    assert result.exit_code == 0
+    mock_ssh.assert_called_once_with("roadmap", False)
+    mock_s3.assert_not_called()
+
+
+def test_audit_cluster_s3_flag_opts_into_heartbeat_path(cli_app) -> None:
+    runner = CliRunner()
+    with patch.object(audit_module, "_audit_cluster_ssh") as mock_ssh, \
+        patch.object(audit_module, "_audit_cluster_from_heartbeats") as mock_s3:
+        result = runner.invoke(cli_app, ["audit", "cluster", "--campaign", "roadmap", "--s3"])
+
+    assert result.exit_code == 0
+    mock_s3.assert_called_once_with("roadmap", False)
+    mock_ssh.assert_not_called()
+
+
+def test_parse_cluster_audit_sections_handles_glued_marker() -> None:
+    """Regression pin: `docker exec ... cat /tmp/cocli_heartbeat.json` doesn't
+    emit a trailing newline (the JSON file has none), so without an explicit
+    blank `echo` before the next `echo '@@WORKERS@@'` in the remote script,
+    the marker glues onto the JSON's closing brace as `...}@@WORKERS@@` and
+    never matches `markers` exactly - silently emptying every section from
+    WORKERS onward with no exception, just wrong (blank) data. Caught live
+    on cocli5x1, not by any test, before this pin existed."""
+    raw = (
+        "CAMPAIGN_NAME=roadmap\n"
+        "@@HEARTBEAT@@\n"
+        '{"campaign": "roadmap", "system": {"cpu": 12.0, "mem": 8.0}}@@WORKERS@@\n'
+        "Starting worker: scraper-1 (type=gm-list, workers=2)\n"
+        "@@ERRORS@@\n"
+        "3\n"
+    )
+    sections = _parse_cluster_audit_sections(raw)
+
+    # The glued case: only @@WORKERS@@ (immediately after the no-trailing-
+    # newline JSON) fails to match - it and everything until the next real
+    # marker (@@ERRORS@@, still on its own line) fall into HEARTBEAT instead.
+    assert sections["WORKERS"] == []
+    assert sections["ERRORS"] == ["3"]
+    assert len(sections["HEARTBEAT"]) == 2
+    assert "@@WORKERS@@" in sections["HEARTBEAT"][0]
+
+
+def test_parse_cluster_audit_sections_normal_shape() -> None:
+    """Positive case: each marker on its own line (the fixed remote script,
+    with the blank `echo` separator) partitions cleanly."""
+    raw = (
+        "CAMPAIGN_NAME=roadmap\n"
+        "@@HEARTBEAT@@\n"
+        '{"campaign": "roadmap", "system": {"cpu": 12.0, "mem": 8.0}}\n'
+        "\n"
+        "@@WORKERS@@\n"
+        "Starting worker: scraper-1 (type=gm-list, workers=2)\n"
+        "@@ERRORS@@\n"
+        "3\n"
+    )
+    sections = _parse_cluster_audit_sections(raw)
+
+    assert sections["HEARTBEAT"] == ['{"campaign": "roadmap", "system": {"cpu": 12.0, "mem": 8.0}}', ""]
+    assert sections["WORKERS"] == ["Starting worker: scraper-1 (type=gm-list, workers=2)"]
+    assert sections["ERRORS"] == ["3"]

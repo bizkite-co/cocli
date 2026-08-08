@@ -27,7 +27,7 @@ cocli
         cluster - Audit cluster nodes: designation (content_type/workers), queue depths, and a
             --campaign/-c (text)
             --verbose/-v (boolean)
-            --live (boolean)
+            --s3/--fast (boolean)
         enrichment - Audit website enrichment metrics for a campaign: counts of enriched companies,
             --campaign/-c (text)
         enrichment-interactive - Interactively step through companies that have no contact name (Tiers 2 & 3)
@@ -290,6 +290,7 @@ cocli
     cluster - Manage the Raspberry Pi worker cluster.
         deploy-hotfix - Safe Cluster Deployment: Builds on Hub (cocli5x1), pushes to registry, and spokes pull.
             --campaign/-c (text)
+            --force (boolean)
         gossip-audit - Diagnostic tool for the cluster Gossip Bridge.
             --target/-t (text)
             --timeout (float)

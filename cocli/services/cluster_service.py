@@ -526,10 +526,19 @@ class ClusterService:
     async def run_remote_command(
         self, node: PiNodeConfig, command: str, user: str = "mstouffer"
     ) -> str:
-        res = subprocess.run(
-            ["ssh", f"{user}@{node.hostname}", command], capture_output=True, text=True
+        # asyncio subprocess, not subprocess.run - callers gather() multiple
+        # nodes concurrently, and a blocking subprocess.run inside an async
+        # def would stall the whole event loop for each SSH round-trip in
+        # turn, silently serializing what looked like concurrent calls.
+        proc = await asyncio.create_subprocess_exec(
+            "ssh", f"{user}@{node.hostname}", command,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
         )
-        return res.stdout if res.returncode == 0 else res.stderr
+        stdout, stderr = await proc.communicate()
+        if proc.returncode == 0:
+            return stdout.decode()
+        return stderr.decode()
 
     async def get_top_stats(self) -> List[Dict[str, Any]]:
         """Collects load, temp, mem, and pids of all nodes."""

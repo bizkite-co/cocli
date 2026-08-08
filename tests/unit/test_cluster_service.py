@@ -1,3 +1,5 @@
+import asyncio
+import time
 from pathlib import Path
 from unittest.mock import AsyncMock, patch
 
@@ -216,3 +218,39 @@ async def test_cluster_service_log_callback_fires_per_node(monkeypatch):
     messages.clear()
     await service.prune_nodes([node1, node2], log_callback=log_cb)
     assert messages == ["Pruning node1...", "Pruning node2..."]
+
+
+@pytest.mark.asyncio
+async def test_run_remote_command_does_not_block_event_loop() -> None:
+    """Regression pin: run_remote_command used to shell out via blocking
+    subprocess.run() inside an async def, so asyncio.gather()-ing it across
+    N nodes still ran N SSH round-trips back-to-back - gather() can't
+    parallelize a call that never yields control back to the loop. Confirmed
+    by timing 3 concurrent calls against a fake subprocess that sleeps: if
+    still serialized, this takes ~3x the per-call sleep instead of ~1x."""
+    service = ClusterService.__new__(ClusterService)
+    service.campaign_name = "roadmap"
+
+    class FakeProc:
+        returncode = 0
+
+        async def communicate(self) -> tuple[bytes, bytes]:
+            await asyncio.sleep(0.2)
+            return b"ok", b""
+
+    async def fake_create_subprocess_exec(*args: object, **kwargs: object) -> FakeProc:
+        return FakeProc()
+
+    nodes = [PiNodeConfig(host=f"node{i}", ip=None, workers=[]) for i in range(3)]
+
+    with patch("asyncio.create_subprocess_exec", side_effect=fake_create_subprocess_exec):
+        start = time.monotonic()
+        results = await asyncio.gather(
+            *(service.run_remote_command(n, "echo hi") for n in nodes)
+        )
+        elapsed = time.monotonic() - start
+
+    assert results == ["ok", "ok", "ok"]
+    # 3 sequential 0.2s calls would take >=0.6s; concurrent execution stays
+    # close to a single call's duration.
+    assert elapsed < 0.5, f"expected concurrent execution, took {elapsed:.2f}s"

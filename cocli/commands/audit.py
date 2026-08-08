@@ -573,6 +573,16 @@ _CLUSTER_AUDIT_REMOTE_SCRIPT = r"""
 LOGFILE=$(mktemp)
 docker logs cocli-supervisor > "$LOGFILE" 2>&1
 docker inspect -f '{{range .Config.Env}}{{println .}}{{end}}' cocli-supervisor 2>/dev/null | grep -E '^CAMPAIGN_NAME=' || true
+echo '@@HEARTBEAT@@'
+# Same stats the S3 heartbeat path trusts (psutil, written by the worker
+# itself every push) - docker stats --no-stream is a single noisy instant
+# sample and was observed returning "0B / 0B" memory on this cgroup driver.
+# The trailing `echo` guarantees a newline before the next marker even
+# though `cat` on a no-trailing-newline JSON file won't emit one itself -
+# without it the marker glues onto the JSON's closing brace and every
+# section after HEARTBEAT silently vanishes into it.
+docker exec cocli-supervisor cat /tmp/cocli_heartbeat.json 2>/dev/null || true
+echo
 echo '@@WORKERS@@'
 grep -E 'Starting worker:' "$LOGFILE" | tail -30 || true
 echo '@@ERRORS@@'
@@ -596,6 +606,13 @@ done
 echo '@@QUEUES@@'
 for q in gm-list gm-details enrichment; do
   for s in pending completed failed; do
+    # gm-list's real work pool is discovery-gen/completed (a witness-indexed
+    # pool the worker walks directly), not queues/gm-list/pending/ - that dir
+    # is essentially always empty, so counting it renders a number that looks
+    # real but has nothing to do with how much work is actually left.
+    if [ "$q" = "gm-list" ] && [ "$s" = "pending" ]; then
+      continue
+    fi
     c=$(find ~/repos/data/campaigns/__CAMPAIGN__/queues/$q/$s -type f 2>/dev/null | wc -l)
     echo "$q/$s=$c"
   done
@@ -611,13 +628,14 @@ _LOG_TS_RE = re.compile(r"\[(?P<ts>\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2} [+-]\d{4}
 
 def _parse_cluster_audit_sections(raw: str) -> dict[str, list[str]]:
     sections: dict[str, list[str]] = {
-        "HEADER": [], "WORKERS": [], "ERRORS": [], "ERROR_PATTERNS": [], "LASTLOG": [],
+        "HEADER": [], "HEARTBEAT": [], "WORKERS": [], "ERRORS": [], "ERROR_PATTERNS": [], "LASTLOG": [],
         "TYPE_ACTIVITY": [], "QUEUES": [],
     }
     current = "HEADER"
     markers = {
-        "@@WORKERS@@": "WORKERS", "@@ERRORS@@": "ERRORS", "@@ERROR_PATTERNS@@": "ERROR_PATTERNS",
-        "@@LASTLOG@@": "LASTLOG", "@@TYPE_ACTIVITY@@": "TYPE_ACTIVITY", "@@QUEUES@@": "QUEUES",
+        "@@HEARTBEAT@@": "HEARTBEAT", "@@WORKERS@@": "WORKERS", "@@ERRORS@@": "ERRORS",
+        "@@ERROR_PATTERNS@@": "ERROR_PATTERNS", "@@LASTLOG@@": "LASTLOG",
+        "@@TYPE_ACTIVITY@@": "TYPE_ACTIVITY", "@@QUEUES@@": "QUEUES",
     }
     for line in raw.splitlines():
         stripped = line.strip()
@@ -639,6 +657,25 @@ def _log_line_age_seconds(line: str) -> Optional[float]:
         return (datetime.now(last_ts.tzinfo) - last_ts).total_seconds()
     except ValueError:
         return None
+
+
+def _fmt_pct(value: Any) -> str:
+    """Colored at-a-glance CPU/MEM reading - lets DEGRADED/STALE verdicts be
+    cross-checked against actual load instead of taken on faith. Accepts a
+    bare number (S3 heartbeat JSON) or a "NN.NN%" string (docker stats
+    --format output from the SSH path) transparently."""
+    if value is None:
+        return "-"
+    try:
+        v = float(str(value).rstrip("%"))
+    except (TypeError, ValueError):
+        return "-"
+    text = f"{v:.0f}"
+    if v >= 85:
+        return f"[red]{text}[/red]"
+    if v >= 60:
+        return f"[yellow]{text}[/yellow]"
+    return text
 
 
 def _node_health_verdict(
@@ -696,29 +733,32 @@ def _count_error_types(messages: list[str]) -> list[tuple[str, int]]:
 @app.command(name="cluster")
 def audit_cluster(
     campaign: Optional[str] = typer.Option(None, "--campaign", "-c", help="Campaign name (defaults to current)."),
-    verbose: bool = typer.Option(False, "--verbose", "-v", help="Show each node's raw heartbeat payload (or, with --live, recent log lines)."),
-    live: bool = typer.Option(
+    verbose: bool = typer.Option(False, "--verbose", "-v", help="Show each node's raw heartbeat payload (or, with --s3, recent log lines)."),
+    use_s3: bool = typer.Option(
         False,
-        "--live",
-        help="Fall back to live SSH+docker-logs polling instead of the fast S3 heartbeat fan-in. "
-        "Slow (opens an SSH connection per Pi) and can't see Fargate - use it to dig into a "
-        "specific node's actual logs when the heartbeat-based view looks wrong.",
+        "--s3", "--fast",
+        help="Use the S3 heartbeat fan-in instead of live SSH+docker-logs polling. Avoids "
+        "opening an SSH connection per node, at the cost of relying on each node's last "
+        "self-reported heartbeat (which can be stale or wrong if the node's own reporting "
+        "is broken - the exact case this is meant to help diagnose).",
     ),
 ) -> None:
     """
     Audit cluster nodes: designation (content_type/workers), queue depths, and a
-    health signal (recent errors + staleness). Reads from each node's S3 heartbeat
-    by default (fast, includes Fargate); pass --live for the old SSH+docker-logs path.
+    health signal (recent errors + staleness). SSHes each node directly and reads
+    its live docker logs/queue dirs by default (concurrent per node; S3 heartbeat
+    is only consulted to fill in nodes with no SSH endpoint, e.g. Fargate). Pass
+    --s3 to instead read purely from each node's last self-reported S3 heartbeat.
     """
     from ..core.config import get_campaign
 
     campaign_name = campaign or get_campaign() or "roadmap"
 
-    if live:
-        _audit_cluster_live(campaign_name, verbose)
+    if use_s3:
+        _audit_cluster_from_heartbeats(campaign_name, verbose)
         return
 
-    _audit_cluster_from_heartbeats(campaign_name, verbose)
+    _audit_cluster_ssh(campaign_name, verbose)
 
 
 def _audit_cluster_from_heartbeats(campaign_name: str, verbose: bool) -> None:
@@ -782,6 +822,15 @@ def _audit_cluster_from_heartbeats(campaign_name: str, verbose: bool) -> None:
     queue_depths: dict[str, dict[str, int]] = {}
     for q in _KNOWN_CONTENT_TYPES:
         for status in ("pending", "completed", "failed"):
+            # gm-list's real work pool is discovery-gen/completed (a witness-
+            # indexed pool FilesystemGmListQueue.poll() walks directly), not
+            # queues/gm-list/pending/ - that directory is essentially always
+            # empty, so counting it renders a real-looking number (e.g. "0"
+            # or a handful of lease/claim stragglers) that has nothing to do
+            # with how much work actually remains. Leave it uncounted rather
+            # than assert a number nobody can trust.
+            if q == "gm-list" and status == "pending":
+                continue
             prefix = f"campaigns/{campaign_name}/queues/{q}/{status}/"
             count = 0
             for page in paginator.paginate(Bucket=bucket_name, Prefix=prefix):
@@ -822,22 +871,6 @@ def _audit_cluster_from_heartbeats(campaign_name: str, verbose: bool) -> None:
         except (ValueError, OSError, OverflowError):
             return None
         return (now - ts).total_seconds()
-
-    def _fmt_pct(value: Any) -> str:
-        """Colored at-a-glance CPU/MEM reading - lets DEGRADED/STALE verdicts
-        be cross-checked against actual load instead of taken on faith."""
-        if value is None:
-            return "-"
-        try:
-            v = float(value)
-        except (TypeError, ValueError):
-            return "-"
-        text = f"{v:.0f}"
-        if v >= 85:
-            return f"[red]{text}[/red]"
-        if v >= 60:
-            return f"[yellow]{text}[/yellow]"
-        return text
 
     for hostname in sorted(nodes):
         payload = nodes[hostname]
@@ -887,7 +920,9 @@ def _audit_cluster_from_heartbeats(campaign_name: str, verbose: bool) -> None:
     queue_table.add_column("Failed", justify="right")
     for q in _KNOWN_CONTENT_TYPES:
         depths = queue_depths.get(q, {})
-        queue_table.add_row(q, str(depths.get("pending", 0)), str(depths.get("completed", 0)), str(depths.get("failed", 0)))
+        pending = depths.get("pending")
+        pending_str = str(pending) if pending is not None else "-"
+        queue_table.add_row(q, pending_str, str(depths.get("completed", 0)), str(depths.get("failed", 0)))
     console.print(queue_table)
 
     if verbose:
@@ -915,13 +950,15 @@ def _audit_cluster_from_heartbeats(campaign_name: str, verbose: bool) -> None:
                     console.print(f"  [red]{escape(line)}[/red]", highlight=False)
 
 
-def _audit_cluster_live(campaign_name: str, verbose: bool) -> None:
-    """Legacy path: opens a live SSH connection per node and greps `docker logs`.
-    Slow and can't see Fargate (no SSH endpoint) - kept as an opt-in `--live`
-    fallback for deep debugging a specific node's actual log output.
+def _audit_cluster_ssh(campaign_name: str, verbose: bool) -> None:
+    """Default path: SSHes each node concurrently and greps its live `docker logs`
+    + queue dirs directly. S3 is only consulted to merge in nodes with no SSH
+    endpoint (e.g. Fargate) - see `_audit_cluster_from_heartbeats` for the
+    S3-heartbeat-only alternative (`--s3`).
     """
     from ..services.cluster_service import ClusterService
     import asyncio
+    import json
 
     service = ClusterService(campaign_name)
     remote_script = _CLUSTER_AUDIT_REMOTE_SCRIPT.replace("__CAMPAIGN__", campaign_name)
@@ -930,7 +967,27 @@ def _audit_cluster_live(campaign_name: str, verbose: bool) -> None:
         raw = await service.run_remote_command(node, remote_script)
         sections = _parse_cluster_audit_sections(raw)
 
-        has_campaign = any(line.startswith("CAMPAIGN_NAME=") for line in sections["HEADER"])
+        live_campaign: Optional[str] = None
+        for line in sections["HEADER"]:
+            if line.startswith("CAMPAIGN_NAME="):
+                live_campaign = line[len("CAMPAIGN_NAME="):].strip()
+                break
+        has_campaign = live_campaign is not None
+
+        cpu_str = "-"
+        mem_str = "-"
+        if sections["HEARTBEAT"]:
+            try:
+                hb = json.loads("\n".join(sections["HEARTBEAT"]))
+                # Worker's own self-report, same field the S3 path reads -
+                # prefer it over the docker-inspect env var above when present.
+                live_campaign = hb.get("campaign") or live_campaign
+                has_campaign = live_campaign is not None
+                system = hb.get("system") or {}
+                cpu_str = _fmt_pct(system.get("cpu"))
+                mem_str = _fmt_pct(system.get("mem"))
+            except (json.JSONDecodeError, AttributeError):
+                pass
 
         # Dedupe by worker name, keeping the last (most recent) definition, then
         # aggregate active worker counts per content_type.
@@ -984,6 +1041,9 @@ def _audit_cluster_live(campaign_name: str, verbose: bool) -> None:
         return {
             "host": node.hostname,
             "has_campaign": has_campaign,
+            "campaign": live_campaign,
+            "cpu": cpu_str,
+            "mem": mem_str,
             "designation": by_content_type,
             "error_count": error_count,
             "error_patterns": error_patterns,
@@ -995,7 +1055,6 @@ def _audit_cluster_live(campaign_name: str, verbose: bool) -> None:
 
     from ..core.config import load_campaign_config
     from ..core.reporting import get_boto3_session, get_data_bucket_name, get_s3_client
-    import json
     from datetime import datetime, timezone
 
     status_prefix = paths.s3.status_root
@@ -1024,11 +1083,7 @@ def _audit_cluster_live(campaign_name: str, verbose: bool) -> None:
         console.print(f"[yellow]Warning: Could not fetch S3 heartbeats ({e}). Only showing SSH-audited nodes.[/yellow]")
 
     async def gather() -> list[dict[str, Any]]:
-        results: list[dict[str, Any]] = []
-        for n in service.get_nodes():
-            info = await collect_node_info(n)
-            results.append(info)
-        return results
+        return list(await asyncio.gather(*(collect_node_info(n) for n in service.get_nodes())))
 
     diagnostics: list[dict[str, Any]] = asyncio.run(gather())
 
@@ -1069,9 +1124,13 @@ def _audit_cluster_live(campaign_name: str, verbose: bool) -> None:
             last_log_age = None
             stale_content_types = []
 
+        system = payload.get("system") or {}
         diagnostics.append({
             "host": hostname,
             "has_campaign": True,
+            "campaign": payload.get("campaign"),
+            "cpu": _fmt_pct(system.get("cpu")),
+            "mem": _fmt_pct(system.get("mem")),
             "designation": designation,
             "error_count": error_count,
             "error_patterns": [],
@@ -1083,39 +1142,68 @@ def _audit_cluster_live(campaign_name: str, verbose: bool) -> None:
 
     table = Table(title=f"Cluster Node Audit: {campaign_name}")
     table.add_column("Node", style="cyan")
-    table.add_column("Designation", style="magenta")
-    table.add_column("Queues (pending/done)")
+    table.add_column("Campaign", style="green")
+    table.add_column("Queue", style="magenta")
+    table.add_column("Workers", justify="right")
+    table.add_column("Pending", justify="right")
+    table.add_column("Done", justify="right")
+    table.add_column("CPU %", justify="right")
+    table.add_column("MEM %", justify="right")
     table.add_column("Errors (30m)", justify="right")
     table.add_column("Last Activity")
     table.add_column("Health")
 
-    for d in diagnostics:
+    for i, d in enumerate(diagnostics):
+        if i > 0:
+            table.add_section()
+
         designation = d["designation"]
-        if not designation:
-            designation_str = "-"
-            relevant_queues = list(d["queue_depths"].keys())
+        # Sorted once, and every per-queue value below is looked up by that
+        # same key on the same row - so Workers/Pending/Done for "gm-list"
+        # can never land next to a different queue's numbers the way two
+        # independently-ordered multi-line cells could.
+        relevant_queues = sorted(designation.keys() if designation else d["queue_depths"].keys())
+
+        live_campaign = d.get("campaign")
+        if not live_campaign:
+            campaign_str = "[dim]-[/dim]"
+        elif live_campaign != campaign_name:
+            campaign_str = f"[yellow]{escape(str(live_campaign))} (!= {campaign_name})[/yellow]"
         else:
-            designation_str = "\n".join(f"{ct}: {n}" for ct, n in sorted(designation.items()))
-            relevant_queues = list(designation.keys())
+            campaign_str = str(live_campaign)
 
-        queue_lines = []
-        for q in relevant_queues:
-            if d["queue_depths"]:
-                depths = d["queue_depths"].get(q, {})
-                queue_lines.append(f"{q}: {depths.get('pending', 0)}p / {depths.get('completed', 0)}d")
-        queues_str = "\n".join(queue_lines) if queue_lines else "-"
-
+        cpu_str = d.get("cpu", "-")
+        mem_str = d.get("mem", "-")
         error_count = d["error_count"]
         errors_str = str(error_count) if d["has_campaign"] else "-"
-
-        if d["last_log_age"] is not None:
-            activity_str = _format_age(d["last_log_age"])
-        else:
-            activity_str = "-"
-
+        activity_str = _format_age(d["last_log_age"]) if d["last_log_age"] is not None else "-"
         health = _node_health_verdict(d["has_campaign"], d["last_log_age"], error_count, d["stale_content_types"])
 
-        table.add_row(d["host"], designation_str, queues_str, errors_str, activity_str, health)
+        if not relevant_queues:
+            table.add_row(d["host"], campaign_str, "-", "-", "-", "-", cpu_str, mem_str, errors_str, activity_str, health)
+            continue
+
+        for row_idx, q in enumerate(relevant_queues):
+            workers_str = str(designation.get(q, "-")) if designation else "-"
+            depths = d["queue_depths"].get(q, {}) if d["queue_depths"] else {}
+            pending = depths.get("pending")
+            pending_str = str(pending) if pending is not None else "-"
+            done_str = str(depths.get("completed", 0)) if d["queue_depths"] else "-"
+
+            is_first = row_idx == 0
+            table.add_row(
+                d["host"] if is_first else "",
+                campaign_str if is_first else "",
+                q,
+                workers_str,
+                pending_str,
+                done_str,
+                cpu_str if is_first else "",
+                mem_str if is_first else "",
+                errors_str if is_first else "",
+                activity_str if is_first else "",
+                health if is_first else "",
+            )
 
     console.print(table)
 
