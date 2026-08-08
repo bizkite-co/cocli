@@ -759,6 +759,7 @@ class WorkerService:
         stats = {
             "timestamp": datetime.now(UTC).isoformat(),
             "hostname": self.processed_by,
+            "campaign": self.campaign_name,
             "system": {"cpu": cpu_usage, "mem": mem_usage},
             "workers": {
                 "s": designation.get("gm-list", 0),

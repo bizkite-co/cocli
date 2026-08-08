@@ -795,6 +795,7 @@ def _audit_cluster_from_heartbeats(campaign_name: str, verbose: bool) -> None:
 
     table = Table(title=f"Cluster Node Audit: {campaign_name}", box=None)
     table.add_column("Node", style="cyan")
+    table.add_column("Campaign", style="green")
     table.add_column("Designation", style="magenta")
     table.add_column("CPU %", justify="right")
     table.add_column("MEM %", justify="right")
@@ -849,6 +850,20 @@ def _audit_cluster_from_heartbeats(campaign_name: str, verbose: bool) -> None:
             cpu_str = _fmt_pct(system.get("cpu"))
             mem_str = _fmt_pct(system.get("mem"))
 
+            # The node's own report of which campaign it's actually running -
+            # not just "which campaign's S3 prefix did we read this from".
+            # Older heartbeats (written before this field existed) show "-".
+            # A live mismatch against the campaign_name we queried would mean
+            # this node's process is running one campaign while its heartbeat
+            # landed under another's prefix - flag it instead of hiding it.
+            heartbeat_campaign = payload.get("campaign")
+            if not heartbeat_campaign:
+                campaign_str = "[dim]-[/dim]"
+            elif heartbeat_campaign != campaign_name:
+                campaign_str = f"[yellow]{escape(str(heartbeat_campaign))} (!= {campaign_name})[/yellow]"
+            else:
+                campaign_str = str(heartbeat_campaign)
+
             stale_content_types = [
                 ct for ct in designation
                 if (age := _age(last_activity.get(ct))) is None or age > _STALE_THRESHOLD_S.get(ct, _DEFAULT_STALE_THRESHOLD_S)
@@ -858,10 +873,10 @@ def _audit_cluster_from_heartbeats(campaign_name: str, verbose: bool) -> None:
             activity_str = _format_age(last_log_age) if last_log_age is not None else "-"
             health = _node_health_verdict(True, last_log_age, error_count, stale_content_types)
         except Exception as e:
-            table.add_row(hostname, "-", "-", "-", "-", "-", f"[red]MALFORMED ({e})[/red]")
+            table.add_row(hostname, "-", "-", "-", "-", "-", "-", f"[red]MALFORMED ({e})[/red]")
             continue
 
-        table.add_row(hostname, designation_str, cpu_str, mem_str, str(error_count), activity_str, health)
+        table.add_row(hostname, campaign_str, designation_str, cpu_str, mem_str, str(error_count), activity_str, health)
 
     console.print(table)
 

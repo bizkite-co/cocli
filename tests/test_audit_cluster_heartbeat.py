@@ -156,6 +156,52 @@ def test_audit_cluster_from_heartbeats_renders_designation_and_health(capsys: An
     assert "enrichment: 2" in out
 
 
+def test_audit_cluster_from_heartbeats_flags_campaign_mismatch(capsys: Any) -> None:
+    """The heartbeat's own "campaign" field (added 2026-08-07) is the node's
+    live self-report of what it's actually running - a confirmed drift
+    incident showed a node's config.toml can say one thing while the
+    running container serves another. A node whose heartbeat campaign
+    doesn't match the campaign we queried must be visibly flagged, not
+    silently displayed as if everything's normal."""
+    from datetime import datetime, timezone
+
+    now_iso = datetime.now(timezone.utc).isoformat()
+    heartbeats = {
+        "cocli5x0": {
+            "timestamp": now_iso,
+            "campaign": "turboship",
+            "designation": {"gm-list": 2},
+            "last_activity": {"gm-list": now_iso},
+            "error_count_30m": 0,
+        },
+        "cocli5x1": {
+            "timestamp": now_iso,
+            "campaign": "roadmap",
+            "designation": {"enrichment": 3},
+            "last_activity": {"enrichment": now_iso},
+            "error_count_30m": 0,
+        },
+    }
+    fake_client = FakeS3Client(heartbeats)
+
+    with patch.object(audit_module, "console", Console(width=200, no_color=True)), \
+        patch("cocli.core.config.load_campaign_config", return_value={}), patch(
+        "cocli.core.reporting.get_data_bucket_name", return_value="test-bucket"
+    ), patch("cocli.core.reporting.get_boto3_session", return_value=None), patch(
+        "cocli.core.reporting.get_s3_client", return_value=fake_client
+    ):
+        _audit_cluster_from_heartbeats("turboship", verbose=False)
+
+    out = capsys.readouterr().out
+    lines = out.splitlines()
+    cocli5x0_line = next(line for line in lines if "cocli5x0" in line)
+    cocli5x1_line = next(line for line in lines if "cocli5x1" in line)
+    assert "turboship" in cocli5x0_line
+    assert "!=" not in cocli5x0_line  # matches the queried campaign - no flag
+    assert "roadmap" in cocli5x1_line
+    assert "!= turboship" in cocli5x1_line  # live campaign disagrees - flagged
+
+
 def test_queue_depths_exclude_lease_attempts_and_sidecar_files(capsys: Any) -> None:
     """The real bug this pins: raw S3 KeyCount under a queue prefix counted
     every lease*.json (claimed task), attempts*.json (retried task), and

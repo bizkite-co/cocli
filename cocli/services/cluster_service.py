@@ -21,6 +21,42 @@ console = Console()
 BUILD_DIR = "~/repos/cocli_build"
 
 
+def find_node_ownership_conflicts() -> Dict[str, List[str]]:
+    """Cross-campaign check: which hostnames are declared in more than one
+    campaign's own [cluster.nodes]?
+
+    No separate ownership registry - a dedicated "which campaign owns this
+    node" file is exactly the kind of thing that goes stale on its own
+    (confirmed 2026-08-07: roadmap's config.toml still declared cocli5x0
+    after it was reassigned to turboship-only, discovered only by manually
+    diffing `cluster status --campaign X` across campaigns). Deriving the
+    conflict set from each campaign's already-authoritative [cluster.nodes]
+    means there's nothing extra to keep in sync - a campaign's own config
+    change is the only thing that can ever resolve a conflict.
+
+    Returns {hostname: [campaign names that declare it]} for every hostname
+    declared by 2+ campaigns. Empty dict means no conflicts.
+    """
+    from ..core.config import get_all_campaign_dirs
+    from ..core.paths import paths
+
+    declared_by: Dict[str, List[str]] = {}
+    for campaign_dir in get_all_campaign_dirs():
+        campaign_name = str(campaign_dir.relative_to(paths.campaigns))
+        try:
+            service = ClusterService(campaign_name)
+        except Exception:
+            continue
+        for node in service.get_nodes():
+            declared_by.setdefault(node.hostname, []).append(campaign_name)
+
+    return {
+        hostname: campaigns
+        for hostname, campaigns in declared_by.items()
+        if len(campaigns) > 1
+    }
+
+
 class ClusterService:
     """
     Central service for managing the Raspberry Pi cluster.
@@ -115,7 +151,7 @@ class ClusterService:
             return False
         return True
 
-    async def deploy_hotfix_safe(self, user: str = "mstouffer") -> Dict[str, bool]:
+    async def deploy_hotfix_safe(self, user: str = "mstouffer", force: bool = False) -> Dict[str, bool]:
         """
         PERFORMS SAFE HOTFIX:
         1. Verify local build context.
@@ -127,6 +163,30 @@ class ClusterService:
         if not self._verify_local_build():
             logger.error("Local build context verification failed. Aborting.")
             return {"local": False}
+
+        # A node declared in more than one campaign's [cluster.nodes] is a
+        # live incident waiting to happen: this exact deploy would restart it
+        # under THIS campaign's worker mix, and if that node is currently
+        # serving a different campaign, that campaign silently loses it
+        # (confirmed 2026-08-07 - see find_node_ownership_conflicts()).
+        if not force:
+            conflicts = find_node_ownership_conflicts()
+            contested = {
+                node.hostname: [c for c in conflicts[node.hostname] if c != self.campaign_name]
+                for node in self.get_nodes()
+                if node.hostname in conflicts
+            }
+            if contested:
+                for hostname, other_campaigns in contested.items():
+                    logger.error(
+                        f"Node '{hostname}' is also declared in [cluster.nodes] for: "
+                        f"{', '.join(other_campaigns)}. Deploying '{self.campaign_name}' would "
+                        f"restart it under this campaign's worker mix, potentially stealing it "
+                        f"from whichever campaign it's actually serving. Remove it from the "
+                        f"other campaign's config.toml first, or pass force=True to override."
+                    )
+                logger.error("Aborting deployment due to node ownership conflict(s).")
+                return {hostname: False for hostname in contested}
 
         results = {}
         image_name = "cocli-worker-rpi:latest"
@@ -528,16 +588,37 @@ class ClusterService:
             await self.run_remote_command(node, cmd_rm)
 
     async def get_nodes_status(self) -> List[Dict[str, Any]]:
-        """Uptime/status checks on all cluster nodes."""
+        """Uptime/status checks on all cluster nodes.
+
+        Also reports the CAMPAIGN_NAME actually baked into each node's
+        running cocli-supervisor container - the ground truth of which
+        campaign it's serving right now, independent of which campaign's
+        config.toml lists it under (that only reflects the last deploy's
+        intent, not live reality - see reference_cluster_config_propagation
+        memory for a confirmed drift incident). Empty/"none" means no
+        cocli-supervisor container is running on that node at all.
+        """
         results = []
+        campaign_marker = "---CAMPAIGN---"
         for node in self.get_nodes():
-            res = await self.run_remote_command(node, "uptime")
-            if "load average" in res:
-                uptime_str = res.split("up")[1].split(",")[0].strip()
+            cmd = (
+                "uptime; "
+                f"echo '{campaign_marker}'; "
+                "docker inspect cocli-supervisor "
+                "--format '{{range .Config.Env}}{{println .}}{{end}}' 2>/dev/null "
+                "| grep '^CAMPAIGN_NAME=' | cut -d= -f2"
+            )
+            res = await self.run_remote_command(node, cmd)
+            parts = res.split(campaign_marker, 1)
+            uptime_part = parts[0]
+            live_campaign = parts[1].strip() if len(parts) > 1 else ""
+            if "load average" in uptime_part:
+                uptime_str = uptime_part.split("up")[1].split(",")[0].strip()
                 results.append({
                     "node": node.hostname,
                     "online": True,
                     "uptime": uptime_str,
+                    "campaign": live_campaign or "none running",
                     "details": "Ready"
                 })
             else:
@@ -545,7 +626,8 @@ class ClusterService:
                     "node": node.hostname,
                     "online": False,
                     "uptime": "N/A",
-                    "details": res.strip()[:30]
+                    "campaign": "-",
+                    "details": uptime_part.strip()[:30]
                 })
         return results
 

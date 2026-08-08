@@ -16,6 +16,13 @@ app = typer.Typer(name="cluster", help="Manage the Raspberry Pi worker cluster."
 @app.command(name="deploy-hotfix")
 def deploy_hotfix(
     campaign: Optional[str] = typer.Option(None, "--campaign", "-c", help="Campaign name."),
+    force: bool = typer.Option(
+        False, "--force",
+        help="Deploy even if a target node is also declared in another campaign's "
+        "[cluster.nodes] - normally refused, since restarting a contested node under "
+        "this campaign's worker mix can silently steal it from whichever campaign it's "
+        "actually serving.",
+    ),
 ) -> None:
     """
     Safe Cluster Deployment: Builds on Hub (cocli5x1), pushes to registry, and spokes pull.
@@ -27,13 +34,13 @@ def deploy_hotfix(
 
     setup_file_logging("cluster_deploy")
     service = ClusterService(effective_campaign)
-    
+
     console.print(f"[bold cyan]Starting SAFE Cluster Deployment for: {effective_campaign}[/bold cyan]")
     console.print(f"Registry Hub: [yellow]{service.registry_host}[/yellow]")
-    
+
     async def run_deploy() -> None:
-        results = await service.deploy_hotfix_safe()
-        
+        results = await service.deploy_hotfix_safe(force=force)
+
         console.print("\n[bold]Deployment Results:[/bold]")
         for host, success in results.items():
             status = "[green]SUCCESS[/green]" if success else "[red]FAILED[/red]"
@@ -171,16 +178,23 @@ def status(
     table = Table(title=f"Cluster Status: {effective_campaign}")
     table.add_column("Hostname", style="cyan")
     table.add_column("Status", style="bold")
+    table.add_column("Campaign", style="green")
     table.add_column("Uptime")
     table.add_column("Details")
 
     async def check_all() -> None:
         nodes_status = await service.get_nodes_status()
         for ns in nodes_status:
+            live_campaign = ns.get("campaign", "-")
+            campaign_str = (
+                f"[yellow]{live_campaign} (!= {effective_campaign})[/yellow]"
+                if ns["online"] and live_campaign not in (effective_campaign, "none running")
+                else live_campaign
+            )
             if ns["online"]:
-                table.add_row(ns["node"], "[green]ONLINE[/green]", ns["uptime"], ns["details"])
+                table.add_row(ns["node"], "[green]ONLINE[/green]", campaign_str, ns["uptime"], ns["details"])
             else:
-                table.add_row(ns["node"], "[red]OFFLINE[/red]", ns["uptime"], ns["details"])
+                table.add_row(ns["node"], "[red]OFFLINE[/red]", campaign_str, ns["uptime"], ns["details"])
 
     asyncio.run(check_all())
     console.print(table)

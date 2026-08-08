@@ -143,7 +143,7 @@ def run_discovery_gen_stages(
     ] = None,
     stage: Annotated[
         Optional[int],
-        typer.Option("--stage", "-s", help="Run only a specific stage (1-4). Default: all stages."),
+        typer.Option("--stage", "-s", help="Run only a specific stage (1, 2, or 4). Default: all stages."),
     ] = None,
     skip_validation: Annotated[
         bool,
@@ -162,19 +162,22 @@ def run_discovery_gen_stages(
         Input: tiles from Stage 1
         Output: mission.usv (tiles × search phrases)
 
-      Stage 3: filter_frontier()
-        Input: mission tasks from Stage 2
-        Output: pending/frontier.usv (unscraped/stale tasks) [DEPRECATED]
-
       Stage 4: populate_tile_queue()
         Input: mission.usv (all tasks, no TTL filtering)
         Output: map-tile/pending/{shard}/{lat}/{lon}/{tile_id}.usv (manifest)
+
+      (Stage 3, filter_frontier(), was removed from this pipeline 2026-08-08:
+      Stage 4 always read the full mission.usv directly and never consumed
+      frontier.usv, so generating it here was dead work. filter_frontier()
+      itself still exists for campaign prepare-mission / create-batch, which
+      have their own independent uses for the ScrapeIndex-TTL-filtered
+      frontier - only this pipeline's redundant call was removed.)
 
     Each stage auto-validates output against Frictionless Data schema.
     Schema versioning (cocli:schema_hash) ensures consistency.
 
     USAGE:
-      # Full pipeline (all 4 stages):
+      # Full pipeline (stages 1, 2, 4):
       cocli dev run-discovery-gen-stages turboship
 
       # Single stage (useful for debugging):
@@ -186,7 +189,6 @@ def run_discovery_gen_stages(
     from cocli.commands.campaign.discovery_gen_stages import (
         generate_tiles,
         expand_phrases,
-        filter_frontier,
         populate_tile_queue,
     )
 
@@ -226,15 +228,6 @@ def run_discovery_gen_stages(
             console.print(f"  ✓ Generated {len(mission)} mission tasks")
             artifacts_created.append(f"mission.usv ({len(mission)} records)")
             artifacts_created.append("mission datapackage.json")
-            console.print()
-
-        # ===== STAGE 3 =====
-        if stage is None or stage == 3:
-            console.print("[bold cyan]Stage 3: Filter Frontier (ScrapeIndex TTL)[/bold cyan]")
-            frontier = filter_frontier(campaign_name, save_output=True)
-            console.print(f"  ✓ Filtered {len(frontier)} pending tasks")
-            artifacts_created.append(f"pending/frontier.usv ({len(frontier)} records)")
-            artifacts_created.append("pending/frontier datapackage.json")
             console.print()
 
         # ===== STAGE 4 =====
