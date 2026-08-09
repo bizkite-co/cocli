@@ -24,6 +24,10 @@ def test_rejects_mission_manifest() -> None:
     assert not is_valid_task_data_file("mission.usv")
 
 
+def test_rejects_schema_ledger() -> None:
+    assert not is_valid_task_data_file("schema_ledger.json")
+
+
 def test_rejects_lease_files() -> None:
     assert not is_valid_task_data_file("lease.json")
     assert not is_valid_task_data_file("lease_abc123.json")

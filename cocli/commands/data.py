@@ -264,3 +264,58 @@ def queue_compact(
         raise typer.Exit(1)
 
     console.print(f"[green]{result.message}[/green]")
+
+
+@queue_app.command(name="reconcile", no_args_is_help=True)
+def queue_reconcile(
+    left: Path = typer.Argument(..., help="First directory of task/result files"),
+    right: Path = typer.Argument(..., help="Second directory of task/result files"),
+    strip_leading_segments: int = typer.Option(
+        1,
+        help="Path segments to drop before comparing identity (default 1, "
+        "to ignore a leading shard-bucket directory)",
+    ),
+    verbose: bool = typer.Option(
+        False, "--verbose", "-v", help="Show a sample of mismatched identities"
+    ),
+    sample_limit: int = typer.Option(
+        10, help="Max sample IDs to print per category with --verbose"
+    ),
+) -> None:
+    """Diff two directory trees of task/result files by normalized identity.
+
+    Generic reconciliation for any two queue-shaped directories - not
+    specific to any one queue. Identity is the relative path with its
+    extension stripped and the leading shard-bucket segment removed;
+    bookkeeping files (lease/attempts sidecars, datapackage.json, etc.)
+    are excluded automatically.
+
+    Example: cocli data queue reconcile data/campaigns/roadmap/queues/discovery-gen/completed data/campaigns/roadmap/queues/gm-list/completed/results
+    """
+    from cocli.core.queue.reconcile import reconcile_identities
+
+    result = reconcile_identities(left, right, strip_leading_segments=strip_leading_segments)
+
+    table = Table(title=f"Reconciliation: {left.name} vs {right.name}")
+    table.add_column("Metric", style="cyan")
+    table.add_column("Count", justify="right")
+    table.add_row(f"Left total ({left})", str(result.left_total))
+    table.add_row(f"Right total ({right})", str(result.right_total))
+    table.add_row("Matched", str(result.matched))
+    left_style = "yellow" if result.left_only else "green"
+    right_style = "yellow" if result.right_only else "green"
+    table.add_row("Left-only", f"[{left_style}]{len(result.left_only)}[/{left_style}]")
+    table.add_row("Right-only", f"[{right_style}]{len(result.right_only)}[/{right_style}]")
+    console.print(table)
+
+    if verbose:
+        def _print_sample(title: str, ids: frozenset[str]) -> None:
+            if not ids:
+                return
+            sorted_ids = sorted(ids)
+            console.print(f"\n[bold]{title}[/bold] (showing up to {sample_limit} of {len(sorted_ids)}):")
+            for i in sorted_ids[:sample_limit]:
+                console.print(f"  • {i}")
+
+        _print_sample("Left-only", result.left_only)
+        _print_sample("Right-only", result.right_only)

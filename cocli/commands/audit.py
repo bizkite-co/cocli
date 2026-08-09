@@ -1855,6 +1855,75 @@ def queue_status(campaign: str = typer.Option("", help="Campaign name")) -> None
         console.print(f"\n[green][OK] {processing_count} tile(s) processing, no expired leases[/green]")
 
 
+@queue_app.command(name="mission-reconciliation")
+def audit_mission_reconciliation(
+    campaign: str = typer.Option("", "--campaign", "-c", help="Campaign name"),
+    verbose: bool = typer.Option(
+        False, "--verbose", "-v", help="Show a sample of mismatched identities"
+    ),
+    sample_limit: int = typer.Option(
+        10, help="Max sample IDs to print per category with --verbose"
+    ),
+) -> None:
+    """
+    Reconcile gm-list's mission (discovery-gen/completed), pending
+    (gm-list/pending), and receipts (gm-list/completed/results) by
+    identity, so "how much work remains" doesn't depend on which
+    directory the live pipeline happens to be reading from.
+    """
+    from ..application.services import ServiceContainer
+
+    campaign_name = campaign or get_campaign()
+    if not campaign_name:
+        console.print("[red]No campaign specified.[/red]")
+        raise typer.Exit(1)
+
+    audit_service = ServiceContainer(campaign_name=campaign_name).queue_audit_service
+    result = audit_service.audit_mission_reconciliation(campaign_name)
+
+    table = Table(title=f"gm-list Mission Reconciliation: {result.campaign_name}")
+    table.add_column("Metric", style="cyan")
+    table.add_column("Count", justify="right")
+
+    table.add_row("Mission total (discovery-gen/completed)", str(result.mission_total))
+    table.add_row("Receipts total (gm-list/completed/results)", str(result.receipt_total))
+    table.add_row("Unscraped (mission, no receipt)", str(result.unscraped_count))
+    orphan_style = "red" if result.orphaned_receipt_count else "green"
+    table.add_row(
+        "Orphaned receipts (no matching mission)",
+        f"[{orphan_style}]{result.orphaned_receipt_count}[/{orphan_style}]",
+    )
+    table.add_section()
+    table.add_row("Pending total (gm-list/pending)", str(result.pending_total))
+    stale_style = "yellow" if result.stale_pending_count else "green"
+    table.add_row(
+        "Stale pending (already has a receipt - safe to purge)",
+        f"[{stale_style}]{result.stale_pending_count}[/{stale_style}]",
+    )
+    table.add_row("Truly pending (no receipt yet)", str(result.truly_pending_count))
+
+    console.print(table)
+
+    if result.orphaned_receipt_count:
+        console.print(
+            f"\n[red][WARN][/red] {result.orphaned_receipt_count} receipt(s) have no matching mission tile - "
+            "investigate before trusting mission-based counts."
+        )
+
+    if verbose:
+        def _print_sample(title: str, ids: list[str]) -> None:
+            if not ids:
+                return
+            console.print(f"\n[bold]{title}[/bold] (showing up to {sample_limit} of {len(ids)}):")
+            for i in ids[:sample_limit]:
+                console.print(f"  • {i}")
+
+        _print_sample("Unscraped", result.unscraped_ids)
+        _print_sample("Orphaned receipts", result.orphaned_receipt_ids)
+        _print_sample("Stale pending", result.stale_pending_ids)
+        _print_sample("Truly pending", result.truly_pending_ids)
+
+
 @queue_app.command(name="purge-leases")
 def purge_stale_leases(
     campaign: str = typer.Option("", help="Campaign name"),

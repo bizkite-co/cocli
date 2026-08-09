@@ -6,7 +6,7 @@ Provides audit operations focusing on queues and data quality.
 from typing import Any, List, Optional
 from pathlib import Path
 from .audit_service import AuditService
-from cocli.models import TileStatusResult
+from cocli.models import TileStatusResult, MissionReconciliationResult
 
 class AuditQueueService:
     """Service exposing only queue‑related audit methods."""
@@ -69,6 +69,9 @@ class AuditQueueService:
 
     def get_tile_status(self, campaign_name: str) -> TileStatusResult:
         return self._service.get_tile_status(campaign_name)
+
+    def audit_mission_reconciliation(self, campaign_name: str) -> MissionReconciliationResult:
+        return self._service.audit_mission_reconciliation(campaign_name)
 
     def purge_leases(
         self,

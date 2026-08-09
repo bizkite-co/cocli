@@ -9,7 +9,7 @@ from typing import Any, Dict, List, Optional
 from ..core.config import get_campaign_dir, load_campaign_config, load_global_config
 from ..models.campaigns.queues.gm_details import GmItemTask
 from ..models.companies.company import Company
-from ..models import TileStatusResult, ProcessingTileDetail
+from ..models import TileStatusResult, ProcessingTileDetail, MissionReconciliationResult
 from ..core.prospects_csv_manager import ProspectsIndexManager
 from ..core.text_utils import slugify
 from ..core.paths import paths
@@ -1065,6 +1065,50 @@ class AuditService:
             completed_count=completed_count,
             processing_tiles_details=processing_tiles_details,
             expired_count=expired_count,
+        )
+
+    def audit_mission_reconciliation(self, campaign_name: str) -> MissionReconciliationResult:
+        """Reconcile gm-list's mission (discovery-gen/completed), pending
+        (gm-list/pending), and receipts (gm-list/completed/results) by
+        normalized identity, so "how much work remains" doesn't depend on
+        which of pending/ or discovery-gen/completed the live pipeline
+        happens to be reading from."""
+        from typing import cast
+        from ..core.queue.factory import get_queue_manager
+        from ..core.queue.filesystem import FilesystemGmListQueue
+        from ..core.queue.reconcile import reconcile_identities
+
+        campaign_val = campaign_name or "default"
+        # queue_type="gm-list" always resolves to FilesystemGmListQueue for the
+        # filesystem provider; CampaignQueueProtocol is intentionally generic
+        # and doesn't declare gm-list's extra pending_dir/completed_dir/
+        # target_tiles_dir attributes.
+        gm_list_queue = cast(
+            FilesystemGmListQueue,
+            get_queue_manager("gm-list", queue_type="gm-list", campaign_name=campaign_val),
+        )
+        receipts_dir = gm_list_queue.completed_dir / "results"
+
+        mission_vs_receipts = reconcile_identities(
+            gm_list_queue.target_tiles_dir, receipts_dir
+        )
+        pending_vs_receipts = reconcile_identities(
+            gm_list_queue.pending_dir, receipts_dir
+        )
+
+        return MissionReconciliationResult(
+            campaign_name=campaign_val,
+            mission_total=mission_vs_receipts.left_total,
+            receipt_total=mission_vs_receipts.right_total,
+            unscraped_count=len(mission_vs_receipts.left_only),
+            unscraped_ids=sorted(mission_vs_receipts.left_only),
+            orphaned_receipt_count=len(mission_vs_receipts.right_only),
+            orphaned_receipt_ids=sorted(mission_vs_receipts.right_only),
+            pending_total=pending_vs_receipts.left_total,
+            stale_pending_count=pending_vs_receipts.matched,
+            stale_pending_ids=sorted(pending_vs_receipts.intersection),
+            truly_pending_count=len(pending_vs_receipts.left_only),
+            truly_pending_ids=sorted(pending_vs_receipts.left_only),
         )
 
     def purge_leases(

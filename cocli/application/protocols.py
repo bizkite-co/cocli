@@ -2,7 +2,7 @@ from typing import Protocol, List, Dict, Any, Optional, Iterator, Callable, Set
 from pathlib import Path
 from cocli.models.search import SearchResult
 from cocli.models.companies.meeting import CompanyMeeting
-from cocli.models import TileStatusResult
+from cocli.models import TileStatusResult, MissionReconciliationResult
 from cocli.models.tasks import MissionTask
 
 
@@ -245,6 +245,7 @@ class AuditServiceProvider(Protocol):
     ) -> Dict[str, Any]: ...
     def export_cases(self, campaign: str, tile: Optional[str] = None, phrase: Optional[str] = None) -> Dict[str, Any]: ...
     def get_tile_status(self, campaign_name: str) -> TileStatusResult: ...
+    def audit_mission_reconciliation(self, campaign_name: str) -> MissionReconciliationResult: ...
     def purge_leases(self, campaign_name: str, queue_name: str, force: bool = False, dry_run: bool = False, max_age_minutes: int = 30) -> Dict[str, Any]: ...
 
 class AuditCodebaseServiceProvider(AuditServiceProvider, Protocol):

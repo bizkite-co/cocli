@@ -48,6 +48,10 @@ cocli
                 --phrase/-p (text)
             gm-list - Run full end-to-end audit for the gm-list queue (compile, compact, report).
                 --campaign/-c (text)
+            mission-reconciliation - Reconcile gm-list's mission (discovery-gen/completed), pending
+                --campaign/-c (text)
+                --verbose/-v (boolean)
+                --sample-limit (integer)
             purge-leases - Purge stale or expired leases from a queue directory.
                 --campaign (text)
                 --queue-name (text)
@@ -327,6 +331,12 @@ cocli
             compact - Compact a queue's results into a unified dataset.
                 --campaign/-c (text)
                 queue_name (text) [required]
+            reconcile - Diff two directory trees of task/result files by normalized identity.
+                left (path) [required]
+                right (path) [required]
+                --strip-leading-segments (integer)
+                --verbose/-v (boolean)
+                --sample-limit (integer)
         sample - Show first N rows with column names from a USV file.
             file_path (path) [required]
             --limit/-n (integer)

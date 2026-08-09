@@ -15,7 +15,7 @@ two iteration mechanisms, so they can't drift apart.
 """
 
 
-_SIDECAR_FILENAMES = {"datapackage.json", "mission.usv"}
+_SIDECAR_FILENAMES = {"datapackage.json", "mission.usv", "schema_ledger.json"}
 
 
 def is_valid_task_data_file(filename: str) -> bool:
