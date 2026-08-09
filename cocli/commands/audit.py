@@ -608,9 +608,24 @@ for q in gm-list gm-details enrichment; do
   for s in pending completed failed; do
     # gm-list's real work pool is discovery-gen/completed (a witness-indexed
     # pool the worker walks directly), not queues/gm-list/pending/ - that dir
-    # is essentially always empty, so counting it renders a number that looks
-    # real but has nothing to do with how much work is actually left.
+    # is essentially always empty. Pending = mission tiles minus completion
+    # receipts (same {shard}/{lat}/{lon}/{phrase} shape on both sides, just
+    # .usv vs .json), a real set-difference rather than a directory count.
     if [ "$q" = "gm-list" ] && [ "$s" = "pending" ]; then
+      c=$(comm -23 \
+        <(find ~/repos/data/campaigns/__CAMPAIGN__/queues/discovery-gen/completed -name '*.usv' 2>/dev/null | sed 's|.*/completed/||;s|\.usv$||' | sort) \
+        <(find ~/repos/data/campaigns/__CAMPAIGN__/queues/gm-list/completed/results -name '*.json' 2>/dev/null | sed 's|.*/results/||;s|\.json$||' | sort) \
+        | wc -l)
+      echo "$q/$s=$c"
+      continue
+    fi
+    # completed/ for gm-list has a results/ subtree of one receipt per real
+    # completion - counting the whole completed/ dir (as the generic branch
+    # below does) would pick up other files under it too, so Pending+Done
+    # wouldn't sum to the mission total the way it does for every other queue.
+    if [ "$q" = "gm-list" ] && [ "$s" = "completed" ]; then
+      c=$(find ~/repos/data/campaigns/__CAMPAIGN__/queues/gm-list/completed/results -name '*.json' 2>/dev/null | wc -l)
+      echo "$q/$s=$c"
       continue
     fi
     c=$(find ~/repos/data/campaigns/__CAMPAIGN__/queues/$q/$s -type f 2>/dev/null | wc -l)
@@ -740,7 +755,9 @@ def audit_cluster(
         help="Use the S3 heartbeat fan-in instead of live SSH+docker-logs polling. Avoids "
         "opening an SSH connection per node, at the cost of relying on each node's last "
         "self-reported heartbeat (which can be stale or wrong if the node's own reporting "
-        "is broken - the exact case this is meant to help diagnose).",
+        "is broken - the exact case this is meant to help diagnose). Also shows gm-list "
+        "Pending as '-' rather than computing it, since that requires a full "
+        "discovery-gen/completed listing this flag exists to avoid.",
     ),
 ) -> None:
     """
@@ -825,10 +842,15 @@ def _audit_cluster_from_heartbeats(campaign_name: str, verbose: bool) -> None:
             # gm-list's real work pool is discovery-gen/completed (a witness-
             # indexed pool FilesystemGmListQueue.poll() walks directly), not
             # queues/gm-list/pending/ - that directory is essentially always
-            # empty, so counting it renders a real-looking number (e.g. "0"
-            # or a handful of lease/claim stragglers) that has nothing to do
-            # with how much work actually remains. Leave it uncounted rather
-            # than assert a number nobody can trust.
+            # empty, so counting it renders a real-looking number that has
+            # nothing to do with how much work actually remains. The real
+            # figure (mission tiles minus completion receipts) IS computable
+            # - see _audit_cluster_ssh's QUEUES section - but doing it here
+            # would mean paginating the full discovery-gen/completed prefix
+            # (tens of thousands of keys) purely to answer this one cell,
+            # which is exactly the S3-listing cost --s3 exists to avoid.
+            # Leave it uncounted here; use the (default) SSH path for a real
+            # number.
             if q == "gm-list" and status == "pending":
                 continue
             prefix = f"campaigns/{campaign_name}/queues/{q}/{status}/"
