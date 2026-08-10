@@ -25,10 +25,11 @@ def test_audit_queue_mission_reconciliation_cli(tmp_path: Path) -> None:
     paths.root = tmp_path
     campaign_name = "test-campaign"
 
+    discovery_gen_completed = paths.campaign(campaign_name).queue("discovery-gen").state("completed")
     gm_list_queue = get_queue_manager(
         "gm-list", queue_type="gm-list", campaign_name=campaign_name
     )
-    _write(gm_list_queue.target_tiles_dir, "1/10.0/-80.0/phrase-a.usv")
+    _write(discovery_gen_completed, "1/10.0/-80.0/phrase-a.usv")
     _write(gm_list_queue.completed_dir / "results", "1/10.0/-80.0/phrase-a.json")
 
     result = runner.invoke(

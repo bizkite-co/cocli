@@ -8,7 +8,6 @@ from datetime import datetime, timedelta, UTC
 from ...models.campaigns.queues.gm_list import ScrapeTask
 from ...models.campaigns.queues.gm_details import GmItemTask
 from ...models.campaigns.queues.base import QueueMessage
-from ...core.config import get_cocli_base_dir, get_campaign_dir
 from ...core.paths import paths
 from ...core.sharding import get_shard_id
 from .layout import QueueLayout, resolve_queue_station
@@ -798,7 +797,17 @@ from cocli.core.geo_types import LatScale1, LonScale1
 
 
 class FilesystemGmListQueue(FilesystemQueue):
-    """Specialized queue for Google Maps List scraping using the Mission Index."""
+    """Queue for Google Maps List scraping - standard DFQ pending/completed.
+
+    poll()/ack() only ever touch gm-list's own pending_dir/completed_dir
+    (station-correct). Work enters pending/ via a separate copy step
+    (cocli data queue enqueue-gm-list), which copies discovery-gen's own
+    permanent, per-phrase-tile output (discovery-gen/completed/) into
+    gm-list/pending/ - a real file copy, both sides already ScrapeTask-shaped.
+    Dedup against already-scraped work happens there, once, at copy time -
+    not here. poll()/ack() stay purely mechanical: whatever's in pending/
+    gets processed, full stop.
+    """
 
     def __init__(
         self,
@@ -814,20 +823,9 @@ class FilesystemGmListQueue(FilesystemQueue):
             bucket_name=bucket_name,
             max_nack_attempts=max_nack_attempts,
         )
-        self.campaign_dir = get_campaign_dir(campaign_name)
-        if self.campaign_dir:
-            from ..paths import paths
-
-            self.discovery_gen_queue = paths.campaign(campaign_name).queue(
-                "discovery-gen"
-            )
-            self.target_tiles_dir = self.discovery_gen_queue.completed
-        else:
-            self.target_tiles_dir = Path("does-not-exist")
-        self.witness_dir = get_cocli_base_dir() / "indexes" / "scraped-tiles"
 
     def _create_scrape_task(self, task_id: str) -> Optional[ScrapeTask]:
-        """Reconstructs a ScrapeTask from a discovery-gen task_id."""
+        """Reconstructs a ScrapeTask from a gm-list pending task_id."""
         path_parts = Path(task_id).parts
         # Expected: {lat_shard}/{lat}/{lon}/{phrase}.usv
         if len(path_parts) != 4:
@@ -851,70 +849,62 @@ class FilesystemGmListQueue(FilesystemQueue):
             logger.error(f"Error reconstructing ScrapeTask from {task_id}: {e}")
             return None
 
+    def _get_s3_pending_task_key(self, task_id: str) -> str:
+        """S3 key for a gm-list pending task file (flat .usv at task_id,
+        not the base DFQ task_dir/task.json shape - gm-list stores one
+        flat file per task, matching discovery-gen/completed's own shape)."""
+        pending = self.layout.phases.pending.name
+        return f"{self.layout.s3_prefix()}/{pending}/{task_id}"
+
     def push(self, task: ScrapeTask) -> str:  # type: ignore[override]
-        """
-        Ensures the task exists in the Discovery Gen completed index.
+        """Write a ScrapeTask directly into gm-list's own pending/.
+
+        Not the normal way work enters gm-list - that's the copy step from
+        discovery-gen/completed/ (cocli data queue enqueue-gm-list). This
+        exists to satisfy CampaignQueueProtocol and for direct/manual use.
         """
         from ..sharding import get_geo_shard, get_grid_tile_id
         from ..text_utils import slugify
 
-        # OMAP Shard: shard/lat/lon/phrase.usv
         lat_shard = get_geo_shard(float(task.latitude))
         grid_id = get_grid_tile_id(float(task.latitude), float(task.longitude))
         lat_dir, lon_dir = grid_id.split("_")
         phrase_file = f"{slugify(task.search_phrase)}.usv"
-
         task_id = f"{lat_shard}/{lat_dir}/{lon_dir}/{phrase_file}"
-        target_path = self.target_tiles_dir / task_id
 
-        if not target_path.exists():
-            target_path.parent.mkdir(parents=True, exist_ok=True)
-            with open(target_path, "w") as f:
-                # Use standard model-based serialization
-                f.write(task.to_usv())
-            logger.debug(f"Pushed task to Discovery Gen: {task_id}")
+        target_path = self.pending_dir / task_id
+        target_path.parent.mkdir(parents=True, exist_ok=True)
+        with open(target_path, "w") as f:
+            f.write(task.to_usv())
+        logger.debug(f"Pushed task to gm-list pending: {task_id}")
 
-            # If we have S3, also push it there
-            # INTENTIONAL EXCEPTION (PR7): discovery-gen is a separate station/pool,
-            # not this queue's StationDecl layout.
-            if self.s3_client and self.bucket_name:
-                try:
-                    s3_key = (
-                        f"campaigns/{self.campaign_name}/queues/"
-                        f"discovery-gen/completed/{task_id}"
-                    )
-                    self.s3_client.put_object(
-                        Bucket=self.bucket_name,
-                        Key=s3_key,
-                        Body=task.to_usv(),  # Use model's standardized USV
-                        ContentType="text/csv",
-                    )
-                except Exception as e:
-                    logger.warning(f"Failed to push tile to S3: {e}")
+        if self.s3_client and self.bucket_name:
+            try:
+                self.s3_client.put_object(
+                    Bucket=self.bucket_name,
+                    Key=self._get_s3_pending_task_key(task_id),
+                    Body=task.to_usv(),
+                    ContentType="text/csv",
+                )
+            except Exception as e:
+                logger.warning(f"Failed to push task to S3: {e}")
 
         return task_id
 
     def poll(self, batch_size: int = 1) -> List[ScrapeTask]:
+        """Poll gm-list's own pending/ - purely mechanical. No dedup or
+        discovery logic here; that's the copy step's job, done once before
+        items land in pending/, not the queue's runtime (see class docstring)."""
         tasks: List[ScrapeTask] = []
 
-        # 1. Discover tasks from S3 if local is empty or we have S3 capability
-        if self.s3_client and self.bucket_name:
-            # We use a similar discovery logic but for the target-tiles index
-            self._discover_mission_from_s3()
-
-        if not self.target_tiles_dir.exists():
-            logger.warning(
-                f"Target tiles directory does not exist: {self.target_tiles_dir}"
-            )
+        if not self.pending_dir.exists():
             return []
 
-        logger.debug(f"Polling discovery-gen pool at: {self.target_tiles_dir}")
         count = 0
         import os
         import random
 
-        # Optimization: Use os.walk for better performance on large mission indexes
-        for root, dirs, files in os.walk(self.target_tiles_dir):
+        for root, dirs, files in os.walk(self.pending_dir):
             if count >= batch_size:
                 break
 
@@ -926,8 +916,8 @@ class FilesystemGmListQueue(FilesystemQueue):
                 if not file.endswith(".csv") and not file.endswith(".usv"):
                     continue
 
-                csv_path = Path(root) / file
-                task_id = str(csv_path.relative_to(self.target_tiles_dir))
+                file_path = Path(root) / file
+                task_id = str(file_path.relative_to(self.pending_dir))
 
                 # OMAP Violation Check: Detect deep legacy paths (more than 4 parts: shard/lat/lon/phrase)
                 # Blueprint: {lat_shard}/{lat}/{lon}/{phrase}.csv
@@ -938,13 +928,6 @@ class FilesystemGmListQueue(FilesystemQueue):
                     )
                     continue
 
-                # Check witness (both .csv and .usv)
-                witness_csv = self.witness_dir / Path(task_id).with_suffix(".csv")
-                witness_usv = self.witness_dir / Path(task_id).with_suffix(".usv")
-                if witness_csv.exists() or witness_usv.exists():
-                    continue
-
-                # Try to acquire lease
                 if self._create_lease(task_id):
                     task = self._create_scrape_task(task_id)
                     if task:
@@ -957,54 +940,10 @@ class FilesystemGmListQueue(FilesystemQueue):
                     break
         return tasks
 
-    def _discover_mission_from_s3(self, max_discovery: int = 50) -> None:
-        """Discovers unscraped tiles directly from the S3 Discovery Gen Index."""
-        if not self.s3_client or not self.bucket_name:
-            return
-
-        # INTENTIONAL EXCEPTION (PR7): discovery-gen pool, not gm-list layout.
-        prefix = f"campaigns/{self.campaign_name}/queues/discovery-gen/completed/"
-        try:
-            # We list a small sample of the mission index on S3
-            paginator = self.s3_client.get_paginator("list_objects_v2")
-            found_count = 0
-
-            # Since mission index is large, we pick a random starting point if possible,
-            # or just take the first few pages.
-            for page in paginator.paginate(Bucket=self.bucket_name, Prefix=prefix):
-                for obj in page.get("Contents", []):
-                    key = obj["Key"]
-                    if not key.endswith(".csv") and not key.endswith(".usv"):
-                        continue
-
-                    rel_path = key.replace(prefix, "")
-                    local_path = self.target_tiles_dir / rel_path
-
-                    if not local_path.exists():
-                        # Check if already scraped (Witness Index)
-                        witness_csv = self.witness_dir / Path(rel_path).with_suffix(
-                            ".csv"
-                        )
-                        witness_usv = self.witness_dir / Path(rel_path).with_suffix(
-                            ".usv"
-                        )
-
-                        if not witness_csv.exists() and not witness_usv.exists():
-                            # Check if currently leased on S3 (Optional optimization)
-                            # For now, we'll just download it and let _create_lease handle the atomicity
-                            local_path.parent.mkdir(parents=True, exist_ok=True)
-                            self.s3_client.download_file(
-                                self.bucket_name, key, str(local_path)
-                            )
-                            found_count += 1
-
-                    if found_count >= max_discovery:
-                        return
-        except Exception as e:
-            logger.error(f"Error discovering mission from S3: {e}")
-
     def ack(self, task: ScrapeTask) -> None:  # type: ignore
-        # Note: GmList doesn't move data, just removes the lease/dir
+        # Deletes the source pending file (not a move/rename - the receipt
+        # below already carries the data, and completed/ uses a different
+        # schema than the raw pending .usv anyway - Mark, 2026-08-09).
         if task.ack_token:
             # 1. Capture Lease Metadata before deletion
             lease_data = {}
@@ -1016,12 +955,16 @@ class FilesystemGmListQueue(FilesystemQueue):
                 except Exception:
                     pass
 
-            # 2. Local Cleanup
+            # 2. Local Cleanup: lease dir and the source pending file
             task_dir = self._get_task_dir(task.ack_token)
             import shutil
 
             if task_dir.exists():
                 shutil.rmtree(task_dir, ignore_errors=True)
+
+            pending_file = self.pending_dir / task.ack_token
+            if pending_file.exists():
+                pending_file.unlink()
 
             # 3. Completion Receipt (Local & S3)
             # Use model's own sharded path resolution
@@ -1071,6 +1014,7 @@ class FilesystemGmListQueue(FilesystemQueue):
             if self.s3_client and self.bucket_name:
                 try:
                     s3_lease_key = self._get_s3_lease_key(task.ack_token)
+                    s3_pending_task_key = self._get_s3_pending_task_key(task.ack_token)
                     s3_completed_key = self._get_s3_gm_list_result_key(
                         lat_shard, str(lat_t), str(lon_t), phrase_slug
                     )
@@ -1084,6 +1028,9 @@ class FilesystemGmListQueue(FilesystemQueue):
 
                     self.s3_client.delete_object(
                         Bucket=self.bucket_name, Key=s3_lease_key
+                    )
+                    self.s3_client.delete_object(
+                        Bucket=self.bucket_name, Key=s3_pending_task_key
                     )
                     logger.debug(
                         f"Immediate S3 Ack for GmList {task.ack_token} completed."

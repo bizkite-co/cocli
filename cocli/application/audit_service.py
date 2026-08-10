@@ -1025,20 +1025,28 @@ class AuditService:
         from ..core.queue.factory import get_queue_manager
         from ..core.queue.filesystem import FilesystemGmListQueue
         from ..core.queue.reconcile import reconcile_identities
+        from ..models.campaigns.queues.gm_list import ScrapeTask
 
         campaign_val = campaign_name or "default"
         # queue_type="gm-list" always resolves to FilesystemGmListQueue for the
         # filesystem provider; CampaignQueueProtocol is intentionally generic
-        # and doesn't declare gm-list's extra pending_dir/completed_dir/
-        # target_tiles_dir attributes.
+        # and doesn't declare gm-list's extra pending_dir/completed_dir
+        # attributes.
         gm_list_queue = cast(
             FilesystemGmListQueue,
             get_queue_manager("gm-list", queue_type="gm-list", campaign_name=campaign_val),
         )
         receipts_dir = gm_list_queue.completed_dir / "results"
+        # discovery-gen's own permanent, per-phrase-tile output (unrelated to
+        # gm-list's own pending/completed - poll()/ack() never read this).
+        discovery_gen_completed = (
+            paths.campaign(campaign_val)
+            .queue(ScrapeTask.SOURCE_QUEUE)
+            .state(ScrapeTask.SOURCE_STATE)
+        )
 
         mission_vs_receipts = reconcile_identities(
-            gm_list_queue.target_tiles_dir, receipts_dir
+            discovery_gen_completed, receipts_dir
         )
         pending_vs_receipts = reconcile_identities(
             gm_list_queue.pending_dir, receipts_dir

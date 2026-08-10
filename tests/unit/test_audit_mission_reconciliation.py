@@ -25,7 +25,7 @@ def test_audit_mission_reconciliation(tmp_path: Path) -> None:
     gm_list_queue = get_queue_manager(
         "gm-list", queue_type="gm-list", campaign_name=campaign_name
     )
-    mission_dir = gm_list_queue.target_tiles_dir
+    mission_dir = paths.campaign(campaign_name).queue("discovery-gen").state("completed")
     receipts_dir = gm_list_queue.completed_dir / "results"
     pending_dir = gm_list_queue.pending_dir
 
