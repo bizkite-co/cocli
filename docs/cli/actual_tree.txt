@@ -331,6 +331,11 @@ cocli
             compact - Compact a queue's results into a unified dataset.
                 --campaign/-c (text)
                 queue_name (text) [required]
+            enqueue-gm-list - Copy discovery-gen/completed/ -> gm-list/pending/.
+                --campaign/-c (text) [required]
+                --limit (integer)
+                --rescrape-all (boolean)
+                --dry-run (boolean)
             reconcile - Diff two directory trees of task/result files by normalized identity.
                 left (path) [required]
                 right (path) [required]

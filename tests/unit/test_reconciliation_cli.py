@@ -50,3 +50,23 @@ def test_data_queue_reconcile_cli(tmp_path: Path) -> None:
 
     assert result.exit_code == 0, result.output
     assert "Reconciliation" in result.output
+
+
+def test_data_queue_enqueue_gm_list_cli(tmp_path: Path) -> None:
+    paths.root = tmp_path
+    campaign_name = "test-campaign"
+
+    discovery_gen_completed = paths.campaign(campaign_name).queue("discovery-gen").state("completed")
+    gm_list_queue = get_queue_manager(
+        "gm-list", queue_type="gm-list", campaign_name=campaign_name
+    )
+    _write(discovery_gen_completed, "1/10.0/-80.0/phrase-a.usv")
+
+    result = runner.invoke(
+        data_app, ["queue", "enqueue-gm-list", "--campaign", campaign_name]
+    )
+
+    assert result.exit_code == 0, result.output
+    assert "Copied" in result.output
+    assert "gm-list/pending" in result.output
+    assert (gm_list_queue.pending_dir / "1/10.0/-80.0/phrase-a.usv").exists()

@@ -27,16 +27,29 @@ class ReconciliationResult:
         return len(self.intersection)
 
 
-def _identities(root: Path, *, strip_leading_segments: int) -> frozenset[str]:
+def identities_with_paths(root: Path, *, strip_leading_segments: int = 1) -> dict[str, Path]:
+    """Map each normalized identity under `root` to its source file path.
+
+    Same identity rule as `reconcile_identities` - lets a caller go from a
+    reconciliation result's identity strings back to real files to act on
+    (e.g. copying unscraped items into another queue's pending/).
+    """
     if not root.exists():
-        return frozenset()
-    ids: set[str] = set()
+        return {}
+    result: dict[str, Path] = {}
     for f in root.rglob("*"):
         if not f.is_file() or not is_valid_task_data_file(f.name):
             continue
         parts = f.relative_to(root).with_suffix("").parts
-        ids.add("/".join(parts[strip_leading_segments:]))
-    return frozenset(ids)
+        identity = "/".join(parts[strip_leading_segments:])
+        result[identity] = f
+    return result
+
+
+def _identities(root: Path, *, strip_leading_segments: int) -> frozenset[str]:
+    return frozenset(
+        identities_with_paths(root, strip_leading_segments=strip_leading_segments).keys()
+    )
 
 
 def reconcile_identities(

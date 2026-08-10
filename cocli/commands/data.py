@@ -319,3 +319,40 @@ def queue_reconcile(
 
         _print_sample("Left-only", result.left_only)
         _print_sample("Right-only", result.right_only)
+
+
+@queue_app.command(name="enqueue-gm-list", no_args_is_help=True)
+def queue_enqueue_gm_list(
+    campaign: str = typer.Option(..., "--campaign", "-c", help="Campaign name"),
+    limit: Optional[int] = typer.Option(
+        None, help="Copy at most this many items (default: all unscraped items)"
+    ),
+    rescrape_all: bool = typer.Option(
+        False,
+        "--rescrape-all",
+        help="Copy everything from discovery-gen/completed, including items "
+        "with an existing gm-list completed receipt - for a deliberate full "
+        "re-scrape. Default only copies items with no receipt yet.",
+    ),
+    dry_run: bool = typer.Option(
+        False, "--dry-run", help="Preview what would be copied without writing files"
+    ),
+) -> None:
+    """Copy discovery-gen/completed/ -> gm-list/pending/.
+
+    A real, transformation-free file copy - both sides are already
+    ScrapeTask-shaped at the same relative path. Default behavior skips
+    anything with an existing gm-list completed receipt; --rescrape-all
+    bypasses that. Use --limit to enqueue a bounded batch at a time.
+    """
+    from cocli.application.gm_list_enqueue_service import enqueue_unscraped_to_gm_list_pending
+
+    result = enqueue_unscraped_to_gm_list_pending(
+        campaign_name=campaign, limit=limit, rescrape_all=rescrape_all, dry_run=dry_run
+    )
+
+    verb = "Would copy" if dry_run else "Copied"
+    console.print(f"[cyan]Candidates: {result.candidates}[/cyan]")
+    if not rescrape_all:
+        console.print(f"[dim]Skipped (already scraped): {result.skipped_already_scraped}[/dim]")
+    console.print(f"[green]{verb} {result.copied} item(s) into gm-list/pending/[/green]")
