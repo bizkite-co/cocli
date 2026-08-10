@@ -44,3 +44,28 @@ def test_audit_schemas_detects_missing_hash(tmp_path):
     assert res["files_checked"] == 1
     assert len(res["issues_found"]) == 1
     assert res["issues_found"][0]["issue"] == "MISSING_SCHEMA_HASH"
+
+
+def test_get_tile_status_counts_sharded_files_recursively(tmp_path):
+    """map-tile's real writer (populate_tile_queue) shards pending/completed
+    as {shard}/{lat}/{lon}/{tile_id}.usv, not a flat directory - a flat glob
+    against that shape always returned 0. Regression test for that fix."""
+    paths.root = tmp_path
+    from cocli.core.queue.factory import get_queue_manager
+
+    tile_queue = get_queue_manager("map-tile", queue_type="tile", campaign_name="test-campaign")
+
+    pending_file = tile_queue.pending_dir / "2" / "28.7" / "-96.9" / "28.7_-96.9.usv"
+    pending_file.parent.mkdir(parents=True, exist_ok=True)
+    pending_file.write_text("row\n")
+
+    completed_file = tile_queue.completed_dir / "3" / "33.5" / "-86.6" / "33.5_-86.6.usv"
+    completed_file.parent.mkdir(parents=True, exist_ok=True)
+    completed_file.write_text("row\n")
+
+    service = AuditService(campaign_name="test-campaign")
+    res = service.get_tile_status("test-campaign")
+
+    assert res.pending_count == 1
+    assert res.completed_count == 1
+    assert not hasattr(res, "processing_count")

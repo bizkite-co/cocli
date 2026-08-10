@@ -1,22 +1,11 @@
 from pydantic import BaseModel
-from typing import List, Optional
-
-class ProcessingTileDetail(BaseModel):
-    tile_name: str
-    worker_id: Optional[str] = None
-    age_min: Optional[float] = None
-    ttl_min: Optional[float] = None
-    status: Optional[str] = None
-    style: Optional[str] = None
-    error: Optional[str] = None
-    no_lease: Optional[bool] = None
+from typing import List
 
 class TileStatusResult(BaseModel):
+    """map-tile has no processing phase (removed 2026-08-09) - it's a pure
+    tile registry, no staging/throttling job of its own."""
     pending_count: int
-    processing_count: int
     completed_count: int
-    processing_tiles_details: List[ProcessingTileDetail]
-    expired_count: int
 
 class MissionReconciliationResult(BaseModel):
     """Mission (discovery-gen/completed) vs receipts (gm-list/completed/results)

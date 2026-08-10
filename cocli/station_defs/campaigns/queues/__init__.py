@@ -62,9 +62,11 @@ ENRICHMENT_QUEUE_STATION: StationDecl[object] = StationDecl(
     segments=(_DFQ_PHASES, _DOMAIN_HASH_SHARD),
 )
 
-# map-tile (0010 PR5): processing is a lifecycle phase (active-like).
+# map-tile: pure tile registry (file-per-tile, phrase rows inside each file).
+# No processing phase - map-tile has no staging/throttling job to do; that
+# job belongs to whatever consumes map-tile/pending (batched via --max).
 # ``tiles`` is layout under pending/ — not a peer phase of pending/completed.
-_MAP_TILE_PHASES = phases("pending", "processing", "completed")
+_MAP_TILE_PHASES = phases("pending", "completed")
 MAP_TILE_QUEUE_STATION: StationDecl[object] = StationDecl(
     name="map-tile-queue",
     path_template="campaigns/{campaign}/queues/{queue}",

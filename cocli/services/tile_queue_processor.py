@@ -1,18 +1,21 @@
 """
-Tile-Queue Processor: Converts tile-queue/processing/ → gm-list/pending/
+Tile-Queue Processor: Converts map-tile/pending/ → discovery-gen/completed/
 
-This processor reads tiles from tile-queue/processing/, expands each tile
-into individual ScrapeTask work items, writes them to gm-list/pending/,
+This processor reads tiles from map-tile/pending/, expands each tile
+into individual ScrapeTask work items, writes them to discovery-gen/completed/
+(ScrapeTask.SOURCE_QUEUE/SOURCE_STATE - discovery-gen's own permanent,
+per-phrase-tile output, ready for a separate copy step into gm-list/pending/),
 and marks the original tile as completed.
 
 Pattern:
-  Input:  tile-queue/processing/{shard}/{lat}/{lon}/{tile_id}.usv
+  Input:  map-tile/pending/{shard}/{lat}/{lon}/{tile_id}.usv
           (contains multiple TileQueueRecord lines: tile_id + phrase pairs)
 
-  Output: gm-list/pending/{shard}/{lat}/{lon}/{phrase}.usv
+  Output: discovery-gen/completed/{shard}/{lat}/{lon}/{phrase}.usv
           (individual ScrapeTask files, one per phrase per tile)
 
-  Then:   Move tile file from processing/ → completed/
+  Then:   Move tile file from pending/ → completed/ (map-tile has no
+          processing phase - batching is via --max, not a staging move)
 """
 
 import logging
@@ -35,11 +38,11 @@ def process_tile_queue(
     dry_run: bool = False,
 ) -> Dict[str, int]:
     """
-    Process tiles from tile-queue/processing/ → gm-list/pending/.
+    Process tiles from map-tile/pending/ → discovery-gen/completed/.
 
-    Reads each tile file from processing/, converts its records to individual
-    ScrapeTask work items, writes them to gm-list/pending/ with sharded structure,
-    then moves the processed tile to completed/.
+    Reads each tile file from pending/, converts its records to individual
+    ScrapeTask work items, writes them to discovery-gen/completed/ with
+    sharded structure, then moves the processed tile to map-tile/completed/.
 
     Args:
         campaign_name: Campaign to process
@@ -61,17 +64,17 @@ def process_tile_queue(
     # Get queue managers
     tile_queue = get_queue_manager("map-tile", queue_type="tile", campaign_name=campaign_name)
 
-    processing_dir = tile_queue.processing_dir
+    pending_dir = tile_queue.pending_dir
     completed_dir = tile_queue.completed_dir
-    gm_list_pending = paths.campaign(campaign_name).queue(ScrapeTask.SOURCE_QUEUE).state(ScrapeTask.SOURCE_STATE)
+    discovery_gen_completed = paths.campaign(campaign_name).queue(ScrapeTask.SOURCE_QUEUE).state(ScrapeTask.SOURCE_STATE)
 
-    if not processing_dir.exists():
-        logger.warning(f"Processing directory not found: {processing_dir}")
+    if not pending_dir.exists():
+        logger.warning(f"Pending directory not found: {pending_dir}")
         return {"tiles_processed": 0, "scrape_tasks_created": 0, "errors": 0}
 
     logger.info(f"Processing map-tile for {campaign_name}")
-    logger.info(f"  Input:  {processing_dir}")
-    logger.info(f"  Output: {gm_list_pending}")
+    logger.info(f"  Input:  {pending_dir}")
+    logger.info(f"  Output: {discovery_gen_completed}")
 
     tiles_processed = 0
     scrape_tasks_created = 0
@@ -80,7 +83,7 @@ def process_tile_queue(
     # Collect tile file paths up front (respecting max_tiles) so progress has a known total.
     import os
     tile_paths: List[Path] = []
-    for root, dirs, files in os.walk(processing_dir):
+    for root, dirs, files in os.walk(pending_dir):
         for filename in sorted(files):
             if filename.endswith(".usv"):
                 tile_paths.append(Path(root) / filename)
@@ -101,7 +104,7 @@ def process_tile_queue(
 
         for tile_path in tile_paths:
             filename = tile_path.name
-            rel_path = tile_path.relative_to(processing_dir)
+            rel_path = tile_path.relative_to(pending_dir)
 
             try:
                 # 1. Read tile file and parse TileQueueRecords
@@ -150,7 +153,7 @@ def process_tile_queue(
                                 f.write(scrape_task.to_usv())
 
                             scrape_tasks_created += 1
-                            logger.debug(f"  Created: {task_path.relative_to(gm_list_pending)}")
+                            logger.debug(f"  Created: {task_path.relative_to(discovery_gen_completed)}")
 
                         except Exception as task_err:
                             logger.error(
@@ -194,18 +197,18 @@ def process_tile_queue(
             )
 
     # CRITICAL: Create datapackage.json for schema compliance
-    # Describes all *.usv ScrapeTask files in gm-list/pending using glob pattern
+    # Describes all *.usv ScrapeTask files in discovery-gen/completed using glob pattern
     if not dry_run:
         try:
             ScrapeTask.save_datapackage(
-                gm_list_pending,
-                resource_name="gm-list-pending",
+                discovery_gen_completed,
+                resource_name="discovery-gen-completed",
                 resource_path="**/*.usv",  # Glob pattern for all sharded files
                 force=True,  # Overwrite if exists (safe for idempotent processing)
             )
             logger.info(f"  Created datapackage.json for {scrape_tasks_created} ScrapeTask records")
         except Exception as e:
-            logger.error(f"Error creating datapackage.json in {gm_list_pending}: {e}")
+            logger.error(f"Error creating datapackage.json in {discovery_gen_completed}: {e}")
             # Don't fail the entire processing if schema metadata fails
             errors += 1
 

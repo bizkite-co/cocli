@@ -64,7 +64,7 @@ cocli
                 --output/-o (path)
                 --corrections (path)
                 --reviewed (path)
-            tile-status - Audit tile-queue status: pending/processing/completed tiles with lease info.
+            tile-status - Audit tile-queue status: pending/completed tile counts.
                 --campaign (text)
             validate - Human-in-the-loop validation for gm-list results.
                 campaign (text)
@@ -350,10 +350,7 @@ cocli
         deduplicate - Deduplicates company data by generating a stable hash for each company and removing duplicates.
             --dry-run (boolean)
     dev
-        move-map-tiles-to-processing - Move N random tiles from map-tile/pending/ → map-tile/processing/.
-            campaign_name (text)
-            --count/-c (integer)
-        process-map-tile - Process map-tile/processing/ → gm-list/pending/.
+        process-map-tile - Process map-tile/pending/ → discovery-gen/completed/.
             campaign_name (text)
             --max/-m (integer)
             --dry-run (boolean)

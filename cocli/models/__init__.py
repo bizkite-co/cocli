@@ -6,7 +6,7 @@ from .campaigns.queues.gm_list import ScrapeTask
 from .types import AwareDatetime
 from .campaigns.queues.base import QueueMessage
 from .index_manifest import IndexManifest, IndexShard
-from .audit import TileStatusResult, ProcessingTileDetail, MissionReconciliationResult
+from .audit import TileStatusResult, MissionReconciliationResult
 
 __all__ = [
     "Company",
@@ -19,6 +19,5 @@ __all__ = [
     "IndexManifest",
     "IndexShard",
     "TileStatusResult",
-    "ProcessingTileDetail",
     "MissionReconciliationResult",
 ]

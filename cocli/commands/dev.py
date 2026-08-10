@@ -255,100 +255,6 @@ def run_discovery_gen_stages(
         raise typer.Exit(1)
 
 
-@app.command(name="move-map-tiles-to-processing")
-def move_map_tiles_to_processing_cmd(
-    campaign_name: Annotated[
-        Optional[str],
-        typer.Argument(help="Campaign name. Defaults to current context."),
-    ] = None,
-    count: Annotated[
-        int,
-        typer.Option("--count", "-c", help="Number of tiles to move."),
-    ] = 10,
-) -> None:
-    """
-    Move N random tiles from map-tile/pending/ → map-tile/processing/.
-
-    This is a testing utility to set up a batch of tiles for processing.
-    Randomly selects N tiles from the pending directory and moves them
-    to processing so they're ready for the tile processor.
-
-    USAGE:
-      # Move 10 tiles to processing (default):
-      cocli dev move-map-tiles-to-processing turboship
-
-      # Move 5 tiles:
-      cocli dev move-map-tiles-to-processing turboship --count 5
-    """
-    from cocli.core.queue.factory import get_queue_manager
-    import random
-
-    if campaign_name is None:
-        campaign_name = get_campaign()
-
-    if not campaign_name:
-        console.print("[red]No campaign specified.[/red]")
-        raise typer.Exit(1)
-
-    campaign_dir = get_campaign_dir(campaign_name)
-    if not campaign_dir:
-        console.print(f"[red]Campaign directory not found: {campaign_name}[/red]")
-        raise typer.Exit(1)
-
-    try:
-        tile_queue = get_queue_manager("map-tile", queue_type="tile", campaign_name=campaign_name)
-        pending_dir = tile_queue.pending_dir
-        processing_dir = tile_queue.processing_dir
-
-        if not pending_dir.exists():
-            console.print(f"[red]Pending directory not found: {pending_dir}[/red]")
-            raise typer.Exit(1)
-
-        # Collect all tile files from pending/
-        import os
-        tile_files = []
-        for root, dirs, files in os.walk(pending_dir):
-            for f in files:
-                if f.endswith(".usv"):
-                    tile_files.append(Path(root) / f)
-
-        if not tile_files:
-            console.print("[yellow]No tile files found in pending directory.[/yellow]")
-            raise typer.Exit(0)
-
-        # Randomly select N tiles
-        tiles_to_move = random.sample(tile_files, min(count, len(tile_files)))
-
-        console.print(f"[bold blue]Moving {len(tiles_to_move)} tiles to processing[/bold blue]")
-        console.print(f"  From: {pending_dir}")
-        console.print(f"  To:   {processing_dir}\n")
-
-        moved = 0
-        for tile_path in tiles_to_move:
-            try:
-                rel_path = tile_path.relative_to(pending_dir)
-                processing_path = processing_dir / rel_path
-
-                # Create subdirectories
-                processing_path.parent.mkdir(parents=True, exist_ok=True)
-
-                # Move (rename) the file
-                tile_path.rename(processing_path)
-                console.print(f"  ✓ {rel_path}")
-                moved += 1
-
-            except Exception as e:
-                console.print(f"  [red]✗ Error moving {tile_path.name}: {e}[/red]")
-                continue
-
-        console.print(f"\n[bold green]Moved {moved} tiles to processing[/bold green]")
-
-    except Exception as e:
-        console.print(f"[red]Error during move: {e}[/red]")
-        logger.exception("Tile move failed")
-        raise typer.Exit(1)
-
-
 @app.command(name="process-map-tile")
 def process_map_tile_cmd(
     campaign_name: Annotated[
@@ -365,17 +271,20 @@ def process_map_tile_cmd(
     ] = False,
 ) -> None:
     """
-    Process map-tile/processing/ → gm-list/pending/.
+    Process map-tile/pending/ → discovery-gen/completed/.
 
-    Reads tiles from map-tile/processing/, converts each tile's phrases
-    to individual ScrapeTask work items, writes them to gm-list/pending/
-    with lease coordination, then moves processed tiles to completed/.
+    Reads tiles from map-tile/pending/, converts each tile's phrases to
+    individual ScrapeTask work items, writes them to discovery-gen/completed/
+    (discovery-gen's own permanent, per-phrase-tile output - a separate copy
+    step handles getting these into gm-list/pending/), then moves processed
+    tiles to map-tile/completed/. map-tile has no processing phase - use
+    --max to bound how many tiles a single run processes.
 
     USAGE:
-      # Process all tiles in processing/:
+      # Process all tiles in pending/:
       cocli dev process-map-tile turboship
 
-      # Process only 10 tiles (for testing):
+      # Process only 10 tiles (for testing, or to batch a run):
       cocli dev process-map-tile turboship --max 10
 
       # Preview without writing:

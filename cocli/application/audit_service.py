@@ -9,7 +9,7 @@ from typing import Any, Dict, List, Optional
 from ..core.config import get_campaign_dir, load_campaign_config, load_global_config
 from ..models.campaigns.queues.gm_details import GmItemTask
 from ..models.companies.company import Company
-from ..models import TileStatusResult, ProcessingTileDetail, MissionReconciliationResult
+from ..models import TileStatusResult, MissionReconciliationResult
 from ..core.prospects_csv_manager import ProspectsIndexManager
 from ..core.text_utils import slugify
 from ..core.paths import paths
@@ -987,84 +987,32 @@ class AuditService:
         }
 
     def get_tile_status(self, campaign_name: str) -> TileStatusResult:
-        """Audit tile-queue status."""
+        """Audit tile-queue status.
+
+        map-tile has no processing phase (removed 2026-08-09 - it's a pure
+        tile registry, no staging/throttling job of its own). pending_dir/
+        completed_dir hold sharded files ({shard}/{lat}/{lon}/{tile_id}.usv),
+        so counts use a recursive walk, not a flat glob (a flat glob against
+        the real sharded shape always returned 0 - fixed here).
+        """
         from ..core.queue.factory import get_queue_manager
-        from datetime import datetime, UTC
-        import json
 
         campaign_val = campaign_name or "default"
         tile_queue = get_queue_manager(
             "map-tile", queue_type="tile", campaign_name=campaign_val
         )
 
-        pending_count = 0
-        if tile_queue.tiles_dir.exists():
-            pending_count = len(list(tile_queue.tiles_dir.glob("*.usv")))
+        def _count_usv(root: Path) -> int:
+            if not root.exists():
+                return 0
+            return sum(1 for _ in root.rglob("*.usv"))
 
-        processing_count = 0
-        processing_tiles_details: List[ProcessingTileDetail] = []
-        expired_count = 0
-        if tile_queue.processing_dir.exists():
-            for f in tile_queue.processing_dir.glob("*.usv"):
-                processing_count += 1
-
-                lease_path = tile_queue.processing_dir / f"{f.name}.lease.json"
-                if lease_path.exists():
-                    try:
-                        with lease_path.open() as lf:
-                            lease = json.load(lf)
-                            worker_id = lease["worker_id"]
-                            claimed_at = datetime.fromisoformat(
-                                lease["claimed_at"]
-                            )
-                            expires_at = datetime.fromisoformat(
-                                lease["expires_at"]
-                            )
-                            age_min = (
-                                datetime.now(UTC) - claimed_at
-                            ).total_seconds() / 60
-                            ttl_min = (
-                                expires_at - datetime.now(UTC)
-                            ).total_seconds() / 60
-
-                            status = (
-                                "TTL: {:.0f}min".format(ttl_min)
-                                if ttl_min > 0
-                                else "EXPIRED"
-                            )
-                            style = "green" if ttl_min > 0 else "red"
-                            if ttl_min <= 0:
-                                expired_count += 1
-
-                            processing_tiles_details.append(ProcessingTileDetail(
-                                tile_name=f.name,
-                                worker_id=worker_id,
-                                age_min=age_min,
-                                ttl_min=ttl_min,
-                                status=status,
-                                style=style,
-                            ))
-                    except Exception as e:
-                        processing_tiles_details.append(ProcessingTileDetail(
-                            tile_name=f.name,
-                            error=str(e),
-                        ))
-                else:
-                    processing_tiles_details.append(ProcessingTileDetail(
-                        tile_name=f.name,
-                        no_lease=True,
-                    ))
-
-        completed_count = 0
-        if tile_queue.completed_dir.exists():
-            completed_count = len(list(tile_queue.completed_dir.glob("*.usv")))
+        pending_count = _count_usv(tile_queue.pending_dir)
+        completed_count = _count_usv(tile_queue.completed_dir)
 
         return TileStatusResult(
             pending_count=pending_count,
-            processing_count=processing_count,
             completed_count=completed_count,
-            processing_tiles_details=processing_tiles_details,
-            expired_count=expired_count,
         )
 
     def audit_mission_reconciliation(self, campaign_name: str) -> MissionReconciliationResult:

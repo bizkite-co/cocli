@@ -254,33 +254,12 @@ class GossipBridge:
                     logger.error(f"Failed to resolve queue manager for {q_record.queue_name}: {q_err}")
                     return
 
-                # Check if it's the specialized FilesystemTileQueue
+                # Check if it's the specialized FilesystemTileQueue.
+                # map-tile has no processing/claim/lease concept (removed
+                # 2026-08-09 - pure tile registry, nothing ever broadcasts
+                # "claimed"/"released" for it) - only "completed" applies.
                 if isinstance(q_manager, FilesystemTileQueue):
-                    if q_record.status == "claimed":
-                        pending_path = q_manager.tiles_dir / q_record.task_id
-                        processing_path = q_manager.processing_dir / q_record.task_id
-                        lease_path = q_manager.processing_dir / f"{q_record.task_id}.lease.json"
-                        
-                        # Move to processing if still in pending
-                        if pending_path.exists():
-                            q_manager.processing_dir.mkdir(parents=True, exist_ok=True)
-                            pending_path.rename(processing_path)
-                            
-                        # Write local lease replica
-                        lease_data = {
-                            "worker_id": q_record.node_id,
-                            "claimed_at": q_record.timestamp,
-                            "expires_at": (datetime.fromisoformat(q_record.timestamp).replace(tzinfo=UTC) + timedelta(minutes=30)).isoformat()
-                        }
-                        with lease_path.open("w") as f:
-                            json.dump(lease_data, f)
-                            
-                    elif q_record.status == "released":
-                        # Return to pending
-                        q_manager.nack(q_record.task_id)
-                        
-                    elif q_record.status == "completed":
-                        # Move to completed
+                    if q_record.status == "completed":
                         q_manager.ack(q_record.task_id)
                 elif isinstance(q_manager, FilesystemQueue):
                     # Standard FilesystemQueue subclasses (FilesystemGmListQueue, etc.)

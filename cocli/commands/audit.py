@@ -1800,10 +1800,10 @@ def audit_export_cases(
 @queue_app.command(name="tile-status")
 def queue_status(campaign: str = typer.Option("", help="Campaign name")) -> None:
     """
-    Audit tile-queue status: pending/processing/completed tiles with lease info.
+    Audit tile-queue status: pending/completed tile counts.
 
-    Shows tile queue state, processing tiles with lease expiration, and warns
-    about expired leases (stuck tiles that will be reclaimed).
+    map-tile has no processing phase (removed 2026-08-09) - it's a pure
+    tile registry, no staging/throttling job of its own.
     """
     from ..application.services import ServiceContainer
 
@@ -1811,48 +1811,14 @@ def queue_status(campaign: str = typer.Option("", help="Campaign name")) -> None
     audit_service = ServiceContainer(campaign_name=campaign_name).queue_audit_service
     res = audit_service.get_tile_status(campaign_name)
 
-    pending_count = res.pending_count
-    processing_count = res.processing_count
-    completed_count = res.completed_count
-    processing_tiles = res.processing_tiles_details
-    expired_count = res.expired_count
-
-    # Display status table
-    console.print(f"\n[bold]Tile Queue Status: {campaign_name}[/bold]\n")
-
-    table = Table(title="State Summary")
+    table = Table(title=f"Tile Queue Status: {campaign_name}")
     table.add_column("State", style="cyan")
     table.add_column("Count", style="magenta")
 
-    table.add_row("Pending", str(pending_count))
-    table.add_row("Processing", str(processing_count))
-    table.add_row("Completed", str(completed_count))
+    table.add_row("Pending", str(res.pending_count))
+    table.add_row("Completed", str(res.completed_count))
 
     console.print(table)
-
-    # Show details of processing tiles with leases
-    if processing_tiles:
-        console.print("\n[bold]Processing Tiles:[/bold]")
-        for tile in sorted(processing_tiles, key=lambda x: x.tile_name):
-            tile_name = tile.tile_name
-            if tile.error is not None:
-                console.print(f"  • {tile_name}: [error]Error reading lease: {tile.error}[/error]")
-            elif tile.no_lease:
-                console.print(f"  • {tile_name}: [warning]No lease file[/warning]")
-            else:
-                worker_id = tile.worker_id
-                age_min = tile.age_min if tile.age_min is not None else 0.0
-                status = tile.status
-                style = tile.style
-                console.print(f"  • {tile_name}: {worker_id} (claimed {age_min:.0f}min ago) [{style}]{status}[/{style}]")
-
-    if expired_count > 0:
-        console.print(f"\n[bold red][ALERT][/bold red] {expired_count} tile(s) have expired leases")
-        console.print("[dim]These will be automatically reclaimed on next worker scan (~5s)[/dim]")
-    elif processing_count == 0:
-        console.print("\n[green][OK] Queue idle, no processing tiles[/green]")
-    else:
-        console.print(f"\n[green][OK] {processing_count} tile(s) processing, no expired leases[/green]")
 
 
 @queue_app.command(name="mission-reconciliation")

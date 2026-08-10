@@ -1238,13 +1238,15 @@ class FilesystemEnrichmentQueue(FilesystemQueue):
 
 class FilesystemTileQueue:
     """
-    Queue for atomic tile work units (map-tile).
+    Queue for atomic tile work units (map-tile) - a pure tile registry.
 
-    Phases (StationDecl): pending, processing, completed.
+    Phases (StationDecl): pending, completed. No processing phase - map-tile
+    has no staging/throttling job of its own; batching is the consumer's
+    concern (e.g. process-map-tile's --max), not a queue-level phase.
     Layout under pending: ``tiles/`` holds payload files (not a lifecycle phase).
 
     Path construction (0010 PR5): phase dirs and S3 prefix via QueueLayout +
-    PhaseRef. On-disk shape unchanged: pending/tiles/, processing/, completed/.
+    PhaseRef. On-disk shape: pending/tiles/, completed/.
     """
 
     def __init__(
@@ -1290,12 +1292,10 @@ class FilesystemTileQueue:
         ph = self.layout.phases
         self.pending_dir = self.layout.phase_dir(ph.pending)
         self.completed_dir = self.layout.phase_dir(ph.completed)
-        self._processing_phase = ph.processing
         self._pending_layout_name = MAP_TILE_PENDING_LAYOUT
 
         self.pending_dir.mkdir(parents=True, exist_ok=True)
         self.completed_dir.mkdir(parents=True, exist_ok=True)
-        self.processing_dir.mkdir(parents=True, exist_ok=True)
 
         self._ensure_schema()
 
@@ -1315,11 +1315,6 @@ class FilesystemTileQueue:
         """Payload bag under pending (layout segment, not a phase)."""
         return self.pending_dir / self._pending_layout_name
 
-    @property
-    def processing_dir(self) -> Path:
-        """Active-like phase for tiles currently being worked on."""
-        return self.layout.phase_dir(self._processing_phase)
-
     def _get_s3_completed_key(self, tile_filename: str) -> str:
         """S3 key for a completed tile file (flat under completed phase)."""
         completed = self.layout.phases.completed.name
@@ -1332,22 +1327,16 @@ class FilesystemTileQueue:
         logger.debug(f"Registered tile: {tile_file_path.name}")
 
     def ack(self, task: Union[str, Path]) -> None:
-        """Move tile file from processing → completed."""
+        """Move tile file from pending → completed."""
         tile_file = Path(task) if isinstance(task, str) else task
         if not tile_file.exists():
             logger.warning(f"Tile file not found for ack: {tile_file}")
             return
 
-        # Move from processing to completed
         completed_path = self.completed_dir / tile_file.name
         completed_path.parent.mkdir(parents=True, exist_ok=True)
         tile_file.rename(completed_path)
         logger.info(f"Tile completed and moved: {tile_file.name}")
-
-        # Remove lease if it exists
-        lease_path = self.processing_dir / f"{tile_file.name}.lease.json"
-        if lease_path.exists():
-            lease_path.unlink()
 
         # Optional: Push to S3 if configured
         if self.s3_client and self.bucket_name:
@@ -1382,46 +1371,3 @@ class FilesystemTileQueue:
                 logger.debug(f"Broadcasted tile completion for {tile_file.name}")
         except Exception as gossip_err:
             logger.debug(f"Gossip tile completion broadcast skipped: {gossip_err}")
-
-    def nack(self, task: Union[str, Path]) -> None:
-        """Move tile file from processing back to pending/tiles."""
-        tile_file = Path(task) if isinstance(task, str) else task
-
-        # If passed a Path, use its name; otherwise use the string directly
-        tile_filename = tile_file.name if isinstance(tile_file, Path) else tile_file
-        processing_path = self.processing_dir / tile_filename
-
-        if not processing_path.exists():
-            logger.warning(f"Tile file not found in processing: {processing_path}")
-            return
-
-        # Move back to pending/tiles
-        pending_path = self.tiles_dir / tile_filename
-        pending_path.parent.mkdir(parents=True, exist_ok=True)
-        processing_path.rename(pending_path)
-        logger.info(f"Tile nacked and returned to pending: {tile_filename}")
-
-        # Remove lease if it exists
-        lease_path = self.processing_dir / f"{tile_filename}.lease.json"
-        if lease_path.exists():
-            lease_path.unlink()
-
-        # Broadcast tile release via Gossip
-        try:
-            from ..gossip_bridge import bridge
-            if bridge and bridge.running:
-                from ...models.wal.record import QueueDatagram
-                from ..environment import get_environment
-                datagram = QueueDatagram(
-                    campaign_name=self.campaign_name,
-                    queue_name=self.queue_name,
-                    task_id=tile_filename,
-                    status="released",
-                    timestamp=datetime.now(UTC).isoformat(),
-                    node_id=self.worker_id,
-                    environment=get_environment().value,
-                )
-                bridge.broadcast_msg(datagram.to_usv())
-                logger.debug(f"Broadcasted tile release for {tile_filename}")
-        except Exception as gossip_err:
-            logger.debug(f"Gossip tile release broadcast skipped: {gossip_err}")
