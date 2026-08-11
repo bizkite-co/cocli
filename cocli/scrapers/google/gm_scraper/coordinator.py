@@ -94,7 +94,7 @@ class ScrapeCoordinator:
                         logger.info(f"Reached max proximity ({dist:.2f} > {max_proximity_miles} miles). Stopping.")
                         break
                 
-                logger.info(f"Processing location: {lat:.4f}, {lon:.4f} (Dist: {dist:.1f} mi)")
+                logger.info(f"Processing location: {lat}, {lon} (Dist: {dist:.1f} mi)")
                 
                 # 2. Determine Scope (Expand-Out)
                 # We attempt to define the largest effective box for this center point
