@@ -29,6 +29,54 @@ def is_non_conforming(name: str) -> bool:
         pass
     return False
 
+
+def _lease_is_expired(lease_path: Path, now: datetime) -> bool:
+    """True if the lease at lease_path is expired right now. False if the
+    file no longer exists (already reclaimed or purged by someone else) -
+    that's "nothing to do" for a caller, not "junk"."""
+    try:
+        with open(lease_path, 'r') as f:
+            data = json.load(f)
+        expires_at_str = data.get("expires_at")
+        if expires_at_str:
+            expires_at = datetime.fromisoformat(expires_at_str.replace("Z", "+00:00"))
+            return now > expires_at
+        # Fallback: check file mtime (if lease has no expiry info)
+        mtime = datetime.fromtimestamp(lease_path.stat().st_mtime, UTC)
+        return now > (mtime + timedelta(minutes=15))
+    except FileNotFoundError:
+        return False
+    except Exception:
+        return True  # unreadable/corrupt existing file - treat as junk
+
+
+def _alert_precision_violation(campaign_name: str, location: str, count: int, samples: list[Path], base: Path) -> None:
+    """Precision-named dirs should never occur post-fix - this is a bug
+    signal, not routine housekeeping, so it pages instead of just logging."""
+    try:
+        from cocli.utils.alert_utils import send_alert
+        from cocli.models.campaigns.campaign import Campaign
+
+        campaign = Campaign.load(campaign_name)
+        ntfy_url = getattr(getattr(campaign, "alerts", None), "ntfy_url", None)
+        if ntfy_url:
+            os.environ["COCLI_ALERT_NTFY_URL"] = ntfy_url
+
+        sample_txt = "\n".join(str(p.relative_to(base)) for p in samples[:5])
+        send_alert(
+            message=(
+                f"Found {count} high-precision (>1 decimal) directory name(s) "
+                f"in {campaign_name}/{location} - this should never happen "
+                f"post-fix; investigate the generation code.\n{sample_txt}"
+            ),
+            title=f"High-precision dirs in {campaign_name}/{location}",
+            priority=4,
+            tags=["warning", "magnifying_glass_tilted_left"],
+            cooldown_key=f"precision_violation_{campaign_name}_{location}",
+        )
+    except Exception as e:
+        logger.error(f"Failed to send precision-violation alert: {e}")
+
 def cleanup_pending_queue(campaign_name: str, dry_run: bool = True) -> None:
     campaign_dir = get_campaign_dir(campaign_name)
     if not campaign_dir:
@@ -55,7 +103,9 @@ def cleanup_pending_queue(campaign_name: str, dry_run: bool = True) -> None:
                 non_conforming.append(Path(root_dir) / d_name)
 
     logger.info(f"Found {len(non_conforming)} non-conforming directories in pending queue.")
-    
+    if non_conforming:
+        _alert_precision_violation(campaign_name, "gm-list/pending", len(non_conforming), non_conforming, pending_dir)
+
     if not dry_run:
         purged_count = 0
         for d_item in non_conforming:
@@ -73,7 +123,12 @@ def cleanup_pending_queue(campaign_name: str, dry_run: bool = True) -> None:
 
     # 2. Find and handle leases/tasks in conforming but expired paths
     all_leases = list(pending_dir.rglob("lease.json"))
-    
+    expired_at_scan = sum(1 for lp in all_leases if _lease_is_expired(lp, now))
+    logger.info(
+        f"Lease GC: {len(all_leases)} lease(s) found, "
+        f"{expired_at_scan} expired as of scan time (before purge)."
+    )
+
     for lease_path in all_leases:
         try:
             # Path is: pending/{shard}/{lat}/{lon}/{phrase}.[csv|usv]/lease.json
@@ -109,31 +164,27 @@ def cleanup_pending_queue(campaign_name: str, dry_run: bool = True) -> None:
             new_lease_dir = pending_dir / shard / f"{lat_norm}" / f"{lon_norm}" / f"{phrase_slug}.csv"
             new_lease_path = new_lease_dir / "lease.json"
             
-            # Check if expired
-            is_expired = False
-            try:
-                with open(lease_path, 'r') as f:
-                    data = json.load(f)
-                
-                # Check expires_at or heartbeat_at
-                expires_at_str = data.get("expires_at")
-                if expires_at_str:
-                    expires_at = datetime.fromisoformat(expires_at_str.replace("Z", "+00:00"))
-                    if now > expires_at:
-                        is_expired = True
-                else:
-                    # Fallback: check file mtime (if lease has no expiry info)
-                    mtime = datetime.fromtimestamp(lease_path.stat().st_mtime, UTC)
-                    if now > (mtime + timedelta(minutes=15)):
-                        is_expired = True
-            except Exception:
-                is_expired = True # If we can't read it, it's junk
+            is_expired = _lease_is_expired(lease_path, now)
 
             if is_expired:
                 logger.info(f"Purging EXPIRED lease: {lease_path.relative_to(pending_dir)}")
                 if not dry_run:
-                    lease_path.unlink()
-                deleted_leases += 1
+                    # Re-verify right at delete time - a worker's poll() can
+                    # legitimately CAS-reclaim this exact lease (stations
+                    # acquire_lease) between our scan above and this delete.
+                    # This script's read-then-unlink isn't atomic like that
+                    # path, so we close the window by re-checking immediately
+                    # before acting instead of trusting the earlier scan.
+                    if _lease_is_expired(lease_path, datetime.now(UTC)):
+                        try:
+                            lease_path.unlink()
+                            deleted_leases += 1
+                        except FileNotFoundError:
+                            logger.info(f"  Already gone (raced with reclaim or another sweep): {lease_path.relative_to(pending_dir)}")
+                    else:
+                        logger.info(f"  Reclaimed since scan, skipping delete: {lease_path.relative_to(pending_dir)}")
+                else:
+                    deleted_leases += 1
             else:
                 # Active lease: Move to new standard path
                 if lease_path.resolve() != new_lease_path.resolve():
