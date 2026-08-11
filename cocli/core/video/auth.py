@@ -71,7 +71,7 @@ class DeviceCodeAuth:
         logger.debug(f"Device code response status: {response.status_code}")
         logger.debug(f"Device code response body: {response.text}")
         if response.status_code != 200:
-            raise Exception(
+            raise RuntimeError(
                 f"Device code request failed: {response.status_code} - {response.text}"
             )
         response.raise_for_status()

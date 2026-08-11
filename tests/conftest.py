@@ -48,7 +48,7 @@ def get_op_secret(op_path):
     services = ServiceContainer()
     secret = services.secret_service.get_secret(op_path)
     if not secret:
-        raise Exception(f"Failed to read secret from 1Password: {op_path}")
+        raise RuntimeError(f"Failed to read secret from 1Password: {op_path}")
     return secret
 
 @pytest.fixture(scope="session")

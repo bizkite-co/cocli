@@ -20,7 +20,7 @@ from ..core.domain_index_manager import DomainIndexManager
 from ..core.s3_company_manager import S3CompanyManager
 from ..models.campaigns.indexes.domains import WebsiteDomainCsv
 from ..models.campaigns.campaign import Campaign
-from ..core.exceptions import EnrichmentError
+from ..core.exceptions import EnrichmentError, NavigationError
 from ..core.email_index_manager import EmailIndexManager
 from ..models.campaigns.indexes.email import EmailEntry
 from ..models.email_address import EmailAddress
@@ -391,10 +391,10 @@ class WebsiteScraper:
                 )
                 if not response or not response.ok:
                     status = response.status if response else "No Response"
-                    raise Exception(f"Navigation failed with status {status}")
+                    raise NavigationError(f"Navigation failed with status {status}")
                 website_data.url = page.url
             except Exception as e:
-                raise Exception(f"Could not navigate to {domain}. Error: {e}")
+                raise NavigationError(f"Could not navigate to {domain}. Error: {e}") from e
 
             target_keywords: List[str] = []
             if campaign:

@@ -5,10 +5,13 @@ python = { version = "3.12", venv = ".venv" }
 python.uv_venv_auto = true
 
 [tasks]
-install = "uv sync --extra dev && uv pip install -e . && playwright install"
-test = { run = "pytest -s tests/", depends = ["install"] }
-lint = { run = "mypy --config-file pyproject.toml .", depends = ["install"] }
-build = { run = "python -m build", depends = ["install"] }
+# install/test/lint/build delegate to the Makefile so there is exactly one
+# definition of each check - `make lint` runs ruff + mypy + import-linter;
+# a separate mypy-only copy here drifted silently out of sync with it.
+install = "make install"
+test = { run = "make test" }
+lint = { run = "make lint" }
+build = { run = "make build" }
 clean = "rm -rf ./.venv uv.lock"
 mypy-daemon-start = { run = "mypy --daemon run --config-file pyproject.toml", depends = ["install"] }
 mypy-daemon-stop = { run = "mypy --daemon stop" }

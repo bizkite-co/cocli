@@ -30,7 +30,7 @@ def _get_op_secret():
         services = ServiceContainer()
         secret = services.secret_service.get_secret(op_path)
         if not secret:
-            raise Exception(f"Failed to read secret from 1Password: {op_path}")
+            raise RuntimeError(f"Failed to read secret from 1Password: {op_path}")
         return secret
     return _fn
 
