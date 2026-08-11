@@ -11,6 +11,7 @@ from typing import Any, Dict, List, Optional, Set
 from playwright.async_api import async_playwright, Browser, BrowserContext
 
 from ..core.queue.factory import get_queue_manager
+from ..core.error_classification import classify_exception
 from ..scrapers.google.google_maps import scrape_google_maps
 from ..models.campaigns.indexes.google_maps_list_item import GoogleMapsListItem
 from ..models.campaigns.queues.gm_details import GmItemTask
@@ -498,7 +499,8 @@ class WorkerService:
                 if once:
                     return
             except Exception as e:
-                logger.error(f"Task Failed: {e}")
+                category = classify_exception(e)
+                logger.error(f"Task Failed [{category.value}]: {e}")
                 # Negative acknowledge on failure (removes lease, task stays available)
                 gm_list_queue.nack(task)
 
@@ -543,7 +545,8 @@ class WorkerService:
                 if once:
                     return
             except Exception as e:
-                logger.error(f"Detail Task Failed: {e}")
+                category = classify_exception(e)
+                logger.error(f"Detail Task Failed [{category.value}]: {e}")
                 gm_list_item_queue.nack(task)
                 if once:
                     return
@@ -597,7 +600,8 @@ class WorkerService:
                 if once:
                     return
             except Exception as e:
-                logger.error(f"Enrichment Task Failed: {e}")
+                category = classify_exception(e)
+                logger.error(f"Enrichment Task Failed [{category.value}]: {e}")
                 enrichment_queue.nack(task)
                 if once:
                     return

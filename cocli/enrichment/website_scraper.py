@@ -21,6 +21,7 @@ from ..core.s3_company_manager import S3CompanyManager
 from ..models.campaigns.indexes.domains import WebsiteDomainCsv
 from ..models.campaigns.campaign import Campaign
 from ..core.exceptions import EnrichmentError, NavigationError
+from ..core.error_classification import ErrorCategory, classify_exception
 from ..core.email_index_manager import EmailIndexManager
 from ..models.campaigns.indexes.email import EmailEntry
 from ..models.email_address import EmailAddress
@@ -200,11 +201,14 @@ class WebsiteScraper:
                 timeout=site_timeout_seconds,
             )
         except asyncio.TimeoutError:
-            logger.info(f"Scraping timed out for {domain} after {site_timeout_seconds} seconds. Finalizing with partial data.")
+            logger.info(f"[{ErrorCategory.TIMEOUT.value}] Scraping timed out for {domain} after {site_timeout_seconds} seconds. Finalizing with partial data.")
             website_data.error = "Timeout"
+            website_data.error_category = ErrorCategory.TIMEOUT
         except Exception as e:
-            logger.info(f"Failed to scrape website {domain}: {e}")
+            category = classify_exception(e)
+            logger.info(f"[{category.value}] Failed to scrape website {domain}: {e}")
             website_data.error = str(e)
+            website_data.error_category = category
         finally:
             await self._finalize_enrichment(website_data, campaign)
 

@@ -6,6 +6,7 @@ import logging
 from ..domain import Domain
 from ..email_address import EmailAddress
 from ..phone import OptionalPhone
+from ...core.error_classification import ErrorCategory
 
 logger = logging.getLogger(__name__)
 
@@ -58,6 +59,7 @@ class Website(BaseModel):
     sitemap_xml: Optional[str] = None
     navbar_html: Optional[str] = None
     error: Optional[str] = None
+    error_category: Optional[ErrorCategory] = None
 
     def save(self, company_slug: str) -> None:
         """Saves the website enrichment data to the local company directory."""
