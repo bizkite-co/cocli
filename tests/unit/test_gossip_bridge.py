@@ -1,10 +1,15 @@
 import importlib
+import json
 import socket
 import threading
+import time
 from typing import Tuple
 from unittest.mock import MagicMock
 
 from cocli.core import gossip_bridge as _gossip_bridge_module
+from cocli.core.environment import Environment
+from cocli.core.paths import paths
+from cocli.models.wal.record import ConfigDatagram
 
 # tests/conftest.py globally replaces cocli.core.gossip_bridge.GossipBridge
 # with a MagicMock for the whole test session, to stop any test from
@@ -63,6 +68,37 @@ def test_broadcast_msg_suppressed_on_listener_thread() -> None:
     bridge.broadcast_msg("Qsomepayload")
 
     assert not mock_sock.sendto.called
+
+
+def test_handle_gossip_config_writes_campaign_tagged_payload(tmp_path, monkeypatch) -> None:
+    """Regression lock for the general-purpose fix in task-agent ticket
+    gossip-config-broadcasts-never-expire-stale-scaling-replayed-forever-no-cross-campaign-guard:
+    the write side must tag every broadcast file with its campaign_name so
+    the reader (WorkerService._watch_remote_config) can independently
+    verify it before ever applying it, instead of trusting the write-side
+    filter to hold forever across node reassignments."""
+    bridge, _mock_sock = _make_bridge()
+    bridge.node_id = "self-node"
+    paths.root = tmp_path
+    monkeypatch.setenv("CAMPAIGN_NAME", "test-campaign")
+    monkeypatch.setattr(_gossip_bridge_module, "get_environment", lambda: Environment.DEV)
+
+    datagram = ConfigDatagram(
+        campaign_name="test-campaign",
+        node_id="*",
+        timestamp=str(int(time.time())),
+        config_json=json.dumps({"testnode": {"gm-list": 2}}),
+        environment="dev",
+    )
+
+    bridge.handle_gossip(datagram.to_usv(), ("10.0.0.5", 1234))
+
+    files = list((tmp_path / "remote_updates").glob("config_*.json"))
+    assert len(files) == 1
+    assert json.loads(files[0].read_text()) == {
+        "campaign_name": "test-campaign",
+        "scaling": {"testnode": {"gm-list": 2}},
+    }
 
 
 def test_listen_loop_sets_suppression_flag_before_processing() -> None:

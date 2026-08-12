@@ -209,14 +209,43 @@ class WorkerService:
         )
 
     async def _watch_remote_config(self) -> None:
-        """Watches for config updates received via gossip."""
+        """Watches for config updates received via gossip and applies them.
+
+        Applied (or rejected) update files are deleted immediately - not
+        just tracked via an in-memory watermark. Production incident
+        (2026-08): a plain `last_processed` local variable reset to 0 on
+        every container restart while the on-disk files it tracked against
+        (bind-mounted, so restart-durable) never got cleaned up - a single
+        stale broadcast from months earlier kept getting silently
+        reapplied on every hourly cron restart, indefinitely, since it was
+        still the newest filename in a directory nothing new had arrived
+        in. Live inspection (2026-08-12) found 9 such files on cocli5x0
+        dating back to 2026-07-05, none ever processed away.
+
+        Each file also carries the campaign_name it was broadcast for (see
+        gossip_bridge.py). A file whose campaign doesn't match this
+        container's own is rejected rather than applied - the write-side
+        campaign filter in gossip_bridge.py is the primary guard against
+        cross-campaign contamination, but a node physically reassigned
+        between campaigns (this has happened: cocli5x0 was reassigned
+        exclusively to turboship on 2026-08-08) can still carry old files
+        from its prior campaign on the same bind-mounted data directory,
+        and nothing on the read side used to check that.
+
+        Only this node's own scaling stanza is merged into config.toml.
+        The broadcast carries the whole cluster's scaling table so every
+        node can pick its own slice out of one message, but blindly
+        writing the whole table locally would silently overwrite (or
+        resurrect) every other node's entry on every hot-reload.
+        """
         from ..core.paths import paths
         update_dir = paths.root / "remote_updates"
         update_dir.mkdir(parents=True, exist_ok=True)
 
         logger.info(f"WorkerService: Watching for config updates in {update_dir}")
 
-        last_processed = 0
+        hostname = self.processed_by.split("-")[0]
+
         while self._running:
             try:
                 # Find the latest config file
@@ -225,33 +254,49 @@ class WorkerService:
                     latest = updates[-1]
                     # Format: config_TIMESTAMP.json
                     try:
-                        ts = int(latest.stem.split("_")[1])
-                        if ts > last_processed:
-                            logger.info(f"Applying hot config update from gossip: {latest.name}")
-                            with open(latest, "r") as f:
-                                new_scaling = json.load(f)
+                        int(latest.stem.split("_")[1])  # validate the name shape before acting on it
+                        with open(latest, "r") as f:
+                            payload = json.load(f)
 
-                            # Update local campaign config.toml for persistence
-                            from ..core.paths import paths
+                        file_campaign = payload.get("campaign_name") if isinstance(payload, dict) else None
+                        new_scaling = payload.get("scaling") if isinstance(payload, dict) else None
+
+                        if file_campaign is None or new_scaling is None:
+                            logger.warning(
+                                f"Discarding {latest.name}: legacy format with no campaign tag, "
+                                "can't verify it's safe to apply."
+                            )
+                        elif file_campaign != self.campaign_name:
+                            logger.warning(
+                                f"Discarding {latest.name}: broadcast for campaign "
+                                f"'{file_campaign}' != this node's '{self.campaign_name}'."
+                            )
+                        else:
                             config_path = paths.campaign(self.campaign_name).path / "config.toml"
-                            if config_path.exists():
+                            if config_path.exists() and hostname in new_scaling:
+                                logger.info(f"Applying hot config update from gossip: {latest.name}")
                                 import toml
                                 with open(config_path, "r") as f:
                                     full_config = toml.load(f)
 
-                                # Merge scaling update
-                                if "prospecting" not in full_config:
-                                    full_config["prospecting"] = {}
-                                full_config["prospecting"]["scaling"] = new_scaling
+                                # Merge just this node's own slice - never
+                                # blindly replace the whole scaling table.
+                                full_config.setdefault("prospecting", {}).setdefault("scaling", {})
+                                full_config["prospecting"]["scaling"][hostname] = new_scaling[hostname]
 
                                 with open(config_path, "w") as f:
                                     toml.dump(full_config, f)
 
-                                logger.info("Local config.toml updated with gossip scaling.")
+                                logger.info(f"Local config.toml updated with gossip scaling for {hostname}.")
                                 self._load_config()
                                 await self._rebalance_workers()
 
-                            last_processed = ts
+                        # Applied, rejected, or config.toml didn't exist to
+                        # apply it to - either way, this and any older
+                        # superseded files must not survive to be replayed
+                        # later.
+                        for stale in updates:
+                            stale.unlink(missing_ok=True)
                     except (IndexError, ValueError):
                         pass
             except Exception as e:

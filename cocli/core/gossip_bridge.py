@@ -361,12 +361,23 @@ class GossipBridge:
                     return
 
                 logger.info(f"Received remote config update from gossip ({c_record.campaign_name}).")
-                
-                # Save update to a dedicated location for WorkerService to pick up
+
+                # Save update to a dedicated location for WorkerService to pick up.
+                # Wrapped with campaign_name so the reader (which may run this
+                # exact same on-disk directory across a node reassigned between
+                # campaigns) can independently verify it before ever applying
+                # it, rather than trusting that the write-side filter above
+                # holds forever.
+                import json as json_module
+
                 update_path = paths.root / "remote_updates" / f"config_{int(time.time())}.json"
                 update_path.parent.mkdir(parents=True, exist_ok=True)
+                payload = {
+                    "campaign_name": c_record.campaign_name,
+                    "scaling": json_module.loads(c_record.config_json),
+                }
                 with open(update_path, "w") as f:
-                    f.write(c_record.config_json)
+                    json_module.dump(payload, f)
                 return
 
             # 4. Handle standard WAL Records
