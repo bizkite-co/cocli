@@ -870,7 +870,7 @@ def _audit_cluster_from_heartbeats(campaign_name: str, verbose: bool) -> None:
 
     now = datetime.now(timezone.utc)
 
-    table = Table(title=f"Cluster Node Audit: {campaign_name}", box=None)
+    table = Table(title=f"Cluster Node Audit: {campaign_name}", box=None, header_style="bold white on blue", pad_edge=False)
     table.add_column("Node", style="cyan")
     table.add_column("Campaign", style="green")
     table.add_column("Designation", style="magenta")
@@ -941,7 +941,7 @@ def _audit_cluster_from_heartbeats(campaign_name: str, verbose: bool) -> None:
 
     console.print(table)
 
-    queue_table = Table(title=f"Campaign Queue Depths: {campaign_name}", box=None)
+    queue_table = Table(title=f"Campaign Queue Depths: {campaign_name}", box=None, header_style="bold white on blue", pad_edge=False)
     queue_table.add_column("Queue", style="cyan")
     queue_table.add_column("Pending", justify="right")
     queue_table.add_column("Completed", justify="right")
@@ -1168,7 +1168,7 @@ def _audit_cluster_ssh(campaign_name: str, verbose: bool) -> None:
             "queue_depths": {},
         })
 
-    table = Table(title=f"Cluster Node Audit: {campaign_name}")
+    table = Table(title=f"Cluster Node Audit: {campaign_name}", box=None, header_style="bold white on blue", pad_edge=False)
     table.add_column("Node", style="cyan")
     table.add_column("Campaign", style="green")
     table.add_column("Queue", style="magenta")
@@ -1183,8 +1183,11 @@ def _audit_cluster_ssh(campaign_name: str, verbose: bool) -> None:
     table.add_column("Health")
 
     for i, d in enumerate(diagnostics):
-        if i > 0:
-            table.add_section()
+        # box=None (borderless, for density) means add_section()'s divider
+        # has nothing left to draw - alternate a subtle row background per
+        # node instead, so a node's queue rows still read as one group
+        # without needing a line between them.
+        node_style = "on grey15" if i % 2 == 1 else ""
 
         designation = d["designation"]
         # Sorted once, and every per-queue value below is looked up by that
@@ -1209,7 +1212,7 @@ def _audit_cluster_ssh(campaign_name: str, verbose: bool) -> None:
         health = _node_health_verdict(d["has_campaign"], d["last_log_age"], error_count, d["stale_content_types"])
 
         if not relevant_queues:
-            table.add_row(d["host"], campaign_str, "-", "-", "-", "-", "-", cpu_str, mem_str, errors_str, activity_str, health)
+            table.add_row(d["host"], campaign_str, "-", "-", "-", "-", "-", cpu_str, mem_str, errors_str, activity_str, health, style=node_style)
             continue
 
         for row_idx, q in enumerate(relevant_queues):
@@ -1235,6 +1238,7 @@ def _audit_cluster_ssh(campaign_name: str, verbose: bool) -> None:
                 errors_str if is_first else "",
                 activity_str if is_first else "",
                 health if is_first else "",
+                style=node_style,
             )
 
     console.print(table)
