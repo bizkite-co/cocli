@@ -3,7 +3,34 @@ from cocli.commands.audit import (
     _node_health_verdict,
     _log_line_age_seconds,
     _format_age,
+    _aggregate_worker_counts_by_content_type,
 )
+
+
+def test_aggregate_worker_counts_takes_single_boot_time_line():
+    lines = ["[2026-08-11 19:00:14 -0700] Starting worker: details-1 (type=gm-details, workers=2)"]
+    assert _aggregate_worker_counts_by_content_type(lines) == {"gm-details": 2}
+
+
+def test_aggregate_worker_counts_rebalance_replaces_not_sums():
+    # Production bug this guards against: a rebalance names its workers
+    # differently from boot ("cocli5x0-gm-details" vs "details-1"), so
+    # summing-by-name would have shown 2+1=3 instead of the true live 1.
+    lines = [
+        "[2026-08-11 19:00:14 -0700] Starting worker: details-1 (type=gm-details, workers=2)",
+        "[2026-08-11 19:00:16 -0700] Starting worker: cocli5x0-gm-details (type=gm-details, workers=1)",
+    ]
+    assert _aggregate_worker_counts_by_content_type(lines) == {"gm-details": 1}
+
+
+def test_aggregate_worker_counts_rebalance_to_zero_overwrites_stale_boot_count():
+    # The specific incident: gm-details scaled to 0 must show 0, not the
+    # stale non-zero count logged once at boot and never since.
+    lines = [
+        "[2026-08-11 19:00:14 -0700] Starting worker: details-1 (type=gm-details, workers=2)",
+        "[2026-08-11 19:00:16 -0700] Starting worker: cocli5x0-gm-details (type=gm-details, workers=0)",
+    ]
+    assert _aggregate_worker_counts_by_content_type(lines) == {"gm-details": 0}
 
 
 def test_parse_cluster_audit_sections_splits_on_markers():

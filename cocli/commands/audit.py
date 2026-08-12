@@ -647,6 +647,29 @@ _WORKER_LINE_RE = re.compile(
 _LOG_TS_RE = re.compile(r"\[(?P<ts>\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2} [+-]\d{4})\]")
 
 
+def _aggregate_worker_counts_by_content_type(worker_lines: list[str]) -> dict[str, int]:
+    """Latest count wins per content_type - NOT summed across worker names.
+
+    A rebalance (WorkerService._rebalance_workers()) always fully cancels
+    and replaces whatever was running for a content type, but it names its
+    replacement workers differently from whatever named them at boot
+    ("{hostname}-{content_type}" vs. config.toml's
+    [[cluster.nodes.workers]].name, e.g. "details-1"). Summing by name
+    would double-count: the boot-time line for that content type never
+    stops being "the latest for its name" just because a rebalance
+    superseded it under a different name. `worker_lines` is expected
+    chronological (sections["WORKERS"] is grep | tail -30 on the raw log),
+    so a plain overwrite per content_type - not per name - correctly
+    reflects only the most recent statement of truth.
+    """
+    by_content_type: dict[str, int] = {}
+    for line in worker_lines:
+        m = _WORKER_LINE_RE.search(line)
+        if m:
+            by_content_type[m.group("content_type")] = int(m.group("count"))
+    return by_content_type
+
+
 def _parse_cluster_audit_sections(raw: str) -> dict[str, list[str]]:
     sections: dict[str, list[str]] = {
         "HEADER": [], "HEARTBEAT": [], "WORKERS": [], "ERRORS": [], "ERROR_PATTERNS": [], "LASTLOG": [],
@@ -1017,16 +1040,7 @@ def _audit_cluster_ssh(campaign_name: str, verbose: bool) -> None:
             except (json.JSONDecodeError, AttributeError):
                 pass
 
-        # Dedupe by worker name, keeping the last (most recent) definition, then
-        # aggregate active worker counts per content_type.
-        latest_by_name: dict[str, tuple[str, int]] = {}
-        for line in sections["WORKERS"]:
-            m = _WORKER_LINE_RE.search(line)
-            if m:
-                latest_by_name[m.group("name")] = (m.group("content_type"), int(m.group("count")))
-        by_content_type: dict[str, int] = {}
-        for content_type, count in latest_by_name.values():
-            by_content_type[content_type] = by_content_type.get(content_type, 0) + count
+        by_content_type = _aggregate_worker_counts_by_content_type(sections["WORKERS"])
 
         try:
             error_count = int(sections["ERRORS"][0].strip()) if sections["ERRORS"] else 0

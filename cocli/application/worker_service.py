@@ -213,9 +213,9 @@ class WorkerService:
         from ..core.paths import paths
         update_dir = paths.root / "remote_updates"
         update_dir.mkdir(parents=True, exist_ok=True)
-        
+
         logger.info(f"WorkerService: Watching for config updates in {update_dir}")
-        
+
         last_processed = 0
         while self._running:
             try:
@@ -230,7 +230,7 @@ class WorkerService:
                             logger.info(f"Applying hot config update from gossip: {latest.name}")
                             with open(latest, "r") as f:
                                 new_scaling = json.load(f)
-                            
+
                             # Update local campaign config.toml for persistence
                             from ..core.paths import paths
                             config_path = paths.campaign(self.campaign_name).path / "config.toml"
@@ -238,25 +238,25 @@ class WorkerService:
                                 import toml
                                 with open(config_path, "r") as f:
                                     full_config = toml.load(f)
-                                
+
                                 # Merge scaling update
                                 if "prospecting" not in full_config:
                                     full_config["prospecting"] = {}
                                 full_config["prospecting"]["scaling"] = new_scaling
-                                
+
                                 with open(config_path, "w") as f:
                                     toml.dump(full_config, f)
-                                
+
                                 logger.info("Local config.toml updated with gossip scaling.")
                                 self._load_config()
                                 await self._rebalance_workers()
-                            
+
                             last_processed = ts
                     except (IndexError, ValueError):
                         pass
             except Exception as e:
                 logger.error(f"Error in config watcher: {e}")
-            
+
             await asyncio.sleep(5)
 
     async def _heartbeat_loop(self, interval: int = 30) -> None:
@@ -321,6 +321,20 @@ class WorkerService:
                     workers=count,
                     iot_profile=default_iot_profile
                 ))
+            else:
+                # Not just silence - a boot-time worker of this type is
+                # about to be cancelled below and nothing will replace it.
+                # Production incident (2026-08-11): gm-details sat at
+                # scaling=0 on turboship for 6+ days, invisible because
+                # this rebalance never logged anything a human or the
+                # audit tool's "Starting worker:" parser could see.
+                logger.info(f"Rebalance: {c_type} scaled to 0 on {hostname} - no worker will run.")
+                # Also emit a properly-formatted line the audit's
+                # "Starting worker:" regex actually matches (workers=0) -
+                # otherwise cocli audit cluster would still show whatever
+                # non-zero count was logged at boot for this content type,
+                # since nothing would ever overwrite it.
+                logger.info(f"Starting worker: {hostname}-{c_type} (type={c_type}, workers=0)")
 
         # Google Maps conclusively blocks Fargate/data-center IP ranges (see
         # CLAUDE.md "Known Issues") - the same hard rule
@@ -345,6 +359,14 @@ class WorkerService:
             worker_service.content_type = wd.content_type
             worker_service.worker_count = wd.workers
             self.child_workers.append(worker_service)
+
+            # Same format run_orchestrated_workers() logs at boot - the
+            # audit tool's "Starting worker:" regex is how `cocli audit
+            # cluster`'s Workers column gets populated. Without this line
+            # here too, that column only ever shows the pre-rebalance
+            # boot-time count, silently stale the moment a rebalance
+            # changes anything (see incident note above).
+            logger.info(f"Starting worker: {wd.name} (type={wd.content_type}, workers={wd.workers})")
 
             if wd.content_type == "gm-list":
                 coro = worker_service.run_worker(headless=True, debug=False, once=False, workers=wd.workers)
