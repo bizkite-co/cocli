@@ -516,9 +516,15 @@ class WorkerService:
         debug: bool,
         once: bool,
     ) -> None:
+        logger.info("Details worker task loop entered.")
         while True:
             self.last_activity_ts = time.time()
-            if not context.browser or not context.browser.is_connected():
+            try:
+                if not context.browser or not context.browser.is_connected():
+                    logger.error("Details worker: browser is disconnected. Breaking task loop to restart.")
+                    break
+            except Exception as e:
+                logger.error(f"Details worker: browser connectivity check failed: {e}")
                 break
 
             tasks: List[GmItemTask] = await asyncio.to_thread(gm_list_item_queue.poll, batch_size=1)
@@ -572,8 +578,12 @@ class WorkerService:
 
         while True:
             self.last_activity_ts = time.time()
-            if not context.browser or not context.browser.is_connected():
-                logger.error("Browser is disconnected. Breaking task loop to restart.")
+            try:
+                if not context.browser or not context.browser.is_connected():
+                    logger.error("Browser is disconnected. Breaking task loop to restart.")
+                    break
+            except Exception as e:
+                logger.error(f"Enrichment worker: browser connectivity check failed: {e}")
                 break
 
             tasks: List[QueueMessage] = await asyncio.to_thread(enrichment_queue.poll, batch_size=1)
@@ -682,6 +692,14 @@ class WorkerService:
                         done, pending = await asyncio.wait(tasks, timeout=30, return_when=asyncio.FIRST_EXCEPTION)
                         if once:
                             break
+                        # Check if any task crashed - previously unlogged, so a
+                        # crashed details worker looked identical to a clean
+                        # "Recycling..." session end in the logs (see
+                        # task-agent ticket
+                        # turboship-gm-details-worker-silently-dies-every-restart-never-polls).
+                        for t in done:
+                            if t.exception():
+                                logger.error(f"Details worker task crashed: {t.exception()}")
                         if any(t.done() for t in tasks):
                             break
 
