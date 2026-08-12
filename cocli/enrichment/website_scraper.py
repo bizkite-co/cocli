@@ -7,6 +7,7 @@ import xml.etree.ElementTree as ET
 from typing import Optional, List, Callable, Coroutine, Any, Dict, Union, Tuple
 from playwright.async_api import Page, Browser, BrowserContext
 from bs4 import BeautifulSoup
+from pydantic import ValidationError
 import logging
 from urllib.parse import urljoin
 from datetime import datetime, timedelta, UTC
@@ -570,6 +571,8 @@ class WebsiteScraper:
                         target_keywords,
                     )
 
+        except (NavigationError, ValidationError):
+            raise  # already classifiable - don't flatten into a generic EnrichmentError
         except Exception as e:
             logger.error(f"Error scraping {domain}: {e}")
             raise EnrichmentError(str(e)) from e
