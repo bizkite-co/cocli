@@ -870,7 +870,7 @@ def _audit_cluster_from_heartbeats(campaign_name: str, verbose: bool) -> None:
 
     now = datetime.now(timezone.utc)
 
-    table = Table(title=f"Cluster Node Audit: {campaign_name}", box=None, header_style="bold white on blue", pad_edge=False)
+    table = Table(title=f"Cluster Node Audit: {campaign_name}", box=None, header_style="bold white on dark_blue", pad_edge=False)
     table.add_column("Node", style="cyan")
     table.add_column("Campaign", style="green")
     table.add_column("Designation", style="magenta")
@@ -941,7 +941,7 @@ def _audit_cluster_from_heartbeats(campaign_name: str, verbose: bool) -> None:
 
     console.print(table)
 
-    queue_table = Table(title=f"Campaign Queue Depths: {campaign_name}", box=None, header_style="bold white on blue", pad_edge=False)
+    queue_table = Table(title=f"Campaign Queue Depths: {campaign_name}", box=None, header_style="bold white on dark_blue", pad_edge=False)
     queue_table.add_column("Queue", style="cyan")
     queue_table.add_column("Pending", justify="right")
     queue_table.add_column("Completed", justify="right")
@@ -1168,7 +1168,7 @@ def _audit_cluster_ssh(campaign_name: str, verbose: bool) -> None:
             "queue_depths": {},
         })
 
-    table = Table(title=f"Cluster Node Audit: {campaign_name}", box=None, header_style="bold white on blue", pad_edge=False)
+    table = Table(title=f"Cluster Node Audit: {campaign_name}", box=None, header_style="bold white on dark_blue", pad_edge=False)
     table.add_column("Node", style="cyan")
     table.add_column("Campaign", style="green")
     table.add_column("Queue", style="magenta")
