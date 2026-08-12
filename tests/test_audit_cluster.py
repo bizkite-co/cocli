@@ -30,6 +30,24 @@ def test_parse_cluster_audit_sections_splits_on_markers():
     assert sections["QUEUES"] == ["gm-details/pending=0", "enrichment/pending=4388"]
 
 
+def test_parse_cluster_audit_sections_includes_done_1h_lines():
+    # done_1h rides the same generic "queue/status=count" QUEUES format as
+    # pending/completed - no special parsing needed, just confirming the
+    # extra line the remote script now emits for "completed" statuses
+    # survives the section split like everything else in QUEUES.
+    raw = (
+        "@@WORKERS@@\n"
+        "@@ERRORS@@\n0\n"
+        "@@LASTLOG@@\n"
+        "@@TYPE_ACTIVITY@@\ngm-list|||\ngm-details|||\nenrichment|||\n"
+        "@@QUEUES@@\n"
+        "gm-list/completed=820\n"
+        "gm-list/done_1h=126\n"
+    )
+    sections = _parse_cluster_audit_sections(raw)
+    assert "gm-list/done_1h=126" in sections["QUEUES"]
+
+
 def test_parse_cluster_audit_sections_handles_missing_container():
     # e.g. SSH succeeds but docker inspect/logs all fail silently
     raw = "@@WORKERS@@\n@@ERRORS@@\n0\n@@LASTLOG@@\n@@TYPE_ACTIVITY@@\ngm-list|||\ngm-details|||\nenrichment|||\n@@QUEUES@@\n"

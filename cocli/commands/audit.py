@@ -625,11 +625,17 @@ for q in gm-list gm-details enrichment; do
     # wouldn't sum to the mission total the way it does for every other queue.
     if [ "$q" = "gm-list" ] && [ "$s" = "completed" ]; then
       c=$(find ~/repos/data/campaigns/__CAMPAIGN__/queues/gm-list/completed/results -name '*.json' 2>/dev/null | wc -l)
+      c1h=$(find ~/repos/data/campaigns/__CAMPAIGN__/queues/gm-list/completed/results -name '*.json' -newermt '-1 hour' 2>/dev/null | wc -l)
       echo "$q/$s=$c"
+      echo "$q/done_1h=$c1h"
       continue
     fi
     c=$(find ~/repos/data/campaigns/__CAMPAIGN__/queues/$q/$s -type f 2>/dev/null | wc -l)
     echo "$q/$s=$c"
+    if [ "$s" = "completed" ]; then
+      c1h=$(find ~/repos/data/campaigns/__CAMPAIGN__/queues/$q/$s -type f -newermt '-1 hour' 2>/dev/null | wc -l)
+      echo "$q/done_1h=$c1h"
+    fi
   done
 done
 rm -f "$LOGFILE"
@@ -1169,6 +1175,7 @@ def _audit_cluster_ssh(campaign_name: str, verbose: bool) -> None:
     table.add_column("Workers", justify="right")
     table.add_column("Pending", justify="right")
     table.add_column("Done", justify="right")
+    table.add_column("Done (1h)", justify="right")
     table.add_column("CPU %", justify="right")
     table.add_column("MEM %", justify="right")
     table.add_column("Errors (30m)", justify="right")
@@ -1202,7 +1209,7 @@ def _audit_cluster_ssh(campaign_name: str, verbose: bool) -> None:
         health = _node_health_verdict(d["has_campaign"], d["last_log_age"], error_count, d["stale_content_types"])
 
         if not relevant_queues:
-            table.add_row(d["host"], campaign_str, "-", "-", "-", "-", cpu_str, mem_str, errors_str, activity_str, health)
+            table.add_row(d["host"], campaign_str, "-", "-", "-", "-", "-", cpu_str, mem_str, errors_str, activity_str, health)
             continue
 
         for row_idx, q in enumerate(relevant_queues):
@@ -1211,6 +1218,8 @@ def _audit_cluster_ssh(campaign_name: str, verbose: bool) -> None:
             pending = depths.get("pending")
             pending_str = str(pending) if pending is not None else "-"
             done_str = str(depths.get("completed", 0)) if d["queue_depths"] else "-"
+            done_1h = depths.get("done_1h")
+            done_1h_str = str(done_1h) if done_1h is not None else "-"
 
             is_first = row_idx == 0
             table.add_row(
@@ -1220,6 +1229,7 @@ def _audit_cluster_ssh(campaign_name: str, verbose: bool) -> None:
                 workers_str,
                 pending_str,
                 done_str,
+                done_1h_str,
                 cpu_str if is_first else "",
                 mem_str if is_first else "",
                 errors_str if is_first else "",
