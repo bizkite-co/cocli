@@ -126,7 +126,7 @@ def pi_results(
         None, "--campaign", "-c", help="The campaign name. Defaults to current context."
     ),
     force: bool = typer.Option(
-        False, "--force", "-f", help="Force sync ignoring timestamp."
+        False, "--force", "-f", help="Force sync ignoring timestamp that limits sync to one hour."
     ),
     status: bool = typer.Option(False, "--status", "-s", help="Show sync status only."),
 ) -> None:
