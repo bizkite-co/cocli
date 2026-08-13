@@ -271,6 +271,13 @@ class IndexService:
             log_file=log_file,
         )
 
+        from cocli.services.cluster_service import ClusterService
+        try:
+            nodes = ClusterService(self.campaign_name).get_nodes()
+        except Exception as e:
+            logger.warning("Could not resolve cluster nodes for %s: %s", self.campaign_name, e)
+            nodes = []
+
         _emit(log_callback, "Acquiring S3 lock...")
         if not manager.acquire_lock():
             msg = "Lock acquisition failed (another compact may be running)."
@@ -286,8 +293,8 @@ class IndexService:
         _emit(log_callback, "Lock acquired.")
 
         try:
-            _emit(log_callback, "Isolating WAL files on S3...")
-            moved = manager.isolate_wal()
+            _emit(log_callback, "Staging Pi WAL over Tailscale...")
+            moved = manager.isolate_wal(nodes=nodes)
             if moved == 0:
                 msg = "Nothing to compact."
                 _emit(log_callback, msg)
@@ -300,11 +307,7 @@ class IndexService:
                     message=msg,
                     log_file=log_file,
                 )
-            _emit(log_callback, f"Isolated {moved} files.")
-
-            _emit(log_callback, "Downloading staging data...")
-            manager.acquire_staging()
-            _emit(log_callback, "Staging data acquired.")
+            _emit(log_callback, f"Staged {moved} files.")
 
             _emit(
                 log_callback,

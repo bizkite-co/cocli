@@ -5,27 +5,42 @@ import time
 import subprocess
 from pathlib import Path
 from datetime import datetime, UTC
-from typing import Any, Optional
+from typing import Any, Optional, Sequence
 
 import boto3
 from botocore.exceptions import ClientError
 
 from .config import get_campaign_dir
+from ..models.campaigns.worker_config import PiNodeConfig
 
 logger = logging.getLogger(__name__)
+
+# A compactor lock older than this is presumed to belong to a crashed process
+# (hard kill, OOM, lost network) rather than a live one - stations
+# CONCURRENCY.md §2.3/§4.1 "lease expiry": a dead lease is taken over by
+# CAS-replace, never delete-then-create (C3). Picked to comfortably exceed
+# a real compaction's runtime (Tailscale rsync + DuckDB fold) while still
+# reclaiming a crashed lock in well under an hour.
+LOCK_STALE_SECONDS = 1800
 
 class CompactManager:
     """
     Implements the Freeze-Ingest-Merge-Commit (FIMC) pattern for sharded indexes.
-    Uses S3-Native isolation to prevent race conditions with workers.
+
+    WAL sources are staged directly from each Pi node (Tailscale rsync) into
+    local processing/{run_id}/{host}/ - see isolate_wal(). The S3 lock
+    (compact.lock) is kept regardless: it must stay reachable from any future
+    compactor placement (Pi, short-lived Fargate task, or this dev machine),
+    not just wherever compaction happens to run today (stations CONCURRENCY.md
+    §4.1 - the lock is a liveness mechanism, not tied to any one host).
     """
-    
+
     def __init__(self, campaign_name: str, index_name: str = "google_maps_prospects", log_file: Optional[Path] = None):
         self.campaign_name = campaign_name
         self.index_name = index_name
         self.run_id = f"run_{int(time.time())}"
         self.log_file = log_file
-        
+
         # Local Paths derived via paths single-source-of-truth
         from .paths import paths
         self.index_paths = paths.campaign(campaign_name).index(index_name)
@@ -35,7 +50,7 @@ class CompactManager:
         self.checkpoint_filename = self.index_paths.checkpoint_filename
 
         self.local_proc_dir = self.index_dir / "processing" / self.run_id
-        
+
         # S3 Paths
         self.s3_index_prefix = f"campaigns/{campaign_name}/indexes/{index_name}/"
         self.s3_checkpoint_key = self.s3_index_prefix + self.checkpoint_filename
@@ -43,7 +58,13 @@ class CompactManager:
         self.s3_proc_prefix = self.s3_index_prefix + f"processing/{self.run_id}/"
         self.s3_lock_key = self.s3_index_prefix + "compact.lock"
 
-        
+        # True only when acquire_staging() actually pulled this run's batch
+        # from S3 - i.e. the legacy interrupted-run recovery path
+        # (IndexService.recover_interrupted_run). A normal run stages
+        # directly from the Pis via isolate_wal() and never touches S3
+        # processing/, so cleanup() must not assume it needs to either.
+        self._used_s3_staging: bool = False
+
         # S3 Client
         self._s3: Any = None
         self._bucket = self._load_bucket_name()
@@ -69,7 +90,19 @@ class CompactManager:
         return self._s3
 
     def acquire_lock(self) -> bool:
-        """Creates an atomic lock on S3 using If-None-Match."""
+        """Creates an atomic lock on S3 using If-None-Match, or takes over a
+        stale one via CAS-replace (stations C3: expired leases are taken
+        over by CAS, never delete-then-create).
+
+        Today, a crashed compactor (hard kill, not a handled exception - a
+        clean exception still hits release_lock() in run()'s/IndexService's
+        finally) leaves this lock stuck forever with no path to reclaim it.
+        Any lock older than LOCK_STALE_SECONDS is treated as crashed and
+        taken over. If the stale lock's own run_id still has a local
+        processing/{run_id}/ batch on this machine, that run_id is adopted
+        so isolate_wal() resumes topping it up instead of starting a fresh,
+        empty run and stranding it (the incident this ticket fixes).
+        """
         logger.info(f"Attempting to acquire compaction lock: {self.s3_lock_key}")
         lock_data = {
             "run_id": self.run_id,
@@ -86,11 +119,59 @@ class CompactManager:
             logger.info("Lock acquired successfully.")
             return True
         except ClientError as e:
-            if e.response['Error']['Code'] == 'PreconditionFailed':
-                logger.warning("Compaction lock already exists. Another process is running.")
-            else:
+            if e.response['Error']['Code'] != 'PreconditionFailed':
                 logger.error(f"Failed to acquire lock: {e}")
+                return False
+            return self._take_over_stale_lock_if_possible(lock_data)
+
+    def _take_over_stale_lock_if_possible(self, new_lock_data: dict[str, str]) -> bool:
+        try:
+            resp = self.s3.get_object(Bucket=self._bucket, Key=self.s3_lock_key)
+            existing = json.loads(resp["Body"].read())
+            etag = resp["ETag"]
+        except Exception as e:
+            logger.warning(f"Compaction lock exists but couldn't be read: {e}")
             return False
+
+        try:
+            age = (datetime.now(UTC) - datetime.fromisoformat(existing["created_at"])).total_seconds()
+        except (KeyError, ValueError) as e:
+            logger.warning(f"Compaction lock has an unreadable created_at ({e}); treating as live.")
+            return False
+
+        if age < LOCK_STALE_SECONDS:
+            logger.warning(
+                f"Compaction lock already exists (age {age:.0f}s, held by "
+                f"{existing.get('host')}, run {existing.get('run_id')}). Another process is running."
+            )
+            return False
+
+        stale_run_id = existing.get("run_id")
+        logger.warning(
+            f"Compaction lock is stale (age {age:.0f}s, held by {existing.get('host')}, "
+            f"run {stale_run_id}) - treating as a crashed run and taking over."
+        )
+        try:
+            self.s3.put_object(
+                Bucket=self._bucket,
+                Key=self.s3_lock_key,
+                Body=json.dumps(new_lock_data),
+                IfMatch=etag,
+            )
+        except ClientError as e:
+            logger.warning(f"Lost the race taking over the stale lock: {e}")
+            return False
+
+        if stale_run_id:
+            recovered_dir = self.index_dir / "processing" / stale_run_id
+            if recovered_dir.exists() and any(recovered_dir.iterdir()):
+                logger.info(f"Resuming crashed run {stale_run_id} - local batch found at {recovered_dir}.")
+                self.run_id = stale_run_id
+                self.local_proc_dir = recovered_dir
+                self.s3_proc_prefix = self.s3_index_prefix + f"processing/{self.run_id}/"
+
+        logger.info("Lock acquired successfully (stale takeover).")
+        return True
 
     def release_lock(self) -> None:
         """Removes the compaction lock from S3."""
@@ -100,66 +181,84 @@ class CompactManager:
         except Exception as e:
             logger.error(f"Failed to release lock: {e}")
 
-    def isolate_wal(self) -> int:
-        """Moves files from wal/ AND out-of-place files in the root to processing/run_id/ on S3."""
-        logger.info(f"Isolating WAL files to {self.s3_proc_prefix}...")
-        
-        # 1. MOVE REMOTE WAL -> PROCESSING
-        src_wal = f"s3://{self._bucket}/{self.s3_wal_prefix}"
-        dest = f"s3://{self._bucket}/{self.s3_proc_prefix}"
-        
-        try:
-            from contextlib import nullcontext
-            with open(self.log_file, "a") if self.log_file else nullcontext() as f:
-                # Move everything from wal/ prefix
-                subprocess.run(
-                    ["aws", "s3", "mv", src_wal, dest, "--recursive", "--quiet"],
-                    stdout=f, stderr=f, text=True
-                )
-                
-                # 2. SWEEP: Move any USV/CSV files in the root that aren't the checkpoint
-                # We use a single batch move with filters for high performance
-                root_s3 = f"s3://{self._bucket}/{self.s3_index_prefix}"
-                subprocess.run(
-                    [
-                        "aws", "s3", "mv", root_s3, dest,
-                        "--recursive",
-                        "--exclude", "*",
-                        "--include", "*.usv",
-                        "--include", "*.csv",
-                        "--exclude", self.checkpoint_filename,
-                        "--exclude", "validation_errors.usv",
-                        "--exclude", "_*",
-                        "--quiet"
-                    ],
-                    stdout=f, stderr=f, text=True
-                )
+    def isolate_wal(self, nodes: Optional[Sequence[PiNodeConfig]] = None) -> int:
+        """Stages each Pi node's WAL directly into processing/{run_id}/{host}/
+        over Tailscale (rsync) - no S3 relay for the WAL payload itself.
 
-            logger.info("Isolation complete.")
-            
-            # 2. PURGE LOCAL WAL AND ROOT NAKED FILES
-            local_wal = self.index_dir / "wal"
-            if local_wal.exists():
-                logger.info(f"Purging local WAL shards from {local_wal}...")
-                import shutil
-                shutil.rmtree(local_wal)
-                local_wal.mkdir(parents=True, exist_ok=True)
-            
-            # Purge local naked files in index root
-            for f_path in self.index_dir.glob("*.usv"):
-                if f_path.name != self.checkpoint_filename and f_path.name != "validation_errors.usv":
-                    f_path.unlink()
+        Nothing is deleted here. Local index_dir/wal/, naked-root USV/CSV
+        files, and the Pi's own WAL are all left exactly as found - stations
+        C9 (source deletion only after commit): the only safe place to purge
+        sources is cleanup(), after commit_remote() has actually succeeded.
+        (The old version of this method deleted local WAL and naked-root
+        USVs unconditionally, before merge() ever ran - the same defect this
+        whole ticket is about, just a second instance of it.)
 
-            for f_path in self.index_dir.glob("*.csv"):
-                f_path.unlink()
-            
-            return 1 
-        except Exception as e:
-            logger.error(f"Failed to isolate WAL: {e}")
-            return 0
+        `nodes` must be resolved by the caller (application/services -
+        core/ may not import ClusterService per the import-linter contract).
+        Returns the number of files staged for this run - callers use this
+        to decide whether there's anything to compact.
+        """
+        self.local_proc_dir.mkdir(parents=True, exist_ok=True)
+        staged = 0
+
+        for node in nodes or []:
+            host = node.hostname
+            target = node.ip_address or host
+            node_dir = self.local_proc_dir / host
+            node_dir.mkdir(parents=True, exist_ok=True)
+            remote_path = (
+                f"mstouffer@{target}:repos/data/campaigns/{self.campaign_name}"
+                f"/indexes/{self.index_name}/wal/"
+            )
+            logger.info(f"Staging {self.index_name} WAL from {host}...")
+            try:
+                result = subprocess.run(
+                    ["rsync", "-avzu", remote_path, str(node_dir) + "/"],
+                    capture_output=True, text=True, timeout=300,
+                )
+            except subprocess.TimeoutExpired:
+                logger.warning(f"WAL rsync from {host} timed out - skipping this cycle.")
+                node_dir.rmdir()
+                continue
+
+            if result.returncode != 0:
+                logger.warning(f"WAL rsync from {host} failed: {result.stderr.strip()}")
+                node_dir.rmdir()
+                continue
+
+            node_files = [p for p in node_dir.rglob("*.usv") if p.is_file()]
+            if node_files:
+                staged += len(node_files)
+                logger.info(f"Staged {len(node_files)} WAL files from {host}.")
+            else:
+                node_dir.rmdir()
+
+        # Legitimate fold sources already sitting in index_dir/wal or as
+        # naked root USVs (stations_runtime._collect_prospect_usv_sources
+        # scans both directly) are picked up by merge() as-is - no need to
+        # move them into local_proc_dir, and definitely not to delete them
+        # here before they've been folded.
+        local_wal = self.index_dir / "wal"
+        local_wal_count = len(list(local_wal.glob("*.usv"))) if local_wal.exists() else 0
+        naked_count = sum(
+            1 for f in self.index_dir.glob("*.usv")
+            if f.name not in (self.checkpoint_filename, "validation_errors.usv")
+        )
+        staged += local_wal_count + naked_count
+
+        logger.info(f"Isolation complete: {staged} files staged (Pi-fetched + existing local sources).")
+        return staged
 
     def acquire_staging(self) -> None:
         """Syncs the processing/run_id/ folder from S3 to local disk using AWS CLI.
+
+        Only used by IndexService.recover_interrupted_run() - the legacy path
+        for finishing an already-isolated S3 batch left over from before this
+        fix (e.g. the two batches orphaned by the 2026-08-13 incident: normal
+        runs now stage directly from the Pis via isolate_wal() and never
+        populate S3 processing/ in the first place). Sets
+        _used_s3_staging so cleanup() knows this run also owns an S3
+        processing/ prefix to remove, on top of its local batch.
 
         Must raise on failure, not just log: callers proceed straight to merge()
         assuming local_proc_dir reflects what was isolated on S3. A swallowed
@@ -178,6 +277,7 @@ class CompactManager:
                 ["aws", "s3", "sync", src, str(self.local_proc_dir), "--quiet"],
                 stdout=f, stderr=f, check=True
             )
+        self._used_s3_staging = True
         logger.info("Staging data acquired.")
 
     def _write_schema_sidecar_first(self) -> None:
@@ -231,34 +331,60 @@ class CompactManager:
 
 
     def cleanup(self) -> None:
-        """Purges staging data from local and remote."""
+        """Purges now-folded sources - only ever called after commit_remote()
+        has succeeded (stations C9: source deletion only post-commit).
+
+        Local: this run's Pi-fetched batch (local_proc_dir), whatever was
+        sitting in index_dir/wal, and naked-root USVs (all three were valid
+        fold inputs per stations_runtime._collect_prospect_usv_sources, and
+        are now safely represented in the committed checkpoint). Naked-root
+        CSVs are never fold inputs - always safe to discard, any time.
+
+        Remote: only when _used_s3_staging is set (the legacy
+        recover_interrupted_run() path) - a normal run never populated S3
+        processing/ in the first place, so there's nothing there to remove
+        and no reason to pay for another aws CLI subprocess/credential
+        round-trip in the common case.
+        """
         logger.info("Cleaning up staging layers...")
-        
-        # Remote Cleanup using AWS CLI
-        src = f"s3://{self._bucket}/{self.s3_proc_prefix}"
-        try:
-            from contextlib import nullcontext
-            with open(self.log_file, "a") if self.log_file else nullcontext() as f:
-                subprocess.run(["aws", "s3", "rm", src, "--recursive", "--quiet"], stdout=f, stderr=f, check=True)
-        except Exception as e:
-            logger.error(f"Failed to cleanup S3 staging: {e}")
-        
-        # Local Cleanup
+
+        if self._used_s3_staging:
+            src = f"s3://{self._bucket}/{self.s3_proc_prefix}"
+            try:
+                from contextlib import nullcontext
+                with open(self.log_file, "a") if self.log_file else nullcontext() as f:
+                    subprocess.run(["aws", "s3", "rm", src, "--recursive", "--quiet"], stdout=f, stderr=f, check=True)
+            except Exception as e:
+                logger.error(f"Failed to cleanup S3 staging: {e}")
+
         import shutil
         if self.local_proc_dir.exists():
             shutil.rmtree(self.local_proc_dir)
-            
+
+        local_wal = self.index_dir / "wal"
+        if local_wal.exists():
+            shutil.rmtree(local_wal)
+            local_wal.mkdir(parents=True, exist_ok=True)
+
+        for f_path in self.index_dir.glob("*.usv"):
+            if f_path.name not in (self.checkpoint_filename, "validation_errors.usv"):
+                f_path.unlink()
+        for f_path in self.index_dir.glob("*.csv"):
+            f_path.unlink()
+
         logger.info("Cleanup complete.")
 
-    def run(self) -> None:
-        """Executes the full compaction lifecycle."""
+    def run(self, nodes: Optional[Sequence[PiNodeConfig]] = None) -> None:
+        """Executes the full compaction lifecycle. Not currently wired to any
+        CLI/service caller - IndexService.compact() orchestrates these same
+        steps itself (with interrupted-run recovery around them); kept here
+        as the reference sequence for the class's own contract."""
         if not self.acquire_lock():
             return
-            
+
         try:
-            moved = self.isolate_wal()
+            moved = self.isolate_wal(nodes=nodes)
             if moved > 0:
-                self.acquire_staging()
                 self.merge()
                 self.commit_remote()
                 self.cleanup()

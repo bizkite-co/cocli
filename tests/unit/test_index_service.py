@@ -278,7 +278,9 @@ def test_compact_success_path() -> None:
 
     assert result.success is True
     assert result.isolated_files == 3
-    manager.acquire_staging.assert_called_once()
+    # isolate_wal() now stages directly from the Pis - acquire_staging() is
+    # only used by the interrupted-run recovery path, never here.
+    manager.acquire_staging.assert_not_called()
     manager.merge.assert_called_once()
     manager.commit_remote.assert_called_once()
     manager.cleanup.assert_called_once()
@@ -286,8 +288,7 @@ def test_compact_success_path() -> None:
     # Live progress steps restored (cluster log_callback idiom).
     assert "Checking for interrupted runs..." in steps
     assert "Acquiring S3 lock..." in steps
-    assert "Isolating WAL files on S3..." in steps
-    assert "Downloading staging data..." in steps
+    assert "Staging Pi WAL over Tailscale..." in steps
     assert "Merging via stations commit path (DuckDB fold + CURRENT CAS)..." in steps
     assert "Uploading new checkpoint to S3..." in steps
     assert "Cleaning up..." in steps
@@ -326,13 +327,14 @@ def test_compact_recovers_interrupted_runs() -> None:
     assert result.success is True
 
 
-def test_compact_aborts_when_staging_sync_fails() -> None:
-    """acquire_staging() must propagate a sync failure rather than swallow it -
-    otherwise merge() sees an empty local_proc_dir, treats a real isolated
-    batch as nothing-to-merge, and cleanup() then deletes it from S3 with the
-    CLI reporting success throughout."""
-    manager = _make_compact_manager_mock(lock_ok=True, moved=5)
-    manager.acquire_staging.side_effect = RuntimeError("aws s3 sync failed")
+def test_compact_aborts_when_isolate_wal_fails() -> None:
+    """isolate_wal() is the primary staging step now (direct Pi rsync, no S3
+    relay) - a failure there must propagate rather than be swallowed, same
+    property acquire_staging() used to guard for the old S3-relay path.
+    A swallowed failure would let merge() see an empty/partial batch and
+    silently no-op the compaction while reporting success."""
+    manager = _make_compact_manager_mock(lock_ok=True)
+    manager.isolate_wal.side_effect = RuntimeError("rsync from cocli5x0 failed")
     service = IndexService(campaign_name="roadmap")
     with (
         patch.object(IndexService, "list_interrupted_runs", return_value=[]),
@@ -341,7 +343,7 @@ def test_compact_aborts_when_staging_sync_fails() -> None:
         result = service.compact("google_maps_prospects")
 
     assert result.success is False
-    assert "aws s3 sync failed" in result.message
+    assert "rsync from cocli5x0 failed" in result.message
     manager.merge.assert_not_called()
     manager.commit_remote.assert_not_called()
     manager.cleanup.assert_not_called()
