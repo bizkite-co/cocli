@@ -434,6 +434,12 @@ cocli
         sync-pi-wal - Pushes each Pi node's local index WAL to S3 (rsync Pi -> local staging,
             --campaign (text)
             --index (text)
+        trace - Trace one or more place_ids across every station of the pipeline
+            place_id (text)
+            --from-file (path)
+            --campaign (text)
+            --index (text)
+            --out (path)
         write-datapackage - Generates Frictionless Data 'datapackage.json' for the specified index based on its Pydantic model.
             index (text) [required]
             --campaign/-c (text)

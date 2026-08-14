@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+from pathlib import Path
 from typing import Optional
 
 import typer
@@ -165,6 +166,98 @@ def status(
         )
     else:
         console.print("Checkpoint: [red]Not found[/red]")
+
+
+@app.command(name="trace")
+def trace(
+    place_id: Optional[str] = typer.Argument(
+        None, help="Single place_id to trace end to end."
+    ),
+    from_file: Optional[Path] = typer.Option(
+        None, "--from-file", help="File of place_ids, one per line, for batch mode."
+    ),
+    campaign: str = typer.Option("roadmap", help="Campaign name"),
+    index: str = typer.Option("google_maps_prospects", help="Index name"),
+    out: Optional[Path] = typer.Option(
+        None, "--out", help="Write batch results to this CSV path."
+    ),
+) -> None:
+    """
+    Trace one or more place_ids across every station of the pipeline
+    (gm-list -> gm-details -> Pi WAL -> checkpoint) to find exactly where a
+    record's trail goes cold. Pass a single place_id for a one-off audit, or
+    --from-file for a batch group report (one row per place_id).
+    """
+    if not place_id and not from_file:
+        console.print("[red]Provide a place_id argument or --from-file.[/red]")
+        raise typer.Exit(1)
+    if place_id and from_file:
+        console.print("[red]Provide either a place_id or --from-file, not both.[/red]")
+        raise typer.Exit(1)
+
+    if place_id:
+        ids = [place_id]
+    else:
+        assert from_file is not None
+        ids = [line.strip() for line in from_file.read_text().splitlines() if line.strip()]
+
+    services = ServiceContainer(campaign_name=campaign)
+    result = services.index_service.trace_prospects(ids, index_name=index)
+
+    if not result.rows:
+        console.print("[yellow]No place_ids to trace.[/yellow]")
+        return
+
+    if len(result.rows) == 1:
+        row = result.rows[0]
+        console.print(f"place_id: [bold]{row.place_id}[/bold]")
+        console.print(f"  gm-list:    {row.gm_list}")
+        console.print(f"  gm-details: {row.gm_details}")
+        console.print(f"  pi-wal:     {row.pi_wal}")
+        console.print(f"  checkpoint: {row.checkpoint}")
+        console.print(f"  [bold]verdict:[/bold] {row.verdict}")
+        return
+
+    from rich.table import Table
+
+    table = Table(title=f"Prospect trace: {len(result.rows)} place_ids")
+    table.add_column("place_id")
+    table.add_column("gm-list")
+    table.add_column("gm-details")
+    table.add_column("pi-wal")
+    table.add_column("checkpoint")
+    table.add_column("verdict")
+    for row in result.rows:
+        table.add_row(
+            row.place_id, row.gm_list, row.gm_details, row.pi_wal,
+            row.checkpoint, row.verdict,
+        )
+    console.print(table)
+
+    if out:
+        import csv
+
+        with open(out, "w", newline="") as f:
+            writer = csv.writer(f)
+            writer.writerow(
+                ["place_id", "gm_list", "gm_details", "pi_wal", "checkpoint", "verdict"]
+            )
+            for row in result.rows:
+                writer.writerow(
+                    [row.place_id, row.gm_list, row.gm_details, row.pi_wal,
+                     row.checkpoint, row.verdict]
+                )
+        console.print(f"\n[green]Wrote {len(result.rows)} rows to {out}[/green]")
+
+    from collections import Counter
+
+    tally = Counter(
+        r.verdict.split(" - ")[0] if " - " in r.verdict else r.verdict
+        for r in result.rows
+    )
+    console.print("\n[bold]Verdict summary:[/bold]")
+    for verdict, count in tally.most_common():
+        console.print(f"  {count:4d}  {verdict}")
 
 
 @app.command(name="backfill-domains")

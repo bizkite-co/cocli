@@ -67,6 +67,9 @@ class IndexServiceProvider(Protocol):
         log_file: Optional[Path] = None,
         log_callback: Optional[Callable[[str], None]] = None,
     ) -> Any: ...
+    def trace_prospects(
+        self, place_ids: List[str], index_name: str = "google_maps_prospects"
+    ) -> Any: ...
     def backfill_domains(
         self,
         limit: int = 0,

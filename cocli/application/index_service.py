@@ -91,6 +91,25 @@ class WriteDatapackageResult(BaseModel):
     message: str = ""
 
 
+class ProspectTraceRow(BaseModel):
+    """One identity's state across every station of the prospects pipeline."""
+
+    place_id: str
+    gm_list: str
+    gm_details: str
+    pi_wal: str
+    checkpoint: str
+    verdict: str
+
+
+class ProspectTraceResult(BaseModel):
+    """Result of tracing a batch of place_ids through the prospects pipeline."""
+
+    campaign_name: str
+    index_name: str
+    rows: List[ProspectTraceRow] = Field(default_factory=list)
+
+
 class IndexService:
     """Application service for index lifecycle operations."""
 
@@ -348,6 +367,109 @@ class IndexService:
             )
         finally:
             manager.release_lock()
+
+    # ------------------------------------------------------------------
+    # Trace (identity-scoped audit across pipeline stations)
+    # ------------------------------------------------------------------
+
+    def _fetch_pi_wal_ids(self, index_name: str) -> set[str]:
+        """One SSH round-trip per Pi node, not one per identity."""
+        import subprocess
+
+        from cocli.services.cluster_service import ClusterService
+
+        ids: set[str] = set()
+        try:
+            nodes = ClusterService(self.campaign_name).get_nodes()
+        except Exception as e:
+            logger.warning("Could not resolve cluster nodes for %s: %s", self.campaign_name, e)
+            return ids
+
+        for node in nodes:
+            target = node.ip_address or node.hostname
+            remote_path = f"repos/data/campaigns/{self.campaign_name}/indexes/{index_name}/wal"
+            try:
+                result = subprocess.run(
+                    [
+                        "ssh", "-o", "ConnectTimeout=10", f"mstouffer@{target}",
+                        f"find {remote_path} -name '*.usv' -printf '%f\\n' 2>/dev/null",
+                    ],
+                    capture_output=True, text=True, timeout=30,
+                )
+            except subprocess.TimeoutExpired:
+                logger.warning("WAL listing on %s timed out - skipping.", node.hostname)
+                continue
+            if result.returncode == 0:
+                for line in result.stdout.strip().split("\n"):
+                    if line.endswith(".usv"):
+                        ids.add(line[: -len(".usv")])
+        return ids
+
+    def trace_prospects(
+        self, place_ids: List[str], index_name: str = "google_maps_prospects"
+    ) -> ProspectTraceResult:
+        """Trace each place_id across gm-list -> gm-details -> Pi WAL ->
+        checkpoint, reporting where (if anywhere) its trail goes cold.
+
+        Built from the ad hoc investigation of a 2026-08-13 incident where a
+        fresh compaction dropped previously-qualifying prospects. See
+        cocli/core/prospect_trace.py for the reusable station-check
+        mechanism this is assembled from, and its docstring for why this
+        exists alongside (not instead of) stations' own `stations inspect`.
+        """
+        from cocli.core.prospect_trace import (
+            CheckpointPresenceCheck,
+            GmListResultsCheck,
+            PrebuiltSetCheck,
+            QueueBucketCheck,
+            StationCheck,
+            diagnose_prospect_trace,
+            trace_identities,
+        )
+        from cocli.core.prospects_csv_manager import ProspectsIndexManager
+
+        campaign_paths = paths.campaign(self.campaign_name)
+        gm_list_results_dir = campaign_paths.queue("gm-list").completed / "results"
+        gm_details_queue = campaign_paths.queue("gm-details")
+        checkpoint_path = ProspectsIndexManager(self.campaign_name).checkpoint_path
+
+        wal_ids = self._fetch_pi_wal_ids(index_name)
+
+        checks: List[StationCheck] = [
+            GmListResultsCheck(gm_list_results_dir),
+            QueueBucketCheck(
+                "gm-details",
+                gm_details_queue.completed,
+                gm_details_queue.pending,
+                gm_details_queue.path / "failed",
+            ),
+            PrebuiltSetCheck("pi-wal", wal_ids),
+            CheckpointPresenceCheck(checkpoint_path),
+        ]
+
+        rows: List[ProspectTraceRow] = []
+        for trace_row in trace_identities(checks, place_ids):
+            r = trace_row.results
+            gm_list_result = r["gm-list"]
+            gm_list_display = (
+                f"{gm_list_result.state} ({gm_list_result.detail})"
+                if gm_list_result.detail
+                else gm_list_result.state
+            )
+            rows.append(
+                ProspectTraceRow(
+                    place_id=trace_row.identity,
+                    gm_list=gm_list_display,
+                    gm_details=r["gm-details"].state,
+                    pi_wal=r["pi-wal"].state,
+                    checkpoint=r["checkpoint"].state,
+                    verdict=diagnose_prospect_trace(r),
+                )
+            )
+
+        return ProspectTraceResult(
+            campaign_name=self.campaign_name, index_name=index_name, rows=rows
+        )
 
     # ------------------------------------------------------------------
     # Domain backfill
