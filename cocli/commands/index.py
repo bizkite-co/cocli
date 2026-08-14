@@ -179,14 +179,20 @@ def trace(
     campaign: str = typer.Option("roadmap", help="Campaign name"),
     index: str = typer.Option("google_maps_prospects", help="Index name"),
     out: Optional[Path] = typer.Option(
-        None, "--out", help="Write batch results to this CSV path."
+        None, "--out",
+        help="Write batch results to this CSV path. Defaults to a "
+        "timestamped file under the campaign's own exports/ directory "
+        "(campaigns/{campaign}/exports/) - pass an explicit path only to "
+        "override that.",
     ),
 ) -> None:
     """
     Trace one or more place_ids across every station of the pipeline
     (gm-list -> gm-details -> Pi WAL -> checkpoint) to find exactly where a
     record's trail goes cold. Pass a single place_id for a one-off audit, or
-    --from-file for a batch group report (one row per place_id).
+    --from-file for a batch group report (one row per place_id), written to
+    the campaign's exports/ directory by default - this is campaign data,
+    it doesn't belong at the repo root or wherever the shell happened to be.
     """
     if not place_id and not from_file:
         console.print("[red]Provide a place_id argument or --from-file.[/red]")
@@ -234,20 +240,29 @@ def trace(
         )
     console.print(table)
 
-    if out:
-        import csv
+    import csv
 
-        with open(out, "w", newline="") as f:
-            writer = csv.writer(f)
+    if out is None:
+        from datetime import datetime
+
+        from cocli.core.config import get_campaign_exports_dir
+
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        out = get_campaign_exports_dir(campaign) / f"prospect_trace_{index}_{timestamp}.csv"
+    else:
+        out.parent.mkdir(parents=True, exist_ok=True)
+
+    with open(out, "w", newline="") as f:
+        writer = csv.writer(f)
+        writer.writerow(
+            ["place_id", "gm_list", "gm_details", "pi_wal", "checkpoint", "verdict"]
+        )
+        for row in result.rows:
             writer.writerow(
-                ["place_id", "gm_list", "gm_details", "pi_wal", "checkpoint", "verdict"]
+                [row.place_id, row.gm_list, row.gm_details, row.pi_wal,
+                 row.checkpoint, row.verdict]
             )
-            for row in result.rows:
-                writer.writerow(
-                    [row.place_id, row.gm_list, row.gm_details, row.pi_wal,
-                     row.checkpoint, row.verdict]
-                )
-        console.print(f"\n[green]Wrote {len(result.rows)} rows to {out}[/green]")
+    console.print(f"\n[green]Wrote {len(result.rows)} rows to {out}[/green]")
 
     from collections import Counter
 
