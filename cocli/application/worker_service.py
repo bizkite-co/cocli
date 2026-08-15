@@ -608,11 +608,26 @@ class WorkerService:
                     from .processors.google_maps import GoogleMapsDetailsProcessor
                     processor = GoogleMapsDetailsProcessor(processed_by=self.processed_by)
                     final_prospect_data = await processor.process(task, page, debug=debug)
-                    
-                    if final_prospect_data and final_prospect_data.domain:
-                        enrichment_queue.push(QueueMessage(domain=str(final_prospect_data.domain), company_slug=slugify(str(final_prospect_data.name) if final_prospect_data.name else ""), campaign_name=task.campaign_name, force_refresh=task.force_refresh, ack_token=None))
-                    
-                    gm_list_item_queue.ack(task)
+
+                    if final_prospect_data is None:
+                        # process() already logged and swallowed whatever went
+                        # wrong (no data returned, or an internal exception) -
+                        # it never reached add_to_wal(). Acking here anyway
+                        # would mark the task "completed" in gm-details with
+                        # no WAL entry ever written, permanently: nothing
+                        # would retry it and nothing would ever notice.
+                        # Production incident (2026-08): 21 place_ids stuck in
+                        # exactly this state, found via `cocli index trace`.
+                        logger.warning(
+                            f"Detail Task produced no prospect data for {task.place_id} - "
+                            "nacking for retry instead of acking an empty result."
+                        )
+                        gm_list_item_queue.nack(task)
+                    else:
+                        if final_prospect_data.domain:
+                            enrichment_queue.push(QueueMessage(domain=str(final_prospect_data.domain), company_slug=slugify(str(final_prospect_data.name) if final_prospect_data.name else ""), campaign_name=task.campaign_name, force_refresh=task.force_refresh, ack_token=None))
+
+                        gm_list_item_queue.ack(task)
                 finally:
                     await page.close()
                 if once:

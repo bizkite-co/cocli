@@ -20,7 +20,7 @@ gossip-config-broadcasts-never-expire-stale-scaling-replayed-forever-no-cross-ca
 and tests/unit/test_worker_remote_config_watch.py."""
 
 import asyncio
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 import toml
@@ -134,3 +134,67 @@ async def test_rebalance_logs_zero_worker_line_for_excluded_type(tmp_path, caplo
 
     assert "gm-details scaled to 0 on testnode" in caplog.text
     assert "Starting worker: testnode-gm-details (type=gm-details, workers=0)" in caplog.text
+
+
+def _make_ready_context() -> MagicMock:
+    context = MagicMock()
+    context.browser.is_connected.return_value = True
+    context.new_page = AsyncMock(return_value=MagicMock(close=AsyncMock()))
+    return context
+
+
+@pytest.mark.asyncio
+async def test_details_loop_nacks_instead_of_acking_an_empty_result(tmp_path, caplog):
+    """Production incident (2026-08): GoogleMapsDetailsProcessor.process()
+    returns None on both "no data found" and a swallowed internal exception -
+    neither path ever reaches add_to_wal(). The old code acked regardless,
+    permanently marking the task complete with no WAL entry and no retry.
+    21 place_ids were found stuck in exactly this state via `cocli index
+    trace`. ack() must never fire when process() produced nothing."""
+    service = _make_service(tmp_path)
+    context = _make_ready_context()
+
+    fake_task = MagicMock(place_id="ChIJfake", campaign_name="test-campaign", force_refresh=False)
+    gm_list_item_queue = MagicMock()
+    gm_list_item_queue.poll.return_value = [fake_task]
+    enrichment_queue = MagicMock()
+
+    with patch(
+        "cocli.application.processors.google_maps.GoogleMapsDetailsProcessor.process",
+        new=AsyncMock(return_value=None),
+    ), caplog.at_level("WARNING", logger="cocli.application.worker_service"):
+        await service._run_details_task_loop(
+            context, gm_list_item_queue, enrichment_queue, MagicMock(), False, True
+        )
+
+    gm_list_item_queue.nack.assert_called_once_with(fake_task)
+    gm_list_item_queue.ack.assert_not_called()
+    enrichment_queue.push.assert_not_called()
+    assert "no prospect data" in caplog.text.lower()
+
+
+@pytest.mark.asyncio
+async def test_details_loop_acks_and_pushes_enrichment_on_real_success(tmp_path):
+    """The success path must be unchanged: a real prospect with a domain
+    still acks and still pushes to the enrichment queue."""
+    service = _make_service(tmp_path)
+    context = _make_ready_context()
+
+    fake_task = MagicMock(place_id="ChIJfake", campaign_name="test-campaign", force_refresh=False)
+    gm_list_item_queue = MagicMock()
+    gm_list_item_queue.poll.return_value = [fake_task]
+    enrichment_queue = MagicMock()
+
+    fake_prospect = MagicMock(domain="example.com", name="Example Co")
+
+    with patch(
+        "cocli.application.processors.google_maps.GoogleMapsDetailsProcessor.process",
+        new=AsyncMock(return_value=fake_prospect),
+    ):
+        await service._run_details_task_loop(
+            context, gm_list_item_queue, enrichment_queue, MagicMock(), False, True
+        )
+
+    gm_list_item_queue.ack.assert_called_once_with(fake_task)
+    gm_list_item_queue.nack.assert_not_called()
+    enrichment_queue.push.assert_called_once()
