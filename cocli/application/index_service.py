@@ -496,16 +496,21 @@ class IndexService:
     ) -> RequeueResult:
         """Recover gm-details tasks that were acked with no real output (the
         gm-details-acks-unconditionally incident, fixed in worker_service.py's
-        _run_details_task_loop): reconstruct a fresh task from the original
-        gm-list result row and push it back onto the queue for a retry.
+        _run_details_task_loop): reconstruct a fresh task and push it back
+        onto the queue for a retry.
 
-        Must write directly to a Pi node's filesystem over SSH, not locally:
-        PiSyncService._SYNC_QUEUES only syncs gm-details/completed/ from Pi
-        to this machine - pending/ is never synced in either direction. A
-        local FilesystemGmDetailsQueue.push() would write to a pending/
-        directory no worker ever polls, and the stale
-        completed/{place_id}.json marker (which would otherwise make
-        `trace` keep reporting "completed" forever) only exists on the Pi.
+        The stale completed/{place_id}.json marker left behind by the bug is
+        itself the original GmItemTask - ack() moved it there verbatim - and
+        PiSyncService._SYNC_QUEUES already syncs gm-details/completed/ from
+        every Pi node to this machine, so it's read locally as the primary
+        source (exact, no reconstruction). Only falls back to a gm-list
+        result row (cocli/core/prospect_trace.py:find_gm_list_rows) for the
+        rare case where no local completed marker exists.
+
+        Must write the fresh pending task directly to a Pi node's filesystem
+        over SSH, not locally: pending/ is never synced in either direction
+        (only completed/ is), so a local FilesystemGmDetailsQueue.push()
+        would write to a directory no worker ever polls.
 
         Pushes the fresh task to exactly one node - every enabled node polls
         the same gm-details queue directory shape, so pushing to all of them
@@ -521,14 +526,64 @@ class IndexService:
         import shlex
         import subprocess
 
+        from pydantic import ValidationError
+
         from cocli.core.prospect_trace import find_gm_list_rows
         from cocli.core.sharding import get_place_id_shard
         from cocli.models.campaigns.queues.gm_details import GmItemTask
         from cocli.services.cluster_service import ClusterService
 
         campaign_paths = paths.campaign(self.campaign_name)
+        gm_details_completed_dir = campaign_paths.queue("gm-details").completed
         gm_list_results_dir = campaign_paths.queue("gm-list").completed / "results"
-        rows_by_id = find_gm_list_rows(gm_list_results_dir, set(place_ids))
+
+        tasks_by_id: Dict[str, GmItemTask] = {}
+        needs_gm_list_fallback: List[str] = []
+        for place_id in place_ids:
+            marker_path = gm_details_completed_dir / f"{place_id}.json"
+            if not marker_path.exists():
+                needs_gm_list_fallback.append(place_id)
+                continue
+            try:
+                marker_task = GmItemTask.model_validate_json(marker_path.read_text())
+            except (ValidationError, OSError) as e:
+                logger.warning(
+                    "Could not parse completed marker for %s: %s - falling back to gm-list.",
+                    place_id, e,
+                )
+                needs_gm_list_fallback.append(place_id)
+                continue
+            # Fresh task, not the marker verbatim: resets attempts to 0 and
+            # drops the (already-excluded, but be explicit) transient
+            # ack_token - this is a new attempt, not a continuation.
+            tasks_by_id[place_id] = GmItemTask(
+                place_id=place_id,
+                campaign_name=self.campaign_name,
+                name=marker_task.name,
+                company_slug=marker_task.company_slug,
+                force_refresh=marker_task.force_refresh,
+                gmb_url=marker_task.gmb_url,
+                category=marker_task.category,
+                discovery_phrase=marker_task.discovery_phrase,
+                discovery_tile_id=marker_task.discovery_tile_id,
+            )
+
+        if needs_gm_list_fallback:
+            rows_by_id = find_gm_list_rows(gm_list_results_dir, set(needs_gm_list_fallback))
+            for place_id in needs_gm_list_fallback:
+                row = rows_by_id.get(place_id)
+                if row is None:
+                    continue
+                tasks_by_id[place_id] = GmItemTask(
+                    place_id=place_id,
+                    campaign_name=self.campaign_name,
+                    name=row.get("name", ""),
+                    company_slug=row.get("company_slug", ""),
+                    gmb_url=row.get("gmb_url") or None,
+                    category=row.get("category") or None,
+                    discovery_phrase=row.get("discovery_phrase") or None,
+                    discovery_tile_id=row.get("discovery_tile_id") or None,
+                )
 
         try:
             nodes = ClusterService(self.campaign_name).get_nodes()
@@ -539,13 +594,13 @@ class IndexService:
 
         out_rows: List[RequeueRow] = []
         for place_id in place_ids:
-            row = rows_by_id.get(place_id)
-            if row is None:
+            task = tasks_by_id.get(place_id)
+            if task is None:
                 out_rows.append(
                     RequeueRow(
                         place_id=place_id,
                         status="not_found",
-                        detail="no gm-list result to reconstruct a task from",
+                        detail="no completed marker or gm-list result to build a task from",
                     )
                 )
                 continue
@@ -556,16 +611,6 @@ class IndexService:
                 )
                 continue
 
-            task = GmItemTask(
-                place_id=place_id,
-                campaign_name=self.campaign_name,
-                name=row.get("name", ""),
-                company_slug=row.get("company_slug", ""),
-                gmb_url=row.get("gmb_url") or None,
-                category=row.get("category") or None,
-                discovery_phrase=row.get("discovery_phrase") or None,
-                discovery_tile_id=row.get("discovery_tile_id") or None,
-            )
             payload = json.dumps(task.model_dump())
             shard = get_place_id_shard(place_id)
             remote_base = f"repos/data/campaigns/{self.campaign_name}/queues/gm-details"

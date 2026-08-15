@@ -289,10 +289,10 @@ def requeue_stuck_details(
     """
     Recover gm-details tasks that were acked with no real output - the
     gm-details-acks-unconditionally incident, fixed in worker_service.py.
-    Reconstructs a fresh task from the original gm-list result row and
-    pushes it directly onto each Pi node's gm-details queue over SSH
-    (pending/ never syncs Pi<->dev-machine, so this can't be done locally),
-    after removing the stale completed/{place_id}.json marker there.
+    Rebuilds the task from its own stale completed/{place_id}.json marker
+    (already synced locally) and pushes it directly onto one Pi node's
+    gm-details queue over SSH (pending/ never syncs Pi<->dev-machine, so
+    this can't be done locally), after removing the stale marker everywhere.
 
     Use `cocli index trace` first to confirm a place_id is actually stuck
     (gm-details: completed, pi-wal/checkpoint: absent) before requeuing it.

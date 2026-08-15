@@ -6,6 +6,7 @@ pending/ directory never syncs Pi<->dev-machine.
 
 from __future__ import annotations
 
+import json
 import subprocess
 from pathlib import Path
 from unittest.mock import patch
@@ -21,9 +22,63 @@ def _setup_campaign_dirs(tmp_path: Path, campaign: str = "test-campaign") -> Non
     paths.root = tmp_path
     campaign_dir = tmp_path / "campaigns" / campaign
     (campaign_dir / "queues" / "gm-list" / "completed" / "results").mkdir(parents=True)
+    (campaign_dir / "queues" / "gm-details" / "completed").mkdir(parents=True)
 
 
-def test_requeue_reconstructs_task_and_pushes_over_ssh(tmp_path: Path) -> None:
+def _write_completed_marker(
+    tmp_path: Path, campaign: str, place_id: str, **fields: object
+) -> Path:
+    marker = (
+        tmp_path / "campaigns" / campaign / "queues" / "gm-details" / "completed"
+        / f"{place_id}.json"
+    )
+    payload = {
+        "place_id": place_id,
+        "campaign_name": campaign,
+        "name": "Affordable Carpet & Wood",
+        "company_slug": "affordable-carpet-wood",
+        "force_refresh": True,
+        "discovery_phrase": None,
+        "discovery_tile_id": None,
+        "attempts": 3,
+        **fields,
+    }
+    marker.write_text(json.dumps(payload))
+    return marker
+
+
+def test_requeue_uses_local_completed_marker_as_primary_source(tmp_path: Path) -> None:
+    """The stale completed marker is the original task, already synced
+    locally - it must be preferred over reconstructing from a gm-list row,
+    and a fresh push must reset attempts (a new attempt, not a
+    continuation)."""
+    campaign = "test-campaign"
+    _setup_campaign_dirs(tmp_path, campaign)
+    _write_completed_marker(tmp_path, campaign, "PLACE_A")
+
+    service = IndexService(campaign_name=campaign)
+    calls = []
+
+    def _fake_run(cmd, **kwargs):  # type: ignore[no-untyped-def]
+        calls.append((cmd, kwargs.get("input")))
+        return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
+
+    with patch(
+        "cocli.services.cluster_service.ClusterService.get_nodes",
+        return_value=[PiNodeConfig(host="cocli5x0", ip="10.0.0.1")],
+    ), patch("subprocess.run", side_effect=_fake_run):
+        result = service.requeue_stuck_details(["PLACE_A"])
+
+    assert result.rows[0].status == "requeued"
+    push_cmd, push_input = calls[0]
+    assert push_input is not None
+    pushed = json.loads(push_input)
+    assert pushed["name"] == "Affordable Carpet & Wood"
+    assert pushed["company_slug"] == "affordable-carpet-wood"
+    assert pushed["attempts"] == 0
+
+
+def test_requeue_falls_back_to_gm_list_when_no_local_marker(tmp_path: Path) -> None:
     campaign = "test-campaign"
     _setup_campaign_dirs(tmp_path, campaign)
     base = tmp_path / "campaigns" / campaign
@@ -64,7 +119,31 @@ def test_requeue_reconstructs_task_and_pushes_over_ssh(tmp_path: Path) -> None:
     assert "PLACE_A.json" in rm_cmd[-1]
 
 
-def test_requeue_reports_not_found_when_no_gm_list_row(tmp_path: Path) -> None:
+def test_requeue_falls_back_to_gm_list_when_marker_unparseable(tmp_path: Path) -> None:
+    campaign = "test-campaign"
+    _setup_campaign_dirs(tmp_path, campaign)
+    base = tmp_path / "campaigns" / campaign
+    (base / "queues" / "gm-list" / "completed" / "results" / "q.usv").write_text(
+        f"PLACE_A{US}slug-a{US}Name A{US}\n"
+    )
+    marker = (
+        base / "queues" / "gm-details" / "completed" / "PLACE_A.json"
+    )
+    marker.write_text("{not valid json")
+
+    service = IndexService(campaign_name=campaign)
+
+    with patch(
+        "cocli.services.cluster_service.ClusterService.get_nodes",
+        return_value=[PiNodeConfig(host="cocli5x0", ip="10.0.0.1")],
+    ), patch("subprocess.run") as mock_run:
+        mock_run.return_value = subprocess.CompletedProcess([], 0, stdout="", stderr="")
+        result = service.requeue_stuck_details(["PLACE_A"])
+
+    assert result.rows[0].status == "requeued"
+
+
+def test_requeue_reports_not_found_when_no_marker_and_no_gm_list_row(tmp_path: Path) -> None:
     campaign = "test-campaign"
     _setup_campaign_dirs(tmp_path, campaign)
     service = IndexService(campaign_name=campaign)
@@ -81,10 +160,7 @@ def test_requeue_reports_not_found_when_no_gm_list_row(tmp_path: Path) -> None:
 def test_requeue_reports_ssh_error_when_no_cluster_nodes(tmp_path: Path) -> None:
     campaign = "test-campaign"
     _setup_campaign_dirs(tmp_path, campaign)
-    base = tmp_path / "campaigns" / campaign
-    (base / "queues" / "gm-list" / "completed" / "results" / "q.usv").write_text(
-        f"PLACE_A{US}slug-a{US}Name A{US}\n"
-    )
+    _write_completed_marker(tmp_path, campaign, "PLACE_A")
 
     service = IndexService(campaign_name=campaign)
 
@@ -100,10 +176,7 @@ def test_requeue_reports_ssh_error_when_no_cluster_nodes(tmp_path: Path) -> None
 def test_requeue_reports_ssh_error_when_all_nodes_fail(tmp_path: Path) -> None:
     campaign = "test-campaign"
     _setup_campaign_dirs(tmp_path, campaign)
-    base = tmp_path / "campaigns" / campaign
-    (base / "queues" / "gm-list" / "completed" / "results" / "q.usv").write_text(
-        f"PLACE_A{US}slug-a{US}Name A{US}\n"
-    )
+    _write_completed_marker(tmp_path, campaign, "PLACE_A")
 
     service = IndexService(campaign_name=campaign)
 
@@ -129,10 +202,7 @@ def test_requeue_pushes_to_one_node_but_clears_marker_on_all(tmp_path: Path) -> 
     node originally produced it."""
     campaign = "test-campaign"
     _setup_campaign_dirs(tmp_path, campaign)
-    base = tmp_path / "campaigns" / campaign
-    (base / "queues" / "gm-list" / "completed" / "results" / "q.usv").write_text(
-        f"PLACE_A{US}slug-a{US}Name A{US}\n"
-    )
+    _write_completed_marker(tmp_path, campaign, "PLACE_A")
 
     service = IndexService(campaign_name=campaign)
 
