@@ -19,6 +19,7 @@ from cocli.core.prospect_trace import (
     QueueBucketCheck,
     StationResult,
     diagnose_prospect_trace,
+    find_gm_list_rows,
     trace_identities,
     trace_identity,
 )
@@ -164,3 +165,47 @@ def test_diagnose_never_rediscovered() -> None:
         _states(gm_list="absent", gm_details="never seen", pi_wal="absent", checkpoint="absent")
     )
     assert "never rediscovered" in verdict
+
+
+def test_find_gm_list_rows_returns_full_row_for_requested_ids(tmp_path: Path) -> None:
+    results_dir = tmp_path / "results"
+    results_dir.mkdir()
+    row = US.join(
+        [
+            "PLACE_A", "slug-a", "Name A", "Category A", "555-1234", "example.com",
+            "12", "4.5", "123 Main St", "https://maps.example/a",
+            "flooring contractor", "40.7_-74.0", "<html/>",
+        ]
+    )
+    (results_dir / "q.usv").write_text(row + "\nPLACE_B" + US + "Name B\n")
+
+    found = find_gm_list_rows(results_dir, {"PLACE_A"})
+
+    assert found["PLACE_A"]["name"] == "Name A"
+    assert found["PLACE_A"]["company_slug"] == "slug-a"
+    assert found["PLACE_A"]["category"] == "Category A"
+    assert found["PLACE_A"]["discovery_phrase"] == "flooring contractor"
+    assert found["PLACE_A"]["discovery_tile_id"] == "40.7_-74.0"
+    assert "PLACE_B" not in found
+
+
+def test_find_gm_list_rows_missing_id_absent_from_result(tmp_path: Path) -> None:
+    results_dir = tmp_path / "results"
+    results_dir.mkdir()
+    (results_dir / "q.usv").write_text(f"PLACE_A{US}Name A\n")
+
+    found = find_gm_list_rows(results_dir, {"PLACE_MISSING"})
+
+    assert found == {}
+
+
+def test_find_gm_list_rows_empty_place_ids_returns_empty(tmp_path: Path) -> None:
+    results_dir = tmp_path / "results"
+    results_dir.mkdir()
+    (results_dir / "q.usv").write_text(f"PLACE_A{US}Name A\n")
+
+    assert find_gm_list_rows(results_dir, set()) == {}
+
+
+def test_find_gm_list_rows_missing_dir_returns_empty(tmp_path: Path) -> None:
+    assert find_gm_list_rows(tmp_path / "nonexistent", {"PLACE_A"}) == {}

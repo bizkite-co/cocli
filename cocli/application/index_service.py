@@ -110,6 +110,22 @@ class ProspectTraceResult(BaseModel):
     rows: List[ProspectTraceRow] = Field(default_factory=list)
 
 
+class RequeueRow(BaseModel):
+    """Result of attempting to requeue one stuck place_id for gm-details."""
+
+    place_id: str
+    status: str  # "requeued" | "not_found" | "ssh_error"
+    detail: str = ""
+
+
+class RequeueResult(BaseModel):
+    """Result of a requeue-stuck-details run across a batch of place_ids."""
+
+    campaign_name: str
+    index_name: str
+    rows: List[RequeueRow] = Field(default_factory=list)
+
+
 class IndexService:
     """Application service for index lifecycle operations."""
 
@@ -470,6 +486,148 @@ class IndexService:
         return ProspectTraceResult(
             campaign_name=self.campaign_name, index_name=index_name, rows=rows
         )
+
+    # ------------------------------------------------------------------
+    # Requeue (recover gm-details tasks acked with no WAL entry)
+    # ------------------------------------------------------------------
+
+    def requeue_stuck_details(
+        self, place_ids: List[str], index_name: str = "google_maps_prospects"
+    ) -> RequeueResult:
+        """Recover gm-details tasks that were acked with no real output (the
+        gm-details-acks-unconditionally incident, fixed in worker_service.py's
+        _run_details_task_loop): reconstruct a fresh task from the original
+        gm-list result row and push it back onto the queue for a retry.
+
+        Must write directly to a Pi node's filesystem over SSH, not locally:
+        PiSyncService._SYNC_QUEUES only syncs gm-details/completed/ from Pi
+        to this machine - pending/ is never synced in either direction. A
+        local FilesystemGmDetailsQueue.push() would write to a pending/
+        directory no worker ever polls, and the stale
+        completed/{place_id}.json marker (which would otherwise make
+        `trace` keep reporting "completed" forever) only exists on the Pi.
+
+        Pushes the fresh task to exactly one node - every enabled node polls
+        the same gm-details queue directory shape, so pushing to all of them
+        would have N nodes race to scrape the same place_id and write N WAL
+        entries for it. The stale completed marker, by contrast, is cleared
+        on every node, since we don't know which one produced it - and only
+        after the pending task write is confirmed, mirroring the C9
+        source-deletion-after-commit discipline used elsewhere in this
+        pipeline: never remove the only trace of a stuck record before its
+        replacement is safely in place.
+        """
+        import json
+        import shlex
+        import subprocess
+
+        from cocli.core.prospect_trace import find_gm_list_rows
+        from cocli.core.sharding import get_place_id_shard
+        from cocli.models.campaigns.queues.gm_details import GmItemTask
+        from cocli.services.cluster_service import ClusterService
+
+        campaign_paths = paths.campaign(self.campaign_name)
+        gm_list_results_dir = campaign_paths.queue("gm-list").completed / "results"
+        rows_by_id = find_gm_list_rows(gm_list_results_dir, set(place_ids))
+
+        try:
+            nodes = ClusterService(self.campaign_name).get_nodes()
+        except Exception as e:
+            logger.warning("Could not resolve cluster nodes for %s: %s", self.campaign_name, e)
+            nodes = []
+        candidate_nodes = [n for n in nodes if n.enabled] or nodes
+
+        out_rows: List[RequeueRow] = []
+        for place_id in place_ids:
+            row = rows_by_id.get(place_id)
+            if row is None:
+                out_rows.append(
+                    RequeueRow(
+                        place_id=place_id,
+                        status="not_found",
+                        detail="no gm-list result to reconstruct a task from",
+                    )
+                )
+                continue
+
+            if not candidate_nodes:
+                out_rows.append(
+                    RequeueRow(place_id=place_id, status="ssh_error", detail="no cluster nodes")
+                )
+                continue
+
+            task = GmItemTask(
+                place_id=place_id,
+                campaign_name=self.campaign_name,
+                name=row.get("name", ""),
+                company_slug=row.get("company_slug", ""),
+                gmb_url=row.get("gmb_url") or None,
+                category=row.get("category") or None,
+                discovery_phrase=row.get("discovery_phrase") or None,
+                discovery_tile_id=row.get("discovery_tile_id") or None,
+            )
+            payload = json.dumps(task.model_dump())
+            shard = get_place_id_shard(place_id)
+            remote_base = f"repos/data/campaigns/{self.campaign_name}/queues/gm-details"
+
+            push_node = candidate_nodes[0]
+            push_target = push_node.ip_address or push_node.hostname
+            remote_pending_dir = shlex.quote(f"{remote_base}/pending/{shard}/{place_id}")
+            try:
+                write_result = subprocess.run(
+                    [
+                        "ssh", "-o", "ConnectTimeout=10", f"mstouffer@{push_target}",
+                        f"mkdir -p {remote_pending_dir} && cat > {remote_pending_dir}/task.json",
+                    ],
+                    input=payload, capture_output=True, text=True, timeout=20,
+                )
+            except subprocess.TimeoutExpired:
+                out_rows.append(
+                    RequeueRow(
+                        place_id=place_id, status="ssh_error",
+                        detail=f"{push_node.hostname}: timeout writing pending task",
+                    )
+                )
+                continue
+
+            if write_result.returncode != 0:
+                out_rows.append(
+                    RequeueRow(
+                        place_id=place_id, status="ssh_error",
+                        detail=f"{push_node.hostname}: {write_result.stderr.strip()}",
+                    )
+                )
+                continue
+
+            # Pending task is confirmed written - now safe to clear the
+            # stale completed marker, checking every node since it could
+            # have been produced by any of them.
+            rm_errors: List[str] = []
+            for node in nodes:
+                node_target = node.ip_address or node.hostname
+                remote_completed = shlex.quote(f"{remote_base}/completed/{place_id}.json")
+                try:
+                    rm_result = subprocess.run(
+                        [
+                            "ssh", "-o", "ConnectTimeout=10", f"mstouffer@{node_target}",
+                            f"rm -f {remote_completed}",
+                        ],
+                        capture_output=True, text=True, timeout=20,
+                    )
+                    if rm_result.returncode != 0:
+                        rm_errors.append(f"{node.hostname}: {rm_result.stderr.strip()}")
+                except subprocess.TimeoutExpired:
+                    rm_errors.append(f"{node.hostname}: timeout")
+
+            detail = f"pushed to {push_node.hostname}"
+            if rm_errors:
+                detail += (
+                    "; WARNING: could not clear stale completed marker on: "
+                    + "; ".join(rm_errors)
+                )
+            out_rows.append(RequeueRow(place_id=place_id, status="requeued", detail=detail))
+
+        return RequeueResult(campaign_name=self.campaign_name, index_name=index_name, rows=out_rows)
 
     # ------------------------------------------------------------------
     # Domain backfill

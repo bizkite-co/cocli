@@ -428,6 +428,11 @@ cocli
             --campaign (text)
             --index (text)
             --debug (boolean)
+        requeue-stuck-details - Recover gm-details tasks that were acked with no real output - the
+            place_id (text)
+            --from-file (path)
+            --campaign (text)
+            --index (text)
         status - Show the status of the index tiers (WAL, Processing, Checkpoint).
             --campaign (text)
             --index (text)

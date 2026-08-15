@@ -170,6 +170,59 @@ class PrebuiltSetCheck:
         return StationResult(station=self.name, state=state)
 
 
+# gm-list raw result column order (matches
+# cocli.core.transformers.gm_list_to_checkpoint._load_gm_list_results_auto -
+# keep in sync with that if the gm-list result shape ever changes).
+_GM_LIST_COLUMNS = [
+    "place_id", "company_slug", "name", "category", "phone", "domain",
+    "reviews_count", "average_rating", "street_address", "gmb_url",
+    "discovery_phrase", "discovery_tile_id", "html",
+]
+
+
+def find_gm_list_rows(results_dir: Path, place_ids: Set[str]) -> Dict[str, Dict[str, str]]:
+    """Targeted lookup of full gm-list result rows for a specific, small set
+    of place_ids - deliberately not a full-index build like
+    GmListResultsCheck (which stays presence-only/lightweight, since it
+    typically covers far more rows than any single lookup needs). Used by
+    the requeue-stuck-details tool to reconstruct enough of a GmItemTask to
+    re-enqueue a stuck detail scrape, without caching every scraped item's
+    full row (including html) in memory the way a full index would.
+
+    Returns place_id -> {column_name: value}, only for place_ids actually
+    found. If the same place_id appears in multiple result files (the same
+    business found via overlapping tiles/queries), the first one
+    encountered wins - the reconstructed fields are scrape hints for a
+    fresh re-scrape, not a source of truth, so picking a specific "best"
+    duplicate isn't required here.
+    """
+    found: Dict[str, Dict[str, str]] = {}
+    if not place_ids or not results_dir.exists():
+        return found
+    remaining = set(place_ids)
+    for f in results_dir.rglob("*.usv"):
+        if not remaining:
+            break
+        try:
+            text = f.read_text(errors="replace")
+        except OSError:
+            continue
+        for line in text.split("\n"):
+            if not remaining:
+                break
+            if not line.strip():
+                continue
+            fields = line.split(US)
+            identity = fields[0] if fields else ""
+            if identity in remaining:
+                found[identity] = {
+                    col: (fields[i] if i < len(fields) else "")
+                    for i, col in enumerate(_GM_LIST_COLUMNS)
+                }
+                remaining.discard(identity)
+    return found
+
+
 def diagnose_prospect_trace(results: Dict[str, StationResult]) -> str:
     """google_maps_prospects-specific interpretation of a combined trace.
 

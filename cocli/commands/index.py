@@ -275,6 +275,59 @@ def trace(
         console.print(f"  {count:4d}  {verdict}")
 
 
+@app.command(name="requeue-stuck-details")
+def requeue_stuck_details(
+    place_id: Optional[str] = typer.Argument(
+        None, help="Single place_id to requeue."
+    ),
+    from_file: Optional[Path] = typer.Option(
+        None, "--from-file", help="File of place_ids, one per line, for batch mode."
+    ),
+    campaign: str = typer.Option("roadmap", help="Campaign name"),
+    index: str = typer.Option("google_maps_prospects", help="Index name"),
+) -> None:
+    """
+    Recover gm-details tasks that were acked with no real output - the
+    gm-details-acks-unconditionally incident, fixed in worker_service.py.
+    Reconstructs a fresh task from the original gm-list result row and
+    pushes it directly onto each Pi node's gm-details queue over SSH
+    (pending/ never syncs Pi<->dev-machine, so this can't be done locally),
+    after removing the stale completed/{place_id}.json marker there.
+
+    Use `cocli index trace` first to confirm a place_id is actually stuck
+    (gm-details: completed, pi-wal/checkpoint: absent) before requeuing it.
+    """
+    if not place_id and not from_file:
+        console.print("[red]Provide a place_id argument or --from-file.[/red]")
+        raise typer.Exit(1)
+    if place_id and from_file:
+        console.print("[red]Provide either a place_id or --from-file, not both.[/red]")
+        raise typer.Exit(1)
+
+    if place_id:
+        ids = [place_id]
+    else:
+        assert from_file is not None
+        ids = [line.strip() for line in from_file.read_text().splitlines() if line.strip()]
+
+    services = ServiceContainer(campaign_name=campaign)
+    result = services.index_service.requeue_stuck_details(ids, index_name=index)
+
+    from rich.table import Table
+
+    table = Table(title=f"Requeue stuck details: {len(result.rows)} place_ids")
+    table.add_column("place_id")
+    table.add_column("status")
+    table.add_column("detail")
+    for row in result.rows:
+        color = {"requeued": "green", "not_found": "yellow", "ssh_error": "red"}.get(row.status, "white")
+        table.add_row(row.place_id, f"[{color}]{row.status}[/{color}]", row.detail)
+    console.print(table)
+
+    if any(r.status != "requeued" for r in result.rows):
+        raise typer.Exit(code=1)
+
+
 @app.command(name="backfill-domains")
 def backfill_domains(
     campaign: str = typer.Option("roadmap", help="Campaign name"),

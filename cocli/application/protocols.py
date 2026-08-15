@@ -70,6 +70,9 @@ class IndexServiceProvider(Protocol):
     def trace_prospects(
         self, place_ids: List[str], index_name: str = "google_maps_prospects"
     ) -> Any: ...
+    def requeue_stuck_details(
+        self, place_ids: List[str], index_name: str = "google_maps_prospects"
+    ) -> Any: ...
     def backfill_domains(
         self,
         limit: int = 0,
