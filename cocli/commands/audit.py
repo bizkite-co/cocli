@@ -1,6 +1,7 @@
+import logging
 import re
 import typer
-from typing import Optional, Any, List
+from typing import Optional, Any, Dict, List
 from pathlib import Path
 
 from rich.console import Console
@@ -19,6 +20,7 @@ app = typer.Typer(
 queue_app = typer.Typer(help="Audit specific queues.", no_args_is_help=True)
 app.add_typer(queue_app, name="queue")
 console = Console()
+logger = logging.getLogger(__name__)
 
 
 def _run_async(coro: Any) -> Any:
@@ -464,10 +466,6 @@ def audit_scrape(
 
     # Count gm-list queue states directly from filesystem (rglob to handle sharded subdirs)
     gm_list_queue = paths.campaign(campaign_name).queue("gm-list")
-    gm_list_pending = 0
-    if gm_list_queue.pending.exists():
-        gm_list_pending = sum(1 for f in gm_list_queue.pending.rglob("*.usv") if is_valid_task_data_file(f.name))
-
     gm_list_claimed = 0
     if gm_list_queue.pending.exists():
         gm_list_claimed = len(list(gm_list_queue.pending.rglob("lease*.json")))
@@ -479,11 +477,39 @@ def audit_scrape(
     gm_details_q = get_queue_manager(QueueIdentity.GM_DETAILS, queue_type="gm_list_item", campaign_name=campaign_name)
     enrichment_q = get_queue_manager(QueueIdentity.ENRICHMENT, queue_type="enrichment", campaign_name=campaign_name)
 
-    gm_details_pending = gm_details_q.count_state("pending")
+    # Pending counts: this machine's own local queues/*/pending/ is never a
+    # faithful mirror of the Pi's real state - PiSyncService only ever syncs
+    # completed/ (see task-agent ticket
+    # scrape-pipeline-audit-tables-pending-counts-read-stale-local-dev-machine-queue-dirs-not-live-pi-state).
+    # Prefer each node's own heartbeat-reported figure (computed on the Pi's
+    # own disk, published every 30s - see
+    # WorkerService._compute_queue_pending); only fall back to the local,
+    # potentially-stale count for a queue/campaign whose worker hasn't been
+    # redeployed with that field yet, and say so plainly rather than
+    # presenting it as equally fresh.
+    live_pending = _sum_live_queue_pending(campaign_name)
+    pending_source = "live (Pi heartbeat)" if live_pending is not None else "LOCAL DISK - STALE, see ticket"
+
+    if live_pending is not None and "gm-list" in live_pending:
+        gm_list_pending = live_pending["gm-list"]
+    else:
+        gm_list_pending = 0
+        if gm_list_queue.pending.exists():
+            gm_list_pending = sum(1 for f in gm_list_queue.pending.rglob("*.usv") if is_valid_task_data_file(f.name))
+
+    if live_pending is not None and "gm-details" in live_pending:
+        gm_details_pending = live_pending["gm-details"]
+    else:
+        gm_details_pending = gm_details_q.count_state("pending")
+
+    if live_pending is not None and "enrichment" in live_pending:
+        enrichment_pending = live_pending["enrichment"]
+    else:
+        enrichment_pending = enrichment_q.count_state("pending")
+
     gm_details_completed = gm_details_q.count_state("completed")
     gm_details_failed = gm_details_q.count_state("failed")
 
-    enrichment_pending = enrichment_q.count_state("pending")
     enrichment_completed = enrichment_q.count_state("completed")
     enrichment_failed = enrichment_q.count_state("failed")
 
@@ -498,6 +524,7 @@ def audit_scrape(
         "staged_active_tiles": staged_tiles,
         "completed_scraped_tiles": gm_list_tiles,
         "pending_scraped_tiles": pending_tiles,
+        "pending_counts_source": pending_source,
         "gm_list_pending": gm_list_pending,
         "gm_list_claimed": gm_list_claimed,
         "gm_list_completed": gm_list_tiles,
@@ -807,6 +834,79 @@ def audit_cluster(
     _audit_cluster_ssh(campaign_name, verbose)
 
 
+def _fetch_heartbeat_nodes(campaign_name: str) -> Dict[str, Dict[str, Any]]:
+    """Reads every node's self-reported heartbeat from S3 (status/{host}.json).
+    Raises on S3/credential failure - callers decide how to present that.
+    Shared by _audit_cluster_from_heartbeats and _sum_live_queue_pending so
+    there's exactly one place that knows how to list/parse these."""
+    import json
+
+    from ..core.config import load_campaign_config
+    from ..core.reporting import get_boto3_session, get_data_bucket_name, get_s3_client
+
+    config = load_campaign_config(campaign_name)
+    bucket_name = get_data_bucket_name(config, campaign_name)
+    s3 = get_s3_client(session=get_boto3_session(config))
+    status_prefix = paths.s3.status_root
+    nodes: Dict[str, Dict[str, Any]] = {}
+    paginator = s3.get_paginator("list_objects_v2")
+    for page in paginator.paginate(Bucket=bucket_name, Prefix=status_prefix):
+        for obj in page.get("Contents", []):
+            key = obj["Key"]
+            if not key.endswith(".json"):
+                continue
+            hostname = key[len(status_prefix):-len(".json")]
+            # Real worker heartbeats are always a flat leaf file directly under
+            # status/ (paths.s3.heartbeat writes status/{hostname}.json). A
+            # nested path here (e.g. status/registry/<hash>.json) is something
+            # else entirely - observed in production to be stale Docker
+            # registry access-log debris, not a node - and would otherwise
+            # flood this table with dozens of irrelevant STALE rows.
+            if "/" in hostname:
+                continue
+            try:
+                body = s3.get_object(Bucket=bucket_name, Key=key)["Body"].read()
+                nodes[hostname] = json.loads(body)
+            except Exception:
+                continue
+    return nodes
+
+
+def _sum_live_queue_pending(campaign_name: str) -> Optional[Dict[str, int]]:
+    """Live pending counts for a campaign, summed across every node whose
+    heartbeat reports for it - see WorkerService._compute_queue_pending()
+    for how each node computes its own contribution (it's reading its own
+    disk, which is the only place these numbers can be correct - see
+    task-agent ticket
+    scrape-pipeline-audit-tables-pending-counts-read-stale-local-dev-machine-queue-dirs-not-live-pi-state).
+
+    Returns None (not a dict of zeros) if heartbeats are unreachable at all,
+    or if every reporting node predates this field - callers must be able to
+    tell "genuinely zero" apart from "we couldn't get a live answer" rather
+    than silently rendering the two the same way.
+    """
+    try:
+        nodes = _fetch_heartbeat_nodes(campaign_name)
+    except Exception as e:
+        logger.debug(f"Could not fetch heartbeats for live queue_pending: {e}")
+        return None
+
+    totals: Dict[str, int] = {}
+    saw_field = False
+    for hb in nodes.values():
+        if hb.get("campaign") != campaign_name:
+            continue
+        qp = hb.get("queue_pending")
+        if not isinstance(qp, dict):
+            continue
+        saw_field = True
+        for queue_name, count in qp.items():
+            if isinstance(count, int):
+                totals[queue_name] = totals.get(queue_name, 0) + count
+
+    return totals if saw_field else None
+
+
 def _audit_cluster_from_heartbeats(campaign_name: str, verbose: bool) -> None:
     """Fast path: read node health from each node's S3 heartbeat (status/{host}.json)
     instead of opening an SSH connection per node. Node enumeration comes from
@@ -817,34 +917,13 @@ def _audit_cluster_from_heartbeats(campaign_name: str, verbose: bool) -> None:
     from datetime import datetime, timezone
 
     from ..core.config import load_campaign_config
-    from ..core.reporting import get_boto3_session, get_data_bucket_name, get_s3_client
+    from ..core.reporting import get_data_bucket_name
 
     config = load_campaign_config(campaign_name)
     bucket_name = get_data_bucket_name(config, campaign_name)
+    status_prefix = paths.s3.status_root
     try:
-        s3 = get_s3_client(session=get_boto3_session(config))
-        status_prefix = paths.s3.status_root
-        nodes: dict[str, dict[str, Any]] = {}
-        paginator = s3.get_paginator("list_objects_v2")
-        for page in paginator.paginate(Bucket=bucket_name, Prefix=status_prefix):
-            for obj in page.get("Contents", []):
-                key = obj["Key"]
-                if not key.endswith(".json"):
-                    continue
-                hostname = key[len(status_prefix):-len(".json")]
-                # Real worker heartbeats are always a flat leaf file directly under
-                # status/ (paths.s3.heartbeat writes status/{hostname}.json). A
-                # nested path here (e.g. status/registry/<hash>.json) is something
-                # else entirely - observed in production to be stale Docker
-                # registry access-log debris, not a node - and would otherwise
-                # flood this table with dozens of irrelevant STALE rows.
-                if "/" in hostname:
-                    continue
-                try:
-                    body = s3.get_object(Bucket=bucket_name, Key=key)["Body"].read()
-                    nodes[hostname] = json.loads(body)
-                except Exception:
-                    continue
+        nodes = _fetch_heartbeat_nodes(campaign_name)
     except Exception as e:
         console.print(f"[red]Error: Could not retrieve cluster status from AWS S3 ({e}).[/red]")
         console.print("[yellow]Please check that your AWS credentials are valid and 1Password is unlocked.[/yellow]")
@@ -865,21 +944,27 @@ def _audit_cluster_from_heartbeats(campaign_name: str, verbose: bool) -> None:
     # the same is_valid_task_data_file rule FilesystemQueueBase.count_state()
     # already uses locally, so this S3 path and that local path can't drift
     # apart into two different ideas of "how many tasks are pending."
+    from ..core.reporting import get_boto3_session, get_s3_client
+
+    s3 = get_s3_client(session=get_boto3_session(config))
+    paginator = s3.get_paginator("list_objects_v2")
+
+    # gm-list's real work pool is discovery-gen/completed (a witness-indexed
+    # pool FilesystemGmListQueue.poll() walks directly), not
+    # queues/gm-list/pending/ - that directory is essentially always empty.
+    # Paginating the full discovery-gen/completed prefix here (tens of
+    # thousands of keys) purely to answer one cell is exactly the S3-listing
+    # cost --s3 exists to avoid - use each node's own heartbeat-reported
+    # figure instead (WorkerService._compute_queue_pending computes it
+    # locally on the Pi, cheaply, and publishes it every 30s).
+    live_pending = _sum_live_queue_pending(campaign_name)
+
     queue_depths: dict[str, dict[str, int]] = {}
     for q in _KNOWN_CONTENT_TYPES:
         for status in ("pending", "completed", "failed"):
-            # gm-list's real work pool is discovery-gen/completed (a witness-
-            # indexed pool FilesystemGmListQueue.poll() walks directly), not
-            # queues/gm-list/pending/ - that directory is essentially always
-            # empty, so counting it renders a real-looking number that has
-            # nothing to do with how much work actually remains. The real
-            # figure (mission tiles minus completion receipts) IS computable
-            # - see _audit_cluster_ssh's QUEUES section - but doing it here
-            # would mean paginating the full discovery-gen/completed prefix
-            # (tens of thousands of keys) purely to answer this one cell,
-            # which is exactly the S3-listing cost --s3 exists to avoid.
-            # Leave it uncounted here; use the (default) SSH path for a real
-            # number.
+            if status == "pending" and live_pending is not None and q in live_pending:
+                queue_depths.setdefault(q, {})[status] = live_pending[q]
+                continue
             if q == "gm-list" and status == "pending":
                 continue
             prefix = f"campaigns/{campaign_name}/queues/{q}/{status}/"

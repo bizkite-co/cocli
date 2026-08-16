@@ -833,6 +833,57 @@ class WorkerService:
 
 
 
+    async def _compute_queue_pending(self) -> Dict[str, int]:
+        """Live pending counts for this node's own local queues.
+
+        The audit machine's own local disk is never a faithful mirror of
+        pending/ - PiSyncService only ever syncs completed/ (see task-agent
+        ticket scrape-pipeline-audit-tables-pending-counts-read-stale-local-dev-machine-queue-dirs-not-live-pi-state).
+        This node is the one place these numbers can be computed correctly
+        (it's reading its own disk), so it publishes them via the heartbeat
+        instead of leaving the audit machine to guess from a stale mirror.
+
+        Runs on a background thread since count_state()/reconcile can walk
+        thousands of files - not something the heartbeat's event loop
+        should block on while scrape/detail/enrichment loops are running
+        concurrently.
+        """
+        from ..core.queue.factory import get_queue_manager
+        from .gm_list_enqueue_service import enqueue_unscraped_to_gm_list_pending
+
+        def _compute() -> Dict[str, int]:
+            result: Dict[str, int] = {}
+            try:
+                gm_details_q = get_queue_manager(
+                    "gm-details", queue_type="gm_list_item", campaign_name=self.campaign_name
+                )
+                result["gm-details"] = gm_details_q.count_state("pending")
+            except Exception as e:
+                logger.debug(f"queue_pending: gm-details count failed: {e}")
+            try:
+                enrichment_q = get_queue_manager(
+                    "enrichment", queue_type="enrichment", campaign_name=self.campaign_name
+                )
+                result["enrichment"] = enrichment_q.count_state("pending")
+            except Exception as e:
+                logger.debug(f"queue_pending: enrichment count failed: {e}")
+            try:
+                # dry_run=True: same reconciliation enqueue-gm-list itself
+                # uses to report "Candidates: N" - the true "discovered but
+                # not yet gm-list-scraped" count, not a raw pending/ file
+                # count (gm-list's own pending/ directory is essentially
+                # always empty by design; the real backlog lives as a
+                # set-difference against discovery-gen/completed).
+                gm_list_result = enqueue_unscraped_to_gm_list_pending(
+                    campaign_name=self.campaign_name, dry_run=True
+                )
+                result["gm-list"] = gm_list_result.candidates
+            except Exception as e:
+                logger.debug(f"queue_pending: gm-list count failed: {e}")
+            return result
+
+        return await asyncio.to_thread(_compute)
+
     async def _push_supervisor_heartbeat(self, s3_client: Any) -> None:
         import psutil
         from ..core.paths import paths
@@ -859,6 +910,7 @@ class WorkerService:
                     last_activity[child.content_type] = ts_iso
 
         worker_count = sum(designation.values())
+        queue_pending = await self._compute_queue_pending()
 
         stats = {
             "timestamp": datetime.now(UTC).isoformat(),
@@ -874,6 +926,7 @@ class WorkerService:
             "last_activity": last_activity,
             "error_count_30m": get_recent_error_count(1800),
             "recent_errors": get_recent_error_messages(),
+            "queue_pending": queue_pending,
         }
 
         # Write local copy for container/health checks
