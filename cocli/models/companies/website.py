@@ -10,6 +10,29 @@ from ...core.error_classification import ErrorCategory
 
 logger = logging.getLogger(__name__)
 
+
+def _is_hollow(value: Any) -> bool:
+    """A value a fresh scrape produces when it found nothing for a field -
+    None, an empty/whitespace string, or an empty list/dict. Deliberately
+    NOT hollow: False, 0, or any other falsy-but-meaningful value - those
+    are real findings, not "we didn't look."""
+    if value is None:
+        return True
+    if isinstance(value, str):
+        return value.strip() == ""
+    if isinstance(value, (list, dict)):
+        return len(value) == 0
+    return False
+
+
+# Fields where a fresh, empty result must NOT fall back to whatever is
+# already on disk - each describes the latest attempt's own outcome (or is
+# handled separately), not accumulated knowledge about the company, so a
+# fresh empty/absent value is meaningful in its own right rather than a
+# sign the scrape just didn't find anything.
+_WEBSITE_NEVER_MERGE_FROM_EXISTING = {"url", "sitemap_xml", "navbar_html", "error", "error_category"}
+
+
 class Website(BaseModel):
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
@@ -62,18 +85,28 @@ class Website(BaseModel):
     error_category: Optional[ErrorCategory] = None
 
     def save(self, company_slug: str) -> None:
-        """Saves the website enrichment data to the local company directory."""
+        """Saves the website enrichment data to the local company directory.
+
+        Merges with any existing website.md first: a field only overwrites
+        the existing value when the fresh scrape actually found something
+        for it. A sparse or failed re-scrape (e.g. a force_refresh hitting a
+        blocked/dead site) must not silently blank out previously-good data
+        - force_refresh means "try again," not "erase what we had." See
+        task-agent ticket
+        website.save-blindly-overwrites-website.md-on-every-enrichment-write-no-merge-safety-against-sparse-force-refresh-scrapes.
+        """
         from ...core.config import get_companies_dir, get_campaign
         from ...core.email_index_manager import EmailIndexManager
+        from ...core.text_utils import parse_frontmatter
         from ..campaigns.indexes.email import EmailEntry
         from datetime import UTC
 
         company_dir = get_companies_dir() / company_slug
         enrichment_dir = company_dir / "enrichments"
         enrichment_dir.mkdir(parents=True, exist_ok=True)
-        
+
         website_md_path = enrichment_dir / "website.md"
-        
+
         # Ensure updated_at is refreshed on save
         self.updated_at = datetime.now(timezone.utc)
 
@@ -81,6 +114,28 @@ class Website(BaseModel):
         save_data = self.model_dump(mode="json", exclude_none=True)
         save_data.pop("sitemap_xml", None)
         save_data.pop("navbar_html", None)
+
+        existing_data: Dict[str, Any] = {}
+        if website_md_path.exists():
+            try:
+                frontmatter_str = parse_frontmatter(website_md_path.read_text(encoding="utf-8"))
+                if frontmatter_str:
+                    loaded = yaml.safe_load(frontmatter_str)
+                    if isinstance(loaded, dict):
+                        existing_data = loaded
+            except Exception as merge_read_err:
+                logger.warning(
+                    f"Could not read existing website.md for {company_slug} to merge "
+                    f"against - saving fresh data only: {merge_read_err}"
+                )
+
+        for field_name in type(self).model_fields:
+            if field_name in _WEBSITE_NEVER_MERGE_FROM_EXISTING:
+                continue
+            if _is_hollow(save_data.get(field_name)) and not _is_hollow(
+                existing_data.get(field_name)
+            ):
+                save_data[field_name] = existing_data[field_name]
 
         with open(website_md_path, "w") as f:
             f.write("---\n")
