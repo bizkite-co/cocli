@@ -51,7 +51,10 @@ def test_requeue_uses_local_completed_marker_as_primary_source(tmp_path: Path) -
     """The stale completed marker is the original task, already synced
     locally - it must be preferred over reconstructing from a gm-list row,
     and a fresh push must reset attempts (a new attempt, not a
-    continuation)."""
+    continuation) and must NOT carry force_refresh forward (2026-08-15
+    incident: propagating it clobbered good enrichment data via a
+    force_refresh=true side effect neither this tool nor the user asked
+    for)."""
     campaign = "test-campaign"
     _setup_campaign_dirs(tmp_path, campaign)
     _write_completed_marker(tmp_path, campaign, "PLACE_A")
@@ -76,6 +79,7 @@ def test_requeue_uses_local_completed_marker_as_primary_source(tmp_path: Path) -
     assert pushed["name"] == "Affordable Carpet & Wood"
     assert pushed["company_slug"] == "affordable-carpet-wood"
     assert pushed["attempts"] == 0
+    assert pushed["force_refresh"] is False
 
 
 def test_requeue_falls_back_to_gm_list_when_no_local_marker(tmp_path: Path) -> None:

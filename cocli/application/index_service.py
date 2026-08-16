@@ -556,12 +556,20 @@ class IndexService:
             # Fresh task, not the marker verbatim: resets attempts to 0 and
             # drops the (already-excluded, but be explicit) transient
             # ack_token - this is a new attempt, not a continuation.
+            #
+            # force_refresh is deliberately NOT carried over from the marker
+            # (2026-08-15 incident: propagating it here pushed 283 enrichment
+            # tasks with force_refresh=true, threatening to overwrite good
+            # website.md content - keyed by company_slug, not place_id - for
+            # a re-scrape that only exists to fill a WAL gap, not to force a
+            # refresh). This tool recovers a lost result; it must not also
+            # opt records into a disruptive full re-enrichment as a side
+            # effect.
             tasks_by_id[place_id] = GmItemTask(
                 place_id=place_id,
                 campaign_name=self.campaign_name,
                 name=marker_task.name,
                 company_slug=marker_task.company_slug,
-                force_refresh=marker_task.force_refresh,
                 gmb_url=marker_task.gmb_url,
                 category=marker_task.category,
                 discovery_phrase=marker_task.discovery_phrase,
