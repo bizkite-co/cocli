@@ -434,35 +434,54 @@ def audit_scrape(
     discovery_valid, discovery_invalid = audit_queue("discovery-gen")
     gm_list_valid, gm_list_invalid = audit_queue("gm-list")
 
-    # Count unique completed viewports (tiles) in gm-list
-    gm_list_root = paths.campaign(campaign_name).queue("gm-list").completed
-    if (gm_list_root / "results").exists():
-        gm_list_root = gm_list_root / "results"
-    gm_list_tiles_set = set()
-    if gm_list_root.exists():
-        for usv_file in gm_list_root.rglob("*.usv"):
-            parts = usv_file.relative_to(gm_list_root).parts
-            if len(parts) >= 3:
-                gm_list_tiles_set.add(f"{parts[-3]}/{parts[-2]}")
-    gm_list_tiles = len(gm_list_tiles_set)
+    # Tile-level gm-list coverage (distinct tiles, not (tile,phrase) units -
+    # see gm_list_pending below for that). Prefer each node's own
+    # heartbeat-reported figure - see
+    # WorkerService._compute_gm_list_tile_coverage(). The local fallback
+    # below has two independent problems, not just staleness: it reads this
+    # machine's own unsynced local mirror, AND it counts .usv-file presence
+    # as "completed," which undercounts any tile+phrase that legitimately
+    # found zero businesses (receipt written, no .usv file to write).
+    # Confirmed production bug 2026-08-16: this fallback reported 255
+    # pending tiles when the live, receipt-based count was 2.
+    live_tile_coverage = _fetch_live_gm_list_tile_coverage(campaign_name)
 
-    # Count unique target viewports (tiles) in discovery-gen completed pool
-    dg_root = paths.campaign(campaign_name).queue("discovery-gen").completed
-    dg_tiles_set = set()
-    if dg_root.exists():
-        for usv_file in dg_root.rglob("*.usv"):
-            parts = usv_file.relative_to(dg_root).parts
-            if len(parts) >= 3:
-                dg_tiles_set.add(f"{parts[-3]}/{parts[-2]}")
-    staged_tiles = len(dg_tiles_set)
+    if live_tile_coverage is not None:
+        staged_tiles = live_tile_coverage.get("staged_tiles", 0)
+        gm_list_tiles = live_tile_coverage.get("tiles_with_any_result", 0)
+        pending_tiles = live_tile_coverage.get("tiles_with_zero_results", 0)
+        tile_coverage_source = "live (Pi heartbeat)"
+    else:
+        # Count unique completed viewports (tiles) in gm-list
+        gm_list_root = paths.campaign(campaign_name).queue("gm-list").completed
+        if (gm_list_root / "results").exists():
+            gm_list_root = gm_list_root / "results"
+        gm_list_tiles_set = set()
+        if gm_list_root.exists():
+            for usv_file in gm_list_root.rglob("*.usv"):
+                parts = usv_file.relative_to(gm_list_root).parts
+                if len(parts) >= 3:
+                    gm_list_tiles_set.add(f"{parts[-3]}/{parts[-2]}")
+        gm_list_tiles = len(gm_list_tiles_set)
+
+        # Count unique target viewports (tiles) in discovery-gen completed pool
+        dg_root = paths.campaign(campaign_name).queue("discovery-gen").completed
+        dg_tiles_set = set()
+        if dg_root.exists():
+            for usv_file in dg_root.rglob("*.usv"):
+                parts = usv_file.relative_to(dg_root).parts
+                if len(parts) >= 3:
+                    dg_tiles_set.add(f"{parts[-3]}/{parts[-2]}")
+        staged_tiles = len(dg_tiles_set)
+
+        pending_tiles = staged_tiles - gm_list_tiles
+        tile_coverage_source = "LOCAL DISK - STALE/UNDERCOUNTS, see ticket"
 
     # Count total campaign tiles in map-tile queue (pending + completed)
     map_tile_queue = paths.campaign(campaign_name).queue("map-tile")
     total_campaign_tiles = 0
     if map_tile_queue.pending.exists():
         total_campaign_tiles = len(list(map_tile_queue.pending.rglob("*.usv"))) + len(list(map_tile_queue.completed.rglob("*.usv")))
-
-    pending_tiles = staged_tiles - gm_list_tiles
 
     # Count gm-list queue states directly from filesystem (rglob to handle sharded subdirs)
     gm_list_queue = paths.campaign(campaign_name).queue("gm-list")
@@ -524,6 +543,7 @@ def audit_scrape(
         "staged_active_tiles": staged_tiles,
         "completed_scraped_tiles": gm_list_tiles,
         "pending_scraped_tiles": pending_tiles,
+        "tile_coverage_source": tile_coverage_source,
         "pending_counts_source": pending_source,
         "gm_list_pending": gm_list_pending,
         "gm_list_claimed": gm_list_claimed,
@@ -905,6 +925,37 @@ def _sum_live_queue_pending(campaign_name: str) -> Optional[Dict[str, int]]:
                 totals[queue_name] = totals.get(queue_name, 0) + count
 
     return totals if saw_field else None
+
+
+def _fetch_live_gm_list_tile_coverage(campaign_name: str) -> Optional[Dict[str, int]]:
+    """Live, deduplicated (lat,lon) tile-level gm-list coverage for a
+    campaign - see WorkerService._compute_gm_list_tile_coverage() for how
+    each node computes it (receipt-based, not .usv-presence-based - see
+    that method's docstring for the undercounting bug this replaces:
+    cocli audit scrape reported 255 pending tiles via a stale local .usv
+    count when the live, receipt-based figure was 2).
+
+    Unlike _sum_live_queue_pending, this is NOT summed across nodes -
+    discovery-gen/gm-list coverage is one shared campaign-wide fact, not a
+    per-node contribution, so summing would multiply-count it if more than
+    one node reports for the same campaign. Takes the first reporting
+    node's value. Returns None if unreachable or no node has published it
+    yet, same contract as _sum_live_queue_pending.
+    """
+    try:
+        nodes = _fetch_heartbeat_nodes(campaign_name)
+    except Exception as e:
+        logger.debug(f"Could not fetch heartbeats for live gm_list_tile_coverage: {e}")
+        return None
+
+    for hb in nodes.values():
+        if hb.get("campaign") != campaign_name:
+            continue
+        coverage = hb.get("gm_list_tile_coverage")
+        if isinstance(coverage, dict):
+            return coverage
+
+    return None
 
 
 def _audit_cluster_from_heartbeats(campaign_name: str, verbose: bool) -> None:

@@ -92,3 +92,55 @@ async def test_push_supervisor_heartbeat_includes_queue_pending(tmp_path: Path) 
 
         body = json.loads(mock_s3.put_object.call_args.kwargs["Body"])
         assert body["queue_pending"]["gm-details"] == 1
+
+
+def _write_dg_tile(campaign_dir: Path, tile: str, phrase: str) -> None:
+    d = campaign_dir / "queues" / "discovery-gen" / "completed" / tile
+    d.mkdir(parents=True, exist_ok=True)
+    (d / f"{phrase}.usv").write_text("dummy")
+
+
+def _write_gm_list_receipt(campaign_dir: Path, tile: str, phrase: str, found_items: bool) -> None:
+    d = campaign_dir / "queues" / "gm-list" / "completed" / "results" / tile
+    d.mkdir(parents=True, exist_ok=True)
+    (d / f"{phrase}.json").write_text("{}")
+    if found_items:
+        (d / f"{phrase}.usv").write_text(f"PLACE_A{US}Name\n")
+
+
+@pytest.mark.asyncio
+async def test_tile_coverage_counts_receipts_not_usv_presence(tmp_path: Path) -> None:
+    """A tile+phrase that legitimately found zero businesses still gets a
+    completion receipt (.json) but no .usv file - counting .usv presence as
+    the completion signal silently undercounts real coverage. Production
+    bug confirmed 2026-08-16: cocli audit scrape reported 255 pending tiles
+    via .usv-presence counting when the true, receipt-based figure was 2."""
+    with patch.object(paths, "root", tmp_path):
+        campaign = "turboship"
+        campaign_dir = tmp_path / "campaigns" / campaign
+
+        # Tile A: both phrases discovered, one found items, one found none -
+        # both are real completions (receipts exist for both).
+        _write_dg_tile(campaign_dir, "1/40.0/-74.0", "phrase-one")
+        _write_dg_tile(campaign_dir, "1/40.0/-74.0", "phrase-two")
+        _write_gm_list_receipt(campaign_dir, "1/40.0/-74.0", "phrase-one", found_items=True)
+        _write_gm_list_receipt(campaign_dir, "1/40.0/-74.0", "phrase-two", found_items=False)
+
+        # Tile B: discovered, never scraped at all.
+        _write_dg_tile(campaign_dir, "2/41.0/-75.0", "phrase-one")
+
+        supervisor = _make_supervisor(campaign)
+        result = await supervisor._compute_gm_list_tile_coverage()
+
+    assert result["staged_tiles"] == 2
+    assert result["tiles_with_any_result"] == 1
+    assert result["tiles_with_zero_results"] == 1
+
+
+@pytest.mark.asyncio
+async def test_tile_coverage_empty_campaign_returns_zeros(tmp_path: Path) -> None:
+    with patch.object(paths, "root", tmp_path):
+        supervisor = _make_supervisor("brand-new-campaign")
+        result = await supervisor._compute_gm_list_tile_coverage()
+
+    assert result == {"staged_tiles": 0, "tiles_with_any_result": 0, "tiles_with_zero_results": 0}

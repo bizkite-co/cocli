@@ -884,6 +884,53 @@ class WorkerService:
 
         return await asyncio.to_thread(_compute)
 
+    async def _compute_gm_list_tile_coverage(self) -> Dict[str, int]:
+        """Deduplicated (lat,lon) tile-level gm-list coverage.
+
+        Distinct from _compute_queue_pending()'s gm-list figure, which is
+        (tile, search-phrase) granularity - this is the "how many actual
+        map tiles still have zero coverage" question cocli audit scrape's
+        staged_active_tiles/completed_scraped_tiles/pending_scraped_tiles
+        fields exist to answer.
+
+        Uses the .json completion RECEIPT under gm-list/completed/results
+        as the "this tile+phrase was attempted" signal, not .usv presence -
+        a tile+phrase that legitimately found zero businesses still gets a
+        receipt but never gets a .usv file (no items to write), so counting
+        .usv presence silently undercounts real completions. Confirmed
+        production bug 2026-08-16: cocli audit scrape reported 255 tiles
+        pending (via .usv presence, on this dev machine's stale local
+        mirror) when the live, receipt-based count on the Pi itself was 2.
+        """
+        from pathlib import Path
+
+        from ..core.paths import paths
+
+        def _compute() -> Dict[str, int]:
+            campaign_paths = paths.campaign(self.campaign_name)
+            dg_root = campaign_paths.queue("discovery-gen").completed
+            gm_list_root = campaign_paths.queue("gm-list").completed / "results"
+
+            def _tile_set(root: Path, pattern: str) -> Set[str]:
+                tiles: Set[str] = set()
+                if not root.exists():
+                    return tiles
+                for f in root.rglob(pattern):
+                    parts = f.relative_to(root).parts
+                    if len(parts) >= 3:
+                        tiles.add(f"{parts[-3]}/{parts[-2]}")
+                return tiles
+
+            staged = _tile_set(dg_root, "*.usv")
+            completed = _tile_set(gm_list_root, "*.json")
+            return {
+                "staged_tiles": len(staged),
+                "tiles_with_any_result": len(completed),
+                "tiles_with_zero_results": len(staged - completed),
+            }
+
+        return await asyncio.to_thread(_compute)
+
     async def _push_supervisor_heartbeat(self, s3_client: Any) -> None:
         import psutil
         from ..core.paths import paths
@@ -911,6 +958,7 @@ class WorkerService:
 
         worker_count = sum(designation.values())
         queue_pending = await self._compute_queue_pending()
+        gm_list_tile_coverage = await self._compute_gm_list_tile_coverage()
 
         stats = {
             "timestamp": datetime.now(UTC).isoformat(),
@@ -927,6 +975,7 @@ class WorkerService:
             "error_count_30m": get_recent_error_count(1800),
             "recent_errors": get_recent_error_messages(),
             "queue_pending": queue_pending,
+            "gm_list_tile_coverage": gm_list_tile_coverage,
         }
 
         # Write local copy for container/health checks

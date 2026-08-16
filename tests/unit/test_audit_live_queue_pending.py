@@ -10,7 +10,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from unittest.mock import patch
 
-from cocli.commands.audit import _sum_live_queue_pending
+from cocli.commands.audit import _fetch_live_gm_list_tile_coverage, _sum_live_queue_pending
 from tests.test_audit_cluster_heartbeat import FakeS3Client
 
 _NOW = datetime.now(timezone.utc).isoformat()
@@ -89,5 +89,40 @@ def test_returns_none_when_no_node_has_published_queue_pending_yet() -> None:
 def test_returns_none_when_heartbeats_are_unreachable() -> None:
     with patch("cocli.core.config.load_campaign_config", side_effect=RuntimeError("no AWS creds")):
         result = _sum_live_queue_pending("turboship")
+
+    assert result is None
+
+
+def test_tile_coverage_takes_first_reporting_node_not_a_sum() -> None:
+    """Unlike queue_pending, tile coverage is one shared campaign-wide
+    fact - if two nodes both report for the same campaign, summing them
+    would double-count it."""
+    heartbeats = {
+        "cocli5x0": {
+            "campaign": "turboship",
+            "timestamp": _NOW,
+            "gm_list_tile_coverage": {
+                "staged_tiles": 858,
+                "tiles_with_any_result": 856,
+                "tiles_with_zero_results": 2,
+            },
+        },
+    }
+    fake_client = FakeS3Client(heartbeats)
+    patches = _patched(fake_client)
+    with patches[0], patches[1], patches[2], patches[3]:
+        result = _fetch_live_gm_list_tile_coverage("turboship")
+
+    assert result == {"staged_tiles": 858, "tiles_with_any_result": 856, "tiles_with_zero_results": 2}
+
+
+def test_tile_coverage_returns_none_when_not_yet_published() -> None:
+    heartbeats = {
+        "cocli5x0": {"campaign": "turboship", "timestamp": _NOW},
+    }
+    fake_client = FakeS3Client(heartbeats)
+    patches = _patched(fake_client)
+    with patches[0], patches[1], patches[2], patches[3]:
+        result = _fetch_live_gm_list_tile_coverage("turboship")
 
     assert result is None
