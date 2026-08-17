@@ -22,6 +22,14 @@ _MAP_STATE_RE = re.compile(r"@(-?\d+\.?\d*),(-?\d+\.?\d*),(\d+\.?\d*)z")
 _GRID_MODE_ZOOM = 13.0
 _MIN_ACCEPTABLE_ZOOM = 12.5
 
+# Stop scanning after this many consecutive out-of-tile results, rather than
+# discarding them one by one indefinitely - Google's sidebar increasingly
+# intersperses distant results deeper into the scroll, so a run this long is
+# a strong, cheap-to-check signal that everything further is more of the
+# same, without waiting for the coarser URL-drift check (_viewport_still_in_tile)
+# to catch up.
+_MAX_CONSECUTIVE_OUT_OF_BOUNDS = 5
+
 logger = logging.getLogger(__name__)
 
 class SidebarScraper:
@@ -130,6 +138,8 @@ class SidebarScraper:
         # instead (self.page.url is a local, zero-network-cost read).
         last_processed_div_count = 0
         consecutive_no_new_results = 0
+        consecutive_out_of_bounds = 0
+        stop_scan = False
 
         while True:
             if self.page.is_closed():
@@ -179,8 +189,14 @@ class SidebarScraper:
                 place_id = data.get("Place_ID")
 
                 # Geographic Filtering (Targeted Tiles)
-                # Google often intersperses results from outside the targeted area.
-                # We strictly enforce 0.1 degree tile bounds to prevent cross-tile duplication.
+                # Google often intersperses results from outside the targeted area,
+                # increasingly so deeper into the scroll. We strictly enforce 0.1
+                # degree tile bounds to prevent cross-tile duplication, AND track a
+                # consecutive-miss streak rather than only discarding one-by-one -
+                # once several in a row land outside the tile, further scrolling is
+                # overwhelmingly likely to keep finding more of the same, so stop
+                # instead of continuing to hover/hydrate/parse items we already know
+                # we'll discard.
                 if tile_id:
                     bounds = get_tile_bounds(tile_id)
                     if bounds:
@@ -188,15 +204,30 @@ class SidebarScraper:
                         lon_val = data.get("Longitude")
                         if lat_val and lon_val:
                             try:
-                                lat_f = float(lat_val)
-                                lon_f = float(lon_val)
-                                if not (bounds["lat_min"] <= lat_f < bounds["lat_max"] and 
-                                        bounds["lon_min"] <= lon_f < bounds["lon_max"]):
+                                lat_f: Optional[float] = float(lat_val)
+                                lon_f: Optional[float] = float(lon_val)
+                            except (ValueError, TypeError):
+                                lat_f = lon_f = None
+                            if lat_f is not None and lon_f is not None:
+                                in_bounds = (
+                                    bounds["lat_min"] <= lat_f < bounds["lat_max"]
+                                    and bounds["lon_min"] <= lon_f < bounds["lon_max"]
+                                )
+                                if in_bounds:
+                                    consecutive_out_of_bounds = 0
+                                else:
+                                    consecutive_out_of_bounds += 1
                                     if self.debug:
                                         logger.debug(f"Skipping out-of-bounds result: {data.get('Name')} at {lat_f}, {lon_f} for tile {tile_id}")
+                                    if consecutive_out_of_bounds >= _MAX_CONSECUTIVE_OUT_OF_BOUNDS:
+                                        logger.info(
+                                            f"{consecutive_out_of_bounds} consecutive out-of-tile results "
+                                            f"for '{search_string}' in tile {tile_id} - stopping instead "
+                                            "of scrolling through more we'd discard anyway."
+                                        )
+                                        stop_scan = True
+                                        break
                                     continue
-                            except (ValueError, TypeError):
-                                pass
 
                 if place_id and place_id not in processed_place_ids:
                     processed_place_ids.add(place_id)
@@ -224,6 +255,9 @@ class SidebarScraper:
                         html=html_content
                     )
                     yield item
+
+            if stop_scan:
+                break
 
             last_processed_div_count = len(listing_divs)
             
