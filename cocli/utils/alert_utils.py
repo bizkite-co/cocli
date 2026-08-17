@@ -88,6 +88,12 @@ async def check_and_alert_google_maps_block(page: Page, context_message: str) ->
             msg = f"Google Maps redirection block detected at {url}. Context: {context_message}"
             import socket
             hostname = socket.gethostname()
+            # Log at ERROR independent of ntfy delivery - send_alert only
+            # logs at INFO on successful delivery (or WARNING/ERROR on ntfy
+            # failure itself), so a real, successfully-alerted block was
+            # previously invisible to RollingErrorCounter (only listens at
+            # ERROR+) and therefore to cocli audit cluster's error counts.
+            logger.error(f"google_maps_block detected [redirect]: {msg}")
             send_alert(
                 message=f"[{hostname}] {msg}",
                 title="Google Maps Redirection Block",
@@ -114,6 +120,7 @@ async def check_and_alert_google_maps_block(page: Page, context_message: str) ->
                 msg = f"Google Maps block page detected containing signature: '{sig}'. Context: {context_message}"
                 import socket
                 hostname = socket.gethostname()
+                logger.error(f"google_maps_block detected [signature:{sig}]: {msg}")
                 send_alert(
                     message=f"[{hostname}] {msg}",
                     title="Google Maps Block Page",

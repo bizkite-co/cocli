@@ -30,6 +30,11 @@ _MIN_ACCEPTABLE_ZOOM = 12.5
 # to catch up.
 _MAX_CONSECUTIVE_OUT_OF_BOUNDS = 5
 
+# How many scan-loop iterations between periodic block/CAPTCHA checks (each
+# check fetches full page HTML via page.content(), so this isn't free to run
+# every ~1s tick alongside the viewport check).
+_BLOCK_CHECK_INTERVAL = 5
+
 logger = logging.getLogger(__name__)
 
 class SidebarScraper:
@@ -121,6 +126,10 @@ class SidebarScraper:
             scrollable_div = self.page.locator(scrollable_div_selector)
         except Exception:
             logger.warning(f"Could not find scrollable results feed for '{search_string}'. Possibly no results.")
+            from ....utils.alert_utils import check_and_alert_google_maps_block
+            await check_and_alert_google_maps_block(
+                self.page, f"No results feed for '{search_string}' (scanner.scrape)"
+            )
             return
 
         # Google auto-resizes/recenters/zooms-out the viewport for sparse
@@ -140,10 +149,30 @@ class SidebarScraper:
         consecutive_no_new_results = 0
         consecutive_out_of_bounds = 0
         stop_scan = False
+        loop_iteration = 0
 
         while True:
             if self.page.is_closed():
                 break
+
+            # Periodic (not just reactive-on-exception) block/CAPTCHA check.
+            # The 3 existing call sites (navigator.py x2, gm_details_scraper.py)
+            # only fire when navigation/search already raised - a "soft" block
+            # (page loads fine, shows a CAPTCHA/rate-limit page instead of
+            # results) wouldn't necessarily throw, so a long-running scan could
+            # sit on a block page indefinitely without ever tripping those.
+            # Throttled to avoid a page.content() fetch every ~1s loop tick.
+            loop_iteration += 1
+            if loop_iteration % _BLOCK_CHECK_INTERVAL == 1:
+                from ....utils.alert_utils import check_and_alert_google_maps_block
+                if await check_and_alert_google_maps_block(
+                    self.page, f"Periodic check during scan of '{search_string}'"
+                ):
+                    logger.warning(
+                        f"Block detected mid-scan for '{search_string}' - stopping "
+                        "this task's scan early."
+                    )
+                    break
 
             if not self._viewport_still_in_tile(tile_id):
                 logger.info(
