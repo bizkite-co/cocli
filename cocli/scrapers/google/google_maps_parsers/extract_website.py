@@ -47,7 +47,13 @@ def extract_website(soup: BeautifulSoup, inner_text: str, debug: bool = False) -
                 logger.debug("Website element not found from HTML.")
 
     if website:
-        domain_match = re.search(r"https?://(?:www\.)?([^/]+)", website)
+        # Google's outbound website links often carry an rwg_token
+        # redirect-tracking query string with no path segment before it
+        # (e.g. https://example.com?rwg_token=...) - [^/]+ alone captured
+        # the whole query string as the domain, blowing past the model's
+        # 100-char cap and crashing (nacking) the entire scan task. Stop at
+        # '/', '?', or '#' so only the host[:port] is kept.
+        domain_match = re.search(r"https?://(?:www\.)?([^/?#]+)", website)
         if domain_match:
             domain = domain_match.group(1)
             if debug:
