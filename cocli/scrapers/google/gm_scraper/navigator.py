@@ -14,8 +14,18 @@ class Navigator:
         """
         Navigates the browser using a high-fidelity 'Human' flow.
         """
-        # 1. Go to Home Page first to establish session
-        home_url = "https://www.google.com/maps/@34.2499124,-118.2605756,13z?hl=en-US"
+        # 1. Go to the TARGET location first to establish session, then search
+        # from there. Regression 2026-03-05 (commit e6e46331, "achieving
+        # absolute high-fidelity for Google Maps"): this used to be a fixed
+        # debug/ground-truth coordinate near Los Angeles instead of the
+        # requested lat/lon, so every "human flow" search (the common case -
+        # the direct-URL fallback below only fires when the search doesn't
+        # show visible results within 15s) started from LA regardless of the
+        # actual target, silently returning LA-area businesses that the
+        # per-item tile-bounds filter then discarded one by one. See
+        # task-agent ticket
+        # regression-gm-list-stuck-at-60-for-months-broken-stealth-script-and-no-backoff-on-google-block-detection.
+        home_url = f"https://www.google.com/maps/@{lat},{lon},13z?hl=en-US"
         try:
             logger.info("Navigating to Google Maps Home...")
             # We use 'load' here because 'networkidle' can take too long on Maps

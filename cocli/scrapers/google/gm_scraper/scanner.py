@@ -10,7 +10,17 @@ from ....models.campaigns.indexes.google_maps_list_item import GoogleMapsListIte
 from ....utils.headers import jittered_delay_ms
 from .utils import get_tile_bounds
 
-_MAP_CENTER_RE = re.compile(r"@(-?\d+\.?\d*),(-?\d+\.?\d*),")
+# Captures center lat/lon AND zoom - center alone isn't enough to detect a
+# widened search (see _viewport_still_in_tile).
+_MAP_STATE_RE = re.compile(r"@(-?\d+\.?\d*),(-?\d+\.?\d*),(\d+\.?\d*)z")
+
+# Grid-mode navigation always requests 13z (Navigator.goto()/coordinator.py -
+# a 0.1-degree tile is ~7 miles, sized for that zoom). Each zoom level roughly
+# doubles the visible width, so even 1 level down covers ~2x the tile in each
+# dimension - treat anything meaningfully below 13 as "no longer just this
+# tile," not only a hard jump to a different center.
+_GRID_MODE_ZOOM = 13.0
+_MIN_ACCEPTABLE_ZOOM = 12.5
 
 logger = logging.getLogger(__name__)
 
@@ -19,6 +29,39 @@ class SidebarScraper:
         self.page = page
         self.debug = debug
         self.settings = load_scraper_settings()
+
+    def _viewport_still_in_tile(self, tile_id: Optional[str]) -> bool:
+        """True if the page's current URL still reflects a view scoped to
+        tile_id - both center point AND zoom level.
+
+        Confirmed live 2026-08-16: a real tile+phrase scan ran 5+ minutes,
+        successfully parsing ~90 real listings throughout, every single one
+        discarded by the per-item geographic bounds filter - because Google
+        progressively zoomed out *during* scrolling (13z -> 11z) to keep
+        finding listings for the infinite-scroll feed, while the center
+        point never drifted outside the tile bounds. A center-only,
+        checked-once-up-front check cannot catch either half of that: not
+        the zoom (center was fine), and not the timing (drift developed
+        during the scroll loop, after any one-time initial check already
+        passed). Call this every loop iteration instead - reading
+        self.page.url is a local, synchronous, zero-network-cost check.
+        """
+        if not tile_id:
+            return True
+        bounds = get_tile_bounds(tile_id)
+        if not bounds:
+            return True
+        match = _MAP_STATE_RE.search(self.page.url)
+        if not match:
+            return True
+        center_lat = float(match.group(1))
+        center_lon = float(match.group(2))
+        zoom = float(match.group(3))
+        in_bounds = (
+            bounds["lat_min"] <= center_lat < bounds["lat_max"]
+            and bounds["lon_min"] <= center_lon < bounds["lon_max"]
+        )
+        return in_bounds and zoom >= _MIN_ACCEPTABLE_ZOOM
 
     async def wait_for_hydration(self, listing_locator: Locator) -> bool:
         """
@@ -72,35 +115,32 @@ class SidebarScraper:
             logger.warning(f"Could not find scrollable results feed for '{search_string}'. Possibly no results.")
             return
 
-        # Google auto-resizes/recenters the viewport for sparse areas (e.g. a tile
-        # over open ocean or a large desert) and returns results from outside the
-        # requested tile instead. The per-item bounds filter below already discards
-        # those results one-by-one, but each one still looks like "new" DOM content
-        # to the stall-detector (consecutive_no_new_results never trips), so the
-        # scan loop runs to the full 90s idle-timeout instead of failing fast. Catch
-        # the resize once, up front, by checking whether the map actually settled
-        # inside the requested tile before scanning content we'd discard anyway.
-        if tile_id:
-            bounds = get_tile_bounds(tile_id)
-            if bounds:
-                center_match = _MAP_CENTER_RE.search(self.page.url)
-                if center_match:
-                    center_lat = float(center_match.group(1))
-                    center_lon = float(center_match.group(2))
-                    if not (bounds["lat_min"] <= center_lat < bounds["lat_max"] and
-                            bounds["lon_min"] <= center_lon < bounds["lon_max"]):
-                        logger.info(
-                            f"Viewport resized outside tile {tile_id} for '{search_string}' "
-                            f"(settled at {center_lat},{center_lon}, tile bounds {bounds}). "
-                            "Treating as zero results instead of scanning discarded content."
-                        )
-                        return
-
+        # Google auto-resizes/recenters/zooms-out the viewport for sparse
+        # areas (e.g. a tile over open ocean or a large desert) to keep
+        # finding listings for the infinite-scroll feed - and does this
+        # progressively AS THE SCAN SCROLLS, not only once at initial load.
+        # The per-item bounds filter below already discards results from
+        # outside the tile one-by-one, but each one still looks like "new"
+        # DOM content to the stall-detector (consecutive_no_new_results
+        # never trips), so a check that only runs once up front cannot catch
+        # drift that develops later - confirmed live 2026-08-16: a real scan
+        # ran 5+ minutes, successfully parsing ~90 real listings, all
+        # discarded, because zoom dropped mid-scroll while the initial
+        # up-front check had already passed. Check every loop iteration
+        # instead (self.page.url is a local, zero-network-cost read).
         last_processed_div_count = 0
         consecutive_no_new_results = 0
-        
+
         while True:
             if self.page.is_closed():
+                break
+
+            if not self._viewport_still_in_tile(tile_id):
+                logger.info(
+                    f"Viewport drifted outside tile {tile_id} for '{search_string}' "
+                    f"during scan (now at {self.page.url}). Stopping - further "
+                    "content would be discarded by the bounds filter anyway."
+                )
                 break
 
             await self.page.wait_for_timeout(jittered_delay_ms(1000))
