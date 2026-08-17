@@ -81,6 +81,58 @@ def find_high_yield_tiles(
     return picked
 
 
+def find_zero_result_tiles(
+    campaign_name: str, limit: int
+) -> List[Tuple[str, str, float, float, Path]]:
+    """Returns (tile_id, phrase, lat, lon, receipt_file) for real completed
+    gm-list tasks that recorded result_count == 0 - a .json completion
+    receipt under gm-list/completed/results with no sibling .usv (no data
+    file was ever written because nothing was found). Deduplicated by tile
+    so each browser session covers a genuinely different location.
+
+    For visually confirming whether these are true negatives (nothing
+    there) or bugged negatives (navigation/viewport-drift silently
+    discarded real results) - see task-agent ticket
+    regression-gm-list-stuck-at-60-for-months-broken-stealth-script-and-no-backoff-on-google-block-detection.
+    """
+    import json
+
+    results_root = paths.campaign(campaign_name).queue("gm-list").completed / "results"
+    candidates: List[Tuple[str, str, str, float, float, Path]] = []  # (completed_at, tile_id, phrase, lat, lon, src)
+
+    for f in results_root.rglob("*.json"):
+        if f.name in ("datapackage.json", "schema_ledger.json"):
+            continue
+        if f.with_suffix(".usv").exists():
+            continue  # has data - not a zero-result receipt
+        try:
+            receipt = json.loads(f.read_text(errors="replace"))
+        except (OSError, ValueError):
+            continue
+        if receipt.get("result_count") != 0:
+            continue
+        lat = receipt.get("latitude")
+        lon = receipt.get("longitude")
+        phrase = receipt.get("search_phrase")
+        if lat is None or lon is None or not phrase:
+            continue
+        completed_at = str(receipt.get("completed_at", ""))
+        candidates.append((completed_at, f"{lat}_{lon}", phrase, float(lat), float(lon), f))
+
+    candidates.sort(key=lambda c: c[0], reverse=True)  # most recent first
+
+    seen_tiles: Set[str] = set()
+    picked: List[Tuple[str, str, float, float, Path]] = []
+    for _completed_at, tile_id, phrase, lat, lon, src in candidates:
+        if tile_id in seen_tiles:
+            continue
+        seen_tiles.add(tile_id)
+        picked.append((tile_id, phrase, lat, lon, src))
+        if len(picked) >= limit:
+            break
+    return picked
+
+
 async def wait_for_close(browser: Browser) -> None:
     """Blocks until the user closes the browser window."""
     loop = asyncio.get_event_loop()
@@ -147,6 +199,13 @@ async def main() -> None:
     parser.add_argument(
         "--min-rows", type=int, default=20, help="Minimum historical result count to qualify a tile"
     )
+    parser.add_argument(
+        "--zero-results",
+        action="store_true",
+        help="Instead of high-yield tiles, select real completed tasks that recorded "
+        "result_count == 0 (a .json receipt with no sibling .usv) - for visually "
+        "confirming whether these are true negatives or bugged negatives.",
+    )
     parser.add_argument("--screenshot-dir", type=Path, default=None)
     parser.add_argument(
         "--tile-id",
@@ -168,10 +227,15 @@ async def main() -> None:
             parser.error("--tile-id requires --phrase")
         lat_str, lon_str = args.tile_id.split("_")
         tiles = [(args.tile_id, args.phrase, float(lat_str) + 0.05, float(lon_str) + 0.05, Path("<explicit>"))]
+    elif args.zero_results:
+        tiles = find_zero_result_tiles(args.campaign, args.tiles)
     else:
         tiles = find_high_yield_tiles(args.campaign, args.min_rows, args.tiles)
     if not tiles:
-        print(f"No tiles found with >= {args.min_rows} historical rows for campaign {args.campaign}.")
+        if args.zero_results:
+            print(f"No result_count==0 completions found for campaign {args.campaign}.")
+        else:
+            print(f"No tiles found with >= {args.min_rows} historical rows for campaign {args.campaign}.")
         return
 
     print(f"Selected {len(tiles)} tile(s):")
