@@ -1,16 +1,45 @@
 {
-  "search_url": "https://www.google.com/maps/search/auto+parts/@34.2499124,-118.2605756,2882m/data=!3m1!1e3?hl=en-US",
-  "min_results": 5,
-  "expectations": [
+  "locations": [
     {
-      "name_regex": "AutoZone",
-      "min_reviews": 300,
-      "min_rating": 4.0
+      "name": "los_angeles_auto_parts",
+      "lat": 34.2499124,
+      "lon": -118.2605756,
+      "query": "auto parts",
+      "min_results": 5,
+      "expectations": [
+        {
+          "name_regex": "AutoZone",
+          "min_rating": 4.0
+        },
+        {
+          "name_regex": "O.?Reilly",
+          "min_rating": 4.0
+        }
+      ]
     },
     {
-      "name_regex": "O'Reilly",
-      "min_reviews": 150,
-      "min_rating": 4.0
+      "name": "seattle_coffee",
+      "lat": 47.6062,
+      "lon": -122.3321,
+      "query": "coffee",
+      "min_results": 5,
+      "expectations": [
+        {
+          "min_rating": 4.0
+        }
+      ]
+    },
+    {
+      "name": "nyc_hardware_store",
+      "lat": 40.758,
+      "lon": -73.9855,
+      "query": "hardware store",
+      "min_results": 5,
+      "expectations": [
+        {
+          "min_rating": 4.0
+        }
+      ]
     }
   ]
 }
