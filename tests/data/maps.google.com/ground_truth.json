@@ -9,10 +9,12 @@
       "expectations": [
         {
           "name_regex": "AutoZone",
+          "min_reviews": 300,
           "min_rating": 4.0
         },
         {
           "name_regex": "O.?Reilly",
+          "min_reviews": 150,
           "min_rating": 4.0
         }
       ]
@@ -25,6 +27,7 @@
       "min_results": 5,
       "expectations": [
         {
+          "min_reviews": 50,
           "min_rating": 4.0
         }
       ]
@@ -37,6 +40,7 @@
       "min_results": 5,
       "expectations": [
         {
+          "min_reviews": 50,
           "min_rating": 4.0
         }
       ]

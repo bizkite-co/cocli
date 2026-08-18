@@ -32,26 +32,21 @@ unhydrated review count, and found no Starbucks/Home Depot at all in the
 first ~8 results for Seattle/NYC), with per-expectation name/review/rating
 assertions against the real parsed items.
 
-Two real findings from building this, confirmed live 2026-08-17:
-1. A specific national chain is NOT guaranteed to appear in a generic
-   category search, even in a dense metro area with that chain present
-   (confirmed: no Starbucks in 69 fully-scrolled "coffee" results for
-   downtown Seattle; no Home Depot in 67 fully-scrolled "hardware store"
-   results for Midtown Manhattan - Google's relevance ranking favors
-   locally-relevant results over ubiquity). Only assert a specific
-   name_regex where you've confirmed it's reliable (AutoZone/O'Reilly near
-   LA); otherwise use the aggregate (no name_regex) expectation form.
-2. `reviews_count` came back None for 100% of results (201/201 across all
-   3 locations - auto parts/coffee/hardware, 3 different cities) while
-   `average_rating` was reliably populated. Real production data from the
-   same day (a fresh turboship flooring-contractor .usv) has reviews_count
-   populated fine, so this isn't a fleet-wide regression - it looks
-   specific to how extract_rating_reviews_gm_list.py's ARIA-label parsing
-   handles retail/chain-style listing cards vs. service-business cards.
-   Not yet root-caused or fixed - min_reviews expectations are currently
-   disabled (omitted from ground_truth.json) until that's investigated.
-   See task-agent ticket
-   regression-gm-list-stuck-at-60-for-months-broken-stealth-script-and-no-backoff-on-google-block-detection.
+Real finding from building this, confirmed live 2026-08-17: a specific
+national chain is NOT guaranteed to appear in a generic category search,
+even in a dense metro area with that chain present (confirmed: no
+Starbucks in 69 fully-scrolled "coffee" results for downtown Seattle; no
+Home Depot in 67 fully-scrolled "hardware store" results for Midtown
+Manhattan - Google's relevance ranking favors locally-relevant results
+over ubiquity). Only assert a specific name_regex where you've confirmed
+it's reliable (AutoZone/O'Reilly near LA); otherwise use the aggregate
+(no name_regex) expectation form.
+
+(An earlier revision of this file also reported reviews_count coming back
+None for 100% of results and floated a parser-regression theory - that
+was wrong, and was actually a bug in this file's own browser context
+setup, missing the user_agent/extra_http_headers production always sets.
+See the comment on _fetch_live_items below for the corrected story.)
 """
 
 import json
@@ -98,11 +93,27 @@ async def _fetch_live_items(lat: float, lon: float, query: str) -> List[Dict[str
     no tile_id so the tile-bounds filter and early-stop logic are inert -
     a ground-truth check wants the full unfiltered result set) and returns
     each item's name/reviews/rating as plain dicts, ready to cache as JSON."""
+    from cocli.utils.headers import ANTI_BOT_HEADERS, USER_AGENT
+    from cocli.utils.playwright_utils import setup_stealth_context
+
     async with async_playwright() as p:
         browser = await p.chromium.launch(headless=True)
-        context = await browser.new_context(viewport={"width": 1280, "height": 1024})
-
-        from cocli.utils.playwright_utils import setup_stealth_context
+        # Must match worker_service.py's real context setup exactly
+        # (user_agent + extra_http_headers) - confirmed live 2026-08-17:
+        # without these two, reviews_count came back None for 100% of
+        # results (0/48, even for turboship's own real category/location
+        # that had good production data hours earlier) while
+        # average_rating stayed populated. Adding them alone took it to
+        # 54/61 (88.5%), matching `cocli data metrics`' real historical
+        # 92.3%. This was a test-harness bug, not a production regression
+        # or a category-specific Google rendering difference - the
+        # "Finding 2: reviews_count gap" write-up in this file's earlier
+        # revision (and the task-agent ticket) was wrong; corrected here.
+        context = await browser.new_context(
+            viewport={"width": 1280, "height": 1024},
+            user_agent=USER_AGENT,
+            extra_http_headers=ANTI_BOT_HEADERS,
+        )
 
         await setup_stealth_context(context)
 

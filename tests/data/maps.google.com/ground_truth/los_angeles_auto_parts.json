@@ -1,58 +1,48 @@
 [
   {
     "name": "OReilly Auto Parts",
-    "reviews_count": null,
+    "reviews_count": 221,
     "average_rating": 4.5
   },
   {
     "name": "OReilly Auto Parts",
-    "reviews_count": null,
+    "reviews_count": 150,
     "average_rating": 4.4
   },
   {
     "name": "AutoZone Auto Parts",
-    "reviews_count": null,
-    "average_rating": 4.3
-  },
-  {
-    "name": "AutoZone Auto Parts",
-    "reviews_count": null,
-    "average_rating": 4.4
-  },
-  {
-    "name": "OReilly Auto Parts",
-    "reviews_count": null,
-    "average_rating": 4.6
-  },
-  {
-    "name": "AutoZone Auto Parts",
-    "reviews_count": null,
-    "average_rating": 4.1
-  },
-  {
-    "name": "AutoZone Auto Parts",
-    "reviews_count": null,
-    "average_rating": 4.5
-  },
-  {
-    "name": "NAPA Auto Parts",
-    "reviews_count": null,
+    "reviews_count": 398,
     "average_rating": 4.3
   },
   {
     "name": "Pep Boys Auto Service & Tires",
-    "reviews_count": null,
+    "reviews_count": 390,
     "average_rating": 4.0
   },
   {
-    "name": "Parts Authority",
-    "reviews_count": null,
-    "average_rating": 4.8
+    "name": "AutoZone Auto Parts",
+    "reviews_count": 309,
+    "average_rating": 4.4
+  },
+  {
+    "name": "OReilly Auto Parts",
+    "reviews_count": 352,
+    "average_rating": 4.6
   },
   {
     "name": "LA IMPORT PARTS, INC",
-    "reviews_count": null,
+    "reviews_count": 187,
     "average_rating": 5.0
+  },
+  {
+    "name": "Parts Authority",
+    "reviews_count": 17,
+    "average_rating": 4.8
+  },
+  {
+    "name": "NAPA Auto Parts",
+    "reviews_count": 178,
+    "average_rating": 4.3
   },
   {
     "name": "Partsco Inc.",
@@ -60,83 +50,278 @@
     "average_rating": null
   },
   {
-    "name": "AutoZone Auto Parts",
-    "reviews_count": null,
-    "average_rating": 4.4
-  },
-  {
-    "name": "OReilly Auto Parts",
-    "reviews_count": null,
-    "average_rating": 4.3
-  },
-  {
-    "name": "AutoZone Auto Parts",
-    "reviews_count": null,
-    "average_rating": 4.4
-  },
-  {
     "name": "Valley Auto Parts and Engines",
-    "reviews_count": null,
+    "reviews_count": 47,
     "average_rating": 3.8
   },
   {
-    "name": "Peak Pro Auto Service",
-    "reviews_count": null,
-    "average_rating": 5.0
+    "name": "AutoZone Auto Parts",
+    "reviews_count": 810,
+    "average_rating": 4.5
   },
   {
     "name": "S & L Brakes Supply Inc",
-    "reviews_count": null,
+    "reviews_count": 14,
     "average_rating": 5.0
   },
   {
-    "name": "OReilly Auto Parts",
-    "reviews_count": null,
-    "average_rating": 4.3
+    "name": "AutoZone Auto Parts",
+    "reviews_count": 678,
+    "average_rating": 4.1
   },
   {
-    "name": "Just Tires",
-    "reviews_count": null,
-    "average_rating": 3.7
-  },
-  {
-    "name": "OReilly Auto Parts",
-    "reviews_count": null,
+    "name": "Smokey Auto Parts Inc",
+    "reviews_count": 3,
     "average_rating": 4.3
   },
   {
     "name": "Pick Your Part - Sun Valley",
-    "reviews_count": null,
+    "reviews_count": 1561,
     "average_rating": 3.3
   },
   {
-    "name": "Diamond Auto Parts",
-    "reviews_count": null,
-    "average_rating": 4.6
+    "name": "NAPA Auto Parts - Jacksons Auto Supply",
+    "reviews_count": 176,
+    "average_rating": 4.4
   },
   {
-    "name": "AutoZone Auto Parts",
-    "reviews_count": null,
-    "average_rating": 4.3
-  },
-  {
-    "name": "Smokey Auto Parts Inc",
-    "reviews_count": null,
-    "average_rating": 4.3
-  },
-  {
-    "name": "One Stop Automotive",
-    "reviews_count": null,
-    "average_rating": 4.8
-  },
-  {
-    "name": "AutoZone Auto Parts",
-    "reviews_count": null,
-    "average_rating": 4.3
+    "name": "Peak Pro Auto Service",
+    "reviews_count": 35,
+    "average_rating": 5.0
   },
   {
     "name": "Green Light Used Auto Parts Inc.",
+    "reviews_count": 47,
+    "average_rating": 4.8
+  },
+  {
+    "name": "Master Auto Parts & Paint Supply",
+    "reviews_count": 53,
+    "average_rating": 4.9
+  },
+  {
+    "name": "One Stop Automotive",
+    "reviews_count": 58,
+    "average_rating": 4.8
+  },
+  {
+    "name": "Borg Equipment & Supply",
+    "reviews_count": 10,
+    "average_rating": 4.6
+  },
+  {
+    "name": "Valley Auto Repair & Alignment",
+    "reviews_count": 68,
+    "average_rating": 4.6
+  },
+  {
+    "name": "All State Auto Parts & Dismantling",
+    "reviews_count": 36,
+    "average_rating": 4.4
+  },
+  {
+    "name": "Juniors Auto Parts & Salvage",
+    "reviews_count": 44,
+    "average_rating": 4.0
+  },
+  {
+    "name": "Diamond Auto Parts",
+    "reviews_count": 56,
+    "average_rating": 4.6
+  },
+  {
+    "name": "M & R Used Auto Parts",
+    "reviews_count": 6,
+    "average_rating": 4.3
+  },
+  {
+    "name": "AutoZone Auto Parts",
+    "reviews_count": 779,
+    "average_rating": 4.4
+  },
+  {
+    "name": "Auto Alex Used Parts",
+    "reviews_count": 50,
+    "average_rating": 4.2
+  },
+  {
+    "name": "L A World Auto Parts",
+    "reviews_count": 23,
+    "average_rating": 3.9
+  },
+  {
+    "name": "OReilly Auto Parts",
+    "reviews_count": 166,
+    "average_rating": 4.3
+  },
+  {
+    "name": "Hybrid Auto Parts",
+    "reviews_count": 77,
+    "average_rating": 4.0
+  },
+  {
+    "name": "Comfort Auto Shop",
+    "reviews_count": 55,
+    "average_rating": 4.2
+  },
+  {
+    "name": "Serges Automotive Mechanic Auto Repair Shop",
+    "reviews_count": 89,
+    "average_rating": 4.5
+  },
+  {
+    "name": "AutoZone Auto Parts",
+    "reviews_count": 495,
+    "average_rating": 4.4
+  },
+  {
+    "name": "DELUXE AUTO PARTS LA",
+    "reviews_count": 20,
+    "average_rating": 5.0
+  },
+  {
+    "name": "Five Star Auto Parts",
+    "reviews_count": 44,
+    "average_rating": 4.2
+  },
+  {
+    "name": "Richmond Auto Parts",
     "reviews_count": null,
+    "average_rating": null
+  },
+  {
+    "name": "OReilly Auto Parts",
+    "reviews_count": 8,
+    "average_rating": 4.4
+  },
+  {
+    "name": "D & R Auto Parts & Repair",
+    "reviews_count": 41,
+    "average_rating": 4.4
+  },
+  {
+    "name": "Confidence Auto Center",
+    "reviews_count": 83,
+    "average_rating": 4.8
+  },
+  {
+    "name": "vanOcar Inc,",
+    "reviews_count": 14,
+    "average_rating": 4.7
+  },
+  {
+    "name": "Pick your part buy area",
+    "reviews_count": null,
+    "average_rating": null
+  },
+  {
+    "name": "Roadrunner Auto Parts",
+    "reviews_count": 26,
+    "average_rating": 4.8
+  },
+  {
+    "name": "Jiffy Lube Oil Change",
+    "reviews_count": 965,
+    "average_rating": 4.8
+  },
+  {
+    "name": "Performance Tire",
+    "reviews_count": 136,
+    "average_rating": 4.9
+  },
+  {
+    "name": "BIGTIME AUTO PARTS",
+    "reviews_count": 1,
+    "average_rating": 5.0
+  },
+  {
+    "name": "Air Parts International Sales Inc",
+    "reviews_count": 5,
+    "average_rating": 3.8
+  },
+  {
+    "name": "Tujunga Auto Repair",
+    "reviews_count": 31,
+    "average_rating": 4.6
+  },
+  {
+    "name": "OReilly Auto Parts",
+    "reviews_count": 314,
+    "average_rating": 4.3
+  },
+  {
+    "name": "Original Equipment Auto Supply",
+    "reviews_count": 38,
+    "average_rating": 4.6
+  },
+  {
+    "name": "Firestone La Ca\u00f1ada Tire Center",
+    "reviews_count": 74,
+    "average_rating": 4.4
+  },
+  {
+    "name": "Just Tires",
+    "reviews_count": 163,
+    "average_rating": 3.7
+  },
+  {
+    "name": "Best Deal Automotive Paint Supply",
+    "reviews_count": 1,
+    "average_rating": 5.0
+  },
+  {
+    "name": "Omar Auto Parts",
+    "reviews_count": 27,
+    "average_rating": 5.0
+  },
+  {
+    "name": "One Stop Auto Supply",
+    "reviews_count": 38,
+    "average_rating": 4.9
+  },
+  {
+    "name": "Green Auto Parts POWERED BY FENIX PARTS",
+    "reviews_count": 134,
+    "average_rating": 4.0
+  },
+  {
+    "name": "Glens Auto Parts",
+    "reviews_count": 17,
+    "average_rating": 4.4
+  },
+  {
+    "name": "AutoZone Auto Parts",
+    "reviews_count": 117,
+    "average_rating": 4.4
+  },
+  {
+    "name": "AutoZone Auto Parts",
+    "reviews_count": 296,
+    "average_rating": 4.3
+  },
+  {
+    "name": "Bob Smith Toyota Service & Parts Department",
+    "reviews_count": 42,
+    "average_rating": 4.5
+  },
+  {
+    "name": "DSS AUTO PARTS INC",
+    "reviews_count": 9,
+    "average_rating": 4.0
+  },
+  {
+    "name": "B & M Auto Parts",
+    "reviews_count": 12,
+    "average_rating": 3.9
+  },
+  {
+    "name": "AutoZone Auto Parts",
+    "reviews_count": 547,
+    "average_rating": 4.3
+  },
+  {
+    "name": "Tires Station Tujunga",
+    "reviews_count": 151,
     "average_rating": 4.8
   },
   {
@@ -145,183 +330,18 @@
     "average_rating": null
   },
   {
-    "name": "Borg Equipment & Supply",
-    "reviews_count": null,
-    "average_rating": 4.6
-  },
-  {
-    "name": "AutoZone Auto Parts",
-    "reviews_count": null,
-    "average_rating": 4.3
-  },
-  {
-    "name": "SurVoltGarage",
-    "reviews_count": null,
-    "average_rating": null
-  },
-  {
-    "name": "Master Auto Parts & Paint Supply",
-    "reviews_count": null,
-    "average_rating": 4.9
-  },
-  {
-    "name": "H Motors On Line",
-    "reviews_count": null,
-    "average_rating": 4.0
-  },
-  {
-    "name": "Serges Automotive Mechanic Auto Repair Shop",
-    "reviews_count": null,
-    "average_rating": 4.5
-  },
-  {
-    "name": "All State Auto Parts & Dismantling",
-    "reviews_count": null,
-    "average_rating": 4.4
-  },
-  {
-    "name": "Valley Auto Repair & Alignment",
-    "reviews_count": null,
-    "average_rating": 4.6
-  },
-  {
-    "name": "vanOcar Inc,",
-    "reviews_count": null,
-    "average_rating": 4.7
-  },
-  {
     "name": "Pep Boys Auto Service & Tires",
-    "reviews_count": null,
+    "reviews_count": 828,
     "average_rating": 4.2
   },
   {
-    "name": "Worldwide Auto Part & Body LLC",
-    "reviews_count": null,
-    "average_rating": null
-  },
-  {
-    "name": "OReilly Auto Parts",
-    "reviews_count": null,
-    "average_rating": 4.3
-  },
-  {
-    "name": "OReilly Auto Parts",
-    "reviews_count": null,
-    "average_rating": 4.6
-  },
-  {
-    "name": "Richmond Auto Parts",
-    "reviews_count": null,
-    "average_rating": null
-  },
-  {
-    "name": "Performance Tire",
-    "reviews_count": null,
-    "average_rating": 4.9
-  },
-  {
-    "name": "Auto Alex Used Parts",
-    "reviews_count": null,
-    "average_rating": 4.2
-  },
-  {
-    "name": "Comfort Auto Shop",
-    "reviews_count": null,
-    "average_rating": 4.2
-  },
-  {
-    "name": "Confidence Auto Center",
-    "reviews_count": null,
-    "average_rating": 4.8
-  },
-  {
-    "name": "OReilly Auto Parts",
-    "reviews_count": null,
+    "name": "BLUE MOTORS AUTO PARTS, DISMANTLING, HONDA & ACURA",
+    "reviews_count": 82,
     "average_rating": 4.4
   },
   {
-    "name": "Firestone La Ca\u00f1ada Tire Center",
-    "reviews_count": null,
+    "name": "J & M Used Auto Parts",
+    "reviews_count": 95,
     "average_rating": 4.4
-  },
-  {
-    "name": "OReilly Auto Parts",
-    "reviews_count": null,
-    "average_rating": 4.3
-  },
-  {
-    "name": "M & R Used Auto Parts",
-    "reviews_count": null,
-    "average_rating": 4.3
-  },
-  {
-    "name": "Juniors Auto Parts & Salvage",
-    "reviews_count": null,
-    "average_rating": 4.0
-  },
-  {
-    "name": "Air Parts International Sales Inc",
-    "reviews_count": null,
-    "average_rating": 3.8
-  },
-  {
-    "name": "Jiffy Lube Oil Change",
-    "reviews_count": null,
-    "average_rating": 4.8
-  },
-  {
-    "name": "AutoZone Auto Parts",
-    "reviews_count": null,
-    "average_rating": 4.4
-  },
-  {
-    "name": "Werks II Motorsport",
-    "reviews_count": null,
-    "average_rating": 4.3
-  },
-  {
-    "name": "Hybrid Auto Parts",
-    "reviews_count": null,
-    "average_rating": 4.0
-  },
-  {
-    "name": "AutoZone Auto Parts",
-    "reviews_count": null,
-    "average_rating": 4.5
-  },
-  {
-    "name": "DELUXE AUTO PARTS LA",
-    "reviews_count": null,
-    "average_rating": 5.0
-  },
-  {
-    "name": "Five Star Auto Parts",
-    "reviews_count": null,
-    "average_rating": 4.2
-  },
-  {
-    "name": "Pick your part buy area",
-    "reviews_count": null,
-    "average_rating": null
-  },
-  {
-    "name": "Tujunga Auto Repair",
-    "reviews_count": null,
-    "average_rating": 4.6
-  },
-  {
-    "name": "AutoZone Auto Parts",
-    "reviews_count": null,
-    "average_rating": 4.4
-  },
-  {
-    "name": "R2 Auto Body",
-    "reviews_count": null,
-    "average_rating": 3.9
-  },
-  {
-    "name": "SoCal Moto Recycling",
-    "reviews_count": null,
-    "average_rating": 5.0
   }
 ]
