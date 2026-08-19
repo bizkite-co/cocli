@@ -96,6 +96,16 @@ class GmListResultsCheck:
             detail=f"{len(hits)} hit(s); latest {hits[-1]}",
         )
 
+    def all_identities(self) -> Set[str]:
+        """Every place_id gm-list's *current* results tree still shows.
+        Part of the seed set for a whole-campaign audit, alongside
+        CheckpointPresenceCheck.all_identities() - gm-list alone is not
+        sufficient (confirmed live 2026-08-18: gm-list's completed/results/
+        tree doesn't retain every record forever, so some older checkpoint
+        entries have no current gm-list file at all; IndexService.
+        discover_all_place_ids() unions both)."""
+        return set(self._index.keys())
+
 
 class QueueBucketCheck:
     """Presence of an identity as a file stem across a queue's
@@ -153,6 +163,78 @@ class CheckpointPresenceCheck:
     def check(self, identity: str) -> StationResult:
         state = "present" if identity in self._ids else "absent"
         return StationResult(station=self.name, state=state)
+
+    def all_identities(self) -> Set[str]:
+        """Every identity present in the checkpoint - part of the seed set
+        for a whole-campaign audit alongside GmListResultsCheck.all_identities().
+        Confirmed live 2026-08-18: some checkpoint entries have no
+        corresponding *current* gm-list result file (older/legacy records -
+        gm-list's completed/results/ tree doesn't retain everything forever),
+        so seeding a campaign audit from gm-list alone silently excludes
+        them and understates real coverage."""
+        return set(self._ids)
+
+
+class ProspectDomainIndex:
+    """place_id -> domain lookup, built once from the checkpoint file plus
+    any not-yet-compacted WAL shards on this machine.
+
+    Needed for the enrichment hop specifically: per
+    docs/_schema/traceability.md, enrichment's identity key is the prospect's
+    *domain*, not its place_id (multiple place_ids can share a domain, and a
+    place_id has no domain until gm-details finds one) - so unlike every
+    other station here, checking enrichment for a given business requires
+    first resolving place_id -> domain through this index, then checking the
+    domain against the enrichment queue.
+
+    Uses USVDictReader with explicit fieldnames from GoogleMapsProspect's own
+    field order, matching to_usv()'s serialization exactly - these files are
+    headerless (CLAUDE.md: "Sharded .usv files (headerless...)"), so passing
+    no fieldnames (as GoogleMapsProspect.get_by_place_id does) misreads the
+    first real data row as a header and effectively breaks lookups; a
+    separate, pre-existing bug this class deliberately does not repeat.
+    """
+
+    def __init__(self, checkpoint_path: Path, wal_root: Optional[Path] = None) -> None:
+        from cocli.models.campaigns.indexes.google_maps_prospect import GoogleMapsProspect
+        from cocli.utils.usv_utils import USVDictReader
+
+        fieldnames = list(GoogleMapsProspect.model_fields.keys())
+        self._domains: Dict[str, str] = {}
+
+        if checkpoint_path.exists():
+            try:
+                with open(checkpoint_path, "r", encoding="utf-8", errors="replace") as f:
+                    reader = USVDictReader(f, fieldnames=fieldnames)
+                    for row in reader:
+                        place_id = row.get("place_id")
+                        domain = row.get("domain")
+                        if place_id and domain:
+                            self._domains[place_id] = domain
+            except OSError:
+                pass
+
+        if wal_root is not None and wal_root.exists():
+            for wal_file in wal_root.rglob("*.usv"):
+                place_id = wal_file.stem
+                if place_id in self._domains:
+                    continue  # checkpoint (compacted, authoritative) wins
+                try:
+                    text = wal_file.read_text(errors="replace")
+                except OSError:
+                    continue
+                with_header = [fieldnames] + [
+                    line.split(US) for line in text.split("\n") if line.strip()
+                ]
+                if len(with_header) < 2:
+                    continue
+                row = dict(zip(fieldnames, with_header[1]))
+                domain = row.get("domain")
+                if domain:
+                    self._domains[place_id] = domain
+
+    def get_domain(self, place_id: str) -> Optional[str]:
+        return self._domains.get(place_id)
 
 
 class PrebuiltSetCheck:
@@ -223,7 +305,9 @@ def find_gm_list_rows(results_dir: Path, place_ids: Set[str]) -> Dict[str, Dict[
     return found
 
 
-def diagnose_prospect_trace(results: Dict[str, StationResult]) -> str:
+def diagnose_prospect_trace(
+    results: Dict[str, StationResult], enrichment: Optional[StationResult] = None
+) -> str:
     """google_maps_prospects-specific interpretation of a combined trace.
 
     Station names expected: gm-list, gm-details, pi-wal, checkpoint (see
@@ -231,6 +315,13 @@ def diagnose_prospect_trace(results: Dict[str, StationResult]) -> str:
     verdict logic is workflow-shaped, not generic - a second workflow with a
     different station sequence would need its own diagnose_* function; only
     the walking mechanism above is meant to be reusable as-is.
+
+    `enrichment` is optional and separate from `results` because it's keyed
+    by domain, not place_id (see ProspectDomainIndex) - the caller resolves
+    the domain and runs that check itself, then passes the result in here
+    only once the record has cleared checkpoint (no point reporting an
+    enrichment gap for a record that's not even reliably in the checkpoint
+    yet - that's a more fundamental problem and gets reported first).
     """
     checkpoint = results.get("checkpoint")
     wal = results.get("pi-wal")
@@ -238,13 +329,48 @@ def diagnose_prospect_trace(results: Dict[str, StationResult]) -> str:
     gm_list = results.get("gm-list")
 
     if checkpoint is not None and checkpoint.state == "present":
-        return "present in current checkpoint"
+        if enrichment is None:
+            return "present in current checkpoint"
+        if enrichment.state == "no domain":
+            return "present in checkpoint, no domain found yet - can't enrich"
+        if enrichment.state == "completed":
+            return "present in checkpoint, enrichment completed"
+        if enrichment.state in ("pending", "failed"):
+            return f"present in checkpoint, enrichment {enrichment.state}"
+        return "present in checkpoint, never reached enrichment queue - enrichment-enqueue gap"
     if wal is not None and wal.state == "present":
         return "WAL has it but the fold didn't include it - FOLD BUG"
     if gm_details is not None and gm_details.state == "completed":
         return "gm-details completed but never reached WAL - WAL-write or sync gap"
     if gm_list is not None and gm_list.state == "found" and gm_details is not None and gm_details.state != "completed":
-        return f"rediscovered by gm-list but gm-details status={gm_details.state} - enrichment gap"
+        return f"rediscovered by gm-list but gm-details status={gm_details.state} - detailing gap"
     if gm_list is not None and gm_list.state == "absent":
         return "never rediscovered by gm-list - upstream/query gap"
     return "unclear - needs manual look"
+
+
+# Maps a diagnose_prospect_trace() verdict prefix to one of the three named
+# gap categories from docs/_schema/traceability.md's Section 3, for
+# aggregate reporting (cocli audit campaign). Order matters - first prefix
+# match wins.
+GAP_CATEGORY_BY_VERDICT_PREFIX: List[tuple[str, str]] = [
+    ("present in checkpoint, enrichment completed", "no gap"),
+    ("present in current checkpoint", "no gap"),
+    ("present in checkpoint, no domain found yet", "no gap (pre-enrichment)"),
+    ("present in checkpoint, enrichment pending", "no gap (enrichment in flight)"),
+    ("present in checkpoint, enrichment failed", "Integrity Gap (enrichment failed)"),
+    ("present in checkpoint, never reached enrichment queue", "Identity Gap (enrichment-enqueue)"),
+    ("WAL has it but the fold didn't include it", "Consensus Gap (fold bug)"),
+    ("gm-details completed but never reached WAL", "Identity Gap (WAL-write/sync)"),
+    ("rediscovered by gm-list but gm-details status", "Identity Gap (detailing)"),
+    ("never rediscovered by gm-list", "Identity Gap (upstream/query)"),
+]
+
+
+def categorize_verdict(verdict: str) -> str:
+    """Aggregate-reporting category for a single verdict string - see
+    GAP_CATEGORY_BY_VERDICT_PREFIX."""
+    for prefix, category in GAP_CATEGORY_BY_VERDICT_PREFIX:
+        if verdict.startswith(prefix):
+            return category
+    return "unclassified - needs manual look"

@@ -22,6 +22,10 @@ cocli
             --force/-f (boolean)
             --s3 (boolean)
     audit - Auditing tools for the cocli system structure and integrity.
+        campaign - Whole-campaign leak audit: trace every place_id gm-list has ever
+            --campaign/-c (text)
+            --limit (integer)
+            --out (path)
         cli - Dumps the CLI command hierarchy.
             --output/-o (path)
         cluster - Audit cluster nodes: designation (content_type/workers), queue depths, and a

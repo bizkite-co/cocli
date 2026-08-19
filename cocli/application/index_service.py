@@ -99,7 +99,9 @@ class ProspectTraceRow(BaseModel):
     gm_details: str
     pi_wal: str
     checkpoint: str
+    enrichment: str
     verdict: str
+    gap_category: str
 
 
 class ProspectTraceResult(BaseModel):
@@ -421,24 +423,56 @@ class IndexService:
                         ids.add(line[: -len(".usv")])
         return ids
 
+    def discover_all_place_ids(self) -> List[str]:
+        """Every place_id this campaign has ever touched - the seed set for
+        a whole-campaign traceability audit (as opposed to a caller-supplied
+        list for targeted debugging).
+
+        Union of gm-list's current discovery results AND the checkpoint's
+        own identities, not gm-list alone - confirmed live 2026-08-18 that
+        some checkpoint entries have no corresponding *current* gm-list
+        result file (gm-list's completed/results/ tree doesn't retain
+        everything forever, e.g. across a schema migration), so seeding
+        from gm-list alone silently under-covers real campaign state and
+        would make a "0 gaps found" audit result untrustworthy.
+        """
+        from cocli.core.prospect_trace import CheckpointPresenceCheck, GmListResultsCheck
+        from cocli.core.prospects_csv_manager import ProspectsIndexManager
+
+        campaign_paths = paths.campaign(self.campaign_name)
+        gm_list_results_dir = campaign_paths.queue("gm-list").completed / "results"
+        checkpoint_path = ProspectsIndexManager(self.campaign_name).checkpoint_path
+
+        gm_list_ids = GmListResultsCheck(gm_list_results_dir).all_identities()
+        checkpoint_ids = CheckpointPresenceCheck(checkpoint_path).all_identities()
+        return sorted(gm_list_ids | checkpoint_ids)
+
     def trace_prospects(
         self, place_ids: List[str], index_name: str = "google_maps_prospects"
     ) -> ProspectTraceResult:
         """Trace each place_id across gm-list -> gm-details -> Pi WAL ->
-        checkpoint, reporting where (if anywhere) its trail goes cold.
+        checkpoint -> enrichment, reporting where (if anywhere) its trail
+        goes cold.
 
         Built from the ad hoc investigation of a 2026-08-13 incident where a
         fresh compaction dropped previously-qualifying prospects. See
         cocli/core/prospect_trace.py for the reusable station-check
         mechanism this is assembled from, and its docstring for why this
         exists alongside (not instead of) stations' own `stations inspect`.
+
+        The enrichment hop is keyed by domain, not place_id (see
+        ProspectDomainIndex's docstring for why) - resolved per-row after
+        the other four checks, only for rows that made it to checkpoint.
         """
         from cocli.core.prospect_trace import (
             CheckpointPresenceCheck,
             GmListResultsCheck,
             PrebuiltSetCheck,
+            ProspectDomainIndex,
             QueueBucketCheck,
             StationCheck,
+            StationResult,
+            categorize_verdict,
             diagnose_prospect_trace,
             trace_identities,
         )
@@ -447,7 +481,9 @@ class IndexService:
         campaign_paths = paths.campaign(self.campaign_name)
         gm_list_results_dir = campaign_paths.queue("gm-list").completed / "results"
         gm_details_queue = campaign_paths.queue("gm-details")
+        enrichment_queue = campaign_paths.queue("enrichment")
         checkpoint_path = ProspectsIndexManager(self.campaign_name).checkpoint_path
+        wal_root = paths.campaign(self.campaign_name).index(index_name).wal
 
         wal_ids = self._fetch_pi_wal_ids(index_name)
 
@@ -462,6 +498,13 @@ class IndexService:
             PrebuiltSetCheck("pi-wal", wal_ids),
             CheckpointPresenceCheck(checkpoint_path),
         ]
+        enrichment_check = QueueBucketCheck(
+            "enrichment",
+            enrichment_queue.completed,
+            enrichment_queue.pending,
+            enrichment_queue.path / "failed",
+        )
+        domain_index = ProspectDomainIndex(checkpoint_path, wal_root)
 
         rows: List[ProspectTraceRow] = []
         for trace_row in trace_identities(checks, place_ids):
@@ -472,6 +515,16 @@ class IndexService:
                 if gm_list_result.detail
                 else gm_list_result.state
             )
+
+            enrichment_result: Optional[StationResult] = None
+            if r["checkpoint"].state == "present":
+                domain = domain_index.get_domain(trace_row.identity)
+                if not domain:
+                    enrichment_result = StationResult(station="enrichment", state="no domain")
+                else:
+                    enrichment_result = enrichment_check.check(domain)
+
+            verdict = diagnose_prospect_trace(r, enrichment=enrichment_result)
             rows.append(
                 ProspectTraceRow(
                     place_id=trace_row.identity,
@@ -479,7 +532,9 @@ class IndexService:
                     gm_details=r["gm-details"].state,
                     pi_wal=r["pi-wal"].state,
                     checkpoint=r["checkpoint"].state,
-                    verdict=diagnose_prospect_trace(r),
+                    enrichment=enrichment_result.state if enrichment_result else "n/a",
+                    verdict=verdict,
+                    gap_category=categorize_verdict(verdict),
                 )
             )
 

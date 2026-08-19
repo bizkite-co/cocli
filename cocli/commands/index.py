@@ -188,11 +188,16 @@ def trace(
 ) -> None:
     """
     Trace one or more place_ids across every station of the pipeline
-    (gm-list -> gm-details -> Pi WAL -> checkpoint) to find exactly where a
-    record's trail goes cold. Pass a single place_id for a one-off audit, or
-    --from-file for a batch group report (one row per place_id), written to
-    the campaign's exports/ directory by default - this is campaign data,
-    it doesn't belong at the repo root or wherever the shell happened to be.
+    (gm-list -> gm-details -> Pi WAL -> checkpoint -> enrichment) to find
+    exactly where a record's trail goes cold. Pass a single place_id for a
+    one-off audit, or --from-file for a batch group report (one row per
+    place_id), written to the campaign's exports/ directory by default -
+    this is campaign data, it doesn't belong at the repo root or wherever
+    the shell happened to be.
+
+    For a whole-campaign audit (every place_id gm-list has ever discovered,
+    not a caller-supplied list) with aggregate gap-category reporting, use
+    `cocli audit campaign` instead - it's built on this same mechanism.
     """
     if not place_id and not from_file:
         console.print("[red]Provide a place_id argument or --from-file.[/red]")
@@ -221,7 +226,9 @@ def trace(
         console.print(f"  gm-details: {row.gm_details}")
         console.print(f"  pi-wal:     {row.pi_wal}")
         console.print(f"  checkpoint: {row.checkpoint}")
+        console.print(f"  enrichment: {row.enrichment}")
         console.print(f"  [bold]verdict:[/bold] {row.verdict}")
+        console.print(f"  [bold]gap category:[/bold] {row.gap_category}")
         return
 
     from rich.table import Table
@@ -232,11 +239,13 @@ def trace(
     table.add_column("gm-details")
     table.add_column("pi-wal")
     table.add_column("checkpoint")
+    table.add_column("enrichment")
     table.add_column("verdict")
+    table.add_column("gap category")
     for row in result.rows:
         table.add_row(
             row.place_id, row.gm_list, row.gm_details, row.pi_wal,
-            row.checkpoint, row.verdict,
+            row.checkpoint, row.enrichment, row.verdict, row.gap_category,
         )
     console.print(table)
 
@@ -255,12 +264,13 @@ def trace(
     with open(out, "w", newline="") as f:
         writer = csv.writer(f)
         writer.writerow(
-            ["place_id", "gm_list", "gm_details", "pi_wal", "checkpoint", "verdict"]
+            ["place_id", "gm_list", "gm_details", "pi_wal", "checkpoint",
+             "enrichment", "verdict", "gap_category"]
         )
         for row in result.rows:
             writer.writerow(
                 [row.place_id, row.gm_list, row.gm_details, row.pi_wal,
-                 row.checkpoint, row.verdict]
+                 row.checkpoint, row.enrichment, row.verdict, row.gap_category]
             )
     console.print(f"\n[green]Wrote {len(result.rows)} rows to {out}[/green]")
 

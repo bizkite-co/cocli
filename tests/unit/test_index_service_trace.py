@@ -59,7 +59,9 @@ def test_trace_prospects_assembles_full_pipeline_state(tmp_path: Path) -> None:
 
     assert rows["PLACE_A"].gm_details == "completed"
     assert rows["PLACE_A"].checkpoint == "present"
-    assert rows["PLACE_A"].verdict == "present in current checkpoint"
+    # No domain in this minimal fixture row -> the enrichment hop reports
+    # "no domain" rather than being able to check enrichment status.
+    assert "no domain found yet" in rows["PLACE_A"].verdict
 
     assert rows["PLACE_B"].gm_details == "completed"
     assert rows["PLACE_B"].checkpoint == "absent"
@@ -115,3 +117,37 @@ def test_trace_prospects_empty_place_ids_returns_no_rows(tmp_path: Path) -> None
         result = service.trace_prospects([])
 
     assert result.rows == []
+
+
+def test_discover_all_place_ids_unions_gm_list_and_checkpoint(tmp_path: Path) -> None:
+    """Confirmed live 2026-08-18 against turboship: seeding a whole-campaign
+    audit from gm-list's current results alone missed ~1000s of older
+    checkpoint entries with no current gm-list file. discover_all_place_ids
+    must union both, not just gm-list."""
+    campaign = "test-campaign"
+    _setup_campaign_dirs(tmp_path, campaign)
+    base = tmp_path / "campaigns" / campaign
+
+    # PLACE_CURRENT: gm-list still has it.
+    (base / "queues" / "gm-list" / "completed" / "results" / "q.usv").write_text(
+        f"PLACE_CURRENT{US}Name\n"
+    )
+    # PLACE_LEGACY: only in the checkpoint - gm-list's current results tree
+    # has no file for it (an older record from before some retention cutoff).
+    (base / "indexes" / "google_maps_prospects" / "prospects.usv").write_text(
+        f"PLACE_LEGACY{US}rest\n"
+    )
+
+    service = IndexService(campaign_name=campaign)
+
+    ids = service.discover_all_place_ids()
+
+    assert set(ids) == {"PLACE_CURRENT", "PLACE_LEGACY"}
+
+
+def test_discover_all_place_ids_empty_when_nothing_found(tmp_path: Path) -> None:
+    campaign = "test-campaign"
+    _setup_campaign_dirs(tmp_path, campaign)
+    service = IndexService(campaign_name=campaign)
+
+    assert service.discover_all_place_ids() == []

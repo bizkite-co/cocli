@@ -39,7 +39,9 @@ def _fake_result(n: int) -> ProspectTraceResult:
                 gm_details="completed",
                 pi_wal="absent",
                 checkpoint="present",
-                verdict="present in current checkpoint",
+                enrichment="completed",
+                verdict="present in checkpoint, enrichment completed",
+                gap_category="no gap",
             )
             for i in range(n)
         ],

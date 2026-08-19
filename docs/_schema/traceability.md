@@ -55,18 +55,35 @@ Confidence is maintained by a "Self-Healing" audit loop:
 
 ## 4. Implementation: `cocli audit campaign`
 
-The proposed audit command will generate a **Traceability Report**:
+**Implemented 2026-08-18** (task-agent ticket
+`implement-cocli-audit-campaign-per-place-id-pipeline-traceability-and-leak-detection`).
+Built on `cocli/core/prospect_trace.py`'s station-check mechanism (originally
+written for the narrower `cocli index trace` targeted-debug command) plus a
+new enrichment-stage check and aggregate gap-category tally.
 
-```json
-{
-  "place_id": "ChIJ-v...",
-  "status": "VALID",
-  "history": [
-    {"stage": "discovery", "tile": "33.4_-83.9", "phrase": "wealth-manager", "ts": "2026-02-06"},
-    {"stage": "detailing", "node": "cocli5x0", "ts": "2026-02-06"},
-    {"stage": "enrichment", "emails": 2}
-  ]
-}
+```
+cocli audit campaign --campaign <name> [--limit N] [--out path.csv]
 ```
 
-This structure ensures that we never "lose" an ID and can prove exactly where a regression occurred.
+Auto-discovers every `Place_ID` the campaign has ever touched (union of
+gm-list's current discovery results and the prospect checkpoint's own
+identities - gm-list's `completed/results/` tree does not retain every
+record forever, so gm-list alone under-covers real state), traces each one
+across gm-list -> gm-details -> Pi WAL -> checkpoint -> enrichment, and
+reports an aggregate count per gap category, plus a full per-`Place_ID` CSV.
+
+Confirmed live against turboship 2026-08-18: 17,080 identities traced,
+15,413 (90.2%) clean, **1,667 with a real Identity Gap** - records present
+in the checkpoint with a resolved domain that were never enqueued into the
+enrichment queue at all (1,600 of the 1,667 are current-format `Place_ID`s,
+not legacy-schema artifacts). This is read-only - it reports the gap, it
+does not (yet) auto-recover it; see the Recovery section above for the
+target self-healing behavior, not yet wired up.
+
+Differs from the JSON-report shape originally sketched here: ships as a
+Rich table + CSV export (matching this codebase's other `cocli audit *`
+commands) rather than a per-`Place_ID` JSON document, and reports named gap
+categories in aggregate rather than a `status`/`history` object per ID -
+the full per-ID detail (state at every station) is in the CSV, one row per
+`Place_ID`, which serves the same "prove exactly where it went cold"
+purpose.

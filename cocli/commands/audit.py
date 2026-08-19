@@ -587,6 +587,104 @@ def audit_scrape(
         raise SystemExit(1)
 
 
+@app.command(name="campaign")
+def audit_campaign(
+    campaign: Optional[str] = typer.Option(
+        None, "--campaign", "-c", help="Campaign name (defaults to current)."
+    ),
+    limit: Optional[int] = typer.Option(
+        None, "--limit",
+        help="Trace only the first N discovered place_ids (for a quick "
+        "check on a large campaign) instead of every one gm-list has ever "
+        "found.",
+    ),
+    out: Optional[Path] = typer.Option(
+        None, "--out",
+        help="Write the full per-place_id CSV to this path. Defaults to a "
+        "timestamped file under the campaign's exports/ directory.",
+    ),
+) -> None:
+    """Whole-campaign leak audit: trace every place_id gm-list has ever
+    discovered across gm-list -> gm-details -> Pi WAL -> checkpoint ->
+    enrichment, and report where (if anywhere) each one's trail goes cold.
+
+    Implements the design in docs/_schema/traceability.md (Identity/
+    Integrity/Consensus gap categories) - see that doc for the full
+    lifecycle model this command audits against. Built on the same
+    station-check mechanism as `cocli index trace`; unlike that command,
+    this one auto-discovers the full identity set rather than requiring a
+    caller-supplied list, which is what makes it a genuine "are there any
+    leaks anywhere" audit rather than a targeted debug lookup.
+
+    This is read-only - it reports gaps, it does not attempt any recovery
+    action (re-enqueue, hollow-record quarantine, etc). Use
+    `cocli index requeue-stuck-details` or similar targeted tools once
+    you've identified what needs fixing.
+    """
+    from cocli.application.services import ServiceContainer
+    from collections import Counter
+
+    campaign_name = campaign or get_campaign()
+    if not campaign_name:
+        console.print("[red]No campaign specified and no default campaign set.[/red]")
+        raise typer.Exit(1)
+
+    services = ServiceContainer(campaign_name=campaign_name)
+
+    console.print(f"[cyan]Discovering all place_ids gm-list has found for '{campaign_name}'...[/cyan]")
+    place_ids = services.index_service.discover_all_place_ids()
+    if not place_ids:
+        console.print("[yellow]No place_ids found in gm-list results - nothing to audit.[/yellow]")
+        return
+
+    if limit is not None:
+        place_ids = place_ids[:limit]
+
+    console.print(f"[cyan]Tracing {len(place_ids)} place_id(s) across the full pipeline...[/cyan]")
+    result = services.index_service.trace_prospects(place_ids)
+
+    gap_tally: Counter[str] = Counter(r.gap_category for r in result.rows)
+    table = Table(title=f"Campaign traceability audit: {campaign_name} ({len(result.rows)} place_ids)")
+    table.add_column("Gap category")
+    table.add_column("Count", justify="right")
+    for category, count in gap_tally.most_common():
+        style = "green" if category.startswith("no gap") else "red"
+        table.add_row(f"[{style}]{category}[/{style}]", str(count))
+    console.print(table)
+
+    no_gap = sum(c for cat, c in gap_tally.items() if cat.startswith("no gap"))
+    console.print(
+        f"\n[bold]{no_gap}/{len(result.rows)}[/bold] clean "
+        f"({100 * no_gap / len(result.rows):.1f}%), "
+        f"[bold red]{len(result.rows) - no_gap}[/bold red] with a gap or unclassified."
+    )
+
+    import csv
+
+    if out is None:
+        from datetime import datetime
+
+        from cocli.core.config import get_campaign_exports_dir
+
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        out = get_campaign_exports_dir(campaign_name) / f"campaign_audit_{timestamp}.csv"
+    else:
+        out.parent.mkdir(parents=True, exist_ok=True)
+
+    with open(out, "w", newline="") as f:
+        writer = csv.writer(f)
+        writer.writerow(
+            ["place_id", "gm_list", "gm_details", "pi_wal", "checkpoint",
+             "enrichment", "verdict", "gap_category"]
+        )
+        for row in result.rows:
+            writer.writerow(
+                [row.place_id, row.gm_list, row.gm_details, row.pi_wal,
+                 row.checkpoint, row.enrichment, row.verdict, row.gap_category]
+            )
+    console.print(f"\n[green]Wrote {len(result.rows)} rows to {out}[/green]")
+
+
 @app.command(name="tui")
 def audit_tui(
     output: Optional[Path] = typer.Option(
