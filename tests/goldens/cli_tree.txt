@@ -432,6 +432,11 @@ cocli
             --campaign (text)
             --index (text)
             --debug (boolean)
+        requeue-enrichment-gaps - Recover the "Identity Gap (enrichment-enqueue)" gap `cocli audit
+            place_id (text)
+            --from-file (path)
+            --from-audit-csv (path)
+            --campaign (text)
         requeue-stuck-details - Recover gm-details tasks that were acked with no real output - the
             place_id (text)
             --from-file (path)

@@ -200,7 +200,7 @@ class ProspectDomainIndex:
         from cocli.utils.usv_utils import USVDictReader
 
         fieldnames = list(GoogleMapsProspect.model_fields.keys())
-        self._domains: Dict[str, str] = {}
+        self._rows: Dict[str, Dict[str, str]] = {}
 
         if checkpoint_path.exists():
             try:
@@ -208,16 +208,15 @@ class ProspectDomainIndex:
                     reader = USVDictReader(f, fieldnames=fieldnames)
                     for row in reader:
                         place_id = row.get("place_id")
-                        domain = row.get("domain")
-                        if place_id and domain:
-                            self._domains[place_id] = domain
+                        if place_id and row.get("domain"):
+                            self._rows[place_id] = row
             except OSError:
                 pass
 
         if wal_root is not None and wal_root.exists():
             for wal_file in wal_root.rglob("*.usv"):
                 place_id = wal_file.stem
-                if place_id in self._domains:
+                if place_id in self._rows:
                     continue  # checkpoint (compacted, authoritative) wins
                 try:
                     text = wal_file.read_text(errors="replace")
@@ -229,12 +228,21 @@ class ProspectDomainIndex:
                 if len(with_header) < 2:
                     continue
                 row = dict(zip(fieldnames, with_header[1]))
-                domain = row.get("domain")
-                if domain:
-                    self._domains[place_id] = domain
+                if row.get("domain"):
+                    self._rows[place_id] = row
 
     def get_domain(self, place_id: str) -> Optional[str]:
-        return self._domains.get(place_id)
+        row = self._rows.get(place_id)
+        return row.get("domain") if row else None
+
+    def get_slug(self, place_id: str) -> Optional[str]:
+        """Company slug for a place_id already known to have a domain
+        (get_domain returned non-None) - needed to construct a valid
+        EnrichmentTask (company_slug is a required field)."""
+        row = self._rows.get(place_id)
+        if not row:
+            return None
+        return row.get("slug") or None
 
 
 class PrebuiltSetCheck:

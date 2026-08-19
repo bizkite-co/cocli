@@ -145,6 +145,29 @@ def test_discover_all_place_ids_unions_gm_list_and_checkpoint(tmp_path: Path) ->
     assert set(ids) == {"PLACE_CURRENT", "PLACE_LEGACY"}
 
 
+def test_discover_all_place_ids_includes_wal_only_identities(tmp_path: Path) -> None:
+    """Confirmed live 2026-08-18 against roadmap: its checkpoint had never
+    been compacted at all (didn't exist locally OR on its own Pi node),
+    while its WAL held 31,821 real records - gm-list union checkpoint alone
+    found only 3,788 identities, an ~88% undercount that made a campaign
+    with a near-total compaction failure look almost entirely healthy."""
+    campaign = "test-campaign"
+    _setup_campaign_dirs(tmp_path, campaign)
+
+    service = IndexService(campaign_name=campaign)
+
+    def _fake_run(cmd, **kwargs):  # type: ignore[no-untyped-def]
+        return subprocess.CompletedProcess(cmd, 0, stdout="PLACE_WAL_ONLY.usv\n", stderr="")
+
+    with patch(
+        "cocli.services.cluster_service.ClusterService.get_nodes",
+        return_value=[PiNodeConfig(host="cocli5x1", ip="10.0.0.2")],
+    ), patch("subprocess.run", side_effect=_fake_run):
+        ids = service.discover_all_place_ids()
+
+    assert ids == ["PLACE_WAL_ONLY"]
+
+
 def test_discover_all_place_ids_empty_when_nothing_found(tmp_path: Path) -> None:
     campaign = "test-campaign"
     _setup_campaign_dirs(tmp_path, campaign)

@@ -338,6 +338,101 @@ def requeue_stuck_details(
         raise typer.Exit(code=1)
 
 
+@app.command(name="requeue-enrichment-gaps")
+def requeue_enrichment_gaps(
+    place_id: Optional[str] = typer.Argument(
+        None, help="Single place_id to requeue for enrichment."
+    ),
+    from_file: Optional[Path] = typer.Option(
+        None, "--from-file", help="File of place_ids, one per line, for batch mode."
+    ),
+    from_audit_csv: Optional[Path] = typer.Option(
+        None, "--from-audit-csv",
+        help="A CSV from `cocli audit campaign` (--out or its default exports/ "
+        "location) - place_ids with gap_category == 'Identity Gap "
+        "(enrichment-enqueue)' are extracted automatically.",
+    ),
+    campaign: str = typer.Option("roadmap", help="Campaign name"),
+) -> None:
+    """
+    Recover the "Identity Gap (enrichment-enqueue)" gap `cocli audit
+    campaign` finds: prospects with a resolved domain that were never
+    enqueued for enrichment at all. Pushes a fresh EnrichmentTask for each
+    one directly onto one Pi node's enrichment queue over SSH (pending/
+    never syncs Pi<->dev-machine, so this can't be done locally), batched
+    into a single SSH call rather than one per record.
+
+    Re-checks each domain's current enrichment status right before pushing
+    and skips anything already completed/pending/failed - safe to run
+    against a CSV that's gone slightly stale, or to re-run.
+    """
+    sources = [place_id, from_file, from_audit_csv]
+    if sum(1 for s in sources if s) != 1:
+        console.print(
+            "[red]Provide exactly one of: a place_id argument, --from-file, "
+            "or --from-audit-csv.[/red]"
+        )
+        raise typer.Exit(1)
+
+    if place_id:
+        ids = [place_id]
+    elif from_file:
+        ids = [line.strip() for line in from_file.read_text().splitlines() if line.strip()]
+    else:
+        assert from_audit_csv is not None
+        import csv
+
+        with open(from_audit_csv, newline="") as f:
+            reader = csv.DictReader(f)
+            ids = [
+                row["place_id"] for row in reader
+                if row.get("gap_category") == "Identity Gap (enrichment-enqueue)"
+            ]
+        console.print(
+            f"[cyan]Extracted {len(ids)} place_id(s) with an enrichment-enqueue "
+            f"gap from {from_audit_csv}.[/cyan]"
+        )
+
+    if not ids:
+        console.print("[yellow]No place_ids to requeue.[/yellow]")
+        return
+
+    services = ServiceContainer(campaign_name=campaign)
+    result = services.index_service.requeue_enrichment_gaps(ids)
+
+    from collections import Counter
+
+    from rich.table import Table
+
+    tally = Counter(row.status for row in result.rows)
+    summary = Table(title=f"Requeue enrichment gaps: {len(result.rows)} place_ids")
+    summary.add_column("status")
+    summary.add_column("count", justify="right")
+    for status, count in tally.most_common():
+        color = {"requeued": "green", "not_found": "yellow", "skipped": "cyan", "ssh_error": "red"}.get(
+            status, "white"
+        )
+        summary.add_row(f"[{color}]{status}[/{color}]", str(count))
+    console.print(summary)
+
+    if len(result.rows) <= 50:
+        table = Table(title="Detail")
+        table.add_column("place_id")
+        table.add_column("status")
+        table.add_column("detail")
+        for row in result.rows:
+            color = {"requeued": "green", "not_found": "yellow", "skipped": "cyan", "ssh_error": "red"}.get(
+                row.status, "white"
+            )
+            table.add_row(row.place_id, f"[{color}]{row.status}[/{color}]", row.detail)
+        console.print(table)
+
+    # "skipped" (already completed/pending/failed) is a good, idempotent
+    # outcome, not a failure - only ssh_error is a real problem here.
+    if any(r.status == "ssh_error" for r in result.rows):
+        raise typer.Exit(code=1)
+
+
 @app.command(name="backfill-domains")
 def backfill_domains(
     campaign: str = typer.Option("roadmap", help="Campaign name"),

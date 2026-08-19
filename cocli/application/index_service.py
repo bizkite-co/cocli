@@ -423,18 +423,24 @@ class IndexService:
                         ids.add(line[: -len(".usv")])
         return ids
 
-    def discover_all_place_ids(self) -> List[str]:
+    def discover_all_place_ids(self, index_name: str = "google_maps_prospects") -> List[str]:
         """Every place_id this campaign has ever touched - the seed set for
         a whole-campaign traceability audit (as opposed to a caller-supplied
         list for targeted debugging).
 
-        Union of gm-list's current discovery results AND the checkpoint's
-        own identities, not gm-list alone - confirmed live 2026-08-18 that
-        some checkpoint entries have no corresponding *current* gm-list
-        result file (gm-list's completed/results/ tree doesn't retain
-        everything forever, e.g. across a schema migration), so seeding
-        from gm-list alone silently under-covers real campaign state and
-        would make a "0 gaps found" audit result untrustworthy.
+        Union of gm-list's current discovery results, the checkpoint's own
+        identities, AND the Pi WAL's identities - no single source is
+        sufficient on its own. Confirmed live 2026-08-18 twice, each time
+        making a "0 gaps found" audit result untrustworthy until fixed:
+        (1) turboship - some checkpoint entries have no corresponding
+        *current* gm-list result file (gm-list's completed/results/ tree
+        doesn't retain everything forever), so gm-list alone under-counted.
+        (2) roadmap - far more severe: its checkpoint has never been
+        compacted at all (doesn't exist, on this machine OR on its own Pi
+        node), while its WAL held 31,821 real records - gm-list ∪ checkpoint
+        alone found only 3,788 identities, an ~88% undercount, silently
+        making a campaign with a near-total compaction failure look almost
+        entirely healthy.
         """
         from cocli.core.prospect_trace import CheckpointPresenceCheck, GmListResultsCheck
         from cocli.core.prospects_csv_manager import ProspectsIndexManager
@@ -445,7 +451,8 @@ class IndexService:
 
         gm_list_ids = GmListResultsCheck(gm_list_results_dir).all_identities()
         checkpoint_ids = CheckpointPresenceCheck(checkpoint_path).all_identities()
-        return sorted(gm_list_ids | checkpoint_ids)
+        wal_ids = self._fetch_pi_wal_ids(index_name)
+        return sorted(gm_list_ids | checkpoint_ids | wal_ids)
 
     def trace_prospects(
         self, place_ids: List[str], index_name: str = "google_maps_prospects"
@@ -736,6 +743,163 @@ class IndexService:
             out_rows.append(RequeueRow(place_id=place_id, status="requeued", detail=detail))
 
         return RequeueResult(campaign_name=self.campaign_name, index_name=index_name, rows=out_rows)
+
+    # ------------------------------------------------------------------
+    # Requeue (recover the "Identity Gap (enrichment-enqueue)" gap
+    # cocli audit campaign finds: checkpoint + resolved domain, but never
+    # enqueued into the enrichment queue at all)
+    # ------------------------------------------------------------------
+
+    def requeue_enrichment_gaps(self, place_ids: List[str]) -> RequeueResult:
+        """Push a fresh EnrichmentTask for each place_id whose prospect
+        record has a resolved domain but was never enqueued for enrichment -
+        the "Identity Gap (enrichment-enqueue)" category from
+        cocli audit campaign / docs/_schema/traceability.md.
+
+        Confirmed live 2026-08-18 against turboship: 1,667 such records
+        (1,600 current-format place_ids, 67 legacy-format).
+
+        Writes directly to a Pi node's filesystem over SSH, not locally -
+        same reason as requeue_stuck_details: pending/ is never synced in
+        either direction, only completed/ is, so a local
+        FilesystemQueue.push() would write to a directory no worker polls.
+
+        Batched into ONE SSH call per target node (not one call per
+        record) - unlike requeue_stuck_details, which is built for a
+        handful of manually-identified stragglers, this is meant to run
+        against results from a whole-campaign audit that can easily be
+        four figures, where a per-record SSH round trip would be the
+        dominant cost.
+
+        Re-checks each domain's current enrichment status right before
+        pushing (not just trusting a possibly-stale audit CSV) and skips
+        anything that already has a completed/pending/failed record -
+        idempotent against being run again, or against genuine progress
+        made between the audit run and this call.
+        """
+        import shlex
+        import subprocess
+
+        from cocli.core.prospect_trace import ProspectDomainIndex, QueueBucketCheck
+        from cocli.core.prospects_csv_manager import ProspectsIndexManager
+        from cocli.core.sharding import get_domain_shard
+        from cocli.models.campaigns.queues.enrichment import EnrichmentTask
+        from cocli.services.cluster_service import ClusterService
+
+        campaign_paths = paths.campaign(self.campaign_name)
+        checkpoint_path = ProspectsIndexManager(self.campaign_name).checkpoint_path
+        wal_root = paths.campaign(self.campaign_name).index("google_maps_prospects").wal
+        enrichment_queue = campaign_paths.queue("enrichment")
+
+        domain_index = ProspectDomainIndex(checkpoint_path, wal_root)
+        enrichment_check = QueueBucketCheck(
+            "enrichment",
+            enrichment_queue.completed,
+            enrichment_queue.pending,
+            enrichment_queue.path / "failed",
+        )
+
+        out_rows: List[RequeueRow] = []
+        tasks_to_push: List[EnrichmentTask] = []
+        seen_domains: set[str] = set()
+        for place_id in place_ids:
+            domain = domain_index.get_domain(place_id)
+            if not domain:
+                out_rows.append(
+                    RequeueRow(place_id=place_id, status="not_found", detail="no domain resolved")
+                )
+                continue
+
+            current = enrichment_check.check(domain)
+            if current.state != "never seen":
+                out_rows.append(
+                    RequeueRow(
+                        place_id=place_id, status="skipped",
+                        detail=f"domain {domain} already {current.state} - not re-pushing",
+                    )
+                )
+                continue
+
+            if domain in seen_domains:
+                out_rows.append(
+                    RequeueRow(
+                        place_id=place_id, status="skipped",
+                        detail=f"domain {domain} already queued this run (shared by another place_id)",
+                    )
+                )
+                continue
+
+            slug = domain_index.get_slug(place_id) or domain
+            tasks_to_push.append(
+                EnrichmentTask(
+                    domain=domain,
+                    company_slug=slug,
+                    campaign_name=self.campaign_name,
+                    force_refresh=False,
+                )
+            )
+            seen_domains.add(domain)
+            out_rows.append(RequeueRow(place_id=place_id, status="requeued", detail=f"domain {domain}"))
+
+        if not tasks_to_push:
+            return RequeueResult(
+                campaign_name=self.campaign_name, index_name="enrichment", rows=out_rows
+            )
+
+        try:
+            nodes = ClusterService(self.campaign_name).get_nodes()
+        except Exception as e:
+            logger.warning("Could not resolve cluster nodes for %s: %s", self.campaign_name, e)
+            nodes = []
+        candidate_nodes = [n for n in nodes if n.enabled] or nodes
+        if not candidate_nodes:
+            for row in out_rows:
+                if row.status == "requeued":
+                    row.status = "ssh_error"
+                    row.detail = "no cluster nodes"
+            return RequeueResult(
+                campaign_name=self.campaign_name, index_name="enrichment", rows=out_rows
+            )
+
+        push_node = candidate_nodes[0]
+        push_target = push_node.ip_address or push_node.hostname
+        remote_base = f"repos/data/campaigns/{self.campaign_name}/queues/enrichment/pending"
+
+        script_lines = ["set -e"]
+        for i, task in enumerate(tasks_to_push):
+            shard = get_domain_shard(task.domain)
+            remote_dir = shlex.quote(f"{remote_base}/{shard}/{task.domain}")
+            delimiter = f"COCLI_TASK_{i}_EOF"
+            script_lines.append(f"mkdir -p {remote_dir}")
+            script_lines.append(f"cat > {remote_dir}/task.json <<'{delimiter}'")
+            script_lines.append(task.model_dump_json())
+            script_lines.append(delimiter)
+        script = "\n".join(script_lines) + "\n"
+
+        try:
+            write_result = subprocess.run(
+                ["ssh", "-o", "ConnectTimeout=15", f"mstouffer@{push_target}", "bash -s"],
+                input=script, capture_output=True, text=True, timeout=120,
+            )
+        except subprocess.TimeoutExpired:
+            write_result = None
+
+        if write_result is None or write_result.returncode != 0:
+            detail = (
+                f"{push_node.hostname}: timeout"
+                if write_result is None
+                else f"{push_node.hostname}: {write_result.stderr.strip()}"
+            )
+            for row in out_rows:
+                if row.status == "requeued":
+                    row.status = "ssh_error"
+                    row.detail = detail
+        else:
+            for row in out_rows:
+                if row.status == "requeued":
+                    row.detail += f" - pushed to {push_node.hostname}"
+
+        return RequeueResult(campaign_name=self.campaign_name, index_name="enrichment", rows=out_rows)
 
     # ------------------------------------------------------------------
     # Domain backfill
