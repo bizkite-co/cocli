@@ -522,5 +522,66 @@ def write_datapackage(
         raise typer.Exit(1)
 
 
+@app.command(name="archive-incomplete-wal")
+def archive_incomplete_wal(
+    campaign: str = typer.Option(..., "--campaign", "-c", help="Campaign name"),
+    index: str = typer.Option("google_maps_prospects", help="Index name"),
+    required_fields: int = typer.Option(
+        57, "--required-fields",
+        help="Rows with fewer fields than this (the current schema's field "
+        "count) get archived, on the assumption an older/incompatible "
+        "schema era wrote them.",
+    ),
+    apply: bool = typer.Option(
+        False, "--apply",
+        help="Actually move files and write the archived_place_idx.usv "
+        "extract. Without this flag, only reports what WOULD be archived.",
+    ),
+) -> None:
+    """
+    Move WAL records that don't match the current full schema (fewer
+    fields than --required-fields) out of the active WAL into
+    archive_wal/, on every enabled node for the campaign - so a
+    compaction only ever folds in records matching the current schema,
+    and the archived ones can be identified for rescraping later.
+
+    Before moving anything, extracts place_id/slug/name into a single
+    append-only archived_place_idx.usv sidecar (the minimal GoogleMapsIdx-
+    shaped identity - see cocli/models/campaigns/indexes/google_maps_idx.py),
+    so nothing is lost even without a real google_maps_idx lookup built yet.
+
+    Defaults to a dry run (reports counts, moves nothing) - pass --apply
+    to actually archive.
+    """
+    services = ServiceContainer(campaign_name=campaign)
+    result = services.index_service.archive_incomplete_schema_wal(
+        index_name=index, required_field_count=required_fields, dry_run=not apply
+    )
+
+    from rich.table import Table
+
+    mode = "DRY RUN" if result.dry_run else "APPLIED"
+    table = Table(title=f"Archive incomplete-schema WAL ({mode}): {campaign}")
+    table.add_column("Node")
+    table.add_column("Archived", justify="right")
+    table.add_column("Kept", justify="right")
+    table.add_column("Error")
+    for node in result.nodes:
+        table.add_row(
+            node.hostname, str(node.archived), str(node.kept),
+            f"[red]{node.error}[/red]" if node.error else "",
+        )
+    console.print(table)
+    console.print(
+        f"\n[bold]Total: {result.total_archived} archived, "
+        f"{result.total_kept} kept[/bold] (required >= {required_fields} fields)"
+    )
+    if result.dry_run:
+        console.print("[yellow]Dry run - nothing was moved. Pass --apply to archive.[/yellow]")
+
+    if any(n.error for n in result.nodes):
+        raise typer.Exit(code=1)
+
+
 if __name__ == "__main__":
     app()

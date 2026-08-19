@@ -75,6 +75,12 @@ class IndexServiceProvider(Protocol):
         self, place_ids: List[str], index_name: str = "google_maps_prospects"
     ) -> Any: ...
     def requeue_enrichment_gaps(self, place_ids: List[str]) -> Any: ...
+    def archive_incomplete_schema_wal(
+        self,
+        index_name: str = "google_maps_prospects",
+        required_field_count: int = 57,
+        dry_run: bool = True,
+    ) -> Any: ...
     def backfill_domains(
         self,
         limit: int = 0,

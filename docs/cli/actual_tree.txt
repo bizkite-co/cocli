@@ -424,6 +424,11 @@ cocli
         file_path (path)
         --debug (boolean)
     index - Commands for managing sharded indexes.
+        archive-incomplete-wal - Move WAL records that don't match the current full schema (fewer
+            --campaign/-c (text) [required]
+            --index (text)
+            --required-fields (integer)
+            --apply (boolean)
         backfill-domains - Backfill the Domain Index from local website enrichment files.
             --campaign (text)
             --limit/-l (integer)

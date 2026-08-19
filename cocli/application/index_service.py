@@ -128,6 +128,34 @@ class RequeueResult(BaseModel):
     rows: List[RequeueRow] = Field(default_factory=list)
 
 
+class ArchiveWalNodeResult(BaseModel):
+    """One node's outcome from archive_incomplete_schema_wal."""
+
+    hostname: str
+    archived: int = 0
+    kept: int = 0
+    error: str = ""
+
+
+class ArchiveWalResult(BaseModel):
+    """Result of archiving WAL records that don't match the current full
+    schema (fewer fields than required_field_count)."""
+
+    campaign_name: str
+    index_name: str
+    required_field_count: int
+    dry_run: bool
+    nodes: List[ArchiveWalNodeResult] = Field(default_factory=list)
+
+    @property
+    def total_archived(self) -> int:
+        return sum(n.archived for n in self.nodes)
+
+    @property
+    def total_kept(self) -> int:
+        return sum(n.kept for n in self.nodes)
+
+
 class IndexService:
     """Application service for index lifecycle operations."""
 
@@ -939,6 +967,148 @@ class IndexService:
                     row.detail = f"{push_node.hostname}: no result marker seen for {domain}"
 
         return RequeueResult(campaign_name=self.campaign_name, index_name="enrichment", rows=out_rows)
+
+    # ------------------------------------------------------------------
+    # Archive WAL records that don't match the current full schema
+    # ------------------------------------------------------------------
+
+    def archive_incomplete_schema_wal(
+        self,
+        index_name: str = "google_maps_prospects",
+        required_field_count: int = 57,
+        dry_run: bool = True,
+    ) -> ArchiveWalResult:
+        """Move WAL records with fewer than required_field_count fields out
+        of the active WAL into archive_wal/, so a compaction only ever folds
+        in records matching the current schema.
+
+        Confirmed live 2026-08-18 against roadmap's real WAL (31,821
+        records): row field-count directly tracks schema era, and it's not
+        just older records being *shorter* - the 55-field (oldest) era has
+        a genuinely different tail field ORDER, not merely fewer trailing
+        fields (unlike the 56-field era, which is a clean append-diff of
+        the current 57-field schema minus the newest field). Reading a
+        55-field record with the current schema's fixed positional field
+        names would silently misassign discovery_phrase/discovery_tile_id/
+        email/etc. Rather than special-case "safe short" vs "unsafe
+        reordered" rows, archive anything short of the full current schema
+        uniformly - it's all equally not eligible to fold into a checkpoint
+        that's supposed to reflect the current schema, regardless of which
+        specific way it's incomplete.
+
+        Before moving anything, extracts place_id/slug/name (the minimal
+        GoogleMapsIdx-shaped identity fields - see
+        cocli/models/campaigns/indexes/google_maps_idx.py, deliberately not
+        materialized as its own stored index yet) into a single
+        archived_place_idx.usv sidecar, append-only, so nothing is lost:
+        once a real google_maps_idx lookup gets built, these can seed it
+        without re-deriving them from the archived files.
+
+        Runs on every enabled node for this campaign (not just one, unlike
+        the enrichment-gap push) - this is a per-node local read+move over
+        each node's own WAL, no cross-node race to worry about. Uses `sudo`
+        (confirmed passwordless on the Pi nodes) since WAL file ownership
+        is mixed - some root (written by the containerized worker), some
+        the SSH user (written by earlier code/manual operations).
+        """
+        import re
+        import subprocess
+
+        from cocli.services.cluster_service import ClusterService
+
+        try:
+            nodes = ClusterService(self.campaign_name).get_nodes()
+        except Exception as e:
+            logger.warning("Could not resolve cluster nodes for %s: %s", self.campaign_name, e)
+            nodes = []
+        candidate_nodes = [n for n in nodes if n.enabled] or nodes
+
+        remote_script = f"""
+import re
+import shutil
+from pathlib import Path
+
+US = chr(0x1f)
+campaign = {self.campaign_name!r}
+index_name = {index_name!r}
+required = {required_field_count!r}
+dry_run = {dry_run!r}
+
+wal = Path(f"/home/mstouffer/repos/data/campaigns/{{campaign}}/indexes/{{index_name}}/wal")
+archive_root = Path(f"/home/mstouffer/repos/data/campaigns/{{campaign}}/indexes/{{index_name}}/archive_wal")
+idx_extract_path = Path(f"/home/mstouffer/repos/data/campaigns/{{campaign}}/indexes/{{index_name}}/archived_place_idx.usv")
+
+archived = 0
+kept = 0
+idx_lines = []
+
+if wal.exists():
+    for f in wal.rglob("*.usv"):
+        try:
+            text = f.read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            continue
+        fields = text.rstrip(chr(10)).split(US)
+        if len(fields) >= required:
+            kept += 1
+            continue
+        place_id = fields[0] if len(fields) > 0 else ""
+        slug = fields[1] if len(fields) > 1 else ""
+        name = fields[2] if len(fields) > 2 else ""
+        idx_lines.append(US.join([place_id, slug, name]))
+        archived += 1
+        if not dry_run:
+            rel = f.relative_to(wal)
+            dest = archive_root / rel
+            dest.parent.mkdir(parents=True, exist_ok=True)
+            shutil.move(str(f), str(dest))
+
+if idx_lines and not dry_run:
+    idx_extract_path.parent.mkdir(parents=True, exist_ok=True)
+    with open(idx_extract_path, "a", encoding="utf-8") as out:
+        for line in idx_lines:
+            out.write(line + chr(10))
+
+print(f"COCLI_ARCHIVE_RESULT archived={{archived}} kept={{kept}}")
+"""
+
+        node_results: List[ArchiveWalNodeResult] = []
+        for node in candidate_nodes:
+            target = node.ip_address or node.hostname
+            try:
+                result = subprocess.run(
+                    ["ssh", "-o", "ConnectTimeout=15", f"mstouffer@{target}", "sudo -n python3 -"],
+                    input=remote_script, capture_output=True, text=True, timeout=180,
+                )
+            except subprocess.TimeoutExpired:
+                node_results.append(ArchiveWalNodeResult(hostname=node.hostname, error="timeout"))
+                continue
+
+            match = re.search(r"COCLI_ARCHIVE_RESULT archived=(\d+) kept=(\d+)", result.stdout)
+            if not match:
+                node_results.append(
+                    ArchiveWalNodeResult(
+                        hostname=node.hostname,
+                        error=result.stderr.strip() or "no result line seen",
+                    )
+                )
+                continue
+
+            node_results.append(
+                ArchiveWalNodeResult(
+                    hostname=node.hostname,
+                    archived=int(match.group(1)),
+                    kept=int(match.group(2)),
+                )
+            )
+
+        return ArchiveWalResult(
+            campaign_name=self.campaign_name,
+            index_name=index_name,
+            required_field_count=required_field_count,
+            dry_run=dry_run,
+            nodes=node_results,
+        )
 
     # ------------------------------------------------------------------
     # Domain backfill
