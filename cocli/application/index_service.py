@@ -865,39 +865,78 @@ class IndexService:
         push_target = push_node.ip_address or push_node.hostname
         remote_base = f"repos/data/campaigns/{self.campaign_name}/queues/enrichment/pending"
 
-        script_lines = ["set -e"]
-        for i, task in enumerate(tasks_to_push):
+        # Per-record isolation, not a single set -e script: confirmed live
+        # 2026-08-18 that some pending dirs are stale, root-owned leftovers
+        # (created by the containerized worker, which runs as root, while
+        # this SSH session runs as an unprivileged user) - mkdir/cat fails
+        # with Permission Denied on those specific dirs. Under set -e, ONE
+        # such record aborted the entire batch, discarding every write that
+        # had already succeeded before it - only surfaced at real scale
+        # (failed on records 79-request-in on a batch of 100; passed clean
+        # on a batch of 20). Now: use `sudo` (confirmed passwordless on the
+        # Pi nodes) so a stale root-owned dir doesn't block the write at
+        # all, wrap each record in its own if/then/else so one failure
+        # can't cascade, and print a per-domain OK/FAIL marker to parse
+        # back out - the whole point of batching is throughput, but that
+        # must not come at the cost of "any one record's mkdir stops here"
+        # atomicity across totally unrelated records.
+        script_lines = []
+        for task in tasks_to_push:
             shard = get_domain_shard(task.domain)
             remote_dir = shlex.quote(f"{remote_base}/{shard}/{task.domain}")
-            delimiter = f"COCLI_TASK_{i}_EOF"
-            script_lines.append(f"mkdir -p {remote_dir}")
-            script_lines.append(f"cat > {remote_dir}/task.json <<'{delimiter}'")
-            script_lines.append(task.model_dump_json())
-            script_lines.append(delimiter)
+            delimiter = f"COCLI_TASK_EOF_{shard}_{abs(hash(task.domain))}"
+            marker = shlex.quote(task.domain)
+            script_lines.append(
+                f"if sudo mkdir -p {remote_dir} && "
+                f"sudo tee {remote_dir}/task.json > /dev/null <<'{delimiter}'\n"
+                f"{task.model_dump_json()}\n"
+                f"{delimiter}\n"
+                f"then echo COCLI_OK:{marker}; else echo COCLI_FAIL:{marker}; fi"
+            )
         script = "\n".join(script_lines) + "\n"
 
         try:
             write_result = subprocess.run(
                 ["ssh", "-o", "ConnectTimeout=15", f"mstouffer@{push_target}", "bash -s"],
-                input=script, capture_output=True, text=True, timeout=120,
+                input=script, capture_output=True, text=True, timeout=300,
             )
         except subprocess.TimeoutExpired:
             write_result = None
 
-        if write_result is None or write_result.returncode != 0:
-            detail = (
-                f"{push_node.hostname}: timeout"
-                if write_result is None
-                else f"{push_node.hostname}: {write_result.stderr.strip()}"
-            )
+        if write_result is None:
             for row in out_rows:
                 if row.status == "requeued":
                     row.status = "ssh_error"
-                    row.detail = detail
-        else:
+                    row.detail = f"{push_node.hostname}: timeout"
+        elif write_result.returncode != 0 and not write_result.stdout.strip():
+            # A nonzero exit with no per-record markers means the SSH
+            # connection/session itself failed, not an individual record -
+            # e.g. auth failure, host unreachable.
             for row in out_rows:
                 if row.status == "requeued":
+                    row.status = "ssh_error"
+                    row.detail = f"{push_node.hostname}: {write_result.stderr.strip()}"
+        else:
+            ok_domains = set()
+            fail_domains = set()
+            for line in write_result.stdout.splitlines():
+                if line.startswith("COCLI_OK:"):
+                    ok_domains.add(line[len("COCLI_OK:"):])
+                elif line.startswith("COCLI_FAIL:"):
+                    fail_domains.add(line[len("COCLI_FAIL:"):])
+
+            for row in out_rows:
+                if row.status != "requeued":
+                    continue
+                domain = row.detail.removeprefix("domain ")
+                if domain in ok_domains:
                     row.detail += f" - pushed to {push_node.hostname}"
+                elif domain in fail_domains:
+                    row.status = "ssh_error"
+                    row.detail = f"{push_node.hostname}: mkdir/write failed for {domain} (stale permissions?)"
+                else:
+                    row.status = "ssh_error"
+                    row.detail = f"{push_node.hostname}: no result marker seen for {domain}"
 
         return RequeueResult(campaign_name=self.campaign_name, index_name="enrichment", rows=out_rows)
 
