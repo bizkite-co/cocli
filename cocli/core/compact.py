@@ -7,7 +7,6 @@ from pathlib import Path
 from datetime import datetime, UTC
 from typing import Any, Optional, Sequence
 
-import boto3
 from botocore.exceptions import ClientError
 
 from .config import get_campaign_dir
@@ -86,7 +85,23 @@ class CompactManager:
     @property
     def s3(self) -> Any:
         if self._s3 is None:
-            self._s3 = boto3.client("s3")
+            # Confirmed live 2026-08-19: a bare boto3.client("s3") only
+            # works if boto3's default credential chain finds something
+            # (env vars, ~/.aws/credentials, IMDS) - none of which apply
+            # inside the worker container, whose whole strategy is
+            # non-interactive IoT STS auth (see get_boto3_session). Every
+            # other S3 touchpoint in this codebase goes through that
+            # helper; this one didn't, so `cocli index compact` failed
+            # with a raw NoCredentialsError the moment it needed S3
+            # (compact.lock acquisition) run from inside the container -
+            # the exact place this command actually needs to run, since
+            # WAL never syncs to the dev machine.
+            from .config import load_campaign_config
+            from .reporting import get_boto3_session
+
+            config = load_campaign_config(self.campaign_name)
+            session = get_boto3_session(config)
+            self._s3 = session.client("s3")
         return self._s3
 
     def acquire_lock(self) -> bool:

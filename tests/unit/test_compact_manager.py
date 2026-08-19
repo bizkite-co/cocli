@@ -285,3 +285,30 @@ def test_acquire_lock_returns_false_when_stale_takeover_loses_the_race(tmp_path:
     }
 
     assert manager.acquire_lock() is False
+
+
+def test_s3_property_uses_iot_aware_credential_helper_not_bare_boto3_client(
+    tmp_path: Path,
+) -> None:
+    """Confirmed live 2026-08-19: `cocli index compact` run inside a worker
+    container (the only place it can run, since WAL never syncs to the dev
+    machine) failed with a raw NoCredentialsError - the .s3 property built
+    its client via bare boto3.client("s3"), which only works if boto3's
+    default credential chain finds something (env vars, ~/.aws/credentials,
+    IMDS). Every other S3 touchpoint in this codebase goes through
+    get_boto3_session (IoT STS first, non-interactive) - this one didn't."""
+    paths.root = tmp_path
+    manager = CompactManager("test_campaign", "google_maps_prospects")
+
+    fake_session = MagicMock()
+    fake_client = MagicMock()
+    fake_session.client.return_value = fake_client
+
+    with patch("cocli.core.config.load_campaign_config", return_value={"aws": {}}) as mock_config, \
+         patch("cocli.core.reporting.get_boto3_session", return_value=fake_session) as mock_session:
+        result = manager.s3
+
+    mock_config.assert_called_once_with("test_campaign")
+    mock_session.assert_called_once_with({"aws": {}})
+    fake_session.client.assert_called_once_with("s3")
+    assert result is fake_client
