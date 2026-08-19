@@ -11,6 +11,7 @@ compact-wal-staging-violates-stations-c9-deletes-pi-sourced-data-before-commit-o
 and ~/repos/stations/spec/CONCURRENCY.md §3 (C6-C14, especially C9)."""
 
 import json
+import os
 import subprocess
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -312,3 +313,47 @@ def test_s3_property_uses_iot_aware_credential_helper_not_bare_boto3_client(
     mock_session.assert_called_once_with({"aws": {}})
     fake_session.client.assert_called_once_with("s3")
     assert result is fake_client
+
+
+def test_aws_cli_env_injects_iot_credentials_when_available() -> None:
+    from cocli.core.compact import _aws_cli_env
+
+    with patch(
+        "cocli.utils.aws_iot_auth.get_iot_sts_credentials",
+        return_value={"access_key": "AKIA_TEST", "secret_key": "SECRET_TEST", "token": "TOKEN_TEST"},
+    ):
+        env = _aws_cli_env()
+
+    assert env["AWS_ACCESS_KEY_ID"] == "AKIA_TEST"
+    assert env["AWS_SECRET_ACCESS_KEY"] == "SECRET_TEST"
+    assert env["AWS_SESSION_TOKEN"] == "TOKEN_TEST"
+
+
+def test_aws_cli_env_falls_back_to_ambient_env_when_no_iot_creds() -> None:
+    from cocli.core.compact import _aws_cli_env
+
+    with patch("cocli.utils.aws_iot_auth.get_iot_sts_credentials", return_value=None):
+        env = _aws_cli_env()
+
+    assert "AWS_ACCESS_KEY_ID" not in env or env.get("AWS_ACCESS_KEY_ID") == os.environ.get(
+        "AWS_ACCESS_KEY_ID"
+    )
+
+
+def test_acquire_staging_and_cleanup_pass_iot_env_to_aws_cli(tmp_path: Path) -> None:
+    paths.root = tmp_path
+    manager = CompactManager("test_campaign", "google_maps_prospects")
+    manager._used_s3_staging = True
+
+    with patch(
+        "cocli.core.compact._aws_cli_env",
+        return_value={"AWS_ACCESS_KEY_ID": "INJECTED"},
+    ) as mock_env, patch("subprocess.run") as mock_run:
+        mock_run.return_value = MagicMock(returncode=0)
+        manager.acquire_staging()
+        manager.cleanup()
+
+    assert mock_env.call_count >= 2
+    for call in mock_run.call_args_list:
+        if call.args[0][:2] == ["aws", "s3"]:
+            assert call.kwargs.get("env") == {"AWS_ACCESS_KEY_ID": "INJECTED"}

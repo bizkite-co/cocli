@@ -22,6 +22,34 @@ logger = logging.getLogger(__name__)
 # reclaiming a crashed lock in well under an hour.
 LOCK_STALE_SECONDS = 1800
 
+
+def _aws_cli_env() -> dict[str, str]:
+    """Environment for the `aws` CLI subprocess calls in this module
+    (recover_interrupted_run's legacy S3-staging path only - see
+    acquire_staging/cleanup), with IoT STS credentials injected if
+    available.
+
+    The `aws` binary resolves its own credentials independently of
+    boto3/get_boto3_session - env vars, ~/.aws/credentials, or IMDS - none
+    of which this container populates, since its whole strategy is
+    non-interactive IoT STS auth. Confirmed live 2026-08-19: an old
+    interrupted run orphaned by the 2026-08-13 incident (see this
+    module's acquire_staging docstring) could never be recovered because
+    every `cocli index compact` invocation hit this exact gap first,
+    before ever reaching a fresh compact - the .s3 property fix alone
+    (boto3-only) didn't cover it.
+    """
+    from ..utils.aws_iot_auth import get_iot_sts_credentials
+
+    env = os.environ.copy()
+    creds = get_iot_sts_credentials()
+    if creds:
+        env["AWS_ACCESS_KEY_ID"] = creds["access_key"]
+        env["AWS_SECRET_ACCESS_KEY"] = creds["secret_key"]
+        env["AWS_SESSION_TOKEN"] = creds["token"]
+    return env
+
+
 class CompactManager:
     """
     Implements the Freeze-Ingest-Merge-Commit (FIMC) pattern for sharded indexes.
@@ -290,7 +318,7 @@ class CompactManager:
         with open(self.log_file, "a") if self.log_file else nullcontext() as f:
             subprocess.run(
                 ["aws", "s3", "sync", src, str(self.local_proc_dir), "--quiet"],
-                stdout=f, stderr=f, check=True
+                stdout=f, stderr=f, check=True, env=_aws_cli_env(),
             )
         self._used_s3_staging = True
         logger.info("Staging data acquired.")
@@ -368,7 +396,10 @@ class CompactManager:
             try:
                 from contextlib import nullcontext
                 with open(self.log_file, "a") if self.log_file else nullcontext() as f:
-                    subprocess.run(["aws", "s3", "rm", src, "--recursive", "--quiet"], stdout=f, stderr=f, check=True)
+                    subprocess.run(
+                        ["aws", "s3", "rm", src, "--recursive", "--quiet"],
+                        stdout=f, stderr=f, check=True, env=_aws_cli_env(),
+                    )
             except Exception as e:
                 logger.error(f"Failed to cleanup S3 staging: {e}")
 
