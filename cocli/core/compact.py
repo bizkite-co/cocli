@@ -1,6 +1,7 @@
 import os
 import json
 import logging
+import socket
 import time
 import subprocess
 from pathlib import Path
@@ -240,13 +241,32 @@ class CompactManager:
         core/ may not import ClusterService per the import-linter contract).
         Returns the number of files staged for this run - callers use this
         to decide whether there's anything to compact.
+
+        A node whose hostname matches this process's own (COCLI_HOSTNAME,
+        same idiom as worker_service/operation_service/queue/filesystem use
+        to self-identify) is never rsync'd - its WAL is already on this
+        filesystem (bind-mounted into the container same as everywhere else
+        under index_dir), so shipping it to itself over SSH would just be a
+        loopback network hop for data already in hand. It's already counted
+        below regardless (the unconditional index_dir/wal scan every run
+        does, for exactly this "already local" case) - skipping the rsync
+        here doesn't skip folding it, just the pointless network round trip
+        (and, previously, a hard dependency on an SSH identity that never
+        needed to exist). Confirmed live 2026-08-19: roadmap's single-node
+        compact was blocked on provisioning exactly that identity.
         """
         self.local_proc_dir.mkdir(parents=True, exist_ok=True)
         staged = 0
+        local_hostname = (os.getenv("COCLI_HOSTNAME") or socket.gethostname()).split(".")[0]
 
         for node in nodes or []:
             host = node.hostname
             target = node.ip_address or host
+
+            if host.split(".")[0] == local_hostname:
+                logger.info(f"{host} is the local node - WAL already on disk, skipping rsync.")
+                continue
+
             node_dir = self.local_proc_dir / host
             node_dir.mkdir(parents=True, exist_ok=True)
             remote_path = (

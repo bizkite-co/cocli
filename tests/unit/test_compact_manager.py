@@ -99,6 +99,34 @@ def test_isolate_wal_continues_past_one_nodes_rsync_failure(tmp_path: Path) -> N
     assert (manager.local_proc_dir / "cocli5x1" / "seg.usv").exists()
 
 
+def test_isolate_wal_skips_rsync_for_local_node(tmp_path: Path, monkeypatch: Any) -> None:
+    """A node whose hostname matches COCLI_HOSTNAME is the compactor's own
+    machine - its WAL is already on disk (bind-mounted like everywhere else
+    under index_dir), so isolate_wal() must never shell out to rsync/ssh for
+    it. The file still gets counted via the unconditional index_dir/wal scan,
+    not via any rsync path, so no double counting either."""
+    monkeypatch.setenv("COCLI_HOSTNAME", "cocli5x1")
+    paths.root = tmp_path
+    manager = CompactManager("test_campaign", "google_maps_prospects")
+    manager.index_dir.mkdir(parents=True, exist_ok=True)
+    wal_dir = manager.index_dir / "wal"
+    wal_dir.mkdir(parents=True, exist_ok=True)
+    (wal_dir / "local.usv").write_text("row\n")
+
+    nodes = [_node("cocli5x1"), _node("cocli5x0")]
+
+    with patch("subprocess.run", side_effect=_rsync_side_effect({"cocli5x0": 2})) as mock_run:
+        staged = manager.isolate_wal(nodes=nodes)
+
+    for call in mock_run.call_args_list:
+        remote = call.args[0][-2]
+        assert "cocli5x1" not in remote, "must not rsync to/from the local node"
+
+    assert staged == 3  # 1 local (already-on-disk) + 2 rsync'd from cocli5x0
+    assert not (manager.local_proc_dir / "cocli5x1").exists()
+    assert len(list((manager.local_proc_dir / "cocli5x0").glob("*.usv"))) == 2
+
+
 def test_isolate_wal_leaves_local_wal_and_naked_root_untouched(tmp_path: Path) -> None:
     """The exact defect this ticket fixes, second instance: naked-root USVs
     and index_dir/wal are legitimate fold sources
