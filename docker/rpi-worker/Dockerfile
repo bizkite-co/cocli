@@ -3,10 +3,13 @@ FROM mcr.microsoft.com/playwright/python:v1.55.0-noble
 
 WORKDIR /app
 
-# Install system dependencies needed for pandas/numpy on ARM, plus qsv for indexing
+# Install system dependencies needed for pandas/numpy on ARM, plus qsv for
+# indexing. rsync is needed by CompactManager.isolate_wal() (cocli index
+# compact stages each node's WAL over Tailscale rsync) - confirmed live
+# 2026-08-19 missing from this image, blocking every compact run.
 RUN apt-get update && apt-get install -y \
     libatlas-base-dev \
-    git wget unzip jq --no-install-recommends && \
+    git wget unzip jq rsync --no-install-recommends && \
     export ARCH=$(uname -m) && \
     if [ "$ARCH" = "x86_64" ]; then QSV_ARCH="x86_64-unknown-linux-gnu"; elif [ "$ARCH" = "aarch64" ]; then QSV_ARCH="aarch64-unknown-linux-gnu"; fi && \
     wget https://github.com/jqnatividad/qsv/releases/download/0.134.0/qsv-0.134.0-$QSV_ARCH.zip && \
