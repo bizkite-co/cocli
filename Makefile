@@ -682,9 +682,10 @@ RPI_DIR ?= ~/repos/cocli
 CLUSTER_NODES ?= cocli5x0,cocli5x1
 
 .PHONY: setup-rpi
-setup-rpi: ## Bootstap the Raspberry Pi with Docker and Git
+setup-rpi: ## Bootstap the Raspberry Pi with Docker, Git, and Tailscale (Usage: TS_AUTHKEY=tskey-... make setup-rpi RPI_HOST=xxx)
+	@if [ -z "$(TS_AUTHKEY)" ]; then echo "Error: TS_AUTHKEY is required (a reusable Tailscale auth key scoped to tag:cocli-worker) - see https://login.tailscale.com/admin/settings/keys"; exit 1; fi
 	scp scripts/setup_rpi.sh scripts/provision_pi_tools.sh $(RPI_USER)@$(RPI_HOST):~/
-	ssh $(RPI_USER)@$(RPI_HOST) "chmod +x ~/setup_rpi.sh ~/provision_pi_tools.sh && ~/setup_rpi.sh"
+	ssh $(RPI_USER)@$(RPI_HOST) "chmod +x ~/setup_rpi.sh ~/provision_pi_tools.sh && TS_AUTHKEY='$(TS_AUTHKEY)' ~/setup_rpi.sh"
 .PHONY: boardcheck
 boardcheck: ## Copy boardcheck.sh to the Pi and run it
 	scp docker/rpi-worker/boardcheck.sh $(RPI_USER)@$(RPI_HOST):~/boardcheck.sh

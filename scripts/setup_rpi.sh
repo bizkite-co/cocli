@@ -6,6 +6,27 @@ echo "Updating system and installing dependencies..."
 sudo apt-get update
 sudo apt-get install -y git
 
+# Join the tailnet, tagged as tag:cocli-worker. That tag is what the
+# tailnet's ACL grants non-interactive ("accept", not "check") SSH between
+# worker nodes - cocli/core/compact.py::isolate_wal() depends on it to pull
+# a peer node's WAL during compaction with no SSH key ever provisioned.
+# --ssh enables Tailscale SSH itself so this node can also be the target of
+# that same rsync-over-ssh call from another worker.
+if ! command -v tailscale &> /dev/null; then
+    echo "Installing Tailscale..."
+    curl -fsSL https://tailscale.com/install.sh | sh
+fi
+
+if [ -z "$TS_AUTHKEY" ]; then
+    echo "Error: TS_AUTHKEY is required (a reusable Tailscale auth key scoped to tag:cocli-worker)." >&2
+    echo "Generate one at https://login.tailscale.com/admin/settings/keys and re-run:" >&2
+    echo "  TS_AUTHKEY=tskey-... make setup-rpi RPI_HOST=..." >&2
+    exit 1
+fi
+
+echo "Joining tailnet as tag:cocli-worker..."
+sudo tailscale up --authkey="$TS_AUTHKEY" --advertise-tags=tag:cocli-worker --ssh
+
 # Install Docker
 if ! command -v docker &> /dev/null; then
     echo "Installing Docker..."
