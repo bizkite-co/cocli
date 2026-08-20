@@ -35,8 +35,8 @@ def _rsync_side_effect(files_by_host: Dict[str, int]) -> Any:
 
     def _run(cmd: List[str], **kwargs: Any) -> subprocess.CompletedProcess[str]:
         assert cmd[0] == "rsync"
-        remote = cmd[2]
-        dest = Path(cmd[3].rstrip("/"))
+        remote, dest_arg = cmd[-2], cmd[-1]
+        dest = Path(dest_arg.rstrip("/"))
         host = remote.split("@")[1].split(":")[0]
         dest.mkdir(parents=True, exist_ok=True)
         for i in range(files_by_host.get(host, 0)):
@@ -82,11 +82,11 @@ def test_isolate_wal_continues_past_one_nodes_rsync_failure(tmp_path: Path) -> N
     nodes = [_node("cocli5x0"), _node("cocli5x1")]
 
     def _run(cmd: List[str], **kwargs: Any) -> subprocess.CompletedProcess[str]:
-        remote = cmd[2]
+        remote = cmd[-2]
         host = remote.split("@")[1].split(":")[0]
         if host == "cocli5x0":
             return subprocess.CompletedProcess(cmd, 1, stdout="", stderr="connection refused")
-        dest = Path(cmd[3].rstrip("/"))
+        dest = Path(cmd[-1].rstrip("/"))
         dest.mkdir(parents=True, exist_ok=True)
         (dest / "seg.usv").write_text("row\n")
         return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
@@ -357,3 +357,29 @@ def test_acquire_staging_and_cleanup_pass_iot_env_to_aws_cli(tmp_path: Path) -> 
     for call in mock_run.call_args_list:
         if call.args[0][:2] == ["aws", "s3"]:
             assert call.kwargs.get("env") == {"AWS_ACCESS_KEY_ID": "INJECTED"}
+
+
+def test_isolate_wal_rsync_uses_accept_new_host_key_policy(tmp_path: Path) -> None:
+    """Confirmed live 2026-08-19: a freshly-deployed worker container has an
+    empty known_hosts, so a bare rsync-over-ssh failed with "Host key
+    verification failed" the first time it ran (even syncing a single-node
+    campaign from its own host). rsync's ssh transport must be told
+    accept-new explicitly - these are already-Tailscale-trusted internal
+    nodes, not arbitrary external hosts."""
+    paths.root = tmp_path
+    manager = CompactManager("test_campaign", "google_maps_prospects")
+    nodes = [_node("cocli5x0")]
+
+    captured_cmd: List[str] = []
+
+    def _run(cmd: List[str], **kwargs: Any) -> subprocess.CompletedProcess[str]:
+        captured_cmd.extend(cmd)
+        return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
+
+    with patch("subprocess.run", side_effect=_run):
+        manager.isolate_wal(nodes=nodes)
+
+    assert captured_cmd[0] == "rsync"
+    assert "-e" in captured_cmd
+    ssh_opt = captured_cmd[captured_cmd.index("-e") + 1]
+    assert "StrictHostKeyChecking=accept-new" in ssh_opt

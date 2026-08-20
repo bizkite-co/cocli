@@ -256,7 +256,21 @@ class CompactManager:
             logger.info(f"Staging {self.index_name} WAL from {host}...")
             try:
                 result = subprocess.run(
-                    ["rsync", "-avzu", remote_path, str(node_dir) + "/"],
+                    [
+                        "rsync", "-avzu",
+                        # A freshly-deployed worker container has an empty
+                        # known_hosts, so a bare rsync-over-ssh fails with
+                        # "Host key verification failed" the first time it
+                        # talks to any peer (including itself, when a
+                        # single-node campaign "syncs" from its own host) -
+                        # confirmed live 2026-08-19. accept-new (not the
+                        # weaker "no") still detects a key that later
+                        # changes on an already-trusted host, it just
+                        # doesn't require a prior interactive TOFU prompt
+                        # for these already-Tailscale-trusted internal nodes.
+                        "-e", "ssh -o StrictHostKeyChecking=accept-new -o ConnectTimeout=15",
+                        remote_path, str(node_dir) + "/",
+                    ],
                     capture_output=True, text=True, timeout=300,
                 )
             except subprocess.TimeoutExpired:
