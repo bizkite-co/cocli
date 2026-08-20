@@ -275,6 +275,27 @@ class CdkScraperDeploymentStack(Stack):  # type: ignore[misc]
                     resources=[f"arn:aws:s3:::{data_bucket_name}/campaigns/{campaign_config['name']}/queues/*"]
                 ),
                 iam.PolicyStatement(
+                    # AllowQueueListing's ListBucket already covers indexes/*
+                    # (needed by cocli/core/analytics.py's read-only listing of
+                    # wal/ and scraped-tiles/), but no statement ever granted
+                    # actual object-level access under indexes/ - only
+                    # queues/* had read/write/delete. `cocli index compact`
+                    # (compact.lock acquisition, WAL/checkpoint read-write,
+                    # and legacy S3-staged interrupted-run recovery, all under
+                    # indexes/{name}/) can only run from a machine with
+                    # broader ambient AWS access (e.g. the dev machine's
+                    # profile), never from a worker's own IoT-assumed role -
+                    # confirmed live 2026-08-19: AccessDenied on s3:GetObject
+                    # under indexes/google_maps_prospects/processing/ when
+                    # `cocli index compact` ran inside the worker container,
+                    # the only place it can run at all for a campaign whose
+                    # WAL never syncs to the dev machine.
+                    sid="AllowIndexConsumption",
+                    effect=iam.Effect.ALLOW,
+                    actions=["s3:GetObject", "s3:PutObject", "s3:DeleteObject"],
+                    resources=[f"arn:aws:s3:::{data_bucket_name}/campaigns/{campaign_config['name']}/indexes/*"]
+                ),
+                iam.PolicyStatement(
                     sid="AllowQueueListing",
                     effect=iam.Effect.ALLOW,
                     actions=["s3:ListBucket"],
