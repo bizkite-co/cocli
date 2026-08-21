@@ -129,6 +129,28 @@ def sample(
     console.print(table)
 
 
+@app.command(name="compact-emails", no_args_is_help=True)
+def compact_emails(
+    campaign: str = typer.Option(..., "--campaign", "-c", help="Campaign name"),
+) -> None:
+    """Compact the email index's hot inbox into cold shards (Hot Inbox -> Shards).
+
+    EmailIndexManager.compact() already existed but was only reachable from
+    the TUI's "Compact Email Index" menu item - no CLI path, which is why
+    real inbox data can pile up uncompacted on a Pi node indefinitely with
+    nobody noticing (confirmed live 2026-08-20: roadmap had 46,971 real
+    inbox files and an empty shards/ dir).
+
+    Example: cocli data compact-emails --campaign roadmap
+    """
+    console.print(f"[cyan]Compacting email index for campaign '{campaign}'...[/cyan]")
+    result = ServiceContainer(campaign_name=campaign).data_sync_service.compact_index()
+    if result.get("status") != "success":
+        console.print(f"[red]{result.get('message')}[/red]")
+        raise typer.Exit(1)
+    console.print(f"[green]{result.get('message')}[/green]")
+
+
 @app.command(no_args_is_help=True)
 def metrics(
     file_path: Path = typer.Argument(

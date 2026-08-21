@@ -319,6 +319,8 @@ cocli
     context - Sets, shows, or clears the current context.
         filter_str (text)
     data - Utilities for interacting with frictionless data files.
+        compact-emails - Compact the email index's hot inbox into cold shards (Hot Inbox -> Shards).
+            --campaign/-c (text) [required]
         describe - Show the schema definition (fields/types) for a given USV file or datapackage.
             file_path (path) [required]
         inspect - Show the index, name, and content for a specific row in a USV file.
