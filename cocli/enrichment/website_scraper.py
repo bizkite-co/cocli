@@ -129,6 +129,8 @@ class WebsiteScraper:
                         )
                         if person.get("name"):
                             entry.tags.append(f"person:{person['name']}")
+                            if person.get("name_confidence") == "heuristic":
+                                entry.tags.append("name_confidence:heuristic")
                         index_manager.add_email(entry)
                     except Exception:
                         continue
@@ -901,23 +903,23 @@ class WebsiteScraper:
             person_data["phone"] = str(phone_match.group(0))
         return person_data if person_data else None
 
-    def _clean_and_validate_name(self, name_str: str) -> str:
+    def _clean_and_validate_name(self, name_str: str, require_known_first_name: bool = True) -> str:
         name = re.sub(r"[^a-zA-Z\s-]", "", name_str).strip()
         words = name.split()
-        
+
         if len(words) < 2 or len(words) > 3:
             return ""
-            
+
         if not all(w[0].isupper() for w in words if w):
             return ""
-            
+
         for w in words:
             if w.lower() in STOP_WORDS:
                 return ""
-                
-        if words[0].lower() not in FIRST_NAMES:
+
+        if require_known_first_name and words[0].lower() not in FIRST_NAMES:
             return ""
-            
+
         return " ".join(words)
 
     def _extract_personnel(self, soup: BeautifulSoup, website_data: Website) -> None:
@@ -935,16 +937,29 @@ class WebsiteScraper:
                 parts = mailbox.split(".")
                 if len(parts) == 2:
                     first, last = parts[0], parts[1]
-                    if first.lower() in FIRST_NAMES and len(last) > 1:
+                    if len(last) > 1:
+                        # firstname.lastname@domain is itself a strong shape
+                        # signal (the generic-mailbox denylist above already
+                        # rules out the main false-positive case) - don't
+                        # require `first` to be in the ~200-name FIRST_NAMES
+                        # dictionary, which silently dropped real names it
+                        # didn't happen to contain (uncommon spellings,
+                        # non-English names). Still prefer the dictionary
+                        # when it does match - that's a stronger signal, so
+                        # only the non-matching case gets a lower-confidence
+                        # tag downstream.
                         candidate = f"{first.capitalize()} {last.capitalize()}"
-                        cleaned = self._clean_and_validate_name(candidate)
+                        cleaned = self._clean_and_validate_name(candidate, require_known_first_name=False)
                         if cleaned and cleaned.lower() not in seen_names:
                             seen_names.add(cleaned.lower())
-                            website_data.personnel.append({
+                            entry: Dict[str, Any] = {
                                 "name": cleaned,
                                 "title": "Key Contact (Email)",
                                 "email": f"{mailbox}@{domain}"
-                            })
+                            }
+                            if first.lower() not in FIRST_NAMES:
+                                entry["name_confidence"] = "heuristic"
+                            website_data.personnel.append(entry)
                             
             elif mailbox_lower in FIRST_NAMES:
                 first_cap = mailbox_lower.capitalize()
@@ -968,20 +983,28 @@ class WebsiteScraper:
         for pattern in patterns:
             for match in re.finditer(pattern, text):
                 candidate = match.group(1)
-                cleaned = self._clean_and_validate_name(candidate)
+                # Adjacency to a real job-title keyword (Owner/Founder/...)
+                # is itself strong evidence this is a person's name, so
+                # don't additionally require the first name to be in the
+                # ~200-name FIRST_NAMES dictionary - same reasoning as the
+                # email-pattern heuristic above.
+                cleaned = self._clean_and_validate_name(candidate, require_known_first_name=False)
                 if cleaned and cleaned.lower() not in seen_names:
                     seen_names.add(cleaned.lower())
-                    
+
                     title = "Owner/Key Person"
                     context_str = text[max(0, match.start() - 20):min(len(text), match.end() + 20)]
                     for t in ["Owner", "Founder", "President", "CEO", "Partner", "Manager"]:
                         if t.lower() in context_str.lower():
                             title = t
                             break
-                    website_data.personnel.append({
+                    personnel_entry: Dict[str, Any] = {
                         "name": cleaned,
                         "title": title
-                    })
+                    }
+                    if cleaned.split()[0].lower() not in FIRST_NAMES:
+                        personnel_entry["name_confidence"] = "heuristic"
+                    website_data.personnel.append(personnel_entry)
 
         # Heuristic 3: Simple first name dictionary lookup in the text (with strict filters)
         for fn in FIRST_NAMES:
