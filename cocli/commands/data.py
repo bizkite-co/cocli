@@ -129,6 +129,41 @@ def sample(
     console.print(table)
 
 
+@app.command(name="retrofit-personnel-names", no_args_is_help=True)
+def retrofit_personnel_names(
+    campaign: str = typer.Option(..., "--campaign", "-c", help="Campaign name"),
+    apply: bool = typer.Option(False, "--apply", help="Actually write updates (default is dry-run)."),
+) -> None:
+    """Backfill person: tags onto already-indexed emails whose name wasn't
+    recoverable before the FIRST_NAMES dictionary gate was relaxed.
+
+    Needs no re-scraping: a firstname.lastname@domain shape is already
+    fully present in the email address itself. Uses the exact same
+    inference function the live scraper uses
+    (WebsiteScraper.infer_name_from_dotted_mailbox), so this can never
+    silently drift from production behavior.
+
+    Writes to the hot inbox - run `cocli data compact-emails` afterward to
+    fold results into shards.
+
+    Example: cocli data retrofit-personnel-names --campaign roadmap --apply
+    """
+    from cocli.application.email_personnel_retrofit import retrofit_personnel_names as _retrofit
+
+    dry_run = not apply
+    console.print(
+        f"[cyan]{'[DRY RUN] ' if dry_run else ''}Retrofitting personnel names for campaign '{campaign}'...[/cyan]"
+    )
+    result = _retrofit(campaign, dry_run=dry_run)
+    console.print(f"Scanned: {result.scanned}  Matched: {result.matched}")
+    if result.sample_names:
+        console.print(f"Sample names: {', '.join(result.sample_names)}")
+    if dry_run:
+        console.print("[yellow]Dry run - no changes written. Re-run with --apply to write.[/yellow]")
+    else:
+        console.print("[green]Done.[/green]")
+
+
 @app.command(name="compact-emails", no_args_is_help=True)
 def compact_emails(
     campaign: str = typer.Option(..., "--campaign", "-c", help="Campaign name"),

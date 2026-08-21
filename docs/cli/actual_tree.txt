@@ -348,6 +348,9 @@ cocli
                 --strip-leading-segments (integer)
                 --verbose/-v (boolean)
                 --sample-limit (integer)
+        retrofit-personnel-names - Backfill person: tags onto already-indexed emails whose name wasn't
+            --campaign/-c (text) [required]
+            --apply (boolean)
         sample - Show first N rows with column names from a USV file.
             file_path (path) [required]
             --limit/-n (integer)

@@ -84,6 +84,15 @@ FIRST_NAMES = {
     "jared", "justin", "corey", "marcus", "kurt", "charlie", "sam", "matt", "alex", "ben", "luke", "jake"
 }
 
+# Mailbox local-parts that are role addresses, not a person - shared between
+# the live scrape path (_extract_personnel) and the offline retrofit pass
+# (application/email_personnel_retrofit.py) over already-indexed emails, so
+# both exclude exactly the same set.
+GENERIC_MAILBOX_PREFIXES = {
+    "info", "sales", "support", "office", "admin", "contact", "mail",
+    "help", "billing", "service", "jobs", "estimator",
+}
+
 
 logger = logging.getLogger(__name__)
 
@@ -922,6 +931,39 @@ class WebsiteScraper:
 
         return " ".join(words)
 
+    def infer_name_from_dotted_mailbox(self, mailbox: str) -> Optional[Dict[str, Any]]:
+        """Given an email local-part shaped like firstname.lastname, infer a
+        person's name. Returns a personnel-shaped dict ({"name", possibly
+        "name_confidence": "heuristic"}) or None if the shape doesn't hold.
+
+        Shared by the live scrape path (_extract_personnel, below) and the
+        offline retrofit pass over already-indexed emails
+        (application/email_personnel_retrofit.py) - both must use exactly
+        this logic, not a re-implementation of it, or they'll silently
+        drift apart over time.
+
+        Caller is responsible for excluding GENERIC_MAILBOX_PREFIXES first -
+        this only handles the name-shape inference.
+        """
+        if "." not in mailbox:
+            return None
+        parts = mailbox.split(".")
+        if len(parts) != 2:
+            return None
+        first, last = parts
+        if len(last) <= 1:
+            return None
+
+        candidate = f"{first.capitalize()} {last.capitalize()}"
+        cleaned = self._clean_and_validate_name(candidate, require_known_first_name=False)
+        if not cleaned:
+            return None
+
+        result: Dict[str, Any] = {"name": cleaned}
+        if first.lower() not in FIRST_NAMES:
+            result["name_confidence"] = "heuristic"
+        return result
+
     def _extract_personnel(self, soup: BeautifulSoup, website_data: Website) -> None:
         text = soup.get_text(separator=" \n ")
         seen_names = {p["name"].lower() for p in website_data.personnel if "name" in p}
@@ -930,37 +972,22 @@ class WebsiteScraper:
         emails = re.findall(r"\b([a-zA-Z0-9._%+-]+)@([a-zA-Z0-9.-]+\.[a-zA-Z]{2,})\b", text)
         for mailbox, domain in emails:
             mailbox_lower = mailbox.lower()
-            if mailbox_lower in {"info", "sales", "support", "office", "admin", "contact", "mail", "help", "billing", "service", "jobs", "estimator"}:
+            if mailbox_lower in GENERIC_MAILBOX_PREFIXES:
                 continue
-                
+
             if "." in mailbox:
-                parts = mailbox.split(".")
-                if len(parts) == 2:
-                    first, last = parts[0], parts[1]
-                    if len(last) > 1:
-                        # firstname.lastname@domain is itself a strong shape
-                        # signal (the generic-mailbox denylist above already
-                        # rules out the main false-positive case) - don't
-                        # require `first` to be in the ~200-name FIRST_NAMES
-                        # dictionary, which silently dropped real names it
-                        # didn't happen to contain (uncommon spellings,
-                        # non-English names). Still prefer the dictionary
-                        # when it does match - that's a stronger signal, so
-                        # only the non-matching case gets a lower-confidence
-                        # tag downstream.
-                        candidate = f"{first.capitalize()} {last.capitalize()}"
-                        cleaned = self._clean_and_validate_name(candidate, require_known_first_name=False)
-                        if cleaned and cleaned.lower() not in seen_names:
-                            seen_names.add(cleaned.lower())
-                            entry: Dict[str, Any] = {
-                                "name": cleaned,
-                                "title": "Key Contact (Email)",
-                                "email": f"{mailbox}@{domain}"
-                            }
-                            if first.lower() not in FIRST_NAMES:
-                                entry["name_confidence"] = "heuristic"
-                            website_data.personnel.append(entry)
-                            
+                inferred = self.infer_name_from_dotted_mailbox(mailbox)
+                if inferred and inferred["name"].lower() not in seen_names:
+                    seen_names.add(inferred["name"].lower())
+                    entry: Dict[str, Any] = {
+                        "name": inferred["name"],
+                        "title": "Key Contact (Email)",
+                        "email": f"{mailbox}@{domain}"
+                    }
+                    if "name_confidence" in inferred:
+                        entry["name_confidence"] = inferred["name_confidence"]
+                    website_data.personnel.append(entry)
+
             elif mailbox_lower in FIRST_NAMES:
                 first_cap = mailbox_lower.capitalize()
                 matches = re.findall(rf"\b({first_cap}\s+[A-Z][a-z]+)\b", text)
