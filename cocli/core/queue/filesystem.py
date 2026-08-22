@@ -815,10 +815,16 @@ class FilesystemGmListQueue(FilesystemQueue):
         s3_client: Any = None,
         bucket_name: Optional[str] = None,
         max_nack_attempts: int = 5,
+        # A tile+phrase scrape's own absolute ceiling is 1500s (25min, see
+        # worker_service.SCRAPE_ABSOLUTE_TIMEOUT_S) - the lease must outlive
+        # that or a still-legitimately-running task's lease can expire and
+        # get reclaimed by a second worker mid-scrape.
+        lease_duration_minutes: int = 30,
     ):
         super().__init__(
             campaign_name,
             "gm-list",
+            lease_duration_minutes=lease_duration_minutes,
             s3_client=s3_client,
             bucket_name=bucket_name,
             max_nack_attempts=max_nack_attempts,
@@ -1058,10 +1064,16 @@ class FilesystemGmDetailsQueue(FilesystemQueue):
         s3_client: Any = None,
         bucket_name: Optional[str] = None,
         max_nack_attempts: int = 5,
+        # A detail-page scrape typically completes in 40-60s with no
+        # multi-minute ceiling of its own (relies on Playwright's own
+        # per-action timeouts) - a short lease reclaims a dead worker's
+        # task fast instead of stalling the queue for 15min.
+        lease_duration_minutes: int = 3,
     ):
         super().__init__(
             campaign_name,
             "gm-details",
+            lease_duration_minutes=lease_duration_minutes,
             s3_client=s3_client,
             bucket_name=bucket_name,
             max_nack_attempts=max_nack_attempts,
@@ -1105,10 +1117,15 @@ class FilesystemEnrichmentQueue(FilesystemQueue):
         s3_client: Any = None,
         bucket_name: Optional[str] = None,
         max_nack_attempts: int = 5,
+        # website_scraper's own site_timeout_seconds default is 120s (2min) -
+        # a short lease reclaims a dead worker's task fast instead of
+        # stalling the queue for 15min.
+        lease_duration_minutes: int = 5,
     ):
         super().__init__(
             campaign_name,
             "enrichment",
+            lease_duration_minutes=lease_duration_minutes,
             s3_client=s3_client,
             bucket_name=bucket_name,
             max_nack_attempts=max_nack_attempts,
