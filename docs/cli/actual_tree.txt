@@ -442,6 +442,10 @@ cocli
             --campaign (text)
             --index (text)
             --debug (boolean)
+        purge-invalid-place-ids - Removes checkpoint rows whose place_id is in a legacy Google CID
+            --campaign (text)
+            --index (text)
+            --apply (boolean)
         requeue-enrichment-gaps - Recover the "Identity Gap (enrichment-enqueue)" gap `cocli audit
             place_id (text)
             --from-file (path)

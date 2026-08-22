@@ -128,6 +128,17 @@ class RequeueResult(BaseModel):
     rows: List[RequeueRow] = Field(default_factory=list)
 
 
+class PurgeInvalidPlaceIdsResult(BaseModel):
+    """Result of purge_invalid_place_ids."""
+
+    campaign_name: str
+    index_name: str
+    dry_run: bool
+    removed_place_ids: List[str] = Field(default_factory=list)
+    checkpoint_before: int = 0
+    checkpoint_after: int = 0
+
+
 class ArchiveWalNodeResult(BaseModel):
     """One node's outcome from archive_incomplete_schema_wal."""
 
@@ -1213,6 +1224,92 @@ class IndexService:
         return RequeueResult(
             campaign_name=self.campaign_name, index_name="google_maps_prospects", rows=out_rows
         )
+
+    # ------------------------------------------------------------------
+    # Purge checkpoint rows whose place_id can never validate (legacy
+    # 0x-prefixed/colon-containing CID format) - not a missing-data
+    # problem, a format problem with no correction queue wanted for it.
+    # ------------------------------------------------------------------
+
+    def purge_invalid_place_ids(
+        self, index_name: str = "google_maps_prospects", dry_run: bool = True
+    ) -> PurgeInvalidPlaceIdsResult:
+        """Removes checkpoint rows whose place_id fails PlaceID validation
+        (starts with "0x" or contains ":" - a legacy Google CID format,
+        never a valid modern Place ID).
+
+        These can never produce a savable GoogleMapsProspect - IDENTITY
+        SHIELD in google_maps_details.py always rejects them at
+        GoogleMapsProspect.from_raw(), even after a full, successful
+        detail-page scrape (confirmed live 2026-08-22 against turboship:
+        323 such rows, every one with a real gmb_url, every one scraping
+        successfully in 40-60s before failing at the final identity
+        check). Leaving them in the checkpoint means every future
+        gap-audit/requeue tool rediscovers and re-wastes the same worker
+        time on them indefinitely - discarding them here is a deliberate
+        choice (Mark, 2026-08-22) over building a place_id-correction
+        queue for what should be a rare case.
+
+        Backs up the checkpoint before rewriting (matches every other
+        checkpoint-touching tool in this module), then re-uploads the
+        corrected checkpoint to S3 via CompactManager.commit_remote() -
+        the same mechanism a normal compact uses - so the stale,
+        still-containing version can't get pulled back down by another
+        machine and undo this.
+
+        Does not touch the gm-details pending queue on any Pi node -
+        pending/ never syncs locally (see requeue_stuck_details), so that
+        cleanup has to happen separately, over SSH, against the actual
+        node(s).
+        """
+        from cocli.core.compact import CompactManager
+        from cocli.core.prospects_csv_manager import ProspectsIndexManager
+        from cocli.models.place_id import validate_place_id
+        from cocli.utils.backup_utils import timestamped_backup_path
+
+        checkpoint_path = ProspectsIndexManager(self.campaign_name).checkpoint_path
+        if not checkpoint_path.exists():
+            return PurgeInvalidPlaceIdsResult(
+                campaign_name=self.campaign_name, index_name=index_name, dry_run=dry_run
+            )
+
+        US = "\x1f"
+        lines = checkpoint_path.read_text(encoding="utf-8").splitlines()
+
+        kept_lines: List[str] = []
+        removed_ids: List[str] = []
+        for line in lines:
+            if not line:
+                continue
+            place_id = line.split(US, 1)[0]
+            try:
+                validate_place_id(place_id)
+            except ValueError:
+                removed_ids.append(place_id)
+                continue
+            kept_lines.append(line)
+
+        result = PurgeInvalidPlaceIdsResult(
+            campaign_name=self.campaign_name,
+            index_name=index_name,
+            dry_run=dry_run,
+            removed_place_ids=removed_ids,
+            checkpoint_before=len(lines),
+            checkpoint_after=len(kept_lines),
+        )
+        if dry_run or not removed_ids:
+            return result
+
+        backup_path = timestamped_backup_path(checkpoint_path)
+        checkpoint_path.rename(backup_path)
+        checkpoint_path.write_text(
+            "".join(line + "\n" for line in kept_lines), encoding="utf-8"
+        )
+
+        manager = CompactManager(campaign_name=self.campaign_name, index_name=index_name)
+        manager.commit_remote()
+
+        return result
 
     # ------------------------------------------------------------------
     # Archive WAL records that don't match the current full schema

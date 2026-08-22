@@ -509,6 +509,45 @@ def requeue_missing_details(
         raise typer.Exit(code=1)
 
 
+@app.command(name="purge-invalid-place-ids")
+def purge_invalid_place_ids(
+    campaign: str = typer.Option("roadmap", help="Campaign name"),
+    index: str = typer.Option("google_maps_prospects", help="Index name"),
+    apply: bool = typer.Option(False, "--apply", help="Actually rewrite the checkpoint (default is dry-run)."),
+) -> None:
+    """
+    Removes checkpoint rows whose place_id is in a legacy Google CID
+    format (starts with "0x" or contains ":") - never a valid modern
+    Place ID, and one GoogleMapsProspect's IDENTITY SHIELD always rejects,
+    even after a full successful gm-details scrape. Discards them rather
+    than building a place_id-correction queue.
+
+    Backs up the checkpoint before rewriting, then re-uploads the
+    corrected checkpoint to S3 so a stale copy can't sync back in.
+
+    Does NOT clean up any already-pushed gm-details pending tasks for
+    these place_ids on a Pi node - that's a separate, manual SSH cleanup
+    since pending/ never syncs locally.
+    """
+    services = ServiceContainer(campaign_name=campaign)
+    result = services.index_service.purge_invalid_place_ids(index_name=index, dry_run=not apply)
+
+    console.print(
+        f"[cyan]{'[DRY RUN] ' if result.dry_run else ''}"
+        f"Checkpoint: {result.checkpoint_before} -> {result.checkpoint_after} rows "
+        f"({len(result.removed_place_ids)} invalid place_id(s) found)[/cyan]"
+    )
+    if result.removed_place_ids:
+        for pid in result.removed_place_ids[:20]:
+            console.print(f"  {pid}")
+        if len(result.removed_place_ids) > 20:
+            console.print(f"  ... and {len(result.removed_place_ids) - 20} more")
+    if result.dry_run:
+        console.print("[yellow]Dry run - no changes written. Re-run with --apply to write.[/yellow]")
+    else:
+        console.print("[green]Checkpoint rewritten and re-uploaded to S3.[/green]")
+
+
 @app.command(name="backfill-domains")
 def backfill_domains(
     campaign: str = typer.Option("roadmap", help="Campaign name"),
