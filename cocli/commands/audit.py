@@ -770,7 +770,12 @@ for q in gm-list gm-details enrichment; do
     # wouldn't sum to the mission total the way it does for every other queue.
     if [ "$q" = "gm-list" ] && [ "$s" = "completed" ]; then
       c=$(find ~/repos/data/campaigns/__CAMPAIGN__/queues/gm-list/completed/results -name '*.json' 2>/dev/null | wc -l)
-      c1h=$(find ~/repos/data/campaigns/__CAMPAIGN__/queues/gm-list/completed/results -name '*.json' -newermt '-1 hour' 2>/dev/null | wc -l)
+      # ctime (-newerct), not mtime (-newermt): ack() completes tasks via a
+      # plain rename(), which POSIX never updates mtime for - only ctime and
+      # the directory entry. A task whose pending file predates its own
+      # completion by over an hour (any real backlog) would otherwise never
+      # count as "done" in the last hour, no matter how recently it finished.
+      c1h=$(find ~/repos/data/campaigns/__CAMPAIGN__/queues/gm-list/completed/results -name '*.json' -newerct '-1 hour' 2>/dev/null | wc -l)
       echo "$q/$s=$c"
       echo "$q/done_1h=$c1h"
       continue
@@ -778,7 +783,8 @@ for q in gm-list gm-details enrichment; do
     c=$(find ~/repos/data/campaigns/__CAMPAIGN__/queues/$q/$s -type f 2>/dev/null | wc -l)
     echo "$q/$s=$c"
     if [ "$s" = "completed" ]; then
-      c1h=$(find ~/repos/data/campaigns/__CAMPAIGN__/queues/$q/$s -type f -newermt '-1 hour' 2>/dev/null | wc -l)
+      # ctime, not mtime - see the gm-list branch above for why.
+      c1h=$(find ~/repos/data/campaigns/__CAMPAIGN__/queues/$q/$s -type f -newerct '-1 hour' 2>/dev/null | wc -l)
       echo "$q/done_1h=$c1h"
     fi
   done
