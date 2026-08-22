@@ -253,6 +253,10 @@ def test_compact_lock_failure() -> None:
     with (
         patch.object(IndexService, "list_interrupted_runs", return_value=[]),
         patch("cocli.core.compact.CompactManager", return_value=manager),
+        patch(
+            "cocli.core.transformers.gm_list_to_checkpoint.compact_gm_list_results",
+            return_value=0,
+        ),
     ):
         result = service.compact("google_maps_prospects")
 
@@ -269,6 +273,10 @@ def test_compact_success_path() -> None:
     with (
         patch.object(IndexService, "list_interrupted_runs", return_value=[]),
         patch("cocli.core.compact.CompactManager", return_value=manager),
+        patch(
+            "cocli.core.transformers.gm_list_to_checkpoint.compact_gm_list_results",
+            return_value=0,
+        ),
     ):
         result = service.compact(
             "google_maps_prospects",
@@ -300,6 +308,10 @@ def test_compact_nothing_to_do() -> None:
     with (
         patch.object(IndexService, "list_interrupted_runs", return_value=[]),
         patch("cocli.core.compact.CompactManager", return_value=manager),
+        patch(
+            "cocli.core.transformers.gm_list_to_checkpoint.compact_gm_list_results",
+            return_value=0,
+        ),
     ):
         result = service.compact("google_maps_prospects")
 
@@ -307,6 +319,86 @@ def test_compact_nothing_to_do() -> None:
     assert result.isolated_files == 0
     assert result.message == "Nothing to compact."
     manager.merge.assert_not_called()
+
+
+def test_compact_merges_gm_list_results_for_prospects_index() -> None:
+    manager = _make_compact_manager_mock(lock_ok=True, moved=1)
+    service = IndexService(campaign_name="roadmap")
+    with (
+        patch.object(IndexService, "list_interrupted_runs", return_value=[]),
+        patch("cocli.core.compact.CompactManager", return_value=manager),
+        patch(
+            "cocli.core.transformers.gm_list_to_checkpoint.compact_gm_list_results",
+            return_value=42,
+        ) as gm_merge,
+    ):
+        result = service.compact("google_maps_prospects")
+
+    gm_merge.assert_called_once_with("roadmap")
+    assert result.success is True
+
+
+def test_compact_skips_gm_list_merge_for_non_prospects_index() -> None:
+    manager = _make_compact_manager_mock(lock_ok=True, moved=1)
+    service = IndexService(campaign_name="roadmap")
+    with (
+        patch.object(IndexService, "list_interrupted_runs", return_value=[]),
+        patch("cocli.core.compact.CompactManager", return_value=manager),
+        patch(
+            "cocli.core.transformers.gm_list_to_checkpoint.compact_gm_list_results",
+        ) as gm_merge,
+    ):
+        result = service.compact("emails")
+
+    gm_merge.assert_not_called()
+    assert result.success is True
+
+
+def test_compact_gm_list_merge_failure_is_non_fatal() -> None:
+    """gm-list merge is a best-effort enrichment step, not the primary
+    WAL->checkpoint compaction - a failure there (e.g. a malformed results
+    file) must not abort the real compaction that follows it."""
+    manager = _make_compact_manager_mock(lock_ok=True, moved=1)
+    service = IndexService(campaign_name="roadmap")
+    with (
+        patch.object(IndexService, "list_interrupted_runs", return_value=[]),
+        patch("cocli.core.compact.CompactManager", return_value=manager),
+        patch(
+            "cocli.core.transformers.gm_list_to_checkpoint.compact_gm_list_results",
+            side_effect=RuntimeError("malformed gm-list result"),
+        ),
+    ):
+        result = service.compact("google_maps_prospects")
+
+    assert result.success is True
+    manager.merge.assert_called_once()
+    manager.commit_remote.assert_called_once()
+
+
+def test_compact_gm_list_merge_does_not_override_nothing_to_compact() -> None:
+    """A gm-list merge updates the local checkpoint file as a best-effort
+    side step, but deliberately does not force a commit when isolate_wal()
+    finds no new WAL - that would make every gm-list merge (even a no-op
+    one, since it's a full rewrite not a delta) trigger an S3 upload. The
+    gm-list-recovered data isn't lost either way: it's already in the
+    checkpoint file and rides along as a retained input on the next real
+    compact."""
+    manager = _make_compact_manager_mock(lock_ok=True, moved=0)
+    service = IndexService(campaign_name="roadmap")
+    with (
+        patch.object(IndexService, "list_interrupted_runs", return_value=[]),
+        patch("cocli.core.compact.CompactManager", return_value=manager),
+        patch(
+            "cocli.core.transformers.gm_list_to_checkpoint.compact_gm_list_results",
+            return_value=17080,
+        ) as gm_merge,
+    ):
+        result = service.compact("google_maps_prospects")
+
+    gm_merge.assert_called_once_with("roadmap")
+    assert result.message == "Nothing to compact."
+    manager.merge.assert_not_called()
+    manager.commit_remote.assert_not_called()
     manager.release_lock.assert_called_once()
 
 
@@ -319,6 +411,10 @@ def test_compact_recovers_interrupted_runs() -> None:
         ),
         patch.object(IndexService, "recover_interrupted_run") as recover,
         patch("cocli.core.compact.CompactManager", return_value=manager),
+        patch(
+            "cocli.core.transformers.gm_list_to_checkpoint.compact_gm_list_results",
+            return_value=0,
+        ),
     ):
         result = service.compact("google_maps_prospects")
 
@@ -339,6 +435,10 @@ def test_compact_aborts_when_isolate_wal_fails() -> None:
     with (
         patch.object(IndexService, "list_interrupted_runs", return_value=[]),
         patch("cocli.core.compact.CompactManager", return_value=manager),
+        patch(
+            "cocli.core.transformers.gm_list_to_checkpoint.compact_gm_list_results",
+            return_value=0,
+        ),
     ):
         result = service.compact("google_maps_prospects")
 

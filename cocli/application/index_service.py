@@ -358,6 +358,40 @@ class IndexService:
         _emit(log_callback, "Lock acquired.")
 
         try:
+            if index_name == "google_maps_prospects":
+                # gm-list already captures category/phone/rating/reviews_count/
+                # street_address reliably (see task-agent
+                # wire-gm-list-data-into-prospects-compaction-deprioritize-
+                # gm-details) - COALESCE(gm_list.field, checkpoint.field) only
+                # ever fills a gap or refreshes, never blanks a good value, so
+                # this is safe to run on every compact. Was previously a
+                # separate manual step (`cocli data queue compact gm-list`)
+                # that ran exactly once (2026-06-29) and was never automated -
+                # confirmed live 2026-08-21 against turboship, real gm-list
+                # data on disk was never reaching most of the checkpoint.
+                #
+                # Deliberately does not affect the moved == 0 short-circuit
+                # below: this just updates the local checkpoint file as a
+                # best-effort side step. If a run has no new WAL either, the
+                # gm-list-recovered data isn't lost - it's already sitting in
+                # the checkpoint file and rides along as a retained input on
+                # the next real compact. Forcing an extra S3 commit on every
+                # gm-list merge (even a no-op one) was considered and
+                # rejected as more invasive than necessary.
+                _emit(log_callback, "Merging gm-list results into checkpoint...")
+                try:
+                    from cocli.core.transformers.gm_list_to_checkpoint import (
+                        compact_gm_list_results,
+                    )
+
+                    gm_list_merged = compact_gm_list_results(self.campaign_name)
+                    _emit(log_callback, f"gm-list merge: {gm_list_merged} records.")
+                except Exception as e:
+                    logger.warning(
+                        "gm-list merge failed for %s: %s", self.campaign_name, e
+                    )
+                    _emit(log_callback, f"gm-list merge failed (continuing): {e}")
+
             _emit(log_callback, "Staging Pi WAL over Tailscale...")
             moved = manager.isolate_wal(nodes=nodes)
             if moved == 0:
