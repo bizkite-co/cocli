@@ -1003,6 +1003,218 @@ class IndexService:
         return RequeueResult(campaign_name=self.campaign_name, index_name="enrichment", rows=out_rows)
 
     # ------------------------------------------------------------------
+    # Requeue gm-details for place_ids the checkpoint already knows (name,
+    # slug, gmb_url) but that have no gm-details completed/pending record -
+    # e.g. an older scrape cycle whose original gm-list source files have
+    # since been cleaned up, so requeue_stuck_details' gm-list-result
+    # fallback has nothing to read either.
+    # ------------------------------------------------------------------
+
+    def requeue_missing_details(
+        self, place_ids: List[str], batch_size: int = 1000
+    ) -> RequeueResult:
+        """Push a fresh gm-details task for each place_id, built directly
+        from the prospects checkpoint (name/company_slug/category/gmb_url) -
+        no gm-list result file needed, unlike requeue_stuck_details.
+
+        Confirmed live 2026-08-22 against turboship: ~11,000 checkpoint
+        place_ids from an earlier scrape cycle have no gm-details
+        completed/pending record and no matching file left in the current
+        gm-list results directory either - their original gm-list source
+        was already cleaned up by normal queue lifecycle, but the
+        checkpoint retained their identity + gmb_url from whenever they
+        were first compacted, which is enough to build a fresh gm-details
+        task without re-running gm-list at all.
+
+        Batched into one SSH call per chunk (batch_size place_ids at a
+        time, not one call per record) with the same sudo + per-record
+        if/then/else isolation as requeue_enrichment_gaps - this is meant
+        to run against four-to-five-figure batches, where both a
+        per-record SSH round trip and one giant unbounded script would be
+        real risks at that scale.
+
+        Only checks the local (synced) gm-details completed/ bucket to
+        skip already-done place_ids - pending/ is never synced locally
+        (see requeue_stuck_details), so a place_id already pending on the
+        Pi may get pushed again here. Harmless: gm-details pending tasks
+        are filename-keyed by place_id, so a repeat push just overwrites
+        the existing pending task.json with equivalent content, not a
+        duplicate.
+        """
+        import shlex
+        import subprocess
+
+        import duckdb
+
+        from cocli.core.prospect_trace import QueueBucketCheck
+        from cocli.core.prospects_csv_manager import ProspectsIndexManager
+        from cocli.core.sharding import get_place_id_shard
+        from cocli.models.campaigns.indexes.google_maps_prospect import (
+            GoogleMapsProspect,
+        )
+        from cocli.models.campaigns.queues.gm_details import GmItemTask
+        from cocli.services.cluster_service import ClusterService
+
+        checkpoint_path = ProspectsIndexManager(self.campaign_name).checkpoint_path
+        if not checkpoint_path.exists():
+            return RequeueResult(
+                campaign_name=self.campaign_name,
+                index_name="google_maps_prospects",
+                rows=[
+                    RequeueRow(place_id=pid, status="not_found", detail="no checkpoint")
+                    for pid in place_ids
+                ],
+            )
+
+        model_fields = GoogleMapsProspect.model_fields
+        columns: Dict[str, str] = {}
+        for name, field in model_fields.items():
+            field_type = "VARCHAR"
+            type_str = str(field.annotation)
+            if "int" in type_str:
+                field_type = "INTEGER"
+            elif "float" in type_str:
+                field_type = "DOUBLE"
+            columns[name] = field_type
+
+        con = duckdb.connect(database=":memory:")
+        con.execute(
+            "CREATE TABLE prospects AS SELECT * FROM read_csv(?, delim=chr(31), "
+            "header=False, columns=?, auto_detect=False, ignore_errors=True, quote='')",
+            [str(checkpoint_path), columns],
+        )
+        placeholders = ", ".join("?" for _ in place_ids)
+        rows_by_id = {
+            r[0]: r
+            for r in con.execute(
+                "SELECT place_id, name, slug, category, gmb_url, "
+                "discovery_phrase, discovery_tile_id FROM prospects "
+                f"WHERE place_id IN ({placeholders})",
+                place_ids,
+            ).fetchall()
+        }
+
+        campaign_paths = paths.campaign(self.campaign_name)
+        gm_details_queue = campaign_paths.queue("gm-details")
+        completed_check = QueueBucketCheck(
+            "gm-details", gm_details_queue.completed, gm_details_queue.pending
+        )
+
+        out_rows: List[RequeueRow] = []
+        tasks_to_push: List[tuple[str, str]] = []  # (place_id, task_json)
+        for place_id in place_ids:
+            row = rows_by_id.get(place_id)
+            gmb_url = row[4] if row else None
+            if not row or not gmb_url or not gmb_url.strip():
+                out_rows.append(
+                    RequeueRow(
+                        place_id=place_id, status="not_found",
+                        detail="no checkpoint row with a gmb_url",
+                    )
+                )
+                continue
+
+            if completed_check.check(place_id).state == "completed":
+                out_rows.append(
+                    RequeueRow(place_id=place_id, status="skipped", detail="already completed")
+                )
+                continue
+
+            task = GmItemTask(
+                place_id=place_id,
+                campaign_name=self.campaign_name,
+                name=row[1] or "",
+                company_slug=row[2] or "",
+                gmb_url=gmb_url,
+                category=row[3] or None,
+                discovery_phrase=row[5] or None,
+                discovery_tile_id=row[6] or None,
+            )
+            tasks_to_push.append((place_id, task.model_dump_json()))
+            out_rows.append(RequeueRow(place_id=place_id, status="requeued", detail=""))
+
+        if not tasks_to_push:
+            return RequeueResult(
+                campaign_name=self.campaign_name, index_name="google_maps_prospects", rows=out_rows
+            )
+
+        try:
+            nodes = ClusterService(self.campaign_name).get_nodes()
+        except Exception as e:
+            logger.warning("Could not resolve cluster nodes for %s: %s", self.campaign_name, e)
+            nodes = []
+        candidate_nodes = [n for n in nodes if n.enabled] or nodes
+        if not candidate_nodes:
+            for out_row in out_rows:
+                if out_row.status == "requeued":
+                    out_row.status = "ssh_error"
+                    out_row.detail = "no cluster nodes"
+            return RequeueResult(
+                campaign_name=self.campaign_name, index_name="google_maps_prospects", rows=out_rows
+            )
+
+        push_node = candidate_nodes[0]
+        push_target = push_node.ip_address or push_node.hostname
+        remote_base = f"repos/data/campaigns/{self.campaign_name}/queues/gm-details/pending"
+
+        rows_by_place_id = {r.place_id: r for r in out_rows}
+        for chunk_start in range(0, len(tasks_to_push), batch_size):
+            chunk = tasks_to_push[chunk_start : chunk_start + batch_size]
+            script_lines = []
+            for place_id, task_json in chunk:
+                shard = get_place_id_shard(place_id)
+                remote_dir = shlex.quote(f"{remote_base}/{shard}/{place_id}")
+                delimiter = f"COCLI_TASK_EOF_{shard}_{abs(hash(place_id))}"
+                marker = shlex.quote(place_id)
+                script_lines.append(
+                    f"if sudo mkdir -p {remote_dir} && "
+                    f"sudo tee {remote_dir}/task.json > /dev/null <<'{delimiter}'\n"
+                    f"{task_json}\n"
+                    f"{delimiter}\n"
+                    f"then echo COCLI_OK:{marker}; else echo COCLI_FAIL:{marker}; fi"
+                )
+            script = "\n".join(script_lines) + "\n"
+
+            try:
+                write_result = subprocess.run(
+                    ["ssh", "-o", "ConnectTimeout=15", f"mstouffer@{push_target}", "bash -s"],
+                    input=script, capture_output=True, text=True, timeout=300,
+                )
+            except subprocess.TimeoutExpired:
+                write_result = None
+
+            chunk_ids = {pid for pid, _ in chunk}
+            if write_result is None:
+                for pid in chunk_ids:
+                    rows_by_place_id[pid].status = "ssh_error"
+                    rows_by_place_id[pid].detail = f"{push_node.hostname}: timeout"
+            elif write_result.returncode != 0 and not write_result.stdout.strip():
+                for pid in chunk_ids:
+                    rows_by_place_id[pid].status = "ssh_error"
+                    rows_by_place_id[pid].detail = f"{push_node.hostname}: {write_result.stderr.strip()}"
+            else:
+                ok_ids = set()
+                fail_ids = set()
+                for line in write_result.stdout.splitlines():
+                    if line.startswith("COCLI_OK:"):
+                        ok_ids.add(line[len("COCLI_OK:"):])
+                    elif line.startswith("COCLI_FAIL:"):
+                        fail_ids.add(line[len("COCLI_FAIL:"):])
+                for pid in chunk_ids:
+                    if pid in ok_ids:
+                        rows_by_place_id[pid].detail = f"pushed to {push_node.hostname}"
+                    elif pid in fail_ids:
+                        rows_by_place_id[pid].status = "ssh_error"
+                        rows_by_place_id[pid].detail = f"{push_node.hostname}: mkdir/write failed (stale permissions?)"
+                    else:
+                        rows_by_place_id[pid].status = "ssh_error"
+                        rows_by_place_id[pid].detail = f"{push_node.hostname}: no result marker seen"
+
+        return RequeueResult(
+            campaign_name=self.campaign_name, index_name="google_maps_prospects", rows=out_rows
+        )
+
+    # ------------------------------------------------------------------
     # Archive WAL records that don't match the current full schema
     # ------------------------------------------------------------------
 

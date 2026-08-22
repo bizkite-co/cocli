@@ -447,6 +447,11 @@ cocli
             --from-file (path)
             --from-audit-csv (path)
             --campaign (text)
+        requeue-missing-details - Push a fresh gm-details task for place_ids the checkpoint already knows
+            place_id (text)
+            --from-file (path)
+            --campaign (text)
+            --batch-size (integer)
         requeue-stuck-details - Recover gm-details tasks that were acked with no real output - the
             place_id (text)
             --from-file (path)

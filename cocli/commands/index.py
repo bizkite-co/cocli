@@ -433,6 +433,82 @@ def requeue_enrichment_gaps(
         raise typer.Exit(code=1)
 
 
+@app.command(name="requeue-missing-details")
+def requeue_missing_details(
+    place_id: Optional[str] = typer.Argument(
+        None, help="Single place_id to requeue for gm-details."
+    ),
+    from_file: Optional[Path] = typer.Option(
+        None, "--from-file", help="File of place_ids, one per line, for batch mode."
+    ),
+    campaign: str = typer.Option("roadmap", help="Campaign name"),
+    batch_size: int = typer.Option(
+        1000, "--batch-size", help="place_ids per SSH call (not one call per record)."
+    ),
+) -> None:
+    """
+    Push a fresh gm-details task for place_ids the checkpoint already knows
+    (name/company_slug/category/gmb_url) but that have no gm-details
+    completed/pending record - e.g. an older scrape cycle whose original
+    gm-list source files have since been cleaned up, so
+    `requeue-stuck-details`'s gm-list-result fallback has nothing to read
+    either. Builds the task directly from the checkpoint row - no gm-list
+    file needed.
+
+    Skips place_ids with no gmb_url in the checkpoint, and anything already
+    gm-details-completed - safe to re-run.
+    """
+    if not place_id and not from_file:
+        console.print("[red]Provide a place_id argument or --from-file.[/red]")
+        raise typer.Exit(1)
+    if place_id and from_file:
+        console.print("[red]Provide either a place_id or --from-file, not both.[/red]")
+        raise typer.Exit(1)
+
+    if place_id:
+        ids = [place_id]
+    else:
+        assert from_file is not None
+        ids = [line.strip() for line in from_file.read_text().splitlines() if line.strip()]
+
+    if not ids:
+        console.print("[yellow]No place_ids to requeue.[/yellow]")
+        return
+
+    services = ServiceContainer(campaign_name=campaign)
+    result = services.index_service.requeue_missing_details(ids, batch_size=batch_size)
+
+    from collections import Counter
+
+    from rich.table import Table
+
+    tally = Counter(row.status for row in result.rows)
+    summary = Table(title=f"Requeue missing details: {len(result.rows)} place_ids")
+    summary.add_column("status")
+    summary.add_column("count", justify="right")
+    for status, count in tally.most_common():
+        color = {"requeued": "green", "not_found": "yellow", "skipped": "cyan", "ssh_error": "red"}.get(
+            status, "white"
+        )
+        summary.add_row(f"[{color}]{status}[/{color}]", str(count))
+    console.print(summary)
+
+    if len(result.rows) <= 50:
+        table = Table(title="Detail")
+        table.add_column("place_id")
+        table.add_column("status")
+        table.add_column("detail")
+        for row in result.rows:
+            color = {"requeued": "green", "not_found": "yellow", "skipped": "cyan", "ssh_error": "red"}.get(
+                row.status, "white"
+            )
+            table.add_row(row.place_id, f"[{color}]{row.status}[/{color}]", row.detail)
+        console.print(table)
+
+    if any(r.status == "ssh_error" for r in result.rows):
+        raise typer.Exit(code=1)
+
+
 @app.command(name="backfill-domains")
 def backfill_domains(
     campaign: str = typer.Option("roadmap", help="Campaign name"),
