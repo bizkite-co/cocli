@@ -731,7 +731,12 @@ echo
 echo '@@WORKERS@@'
 grep -E 'Starting worker:' "$LOGFILE" | tail -30 || true
 echo '@@ERRORS@@'
-docker logs --since 30m cocli-supervisor 2>&1 | grep -icE 'error|exception|traceback|denied' || true
+# [navigation_failed] is ErrorCategory.NAVIGATION_FAILED - "site
+# unreachable/blocked/4xx/5xx - never our bug" per error_classification.py -
+# excluded here so DEGRADED reflects real pipeline health, not the baseline
+# failure rate of scraping arbitrary real-world websites. Still fully
+# visible below in ERROR_PATTERNS.
+docker logs --since 30m cocli-supervisor 2>&1 | grep -vF '[navigation_failed]' | grep -icE 'error|exception|traceback|denied' || true
 echo '@@ERROR_PATTERNS@@'
 # Normalize variable parts (timestamps, per-company/campaign path segments, long
 # IDs/hashes/ARNs) so the same underlying error collapses to one bucket instead
