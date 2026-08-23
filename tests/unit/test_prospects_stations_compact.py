@@ -190,6 +190,69 @@ def test_prospects_compact_fold_is_field_level_not_whole_row(
     )
 
 
+def test_prospects_compact_survives_literal_quote_characters_in_fields(
+    tmp_path: Path, monkeypatch: Any
+) -> None:
+    """DuckDB's read_csv defaults to the double-quote character as its quote
+    character. A field containing several literal double-quote characters
+    in a row (a real, confirmed scraper artifact seen in a mangled
+    full_address value) breaks that default quoting and, combined with
+    ignore_errors=True, silently drops the WHOLE ROW from the fold with no
+    error surfaced - not just the offending field. This is a stronger bug
+    than field-level erasure: the place_id vanishes from the checkpoint
+    entirely. read_csv must be called with quote='' (treat the delimiter
+    file as unquoted) to fix it."""
+    from cocli.core import paths as paths_mod
+
+    monkeypatch.setattr(paths_mod.paths, "root", tmp_path)
+
+    index_dir = tmp_path / "campaigns" / "t" / "indexes" / "google_maps_prospects"
+    index_dir.mkdir(parents=True)
+    wal = index_dir / "wal" / "a"
+    wal.mkdir(parents=True)
+    checkpoint = index_dir / "prospects.usv"
+
+    checkpoint.write_text(
+        _full_usv_line(
+            "ChIJQuoted",
+            "Quote Corp",
+            "2026-01-01T00:00:00+00:00",
+            extra={
+                "category": "Flooring contractor",
+                "phone": "555-0001",
+                "full_address": '"""""1501 Heritage Pkwy # 105"""""',
+            },
+        ),
+        encoding="utf-8",
+    )
+    (wal / "p1.usv").write_text(
+        _full_usv_line(
+            "ChIJQuoted",
+            "Quote Corp",
+            "2026-01-05T00:00:00+00:00",
+            extra={"phone": "555-9999"},
+        ),
+        encoding="utf-8",
+    )
+
+    assert (
+        compact_prospects_local(
+            index_dir, checkpoint_path=checkpoint, compactor_id="quote-survival"
+        )
+        is True
+    )
+
+    lines = [ln for ln in checkpoint.read_text(encoding="utf-8").splitlines() if ln]
+    assert len(lines) == 1, "the row must not be silently dropped entirely"
+
+    names = GoogleMapsProspect.usv_field_names()
+    idx = {n: i for i, n in enumerate(names)}
+    parts = lines[0].split("\x1f")
+    assert parts[idx["place_id"]] == "ChIJQuoted"
+    assert parts[idx["phone"]] == "555-9999"
+    assert parts[idx["category"]] == "Flooring contractor"
+
+
 def test_prospects_compact_fold_ignores_garbage_updated_at_as_tiebreaker(
     tmp_path: Path, monkeypatch: Any
 ) -> None:

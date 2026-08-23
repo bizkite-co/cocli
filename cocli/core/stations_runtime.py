@@ -496,7 +496,8 @@ def _duckdb_fold_prospect_usv_files(
                     header=False,
                     columns={cols},
                     auto_detect=false,
-                    ignore_errors=True
+                    ignore_errors=True,
+                    quote=''
                 )
                 GROUP BY place_id
             ) TO '{tmp}' (DELIMITER '\x1f', HEADER FALSE)

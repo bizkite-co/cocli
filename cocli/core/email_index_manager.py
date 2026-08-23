@@ -83,13 +83,13 @@ class EmailIndexManager:
         shard_paths = [str(p) for p in self.shards_dir.glob("*.usv")]
         if shard_paths:
             path_list = "', '".join(shard_paths)
-            sub_queries.append(f"SELECT * FROM read_csv(['{path_list}'], delim='\x1f', header=False, columns={json.dumps(columns)}, auto_detect=False, ignore_errors=True)")
+            sub_queries.append(f"SELECT * FROM read_csv(['{path_list}'], delim='\x1f', header=False, columns={json.dumps(columns)}, auto_detect=False, ignore_errors=True, quote='')")
 
         # 2. Collect Inbox
         inbox_paths = [str(p) for p in self.inbox_dir.rglob("*.usv")]
         if inbox_paths:
             path_list = "', '".join(inbox_paths)
-            sub_queries.append(f"SELECT * FROM read_csv(['{path_list}'], delim='\x1f', header=False, columns={json.dumps(columns)}, auto_detect=False, ignore_errors=True)")
+            sub_queries.append(f"SELECT * FROM read_csv(['{path_list}'], delim='\x1f', header=False, columns={json.dumps(columns)}, auto_detect=False, ignore_errors=True, quote='')")
 
         if not sub_queries:
             return []
