@@ -14,10 +14,11 @@ def test_remove_outer_double_quotes():
     assert str(ca) == "123 Main St, Austin, TX 78701"
 
 
-def test_remove_outer_single_quotes():
-    """Test removal of outer single quotes."""
+def test_preserves_single_quotes():
+    """Single-quotes are preserved - only double-quotes (the confirmed real
+    CSV/scraper corruption artifact) are stripped."""
     ca = CompanyAddress.model_validate("'123 Main St, Austin, TX 78701'")
-    assert str(ca) == "123 Main St, Austin, TX 78701"
+    assert str(ca) == "'123 Main St, Austin, TX 78701'"
 
 
 def test_remove_doubled_quotes():
@@ -28,9 +29,9 @@ def test_remove_doubled_quotes():
 
 
 def test_remove_mixed_quotes():
-    """Test removal of mixed quote characters."""
+    """Only double-quotes are stripped; an embedded single-quote survives."""
     ca = CompanyAddress.model_validate('"123 \'Main\' St, Austin, TX 78701"')
-    assert str(ca) == "123 Main St, Austin, TX 78701"
+    assert str(ca) == "123 'Main' St, Austin, TX 78701"
 
 
 def test_normalize_whitespace():

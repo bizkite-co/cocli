@@ -41,7 +41,8 @@ class CompanyName:
     A validated company name that removes CSV quote artifacts and normalizes whitespace.
 
     Handles:
-    - Removal of all quote characters (single, double, escaped)
+    - Removal of double-quote characters (CSV artifact) - single-quotes are
+      preserved since they're routinely real content (e.g. "John's Flooring")
     - Whitespace normalization (collapse multiple spaces)
     - Trimming of leading/trailing whitespace
 
@@ -86,9 +87,12 @@ class CompanyName:
         if not v or v.lower() == 'none' or v.lower() == 'null':
             raise ValueError("Empty company name")
 
-        # Remove all quote characters (single and double)
-        # Just strip them all since we're using USV format, not CSV
-        v = v.replace('"', '').replace("'", '')
+        # Only double-quotes are a CSV/scraper artifact worth stripping - a
+        # single-quote is routinely real content in a business name
+        # ("John's Flooring", "Lowe's") and must survive (confirmed live:
+        # 193 of 197 quote-containing checkpoint names were legitimate
+        # apostrophes, only 4 were real "..." corruption).
+        v = v.replace('"', '')
 
         # Normalize whitespace: collapse multiple spaces to single space
         v = re.sub(r'\s+', ' ', v).strip()

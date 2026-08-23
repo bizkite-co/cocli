@@ -14,10 +14,16 @@ def test_remove_outer_double_quotes():
     assert str(cn) == "Acme Corp"
 
 
-def test_remove_outer_single_quotes():
-    """Test removal of outer single quotes."""
+def test_preserves_single_quotes():
+    """Single-quotes are real content in business names ("John's Flooring",
+    "Lowe's") far more often than they're a CSV artifact - confirmed live
+    against production data (193 of 197 checkpoint names with a quote
+    character were legitimate apostrophes, only 4 were real corruption,
+    and all 4 used double-quotes). Only double-quotes get stripped."""
     cn = CompanyName.model_validate("'Acme Corp'")
-    assert str(cn) == "Acme Corp"
+    assert str(cn) == "'Acme Corp'"
+    cn2 = CompanyName.model_validate("John's Flooring Inc.")
+    assert str(cn2) == "John's Flooring Inc."
 
 
 def test_remove_doubled_quotes():
@@ -28,9 +34,9 @@ def test_remove_doubled_quotes():
 
 
 def test_remove_mixed_quotes():
-    """Test removal of mixed quote characters."""
+    """Only double-quotes are stripped; an embedded single-quote survives."""
     cn = CompanyName.model_validate('"Acme \'Real\' Corp"')
-    assert str(cn) == "Acme Real Corp"
+    assert str(cn) == "Acme 'Real' Corp"
 
 
 def test_normalize_whitespace():
