@@ -548,6 +548,45 @@ def purge_invalid_place_ids(
         console.print("[green]Checkpoint rewritten and re-uploaded to S3.[/green]")
 
 
+@app.command(name="clean-quote-corruption")
+def clean_quote_corruption(
+    campaign: str = typer.Option("roadmap", help="Campaign name"),
+    index: str = typer.Option("google_maps_prospects", help="Index name"),
+    apply: bool = typer.Option(False, "--apply", help="Actually rewrite the checkpoint (default is dry-run)."),
+) -> None:
+    """
+    Strips literal double-quote characters from checkpoint text fields
+    (see docs/data-management/data-quality-incidents/001 and 002). Before
+    commit 931cc4ec, a field with several literal quote characters could
+    make a compaction silently drop the entire row; a checkpoint compacted
+    before that fix may still carry residual quote-corrupted rows even
+    though new corruption can no longer occur. Single-quotes/apostrophes
+    are never touched - they're routinely real content in a business name
+    or address.
+
+    Backs up the checkpoint before rewriting, then re-uploads the cleaned
+    checkpoint to S3 so a stale copy can't sync back in.
+    """
+    services = ServiceContainer(campaign_name=campaign)
+    result = services.index_service.clean_quote_corruption(index_name=index, dry_run=not apply)
+
+    console.print(
+        f"[cyan]{'[DRY RUN] ' if result.dry_run else ''}"
+        f"{result.rows_cleaned} of {result.checkpoint_total} rows had quote corruption[/cyan]"
+    )
+    if result.fields_affected:
+        for fname, count in sorted(result.fields_affected.items(), key=lambda kv: -kv[1]):
+            console.print(f"  {fname}: {count}")
+    if result.sample_place_ids:
+        console.print("Sample affected place_ids:")
+        for pid in result.sample_place_ids:
+            console.print(f"  {pid}")
+    if result.dry_run:
+        console.print("[yellow]Dry run - no changes written. Re-run with --apply to write.[/yellow]")
+    elif result.rows_cleaned:
+        console.print("[green]Checkpoint cleaned and re-uploaded to S3.[/green]")
+
+
 @app.command(name="backfill-domains")
 def backfill_domains(
     campaign: str = typer.Option("roadmap", help="Campaign name"),

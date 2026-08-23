@@ -438,6 +438,10 @@ cocli
             --campaign (text)
             --limit/-l (integer)
             --compact (boolean)
+        clean-quote-corruption - Strips literal double-quote characters from checkpoint text fields
+            --campaign (text)
+            --index (text)
+            --apply (boolean)
         compact - Compact the Write-Ahead Log (WAL) into the main Checkpoint.
             --campaign (text)
             --index (text)

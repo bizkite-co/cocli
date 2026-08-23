@@ -79,6 +79,9 @@ class IndexServiceProvider(Protocol):
     def purge_invalid_place_ids(
         self, index_name: str = "google_maps_prospects", dry_run: bool = True
     ) -> Any: ...
+    def clean_quote_corruption(
+        self, index_name: str = "google_maps_prospects", dry_run: bool = True
+    ) -> Any: ...
     def archive_incomplete_schema_wal(
         self,
         index_name: str = "google_maps_prospects",

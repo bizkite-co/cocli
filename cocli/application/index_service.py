@@ -139,6 +139,18 @@ class PurgeInvalidPlaceIdsResult(BaseModel):
     checkpoint_after: int = 0
 
 
+class CleanQuoteCorruptionResult(BaseModel):
+    """Result of clean_quote_corruption."""
+
+    campaign_name: str
+    index_name: str
+    dry_run: bool
+    checkpoint_total: int = 0
+    rows_cleaned: int = 0
+    fields_affected: Dict[str, int] = Field(default_factory=dict)
+    sample_place_ids: List[str] = Field(default_factory=list)
+
+
 class ArchiveWalNodeResult(BaseModel):
     """One node's outcome from archive_incomplete_schema_wal."""
 
@@ -1304,6 +1316,108 @@ class IndexService:
         checkpoint_path.rename(backup_path)
         checkpoint_path.write_text(
             "".join(line + "\n" for line in kept_lines), encoding="utf-8"
+        )
+
+        manager = CompactManager(campaign_name=self.campaign_name, index_name=index_name)
+        manager.commit_remote()
+
+        return result
+
+    def clean_quote_corruption(
+        self, index_name: str = "google_maps_prospects", dry_run: bool = True
+    ) -> CleanQuoteCorruptionResult:
+        """Strips literal double-quote characters from checkpoint text fields.
+
+        Root cause (task-agent data-quality-incidents/001): DuckDB's fold
+        used to read this checkpoint without ``quote=''``, so a field with
+        several literal ``"`` characters (a real, recurring scraper
+        artifact - a mangled address wrapped in a run of repeated quote
+        characters) would break its default CSV quote parsing and silently
+        drop the *entire row* from compaction, not just that field. The
+        fold itself is fixed (commit 931cc4ec), but any checkpoint that
+        already accumulated this corruption before the fix still carries
+        it - this cleans that residue.
+
+        Only double-quotes are stripped, matching the same fix applied to
+        CompanyName/CompanyAddress (data-quality-incidents/002): a
+        single-quote is routinely real content in a business name or
+        address ("John's Flooring") and must never be touched.
+
+        Field selection is schema-derived (``duckdb_read_csv_columns()``)
+        rather than a hand-maintained list, per this module's existing
+        single-schema-authority convention - covers every VARCHAR field
+        except place_id/created_at/updated_at/version, which are
+        structural, not free text.
+
+        Same backup + CompactManager.commit_remote() pattern as
+        purge_invalid_place_ids - see that method's docstring for why.
+        """
+        from cocli.core.compact import CompactManager
+        from cocli.core.prospects_csv_manager import ProspectsIndexManager
+        from cocli.models.campaigns.indexes.google_maps_prospect import GoogleMapsProspect
+        from cocli.utils.backup_utils import timestamped_backup_path
+        import re
+
+        checkpoint_path = ProspectsIndexManager(self.campaign_name).checkpoint_path
+        if not checkpoint_path.exists():
+            return CleanQuoteCorruptionResult(
+                campaign_name=self.campaign_name, index_name=index_name, dry_run=dry_run
+            )
+
+        US = "\x1f"
+        fields = GoogleMapsProspect.usv_field_names()
+        col_types = GoogleMapsProspect.duckdb_read_csv_columns()
+        structural = {"place_id", "created_at", "updated_at", "version"}
+        target_idx = {
+            f: i
+            for i, f in enumerate(fields)
+            if col_types.get(f) == "VARCHAR" and f not in structural
+        }
+
+        def clean(v: str) -> str:
+            v = v.replace('"', "")
+            return re.sub(r"\s+", " ", v).strip()
+
+        lines = checkpoint_path.read_text(encoding="utf-8").splitlines()
+        out_lines: List[str] = []
+        rows_cleaned = 0
+        fields_affected: Dict[str, int] = {}
+        sample_place_ids: List[str] = []
+
+        for line in lines:
+            if not line:
+                continue
+            parts = line.split(US)
+            if len(parts) == len(fields):
+                changed = False
+                for fname, idx in target_idx.items():
+                    if '"' in parts[idx]:
+                        parts[idx] = clean(parts[idx])
+                        fields_affected[fname] = fields_affected.get(fname, 0) + 1
+                        changed = True
+                if changed:
+                    rows_cleaned += 1
+                    if len(sample_place_ids) < 20:
+                        sample_place_ids.append(parts[0])
+                    line = US.join(parts)
+            out_lines.append(line)
+
+        result = CleanQuoteCorruptionResult(
+            campaign_name=self.campaign_name,
+            index_name=index_name,
+            dry_run=dry_run,
+            checkpoint_total=len(lines),
+            rows_cleaned=rows_cleaned,
+            fields_affected=fields_affected,
+            sample_place_ids=sample_place_ids,
+        )
+        if dry_run or rows_cleaned == 0:
+            return result
+
+        backup_path = timestamped_backup_path(checkpoint_path)
+        checkpoint_path.rename(backup_path)
+        checkpoint_path.write_text(
+            "".join(line + "\n" for line in out_lines), encoding="utf-8"
         )
 
         manager = CompactManager(campaign_name=self.campaign_name, index_name=index_name)
