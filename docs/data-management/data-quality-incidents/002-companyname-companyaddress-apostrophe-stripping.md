@@ -72,5 +72,9 @@ within the pipeline - only re-scraping the same listing would fix it,
 and there's no signal distinguishing "always had no apostrophe" from
 "had one stripped").
 
-**Roadmap: not yet checked or cleaned.** Same open follow-up as incident
-001.
+**Roadmap: cleaned 2026-08-23** via the same `cocli index clean-quote-corruption`
+command incident 001 promoted to a real tool - 1,450 of 31,570 rows (4.6%)
+had double-quote corruption, cleaned with 0 remaining on a follow-up
+dry-run. Same caveat as turboship applies: an apostrophe already stripped
+by this bug before the fix landed is not recoverable from within the
+pipeline.

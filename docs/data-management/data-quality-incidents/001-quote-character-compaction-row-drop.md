@@ -82,16 +82,22 @@ compaction due to this mechanism on either campaign.
 
 **Historical damage: partially recoverable, source-dependent.** A row lost
 to this bug is gone from the checkpoint/WAL for good - there's nothing left
-inside the pipeline to recover it from. Recovery is only possible if an
-external snapshot predates the loss. For turboship, a June 2026 export CSV
-snapshot existed and was used to restore the 20 confirmed-missing
+inside the pipeline to recover it from. Whole-row recovery is only possible
+if an external snapshot predates the loss. For turboship, a June 2026
+export CSV snapshot existed and was used to restore the 20 confirmed-missing
 companies (checkpoint 16,757 → 16,777 rows) plus backfill `category` on 109
 further rows whose data survived in the checkpoint but had lost their
-category - see the `backup/turboship-emails-june-2026.csv` file and the
-one-off scripts referenced in this incident's investigation (not yet
-promoted to a reusable `cocli` command - see incident-registry follow-up).
+category - see `backup/turboship-emails-june-2026.csv`. This restore/backfill
+step was one-off (place_id-keyed against a specific external snapshot, not
+generalizable to a campaign with a different or no snapshot) and was not
+promoted to a command.
 
-**Roadmap: not yet checked.** Roadmap's checkpoint isn't synced to the dev
-machine, so it hasn't been scanned for the same corruption pattern or
-whole-row losses. The fix is deployed there, but no historical audit or
-cleanup has been run yet - this is an open follow-up.
+**Residual field-level quote corruption (not whole-row loss - a row that
+survived but still carries the `"`-wrapped junk in a field) *is* now a
+reusable, tested command**: `cocli index clean-quote-corruption
+--campaign <name> [--apply]` (commit `2757eecf`). Dry-run by default,
+schema-derived field selection, same backup + S3 re-upload pattern as
+`purge-invalid-place-ids`. Run for both campaigns 2026-08-23: turboship
+966 rows cleaned, **roadmap 1,450 of 31,570 rows (4.6%) cleaned** -
+confirming the user's prediction that roadmap carried the same residue.
+Both campaigns now report 0 remaining on a fresh dry-run.
