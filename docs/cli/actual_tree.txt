@@ -323,6 +323,10 @@ cocli
             --campaign/-c (text) [required]
         describe - Show the schema definition (fields/types) for a given USV file or datapackage.
             file_path (path) [required]
+        export-enriched-emails - Joins the prospects checkpoint against the email index and writes the
+            --campaign/-c (text) [required]
+            --keywords (boolean)
+            --all/-a (boolean)
         inspect - Show the index, name, and content for a specific row in a USV file.
             file_path (path) [required]
             --row-number/-r (integer)

@@ -186,6 +186,43 @@ def compact_emails(
     console.print(f"[green]{result.get('message')}[/green]")
 
 
+@app.command(name="export-enriched-emails", no_args_is_help=True)
+def export_enriched_emails_cmd(
+    campaign: str = typer.Option(..., "--campaign", "-c", help="Campaign name"),
+    keywords: bool = typer.Option(False, "--keywords", help="Only export companies that have found keywords (enriched)."),
+    include_all: bool = typer.Option(False, "--all", "-a", help="Include all prospects even if they have no emails."),
+) -> None:
+    """Joins the prospects checkpoint against the email index and writes the
+    client-facing enriched-emails USV + CSV (the export the dashboard's
+    "download CSV" button and `cocli web deploy` both consume).
+
+    This is the single, tested source of truth for that query - see
+    cocli/application/lead_export_service.py's docstring and
+    docs/data-management/data-quality-incidents/README.md for why that
+    matters (a hand-rolled reimplementation of this query undercounted real
+    results by ~18% during this session's investigation).
+
+    Does not upload to S3 - that's `cocli web deploy`'s job. This command
+    only writes the local .usv/.csv files, for inspection or a manual push.
+
+    Example: cocli data export-enriched-emails --campaign turboship
+    """
+    from cocli.application.lead_export_service import export_enriched_emails
+
+    console.print(f"[cyan]Exporting enriched emails for campaign '{campaign}'...[/cyan]")
+    try:
+        result = export_enriched_emails(campaign, keywords=keywords, include_all=include_all)
+    except FileNotFoundError as e:
+        console.print(f"[red]{e}[/red]")
+        raise typer.Exit(1)
+
+    console.print(f"[green]Exported: {result.exported_count} companies[/green]")
+    if result.skipped_count:
+        console.print(f"[yellow]Skipped: {result.skipped_count} records without phone/category/keyword signal[/yellow]")
+    console.print(f"Output: {result.output_usv}")
+    console.print(f"Output: {result.output_csv}")
+
+
 @app.command(no_args_is_help=True)
 def metrics(
     file_path: Path = typer.Argument(

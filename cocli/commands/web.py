@@ -174,11 +174,21 @@ def deploy(
     # 2.0 Force regeneration of the export CSV to pick up name changes
     try:
         console.print("  Regenerating export CSV...")
-        # Use the absolute path to the script relative to project root
-        script_path = Path(__file__).parent.parent.parent / "scripts" / "export_enriched_emails.py"
-        export_env = os.environ.copy()
-        export_env["AWS_PROFILE"] = profile
-        subprocess.run(["uv", "run", str(script_path), campaign_name], check=True, env=export_env)
+        from ..application.lead_export_service import export_enriched_emails
+
+        export_result = export_enriched_emails(campaign_name)
+        console.print(f"  Exported {export_result.exported_count} companies")
+        s3.upload_file(str(export_result.output_usv), bucket_name, f"exports/{campaign_name}-emails.usv")
+        s3.upload_file(
+            str(export_result.output_csv),
+            bucket_name,
+            f"exports/{campaign_name}-emails.csv",
+            ExtraArgs={
+                "ContentType": "text/csv",
+                "ContentDisposition": f'attachment; filename="{campaign_name}-emails.csv"',
+                "CacheControl": "no-cache, must-revalidate",
+            },
+        )
     except Exception as e:
         console.print(f"[yellow]Warning: Could not regenerate export CSV: {e}[/yellow]")
 
