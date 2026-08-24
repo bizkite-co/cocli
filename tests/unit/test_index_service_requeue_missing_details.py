@@ -239,7 +239,7 @@ def test_requeue_missing_details_pushed_payload_is_valid_json(tmp_path: Path) ->
     assert payload["name"] == "Acme A"
     assert payload["company_slug"] == "acme-a"
     assert payload["gmb_url"] == "https://maps.google.com/a"
-    assert payload["category"] == "Flooring store"
+    assert "category" not in payload
     assert payload["campaign_name"] == campaign
 
 

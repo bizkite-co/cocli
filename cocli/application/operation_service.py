@@ -227,7 +227,9 @@ class OperationService:
             "op_sanitize_discovery": OperationMetadata(
                 "op_sanitize_discovery",
                 "Sanitize Discovery Results",
-                "Full workflow: Pulls from S3, purges non-conforming/hollow USVs, pushes to S3, and propagates to PIs.",
+                "Full workflow: Pulls from S3, purges vestigial gm-list pending tasks, and propagates to PIs. "
+                "Does NOT delete anything under gm-list/completed/results/ - that data is permanent "
+                "(data-quality-incidents/003).",
                 "maintenance",
                 source_path="data/campaigns/{campaign}/queues/gm-list/completed/results/",
                 steps=[
@@ -237,14 +239,11 @@ class OperationService:
                     ),
                     OperationStep(
                         "aggressive_cleanup",
-                        "Purge non-conforming paths and hollow USVs locally.",
-                    ),
-                    OperationStep(
-                        "s3_sync_up", "Push deletions to S3 (Standardizing the cloud)."
+                        "Purge vestigial gm-list pending tasks (leases/tasks only, no results deleted).",
                     ),
                     OperationStep(
                         "cluster_propagate",
-                        "Propagate the sanitized state to all cluster nodes.",
+                        "Propagate the cleaned queue state to all cluster nodes.",
                     ),
                 ],
             ),
@@ -922,22 +921,8 @@ class OperationService:
                     from ..services.cluster_service import ClusterService
                     from pathlib import Path
                     import importlib.util
-                    import sys
 
                     project_root = Path(__file__).parent.parent.parent.resolve()
-                    script_path = (
-                        project_root / "scripts" / "cleanup_discovery_results.py"
-                    )
-
-                    spec = importlib.util.spec_from_file_location(
-                        "cleanup_discovery_results", str(script_path)
-                    )
-                    if not spec or not spec.loader:
-                        raise ImportError(f"Could not load script at {script_path}")
-
-                    module = importlib.util.module_from_spec(spec)
-                    sys.modules["cleanup_discovery_results"] = module
-                    spec.loader.exec_module(module)
 
                     log_step("s3_sync_down", "pending")
                     await asyncio.to_thread(
@@ -945,30 +930,22 @@ class OperationService:
                     )
                     log_step("s3_sync_down", "success")
 
-                    log_step(
-                        "aggressive_cleanup",
-                        "skipped",
-                        "Skipping cleanup (disabled for review)...",
-                    )
-                    # TEMPORARILY DISABLED: cleanup_discovery_results was deleting
-                    # legitimate audit files (gm_list_audit.usv, gm_list_reviewed.usv).
-                    # See ticket: Review cleanup_discovery_results.py script
-                    # await asyncio.to_thread(
-                    #     module.cleanup_discovery_results,
-                    #     self.campaign_name,
-                    #     execute=True,
-                    #     push=False,
-                    #     delete_hollow=True,
-                    # )
+                    # gm-list/completed/results/ is never deleted as part of
+                    # this (or any automated) process - it's the durable
+                    # source compact_gm_list_results() recovers from
+                    # (data-quality-incidents/003). This op used to also
+                    # invoke scripts/cleanup_discovery_results.py here, but
+                    # that script was deleting legitimate audit files
+                    # (gm_list_audit.usv, gm_list_reviewed.usv) and has been
+                    # removed from this pipeline rather than re-enabled -
+                    # nothing needs gm-list results deleted, ever.
 
-                    # Also cleanup the gm-list pending queue (leases/tasks)
+                    # Cleanup the gm-list pending queue (leases/tasks)
                     log_step(
                         "aggressive_cleanup",
                         "pending",
                         "Purging vestigial worker tasks...",
                     )
-                    import importlib.util
-
                     pending_script = (
                         project_root / "scripts" / "cleanup_gm_list_pending.py"
                     )
@@ -985,15 +962,6 @@ class OperationService:
                         )
 
                     log_step("aggressive_cleanup", "success")
-
-                    log_step("s3_sync_up", "pending", "Pushing deletions to S3...")
-                    await asyncio.to_thread(
-                        module.cleanup_discovery_results,
-                        self.campaign_name,
-                        execute=False,
-                        push=True,
-                    )
-                    log_step("s3_sync_up", "success")
 
                     log_step(
                         "cluster_propagate",
