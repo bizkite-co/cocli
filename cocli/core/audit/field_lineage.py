@@ -26,14 +26,27 @@ from typing import Any, Callable
 @dataclass(frozen=True)
 class Fallback:
     """Merge policy for one target field: prefer `primary`'s value (a key
-    into the source_values dict) if truthy, else use `fallback_field`'s."""
+    into the source_values dict), else use `fallback_field`'s.
+
+    ``none_means_missing=False`` (default) treats any falsy primary value
+    (None, '', 0) as "missing" - correct for string fields, where an empty
+    string and no value mean the same thing. Numeric fields where 0 is a
+    real, meaningful value (e.g. reviews_count) need
+    ``none_means_missing=True`` so a real 0 doesn't get mistaken for
+    absence - matches production code's ``x if x is not None else
+    fallback`` pattern exactly, not ``x or fallback``.
+    """
 
     primary: str
     fallback_field: str
+    none_means_missing: bool = False
 
     def resolve(self, source_values: dict[str, Any]) -> Any:
         primary_val = source_values.get(self.primary)
-        if primary_val:
+        is_present = (
+            primary_val is not None if self.none_means_missing else bool(primary_val)
+        )
+        if is_present:
             return primary_val
         return source_values.get(self.fallback_field)
 

@@ -40,6 +40,8 @@ class GoogleMapsDetailsProcessor:
                 name=task.name,
                 company_slug=task.company_slug,
                 category=task.category,
+                average_rating=task.average_rating,
+                reviews_count=task.reviews_count,
                 debug=debug
             )
             

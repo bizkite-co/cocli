@@ -66,6 +66,8 @@ class GoogleMapsListItem(BaseUsvModel):
             force_refresh=force_refresh,
             gmb_url=self.gmb_url,
             category=self.category,
+            average_rating=self.average_rating,
+            reviews_count=self.reviews_count,
             discovery_phrase=self.discovery_phrase,
             discovery_tile_id=self.discovery_tile_id,
         )

@@ -34,6 +34,8 @@ def build_raw_result_from_details(
     processed_by: str,
     analysis: dict[str, Any],
     category: Optional[str] = None,
+    average_rating: Optional[float] = None,
+    reviews_count: Optional[int] = None,
 ) -> Optional["GoogleMapsRawResult"]:
     """Pure merge point: parsed detail-page dict (+ scrape context) -> GoogleMapsRawResult.
 
@@ -41,11 +43,12 @@ def build_raw_result_from_details(
     integrity checker (cocli/core/audit/field_lineage.py) can exercise this
     merge directly, without a live page/network.
 
-    ``category`` (the gm-list list-view category, threaded down via
-    GmItemTask) is the documented fallback for First_category when the
+    ``category``/``average_rating``/``reviews_count`` (the gm-list
+    list-view values, threaded down via GmItemTask) are the documented
+    fallback for First_category/Average_rating/Reviews_count when the
     detail page's own parse comes up empty - see task-agent ticket
-    recover-dropped-fields. Registered as CATEGORY_MERGE in
-    tests/unit/test_field_lineage_gm_pipeline.py.
+    recover-dropped-fields. Registered as CATEGORY_MERGE/RATING_MERGE/
+    REVIEWS_COUNT_MERGE in tests/unit/test_field_lineage_gm_pipeline.py.
     """
     from cocli.models.campaigns.indexes.google_maps_raw import GoogleMapsRawResult
 
@@ -53,6 +56,9 @@ def build_raw_result_from_details(
     if not final_name:
         logger.error(f"IDENTITY SHIELD: No name found for {place_id} and no fallback provided. Blocking save.")
         return None
+
+    detail_reviews_count = details_dict.get("Reviews_count")
+    detail_average_rating = details_dict.get("Average_rating")
 
     return GoogleMapsRawResult(
         Place_ID=place_id,
@@ -62,8 +68,11 @@ def build_raw_result_from_details(
         Phone_1=details_dict.get("Phone", ""),
         First_category=details_dict.get("First_category") or category,
         Second_category=details_dict.get("Second_category"),
-        Reviews_count=details_dict.get("Reviews_count"),
-        Average_rating=details_dict.get("Average_rating"),
+        # `or` is wrong for these two: 0 reviews is a real, valid value,
+        # not "missing" - falling through to the list-view value on a
+        # falsy-but-real 0 would silently overwrite a correct zero.
+        Reviews_count=detail_reviews_count if detail_reviews_count is not None else reviews_count,
+        Average_rating=detail_average_rating if detail_average_rating is not None else average_rating,
         Reviews=details_dict.get("Reviews"),
         GMB_URL=witness_url,
         processed_by=processed_by,
@@ -80,15 +89,18 @@ async def scrape_google_maps_details(
     name: Optional[str] = None,
     company_slug: Optional[str] = None,
     category: Optional[str] = None,
+    average_rating: Optional[float] = None,
+    reviews_count: Optional[int] = None,
     debug: bool = False
 ) -> Optional["GoogleMapsProspect"]:
     """
     Scrapes full details for a given Google Maps Place ID.
     Uses the state machine for capture and then parses the result.
 
-    ``category`` is the gm-list list-view category (GmItemTask.category) -
-    used as a fallback for First_category when the detail-page parse comes
-    up empty. See build_raw_result_from_details' docstring.
+    ``category``/``average_rating``/``reviews_count`` are the gm-list
+    list-view values (GmItemTask fields) - used as fallbacks when the
+    detail-page parse comes up empty. See build_raw_result_from_details'
+    docstring.
     """
     from cocli.models.campaigns.indexes.google_maps_prospect import GoogleMapsProspect
     from cocli.scrapers.google.google_maps_gmb_parser import parse_gmb_page
@@ -118,6 +130,8 @@ async def scrape_google_maps_details(
         processed_by=witness.processed_by,
         analysis=analysis,
         category=category,
+        average_rating=average_rating,
+        reviews_count=reviews_count,
     )
     if raw_result is None:
         return None

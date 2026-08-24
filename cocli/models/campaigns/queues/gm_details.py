@@ -20,6 +20,11 @@ class GmItemTask(BaseModel):
     # List-view category from gm-list; fallback when the detail page yields
     # no First_category.
     category: Optional[str] = None
+    # List-view rating/review count from gm-list; fallback when the detail
+    # page yields no Average_rating/Reviews_count. Same shape as category -
+    # see data-quality-incidents/003.
+    average_rating: Optional[float] = None
+    reviews_count: Optional[int] = None
     discovery_phrase: Optional[str] = None
     discovery_tile_id: Optional[str] = None
 

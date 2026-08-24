@@ -719,11 +719,18 @@ class IndexService:
                 company_slug=marker_task.company_slug,
                 gmb_url=marker_task.gmb_url,
                 category=marker_task.category,
+                average_rating=marker_task.average_rating,
+                reviews_count=marker_task.reviews_count,
                 discovery_phrase=marker_task.discovery_phrase,
                 discovery_tile_id=marker_task.discovery_tile_id,
             )
 
         if needs_gm_list_fallback:
+            from cocli.models.campaigns.indexes.google_maps_place import (
+                safe_float,
+                safe_int,
+            )
+
             rows_by_id = find_gm_list_rows(gm_list_results_dir, set(needs_gm_list_fallback))
             for place_id in needs_gm_list_fallback:
                 row = rows_by_id.get(place_id)
@@ -736,6 +743,8 @@ class IndexService:
                     company_slug=row.get("company_slug", ""),
                     gmb_url=row.get("gmb_url") or None,
                     category=row.get("category") or None,
+                    average_rating=safe_float(row.get("average_rating")),
+                    reviews_count=safe_int(row.get("reviews_count")),
                     discovery_phrase=row.get("discovery_phrase") or None,
                     discovery_tile_id=row.get("discovery_tile_id") or None,
                 )
@@ -1110,8 +1119,8 @@ class IndexService:
         rows_by_id = {
             r[0]: r
             for r in con.execute(
-                "SELECT place_id, name, slug, category, gmb_url, "
-                "discovery_phrase, discovery_tile_id FROM prospects "
+                "SELECT place_id, name, slug, category, average_rating, reviews_count, "
+                "gmb_url, discovery_phrase, discovery_tile_id FROM prospects "
                 f"WHERE place_id IN ({placeholders})",
                 place_ids,
             ).fetchall()
@@ -1127,7 +1136,7 @@ class IndexService:
         tasks_to_push: List[tuple[str, str]] = []  # (place_id, task_json)
         for place_id in place_ids:
             row = rows_by_id.get(place_id)
-            gmb_url = row[4] if row else None
+            gmb_url = row[6] if row else None
             if not row or not gmb_url or not gmb_url.strip():
                 out_rows.append(
                     RequeueRow(
@@ -1150,8 +1159,10 @@ class IndexService:
                 company_slug=row[2] or "",
                 gmb_url=gmb_url,
                 category=row[3] or None,
-                discovery_phrase=row[5] or None,
-                discovery_tile_id=row[6] or None,
+                average_rating=row[4],
+                reviews_count=row[5],
+                discovery_phrase=row[7] or None,
+                discovery_tile_id=row[8] or None,
             )
             tasks_to_push.append((place_id, task.model_dump_json()))
             out_rows.append(RequeueRow(place_id=place_id, status="requeued", detail=""))
