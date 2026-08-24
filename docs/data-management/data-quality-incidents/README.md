@@ -16,10 +16,16 @@ one read: "yes, this is known, here's why, here's whether it can still be
 fixed" - instead of another multi-hour investigation.
 
 This is documentation, not tooling. Nothing currently consumes it
-automatically. Wire it into `cocli audit` or the export pipeline only once
-there's a concrete query to ask against it (e.g. "suppress this field's
-absence in reports for rows whose `updated_at` falls inside a known-bad
-window") - don't build the consumer speculatively.
+automatically. Each entry carries structured YAML frontmatter (model(s),
+field(s), date range, pipeline stage, status, fix commit, per-campaign
+recovery state) specifically so a future scanner/sorter can be built
+without a docs rewrite once there are enough entries to need one - see the
+template below for the exact fields. Wire it into `cocli audit` or the
+export pipeline only once there's a concrete query to ask against it (e.g.
+"suppress this field's absence in reports for rows whose `updated_at`
+falls inside a known-bad window") - don't build the consumer speculatively;
+the frontmatter is what makes building it later a parsing exercise, not
+another rewrite.
 
 ## How to use this when investigating a gap
 
@@ -40,7 +46,37 @@ window") - don't build the consumer speculatively.
 
 ## Template for a new entry
 
+Frontmatter fields, exactly as named (keep types consistent so a future
+scanner doesn't have to special-case entries):
+
+- `id`: three-digit string, e.g. `"004"` - matches the filename prefix
+- `title`: same as the H1, kept in sync manually
+- `models`: YAML list of model class names, e.g. `[GoogleMapsProspect]`
+- `fields`: YAML list of field names, or `["*"]` for whole-row loss
+- `pipeline_stage`: one-line string identifying the exact function/command
+- `date_start`: ISO date, or the literal string `pipeline-inception` if unknown
+- `date_end`: ISO date the fix landed, or `null` if still open
+- `status`: one of `fixed`, `open`, `partial`
+- `fix_commit`: short SHA, or `null` if still open
+- `campaigns`: mapping of campaign name -> one of `cleaned`, `not-measured`,
+  `partial (<why>)`, or `not-applicable`
+
 ```markdown
+---
+id: "NNN"
+title: <short title>
+models: [ModelName]
+fields: [field_one, field_two]
+pipeline_stage: "<exact function or command>"
+date_start: <ISO date or pipeline-inception>
+date_end: <ISO date or null>
+status: fixed
+fix_commit: <sha or null>
+campaigns:
+  turboship: cleaned
+  roadmap: not-measured
+---
+
 # NNN: <short title>
 
 - **Model(s):** 

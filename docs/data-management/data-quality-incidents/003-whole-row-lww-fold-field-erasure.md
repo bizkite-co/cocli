@@ -1,3 +1,18 @@
+---
+id: "003"
+title: Whole-row LWW fold erased gm-list-only fields
+models: [GoogleMapsProspect]
+fields: [category, first_category]
+pipeline_stage: "IndexService.compact() fold (pre-76666046 whole-row ROW_NUMBER() pick)"
+date_start: pipeline-inception
+date_end: "2026-08-04"
+status: fixed
+fix_commit: "76666046"
+campaigns:
+  turboship: partial (recoverable only where gm-list source file still exists)
+  roadmap: not-measured
+---
+
 # 003: Whole-row LWW fold erased gm-list-only fields
 
 - **Model(s):** `GoogleMapsProspect`

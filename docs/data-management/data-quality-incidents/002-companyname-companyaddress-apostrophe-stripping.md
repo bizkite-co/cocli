@@ -1,3 +1,18 @@
+---
+id: "002"
+title: CompanyName/CompanyAddress stripped legitimate apostrophes
+models: [GoogleMapsProspect, Company, Person]
+fields: [name, full_address, street_address]
+pipeline_stage: "Model validation (CompanyName.validate(), CompanyAddress.validate())"
+date_start: "2026-07-04"
+date_end: "2026-08-23"
+status: fixed
+fix_commit: 92b37742
+campaigns:
+  turboship: cleaned
+  roadmap: cleaned
+---
+
 # 002: CompanyName/CompanyAddress stripped legitimate apostrophes
 
 - **Model(s):** `GoogleMapsProspect` (via `name`, `full_address`,

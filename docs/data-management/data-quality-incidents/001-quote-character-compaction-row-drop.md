@@ -1,3 +1,18 @@
+---
+id: "001"
+title: Quote-character silent row drop in compaction
+models: [GoogleMapsProspect, EmailEntry]
+fields: ["*"]
+pipeline_stage: "IndexService.compact() fold (_duckdb_fold_prospect_usv_files); EmailIndexManager.query()"
+date_start: pipeline-inception
+date_end: "2026-08-23"
+status: fixed
+fix_commit: 931cc4ec
+campaigns:
+  turboship: cleaned
+  roadmap: cleaned
+---
+
 # 001: Quote-character silent row drop in compaction
 
 - **Model(s):** `GoogleMapsProspect` (primary); `EmailEntry` via a related read path
