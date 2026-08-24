@@ -41,11 +41,11 @@ def build_raw_result_from_details(
     integrity checker (cocli/core/audit/field_lineage.py) can exercise this
     merge directly, without a live page/network.
 
-    NOTE: ``category`` (the gm-list list-view category, threaded down via
-    GmItemTask) is accepted but deliberately NOT yet used as a fallback for
-    First_category here - see recover-dropped-fields. This mirrors current
-    production behavior exactly; do not "fix" this without also updating the
-    registered FieldMap and the field_lineage tests that pin it.
+    ``category`` (the gm-list list-view category, threaded down via
+    GmItemTask) is the documented fallback for First_category when the
+    detail page's own parse comes up empty - see task-agent ticket
+    recover-dropped-fields. Registered as CATEGORY_MERGE in
+    tests/unit/test_field_lineage_gm_pipeline.py.
     """
     from cocli.models.campaigns.indexes.google_maps_raw import GoogleMapsRawResult
 
@@ -60,7 +60,7 @@ def build_raw_result_from_details(
         Full_Address=details_dict.get("Full_Address", ""),
         Website=details_dict.get("Website", ""),
         Phone_1=details_dict.get("Phone", ""),
-        First_category=details_dict.get("First_category"),
+        First_category=details_dict.get("First_category") or category,
         Second_category=details_dict.get("Second_category"),
         Reviews_count=details_dict.get("Reviews_count"),
         Average_rating=details_dict.get("Average_rating"),
@@ -79,11 +79,16 @@ async def scrape_google_maps_details(
     campaign_name: str,
     name: Optional[str] = None,
     company_slug: Optional[str] = None,
+    category: Optional[str] = None,
     debug: bool = False
 ) -> Optional["GoogleMapsProspect"]:
     """
     Scrapes full details for a given Google Maps Place ID.
     Uses the state machine for capture and then parses the result.
+
+    ``category`` is the gm-list list-view category (GmItemTask.category) -
+    used as a fallback for First_category when the detail-page parse comes
+    up empty. See build_raw_result_from_details' docstring.
     """
     from cocli.models.campaigns.indexes.google_maps_prospect import GoogleMapsProspect
     from cocli.scrapers.google.google_maps_gmb_parser import parse_gmb_page
@@ -112,6 +117,7 @@ async def scrape_google_maps_details(
         witness_url=witness.url,
         processed_by=witness.processed_by,
         analysis=analysis,
+        category=category,
     )
     if raw_result is None:
         return None

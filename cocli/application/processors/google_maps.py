@@ -39,6 +39,7 @@ class GoogleMapsDetailsProcessor:
                 campaign_name=task.campaign_name,
                 name=task.name,
                 company_slug=task.company_slug,
+                category=task.category,
                 debug=debug
             )
             

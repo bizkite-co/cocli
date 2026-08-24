@@ -6,16 +6,13 @@ Two edges registered:
      everything.
   2. build_raw_result_from_details' category merge -> GoogleMapsRawResult.
      First_category: the documented "fallback when the detail page yields
-     no First_category" (GmItemTask.category's own docstring) is NOT
-     actually implemented. xfail(strict=True) below is not a skip - it
-     proves the checker catches this real, live bug. Removing that marker
-     (once the fallback fix lands - see task-agent ticket
-     recover-dropped-fields) is part of the fix, not a followup.
+     no First_category" (GmItemTask.category's own docstring), fixed by
+     task-agent ticket recover-dropped-fields. This test used to carry an
+     xfail(strict=True) marker proving the checker caught the bug before
+     the fix landed - removed now that it passes for real.
 """
 
 from typing import Any
-
-import pytest
 
 from cocli.core.audit.field_lineage import (
     Fallback,
@@ -123,16 +120,6 @@ def test_category_merge_prefers_detail_page_value_when_present() -> None:
     assert_transform_field_integrity(CATEGORY_MERGE, source_values, _call_category_merge)
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason=(
-        "Real, live bug (task-agent: recover-dropped-fields addendum-5): "
-        "GmItemTask.category is documented as the fallback when the detail "
-        "page yields no First_category, but build_raw_result_from_details "
-        "never applies it. This must start passing for real (not just have "
-        "the marker removed) once that fallback is implemented."
-    ),
-)
 def test_category_merge_falls_back_to_list_view_value_when_detail_page_empty() -> None:
     source_values = {
         "detail_page_category": None,
