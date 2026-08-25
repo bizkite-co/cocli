@@ -591,6 +591,43 @@ class AuditService:
 
         return run_html_audit(campaign, limit=limit, output_name=output)
 
+    def _sample_random_gm_list_records(
+        self, results_dir: Path, field_names: List[str], n: int
+    ) -> List[List[str]]:
+        """Reservoir-samples n records uniformly at random across every
+        completed gm-list results/*.usv file, so `audit queue validate`
+        with no tile/phrase/usv-path doesn't force the reviewer to guess
+        which single file to review - a random cross-section is a much
+        more representative (and much easier to just start doing) review
+        sample than whatever one tile/phrase happens to be picked."""
+        import random
+
+        excluded_names = {
+            "compiled.usv", "compacted.usv", "results.usv",
+            "corrupted-records.usv", "results.invalid.usv",
+        }
+        reservoir: List[List[str]] = []
+        seen = 0
+        for usv_file in sorted(results_dir.rglob("*.usv")):
+            if usv_file.name in excluded_names:
+                continue
+            with open(usv_file, "r", encoding="utf-8") as f:
+                reader = csv.reader(f, delimiter="\x1f")
+                for row in reader:
+                    if not row:
+                        continue
+                    while len(row) < len(field_names):
+                        row.append("")
+                    row = row[: len(field_names)]
+                    seen += 1
+                    if len(reservoir) < n:
+                        reservoir.append(row)
+                    else:
+                        j = random.randint(0, seen - 1)
+                        if j < n:
+                            reservoir[j] = row
+        return reservoir
+
     def prepare_validate(
         self,
         campaign: str,
@@ -626,7 +663,10 @@ class AuditService:
             lon = float(parts[1].strip())
             phrase_slug = slugify(phrase)
         else:
-            raise ValueError("Provide tile + phrase (online) or usv_path (offline)")
+            # No tile/phrase/usv_path given: the reviewer has no principled
+            # way to pick which file to review, so sample across every
+            # completed gm-list result instead of forcing a blind choice.
+            mode = "random"
 
         # Online mode scrape execution
         items = []
@@ -710,7 +750,7 @@ class AuditService:
                     / f"{phrase_slug}.usv"
                 )
 
-        if not usv_path or not usv_path.exists():
+        if mode != "random" and (not usv_path or not usv_path.exists()):
             raise FileNotFoundError("No USV file available for review.")
 
         # Read records
@@ -725,15 +765,32 @@ class AuditService:
             if n not in excluded and n not in review_skip
         ]
 
-        records = []
-        with open(usv_path, "r", encoding="utf-8") as f:
-            reader = csv.reader(f, delimiter="\x1f")
-            for row in reader:
-                if row:
-                    while len(row) < len(field_names):
-                        row.append("")
-                    records.append(row[: len(field_names)])
+        if mode == "random":
+            results_dir = paths.queue(campaign, "gm-list").completed / "results"
+            if not results_dir.exists():
+                raise FileNotFoundError(f"No gm-list results found at {results_dir}")
+            records = self._sample_random_gm_list_records(
+                results_dir, field_names, limit if limit > 0 else 10
+            )
+            if not records:
+                raise FileNotFoundError(f"No gm-list result records found under {results_dir}")
+            # Synthetic marker: downstream path math (records_file,
+            # tile/phrase extraction for the reference-browser launch)
+            # degrades gracefully when this doesn't resolve under
+            # completed/ or contain a "results" path segment.
+            usv_path = Path("random-sample")
+        else:
+            assert usv_path is not None  # guaranteed by the FileNotFoundError guard above
+            records = []
+            with open(usv_path, "r", encoding="utf-8") as f:
+                reader = csv.reader(f, delimiter="\x1f")
+                for row in reader:
+                    if row:
+                        while len(row) < len(field_names):
+                            row.append("")
+                        records.append(row[: len(field_names)])
 
+        assert usv_path is not None  # both branches above set it
         # Record audit log
         audit_dir = paths.queue(campaign, "gm-list").pending / "audit"
         audit_dir.mkdir(parents=True, exist_ok=True)

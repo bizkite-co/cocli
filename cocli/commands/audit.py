@@ -1788,13 +1788,17 @@ def audit_validate(
         False, "--headed", help="Run scrape in headed mode"
     ),
     limit: int = typer.Option(
-        0, "--limit", "-n", help="Max records to review (0 = all)"
+        0, "--limit", "-n",
+        help="Max records to review (0 = all; random mode: 0 = 10)"
     ),
 ) -> None:
     """
     Human-in-the-loop validation for gm-list results.
 
-    Two modes:
+    Three modes:
+      RANDOM  (no tile/phrase/usv-path): reservoir-samples --limit (default
+              10) records across every completed gm-list results file, so
+              you don't have to guess which tile/phrase to review.
       ONLINE  (--tile + --phrase): scrapes live, saves USV, then reviews.
       OFFLINE (--usv-path):         reviews an existing USV file.
 
@@ -1802,6 +1806,8 @@ def audit_validate(
     Only corrected fields are saved as GmListReviewedItem entries.
 
     Examples:
+      cocli audit queue validate roadmap
+      cocli audit queue validate roadmap --limit 20
       cocli audit queue validate roadmap --tile 34.1,-118.4 --p "financial-advisor"
       cocli audit queue validate --usv-path data/.../results/3/34.1/-118.4/foo.usv
     """
@@ -1838,10 +1844,13 @@ def audit_validate(
             console.print("[yellow]No items scraped. Skipping review but recording audit log.[/yellow]")
         else:
             console.print(f"[green]  Scraped {items_scraped_count} companies. Saved to results/[/green]")
+    elif mode == "random":
+        console.print(f"[bold]Random sample:[/bold] {len(records)} records across all completed gm-list results")
     else:
         console.print(f"[bold]Offline review:[/bold] [cyan]{usv_path_val}[/cyan]")
 
-    console.print(f"[dim]  Read {len(records)} records from {usv_path_val}[/dim]")
+    if mode != "random":
+        console.print(f"[dim]  Read {len(records)} records from {usv_path_val}[/dim]")
     console.print(f"[green]  Audit log entry saved to {audit_log}[/green]")
 
     # Step 4: Interactive field-level review
@@ -1918,6 +1927,16 @@ def audit_validate(
         console.print(f"\n[bold cyan]─── [{idx + 1}/{len(records)}] {name} ───[/bold cyan]")
         if place_id:
             console.print(f"[dim]{place_id}[/dim]")
+        if mode == "random":
+            # No single tile to point a reference browser at (records come
+            # from all over) - print this record's own Maps URL instead,
+            # which is more precise ground truth than a tile-level search
+            # anyway (points straight at the business, not a search result
+            # list the reviewer has to hunt through).
+            gmb_i = field_names.index("gmb_url")
+            gmb_url = record[gmb_i] if gmb_i < len(record) else ""
+            if gmb_url:
+                console.print(f"[dim]  Reference: {gmb_url}[/dim]")
 
         changes = {}
         skipped_record = False
