@@ -2045,7 +2045,7 @@ def audit_validate(
             # result list the reviewer has to hunt through). Uses the
             # canonical ?q=place_id: URL (not the long gmb_url form) via
             # goto_place()'s warmup+hydrate sequence - see _ReferenceBrowser.
-            console.print(f"[dim]  Reference: place_id:{place_id}[/dim]")
+            # place_id already printed above - no need to repeat it here.
             ref_browser.goto_place(place_id)
 
         changes = {}
