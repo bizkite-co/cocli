@@ -3,9 +3,8 @@ from playwright.async_api import expect
 
 
 @pytest.fixture(scope="session")
-def turboship_config():
-    from cocli.core.config import load_campaign_config
-    return load_campaign_config("turboship")
+def turboship_config(load_real_campaign_config):
+    return load_real_campaign_config("turboship")
 
 
 @pytest.fixture(scope="session")

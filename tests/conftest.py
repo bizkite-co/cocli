@@ -12,6 +12,13 @@ from textual.widget import Widget
 from typer.testing import CliRunner
 from playwright.async_api import async_playwright
 
+# Captured BEFORE the isolation override below overwrites COCLI_DATA_HOME -
+# the real data home (e.g. direnv's .envrc: COCLI_DATA_HOME="${PWD}/data"),
+# needed by e2e's campaign_config/auth_creds fixtures to find the real
+# roadmap config.toml (1Password test-credential paths, Cognito domain,
+# etc). None if the process never had it set.
+_REAL_DATA_HOME = os.environ.get("COCLI_DATA_HOME")
+
 # GLOBAL ISOLATION: Set this BEFORE any cocli imports
 # This ensures the DataPaths singleton initializes to a safe temp location
 _TEST_DATA_HOME = Path(tempfile.gettempdir()) / "cocli_test_data"
@@ -52,9 +59,33 @@ def get_op_secret(op_path):
     return secret
 
 @pytest.fixture(scope="session")
-def campaign_config():
-    config_mod = importlib.import_module("cocli.core.config")
-    return config_mod.load_campaign_config("roadmap")
+def load_real_campaign_config():
+    """Returns campaign_name -> real config.toml dict. e2e tests need real
+    values (Cognito domain, 1Password test-credential paths) that only
+    exist under the real data home, not the sandboxed COCLI_DATA_HOME every
+    other test gets. Temporarily points paths.root at the real data home
+    captured (as _REAL_DATA_HOME) before this file's isolation override.
+    Shared so any e2e conftest/test needing another campaign's real config
+    (e.g. test_dashboard_downloads.py's turboship_config) doesn't duplicate
+    this dance."""
+    def _load(campaign_name: str) -> dict:
+        config_mod = importlib.import_module("cocli.core.config")
+        if not _REAL_DATA_HOME:
+            return config_mod.load_campaign_config(campaign_name)
+
+        from cocli.core.paths import paths
+
+        previous_root = paths.root
+        paths.root = Path(_REAL_DATA_HOME).expanduser().resolve()
+        try:
+            return config_mod.load_campaign_config(campaign_name)
+        finally:
+            paths.root = previous_root
+    return _load
+
+@pytest.fixture(scope="session")
+def campaign_config(load_real_campaign_config):
+    return load_real_campaign_config("roadmap")
 
 @pytest.fixture(scope="session")
 def auth_creds(campaign_config):
