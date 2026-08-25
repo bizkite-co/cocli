@@ -2058,8 +2058,11 @@ def audit_validate(
             current_val = record[fi].strip()
 
             disp = current_val[:60] + "..." if len(current_val) > 60 else current_val
-            # Escape brackets so rich doesn't interpret them as style tags (e.g. [purefinancial.com])
-            prompt_text = f"  {field_name:<18} \\[{escape(disp)}\\]"
+            # escape() only needs to guard '[' (rich markup only triggers on
+            # an opening bracket, e.g. a value like "[purefinancial.com]");
+            # color coding replaces the old \[...\] bracket delimiters,
+            # which also dropped a stray literal "\]" into the prompt.
+            prompt_text = f"  [cyan]{field_name:<18}[/cyan] [yellow]{escape(disp)}[/yellow]"
             try:
                 corrected = Prompt.ask(prompt_text, default=current_val, show_default=False).strip()
             except TypeError:
