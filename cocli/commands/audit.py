@@ -1,7 +1,5 @@
 import logging
 import re
-import threading
-import asyncio
 import typer
 from typing import Optional, Any, Dict, List
 from pathlib import Path
@@ -1772,46 +1770,63 @@ def audit_gm_list_html(
 
 
 class _ReferenceBrowser:
-    """Runs cocli.utils.browser_manager.BrowserManager - the same
-    persistent-browser mechanism the TUI's audit view uses, including its
-    page.bring_to_front() call, which is what actually brings the window
-    forward - in a background thread + event loop, so the synchronous CLI
-    review loop can drive it via goto(). Re-launching a fresh browser per
-    record would be slow and disruptive (window flashing, losing scroll
-    position); single-tile mode navigates it once up front, random mode
-    calls goto() again before each record's prompts."""
+    """A headed Chromium window for `audit queue validate` to point at
+    each record's live Google Maps page during review.
 
-    def __init__(self) -> None:
-        self._loop: Optional[Any] = None
-        self._manager: Optional[Any] = None
-        self._ready = threading.Event()
+    Uses playwright.sync_api directly, called synchronously from this
+    (synchronous) Typer command - no background thread, no asyncio event
+    loop bridging. Two earlier attempts here used a threaded async_api
+    browser (a persistent daemon thread running its own event loop,
+    driven via run_coroutine_threadsafe from the main thread) and both
+    produced a blank window that wouldn't stay open; a plain
+    sync_playwright() smoke test with no threading involved reliably
+    launched, navigated, and stayed connected - so the threading/loop
+    bridging itself was the actual bug, not Playwright. --app=about:blank
+    gives a minimal window (no tabs/address bar/menu, closer to what
+    Mark remembered from a prior working version) rather than a full
+    browser chrome.
+    """
 
-    def start(self, timeout: float = 15.0) -> None:
-        t = threading.Thread(target=self._run, daemon=True)
-        t.start()
-        self._ready.wait(timeout=timeout)
-
-    def _run(self) -> None:
-        try:
-            asyncio.run(self._main())
-        except Exception:
-            self._ready.set()
-
-    async def _main(self) -> None:
-        from cocli.utils.browser_manager import BrowserManager
-
-        self._manager = BrowserManager()
-        self._loop = asyncio.get_running_loop()
-        self._ready.set()
-        while True:
-            await asyncio.sleep(3600)
+    def __init__(self, width: int = 2560, height: int = 1800) -> None:
+        self._width = width
+        self._height = height
+        self._playwright: Optional[Any] = None
+        self._browser: Optional[Any] = None
+        self._page: Optional[Any] = None
 
     def goto(self, url: str) -> None:
-        loop, manager = self._loop, self._manager
-        if not loop or not manager:
-            return
         try:
-            asyncio.run_coroutine_threadsafe(manager.open_url(url), loop)
+            if self._page is None:
+                from playwright.sync_api import sync_playwright
+
+                self._playwright = sync_playwright().start()
+                self._browser = self._playwright.chromium.launch(
+                    headless=False,
+                    args=[
+                        "--app=about:blank",
+                        f"--window-size={self._width},{self._height}",
+                    ],
+                )
+                context = (
+                    self._browser.contexts[0]
+                    if self._browser.contexts
+                    else self._browser.new_context()
+                )
+                self._page = context.pages[0] if context.pages else context.new_page()
+                self._page.set_viewport_size({"width": self._width, "height": self._height})
+            self._page.goto(url, wait_until="domcontentloaded", timeout=15000)
+        except Exception:
+            pass
+
+    def close(self) -> None:
+        try:
+            if self._browser:
+                self._browser.close()
+        except Exception:
+            pass
+        try:
+            if self._playwright:
+                self._playwright.stop()
         except Exception:
             pass
 
@@ -1907,12 +1922,11 @@ def audit_validate(
     console.print("[dim]    - Type a correction to overwrite[/dim]")
     console.print("[dim]    - Type [bold].skip[/bold] to skip this record[/dim]\n")
 
-    ref_browser: Optional[_ReferenceBrowser] = None
-    if mode == "random":
-        console.print("[dim]  Launching reference browser (navigates to each record)...[/dim]")
-        ref_browser = _ReferenceBrowser()
-        ref_browser.start()
-    else:
+    ref_browser = _ReferenceBrowser()
+
+    if mode != "random":
+        # Random mode opens each record's own gmb_url in the per-record
+        # loop below instead - no single tile to point one search at.
         try:
             usv_str = str(usv_path_val.resolve())
             parts = usv_str.split("/")
@@ -1930,8 +1944,6 @@ def audit_validate(
             if ref_lat and ref_lon and phrase_slug:
                 search_url = f"https://www.google.com/maps/search/{phrase_slug}/@{ref_lat},{ref_lon},13z"
                 console.print(f"[dim]  Opening reference browser: {search_url}[/dim]")
-                ref_browser = _ReferenceBrowser()
-                ref_browser.start()
                 ref_browser.goto(search_url)
         except Exception:
             pass
@@ -1960,16 +1972,15 @@ def audit_validate(
             console.print(f"[dim]{place_id}[/dim]")
         if mode == "random":
             # No single tile to point a reference browser at (records come
-            # from all over) - navigate it to this record's own Maps URL
-            # instead, which is more precise ground truth than a
-            # tile-level search anyway (points straight at the business,
-            # not a search result list the reviewer has to hunt through).
+            # from all over) - open this record's own Maps URL instead,
+            # which is more precise ground truth than a tile-level search
+            # anyway (points straight at the business, not a search
+            # result list the reviewer has to hunt through).
             gmb_i = field_names.index("gmb_url")
             gmb_url = record[gmb_i] if gmb_i < len(record) else ""
             if gmb_url:
                 console.print(f"[dim]  Reference: {gmb_url}[/dim]")
-                if ref_browser:
-                    ref_browser.goto(gmb_url)
+                ref_browser.goto(gmb_url)
 
         changes = {}
         skipped_record = False
@@ -2007,6 +2018,8 @@ def audit_validate(
                 already_reviewed.add(place_id)
 
         reviewed_count += 1
+
+    ref_browser.close()
 
     # Summary
     console.print("\n[bold]─── Validation Summary ───[/bold]")
