@@ -1,5 +1,7 @@
 import logging
 import re
+import threading
+import asyncio
 import typer
 from typing import Optional, Any, Dict, List
 from pathlib import Path
@@ -1769,6 +1771,59 @@ def audit_gm_list_html(
     console.print(f"[green]Audit results saved to: {result}[/green]")
 
 
+class _ReferenceBrowser:
+    """A headed Playwright browser tab kept alive in a background thread
+    for the duration of an `audit queue validate` session, navigable from
+    the main (sync) review loop via goto(). One browser instance serves
+    the whole session - re-launching per record would be slow and
+    disruptive (window flashing, losing scroll position) - single-tile
+    mode navigates it once up front; random mode calls goto() again
+    before each record's prompts."""
+
+    def __init__(self) -> None:
+        self._loop: Optional[Any] = None
+        self._page: Optional[Any] = None
+        self._ready = threading.Event()
+
+    def start(self, timeout: float = 15.0) -> None:
+        t = threading.Thread(target=self._run, daemon=True)
+        t.start()
+        self._ready.wait(timeout=timeout)
+
+    def _run(self) -> None:
+        try:
+            asyncio.run(self._main())
+        except Exception:
+            self._ready.set()
+
+    async def _main(self) -> None:
+        from playwright.async_api import async_playwright
+        async with async_playwright() as pw:
+            browser = await pw.chromium.launch(headless=False, args=["--start-maximized"])
+            context = await browser.new_context(no_viewport=True)
+            self._page = await context.new_page()
+            self._loop = asyncio.get_running_loop()
+            self._ready.set()
+            while True:
+                await asyncio.sleep(3600)
+
+    def goto(self, url: str) -> None:
+        loop, page = self._loop, self._page
+        if not loop or not page:
+            return
+
+        async def _goto() -> None:
+            try:
+                await page.goto(url, wait_until="domcontentloaded")
+            except Exception:
+                pass
+
+        try:
+            asyncio.run_coroutine_threadsafe(_goto(), loop)
+        except Exception:
+            pass
+
+
 @queue_app.command(name="validate")
 def audit_validate(
     campaign: str = typer.Argument("roadmap", help="Campaign name"),
@@ -1860,50 +1915,34 @@ def audit_validate(
     console.print("[dim]    - Type a correction to overwrite[/dim]")
     console.print("[dim]    - Type [bold].skip[/bold] to skip this record[/dim]\n")
 
-    try:
-        usv_str = str(usv_path_val.resolve())
-        parts = usv_str.split("/")
-        ref_lat: Optional[str] = None
-        ref_lon: Optional[str] = None
-        phrase_slug: Optional[str] = None
+    ref_browser: Optional[_ReferenceBrowser] = None
+    if mode == "random":
+        console.print("[dim]  Launching reference browser (navigates to each record)...[/dim]")
+        ref_browser = _ReferenceBrowser()
+        ref_browser.start()
+    else:
         try:
-            ri = next(i for i, p in enumerate(parts) if p == "results")
-            ref_lat = parts[ri + 2]
-            ref_lon = parts[ri + 3]
-            phrase_slug = parts[ri + 4].replace(".usv", "")
-        except (StopIteration, IndexError):
+            usv_str = str(usv_path_val.resolve())
+            parts = usv_str.split("/")
+            ref_lat: Optional[str] = None
+            ref_lon: Optional[str] = None
+            phrase_slug: Optional[str] = None
+            try:
+                ri = next(i for i, p in enumerate(parts) if p == "results")
+                ref_lat = parts[ri + 2]
+                ref_lon = parts[ri + 3]
+                phrase_slug = parts[ri + 4].replace(".usv", "")
+            except (StopIteration, IndexError):
+                pass
+
+            if ref_lat and ref_lon and phrase_slug:
+                search_url = f"https://www.google.com/maps/search/{phrase_slug}/@{ref_lat},{ref_lon},13z"
+                console.print(f"[dim]  Opening reference browser: {search_url}[/dim]")
+                ref_browser = _ReferenceBrowser()
+                ref_browser.start()
+                ref_browser.goto(search_url)
+        except Exception:
             pass
-
-        if ref_lat and ref_lon and phrase_slug:
-            search_url = f"https://www.google.com/maps/search/{phrase_slug}/@{ref_lat},{ref_lon},13z"
-            console.print(f"[dim]  Opening reference browser: {search_url}[/dim]")
-
-            import threading
-            import asyncio
-
-            def _open_ref_browser(url: str) -> None:
-                try:
-                    async def _run() -> None:
-                        from playwright.async_api import async_playwright
-                        async with async_playwright() as pw:
-                            browser = await pw.chromium.launch(
-                                headless=False,
-                                args=["--start-maximized"]
-                            )
-                            context = await browser.new_context(no_viewport=True)
-                            page = await context.new_page()
-                            await page.goto(url, wait_until="domcontentloaded")
-                            while True:
-                                await asyncio.sleep(3600)
-                    asyncio.run(_run())
-                except Exception:
-                    pass
-
-            console.print("[dim]  Launching reference browser...[/dim]")
-            t = threading.Thread(target=_open_ref_browser, args=(search_url,), daemon=True)
-            t.start()
-    except Exception:
-        pass
 
     reviewed_count = 0
     skipped_count = 0
@@ -1929,14 +1968,16 @@ def audit_validate(
             console.print(f"[dim]{place_id}[/dim]")
         if mode == "random":
             # No single tile to point a reference browser at (records come
-            # from all over) - print this record's own Maps URL instead,
-            # which is more precise ground truth than a tile-level search
-            # anyway (points straight at the business, not a search result
-            # list the reviewer has to hunt through).
+            # from all over) - navigate it to this record's own Maps URL
+            # instead, which is more precise ground truth than a
+            # tile-level search anyway (points straight at the business,
+            # not a search result list the reviewer has to hunt through).
             gmb_i = field_names.index("gmb_url")
             gmb_url = record[gmb_i] if gmb_i < len(record) else ""
             if gmb_url:
                 console.print(f"[dim]  Reference: {gmb_url}[/dim]")
+                if ref_browser:
+                    ref_browser.goto(gmb_url)
 
         changes = {}
         skipped_record = False
