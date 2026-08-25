@@ -1772,17 +1772,18 @@ def audit_gm_list_html(
 
 
 class _ReferenceBrowser:
-    """A headed Playwright browser tab kept alive in a background thread
-    for the duration of an `audit queue validate` session, navigable from
-    the main (sync) review loop via goto(). One browser instance serves
-    the whole session - re-launching per record would be slow and
-    disruptive (window flashing, losing scroll position) - single-tile
-    mode navigates it once up front; random mode calls goto() again
-    before each record's prompts."""
+    """Runs cocli.utils.browser_manager.BrowserManager - the same
+    persistent-browser mechanism the TUI's audit view uses, including its
+    page.bring_to_front() call, which is what actually brings the window
+    forward - in a background thread + event loop, so the synchronous CLI
+    review loop can drive it via goto(). Re-launching a fresh browser per
+    record would be slow and disruptive (window flashing, losing scroll
+    position); single-tile mode navigates it once up front, random mode
+    calls goto() again before each record's prompts."""
 
     def __init__(self) -> None:
         self._loop: Optional[Any] = None
-        self._page: Optional[Any] = None
+        self._manager: Optional[Any] = None
         self._ready = threading.Event()
 
     def start(self, timeout: float = 15.0) -> None:
@@ -1797,29 +1798,20 @@ class _ReferenceBrowser:
             self._ready.set()
 
     async def _main(self) -> None:
-        from playwright.async_api import async_playwright
-        async with async_playwright() as pw:
-            browser = await pw.chromium.launch(headless=False, args=["--start-maximized"])
-            context = await browser.new_context(no_viewport=True)
-            self._page = await context.new_page()
-            self._loop = asyncio.get_running_loop()
-            self._ready.set()
-            while True:
-                await asyncio.sleep(3600)
+        from cocli.utils.browser_manager import BrowserManager
+
+        self._manager = BrowserManager()
+        self._loop = asyncio.get_running_loop()
+        self._ready.set()
+        while True:
+            await asyncio.sleep(3600)
 
     def goto(self, url: str) -> None:
-        loop, page = self._loop, self._page
-        if not loop or not page:
+        loop, manager = self._loop, self._manager
+        if not loop or not manager:
             return
-
-        async def _goto() -> None:
-            try:
-                await page.goto(url, wait_until="domcontentloaded")
-            except Exception:
-                pass
-
         try:
-            asyncio.run_coroutine_threadsafe(_goto(), loop)
+            asyncio.run_coroutine_threadsafe(manager.open_url(url), loop)
         except Exception:
             pass
 
