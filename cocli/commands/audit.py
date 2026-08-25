@@ -1,5 +1,6 @@
 import logging
 import re
+import time
 import typer
 from typing import Optional, Any, Dict, List
 from pathlib import Path
@@ -1769,22 +1770,40 @@ def audit_gm_list_html(
     console.print(f"[green]Audit results saved to: {result}[/green]")
 
 
+_HYDRATION_TRIGGERS = [
+    'div[jsaction*="reviewChart.moreReviews"]',
+    'button[jsaction*="pane.rating.moreReviews"]',
+    'div[jsaction*="pane.rating.moreReviews"]',
+    'span[aria-label*="stars"]',
+    'button[aria-label*="reviews"]',
+]
+
+
 class _ReferenceBrowser:
     """A headed Chromium window for `audit queue validate` to point at
     each record's live Google Maps page during review.
 
-    Uses playwright.sync_api directly, called synchronously from this
-    (synchronous) Typer command - no background thread, no asyncio event
-    loop bridging. Two earlier attempts here used a threaded async_api
-    browser (a persistent daemon thread running its own event loop,
-    driven via run_coroutine_threadsafe from the main thread) and both
-    produced a blank window that wouldn't stay open; a plain
+    Replicates the warmup -> navigate -> hydrate sequence from
+    GoogleMapsDetailsScraper (cocli/scrapers/gm_details_scraper.py) - the
+    real, already-proven fix for Google's "limited view" (navigate to
+    google.com/maps first to establish session cookies, use the canonical
+    ?q=place_id: URL rather than the long gmb_url form, then click a
+    rating/review element to force lazy-loaded data to hydrate) - via
+    playwright.sync_api directly rather than that scraper's async state
+    machine, since this command is synchronous. Earlier attempts here
+    skipped this sequence entirely (plain goto(gmb_url), no warmup, no
+    hydration) and got served limited view, same as any other anonymous,
+    cold-session request would.
+
+    No threading/asyncio event-loop bridging: two earlier attempts used a
+    threaded async_api browser (a persistent daemon thread running its own
+    event loop, driven via run_coroutine_threadsafe from the main thread)
+    and both produced a blank window that wouldn't stay open; a plain
     sync_playwright() smoke test with no threading involved reliably
     launched, navigated, and stayed connected - so the threading/loop
-    bridging itself was the actual bug, not Playwright. --app=about:blank
-    gives a minimal window (no tabs/address bar/menu, closer to what
-    Mark remembered from a prior working version) rather than a full
-    browser chrome.
+    bridging itself was that bug, not Playwright. --app=about:blank gives
+    a minimal window (no tabs/address bar/menu) rather than full browser
+    chrome.
     """
 
     def __init__(self, width: int = 2560, height: int = 1800) -> None:
@@ -1794,27 +1813,75 @@ class _ReferenceBrowser:
         self._browser: Optional[Any] = None
         self._page: Optional[Any] = None
 
-    def goto(self, url: str) -> None:
-        try:
-            if self._page is None:
-                from playwright.sync_api import sync_playwright
+    def _ensure_page(self) -> Any:
+        if self._page is not None:
+            return self._page
 
-                self._playwright = sync_playwright().start()
-                self._browser = self._playwright.chromium.launch(
-                    headless=False,
-                    args=[
-                        "--app=about:blank",
-                        f"--window-size={self._width},{self._height}",
-                    ],
-                )
-                context = (
-                    self._browser.contexts[0]
-                    if self._browser.contexts
-                    else self._browser.new_context()
-                )
-                self._page = context.pages[0] if context.pages else context.new_page()
-                self._page.set_viewport_size({"width": self._width, "height": self._height})
-            self._page.goto(url, wait_until="domcontentloaded", timeout=15000)
+        from playwright.sync_api import sync_playwright
+        from ..utils.headers import USER_AGENT, ANTI_BOT_HEADERS
+        from ..utils.playwright_utils import _STEALTH_INIT_SCRIPT
+
+        self._playwright = sync_playwright().start()
+        launch_kwargs: Dict[str, Any] = {
+            "headless": False,
+            "args": [
+                "--app=about:blank",
+                f"--window-size={self._width},{self._height}",
+            ],
+        }
+        try:
+            self._browser = self._playwright.chromium.launch(channel="msedge", **launch_kwargs)
+        except Exception:
+            self._browser = self._playwright.chromium.launch(**launch_kwargs)
+
+        context = self._browser.new_context(
+            user_agent=USER_AGENT,
+            viewport={"width": self._width, "height": self._height},
+        )
+        context.set_extra_http_headers(ANTI_BOT_HEADERS)
+        context.add_init_script(_STEALTH_INIT_SCRIPT)
+        self._page = context.new_page()
+        return self._page
+
+    def _warmup(self, page: Any) -> None:
+        """Navigate to google.com/maps first to establish session cookies -
+        skipping this is what serves 'limited view' to a cold session."""
+        if not page.url.startswith("https://www.google.com/maps"):
+            try:
+                page.goto("https://www.google.com/maps", wait_until="commit", timeout=30000)
+                time.sleep(2)
+            except Exception:
+                pass
+
+    def goto(self, url: str) -> None:
+        """Generic navigation (search URLs, single-tile mode) - warmup
+        only, no place-page hydration."""
+        try:
+            page = self._ensure_page()
+            self._warmup(page)
+            page.goto(url, wait_until="domcontentloaded", timeout=15000)
+        except Exception:
+            pass
+
+    def goto_place(self, place_id: str) -> None:
+        """Full warmup -> navigate -> hydrate sequence for a specific
+        place, mirroring GoogleMapsDetailsScraper exactly."""
+        try:
+            page = self._ensure_page()
+            self._warmup(page)
+            url = f"https://www.google.com/maps/place/?q=place_id:{place_id}"
+            page.goto(url, wait_until="load", timeout=60000)
+            page.wait_for_selector('h1, div[role="main"], .qBF1Pd', timeout=30000)
+            time.sleep(5)
+            for selector in _HYDRATION_TRIGGERS:
+                try:
+                    el = page.wait_for_selector(selector, timeout=5000)
+                    if el:
+                        el.click()
+                        time.sleep(5)
+                        break
+                except Exception:
+                    continue
         except Exception:
             pass
 
@@ -1970,17 +2037,16 @@ def audit_validate(
         console.print(f"\n[bold cyan]─── [{idx + 1}/{len(records)}] {name} ───[/bold cyan]")
         if place_id:
             console.print(f"[dim]{place_id}[/dim]")
-        if mode == "random":
+        if mode == "random" and place_id:
             # No single tile to point a reference browser at (records come
-            # from all over) - open this record's own Maps URL instead,
+            # from all over) - open this record's own place page instead,
             # which is more precise ground truth than a tile-level search
             # anyway (points straight at the business, not a search
-            # result list the reviewer has to hunt through).
-            gmb_i = field_names.index("gmb_url")
-            gmb_url = record[gmb_i] if gmb_i < len(record) else ""
-            if gmb_url:
-                console.print(f"[dim]  Reference: {gmb_url}[/dim]")
-                ref_browser.goto(gmb_url)
+            # result list the reviewer has to hunt through). Uses the
+            # canonical ?q=place_id: URL (not the long gmb_url form) via
+            # goto_place()'s warmup+hydrate sequence - see _ReferenceBrowser.
+            console.print(f"[dim]  Reference: place_id:{place_id}[/dim]")
+            ref_browser.goto_place(place_id)
 
         changes = {}
         skipped_record = False
