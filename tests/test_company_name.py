@@ -14,6 +14,29 @@ def test_remove_outer_double_quotes():
     assert str(cn) == "Acme Corp"
 
 
+def test_constructor_strips_scraper_quote_wrapping():
+    """DuckDB search hydrates via CompanyName(raw), not model_validate.
+
+    Incident 002's live example must not survive the constructor path.
+    """
+    cn = CompanyName('"""# 1 Hardwood Flooring"""')
+    assert str(cn) == "# 1 Hardwood Flooring"
+    assert '"' not in str(cn)
+
+
+def test_search_result_strips_quoted_constructor_name():
+    from cocli.models.search import SearchResult
+
+    result = SearchResult(
+        type="company",
+        name=CompanyName('"# 1 Hardwood Flooring"'),
+        display="COMPANY:",
+        unique_id="n1-hardwood-flooring",
+        slug="n1-hardwood-flooring",
+    )
+    assert str(result.name) == "# 1 Hardwood Flooring"
+
+
 def test_preserves_single_quotes():
     """Single-quotes are real content in business names ("John's Flooring",
     "Lowe's") far more often than they're a CSV artifact - confirmed live

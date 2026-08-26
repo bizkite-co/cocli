@@ -36,6 +36,23 @@ def empty_to_none(v: Any) -> Any:
     return v
 
 
+def normalize_company_address(value: Any) -> str:
+    """Strip CSV/scraper double-quotes and collapse whitespace.
+
+    Shared by ``__init__`` and ``validate`` so DuckDB hydration cannot skip it.
+    """
+    if not isinstance(value, str):
+        value = str(value)
+    value = value.strip()
+    if not value or value.lower() in ("none", "null"):
+        raise ValueError("Empty company address")
+    value = value.replace('"', "")
+    value = re.sub(r"\s+", " ", value).strip()
+    if not value:
+        raise ValueError("Address is empty after quote removal")
+    return value
+
+
 class CompanyAddress:
     """
     A validated company address that removes CSV quote artifacts and normalizes whitespace.
@@ -50,7 +67,7 @@ class CompanyAddress:
     """
 
     def __init__(self, value: str):
-        self.value = value
+        self.value = normalize_company_address(value)
 
     @classmethod
     def __get_pydantic_core_schema__(
@@ -79,24 +96,6 @@ class CompanyAddress:
             return None
         if isinstance(v, cls):
             return v
-
-        if not isinstance(v, str):
-            v = str(v)
-
-        v = v.strip()
-        if not v or v.lower() == 'none' or v.lower() == 'null':
-            raise ValueError("Empty company address")
-
-        # Only double-quotes are a CSV/scraper artifact worth stripping - a
-        # single-quote is routinely real content in an address (apostrophes
-        # in street/business names) and must survive.
-        v = v.replace('"', '')
-
-        # Normalize whitespace: collapse multiple spaces to single space
-        v = re.sub(r'\s+', ' ', v).strip()
-
-        if not v:
-            raise ValueError("Address is empty after quote removal")
 
         return cls(v)
 

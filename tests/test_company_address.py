@@ -14,6 +14,13 @@ def test_remove_outer_double_quotes():
     assert str(ca) == "123 Main St, Austin, TX 78701"
 
 
+def test_constructor_strips_double_quotes():
+    """Address hydration from DuckDB uses CompanyAddress(raw)."""
+    ca = CompanyAddress('"""1501 Heritage Pkwy # 105"""')
+    assert str(ca) == "1501 Heritage Pkwy # 105"
+    assert '"' not in str(ca)
+
+
 def test_preserves_single_quotes():
     """Single-quotes are preserved - only double-quotes (the confirmed real
     CSV/scraper corruption artifact) are stripped."""

@@ -38,6 +38,52 @@ def test_get_fuzzy_search_results_basic(populated_env):
     assert results[0].name == "BizKite"
 
 
+def test_quoted_checkpoint_name_stripped_in_search(mock_cocli_env, mocker):
+    """All Leads prefers checkpoint name over cache; quote policy must apply."""
+    from cocli.models.campaigns.indexes.google_maps_prospect import GoogleMapsProspect
+    import cocli.application.search_service as search_service
+
+    search_service._con = None
+    search_service._last_campaign = None
+
+    campaign = "test/quotes"
+    mocker.patch("cocli.core.config.get_campaign", return_value=campaign)
+    mocker.patch("cocli.application.search_service.get_campaign", return_value=campaign)
+
+    slug = "n1-hardwood-flooring"
+    prospect_idx = paths.campaign(campaign).index("google_maps_prospects")
+    prospect_idx.path.mkdir(parents=True, exist_ok=True)
+    prospect = GoogleMapsProspect.model_validate(
+        {
+            "place_id": "ChIJhardwoodflooringaaa",
+            "company_slug": slug,
+            "name": "# 1 Hardwood Flooring",
+        }
+    )
+    # Write the raw scraper-artifact form that bypasses Pydantic on disk.
+    dirty = prospect.to_usv().replace(
+        "# 1 Hardwood Flooring", '"""# 1 Hardwood Flooring"""'
+    )
+    prospect_idx.checkpoint.write_text(dirty, encoding="utf-8")
+    GoogleMapsProspect.write_datapackage(campaign)
+
+    comp_dir = paths.companies / slug
+    comp_dir.mkdir(parents=True, exist_ok=True)
+    (comp_dir / "_index.md").write_text(
+        f"---\nname: Other Name\ntags:\n  - {campaign}\n---\n"
+    )
+    build_cache(campaign=campaign)
+
+    results = get_fuzzy_search_results(
+        search_query="Hardwood",
+        campaign_name=campaign,
+        force_rebuild_cache=True,
+    )
+    assert len(results) == 1
+    assert str(results[0].name) == "# 1 Hardwood Flooring"
+    assert '"' not in str(results[0].name)
+
+
 def test_get_fuzzy_search_results_by_tag(populated_env):
     """Test searching explicitly by tag content."""
     results = get_fuzzy_search_results(
