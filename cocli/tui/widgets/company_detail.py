@@ -1,5 +1,4 @@
 import logging
-import webbrowser
 import subprocess
 import re
 import textwrap
@@ -23,6 +22,7 @@ from ...models.companies.meeting import Meeting
 from ...models.phone import PhoneNumber
 from ...core.paths import paths
 from ...core.config import get_editor_command
+from ...utils.open_url import open_url
 from .confirm_screen import ConfirmScreen
 
 if TYPE_CHECKING:
@@ -488,20 +488,24 @@ class CompanyDetail(Container):
                 event.stop()
                 return
 
+    def _open_desktop_browser(self, url: str, success_message: str) -> None:
+        if open_url(url):
+            self.app.notify(success_message)
+        else:
+            self.app.notify(f"Could not open browser for {url}", severity="error")
+
     def action_open_website(self) -> None:
         domain = self.company_data["company"].get("domain")
         if domain:
             url = f"http://{domain}"
-            webbrowser.open(url)
-            self.app.notify(f"Opening {url}")
+            self._open_desktop_browser(url, f"Opening {url}")
         else:
             self.app.notify("No domain found", severity="warning")
 
     def action_open_gmb(self) -> None:
         gmb_url = self.company_data["company"].get("gmb_url")
         if gmb_url:
-            webbrowser.open(gmb_url)
-            self.app.notify("Opening Google Maps...")
+            self._open_desktop_browser(gmb_url, "Opening Google Maps...")
         else:
             self.app.notify("No Google Maps URL found", severity="warning")
 
@@ -527,14 +531,30 @@ class CompanyDetail(Container):
 
             # 1. Open Google Voice
             voice_url = f"https://voice.google.com/u/0/calls?a=nc,%2B{cleaned}"
-            webbrowser.open(voice_url)
+            voice_opened = open_url(voice_url)
 
             # 2. Open Company Website if it exists
             if domain:
-                webbrowser.open(f"http://{domain}")
-                self.app.notify(f"Calling {phone} & Opening Website...")
-            else:
+                site_opened = open_url(f"http://{domain}")
+                if voice_opened:
+                    self.app.notify(f"Calling {phone} & Opening Website...")
+                elif site_opened:
+                    self.app.notify(
+                        f"Opened website; could not open Google Voice for {phone}",
+                        severity="warning",
+                    )
+                else:
+                    self.app.notify(
+                        f"Could not open browser to call {phone}",
+                        severity="error",
+                    )
+            elif voice_opened:
                 self.app.notify(f"Calling {phone}...")
+            else:
+                self.app.notify(
+                    f"Could not open browser to call {phone}",
+                    severity="error",
+                )
 
             # Push the embedded call logger
             from .call_log_modal import CallLogModal

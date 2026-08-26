@@ -4,7 +4,6 @@ import typer
 from typing import Any, Dict
 from pathlib import Path
 import subprocess
-import webbrowser
 import re
 import os
 import shutil
@@ -17,6 +16,7 @@ from rich.console import Console
 from cocli.core.text_utils import slugify
 from cocli.core.utils import _getch, run_fzf, create_person_files
 from cocli.core.paths import paths
+from cocli.utils.open_url import open_url
 from ..core.config import get_campaign, get_editor_command, get_enrichment_service_url
 from ..models.companies.company import Company
 from ..models.people.person import Person
@@ -140,8 +140,10 @@ def _interactive_view_company(company_slug: str) -> None:
             if domain:
                 url = f"http://{domain}"
                 try:
-                    webbrowser.open(url)
-                    console.print(f"[bold green]Opened {url} in browser. Press any key to continue.[/bold green]")
+                    if open_url(url):
+                        console.print(f"[bold green]Opened {url} in browser. Press any key to continue.[/bold green]")
+                    else:
+                        console.print(f"[bold red]Could not open browser for {url}[/bold red]")
                 except Exception as e:
                     console.print(f"[bold red]Error opening browser: {e}[/bold red]")
             else:
@@ -158,8 +160,10 @@ def _interactive_view_company(company_slug: str) -> None:
 
                 google_voice_url = f"https://voice.google.com/u/0/calls?a=nc,%2B{cleaned_phone_number}"
                 try:
-                    webbrowser.open(google_voice_url)
-                    console.print(f"[bold green]Initiated call to {phone_number}. Auto-creating meeting...[/bold green]")
+                    if open_url(google_voice_url):
+                        console.print(f"[bold green]Initiated call to {phone_number}. Auto-creating meeting...[/bold green]")
+                    else:
+                        console.print(f"[bold red]Could not open browser for {google_voice_url}[/bold red]")
                     _add_meeting_logic(company_name=company_slug, date_str="today", title_str="Google Voice Call", phone_number_str=phone_number)
                     console.print("[bold green]Meeting for call added. Press any key to continue.[/bold green]")
                 except Exception as e:

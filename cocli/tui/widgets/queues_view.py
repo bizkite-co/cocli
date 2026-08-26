@@ -2,7 +2,6 @@ from typing import Any, Dict, Optional, TYPE_CHECKING, cast, Union
 
 import logging
 import asyncio
-import webbrowser
 from textual.app import ComposeResult
 from textual.containers import Vertical, Horizontal, VerticalScroll
 from textual.widgets import Label, ListView, ListItem, Static, Input
@@ -16,6 +15,7 @@ from cocli.models.campaigns.queues.metadata import (
 )
 from cocli.core.paths import paths
 from cocli.core.ordinant import QueueIdentity
+from cocli.utils.open_url import open_url
 
 
 
@@ -517,9 +517,11 @@ class QueueDetail(VerticalScroll):
                 self.app.notify("No URL found.")
                 return
 
-            self.app.notify(f"Opening: {selected_item.get('name', 'Google Maps')}")
-
-            webbrowser.open(gmb_url)
+            opened = open_url(gmb_url)
+            if opened:
+                self.app.notify(f"Opening: {selected_item.get('name', 'Google Maps')}")
+            else:
+                self.app.notify(f"Could not open browser for {gmb_url}", severity="error")
 
         except Exception as e:
             self.app.notify(f"Error: {e}", severity="error")

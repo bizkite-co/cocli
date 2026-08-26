@@ -1594,7 +1594,7 @@ def audit_enrichment_interactive(
     """
     from ..core.config import get_campaign
     from ..application.services import ServiceContainer
-    import webbrowser
+    from ..utils.open_url import open_url
 
     campaign_name = campaign or get_campaign()
     if not campaign_name:
@@ -1632,7 +1632,8 @@ def audit_enrichment_interactive(
             else:
                 url = f"https://{domain}" if not domain.startswith(("http://", "https://")) else domain
                 console.print(f"Opening {url}...")
-                webbrowser.open(url)
+                if not open_url(url):
+                    console.print(f"[red]Could not open browser for {url}[/red]")
         elif choice == 'n':
             if idx < len(targets) - 1:
                 idx += 1
