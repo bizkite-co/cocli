@@ -1853,6 +1853,21 @@ class _ReferenceBrowser:
             except Exception:
                 pass
 
+    def _zoom_in(self, page: Any) -> None:
+        """Scale rendered content ~1.5x (Chromium's own Ctrl+= three times
+        from 100% steps through 110% -> 125% -> 150%). A real Ctrl+=
+        keypress via page.keyboard.press() does NOT do this - that's a
+        browser-chrome-level shortcut, not a renderer-level one, so CDP's
+        synthetic key events don't trigger it (verified: devicePixelRatio
+        was unchanged after 3x Control+= keypresses). CSS zoom on <body>
+        does reliably scale rendered content (verified via h1 bounding-box
+        measurements) but has to be reapplied after every navigation,
+        since body is a fresh element on each page load."""
+        try:
+            page.evaluate('document.body.style.zoom = "150%"')
+        except Exception:
+            pass
+
     def goto(self, url: str) -> None:
         """Generic navigation (search URLs, single-tile mode) - warmup
         only, no place-page hydration."""
@@ -1860,6 +1875,8 @@ class _ReferenceBrowser:
             page = self._ensure_page()
             self._warmup(page)
             page.goto(url, wait_until="domcontentloaded", timeout=15000)
+            page.bring_to_front()
+            self._zoom_in(page)
         except Exception:
             pass
 
@@ -1871,7 +1888,9 @@ class _ReferenceBrowser:
             self._warmup(page)
             url = f"https://www.google.com/maps/place/?q=place_id:{place_id}"
             page.goto(url, wait_until="load", timeout=60000)
+            page.bring_to_front()
             page.wait_for_selector('h1, div[role="main"], .qBF1Pd', timeout=30000)
+            self._zoom_in(page)
             time.sleep(5)
             for selector in _HYDRATION_TRIGGERS:
                 try:
@@ -2037,15 +2056,19 @@ def audit_validate(
         console.print(f"\n[bold cyan]─── [{idx + 1}/{len(records)}] {name} ───[/bold cyan]")
         if place_id:
             console.print(f"[dim]{place_id}[/dim]")
+
         if mode == "random" and place_id:
-            # No single tile to point a reference browser at (records come
-            # from all over) - open this record's own place page instead,
-            # which is more precise ground truth than a tile-level search
-            # anyway (points straight at the business, not a search
-            # result list the reviewer has to hunt through). Uses the
-            # canonical ?q=place_id: URL (not the long gmb_url form) via
-            # goto_place()'s warmup+hydrate sequence - see _ReferenceBrowser.
-            # place_id already printed above - no need to repeat it here.
+            # Navigate BEFORE the field loop, not after: the reviewer reads
+            # each field's live value off the browser as the source of
+            # truth (that's the point of having it open at all), so it has
+            # to already be showing this record's business before the
+            # first field prompt appears. Stays fixed on this one business
+            # for the whole field loop - only relocates once per record,
+            # here. Points at this record's own place page - more precise
+            # ground truth than a tile-level search result list - via the
+            # canonical ?q=place_id: URL (not the long gmb_url form); see
+            # _ReferenceBrowser.goto_place() for the warmup+hydrate
+            # sequence it runs.
             ref_browser.goto_place(place_id)
 
         changes = {}

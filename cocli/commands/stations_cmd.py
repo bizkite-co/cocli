@@ -73,6 +73,15 @@ def inspect_stations(
         raise typer.Exit(1) from exc
 
     logger.info("inspecting stations root: %s", root)
+    logger.warning(
+        "counts below are read from this machine's local disk, which is NOT "
+        "kept in sync with the live Pi cluster for pending/ or lease state - "
+        "`cocli sync pi-results` only pulls each node's completed/ results "
+        "(see cocli/application/pi_sync_service.py:_SYNC_QUEUES), never "
+        "pending/. For true current pending counts and lease state, use "
+        "`cocli audit gm-list`/`cocli audit cluster` (live Pi heartbeat) "
+        "instead of trusting pending/lease numbers shown here."
+    )
     inspect_and_render(
         str(root),
         parse_leases=not no_leases,
