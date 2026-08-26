@@ -15,8 +15,12 @@ from cocli.models.search import SearchResult
 from cocli.models.company_name import CompanyName
 from cocli.models.company_address import CompanyAddress
 from cocli.models.phone import PhoneNumber
-from cocli.utils.duckdb_utils import load_usv_to_duckdb
+from cocli.utils.duckdb_utils import (
+    get_duckdb_schema_from_datapackage,
+    load_usv_to_duckdb,
+)
 from cocli.models.campaigns.indexes.google_maps_place import GoogleMapsPlace
+from cocli.models.campaigns.indexes.email import EmailEntry
 
 logger = logging.getLogger(__name__)
 
@@ -36,6 +40,105 @@ def _get_compacted_fallback_columns() -> Dict[str, str]:
     }
 
 
+_FRICTIONLESS_TO_DUCK: Dict[str, str] = {
+    "string": "VARCHAR",
+    "integer": "BIGINT",
+    "number": "DOUBLE",
+    "datetime": "VARCHAR",
+    "boolean": "BOOLEAN",
+}
+
+
+def _columns_from_datapackage_fields(fields: List[Dict[str, Any]]) -> Dict[str, str]:
+    """Map Frictionless field defs to DuckDB column types."""
+    return {
+        str(field["name"]): _FRICTIONLESS_TO_DUCK.get(
+            str(field.get("type", "string")), "VARCHAR"
+        )
+        for field in fields
+    }
+
+
+def _sql_present(column: str) -> str:
+    """SQL predicate: column has a real (non-empty, non-'null') value."""
+    return (
+        f"({column} IS NOT NULL AND CAST({column} AS VARCHAR) != '' "
+        f"AND lower(CAST({column} AS VARCHAR)) != 'null')"
+    )
+
+
+def _dir_mtime(path: Optional[Path]) -> float:
+    if path and path.exists():
+        return os.path.getmtime(path)
+    return -1.0
+
+
+def _load_email_index(
+    con: duckdb.DuckDBPyConnection, emails_root: Optional[Path]
+) -> None:
+    """Load emails shards + inbox using EmailEntry datapackage as schema authority."""
+    columns = _columns_from_datapackage_fields(EmailEntry.get_datapackage_fields())
+    if emails_root:
+        dp_path = emails_root / "datapackage.json"
+        if dp_path.exists():
+            try:
+                columns = get_duckdb_schema_from_datapackage(dp_path)
+            except Exception as e:
+                logger.warning(f"FDPE: emails datapackage unreadable ({e}); using model")
+
+    cols_sql = ", ".join(f'"{name}" {dtype}' for name, dtype in columns.items())
+    con.execute("DROP TABLE IF EXISTS items_emails")
+    con.execute("DROP TABLE IF EXISTS items_emails_by_slug")
+    con.execute("DROP TABLE IF EXISTS items_emails_by_domain")
+
+    files: List[str] = []
+    if emails_root and emails_root.exists():
+        shards_dir = emails_root / "shards"
+        inbox_dir = emails_root / "inbox"
+        if shards_dir.exists():
+            files.extend(str(p) for p in shards_dir.glob("*.usv") if p.is_file())
+        if inbox_dir.exists():
+            files.extend(str(p) for p in inbox_dir.rglob("*.usv") if p.is_file())
+
+    if not files:
+        con.execute(f"CREATE TABLE items_emails ({cols_sql})")
+    else:
+        columns_def = ", ".join(
+            f"\"{name}\": '{dtype}'" for name, dtype in columns.items()
+        )
+        cast_sql = ", ".join(
+            f'TRY_CAST("{name}" AS {dtype}) AS "{name}"'
+            for name, dtype in columns.items()
+        )
+        quoted = ", ".join("'" + p.replace("'", "''") + "'" for p in files)
+        try:
+            con.execute(f"""
+                CREATE TABLE items_emails AS
+                SELECT {cast_sql}
+                FROM read_csv([{quoted}], delim='\x1f', header=False, auto_detect=False,
+                              columns={{{columns_def}}}, quote='', escape='',
+                              null_padding=True, union_by_name=True)
+            """)
+        except Exception as e:
+            logger.error(f"FDPE: failed to load email index: {e}")
+            con.execute(f"CREATE TABLE items_emails ({cols_sql})")
+
+    con.execute("""
+        CREATE TABLE items_emails_by_slug AS
+        SELECT company_slug AS slug, MIN(email) AS email
+        FROM items_emails
+        WHERE company_slug IS NOT NULL AND TRIM(CAST(company_slug AS VARCHAR)) != ''
+        GROUP BY company_slug
+    """)
+    con.execute("""
+        CREATE TABLE items_emails_by_domain AS
+        SELECT domain, MIN(email) AS email
+        FROM items_emails
+        WHERE domain IS NOT NULL AND TRIM(CAST(domain AS VARCHAR)) != ''
+        GROUP BY domain
+    """)
+
+
 # Module-level cache for DuckDB connection and state
 _con: Optional[duckdb.DuckDBPyConnection] = None
 _last_cache_mtime: float = -1.0
@@ -43,6 +146,7 @@ _last_checkpoint_mtime: float = -1.0
 _last_venue_mtime: float = -1.0
 _last_lifecycle_mtime: float = -1.0
 _last_to_call_mtime: float = -1.0
+_last_email_mtime: float = -1.0
 _last_campaign: Optional[str] = None
 _lock = threading.RLock()
 
@@ -79,24 +183,39 @@ def get_template_counts(campaign_name: Optional[str] = None) -> Dict[str, int]:
                 if not view_check:
                     return {}
 
-                # Optimized count queries
-                res_all = _con.execute("SELECT COUNT(*) FROM items").fetchone()
-                counts["tpl_all"] = res_all[0] if res_all else 0
-
-                res_call = _con.execute(
-                    "SELECT COUNT(*) FROM items WHERE is_to_call = TRUE"
-                ).fetchone()
-                counts["tpl_to_call"] = res_call[0] if res_call else 0
-
-                res_leads = _con.execute(
-                    "SELECT COUNT(*) FROM items WHERE type = 'company'"
-                ).fetchone()
-                counts["tpl_leads"] = res_leads[0] if res_leads else 0
-
-                res_venues = _con.execute(
-                    "SELECT COUNT(*) FROM items WHERE type = 'venue'"
-                ).fetchone()
-                counts["tpl_venues"] = res_venues[0] if res_venues else 0
+                email_sql = _sql_present("email")
+                phone_sql = _sql_present("phone_number")
+                addr_sql = _sql_present("street_address")
+                row = _con.execute(f"""
+                    SELECT
+                      COUNT(*) FILTER (WHERE type = 'company'),
+                      COUNT(*) FILTER (WHERE type = 'company' AND is_to_call = TRUE),
+                      COUNT(*) FILTER (WHERE type = 'company' AND {email_sql}),
+                      COUNT(*) FILTER (WHERE type = 'company' AND NOT {email_sql}),
+                      COUNT(*) FILTER (
+                        WHERE type = 'company' AND {email_sql} AND {phone_sql}
+                      ),
+                      COUNT(*) FILTER (WHERE type = 'company' AND NOT {addr_sql}),
+                      COUNT(*) FILTER (
+                        WHERE type = 'company' AND average_rating >= 4.0
+                      ),
+                      COUNT(*) FILTER (
+                        WHERE type = 'company' AND reviews_count >= 10
+                      ),
+                      COUNT(*) FILTER (WHERE type = 'venue')
+                    FROM items
+                """).fetchone()
+                if row:
+                    counts["tpl_all"] = int(row[0] or 0)
+                    counts["tpl_to_call"] = int(row[1] or 0)
+                    counts["tpl_with_email"] = int(row[2] or 0)
+                    counts["tpl_no_email"] = int(row[3] or 0)
+                    counts["tpl_actionable"] = int(row[4] or 0)
+                    counts["tpl_no_address"] = int(row[5] or 0)
+                    counts["tpl_top_rated"] = int(row[6] or 0)
+                    counts["tpl_most_reviewed"] = int(row[7] or 0)
+                    counts["tpl_leads"] = int(row[0] or 0)
+                    counts["tpl_venues"] = int(row[8] or 0)
 
                 _counts_cache[campaign] = (now, counts)
             except Exception as e:
@@ -125,6 +244,7 @@ def get_fuzzy_search_results(
         _last_venue_mtime, \
         _last_lifecycle_mtime, \
         _last_to_call_mtime, \
+        _last_email_mtime, \
         _last_campaign
 
     from cocli.core.paths import paths
@@ -143,6 +263,7 @@ def get_fuzzy_search_results(
     lifecycle_path = None
     lifecycle_dp = None
     to_call_pending_dir = None
+    emails_root = None
 
     if campaign:
         campaign_node = paths.campaign(campaign)
@@ -153,6 +274,7 @@ def get_fuzzy_search_results(
         lifecycle_path = campaign_node.lifecycle
         lifecycle_dp = campaign_node.path / "indexes" / "lifecycle" / "datapackage.json"
         to_call_pending_dir = paths.queue(campaign, "to-call") / "pending"
+        emails_root = campaign_node.index("emails").path
 
     # 1. NON-BLOCKING CACHE REBUILD (Standard Pattern)
     is_test = os.getenv("COCLI_ENV") == "test"
@@ -201,6 +323,11 @@ def get_fuzzy_search_results(
             if to_call_pending_dir and to_call_pending_dir.exists()
             else -1.0
         )
+        current_email_mtime = max(
+            _dir_mtime(emails_root / "shards" if emails_root else None),
+            _dir_mtime(emails_root / "inbox" if emails_root else None),
+            _dir_mtime(emails_root),
+        )
 
         try:
             if _con is None:
@@ -210,6 +337,7 @@ def get_fuzzy_search_results(
                 _last_venue_mtime = -1.0
                 _last_lifecycle_mtime = -1.0
                 _last_to_call_mtime = -1.0
+                _last_email_mtime = -1.0
 
             if (
                 _last_cache_mtime != current_cache_mtime
@@ -218,6 +346,7 @@ def get_fuzzy_search_results(
                 or _last_campaign != campaign
                 or _last_lifecycle_mtime != current_lifecycle_mtime
                 or _last_to_call_mtime != current_to_call_mtime
+                or _last_email_mtime != current_email_mtime
             ):
                 _con.execute("DROP VIEW IF EXISTS items")
                 for table in [
@@ -228,6 +357,9 @@ def get_fuzzy_search_results(
                     "items_lifecycle",
                     "items_to_call",
                     "items_compacted",
+                    "items_emails",
+                    "items_emails_by_slug",
+                    "items_emails_by_domain",
                 ]:
                     _con.execute(f"DROP TABLE IF EXISTS {table}")
 
@@ -326,6 +458,8 @@ def get_fuzzy_search_results(
                     if items:
                         _con.executemany("INSERT INTO items_to_call VALUES (?)", items)
 
+                _load_email_index(_con, emails_root)
+
                 # D. Unified Search View (Strict Schema Implementation)
                 # We normalize column names to be robust across all data sources
                 def table_has_col(table: str, col: str) -> bool:
@@ -366,6 +500,27 @@ def get_fuzzy_search_results(
                     else "CAST(NULL AS BIGINT)"
                 )
 
+                EMAIL_FROM_CACHE = (
+                    "t2.email"
+                    if table_has_col("items_cache", "email")
+                    else "CAST(NULL AS VARCHAR)"
+                )
+                EMAIL_FROM_CHECKPOINT = (
+                    "t1.email"
+                    if table_has_col("items_checkpoint", "email")
+                    else "CAST(NULL AS VARCHAR)"
+                )
+                STREET_FROM_COMPACTED = (
+                    "compacted.street_address"
+                    if table_has_col("items_compacted", "street_address")
+                    else "CAST(NULL AS VARCHAR)"
+                )
+                STREET_FROM_CHECKPOINT = (
+                    "t1.street_address"
+                    if table_has_col("items_checkpoint", "street_address")
+                    else "CAST(NULL AS VARCHAR)"
+                )
+
                 lc_enqueued = (
                     "lc.enqueued_at"
                     if table_has_col("items_lifecycle", "enqueued_at")
@@ -399,14 +554,14 @@ def get_fuzzy_search_results(
                         COALESCE(t1.name, t2.name) as name,
                         COALESCE(t1.type, t2.type, CAST('company' AS VARCHAR)) as type,
                         COALESCE(t1.domain, t2.domain) as domain,
-                        COALESCE(t2.email, t1.email) as email,
+                        COALESCE(e_slug.email, e_dom.email, {EMAIL_FROM_CACHE}, {EMAIL_FROM_CHECKPOINT}) as email,
                         COALESCE(compacted.phone, t1.phone, t2.phone_number) as phone_number,
                         COALESCE(string_to_array(t2.tags, ';'), string_to_array(t1.keyword, ';'), CAST([] AS VARCHAR[])) as tags,
                         COALESCE(t2.display, 'COMPANY:' || COALESCE(t1.name, t2.name)) as display,
                         COALESCE(t1.updated_at, CAST(NULL AS VARCHAR)) as last_modified,
                         COALESCE({RATING_FROM_CHECKPOINT}, {RATING_FROM_CACHE}) as average_rating,
                         COALESCE({REVIEWS_FROM_CHECKPOINT}, {REVIEWS_FROM_CACHE}) as reviews_count,
-                        COALESCE(t1.street_address, CAST(NULL AS VARCHAR)) as street_address,
+                        COALESCE({STREET_FROM_COMPACTED}, {STREET_FROM_CHECKPOINT}) as street_address,
                         COALESCE(t1.city, CAST(NULL AS VARCHAR)) as city,
                         COALESCE(t1.state, CAST(NULL AS VARCHAR)) as state,
                         COALESCE(t1.zip, CAST(NULL AS VARCHAR)) as zip,
@@ -420,6 +575,10 @@ def get_fuzzy_search_results(
                     FULL OUTER JOIN items_cache t2 ON t1.slug = t2.slug
                     LEFT JOIN items_lifecycle lc ON t1.place_id = lc.place_id
                     LEFT JOIN items_to_call tc ON COALESCE(t1.slug, t2.slug) = tc.slug
+                    LEFT JOIN items_emails_by_slug e_slug
+                        ON COALESCE(t1.slug, t2.slug) = e_slug.slug
+                    LEFT JOIN items_emails_by_domain e_dom
+                        ON COALESCE(t1.domain, t2.domain) = e_dom.domain
                     ORDER BY slug, last_modified DESC NULLS LAST
                 """)
 
@@ -428,6 +587,7 @@ def get_fuzzy_search_results(
                 _last_venue_mtime = current_venue_mtime
                 _last_lifecycle_mtime = current_lifecycle_mtime
                 _last_to_call_mtime = current_to_call_mtime
+                _last_email_mtime = current_email_mtime
                 _last_campaign = campaign
                 if campaign in _counts_cache:
                     del _counts_cache[campaign]
@@ -441,10 +601,19 @@ def get_fuzzy_search_results(
                 params.append(item_type)
 
             if filters:
+                email_sql = _sql_present("email")
+                phone_sql = _sql_present("phone_number")
+                addr_sql = _sql_present("street_address")
                 if filters.get("has_contact_info"):
-                    sql += " AND ((email IS NOT NULL AND email != '' AND email != 'null') OR (phone_number IS NOT NULL AND phone_number != '' AND phone_number != 'null'))"
-                elif filters.get("has_email_and_phone"):
-                    sql += " AND email IS NOT NULL AND email != '' AND email != 'null' AND phone_number IS NOT NULL AND phone_number != '' AND phone_number != 'null'"
+                    sql += f" AND ({email_sql} OR {phone_sql})"
+                if filters.get("has_email_and_phone"):
+                    sql += f" AND {email_sql} AND {phone_sql}"
+                if filters.get("has_email"):
+                    sql += f" AND {email_sql}"
+                if filters.get("no_email"):
+                    sql += f" AND NOT {email_sql}"
+                if filters.get("no_address"):
+                    sql += f" AND NOT {addr_sql}"
                 if filters.get("to_call"):
                     sql += " AND is_to_call = TRUE"
 
@@ -452,6 +621,15 @@ def get_fuzzy_search_results(
                 sql += " AND (name ILIKE ? OR slug ILIKE ? OR array_to_string(tags, ',') ILIKE ?)"
                 q = f"%{search_query}%"
                 params.extend([q, q, q])
+
+            if sort_by == "recent":
+                sql += " ORDER BY last_modified DESC NULLS LAST, name ASC"
+            elif sort_by == "rating":
+                sql += " ORDER BY average_rating DESC NULLS LAST, reviews_count DESC NULLS LAST"
+            elif sort_by == "reviews":
+                sql += " ORDER BY reviews_count DESC NULLS LAST, average_rating DESC NULLS LAST"
+            elif not search_query:
+                sql += " ORDER BY name ASC"
 
             sql += f" LIMIT {limit} OFFSET {offset}"
             res = _con.execute(sql, params).fetchall()

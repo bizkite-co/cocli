@@ -66,9 +66,10 @@ class CompanyList(Container):
         self.current_filters = {}
         self.current_sort = None
         self.search_offset = 0
+        # Templates own their filters; do not AND the global contact toggle.
+        self.filter_contact = False
 
         if tpl_id == "tpl_all":
-            self.filter_contact = False
             self.sort_recent = True
             self.current_sort = "recent"
         elif tpl_id == "tpl_with_email":
