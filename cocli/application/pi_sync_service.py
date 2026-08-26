@@ -19,11 +19,20 @@ from cocli.core.paths import paths, QueuePaths
 logger = logging.getLogger(__name__)
 
 # Queue directories to sync from each Pi node.
-# Each entry is (queue_name, remote_subpath, local_subpath_fn).
+# Each entry is (queue_name, remote_subpath, local_subpath_fn). pending/ is
+# synced alongside completed/ so pending counts and lease state shown by
+# `cocli stations inspect` reflect the live cluster instead of going stale
+# for months (see cocli/commands/stations_cmd.py's warning about this same
+# gap). gm-list widened from completed/results/ to the full completed/ for
+# consistency with gm-details/enrichment - a no-op today (results/ is the
+# only thing under it) but won't silently miss a future subdir.
 _SYNC_QUEUES: list[tuple[str, str, Callable[[QueuePaths], Path]]] = [
-    ("gm-list",    "completed/results/", lambda q: q / "completed" / "results"),
-    ("gm-details", "completed/",         lambda q: q / "completed"),
-    ("enrichment", "completed/",         lambda q: q / "completed"),
+    ("gm-list",    "completed/", lambda q: q / "completed"),
+    ("gm-list",    "pending/",   lambda q: q / "pending"),
+    ("gm-details", "completed/", lambda q: q / "completed"),
+    ("gm-details", "pending/",   lambda q: q / "pending"),
+    ("enrichment", "completed/", lambda q: q / "completed"),
+    ("enrichment", "pending/",   lambda q: q / "pending"),
 ]
 
 
@@ -82,6 +91,11 @@ class PiSyncService:
             queue_results: dict[str, int] = {}
 
             for queue_name, remote_subpath, local_subpath_fn in _SYNC_QUEUES:
+                # queue_name alone isn't unique now that a queue can appear
+                # twice (completed/ and pending/) - keying by name alone
+                # would let the second entry silently clobber the first's
+                # count in the report dict below.
+                result_key = f"{queue_name} ({remote_subpath.rstrip('/')})"
                 remote_path = (
                     f"mstouffer@{target}:repos/data/campaigns/{self.campaign}"
                     f"/queues/{queue_name}/{remote_subpath}"
@@ -113,12 +127,12 @@ class PiSyncService:
                         for line in output_lines
                         if line.startswith(".") or "/" in line and not line.endswith("/")
                     )
-                    queue_results[queue_name] = synced
+                    queue_results[result_key] = synced
                     total_files += synced
                 else:
                     error_msg = result.stderr.strip() or "Unknown error"
                     logger.warning(f"  {host}/{queue_name}: Failed - {error_msg}")
-                    queue_results[queue_name] = -1  # mark as failed
+                    queue_results[result_key] = -1  # mark as failed
 
             all_ok = all(v >= 0 for v in queue_results.values())
             logger.info(f"  {host}: {'Success' if all_ok else 'Partial'} ({total_files} files)")
