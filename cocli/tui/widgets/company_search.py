@@ -1,5 +1,6 @@
 from textual.app import ComposeResult
 from textual.containers import Horizontal, Container
+from textual.widgets import Input
 from textual import on, events
 
 from .template_list import TemplateList
@@ -18,6 +19,7 @@ class CompanySearchView(Container):
         ("t", "focus_template", "Focus Templates"),
         ("c", "focus_companies", "Focus Companies"),
         ("s", "focus_search", "Search"),
+        ("w", "open_website", "Website"),
     ]
 
     def __init__(
@@ -72,6 +74,16 @@ class CompanySearchView(Container):
 
     def action_focus_search(self) -> None:
         self.company_list.action_focus_search()
+
+    def action_open_website(self) -> None:
+        """Open the previewed company's website (same as detail view `w`)."""
+        self.company_list.action_open_website()
+
+    def check_action(self, action: str, parameters: tuple[object, ...]) -> bool | None:
+        # Don't steal "w" while the user is typing in the search box.
+        if action == "open_website" and isinstance(self.app.focused, Input):
+            return False
+        return True
 
     def on_key(self, event: events.Key) -> None:
         if event.key == "h":

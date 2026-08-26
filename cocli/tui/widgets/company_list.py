@@ -195,8 +195,8 @@ class CompanyList(Container):
                 event.stop()
             return
 
-        # 2. List-only shortcuts (only trigger if list_view has focus)
-        if list_view.has_focus:
+        # 2. List-only shortcuts (list view or a row inside it)
+        if list_view.has_focus or list_view.has_focus_within:
             if event.key == "f":
                 self.action_toggle_filter()
                 event.stop()
@@ -211,6 +211,10 @@ class CompanyList(Container):
                 return
             elif event.key == "a":
                 self.action_add_company()
+                event.stop()
+                return
+            elif event.key == "w":
+                self.action_open_website()
                 event.stop()
                 return
 
@@ -539,6 +543,32 @@ class CompanyList(Container):
             setattr(company, "_enqueued_at", item.enqueued_at)
 
             self.post_message(self.CompanyHighlighted(company))
+
+    def action_open_website(self) -> None:
+        """Open the previewed (highlighted) company's website."""
+        from .company_preview import CompanyPreview
+        from cocli.utils.open_url import open_url
+
+        previews = list(self.app.query(CompanyPreview))
+        if previews and previews[0].company is not None:
+            previews[0].action_open_website()
+            return
+
+        list_view = self.query_one("#company_list_view", ListView)
+        idx = list_view.index
+        if idx is None or idx >= len(self.filtered_fz_items):
+            self.app.notify("No company selected", severity="warning")
+            return
+
+        domain = self.filtered_fz_items[idx].domain
+        if not domain:
+            self.app.notify("No domain found", severity="warning")
+            return
+        url = f"http://{domain}"
+        if open_url(url):
+            self.app.notify(f"Opening {url}")
+        else:
+            self.app.notify(f"Could not open browser for {url}", severity="error")
 
     def action_remove_from_to_call(self) -> None:
         """Remove the highlighted company from the To-Call list."""

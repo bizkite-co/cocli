@@ -1,9 +1,10 @@
-from typing import Any
+from typing import Any, Optional
 from textual.widgets import Static, Label
 from textual.containers import VerticalScroll, Container, Horizontal
 from rich.markup import escape
 from cocli.models.companies.company import Company
 from textual.app import ComposeResult
+from cocli.utils.open_url import open_url
 from .phone import Phone
 from .email import Email
 
@@ -16,6 +17,7 @@ class CompanyPreview(Container):
         self._initial_widgets = args
         super().__init__(**kwargs)
         self.can_focus = False
+        self.company: Optional[Company] = None
 
     def compose(self) -> ComposeResult:
         yield Label("PREVIEW", id="preview_header", classes="pane-header")
@@ -26,8 +28,23 @@ class CompanyPreview(Container):
             content = self.query_one("#preview_content", VerticalScroll)
             content.mount(*self._initial_widgets)
 
+    def action_open_website(self) -> None:
+        if self.company is None:
+            self.app.notify("No company selected", severity="warning")
+            return
+        domain = self.company.domain
+        if domain:
+            url = f"http://{domain}"
+            if open_url(url):
+                self.app.notify(f"Opening {url}")
+            else:
+                self.app.notify(f"Could not open browser for {url}", severity="error")
+        else:
+            self.app.notify("No domain found", severity="warning")
+
     def update_preview(self, company: Company) -> None:
         """Update the preview with the given company."""
+        self.company = company
         content = self.query_one("#preview_content", VerticalScroll)
         content.remove_children()
 
