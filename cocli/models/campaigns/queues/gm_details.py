@@ -1,3 +1,4 @@
+from datetime import datetime, UTC
 from pydantic import BaseModel, Field
 from typing import Optional
 from pathlib import Path
@@ -23,6 +24,7 @@ class GmItemTask(BaseModel):
     # Queue mechanics (Transient)
     ack_token: Optional[str] = Field(default=None, exclude=True)
     attempts: int = 0
+    created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
     @property
     def collection(self) -> QueueName:

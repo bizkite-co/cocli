@@ -1127,7 +1127,7 @@ def discover_venues(
     )
 
 
-@app.command()
+@app.command(deprecated=True)
 def achieve_goal(
     goal_limit: int = typer.Option(
         10,
@@ -1146,6 +1146,29 @@ def achieve_goal(
         help="Prioritize and filter for public/value resources.",
     ),
 ) -> None:
+    """Deprecated - superseded by Discovery Gen; not called in production since ~2026-06.
+
+    Calls pipeline(..., use_cloud_queue=False), which enqueues new
+    gm-list/enrichment tasks straight into this machine's LOCAL
+    queues/{queue}/pending/ (FilesystemQueue with no s3_client/bucket_name -
+    see cocli/core/queue/factory.py get_queue_manager(use_cloud=False)).
+    Unlike the requeue_* helpers in index_service.py, which push tasks
+    directly onto a Pi's own disk over SSH, nothing here ever moves these
+    tasks off the dev machine - there is no automated dev-machine -> Pi
+    distribution step, so anything enqueued this way sits unworked forever
+    unless someone notices and hand-copies it out.
+
+    To revive this command, either (a) switch it to use_cloud_queue=True
+    with a real S3-backed queue so Pi workers can pull from S3 like the
+    normal pipeline, or (b) add an explicit push-to-Pi step (SSH+rsync,
+    matching requeue_stuck_details' pattern) before returning. Until one
+    of those exists, do not rely on this command - use Discovery Gen.
+    """
+    console.print(
+        "[yellow]achieve-goal is deprecated: it enqueues gm-list/enrichment "
+        "tasks locally with no automated path to a Pi worker (see this "
+        "command's docstring). Use Discovery Gen instead.[/yellow]"
+    )
     if campaign_name is None:
         campaign_name = get_campaign()
 

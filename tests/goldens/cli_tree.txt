@@ -95,7 +95,7 @@ cocli
         tui - Dumps the TUI widget hierarchy.
             --output/-o (path)
     campaign - Manage campaigns.
-        achieve-goal
+        achieve-goal - Deprecated - superseded by Discovery Gen; not called in production since ~2026-06.
             --emails/--limit (integer)
             campaign_name (text)
             --force/-f (boolean)

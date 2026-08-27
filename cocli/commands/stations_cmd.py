@@ -74,13 +74,19 @@ def inspect_stations(
 
     logger.info("inspecting stations root: %s", root)
     logger.warning(
-        "counts below are read from this machine's local disk, which is NOT "
-        "kept in sync with the live Pi cluster for pending/ or lease state - "
-        "`cocli sync pi-results` only pulls each node's completed/ results "
-        "(see cocli/application/pi_sync_service.py:_SYNC_QUEUES), never "
-        "pending/. For true current pending counts and lease state, use "
-        "`cocli audit gm-list`/`cocli audit cluster` (live Pi heartbeat) "
-        "instead of trusting pending/lease numbers shown here."
+        "counts below are read from this machine's local disk. For "
+        "gm-list/gm-details/enrichment, pending/ and completed/ are pushed "
+        "near-real-time by lsyncd from cocli5x0/cocli5x1 (ticket "
+        "set-up-lsyncd-push-based-lan-sync-from-pi-nodes-to-dev-machine-"
+        "sandboxed-via-rrsync) - but only while that daemon is actually "
+        "running on the node; if it's down this falls back to whenever "
+        "`cocli sync pi-results` last pulled (see "
+        "cocli/application/pi_sync_service.py:_SYNC_QUEUES). Other queue "
+        "types (to-call, discovery-gen, map-tile, events) have no live sync "
+        "at all. Lease/claim state itself is NOT covered by either sync "
+        "path and can still be stale or mismatched with the live cluster. "
+        "For authoritative pending counts and lease state, use "
+        "`cocli audit gm-list`/`cocli audit cluster` (live Pi heartbeat)."
     )
     inspect_and_render(
         str(root),
