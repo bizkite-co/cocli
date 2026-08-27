@@ -33,6 +33,79 @@ def _is_hollow(value: Any) -> bool:
 # sign the scrape just didn't find anything.
 _WEBSITE_NEVER_MERGE_FROM_EXISTING = {"url", "sitemap_xml", "navbar_html", "error", "error_category"}
 
+# List-typed fields get UNION-merged (existing + fresh, deduped) instead
+# of the hollow-check replace-if-nonempty rule everything else uses. A
+# fresh non-empty list is not proof it's at least as complete as the
+# existing one - a sparse rescrape returning 1 category must not discard
+# 2 others the existing record already had. Scalar fields don't have this
+# problem (there's no meaningful partial-merge for a single phone number),
+# so this set is deliberately narrow.
+_WEBSITE_LIST_FIELDS = {
+    "personnel", "services", "products", "categories", "tags",
+    "all_emails", "tech_stack", "found_keywords",
+}
+
+
+def _personnel_identity_key(person: Dict[str, Any]) -> str:
+    """Identity for deduping/matching personnel entries across a merge -
+    name first, since it's the field most likely present on BOTH a sparse
+    and a full record for the same person (a rescrape that only found a
+    name for someone already on file with an email must still match them,
+    not create a duplicate). Falls back to email only when no name is
+    present, then the raw dict (so two entries with neither field just
+    don't collide/merge)."""
+    name = str(person.get("name") or "").strip().lower()
+    if name:
+        return f"name:{name}"
+    email = str(person.get("email") or "").strip().lower()
+    if email:
+        return f"email:{email}"
+    return f"raw:{sorted(person.items())}"
+
+
+def _union_merge_list(fresh: List[Any], existing: List[Any]) -> List[Any]:
+    """Existing entries first (order preserved), then fresh-only entries
+    appended. Plain values dedupe by equality. Dict entries (personnel)
+    dedupe by identity key - a matched pair merges field-by-field using
+    the same hollow-aware rule as everything else, so a fresh entry with
+    just a name doesn't blank an existing entry's title/email either."""
+    if not existing:
+        return fresh
+    if not fresh:
+        return existing
+
+    if isinstance(fresh[0], dict) or (existing and isinstance(existing[0], dict)):
+        existing_by_key = {
+            _personnel_identity_key(p): p for p in existing if isinstance(p, dict)
+        }
+        fresh_by_key = {
+            _personnel_identity_key(p): p for p in fresh if isinstance(p, dict)
+        }
+        merged: Dict[str, Dict[str, Any]] = dict(existing_by_key)
+        for key, fresh_person in fresh_by_key.items():
+            if key in merged:
+                existing_person = merged[key]
+                merged_person = dict(fresh_person)
+                for field, value in existing_person.items():
+                    if _is_hollow(merged_person.get(field)) and not _is_hollow(value):
+                        merged_person[field] = value
+                merged[key] = merged_person
+            else:
+                merged[key] = fresh_person
+        ordered_keys = list(existing_by_key.keys()) + [
+            k for k in fresh_by_key if k not in existing_by_key
+        ]
+        return [merged[k] for k in ordered_keys]
+
+    seen = set()
+    result = []
+    for item in list(existing) + list(fresh):
+        dedupe_key = item if not isinstance(item, (list, dict)) else str(item)
+        if dedupe_key not in seen:
+            seen.add(dedupe_key)
+            result.append(item)
+    return result
+
 
 class Website(BaseModel):
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
@@ -100,6 +173,12 @@ class Website(BaseModel):
 
         for field_name in type(self).model_fields:
             if field_name in _WEBSITE_NEVER_MERGE_FROM_EXISTING:
+                continue
+            if field_name in _WEBSITE_LIST_FIELDS:
+                fresh_list = save_data.get(field_name) or []
+                existing_list = existing_data.get(field_name) or []
+                if isinstance(fresh_list, list) and isinstance(existing_list, list):
+                    save_data[field_name] = _union_merge_list(fresh_list, existing_list)
                 continue
             if _is_hollow(save_data.get(field_name)) and not _is_hollow(
                 existing_data.get(field_name)

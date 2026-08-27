@@ -100,3 +100,53 @@ def test_first_save_with_no_existing_file_just_writes_fresh_data() -> None:
 
     data = _read_frontmatter(slug)
     assert data["phone"] == "15559876543"
+
+
+def test_sparse_refresh_does_not_shrink_list_fields() -> None:
+    """A fresh non-empty list is not proof it's at least as complete as
+    the existing one - the old field-level hollow-check let a smaller
+    fresh list silently discard existing entries not present in it."""
+    slug = "acme-flooring"
+
+    Website(
+        url="acme-flooring.com",
+        categories=["Flooring Contractor", "Home Improvement", "Carpet Store"],
+        all_emails=["jane@acme.com", "info@acme.com", "sales@acme.com"],
+    ).save(slug)
+
+    Website(url="acme-flooring.com", categories=["Flooring Contractor"], all_emails=["info@acme.com"]).save(slug)
+
+    data = _read_frontmatter(slug)
+    assert set(data["categories"]) == {"Flooring Contractor", "Home Improvement", "Carpet Store"}
+    assert set(data["all_emails"]) == {"jane@acme.com", "info@acme.com", "sales@acme.com"}
+
+
+def test_list_field_union_still_adds_genuinely_new_entries() -> None:
+    slug = "acme-flooring"
+
+    Website(url="acme-flooring.com", categories=["Flooring Contractor"]).save(slug)
+    Website(url="acme-flooring.com", categories=["Flooring Contractor", "Carpet Store"]).save(slug)
+
+    data = _read_frontmatter(slug)
+    assert set(data["categories"]) == {"Flooring Contractor", "Carpet Store"}
+
+
+def test_personnel_entries_merge_fields_within_a_matched_identity() -> None:
+    """Personnel is List[Dict] - a fresh entry with just a name for
+    someone already on file with a title+email must not blank those
+    fields, and must not create a duplicate entry for the same person."""
+    slug = "acme-flooring"
+
+    Website(
+        url="acme-flooring.com",
+        personnel=[{"name": "Jane Doe", "title": "Owner", "email": "jane@acme.com"}],
+    ).save(slug)
+
+    Website(url="acme-flooring.com", personnel=[{"name": "Jane Doe"}, {"name": "Bob Smith"}]).save(slug)
+
+    data = _read_frontmatter(slug)
+    assert len(data["personnel"]) == 2
+    jane = next(p for p in data["personnel"] if p["name"] == "Jane Doe")
+    assert jane["title"] == "Owner"
+    assert jane["email"] == "jane@acme.com"
+    assert any(p["name"] == "Bob Smith" for p in data["personnel"])
