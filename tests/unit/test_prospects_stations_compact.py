@@ -253,6 +253,53 @@ def test_prospects_compact_survives_literal_quote_characters_in_fields(
     assert parts[idx["category"]] == "Flooring contractor"
 
 
+def test_prospects_compact_does_not_csv_quote_hash_prefixed_names(
+    tmp_path: Path, monkeypatch: Any
+) -> None:
+    """DuckDB COPY quotes fields that start with '#' by default (CSV comment
+    char). Combined with read_csv(quote=''), those wrappers become literal
+    characters on the next load — so compact undoes clean-quote-corruption
+    for names like # 1 Hardwood Flooring."""
+    from cocli.core import paths as paths_mod
+
+    monkeypatch.setattr(paths_mod.paths, "root", tmp_path)
+
+    index_dir = tmp_path / "campaigns" / "t" / "indexes" / "google_maps_prospects"
+    index_dir.mkdir(parents=True)
+    wal = index_dir / "wal" / "a"
+    wal.mkdir(parents=True)
+    checkpoint = index_dir / "prospects.usv"
+    checkpoint.write_text(
+        _full_usv_line(
+            "ChIJHashNameaaaaaaaaaa",
+            "# 1 Hardwood Flooring",
+            "2026-01-01T00:00:00+00:00",
+        ),
+        encoding="utf-8",
+    )
+    (wal / "touch.usv").write_text(
+        _full_usv_line(
+            "ChIJHashNameaaaaaaaaaa",
+            "# 1 Hardwood Flooring",
+            "2026-01-02T00:00:00+00:00",
+        ),
+        encoding="utf-8",
+    )
+
+    assert (
+        compact_prospects_local(
+            index_dir, checkpoint_path=checkpoint, compactor_id="hash-name"
+        )
+        is True
+    )
+
+    names = GoogleMapsProspect.usv_field_names()
+    idx = {n: i for i, n in enumerate(names)}
+    parts = checkpoint.read_text(encoding="utf-8").splitlines()[0].split("\x1f")
+    assert parts[idx["name"]] == "# 1 Hardwood Flooring"
+    assert '"' not in parts[idx["name"]]
+
+
 def test_prospects_compact_fold_ignores_garbage_updated_at_as_tiebreaker(
     tmp_path: Path, monkeypatch: Any
 ) -> None:

@@ -194,12 +194,11 @@ def compact_gm_list_results(
         tmp_path = checkpoint_path.parent / f"{checkpoint_path.name}.tmp"
         backup_path = timestamped_backup_path(checkpoint_path)
 
+        from cocli.utils.duckdb_utils import USV_COPY_OPTIONS
+
         con.execute(f"""
-            COPY (SELECT {cols_str} FROM merged ORDER BY place_id ASC) 
-            TO '{tmp_path}' (
-                DELIMITER '\x1f',
-                HEADER FALSE
-            )
+            COPY (SELECT {cols_str} FROM merged ORDER BY place_id ASC)
+            TO '{tmp_path}' ({USV_COPY_OPTIONS})
         """)
 
         # 5. Swap files

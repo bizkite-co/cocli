@@ -120,7 +120,11 @@ def compact_prospects_to_checkpoint(campaign_name: str) -> int:
         
         # 4. Atomic Write
         temp_checkpoint = checkpoint_path.with_suffix(".tmp.usv")
-        con.execute(f"COPY deduplicated_prospects TO '{temp_checkpoint}' (DELIMITER '\x1f', HEADER FALSE)")
+        from cocli.utils.duckdb_utils import USV_COPY_OPTIONS
+
+        con.execute(
+            f"COPY deduplicated_prospects TO '{temp_checkpoint}' ({USV_COPY_OPTIONS})"
+        )
         
         # 5. Verify and Swap
         res = con.execute("SELECT COUNT(*) FROM deduplicated_prospects").fetchone()

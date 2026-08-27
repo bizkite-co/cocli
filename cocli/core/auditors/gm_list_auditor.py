@@ -1,6 +1,7 @@
 from pathlib import Path
 import typer
 from cocli.utils.usv_utils import USVReader, USVWriter
+from cocli.utils.duckdb_utils import USV_COPY_OPTIONS
 from rich.console import Console
 import duckdb
 
@@ -113,7 +114,7 @@ def run_compaction(results_dir: Path) -> Path:
           AND (average_rating IS NULL OR (TRY_CAST(average_rating AS DOUBLE) BETWEEN 0.0 AND 5.0))
           AND (street_address IS NULL OR (LENGTH(street_address) BETWEEN 5 AND 100))
           AND (gmb_url IS NULL OR LENGTH(gmb_url) >= 20)
-        )) TO '{invalid_path}' (DELIMITER '\x1f', HEADER FALSE)
+        )) TO '{invalid_path}' ({USV_COPY_OPTIONS})
     """)
 
     # 3. Create Valid Table

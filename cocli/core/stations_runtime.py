@@ -23,6 +23,7 @@ from stations.engine import DefaultTransformEngine
 from stations.station import StationDecl
 
 from cocli.core.stations_adapt import as_queue_edge
+from cocli.utils.duckdb_utils import USV_COPY_OPTIONS
 from cocli.station_defs.campaigns.indexes.emails import (
     EMAIL_INBOX,
     EMAIL_INDEX,
@@ -500,7 +501,7 @@ def _duckdb_fold_prospect_usv_files(
                     quote=''
                 )
                 GROUP BY place_id
-            ) TO '{tmp}' (DELIMITER '\x1f', HEADER FALSE)
+            ) TO '{tmp}' ({USV_COPY_OPTIONS})
         """
         con.execute(q)
         if not tmp.exists():

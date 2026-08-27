@@ -9,6 +9,11 @@ import duckdb
 
 logger = logging.getLogger(__name__)
 
+# FDPE: USV is headerless and unquoted. DuckDB COPY defaults to wrapping
+# fields that start with '#' (CSV comment) in double quotes; the next
+# read_csv(quote='') then treats those wrappers as literal data.
+USV_COPY_OPTIONS = "DELIMITER '\x1f', HEADER FALSE, QUOTE ''"
+
 
 def get_schema_field_names(
     datapackage_path: Path, resource_name: Optional[str] = None
