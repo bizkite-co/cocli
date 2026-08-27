@@ -30,3 +30,4 @@ The DFQ has evolved significantly. For the current technical implementation, lif
   - **At Least Once**: Requires tasks to be idempotent.
   - **Latency**: Discovery is randomized; nearly-empty queues may have slight pickup delays.
   - **Connectivity**: Global atomicity requires active S3 access (ADR 011).
+  - **Tailscale**: The Pi-to-dev-machine background sync path (`rsync --daemon` over `tailscale0`, ticket `set-up-lsyncd-push-based-lan-sync-from-pi-nodes-to-dev-machine-sandboxed-via-rrsync`) depends on Tailscale for NAT traversal to dev machines. Free-tier device/user caps make this a real, trackable dependency, not just an implementation detail - S3-based sync (`cocli sync pi-results`) remains available as a fallback with no code changes, but the rsync-daemon push path would need explicit disabling to bypass, not a config flag.

@@ -144,6 +144,8 @@ See `docs/data-management/DIRECTORY-DATA-STRUCTURE.md` and `docs/_schema/traceab
 
 **AWS Fargate + Google Maps Scraping:** Google Maps conclusively blocks Fargate IP ranges. Use Raspberry Pi workers for Google Maps detail tasks; Fargate is suitable for general website enrichment only.
 
+**Tailscale dependency (Pi cluster LAN sync):** the Pi-to-dev-machine background file sync (`rsync --daemon` over `tailscale0`, replacing periodic full-tree `rsync` pulls for `pending/`/`completed/` queue state - see task-agent ticket `set-up-lsyncd-push-based-lan-sync-from-pi-nodes-to-dev-machine-sandboxed-via-rrsync`) depends on Tailscale for NAT traversal, since dev machines behind WSL2/home-router NAT aren't otherwise reachable from the Pi cluster's LAN. Tailscale's free tier caps devices/users - if that becomes a real constraint, `cocli sync pi-results` (S3-independent, SSH+rsync PULL, no Tailscale involved) remains available with no code changes for existing pull-based sync/audit tooling, but the rsync-daemon push path itself would need to be explicitly disabled - it isn't behind a feature flag.
+
 ## Common Development Tasks
 
 ### Running Tests
