@@ -174,6 +174,57 @@ async def test_details_loop_nacks_instead_of_acking_an_empty_result(tmp_path, ca
 
 
 @pytest.mark.asyncio
+async def test_enrichment_loop_nacks_instead_of_acking_a_failed_scrape(tmp_path, caplog):
+    """WebsiteScraper.run() catches its own Timeout/Exception internally and
+    always returns a Website with `.error` set rather than raising - so the
+    old code's unconditional ack() marked every failed/timed-out scrape
+    "completed" with nothing to ever retry it. Same shape as the gm-details
+    fix above; mirrored here for enrichment."""
+    service = _make_service(tmp_path)
+    context = _make_ready_context()
+
+    fake_task = MagicMock(company_slug="acme-flooring", domain="acme-flooring.com", force_refresh=False)
+    enrichment_queue = MagicMock()
+    enrichment_queue.poll.return_value = [fake_task]
+
+    from cocli.models.companies.website import Website
+
+    failed_website = Website(url="acme-flooring.com", error="Timeout", error_category="timeout")
+
+    with patch("cocli.models.campaigns.campaign.Campaign.load", return_value=MagicMock()), \
+         patch("cocli.core.enrichment.enrich_company_website", new=AsyncMock(return_value=failed_website)), \
+         caplog.at_level("WARNING", logger="cocli.application.worker_service"):
+        await service._run_enrichment_task_loop(context, enrichment_queue, False, True)
+
+    enrichment_queue.nack.assert_called_once_with(fake_task)
+    enrichment_queue.ack.assert_not_called()
+    assert "enrichment scrape failed" in caplog.text.lower()
+
+
+@pytest.mark.asyncio
+async def test_enrichment_loop_acks_on_real_success(tmp_path):
+    """The success path must be unchanged: a clean scrape with no error
+    still acks."""
+    service = _make_service(tmp_path)
+    context = _make_ready_context()
+
+    fake_task = MagicMock(company_slug="acme-flooring", domain="acme-flooring.com", force_refresh=False)
+    enrichment_queue = MagicMock()
+    enrichment_queue.poll.return_value = [fake_task]
+
+    from cocli.models.companies.website import Website
+
+    good_website = Website(url="acme-flooring.com", description="A real flooring contractor.")
+
+    with patch("cocli.models.campaigns.campaign.Campaign.load", return_value=MagicMock()), \
+         patch("cocli.core.enrichment.enrich_company_website", new=AsyncMock(return_value=good_website)):
+        await service._run_enrichment_task_loop(context, enrichment_queue, False, True)
+
+    enrichment_queue.ack.assert_called_once_with(fake_task)
+    enrichment_queue.nack.assert_not_called()
+
+
+@pytest.mark.asyncio
 async def test_details_loop_acks_and_pushes_enrichment_on_real_success(tmp_path):
     """The success path must be unchanged: a real prospect with a domain
     still acks and still pushes to the enrichment queue."""

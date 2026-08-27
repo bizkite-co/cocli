@@ -70,8 +70,20 @@ class S3CompanyManager:
             logger.warning("Attempted to save website enrichment without a company slug.")
             return
 
+        # Merge-safe, same as the local website.md write (Website.save()):
+        # a hollow field from a failed/sparse scrape must not overwrite a
+        # previously-good value. "Existing" is read from the LOCAL file
+        # (not a prior S3 GET) so there is exactly one merge-authority
+        # source of truth across both persistence targets, not two that
+        # could independently drift.
+        from .config import get_companies_dir
+
+        website_md_path = get_companies_dir() / company_slug / "enrichments" / "website.md"
+        existing_data = Website.read_existing_frontmatter(website_md_path)
+        save_data = website_data.compute_merged_save_data(existing_data)
+
         s3_key = self._get_s3_key_for_website_enrichment(company_slug)
-        content = f"---\n{yaml.dump(website_data.model_dump(exclude_none=True))}\n---\n"
+        content = f"---\n{yaml.dump(save_data)}\n---\n"
 
         try:
             self.s3_client.put_object(

@@ -764,7 +764,7 @@ class IndexService:
                 )
                 continue
 
-            payload = json.dumps(task.model_dump())
+            payload = json.dumps(task.model_dump(mode="json"))
             shard = get_place_id_shard(place_id)
             remote_base = f"repos/data/campaigns/{self.campaign_name}/queues/gm-details"
 

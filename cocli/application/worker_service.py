@@ -688,7 +688,25 @@ class WorkerService:
                 )
                 if website_data:
                     website_data.save(task.company_slug)
-                enrichment_queue.ack(task)
+                if website_data and website_data.error:
+                    # WebsiteScraper.run() catches its own Timeout/Exception
+                    # internally and always returns a Website (see
+                    # website_scraper.py run()'s except blocks) - a failed
+                    # scrape never raises here, so acking unconditionally
+                    # marked every failure "completed" with nothing to ever
+                    # retry it. Mirror the gm-details worker's identical fix
+                    # above (2026-08 incident: 21 place_ids stuck completed
+                    # with no data, found via `cocli index trace`). The
+                    # write above is already merge-safe (Website.save()), so
+                    # this only changes queue disposition, not persistence.
+                    logger.warning(
+                        f"Enrichment scrape failed for {task.domain} "
+                        f"[{website_data.error_category}]: {website_data.error} - "
+                        "nacking for retry instead of acking a failed result."
+                    )
+                    enrichment_queue.nack(task)
+                else:
+                    enrichment_queue.ack(task)
                 if once:
                     return
             except Exception as e:

@@ -1,6 +1,7 @@
 from pydantic import BaseModel, Field, model_validator, computed_field
 from typing import Optional, List, Dict, Any
 from datetime import datetime, timezone
+from pathlib import Path
 import yaml
 import logging
 from ..domain import Domain
@@ -84,6 +85,51 @@ class Website(BaseModel):
     error: Optional[str] = None
     error_category: Optional[ErrorCategory] = None
 
+    def compute_merged_save_data(self, existing_data: Dict[str, Any]) -> Dict[str, Any]:
+        """Pure merge: fresh scrape values win unless hollow and the existing
+        value isn't. Single source of truth for what "merge-safe save" means -
+        every persistence target (local website.md, the S3 mirror) must call
+        this instead of re-deriving its own merge logic, or they will drift
+        into different merge behavior for the same data. See task-agent
+        ticket
+        website.save-blindly-overwrites-website.md-on-every-enrichment-write-no-merge-safety-against-sparse-force-refresh-scrapes.
+        """
+        save_data = self.model_dump(mode="json", exclude_none=True)
+        save_data.pop("sitemap_xml", None)
+        save_data.pop("navbar_html", None)
+
+        for field_name in type(self).model_fields:
+            if field_name in _WEBSITE_NEVER_MERGE_FROM_EXISTING:
+                continue
+            if _is_hollow(save_data.get(field_name)) and not _is_hollow(
+                existing_data.get(field_name)
+            ):
+                save_data[field_name] = existing_data[field_name]
+
+        return save_data
+
+    @staticmethod
+    def read_existing_frontmatter(website_md_path: Path) -> Dict[str, Any]:
+        """Reads and parses an existing website.md's YAML frontmatter, if any.
+        Returns {} on missing file or any parse failure (caller proceeds with
+        fresh data only - never blocks a save on a corrupt existing file)."""
+        from ...core.text_utils import parse_frontmatter
+
+        if not website_md_path.exists():
+            return {}
+        try:
+            frontmatter_str = parse_frontmatter(website_md_path.read_text(encoding="utf-8"))
+            if frontmatter_str:
+                loaded = yaml.safe_load(frontmatter_str)
+                if isinstance(loaded, dict):
+                    return loaded
+        except Exception as merge_read_err:
+            logger.warning(
+                f"Could not read existing website.md at {website_md_path} to merge "
+                f"against - proceeding with fresh data only: {merge_read_err}"
+            )
+        return {}
+
     def save(self, company_slug: str) -> None:
         """Saves the website enrichment data to the local company directory.
 
@@ -97,7 +143,6 @@ class Website(BaseModel):
         """
         from ...core.config import get_companies_dir, get_campaign
         from ...core.email_index_manager import EmailIndexManager
-        from ...core.text_utils import parse_frontmatter
         from ..campaigns.indexes.email import EmailEntry
         from datetime import UTC
 
@@ -110,32 +155,8 @@ class Website(BaseModel):
         # Ensure updated_at is refreshed on save
         self.updated_at = datetime.now(timezone.utc)
 
-        # Exclude raw large fields from the markdown frontmatter
-        save_data = self.model_dump(mode="json", exclude_none=True)
-        save_data.pop("sitemap_xml", None)
-        save_data.pop("navbar_html", None)
-
-        existing_data: Dict[str, Any] = {}
-        if website_md_path.exists():
-            try:
-                frontmatter_str = parse_frontmatter(website_md_path.read_text(encoding="utf-8"))
-                if frontmatter_str:
-                    loaded = yaml.safe_load(frontmatter_str)
-                    if isinstance(loaded, dict):
-                        existing_data = loaded
-            except Exception as merge_read_err:
-                logger.warning(
-                    f"Could not read existing website.md for {company_slug} to merge "
-                    f"against - saving fresh data only: {merge_read_err}"
-                )
-
-        for field_name in type(self).model_fields:
-            if field_name in _WEBSITE_NEVER_MERGE_FROM_EXISTING:
-                continue
-            if _is_hollow(save_data.get(field_name)) and not _is_hollow(
-                existing_data.get(field_name)
-            ):
-                save_data[field_name] = existing_data[field_name]
+        existing_data = self.read_existing_frontmatter(website_md_path)
+        save_data = self.compute_merged_save_data(existing_data)
 
         with open(website_md_path, "w") as f:
             f.write("---\n")
