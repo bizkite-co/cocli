@@ -142,8 +142,16 @@ async def enrich_domain(request: EnrichmentRequest) -> Website:
         # Using --no-sandbox is often necessary in Docker environments
         browser = await p.chromium.launch(headless=True, args=['--no-sandbox'])
         try:
-            # We create a dummy company object to pass to the enrichment function
-            dummy_company = Company(name=CompanyName(request.domain), domain=request.domain, slug=request.domain)
+            # We create a dummy company object to pass to the enrichment function.
+            # Prefer the caller's real (business-name-derived) slug - falling
+            # back to a domain-derived one only when the caller genuinely
+            # doesn't have one yet - or every call creates a second, orphaned
+            # company folder keyed by the raw domain (e.g. "hurleymat-com")
+            # alongside the real discovery-pipeline company
+            # ("b-f-hurley-mat-co") for the same business. See task-agent
+            # ticket investigate-duplicate-company-records-domain-slug-orphans-vs-business-name-slug-discovery-records.
+            slug = request.company_slug or slugify(request.domain)
+            dummy_company = Company(name=CompanyName(request.domain), domain=request.domain, slug=slug)
             
             website_data = await enrich_company_website(
                 browser=browser,

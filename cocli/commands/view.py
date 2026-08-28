@@ -513,6 +513,7 @@ def _interactive_view_company(company_slug: str) -> None:
                             json={
                                 "domain": new_domain,
                                 "force": True, # Force re-enrichment
+                                "company_slug": company.slug,
                             },
                             timeout=120.0,
                         )

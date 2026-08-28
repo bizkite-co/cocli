@@ -58,4 +58,33 @@ def test_enrich_domain_stateless_success(client, mock_playwright, mock_enrich_co
     assert campaign.aws.profile == "test-profile"
     assert campaign.company_slug == "test-company"
 
+    # The actual bug this whole test file missed: the endpoint used to
+    # always derive the Company's slug from the raw domain
+    # (Company(slug=request.domain)), ignoring company_slug entirely -
+    # creating an orphaned "example-com" duplicate alongside the real
+    # "test-company" record. Assert on the Company object itself, not
+    # just the unrelated ephemeral Campaign.company_slug field above.
+    company = kwargs.get("company")
+    assert company is not None
+    assert company.slug == "test-company"
+
+
+def test_enrich_domain_falls_back_to_domain_derived_slug_when_none_provided(
+    client, mock_playwright, mock_enrich_company_website
+) -> None:
+    """When no company_slug is given at all (the only case a domain-
+    derived slug should ever be used), the fallback still works."""
+    payload = {
+        "domain": "example.com",
+        "campaign_name": "test-campaign",
+    }
+
+    response = client.post("/enrich", json=payload)
+
+    assert response.status_code == 200
+    _, kwargs = mock_enrich_company_website.call_args
+    company = kwargs.get("company")
+    assert company is not None
+    assert company.slug == "example-com"
+
 

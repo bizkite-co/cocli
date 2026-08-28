@@ -248,6 +248,7 @@ def enrich_from_queue(
                     "force": msg.force_refresh,
                     "ttl_days": msg.ttl_days,
                     "campaign_name": campaign_name,
+                    "company_slug": msg.company_slug,
                 },
                 timeout=120.0,
             )
