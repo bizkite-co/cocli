@@ -97,11 +97,15 @@ class CompanySearchView(Container):
                 pass
         elif event.key == "l":
             if self.template_list.has_focus_within:
-                # Trigger selection which will apply template and move focus
                 from textual.widgets import ListView
+
                 self.template_list.query_one(ListView).action_select_cursor()
                 event.prevent_default()
-            elif self.company_list.query_one("#company_list_view").has_focus:
-                # Enter detail view
-                self.company_list.query_one("#company_list_view").action_select_cursor() # type: ignore
+                event.stop()
+            elif (
+                self.company_list.query_one("#company_list_view").has_focus
+                or self.company_list.has_focus_within
+            ):
+                self.company_list.action_open_highlighted()
                 event.prevent_default()
+                event.stop()

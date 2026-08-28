@@ -57,10 +57,13 @@ def is_cache_valid(campaign: Optional[str] = None) -> bool:
                     return False
 
                 cols = first_line.split(UNIT_SEP)
-                # We expect 8 columns now: slug, name, type, domain, email, phone_number, tags, display
-                if len(cols) != 8:
+                from cocli.models.companies.cache import CompanyCacheItem
+
+                expected_cols = len(CompanyCacheItem.get_datapackage_fields())
+                if len(cols) != expected_cols:
                     logger.info(
-                        f"Cache schema mismatch (found {len(cols)} cols, expected 8). Invalidating."
+                        f"Cache schema mismatch (found {len(cols)} cols, "
+                        f"expected {expected_cols}). Invalidating."
                     )
                     return False
     except Exception:

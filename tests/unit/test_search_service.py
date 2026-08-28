@@ -31,6 +31,13 @@ def populated_env(mock_cocli_env):
     return mock_cocli_env
 
 
+def test_cache_valid_after_build(populated_env):
+    """CompanyCacheItem is 10 columns; stale expected=8 would rebuild forever."""
+    from cocli.core.cache import is_cache_valid
+
+    assert is_cache_valid(campaign="test/default") is True
+
+
 def test_get_fuzzy_search_results_basic(populated_env):
     """Test basic search functionality."""
     results = get_fuzzy_search_results(search_query="Biz", campaign_name="test/default")

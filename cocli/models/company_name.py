@@ -48,10 +48,10 @@ def normalize_company_name(value: Any) -> str:
     if not value or value.lower() in ("none", "null"):
         raise ValueError("Empty company name")
     value = value.replace('"', "")
-    value = re.sub(r"\s+", " ", value).strip()
-    if not value:
+    normalized: str = re.sub(r"\s+", " ", value).strip()
+    if not normalized:
         raise ValueError("Company name is empty after quote removal")
-    return value
+    return normalized
 
 
 class CompanyName:

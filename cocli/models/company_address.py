@@ -47,10 +47,10 @@ def normalize_company_address(value: Any) -> str:
     if not value or value.lower() in ("none", "null"):
         raise ValueError("Empty company address")
     value = value.replace('"', "")
-    value = re.sub(r"\s+", " ", value).strip()
-    if not value:
+    normalized: str = re.sub(r"\s+", " ", value).strip()
+    if not normalized:
         raise ValueError("Address is empty after quote removal")
-    return value
+    return normalized
 
 
 class CompanyAddress:

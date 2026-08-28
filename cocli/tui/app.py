@@ -19,7 +19,7 @@ from typing import (
 
 from textual.app import App, ComposeResult
 from textual.binding import Binding
-from textual.widgets import Static, ListView, Input, Label, Footer
+from textual.widgets import Static, ListView, ListItem, Input, Label, Footer
 from textual.containers import Container, Horizontal
 from textual import events, on
 from textual.command import Provider, Hit
@@ -1046,10 +1046,21 @@ class CocliApp(App[None]):
         focused_widget = self.focused
         if not focused_widget:
             return
-        if hasattr(focused_widget, "action_select_item"):
-            focused_widget.action_select_item()
-        elif isinstance(focused_widget, ListView):
-            focused_widget.action_select_cursor()
+        node: Optional[Any] = focused_widget
+        while node is not None:
+            open_highlighted = getattr(node, "action_open_highlighted", None)
+            if callable(open_highlighted):
+                open_highlighted()
+                return
+            if hasattr(node, "action_select_item") and not isinstance(
+                node, (ListView, ListItem, CocliApp)
+            ):
+                node.action_select_item()
+                return
+            if isinstance(node, ListView):
+                node.action_select_cursor()
+                return
+            node = getattr(node, "parent", None)
 
     def action_escape(self) -> None:
         """Escape context without search reset."""

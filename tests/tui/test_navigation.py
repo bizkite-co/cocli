@@ -48,7 +48,7 @@ async def test_l_key_selects_item():
         await driver.pause(0.1)
         list_view.index = 0
         await driver.pause(0.1)
-        list_view.action_select_cursor()
+        await driver.press("l")
         await driver.pause(0.5)
 
         company_detail = await wait_for_widget(driver, CompanyDetail)
@@ -116,7 +116,12 @@ async def test_enter_key_selects_item_in_company_list():
         await driver.press("T", "e", "s", "t")
         await driver.pause(0.5)
 
-        # Press 'enter' to select the item
+        # First Enter leaves search typing mode; second Enter opens details
+        await driver.press("enter")
+        await driver.pause(0.1)
+        list_view = company_list_screen.query_one(ListView)
+        list_view.focus()
+        list_view.index = 0
         await driver.press("enter")
         await driver.pause(0.5)
 

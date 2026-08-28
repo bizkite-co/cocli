@@ -4,6 +4,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import List, TYPE_CHECKING, cast, Dict, Any, Optional
 
+from textual.binding import Binding
 from textual.containers import Container
 from textual.widgets import Label, ListView, ListItem, LoadingIndicator, Input
 from textual.app import ComposeResult
@@ -13,6 +14,7 @@ from textual import events, on, work
 if TYPE_CHECKING:
     from ..app import CocliApp
 from cocli.models.companies.company import Company
+from cocli.models.email_address import EmailAddress
 from cocli.models.search import SearchResult
 
 from .inputs import CocliSearchInput
@@ -34,6 +36,7 @@ class CompanyList(Container):
             self.company_slug = company_slug
 
     BINDINGS = [
+        Binding("l", "open_highlighted", "Open", show=False, priority=True),
         ("alt+s", "reset_view", "Return to List"),
         ("d", "remove_from_to_call", "Remove from To-Call"),
     ]
@@ -120,6 +123,15 @@ class CompanyList(Container):
         """Focus the search input."""
         self.query_one(CocliSearchInput).focus()
 
+    def action_open_highlighted(self) -> None:
+        """Open the highlighted company (list index, not display-name match)."""
+        item = self._highlighted_result()
+        if item is None or not item.slug:
+            logger.debug("open_highlighted: no row under cursor")
+            return
+        logger.debug("open_highlighted slug=%s", item.slug)
+        self.post_message(self.CompanySelected(item.slug))
+
     def action_reset_view(self) -> None:
         """Clear the search input and return focus to the list."""
         search_input = self.query_one(CocliSearchInput)
@@ -151,11 +163,21 @@ class CompanyList(Container):
         query = self.query_one("#company_search_input", CocliSearchInput).value
         self.run_search(query)
 
+    def _focus_company_list(self) -> None:
+        """Leave search typing mode and put focus on the result list."""
+        list_views = self.query("#company_list_view")
+        if not list_views:
+            return
+        list_view = cast(ListView, list_views.first())
+        if list_view.children and list_view.index is None:
+            list_view.index = 0
+        list_view.focus()
+
     @on(Input.Submitted)
     def on_input_submitted(self, event: Input.Submitted) -> None:
-        """Called when the user presses enter on the search input."""
-        list_view = self.query_one(ListView)
-        list_view.action_select_cursor()
+        """Enter in search exits typing mode so j/k and Enter can drive the list."""
+        self._focus_company_list()
+        event.stop()
 
     @on(CocliSearchInput.DebouncedChanged)
     def on_search_debounced(self, event: CocliSearchInput.DebouncedChanged) -> None:
@@ -182,8 +204,8 @@ class CompanyList(Container):
 
         # 1. Protection & Passthrough: If search is focused
         if search_input.has_focus:
-            if event.key == "escape":
-                list_view.focus()
+            if event.key in ("escape", "enter"):
+                self._focus_company_list()
                 event.prevent_default()
                 event.stop()
             elif event.key == "up":
@@ -196,7 +218,8 @@ class CompanyList(Container):
                 event.stop()
             return
 
-        # 2. List-only shortcuts (list view or a row inside it)
+        # 2. List-only shortcuts (list view or a row inside it).
+        # Enter is ListView's own select binding — do not intercept it here.
         if list_view.has_focus or list_view.has_focus_within:
             if event.key == "f":
                 self.action_toggle_filter()
@@ -408,7 +431,7 @@ class CompanyList(Container):
             new_items = []
             for item in self.filtered_fz_items:
                 item_name = str(item.name) if item.name else ""
-                new_items.append(ListItem(Label(item_name), name=item_name))
+                new_items.append(ListItem(Label(item_name, markup=False), name=item_name))
 
             # extend() is more synchronous for small lists and helps tests
             list_view.extend(new_items)
@@ -428,16 +451,12 @@ class CompanyList(Container):
                         list_view.index = 0
 
                     if self.filtered_fz_items:
-                        idx = list_view.index or 0
-                        item = self.filtered_fz_items[idx]
-                        if item.slug:
-                            # For tests, trigger highlight immediately
-                            if app.services.sync_search:
-                                company = Company.get(item.slug)
-                                if company:
-                                    self.post_message(self.CompanyHighlighted(company))
-                            else:
-                                self.debounce_highlight(item)
+                        if app.services.sync_search:
+                            company = self._preview_company(self._highlighted_result())
+                            if company:
+                                self.post_message(self.CompanyHighlighted(company))
+                        else:
+                            self.debounce_highlight()
 
             # For tests, we need immediate synchronization
             if app.services.sync_search:
@@ -449,101 +468,99 @@ class CompanyList(Container):
 
     @on(ListView.Selected)
     def on_list_view_selected(self, event: ListView.Selected) -> None:
-        if event.item and hasattr(event.item, "name"):
-            name = getattr(event.item, "name")
-            selected_item = next(
-                (item for item in self.filtered_fz_items if item.name == name), None
-            )
-            if selected_item and selected_item.slug:
-                self.post_message(self.CompanySelected(selected_item.slug))
-                return
-
-        list_views = self.query(ListView)
-        if not list_views:
-            return
-        list_view = list_views.first()
-        idx = list_view.index
-        if idx is not None and idx < len(self.filtered_fz_items):
+        idx = event.index
+        if idx is None:
+            idx = event.list_view.index
+        if idx is not None and 0 <= idx < len(self.filtered_fz_items):
             selected_item = self.filtered_fz_items[idx]
-            if selected_item and selected_item.slug:
+            if selected_item.slug:
                 self.post_message(self.CompanySelected(selected_item.slug))
+                event.stop()
 
-    @on(ListView.Highlighted)
-    def on_list_view_highlighted(self, event: ListView.Highlighted) -> None:
-        if event.item and hasattr(event.item, "name"):
-            name = getattr(event.item, "name")
-            highlighted_item = next(
-                (item for item in self.filtered_fz_items if item.name == name), None
-            )
-            if highlighted_item and highlighted_item.slug:
-                self.debounce_highlight(highlighted_item)
-                return
-
-        list_views = self.query(ListView)
+    def _highlighted_result(self) -> Optional[SearchResult]:
+        """Search row for the current list cursor (not display-name match)."""
+        list_views = self.query("#company_list_view")
         if not list_views:
-            return
-        list_view = list_views.first()
+            return None
+        list_view = cast(ListView, list_views.first())
         idx = list_view.index
-        if idx is not None and idx < len(self.filtered_fz_items):
-            highlighted_item = self.filtered_fz_items[idx]
-            if highlighted_item and highlighted_item.slug:
-                self.debounce_highlight(highlighted_item)
+        if idx is None or idx < 0 or idx >= len(self.filtered_fz_items):
+            return None
+        return self.filtered_fz_items[idx]
 
-    @work(exclusive=True)
-    async def debounce_highlight(self, item: SearchResult) -> None:
-        """Wait for a brief pause before loading company details for the preview."""
-        # 250ms is usually the "sweet spot" for UI debouncing
-        await asyncio.sleep(0.25)
-
-        if not item.slug:
-            return
-
-        company = await asyncio.to_thread(Company.get, item.slug)
-        if company:
-            # Supplement with search result data if missing on disk OR prioritize search result rating
-            if item.average_rating is not None:
-                company.average_rating = item.average_rating
-            if item.reviews_count is not None:
-                company.reviews_count = item.reviews_count
-
-            if not company.street_address:
-                company.street_address = item.street_address
-            if not company.city:
-                company.city = item.city
-            if not company.state:
-                company.state = item.state
-
-            # Map lifecycle fields
-            if not company.list_found_at and item.list_found_at:
+    def _preview_company(self, item: Optional[SearchResult]) -> Optional[Company]:
+        """Build preview from the DuckDB search row; do not block on markdown."""
+        if item is None or not item.slug:
+            return None
+        try:
+            email = None
+            if item.email:
+                try:
+                    email = EmailAddress.validate(item.email)
+                except ValueError:
+                    email = None
+            company = Company(
+                name=item.name,
+                slug=item.slug,
+                domain=item.domain,
+                email=email,
+                phone_number=item.phone_number,
+                phone_1=item.phone_number,
+                street_address=item.street_address,
+                city=item.city,
+                state=item.state,
+                zip_code=item.zip,
+                average_rating=item.average_rating,
+                reviews_count=item.reviews_count,
+                tags=list(item.tags) if item.tags else [],
+            )
+            setattr(company, "_enqueued_at", item.enqueued_at)
+            if item.list_found_at:
                 try:
                     company.list_found_at = datetime.fromisoformat(item.list_found_at)
                 except (ValueError, TypeError):
                     pass
-
-            if not company.details_found_at and item.details_found_at:
+            if item.details_found_at:
                 try:
                     company.details_found_at = datetime.fromisoformat(
                         item.details_found_at
                     )
                 except (ValueError, TypeError):
                     pass
-
-            if not company.enqueued_at and item.enqueued_at:
+            if item.enqueued_at:
                 try:
                     company.enqueued_at = datetime.fromisoformat(item.enqueued_at)
                 except (ValueError, TypeError):
                     pass
-
-            if not company.last_enriched and item.last_enriched:
+            if item.last_enriched:
                 try:
                     company.last_enriched = datetime.fromisoformat(item.last_enriched)
                 except (ValueError, TypeError):
                     pass
+            return company
+        except Exception as e:
+            logger.debug("preview from search result failed slug=%s: %s", item.slug, e)
+            return None
 
-            # Transfer transient enqueued status for preview logic
-            setattr(company, "_enqueued_at", item.enqueued_at)
+    @on(ListView.Highlighted)
+    def on_list_view_highlighted(self, event: ListView.Highlighted) -> None:
+        if self._highlighted_result():
+            self.debounce_highlight()
 
-            self.post_message(self.CompanyHighlighted(company))
+    @work(exclusive=True)
+    async def debounce_highlight(self) -> None:
+        """After a short pause, preview whichever row the cursor is on now."""
+        await asyncio.sleep(0.25)
+        item = self._highlighted_result()
+        company = self._preview_company(item)
+        if company is None:
+            logger.debug(
+                "preview skip: no company for cursor index slug=%s",
+                getattr(item, "slug", None),
+            )
+            return
+        logger.debug("preview highlight slug=%s", item.slug if item else None)
+        self.post_message(self.CompanyHighlighted(company))
 
     def action_open_website(self) -> None:
         """Open the previewed (highlighted) company's website."""
