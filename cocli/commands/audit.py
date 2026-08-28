@@ -739,13 +739,24 @@ echo '@@ERRORS@@'
 # visible below in ERROR_PATTERNS.
 docker logs --since 30m cocli-supervisor 2>&1 | grep -vF '[navigation_failed]' | grep -icE 'error|exception|traceback|denied' || true
 echo '@@ERROR_PATTERNS@@'
-# Normalize variable parts (timestamps, per-company/campaign path segments, long
-# IDs/hashes/ARNs) so the same underlying error collapses to one bucket instead
-# of flooding the top-N with one line per company/task it happened to hit.
+# Normalize variable parts (timestamps, per-company/campaign path segments,
+# domains, long IDs/hashes/ARNs) so the same underlying error collapses to
+# one bucket instead of flooding the top-N with one line per company/task it
+# happened to hit. Domains get their own explicit pass with a distinct
+# <DOMAIN> placeholder - without it, only domains whose label before the TLD
+# happens to be 20+ chars with no hyphen accidentally trip the generic
+# long-ID regex below, producing an unrecoverable, inconsistent "<ID>.com"
+# (masked for some domains, left bare for others, same underlying error
+# still split across multiple lines). Restricted to lowercase so it can't
+# also swallow Python identifiers like "Page.content"/"ErrorCategory.X"
+# (idiomatically PascalCase) - those must stay distinct, since collapsing
+# "Page.content" and "Page.goto" failures into one bucket would hide that
+# they're different underlying errors.
 docker logs --since 30m cocli-supervisor 2>&1 \
   | grep -iE 'error|exception|traceback|denied' \
   | sed -E 's/^\[[0-9-]+ [0-9:]+ [+-][0-9]+\] //' \
   | sed -E 's#(companies|campaigns)/[A-Za-z0-9_-]+/#\1/*/#g' \
+  | sed -E 's/\b[a-z0-9][a-z0-9.-]*\.[a-z]{2,}\b/<DOMAIN>/g' \
   | sed -E 's/[A-Za-z0-9+\/]{20,}/<ID>/g' \
   | sort | uniq -c | sort -rn | head -5 || true
 echo '@@LASTLOG@@'
