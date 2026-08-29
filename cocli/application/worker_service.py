@@ -34,6 +34,19 @@ SCRAPE_IDLE_TIMEOUT_S = 90
 # also never finishes (e.g. a duplicate-heavy feed with no clean end).
 SCRAPE_ABSOLUTE_TIMEOUT_S = 1500
 
+# gm-list/pending/ is the real backlog signal, not a discovery-gen
+# set-difference proxy for it - cocli audit scrape's stale-fallback
+# "Gm List Pending" path and its "Gm List Claimed" lease count both read
+# this directory's raw file count directly (see cocli/commands/audit.py),
+# and pre-regression this was the whole point of GM_LIST_QUEUE_STATION's
+# plain pending/completed contract. Mark, 2026-08-28: "we can dump them
+# all in there at once ... it's just files" - top up in FULL (no limit)
+# once this node's own local pending/ has fully drained, rather than a
+# small perpetual watermark batch. Cheap to do: gm-list's own poll()
+# (FilesystemGmListQueue.poll()) is an early-terminating os.walk that
+# stops as soon as it's leased one batch, so it doesn't care how many
+# files sit in pending/ - a bigger backlog there costs nothing per-poll.
+
 
 def _is_orphaned_playwright_future(context: Dict[str, Any]) -> bool:
     """True for the general "Future/Task exception was never retrieved"
@@ -886,15 +899,27 @@ class WorkerService:
             except Exception as e:
                 logger.debug(f"queue_pending: enrichment count failed: {e}")
             try:
-                # dry_run=True: same reconciliation enqueue-gm-list itself
-                # uses to report "Candidates: N" - the true "discovered but
-                # not yet gm-list-scraped" count, not a raw pending/ file
-                # count (gm-list's own pending/ directory is essentially
-                # always empty by design; the real backlog lives as a
-                # set-difference against discovery-gen/completed).
-                gm_list_result = enqueue_unscraped_to_gm_list_pending(
-                    campaign_name=self.campaign_name, dry_run=True
+                # Self-refill: check this node's own local pending/ file
+                # count (cheap - a single directory walk) and top up in
+                # FULL (no limit) once it's completely drained. Ties the
+                # top-up to real local demand instead of a blind periodic
+                # cron; does nothing on the many heartbeat ticks where
+                # pending/ still has real work left, or the campaign's
+                # backlog is itself fully drained (candidates=0, so the
+                # copy is a fast no-op even when it does run).
+                gm_list_q = get_queue_manager(
+                    "gm-list", queue_type="gm-list", campaign_name=self.campaign_name
                 )
+                local_pending = gm_list_q.count_state("pending")
+                gm_list_result = enqueue_unscraped_to_gm_list_pending(
+                    campaign_name=self.campaign_name,
+                    dry_run=local_pending > 0,
+                )
+                if gm_list_result.copied:
+                    logger.info(
+                        f"gm-list/pending/ was fully drained - topped up "
+                        f"{gm_list_result.copied} item(s) from discovery-gen/completed"
+                    )
                 result["gm-list"] = gm_list_result.candidates
             except Exception as e:
                 logger.debug(f"queue_pending: gm-list count failed: {e}")

@@ -138,6 +138,67 @@ async def test_tile_coverage_counts_receipts_not_usv_presence(tmp_path: Path) ->
 
 
 @pytest.mark.asyncio
+async def test_compute_queue_pending_tops_up_gm_list_in_full_when_drained(tmp_path: Path) -> None:
+    """Once gm-list/pending/ is fully drained, the heartbeat check should
+    copy the ENTIRE remaining discovery-gen/completed backlog in, not a
+    small batch - pending/ is the real backlog signal (cocli audit
+    scrape's stale-fallback path and its "Gm List Claimed" lease count
+    both read it directly), and gm-list's own poll() early-terminates
+    regardless of how many files sit there, so there's no per-poll cost
+    to keeping the whole backlog resident. Mark, 2026-08-28: "we can dump
+    them all in there at once ... it's just files."""
+    with patch.object(paths, "root", tmp_path):
+        campaign = "turboship"
+        campaign_dir = tmp_path / "campaigns" / campaign
+
+        # Three discovery-gen tiles, none scraped yet - real backlog.
+        _write_dg_tile(campaign_dir, "1/40.0/-74.0", "phrase-one")
+        _write_dg_tile(campaign_dir, "2/41.0/-75.0", "phrase-two")
+        _write_dg_tile(campaign_dir, "3/42.0/-76.0", "phrase-three")
+        (campaign_dir / "queues" / "gm-list" / "completed" / "results").mkdir(parents=True)
+
+        # gm-list/pending/ starts empty (fully drained).
+        supervisor = _make_supervisor(campaign)
+        result = await supervisor._compute_queue_pending()
+
+        pending_dir = campaign_dir / "queues" / "gm-list" / "pending"
+        copied_files = list(pending_dir.rglob("*.usv"))
+
+    assert result["gm-list"] == 3  # candidates
+    assert len(copied_files) == 3  # ALL candidates copied in, not a bounded batch
+
+
+@pytest.mark.asyncio
+async def test_compute_queue_pending_does_not_top_up_while_pending_still_has_work(
+    tmp_path: Path,
+) -> None:
+    """As long as gm-list/pending/ still has at least one real item left,
+    leave it alone - no copy, even if more discovery-gen candidates exist."""
+    with patch.object(paths, "root", tmp_path):
+        campaign = "turboship"
+        campaign_dir = tmp_path / "campaigns" / campaign
+
+        # One item already sitting in gm-list/pending/ - not yet drained.
+        pending_item = campaign_dir / "queues" / "gm-list" / "pending" / "1" / "40.0" / "-74.0"
+        pending_item.mkdir(parents=True)
+        (pending_item / "existing-phrase.usv").write_text("dummy")
+
+        # A real, unscraped discovery-gen candidate exists too, but should
+        # NOT get copied in since pending/ still has work left.
+        _write_dg_tile(campaign_dir, "2/41.0/-75.0", "phrase-two")
+        (campaign_dir / "queues" / "gm-list" / "completed" / "results").mkdir(parents=True)
+
+        supervisor = _make_supervisor(campaign)
+        result = await supervisor._compute_queue_pending()
+
+        pending_dir = campaign_dir / "queues" / "gm-list" / "pending"
+        copied_files = list(pending_dir.rglob("*.usv"))
+
+    assert result["gm-list"] == 1  # candidates count still reported
+    assert len(copied_files) == 1  # only the pre-existing file - no top-up copy happened
+
+
+@pytest.mark.asyncio
 async def test_tile_coverage_empty_campaign_returns_zeros(tmp_path: Path) -> None:
     with patch.object(paths, "root", tmp_path):
         supervisor = _make_supervisor("brand-new-campaign")
