@@ -49,6 +49,7 @@ def enqueue_unscraped_to_gm_list_pending(
     limit: Optional[int] = None,
     rescrape_all: bool = False,
     dry_run: bool = False,
+    identity_scope: Optional[frozenset[str]] = None,
 ) -> EnqueueResult:
     """Copy discovery-gen/completed/ items into gm-list/pending/.
 
@@ -56,6 +57,11 @@ def enqueue_unscraped_to_gm_list_pending(
     rescrape_all: copy everything, ignoring receipts.
     limit: copy at most this many items (deterministic order - sorted by
     identity), for the "enqueue a few items at a time" use case.
+    identity_scope: restrict candidates to exactly this identity set (e.g.
+    one ScrapeJobRun's snapshot - see job_run_service.py) instead of the
+    whole discovery-gen/completed tree. The same already-scraped dedup
+    still applies within that scope, so retrying an already-partially-
+    copied scope stays idempotent.
     """
     discovery_gen_completed = _discovery_gen_completed_dir(campaign_name)
     # queue_type="gm-list" always resolves to FilesystemGmListQueue for the
@@ -76,7 +82,14 @@ def enqueue_unscraped_to_gm_list_pending(
     else:
         result = reconcile_identities(discovery_gen_completed, gm_list_completed_results)
         to_copy_ids = set(result.left_only)
-        skipped_already_scraped = len(result.intersection)
+        skipped_already_scraped = (
+            len(set(result.intersection) & identity_scope)
+            if identity_scope is not None
+            else len(result.intersection)
+        )
+
+    if identity_scope is not None:
+        to_copy_ids &= identity_scope
 
     candidates = len(to_copy_ids)
     ordered_ids = sorted(to_copy_ids)

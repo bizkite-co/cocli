@@ -157,6 +157,10 @@ class CampaignPaths(PathObject):
         return self.path / "exports"
 
     @property
+    def job_runs(self) -> Path:
+        return self.path / "job-runs"
+
+    @property
     def lifecycle(self) -> Path:
         return self.indexes / "lifecycle" / "lifecycle.usv"
 

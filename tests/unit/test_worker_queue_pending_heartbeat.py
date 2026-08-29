@@ -217,6 +217,75 @@ async def test_compute_queue_pending_does_not_touch_pending_with_work_left(
 
 
 @pytest.mark.asyncio
+async def test_compute_queue_pending_job_run_poller_retries_stuck_copy(tmp_path: Path) -> None:
+    """A run whose discovery_gen_completed_at is set but started_at isn't
+    (e.g. the process that created it crashed between the two) gets its
+    copy retried by the heartbeat's job-run poller - this is the
+    resilience backstop, distinct from (and not a substitute for) the
+    explicit trigger of creating the run in the first place."""
+    from cocli.application import job_run_service as jrs
+
+    with patch.object(paths, "root", tmp_path):
+        campaign = "turboship"
+        campaign_dir = tmp_path / "campaigns" / campaign
+
+        dg_file = (
+            campaign_dir / "queues" / "discovery-gen" / "completed" / "2" / "28.7" / "-96.9" / "phrase-a.usv"
+        )
+        dg_file.parent.mkdir(parents=True, exist_ok=True)
+        dg_file.write_text(f"dummy{US}scrape-task\n")
+
+        run = jrs.create_job_run(campaign, hostname="test-node")
+        run = jrs.mark_discovery_gen_completed(run, ["28.7/-96.9/phrase-a"])
+        assert run.started_at is None
+
+        supervisor = _make_supervisor(campaign)
+        await supervisor._compute_queue_pending()
+
+        pending_dir = campaign_dir / "queues" / "gm-list" / "pending"
+        assert (pending_dir / "2" / "28.7" / "-96.9" / "phrase-a.usv").exists()
+
+        reloaded = [r for r in jrs._load_index(campaign) if r.id == run.id][0]
+        assert reloaded.started_at is not None
+
+
+@pytest.mark.asyncio
+async def test_compute_queue_pending_job_run_poller_marks_completion(tmp_path: Path) -> None:
+    """A started run whose identities have all resolved in gm-list gets
+    gm_list_completed_at stamped by the heartbeat's job-run poller."""
+    from cocli.application import job_run_service as jrs
+
+    with patch.object(paths, "root", tmp_path):
+        campaign = "turboship"
+        campaign_dir = tmp_path / "campaigns" / campaign
+
+        run = jrs.create_job_run(campaign, hostname="test-node")
+        run = jrs.mark_discovery_gen_completed(run, ["28.7/-96.9/phrase-a"])
+        run = jrs.enqueue_gm_list_for_run(run)
+        assert run.gm_list_completed_at is None
+
+        receipt = (
+            campaign_dir
+            / "queues"
+            / "gm-list"
+            / "completed"
+            / "results"
+            / "2"
+            / "28.7"
+            / "-96.9"
+            / "phrase-a.json"
+        )
+        receipt.parent.mkdir(parents=True, exist_ok=True)
+        receipt.write_text("{}")
+
+        supervisor = _make_supervisor(campaign)
+        await supervisor._compute_queue_pending()
+
+        reloaded = [r for r in jrs._load_index(campaign) if r.id == run.id][0]
+        assert reloaded.gm_list_completed_at is not None
+
+
+@pytest.mark.asyncio
 async def test_tile_coverage_empty_campaign_returns_zeros(tmp_path: Path) -> None:
     with patch.object(paths, "root", tmp_path):
         supervisor = _make_supervisor("brand-new-campaign")

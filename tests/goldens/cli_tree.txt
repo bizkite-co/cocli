@@ -330,6 +330,10 @@ cocli
         inspect - Show the index, name, and content for a specific row in a USV file.
             file_path (path) [required]
             --row-number/-r (integer)
+        job-run - Scrape job run inspection commands
+            list - List ScrapeJobRuns for a campaign - the explicit lineage between a
+                --campaign/-c (text) [required]
+                --limit (integer)
         list - List all known frictionless data schemas (datapackage.json files) in the project.
         locate - Find and display the datapackage.json for a given file.
             file_path (path) [required]
@@ -368,7 +372,7 @@ cocli
         deduplicate - Deduplicates company data by generating a stable hash for each company and removing duplicates.
             --dry-run (boolean)
     dev
-        process-map-tile - Process map-tile/pending/ → discovery-gen/completed/.
+        process-map-tile - Process map-tile/pending/ → discovery-gen/completed/, then auto-enqueue
             campaign_name (text)
             --max/-m (integer)
             --dry-run (boolean)

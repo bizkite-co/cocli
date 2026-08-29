@@ -40,14 +40,20 @@ SCRAPE_ABSOLUTE_TIMEOUT_S = 1500
 # this directory's raw file count directly (see cocli/commands/audit.py),
 # and pre-regression this was the whole point of GM_LIST_QUEUE_STATION's
 # plain pending/completed contract. Mark, 2026-08-28: "we can dump them
-# all in there at once ... it's just files" - when a top-up does run, it
-# should be in FULL (no limit), not a small perpetual watermark batch:
-# gm-list's own poll() (FilesystemGmListQueue.poll()) is an early-
-# terminating os.walk that stops as soon as it's leased one batch, so it
-# doesn't care how many files sit in pending/ - a bigger backlog there
-# costs nothing per-poll. Auto-triggering that top-up off "pending/ hit
-# zero" is currently PAUSED though - see the gm-list block in
-# _compute_queue_pending() for why.
+# all in there at once ... it's just files" - a top-up copies in FULL (no
+# limit), not a small perpetual watermark batch: gm-list's own poll()
+# (FilesystemGmListQueue.poll()) is an early-terminating os.walk that
+# stops as soon as it's leased one batch, so it doesn't care how many
+# files sit in pending/ - a bigger backlog there costs nothing per-poll.
+#
+# Auto-triggering that top-up off "pending/ hit zero" was tried and
+# PAUSED (commit a27b1b81) - draining to zero can't distinguish "more
+# real work available" from "this batch is genuinely done." Superseded by
+# an explicit ScrapeJobRun (cocli/models/campaigns/scrape_job_run.py,
+# job_run_service.py) - only creating a run can ever cause a re-enqueue;
+# this file's heartbeat loop only acts as a resilience backstop for a
+# run that already exists (see the gm-list block in
+# _compute_queue_pending()).
 
 
 def _is_orphaned_playwright_future(context: Dict[str, Any]) -> bool:
@@ -901,23 +907,36 @@ class WorkerService:
             except Exception as e:
                 logger.debug(f"queue_pending: enrichment count failed: {e}")
             try:
-                # Self-refill (auto top-up gm-list/pending/ once it drains
-                # to zero) is PAUSED as of 2026-08-29, pending a design
-                # decision - Mark: draining to zero can mean either
-                # "discovery-gen has more real, unscraped work available"
-                # (should refill) OR "this campaign's current discovery-gen
-                # batch is genuinely fully scraped, nothing left to do"
-                # (should NOT auto re-enqueue) - a blind "pending==0 ->
-                # refill" trigger can't tell these apart, and would
-                # silently re-enqueue the same already-scraped batch every
-                # time it drains, forever, with no human checkpoint between
-                # "I generated a new discovery-gen batch" and "it's now
-                # live in the scrape queue". Left as always dry_run=True
-                # (report-only, matching pre-self-refill behavior) until
-                # the real trigger is decided. The copy step itself is
-                # unchanged and still available as an explicit manual
-                # `cocli data queue enqueue-gm-list --campaign <name>` call
-                # - see gm_list_enqueue_service.py.
+                # Job-run poller: resilience backstop + completion marking,
+                # NOT the trigger for topping up gm-list/pending/ - only an
+                # explicit ScrapeJobRun (job_run_service.create_job_run(),
+                # called from cocli dev process-map-tile or a future
+                # requeue process) can ever cause that. gm-list/pending/
+                # draining to zero is never itself a trigger - see
+                # cocli/models/campaigns/scrape_job_run.py for why a blind
+                # pending==0 trigger is wrong (commit a27b1b81 paused the
+                # previous attempt at one). This just (a) retries a run's
+                # own copy if the process that created it crashed between
+                # discovery_gen_completed_at and started_at, and (b) marks
+                # gm_list_completed_at once a run's identities are all
+                # resolved.
+                from .job_run_service import (
+                    check_and_mark_gm_list_completed,
+                    enqueue_gm_list_for_run,
+                    list_open_job_runs,
+                )
+
+                for run in list_open_job_runs(self.campaign_name):
+                    if run.started_at is None:
+                        enqueue_gm_list_for_run(run)
+                    else:
+                        check_and_mark_gm_list_completed(run)
+            except Exception as e:
+                logger.debug(f"queue_pending: job-run poller failed: {e}")
+            try:
+                # Campaign-wide "how much unscraped backlog exists" figure
+                # - independent of job-run tracking above, always dry-run
+                # (report-only). This never copies anything itself.
                 gm_list_result = enqueue_unscraped_to_gm_list_pending(
                     campaign_name=self.campaign_name, dry_run=True
                 )

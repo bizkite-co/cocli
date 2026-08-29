@@ -20,7 +20,7 @@ Pattern:
 
 import logging
 from pathlib import Path
-from typing import List, Dict, Optional
+from typing import Any, List, Dict, Optional
 
 from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, TaskProgressColumn
 
@@ -36,7 +36,7 @@ def process_tile_queue(
     campaign_name: str,
     max_tiles: Optional[int] = None,
     dry_run: bool = False,
-) -> Dict[str, int]:
+) -> Dict[str, Any]:
     """
     Process tiles from map-tile/pending/ → discovery-gen/completed/.
 
@@ -50,7 +50,15 @@ def process_tile_queue(
         dry_run: If True, don't write or move files
 
     Returns:
-        Metrics: {tiles_processed, scrape_tasks_created, errors}
+        Metrics: {tiles_processed, scrape_tasks_created, errors, identities}
+        - identities: the normalized discovery-gen identity (see
+          cocli/core/queue/reconcile.py) of every ScrapeTask this call
+          actually wrote - this run's own authoritative "here's what I
+          just created" list, for a caller to snapshot as a ScrapeJobRun's
+          scope (job_run_service.py). Deliberately NOT a before/after
+          directory diff - that would also catch an older, still-
+          unfinished run's leftover items if two runs' generation windows
+          overlap in time.
 
     Raises:
         ValueError: If campaign not found
@@ -70,7 +78,7 @@ def process_tile_queue(
 
     if not pending_dir.exists():
         logger.warning(f"Pending directory not found: {pending_dir}")
-        return {"tiles_processed": 0, "scrape_tasks_created": 0, "errors": 0}
+        return {"tiles_processed": 0, "scrape_tasks_created": 0, "errors": 0, "identities": []}
 
     logger.info(f"Processing map-tile for {campaign_name}")
     logger.info(f"  Input:  {pending_dir}")
@@ -79,6 +87,7 @@ def process_tile_queue(
     tiles_processed = 0
     scrape_tasks_created = 0
     errors = 0
+    identities: List[str] = []
 
     # Collect tile file paths up front (respecting max_tiles) so progress has a known total.
     import os
@@ -153,7 +162,9 @@ def process_tile_queue(
                                 f.write(scrape_task.to_usv())
 
                             scrape_tasks_created += 1
-                            logger.debug(f"  Created: {task_path.relative_to(discovery_gen_completed)}")
+                            rel = task_path.relative_to(discovery_gen_completed)
+                            identities.append("/".join(rel.with_suffix("").parts[1:]))
+                            logger.debug(f"  Created: {rel}")
 
                         except Exception as task_err:
                             logger.error(
@@ -221,4 +232,5 @@ def process_tile_queue(
         "tiles_processed": tiles_processed,
         "scrape_tasks_created": scrape_tasks_created,
         "errors": errors,
+        "identities": identities,
     }

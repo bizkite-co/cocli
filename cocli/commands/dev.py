@@ -271,14 +271,22 @@ def process_map_tile_cmd(
     ] = False,
 ) -> None:
     """
-    Process map-tile/pending/ → discovery-gen/completed/.
+    Process map-tile/pending/ → discovery-gen/completed/, then auto-enqueue
+    into gm-list/pending/ under a new ScrapeJobRun.
 
     Reads tiles from map-tile/pending/, converts each tile's phrases to
     individual ScrapeTask work items, writes them to discovery-gen/completed/
-    (discovery-gen's own permanent, per-phrase-tile output - a separate copy
-    step handles getting these into gm-list/pending/), then moves processed
-    tiles to map-tile/completed/. map-tile has no processing phase - use
-    --max to bound how many tiles a single run processes.
+    (discovery-gen's own permanent, per-phrase-tile output), then moves
+    processed tiles to map-tile/completed/. map-tile has no processing
+    phase - use --max to bound how many tiles a single run processes.
+
+    Creates a ScrapeJobRun (cocli/models/campaigns/scrape_job_run.py) for
+    this batch and immediately copies its identities into gm-list/pending/
+    as the run's own last step - this is the only thing that ever causes
+    new work to land there; gm-list/pending/ draining to zero is never
+    itself a trigger (see WorkerService._compute_queue_pending's job-run
+    poller, which only retries/completes existing runs, never creates
+    one). Skipped entirely for --dry-run or when nothing new was created.
 
     USAGE:
       # Process all tiles in pending/:
@@ -290,6 +298,11 @@ def process_map_tile_cmd(
       # Preview without writing:
       cocli dev process-map-tile turboship --dry-run
     """
+    from cocli.application.job_run_service import (
+        create_job_run,
+        enqueue_gm_list_for_run,
+        mark_discovery_gen_completed,
+    )
     from cocli.services.tile_queue_processor import process_tile_queue
 
     if campaign_name is None:
@@ -320,6 +333,15 @@ def process_map_tile_cmd(
         console.print(f"  ScrapeTask records created: {metrics['scrape_tasks_created']}")
         if metrics["errors"] > 0:
             console.print(f"  [yellow]Errors: {metrics['errors']}[/yellow]")
+
+        if not dry_run and metrics["scrape_tasks_created"] > 0:
+            run = create_job_run(campaign_name)
+            run = mark_discovery_gen_completed(run, metrics["identities"])
+            run = enqueue_gm_list_for_run(run)
+            console.print()
+            console.print(f"[bold green]Job run {run.id}[/bold green]")
+            console.print(f"  Identities: {run.identity_count}")
+            console.print("  Enqueued into gm-list/pending/")
 
     except Exception as e:
         console.print(f"[red]Error during map-tile processing: {e}[/red]")

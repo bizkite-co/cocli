@@ -39,7 +39,36 @@ def test_process_tile_queue_reads_pending_not_processing(tmp_path):
 
         metrics = process_tile_queue(campaign_name)
 
-        assert metrics == {"tiles_processed": 1, "scrape_tasks_created": 2, "errors": 0}
+        assert metrics["tiles_processed"] == 1
+        assert metrics["scrape_tasks_created"] == 2
+        assert metrics["errors"] == 0
+
+
+def test_process_tile_queue_reports_identities_it_wrote(tmp_path):
+    """metrics["identities"] is this call's own authoritative "what did I
+    just write" list - a job run snapshots this directly (see
+    job_run_service.py) rather than diffing discovery-gen/completed/
+    before/after, since a before/after diff would also catch an older,
+    still-unfinished run's leftover items if two runs' generation windows
+    overlap in time. Identity format must match
+    cocli/core/queue/reconcile.py's (shard-stripped, extension-stripped,
+    "/"-joined) so it lines up with gm-list's own reconciliation."""
+    with patch("cocli.core.paths.paths.root", tmp_path):
+        campaign_name = "test-campaign"
+        tile_queue = get_queue_manager("map-tile", queue_type="tile", campaign_name=campaign_name)
+
+        records = [
+            TileRecord(tile_id="28.7_-96.9", search_phrase="rubber flooring contractor", latitude=28.7, longitude=-96.9),
+            TileRecord(tile_id="28.7_-96.9", search_phrase="sports flooring contractor", latitude=28.7, longitude=-96.9),
+        ]
+        _write_tile_file(tile_queue.pending_dir, "2/28.7/-96.9/28.7_-96.9.usv", records)
+
+        metrics = process_tile_queue(campaign_name)
+
+        assert sorted(metrics["identities"]) == [
+            "28.7/-96.9/rubber-flooring-contractor",
+            "28.7/-96.9/sports-flooring-contractor",
+        ]
 
 
 def test_process_tile_queue_explodes_into_discovery_gen_completed(tmp_path):

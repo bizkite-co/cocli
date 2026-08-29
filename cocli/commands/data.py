@@ -25,6 +25,9 @@ console = Console()
 queue_app = typer.Typer(help="Queue management commands", no_args_is_help=True)
 app.add_typer(queue_app, name="queue")
 
+job_run_app = typer.Typer(help="Scrape job run inspection commands", no_args_is_help=True)
+app.add_typer(job_run_app, name="job-run")
+
 
 def _service() -> DataSyncService:
     return ServiceContainer().data_sync_service  # type: ignore[return-value]
@@ -450,3 +453,43 @@ def queue_enqueue_gm_list(
     if not rescrape_all:
         console.print(f"[dim]Skipped (already scraped): {result.skipped_already_scraped}[/dim]")
     console.print(f"[green]{verb} {result.copied} item(s) into gm-list/pending/[/green]")
+
+
+@job_run_app.command(name="list")
+def job_run_list(
+    campaign: str = typer.Option(..., "--campaign", "-c", help="Campaign name"),
+    limit: int = typer.Option(20, help="Show at most this many runs, most recent first"),
+) -> None:
+    """List ScrapeJobRuns for a campaign - the explicit lineage between a
+    discovery-gen batch and its scrape progress (see
+    cocli/models/campaigns/scrape_job_run.py). A run with no
+    discovery_gen_completed_at is still generating; no started_at means
+    it's waiting on (or stuck on) its auto-copy into gm-list/pending/; no
+    gm_list_completed_at means gm-list scraping is still in progress.
+    """
+    from cocli.application.job_run_service import _load_index
+
+    runs = sorted(_load_index(campaign), key=lambda r: r.created_at, reverse=True)[:limit]
+
+    table = Table(title=f"Job Runs: {campaign}")
+    table.add_column("ID")
+    table.add_column("Created")
+    table.add_column("Discovery-Gen Done")
+    table.add_column("Started")
+    table.add_column("GM-List Done")
+    table.add_column("Identities", justify="right")
+
+    def _fmt(value: object) -> str:
+        return str(value) if value else "[dim]-[/dim]"
+
+    for run in runs:
+        table.add_row(
+            run.id,
+            run.created_at.isoformat(timespec="seconds"),
+            _fmt(run.discovery_gen_completed_at),
+            _fmt(run.started_at),
+            _fmt(run.gm_list_completed_at),
+            str(run.identity_count),
+        )
+
+    console.print(table)

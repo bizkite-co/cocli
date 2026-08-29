@@ -90,6 +90,52 @@ def test_limit_bounds_the_batch_deterministically(tmp_path):
         assert copied_files == ["phrase-a.usv", "phrase-b.usv"]
 
 
+def test_identity_scope_restricts_candidates_to_exactly_that_set(tmp_path):
+    """A job run's own snapshot must not accidentally sweep up an
+    out-of-scope discovery-gen item (e.g. a different/older run's still-
+    unfinished work) - see job_run_service.py."""
+    with patch("cocli.core.paths.paths.root", tmp_path):
+        campaign_name = "test-campaign"
+        discovery_gen_completed = paths.campaign(campaign_name).queue("discovery-gen").state("completed")
+        gm_list_queue = get_queue_manager("gm-list", queue_type="gm-list", campaign_name=campaign_name)
+
+        _write(discovery_gen_completed, "2/28.7/-96.9/in-scope.usv")
+        _write(discovery_gen_completed, "2/28.7/-96.9/out-of-scope.usv")
+
+        result = enqueue_unscraped_to_gm_list_pending(
+            campaign_name, identity_scope=frozenset({"28.7/-96.9/in-scope"})
+        )
+
+        assert result.candidates == 1
+        assert result.copied == 1
+        copied_files = sorted(p.name for p in gm_list_queue.pending_dir.rglob("*.usv"))
+        assert copied_files == ["in-scope.usv"]
+
+
+def test_identity_scope_still_skips_already_scraped_items_within_scope(tmp_path):
+    with patch("cocli.core.paths.paths.root", tmp_path):
+        campaign_name = "test-campaign"
+        discovery_gen_completed = paths.campaign(campaign_name).queue("discovery-gen").state("completed")
+        gm_list_queue = get_queue_manager("gm-list", queue_type="gm-list", campaign_name=campaign_name)
+
+        _write(discovery_gen_completed, "2/28.7/-96.9/already-done.usv")
+        _write(discovery_gen_completed, "2/28.7/-96.9/still-pending.usv")
+        _write(gm_list_queue.completed_dir / "results", "2/28.7/-96.9/already-done.json")
+
+        result = enqueue_unscraped_to_gm_list_pending(
+            campaign_name,
+            identity_scope=frozenset(
+                {"28.7/-96.9/already-done", "28.7/-96.9/still-pending"}
+            ),
+        )
+
+        assert result.candidates == 1
+        assert result.copied == 1
+        assert result.skipped_already_scraped == 1
+        copied_files = sorted(p.name for p in gm_list_queue.pending_dir.rglob("*.usv"))
+        assert copied_files == ["still-pending.usv"]
+
+
 def test_dry_run_writes_nothing(tmp_path):
     with patch("cocli.core.paths.paths.root", tmp_path):
         campaign_name = "test-campaign"

@@ -1,62 +1,70 @@
-from typing import Optional, List
-from datetime import datetime
-from pydantic import BaseModel, Field
-import uuid
+from datetime import UTC, datetime
+from typing import ClassVar, List, Optional
+
+from pydantic import Field
+
+from ..base import BaseUsvModel
 
 
-class ScrapeJobRun(BaseModel):
+class ScrapeJobRun(BaseUsvModel):
+    """One discovery-gen generation run's lineage through gm-list scraping.
+
+    Created at the start of `process_tile_queue()` (map-tile/pending ->
+    discovery-gen/completed - see cocli/services/tile_queue_processor.py),
+    the only thing that can ever cause new work to land in
+    gm-list/pending/. gm-list/pending/ draining to zero is NOT itself a
+    trigger for re-enqueuing - see cocli/application/worker_service.py
+    commit a27b1b81 for why a blind pending==0 trigger is wrong (it can't
+    tell "discovery-gen has more real work" apart from "this campaign's
+    current batch is genuinely fully scraped").
+
+    Stored twice: one line per run in the campaign-wide
+    campaigns/{campaign}/job-runs/job-runs.usv index (fast listing, this
+    model's own to_usv()/from_usv()), and the same fields as
+    campaigns/{campaign}/job-runs/{id}/metadata.json (JSON, via
+    model_dump_json() - same model, no separate schema to keep in sync).
+    The run's own identity snapshot (which discovery-gen identities this
+    run is responsible for - see cocli/core/queue/reconcile.py for the
+    identity format) lives alongside as a plain newline-separated list at
+    campaigns/{campaign}/job-runs/{id}/identities.usv - not part of this
+    model, since it can be arbitrarily large and isn't itself index data.
+
+    Field order is load-bearing for the USV index (BaseUsvModel derives
+    column position from declaration order) - append new fields at the
+    end, never insert.
     """
-    Tracks metadata for a single scrape job run on a distributed worker.
-    Enables job coordination and result auditing across Pi nodes.
 
-    Stored as JSON in queues/{queue_name}/job_runs/{run_id}.json
-    """
+    SCHEMA_UPDATED_AT: ClassVar[str] = "2026-08-29T00:00:00+00:00"
 
-    run_id: str = Field(default_factory=lambda: str(uuid.uuid4()), description="Unique identifier for this job run")
-    campaign_name: str = Field(..., description="Campaign this job ran for")
-    queue_name: str = Field(..., description="Queue type (e.g., 'discovery-gen', 'gm-list')")
-    stage: int = Field(..., description="Pipeline stage number (1-4 for discovery-gen)")
+    id: str
+    campaign_name: str
+    created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
-    # Execution context
-    node_hostname: str = Field(..., description="Pi node that executed this job (e.g., 'cocli5x0.pi')")
-    started_at: datetime = Field(default_factory=datetime.utcnow, description="UTC timestamp when job started")
-    completed_at: Optional[datetime] = Field(None, description="UTC timestamp when job completed")
+    # Set once process_tile_queue() finishes writing this run's
+    # discovery-gen/completed/ output (identities.usv captures exactly
+    # what it wrote, not a before/after directory diff - see module
+    # docstring and the ticket this implements for why that distinction
+    # matters when two runs' generation windows overlap in time).
+    discovery_gen_completed_at: Optional[datetime] = None
 
-    # Results
-    files_processed: int = Field(default=0, description="Number of input files processed")
-    items_found: int = Field(default=0, description="Number of items discovered/scraped")
-    items_failed: int = Field(default=0, description="Number of items that failed processing")
+    # Set once this run's identity set has been copied into
+    # gm-list/pending/ (cocli/application/gm_list_enqueue_service.py,
+    # scoped to identity_scope=this run's snapshot). The only path that
+    # can ever set this is an explicit run - see module docstring.
+    started_at: Optional[datetime] = None
 
-    # Error tracking
-    errors: List[str] = Field(default_factory=list, description="List of error messages encountered")
-    status: str = Field(default="pending", description="Job status: pending, running, completed, failed")
+    # Set once every identity in this run's snapshot has reached
+    # completed-or-failed in gm-list (not 100% success - real scraping
+    # always has some navigation_failed rate).
+    gm_list_completed_at: Optional[datetime] = None
 
-    # Optional metadata
-    batch_name: Optional[str] = Field(None, description="Batch name if this was a batched job")
-    notes: Optional[str] = Field(None, description="Free-form notes about the job")
+    # Total identities in this run's snapshot, captured at
+    # discovery_gen_completed_at - lets a reader compute "N of M done"
+    # progress without re-reading identities.usv.
+    identity_count: int = 0
 
-    class Config:
-        json_encoders = {
-            datetime: lambda v: v.isoformat()
-        }
-
-    def mark_completed(self) -> None:
-        """Mark this job as completed."""
-        self.completed_at = datetime.utcnow()
-        self.status = "completed"
-
-    def mark_failed(self, error: str) -> None:
-        """Mark this job as failed and log the error."""
-        self.completed_at = datetime.utcnow()
-        self.status = "failed"
-        self.errors.append(error)
-
-    def add_error(self, error: str) -> None:
-        """Add an error to the error log."""
-        self.errors.append(error)
-
-    def duration_seconds(self) -> float:
-        """Calculate job duration in seconds."""
-        if self.completed_at:
-            return (self.completed_at - self.started_at).total_seconds()
-        return (datetime.utcnow() - self.started_at).total_seconds()
+    # gm_details/enrichment lineage tracking is explicitly deferred (see
+    # the ticket this implements) - this just records intent for now.
+    queues_involved: List[str] = Field(
+        default_factory=lambda: ["gm-list", "gm-details", "enrichment"]
+    )
