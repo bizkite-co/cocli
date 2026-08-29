@@ -73,3 +73,64 @@ def test_job_run_requeue_unknown_run_exits_nonzero(tmp_path: Path) -> None:
 
     assert result.exit_code == 1
     assert "no-such-run" in result.output
+
+
+def test_job_run_requeue_latest_picks_most_recent_run(tmp_path: Path) -> None:
+    with patch.object(paths, "root", tmp_path):
+        campaign = "turboship"
+        campaign_dir = tmp_path / "campaigns" / campaign
+        for slug in ("item-a", "item-b"):
+            dg_file = (
+                campaign_dir
+                / "queues"
+                / "discovery-gen"
+                / "completed"
+                / "2"
+                / "28.7"
+                / "-96.9"
+                / f"{slug}.usv"
+            )
+            dg_file.parent.mkdir(parents=True, exist_ok=True)
+            dg_file.write_text("dummy\x1fscrape-task\n")
+
+        older = jrs.create_job_run(campaign, hostname="node-a")
+        older = jrs.mark_discovery_gen_completed(older, ["28.7/-96.9/item-a"])
+        newer = jrs.create_job_run(campaign, hostname="node-b")
+        newer = jrs.mark_discovery_gen_completed(newer, ["28.7/-96.9/item-b"])
+
+        result = runner.invoke(
+            app, ["job-run", "requeue", "--latest", "--campaign", campaign]
+        )
+
+        assert result.exit_code == 0, result.output
+        assert f"from {newer.id}" in result.output
+        assert older.id not in result.output
+
+
+def test_job_run_requeue_latest_with_no_runs_exits_nonzero(tmp_path: Path) -> None:
+    with patch.object(paths, "root", tmp_path):
+        result = runner.invoke(
+            app, ["job-run", "requeue", "--latest", "--campaign", "brand-new"]
+        )
+
+    assert result.exit_code == 1
+    assert "No job runs found" in result.output
+
+
+def test_job_run_requeue_rejects_both_run_id_and_latest(tmp_path: Path) -> None:
+    with patch.object(paths, "root", tmp_path):
+        result = runner.invoke(
+            app,
+            ["job-run", "requeue", "some-run-id", "--latest", "--campaign", "turboship"],
+        )
+
+    assert result.exit_code == 1
+    assert "exactly one" in result.output
+
+
+def test_job_run_requeue_rejects_neither_run_id_nor_latest(tmp_path: Path) -> None:
+    with patch.object(paths, "root", tmp_path):
+        result = runner.invoke(app, ["job-run", "requeue", "--campaign", "turboship"])
+
+    assert result.exit_code == 1
+    assert "exactly one" in result.output

@@ -334,9 +334,10 @@ cocli
             list - List ScrapeJobRuns for a campaign - the explicit lineage between a
                 --campaign/-c (text) [required]
                 --limit (integer)
-            requeue - Create a new ScrapeJobRun that re-scrapes a previous run's exact
-                previous_run_id (text) [required]
+            requeue - Create a new ScrapeJobRun that re-scrapes a run's exact identity
+                run_id (text)
                 --campaign/-c (text) [required]
+                --latest (boolean)
         list - List all known frictionless data schemas (datapackage.json files) in the project.
         locate - Find and display the datapackage.json for a given file.
             file_path (path) [required]

@@ -497,24 +497,40 @@ def job_run_list(
 
 @job_run_app.command(name="requeue")
 def job_run_requeue(
-    previous_run_id: str = typer.Argument(..., help="Job run ID to re-scrape"),
+    run_id: Optional[str] = typer.Argument(None, help="Job run ID to re-scrape"),
     campaign: str = typer.Option(..., "--campaign", "-c", help="Campaign name"),
+    latest: bool = typer.Option(
+        False, "--latest", help="Re-scrape the most recently created run instead of naming one"
+    ),
 ) -> None:
-    """Create a new ScrapeJobRun that re-scrapes a previous run's exact
-    identity set, bypassing the "already gm-list-completed" filter -
-    every identity in a finished run trivially has a receipt, or it
-    wouldn't be finished. For the "haven't scraped this campaign in N
-    months, there might be new data" case: re-runs the same discovery-gen
-    tiles/phrases without regenerating them.
+    """Create a new ScrapeJobRun that re-scrapes a run's exact identity
+    set, bypassing the "already gm-list-completed" filter - every
+    identity in a finished run trivially has a receipt, or it wouldn't be
+    finished. For the "haven't scraped this campaign in N months, there
+    might be new data" case: re-runs the same discovery-gen tiles/phrases
+    without regenerating them. Pass either a run ID or --latest, not both.
     """
-    from cocli.application.job_run_service import requeue_job_run
+    from cocli.application.job_run_service import get_latest_job_run, requeue_job_run
+
+    if latest == bool(run_id):
+        console.print("[red]Pass exactly one of: a job run ID, or --latest.[/red]")
+        raise typer.Exit(1)
+
+    if latest:
+        latest_run = get_latest_job_run(campaign)
+        if latest_run is None:
+            console.print(f"[red]No job runs found for campaign '{campaign}'.[/red]")
+            raise typer.Exit(1)
+        run_id = latest_run.id
+
+    assert run_id is not None  # guaranteed by the exclusivity check above
 
     try:
-        new_run = requeue_job_run(campaign, previous_run_id)
+        new_run = requeue_job_run(campaign, run_id)
     except ValueError as e:
         console.print(f"[red]{e}[/red]")
         raise typer.Exit(1)
 
     console.print(f"[bold green]Job run {new_run.id}[/bold green]")
-    console.print(f"  Re-scraping {new_run.identity_count} identities from {previous_run_id}")
+    console.print(f"  Re-scraping {new_run.identity_count} identities from {run_id}")
     console.print("  Enqueued into gm-list/pending/ (rescrape_all)")

@@ -271,3 +271,21 @@ def test_requeue_job_run_raises_for_unknown_previous_run(tmp_path: Path) -> None
 def test_get_job_run_returns_none_when_not_found(tmp_path: Path) -> None:
     with patch.object(paths, "root", tmp_path):
         assert jrs.get_job_run("turboship", "no-such-run") is None
+
+
+def test_get_latest_job_run_returns_most_recently_created(tmp_path: Path) -> None:
+    with patch.object(paths, "root", tmp_path):
+        campaign = "turboship"
+        older = jrs.create_job_run(campaign, hostname="node-a")
+        newer = jrs.create_job_run(campaign, hostname="node-b")
+
+        latest = jrs.get_latest_job_run(campaign)
+
+    assert latest is not None
+    assert latest.id == newer.id
+    assert latest.id != older.id
+
+
+def test_get_latest_job_run_returns_none_for_empty_campaign(tmp_path: Path) -> None:
+    with patch.object(paths, "root", tmp_path):
+        assert jrs.get_latest_job_run("brand-new") is None

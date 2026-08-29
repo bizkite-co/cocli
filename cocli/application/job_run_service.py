@@ -221,6 +221,15 @@ def get_job_run(campaign_name: str, run_id: str) -> Optional[ScrapeJobRun]:
     return None
 
 
+def get_latest_job_run(campaign_name: str) -> Optional[ScrapeJobRun]:
+    """The most recently created run for this campaign, regardless of its
+    lifecycle state - None if the campaign has no runs yet."""
+    runs = _load_index(campaign_name)
+    if not runs:
+        return None
+    return max(runs, key=lambda r: r.created_at)
+
+
 def requeue_job_run(campaign_name: str, previous_run_id: str, *, hostname: Optional[str] = None) -> ScrapeJobRun:
     """Creates a fresh ScrapeJobRun that re-scrapes a previous run's exact
     identity set, bypassing gm-list's "already has a completed receipt"
