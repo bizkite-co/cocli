@@ -915,7 +915,14 @@ class WorkerService:
                     campaign_name=self.campaign_name,
                     dry_run=local_pending > 0,
                 )
-                if gm_list_result.copied:
+                # EnqueueResult.copied counts candidates considered, not
+                # files actually written - it's nonzero even under
+                # dry_run=True (the copy loop's counter isn't gated on the
+                # dry_run check, only the real shutil.copy2 call is). Must
+                # gate on dry_run here too, or this logs a false "topped
+                # up" on every heartbeat tick even when pending/ still has
+                # plenty of real work and no copy happened at all.
+                if not gm_list_result.dry_run and gm_list_result.copied:
                     logger.info(
                         f"gm-list/pending/ was fully drained - topped up "
                         f"{gm_list_result.copied} item(s) from discovery-gen/completed"

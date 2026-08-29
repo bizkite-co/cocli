@@ -7,6 +7,7 @@ scrape-pipeline-audit-tables-pending-counts-read-stale-local-dev-machine-queue-d
 
 from __future__ import annotations
 
+import logging
 from pathlib import Path
 from unittest.mock import patch
 
@@ -138,7 +139,9 @@ async def test_tile_coverage_counts_receipts_not_usv_presence(tmp_path: Path) ->
 
 
 @pytest.mark.asyncio
-async def test_compute_queue_pending_tops_up_gm_list_in_full_when_drained(tmp_path: Path) -> None:
+async def test_compute_queue_pending_tops_up_gm_list_in_full_when_drained(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
     """Once gm-list/pending/ is fully drained, the heartbeat check should
     copy the ENTIRE remaining discovery-gen/completed backlog in, not a
     small batch - pending/ is the real backlog signal (cocli audit
@@ -159,21 +162,32 @@ async def test_compute_queue_pending_tops_up_gm_list_in_full_when_drained(tmp_pa
 
         # gm-list/pending/ starts empty (fully drained).
         supervisor = _make_supervisor(campaign)
-        result = await supervisor._compute_queue_pending()
+        with caplog.at_level(logging.INFO, logger="cocli.application.worker_service"):
+            result = await supervisor._compute_queue_pending()
 
         pending_dir = campaign_dir / "queues" / "gm-list" / "pending"
         copied_files = list(pending_dir.rglob("*.usv"))
 
     assert result["gm-list"] == 3  # candidates
     assert len(copied_files) == 3  # ALL candidates copied in, not a bounded batch
+    assert "topped up 3 item(s)" in caplog.text  # real top-up IS logged
 
 
 @pytest.mark.asyncio
 async def test_compute_queue_pending_does_not_top_up_while_pending_still_has_work(
-    tmp_path: Path,
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
 ) -> None:
     """As long as gm-list/pending/ still has at least one real item left,
-    leave it alone - no copy, even if more discovery-gen candidates exist."""
+    leave it alone - no copy, even if more discovery-gen candidates exist.
+    Also asserts on the log line, not just the file count: EnqueueResult
+    .copied counts candidates considered, not files actually written (its
+    internal counter isn't gated on dry_run, only the real shutil.copy2
+    call is) - it's nonzero even under dry_run=True, so a naive "if
+    result.copied: log 'topped up'" falsely logs a top-up on every single
+    heartbeat tick even when pending/ is well-stocked and no copy ran at
+    all. Caught live: cocli5x1/roadmap logged "topped up 20399 item(s)"
+    every ~40s for several minutes while the real file count stayed
+    stable, 2026-08-28."""
     with patch.object(paths, "root", tmp_path):
         campaign = "turboship"
         campaign_dir = tmp_path / "campaigns" / campaign
@@ -189,13 +203,15 @@ async def test_compute_queue_pending_does_not_top_up_while_pending_still_has_wor
         (campaign_dir / "queues" / "gm-list" / "completed" / "results").mkdir(parents=True)
 
         supervisor = _make_supervisor(campaign)
-        result = await supervisor._compute_queue_pending()
+        with caplog.at_level(logging.INFO, logger="cocli.application.worker_service"):
+            result = await supervisor._compute_queue_pending()
 
         pending_dir = campaign_dir / "queues" / "gm-list" / "pending"
         copied_files = list(pending_dir.rglob("*.usv"))
 
     assert result["gm-list"] == 1  # candidates count still reported
     assert len(copied_files) == 1  # only the pre-existing file - no top-up copy happened
+    assert "topped up" not in caplog.text  # no false "topped up" log on a dry-run tick
 
 
 @pytest.mark.asyncio
