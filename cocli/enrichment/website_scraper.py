@@ -412,6 +412,15 @@ class WebsiteScraper:
             except Exception as e:
                 raise NavigationError(f"Could not navigate to {domain}. Error: {e}") from e
 
+            try:
+                # Viewport only (full_page=False, the default) - a "front
+                # face" preview of the hero/above-fold section, not the
+                # entire scrollable page. A failed capture must not fail
+                # the whole scrape - it's a nice-to-have, not core data.
+                website_data.screenshot_bytes = await page.screenshot(type="png")
+            except Exception as e:
+                logger.debug(f"Screenshot capture failed for {domain}: {e}")
+
             target_keywords: List[str] = []
             if campaign:
                 target_keywords = campaign.prospecting.queries + campaign.prospecting.keywords

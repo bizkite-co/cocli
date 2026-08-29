@@ -157,6 +157,14 @@ class Website(BaseModel):
     navbar_html: Optional[str] = None
     error: Optional[str] = None
     error_category: Optional[ErrorCategory] = None
+    # In-memory carrier only, never serialized (exclude=True - bytes don't
+    # belong in YAML frontmatter) - the scraper sets this right after page
+    # load (cocli/enrichment/website_scraper.py), save() writes it to the
+    # enrichments/screenshot.png sidecar and this field is done its job.
+    # A None/failed capture never deletes an existing screenshot - save()
+    # only writes when bytes are present, so a sparse re-scrape can't wipe
+    # a good screenshot the same way it can't wipe any other field.
+    screenshot_bytes: Optional[bytes] = Field(default=None, exclude=True)
 
     def compute_merged_save_data(self, existing_data: Dict[str, Any]) -> Dict[str, Any]:
         """Pure merge: fresh scrape values win unless hollow and the existing
@@ -262,6 +270,8 @@ class Website(BaseModel):
                 logger.warning(f"Navbar HTML too large ({len(content.encode('utf-8'))} bytes), truncating.")
                 content = content[:MAX_SIZE//2] + "\n... [TRUNCATED DUE TO SIZE] ...\n"
             (enrichment_dir / "navbar.html").write_text(content)
+        if self.screenshot_bytes:
+            (enrichment_dir / "screenshot.png").write_bytes(self.screenshot_bytes)
 
         logger.debug(f"Saved website enrichment locally for {company_slug}")
 

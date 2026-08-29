@@ -150,3 +150,35 @@ def test_personnel_entries_merge_fields_within_a_matched_identity() -> None:
     assert jane["title"] == "Owner"
     assert jane["email"] == "jane@acme.com"
     assert any(p["name"] == "Bob Smith" for p in data["personnel"])
+
+
+def _screenshot_path(slug: str) -> Path:
+    return paths.companies.ensure() / slug / "enrichments" / "screenshot.png"
+
+
+def test_screenshot_bytes_written_to_sidecar_not_frontmatter() -> None:
+    slug = "acme-flooring"
+    fake_png = b"\x89PNG\r\n\x1a\nfake-image-bytes"
+
+    Website(url="acme-flooring.com", screenshot_bytes=fake_png).save(slug)
+
+    assert _screenshot_path(slug).read_bytes() == fake_png
+    data = _read_frontmatter(slug)
+    assert "screenshot_bytes" not in data
+
+
+def test_missing_screenshot_on_rescrape_does_not_delete_existing_one() -> None:
+    """A sparse/failed screenshot capture on a re-scrape (e.g. a
+    force_refresh that navigated fine but the screenshot call itself
+    errored) must not wipe out a previously-captured good screenshot -
+    same merge-safety principle as every other field."""
+    slug = "acme-flooring"
+    fake_png = b"\x89PNG\r\n\x1a\nfake-image-bytes"
+
+    Website(url="acme-flooring.com", screenshot_bytes=fake_png).save(slug)
+    assert _screenshot_path(slug).exists()
+
+    # Re-scrape with no screenshot captured this time.
+    Website(url="acme-flooring.com", description="updated description").save(slug)
+
+    assert _screenshot_path(slug).read_bytes() == fake_png

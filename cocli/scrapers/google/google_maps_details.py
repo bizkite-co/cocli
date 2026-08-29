@@ -68,6 +68,7 @@ def build_raw_result_from_details(
         Reviews_count=details_dict.get("Reviews_count"),
         Average_rating=details_dict.get("Average_rating"),
         Reviews=details_dict.get("Reviews"),
+        Thumbnail_URL=details_dict.get("Thumbnail_URL"),
         GMB_URL=witness_url,
         processed_by=processed_by,
         is_value_resource=analysis["is_value_resource"],
