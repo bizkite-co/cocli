@@ -40,12 +40,14 @@ SCRAPE_ABSOLUTE_TIMEOUT_S = 1500
 # this directory's raw file count directly (see cocli/commands/audit.py),
 # and pre-regression this was the whole point of GM_LIST_QUEUE_STATION's
 # plain pending/completed contract. Mark, 2026-08-28: "we can dump them
-# all in there at once ... it's just files" - top up in FULL (no limit)
-# once this node's own local pending/ has fully drained, rather than a
-# small perpetual watermark batch. Cheap to do: gm-list's own poll()
-# (FilesystemGmListQueue.poll()) is an early-terminating os.walk that
-# stops as soon as it's leased one batch, so it doesn't care how many
-# files sit in pending/ - a bigger backlog there costs nothing per-poll.
+# all in there at once ... it's just files" - when a top-up does run, it
+# should be in FULL (no limit), not a small perpetual watermark batch:
+# gm-list's own poll() (FilesystemGmListQueue.poll()) is an early-
+# terminating os.walk that stops as soon as it's leased one batch, so it
+# doesn't care how many files sit in pending/ - a bigger backlog there
+# costs nothing per-poll. Auto-triggering that top-up off "pending/ hit
+# zero" is currently PAUSED though - see the gm-list block in
+# _compute_queue_pending() for why.
 
 
 def _is_orphaned_playwright_future(context: Dict[str, Any]) -> bool:
@@ -899,34 +901,26 @@ class WorkerService:
             except Exception as e:
                 logger.debug(f"queue_pending: enrichment count failed: {e}")
             try:
-                # Self-refill: check this node's own local pending/ file
-                # count (cheap - a single directory walk) and top up in
-                # FULL (no limit) once it's completely drained. Ties the
-                # top-up to real local demand instead of a blind periodic
-                # cron; does nothing on the many heartbeat ticks where
-                # pending/ still has real work left, or the campaign's
-                # backlog is itself fully drained (candidates=0, so the
-                # copy is a fast no-op even when it does run).
-                gm_list_q = get_queue_manager(
-                    "gm-list", queue_type="gm-list", campaign_name=self.campaign_name
-                )
-                local_pending = gm_list_q.count_state("pending")
+                # Self-refill (auto top-up gm-list/pending/ once it drains
+                # to zero) is PAUSED as of 2026-08-29, pending a design
+                # decision - Mark: draining to zero can mean either
+                # "discovery-gen has more real, unscraped work available"
+                # (should refill) OR "this campaign's current discovery-gen
+                # batch is genuinely fully scraped, nothing left to do"
+                # (should NOT auto re-enqueue) - a blind "pending==0 ->
+                # refill" trigger can't tell these apart, and would
+                # silently re-enqueue the same already-scraped batch every
+                # time it drains, forever, with no human checkpoint between
+                # "I generated a new discovery-gen batch" and "it's now
+                # live in the scrape queue". Left as always dry_run=True
+                # (report-only, matching pre-self-refill behavior) until
+                # the real trigger is decided. The copy step itself is
+                # unchanged and still available as an explicit manual
+                # `cocli data queue enqueue-gm-list --campaign <name>` call
+                # - see gm_list_enqueue_service.py.
                 gm_list_result = enqueue_unscraped_to_gm_list_pending(
-                    campaign_name=self.campaign_name,
-                    dry_run=local_pending > 0,
+                    campaign_name=self.campaign_name, dry_run=True
                 )
-                # EnqueueResult.copied counts candidates considered, not
-                # files actually written - it's nonzero even under
-                # dry_run=True (the copy loop's counter isn't gated on the
-                # dry_run check, only the real shutil.copy2 call is). Must
-                # gate on dry_run here too, or this logs a false "topped
-                # up" on every heartbeat tick even when pending/ still has
-                # plenty of real work and no copy happened at all.
-                if not gm_list_result.dry_run and gm_list_result.copied:
-                    logger.info(
-                        f"gm-list/pending/ was fully drained - topped up "
-                        f"{gm_list_result.copied} item(s) from discovery-gen/completed"
-                    )
                 result["gm-list"] = gm_list_result.candidates
             except Exception as e:
                 logger.debug(f"queue_pending: gm-list count failed: {e}")

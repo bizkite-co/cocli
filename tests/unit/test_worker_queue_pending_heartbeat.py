@@ -139,17 +139,20 @@ async def test_tile_coverage_counts_receipts_not_usv_presence(tmp_path: Path) ->
 
 
 @pytest.mark.asyncio
-async def test_compute_queue_pending_tops_up_gm_list_in_full_when_drained(
+async def test_compute_queue_pending_never_auto_copies_gm_list_even_when_drained(
     tmp_path: Path, caplog: pytest.LogCaptureFixture
 ) -> None:
-    """Once gm-list/pending/ is fully drained, the heartbeat check should
-    copy the ENTIRE remaining discovery-gen/completed backlog in, not a
-    small batch - pending/ is the real backlog signal (cocli audit
-    scrape's stale-fallback path and its "Gm List Claimed" lease count
-    both read it directly), and gm-list's own poll() early-terminates
-    regardless of how many files sit there, so there's no per-poll cost
-    to keeping the whole backlog resident. Mark, 2026-08-28: "we can dump
-    them all in there at once ... it's just files."""
+    """Self-refill (auto top-up gm-list/pending/ once it drains to zero)
+    is PAUSED as of 2026-08-29, pending a design decision - see the
+    gm-list block in _compute_queue_pending(). Draining to zero can mean
+    either "discovery-gen has more real, unscraped work" (should refill)
+    or "this campaign's current batch is genuinely fully scraped, stop"
+    (should NOT re-enqueue) - a blind pending==0 trigger can't tell these
+    apart. Even with real, unscraped discovery-gen candidates available
+    and pending/ fully empty, _compute_queue_pending() must only report
+    the candidate count (dry-run), never actually copy - resuming
+    real work requires an explicit `cocli data queue enqueue-gm-list`
+    call until the trigger design is settled."""
     with patch.object(paths, "root", tmp_path):
         campaign = "turboship"
         campaign_dir = tmp_path / "campaigns" / campaign
@@ -168,26 +171,25 @@ async def test_compute_queue_pending_tops_up_gm_list_in_full_when_drained(
         pending_dir = campaign_dir / "queues" / "gm-list" / "pending"
         copied_files = list(pending_dir.rglob("*.usv"))
 
-    assert result["gm-list"] == 3  # candidates
-    assert len(copied_files) == 3  # ALL candidates copied in, not a bounded batch
-    assert "topped up 3 item(s)" in caplog.text  # real top-up IS logged
+    assert result["gm-list"] == 3  # candidates still reported
+    assert len(copied_files) == 0  # but nothing actually copied - self-refill is paused
+    assert "topped up" not in caplog.text
 
 
 @pytest.mark.asyncio
-async def test_compute_queue_pending_does_not_top_up_while_pending_still_has_work(
+async def test_compute_queue_pending_does_not_touch_pending_with_work_left(
     tmp_path: Path, caplog: pytest.LogCaptureFixture
 ) -> None:
-    """As long as gm-list/pending/ still has at least one real item left,
-    leave it alone - no copy, even if more discovery-gen candidates exist.
-    Also asserts on the log line, not just the file count: EnqueueResult
-    .copied counts candidates considered, not files actually written (its
-    internal counter isn't gated on dry_run, only the real shutil.copy2
-    call is) - it's nonzero even under dry_run=True, so a naive "if
-    result.copied: log 'topped up'" falsely logs a top-up on every single
-    heartbeat tick even when pending/ is well-stocked and no copy ran at
-    all. Caught live: cocli5x1/roadmap logged "topped up 20399 item(s)"
-    every ~40s for several minutes while the real file count stayed
-    stable, 2026-08-28."""
+    """Same paused behavior when pending/ still has real work left - no
+    copy, no false "topped up" log. EnqueueResult.copied counts
+    candidates considered, not files actually written (its internal
+    counter isn't gated on dry_run, only the real shutil.copy2 call is) -
+    it's nonzero even under dry_run=True, so any future re-enable of the
+    auto-copy trigger must gate its logging on `not result.dry_run`, not
+    just a truthy `copied`, or it falsely logs a top-up on every single
+    heartbeat tick. Caught live: cocli5x1/roadmap logged "topped up
+    20399 item(s)" every ~40s for several minutes while the real file
+    count stayed stable, 2026-08-28."""
     with patch.object(paths, "root", tmp_path):
         campaign = "turboship"
         campaign_dir = tmp_path / "campaigns" / campaign
@@ -198,7 +200,7 @@ async def test_compute_queue_pending_does_not_top_up_while_pending_still_has_wor
         (pending_item / "existing-phrase.usv").write_text("dummy")
 
         # A real, unscraped discovery-gen candidate exists too, but should
-        # NOT get copied in since pending/ still has work left.
+        # NOT get copied in - self-refill is paused regardless.
         _write_dg_tile(campaign_dir, "2/41.0/-75.0", "phrase-two")
         (campaign_dir / "queues" / "gm-list" / "completed" / "results").mkdir(parents=True)
 
