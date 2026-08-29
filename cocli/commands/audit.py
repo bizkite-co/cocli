@@ -751,13 +751,24 @@ echo '@@ERROR_PATTERNS@@'
 # also swallow Python identifiers like "Page.content"/"ErrorCategory.X"
 # (idiomatically PascalCase) - those must stay distinct, since collapsing
 # "Page.content" and "Page.goto" failures into one bucket would hide that
-# they're different underlying errors.
+# they're different underlying errors. Anchored to a real TLD whitelist,
+# not "any 2+ letter suffix" - the label itself allows hyphens (to catch
+# real hyphenated domains like site-xyz.godaddysites.com), and without the
+# TLD whitelist that same hyphen-tolerance matches ordinary filenames too
+# (task-uuid.usv, index-service.py), masking them as fake domains.
+#
+# The long-ID regex's character class deliberately excludes "/" (a
+# pre-existing bug, not new here: with "/" included it doesn't stop at
+# directory boundaries, so a plain path like "app/data/campaigns/" - all
+# letters and slashes, no dots/hyphens to break it - hits the 20-char
+# threshold and swallows real path structure into one opaque <ID>,
+# observed live as "Error reading task file <ID>*/queues/gm-<ID><DOMAIN>").
 docker logs --since 30m cocli-supervisor 2>&1 \
   | grep -iE 'error|exception|traceback|denied' \
   | sed -E 's/^\[[0-9-]+ [0-9:]+ [+-][0-9]+\] //' \
   | sed -E 's#(companies|campaigns)/[A-Za-z0-9_-]+/#\1/*/#g' \
-  | sed -E 's/\b[a-z0-9][a-z0-9.-]*\.[a-z]{2,}\b/<DOMAIN>/g' \
-  | sed -E 's/[A-Za-z0-9+\/]{20,}/<ID>/g' \
+  | sed -E 's/\b[a-z0-9][a-z0-9-]*(\.[a-z0-9-]+)*\.(com|net|org|io|co|us|biz|info|dev|app|xyz|online|site|store|shop|tech|cloud|me|tv|cc|ai|gov|edu|uk|ca|de|fr|es|it|nl|au|nz|in)\b/<DOMAIN>/g' \
+  | sed -E 's/[A-Za-z0-9+]{20,}/<ID>/g' \
   | sort | uniq -c | sort -rn | head -5 || true
 echo '@@LASTLOG@@'
 tail -1 "$LOGFILE" || true
