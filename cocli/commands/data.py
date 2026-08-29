@@ -493,3 +493,28 @@ def job_run_list(
         )
 
     console.print(table)
+
+
+@job_run_app.command(name="requeue")
+def job_run_requeue(
+    previous_run_id: str = typer.Argument(..., help="Job run ID to re-scrape"),
+    campaign: str = typer.Option(..., "--campaign", "-c", help="Campaign name"),
+) -> None:
+    """Create a new ScrapeJobRun that re-scrapes a previous run's exact
+    identity set, bypassing the "already gm-list-completed" filter -
+    every identity in a finished run trivially has a receipt, or it
+    wouldn't be finished. For the "haven't scraped this campaign in N
+    months, there might be new data" case: re-runs the same discovery-gen
+    tiles/phrases without regenerating them.
+    """
+    from cocli.application.job_run_service import requeue_job_run
+
+    try:
+        new_run = requeue_job_run(campaign, previous_run_id)
+    except ValueError as e:
+        console.print(f"[red]{e}[/red]")
+        raise typer.Exit(1)
+
+    console.print(f"[bold green]Job run {new_run.id}[/bold green]")
+    console.print(f"  Re-scraping {new_run.identity_count} identities from {previous_run_id}")
+    console.print("  Enqueued into gm-list/pending/ (rescrape_all)")

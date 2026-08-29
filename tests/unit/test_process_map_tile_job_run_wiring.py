@@ -15,6 +15,7 @@ from cocli.application import job_run_service as jrs
 from cocli.commands.dev import app
 from cocli.core.paths import paths
 from cocli.core.queue.factory import get_queue_manager
+from cocli.models.campaigns.queues.gm_list import ScrapeTask
 from cocli.models.campaigns.tile import TileRecord
 
 runner = CliRunner()
@@ -61,6 +62,9 @@ def test_process_map_tile_creates_run_and_enqueues_gm_list(tmp_path: Path) -> No
         copied = list(gm_list_q.pending_dir.rglob("*.usv"))
         assert len(copied) == 1
         assert copied[0].name == "rubber-flooring-contractor.usv"
+
+        copied_task = ScrapeTask.from_usv(copied[0].read_text(encoding="utf-8"))
+        assert copied_task.job_run_id == run.id
 
 
 def test_process_map_tile_dry_run_creates_no_job_run(tmp_path: Path) -> None:

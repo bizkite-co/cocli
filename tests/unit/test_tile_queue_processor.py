@@ -13,6 +13,7 @@ from unittest.mock import patch
 
 from cocli.core.paths import paths
 from cocli.core.queue.factory import get_queue_manager
+from cocli.models.campaigns.queues.gm_list import ScrapeTask
 from cocli.models.campaigns.tile import TileRecord
 from cocli.services.tile_queue_processor import process_tile_queue
 
@@ -122,3 +123,43 @@ def test_process_tile_queue_dry_run_writes_nothing(tmp_path):
         assert tile_path.exists()
         discovery_gen_completed = paths.campaign(campaign_name).queue("discovery-gen").state("completed")
         assert list(discovery_gen_completed.rglob("*.usv")) == []
+
+
+def test_process_tile_queue_stamps_job_run_id_on_each_scrape_task(tmp_path):
+    """job_run_id is set by the caller BEFORE processing (the run must
+    exist first so its id can be stamped at write time - see
+    job_run_service.py) and threaded onto every ScrapeTask this call
+    writes."""
+    with patch("cocli.core.paths.paths.root", tmp_path):
+        campaign_name = "test-campaign"
+        tile_queue = get_queue_manager("map-tile", queue_type="tile", campaign_name=campaign_name)
+
+        records = [
+            TileRecord(tile_id="28.7_-96.9", search_phrase="rubber flooring contractor", latitude=28.7, longitude=-96.9),
+        ]
+        _write_tile_file(tile_queue.pending_dir, "2/28.7/-96.9/28.7_-96.9.usv", records)
+
+        process_tile_queue(campaign_name, job_run_id="20260829T120000000000Z_dev-machine")
+
+        discovery_gen_completed = paths.campaign(campaign_name).queue("discovery-gen").state("completed")
+        written = next(discovery_gen_completed.rglob("*.usv"))
+        task = ScrapeTask.from_usv(written.read_text(encoding="utf-8"))
+        assert task.job_run_id == "20260829T120000000000Z_dev-machine"
+
+
+def test_process_tile_queue_job_run_id_defaults_to_none(tmp_path):
+    with patch("cocli.core.paths.paths.root", tmp_path):
+        campaign_name = "test-campaign"
+        tile_queue = get_queue_manager("map-tile", queue_type="tile", campaign_name=campaign_name)
+
+        records = [
+            TileRecord(tile_id="28.7_-96.9", search_phrase="rubber flooring contractor", latitude=28.7, longitude=-96.9),
+        ]
+        _write_tile_file(tile_queue.pending_dir, "2/28.7/-96.9/28.7_-96.9.usv", records)
+
+        process_tile_queue(campaign_name)
+
+        discovery_gen_completed = paths.campaign(campaign_name).queue("discovery-gen").state("completed")
+        written = next(discovery_gen_completed.rglob("*.usv"))
+        task = ScrapeTask.from_usv(written.read_text(encoding="utf-8"))
+        assert task.job_run_id is None

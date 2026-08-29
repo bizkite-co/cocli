@@ -40,3 +40,36 @@ def test_job_run_list_empty_campaign(tmp_path: Path) -> None:
 
     assert result.exit_code == 0, result.output
     assert "Job Runs: brand-new" in result.output
+
+
+def test_job_run_requeue_creates_new_run(tmp_path: Path) -> None:
+    with patch.object(paths, "root", tmp_path):
+        campaign = "turboship"
+        campaign_dir = tmp_path / "campaigns" / campaign
+        dg_file = (
+            campaign_dir / "queues" / "discovery-gen" / "completed" / "2" / "28.7" / "-96.9" / "item-a.usv"
+        )
+        dg_file.parent.mkdir(parents=True, exist_ok=True)
+        dg_file.write_text("dummy\x1fscrape-task\n")
+
+        previous = jrs.create_job_run(campaign, hostname="dev-machine")
+        previous = jrs.mark_discovery_gen_completed(previous, ["28.7/-96.9/item-a"])
+
+        result = runner.invoke(
+            app, ["job-run", "requeue", previous.id, "--campaign", campaign]
+        )
+
+        assert result.exit_code == 0, result.output
+        assert "Job run" in result.output
+        runs = jrs._load_index(campaign)
+        assert len(runs) == 2
+
+
+def test_job_run_requeue_unknown_run_exits_nonzero(tmp_path: Path) -> None:
+    with patch.object(paths, "root", tmp_path):
+        result = runner.invoke(
+            app, ["job-run", "requeue", "no-such-run", "--campaign", "turboship"]
+        )
+
+    assert result.exit_code == 1
+    assert "no-such-run" in result.output

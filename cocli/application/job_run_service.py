@@ -128,17 +128,25 @@ def load_identities(run: ScrapeJobRun) -> List[str]:
     ]
 
 
-def enqueue_gm_list_for_run(run: ScrapeJobRun) -> ScrapeJobRun:
+def enqueue_gm_list_for_run(run: ScrapeJobRun, *, rescrape_all: bool = False) -> ScrapeJobRun:
     """Copies this run's snapshotted identities into gm-list/pending/,
     scoped to exactly this run (not the whole discovery-gen/completed
     tree) - reuses the existing dedup/reconcile logic in
     gm_list_enqueue_service.py so an item already gm-list-completed still
-    gets skipped even within this run's own scope. Idempotent - safe for
-    the resilience poller to call again on a run that already has
-    started_at unset because a prior attempt was interrupted mid-copy.
-    Sets started_at unconditionally on success (copied==0 is a valid
-    outcome if every identity in scope already resolved by the time this
-    ran), regardless of how many items actually needed copying.
+    gets skipped even within this run's own scope (unless rescrape_all).
+    Idempotent - safe for the resilience poller to call again on a run
+    that already has started_at unset because a prior attempt was
+    interrupted mid-copy. Sets started_at unconditionally on success
+    (copied==0 is a valid outcome if every identity in scope already
+    resolved by the time this ran), regardless of how many items
+    actually needed copying.
+
+    rescrape_all: bypass the already-completed filter - every identity in
+    scope gets copied regardless of whether it already has a gm-list
+    receipt. Needed for requeue_job_run(): re-scraping a previous run's
+    already-fully-resolved identities would otherwise copy zero items
+    (they all trivially "already have a receipt"), and the new run would
+    look done without ever re-scraping anything.
     """
     from .gm_list_enqueue_service import enqueue_unscraped_to_gm_list_pending
 
@@ -147,6 +155,7 @@ def enqueue_gm_list_for_run(run: ScrapeJobRun) -> ScrapeJobRun:
         campaign_name=run.campaign_name,
         identity_scope=frozenset(identities),
         dry_run=False,
+        rescrape_all=rescrape_all,
     )
     updated = run.model_copy(update={"started_at": datetime.now(UTC)})
     _persist(updated)
@@ -203,3 +212,31 @@ def list_open_job_runs(campaign_name: str) -> List[ScrapeJobRun]:
         for r in _load_index(campaign_name)
         if r.discovery_gen_completed_at is not None and r.gm_list_completed_at is None
     ]
+
+
+def get_job_run(campaign_name: str, run_id: str) -> Optional[ScrapeJobRun]:
+    for r in _load_index(campaign_name):
+        if r.id == run_id:
+            return r
+    return None
+
+
+def requeue_job_run(campaign_name: str, previous_run_id: str, *, hostname: Optional[str] = None) -> ScrapeJobRun:
+    """Creates a fresh ScrapeJobRun that re-scrapes a previous run's exact
+    identity set, bypassing gm-list's "already has a completed receipt"
+    filter (every identity in a finished run trivially has one, or it
+    wouldn't be finished). For the "haven't scraped this campaign in N
+    months, there might be new data" use case - Mark, 2026-08-29: re-runs
+    the same discovery-gen tiles/phrases without regenerating them.
+
+    Raises ValueError if previous_run_id doesn't exist for this campaign.
+    """
+    previous = get_job_run(campaign_name, previous_run_id)
+    if previous is None:
+        raise ValueError(f"No job run '{previous_run_id}' found for campaign '{campaign_name}'")
+
+    identities = load_identities(previous)
+    new_run = create_job_run(campaign_name, hostname=hostname)
+    new_run = mark_discovery_gen_completed(new_run, identities)
+    new_run = enqueue_gm_list_for_run(new_run, rescrape_all=True)
+    return new_run

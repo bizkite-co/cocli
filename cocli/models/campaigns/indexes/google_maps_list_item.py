@@ -56,7 +56,12 @@ class GoogleMapsListItem(BaseUsvModel):
         None, description="Raw HTML of the list item", exclude=True
     )
 
-    def to_task(self, campaign_name: str, force_refresh: bool = False) -> GmItemTask:
+    def to_task(
+        self,
+        campaign_name: str,
+        force_refresh: bool = False,
+        job_run_id: Optional[str] = None,
+    ) -> GmItemTask:
         """Transforms this list item into a task for the details queue."""
         return GmItemTask(
             place_id=self.place_id,
@@ -67,4 +72,5 @@ class GoogleMapsListItem(BaseUsvModel):
             gmb_url=self.gmb_url,
             discovery_phrase=self.discovery_phrase,
             discovery_tile_id=self.discovery_tile_id,
+            job_run_id=job_run_id,
         )

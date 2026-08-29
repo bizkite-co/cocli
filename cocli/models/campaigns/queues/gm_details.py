@@ -20,6 +20,11 @@ class GmItemTask(BaseModel):
     gmb_url: Optional[str] = None
     discovery_phrase: Optional[str] = None
     discovery_tile_id: Optional[str] = None
+    # Which ScrapeJobRun discovered this place_id (see
+    # cocli/models/campaigns/scrape_job_run.py), propagated from the
+    # gm-list ScrapeTask that found it. JSON-serialized (not USV), so no
+    # field-order constraint - safe to add anywhere.
+    job_run_id: Optional[str] = None
 
     # Queue mechanics (Transient)
     ack_token: Optional[str] = Field(default=None, exclude=True)

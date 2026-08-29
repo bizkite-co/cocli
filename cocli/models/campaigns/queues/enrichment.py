@@ -1,5 +1,6 @@
 import logging
 from pathlib import Path
+from typing import Optional
 
 from .base import QueueMessage
 from ....core.paths import paths
@@ -15,6 +16,14 @@ class EnrichmentTask(QueueMessage):
     Shard: sha256(domain)[:2] (same as FSQ ENRICHMENT StationDecl / get_domain_shard)
     Task ID: The raw domain (deduplication anchor)
     """
+
+    # Which ScrapeJobRun discovered this domain (see
+    # cocli/models/campaigns/scrape_job_run.py), propagated from the
+    # gm-list ScrapeTask that found it. Declared here (not on the shared
+    # QueueMessage base, which other queue types like ToCallTask also
+    # extend) so it's appended after all of QueueMessage's inherited
+    # fields without affecting their positional field order.
+    job_run_id: Optional[str] = None
 
     @property
     def collection(self) -> QueueName:

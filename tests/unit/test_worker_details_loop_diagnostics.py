@@ -231,7 +231,9 @@ async def test_details_loop_acks_and_pushes_enrichment_on_real_success(tmp_path)
     service = _make_service(tmp_path)
     context = _make_ready_context()
 
-    fake_task = MagicMock(place_id="ChIJfake", campaign_name="test-campaign", force_refresh=False)
+    fake_task = MagicMock(
+        place_id="ChIJfake", campaign_name="test-campaign", force_refresh=False, job_run_id=None
+    )
     gm_list_item_queue = MagicMock()
     gm_list_item_queue.poll.return_value = [fake_task]
     enrichment_queue = MagicMock()

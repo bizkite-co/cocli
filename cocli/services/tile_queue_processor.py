@@ -36,6 +36,7 @@ def process_tile_queue(
     campaign_name: str,
     max_tiles: Optional[int] = None,
     dry_run: bool = False,
+    job_run_id: Optional[str] = None,
 ) -> Dict[str, Any]:
     """
     Process tiles from map-tile/pending/ → discovery-gen/completed/.
@@ -48,6 +49,10 @@ def process_tile_queue(
         campaign_name: Campaign to process
         max_tiles: Maximum number of tiles to process (None = all)
         dry_run: If True, don't write or move files
+        job_run_id: stamped onto every ScrapeTask this call writes (see
+            cocli/models/campaigns/scrape_job_run.py) - the caller must
+            create the ScrapeJobRun BEFORE calling this, since this is
+            where the id first gets attached to real data.
 
     Returns:
         Metrics: {tiles_processed, scrape_tasks_created, errors, identities}
@@ -151,6 +156,7 @@ def process_tile_queue(
                                 search_phrase=record.search_phrase,
                                 campaign_name=campaign_name,
                                 tile_id=record.tile_id,
+                                job_run_id=job_run_id,
                             )
 
                             # Get gm-list pending path from ScrapeTask

@@ -326,7 +326,17 @@ def process_map_tile_cmd(
             console.print(f"  Max tiles: {max_tiles}")
         console.print()
 
-        metrics = process_tile_queue(campaign_name, max_tiles=max_tiles, dry_run=dry_run)
+        # The run must exist BEFORE process_tile_queue() writes anything -
+        # its id gets stamped onto every ScrapeTask as it's created (see
+        # ScrapeTask.job_run_id), not attached after the fact.
+        run = create_job_run(campaign_name) if not dry_run else None
+
+        metrics = process_tile_queue(
+            campaign_name,
+            max_tiles=max_tiles,
+            dry_run=dry_run,
+            job_run_id=run.id if run else None,
+        )
 
         console.print("[bold green]Processing complete![/bold green]")
         console.print(f"  Tiles processed: {metrics['tiles_processed']}")
@@ -334,8 +344,7 @@ def process_map_tile_cmd(
         if metrics["errors"] > 0:
             console.print(f"  [yellow]Errors: {metrics['errors']}[/yellow]")
 
-        if not dry_run and metrics["scrape_tasks_created"] > 0:
-            run = create_job_run(campaign_name)
+        if run is not None and metrics["scrape_tasks_created"] > 0:
             run = mark_discovery_gen_completed(run, metrics["identities"])
             run = enqueue_gm_list_for_run(run)
             console.print()

@@ -16,6 +16,7 @@ from ..scrapers.google.google_maps import scrape_google_maps
 from ..models.campaigns.indexes.google_maps_list_item import GoogleMapsListItem
 from ..models.campaigns.queues.gm_details import GmItemTask
 from ..models.campaigns.queues.base import QueueMessage
+from ..models.campaigns.queues.enrichment import EnrichmentTask
 from ..core.config import load_campaign_config
 from ..core.paths import paths
 from ..utils.playwright_utils import setup_optimized_context
@@ -162,6 +163,7 @@ def route_discovered_list_item(
     enrichment_queue: Any,
     gm_list_item_queue: Any,
     processed_by: str,
+    job_run_id: Optional[str] = None,
 ) -> None:
     """Per-discovery routing decision for the gm-list scraper.
 
@@ -174,6 +176,11 @@ def route_discovered_list_item(
 
     No domain -> queue for gm-details, which persists its own WAL record
     once it finds one.
+
+    job_run_id: propagated from the ScrapeTask that discovered this item
+    (see cocli/models/campaigns/scrape_job_run.py) onto whichever
+    downstream task gets created, so gm-details/enrichment completion can
+    eventually be traced back to the run that found them.
 
     Extracted as a plain, synchronous function (rather than inline in the
     async scrape loop) so it's testable without mocking a Playwright
@@ -192,19 +199,22 @@ def route_discovered_list_item(
             f"'{list_item.name}'. Routing directly to enrichment."
         )
         enrichment_queue.push(
-            QueueMessage(
+            EnrichmentTask(
                 domain=str(list_item.domain),
                 company_slug=slugify(str(list_item.name) if list_item.name else ""),
                 campaign_name=campaign_name,
                 force_refresh=False,
                 ack_token=None,
+                job_run_id=job_run_id,
             )
         )
         prospect = transform_gm_list_item_to_google_maps_prospect(list_item)
         prospect.processed_by = processed_by
         ProspectsIndexManager(campaign_name).add_to_wal(prospect)
     else:
-        gm_list_item_queue.push(list_item.to_task(campaign_name, force_refresh=False))
+        gm_list_item_queue.push(
+            list_item.to_task(campaign_name, force_refresh=False, job_run_id=job_run_id)
+        )
 
 
 class WorkerService:
@@ -566,6 +576,7 @@ class WorkerService:
                             enrichment_queue=enrichment_queue,
                             gm_list_item_queue=gm_list_item_queue,
                             processed_by=self.processed_by,
+                            job_run_id=task.job_run_id,
                         )
                         pushed_place_ids.add(list_item.place_id)
 
@@ -646,7 +657,7 @@ class WorkerService:
                         gm_list_item_queue.nack(task)
                     else:
                         if final_prospect_data.domain:
-                            enrichment_queue.push(QueueMessage(domain=str(final_prospect_data.domain), company_slug=slugify(str(final_prospect_data.name) if final_prospect_data.name else ""), campaign_name=task.campaign_name, force_refresh=task.force_refresh, ack_token=None))
+                            enrichment_queue.push(EnrichmentTask(domain=str(final_prospect_data.domain), company_slug=slugify(str(final_prospect_data.name) if final_prospect_data.name else ""), campaign_name=task.campaign_name, force_refresh=task.force_refresh, ack_token=None, job_run_id=task.job_run_id))
 
                         gm_list_item_queue.ack(task)
                 finally:

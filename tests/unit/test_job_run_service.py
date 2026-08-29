@@ -202,3 +202,72 @@ def test_list_open_job_runs_filters_to_runs_needing_poller_attention(tmp_path: P
         assert stuck_before_copy.id in open_runs
         assert draining.id in open_runs
         assert done.id not in open_runs
+
+
+def test_enqueue_gm_list_for_run_rescrape_all_copies_already_completed_items(
+    tmp_path: Path,
+) -> None:
+    """Without rescrape_all, a fully-resolved run's own identities would
+    all be filtered out as 'already scraped' (they trivially have
+    receipts, or the run wouldn't be resolved) - rescrape_all bypasses
+    that, which is what requeue_job_run() needs."""
+    with patch.object(paths, "root", tmp_path):
+        campaign = "turboship"
+        campaign_dir = tmp_path / "campaigns" / campaign
+
+        _write_discovery_gen_file(campaign_dir, "2", "28.7", "-96.9", "item-a")
+        _write_gm_list_receipt(campaign_dir, "2", "28.7", "-96.9", "item-a")
+
+        run = jrs.create_job_run(campaign, hostname="dev-machine")
+        run = jrs.mark_discovery_gen_completed(run, ["28.7/-96.9/item-a"])
+
+        updated = jrs.enqueue_gm_list_for_run(run, rescrape_all=True)
+
+        assert updated.started_at is not None
+        gm_list_q = get_queue_manager("gm-list", queue_type="gm-list", campaign_name=campaign)
+        copied = list(gm_list_q.pending_dir.rglob("*.usv"))
+        assert len(copied) == 1
+
+
+def test_requeue_job_run_creates_new_run_and_rescrapes_previous_identities(
+    tmp_path: Path,
+) -> None:
+    with patch.object(paths, "root", tmp_path):
+        campaign = "turboship"
+        campaign_dir = tmp_path / "campaigns" / campaign
+
+        _write_discovery_gen_file(campaign_dir, "2", "28.7", "-96.9", "item-a")
+        _write_discovery_gen_file(campaign_dir, "2", "28.7", "-96.9", "item-b")
+
+        previous = jrs.create_job_run(campaign, hostname="dev-machine")
+        previous = jrs.mark_discovery_gen_completed(
+            previous, ["28.7/-96.9/item-a", "28.7/-96.9/item-b"]
+        )
+        previous = jrs.enqueue_gm_list_for_run(previous)
+        _write_gm_list_receipt(campaign_dir, "2", "28.7", "-96.9", "item-a")
+        _write_gm_list_receipt(campaign_dir, "2", "28.7", "-96.9", "item-b")
+        jrs.check_and_mark_gm_list_completed(previous)
+
+        new_run = jrs.requeue_job_run(campaign, previous.id, hostname="dev-machine")
+
+        assert new_run.id != previous.id
+        assert new_run.identity_count == 2
+        assert new_run.started_at is not None
+        assert jrs.load_identities(new_run) == jrs.load_identities(previous)
+
+        gm_list_q = get_queue_manager("gm-list", queue_type="gm-list", campaign_name=campaign)
+        copied = sorted(p.name for p in gm_list_q.pending_dir.rglob("*.usv"))
+        assert copied == ["item-a.usv", "item-b.usv"]
+
+
+def test_requeue_job_run_raises_for_unknown_previous_run(tmp_path: Path) -> None:
+    import pytest
+
+    with patch.object(paths, "root", tmp_path):
+        with pytest.raises(ValueError, match="no-such-run"):
+            jrs.requeue_job_run("turboship", "no-such-run")
+
+
+def test_get_job_run_returns_none_when_not_found(tmp_path: Path) -> None:
+    with patch.object(paths, "root", tmp_path):
+        assert jrs.get_job_run("turboship", "no-such-run") is None

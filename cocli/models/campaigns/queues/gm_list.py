@@ -30,6 +30,14 @@ class ScrapeTask(BaseUsvModel):
     attempts: int = 0
     result_count: Optional[int] = Field(default=None, ge=0, description="Capture discovery count for receipt")
 
+    # Which ScrapeJobRun created this task (see
+    # cocli/models/campaigns/scrape_job_run.py) - stamped by
+    # tile_queue_processor.py at generation time, propagated to any
+    # GmItemTask/EnrichmentTask this task's discoveries create. Appended
+    # last per BaseUsvModel's field-order-is-positional contract - never
+    # insert a new field earlier than this.
+    job_run_id: Optional[str] = None
+
     SCHEMA_VERSION: ClassVar[str] = "1.0.0"
 
     SOURCE_QUEUE: ClassVar[str] = "discovery-gen"
