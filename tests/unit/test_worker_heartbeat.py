@@ -1,5 +1,6 @@
 import asyncio
 import json
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -8,6 +9,7 @@ import pytest
 
 from cocli.application.worker_service import WorkerService
 from cocli.core.logging_config import RollingErrorCounter, get_recent_error_count
+from cocli.core.paths import paths
 
 
 @pytest.fixture
@@ -179,3 +181,67 @@ async def test_rebalance_workers_registers_child_workers(tmp_path: Path) -> None
         for t in supervisor.worker_tasks:
             t.cancel()
         await asyncio.gather(*supervisor.worker_tasks, return_exceptions=True)
+
+
+@pytest.mark.asyncio
+async def test_run_orchestrated_workers_reclaims_expired_leases_on_startup(
+    tmp_path: Path,
+) -> None:
+    """A worker that dies mid-task leaves its lease.json behind forever -
+    roadmap accumulated ~5,950 expired gm-list leases over ~6 months with no
+    supervisor running, invisible until someone thought to run `cocli audit
+    queue purge-leases` by hand. run_orchestrated_workers() is the one place
+    every worker startup goes through, so it must reclaim expired leases for
+    every queue it's about to work - but must never touch a lease an
+    actually-alive worker is still refreshing (Mark, 2026-08-30)."""
+    async def fake_run_worker(self: WorkerService, *args: object, **kwargs: object) -> None:
+        await asyncio.sleep(100)
+
+    wd = SimpleNamespace(name="n-gm-list", role="full", content_type="gm-list", workers=1)
+
+    with patch("cocli.core.paths.paths.root", tmp_path), patch.object(
+        WorkerService, "run_worker", fake_run_worker
+    ), patch.object(WorkerService, "_watch_remote_config", new=AsyncMock()), patch.object(
+        WorkerService, "_heartbeat_loop", new=AsyncMock()
+    ), patch("cocli.core.gossip_bridge.bridge", None):
+        supervisor = WorkerService(campaign_name="test_campaign", processed_by="node1")
+
+        pending = paths.campaign("test_campaign").queue("gm-list").pending
+        stale_dir = pending / "stale-task"
+        stale_dir.mkdir(parents=True)
+        stale_lease = stale_dir / "lease.json"
+        stale_lease.write_text(
+            json.dumps(
+                {
+                    "worker_id": "dead-worker",
+                    "heartbeat_at": (
+                        datetime.now(UTC) - timedelta(hours=6)
+                    ).isoformat(),
+                }
+            )
+        )
+
+        fresh_dir = pending / "fresh-task"
+        fresh_dir.mkdir(parents=True)
+        fresh_lease = fresh_dir / "lease.json"
+        fresh_lease.write_text(
+            json.dumps(
+                {
+                    "worker_id": "live-worker",
+                    "heartbeat_at": datetime.now(UTC).isoformat(),
+                }
+            )
+        )
+
+        orchestrator_task = asyncio.create_task(
+            supervisor.run_orchestrated_workers([wd], headless=True, debug=False)
+        )
+        await asyncio.sleep(0.05)
+
+        assert not stale_lease.exists(), "expired lease must be reclaimed before workers start"
+        assert fresh_lease.exists(), "a lease an alive worker is still holding must survive"
+
+        supervisor._running = False
+        for t in supervisor.worker_tasks:
+            t.cancel()
+        await asyncio.wait_for(orchestrator_task, timeout=5)

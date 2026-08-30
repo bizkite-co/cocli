@@ -1122,6 +1122,28 @@ class WorkerService:
         # gm-details must never be launched on Fargate.
         running_in_fargate = bool(os.getenv("COCLI_RUNNING_IN_FARGATE"))
 
+        # Reclaim leases abandoned by a previous crashed/killed process
+        # before any worker starts claiming again. Without this, a worker
+        # that dies mid-task leaves its lease.json sitting in pending/
+        # indefinitely - it doesn't block new claims on OTHER items, but it
+        # silently accumulates (roadmap had ~5,950 expired gm-list leases
+        # after ~6 months with no supervisor running) and previously
+        # required a manual `cocli audit queue purge-leases` to notice or
+        # fix. Safe by construction: purge_expired_leases only removes
+        # leases whose heartbeat is already past max_heartbeat_age_minutes,
+        # so it can never touch a lease an actually-alive worker (on this
+        # node or another) is still refreshing (Mark, 2026-08-30).
+        from ..services.lease_cleanup import purge_expired_leases
+
+        for content_type in {wd.content_type for wd in worker_definitions}:
+            queue_dir = paths.campaign(self.campaign_name).queue(content_type).pending
+            metrics = purge_expired_leases(queue_dir, max_heartbeat_age_minutes=30)
+            if metrics["leases_deleted"]:
+                logger.info(
+                    f"  Reclaimed {metrics['leases_deleted']} expired {content_type} "
+                    f"lease(s) before startup (found={metrics['leases_found']})"
+                )
+
         self.worker_tasks = []
         for wd in worker_definitions:
             if running_in_fargate and wd.content_type in ("gm-list", "gm-details"):
