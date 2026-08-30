@@ -594,7 +594,15 @@ class CompanyDetail(Container):
         )
         self.app.notify(f"Excluded '{name}' from {campaign}")
 
-    async def action_call_company(self) -> None:
+    def action_call_company(self) -> None:
+        """Sync dispatcher + run_worker - see action_delete_company's
+        docstring for the general reason. Here the bug wasn't a discarded
+        confirm value but a discarded *wait*: plain push_screen() awaits
+        the modal's mount, not its dismissal, so the refresh calls used to
+        fire before the user had actually finished logging the call,
+        showing stale data. push_screen_wait blocks until CallLogModal is
+        actually dismissed (its return value isn't needed here, just the
+        wait)."""
         # Prefer phone_1 which is our primary standardized field
         phone = self.company_data["company"].get("phone_1") or self.company_data[
             "company"
@@ -602,7 +610,11 @@ class CompanyDetail(Container):
         slug = self.company_data["company"].get("slug")
         domain = self.company_data["company"].get("domain")
 
-        if phone and slug:
+        if not (phone and slug):
+            self.app.notify("Phone number or slug missing", severity="warning")
+            return
+
+        async def run_call() -> None:
             cleaned = re.sub(r"\D", "", str(phone))
             if not cleaned.startswith("1") and len(cleaned) == 10:
                 cleaned = "1" + cleaned
@@ -634,55 +646,62 @@ class CompanyDetail(Container):
                     severity="error",
                 )
 
-            # Push the embedded call logger
+            # Push the embedded call logger - wait for it to actually be
+            # dismissed before refreshing (see docstring).
             from .call_log_modal import CallLogModal
 
-            await self.app.push_screen(
+            await self.app.push_screen_wait(
                 CallLogModal(company_slug=slug, phone=str(phone))
             )
 
-            # Refresh data after modal dismiss
             self.refresh_notes_data()
             self.refresh_meetings_data()
             self._refresh_info_table()
-        else:
-            self.app.notify("Phone number or slug missing", severity="warning")
 
-    async def action_toggle_to_call(self) -> None:
-        """Toggles the company in the 'to-call' queue."""
+        self.app.run_worker(run_call())
+
+    def action_toggle_to_call(self) -> None:
+        """Toggles the company in the 'to-call' queue.
+
+        Sync dispatcher + run_worker - see action_delete_company's
+        docstring for why (push_screen_wait requires an active worker).
+        """
         company = Company.get(self.company_data["company"]["slug"])
         if not company:
             self.app.notify("Company not found", severity="error")
             return
 
-        from cocli.models.campaigns.queues.to_call import ToCallTask
-        from cocli.core.config import get_campaign
+        async def run_toggle() -> None:
+            from cocli.models.campaigns.queues.to_call import ToCallTask
+            from cocli.core.config import get_campaign
 
-        campaign = get_campaign() or "default"
-        task = ToCallTask(
-            company_slug=company.slug,
-            domain=company.domain or "unknown",
-            campaign_name=campaign,
-            ack_token=None,
-        )
-        task_path = task.get_local_path()
-
-        if task_path.exists():
-            from .confirm_screen import ConfirmScreen
-
-            confirm = await self.app.push_screen(
-                ConfirmScreen(f"Remove '{company.name}' from To-Call list?")
+            campaign = get_campaign() or "default"
+            task = ToCallTask(
+                company_slug=company.slug,
+                domain=company.domain or "unknown",
+                campaign_name=campaign,
+                ack_token=None,
             )
-            if not confirm:
-                return
-            task_path.unlink()
-            status = "Removed from"
-        else:
-            task.save()
-            status = "Added to"
+            task_path = task.get_local_path()
 
-        self.app.notify(f"{status} To-Call Queue")
-        self._refresh_info_table()
+            if task_path.exists():
+                from .confirm_screen import ConfirmScreen
+
+                confirm = await self.app.push_screen_wait(
+                    ConfirmScreen(f"Remove '{company.name}' from To-Call list?")
+                )
+                if not confirm:
+                    return
+                task_path.unlink()
+                status = "Removed from"
+            else:
+                task.save()
+                status = "Added to"
+
+            self.app.notify(f"{status} To-Call Queue")
+            self._refresh_info_table()
+
+        self.app.run_worker(run_toggle())
 
     def action_re_enqueue_scrape(self) -> None:
         """Triggers a local detail scrape for the current company."""
@@ -750,47 +769,60 @@ class CompanyDetail(Container):
 
         self.app.run_worker(run_enrichment())
 
-    async def action_delete_company(self) -> None:
-        """Permanently deletes the entire company directory."""
+    def action_delete_company(self) -> None:
+        """Permanently deletes the entire company directory.
+
+        Sync dispatcher + run_worker: push_screen_wait (needed to properly
+        await ConfirmScreen's dismiss value - plain push_screen() without
+        wait_for_dismiss always returns None regardless of what's pressed,
+        confirmed empirically 2026-08-30, so `if confirm:` never used to
+        fire) requires an active worker, which a BINDINGS-triggered action
+        doesn't get for free. Matches the existing pattern already used by
+        action_re_enqueue_scrape/action_re_enrich in this same file.
+        """
         slug = self.company_data["company"].get("slug")
         name = self.company_data["company"].get("name", slug)
         if not slug:
             return
 
-        from .confirm_screen import ConfirmScreen
+        async def run_delete() -> None:
+            from .confirm_screen import ConfirmScreen
 
-        confirm = await self.app.push_screen(
-            ConfirmScreen(f"Are you sure you want to PERMANENTLY DELETE '{name}'?")
-        )
+            confirm = await self.app.push_screen_wait(
+                ConfirmScreen(f"Are you sure you want to PERMANENTLY DELETE '{name}'?")
+            )
 
-        if confirm:
-            try:
-                import shutil
-                from cocli.core.paths import paths
-                from cocli.core.cache import build_cache
-                import threading
+            if confirm:
+                try:
+                    import shutil
+                    from cocli.core.paths import paths
+                    from cocli.core.cache import build_cache
+                    import threading
 
-                path = paths.companies.entry(slug).path
-                if path.exists():
-                    shutil.rmtree(path)
-                    self.app.notify(f"Deleted company: {name}")
+                    path = paths.companies.entry(slug).path
+                    if path.exists():
+                        shutil.rmtree(path)
+                        self.app.notify(f"Deleted company: {name}")
 
-                    # Rebuild cache so it's gone from search
-                    from cocli.core.config import get_campaign
+                        # Rebuild cache so it's gone from search
+                        from cocli.core.config import get_campaign
 
-                    threading.Thread(
-                        target=build_cache,
-                        kwargs={"campaign": get_campaign()},
-                        daemon=True,
-                    ).start()
+                        threading.Thread(
+                            target=build_cache,
+                            kwargs={"campaign": get_campaign()},
+                            daemon=True,
+                        ).start()
 
-                    # Go back to list
-                    self.app.action_show_companies()
-                else:
-                    self.app.notify(f"Directory not found: {path}", severity="error")
-            except Exception as e:
-                logger.error(f"Failed to delete company: {e}")
-                self.app.notify(f"Delete failed: {e}", severity="error")
+                        # Go back to list
+                        app = cast("CocliApp", self.app)
+                        await app.action_show_companies()
+                    else:
+                        self.app.notify(f"Directory not found: {path}", severity="error")
+                except Exception as e:
+                    logger.error(f"Failed to delete company: {e}")
+                    self.app.notify(f"Delete failed: {e}", severity="error")
+
+        self.app.run_worker(run_delete())
 
     def action_open_folder(self) -> None:
         slug = self.company_data["company"].get("slug")
@@ -913,7 +945,13 @@ class CompanyDetail(Container):
         if not file_path:
             return
 
-        confirm = await self.app.push_screen(
+        # push_screen_wait, not push_screen: plain push_screen() without
+        # wait_for_dismiss always returns None regardless of what the user
+        # presses (confirmed empirically, 2026-08-30) - `if confirm:` below
+        # would silently never fire. This call site already runs inside a
+        # worker (both callers use self.app.run_worker(...)), which
+        # push_screen_wait requires.
+        confirm = await self.app.push_screen_wait(
             ConfirmScreen("Are you sure you want to delete this note?")
         )
         logger.debug(f"action_delete_note: confirmation result={confirm}")
