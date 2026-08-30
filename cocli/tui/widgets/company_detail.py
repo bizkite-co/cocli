@@ -364,10 +364,18 @@ class CompanyDetail(Container):
         )
 
         if screenshot_path and screenshot_path.exists():
-            from textual_image.widget import AutoImage
+            # `Image`, not `AutoImage`: when Sixel is the detected backend,
+            # AutoImage renders nothing - textual_image's own widget/sixel.py
+            # comment explains why ("Rendering the Sixel renderable doesn't
+            # work with Textual as it relies on printable segments. Instead,
+            # Sixel data is injected into the rendering process" via a
+            # dedicated compose()-based child widget). `Image` is the alias
+            # that resolves to the working SixelImage when Sixel is
+            # detected, and to AutoImage otherwise (2026-08-30).
+            from textual_image.widget import Image as ScreenshotImage
 
             return Container(
-                AutoImage(str(screenshot_path), id="screenshot-image"),
+                ScreenshotImage(str(screenshot_path), id="screenshot-image"),
                 id="screenshot-panel",
             )
 
