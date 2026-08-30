@@ -236,7 +236,7 @@ DataTable > .datatable--cursor {
 }
 
 #panel-info {
-    height: 1fr;
+    height: auto;
 }
 
 #screenshot-panel {
@@ -244,6 +244,11 @@ DataTable > .datatable--cursor {
     border-top: solid #222222;
     align: center middle;
     content-align: center middle;
+}
+
+#screenshot-image {
+    width: auto;
+    height: auto;
 }
 
 #engagement-column {

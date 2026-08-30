@@ -366,7 +366,10 @@ class CompanyDetail(Container):
         if screenshot_path and screenshot_path.exists():
             from textual_image.widget import AutoImage
 
-            return Container(AutoImage(str(screenshot_path)), id="screenshot-panel")
+            return Container(
+                AutoImage(str(screenshot_path), id="screenshot-image"),
+                id="screenshot-panel",
+            )
 
         return Container(
             Label("[dim]No screenshot[/]", classes="panel-header"),
