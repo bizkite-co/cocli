@@ -1060,6 +1060,24 @@ class CocliApp(App[None]):
             self.query_one(MenuBar).refresh_campaign()
             await self.action_show_companies()
 
+            # action_show_companies() reuses an existing CompanySearchView
+            # (it's an optimization to preserve search state across normal
+            # screen switches - see its own docstring/comment), so switching
+            # campaigns alone doesn't re-run the search: the list still
+            # shows whichever company rows were last fetched for the OLD
+            # campaign. Force a fresh "All Leads" query against the now-
+            # active campaign, the same way selecting it in the template
+            # list would (CompanySearchView.on_template_selected).
+            try:
+                search_view = self.query_one(CompanySearchView)
+            except Exception:
+                search_view = None
+            if search_view:
+                template_list_view = search_view.template_list.query_one(ListView)
+                template_list_view.index = 0
+                search_view.company_list.apply_template("tpl_all")
+                search_view.template_list.trigger_counts_update()
+
     def action_select_item(self) -> None:
         focused_widget = self.focused
         if not focused_widget:
