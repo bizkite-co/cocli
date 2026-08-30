@@ -283,6 +283,7 @@ class CompanyDetail(Container):
         Binding("w", "open_website", "Website"),
         Binding("g", "open_gmb", "Google Maps"),
         Binding("V", "view_enrichment", "Enrichment"),
+        Binding("s", "view_screenshot", "Screenshot"),
         Binding("p", "call_company", "Call"),
         Binding("t", "toggle_to_call", "To Call"),
         Binding("R", "re_enqueue_scrape", "Re-enqueue Scrape"),
@@ -515,6 +516,32 @@ class CompanyDetail(Container):
             self._edit_with_nvim(Path(path))
         else:
             self.app.notify("Enrichment file not found", severity="warning")
+
+    def action_view_screenshot(self) -> None:
+        """Shows the captured website screenshot (see Website.screenshot_bytes)
+        in a modal - the "front face" preview, also where a company gets
+        flagged as an illegitimate/ad-injected Google Maps result."""
+        from .screenshot_viewer_modal import ScreenshotViewerModal
+
+        company = self.company_data.get("company", {})
+        slug = company.get("slug")
+        if not slug:
+            self.app.notify("No slug found", severity="error")
+            return
+
+        enrichment_path = self.company_data.get("enrichment_path")
+        screenshot_path: Optional[Path] = (
+            Path(enrichment_path).parent / "screenshot.png" if enrichment_path else None
+        )
+
+        self.app.push_screen(
+            ScreenshotViewerModal(
+                company_name=company.get("name") or slug,
+                company_slug=slug,
+                domain=company.get("domain"),
+                screenshot_path=screenshot_path,
+            )
+        )
 
     async def action_call_company(self) -> None:
         # Prefer phone_1 which is our primary standardized field
