@@ -411,6 +411,24 @@ class CocliApp(App[None]):
         *args: Any,
         **kwargs: Any,
     ) -> None:
+        # textual_image queries the terminal (Sixel/Kitty DA escape sequences,
+        # reading the reply off stdin) to pick its render backend, and it can
+        # only do that *before* Textual claims the terminal - its own code
+        # comment says so ("querying the terminal isn't possible anymore once
+        # Textual is started"). We used to only import textual_image lazily,
+        # inside CompanyDetail's screenshot widget, which is built well after
+        # .run() has put the terminal in raw/alt-screen mode - so the query's
+        # reply gets swallowed by Textual's input driver and it silently
+        # falls back to low-resolution half-cell rendering, even on
+        # terminals (confirmed here: the same one Yazi gets true Sixel/Kitty
+        # graphics in) that do support real terminal graphics. Triggering the
+        # import here, before super().__init__() does anything terminal-
+        # related, lets the query actually complete.
+        import textual_image.widget  # noqa: F401
+        from textual_image.renderable import Image as _detected_image_backend
+
+        tui_debug_log(f"textual_image backend detected: {_detected_image_backend.__module__}")
+
         super().__init__(*args, **kwargs)
         self.services = services or ServiceContainer()
         self.auto_show = auto_show
