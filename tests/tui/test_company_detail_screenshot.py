@@ -1,11 +1,16 @@
+"""CompanyDetail shows the captured website screenshot (see
+cocli/models/companies/website.py's screenshot_bytes field) inline,
+always visible under the metadata panel - not behind a keypress/modal.
+Mark, 2026-08-30: "It should just show it under the metadata. We don't
+need a shortcut key. We've got a little room to just show it."
+"""
+
 from pathlib import Path
-from unittest.mock import patch
 
 import pytest
 
 from cocli.tui.app import CocliApp
 from cocli.tui.widgets.company_detail import CompanyDetail
-from cocli.tui.widgets.screenshot_viewer_modal import ScreenshotViewerModal
 
 
 @pytest.fixture
@@ -27,38 +32,56 @@ def mock_company_data(tmp_path: Path):
     }
 
 
+def _write_real_png(path: Path) -> None:
+    from PIL import Image
+
+    Image.new("RGB", (4, 4), color=(255, 0, 0)).save(path, format="PNG")
+
+
 @pytest.mark.asyncio
-async def test_action_view_screenshot_pushes_modal_with_computed_path(mock_company_data):
+async def test_shows_image_widget_when_screenshot_exists(mock_company_data):
+    enrichment_dir = Path(mock_company_data["enrichment_path"]).parent
+    _write_real_png(enrichment_dir / "screenshot.png")
+
     app = CocliApp(auto_show=False)
     async with app.run_test() as pilot:
         detail = CompanyDetail(mock_company_data)
         await app.query_one("#app_content").mount(detail)
         await pilot.pause()
 
-        detail.action_view_screenshot()
-        await pilot.pause()
+        from textual_image.widget import AutoImage
 
-        modal = app.screen_stack[-1]
-        assert isinstance(modal, ScreenshotViewerModal)
-        assert modal.company_slug == "test-co"
-        assert modal.domain == "test.com"
-        expected = Path(mock_company_data["enrichment_path"]).parent / "screenshot.png"
-        assert modal.screenshot_path == expected
+        panel = detail.query_one("#screenshot-panel")
+        assert len(list(panel.query(AutoImage))) == 1
 
 
 @pytest.mark.asyncio
-async def test_action_view_screenshot_notifies_when_no_slug(mock_company_data):
-    mock_company_data["company"]["slug"] = None
+async def test_shows_missing_message_when_no_screenshot(mock_company_data):
     app = CocliApp(auto_show=False)
     async with app.run_test() as pilot:
         detail = CompanyDetail(mock_company_data)
         await app.query_one("#app_content").mount(detail)
         await pilot.pause()
 
-        with patch.object(app, "notify") as mock_notify:
-            detail.action_view_screenshot()
-            await pilot.pause()
+        from textual.widgets import Label
+        from textual_image.widget import AutoImage
 
-        mock_notify.assert_called_once()
-        assert mock_notify.call_args.kwargs.get("severity") == "error"
-        assert not isinstance(app.screen_stack[-1], ScreenshotViewerModal)
+        panel = detail.query_one("#screenshot-panel")
+        assert len(list(panel.query(AutoImage))) == 0
+        label = panel.query_one(Label)
+        assert "No screenshot" in str(label.content)
+
+
+@pytest.mark.asyncio
+async def test_shows_missing_message_when_no_enrichment_path(mock_company_data):
+    mock_company_data["enrichment_path"] = None
+    app = CocliApp(auto_show=False)
+    async with app.run_test() as pilot:
+        detail = CompanyDetail(mock_company_data)
+        await app.query_one("#app_content").mount(detail)
+        await pilot.pause()
+
+        from textual_image.widget import AutoImage
+
+        panel = detail.query_one("#screenshot-panel")
+        assert len(list(panel.query(AutoImage))) == 0

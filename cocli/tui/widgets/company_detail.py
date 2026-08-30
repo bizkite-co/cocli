@@ -283,7 +283,7 @@ class CompanyDetail(Container):
         Binding("w", "open_website", "Website"),
         Binding("g", "open_gmb", "Google Maps"),
         Binding("V", "view_enrichment", "Enrichment"),
-        Binding("s", "view_screenshot", "Screenshot"),
+        Binding("x", "flag_illegitimate", "Flag Illegitimate"),
         Binding("p", "call_company", "Call"),
         Binding("t", "toggle_to_call", "To Call"),
         Binding("R", "re_enqueue_scrape", "Re-enqueue Scrape"),
@@ -316,6 +316,12 @@ class CompanyDetail(Container):
         self.meetings_table = self._create_meetings_table()
         self.notes_table = self._create_notes_table()
 
+        # Screenshot (see Website.screenshot_bytes) - always-visible, under
+        # the metadata panel. Mark, 2026-08-30: "It should just show it
+        # under the metadata. We don't need a shortcut key." Replaces the
+        # earlier modal-triggered-by-keypress design.
+        self.screenshot_widget = self._create_screenshot_widget()
+
         # Initialize panels
         self.panel_info = DetailPanel("COMPANY INFO", self.info_table, id="panel-info")
         self.panel_contacts = DetailPanel(
@@ -336,7 +342,9 @@ class CompanyDetail(Container):
 
     def compose(self) -> ComposeResult:
         with Horizontal(id="company-detail-container"):
-            yield self.panel_info
+            with Vertical(id="info-column"):
+                yield self.panel_info
+                yield self.screenshot_widget
             with Vertical(id="engagement-column"):
                 yield self.panel_contacts
                 yield self.panel_meetings
@@ -344,6 +352,26 @@ class CompanyDetail(Container):
 
     def on_mount(self) -> None:
         self.panel_info.focus()
+
+    def _create_screenshot_widget(self) -> Widget:
+        """A small, always-visible preview of the company's website
+        screenshot (see Website.screenshot_bytes / enrichments/screenshot.png)
+        - "we've got a little room to just show it" (Mark, 2026-08-30), not
+        a full-size viewer behind a keypress."""
+        enrichment_path = self.company_data.get("enrichment_path")
+        screenshot_path = (
+            Path(enrichment_path).parent / "screenshot.png" if enrichment_path else None
+        )
+
+        if screenshot_path and screenshot_path.exists():
+            from textual_image.widget import AutoImage
+
+            return Container(AutoImage(str(screenshot_path)), id="screenshot-panel")
+
+        return Container(
+            Label("[dim]No screenshot[/]", classes="panel-header"),
+            id="screenshot-panel",
+        )
 
     def action_next_panel(self) -> None:
         current = self.app.focused
@@ -517,31 +545,54 @@ class CompanyDetail(Container):
         else:
             self.app.notify("Enrichment file not found", severity="warning")
 
-    def action_view_screenshot(self) -> None:
-        """Shows the captured website screenshot (see Website.screenshot_bytes)
-        in a modal - the "front face" preview, also where a company gets
-        flagged as an illegitimate/ad-injected Google Maps result."""
-        from .screenshot_viewer_modal import ScreenshotViewerModal
+    def action_flag_illegitimate(self) -> None:
+        """Flags this company as an illegitimate/ad-injected Google Maps
+        result and excludes it from the campaign (cocli/core/exclusions.py)
+        - easier to judge now that the screenshot is always visible right
+        here (Mark, 2026-08-30), no separate viewer needed.
 
+        Runs the actual (async) work in an explicit worker: push_screen_wait
+        - the correctly-typed way to await a screen's dismiss result -
+        raises NoActiveWorker unless called from one; a plain BINDINGS-
+        triggered action doesn't get a worker context for free. Confirmed
+        empirically while testing this (not just assumed): the alternative,
+        `await self.app.push_screen(...)` without wait_for_dismiss, doesn't
+        raise, but also doesn't hand back the real dismiss value, so a
+        naive `if confirm:` check silently always takes the same branch
+        regardless of what the user actually pressed.
+        """
         company = self.company_data.get("company", {})
         slug = company.get("slug")
         if not slug:
             self.app.notify("No slug found", severity="error")
             return
 
-        enrichment_path = self.company_data.get("enrichment_path")
-        screenshot_path: Optional[Path] = (
-            Path(enrichment_path).parent / "screenshot.png" if enrichment_path else None
-        )
+        self.run_worker(self._flag_illegitimate_worker(company, slug))
 
-        self.app.push_screen(
-            ScreenshotViewerModal(
-                company_name=company.get("name") or slug,
-                company_slug=slug,
-                domain=company.get("domain"),
-                screenshot_path=screenshot_path,
+    async def _flag_illegitimate_worker(self, company: Dict[str, Any], slug: str) -> None:
+        name = company.get("name") or slug
+
+        from .confirm_screen import ConfirmScreen
+
+        confirm = await self.app.push_screen_wait(
+            ConfirmScreen(
+                f"Flag '{name}' as an illegitimate/ad-injected result and "
+                "exclude it from this campaign?"
             )
         )
+        if not confirm:
+            return
+
+        from ...core.config import get_campaign
+        from ...core.exclusions import ExclusionManager
+
+        campaign = get_campaign() or "default"
+        ExclusionManager(campaign).add_exclusion(
+            slug=slug,
+            domain=company.get("domain"),
+            reason="google-maps-ad-injection",
+        )
+        self.app.notify(f"Excluded '{name}' from {campaign}")
 
     async def action_call_company(self) -> None:
         # Prefer phone_1 which is our primary standardized field
