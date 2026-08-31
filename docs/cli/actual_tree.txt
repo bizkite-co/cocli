@@ -431,6 +431,9 @@ cocli
     google-maps-csv-to-google-maps-cache - Ingests a CSV file with Google Maps data into the Google Maps cache.
         csv_path (file)
         --campaign/-c (text)
+    help - Fuzzy-search every cocli command and subcommand (including options) for
+        phrase (text) [required]
+        --limit/-n (integer)
     import-customers - Imports customers and their addresses from CSV files, creating companies and people.
         customers_csv_path (file) [required]
         addresses_csv_path (file) [required]

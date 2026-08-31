@@ -1,5 +1,6 @@
 import logging
 import json
+import re
 import shutil
 import csv
 import subprocess
@@ -8,6 +9,7 @@ from typing import Any, Dict, List, Optional
 
 from ..core.config import get_campaign_dir, load_campaign_config, load_global_config
 from ..models.campaigns.queues.gm_details import GmItemTask
+from ..models.cli_help import CliCommandMatch
 from ..models.companies.company import Company
 from ..models import TileStatusResult, MissionReconciliationResult
 from ..core.prospects_csv_manager import ProspectsIndexManager
@@ -15,6 +17,97 @@ from ..core.text_utils import slugify
 from ..core.paths import paths
 
 logger = logging.getLogger(__name__)
+
+_CLI_TREE_COMMAND_LINE = re.compile(r"^(?P<indent> *)(?P<name>[A-Za-z][\w-]*) - (?P<desc>.*)$")
+# A param line always has a "(type)" marker - dump_cli_tree() writes it
+# unconditionally for every visible param. A bare group header (a Typer
+# sub-app registered without help=, e.g. "deduplicate" or "smart-sync") has
+# neither " - description" nor "(type)", so it's NOT an option/arg line -
+# it must be treated as a command with an empty description, or its own
+# children get mis-attached to whatever command came textually before it.
+_CLI_TREE_OPTION_LINE = re.compile(r"^\s*\S+\s*\(\w+\)")
+_CLI_TREE_BARE_NAME = re.compile(r"^(?P<indent> *)(?P<name>[A-Za-z][\w-]*)\s*$")
+
+
+def parse_cli_tree(tree_text: str) -> List[CliCommandMatch]:
+    """Parses dump_cli_tree()'s indented text (4 spaces/level) into one
+    entry per command/subcommand, with its full "parent child grandchild"
+    path and the option/arg lines nested under it."""
+    entries: List[CliCommandMatch] = []
+    stack: List[tuple[int, str]] = []
+    current: Optional[CliCommandMatch] = None
+
+    def push(indent: int, name: str, desc: str) -> None:
+        nonlocal current
+        if current is not None:
+            entries.append(current)
+        while stack and stack[-1][0] >= indent:
+            stack.pop()
+        stack.append((indent, name))
+        current = CliCommandMatch(
+            path=" ".join(n for _, n in stack), description=desc, score=0
+        )
+
+    for raw_line in tree_text.splitlines():
+        if not raw_line.strip():
+            continue
+        if _CLI_TREE_OPTION_LINE.match(raw_line):
+            if current is not None:
+                current.options.append(raw_line.strip())
+            continue
+        m = _CLI_TREE_COMMAND_LINE.match(raw_line)
+        if m:
+            push(len(m.group("indent")), m.group("name"), m.group("desc").strip())
+            continue
+        m = _CLI_TREE_BARE_NAME.match(raw_line)
+        if m:
+            indent = len(m.group("indent"))
+            if indent == 0 and not stack:
+                # The root "cocli" line itself, not a searchable command -
+                # skip it so it doesn't become a spurious "cocli" prefix on
+                # every top-level command's path.
+                continue
+            push(indent, m.group("name"), "")
+
+    if current is not None:
+        entries.append(current)
+    return entries
+
+
+def search_cli_tree(
+    tree_text: str, query: str, limit: int = 25, min_score: int = 40
+) -> List[CliCommandMatch]:
+    """Fuzzy-searches a dump_cli_tree() tree for a phrase across each
+    command's full path, description, and option/arg lines. Deliberately
+    permissive (token_set_ratio ignores word order/duplicates, a low
+    min_score default, and scoring path/description/options together) -
+    "a little more than needed rather than a little less" (Mark,
+    2026-08-31): a missed command is a worse failure mode for a help
+    search than a few extra low-relevance rows.
+
+    Both fuzz functions score against the same full haystack, not the bare
+    path - partial_ratio(query, entry.path) looked appealing for short
+    single-word queries, but partial_ratio's substring-alignment scoring is
+    unreliable on short candidate strings: it gave a nonsense query like
+    "zzz-no-such-thing-zzz" a 67% match against "tui" purely by character
+    coincidence. Against the longer combined haystack that same nonsense
+    query scores 29%, well under min_score, while a real query like "lease"
+    still scores 100% against purge-leases's haystack."""
+    from fuzzywuzzy import fuzz  # type: ignore
+
+    scored = []
+    for entry in parse_cli_tree(tree_text):
+        haystack = f"{entry.path} {entry.description} {' '.join(entry.options)}"
+        score = max(
+            fuzz.token_set_ratio(query, haystack),
+            fuzz.partial_ratio(query, haystack),
+        )
+        if score >= min_score:
+            scored.append(entry.model_copy(update={"score": score}))
+
+    scored.sort(key=lambda e: e.score, reverse=True)
+    return scored[:limit]
+
 
 def dump_cli_tree(command: Any, out: Any, indent: int = 0) -> None:
     name = command.name or "cocli"
@@ -261,6 +354,14 @@ class AuditService:
         out = StringIO()
         dump_cli_tree(click_command, out)
         return out.getvalue()
+
+    def search_cli_tree(
+        self, click_command: Any, query: str, limit: int = 25, min_score: int = 40
+    ) -> List[CliCommandMatch]:
+        """Fuzzy-searches the CLI command hierarchy for a phrase."""
+        return search_cli_tree(
+            self.get_cli_tree(click_command), query, limit=limit, min_score=min_score
+        )
 
     def audit_filesystem(
         self,

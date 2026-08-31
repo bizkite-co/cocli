@@ -3,8 +3,9 @@
 Provides audit operations focusing on static codebase and filesystem.
 """
 
-from typing import Any
+from typing import Any, List
 from .audit_service import AuditService
+from ..models.cli_help import CliCommandMatch
 
 class AuditCodebaseService:
     """Service exposing only code‑base‑related audit methods."""
@@ -15,6 +16,13 @@ class AuditCodebaseService:
 
     def get_cli_tree(self, click_command: Any) -> str:
         return self._service.get_cli_tree(click_command)
+
+    def search_cli_tree(
+        self, click_command: Any, query: str, limit: int = 25, min_score: int = 40
+    ) -> List[CliCommandMatch]:
+        return self._service.search_cli_tree(
+            click_command, query, limit=limit, min_score=min_score
+        )
 
     def audit_filesystem(self, campaign_name: str | None = None, skip_companies: bool = True, gen_cleanup: bool = False) -> dict[str, Any]:
         return self._service.audit_filesystem(campaign_name=campaign_name, skip_companies=skip_companies, gen_cleanup=gen_cleanup)

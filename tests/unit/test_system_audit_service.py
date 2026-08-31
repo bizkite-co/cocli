@@ -1,7 +1,7 @@
 import json
 
 from cocli.core.paths import paths
-from cocli.application.audit_service import AuditService
+from cocli.application.audit_service import AuditService, parse_cli_tree, search_cli_tree
 
 
 def test_get_cli_tree():
@@ -14,6 +14,97 @@ def test_get_cli_tree():
     assert len(tree) > 0
     assert "cocli" in tree
     assert "audit" in tree
+
+
+# `cocli help <phrase>` (2026-08-31): a fuzzy search over dump_cli_tree()'s
+# text, added because grepping cocli --help-text requires already knowing a
+# near-exact term. Reuses dump_cli_tree's output format rather than
+# re-deriving the command tree - these tests exercise parse_cli_tree()
+# against hand-crafted tree text so they don't depend on the real CLI's
+# current command set.
+_SAMPLE_TREE = """\
+cocli
+    --campaign/-c (text)
+    --help-text/-ht (boolean)
+    audit - Auditing tools for the cocli system structure and integrity.
+        queue - Audit specific queues.
+            purge-leases - Purge stale or expired leases from a queue directory.
+                --campaign (text)
+                --queue-name (text)
+                --force (boolean)
+    deduplicate
+        deduplicate - Deduplicates company data by generating a stable hash.
+            --dry-run (boolean)
+    status - Displays the current status of the cocli environment.
+        --campaign (text)
+"""
+
+
+def test_parse_cli_tree_builds_full_paths_for_nested_commands():
+    entries = {e.path: e for e in parse_cli_tree(_SAMPLE_TREE)}
+
+    assert "audit queue purge-leases" in entries
+    leased = entries["audit queue purge-leases"]
+    assert leased.description == "Purge stale or expired leases from a queue directory."
+    assert leased.options == ["--campaign (text)", "--queue-name (text)", "--force (boolean)"]
+
+    # Intermediate group nodes (audit, audit queue) are their own entries too.
+    assert "audit" in entries
+    assert "audit queue" in entries
+
+
+def test_parse_cli_tree_handles_bare_group_header_without_description():
+    """Regression: a Typer sub-app registered without help= (e.g.
+    "deduplicate") prints as a bare name line with no " - description" and
+    no "(type)" marker - indistinguishable from an option/arg line unless
+    parse_cli_tree specifically falls back to treating it as a command."""
+    entries = {e.path: e for e in parse_cli_tree(_SAMPLE_TREE)}
+
+    assert "deduplicate" in entries
+    assert entries["deduplicate"].description == ""
+    # The bare group header's own children must not have been swallowed
+    # into the PRECEDING entry (audit queue purge-leases) as bogus options.
+    assert entries["audit queue purge-leases"].options == [
+        "--campaign (text)",
+        "--queue-name (text)",
+        "--force (boolean)",
+    ]
+
+    assert "deduplicate deduplicate" in entries
+    assert entries["deduplicate deduplicate"].description.startswith("Deduplicates")
+
+
+def test_parse_cli_tree_root_line_is_not_a_spurious_path_prefix():
+    """Regression: the root "cocli" line has no description and, once bare
+    group headers are handled, would otherwise get pushed onto the path
+    stack too - doubling every top-level command's path to "cocli status"
+    instead of "status"."""
+    entries = {e.path: e for e in parse_cli_tree(_SAMPLE_TREE)}
+
+    assert "status" in entries
+    assert "cocli status" not in entries
+    assert "cocli" not in entries
+
+
+def test_search_cli_tree_finds_command_by_partial_phrase():
+    results = search_cli_tree(_SAMPLE_TREE, "lease")
+    assert results
+    assert results[0].path == "audit queue purge-leases"
+    assert results[0].score == 100
+
+
+def test_search_cli_tree_nonsense_query_returns_nothing():
+    """Regression: partial_ratio scored against the bare path (rather than
+    the full path+description+options haystack) gave short candidate paths
+    like "tui" a 67% match against a completely unrelated nonsense query,
+    purely from character-alignment coincidence on a short string."""
+    results = search_cli_tree(_SAMPLE_TREE, "zzz-no-such-thing-zzz")
+    assert results == []
+
+
+def test_search_cli_tree_respects_limit():
+    results = search_cli_tree(_SAMPLE_TREE, "campaign", limit=1, min_score=0)
+    assert len(results) == 1
 
 
 def test_audit_filesystem_empty(tmp_path):

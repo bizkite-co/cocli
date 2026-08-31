@@ -15,6 +15,7 @@ def register_commands(app: typer.Typer) -> None:
     from . import exclude
     from . import flag_email_providers
     from . import fz
+    from . import help_search
     from . import import_companies
     from . import import_customers
     from . import import_data
@@ -41,6 +42,7 @@ def register_commands(app: typer.Typer) -> None:
     app.command(name="add-meeting", no_args_is_help=True)(add_meeting.add_meeting)
     app.command(name="context")(context.context)
     app.command(name="fz")(fz.fz)
+    app.command(name="help", no_args_is_help=True)(help_search.help_search)
     app.command(name="google-maps-cache-to-company-files", no_args_is_help=True)(
         import_companies.google_maps_cache_to_company_files
     )

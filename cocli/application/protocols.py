@@ -4,6 +4,7 @@ from cocli.models.search import SearchResult
 from cocli.models.companies.meeting import CompanyMeeting
 from cocli.models import TileStatusResult, MissionReconciliationResult
 from cocli.models.tasks import MissionTask
+from cocli.models.cli_help import CliCommandMatch
 
 
 class SearchProvider(Protocol):
@@ -230,6 +231,7 @@ class AuditServiceProvider(Protocol):
     def audit_queue_completion(self, execute: bool = False) -> Dict[str, Any]: ...
     def audit_cluster_paths(self, target_paths: List[str], campaigns: Optional[List[str]] = None) -> List[Dict[str, Any]]: ...
     def get_cli_tree(self, click_command: Any) -> str: ...
+    def search_cli_tree(self, click_command: Any, query: str, limit: int = 25, min_score: int = 40) -> List[CliCommandMatch]: ...
     def audit_filesystem(
         self,
         campaign_name: Optional[str] = None,

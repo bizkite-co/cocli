@@ -48,6 +48,31 @@ def test_cocli_video_upload_help():
     assert "--dry-run" in stdout
 
 
+def test_cocli_help_search_finds_purge_leases_by_partial_phrase():
+    """`cocli help <phrase>` should surface a command even from an
+    approximate/partial phrase, not just an exact command-name match -
+    "return a little more than needed rather than a little less" (Mark,
+    2026-08-31)."""
+    result = subprocess.run(
+        ["python3", "cocli/main.py", "help", "lease"], capture_output=True, text=True
+    )
+    assert result.returncode == 0
+    stdout = _strip_ansi(result.stdout)
+    assert "audit queue purge-leases" in stdout
+    assert "Purge stale or expired leases" in stdout
+
+
+def test_cocli_help_search_no_match_still_exits_cleanly():
+    result = subprocess.run(
+        ["python3", "cocli/main.py", "help", "zzz-no-such-thing-zzz"],
+        capture_output=True,
+        text=True,
+    )
+    assert result.returncode == 0
+    stdout = _strip_ansi(result.stdout)
+    assert "No commands matched" in stdout
+
+
 def test_cocli_video_upload_missing_config():
     """Test that upload fails gracefully when campaign doesn't exist."""
     result = subprocess.run(
