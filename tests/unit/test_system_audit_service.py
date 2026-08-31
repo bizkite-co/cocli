@@ -37,6 +37,9 @@ cocli
             --dry-run (boolean)
     status - Displays the current status of the cocli environment.
         --campaign (text)
+    admin - Administrative commands for system management.
+        --force/-f (boolean)
+        --s3 (boolean)
 """
 
 
@@ -105,6 +108,44 @@ def test_search_cli_tree_nonsense_query_returns_nothing():
 def test_search_cli_tree_respects_limit():
     results = search_cli_tree(_SAMPLE_TREE, "campaign", limit=1, min_score=0)
     assert len(results) == 1
+
+
+def test_search_cli_tree_default_threshold_excludes_partial_ratio_noise_floor():
+    """Regression (Mark, 2026-08-31): `cocli help lease` returned a wall of
+    dozens of otherwise-unrelated commands (audit fs, audit schemas, ...)
+    all scored at exactly ~60% - partial_ratio finds *some* locally-aligned
+    window in almost any sufficiently long haystack, regardless of true
+    relevance. The default min_score must sit above that floor so a plain
+    "status" (no shared keywords with "lease" at all) doesn't show up."""
+    results = search_cli_tree(_SAMPLE_TREE, "lease")
+    paths = [r.path for r in results]
+    assert "audit queue purge-leases" in paths
+    assert "status" not in paths
+
+
+def test_search_cli_tree_glob_matches_wildcard_substring():
+    """`lea*s*e` should find purge-leases without needing the exact word
+    "lease" - the escape hatch for when fuzzy scoring isn't precise enough
+    (e.g. it can't distinguish "lease" from "clears", which score ~75-80%
+    via plain character similarity)."""
+    results = search_cli_tree(_SAMPLE_TREE, "lea*s*e")
+    paths = {r.path for r in results}
+    assert "audit queue purge-leases" in paths
+    assert all(r.score == 100 for r in results)
+
+
+def test_search_cli_tree_glob_does_not_bridge_across_unrelated_fields():
+    """Regression: matching the glob pattern against one giant concatenated
+    "path + description + all options" blob let a wildcard span across
+    completely unrelated option lines - "boolean" itself contains the
+    literal substring "lea", so "lea*s*e" matched practically everything
+    with two separate "(boolean)" options by bridging from the first
+    "boolean)"'s "lea" through an unrelated option's "s" into a second
+    "boolean)"'s "e". Each field (path, description, one option line) must
+    be checked independently."""
+    results = search_cli_tree(_SAMPLE_TREE, "lea*s*e")
+    paths = {r.path for r in results}
+    assert "admin" not in paths
 
 
 def test_audit_filesystem_empty(tmp_path):

@@ -18,7 +18,7 @@ class AuditCodebaseService:
         return self._service.get_cli_tree(click_command)
 
     def search_cli_tree(
-        self, click_command: Any, query: str, limit: int = 25, min_score: int = 40
+        self, click_command: Any, query: str, limit: int = 25, min_score: int = 65
     ) -> List[CliCommandMatch]:
         return self._service.search_cli_tree(
             click_command, query, limit=limit, min_score=min_score

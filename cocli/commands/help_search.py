@@ -8,14 +8,21 @@ console = Console()
 
 
 def help_search(
-    phrase: str = typer.Argument(..., help="Fuzzy search phrase to match against commands, descriptions, and options."),
+    phrase: str = typer.Argument(
+        ...,
+        help="Fuzzy search phrase to match against commands, descriptions, and options. "
+        "Include a glob wildcard (*, ?, [seq]) for an exact substring match instead of fuzzy "
+        "scoring, e.g. 'lea*s*e' to find purge-leases/active-leases without pulling in unrelated "
+        "commands that just happen to share letters with 'lease'.",
+    ),
     limit: int = typer.Option(25, "--limit", "-n", help="Max results to show."),
 ) -> None:
     """
-    Fuzzy-search every cocli command and subcommand (including options) for
-    a phrase, so you don't have to already know the exact command name -
+    Search every cocli command and subcommand (including options) for a
+    phrase, so you don't have to already know the exact command name -
     reads the same command tree `cocli audit cli` / docs/cli/actual_tree.txt
-    dumps.
+    dumps. Fuzzy by default; use a glob wildcard (*, ?, [seq]) in the phrase
+    for an exact substring match instead.
     """
     from typer.main import get_command
     from ..main import app as main_app
