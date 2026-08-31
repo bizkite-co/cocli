@@ -245,3 +245,44 @@ async def test_run_orchestrated_workers_reclaims_expired_leases_on_startup(
         for t in supervisor.worker_tasks:
             t.cancel()
         await asyncio.wait_for(orchestrator_task, timeout=5)
+
+
+@pytest.mark.asyncio
+async def test_rebalance_workers_reclaims_expired_leases(tmp_path: Path) -> None:
+    """_rebalance_workers() (config/scaling hot-reload) is a separate code
+    path from run_orchestrated_workers() (full process boot) - a supervisor
+    can rebalance many times over a long run without ever hitting the
+    startup path again, so it needs the same expired-lease reclaim
+    (Mark, 2026-08-30)."""
+    fake_config = {
+        "prospecting": {"scaling": {"testnode": {"gm-list": 1}}},
+        "aws": {"iot_profiles": ["test-iot"]},
+    }
+
+    async def fake_run_worker(self: WorkerService, *args: object, **kwargs: object) -> None:
+        await asyncio.sleep(100)
+
+    with patch("cocli.core.paths.paths.root", tmp_path), patch(
+        "cocli.application.worker_service.load_campaign_config", return_value=fake_config
+    ), patch.object(WorkerService, "run_worker", fake_run_worker):
+        supervisor = WorkerService(campaign_name="test_campaign", processed_by="testnode")
+
+        pending = paths.campaign("test_campaign").queue("gm-list").pending
+        stale_lease = pending / "stale-task" / "lease.json"
+        stale_lease.parent.mkdir(parents=True)
+        stale_lease.write_text(
+            json.dumps(
+                {
+                    "worker_id": "dead-worker",
+                    "heartbeat_at": (datetime.now(UTC) - timedelta(hours=6)).isoformat(),
+                }
+            )
+        )
+
+        await supervisor._rebalance_workers()
+
+        assert not stale_lease.exists(), "expired lease must be reclaimed on rebalance too"
+
+        for t in supervisor.worker_tasks:
+            t.cancel()
+        await asyncio.gather(*supervisor.worker_tasks, return_exceptions=True)

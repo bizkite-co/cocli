@@ -418,6 +418,11 @@ class WorkerService:
         # not be able to bypass it.
         running_in_fargate = bool(os.getenv("COCLI_RUNNING_IN_FARGATE"))
 
+        # See _reclaim_expired_leases()'s docstring: a rebalance is exactly
+        # the kind of event that leaves a cancelled worker's in-flight lease
+        # behind, and this fires far more often than a full process restart.
+        self._reclaim_expired_leases({wd.content_type for wd in worker_defs})
+
         # Restart: mirror run_orchestrated_workers()'s pattern of a
         # dedicated child WorkerService per content type, registered in
         # child_workers, so the heartbeat's designation/last-activity
@@ -1095,6 +1100,34 @@ class WorkerService:
                 await asyncio.sleep(interval)
             await browser.close()
 
+    def _reclaim_expired_leases(self, content_types: Set[str]) -> None:
+        """Reclaims leases abandoned by a previous crashed/killed worker
+        before new workers of these content types start claiming. Without
+        this, a worker that dies mid-task leaves its lease.json sitting in
+        pending/ indefinitely - it doesn't block new claims on OTHER items,
+        but it silently accumulates (roadmap had ~5,950 expired gm-list
+        leases after ~6 months with no supervisor running) and previously
+        required a manual `cocli audit queue purge-leases` to notice or fix.
+        Safe to call at any time, from any call site: purge_expired_leases
+        only removes leases whose heartbeat is already past
+        max_heartbeat_age_minutes, so it can never touch a lease an
+        actually-alive worker (this node or another) is still refreshing.
+        Called from both run_orchestrated_workers() (full process boot) and
+        _rebalance_workers() (config/scaling hot-reload) - a supervisor can
+        run for a long time without a full restart, rebalancing many times
+        as scaling config changes, so startup alone isn't "automatic
+        enough" (Mark, 2026-08-30)."""
+        from ..services.lease_cleanup import purge_expired_leases
+
+        for content_type in content_types:
+            queue_dir = paths.campaign(self.campaign_name).queue(content_type).pending
+            metrics = purge_expired_leases(queue_dir, max_heartbeat_age_minutes=30)
+            if metrics["leases_deleted"]:
+                logger.info(
+                    f"  Reclaimed {metrics['leases_deleted']} expired {content_type} "
+                    f"lease(s) (found={metrics['leases_found']})"
+                )
+
     async def run_orchestrated_workers(self, worker_definitions: List[Any], headless: bool = True, debug: bool = False) -> None:
         """
         Launches and manages multiple named worker instances.
@@ -1122,27 +1155,7 @@ class WorkerService:
         # gm-details must never be launched on Fargate.
         running_in_fargate = bool(os.getenv("COCLI_RUNNING_IN_FARGATE"))
 
-        # Reclaim leases abandoned by a previous crashed/killed process
-        # before any worker starts claiming again. Without this, a worker
-        # that dies mid-task leaves its lease.json sitting in pending/
-        # indefinitely - it doesn't block new claims on OTHER items, but it
-        # silently accumulates (roadmap had ~5,950 expired gm-list leases
-        # after ~6 months with no supervisor running) and previously
-        # required a manual `cocli audit queue purge-leases` to notice or
-        # fix. Safe by construction: purge_expired_leases only removes
-        # leases whose heartbeat is already past max_heartbeat_age_minutes,
-        # so it can never touch a lease an actually-alive worker (on this
-        # node or another) is still refreshing (Mark, 2026-08-30).
-        from ..services.lease_cleanup import purge_expired_leases
-
-        for content_type in {wd.content_type for wd in worker_definitions}:
-            queue_dir = paths.campaign(self.campaign_name).queue(content_type).pending
-            metrics = purge_expired_leases(queue_dir, max_heartbeat_age_minutes=30)
-            if metrics["leases_deleted"]:
-                logger.info(
-                    f"  Reclaimed {metrics['leases_deleted']} expired {content_type} "
-                    f"lease(s) before startup (found={metrics['leases_found']})"
-                )
+        self._reclaim_expired_leases({wd.content_type for wd in worker_definitions})
 
         self.worker_tasks = []
         for wd in worker_definitions:
