@@ -1,0 +1,270 @@
+ApplicationView
+    i -> edit_op_params - Edit Operation Parameters
+    ] -> focus_content - Focus Content
+    [ -> focus_sidebar - Focus Sidebar
+    enter -> run_active_operation - Run Operation (hidden)
+    v -> view_full_log - View Full Log
+CallLogModal
+    escape -> dismiss(False) - Cancel
+    ctrl+s -> save_call - Save & Close
+CampaignDetail
+    pagedown -> page_down - Page Down (hidden)
+    ctrl+pageup -> page_left - Page Left (hidden)
+    ctrl+pagedown -> page_right - Page Right (hidden)
+    pageup -> page_up - Page Up (hidden)
+    down -> scroll_down - Scroll Down (hidden)
+    end -> scroll_end - Scroll End (hidden)
+    home -> scroll_home - Scroll Home (hidden)
+    left -> scroll_left - Scroll Left (hidden)
+    right -> scroll_right - Scroll Right (hidden)
+    up -> scroll_up - Scroll Up (hidden)
+ClusterView
+    D -> delete_node - Delete Selected Registry
+    alt+p -> provision_cluster - Provision Cluster
+    P -> prune_heartbeat - Prune Selected Heartbeat
+    R -> refresh_cluster - Refresh Now
+    alt+s -> start_cluster - Start Cluster
+    alt+k -> stop_cluster - Stop Cluster
+CocliApp
+    ctrl+p -> command_palette - Commands
+    ] -> focus_content - Focus Content
+    [ -> focus_sidebar - Focus Sidebar
+    t -> focus_templates - Templates
+    meta+s -> navigate_up - Navigate Up (hidden)
+    q -> quit - Quit
+    l -> select_item - Select
+    (unbound) -> escape - Escape context without search reset.
+    (unbound) -> refresh_dev - Triggers a local DEV data refresh from PROD.
+    (unbound) -> show_admin - Show the system admin and campaign view.
+    (unbound) -> show_application
+    (unbound) -> show_companies - Show the company list view.
+    (unbound) -> show_events - Show the community event curation view.
+    (unbound) -> show_people - Show the person list view.
+CocliCommandProvider
+    (unbound) -> create_task - Action to show the create task modal.
+    (unbound) -> wrapper - Wraps an action to update MRU on execution.
+CocliInput
+    ctrl+c -> copy - Copy selected text (hidden)
+    left -> cursor_left - Move cursor left (hidden)
+    shift+left -> cursor_left(True) - Move cursor left and select (hidden)
+    ctrl+left -> cursor_left_word - Move cursor left a word (hidden)
+    ctrl+shift+left -> cursor_left_word(True) - Move cursor left a word and select (hidden)
+    right -> cursor_right - Move cursor right or accept the completion suggestion (hidden)
+    shift+right -> cursor_right(True) - Move cursor right and select (hidden)
+    ctrl+right -> cursor_right_word - Move cursor right a word (hidden)
+    ctrl+shift+right -> cursor_right_word(True) - Move cursor right a word and select (hidden)
+    ctrl+x -> cut - Cut selected text (hidden)
+    backspace -> delete_left - Delete character left (hidden)
+    ctrl+u -> delete_left_all - Delete all to the left (hidden)
+    ctrl+w -> delete_left_word - Delete left to start of word (hidden)
+    delete,ctrl+d -> delete_right - Delete character right (hidden)
+    ctrl+k -> delete_right_all - Delete all to the right (hidden)
+    ctrl+f -> delete_right_word - Delete right to start of word (hidden)
+    end,ctrl+e -> end - Go to end (hidden)
+    shift+end -> end(True) - Select line end (hidden)
+    home,ctrl+a -> home - Go to start (hidden)
+    shift+home -> home(True) - Select line start (hidden)
+    ctrl+v -> paste - Paste text from the clipboard (hidden)
+    ctrl+shift+a -> select_all - Select all (hidden)
+    enter -> submit - Submit (hidden)
+CocliSearchInput
+    ctrl+c -> copy - Copy selected text (hidden)
+    left -> cursor_left - Move cursor left (hidden)
+    shift+left -> cursor_left(True) - Move cursor left and select (hidden)
+    ctrl+left -> cursor_left_word - Move cursor left a word (hidden)
+    ctrl+shift+left -> cursor_left_word(True) - Move cursor left a word and select (hidden)
+    right -> cursor_right - Move cursor right or accept the completion suggestion (hidden)
+    shift+right -> cursor_right(True) - Move cursor right and select (hidden)
+    ctrl+right -> cursor_right_word - Move cursor right a word (hidden)
+    ctrl+shift+right -> cursor_right_word(True) - Move cursor right a word and select (hidden)
+    ctrl+x -> cut - Cut selected text (hidden)
+    backspace -> delete_left - Delete character left (hidden)
+    ctrl+u -> delete_left_all - Delete all to the left (hidden)
+    ctrl+w -> delete_left_word - Delete left to start of word (hidden)
+    delete,ctrl+d -> delete_right - Delete character right (hidden)
+    ctrl+k -> delete_right_all - Delete all to the right (hidden)
+    ctrl+f -> delete_right_word - Delete right to start of word (hidden)
+    end,ctrl+e -> end - Go to end (hidden)
+    shift+end -> end(True) - Select line end (hidden)
+    home,ctrl+a -> home - Go to start (hidden)
+    shift+home -> home(True) - Select line start (hidden)
+    ctrl+v -> paste - Paste text from the clipboard (hidden)
+    ctrl+shift+a -> select_all - Select all (hidden)
+    enter -> submit - Submit (hidden)
+CompanyAddModal
+    escape -> dismiss(False) - Cancel
+CompanyDetail
+    a -> add_item - Add Item
+    q -> app.action_escape - Back
+    meta+s -> app.navigate_up - Navigate Up (hidden)
+    p -> call_company - Call
+    D -> delete_company - Delete Company
+    d -> delete_item - Delete Item
+    enter -> enter_quadrant - Enter Quadrant
+    x -> flag_illegitimate - Flag Illegitimate
+    ] -> next_panel - Next Panel
+    e -> open_folder - Explorer (NVim)
+    g -> open_gmb - Google Maps
+    w -> open_website - Website
+    [ -> prev_panel - Prev Panel
+    R -> re_enqueue_scrape - Re-enqueue Scrape
+    E -> re_enrich - Re-enrich
+    t -> toggle_to_call - To Call
+    V -> view_enrichment - Enrichment
+    (unbound) -> add_meeting - Create a new meeting using NVim.
+    (unbound) -> add_note - Create a new note using NVim.
+    (unbound) -> cancel_edit - Cancel the current inline edit and restore the table.
+    (unbound) -> delete_note - Delete an existing note with confirmation.
+    (unbound) -> edit_meeting - Edit an existing meeting using NVim.
+    (unbound) -> edit_note - Edit an existing note using NVim.
+    (unbound) -> promote_meeting - Toggle promote flag on the selected meeting.
+    (unbound) -> promote_note - Toggle promote flag on the selected note.
+    (unbound) -> view_meeting - View meeting content in a modal.
+    (unbound) -> view_note - View note content in a modal.
+CompanyList
+    l -> open_highlighted - Open (hidden)
+    d -> remove_from_to_call - Remove from To-Call
+    alt+s -> reset_view - Return to List
+    (unbound) -> add_company - Pushes the Add Company modal.
+    (unbound) -> focus_search - Focus the search input.
+    (unbound) -> open_website - Open the previewed (highlighted) company's website.
+    (unbound) -> toggle_filter - Toggle the 'Actionable Leads' filter (has email OR phone).
+    (unbound) -> toggle_sort - Toggle sorting between Alphabetical and Recent.
+CompanyPreview
+    (unbound) -> open_website
+CompanySearchView
+    c -> focus_companies - Focus Companies
+    s -> focus_search - Search
+    t -> focus_template - Focus Templates
+    w -> open_website - Website
+    (unbound) -> reset_view - Fully resets the search view and returns to template selection.
+ConfirmScreen
+    tab -> app.focus_next - Focus Next (hidden)
+    shift+tab -> app.focus_previous - Focus Previous (hidden)
+    ctrl+c -> screen.copy_text - Copy selected text (hidden)
+ContactsTable
+    a -> add_contact - Add Contact
+    j -> cursor_down - Down (hidden)
+    k -> cursor_up - Up (hidden)
+    enter -> edit_item - Edit Contact
+    escape -> exit_quadrant - Exit Quadrant
+ContentViewerModal
+    escape -> dismiss - Close
+CreateTaskModal
+    tab -> app.focus_next - Focus Next (hidden)
+    shift+tab -> app.focus_previous - Focus Previous (hidden)
+    ctrl+c -> screen.copy_text - Copy selected text (hidden)
+EditInput
+    ctrl+c -> copy - Copy selected text (hidden)
+    left -> cursor_left - Move cursor left (hidden)
+    shift+left -> cursor_left(True) - Move cursor left and select (hidden)
+    ctrl+left -> cursor_left_word - Move cursor left a word (hidden)
+    ctrl+shift+left -> cursor_left_word(True) - Move cursor left a word and select (hidden)
+    right -> cursor_right - Move cursor right or accept the completion suggestion (hidden)
+    shift+right -> cursor_right(True) - Move cursor right and select (hidden)
+    ctrl+right -> cursor_right_word - Move cursor right a word (hidden)
+    ctrl+shift+right -> cursor_right_word(True) - Move cursor right a word and select (hidden)
+    ctrl+x -> cut - Cut selected text (hidden)
+    backspace -> delete_left - Delete character left (hidden)
+    ctrl+u -> delete_left_all - Delete all to the left (hidden)
+    ctrl+w -> delete_left_word - Delete left to start of word (hidden)
+    delete,ctrl+d -> delete_right - Delete character right (hidden)
+    ctrl+k -> delete_right_all - Delete all to the right (hidden)
+    ctrl+f -> delete_right_word - Delete right to start of word (hidden)
+    end,ctrl+e -> end - Go to end (hidden)
+    shift+end -> end(True) - Select line end (hidden)
+    home,ctrl+a -> home - Go to start (hidden)
+    shift+home -> home(True) - Select line start (hidden)
+    ctrl+v -> paste - Paste text from the clipboard (hidden)
+    ctrl+shift+a -> select_all - Select all (hidden)
+    enter -> submit - Submit (hidden)
+ErrorScreen
+    escape -> app.pop_screen - OK
+EventCurationView
+    a -> approve - Approve
+    e -> edit - Edit
+    ctrl+r -> refresh - Refresh
+    r -> reject - Reject
+EventDetail
+    pagedown -> page_down - Page Down (hidden)
+    ctrl+pageup -> page_left - Page Left (hidden)
+    ctrl+pagedown -> page_right - Page Right (hidden)
+    pageup -> page_up - Page Up (hidden)
+    down -> scroll_down - Scroll Down (hidden)
+    end -> scroll_end - Scroll End (hidden)
+    home -> scroll_home - Scroll Home (hidden)
+    left -> scroll_left - Scroll Left (hidden)
+    right -> scroll_right - Scroll Right (hidden)
+    up -> scroll_up - Scroll Up (hidden)
+IndexDetail
+    pagedown -> page_down - Page Down (hidden)
+    ctrl+pageup -> page_left - Page Left (hidden)
+    ctrl+pagedown -> page_right - Page Right (hidden)
+    pageup -> page_up - Page Up (hidden)
+    down -> scroll_down - Scroll Down (hidden)
+    end -> scroll_end - Scroll End (hidden)
+    home -> scroll_home - Scroll Home (hidden)
+    left -> scroll_left - Scroll Left (hidden)
+    right -> scroll_right - Scroll Right (hidden)
+    up -> scroll_up - Scroll Up (hidden)
+IndexSelection
+    down -> cursor_down - Cursor down (hidden)
+    up -> cursor_up - Cursor up (hidden)
+    enter -> select_cursor - Select (hidden)
+InfoTable
+    j -> cursor_down - Down (hidden)
+    k -> cursor_up - Up (hidden)
+    enter -> edit_row - Edit Field
+    escape -> exit_quadrant - Exit Quadrant
+LogViewerModal
+    tab -> app.focus_next - Focus Next (hidden)
+    shift+tab -> app.focus_previous - Focus Previous (hidden)
+    ctrl+c -> screen.copy_text - Copy selected text (hidden)
+MarkReviewedDialog
+    tab -> app.focus_next - Focus Next (hidden)
+    shift+tab -> app.focus_previous - Focus Previous (hidden)
+    ctrl+c -> screen.copy_text - Copy selected text (hidden)
+MasterDetailView
+    alt+l -> focus_detail - Focus Detail
+    alt+h -> focus_master - Focus List
+MeetingsTable
+    a -> add_meeting - Add Meeting
+    j -> cursor_down - Down (hidden)
+    k -> cursor_up - Up (hidden)
+    enter -> edit_item - Edit Meeting
+    escape -> exit_quadrant - Exit Quadrant
+    P -> promote_item - Promote
+    v -> view_item - View Meeting
+NotesTable
+    a -> add_note - Add Note
+    j -> cursor_down - Down (hidden)
+    k -> cursor_up - Up (hidden)
+    d -> delete_item - Delete Note
+    enter -> edit_item - Edit Note
+    escape -> exit_quadrant - Exit Quadrant
+    P -> promote_item - Promote
+    v -> view_item - View Note
+PersonDetail
+    alt+s -> app.navigate_up - Navigate Up
+    escape -> app.pop_screen - Back
+PersonList
+    s -> focus_search - Search
+    alt+s -> reset_view - Return to List
+QuadrantTable
+    j -> cursor_down - Down (hidden)
+    k -> cursor_up - Up (hidden)
+    escape -> exit_quadrant - Exit Quadrant
+QueueDetail
+    s c -> sync_completed - sc: Sync Completed
+    s p -> sync_pending - sp: Sync Pending
+    (unbound) -> audit_down - Move selection down in audit list.
+    (unbound) -> audit_up - Move selection up in audit list.
+    (unbound) -> mark_reviewed - Toggle inline editing for selected audit item.
+    (unbound) -> open_audit_gmb - Open gmb_url in browser using system browser (same as Company Details).
+    (unbound) -> run_audit - Run gm-list audit.
+QueueSelection
+    down -> cursor_down - Cursor down (hidden)
+    up -> cursor_up - Cursor up (hidden)
+    enter -> select_cursor - Select (hidden)
+StatusView
+    R -> refresh_status - Refresh Status

@@ -129,6 +129,66 @@ def dump_cli_tree(command: Any, out: Any, indent: int = 0) -> None:
         for sub_name, sub_command in sorted(command.commands.items()):
             dump_cli_tree(sub_command, out, indent + 4)
 
+
+def dump_tui_actions(classes: List[type], out: Any) -> None:
+    """Dumps every action a TUI class exposes - the TUI equivalent of
+    dump_cli_tree() - so the two can be diffed for a real coverage metric
+    instead of "I guess it's because we haven't implemented all the CLI
+    commands in the TUI" (Mark, 2026-08-31).
+
+    Takes already-imported classes rather than importing cocli.tui itself:
+    dump_cli_tree() only needs a Click command object handed to it by its
+    caller (which builds it via get_command(main_app)) - it never imports
+    cocli.commands. Mirroring that here keeps this module out of
+    cocli.tui, matching the "TUI imports application services, not
+    commands" import-linter contract's implied direction (nothing
+    forbids application -> tui outright, but application importing a UI
+    layer directly would be backwards; the caller in cocli/commands/,
+    already allowed to depend on anything, does that import instead).
+
+    For each class: every BINDINGS entry (both the plain-tuple form,
+    `(key, action, description)`, and the explicit `Binding(...)` object
+    form appear throughout this codebase - normalized to one shape here),
+    plus any `action_*` method NOT covered by a BINDINGS entry - those are
+    still real, callable actions (reachable via the command palette, or
+    only programmatically), just invisible to a bindings-only accounting."""
+    for cls in sorted(classes, key=lambda c: c.__name__):
+        bound_actions: Dict[str, tuple[str, str, bool]] = {}
+        for entry in getattr(cls, "BINDINGS", []):
+            if isinstance(entry, tuple):
+                key, action, description = (list(entry) + ["", ""])[:3]
+                show = True
+            else:
+                key, action, description, show = (
+                    entry.key,
+                    entry.action,
+                    entry.description,
+                    entry.show,
+                )
+            bound_actions[action] = (key, description, show)
+
+        unbound_actions = sorted(
+            name[len("action_") :]
+            for name in vars(cls)
+            if name.startswith("action_") and callable(getattr(cls, name))
+            and name[len("action_") :] not in bound_actions
+        )
+
+        if not bound_actions and not unbound_actions:
+            continue
+
+        out.write(f"{cls.__name__}\n")
+        for action, (key, description, show) in sorted(bound_actions.items()):
+            hidden = "" if show else " (hidden)"
+            desc = f" - {description}" if description else ""
+            out.write(f"    {key} -> {action}{desc}{hidden}\n")
+        for action in unbound_actions:
+            method = getattr(cls, f"action_{action}")
+            doc = (method.__doc__ or "").strip().split("\n")[0]
+            desc = f" - {doc}" if doc else ""
+            out.write(f"    (unbound) -> {action}{desc}\n")
+
+
 class AuditService:
     def __init__(self, campaign_name: str):
         self.campaign_name = campaign_name
@@ -360,6 +420,14 @@ class AuditService:
     ) -> List[CliCommandMatch]:
         """Searches the CLI command hierarchy for a phrase."""
         return search_cli_tree(self.get_cli_tree(click_command), query, limit=limit)
+
+    def get_tui_actions(self, classes: List[type]) -> str:
+        """Dumps every action the given TUI classes expose, as a string."""
+        from io import StringIO
+
+        out = StringIO()
+        dump_tui_actions(classes, out)
+        return out.getvalue()
 
     def audit_filesystem(
         self,

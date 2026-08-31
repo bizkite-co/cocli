@@ -1,7 +1,15 @@
 import json
+from io import StringIO
+
+from textual.binding import Binding
 
 from cocli.core.paths import paths
-from cocli.application.audit_service import AuditService, parse_cli_tree, search_cli_tree
+from cocli.application.audit_service import (
+    AuditService,
+    dump_tui_actions,
+    parse_cli_tree,
+    search_cli_tree,
+)
 
 
 def test_get_cli_tree():
@@ -14,6 +22,85 @@ def test_get_cli_tree():
     assert len(tree) > 0
     assert "cocli" in tree
     assert "audit" in tree
+
+
+# `cocli audit tui-actions` (2026-08-31): the TUI equivalent of
+# `cocli audit cli` - Mark asked "is there any way we can export the TUI
+# commands like we do with the CLI commands? That would allow us a metric
+# of comparison". dump_tui_actions() takes already-imported classes rather
+# than importing cocli.tui itself, mirroring how dump_cli_tree() only needs
+# a Click command object handed to it - see its docstring for the full
+# layering rationale.
+
+
+def test_dump_tui_actions_normalizes_tuple_and_binding_forms():
+    """BINDINGS entries appear as both the plain-tuple form and the
+    explicit Binding(...) object form throughout cocli/tui/ - both must
+    produce the same output shape."""
+
+    class TupleForm:
+        BINDINGS = [("t", "focus_template", "Focus Templates")]
+
+    class BindingObjectForm:
+        BINDINGS = [Binding("d", "delete_note", "Delete", show=True)]
+
+    out = StringIO()
+    dump_tui_actions([TupleForm, BindingObjectForm], out)
+    text = out.getvalue()
+
+    assert "t -> focus_template - Focus Templates" in text
+    assert "d -> delete_note - Delete" in text
+
+
+def test_dump_tui_actions_marks_hidden_bindings():
+    class WithHidden:
+        BINDINGS = [Binding("pagedown", "page_down", "Page Down", show=False)]
+
+    out = StringIO()
+    dump_tui_actions([WithHidden], out)
+    assert "pagedown -> page_down - Page Down (hidden)" in out.getvalue()
+
+
+def test_dump_tui_actions_lists_action_methods_not_covered_by_bindings():
+    """Regression motivation: several real CocliApp actions (show_companies,
+    show_people, escape, ...) are only reachable via the command palette or
+    programmatically - not bound to any key. A bindings-only accounting
+    would silently undercount the TUI's real action surface."""
+
+    class OnlyReachableViaPalette:
+        BINDINGS: list = []
+
+        def action_show_companies(self) -> None:
+            """Show the company list view."""
+
+    out = StringIO()
+    dump_tui_actions([OnlyReachableViaPalette], out)
+    text = out.getvalue()
+    assert "(unbound) -> show_companies - Show the company list view." in text
+
+
+def test_dump_tui_actions_skips_classes_with_no_actions_at_all():
+    class NothingHere:
+        pass
+
+    out = StringIO()
+    dump_tui_actions([NothingHere], out)
+    assert out.getvalue() == ""
+
+
+def test_get_tui_actions_on_the_real_tui_classes():
+    """Lighter integration check, mirroring test_get_cli_tree(): confirm
+    the real discovery + dump doesn't crash and finds a substantial,
+    non-trivial action surface."""
+    from cocli.commands.audit import _discover_tui_classes
+
+    classes = _discover_tui_classes()
+    assert len(classes) > 10
+
+    service = AuditService(campaign_name="test-campaign")
+    report = service.get_tui_actions(classes)
+    assert "CocliApp" in report
+    assert "show_companies" in report
 
 
 # `cocli help <phrase>` (2026-08-31): a fuzzy search over dump_cli_tree()'s

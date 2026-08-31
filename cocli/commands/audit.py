@@ -701,6 +701,54 @@ def audit_tui(
     console.print(f"To dump TUI tree, use: [bold]cocli tui --dump-tree {output}[/bold]")
 
 
+def _discover_tui_classes() -> List[type]:
+    """Every class defined directly in cocli.tui.app or cocli.tui.widgets.*
+    (not merely imported into those modules - `cls.__module__ == mod.__name__`
+    excludes e.g. TemplateList showing up under company_search.py too just
+    because it's imported there for composition)."""
+    import importlib
+    import inspect
+    import pkgutil
+    from ..tui import app as tui_app_module, widgets
+
+    classes: List[type] = []
+    for mod in [tui_app_module] + [
+        importlib.import_module(f"{widgets.__name__}.{info.name}")
+        for info in pkgutil.iter_modules(widgets.__path__)
+    ]:
+        for _, cls in inspect.getmembers(mod, inspect.isclass):
+            if cls.__module__ == mod.__name__:
+                classes.append(cls)
+    return classes
+
+
+@app.command(name="tui-actions")
+def audit_tui_actions(
+    output: Path = typer.Option(
+        Path("docs/tui/actual_actions.txt"),
+        "--output",
+        "-o",
+        help="Output file path.",
+    ),
+) -> None:
+    """
+    Dumps every action (keybinding or command-palette-only) exposed by the
+    TUI's App and widget classes - the TUI equivalent of `cocli audit cli`,
+    for comparing what the TUI can do against the full CLI command surface.
+    """
+    from ..core.config import get_campaign
+    from ..application.services import ServiceContainer
+
+    classes = _discover_tui_classes()
+    campaign = get_campaign() or "default"
+    services = ServiceContainer(campaign_name=campaign)
+    report = services.codebase_audit_service.get_tui_actions(classes)
+
+    output.parent.mkdir(parents=True, exist_ok=True)
+    output.write_text(report, encoding="utf-8")
+    console.print(f"[green]TUI actions dumped to {output}[/green]")
+
+
 _KNOWN_CONTENT_TYPES = ["gm-list", "gm-details", "enrichment"]
 
 # gm-list logs one line per multi-minute scrape cycle (page load + scroll), while

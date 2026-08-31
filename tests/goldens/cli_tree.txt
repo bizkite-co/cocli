@@ -94,6 +94,8 @@ cocli
             --summary-only (boolean)
         tui - Dumps the TUI widget hierarchy.
             --output/-o (path)
+        tui-actions - Dumps every action (keybinding or command-palette-only) exposed by the
+            --output/-o (path)
     campaign - Manage campaigns.
         achieve-goal - Deprecated - superseded by Discovery Gen; not called in production since ~2026-06.
             --emails/--limit (integer)
