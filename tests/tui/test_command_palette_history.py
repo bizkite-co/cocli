@@ -78,7 +78,7 @@ async def test_alt_s_closes_the_command_palette():
 
 
 @pytest.mark.asyncio
-async def test_palette_finds_to_call_operation_and_navigates_to_it():
+async def test_palette_finds_to_call_operations_and_navigates_to_compile() -> None:
     """Regression (Mark, 2026-08-31): "I still don't see anything in the
     ^p for 'to-call', or 'call'." The 9-command hand-picked list never
     included OperationService's registry at all - op_compile_to_call (the
@@ -86,7 +86,13 @@ async def test_palette_finds_to_call_operation_and_navigates_to_it():
     navigates to ApplicationView's Operations panel with that exact
     operation highlighted and focused, rather than executing it blind
     (several operations take parameters - limit/purge for this one - that
-    the palette has no UI to set)."""
+    the palette has no UI to set).
+
+    There are now two legitimate "to-call" matches (Compile and Purge -
+    see test_palette_finds_and_navigates_to_purge_to_call below), so this
+    types a more specific query ("compile to-call") to reliably land on
+    this one rather than asserting on whichever a plain "to-call" happens
+    to rank first."""
     app = CocliApp(auto_show=False)
 
     async with app.run_test() as pilot:
@@ -101,7 +107,7 @@ async def test_palette_finds_to_call_operation_and_navigates_to_it():
             hits = [h.text for h in [hit async for hit in provider.search(query)]]
             assert any("To-Call" in h for h in hits), f"query={query!r} hits={hits}"
 
-        for ch in "to-call":
+        for ch in "compile to-call":
             await pilot.press(ch)
         await pilot.pause(0.3)
         await pilot.press("enter")
@@ -112,4 +118,40 @@ async def test_palette_finds_to_call_operation_and_navigates_to_it():
         list_view = app_view.query_one("#sidebar_operations", ListView)
         highlighted = list_view.highlighted_child
         assert highlighted is not None and highlighted.id == "op_compile_to_call"
+        assert app.focused is list_view
+
+
+@pytest.mark.asyncio
+async def test_palette_finds_and_navigates_to_purge_to_call() -> None:
+    """Regression (Mark, 2026-08-31): "I see the populate-to-call-list
+    function in there, but I don't see a purge-to-call. [...] Maybe we
+    should add that as a command, at least temporarily." op_purge_to_call
+    (extracted from op_compile_to_call's --purge flag into a standalone
+    operation) now shows up the same way op_compile_to_call does - added
+    to OperationService's registry is enough, since the palette already
+    reads that dynamically."""
+    app = CocliApp(auto_show=False)
+
+    async with app.run_test() as pilot:
+        await pilot.press("ctrl+p")
+        await pilot.pause(0.3)
+        palette = app.screen
+        provider = next(
+            p for p in palette._providers if isinstance(p, CocliCommandProvider)
+        )
+
+        hits = [h.text for h in [hit async for hit in provider.search("purge to-call")]]
+        assert any("Purge To-Call" in h for h in hits), hits
+
+        for ch in "purge to-call":
+            await pilot.press(ch)
+        await pilot.pause(0.3)
+        await pilot.press("enter")
+        await pilot.pause(0.5)
+
+        assert not isinstance(app.screen, CommandPalette)
+        app_view = app.query_one(ApplicationView)
+        list_view = app_view.query_one("#sidebar_operations", ListView)
+        highlighted = list_view.highlighted_child
+        assert highlighted is not None and highlighted.id == "op_purge_to_call"
         assert app.focused is list_view

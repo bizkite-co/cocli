@@ -185,6 +185,22 @@ class OperationService:
                     ),
                 ],
             ),
+            "op_purge_to_call": OperationMetadata(
+                "op_purge_to_call",
+                "Purge To-Call Queue",
+                "Clears every pending to-call task without repopulating - the same clearing step "
+                "op_compile_to_call's --purge does inline, exposed standalone so you don't have to "
+                "run the full (slower) compile+repopulate workflow just to clear stale entries. "
+                "Added as a stopgap (Mark, 2026-08-31) while compile-to-call's population logic is "
+                "still being refined - may not be worth keeping once that's stable.",
+                "maintenance",
+                dest_path="data/campaigns/{campaign}/queues/to-call/pending/",
+                steps=[
+                    OperationStep(
+                        "purge_pending", "Delete every pending to-call task file."
+                    ),
+                ],
+            ),
             "op_compile_top_prospects": OperationMetadata(
                 "op_compile_top_prospects",
                 "Compile Top Prospects",
@@ -286,6 +302,23 @@ class OperationService:
 
     def list_operations(self) -> List[OperationMetadata]:
         return list(self.operations.values())
+
+    def _purge_to_call_pending_files(self) -> int:
+        """Deletes every pending to-call task file. Shared by
+        op_compile_to_call's optional inline purge step and the standalone
+        op_purge_to_call operation, so there's one place that knows what
+        "purge the to-call queue" actually means on disk."""
+        from cocli.core.paths import paths as _paths
+
+        pending_dir = (
+            _paths.campaign(self.campaign_name).path / "queues" / "to-call" / "pending"
+        )
+        purged = 0
+        if pending_dir.exists():
+            for f in pending_dir.glob("*.usv"):
+                f.unlink()
+                purged += 1
+        return purged
 
     async def execute(
         self,
@@ -617,19 +650,7 @@ class OperationService:
                     if params.get("purge"):
                         log_step("purge_pending", "task-start")
                         log_step("purge_pending", "pending", "Clearing existing to-call queue...")
-                        from cocli.core.paths import paths as _paths
-
-                        pending_dir = (
-                            _paths.campaign(self.campaign_name).path
-                            / "queues"
-                            / "to-call"
-                            / "pending"
-                        )
-                        purged = 0
-                        if pending_dir.exists():
-                            for f in pending_dir.glob("*.usv"):
-                                f.unlink()
-                                purged += 1
+                        purged = self._purge_to_call_pending_files()
                         log_step("purge_pending", "success", f"{purged} pending tasks removed")
                         log_step("purge_pending", "task-end")
 
@@ -742,6 +763,21 @@ class OperationService:
                 except Exception:
                     log_step("job-end", "error")
                     raise
+            elif op_id == "op_purge_to_call":
+
+                async def run_purge_to_call() -> Dict[str, Any]:
+                    log_step("purge_pending", "task-start")
+                    log_step(
+                        "purge_pending", "pending", "Clearing existing to-call queue..."
+                    )
+                    purged = await asyncio.to_thread(self._purge_to_call_pending_files)
+                    log_step(
+                        "purge_pending", "success", f"{purged} pending tasks removed"
+                    )
+                    log_step("purge_pending", "task-end")
+                    return {"status": "success", "purged": purged}
+
+                result = await run_purge_to_call()
             elif op_id == "op_analyze_emails":
                 result = await asyncio.to_thread(
                     self.services.reporting_service.get_email_analysis

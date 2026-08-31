@@ -102,6 +102,9 @@ class ApplicationView(Container):
                         ListItem(
                             Label("Compile To-Call List"), id="op_compile_to_call"
                         ),
+                        ListItem(
+                            Label("Purge To-Call Queue"), id="op_purge_to_call"
+                        ),
                         ListItem(Label("Restore Company Names"), id="op_restore_names"),
                         ListItem(Label("Push Local Queue"), id="op_push_queue"),
                         ListItem(Label("Audit Integrity"), id="op_audit_integrity"),
