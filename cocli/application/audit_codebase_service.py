@@ -18,11 +18,9 @@ class AuditCodebaseService:
         return self._service.get_cli_tree(click_command)
 
     def search_cli_tree(
-        self, click_command: Any, query: str, limit: int = 25, min_score: int = 65
+        self, click_command: Any, query: str, limit: int = 25
     ) -> List[CliCommandMatch]:
-        return self._service.search_cli_tree(
-            click_command, query, limit=limit, min_score=min_score
-        )
+        return self._service.search_cli_tree(click_command, query, limit=limit)
 
     def audit_filesystem(self, campaign_name: str | None = None, skip_companies: bool = True, gen_cleanup: bool = False) -> dict[str, Any]:
         return self._service.audit_filesystem(campaign_name=campaign_name, skip_companies=skip_companies, gen_cleanup=gen_cleanup)

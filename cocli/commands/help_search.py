@@ -10,19 +10,18 @@ console = Console()
 def help_search(
     phrase: str = typer.Argument(
         ...,
-        help="Fuzzy search phrase to match against commands, descriptions, and options. "
-        "Include a glob wildcard (*, ?, [seq]) for an exact substring match instead of fuzzy "
-        "scoring, e.g. 'lea*s*e' to find purge-leases/active-leases without pulling in unrelated "
-        "commands that just happen to share letters with 'lease'.",
+        help="Words to search for in each command's name and description (not its options). "
+        "Each word is matched independently (all must be found, in any order), and each word "
+        "is a real regex - e.g. 'lease' finds purge-leases/active-leases; 'campaign switch' "
+        "finds commands mentioning both words anywhere.",
     ),
     limit: int = typer.Option(25, "--limit", "-n", help="Max results to show."),
 ) -> None:
     """
-    Search every cocli command and subcommand (including options) for a
+    Search every cocli command and subcommand's name and description for a
     phrase, so you don't have to already know the exact command name -
     reads the same command tree `cocli audit cli` / docs/cli/actual_tree.txt
-    dumps. Fuzzy by default; use a glob wildcard (*, ?, [seq]) in the phrase
-    for an exact substring match instead.
+    dumps.
     """
     from typer.main import get_command
     from ..main import app as main_app
@@ -39,7 +38,7 @@ def help_search(
 
     console.print(f"[bold]{len(matches)} match(es) for '{phrase}':[/bold]\n")
     for m in matches:
-        console.print(f"  [bold cyan]cocli {m.path}[/bold cyan]  [dim]({m.score}%)[/dim]")
+        console.print(f"  [bold cyan]cocli {m.path}[/bold cyan]")
         if m.description:
             console.print(f"      {m.description}")
         for opt in m.options:

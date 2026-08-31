@@ -1,4 +1,3 @@
-import fnmatch
 import logging
 import json
 import re
@@ -45,9 +44,7 @@ def parse_cli_tree(tree_text: str) -> List[CliCommandMatch]:
         while stack and stack[-1][0] >= indent:
             stack.pop()
         stack.append((indent, name))
-        current = CliCommandMatch(
-            path=" ".join(n for _, n in stack), description=desc, score=0
-        )
+        current = CliCommandMatch(path=" ".join(n for _, n in stack), description=desc)
 
     for raw_line in tree_text.splitlines():
         if not raw_line.strip():
@@ -75,79 +72,41 @@ def parse_cli_tree(tree_text: str) -> List[CliCommandMatch]:
     return entries
 
 
-_GLOB_METACHARS = re.compile(r"[*?\[]")
+def search_cli_tree(tree_text: str, query: str, limit: int = 25) -> List[CliCommandMatch]:
+    """Searches a dump_cli_tree() tree for a phrase against each command's
+    path and description only - NOT its options. An early version scored
+    fuzzy matches across path+description+options combined, but that let
+    the mere presence of an unrelated option decide whether a whole command
+    showed up (e.g. `cocli help lease` surfaced "stations inspect" - its
+    name/description have nothing to do with leases, it just happens to
+    have a `--no-leases` option among a dozen others) - too weak a signal
+    to be worth the noise (Mark, 2026-08-31).
 
+    Fuzzy scoring also turned out to be a bad fit generally: fuzzywuzzy's
+    partial_ratio finds *some* locally-aligned window in almost any
+    sufficiently long haystack regardless of true relevance, giving a flat
+    ~60% "match" to dozens of otherwise-unrelated commands; raising the
+    threshold only pushed the same problem to a different cutoff instead
+    of fixing it, and short words that happen to share letters (e.g.
+    "clears"/"lease") can genuinely score 75-80% via plain character
+    similarity with no clean way to separate that from a real match.
 
-def _glob_to_search_regex(pattern: str) -> re.Pattern[str]:
-    """Converts a shell-glob-style pattern (*, ?, [seq]) into a regex that
-    matches anywhere in a string (a substring search), not fnmatch's own
-    fnmatch()/translate() semantics of matching the *whole* string.
-    fnmatch.translate() already does the glob->regex conversion correctly
-    (including bracket-class handling) - reuse it rather than hand-rolling
-    that, just strip its trailing "must reach end of string" \\Z anchor so
-    re.search() can find the pattern embedded anywhere in a longer
-    haystack."""
-    translated = fnmatch.translate(pattern)
-    return re.compile(translated.removesuffix("\\Z"), re.IGNORECASE)
+    query is split on whitespace into words, each matched independently as
+    a real regex (re.search, case-insensitive) against "path description" -
+    so a plain word behaves as a literal substring search, but a word can
+    also contain actual regex syntax (alternation, character classes, ...)
+    if useful. ALL words must match somewhere (AND, any order) for a multi-
+    word query like "campaign switch" to behave sensibly rather than
+    requiring that exact phrase adjacent in the text."""
+    words = query.split()
+    patterns = [re.compile(w, re.IGNORECASE) for w in words]
 
-
-def search_cli_tree(
-    tree_text: str, query: str, limit: int = 25, min_score: int = 65
-) -> List[CliCommandMatch]:
-    """Searches a dump_cli_tree() tree for a phrase across each command's
-    full path, description, and option/arg lines.
-
-    If `query` contains a glob metacharacter (*, ?, [), it's matched as a
-    literal wildcard substring pattern via fnmatch - deterministic, no
-    scoring, for when fuzzy matching isn't precise enough (e.g. "lea*s*e"
-    to find "purge-leases"/"active-leases" without pulling in "clears",
-    which a fuzzy match on "lease" alone can't distinguish - Mark,
-    2026-08-31, both words score ~75-80% via plain character similarity).
-
-    Otherwise it's a fuzzy search: fuzzywuzzy's token_set_ratio and
-    partial_ratio (max of both, both against the same full haystack, not
-    the bare path - see git history for why bare-path partial_ratio was
-    worse). Still deliberately permissive by default - "a little more than
-    needed rather than a little less" (Mark, 2026-08-31), a missed command
-    is a worse failure mode than a few extra low-relevance rows - but
-    min_score has a floor above partial_ratio's coincidental-alignment
-    noise: on a sufficiently long haystack, partial_ratio finds *some*
-    locally-aligned window for almost any query, giving a flat ~60% score
-    to dozens of otherwise-unrelated commands that share no real keywords
-    with the query."""
-    if _GLOB_METACHARS.search(query):
-        pattern = _glob_to_search_regex(query)
-        matches = []
-        for entry in parse_cli_tree(tree_text):
-            # Check path, description, and each option line separately -
-            # NOT one concatenated blob. Every command has a "(boolean)"
-            # option or two, and "boolean" itself contains the literal
-            # substring "lea" - against a joined haystack, "lea*s*e" could
-            # bridge across into a *different*, unrelated option line's "s"
-            # and "e" (e.g. "...boolean) --s3 (boole...") and match nearly
-            # everything. A wildcard is still allowed to span a whole
-            # field (the full command path, or one option line) - that's
-            # useful (e.g. "audit*lease") - just not span across fields
-            # that have nothing to do with each other.
-            fields = [entry.path, entry.description, *entry.options]
-            if any(pattern.search(field) for field in fields):
-                matches.append(entry.model_copy(update={"score": 100}))
-        return matches[:limit]
-
-    from fuzzywuzzy import fuzz  # type: ignore
-
-    scored = []
+    matches = []
     for entry in parse_cli_tree(tree_text):
-        haystack = f"{entry.path} {entry.description} {' '.join(entry.options)}"
-        score = max(
-            fuzz.token_set_ratio(query, haystack),
-            fuzz.partial_ratio(query, haystack),
-        )
-        if score >= min_score:
-            scored.append(entry.model_copy(update={"score": score}))
-
-    scored.sort(key=lambda e: e.score, reverse=True)
-    return scored[:limit]
+        haystack = f"{entry.path} {entry.description}"
+        if all(p.search(haystack) for p in patterns):
+            matches.append(entry)
+    return matches[:limit]
 
 
 def dump_cli_tree(command: Any, out: Any, indent: int = 0) -> None:
@@ -397,12 +356,10 @@ class AuditService:
         return out.getvalue()
 
     def search_cli_tree(
-        self, click_command: Any, query: str, limit: int = 25, min_score: int = 65
+        self, click_command: Any, query: str, limit: int = 25
     ) -> List[CliCommandMatch]:
-        """Fuzzy-searches the CLI command hierarchy for a phrase."""
-        return search_cli_tree(
-            self.get_cli_tree(click_command), query, limit=limit, min_score=min_score
-        )
+        """Searches the CLI command hierarchy for a phrase."""
+        return search_cli_tree(self.get_cli_tree(click_command), query, limit=limit)
 
     def audit_filesystem(
         self,

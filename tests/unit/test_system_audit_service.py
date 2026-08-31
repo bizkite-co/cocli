@@ -37,9 +37,10 @@ cocli
             --dry-run (boolean)
     status - Displays the current status of the cocli environment.
         --campaign (text)
-    admin - Administrative commands for system management.
-        --force/-f (boolean)
-        --s3 (boolean)
+    stations - Stations substrate tools.
+        inspect - Render a campaign station root via stations inspect.
+            queue (text)
+            --no-leases (boolean)
 """
 
 
@@ -89,63 +90,61 @@ def test_parse_cli_tree_root_line_is_not_a_spurious_path_prefix():
     assert "cocli" not in entries
 
 
-def test_search_cli_tree_finds_command_by_partial_phrase():
+def test_search_cli_tree_finds_command_by_substring():
     results = search_cli_tree(_SAMPLE_TREE, "lease")
-    assert results
-    assert results[0].path == "audit queue purge-leases"
-    assert results[0].score == 100
+    paths = [r.path for r in results]
+    assert paths == ["audit queue purge-leases"]
+
+
+def test_search_cli_tree_ignores_options_not_just_path_and_description():
+    """Regression (Mark, 2026-08-31): an earlier version matched across
+    path+description+options combined, so `cocli help lease` surfaced
+    "stations inspect" purely because it has a `--no-leases` option among
+    a dozen others - its own name/description have nothing to do with
+    leases. Too weak a signal to be worth the noise; only path+description
+    should be searched."""
+    results = search_cli_tree(_SAMPLE_TREE, "lease")
+    paths = [r.path for r in results]
+    assert "stations inspect" not in paths
+    # Still shown *in the results* (for context), just not matched against.
+    match = next(r for r in results if r.path == "audit queue purge-leases")
+    assert match.options == [
+        "--campaign (text)",
+        "--queue-name (text)",
+        "--force (boolean)",
+    ]
 
 
 def test_search_cli_tree_nonsense_query_returns_nothing():
-    """Regression: partial_ratio scored against the bare path (rather than
-    the full path+description+options haystack) gave short candidate paths
-    like "tui" a 67% match against a completely unrelated nonsense query,
-    purely from character-alignment coincidence on a short string."""
     results = search_cli_tree(_SAMPLE_TREE, "zzz-no-such-thing-zzz")
     assert results == []
 
 
 def test_search_cli_tree_respects_limit():
-    results = search_cli_tree(_SAMPLE_TREE, "campaign", limit=1, min_score=0)
+    results = search_cli_tree(_SAMPLE_TREE, "campaign", limit=1)
     assert len(results) == 1
 
 
-def test_search_cli_tree_default_threshold_excludes_partial_ratio_noise_floor():
-    """Regression (Mark, 2026-08-31): `cocli help lease` returned a wall of
-    dozens of otherwise-unrelated commands (audit fs, audit schemas, ...)
-    all scored at exactly ~60% - partial_ratio finds *some* locally-aligned
-    window in almost any sufficiently long haystack, regardless of true
-    relevance. The default min_score must sit above that floor so a plain
-    "status" (no shared keywords with "lease" at all) doesn't show up."""
-    results = search_cli_tree(_SAMPLE_TREE, "lease")
+def test_search_cli_tree_multi_word_query_requires_all_words_anywhere():
+    """A literal-phrase match ("campaign switch" as one adjacent substring)
+    would be too strict for exploratory queries where the words don't
+    appear adjacently in that exact order - each word must be found
+    somewhere in path+description, in any order."""
+    results = search_cli_tree(_SAMPLE_TREE, "current status")
     paths = [r.path for r in results]
-    assert "audit queue purge-leases" in paths
-    assert "status" not in paths
+    assert paths == ["status"]
+
+    # Neither word alone should be sufficient - both must match.
+    assert search_cli_tree(_SAMPLE_TREE, "current nonexistentword") == []
 
 
-def test_search_cli_tree_glob_matches_wildcard_substring():
-    """`lea*s*e` should find purge-leases without needing the exact word
-    "lease" - the escape hatch for when fuzzy scoring isn't precise enough
-    (e.g. it can't distinguish "lease" from "clears", which score ~75-80%
-    via plain character similarity)."""
-    results = search_cli_tree(_SAMPLE_TREE, "lea*s*e")
+def test_search_cli_tree_word_supports_real_regex_syntax():
+    """Each word is matched as an actual regex, not just a literal
+    substring - e.g. alternation."""
+    results = search_cli_tree(_SAMPLE_TREE, "purge|deduplicate")
     paths = {r.path for r in results}
     assert "audit queue purge-leases" in paths
-    assert all(r.score == 100 for r in results)
-
-
-def test_search_cli_tree_glob_does_not_bridge_across_unrelated_fields():
-    """Regression: matching the glob pattern against one giant concatenated
-    "path + description + all options" blob let a wildcard span across
-    completely unrelated option lines - "boolean" itself contains the
-    literal substring "lea", so "lea*s*e" matched practically everything
-    with two separate "(boolean)" options by bridging from the first
-    "boolean)"'s "lea" through an unrelated option's "s" into a second
-    "boolean)"'s "e". Each field (path, description, one option line) must
-    be checked independently."""
-    results = search_cli_tree(_SAMPLE_TREE, "lea*s*e")
-    paths = {r.path for r in results}
-    assert "admin" not in paths
+    assert "deduplicate deduplicate" in paths
 
 
 def test_audit_filesystem_empty(tmp_path):
