@@ -360,6 +360,7 @@ class EventServiceProvider(Protocol):
 class OperationServiceProvider(Protocol):
     campaign_name: str
     def get_details(self, op_id: str) -> Optional[Any]: ...
+    def list_operations(self) -> List[Any]: ...
     async def execute(
         self, 
         op_id: str, 

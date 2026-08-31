@@ -22,7 +22,7 @@ from textual.binding import Binding
 from textual.widgets import Static, ListView, ListItem, Input, Label, Footer
 from textual.containers import Container, Horizontal
 from textual import events, on
-from textual.command import Provider, Hit, DiscoveryHit
+from textual.command import Provider, Hit, DiscoveryHit, CommandPalette
 from textual.screen import ModalScreen
 
 from .widgets.company_list import CompanyList
@@ -300,12 +300,81 @@ class CocliCommandProvider(Provider):
                 )
             )
 
+        # OperationService's registry (ApplicationView's Operations panel -
+        # sync/scaling/maintenance/reporting jobs, including op_compile_to_call)
+        # is a separate mechanism from these hand-picked navigation commands,
+        # but it's exactly the kind of thing someone searching the palette for
+        # "to-call" or "call" would expect to find (Mark, 2026-08-31) - it
+        # wasn't here at all before. Navigates to the panel and highlights the
+        # operation rather than running it blind: several ops take parameters
+        # (op_compile_to_call's limit/purge) the palette has no UI to set.
+        existing_names = {name for name, _, _ in commands}
+        for op in app.services.operation_service.list_operations():
+            if op.title in existing_names:
+                continue
+            commands.append(
+                (op.title, self._go_to_operation_action(op.id), op.description)
+            )
+
         def mru_score(cmd_name: str) -> int:
             if cmd_name in app.command_mru:
                 return 100 - app.command_mru.index(cmd_name)
             return 0
 
         return sorted(commands, key=lambda c: (mru_score(c[0]), c[0]), reverse=True)
+
+    def _go_to_operation_action(self, op_id: str) -> Callable[[], Any]:
+        """Returns a no-arg callable (for _commands()'s uniform shape)
+        that navigates to it when called - a small factory rather than a
+        lambda capturing the loop variable directly, to avoid the classic
+        late-binding bug (every lambda in the loop would otherwise close
+        over the same final `op.id`)."""
+
+        async def go() -> None:
+            await self._go_to_operation(op_id)
+
+        return go
+
+    async def _go_to_operation(self, op_id: str) -> None:
+        """Navigates to the Application view's Operations panel and
+        highlights/focuses the given operation, so the user can review its
+        parameters before running it (Enter, same as selecting it there
+        directly) - not executed blindly from the palette.
+
+        action_show_application() reuses an existing ApplicationView if one
+        is already mounted (same "preserve state across screen switches"
+        pattern action_show_companies() uses) - its active_category may
+        already be on some other section (campaigns, cluster, ...) from
+        earlier navigation, so #sidebar_operations may not even be the
+        currently displayed sidebar. show_category("operations") is
+        ApplicationView's own public method for switching + showing the
+        right sidebar/content pair - reused here rather than partially
+        reimplementing its display-switching side effects by hand."""
+        app = cast("CocliApp", self.app)
+        await app.action_show_application()
+
+        def _select_and_focus() -> None:
+            try:
+                app_view = app.query_one(ApplicationView)
+                app_view.show_category("operations", focus=False)
+                list_view = app_view.query_one("#sidebar_operations", ListView)
+                for index, item in enumerate(list_view.children):
+                    if item.id == op_id:
+                        list_view.index = index
+                        list_view.focus()
+                        break
+            except Exception:
+                pass
+
+        # This whole action runs while the CommandPalette is still mid-
+        # dismissal (called from its own hit-selection handling) - once it
+        # finishes popping, Screen._on_screen_resume() runs the *base*
+        # screen's own _update_auto_focus(), which stomps whatever we
+        # focus here if we do it too early (confirmed via a pilot test:
+        # calling .focus() synchronously here still left app_nav_list
+        # focused). Deferring past that with call_after_refresh so we
+        # apply our choice after Textual's own auto-focus has already run.
+        app.call_after_refresh(_select_and_focus)
 
     async def discover(self) -> AsyncGenerator[DiscoveryHit, None]:
         """Shown immediately when the palette opens, before any typing."""
@@ -601,6 +670,24 @@ class CocliApp(App[None]):
                 # Let it bubble to the Input widget by NOT calling event.stop()
                 # but we must also NOT handle it as a shortcut.
                 return
+
+        # 0.5 alt+s/meta+s are meant to be a universal escape alias
+        # throughout this app (several widgets - CompanyDetail,
+        # PersonDetail - explicitly group them with "escape" in their own
+        # key handling), but Textual's own built-in CommandPalette has no
+        # idea about that convention and doesn't bind them itself - a
+        # pushed Screen doesn't forward unmatched keys up to the App's own
+        # alt+s BINDING (action_navigate_up), so without this the palette
+        # just silently ate the keypress and stayed open (confirmed via a
+        # pilot test, 2026-08-31). CommandPalette is a ModalScreen
+        # (SystemModalScreen -> ModalScreen), whose plain "escape" binding
+        # ultimately calls .dismiss() - calling it directly here reuses
+        # that same close path instead of guessing at a private API.
+        if event.key in ("alt+s", "meta+s") and isinstance(self.screen, CommandPalette):
+            event.stop()
+            event.prevent_default()
+            self.screen.dismiss()
+            return
 
         # 1. HIGH PRIORITY: Leader mode must intercept keys before anyone else
         if event.key == LEADER_KEY:

@@ -284,6 +284,9 @@ class OperationService:
     def get_details(self, op_id: str) -> Optional[OperationMetadata]:
         return self.operations.get(op_id)
 
+    def list_operations(self) -> List[OperationMetadata]:
+        return list(self.operations.values())
+
     async def execute(
         self,
         op_id: str,
