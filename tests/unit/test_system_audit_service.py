@@ -88,6 +88,58 @@ def test_dump_tui_actions_skips_classes_with_no_actions_at_all():
     assert out.getvalue() == ""
 
 
+def test_dump_tui_actions_tags_framework_vs_cocli_mechanically():
+    """Regression motivation (Mark, 2026-08-31): "leave all those
+    navigation and copy-paste types of command in the list for now so we
+    can see them" - don't filter framework-inherited bindings (Input's
+    cursor/copy/paste, DataTable's scrolling, ...) out, but do label them,
+    since they can't correlate to any CLI command by nature. Resolved by
+    walking the MRO to find which class actually defines the method - not
+    a hand-maintained keyword list, which would silently miss new widgets."""
+    from textual.widgets import Input
+
+    class RealCocliInput(Input):
+        """Mirrors the real cocli/tui/widgets/inputs.py::CocliInput: no
+        BINDINGS override at all, so getattr(cls, "BINDINGS", []) resolves
+        Input's own list via normal MRO lookup - that's what needs to be
+        classified [framework], not artificially reconstructed here."""
+
+        def action_custom_submit(self) -> None:
+            """My Custom Submit."""
+
+    out = StringIO()
+    dump_tui_actions([RealCocliInput], out)
+    text = out.getvalue()
+
+    # Inherited straight from textual.widgets.Input, never overridden here.
+    assert "[framework]" in text
+    assert "cursor_left" in text
+    # Defined on RealCocliInput itself, only reachable unbound (no key).
+    assert "[cocli] (unbound) -> custom_submit - My Custom Submit" in text
+
+
+def test_dump_tui_operations_includes_to_call_purge() -> None:
+    """Regression (Mark, 2026-08-31): "We are supposed to have a way to
+    purge and reload the to-call queue from the TUI, but I don't see it."
+    It's real - op_compile_to_call, reachable via ApplicationView's
+    Operations panel (pick from a list, press Enter) rather than a
+    dedicated keybinding, which is exactly why dump_tui_actions() alone
+    couldn't show it."""
+    from cocli.application.audit_service import dump_tui_operations
+
+    out = StringIO()
+    dump_tui_operations(out)
+    text = out.getvalue()
+    assert "op_compile_to_call" in text
+    assert "Compile To-Call List" in text
+
+
+def test_get_tui_operations_via_audit_service() -> None:
+    service = AuditService(campaign_name="test-campaign")
+    report = service.get_tui_operations()
+    assert "op_compile_to_call" in report
+
+
 def test_get_tui_actions_on_the_real_tui_classes():
     """Lighter integration check, mirroring test_get_cli_tree(): confirm
     the real discovery + dump doesn't crash and finds a substantial,

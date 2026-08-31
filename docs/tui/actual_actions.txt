@@ -1,270 +1,318 @@
 ApplicationView
-    i -> edit_op_params - Edit Operation Parameters
-    ] -> focus_content - Focus Content
-    [ -> focus_sidebar - Focus Sidebar
-    enter -> run_active_operation - Run Operation (hidden)
-    v -> view_full_log - View Full Log
+    [cocli] i -> edit_op_params - Edit Operation Parameters
+    [cocli] ] -> focus_content - Focus Content
+    [cocli] [ -> focus_sidebar - Focus Sidebar
+    [cocli] enter -> run_active_operation - Run Operation (hidden)
+    [cocli] v -> view_full_log - View Full Log
 CallLogModal
-    escape -> dismiss(False) - Cancel
-    ctrl+s -> save_call - Save & Close
+    [framework] escape -> dismiss(False) - Cancel
+    [cocli] ctrl+s -> save_call - Save & Close
 CampaignDetail
-    pagedown -> page_down - Page Down (hidden)
-    ctrl+pageup -> page_left - Page Left (hidden)
-    ctrl+pagedown -> page_right - Page Right (hidden)
-    pageup -> page_up - Page Up (hidden)
-    down -> scroll_down - Scroll Down (hidden)
-    end -> scroll_end - Scroll End (hidden)
-    home -> scroll_home - Scroll Home (hidden)
-    left -> scroll_left - Scroll Left (hidden)
-    right -> scroll_right - Scroll Right (hidden)
-    up -> scroll_up - Scroll Up (hidden)
+    [framework] pagedown -> page_down - Page Down (hidden)
+    [framework] ctrl+pageup -> page_left - Page Left (hidden)
+    [framework] ctrl+pagedown -> page_right - Page Right (hidden)
+    [framework] pageup -> page_up - Page Up (hidden)
+    [framework] down -> scroll_down - Scroll Down (hidden)
+    [framework] end -> scroll_end - Scroll End (hidden)
+    [framework] home -> scroll_home - Scroll Home (hidden)
+    [framework] left -> scroll_left - Scroll Left (hidden)
+    [framework] right -> scroll_right - Scroll Right (hidden)
+    [framework] up -> scroll_up - Scroll Up (hidden)
 ClusterView
-    D -> delete_node - Delete Selected Registry
-    alt+p -> provision_cluster - Provision Cluster
-    P -> prune_heartbeat - Prune Selected Heartbeat
-    R -> refresh_cluster - Refresh Now
-    alt+s -> start_cluster - Start Cluster
-    alt+k -> stop_cluster - Stop Cluster
+    [cocli] D -> delete_node - Delete Selected Registry
+    [cocli] alt+p -> provision_cluster - Provision Cluster
+    [cocli] P -> prune_heartbeat - Prune Selected Heartbeat
+    [cocli] R -> refresh_cluster - Refresh Now
+    [cocli] alt+s -> start_cluster - Start Cluster
+    [cocli] alt+k -> stop_cluster - Stop Cluster
 CocliApp
-    ctrl+p -> command_palette - Commands
-    ] -> focus_content - Focus Content
-    [ -> focus_sidebar - Focus Sidebar
-    t -> focus_templates - Templates
-    meta+s -> navigate_up - Navigate Up (hidden)
-    q -> quit - Quit
-    l -> select_item - Select
-    (unbound) -> escape - Escape context without search reset.
-    (unbound) -> refresh_dev - Triggers a local DEV data refresh from PROD.
-    (unbound) -> show_admin - Show the system admin and campaign view.
-    (unbound) -> show_application
-    (unbound) -> show_companies - Show the company list view.
-    (unbound) -> show_events - Show the community event curation view.
-    (unbound) -> show_people - Show the person list view.
+    [framework] ctrl+p -> command_palette - Commands
+    [cocli] ] -> focus_content - Focus Content
+    [cocli] [ -> focus_sidebar - Focus Sidebar
+    [cocli] t -> focus_templates - Templates
+    [cocli] meta+s -> navigate_up - Navigate Up (hidden)
+    [framework] q -> quit - Quit
+    [cocli] l -> select_item - Select
+    [cocli] (unbound) -> escape - Escape context without search reset.
+    [cocli] (unbound) -> refresh_dev - Triggers a local DEV data refresh from PROD.
+    [cocli] (unbound) -> show_admin - Show the system admin and campaign view.
+    [cocli] (unbound) -> show_application
+    [cocli] (unbound) -> show_companies - Show the company list view.
+    [cocli] (unbound) -> show_events - Show the community event curation view.
+    [cocli] (unbound) -> show_people - Show the person list view.
 CocliCommandProvider
-    (unbound) -> create_task - Action to show the create task modal.
-    (unbound) -> wrapper - Wraps an action to update MRU on execution.
+    [cocli] (unbound) -> create_task - Action to show the create task modal.
+    [cocli] (unbound) -> wrapper - Wraps an action to update MRU on execution.
 CocliInput
-    ctrl+c -> copy - Copy selected text (hidden)
-    left -> cursor_left - Move cursor left (hidden)
-    shift+left -> cursor_left(True) - Move cursor left and select (hidden)
-    ctrl+left -> cursor_left_word - Move cursor left a word (hidden)
-    ctrl+shift+left -> cursor_left_word(True) - Move cursor left a word and select (hidden)
-    right -> cursor_right - Move cursor right or accept the completion suggestion (hidden)
-    shift+right -> cursor_right(True) - Move cursor right and select (hidden)
-    ctrl+right -> cursor_right_word - Move cursor right a word (hidden)
-    ctrl+shift+right -> cursor_right_word(True) - Move cursor right a word and select (hidden)
-    ctrl+x -> cut - Cut selected text (hidden)
-    backspace -> delete_left - Delete character left (hidden)
-    ctrl+u -> delete_left_all - Delete all to the left (hidden)
-    ctrl+w -> delete_left_word - Delete left to start of word (hidden)
-    delete,ctrl+d -> delete_right - Delete character right (hidden)
-    ctrl+k -> delete_right_all - Delete all to the right (hidden)
-    ctrl+f -> delete_right_word - Delete right to start of word (hidden)
-    end,ctrl+e -> end - Go to end (hidden)
-    shift+end -> end(True) - Select line end (hidden)
-    home,ctrl+a -> home - Go to start (hidden)
-    shift+home -> home(True) - Select line start (hidden)
-    ctrl+v -> paste - Paste text from the clipboard (hidden)
-    ctrl+shift+a -> select_all - Select all (hidden)
-    enter -> submit - Submit (hidden)
+    [framework] ctrl+c -> copy - Copy selected text (hidden)
+    [framework] left -> cursor_left - Move cursor left (hidden)
+    [framework] shift+left -> cursor_left(True) - Move cursor left and select (hidden)
+    [framework] ctrl+left -> cursor_left_word - Move cursor left a word (hidden)
+    [framework] ctrl+shift+left -> cursor_left_word(True) - Move cursor left a word and select (hidden)
+    [framework] right -> cursor_right - Move cursor right or accept the completion suggestion (hidden)
+    [framework] shift+right -> cursor_right(True) - Move cursor right and select (hidden)
+    [framework] ctrl+right -> cursor_right_word - Move cursor right a word (hidden)
+    [framework] ctrl+shift+right -> cursor_right_word(True) - Move cursor right a word and select (hidden)
+    [framework] ctrl+x -> cut - Cut selected text (hidden)
+    [framework] backspace -> delete_left - Delete character left (hidden)
+    [framework] ctrl+u -> delete_left_all - Delete all to the left (hidden)
+    [framework] ctrl+w -> delete_left_word - Delete left to start of word (hidden)
+    [framework] delete,ctrl+d -> delete_right - Delete character right (hidden)
+    [framework] ctrl+k -> delete_right_all - Delete all to the right (hidden)
+    [framework] ctrl+f -> delete_right_word - Delete right to start of word (hidden)
+    [framework] end,ctrl+e -> end - Go to end (hidden)
+    [framework] shift+end -> end(True) - Select line end (hidden)
+    [framework] home,ctrl+a -> home - Go to start (hidden)
+    [framework] shift+home -> home(True) - Select line start (hidden)
+    [framework] ctrl+v -> paste - Paste text from the clipboard (hidden)
+    [framework] ctrl+shift+a -> select_all - Select all (hidden)
+    [framework] enter -> submit - Submit (hidden)
 CocliSearchInput
-    ctrl+c -> copy - Copy selected text (hidden)
-    left -> cursor_left - Move cursor left (hidden)
-    shift+left -> cursor_left(True) - Move cursor left and select (hidden)
-    ctrl+left -> cursor_left_word - Move cursor left a word (hidden)
-    ctrl+shift+left -> cursor_left_word(True) - Move cursor left a word and select (hidden)
-    right -> cursor_right - Move cursor right or accept the completion suggestion (hidden)
-    shift+right -> cursor_right(True) - Move cursor right and select (hidden)
-    ctrl+right -> cursor_right_word - Move cursor right a word (hidden)
-    ctrl+shift+right -> cursor_right_word(True) - Move cursor right a word and select (hidden)
-    ctrl+x -> cut - Cut selected text (hidden)
-    backspace -> delete_left - Delete character left (hidden)
-    ctrl+u -> delete_left_all - Delete all to the left (hidden)
-    ctrl+w -> delete_left_word - Delete left to start of word (hidden)
-    delete,ctrl+d -> delete_right - Delete character right (hidden)
-    ctrl+k -> delete_right_all - Delete all to the right (hidden)
-    ctrl+f -> delete_right_word - Delete right to start of word (hidden)
-    end,ctrl+e -> end - Go to end (hidden)
-    shift+end -> end(True) - Select line end (hidden)
-    home,ctrl+a -> home - Go to start (hidden)
-    shift+home -> home(True) - Select line start (hidden)
-    ctrl+v -> paste - Paste text from the clipboard (hidden)
-    ctrl+shift+a -> select_all - Select all (hidden)
-    enter -> submit - Submit (hidden)
+    [framework] ctrl+c -> copy - Copy selected text (hidden)
+    [framework] left -> cursor_left - Move cursor left (hidden)
+    [framework] shift+left -> cursor_left(True) - Move cursor left and select (hidden)
+    [framework] ctrl+left -> cursor_left_word - Move cursor left a word (hidden)
+    [framework] ctrl+shift+left -> cursor_left_word(True) - Move cursor left a word and select (hidden)
+    [framework] right -> cursor_right - Move cursor right or accept the completion suggestion (hidden)
+    [framework] shift+right -> cursor_right(True) - Move cursor right and select (hidden)
+    [framework] ctrl+right -> cursor_right_word - Move cursor right a word (hidden)
+    [framework] ctrl+shift+right -> cursor_right_word(True) - Move cursor right a word and select (hidden)
+    [framework] ctrl+x -> cut - Cut selected text (hidden)
+    [framework] backspace -> delete_left - Delete character left (hidden)
+    [framework] ctrl+u -> delete_left_all - Delete all to the left (hidden)
+    [framework] ctrl+w -> delete_left_word - Delete left to start of word (hidden)
+    [framework] delete,ctrl+d -> delete_right - Delete character right (hidden)
+    [framework] ctrl+k -> delete_right_all - Delete all to the right (hidden)
+    [framework] ctrl+f -> delete_right_word - Delete right to start of word (hidden)
+    [framework] end,ctrl+e -> end - Go to end (hidden)
+    [framework] shift+end -> end(True) - Select line end (hidden)
+    [framework] home,ctrl+a -> home - Go to start (hidden)
+    [framework] shift+home -> home(True) - Select line start (hidden)
+    [framework] ctrl+v -> paste - Paste text from the clipboard (hidden)
+    [framework] ctrl+shift+a -> select_all - Select all (hidden)
+    [framework] enter -> submit - Submit (hidden)
 CompanyAddModal
-    escape -> dismiss(False) - Cancel
+    [framework] escape -> dismiss(False) - Cancel
 CompanyDetail
-    a -> add_item - Add Item
-    q -> app.action_escape - Back
-    meta+s -> app.navigate_up - Navigate Up (hidden)
-    p -> call_company - Call
-    D -> delete_company - Delete Company
-    d -> delete_item - Delete Item
-    enter -> enter_quadrant - Enter Quadrant
-    x -> flag_illegitimate - Flag Illegitimate
-    ] -> next_panel - Next Panel
-    e -> open_folder - Explorer (NVim)
-    g -> open_gmb - Google Maps
-    w -> open_website - Website
-    [ -> prev_panel - Prev Panel
-    R -> re_enqueue_scrape - Re-enqueue Scrape
-    E -> re_enrich - Re-enrich
-    t -> toggle_to_call - To Call
-    V -> view_enrichment - Enrichment
-    (unbound) -> add_meeting - Create a new meeting using NVim.
-    (unbound) -> add_note - Create a new note using NVim.
-    (unbound) -> cancel_edit - Cancel the current inline edit and restore the table.
-    (unbound) -> delete_note - Delete an existing note with confirmation.
-    (unbound) -> edit_meeting - Edit an existing meeting using NVim.
-    (unbound) -> edit_note - Edit an existing note using NVim.
-    (unbound) -> promote_meeting - Toggle promote flag on the selected meeting.
-    (unbound) -> promote_note - Toggle promote flag on the selected note.
-    (unbound) -> view_meeting - View meeting content in a modal.
-    (unbound) -> view_note - View note content in a modal.
+    [cocli] a -> add_item - Add Item
+    [cocli] q -> app.action_escape - Back
+    [cocli] meta+s -> app.navigate_up - Navigate Up (hidden)
+    [cocli] p -> call_company - Call
+    [cocli] D -> delete_company - Delete Company
+    [cocli] d -> delete_item - Delete Item
+    [cocli] enter -> enter_quadrant - Enter Quadrant
+    [cocli] x -> flag_illegitimate - Flag Illegitimate
+    [cocli] ] -> next_panel - Next Panel
+    [cocli] e -> open_folder - Explorer (NVim)
+    [cocli] g -> open_gmb - Google Maps
+    [cocli] w -> open_website - Website
+    [cocli] [ -> prev_panel - Prev Panel
+    [cocli] R -> re_enqueue_scrape - Re-enqueue Scrape
+    [cocli] E -> re_enrich - Re-enrich
+    [cocli] t -> toggle_to_call - To Call
+    [cocli] V -> view_enrichment - Enrichment
+    [cocli] (unbound) -> add_meeting - Create a new meeting using NVim.
+    [cocli] (unbound) -> add_note - Create a new note using NVim.
+    [cocli] (unbound) -> cancel_edit - Cancel the current inline edit and restore the table.
+    [cocli] (unbound) -> delete_note - Delete an existing note with confirmation.
+    [cocli] (unbound) -> edit_meeting - Edit an existing meeting using NVim.
+    [cocli] (unbound) -> edit_note - Edit an existing note using NVim.
+    [cocli] (unbound) -> promote_meeting - Toggle promote flag on the selected meeting.
+    [cocli] (unbound) -> promote_note - Toggle promote flag on the selected note.
+    [cocli] (unbound) -> view_meeting - View meeting content in a modal.
+    [cocli] (unbound) -> view_note - View note content in a modal.
 CompanyList
-    l -> open_highlighted - Open (hidden)
-    d -> remove_from_to_call - Remove from To-Call
-    alt+s -> reset_view - Return to List
-    (unbound) -> add_company - Pushes the Add Company modal.
-    (unbound) -> focus_search - Focus the search input.
-    (unbound) -> open_website - Open the previewed (highlighted) company's website.
-    (unbound) -> toggle_filter - Toggle the 'Actionable Leads' filter (has email OR phone).
-    (unbound) -> toggle_sort - Toggle sorting between Alphabetical and Recent.
+    [cocli] l -> open_highlighted - Open (hidden)
+    [cocli] d -> remove_from_to_call - Remove from To-Call
+    [cocli] alt+s -> reset_view - Return to List
+    [cocli] (unbound) -> add_company - Pushes the Add Company modal.
+    [cocli] (unbound) -> focus_search - Focus the search input.
+    [cocli] (unbound) -> open_website - Open the previewed (highlighted) company's website.
+    [cocli] (unbound) -> toggle_filter - Toggle the 'Actionable Leads' filter (has email OR phone).
+    [cocli] (unbound) -> toggle_sort - Toggle sorting between Alphabetical and Recent.
 CompanyPreview
-    (unbound) -> open_website
+    [cocli] (unbound) -> open_website
 CompanySearchView
-    c -> focus_companies - Focus Companies
-    s -> focus_search - Search
-    t -> focus_template - Focus Templates
-    w -> open_website - Website
-    (unbound) -> reset_view - Fully resets the search view and returns to template selection.
+    [cocli] c -> focus_companies - Focus Companies
+    [cocli] s -> focus_search - Search
+    [cocli] t -> focus_template - Focus Templates
+    [cocli] w -> open_website - Website
+    [cocli] (unbound) -> reset_view - Fully resets the search view and returns to template selection.
 ConfirmScreen
-    tab -> app.focus_next - Focus Next (hidden)
-    shift+tab -> app.focus_previous - Focus Previous (hidden)
-    ctrl+c -> screen.copy_text - Copy selected text (hidden)
+    [cocli] tab -> app.focus_next - Focus Next (hidden)
+    [cocli] shift+tab -> app.focus_previous - Focus Previous (hidden)
+    [cocli] ctrl+c -> screen.copy_text - Copy selected text (hidden)
 ContactsTable
-    a -> add_contact - Add Contact
-    j -> cursor_down - Down (hidden)
-    k -> cursor_up - Up (hidden)
-    enter -> edit_item - Edit Contact
-    escape -> exit_quadrant - Exit Quadrant
+    [cocli] a -> add_contact - Add Contact
+    [framework] j -> cursor_down - Down (hidden)
+    [framework] k -> cursor_up - Up (hidden)
+    [cocli] enter -> edit_item - Edit Contact
+    [cocli] escape -> exit_quadrant - Exit Quadrant
 ContentViewerModal
-    escape -> dismiss - Close
+    [cocli] escape -> dismiss - Close
 CreateTaskModal
-    tab -> app.focus_next - Focus Next (hidden)
-    shift+tab -> app.focus_previous - Focus Previous (hidden)
-    ctrl+c -> screen.copy_text - Copy selected text (hidden)
+    [cocli] tab -> app.focus_next - Focus Next (hidden)
+    [cocli] shift+tab -> app.focus_previous - Focus Previous (hidden)
+    [cocli] ctrl+c -> screen.copy_text - Copy selected text (hidden)
 EditInput
-    ctrl+c -> copy - Copy selected text (hidden)
-    left -> cursor_left - Move cursor left (hidden)
-    shift+left -> cursor_left(True) - Move cursor left and select (hidden)
-    ctrl+left -> cursor_left_word - Move cursor left a word (hidden)
-    ctrl+shift+left -> cursor_left_word(True) - Move cursor left a word and select (hidden)
-    right -> cursor_right - Move cursor right or accept the completion suggestion (hidden)
-    shift+right -> cursor_right(True) - Move cursor right and select (hidden)
-    ctrl+right -> cursor_right_word - Move cursor right a word (hidden)
-    ctrl+shift+right -> cursor_right_word(True) - Move cursor right a word and select (hidden)
-    ctrl+x -> cut - Cut selected text (hidden)
-    backspace -> delete_left - Delete character left (hidden)
-    ctrl+u -> delete_left_all - Delete all to the left (hidden)
-    ctrl+w -> delete_left_word - Delete left to start of word (hidden)
-    delete,ctrl+d -> delete_right - Delete character right (hidden)
-    ctrl+k -> delete_right_all - Delete all to the right (hidden)
-    ctrl+f -> delete_right_word - Delete right to start of word (hidden)
-    end,ctrl+e -> end - Go to end (hidden)
-    shift+end -> end(True) - Select line end (hidden)
-    home,ctrl+a -> home - Go to start (hidden)
-    shift+home -> home(True) - Select line start (hidden)
-    ctrl+v -> paste - Paste text from the clipboard (hidden)
-    ctrl+shift+a -> select_all - Select all (hidden)
-    enter -> submit - Submit (hidden)
+    [framework] ctrl+c -> copy - Copy selected text (hidden)
+    [framework] left -> cursor_left - Move cursor left (hidden)
+    [framework] shift+left -> cursor_left(True) - Move cursor left and select (hidden)
+    [framework] ctrl+left -> cursor_left_word - Move cursor left a word (hidden)
+    [framework] ctrl+shift+left -> cursor_left_word(True) - Move cursor left a word and select (hidden)
+    [framework] right -> cursor_right - Move cursor right or accept the completion suggestion (hidden)
+    [framework] shift+right -> cursor_right(True) - Move cursor right and select (hidden)
+    [framework] ctrl+right -> cursor_right_word - Move cursor right a word (hidden)
+    [framework] ctrl+shift+right -> cursor_right_word(True) - Move cursor right a word and select (hidden)
+    [framework] ctrl+x -> cut - Cut selected text (hidden)
+    [framework] backspace -> delete_left - Delete character left (hidden)
+    [framework] ctrl+u -> delete_left_all - Delete all to the left (hidden)
+    [framework] ctrl+w -> delete_left_word - Delete left to start of word (hidden)
+    [framework] delete,ctrl+d -> delete_right - Delete character right (hidden)
+    [framework] ctrl+k -> delete_right_all - Delete all to the right (hidden)
+    [framework] ctrl+f -> delete_right_word - Delete right to start of word (hidden)
+    [framework] end,ctrl+e -> end - Go to end (hidden)
+    [framework] shift+end -> end(True) - Select line end (hidden)
+    [framework] home,ctrl+a -> home - Go to start (hidden)
+    [framework] shift+home -> home(True) - Select line start (hidden)
+    [framework] ctrl+v -> paste - Paste text from the clipboard (hidden)
+    [framework] ctrl+shift+a -> select_all - Select all (hidden)
+    [framework] enter -> submit - Submit (hidden)
 ErrorScreen
-    escape -> app.pop_screen - OK
+    [cocli] escape -> app.pop_screen - OK
 EventCurationView
-    a -> approve - Approve
-    e -> edit - Edit
-    ctrl+r -> refresh - Refresh
-    r -> reject - Reject
+    [cocli] a -> approve - Approve
+    [cocli] e -> edit - Edit
+    [cocli] ctrl+r -> refresh - Refresh
+    [cocli] r -> reject - Reject
 EventDetail
-    pagedown -> page_down - Page Down (hidden)
-    ctrl+pageup -> page_left - Page Left (hidden)
-    ctrl+pagedown -> page_right - Page Right (hidden)
-    pageup -> page_up - Page Up (hidden)
-    down -> scroll_down - Scroll Down (hidden)
-    end -> scroll_end - Scroll End (hidden)
-    home -> scroll_home - Scroll Home (hidden)
-    left -> scroll_left - Scroll Left (hidden)
-    right -> scroll_right - Scroll Right (hidden)
-    up -> scroll_up - Scroll Up (hidden)
+    [framework] pagedown -> page_down - Page Down (hidden)
+    [framework] ctrl+pageup -> page_left - Page Left (hidden)
+    [framework] ctrl+pagedown -> page_right - Page Right (hidden)
+    [framework] pageup -> page_up - Page Up (hidden)
+    [framework] down -> scroll_down - Scroll Down (hidden)
+    [framework] end -> scroll_end - Scroll End (hidden)
+    [framework] home -> scroll_home - Scroll Home (hidden)
+    [framework] left -> scroll_left - Scroll Left (hidden)
+    [framework] right -> scroll_right - Scroll Right (hidden)
+    [framework] up -> scroll_up - Scroll Up (hidden)
 IndexDetail
-    pagedown -> page_down - Page Down (hidden)
-    ctrl+pageup -> page_left - Page Left (hidden)
-    ctrl+pagedown -> page_right - Page Right (hidden)
-    pageup -> page_up - Page Up (hidden)
-    down -> scroll_down - Scroll Down (hidden)
-    end -> scroll_end - Scroll End (hidden)
-    home -> scroll_home - Scroll Home (hidden)
-    left -> scroll_left - Scroll Left (hidden)
-    right -> scroll_right - Scroll Right (hidden)
-    up -> scroll_up - Scroll Up (hidden)
+    [framework] pagedown -> page_down - Page Down (hidden)
+    [framework] ctrl+pageup -> page_left - Page Left (hidden)
+    [framework] ctrl+pagedown -> page_right - Page Right (hidden)
+    [framework] pageup -> page_up - Page Up (hidden)
+    [framework] down -> scroll_down - Scroll Down (hidden)
+    [framework] end -> scroll_end - Scroll End (hidden)
+    [framework] home -> scroll_home - Scroll Home (hidden)
+    [framework] left -> scroll_left - Scroll Left (hidden)
+    [framework] right -> scroll_right - Scroll Right (hidden)
+    [framework] up -> scroll_up - Scroll Up (hidden)
 IndexSelection
-    down -> cursor_down - Cursor down (hidden)
-    up -> cursor_up - Cursor up (hidden)
-    enter -> select_cursor - Select (hidden)
+    [framework] down -> cursor_down - Cursor down (hidden)
+    [framework] up -> cursor_up - Cursor up (hidden)
+    [framework] enter -> select_cursor - Select (hidden)
 InfoTable
-    j -> cursor_down - Down (hidden)
-    k -> cursor_up - Up (hidden)
-    enter -> edit_row - Edit Field
-    escape -> exit_quadrant - Exit Quadrant
+    [framework] j -> cursor_down - Down (hidden)
+    [framework] k -> cursor_up - Up (hidden)
+    [cocli] enter -> edit_row - Edit Field
+    [cocli] escape -> exit_quadrant - Exit Quadrant
 LogViewerModal
-    tab -> app.focus_next - Focus Next (hidden)
-    shift+tab -> app.focus_previous - Focus Previous (hidden)
-    ctrl+c -> screen.copy_text - Copy selected text (hidden)
+    [cocli] tab -> app.focus_next - Focus Next (hidden)
+    [cocli] shift+tab -> app.focus_previous - Focus Previous (hidden)
+    [cocli] ctrl+c -> screen.copy_text - Copy selected text (hidden)
 MarkReviewedDialog
-    tab -> app.focus_next - Focus Next (hidden)
-    shift+tab -> app.focus_previous - Focus Previous (hidden)
-    ctrl+c -> screen.copy_text - Copy selected text (hidden)
+    [cocli] tab -> app.focus_next - Focus Next (hidden)
+    [cocli] shift+tab -> app.focus_previous - Focus Previous (hidden)
+    [cocli] ctrl+c -> screen.copy_text - Copy selected text (hidden)
 MasterDetailView
-    alt+l -> focus_detail - Focus Detail
-    alt+h -> focus_master - Focus List
+    [cocli] alt+l -> focus_detail - Focus Detail
+    [cocli] alt+h -> focus_master - Focus List
 MeetingsTable
-    a -> add_meeting - Add Meeting
-    j -> cursor_down - Down (hidden)
-    k -> cursor_up - Up (hidden)
-    enter -> edit_item - Edit Meeting
-    escape -> exit_quadrant - Exit Quadrant
-    P -> promote_item - Promote
-    v -> view_item - View Meeting
+    [cocli] a -> add_meeting - Add Meeting
+    [framework] j -> cursor_down - Down (hidden)
+    [framework] k -> cursor_up - Up (hidden)
+    [cocli] enter -> edit_item - Edit Meeting
+    [cocli] escape -> exit_quadrant - Exit Quadrant
+    [cocli] P -> promote_item - Promote
+    [cocli] v -> view_item - View Meeting
 NotesTable
-    a -> add_note - Add Note
-    j -> cursor_down - Down (hidden)
-    k -> cursor_up - Up (hidden)
-    d -> delete_item - Delete Note
-    enter -> edit_item - Edit Note
-    escape -> exit_quadrant - Exit Quadrant
-    P -> promote_item - Promote
-    v -> view_item - View Note
+    [cocli] a -> add_note - Add Note
+    [framework] j -> cursor_down - Down (hidden)
+    [framework] k -> cursor_up - Up (hidden)
+    [cocli] d -> delete_item - Delete Note
+    [cocli] enter -> edit_item - Edit Note
+    [cocli] escape -> exit_quadrant - Exit Quadrant
+    [cocli] P -> promote_item - Promote
+    [cocli] v -> view_item - View Note
 PersonDetail
-    alt+s -> app.navigate_up - Navigate Up
-    escape -> app.pop_screen - Back
+    [cocli] alt+s -> app.navigate_up - Navigate Up
+    [cocli] escape -> app.pop_screen - Back
 PersonList
-    s -> focus_search - Search
-    alt+s -> reset_view - Return to List
+    [cocli] s -> focus_search - Search
+    [cocli] alt+s -> reset_view - Return to List
 QuadrantTable
-    j -> cursor_down - Down (hidden)
-    k -> cursor_up - Up (hidden)
-    escape -> exit_quadrant - Exit Quadrant
+    [framework] j -> cursor_down - Down (hidden)
+    [framework] k -> cursor_up - Up (hidden)
+    [cocli] escape -> exit_quadrant - Exit Quadrant
 QueueDetail
-    s c -> sync_completed - sc: Sync Completed
-    s p -> sync_pending - sp: Sync Pending
-    (unbound) -> audit_down - Move selection down in audit list.
-    (unbound) -> audit_up - Move selection up in audit list.
-    (unbound) -> mark_reviewed - Toggle inline editing for selected audit item.
-    (unbound) -> open_audit_gmb - Open gmb_url in browser using system browser (same as Company Details).
-    (unbound) -> run_audit - Run gm-list audit.
+    [cocli] s c -> sync_completed - sc: Sync Completed
+    [cocli] s p -> sync_pending - sp: Sync Pending
+    [cocli] (unbound) -> audit_down - Move selection down in audit list.
+    [cocli] (unbound) -> audit_up - Move selection up in audit list.
+    [cocli] (unbound) -> mark_reviewed - Toggle inline editing for selected audit item.
+    [cocli] (unbound) -> open_audit_gmb - Open gmb_url in browser using system browser (same as Company Details).
+    [cocli] (unbound) -> run_audit - Run gm-list audit.
 QueueSelection
-    down -> cursor_down - Cursor down (hidden)
-    up -> cursor_up - Cursor up (hidden)
-    enter -> select_cursor - Select (hidden)
+    [framework] down -> cursor_down - Cursor down (hidden)
+    [framework] up -> cursor_up - Cursor up (hidden)
+    [framework] enter -> select_cursor - Select (hidden)
 StatusView
-    R -> refresh_status - Refresh Status
+    [cocli] R -> refresh_status - Refresh Status
+
+=== Operations (OperationService registry, shared with CLI) ===
+op_analyze_emails [reporting] - Email Analysis
+    Performs deep validation of found emails and domain patterns.
+op_compact_index [maintenance] - Compact Email Index
+    Merges email WAL files from S3 into the local checkpoint USV.
+op_compact_prospects [maintenance] - Compact Prospects Index
+    Merges completed GM results into the main checkpoint and cleans up queue files.
+op_compile_lifecycle [maintenance] - Compile Lifecycle
+    Builds the lifecycle index (scrape/detail dates) from local queues.
+op_compile_to_call [maintenance] - Compile To-Call List
+    Full workflow: Compacts GM and Email indexes, then identifies top leads for calling.
+op_compile_top_prospects [maintenance] - Compile Top Prospects
+    Identifies high-rating, highly-reviewed leads with contact info using DuckDB.
+op_purge_pending [maintenance] - Purge Pending Tasks
+    Forcefully clears expired leases and vestigial tasks from the GM list queue.
+op_re_enrich [maintenance] - Re-enrich Company Website
+    Runs a local browser to perform website-level enrichment (emails, socials) for a specific domain.
+op_refresh_dev [maintenance] - Refresh DEV from PROD
+    Clones local PROD data into the DEV environment using rsync.
+op_report [reporting] - Campaign Report
+    Generates a full data funnel report, including prospect counts and queue depths.
+op_restore_names [maintenance] - Restore Company Names
+    Restores company names from Google Maps index and writes provenance USVs.
+op_rollout_discovery [maintenance] - Discovery Batch Rollout
+    Full discovery rollout: 1. Create named batch. 2. Build mission index. 3. Propagate tasks to cluster.
+op_sanitize_discovery [maintenance] - Sanitize Discovery Results
+    Full workflow: Pulls from S3, purges vestigial gm-list pending tasks, and propagates to PIs. Does NOT delete anything under gm-list/completed/results/ - that data is permanent (data-quality-incidents/003).
+op_scale_0 [scaling] - Stop Cloud Workers
+    Sets Fargate service desired count to 0.
+op_scale_1 [scaling] - Scale to 1 Worker
+    Sets Fargate service desired count to 1.
+op_scale_10 [scaling] - Scale to 10 Workers
+    Sets Fargate service desired count to 10.
+op_scale_5 [scaling] - Scale to 5 Workers
+    Sets Fargate service desired count to 5.
+op_scrape_details [maintenance] - Scrape Company Details
+    Runs a local browser to scrape full Google Maps details for a specific Place ID.
+op_sync_all [sync] - Full S3 Sync
+    Synchronizes all campaign data from S3 to your local machine.
+op_sync_enrichment [sync] - Sync Enrichment Queue
+    Synchronizes the website enrichment queue from S3.
+op_sync_gm_details [sync] - Sync GM Details Queue
+    Synchronizes the Google Maps place detail queue from S3.
+op_sync_gm_list [sync] - Sync GM List Queue
+    Synchronizes the Google Maps area search queue from S3.
+op_sync_indexes [sync] - Sync Indexes
+    Synchronizes checkpoint and witness indexes from S3.

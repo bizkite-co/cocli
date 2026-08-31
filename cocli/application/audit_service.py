@@ -130,6 +130,33 @@ def dump_cli_tree(command: Any, out: Any, indent: int = 0) -> None:
             dump_cli_tree(sub_command, out, indent + 4)
 
 
+def _classify_action(cls: type, action: str) -> str:
+    """"framework" if the action resolves to a method defined on a
+    textual.* base class (Input's cursor/copy/paste, DataTable's
+    scrolling, ModalScreen's focus-cycling, ...) - not cocli-specific,
+    and structurally can't correlate to any CLI command. "cocli"
+    otherwise. Resolved by walking the MRO to find which class actually
+    defines the method, not a hand-maintained keyword list - mechanical
+    and won't silently go stale as new widgets are added.
+
+    Best-effort on the "app."/"screen." namespace-prefix form (dispatches
+    to self.app/self.screen instead of the bound widget): resolving that
+    properly would mean importing cocli.tui to know what those resolve
+    to, which this module deliberately doesn't (see dump_tui_actions's
+    docstring) - always classified "cocli" here, which matches every
+    actual "app."/"screen." binding in this codebase today (they all
+    dispatch to cocli-defined navigation, never a raw Textual App/Screen
+    builtin)."""
+    name = action.split("(")[0]
+    if name.startswith("app.") or name.startswith("screen."):
+        return "cocli"
+    method_name = name if name.startswith("action_") else f"action_{name}"
+    for base in cls.__mro__:
+        if method_name in vars(base):
+            return "framework" if base.__module__.startswith("textual.") else "cocli"
+    return "cocli"
+
+
 def dump_tui_actions(classes: List[type], out: Any) -> None:
     """Dumps every action a TUI class exposes - the TUI equivalent of
     dump_cli_tree() - so the two can be diffed for a real coverage metric
@@ -151,7 +178,13 @@ def dump_tui_actions(classes: List[type], out: Any) -> None:
     form appear throughout this codebase - normalized to one shape here),
     plus any `action_*` method NOT covered by a BINDINGS entry - those are
     still real, callable actions (reachable via the command palette, or
-    only programmatically), just invisible to a bindings-only accounting."""
+    only programmatically), just invisible to a bindings-only accounting.
+
+    Each line is tagged [framework] or [cocli] (see _classify_action) -
+    left unfiltered deliberately (Mark, 2026-08-31: "I would rather leave
+    all those navigation and copy-paste types of command in the list for
+    now so we can see them and think about how to sort them"), just
+    labeled so the two kinds are easy to tell apart at a glance."""
     for cls in sorted(classes, key=lambda c: c.__name__):
         bound_actions: Dict[str, tuple[str, str, bool]] = {}
         for entry in getattr(cls, "BINDINGS", []):
@@ -181,12 +214,46 @@ def dump_tui_actions(classes: List[type], out: Any) -> None:
         for action, (key, description, show) in sorted(bound_actions.items()):
             hidden = "" if show else " (hidden)"
             desc = f" - {description}" if description else ""
-            out.write(f"    {key} -> {action}{desc}{hidden}\n")
+            tag = _classify_action(cls, action)
+            out.write(f"    [{tag}] {key} -> {action}{desc}{hidden}\n")
         for action in unbound_actions:
             method = getattr(cls, f"action_{action}")
             doc = (method.__doc__ or "").strip().split("\n")[0]
             desc = f" - {doc}" if doc else ""
-            out.write(f"    (unbound) -> {action}{desc}\n")
+            # Always [cocli]: defined directly on this class (vars(cls)
+            # above), never inherited from a textual.* base.
+            out.write(f"    [cocli] (unbound) -> {action}{desc}\n")
+
+
+def dump_tui_operations(out: Any) -> None:
+    """Dumps OperationService's registry - a *second*, structurally
+    different mechanism from action_*/BINDINGS that dump_tui_actions()
+    can't see at all: ApplicationView's Operations panel lets you pick one
+    of these from a list and press Enter, rather than each op having its
+    own dedicated keybinding/method. This is why e.g. the To-Call queue's
+    purge+reload (op_compile_to_call, with its own purge checkbox in that
+    panel) doesn't show up in dump_tui_actions() output - it's real, just
+    reachable through a different UI, not a missing TUI feature (Mark,
+    2026-08-31 asked specifically about this one).
+
+    OperationService already lives in cocli/application/ - same layer as
+    this module - so this imports it directly rather than taking it as a
+    parameter like dump_tui_actions() does for cocli.tui classes; no
+    layering concern crossing application -> application.
+
+    Its own docstring says it plainly: "Enables sharing operation logic
+    between the TUI and CLI" - this registry already *is* the intended
+    correlation point for a meaningful chunk of "cocli"-tagged actions,
+    not something to reinvent."""
+    from .operation_service import OperationService
+
+    # campaign_name only matters for *executing* an operation - the
+    # registry itself (self.operations, built in __init__) is static.
+    operations = OperationService(campaign_name="_unused").operations
+
+    for op in sorted(operations.values(), key=lambda o: o.id):
+        out.write(f"{op.id} [{op.category}] - {op.title}\n")
+        out.write(f"    {op.description}\n")
 
 
 class AuditService:
@@ -427,6 +494,15 @@ class AuditService:
 
         out = StringIO()
         dump_tui_actions(classes, out)
+        return out.getvalue()
+
+    def get_tui_operations(self) -> str:
+        """Dumps OperationService's registry (ApplicationView's Operations
+        panel), as a string."""
+        from io import StringIO
+
+        out = StringIO()
+        dump_tui_operations(out)
         return out.getvalue()
 
     def audit_filesystem(

@@ -733,8 +733,11 @@ def audit_tui_actions(
 ) -> None:
     """
     Dumps every action (keybinding or command-palette-only) exposed by the
-    TUI's App and widget classes - the TUI equivalent of `cocli audit cli`,
-    for comparing what the TUI can do against the full CLI command surface.
+    TUI's App and widget classes, plus OperationService's registry (the
+    Application view's Operations panel - a separate mechanism entirely,
+    picked from a list rather than bound to a key) - the TUI equivalent of
+    `cocli audit cli`, for comparing what the TUI can do against the full
+    CLI command surface.
     """
     from ..core.config import get_campaign
     from ..application.services import ServiceContainer
@@ -743,6 +746,8 @@ def audit_tui_actions(
     campaign = get_campaign() or "default"
     services = ServiceContainer(campaign_name=campaign)
     report = services.codebase_audit_service.get_tui_actions(classes)
+    report += "\n=== Operations (OperationService registry, shared with CLI) ===\n"
+    report += services.codebase_audit_service.get_tui_operations()
 
     output.parent.mkdir(parents=True, exist_ok=True)
     output.write_text(report, encoding="utf-8")

@@ -25,6 +25,9 @@ class AuditCodebaseService:
     def get_tui_actions(self, classes: List[type]) -> str:
         return self._service.get_tui_actions(classes)
 
+    def get_tui_operations(self) -> str:
+        return self._service.get_tui_operations()
+
     def audit_filesystem(self, campaign_name: str | None = None, skip_companies: bool = True, gen_cleanup: bool = False) -> dict[str, Any]:
         return self._service.audit_filesystem(campaign_name=campaign_name, skip_companies=skip_companies, gen_cleanup=gen_cleanup)
 
