@@ -22,7 +22,7 @@ from textual.binding import Binding
 from textual.widgets import Static, ListView, ListItem, Input, Label, Footer
 from textual.containers import Container, Horizontal
 from textual import events, on
-from textual.command import Provider, Hit
+from textual.command import Provider, Hit, DiscoveryHit
 from textual.screen import ModalScreen
 
 from .widgets.company_list import CompanyList
@@ -232,47 +232,29 @@ class CreateTaskModal(ModalScreen[bool]):
 
 
 class CocliCommandProvider(Provider):
-    """Provides Cocli-specific commands to the Textual Command Palette."""
+    """Provides Cocli-specific commands to the Textual Command Palette.
 
-    def get_commands(self) -> Dict[str, tuple[Callable[[], Any], str]]:
-        """Returns a registry of all available commands."""
+    Was pressed-but-empty until 2026-08-31: Textual's CommandPalette shows
+    discover() results when it first opens (before you type anything) and
+    only switches to search() once there's a query
+    (textual/command.py: `hits = self.search(query) if query else
+    self.discover()`). This provider only ever implemented search(), so
+    Ctrl+P opened to a blank list every time - it worked fine, you just had
+    to already know to start typing before anything appeared. There was
+    also a whole second, never-wired-up copy of this machinery
+    (get_commands/wrap_action/record_command/command_history) sitting
+    alongside the real one (command_mru/update_command_mru/
+    action_wrapper) - confirmed dead via grep (no caller besides each
+    other) before deleting, not just unused-looking."""
+
+    def _commands(self) -> List[tuple[str, Callable[[], Any], str]]:
+        """The single source of command entries, MRU-sorted, shared by
+        discover() (shown before typing) and search() (shown while
+        typing) - the previous version hand-duplicated this list in both
+        places and they'd already drifted (one had "Show Application",
+        the other "Show Admin")."""
         app = cast("CocliApp", self.app)
-        return {
-            "Show Companies": (
-                app.action_show_companies,
-                "Switch to the companies search and list view.",
-            ),
-            "Show People": (app.action_show_people, "Switch to the people list view."),
-            "Show Events": (
-                app.action_show_events,
-                "Switch to the community event curation view.",
-            ),
-            "Show Application": (
-                app.action_show_application,
-                "Switch to the application status and campaign view.",
-            ),
-            "Focus Sidebar": (
-                app.action_focus_sidebar,
-                "Focus the sidebar/template pane in the current view.",
-            ),
-            "Focus Content": (
-                app.action_focus_content,
-                "Focus the main content/list pane in the current view.",
-            ),
-            "Create Task": (
-                self.action_create_task,
-                "Create a new task in the mission queue.",
-            ),
-        }
-
-    async def search(self, query: str) -> AsyncGenerator[Hit, None]:
-        """Search for commands matching the query."""
-        matcher = self.matcher(query)
-        app = cast("CocliApp", self.app)
-
         from ..core.environment import get_environment, Environment
-
-        env = get_environment()
 
         commands = [
             (
@@ -309,7 +291,7 @@ class CocliCommandProvider(Provider):
             ("Quit", app.action_quit, "Exit the application."),
         ]
 
-        if env != Environment.PROD:
+        if get_environment() != Environment.PROD:
             commands.append(
                 (
                     "Refresh DEV from PROD",
@@ -318,31 +300,32 @@ class CocliCommandProvider(Provider):
                 )
             )
 
-        # Sort by MRU (Most Recent First)
-        def get_mru_score(cmd_name: str) -> int:
+        def mru_score(cmd_name: str) -> int:
             if cmd_name in app.command_mru:
                 return 100 - app.command_mru.index(cmd_name)
             return 0
 
-        # Primary sort by MRU, secondary sort by Name (alphabetical)
-        sorted_commands = sorted(
-            commands, key=lambda x: (get_mru_score(x[0]), x[0]), reverse=True
-        )
+        return sorted(commands, key=lambda c: (mru_score(c[0]), c[0]), reverse=True)
 
-        if not query:
-            # Show top 5 MRU or defaults
-            for name, action, help_text in sorted_commands[:5]:
-                yield Hit(1.0, name, self.action_wrapper(name, action), help=help_text)
-        else:
-            for name, action, help_text in sorted_commands:
-                score = matcher.match(name)
-                if score > 0:
-                    yield Hit(
-                        score,
-                        matcher.highlight(name),
-                        self.action_wrapper(name, action),
-                        help=help_text,
-                    )
+    async def discover(self) -> AsyncGenerator[DiscoveryHit, None]:
+        """Shown immediately when the palette opens, before any typing."""
+        for name, action, help_text in self._commands()[:5]:
+            yield DiscoveryHit(
+                name, self.action_wrapper(name, action), text=name, help=help_text
+            )
+
+    async def search(self, query: str) -> AsyncGenerator[Hit, None]:
+        """Search for commands matching the query."""
+        matcher = self.matcher(query)
+        for name, action, help_text in self._commands():
+            score = matcher.match(name)
+            if score > 0:
+                yield Hit(
+                    score,
+                    matcher.highlight(name),
+                    self.action_wrapper(name, action),
+                    help=help_text,
+                )
 
     def action_wrapper(self, name: str, action: Callable[[], Any]) -> Callable[[], Any]:
         """Wraps an action to update MRU on execution."""
@@ -354,18 +337,6 @@ class CocliCommandProvider(Provider):
                 await res
 
         return wrapped
-
-    def wrap_action(self, name: str, action: Callable[[], Any]) -> Callable[[], Any]:
-        """Wraps an action to record its use in history before execution."""
-        app = cast("CocliApp", self.app)
-
-        def wrapper() -> Any:
-            app.record_command(name)
-            if asyncio.iscoroutinefunction(action):
-                return app.run_worker(action())
-            return action()
-
-        return wrapper
 
     def action_create_task(self) -> None:
         """Action to show the create task modal."""
@@ -437,15 +408,6 @@ class CocliApp(App[None]):
         self.nav_manager = NavigationStateManager(self)
         self.browser_manager = BrowserManager()
 
-        # Command Palette History (Last used commands at the top)
-        self.command_history: List[str] = [
-            "Show Companies",
-            "Show People",
-            "Show Events",
-            "Show Application",
-            "Create Task",
-        ]
-
         # Explicitly ensure the OperationService uses our shared services container
         # to prevent it from spawning its own ServiceContainer (which breaks mocks)
         if hasattr(self.services, "operation_service"):
@@ -497,15 +459,6 @@ class CocliApp(App[None]):
                 widget_class=EventCurationView, is_branch_root=True
             ),
         }
-
-    def record_command(self, name: str) -> None:
-        """Records a command use in history, moving it to the top."""
-        if name in self.command_history:
-            self.command_history.remove(name)
-        self.command_history.insert(0, name)
-        # Limit history size
-        if len(self.command_history) > 15:
-            self.command_history = self.command_history[:15]
 
     def _start_pi_sync_background(self) -> None:
         """
