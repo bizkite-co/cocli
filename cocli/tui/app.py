@@ -877,8 +877,33 @@ class CocliApp(App[None]):
                 content.mount(company_detail)
                 company_detail.styles.display = "block"
             else:
+                # A "lead" shown in the list can come from raw prospects
+                # data (google_maps_prospects checkpoint) that was never
+                # materialized into a companies/<slug>/ directory -
+                # get_company_details_for_view() requires that directory
+                # to exist and returns None otherwise. The preview pane
+                # doesn't hit this (it renders straight from the search
+                # result, no filesystem lookup), so a lead can preview
+                # fine and still fail to open - confirmed ~47% of "All
+                # Leads" results for roadmap have no directory at all
+                # (Mark, 2026-08-31). This used to be a silent
+                # self.bell() with zero logging, indistinguishable from
+                # any other failure - now at least visible and diagnosable.
+                logger.warning(
+                    f"No company directory for slug={company_slug!r} - "
+                    "likely a discovered prospect never materialized as a company"
+                )
+                self.notify(
+                    f"'{company_slug}' hasn't been imported as a company yet.",
+                    severity="warning",
+                )
                 self.bell()
-        except Exception:
+        except Exception as e:
+            logger.error(
+                f"Failed to open company detail for slug={company_slug!r}: {e}",
+                exc_info=True,
+            )
+            self.notify(f"Failed to open company: {e}", severity="error")
             self.bell()
 
     def update_command_mru(self, name: str) -> None:
