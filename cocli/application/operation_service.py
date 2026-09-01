@@ -878,7 +878,31 @@ class OperationService:
             elif op_id == "op_purge_to_call":
 
                 async def run_purge_to_call() -> Dict[str, Any]:
+                    dry_run = bool(params.get("dry_run"))
                     log_step("purge_pending", "task-start")
+                    if dry_run:
+                        pending_dir = (
+                            paths.campaign(self.campaign_name).path
+                            / "queues"
+                            / "to-call"
+                            / "pending"
+                        )
+                        pending_count = (
+                            len(list(pending_dir.glob("*.usv")))
+                            if pending_dir.exists()
+                            else 0
+                        )
+                        log_step(
+                            "purge_pending",
+                            "success",
+                            f"Dry run: would remove {pending_count} pending tasks",
+                        )
+                        log_step("purge_pending", "task-end")
+                        return {
+                            "status": "success",
+                            "dry_run": True,
+                            "would_purge": pending_count,
+                        }
                     log_step(
                         "purge_pending", "pending", "Clearing existing to-call queue..."
                     )
@@ -887,7 +911,7 @@ class OperationService:
                         "purge_pending", "success", f"{purged} pending tasks removed"
                     )
                     log_step("purge_pending", "task-end")
-                    return {"status": "success", "purged": purged}
+                    return {"status": "success", "dry_run": False, "purged": purged}
 
                 result = await run_purge_to_call()
             elif op_id == "op_analyze_emails":

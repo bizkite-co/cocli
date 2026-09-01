@@ -153,6 +153,12 @@ class ApplicationView(Container):
                                 id="op_purge_checkbox",
                                 value=False,
                             )
+                        with Horizontal(id="op_dry_run_container"):
+                            yield Checkbox(
+                                "Dry run (preview only, writes nothing)",
+                                id="op_dry_run_checkbox",
+                                value=True,
+                            )
                     yield Container(id="op_content_area")
                     with VerticalScroll(id="op_log_preview_container"):
                         yield Static("", id="op_log_preview")
@@ -285,7 +291,11 @@ class ApplicationView(Container):
                 self.query_one("#view_operations").focus()
 
                 # If editable, jump straight into edit mode
-                if self.active_op_id in ["op_compile_to_call", "op_rollout_discovery"]:
+                if self.active_op_id in [
+                    "op_compile_to_call",
+                    "op_rollout_discovery",
+                    "op_purge_to_call",
+                ]:
                     self.action_edit_op_params()
             except Exception:
                 pass
@@ -481,6 +491,7 @@ class ApplicationView(Container):
                 params_area.display = op_id in [
                     "op_compile_to_call",
                     "op_rollout_discovery",
+                    "op_purge_to_call",
                 ]
                 self.query_one("#op_name_container").display = (
                     op_id == "op_rollout_discovery"
@@ -492,6 +503,14 @@ class ApplicationView(Container):
                 self.query_one("#op_purge_container").display = (
                     op_id == "op_compile_to_call"
                 )
+                # Dry run defaults to True and is shown for every operation
+                # that supports it - a destructive one (op_purge_to_call)
+                # needs the same preview-first safety net as compile_to_call
+                # (Mark, 2026-09-01: "Same for purge").
+                self.query_one("#op_dry_run_container").display = op_id in [
+                    "op_compile_to_call",
+                    "op_purge_to_call",
+                ]
                 content_area = self.query_one("#op_content_area", Container)
                 content_area.remove_children()
                 self.query_one("#op_last_run", Label).update(
@@ -572,6 +591,11 @@ class ApplicationView(Container):
                 self.query_one("#op_name_input", Input).focus()
             except Exception:
                 pass
+        elif self.active_op_id == "op_purge_to_call":
+            try:
+                self.query_one("#op_dry_run_checkbox", Checkbox).focus()
+            except Exception:
+                pass
 
     def action_view_full_log(self) -> None:
         if self.current_log_content:
@@ -642,6 +666,13 @@ class ApplicationView(Container):
             params["purge"] = self.query_one(
                 "#op_purge_checkbox", Checkbox
             ).value
+            # Defaults to True (Mark, 2026-09-01: this app is too new to
+            # expect users to know what an operation will do before running
+            # it - the first run from this panel must always be a preview,
+            # not a live write, until the user consciously unchecks it).
+            params["dry_run"] = self.query_one(
+                "#op_dry_run_checkbox", Checkbox
+            ).value
         elif op_id == "op_rollout_discovery":
             try:
                 params["batch_name"] = self.query_one("#op_name_input", Input).value
@@ -653,6 +684,12 @@ class ApplicationView(Container):
         elif op_id == "op_purge_pending":
             # No special params needed for purge for now
             pass
+        elif op_id == "op_purge_to_call":
+            # Defaults to True, same reasoning as op_compile_to_call above -
+            # this is a destructive, whole-queue delete.
+            params["dry_run"] = self.query_one(
+                "#op_dry_run_checkbox", Checkbox
+            ).value
 
         from ..navigation import ProcessRun
 
@@ -662,12 +699,31 @@ class ApplicationView(Container):
 
         try:
             with capture_logs(self.log_callback):
-                await app.services.operation_service.execute(
+                exec_result = await app.services.operation_service.execute(
                     op_id, log_callback=self.log_callback, params=params
                 )
             run_record.status = "success"
-            indicator.update("[bold green]Success[/bold green]")
-            self.app.notify(f"{op.title} Complete")
+            op_result = exec_result.get("result") or {}
+            if op_result.get("dry_run"):
+                indicator.update("[bold yellow]Previewed (dry run) - nothing written[/bold yellow]")
+                if op_id == "op_purge_to_call":
+                    message = (
+                        f"{op.title}: would remove {op_result.get('would_purge', 0)} "
+                        "pending tasks. Uncheck Dry run to actually apply."
+                    )
+                else:
+                    message = (
+                        f"{op.title}: would create {op_result.get('would_create_count', 0)}, "
+                        f"update {op_result.get('would_update_count', 0)}, enqueue "
+                        f"{op_result.get('would_enqueue_count', 0)} (skipped "
+                        f"{op_result.get('skipped_already_pending', 0)} pending, "
+                        f"{op_result.get('skipped_do_not_call', 0)} do-not-call). "
+                        "Uncheck Dry run to actually apply."
+                    )
+                self.app.notify(message)
+            else:
+                indicator.update("[bold green]Success[/bold green]")
+                self.app.notify(f"{op.title} Complete")
         except Exception as e:
             run_record.status = "failed"
             indicator.update("[bold red]Failed[/bold red]")

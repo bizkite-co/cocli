@@ -16,7 +16,6 @@ from cocli.application.data_sync_service import (
 )
 from cocli.application.services import ServiceContainer
 
-logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 app = typer.Typer(no_args_is_help=True)
