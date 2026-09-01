@@ -14,6 +14,7 @@ import pytest
 
 from cocli.application.operation_service import OperationService
 from cocli.core.paths import paths
+from cocli.models.search import SearchResult
 
 
 @pytest.fixture
@@ -76,3 +77,56 @@ async def test_op_purge_to_call_only_deletes_to_call_files(
 
     assert list(pending_to_call_dir.glob("*.usv")) == []
     assert (gm_list_pending / "keep.usv").exists()
+
+
+@pytest.mark.asyncio
+async def test_op_compile_to_call_tags_new_companies_with_campaign_name(
+    tmp_path: Path,
+) -> None:
+    """Regression (Mark, 2026-08-31): op_compile_to_call's "create new
+    company from prospect" branch built a bare Company() with no tags at
+    all, so anything created through this path was invisible to
+    audit_campaign_integrity (which only inspects companies where
+    campaign_name is in company.tags) - discovered while investigating why
+    ~6,055 roadmap prospects have no companies/<slug> directory."""
+    prospect = SearchResult(
+        type="company",
+        unique_id="acme-financial",
+        display="Acme Financial",
+        slug="acme-financial",
+        domain="acmefinancial.com",
+        average_rating=4.5,
+        reviews_count=10,
+        tags=[],
+    )
+
+    captured_company = {}
+
+    def fake_create_company_files(
+        company: object, company_dir: object, rebuild_cache: bool = True
+    ) -> object:
+        captured_company["company"] = company
+        return company_dir
+
+    with patch.object(paths, "root", tmp_path), patch(
+        "cocli.application.search_service.get_fuzzy_search_results",
+        return_value=[prospect],
+    ), patch(
+        "cocli.core.email_index_manager.EmailIndexManager.compact",
+        return_value=None,
+    ), patch(
+        "cocli.models.companies.company.Company.get", return_value=None
+    ), patch(
+        "cocli.core.utils.create_company_files",
+        side_effect=fake_create_company_files,
+    ), patch(
+        "cocli.models.base.write_queue_files", return_value=None
+    ), patch(
+        "cocli.core.cache.build_cache", return_value=None
+    ):
+        service = OperationService(campaign_name="test-campaign")
+        result = await service.execute("op_compile_to_call")
+
+    assert result["status"] == "success"
+    created_company = captured_company["company"]
+    assert "test-campaign" in created_company.tags

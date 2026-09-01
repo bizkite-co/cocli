@@ -408,6 +408,7 @@ class Company(BaseModel):
         email_sync: bool = True,
         base_dir: Optional[Path] = None,
         use_wal: bool = True,
+        rebuild_cache: bool = True,
     ) -> None:
         """Saves the company data to _index.md and tags to tags.lst."""
         from ...core.paths import paths
@@ -449,15 +450,21 @@ class Company(BaseModel):
 
         # 4. Trigger Fuzzy Search Cache Rebuild (Non-blocking)
         # This ensures the TUI sees the new company immediately without a restart.
-        try:
-            from ...core.cache import build_cache
-            import threading
+        # Bulk callers (e.g. backfill_missing_companies_from_prospects) must
+        # pass rebuild_cache=False and do a single rebuild after the loop -
+        # a 4,000-item bulk save spawned 4,000 concurrent full-rebuild
+        # threads with no throttling, driving system load average past 130
+        # before it was killed (Mark, 2026-08-31).
+        if rebuild_cache:
+            try:
+                from ...core.cache import build_cache
+                import threading
 
-            threading.Thread(
-                target=build_cache, kwargs={"campaign": get_campaign()}, daemon=True
-            ).start()
-        except Exception as e:
-            logger.debug(f"Non-critical: Failed to trigger cache rebuild: {e}")
+                threading.Thread(
+                    target=build_cache, kwargs={"campaign": get_campaign()}, daemon=True
+                ).start()
+            except Exception as e:
+                logger.debug(f"Non-critical: Failed to trigger cache rebuild: {e}")
 
         # 3. Sync with Email Index (if a campaign is active)
         if email_sync:

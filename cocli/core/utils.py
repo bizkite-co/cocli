@@ -38,10 +38,16 @@ def get_geo_shard(lat: float, lon: float) -> str:
     o1 = round(float(lon), 1)
     return f"lat_{l1}/lon_{o1}"
 
-def create_company_files(company: Company, company_dir: Path) -> Path:
+def create_company_files(
+    company: Company, company_dir: Path, rebuild_cache: bool = True
+) -> Path:
     """
     Creates the directory and files for a new company, including its _index.md and tags.lst.
     If the company already exists, it updates the _index.md and tags.lst files, merging data.
+
+    Bulk callers should pass rebuild_cache=False and trigger a single
+    build_cache() after their loop - Company.save()'s default spawns a new
+    full cache-rebuild thread per call, which doesn't scale to bulk writes.
     """
     company_dir.mkdir(parents=True, exist_ok=True)
     (company_dir / "contacts").mkdir(exist_ok=True)
@@ -49,15 +55,15 @@ def create_company_files(company: Company, company_dir: Path) -> Path:
 
     # 1. Load existing company if it exists
     existing_company = Company.from_directory(company_dir)
-    
+
     if existing_company:
         # 2. Merge new data into existing one
         existing_company.merge_with(company)
         # 3. Save the merged result
-        existing_company.save(base_dir=company_dir.parent)
+        existing_company.save(base_dir=company_dir.parent, rebuild_cache=rebuild_cache)
     else:
         # 2. Just save the new company
-        company.save(base_dir=company_dir.parent)
+        company.save(base_dir=company_dir.parent, rebuild_cache=rebuild_cache)
 
     return company_dir
 

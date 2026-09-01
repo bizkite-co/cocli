@@ -304,3 +304,94 @@ def get_company_details_for_view(company_slug: str) -> Optional[Dict[str, Any]]:
         "meetings": meetings,
         "notes": notes,
     }
+
+
+def backfill_missing_companies_from_prospects(
+    campaign_name: str, dry_run: bool = True
+) -> Dict[str, Any]:
+    """
+    Materializes companies/<slug> directories for prospects that exist in a
+    campaign's prospects checkpoint but were never compiled into a company
+    record (Mark, 2026-08-31 - ~6,055 of 27,049 roadmap prospect slugs had
+    no companies/<slug> dir; the TUI's detail view requires that directory
+    to exist, so these leads previewed but wouldn't open). Uses the same
+    field mapping as op_compile_to_call's create-from-prospect path
+    (name/phone/rating/reviews/address/domain). Tags every created company
+    with campaign_name (op_compile_to_call's own create path was found to
+    skip this, leaving created companies invisible to
+    audit_campaign_integrity) plus a dated backfill marker, since nothing
+    else records how a company record was created.
+    """
+    import datetime as _datetime
+
+    from ..core.paths import paths
+    from ..core.prospects_csv_manager import ProspectsIndexManager
+    from ..core.utils import create_company_files
+    from ..models.campaigns.indexes.google_maps_prospect import GoogleMapsProspect
+    from ..models.company_name import CompanyName
+
+    companies_dir = paths.companies.path
+    # A bare directory isn't a real company record: the enrichment worker's
+    # Website.save() creates companies/<slug>/enrichments/ as a side effect
+    # of mkdir(parents=True) for slugs that don't have a company yet (126
+    # such shells found in production, 2026-08-31), leaving no _index.md.
+    # Company.from_directory() already treats that the same as "not found"
+    # (get_company_details_for_view -> None), so those slugs need the same
+    # backfill as ones with no directory at all.
+    existing_slugs = (
+        {p.name for p in companies_dir.iterdir() if p.is_dir() and (p / "_index.md").exists()}
+        if companies_dir.exists()
+        else set()
+    )
+
+    manager = ProspectsIndexManager(campaign_name)
+
+    # Last-write-wins per slug: read_all_prospects() yields the cold
+    # checkpoint first, then hotter WAL entries - a later entry for the
+    # same slug is the fresher record.
+    prospects_by_slug: Dict[str, GoogleMapsProspect] = {}
+    for prospect in manager.read_all_prospects():
+        if not prospect.slug or prospect.slug in existing_slugs:
+            continue
+        prospects_by_slug[prospect.slug] = prospect
+
+    backfill_tag = f"backfilled-from-prospects-{_datetime.date.today().isoformat()}"
+    created_slugs = []
+    for slug, prospect in prospects_by_slug.items():
+        company_name = (
+            str(prospect.name).strip("\"'")
+            if prospect.name
+            else slug.replace("-", " ").title()
+        )
+        company = Company(
+            name=CompanyName(company_name),
+            slug=slug,
+            phone_1=prospect.phone,
+            phone_number=prospect.phone,
+            average_rating=prospect.average_rating,
+            reviews_count=prospect.reviews_count,
+            street_address=prospect.street_address,
+            city=prospect.city,
+            state=prospect.state,
+            zip_code=prospect.zip,
+            domain=prospect.domain,
+            tags=[campaign_name, backfill_tag],
+        )
+        if not dry_run:
+            create_company_files(company, company.get_local_path(), rebuild_cache=False)
+        created_slugs.append(slug)
+
+    if not dry_run and created_slugs:
+        from ..core.cache import build_cache
+
+        build_cache(campaign=campaign_name)
+
+    return {
+        "campaign_name": campaign_name,
+        "existing_company_count": len(existing_slugs),
+        "missing_count": len(created_slugs),
+        "created_count": 0 if dry_run else len(created_slugs),
+        "dry_run": dry_run,
+        "tag": backfill_tag,
+        "slugs": created_slugs,
+    }

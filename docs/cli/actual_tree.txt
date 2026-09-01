@@ -314,6 +314,9 @@ cocli
         top - Real-time performance monitor for the cluster (CPU, Temp, Workers).
             --campaign/-c (text)
     companies - Commands for managing companies.
+        backfill-from-prospects - Materializes companies/<slug> directories for prospects that exist in a
+            --campaign/-c (text) [required]
+            --execute (boolean)
         list-recent - Lists the most recently created companies.
             --count/-c (integer)
     compile-enrichment - Compiles enrichment data from various sources into the main company _index.md files.

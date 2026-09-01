@@ -30,3 +30,35 @@ def list_recent(
         if i >= count:
             break
         console.print(f"- {company_dir.name}")
+
+
+@app.command("backfill-from-prospects")
+def backfill_from_prospects(
+    campaign: str = typer.Option(
+        ..., "--campaign", "-c", help="Campaign whose prospects checkpoint to backfill from."
+    ),
+    execute: bool = typer.Option(
+        False,
+        "--execute",
+        help="Actually create the company directories. Without this flag, only reports what would be created.",
+    ),
+) -> None:
+    """
+    Materializes companies/<slug> directories for prospects that exist in a
+    campaign's prospects checkpoint but were never compiled into a company
+    record. Defaults to a dry run; pass --execute to write.
+    """
+    from ..application.company_service import backfill_missing_companies_from_prospects
+
+    result = backfill_missing_companies_from_prospects(campaign, dry_run=not execute)
+
+    console.print(f"[bold]Campaign:[/bold] {result['campaign_name']}")
+    console.print(f"[bold]Existing companies (data-root wide):[/bold] {result['existing_company_count']}")
+    console.print(f"[bold]Prospects with no company directory:[/bold] {result['missing_count']}")
+    if execute:
+        console.print(f"[bold green]Created:[/bold green] {result['created_count']} (tag: {result['tag']})")
+    else:
+        console.print(
+            f"[yellow]Dry run - no files written. Re-run with --execute to create "
+            f"{result['missing_count']} companies tagged '{campaign}' and '{result['tag']}'.[/yellow]"
+        )
