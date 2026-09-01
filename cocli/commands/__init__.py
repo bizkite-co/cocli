@@ -13,6 +13,7 @@ def register_commands(app: typer.Typer) -> None:
     from . import enrich_customers
     from . import enrich_shopify_data
     from . import exclude
+    from . import do_not_call
     from . import flag_email_providers
     from . import fz
     from . import help_search
@@ -72,6 +73,7 @@ def register_commands(app: typer.Typer) -> None:
     app.add_typer(campaign.app, name="campaign")
     app.add_typer(dev.app, name="dev")
     app.add_typer(exclude.app, name="exclude")
+    app.add_typer(do_not_call.app, name="do-not-call")
     app.add_typer(deduplicate.app, name="deduplicate")
     app.add_typer(render.app, name="render")
     app.add_typer(smart_sync.app, name="smart-sync")

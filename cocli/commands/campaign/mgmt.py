@@ -529,15 +529,24 @@ def compile_to_call(
     ),
 ) -> None:
     """
-    Compiles prospects to a To-Call list:
+    Compiles prospects to a To-Call list. "Add more" (no --purge) is the
+    standard way to run this - it never re-adds a slug already pending and
+    never adds anyone on the shared do-not-call list, so it's safe to run
+    repeatedly as new leads come in without disturbing what's already queued
+    or dispositioned:
+
     1. Consolidates GM results and compacts index.
     2. Compacts email index.
     3. Identifies top leads: ranked by rating x review count (descending),
        must have both a rating and a review count on record, plus contact
        info (email or phone) - no artificial rating/review-count cutoff, so
        the best available candidates surface even in thinner markets.
+       Excludes companies on the exclusion list (per-campaign or shared/
+       global, `cocli exclude`) and anyone whose phone is on the shared
+       do-not-call list (`cocli do-not-call`).
     4. (Optional, --purge) Clears the existing pending to-call queue.
-    5. Adds top leads to the 'to-call' queue.
+    5. Adds top leads to the 'to-call' queue - skips any candidate already
+       pending (no wasted rewrite) or on the do-not-call list.
 
     --dry-run runs step 3 for real (read-only) and reports what steps 1, 2,
     4, and 5 would do, without writing anything - useful as a smoke test
@@ -573,7 +582,9 @@ def compile_to_call(
                     f"\n[bold]Dry run - nothing written.[/bold] Would create "
                     f"{op_result.get('would_create_count', 0)} companies, update "
                     f"{op_result.get('would_update_count', 0)}, enqueue "
-                    f"{op_result.get('would_enqueue_count', 0)} to-call tasks."
+                    f"{op_result.get('would_enqueue_count', 0)} to-call tasks "
+                    f"(skipped {op_result.get('skipped_already_pending', 0)} already "
+                    f"pending, {op_result.get('skipped_do_not_call', 0)} do-not-call)."
                 )
                 sample = op_result.get("sample_slugs") or []
                 if sample:
@@ -581,7 +592,9 @@ def compile_to_call(
             else:
                 console.print(
                     f"\n[bold green]Successfully compiled To-Call list for "
-                    f"'{name}'.[/bold green]"
+                    f"'{name}'.[/bold green] Enqueued {op_result.get('created_count', 0)} "
+                    f"(skipped {op_result.get('skipped_already_pending', 0)} already "
+                    f"pending, {op_result.get('skipped_do_not_call', 0)} do-not-call)."
                 )
         else:
             console.print(

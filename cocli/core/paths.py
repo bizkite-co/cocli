@@ -364,6 +364,19 @@ class DataPaths:
         return CollectionPaths(lambda: self.root / "people")
 
     @property
+    def do_not_call(self) -> Path:
+        """Shared, campaign-independent do-not-call registry (keyed by
+        phone - a person's DNC status follows them, not a campaign)."""
+        return self.root / "do-not-call"
+
+    @property
+    def global_exclusions(self) -> Path:
+        """Shared company-level exclusion list, checked in addition to
+        (not instead of) each campaign's own exclusions - see
+        core/exclusions.py."""
+        return self.root / "exclusions"
+
+    @property
     def wal(self) -> WalPaths:
         return WalPaths(lambda: self.root / "wal")
 

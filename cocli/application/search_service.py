@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import List, Optional, Any, cast, Dict
 from cocli.core.cache import get_cache_path, CACHE_FILE_NAME
 from cocli.core.config import get_campaign
-from cocli.core.exclusions import ExclusionManager
+from cocli.core.exclusions import list_all_exclusions
 from cocli.models.search import SearchResult
 from cocli.models.company_name import CompanyName
 from cocli.models.company_address import CompanyAddress
@@ -450,11 +450,32 @@ def get_fuzzy_search_results(
 
                 _con.execute("CREATE TABLE items_to_call (slug VARCHAR)")
                 if to_call_pending_dir and to_call_pending_dir.exists():
-                    items = [
-                        [f.replace(".usv", "")]
-                        for f in os.listdir(to_call_pending_dir)
-                        if f.endswith(".usv")
-                    ]
+                    # A pending task with a future callback_at is a
+                    # scheduled follow-up, not due yet (Mark, 2026-09-01:
+                    # scheduled/ used to be a separate directory nothing
+                    # ever read back, so follow-ups silently vanished -
+                    # merged into pending/ with callback_at as the due date
+                    # instead). Only surface tasks that are actually due.
+                    from cocli.models.campaigns.queues.to_call import ToCallTask
+                    from datetime import datetime, UTC
+
+                    now = datetime.now(UTC)
+                    items = []
+                    for fname in os.listdir(to_call_pending_dir):
+                        if not fname.endswith(".usv"):
+                            continue
+                        slug = fname.replace(".usv", "")
+                        try:
+                            content = (to_call_pending_dir / fname).read_text()
+                            task = ToCallTask.from_usv(content)
+                            due = task.callback_at is None or task.callback_at <= now
+                        except Exception:
+                            # Malformed/unparsable file - fall back to the
+                            # previous filename-only behavior (due now)
+                            # rather than silently dropping it.
+                            due = True
+                        if due:
+                            items.append([slug])
                     if items:
                         _con.executemany("INSERT INTO items_to_call VALUES (?)", items)
 
@@ -635,7 +656,7 @@ def get_fuzzy_search_results(
             res = _con.execute(sql, params).fetchall()
 
             # 4. Filter Exclusions
-            exclusions = ExclusionManager(campaign or "").list_exclusions()
+            exclusions = list_all_exclusions(campaign or "")
             excluded_slugs = {e.company_slug for e in exclusions if e.company_slug}
             excluded_domains = {e.domain for e in exclusions if e.domain}
 

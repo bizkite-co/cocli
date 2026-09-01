@@ -175,7 +175,11 @@ def test_to_call_task_path_resolution(to_call_integration_env):
         f"Path should contain company slug: {path1}"
     )
 
-    # Scheduled task should go to scheduled/YYYY/MM/DD/
+    # A scheduled follow-up (callback_at set) also goes to pending/ now -
+    # Mark, 2026-09-01: the old separate scheduled/YYYY/MM/DD/ directory was
+    # never read back by anything, so a scheduled follow-up silently
+    # vanished once its date arrived. callback_at is the due date, checked
+    # by whatever reads the queue, not encoded in the path.
     from datetime import datetime
 
     task2 = ToCallTask(
@@ -187,7 +191,47 @@ def test_to_call_task_path_resolution(to_call_integration_env):
     )
 
     path2 = task2.get_local_path()
-    assert "scheduled" in str(path2), f"Scheduled task should be in scheduled: {path2}"
-    assert "2026" in str(path2), f"Path should contain year: {path2}"
-    assert "03" in str(path2), f"Path should contain month: {path2}"
-    assert "30" in str(path2), f"Path should contain day: {path2}"
+    assert "pending" in str(path2), f"Scheduled task should also be in pending: {path2}"
+    assert "test-company-2.usv" in str(path2), (
+        f"Path should contain company slug: {path2}"
+    )
+
+
+def test_a_future_scheduled_task_does_not_show_as_due_yet(to_call_integration_env):
+    """Regression (Mark, 2026-09-01): a pending task with a future
+    callback_at is a scheduled follow-up, not something due right now -
+    is_to_call/the to_call filter must not surface it until its date
+    arrives, otherwise "add more" would treat it as already-pending
+    correctly, but anything reading "what's due today" would call it too
+    early."""
+    from datetime import datetime, timedelta, UTC
+
+    campaign, _ = to_call_integration_env
+
+    due_now = ToCallTask(
+        company_slug="company-with-rating-1",
+        domain="high.example.com",
+        campaign_name=campaign,
+        ack_token=None,
+    )
+    due_now.save()
+
+    not_due_yet = ToCallTask(
+        company_slug="company-with-rating-2",
+        domain="good.example.com",
+        campaign_name=campaign,
+        ack_token=None,
+        callback_at=datetime.now(UTC) + timedelta(days=30),
+    )
+    not_due_yet.save()
+
+    to_call_results = get_fuzzy_search_results(
+        "",
+        filters={"to_call": True},
+        campaign_name=campaign,
+        force_rebuild_cache=True,
+    )
+    due_slugs = {r.slug for r in to_call_results}
+
+    assert "company-with-rating-1" in due_slugs
+    assert "company-with-rating-2" not in due_slugs

@@ -9,9 +9,12 @@ from .paths import paths
 logger = logging.getLogger(__name__)
 
 class ExclusionManager:
-    def __init__(self, campaign: str):
+    def __init__(self, campaign: str, global_scope: bool = False):
         self.campaign = campaign
-        self.exclude_dir = paths.campaign_exclusions(campaign)
+        self.global_scope = global_scope
+        self.exclude_dir = (
+            paths.global_exclusions if global_scope else paths.campaign_exclusions(campaign)
+        )
         self.exclude_dir.mkdir(parents=True, exist_ok=True)
         # In-memory cache for fast lookup
         self._slug_map: Dict[str, Exclusion] = {}
@@ -90,3 +93,12 @@ class ExclusionManager:
         for exc in self._domain_map.values():
             unique[id(exc)] = exc
         return list(unique.values())
+
+
+def list_all_exclusions(campaign: str) -> List[Exclusion]:
+    """All exclusions that apply to this campaign: its own campaign-scoped
+    list plus the shared/global one - either excludes (Mark, 2026-09-01:
+    a company can be excluded everywhere, or just for one campaign/vertical)."""
+    return ExclusionManager(campaign).list_exclusions() + ExclusionManager(
+        campaign, global_scope=True
+    ).list_exclusions()

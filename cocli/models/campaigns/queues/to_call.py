@@ -30,9 +30,16 @@ class ToCallTask(QueueMessage):
 
     def get_local_path(self) -> Path:
         """
-        Returns the local path for the task file.
-        Active: queues/{campaign}/to-call/pending/{company_slug}.usv
-        Scheduled: queues/{campaign}/to-call/scheduled/{YYYY}/{MM}/{DD}/{YYYYMMDD_HHMMSS}_{slug}.usv
+        Returns the local path for the task file:
+        queues/{campaign}/to-call/pending/{company_slug}.usv
+
+        Mark, 2026-09-01: previously a task with callback_at set went to a
+        separate date-sharded scheduled/ directory - but nothing ever read
+        that directory back, so a scheduled follow-up silently vanished
+        once its date arrived. Everything now lives in pending/; callback_at
+        is the due date, checked by whatever reads the queue (see
+        search_service.py's items_to_call population) rather than encoded
+        in the path.
         """
         # FDPE: Local import to ensure we respect current re-rooted paths authority
         from ....core.paths import paths
@@ -42,14 +49,7 @@ class ToCallTask(QueueMessage):
         # Sanitize company_slug to avoid path issues (e.g., "/" in "24/7" becomes subdirectory)
         safe_slug = self.company_slug.replace("/", "-").replace("\\", "-")
 
-        if self.callback_at:
-            # Date-sharded: scheduled/YYYY/MM/DD/TIMESTAMP_slug.usv
-            date_dir = self.callback_at.strftime("%Y/%m/%d")
-            ts_prefix = self.callback_at.strftime("%Y%m%d_%H%M%S")
-            return base_queue / "scheduled" / date_dir / f"{ts_prefix}_{safe_slug}.usv"
-        else:
-            # Active: pending/slug.usv
-            return base_queue / "pending" / f"{safe_slug}.usv"
+        return base_queue / "pending" / f"{safe_slug}.usv"
 
     def save(self) -> None:
         """Saves the task to its sharded local path in USV format."""

@@ -136,7 +136,7 @@ cocli
             --batch (text)
         compile-lifecycle - Compiles the lifecycle index from local completed queues.
             campaign_name (text)
-        compile-to-call - Compiles prospects to a To-Call list:
+        compile-to-call - Compiles prospects to a To-Call list. "Add more" (no --purge) is the
             campaign_name (text)
             --limit (integer)
             --purge (boolean)
@@ -164,15 +164,18 @@ cocli
                 --campaign (text)
                 --windows (integer)
         exclude - Manage campaign-specific exclusions
-            add - Excludes a company (by slug or domain) from a campaign.
+            add - Excludes a company (by slug or domain) from a campaign, or globally
                 target (text) [required]
-                --campaign/-c (text) [required]
+                --campaign/-c (text)
                 --reason/-r (text)
-            list - Lists all exclusions for a campaign.
-                --campaign/-c (text) [required]
-            remove - Removes an exclusion from a campaign.
+                --scope (text)
+            list - Lists exclusions for a campaign, or the shared global list (--scope global).
+                --campaign/-c (text)
+                --scope (text)
+            remove - Removes an exclusion from a campaign, or from the global list (--scope global).
                 target (text) [required]
-                --campaign/-c (text) [required]
+                --campaign/-c (text)
+                --scope (text)
         export-resources - Aggregates and exports "Value-First" resources from the campaign index.
             campaign_name (text)
         generate-grid - Generates a 0.1-degree aligned scrape grid for each target location in the campaign.
@@ -395,6 +398,13 @@ cocli
             campaign_name (text)
             --stage/-s (integer)
             --dry-run (boolean)
+    do-not-call - Manage the shared, company-wide do-not-call list (keyed by phone number).
+        add - Adds a phone number to the shared do-not-call list. Applies across all
+            phone (text) [required]
+            --reason/-r (text)
+        list - Lists every phone number on the shared do-not-call list.
+        remove - Removes a phone number from the shared do-not-call list.
+            phone (text) [required]
     enrich - Commands for enriching company data.
         contacts - Scrape contact information from a company's website and add/update them in the CRM.
             company_name (text) [required]
@@ -414,16 +424,19 @@ cocli
         --headed (boolean)
         --devtools (boolean)
         --debug (boolean)
-    exclude - Manage campaign-specific exclusions
-        add - Excludes a company (by slug or domain) from a campaign.
+    exclude - Manage campaign and shared exclusions
+        add - Excludes a company (by slug or domain) from a campaign, or globally
             target (text) [required]
-            --campaign/-c (text) [required]
+            --campaign/-c (text)
             --reason/-r (text)
-        list - Lists all exclusions for a campaign.
-            --campaign/-c (text) [required]
-        remove - Removes an exclusion from a campaign.
+            --scope (text)
+        list - Lists exclusions for a campaign, or the shared global list (--scope global).
+            --campaign/-c (text)
+            --scope (text)
+        remove - Removes an exclusion from a campaign, or from the global list (--scope global).
             target (text) [required]
-            --campaign/-c (text) [required]
+            --campaign/-c (text)
+            --scope (text)
     flag-email-providers - Flags a list of domains as email providers in the website cache.
         domains (text) [required]
     fz - Fuzzy search for companies and people using fzf and open the selection.

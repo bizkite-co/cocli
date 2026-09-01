@@ -197,3 +197,92 @@ async def test_op_compile_to_call_dry_run_writes_nothing(tmp_path: Path) -> None
     mock_write_queue.assert_not_called()
     mock_build_cache.assert_not_called()
     existing_company.save.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_op_compile_to_call_add_more_skips_pending_and_do_not_call(
+    tmp_path: Path,
+) -> None:
+    """Regression (Mark, 2026-09-01): "add more" is the standard population
+    strategy - running compile-to-call again while some tasks are still
+    pending must not re-add them (wasted rewrite) or resurrect anyone on
+    the shared do-not-call list. Both checks happen before any company
+    write, so a skip costs nothing."""
+    from cocli.core.do_not_call_manager import DoNotCallManager
+
+    already_pending = SearchResult(
+        type="company",
+        unique_id="already-pending-co",
+        display="Already Pending Co",
+        slug="already-pending-co",
+        domain="alreadypending.com",
+        average_rating=5.0,
+        reviews_count=100,
+        tags=[],
+    )
+    do_not_call = SearchResult(
+        type="company",
+        unique_id="dnc-co",
+        display="DNC Co",
+        slug="dnc-co",
+        domain="dncco.com",
+        phone_number="512-234-5678",
+        average_rating=4.9,
+        reviews_count=90,
+        tags=[],
+    )
+    fresh = SearchResult(
+        type="company",
+        unique_id="fresh-co",
+        display="Fresh Co",
+        slug="fresh-co",
+        domain="freshco.com",
+        average_rating=4.8,
+        reviews_count=80,
+        tags=[],
+    )
+
+    with patch.object(paths, "root", tmp_path):
+        pending_dir = paths.campaign("test-campaign").path / "queues" / "to-call" / "pending"
+        pending_dir.mkdir(parents=True)
+        (pending_dir / "already-pending-co.usv").write_text("stale content")
+
+        DoNotCallManager().add("512-234-5678")
+
+        with patch(
+            "cocli.application.search_service.get_fuzzy_search_results",
+            return_value=[already_pending, do_not_call, fresh],
+        ), patch(
+            "cocli.core.email_index_manager.EmailIndexManager.compact"
+        ), patch(
+            "cocli.models.companies.company.Company.get", return_value=None
+        ) as mock_get, patch(
+            "cocli.core.utils.create_company_files"
+        ) as mock_create, patch(
+            "cocli.models.base.write_queue_files"
+        ) as mock_write_queue, patch(
+            "cocli.core.cache.build_cache"
+        ):
+            service = OperationService(campaign_name="test-campaign")
+            result = await service.execute("op_compile_to_call", params={})
+
+    assert result["status"] == "success"
+    op_result = result["result"]
+    assert op_result["created_count"] == 1
+    assert op_result["skipped_already_pending"] == 1
+    assert op_result["skipped_do_not_call"] == 1
+
+    # Only fresh-co should ever have been looked up/created - the other two
+    # were skipped before any company or queue write.
+    mock_get.assert_called_once_with("fresh-co")
+    mock_create.assert_called_once()
+    created_company = mock_create.call_args.args[0]
+    assert created_company.slug == "fresh-co"
+    mock_write_queue.assert_called_once()
+    items = mock_write_queue.call_args.kwargs["items"]
+    assert [t.company_slug for t in items] == ["fresh-co"]
+
+    # The already-pending file must not have been rewritten.
+    with patch.object(paths, "root", tmp_path):
+        pending_dir = paths.campaign("test-campaign").path / "queues" / "to-call" / "pending"
+        assert (pending_dir / "already-pending-co.usv").read_text() == "stale content"

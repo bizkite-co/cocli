@@ -693,6 +693,8 @@ class OperationService:
                     log_step("tag_leads", "task-start")
                     log_step("tag_leads", "pending")
                     created = 0
+                    skipped_already_pending = 0
+                    skipped_do_not_call = 0
                     would_create = 0
                     would_update = 0
                     sample_slugs: List[str] = []
@@ -700,109 +702,137 @@ class OperationService:
                     from cocli.models.companies.company import Company
                     from cocli.models.company_name import CompanyName
                     from cocli.models.campaigns.queues.to_call import ToCallTask
+                    from cocli.core.do_not_call_manager import DoNotCallManager
+                    from cocli.core.paths import paths as _cc_paths
                     tasks_to_save = []
+
+                    # "Add more" is the standard population strategy (Mark,
+                    # 2026-09-01): never re-add a slug already pending (it
+                    # would just be an expensive no-op rewrite of the same
+                    # file), and never add anyone on the shared do-not-call
+                    # list, keyed by phone.
+                    to_call_pending_dir = (
+                        _cc_paths.campaign(self.campaign_name).path
+                        / "queues"
+                        / "to-call"
+                        / "pending"
+                    )
+                    dnc_manager = DoNotCallManager()
 
                     for p in top_prospects:
                         if limit and created >= limit:
                             break
 
-                        if p.slug:
-                            company = await asyncio.to_thread(Company.get, p.slug)
-                            if company:
-                                score = (p.average_rating or 0) * (p.reviews_count or 0)
-                                logger.info(
-                                    f"Processing Lead: {p.slug} | Score: {score:.1f} (R: {p.average_rating}, C: {p.reviews_count})"
-                                )
-
-                                if dry_run:
-                                    would_update += 1
-                                else:
-                                    # Hydrate metadata from index if missing or messy
-                                    if (
-                                        p.average_rating is not None
-                                        and not company.average_rating
-                                    ):
-                                        company.average_rating = p.average_rating
-                                    if (
-                                        p.reviews_count is not None
-                                        and not company.reviews_count
-                                    ):
-                                        company.reviews_count = p.reviews_count
-
-                                    # CLEAN NAME: Remove double quotes
-                                    if p.name:
-                                        clean_name = p.name.strip("\"'")
-                                        if clean_name and clean_name != company.name:
-                                            company.name = clean_name
-
-                                    # Save updated metadata
-                                    await asyncio.to_thread(company.save, rebuild_cache=False)
-                                    logger.info(f"Updated {p.slug}")
-                            else:
-                                if dry_run:
-                                    would_create += 1
-                                else:
-                                    # Company doesn't exist - create from prospect data
-                                    logger.info(
-                                        f"Creating new company from prospect: {p.slug}"
-                                    )
-                                    from cocli.core.utils import create_company_files
-
-                                    company_name = (
-                                        str(p.name).strip("\"'")
-                                        if p.name
-                                        else p.slug.replace("-", " ").title()
-                                    )
-                                    new_company = Company(
-                                        name=CompanyName(company_name),
-                                        slug=p.slug,
-                                        phone_1=p.phone_number,
-                                        phone_number=p.phone_number,
-                                        average_rating=p.average_rating,
-                                        reviews_count=p.reviews_count,
-                                        street_address=p.street_address,
-                                        city=p.city,
-                                        state=p.state,
-                                        zip_code=p.zip,
-                                        domain=p.domain,
-                                        tags=list(
-                                            dict.fromkeys([*p.tags, self.campaign_name])
-                                        ),
-                                    )
-                                    company_dir = create_company_files(
-                                        new_company,
-                                        new_company.get_local_path(),
-                                        rebuild_cache=False,
-                                    )
-                                    logger.info(f"Created company at {company_dir}")
-
-                            if len(sample_slugs) < 10:
-                                sample_slugs.append(p.slug)
-
-                            if not dry_run:
-                                # ADD TO QUEUE
-                                task = ToCallTask(
-                                    company_slug=p.slug,
-                                    domain=p.domain or "unknown",
-                                    campaign_name=self.campaign_name,
-                                    ack_token=None,
-                                )
-                                tasks_to_save.append(task)
-                            created += 1
-                            logger.info(f"Enqueued to-call: {p.slug}")
-                        else:
+                        if not p.slug:
                             logger.warning(f"Prospect {p} has no slug")
+                            continue
+
+                        pending_path = to_call_pending_dir / f"{p.slug}.usv"
+                        if pending_path.exists():
+                            skipped_already_pending += 1
+                            continue
+
+                        if p.phone_number and dnc_manager.is_do_not_call(str(p.phone_number)):
+                            skipped_do_not_call += 1
+                            continue
+
+                        company = await asyncio.to_thread(Company.get, p.slug)
+                        if company:
+                            score = (p.average_rating or 0) * (p.reviews_count or 0)
+                            logger.info(
+                                f"Processing Lead: {p.slug} | Score: {score:.1f} (R: {p.average_rating}, C: {p.reviews_count})"
+                            )
+
+                            if dry_run:
+                                would_update += 1
+                            else:
+                                # Hydrate metadata from index if missing or messy
+                                if (
+                                    p.average_rating is not None
+                                    and not company.average_rating
+                                ):
+                                    company.average_rating = p.average_rating
+                                if (
+                                    p.reviews_count is not None
+                                    and not company.reviews_count
+                                ):
+                                    company.reviews_count = p.reviews_count
+
+                                # CLEAN NAME: Remove double quotes
+                                if p.name:
+                                    clean_name = p.name.strip("\"'")
+                                    if clean_name and clean_name != company.name:
+                                        company.name = clean_name
+
+                                # Save updated metadata
+                                await asyncio.to_thread(company.save, rebuild_cache=False)
+                                logger.info(f"Updated {p.slug}")
+                        else:
+                            if dry_run:
+                                would_create += 1
+                            else:
+                                # Company doesn't exist - create from prospect data
+                                logger.info(
+                                    f"Creating new company from prospect: {p.slug}"
+                                )
+                                from cocli.core.utils import create_company_files
+
+                                company_name = (
+                                    str(p.name).strip("\"'")
+                                    if p.name
+                                    else p.slug.replace("-", " ").title()
+                                )
+                                new_company = Company(
+                                    name=CompanyName(company_name),
+                                    slug=p.slug,
+                                    phone_1=p.phone_number,
+                                    phone_number=p.phone_number,
+                                    average_rating=p.average_rating,
+                                    reviews_count=p.reviews_count,
+                                    street_address=p.street_address,
+                                    city=p.city,
+                                    state=p.state,
+                                    zip_code=p.zip,
+                                    domain=p.domain,
+                                    tags=list(
+                                        dict.fromkeys([*p.tags, self.campaign_name])
+                                    ),
+                                )
+                                company_dir = create_company_files(
+                                    new_company,
+                                    new_company.get_local_path(),
+                                    rebuild_cache=False,
+                                )
+                                logger.info(f"Created company at {company_dir}")
+
+                        if len(sample_slugs) < 10:
+                            sample_slugs.append(p.slug)
+
+                        if not dry_run:
+                            # ADD TO QUEUE
+                            task = ToCallTask(
+                                company_slug=p.slug,
+                                domain=p.domain or "unknown",
+                                campaign_name=self.campaign_name,
+                                ack_token=None,
+                            )
+                            tasks_to_save.append(task)
+                        created += 1
+                        logger.info(f"Enqueued to-call: {p.slug}")
 
                     if dry_run:
                         report["would_create_count"] = would_create
                         report["would_update_count"] = would_update
                         report["would_enqueue_count"] = created
+                        report["skipped_already_pending"] = skipped_already_pending
+                        report["skipped_do_not_call"] = skipped_do_not_call
                         report["sample_slugs"] = sample_slugs
                         log_step(
                             "tag_leads",
                             "success",
                             f"Dry run: would create {would_create}, update {would_update}, "
-                            f"enqueue {created} to-call tasks",
+                            f"enqueue {created} to-call tasks (skipped {skipped_already_pending} "
+                            f"already pending, {skipped_do_not_call} do-not-call)",
                         )
                         log_step("tag_leads", "task-end")
                         log_step("job-end", "success")
@@ -825,7 +855,15 @@ class OperationService:
                             resource_path="**/*.usv",
                         )
 
-                    log_step("tag_leads", "success")
+                    report["created_count"] = created
+                    report["skipped_already_pending"] = skipped_already_pending
+                    report["skipped_do_not_call"] = skipped_do_not_call
+                    log_step(
+                        "tag_leads",
+                        "success",
+                        f"Enqueued {created} (skipped {skipped_already_pending} already "
+                        f"pending, {skipped_do_not_call} do-not-call)",
+                    )
                     log_step("tag_leads", "task-end")
                     log_step("job-end", "success")
 

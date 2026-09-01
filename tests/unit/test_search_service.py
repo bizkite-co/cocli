@@ -112,12 +112,13 @@ def test_get_fuzzy_search_results_exclusions(populated_env, mocker):
     """Test that excluded items are filtered out."""
     from cocli.models.campaigns.indexes.exclusion import Exclusion
 
-    # Mock ExclusionManager to return one excluded company
+    # Mock list_all_exclusions (campaign + shared/global, combined) to
+    # return one excluded company
     mock_exclusion = Exclusion(
         domain=None, company_slug="bizkite", campaign="test/default"
     )
     mocker.patch(
-        "cocli.application.search_service.ExclusionManager.list_exclusions",
+        "cocli.application.search_service.list_all_exclusions",
         return_value=[mock_exclusion],
     )
 
