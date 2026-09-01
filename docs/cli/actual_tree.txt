@@ -695,6 +695,10 @@ cocli
             --profile (text)
             --bucket (text)
             --domain (text)
+        export-emails - Refreshes and uploads just the customer-facing enriched-emails CSV/USV -
+            --campaign-name/--campaign (text)
+            --profile (text)
+            --bucket (text)
         report - Generates a JSON report for the campaign.
             --campaign-name/--campaign (text)
             --output (path)

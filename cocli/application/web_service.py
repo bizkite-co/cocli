@@ -1,8 +1,10 @@
+import subprocess
 import toml
 import boto3
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, Callable
 from cocli.core.config import get_campaign_dir
 from cocli.core.reporting import get_campaign_stats, get_exclusions_data, get_queries_data, get_locations_data
+from cocli.application.lead_export_service import LeadExportResult
 
 class WebService:
     def __init__(self, campaign_name: str):
@@ -143,3 +145,86 @@ class WebService:
             "queries": queries,
             "locations": locations,
         }
+
+    def export_and_upload_emails_csv(
+        self,
+        s3_client: Any,
+        bucket_name: str,
+        log_callback: Optional[Callable[[str], None]] = None,
+    ) -> LeadExportResult:
+        """
+        Refreshes the customer-facing enriched-emails CSV end to end: pulls
+        fresh gm-list/gm-details/enrichment results and WAL data from the Pi
+        cluster, compacts the prospects index, regenerates the export
+        USV/CSV, and uploads both to S3.
+
+        This is the data-refresh subset of `cocli web deploy`, split out
+        (2026-09-01) so it can run on its own cadence - needs AWS/1Password
+        auth, so it's run manually - without also rebuilding/redeploying the
+        static site shell (npm build + CDK output fetch), which stays a
+        deliberate manual action via `web deploy`.
+        """
+        from cocli.application.index_service import IndexService
+        from cocli.application.lead_export_service import export_enriched_emails
+
+        def log(msg: str) -> None:
+            if log_callback:
+                log_callback(msg)
+
+        log(
+            "Syncing gm-list/gm-details/enrichment results from Pi cluster "
+            f"for {self.campaign_name}..."
+        )
+        try:
+            subprocess.run(
+                ["uv", "run", "cocli", "sync", "pi-results", "--campaign", self.campaign_name],
+                check=True,
+            )
+        except Exception as e:
+            log(f"Warning: Could not sync Pi results: {e}")
+
+        log(f"Syncing google_maps_prospects WAL from Pi cluster for {self.campaign_name}...")
+        try:
+            from cocli.application.pi_sync_service import PiSyncService
+
+            wal_sync_results = PiSyncService(self.campaign_name).sync_prospect_wal_to_s3(
+                index_name="google_maps_prospects"
+            )
+            for r in wal_sync_results:
+                if r.success:
+                    log(f"  {r.host}: pushed {r.files_synced} WAL files")
+                else:
+                    log(f"  {r.host}: WAL sync failed - {r.error}")
+        except Exception as e:
+            log(f"Warning: Could not sync Pi WAL to S3: {e}")
+
+        log(f"Compacting google_maps_prospects index for {self.campaign_name}...")
+        try:
+            compact_result = IndexService(self.campaign_name).compact(
+                index_name="google_maps_prospects", log_callback=log
+            )
+            if not compact_result.success:
+                log(f"Warning: compaction failed: {compact_result.message}")
+        except Exception as e:
+            log(f"Warning: Could not compact google_maps_prospects index: {e}")
+
+        log("Regenerating export CSV...")
+        export_result = export_enriched_emails(self.campaign_name)
+        log(f"Exported {export_result.exported_count} companies")
+
+        s3_client.upload_file(
+            str(export_result.output_usv), bucket_name, f"exports/{self.campaign_name}-emails.usv"
+        )
+        s3_client.upload_file(
+            str(export_result.output_csv),
+            bucket_name,
+            f"exports/{self.campaign_name}-emails.csv",
+            ExtraArgs={
+                "ContentType": "text/csv",
+                "ContentDisposition": f'attachment; filename="{self.campaign_name}-emails.csv"',
+                "CacheControl": "no-cache, must-revalidate",
+            },
+        )
+        log(f"Uploaded exports/{self.campaign_name}-emails.{{usv,csv}} to s3://{bucket_name}")
+
+        return export_result

@@ -115,82 +115,21 @@ def deploy(
     else:
         console.print(f"[yellow]Build directory {build_dir} not found. Skipping shell sync.[/yellow]")
 
-    # 1.3 Pull fresh gm-list/gm-details/enrichment completed results from the
-    # Pi cluster before syncing/compacting. Shells out to the existing `cocli
-    # sync pi-results` command (rather than calling PiSyncService directly)
-    # so this reuses its built-in staleness check (SyncTracker, ~1hr window) -
-    # if a periodic cron job already keeps this synced, this call is a
-    # near-instant no-op instead of adding real time to every deploy.
-    console.print(f"[bold]Syncing gm-list/gm-details/enrichment results from Pi cluster for {campaign_name}...[/bold]")
-    try:
-        subprocess.run(
-            ["uv", "run", "cocli", "sync", "pi-results", "--campaign", campaign_name],
-            check=True,
-        )
-    except Exception as e:
-        console.print(f"[yellow]Warning: Could not sync Pi results: {e}[/yellow]")
+    # 1.3-2.0 Data refresh: pull fresh gm-list/gm-details/enrichment results
+    # and WAL data from the Pi cluster, compact the prospects index, and
+    # regenerate + upload the customer-facing enriched-emails CSV. Shared
+    # with the narrower `cocli web export-emails` command (split out
+    # 2026-09-01 so this can run on its own cadence without a full site
+    # rebuild) - see WebService.export_and_upload_emails_csv for the single
+    # source of truth.
+    def log_cb(msg: str) -> None:
+        console.print(f"  {msg}")
 
-    # 1.4 Pull fresh WAL data from the Pi cluster before compacting. Scrapers
-    # write WAL entries straight to each Pi's local disk (add_to_wal()) -
-    # nothing else moves that to S3, so without this step the compact below
-    # would fold over stale/empty S3 data (== "0 records merged" success).
-    console.print(f"[bold]Syncing google_maps_prospects WAL from Pi cluster for {campaign_name}...[/bold]")
-    try:
-        from ..application.pi_sync_service import PiSyncService
-        wal_sync_results = PiSyncService(campaign_name).sync_prospect_wal_to_s3(
-            index_name="google_maps_prospects"
-        )
-        for r in wal_sync_results:
-            if r.success:
-                console.print(f"  {r.host}: pushed {r.files_synced} WAL files")
-            else:
-                console.print(f"[yellow]  {r.host}: WAL sync failed - {r.error}[/yellow]")
-    except Exception as e:
-        console.print(f"[yellow]Warning: Could not sync Pi WAL to S3: {e}[/yellow]")
-
-    # 1.5 Compact the GM prospects index (WAL -> checkpoint) so the export/
-    # report below reflect the latest scrape/enrichment results, not
-    # whatever was last compacted locally. This used to be a separate,
-    # easy-to-forget manual step - same path as `cocli index compact`
-    # (Freeze-Ingest-Merge-Commit: S3-native lock, stations CURRENT commit,
-    # real checkpoint upload).
-    console.print(f"[bold]Compacting google_maps_prospects index for {campaign_name}...[/bold]")
-    try:
-        def compact_log_cb(msg: str) -> None:
-            console.print(f"  {msg}")
-
-        compact_result = services.index_service.compact(
-            index_name="google_maps_prospects",
-            log_callback=compact_log_cb,
-        )
-        if not compact_result.success:
-            console.print(f"[yellow]Warning: compaction failed: {compact_result.message}[/yellow]")
-    except Exception as e:
-        console.print(f"[yellow]Warning: Could not compact google_maps_prospects index: {e}[/yellow]")
+    console.print(f"[bold]Refreshing data and exporting emails CSV for {campaign_name}...[/bold]")
+    services.web_service.export_and_upload_emails_csv(s3, bucket_name, log_callback=log_cb)
 
     # 2. Generate & Upload Report
     console.print(f"[bold]Generating reports for {campaign_name}...[/bold]")
-
-    # 2.0 Force regeneration of the export CSV to pick up name changes
-    try:
-        console.print("  Regenerating export CSV...")
-        from ..application.lead_export_service import export_enriched_emails
-
-        export_result = export_enriched_emails(campaign_name)
-        console.print(f"  Exported {export_result.exported_count} companies")
-        s3.upload_file(str(export_result.output_usv), bucket_name, f"exports/{campaign_name}-emails.usv")
-        s3.upload_file(
-            str(export_result.output_csv),
-            bucket_name,
-            f"exports/{campaign_name}-emails.csv",
-            ExtraArgs={
-                "ContentType": "text/csv",
-                "ContentDisposition": f'attachment; filename="{campaign_name}-emails.csv"',
-                "CacheControl": "no-cache, must-revalidate",
-            },
-        )
-    except Exception as e:
-        console.print(f"[yellow]Warning: Could not regenerate export CSV: {e}[/yellow]")
 
     reports = services.web_service.get_campaign_reports()
     stats = reports["stats"]
@@ -265,6 +204,49 @@ def deploy(
         console.print(f"[yellow]Note: Could not invalidate CloudFront cache: {e}[/yellow]")
 
     console.print(f"[bold green]Deployment complete! Visit https://{domain}/[/bold green]")
+
+@app.command(name="export-emails")
+def export_emails(
+    campaign_name: Optional[str] = typer.Option(None, "--campaign-name", "--campaign", help="Campaign name. Defaults to current context."),
+    profile: Optional[str] = typer.Option(None, "--profile", help="AWS profile to use. Defaults to 'aws-profile' in config.toml."),
+    bucket_name: Optional[str] = typer.Option(None, "--bucket", help="S3 bucket name. Defaults to cocli-web-assets-<domain-slug>."),
+) -> None:
+    """
+    Refreshes and uploads just the customer-facing enriched-emails CSV/USV -
+    the data behind the dashboard's "download CSV" button - without
+    rebuilding or redeploying the static site shell. Needs AWS/1Password
+    auth, so this is a manual command; run `cocli web deploy` for a full
+    site + data deploy.
+    """
+    if not campaign_name:
+        campaign_name = get_campaign()
+
+    if not campaign_name:
+        console.print("[red]No campaign specified and no context set.[/red]")
+        raise typer.Exit(1)
+
+    services = ServiceContainer(campaign_name=campaign_name)
+    try:
+        cfg = services.web_service.resolve_deployment_config(
+            profile=profile,
+            bucket_name=bucket_name,
+        )
+        profile = cfg["profile"]
+        bucket_name = cfg["bucket_name"]
+    except ValueError as e:
+        console.print(f"[red]Error: {e}[/red]")
+        raise typer.Exit(1)
+
+    console.print(f"[bold blue]Exporting emails CSV for:[/bold blue] {campaign_name} -> s3://{bucket_name}")
+
+    session = boto3.Session(profile_name=profile)
+    s3 = session.client("s3")
+
+    def log_cb(msg: str) -> None:
+        console.print(f"  {msg}")
+
+    export_result = services.web_service.export_and_upload_emails_csv(s3, bucket_name, log_callback=log_cb)
+    console.print(f"[bold green]Done. Exported {export_result.exported_count} companies.[/bold green]")
 
 @app.command()
 def report(

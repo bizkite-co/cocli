@@ -48,6 +48,13 @@ class WebServiceProvider(Protocol):
         ...
     def get_campaign_reports(self) -> Dict[str, Any]:
         ...
+    def export_and_upload_emails_csv(
+        self,
+        s3_client: Any,
+        bucket_name: str,
+        log_callback: Optional[Callable[[str], None]] = None,
+    ) -> Any:
+        ...
 
 
 class IndexServiceProvider(Protocol):
