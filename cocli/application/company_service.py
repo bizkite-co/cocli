@@ -307,7 +307,7 @@ def get_company_details_for_view(company_slug: str) -> Optional[Dict[str, Any]]:
 
 
 def backfill_missing_companies_from_prospects(
-    campaign_name: str, dry_run: bool = True
+    campaign_name: str, dry_run: bool = True, min_hours_since_last_run: Optional[float] = None
 ) -> Dict[str, Any]:
     """
     Materializes companies/<slug> directories for prospects that exist in a
@@ -321,14 +321,42 @@ def backfill_missing_companies_from_prospects(
     skip this, leaving created companies invisible to
     audit_campaign_integrity) plus a dated backfill marker, since nothing
     else records how a company record was created.
+
+    min_hours_since_last_run (2026-09-01): for a login-triggered scheduled
+    run (systemd OnStartupSec=, fires every login) rather than a fixed
+    calendar schedule - Mark wants "run shortly after login, but only if
+    it's actually been a while," and is fine with it not running for days
+    if he isn't logged in. systemd's Persistent= (the disk-backed "catch up
+    a missed run" mechanism) explicitly only applies to OnCalendar= timers
+    per systemd.timer(5), not the monotonic OnStartupSec=/OnUnitActiveSec=
+    needed for login-triggering, and it was unclear whether
+    OnUnitActiveSec='s own state survives a full user-manager restart
+    (logout with no lingering) - so the staleness check lives here instead,
+    against an explicit marker file, rather than relying on systemd
+    internals that weren't verifiable. Only checked/updated for a real
+    (non-dry-run) execute - a dry-run inspection should always show live
+    state.
     """
     import datetime as _datetime
+    import time as _time
 
     from ..core.paths import paths
     from ..core.prospects_csv_manager import ProspectsIndexManager
     from ..core.utils import create_company_files
     from ..models.campaigns.indexes.google_maps_prospect import GoogleMapsProspect
     from ..models.company_name import CompanyName
+
+    marker_path = paths.campaign(campaign_name).path / ".backfill-from-prospects-last-run"
+    if not dry_run and min_hours_since_last_run is not None and marker_path.exists():
+        hours_since = (_time.time() - marker_path.stat().st_mtime) / 3600
+        if hours_since < min_hours_since_last_run:
+            return {
+                "campaign_name": campaign_name,
+                "skipped_stale_check": True,
+                "hours_since_last_run": round(hours_since, 2),
+                "min_hours_since_last_run": min_hours_since_last_run,
+                "dry_run": dry_run,
+            }
 
     companies_dir = paths.companies.path
     # A bare directory isn't a real company record: the enrichment worker's
@@ -386,8 +414,13 @@ def backfill_missing_companies_from_prospects(
 
         build_cache(campaign=campaign_name)
 
+    if not dry_run:
+        marker_path.parent.mkdir(parents=True, exist_ok=True)
+        marker_path.write_text(_datetime.datetime.now(_datetime.UTC).isoformat())
+
     return {
         "campaign_name": campaign_name,
+        "skipped_stale_check": False,
         "existing_company_count": len(existing_slugs),
         "missing_count": len(created_slugs),
         "created_count": 0 if dry_run else len(created_slugs),

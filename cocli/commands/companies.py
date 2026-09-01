@@ -1,3 +1,5 @@
+from typing import Optional
+
 import typer
 from rich.console import Console
 
@@ -42,6 +44,16 @@ def backfill_from_prospects(
         "--execute",
         help="Actually create the company directories. Without this flag, only reports what would be created.",
     ),
+    min_hours_since_last_run: Optional[float] = typer.Option(
+        None,
+        "--min-hours-since-last-run",
+        help=(
+            "With --execute, skip entirely if a previous --execute run for this "
+            "campaign completed less than this many hours ago (tracked via a marker "
+            "file, not a fixed schedule - for a login-triggered scheduled run rather "
+            "than a fixed calendar time). Ignored for dry runs, which always show live state."
+        ),
+    ),
 ) -> None:
     """
     Materializes companies/<slug> directories for prospects that exist in a
@@ -50,7 +62,17 @@ def backfill_from_prospects(
     """
     from ..application.company_service import backfill_missing_companies_from_prospects
 
-    result = backfill_missing_companies_from_prospects(campaign, dry_run=not execute)
+    result = backfill_missing_companies_from_prospects(
+        campaign, dry_run=not execute, min_hours_since_last_run=min_hours_since_last_run
+    )
+
+    if result.get("skipped_stale_check"):
+        console.print(
+            f"[yellow]Skipped - last --execute run for '{campaign}' was "
+            f"{result['hours_since_last_run']:.1f}h ago, under the "
+            f"{result['min_hours_since_last_run']}h threshold.[/yellow]"
+        )
+        return
 
     console.print(f"[bold]Campaign:[/bold] {result['campaign_name']}")
     console.print(f"[bold]Existing companies (data-root wide):[/bold] {result['existing_company_count']}")

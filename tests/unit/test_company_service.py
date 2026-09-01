@@ -1,3 +1,5 @@
+import os
+import time
 from pathlib import Path
 from unittest.mock import patch
 
@@ -95,3 +97,65 @@ def test_backfills_a_bare_directory_with_no_index_md(
 
     assert result["created_count"] == 1
     assert (shell_dir / "_index.md").exists()
+
+
+def test_min_hours_since_last_run_skips_a_fresh_marker(sandboxed_companies_dir: Path) -> None:
+    """Regression (Mark, 2026-09-01): a login-triggered run (systemd
+    OnStartupSec=, fires every login) needs to no-op if it already ran
+    recently, rather than re-scanning every prospect on every login."""
+    with patch(
+        "cocli.core.prospects_csv_manager.ProspectsIndexManager.read_all_prospects",
+        return_value=[_prospect("missing-co", "Missing Co")],
+    ):
+        first = backfill_missing_companies_from_prospects(
+            "test-campaign", dry_run=False, min_hours_since_last_run=20
+        )
+        assert first["created_count"] == 1
+        assert first["skipped_stale_check"] is False
+
+        second = backfill_missing_companies_from_prospects(
+            "test-campaign", dry_run=False, min_hours_since_last_run=20
+        )
+
+    assert second["skipped_stale_check"] is True
+    assert second["hours_since_last_run"] < 20
+
+
+def test_min_hours_since_last_run_runs_once_marker_is_old_enough(sandboxed_companies_dir: Path) -> None:
+    from cocli.core.paths import paths
+
+    marker_path = paths.campaign("test-campaign").path / ".backfill-from-prospects-last-run"
+    marker_path.parent.mkdir(parents=True, exist_ok=True)
+    marker_path.write_text("stale")
+    old_time = time.time() - (25 * 3600)
+    os.utime(marker_path, (old_time, old_time))
+
+    with patch(
+        "cocli.core.prospects_csv_manager.ProspectsIndexManager.read_all_prospects",
+        return_value=[_prospect("missing-co", "Missing Co")],
+    ):
+        result = backfill_missing_companies_from_prospects(
+            "test-campaign", dry_run=False, min_hours_since_last_run=20
+        )
+
+    assert result["skipped_stale_check"] is False
+    assert result["created_count"] == 1
+
+
+def test_min_hours_since_last_run_ignored_for_dry_run(sandboxed_companies_dir: Path) -> None:
+    from cocli.core.paths import paths
+
+    marker_path = paths.campaign("test-campaign").path / ".backfill-from-prospects-last-run"
+    marker_path.parent.mkdir(parents=True, exist_ok=True)
+    marker_path.write_text("fresh")
+
+    with patch(
+        "cocli.core.prospects_csv_manager.ProspectsIndexManager.read_all_prospects",
+        return_value=[_prospect("missing-co", "Missing Co")],
+    ):
+        result = backfill_missing_companies_from_prospects(
+            "test-campaign", dry_run=True, min_hours_since_last_run=20
+        )
+
+    assert result["skipped_stale_check"] is False
+    assert result["missing_count"] == 1
