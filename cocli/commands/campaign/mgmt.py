@@ -522,14 +522,26 @@ def compile_to_call(
         "--purge",
         help="Clear the existing pending to-call queue before repopulating.",
     ),
+    dry_run: bool = typer.Option(
+        False,
+        "--dry-run",
+        help="Preview what would happen (companies created/updated, tasks enqueued) without writing anything - skips compaction, company writes, --purge, and the queue write.",
+    ),
 ) -> None:
     """
     Compiles prospects to a To-Call list:
     1. Consolidates GM results and compacts index.
     2. Compacts email index.
-    3. Identifies top leads (rating >= 4.5, reviews >= 20, has contact info).
+    3. Identifies top leads: ranked by rating x review count (descending),
+       must have both a rating and a review count on record, plus contact
+       info (email or phone) - no artificial rating/review-count cutoff, so
+       the best available candidates surface even in thinner markets.
     4. (Optional, --purge) Clears the existing pending to-call queue.
     5. Adds top leads to the 'to-call' queue.
+
+    --dry-run runs step 3 for real (read-only) and reports what steps 1, 2,
+    4, and 5 would do, without writing anything - useful as a smoke test
+    before a full run, especially paired with --limit for a quick check.
     """
     name = _require_campaign(campaign_name)
     try:
@@ -538,7 +550,7 @@ def compile_to_call(
 
         service = OperationService(name)
         console.print(
-            f"[bold cyan]Compiling To-Call list for: {name}[/bold cyan]"
+            f"[bold cyan]{'Previewing' if dry_run else 'Compiling'} To-Call list for: {name}[/bold cyan]"
         )
         meta = service.get_details("op_compile_to_call")
         if meta:
@@ -550,15 +562,27 @@ def compile_to_call(
             return await service.execute(
                 "op_compile_to_call",
                 log_callback=log_cb,
-                params={"limit": limit, "purge": purge},
+                params={"limit": limit, "purge": purge, "dry_run": dry_run},
             )
 
         result = asyncio.run(run_op())
         if result["status"] == "success":
-            console.print(
-                f"\n[bold green]Successfully compiled To-Call list for "
-                f"'{name}'.[/bold green]"
-            )
+            op_result = result.get("result", {})
+            if op_result.get("dry_run"):
+                console.print(
+                    f"\n[bold]Dry run - nothing written.[/bold] Would create "
+                    f"{op_result.get('would_create_count', 0)} companies, update "
+                    f"{op_result.get('would_update_count', 0)}, enqueue "
+                    f"{op_result.get('would_enqueue_count', 0)} to-call tasks."
+                )
+                sample = op_result.get("sample_slugs") or []
+                if sample:
+                    console.print(f"  Sample: {', '.join(sample)}")
+            else:
+                console.print(
+                    f"\n[bold green]Successfully compiled To-Call list for "
+                    f"'{name}'.[/bold green]"
+                )
         else:
             console.print(
                 f"\n[bold red]Compile failed: {result.get('message')}[/bold red]"

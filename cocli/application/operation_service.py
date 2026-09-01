@@ -575,35 +575,51 @@ class OperationService:
 
                 async def run_workflow() -> Dict[str, Any]:
                     report: Dict[str, Any] = {"steps": []}
+                    dry_run = bool(params.get("dry_run"))
+                    report["dry_run"] = dry_run
                     log_step("job-start", "success")
 
                     log_step("compact_gm", "task-start")
-                    log_step("compact_gm", "pending", "Running GM index compaction...")
-                    from cocli.core.gm_list_tile_resharder import (
-                        reshard_google_maps_list_item_tiles,
-                    )
-                    from cocli.core.prospect_compactor import (
-                        compact_prospects_to_checkpoint,
-                    )
+                    if dry_run:
+                        log_step(
+                            "compact_gm",
+                            "success",
+                            "Skipped (dry run) - previewing against current checkpoint",
+                        )
+                    else:
+                        log_step("compact_gm", "pending", "Running GM index compaction...")
+                        from cocli.core.gm_list_tile_resharder import (
+                            reshard_google_maps_list_item_tiles,
+                        )
+                        from cocli.core.prospect_compactor import (
+                            compact_prospects_to_checkpoint,
+                        )
 
-                    await asyncio.to_thread(
-                        reshard_google_maps_list_item_tiles, self.campaign_name
-                    )
-                    m_count = await asyncio.to_thread(
-                        compact_prospects_to_checkpoint, self.campaign_name
-                    )
-                    log_step("compact_gm", "success", f"{m_count} records merged")
+                        await asyncio.to_thread(
+                            reshard_google_maps_list_item_tiles, self.campaign_name
+                        )
+                        m_count = await asyncio.to_thread(
+                            compact_prospects_to_checkpoint, self.campaign_name
+                        )
+                        log_step("compact_gm", "success", f"{m_count} records merged")
                     log_step("compact_gm", "task-end")
 
                     log_step("compact_emails", "task-start")
-                    log_step(
-                        "compact_emails", "pending", "Running Email index compaction..."
-                    )
-                    from ..core.email_index_manager import EmailIndexManager
+                    if dry_run:
+                        log_step(
+                            "compact_emails",
+                            "success",
+                            "Skipped (dry run) - previewing against current checkpoint",
+                        )
+                    else:
+                        log_step(
+                            "compact_emails", "pending", "Running Email index compaction..."
+                        )
+                        from ..core.email_index_manager import EmailIndexManager
 
-                    email_manager = EmailIndexManager(self.campaign_name)
-                    await asyncio.to_thread(email_manager.compact)
-                    log_step("compact_emails", "success")
+                        email_manager = EmailIndexManager(self.campaign_name)
+                        await asyncio.to_thread(email_manager.compact)
+                        log_step("compact_emails", "success")
                     log_step("compact_emails", "task-end")
 
                     log_step("identify_leads", "task-start")
@@ -649,14 +665,37 @@ class OperationService:
 
                     if params.get("purge"):
                         log_step("purge_pending", "task-start")
-                        log_step("purge_pending", "pending", "Clearing existing to-call queue...")
-                        purged = self._purge_to_call_pending_files()
-                        log_step("purge_pending", "success", f"{purged} pending tasks removed")
+                        if dry_run:
+                            from cocli.core.paths import paths as _paths
+
+                            pending_dir = (
+                                _paths.campaign(self.campaign_name).path
+                                / "queues"
+                                / "to-call"
+                                / "pending"
+                            )
+                            pending_count = (
+                                len(list(pending_dir.glob("*.usv")))
+                                if pending_dir.exists()
+                                else 0
+                            )
+                            log_step(
+                                "purge_pending",
+                                "success",
+                                f"Skipped (dry run) - would remove {pending_count} pending tasks",
+                            )
+                        else:
+                            log_step("purge_pending", "pending", "Clearing existing to-call queue...")
+                            purged = self._purge_to_call_pending_files()
+                            log_step("purge_pending", "success", f"{purged} pending tasks removed")
                         log_step("purge_pending", "task-end")
 
                     log_step("tag_leads", "task-start")
                     log_step("tag_leads", "pending")
                     created = 0
+                    would_create = 0
+                    would_update = 0
+                    sample_slugs: List[str] = []
                     limit = params.get("limit")
                     from cocli.models.companies.company import Company
                     from cocli.models.company_name import CompanyName
@@ -675,74 +714,99 @@ class OperationService:
                                     f"Processing Lead: {p.slug} | Score: {score:.1f} (R: {p.average_rating}, C: {p.reviews_count})"
                                 )
 
-                                # Hydrate metadata from index if missing or messy
-                                if (
-                                    p.average_rating is not None
-                                    and not company.average_rating
-                                ):
-                                    company.average_rating = p.average_rating
-                                if (
-                                    p.reviews_count is not None
-                                    and not company.reviews_count
-                                ):
-                                    company.reviews_count = p.reviews_count
+                                if dry_run:
+                                    would_update += 1
+                                else:
+                                    # Hydrate metadata from index if missing or messy
+                                    if (
+                                        p.average_rating is not None
+                                        and not company.average_rating
+                                    ):
+                                        company.average_rating = p.average_rating
+                                    if (
+                                        p.reviews_count is not None
+                                        and not company.reviews_count
+                                    ):
+                                        company.reviews_count = p.reviews_count
 
-                                # CLEAN NAME: Remove double quotes
-                                if p.name:
-                                    clean_name = p.name.strip("\"'")
-                                    if clean_name and clean_name != company.name:
-                                        company.name = clean_name
+                                    # CLEAN NAME: Remove double quotes
+                                    if p.name:
+                                        clean_name = p.name.strip("\"'")
+                                        if clean_name and clean_name != company.name:
+                                            company.name = clean_name
 
-                                # Save updated metadata
-                                await asyncio.to_thread(company.save, rebuild_cache=False)
-                                logger.info(f"Updated {p.slug}")
+                                    # Save updated metadata
+                                    await asyncio.to_thread(company.save, rebuild_cache=False)
+                                    logger.info(f"Updated {p.slug}")
                             else:
-                                # Company doesn't exist - create from prospect data
-                                logger.info(
-                                    f"Creating new company from prospect: {p.slug}"
-                                )
-                                from cocli.core.utils import create_company_files
+                                if dry_run:
+                                    would_create += 1
+                                else:
+                                    # Company doesn't exist - create from prospect data
+                                    logger.info(
+                                        f"Creating new company from prospect: {p.slug}"
+                                    )
+                                    from cocli.core.utils import create_company_files
 
-                                company_name = (
-                                    str(p.name).strip("\"'")
-                                    if p.name
-                                    else p.slug.replace("-", " ").title()
-                                )
-                                new_company = Company(
-                                    name=CompanyName(company_name),
-                                    slug=p.slug,
-                                    phone_1=p.phone_number,
-                                    phone_number=p.phone_number,
-                                    average_rating=p.average_rating,
-                                    reviews_count=p.reviews_count,
-                                    street_address=p.street_address,
-                                    city=p.city,
-                                    state=p.state,
-                                    zip_code=p.zip,
-                                    domain=p.domain,
-                                    tags=list(
-                                        dict.fromkeys([*p.tags, self.campaign_name])
-                                    ),
-                                )
-                                company_dir = create_company_files(
-                                    new_company,
-                                    new_company.get_local_path(),
-                                    rebuild_cache=False,
-                                )
-                                logger.info(f"Created company at {company_dir}")
+                                    company_name = (
+                                        str(p.name).strip("\"'")
+                                        if p.name
+                                        else p.slug.replace("-", " ").title()
+                                    )
+                                    new_company = Company(
+                                        name=CompanyName(company_name),
+                                        slug=p.slug,
+                                        phone_1=p.phone_number,
+                                        phone_number=p.phone_number,
+                                        average_rating=p.average_rating,
+                                        reviews_count=p.reviews_count,
+                                        street_address=p.street_address,
+                                        city=p.city,
+                                        state=p.state,
+                                        zip_code=p.zip,
+                                        domain=p.domain,
+                                        tags=list(
+                                            dict.fromkeys([*p.tags, self.campaign_name])
+                                        ),
+                                    )
+                                    company_dir = create_company_files(
+                                        new_company,
+                                        new_company.get_local_path(),
+                                        rebuild_cache=False,
+                                    )
+                                    logger.info(f"Created company at {company_dir}")
 
-                            # ADD TO QUEUE
-                            task = ToCallTask(
-                                company_slug=p.slug,
-                                domain=p.domain or "unknown",
-                                campaign_name=self.campaign_name,
-                                ack_token=None,
-                            )
-                            tasks_to_save.append(task)
+                            if len(sample_slugs) < 10:
+                                sample_slugs.append(p.slug)
+
+                            if not dry_run:
+                                # ADD TO QUEUE
+                                task = ToCallTask(
+                                    company_slug=p.slug,
+                                    domain=p.domain or "unknown",
+                                    campaign_name=self.campaign_name,
+                                    ack_token=None,
+                                )
+                                tasks_to_save.append(task)
                             created += 1
                             logger.info(f"Enqueued to-call: {p.slug}")
                         else:
                             logger.warning(f"Prospect {p} has no slug")
+
+                    if dry_run:
+                        report["would_create_count"] = would_create
+                        report["would_update_count"] = would_update
+                        report["would_enqueue_count"] = created
+                        report["sample_slugs"] = sample_slugs
+                        log_step(
+                            "tag_leads",
+                            "success",
+                            f"Dry run: would create {would_create}, update {would_update}, "
+                            f"enqueue {created} to-call tasks",
+                        )
+                        log_step("tag_leads", "task-end")
+                        log_step("job-end", "success")
+                        return report
 
                     if created:
                         from cocli.core.cache import build_cache

@@ -140,6 +140,7 @@ cocli
             campaign_name (text)
             --limit (integer)
             --purge (boolean)
+            --dry-run (boolean)
         coverage-gap - Generates a report matching every target area to its most recent scrape date.
             campaign_name (text)
             --output (path)

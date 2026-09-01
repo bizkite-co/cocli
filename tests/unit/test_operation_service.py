@@ -8,7 +8,7 @@ inline step and this new standalone operation.
 """
 
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -130,3 +130,70 @@ async def test_op_compile_to_call_tags_new_companies_with_campaign_name(
     assert result["status"] == "success"
     created_company = captured_company["company"]
     assert "test-campaign" in created_company.tags
+
+
+@pytest.mark.asyncio
+async def test_op_compile_to_call_dry_run_writes_nothing(tmp_path: Path) -> None:
+    """Regression (Mark, 2026-09-01): op_compile_to_call had no way to
+    preview what it would do without actually writing companies/queue
+    files - the only verification available was mocked unit tests, never a
+    real run. --dry-run should still do the real (read-only) lead lookup
+    but skip every write: compaction, company create/update, the --purge
+    delete, and the queue write."""
+    new_prospect = SearchResult(
+        type="company",
+        unique_id="new-co",
+        display="New Co",
+        slug="new-co",
+        domain="newco.com",
+        average_rating=4.5,
+        reviews_count=10,
+        tags=[],
+    )
+    existing_prospect = SearchResult(
+        type="company",
+        unique_id="existing-co",
+        display="Existing Co",
+        slug="existing-co",
+        domain="existingco.com",
+        average_rating=3.0,
+        reviews_count=5,
+        tags=[],
+    )
+    existing_company = MagicMock(tags=["test-campaign"], average_rating=3.0, reviews_count=5, name="Existing Co")
+
+    def fake_company_get(slug: str) -> object:
+        return existing_company if slug == "existing-co" else None
+
+    with patch.object(paths, "root", tmp_path), patch(
+        "cocli.application.search_service.get_fuzzy_search_results",
+        return_value=[new_prospect, existing_prospect],
+    ), patch(
+        "cocli.core.email_index_manager.EmailIndexManager.compact"
+    ) as mock_compact, patch(
+        "cocli.models.companies.company.Company.get", side_effect=fake_company_get
+    ), patch(
+        "cocli.core.utils.create_company_files"
+    ) as mock_create, patch(
+        "cocli.models.base.write_queue_files"
+    ) as mock_write_queue, patch(
+        "cocli.core.cache.build_cache"
+    ) as mock_build_cache:
+        service = OperationService(campaign_name="test-campaign")
+        result = await service.execute(
+            "op_compile_to_call", params={"dry_run": True, "purge": True}
+        )
+
+    assert result["status"] == "success"
+    op_result = result["result"]
+    assert op_result["dry_run"] is True
+    assert op_result["would_create_count"] == 1
+    assert op_result["would_update_count"] == 1
+    assert op_result["would_enqueue_count"] == 2
+    assert set(op_result["sample_slugs"]) == {"new-co", "existing-co"}
+
+    mock_compact.assert_not_called()
+    mock_create.assert_not_called()
+    mock_write_queue.assert_not_called()
+    mock_build_cache.assert_not_called()
+    existing_company.save.assert_not_called()
